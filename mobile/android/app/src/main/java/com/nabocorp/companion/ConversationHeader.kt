@@ -17,7 +17,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable internal fun ConversationHeader(model: CompanionModel, openWorkspace: () -> Unit) {
+@Composable internal fun ConversationHeader(model: CompanionModel, wide: Boolean = false, openWorkspace: () -> Unit) {
     val state = model.state
     val unread = state.items("teams").any { it.optBoolean("isUnread") }
     val dirty = state.obj("git").obj("uncommitted").string("state") == "dirty"
@@ -41,7 +41,8 @@ import androidx.compose.ui.unit.dp
         },
         navigationIcon = {
             val mission = model.workerMission
-            if (mission == null) HeaderButton(Icons.Outlined.Menu, "Open workspace", if (unread) "Unread activity" else "", unread, action = openWorkspace)
+            // The sidebar is always there on a wide display, so only the way back to a mission is needed.
+            if (mission == null) { if (!wide) HeaderButton(Icons.Outlined.Menu, "Open workspace", if (unread) "Unread activity" else "", unread, action = openWorkspace) }
             else HeaderButton(Icons.AutoMirrored.Outlined.ArrowBack, "Back to mission", "", false) { model.showMissions(mission.string("id")) }
         },
         actions = {

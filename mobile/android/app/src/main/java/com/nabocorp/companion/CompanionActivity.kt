@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -194,30 +195,37 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
             } else if (model.creation != null) {
                 CreationScreen(model)
             } else {
-                ModalNavigationDrawer(drawerState = drawer, drawerContent = {
+                // Wide space (an unfolded foldable, a tablet, split screen) keeps the agents beside the conversation; narrow space slides them over it.
+                val wide = LocalConfiguration.current.screenWidthDp >= 600
+                val main: @Composable () -> Unit = {
+                    if (model.missionsOpen) MissionsScreen(model, wide) { coroutine.launch { drawer.open() } }
+                    else {
+                        Scaffold(
+                            topBar = {
+                                Column {
+                                    ConversationHeader(model, wide) { coroutine.launch { drawer.open() } }
+                                    MissionContextBar(model)
+                                }
+                            },
+                            bottomBar = { if (state.string("agentId").isNotBlank()) Column {
+                                RequestBanner(model)
+                                Composer(model, pickAttachment, toggleDictation)
+                            } },
+                            modifier = Modifier.imePadding(),
+                        ) { padding ->
+                            ConversationContent(model,Modifier.padding(padding).fillMaxSize())
+                        }
+                    }
+                }
+                if (wide) Row(Modifier.fillMaxSize()) {
+                    Surface(Modifier.width(340.dp).fillMaxHeight(), color = MaterialTheme.colorScheme.background) { DrawerContent(model, close = {}) }
+                    VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Box(Modifier.weight(1f).fillMaxHeight()) { main() }
+                } else ModalNavigationDrawer(drawerState = drawer, drawerContent = {
                     ModalDrawerSheet(Modifier.widthIn(max = 360.dp), drawerContainerColor = MaterialTheme.colorScheme.background) {
                         DrawerContent(model, close = { coroutine.launch { drawer.close() } })
                     }
-                }) {
-                  if (model.missionsOpen) MissionsScreen(model) { coroutine.launch { drawer.open() } }
-                  else {
-                    Scaffold(
-                        topBar = {
-                            Column {
-                                ConversationHeader(model) { coroutine.launch { drawer.open() } }
-                                MissionContextBar(model)
-                            }
-                        },
-                        bottomBar = { if (state.string("agentId").isNotBlank()) Column {
-                            RequestBanner(model)
-                            Composer(model, pickAttachment, toggleDictation)
-                        } },
-                        modifier = Modifier.imePadding(),
-                    ) { padding ->
-                        ConversationContent(model,Modifier.padding(padding).fillMaxSize())
-                    }
-                  }
-                }
+                }) { main() }
                 if (model.sheet in listOf("settings", "connections", "usage")) {
                     BackHandler { if (model.sheet in listOf("usage", "connections")) model.sheet = "settings" else model.dismissSheet() }
                     Surface(Modifier.fillMaxSize(), color = CompanionColors.sheetBackground) { SheetContent(model, enableNotifications, setAppLockEnabled) }

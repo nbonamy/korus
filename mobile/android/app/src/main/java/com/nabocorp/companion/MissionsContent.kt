@@ -114,7 +114,7 @@ internal fun elapsedText(millis: Long): String {
 
 /** The missions, in the main area where a conversation would be: the list, or one mission with its stage and tickets. */
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable internal fun MissionsScreen(model: CompanionModel, openDrawer: () -> Unit) {
+@Composable internal fun MissionsScreen(model: CompanionModel, wide: Boolean = false, openDrawer: () -> Unit) {
     val detail = model.missionDetail?.let { id -> model.missions.firstOrNull { it.string("id") == id } }
     val active = model.missions.count { it.isActiveMission }
     val back = {
@@ -139,7 +139,7 @@ internal fun elapsedText(millis: Long): String {
             },
             navigationIcon = {
                 if (detail != null) IconButton(onClick = { back() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, if (reviewing) "Back" else "Back to missions") }
-                else IconButton(onClick = openDrawer) { Icon(Icons.Outlined.Menu, "Open workspace") }
+                else if (!wide) IconButton(onClick = openDrawer) { Icon(Icons.Outlined.Menu, "Open workspace") }
             },
         )
     }, bottomBar = {
