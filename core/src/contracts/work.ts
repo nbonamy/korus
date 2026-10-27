@@ -111,7 +111,8 @@ export type WorkItemQuery = {
 export type GlobalWorkItemQuery = WorkItemQuery & {
   assignment?: 'all' | 'viewer';
   involvement?: 'author' | 'reviewer';
-  repositoryScope?: 'owned';
+  /** Owned includes personal repositories and administered organizations; notOwned excludes both. */
+  repositoryScope?: 'owned' | 'notOwned';
   cursor?: string;
   pageSize?: number;
 };

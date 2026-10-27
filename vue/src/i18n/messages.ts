@@ -182,7 +182,7 @@ export const messages = {
     },
     automationSources: { connect: 'Connect {provider} in Settings before saving an automation.', noSources: 'No accessible backlog sources.', codeRepositoryFor: 'Code repository for {source}', refresh: 'Refresh' },
     backlogSource: {
-      loadGlobalConfirmation: 'Load work across accessible sources, one page at a time? Large backlogs may take longer to browse.', provider: 'Backlog provider', teamProject: 'Team / project', repository: 'Repository', codeRepository: 'Code repository', chooseCodeRepository: 'Choose a code repository', sources: 'Sources', retry: 'Retry', filterSources: 'Filter sources', openSource: 'Open {repository}', selectItem: 'Select {identifier}', assignedItem: 'Assigned {identifier}', viewAgent: 'View agent for {identifier}', viewItem: 'View {identifier}', startItem: 'Start work on {identifier}', viewProvider: 'View {identifier} in {provider}', viewInProvider: 'View in {provider}' },
+      loadGlobalConfirmation: 'Load work across accessible sources, one page at a time? Large backlogs may take longer to browse.', provider: 'Backlog provider', teamProject: 'Team / project', repository: 'Repository', codeRepository: 'Code repository', chooseCodeRepository: 'Choose a code repository', sources: 'Sources', retry: 'Retry', filterSources: 'Filter sources', openSource: 'Open {repository}', selectItem: 'Select {identifier}', assignedItem: 'Assigned {identifier}', viewAgent: 'View agent for {identifier}', viewItem: 'View {identifier}', checkFeedbackItem: 'Check feedback on {identifier}', startItem: 'Start work on {identifier}', viewProvider: 'View {identifier} in {provider}', viewInProvider: 'View in {provider}' },
     linearIntegration: {
       name: 'Linear', connectLabel: 'Connect Linear', disconnectLabel: 'Disconnect Linear',
       cancelLabel: 'Cancel Linear authorization',
@@ -605,6 +605,8 @@ export const messages = {
       allWork: 'All work',
       inMyRepositories: 'In my repositories',
       inMyProjects: 'In my projects',
+      outsideMyRepositories: 'Outside my repositories',
+      outsideMyProjects: 'Outside my projects',
       acrossRepositories: 'Across repositories',
       acrossSources: 'Across sources',
     },
@@ -866,6 +868,7 @@ export const messages = {
       custom: 'Custom',
       investigate: 'Investigate',
       fix: 'Fix',
+      checkFeedback: 'Check feedback',
       addressFeedback: 'Address feedback',
       review: 'Review',
       starting: 'Starting work…',

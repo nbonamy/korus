@@ -32,6 +32,26 @@ describe('CockpitWorkInbox', () => {
     await flushPromises();
     expect(wrapper.findAll<HTMLInputElement>('.cockpit-inbox__selection input')[0]!.element.checked).toBe(true);
   });
+  it('checks feedback for authored PRs and reviews other PRs while retaining the address-feedback action', async () => {
+    const own = { ...item(21, 'My PR', 'repo-one'), kind: 'pullRequest' as const, authorName: 'NICOLAS' };
+    const other = { ...item(22, 'Other PR', 'repo-two'), kind: 'pullRequest' as const, authorName: 'someone-else' };
+    const start = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mountInbox([own, other], {}, { activeView: 'all' }, start);
+    await wrapper.get('[aria-label="Check feedback on #21"]').trigger('click');
+    await wrapper.get('.app-dialog__footer .app-button--primary').trigger('click');
+    expect(start).toHaveBeenLastCalledWith(expect.objectContaining({ action: 'checkFeedback', items: [own] }));
+    await flushPromises();
+    await wrapper.get('[aria-label="Check feedback on #21"]').trigger('click');
+    const address = wrapper.get('.app-dialog__footer .app-button--secondary');
+    expect(address.text()).toBe('Address feedback');
+    await address.trigger('click');
+    expect(start).toHaveBeenLastCalledWith(expect.objectContaining({ action: 'addressFeedback', items: [own] }));
+    await flushPromises();
+    await wrapper.get('[aria-label="Start work on #22"]').trigger('click');
+    expect(wrapper.get('.app-dialog__footer .app-button--primary').text()).toBe('Review');
+    await wrapper.get('.app-dialog__footer .app-button--primary').trigger('click');
+    expect(start).toHaveBeenLastCalledWith(expect.objectContaining({ action: 'review', items: [other] }));
+  });
   it('requires an explicit code repository for Linear batches and invalidates a submitted selection on source change', async () => {
     const selected = { ...item(12, 'Repair login', 'linear:team'), provider: 'linear' as const, id: 'linear:uuid', identifier: 'ENG-12' };
     const startWorkAction = vi.fn().mockResolvedValue(undefined);

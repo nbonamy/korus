@@ -3899,7 +3899,7 @@ function globalWorkItemQuery(value: unknown): import('@workspace/core/contracts'
   if (involvement === 'reviewer' && base.kind !== 'pullRequest') {
     throw new Error('Review requests require pull requests.');
   }
-  if (repositoryScope !== undefined && repositoryScope !== 'owned') {
+  if (repositoryScope !== undefined && repositoryScope !== 'owned' && repositoryScope !== 'notOwned') {
     throw new Error('Invalid global work item repository scope.');
   }
   if (cursor !== undefined && (typeof cursor !== 'string' || !cursor || cursor.length > 4096)) {

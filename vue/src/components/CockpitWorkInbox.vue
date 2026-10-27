@@ -166,8 +166,8 @@
                   <EyeIcon aria-hidden="true" />
                 </button>
               </el-tooltip>
-              <el-tooltip v-if="!row.assignment" :content="$t('backlogSource.startItem', { identifier: workItemDisplayIdentifier(row.item) })" placement="top" :show-after="300">
-                <button class="cockpit-inbox__row-action" type="button" :aria-label="$t('backlogSource.startItem', { identifier: workItemDisplayIdentifier(row.item) })" @click.stop="openStartWorkDialog(row.item)">
+              <el-tooltip v-if="!row.assignment" :content="startItemLabel(row.item)" placement="top" :show-after="300">
+                <button class="cockpit-inbox__row-action" type="button" :aria-label="startItemLabel(row.item)" @click.stop="openStartWorkDialog(row.item)">
                   <PlayerPlayIcon aria-hidden="true" />
                 </button>
               </el-tooltip>
@@ -262,8 +262,8 @@
       <template #footer>
         <div class="app-dialog__footer">
           <button class="app-button app-button--tertiary" type="button" :disabled="startingWork" @click="closeStartWorkDialog(false)">{{ $t('surface.cockpitWorkInbox.cancel') }}</button>
-          <button class="app-button app-button--secondary" type="button" :disabled="startingWork || !selectedTeamId || !selectedBackend" @click="startSelectedWork('investigate')">{{ $t('surface.cockpitWorkInbox.investigate') }}</button>
-          <button class="app-button app-button--primary" type="button" :disabled="startingWork || !selectedTeamId || !selectedBackend" @click="startSelectedWork('fix')">{{ $t('surface.cockpitWorkInbox.fix') }}</button>
+          <button class="app-button app-button--secondary" type="button" :disabled="startingWork || !selectedTeamId || !selectedBackend" @click="startSelectedWork(secondaryLaunchAction)">{{ $t(`repositoryBacklog.${secondaryLaunchAction}`) }}</button>
+          <button class="app-button app-button--primary" type="button" :disabled="startingWork || !selectedTeamId || !selectedBackend" @click="startSelectedWork(primaryLaunchAction)">{{ $t(`repositoryBacklog.${primaryLaunchAction}`) }}</button>
         </div>
       </template>
     </el-dialog>
@@ -546,6 +546,18 @@ function toggleSelection(row: InboxRow): void {
   selectedItemIds.value = next;
 }
 
+function isOwnPullRequest(item: WorkItem): boolean {
+  return item.kind === 'pullRequest' && Boolean(props.connection.accountLabel && item.authorName)
+    && item.authorName!.toLowerCase() === props.connection.accountLabel!.toLowerCase();
+}
+function startItemLabel(item: WorkItem): string {
+  return translate(isOwnPullRequest(item) ? 'backlogSource.checkFeedbackItem' : 'backlogSource.startItem', { identifier: workItemDisplayIdentifier(item) });
+}
+const launchPullRequestsOnly = computed(() => launchItems.value.length > 0 && launchItems.value.every(item => item.kind === 'pullRequest'));
+const primaryLaunchAction = computed(() => launchPullRequestsOnly.value
+  ? launchItems.value.every(isOwnPullRequest) ? 'checkFeedback' : 'review' : 'fix');
+const secondaryLaunchAction = computed(() => launchPullRequestsOnly.value ? 'addressFeedback' : 'investigate');
+
 function openStartWorkDialog(item?: WorkItem): void {
   if (startingWork.value) return;
   singleLaunchItem.value = item?.id ? item : null;
@@ -559,7 +571,7 @@ function closeStartWorkDialog(visible = false): void {
   if (!visible && !startingWork.value) startWorkDialogOpen.value = false;
 }
 
-async function startSelectedWork(action: 'investigate' | 'fix'): Promise<void> {
+async function startSelectedWork(action: StartWorkItemsInput['action']): Promise<void> {
   const items = [...launchItems.value];
   if (!selectedTeamId.value || !selectedBackend.value || items.length === 0) return;
   const repository = codeRepositories.value.find(repository => repository.path === selectedCodeRepositoryPath.value);

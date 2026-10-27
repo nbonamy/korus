@@ -117,6 +117,24 @@ export class GitLabWorkProviderDriver implements WorkProviderDriver {
     }).sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name));
   }
 
+  private async repositoryScopes(credential: WorkProviderCredential): Promise<{ inside: string[]; outside: string[] }> {
+    const [personal, accessible, groups] = await Promise.all([
+      this.listSources(credential, true), this.listSources(credential),
+      this.pages(credential, `${API}/groups?min_access_level=50&per_page=100&page=1`),
+    ]);
+    const paths = groups.map(group => {
+      if (!record(group) || !nonempty(group.full_path) || !validProjectPath(`${group.full_path}/project`)) {
+        throw new Error('GitLab returned an invalid administered group.');
+      }
+      return group.full_path;
+    });
+    const inside = new Set(personal.map(source => source.id));
+    for (const source of accessible) {
+      if (paths.some(path => source.owner === path || source.owner?.startsWith(`${path}/`))) inside.add(source.id);
+    }
+    return { inside: [...inside], outside: accessible.filter(source => !inside.has(source.id)).map(source => source.id) };
+  }
+
   async listItems(credential: WorkProviderCredential, repositoryId: string, query: WorkItemQuery = {}): Promise<WorkItem[]> {
     const path = projectPath(repositoryId);
     const items: WorkItem[] = [];
@@ -141,7 +159,8 @@ export class GitLabWorkProviderDriver implements WorkProviderDriver {
       try { if (JSON.parse(Buffer.from(query.cursor, 'base64url').toString('utf8'))?.signature !== signature) throw new Error(); }
       catch { throw new Error('Invalid GitLab work item cursor. Refresh the feed.'); }
     }
-    const sources = query.repositoryScope === 'owned' ? (await this.listSources(credential, true)).map(source => source.id)
+    const scopes = query.repositoryScope ? await this.repositoryScopes(credential) : undefined;
+    const sources = scopes ? query.repositoryScope === 'owned' ? scopes.inside : scopes.outside
       : query.assignment === 'viewer' || query.involvement ? [''] : (await this.listSources(credential)).map(source => source.id);
     if (query.cursor) {
       try { cursor = JSON.parse(Buffer.from(query.cursor, 'base64url').toString('utf8')); }

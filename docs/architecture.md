@@ -771,6 +771,23 @@ wiring, never branches in assignment, Mission, Settings or automation code.
 - Assignments are provider-neutral records keyed by provider and item ID. Agents
   update status through `update-work-item`; the record survives deletion of its
   agent, and Korus status never changes the tracker's own workflow state.
+- GitHub mixed-kind search feeds merge independently paginated issue and pull
+  request searches by descending update time; GitHub App user tokens cannot
+  search both kinds in one request. Opaque continuations bind each stream's page
+  and consumed offset to the account and filters. Only pages needed for the next
+  result page are read; partially consumed provider pages are re-read on resume.
+  Per-kind totals are not presented as a combined feed total. Outside-owned
+  GitHub work is filtered from the authenticated account feed, skipping empty
+  pages, rather than searching unrelated public repositories. GitLab excludes
+  the owned-project catalog from accessible projects for the outside scope.
+  Inside includes personal repositories and repositories of organizations where
+  the viewer can administer the organization. GitHub discovers accessible
+  organization owners through paginated repository metadata and the organization's
+  `viewerCanAdminister` flag; App user tokens can return empty REST membership
+  lists despite an administrator role. GitLab includes projects
+  under groups where the viewer is an Owner, including descendant subgroups.
+  Ownership discovery is paginated and failures surface instead of silently
+  moving managed repositories into the outside scope.
 - GitLab backlog identity includes the host, full project namespace and native
   item reference (`#` for issues, `!` for merge requests). Repository reads exhaust
   API pages; global reads return opaque continuations bound to account and filters.
@@ -779,6 +796,9 @@ wiring, never branches in assignment, Mission, Settings or automation code.
   at the provider before pagination; these feeds use the global API. Owned-project
   feeds enumerate explicitly owned projects. Direct and `glab` connections share
   this normalization and perform no native workflow writes.
+- Authored pull requests use a read-only feedback check distinct from code review:
+  inspect current discussion and unresolved feedback against the current branch.
+  Addressing feedback remains a separate action that permits implementation.
 - An assignment prompt is a short user-visible request plus a hidden `<context>`
   block holding the action instructions, the `update-work-item` protocol and the
   item's content. Item text is untrusted, so a closing tag inside it is escaped
