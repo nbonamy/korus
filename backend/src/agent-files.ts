@@ -1,9 +1,12 @@
-import { open, readFile, readdir, realpath, stat } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { lstat, open, readFile, readdir, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import type { AgentFilePreviewResult, AgentFileSearchItem } from '@workspace/core/contracts';
 import type { AgentFileChunk } from '@workspace/core/contracts/workspace';
 
-const DEFAULT_AGENT_FILE_LIMIT = 1000;
+const execFileAsync = promisify(execFile);
+const DEFAULT_AGENT_FILE_LIMIT = 20_000;
 const DEFAULT_AGENT_FILE_DEPTH = 8;
 const DEFAULT_AGENT_FILE_READ_BYTES = 2 * 1024 * 1024;
 
@@ -31,6 +34,8 @@ export async function listAgentFolderFiles(
   options: ListAgentFolderFilesOptions = {},
 ): Promise<AgentFileSearchItem[]> {
   const root = path.resolve(folder);
+  const tracked = await listGitFiles(root, options.maxFiles ?? DEFAULT_AGENT_FILE_LIMIT);
+  if (tracked) return tracked;
   const maxDepth = options.maxDepth ?? DEFAULT_AGENT_FILE_DEPTH;
   const maxFiles = options.maxFiles ?? DEFAULT_AGENT_FILE_LIMIT;
   const files: AgentFileSearchItem[] = [];
@@ -84,6 +89,36 @@ export async function listAgentFolderFiles(
       });
     }
   }
+}
+
+/**
+ * In a Git repository, the files Git knows about (tracked, plus untracked ones that are not ignored).
+ * Walking the disk instead lets a big ignored folder such as a build cache use up the whole budget
+ * before the walk reaches the project's own sources. Null outside a repository.
+ */
+async function listGitFiles(root: string, maxFiles: number): Promise<AgentFileSearchItem[] | null> {
+  let output: string;
+  try {
+    ({ stdout: output } = await execFileAsync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: root, maxBuffer: 256 * 1024 * 1024 }));
+  } catch {
+    return null;
+  }
+  const listed = output.split('\0').filter(Boolean);
+  // A folder inside a parent repository that ignores it gets nothing from Git; walk the disk then.
+  if (listed.length === 0) return null;
+  const paths = [...new Set(listed)]
+    .filter((filePath) => !filePath.split('/').some((segment) => skippedDirectoryNames.has(segment)))
+    .sort((a, b) => a.localeCompare(b));
+  const files: AgentFileSearchItem[] = [];
+  // Git lists deleted files, symbolic links and submodule folders too; keep only real files.
+  for (let index = 0; index < paths.length && files.length < maxFiles; index += 200) {
+    const batch = paths.slice(index, index + 200);
+    const kinds = await Promise.all(batch.map((filePath) => lstat(path.join(root, filePath)).then((entry) => entry.isFile(), () => false)));
+    batch.forEach((filePath, position) => {
+      if (kinds[position] && files.length < maxFiles) files.push({ name: path.posix.basename(filePath), path: filePath });
+    });
+  }
+  return files;
 }
 
 export async function previewAgentFolderFile(
