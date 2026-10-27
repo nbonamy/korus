@@ -49,6 +49,7 @@ import { createQuickChatProjectToolModuleProvider } from './quick-chat-project-t
 import { createMissionStartToolModuleProvider, type StartedMission } from './mission-start-tools';
 import { createAutomaticReviewToolModuleProvider, type StartAutomaticReview } from './automatic-review-tools';
 import { createAutomationToolModuleProvider } from './automation-tools';
+import { createGitDiffStatsToolModuleProvider } from './git-diff-stats-tools';
 import type { CreatedProject } from '../projects/project-creation-service';
 import { warnMain } from '../log';
 import type { DurableTaskService } from '../agents/durable-task-service';
@@ -73,6 +74,7 @@ export type AppMcpServiceOptions = {
   agentCreation?: AgentCreationService;
   createProject?: (agentId: string, name: string, prompt: string, backend?: 'codex' | 'claude' | 'antigravity') => Promise<CreatedProject>;
   startMission?: (agentId: string, input: { outcome: string; prompt: string }) => Promise<StartedMission>;
+  gitDiff?: (folder: string, target: import('@workspace/core/contracts').AgentGitDiffTarget) => Promise<import('@workspace/core/contracts').AgentGitDiff>;
   startAutomaticReview?: StartAutomaticReview;
   closeAgent?: (callerAgentId: string, agentId: string) => Promise<void>;
   toolModuleProviders?: readonly AppMcpToolModuleProvider[];
@@ -151,6 +153,7 @@ export class AppMcpService {
           notify: () => this.emit({ type: 'snapshot.updated', payload: this.snapshot }) })] : []),
         ...(options.startAutomaticReview ? [createAutomaticReviewToolModuleProvider({ snapshot: this.snapshot, start: options.startAutomaticReview })] : []),
         ...(options.createProject ? [createQuickChatProjectToolModuleProvider({ snapshot: this.snapshot, createProject: options.createProject })] : []),
+        ...(options.gitDiff ? [createGitDiffStatsToolModuleProvider({ snapshot: this.snapshot, diff: options.gitDiff })] : []),
         ...(options.startMission ? [createMissionStartToolModuleProvider({ snapshot: this.snapshot, startMission: options.startMission })] : []),
         ...(options.toolModuleProviders ?? []),
       ],

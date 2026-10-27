@@ -123,6 +123,10 @@ by mutating user-global tool config.
   retention are in [architecture.md](architecture.md#durable-delegated-tasks).
 - `create-project` exists only for Quick Chats and reuses the New Project service;
   a later failure leaves the created folder or agent for recovery.
+- `get-diff-stats` is read-only and offered to agents with a working folder. `scope` picks
+  `uncommitted` (default), `unstaged`, `staged`, `branch` (optional `baseRef`) or `commit`
+  (needs `sha`); it returns lines added and removed and files changed, in total and per file
+  type (code, test, docs, other), using the same classifier as the review pane.
 - `create-mission` lets an agent on a local team start a Mission when the user asks
   (`/mission [instructions]` expands into that request). It creates the Mission with
   the caller as orchestrator, waits for the first stage's lead agent to exist, sends
