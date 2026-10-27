@@ -17,6 +17,13 @@ Korus tests its adapter translations and product behavior, not either SDK. Wire
 framing, decoding and lifecycle tests for its own process/socket transports remain.
 Real provider smoke tests are opt-in and never part of the normal gate.
 
+The independently runnable telemetry collector is a separate hosted boundary.
+Its backend workflows exercise actual HTTP and disposable real PostgreSQL, never
+SQLite or a database fake. Docker must be running for backend test/coverage gates;
+the fixture starts and removes its own temporary container and never contacts an
+operator database. Collector build tests inspect generated artifacts for external
+configuration canaries, rather than asserting production source text.
+
 Mission screenshot fixtures use reserved synthetic sessions. The daemon rebuilds
 their conversations from the persisted fixture identity and rejects provider
 operations for those sessions. They exercise the real Mission and conversation

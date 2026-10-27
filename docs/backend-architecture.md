@@ -1056,3 +1056,68 @@ coarse OS value. Repeat with
 It covers midnight attribution, model changes, interval exclusion, nulls and
 content/local-dimension canaries without an endpoint. Architecture AST lint limits
 projection dependencies and rejects direct network/timer operations.
+
+### Hosted daily collector
+
+`backend/src/collector` is an independently bundled Node service. It imports the
+closed shared telemetry contract and PostgreSQL client, never the desktop daemon,
+provider runtimes or companion relay. Dependency/AST lint enforces both directions
+of this boundary. Building the desktop does not start or configure this service.
+
+Build with `npm run build:collector -w @workspace/backend`. The explicit
+`npm run migrate:collector -w @workspace/backend` command applies versioned,
+transactional migrations under an externally supplied migration role. Ingestion
+does not perform DDL. `npm run start:collector -w @workspace/backend --
+<operator-config.json>` starts the listener only after its tables are accessible.
+Both commands read `TELEMETRY_DATABASE_URL` at runtime; it is never compiled into a
+bundle. The private operator JSON supplies `listenHost`, `listenPort` and an
+optional list of exact `trustedProxies` IP addresses. Database roles, credentials,
+listener/routing configuration and TLS termination belong outside Git. PostgreSQL
+18 or later supplies the transaction deadline used by the connection pool.
+
+The versioned ingestion route accepts only JSON with the shared closed schema.
+Its byte cap applies before UTF-8 decoding or parsing, including chunked bodies.
+Only the last seven completed UTC reporting dates are accepted. This lateness
+limit never deletes accepted history: `install_days`, `usage_daily` and the minimal
+`installs` registry have no age-based expiry. The registry preserves the reporting
+date of the first successfully committed submission, even when an older reporting
+date arrives later; it does not claim an installation date.
+
+Each replacement uses one PostgreSQL connection and transaction. The unique parent
+upsert locks the install/day before deleting children and inserting the complete
+replacement. This serializes concurrent processes as well as concurrent requests;
+removed groups disappear, including replacement with empty usage. The registry
+insert is in the same transaction. HTTP success follows commit. A lost
+acknowledgement can be retried without incrementing counts; a failed transaction
+preserves the prior snapshot. SQL stores typed columns, not rollup JSON blobs.
+
+Admission uses the socket peer unless it exactly matches an operator-configured
+proxy; only then is a single validated `X-Real-IP` trusted. Forwarding lists and
+missing/invalid trusted-proxy addresses are rejected. Source limits are 60 requests
+per rolling minute with a ten-request burst, independently of the thirty requests
+per installation per rolling hour. Rate-limit maps each hold at most 4096 live
+keyed hashes with a process-random key; only expired entries can be reclaimed.
+Nothing exports or persists this state. There are at most twenty in-flight request
+handlers and 128 connections, with bounded body, statement, lock and transaction
+deadlines. A client-side query deadline also bounds lost database replies; failed
+transactions discard their connection after bounded rollback. Limit responses have
+a bounded `Retry-After`. Random UUIDs and anonymous rate limits do not authenticate
+installations or establish trustworthy downloads.
+
+The collector has no request/access logger. Parser, PostgreSQL and startup errors
+are discarded in favor of fixed responses/messages; their causes, SQL parameters,
+request headers and bodies are never printed. Connection failure remains a
+retryable generic response and does not terminate the process. Database logging,
+reverse-proxy logs and upstream infrastructure are separate operator boundaries:
+they must also suppress addresses, identifiers, query parameters and bodies before
+the production no-IP-retention promise is verified. A local test cannot establish
+that deployment guarantee.
+
+The backend collector tests start disposable real `postgres:18.3-alpine`
+containers with ephemeral loopback ports; Docker must be running. Repeat with
+`npm run test -w @workspace/backend -- collector/`. Setting
+`TELEMETRY_COLLECTOR_EVIDENCE` to an untracked output file retains sanitized HTTP
+status/count evidence. The workflow checks concurrent replacement across server
+instances, rollback/connection loss, lost acknowledgements, exact limits, bounded
+admission and retention of old accepted history. The executable build test also
+proves operator-secret canaries do not enter the generated bundle.

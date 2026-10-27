@@ -18,6 +18,35 @@ const directories = [
   "vue/src",
 ];
 
+test("collector stays independently runnable without importing the desktop or companion relay", async () => {
+  const good = await checkFixture({
+    "backend/src/collector/server.ts":
+      "import { createServer } from 'node:http'; import type { DailyTelemetryPayload } from '@workspace/core/telemetry'; import { TelemetryStore } from './store';",
+    "backend/src/collector/store.ts": "import pg from 'pg';",
+  });
+  assert.equal(good.status, 0, good.stderr);
+  const bad = await checkFixture({
+    "backend/src/runtime.ts":
+      "import { createCollectorServer } from './collector/server';",
+    "backend/src/companion/relay-main.ts": "import '../collector/main';",
+    "backend/src/collector/server.ts":
+      "import { BackendServer } from '../server';",
+    "backend/src/collector/driver.ts":
+      "import type { AgentBackendDriver } from '../drivers/types';",
+    "backend/src/collector/alias.ts":
+      "import { makeRuntime } from '@workspace/backend/runtime';",
+  });
+  assert.equal(bad.status, 1);
+  for (const file of [
+    "runtime.ts",
+    "companion/relay-main.ts",
+    "collector/server.ts",
+    "collector/driver.ts",
+    "collector/alias.ts",
+  ])
+    assert.ok(bad.stderr.includes(file), bad.stderr);
+});
+
 async function checkFixture(files) {
   const root = await mkdtemp(path.join(tmpdir(), "app-architecture-"));
   try {

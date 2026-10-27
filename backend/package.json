@@ -14,7 +14,10 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest watch",
     "build:relay": "vite build --config vite.relay.config.ts",
-    "start:relay": "node relay-dist/relay.mjs"
+    "start:relay": "node relay-dist/relay.mjs",
+    "build:collector": "vite build --config vite.collector.config.ts",
+    "start:collector": "node collector-dist/collector.mjs serve",
+    "migrate:collector": "node collector-dist/collector.mjs migrate"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.226",
@@ -34,12 +37,14 @@
     "google-auth-library": "^11.3.1",
     "libp2p": "3.3.12",
     "marked": "17.0.6",
+    "pg": "8.23.1",
     "pino": "^10.3.1",
     "yauzl": "^3.4.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
+    "@types/pg": "8.23.1",
     "@types/yauzl": "^2.10.3",
     "@vitest/coverage-v8": "4.1.8",
     "typescript": "^6.0.3",

@@ -170,6 +170,25 @@ function checkTelemetryCalls(node, file) {
 
 function forbiddenImport(area, file, specifier) {
   const relative = path.relative(root, file).split(path.sep).join("/");
+  const collector = path.join(root, "backend/src/collector");
+  const target = specifier.startsWith(".")
+    ? path.resolve(path.dirname(file), specifier)
+    : null;
+  if (isWithin(collector, file)) {
+    if (
+      !(
+        specifier.startsWith("node:") ||
+        ["pg", "zod", "@workspace/core/telemetry"].includes(specifier) ||
+        (target && isWithin(collector, target))
+      )
+    )
+      return "collector must run independently from the daemon, providers and relay";
+  } else if (
+    (target && isWithin(collector, target)) ||
+    specifier.includes("/collector/")
+  ) {
+    return "collector cannot be embedded in desktop, daemon or relay runtimes";
+  }
   if (
     /^backend\/src\/(codex|claude|antigravity|pricing)\//.test(relative) &&
     specifier.includes("telemetry")
