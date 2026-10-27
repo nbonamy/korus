@@ -80,6 +80,24 @@ test("navigation, films, and cards work at desktop and phone widths", async () =
         );
       }
       const header = page.getByRole("banner");
+      const youtube = header.getByRole("link", {
+        name: "YouTube",
+        exact: true,
+      });
+      assert.equal(
+        await youtube.isVisible(),
+        true,
+        `YouTube is visible at ${width}px`,
+      );
+      assert.equal(
+        await youtube.getAttribute("href"),
+        "https://www.youtube.com/@korus-dev",
+      );
+      await youtube.focus();
+      assert.equal(
+        await youtube.evaluate((node) => node === document.activeElement),
+        true,
+      );
       const github = header.getByRole("link", { name: "GitHub", exact: true });
       assert.equal(
         await github.isVisible(),
