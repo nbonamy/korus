@@ -98,9 +98,86 @@ describe('mission execution', () => {
     await h.service.acquireCommitLock(run.workerId!);
     h.persisted.mockRejectedValueOnce(new Error('storage unavailable'));
     await expect(h.service.agentFinished(run.workerId!, 'turn-a')).rejects.toThrow('storage unavailable');
-    await h.service.agentFinished(run.workerId!, 'turn-a');
-    expect(h.current().execution!.workspaces![0]!.commitLock).toBeUndefined();
-    expect(h.current().execution!.runs[0]!.status).toBe('failed');
+    await vi.waitFor(() => {
+      expect(h.current().execution!.workspaces![0]!.commitLock).toBeUndefined();
+      expect(h.current().execution!.runs[0]!.status).toBe('failed');
+    }, { timeout: 3000 });
+  });
+  it('releases the old lock after a new provider turn starts during retry', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.execution!.parallelImplementation = true;
+      mission.execution!.workspaces = [{ repositoryPath, path: '/shared/checkout', branch: 'mission/test' }];
+      mission.artifacts.tickets = [{ id: 'a', title: 'A', repositoryPath, done: false }];
+    });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const run = h.current().execution!.runs[0]!;
+    h.service.agentStarted(run.workerId!, 'old-turn');
+    await h.service.acquireCommitLock(run.workerId!);
+    h.persisted.mockRejectedValueOnce(new Error('storage unavailable'));
+    await expect(h.service.agentFinished(run.workerId!, 'old-turn')).rejects.toThrow('storage unavailable');
+    h.service.agentStarted(run.workerId!, 'new-turn');
+    await vi.waitFor(() => expect(h.current().execution!.workspaces![0]!.commitLock).toBeUndefined(), { timeout: 3000 });
+    expect(h.current().execution!.runs[0]!.status).toBe('running');
+  });
+  it('stops a preparing run while its worker assignment is being persisted', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.execution!.parallelImplementation = true;
+      mission.execution!.workspaces = [{ repositoryPath, path: '/shared/checkout', branch: 'mission/test' }];
+      mission.artifacts.tickets = [{ id: 'a', title: 'A', repositoryPath, done: false }];
+    });
+    let release!: () => void;
+    let entered!: () => void;
+    const persisting = new Promise<void>(resolve => { entered = resolve; });
+    h.persisted.mockImplementation(async snapshot => {
+      const run = snapshot.missions[0].execution.runs[0];
+      if (run?.workerId && run.status === 'preparing') {
+        entered();
+        await new Promise<void>(resolve => { release = resolve; });
+      }
+    });
+    await h.command({ action: 'run' });
+    await persisting;
+    const stop = h.command({ action: 'cancel', runId: h.current().execution!.runs[0]!.id });
+    release();
+    await stop;
+    await h.service.waitForLaunches();
+    expect(h.current().execution!.runs[0]!.status).toBe('cancelled');
+    expect(h.ports.continueStage).not.toHaveBeenCalled();
+  });
+  it('continues a preparing run if Stop cannot be persisted', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.execution!.parallelImplementation = true;
+      mission.execution!.workspaces = [{ repositoryPath, path: '/shared/checkout', branch: 'mission/test' }];
+      mission.artifacts.tickets = [{ id: 'a', title: 'A', repositoryPath, done: false }];
+    });
+    let release!: () => void;
+    let entered!: () => void;
+    const persisting = new Promise<void>(resolve => { entered = resolve; });
+    h.persisted.mockImplementation(async snapshot => {
+      const run = snapshot.missions[0].execution.runs[0];
+      if (run?.status === 'cancelled') throw new Error('storage unavailable');
+      if (run?.workerId && run.status === 'preparing') {
+        entered();
+        await new Promise<void>(resolve => { release = resolve; });
+      }
+    });
+    await h.command({ action: 'run' });
+    await persisting;
+    const stop = h.command({ action: 'cancel', runId: h.current().execution!.runs[0]!.id });
+    release();
+    await expect(stop).rejects.toThrow('storage unavailable');
+    await h.service.waitForLaunches();
+    expect(h.current().execution!.runs[0]!.status).toBe('running');
+    expect(h.ports.continueStage).toHaveBeenCalledOnce();
   });
   it('publishes the only revision when concurrent recovery checks clear the same lock', async () => {
     const h = setup();

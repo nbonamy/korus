@@ -44,6 +44,8 @@ export class MissionExecutionService {
   private readonly nonResultTurns = new Set<string>();
   private readonly completedTurns = new Map<string, Set<string>>();
   private readonly activeTurns = new Map<string, string>();
+  private readonly cancellingRuns = new Map<string, Promise<void>>();
+  private readonly completionRetries = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly commitLockWaiters = new Set<() => void>();
   private readonly recoveredLocks = new Set<string>();
   private readonly agentTools: MissionAgentTools;
@@ -108,22 +110,30 @@ export class MissionExecutionService {
     if (input.action === 'cancel') {
       const run = mission.execution?.runs.find(run => run.id === input.runId);
       if (!run || !['preparing', 'running', 'awaitingReview'].includes(run.status)) throw new Error('No cancellable mission run.');
-      const worker = this.agent(run.workerId);
-      const deferred = worker && this.postTurnLaunches.get(worker.id);
-      if (worker && deferred?.runIds.includes(run.id)) {
-        deferred.runIds = deferred.runIds.filter(id => id !== run.id);
-        if (!deferred.runIds.length) this.postTurnLaunches.delete(worker.id);
-      }
-      if (worker && worker.status.type !== 'idle' && worker.status.type !== 'error') await this.ports.interrupt(worker);
-      await this.ports.missions.change(input.id, current => {
-        const latest = current.execution?.runs.find(candidate => candidate.id === input.runId);
-        if (current.status === 'completed' || current.stage !== run.stage || !latest || latest.workerId !== run.workerId
-          || !(['preparing', 'running', 'awaitingReview'].includes(latest.status) || (worker && latest.status === 'failed'))) {
-          throw new Error('This mission changed. Reload before continuing.');
+      if (this.cancellingRuns.has(run.id)) throw new Error('This run is already being stopped.');
+      let finishCancellation!: () => void;
+      this.cancellingRuns.set(run.id, new Promise<void>(resolve => { finishCancellation = resolve; }));
+      try {
+        const worker = this.agent(run.workerId);
+        const deferred = worker && this.postTurnLaunches.get(worker.id);
+        if (worker && deferred?.runIds.includes(run.id)) {
+          deferred.runIds = deferred.runIds.filter(id => id !== run.id);
+          if (!deferred.runIds.length) this.postTurnLaunches.delete(worker.id);
         }
-        latest.status = 'cancelled'; latest.finishedAt = new Date().toISOString();
-      });
-      await this.ports.publish();
+        if (worker && worker.status.type !== 'idle' && worker.status.type !== 'error') await this.ports.interrupt(worker);
+        await this.ports.missions.change(input.id, current => {
+          const latest = current.execution?.runs.find(candidate => candidate.id === input.runId);
+          if (current.status === 'completed' || current.stage !== run.stage || !latest || (run.workerId && latest.workerId !== run.workerId)
+            || !(['preparing', 'running', 'awaitingReview'].includes(latest.status) || (worker && latest.status === 'failed'))) {
+            throw new Error('This mission changed. Reload before continuing.');
+          }
+          latest.status = 'cancelled'; latest.finishedAt = new Date().toISOString();
+        });
+        await this.ports.publish();
+      } finally {
+        this.cancellingRuns.delete(run.id);
+        finishCancellation();
+      }
       return;
     }
     if (input.action === 'selectReviewFinding') {
@@ -665,7 +675,6 @@ export class MissionExecutionService {
 
   async agentFinished(agentId: string, turnId?: string): Promise<void> {
     const activeTurn = this.activeTurns.get(agentId);
-    if (activeTurn && turnId && activeTurn !== turnId) return;
     if (turnId) {
       const completed = this.completedTurns.get(agentId) ?? new Set<string>();
       if (completed.has(turnId)) return;
@@ -675,9 +684,24 @@ export class MissionExecutionService {
       this.completedTurns.set(agentId, completed);
     }
     try {
+      if (activeTurn && turnId && activeTurn !== turnId) {
+        await this.releaseCommitLock(agentId, turnId);
+        return;
+      }
       await this.finishAgentTurn(agentId, turnId);
     } catch (error) {
-      if (turnId) this.completedTurns.get(agentId)?.delete(turnId);
+      if (turnId) {
+        this.completedTurns.get(agentId)?.delete(turnId);
+        const key = JSON.stringify([agentId, turnId]);
+        if (!this.completionRetries.has(key)) {
+          const timer = setTimeout(() => {
+            this.completionRetries.delete(key);
+            void this.agentFinished(agentId, turnId).catch(() => undefined);
+          }, 1000);
+          timer.unref();
+          this.completionRetries.set(key, timer);
+        }
+      }
       throw error;
     }
   }
@@ -738,14 +762,17 @@ export class MissionExecutionService {
     const mission = this.requireMission(id);
     const run = mission.execution!.runs.find(run => run.id === runId)!;
     if (run.status === 'cancelled') return;
-    const canLaunch = () => this.ports.snapshot.missions?.some(current => current.id === id && current.stage === run.stage
-      && current.execution?.runs.some(candidate => candidate.id === runId && ['preparing', 'running'].includes(candidate.status)));
+    const canLaunch = async () => {
+      await this.cancellingRuns.get(runId);
+      return this.ports.snapshot.missions?.some(current => current.id === id && current.stage === run.stage
+        && current.execution?.runs.some(candidate => candidate.id === runId && ['preparing', 'running'].includes(candidate.status)));
+    };
     const member = this.agent(run.memberId);
     if (!member) throw new Error('Assigned team member was removed.');
     const implementationModel = run.stage === 'implementation' && mission.execution?.implementationModel
       ? await this.validateImplementationModel(mission, mission.execution.implementationModel) : undefined;
     const missionHome = await this.ports.ensureMissionHome(mission.id);
-    if (!canLaunch()) return;
+    if (!await canLaunch()) return;
     const repositoryPath = run.repositoryPath ?? mission.artifacts.tickets[run.ticketIndex ?? -1]?.repositoryPath;
     const workspace = repositoryPath
       ? mission.execution!.workspaces?.find(candidate => candidate.repositoryPath === repositoryPath)
@@ -782,7 +809,7 @@ export class MissionExecutionService {
       } as typeof worker.backendDefaults;
     }
     await this.ports.refreshWorkspace(worker.id);
-    if (!canLaunch()) return;
+    if (!await canLaunch()) return;
     await this.ports.missions.change(id, current => {
       const currentRun = current.execution!.runs.find(run => run.id === runId)!;
       currentRun.workerId = worker.id;
@@ -791,16 +818,16 @@ export class MissionExecutionService {
     });
     await this.ports.publish();
     const skills = await this.ports.ensureStageSkills(mission.id, run.stage);
-    if (!canLaunch()) return;
+    if (!await canLaunch()) return;
     await this.ports.missions.change(id, current => {
       const currentRun = current.execution!.runs.find(candidate => candidate.id === runId)!;
       if (currentRun.status !== 'cancelled') currentRun.skills = skills;
     });
     await this.ports.publish();
-    if (!canLaunch()) return;
+    if (!await canLaunch()) return;
     if (reusedWorker && worker.backendSession) {
       await this.ports.refreshConversationContext(worker);
-      if (!canLaunch()) return;
+      if (!await canLaunch()) return;
       if (defaultBackendCommands(worker.backend).some(command => command.name === 'compact') && shouldCompactBeforeRun(mission, run, worker.id)) {
         this.nonResultTurns.add(worker.id);
         try {
@@ -811,7 +838,7 @@ export class MissionExecutionService {
         }
       }
     }
-    if (canLaunch() && run.stage !== 'requirements') await this.ports.continueStage(worker.id, stageKickoffPrompt(mission, run));
+    if (await canLaunch() && run.stage !== 'requirements') await this.ports.continueStage(worker.id, stageKickoffPrompt(mission, run));
   }
 
   private async validateImplementationModel(mission: Mission, selection: MissionImplementationModel): Promise<MissionImplementationModel> {
