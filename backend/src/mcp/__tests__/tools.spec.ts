@@ -133,6 +133,7 @@ describe(`${product.name} MCP tool registration`, () => {
       'branchName',
       'destinationPath',
       'prompt',
+      'goal',
       'startingContext',
       'instructions',
     ]);

@@ -190,11 +190,11 @@ export class AppBackendServer {
   private readonly browserExtensionPackages: BrowserExtensionPackages;
   private readonly tasks?: DurableTaskService;
 
-  async sendTaskPrompt(agent: Agent, prompt: string): Promise<BackendSendResult> {
+  async sendTaskPrompt(agent: Agent, prompt: string, goal?: boolean): Promise<BackendSendResult> {
     await this.requireConnectedEngine(agent.backend);
     if (!this.snapshot.agents.includes(agent)) throw new Error('Agent was removed before task prompt admission.');
     if (this.tasks?.mayStartAutomatedPrompt(agent.id) === false || agent.planReview?.status === 'pending') throw new Error('Agent is stopped or waiting for a review decision.');
-    const receipt = await this.agentPrompts.sendWithReceipt(agent, prompt);
+    const receipt = await this.agentPrompts.sendWithReceipt(agent, prompt, undefined, undefined, undefined, goal);
     await this.persistSnapshotOnly();
     return receipt;
   }
@@ -3551,6 +3551,7 @@ export class AppBackendServer {
       backend: agent.backend,
       getRuntimeStatus: () => ({ backend: agent.backend, status: 'running' }),
       getCapabilities: () => defaultBackendCapabilities(agent.backend),
+      setGoal: async (currentAgent, objective) => this.handleAgentDriverRequest(currentAgent, backendMethods.driverGoalUpdate, { agent: currentAgent, objective }) as Promise<BackendGoalResult>,
       tryHandlePromptCommand: (currentAgent, prompt) => (
         this.remoteTeams.connectionIdForAgent(currentAgent) ? null : this.requireDriverRpc().tryHandlePromptCommand(currentAgent, prompt)
       ),
