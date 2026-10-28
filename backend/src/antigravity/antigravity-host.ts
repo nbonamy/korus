@@ -120,6 +120,12 @@ export class AntigravityHost implements AgentBackendDriver {
     return { backendSession: this.reference(session), turnId };
   }
 
+  async continueInterruptedTurn(agent: Agent): Promise<import('@workspace/core/backend-driver').BackendTurnActionResult> {
+    if (agent.backendSession?.kind !== 'antigravity') throw new Error('No Antigravity session to continue.');
+    const result = await this.sendPrompt(agent, 'continue');
+    return { backendSession: result.backendSession, activeTurnId: result.turnId };
+  }
+
   async interrupt(agent: Agent, expectedTurnId?: string) {
     const session = this.sessions.get(agent.id);
     if (!session) throw new Error('Antigravity session is not running.');

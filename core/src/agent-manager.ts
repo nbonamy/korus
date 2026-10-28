@@ -201,6 +201,7 @@ function clearAgentRuntimeState(agent: Agent): void {
   delete agent.threadFlags;
   delete agent.suggestedPrompt;
   delete agent.rateLimitPause;
+  delete agent.autoResumePending;
   delete agent.goal;
   delete agent.visualize;
   delete agent.isRegistered;
@@ -663,6 +664,7 @@ function clearRuntimeState(agent: Agent): void {
   delete agent.threadFlags;
   delete agent.suggestedPrompt;
   delete agent.rateLimitPause;
+  delete agent.autoResumePending;
   delete agent.goal;
   delete agent.visualize;
   delete agent.isRegistered;

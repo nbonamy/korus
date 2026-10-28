@@ -318,6 +318,12 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     return this.sendPromptWithConfiguration(agent, prompt, options);
   }
 
+  async continueInterruptedTurn(agent: Agent): Promise<import('@workspace/core/backend-driver').BackendTurnActionResult> {
+    if (agent.backendSession?.kind !== 'claude') throw new Error('No Claude session to continue.');
+    const result = await this.sendPromptWithConfiguration(agent, 'continue', {}, undefined, false, true);
+    return { backendSession: result.backendSession, activeTurnId: result.turnId ?? null };
+  }
+
   async steerPrompt(agent: Agent, prompt: string, options: SendPromptOptions = {}): Promise<BackendSendResult> {
     const turn = this.activeTurnsByAgentId.get(agent.id);
     if (!turn) return this.sendPrompt(agent, prompt, options);
@@ -343,6 +349,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     options: SendPromptOptions,
     review?: ClaudeReviewTurnConfiguration,
     waitForCompletion = false,
+    waitForInputReplay = false,
   ): Promise<BackendSendResult> {
     if (this.forkingAgentIds.has(agent.id)) throw new Error('Claude conversation is being forked.');
     if (this.activeTurnsByAgentId.has(agent.id)) {
@@ -378,6 +385,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
         ? { ...defaults, mcpServerUrl: review.mcpServerUrl, allowedTools: review.allowedTools }
         : defaults;
       if (messageId) turnParams.messageId = messageId;
+      if (waitForInputReplay) turnParams.waitForInputReplay = true;
       const handle = this.transport.startTurn(
         turnParams,
         (message) => {

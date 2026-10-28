@@ -78,6 +78,7 @@ export type PersistedAgent = Pick<Agent, 'id' | 'name' | 'folder' | 'createdAt' 
   threadFlags?: import('@workspace/core/thread-flags').ThreadFlags;
   suggestedPrompt?: string;
   rateLimitPause?: Agent['rateLimitPause'];
+  autoResumePending?: boolean;
   goal?: ThreadGoal;
   visualize?: Omit<VisualizeSession, 'visualizations'> & { visualizations?: Visualization[] };
   statusText?: string;
@@ -156,6 +157,7 @@ function persistedAgentFromSnapshot(agent: Agent, libraries?: RepositoryVisualiz
     ...(agent.plan ? { plan: cloneThreadPlan(agent.plan) } : {}),
     ...(agent.threadFlags ? { threadFlags: structuredClone(agent.threadFlags) } : {}),
     ...(agent.rateLimitPause ? { rateLimitPause: { ...agent.rateLimitPause } } : {}),
+    ...(agent.autoResumePending ? { autoResumePending: true } : {}),
     ...(agent.suggestedPrompt ? { suggestedPrompt: agent.suggestedPrompt } : {}),
     ...(agent.planReview ? { planReview: { ...agent.planReview } } : {}),
     ...(agent.codeReview ? { codeReview: cloneCodeReviewSession(agent.codeReview) } : {}),
@@ -413,6 +415,7 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
     ...(plan ? { plan } : {}),
     ...(isThreadFlags(value.threadFlags) ? { threadFlags: structuredClone(value.threadFlags) } : {}),
     ...(isRateLimitPause(value.rateLimitPause) ? { rateLimitPause: { ...value.rateLimitPause } } : {}),
+    ...(value.autoResumePending === true ? { autoResumePending: true } : {}),
     ...(typeof value.suggestedPrompt === 'string' && value.suggestedPrompt.trim() ? { suggestedPrompt: value.suggestedPrompt.trim() } : {}),
     ...(planReview ? { planReview } : {}),
     ...(isCodeReviewSession(value.codeReview)
