@@ -13,7 +13,7 @@
     "test:coverage": "vitest run --coverage --config vitest.config.ts"
   },
   "dependencies": {
-    "@codex-app-sdk/web": "0.18.0",
+    "@codex-app-sdk/web": "0.18.1",
     "@workspace/core": "0.45.1",
     "@workspace/vue": "0.45.1",
     "express": "^5.1.0",

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { createAgentInSnapshot } from '@workspace/core/agent-manager';
+import { createMission } from '@workspace/core/missions';
 import type { Automation } from '@workspace/core/contracts';
 import { AutomationRunner, automationIsDue } from '../runner';
 
@@ -147,6 +148,7 @@ describe('scheduled prompts', () => {
 
   it('reuses the selected agent without changing its model or permissions and blocks overlapping runs', async () => {
     const { snapshot, automation, runner, sendPrompt } = setup({ kind: 'agent', agentId: 'existing' });
+    createMission(snapshot, { outcome: 'Ship a feature', workflowType: 'shapeAndShipFeature', teamId: 'team', orchestratorMemberId: 'existing' });
     const originalDefaults = structuredClone(snapshot.agents[0]!.backendDefaults);
     await Promise.all([runner.runAutomation('auto'), runner.runAutomation('auto')]);
     await runner.runAutomation('auto');

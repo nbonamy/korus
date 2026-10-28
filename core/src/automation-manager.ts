@@ -4,6 +4,7 @@ import { createEntityId, type IdGenerator } from './ids';
 import { resolveAgentBackend } from './agent-backends';
 import { isExecutionSelectionOverrides } from './execution-selection';
 import { normalizeAutomationSchedule } from './automation-schedule';
+import { missionAgentIds } from './mission-attention';
 
 export function isAutomationTarget(value: unknown): value is AutomationTarget {
   if (!value || typeof value !== 'object') return false;
@@ -15,8 +16,7 @@ export function isAutomationTarget(value: unknown): value is AutomationTarget {
 
 export function canTargetAutomationAgent(snapshot: Pick<AppSnapshot, 'teams' | 'missions'>, agent: Agent): boolean {
   return !agent.codeReview && !snapshot.teams.some(team => team.id === agent.teamId && team.remoteConnectionId)
-    && !(snapshot.missions ?? []).some(mission => Object.values(mission.stageAgentIds).includes(agent.id)
-      || mission.execution?.memberIds.includes(agent.id) || mission.execution?.runs.some(run => run.workerId === agent.id));
+    && !(snapshot.missions ?? []).some(mission => missionAgentIds(mission).includes(agent.id));
 }
 
 /** A target is usable only while its conversation (or the team for a fresh Quick Chat) is still local and eligible. */
