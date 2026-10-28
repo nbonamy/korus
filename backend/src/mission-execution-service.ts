@@ -32,6 +32,7 @@ export type MissionExecutionPorts = {
   startRemediation(agentId: string, prompt: string): Promise<void>;
   sendMessage?(fromAgentId: string, toAgentId: string, content: string): void;
   interrupt(agent: Agent): Promise<unknown>;
+  isCommitLockOwnerStopped?(agent: Agent): Promise<boolean>;
 };
 
 /** Mission policy owns durable runs; provider hosts still own conversations and turns. */
@@ -44,9 +45,15 @@ export class MissionExecutionService {
   private readonly completedTurns = new Map<string, Set<string>>();
   private readonly activeTurns = new Map<string, string>();
   private readonly commitLockWaiters = new Set<() => void>();
+  private readonly recoveredLocks = new Set<string>();
   private readonly agentTools: MissionAgentTools;
   private readonly workspaces: MissionWorkspaceService;
   constructor(private readonly ports: MissionExecutionPorts) {
+    for (const mission of ports.snapshot.missions ?? []) {
+      for (const workspace of mission.execution?.workspaces ?? []) {
+        if (workspace.commitLock) this.recoveredLocks.add(JSON.stringify([mission.id, workspace.repositoryPath, workspace.commitLock]));
+      }
+    }
     this.agentTools = new MissionAgentTools(ports, input => this.execute(input));
     this.workspaces = new MissionWorkspaceService(ports);
   }
@@ -397,6 +404,11 @@ export class MissionExecutionService {
 
   async recoverInterruptedRuns(): Promise<void> {
     for (const mission of this.ports.snapshot.missions ?? []) {
+      for (const workspace of mission.execution?.workspaces ?? []) {
+        await this.recoverCommitLock(mission.id, workspace.repositoryPath);
+      }
+    }
+    for (const mission of this.ports.snapshot.missions ?? []) {
       if (mission.execution?.debugFixture) continue;
       const fixing = mission.artifacts.review.findings?.filter(finding => finding.remediation.state === 'fixing') ?? [];
       if (!fixing.length) continue;
@@ -538,10 +550,15 @@ export class MissionExecutionService {
     if (!turnId) throw new Error('The active provider turn is unavailable. Retry when the turn is active.');
     while (true) {
       if (signal?.aborted) throw new Error('Commit lock request cancelled.');
+      const run = this.requireMission(context.missionId).execution?.runs.find(candidate => candidate.id === context.runId);
+      if (run?.repositoryPath) await this.recoverCommitLock(context.missionId, run.repositoryPath);
       let wake!: () => void;
       const released = new Promise<void>(resolve => { wake = resolve; });
       this.commitLockWaiters.add(wake);
       signal?.addEventListener('abort', wake, { once: true });
+      // A provider may be unavailable at startup, or finish a restored turn without
+      // delivering its completion event. Recheck persisted owners while waiting.
+      const retryRecovery = this.recoveredLocks.size ? setTimeout(wake, 5_000) : undefined;
       try {
         const acquired = await this.ports.missions.changeAsync(context.missionId, mission => {
           if (signal?.aborted || this.activeTurns.get(agentId) !== turnId) throw new Error('The requesting provider turn is no longer active.');
@@ -563,9 +580,37 @@ export class MissionExecutionService {
         }
         await released;
       } finally {
+        if (retryRecovery) clearTimeout(retryRecovery);
         this.commitLockWaiters.delete(wake);
         signal?.removeEventListener('abort', wake);
       }
+    }
+  }
+
+  private async recoverCommitLock(missionId: string, repositoryPath: string): Promise<void> {
+    const workspace = this.ports.snapshot.missions?.find(mission => mission.id === missionId)?.execution?.workspaces?.find(item => item.repositoryPath === repositoryPath);
+    const lock = workspace?.commitLock;
+    if (!lock) return;
+    const key = JSON.stringify([missionId, repositoryPath, lock]);
+    if (!this.recoveredLocks.has(key) || this.activeTurns.has(lock.agentId)) return;
+    const owner = this.agent(lock.agentId);
+    if (!owner || !this.ports.isCommitLockOwnerStopped) return;
+    let stopped = false;
+    try { stopped = await this.ports.isCommitLockOwnerStopped(owner); } catch { return; }
+    if (!stopped) return;
+    let released = false;
+    await this.ports.missions.change(missionId, mission => {
+      const current = mission.execution?.workspaces?.find(item => item.repositoryPath === repositoryPath)?.commitLock;
+      if (current && JSON.stringify(current) === JSON.stringify(lock) && !this.activeTurns.has(lock.agentId)) {
+        const target = mission.execution!.workspaces!.find(item => item.repositoryPath === repositoryPath)!;
+        delete target.commitLock;
+        released = true;
+      }
+    });
+    if (released) {
+      this.recoveredLocks.delete(key);
+      await this.ports.publish();
+      for (const wake of this.commitLockWaiters) wake();
     }
   }
 

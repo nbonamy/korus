@@ -31,7 +31,8 @@ function setup() {
     startRemediation: vi.fn().mockResolvedValue(undefined),
     sendMessage: vi.fn(),
     ensureStageSkills: vi.fn(async (_missionId: string, stage: MissionStage) => missionStageSkills(stage)),
-    interrupt: vi.fn().mockResolvedValue(undefined) };
+    interrupt: vi.fn().mockResolvedValue(undefined),
+    isCommitLockOwnerStopped: vi.fn().mockResolvedValue(false) };
   const service = new MissionExecutionService(ports);
   const current = () => snapshot.missions![0]!;
   const command = (input: Record<string, unknown>) => service.execute({ id: mission.id, revision: current().revision, ...input } as Parameters<typeof service.execute>[0]);
@@ -40,6 +41,33 @@ function setup() {
 }
 
 describe('mission execution', () => {
+  it('recovers a persisted lock only after the provider confirms the owning turn stopped', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.execution!.parallelImplementation = true;
+      mission.execution!.workspaces = [{ repositoryPath, path: '/shared/checkout', branch: 'mission/test' }];
+      mission.artifacts.tickets = [{ id: 'a', title: 'A', repositoryPath, done: false }, { id: 'b', title: 'B', repositoryPath, done: false }];
+    });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const [a, b] = h.current().execution!.runs;
+    h.service.agentStarted(a!.workerId!, 'old-turn');
+    await h.service.acquireCommitLock(a!.workerId!);
+    const restarted = new MissionExecutionService(h.ports);
+    await restarted.recoverInterruptedRuns();
+    expect(h.current().execution!.workspaces![0]!.commitLock?.agentId).toBe(a!.workerId);
+    restarted.agentStarted(b!.workerId!, 'new-turn');
+    vi.useFakeTimers();
+    try {
+      const waiting = restarted.acquireCommitLock(b!.workerId!);
+      await vi.advanceTimersByTimeAsync(0);
+      h.ports.isCommitLockOwnerStopped.mockResolvedValue(true);
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(await waiting).toStrictEqual({ acquired: true });
+    } finally { vi.useRealTimers(); }
+    expect(h.persisted.mock.calls.at(-1)![0].missions[0].execution.workspaces[0].commitLock.agentId).toBe(b!.workerId);
+  });
   it('coordinates index ownership between parallel workers and recovers it on turn completion', async () => {
     const h = setup();
     const repositoryPath = h.originalAgents[0]!.folder!;

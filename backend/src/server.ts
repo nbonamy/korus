@@ -466,6 +466,13 @@ export class AppBackendServer {
       },
       sendMessage: this.sendAgentMessage,
       interrupt: agent => this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent }),
+      isCommitLockOwnerStopped: async agent => {
+        if (!agent.backendSession) return false;
+        const loaded = await this.handleAgentDriverRequest(agent, backendMethods.driverConversationLoad, { agent });
+        if (!loaded) return false;
+        await this.handleAgentDriverRequest(agent, backendMethods.driverHandoffCheck, { agent });
+        return true;
+      },
     });
     this.planReviews = new AgentPlanReviewService({
       persist: () => this.persistAndEmitSnapshot(),
