@@ -275,6 +275,9 @@ describe('companion authorization gateway', () => {
     expect(await f.gateway.request('phone', 'agent.review.setup', { target })).toStrictEqual(setup);
     await expect(f.gateway.request('phone', 'agent.review.start', { target: { ...target, sessionId: 'old' }, input: { scope: { type: 'uncommitted' }, threadMode: 'independent' } })).rejects.toThrow('stale');
     expect(f.port.startReview).not.toHaveBeenCalled();
+    const input = { scope: { type: 'uncommitted' }, threadMode: 'independent', model: 'reviewer', serviceTier: 'fast' };
+    await f.gateway.request('phone', 'agent.review.start', { target, input });
+    expect(f.port.startReview).toHaveBeenCalledExactlyOnceWith('agent', input);
     f.port.reviewSetup.mockImplementationOnce(async () => { await f.gateway.revoke('phone'); return setup; });
     await expect(f.gateway.request('phone', 'agent.review.setup', { target })).rejects.toThrow('authorized');
   });

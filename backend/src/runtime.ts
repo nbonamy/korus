@@ -121,7 +121,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     tasks: savedTasks,
     save: saveBackendTasks,
     agent: id => snapshot.agents.find(agent => agent.id === id),
-    send: (agent, prompt) => server.sendTaskPrompt(agent, prompt),
+    send: (agent, prompt, goal) => server.sendTaskPrompt(agent, prompt, goal),
     interrupt: (agent, expectedTurnId) => driverRpc.handle(backendMethods.driverInterrupt, { agent, expectedTurnId }),
     readHistory: agent => {
       const ref = conversationRefFromAgent(agent);

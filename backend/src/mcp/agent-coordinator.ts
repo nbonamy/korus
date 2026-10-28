@@ -119,6 +119,7 @@ export type UpdateWorkItemResponse =
   };
 
 export type McpCreateAgentInput = {
+  goal?: boolean;
   requestId?: string;
   task?: TaskContract;
   backend?: AgentBackend;
@@ -522,6 +523,7 @@ export class AppMcpAgentCoordinator {
     }
 
     return this.onCreateAgent(agent, {
+      ...(input.goal !== undefined ? { goal: input.goal } : {}),
       ...(input.task ? { task: input.task, requestId: input.requestId } : {}),
       name: input.name?.trim(),
       prompt: input.prompt?.trim() || undefined,

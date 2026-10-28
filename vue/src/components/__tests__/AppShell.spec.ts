@@ -1508,6 +1508,7 @@ describe('AppShell authentication and conversation', () => {
     expect(startCodeReview).toHaveBeenCalledExactlyOnceWith(source.id, {
       automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false },
       backend: 'codex',
+      serviceTier: null,
       scope: { type: 'uncommitted' },
       threadMode: 'independent',
     });

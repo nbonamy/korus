@@ -93,6 +93,7 @@ export class CodeReviewService {
       backend: input.backend ?? agent.backend,
       model: input.model,
       reasoningEffort: input.reasoningEffort,
+      serviceTier: input.serviceTier,
       instructions: input.instructions,
       threadMode: 'independent',
       automation: {
@@ -755,11 +756,12 @@ export class CodeReviewService {
   }
 
   private applySelection(reviewer: Agent, input: CodeReviewStartInput): void {
-    if (input.model === undefined && input.reasoningEffort === undefined) return;
+    if (input.model === undefined && input.reasoningEffort === undefined && input.serviceTier === undefined) return;
     reviewer.backendDefaults = {
       ...reviewer.backendDefaults, kind: reviewer.backend,
       ...(input.model ? { model: input.model, userSelectedModel: true, reasoningEffort: reviewer.backend === 'antigravity' ? undefined : input.reasoningEffort } : {}),
       ...(reviewer.backend !== 'antigravity' && input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
+      ...(reviewer.backend !== 'antigravity' && input.serviceTier !== undefined ? { serviceTier: input.serviceTier } : {}),
     };
   }
 
@@ -772,6 +774,7 @@ export class CodeReviewService {
       automation: input.automation ?? { enabled: false, maxPriority: previous?.automation.maxPriority ?? 'p2', maxRounds: previous?.automation.maxRounds ?? 3, ...(previous?.automation.autoCommit !== undefined ? { autoCommit: previous.automation.autoCommit } : {}) },
       providers: { ...previous?.providers, [reviewer.backend]: {
         ...(input.model ? { model: input.model } : {}), ...(reviewer.backend !== 'antigravity' && input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
+        ...(reviewer.backend !== 'antigravity' && input.serviceTier !== undefined ? { serviceTier: input.serviceTier } : {}),
       } },
     };
   }

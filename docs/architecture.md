@@ -679,6 +679,10 @@ target and reviewer agents) plus an opaque reviewer session reference.
 - Independent reviews reset the reviewer's conversation between rounds to reduce
   anchoring; every round receives the cumulative ledger (all prior skips, fixes
   and decisions) in a `<context>` block.
+- Independent reviewers retain their selected provider, model, effort and service
+  tier across rounds and retries. Review preferences keep these choices per provider;
+  an explicit Standard tier clears inherited Fast mode. Current-thread reviews use
+  the thread's existing settings.
 - Per-review instructions belong to the review session, survive retries
   and fresh rounds, and never become saved reviewer defaults. Unsubmitted drafts
   stay local to the agent's review tab and are discarded when that tab closes.

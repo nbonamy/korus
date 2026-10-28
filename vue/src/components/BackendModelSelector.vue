@@ -35,7 +35,11 @@ import BackendIcon from './BackendIcon.vue';
 import { useAgentHost, useBackendChoices, useCatalogAgentId, useNewAgentBackend, useRememberBackend, useSavedModelSelection } from './backend-selection';
 import { cacheModels, cachedModels, defaultReasoningEffort, presentCatalog, useBackendModelCatalog } from './backend-model-catalog';
 
-const props = defineProps<{ agentId?: string; teamId?: string | null; disabled?: boolean; allowedBackends?: AgentBackend[] }>();
+const props = defineProps<{
+  agentId?: string; teamId?: string | null; disabled?: boolean; allowedBackends?: AgentBackend[];
+  selections?: Partial<Record<AgentBackend, { model?: string; reasoningEffort?: string; serviceTier?: string | null }>>;
+}>();
+const emit = defineEmits<{ loading: [loading: boolean]; error: [error: unknown] }>();
 const backend = defineModel<AgentBackend>('backend');
 const model = defineModel<string>('model', { default: '' });
 const reasoningEffort = defineModel<string>('reasoningEffort', { default: '' });
@@ -54,6 +58,7 @@ const catalogHost = useAgentHost(() => catalogAgentId.value);
 const { t } = useI18n();
 const open = ref(false);
 const loading = ref(false);
+watch(loading, value => emit('loading', value), { immediate: true });
 const models = ref<BackendModelOption[]>([]);
 let fallbackModel: BackendModelOption | undefined;
 let aliasModel: BackendModelOption | undefined;
@@ -115,7 +120,7 @@ watch([backend, catalogAgentId, () => props.teamId], async ([nextBackend, agentI
     showCatalog(catalog);
     selectDefaultModel();
     cacheModels(catalogHost.value, nextBackend, catalog);
-  } catch { /* The provider default remains available if the catalog is unavailable. */ }
+  } catch (error) { if (current) emit('error', error); }
   finally { if (current) loading.value = false; }
 }, { immediate: true });
 watch(model, () => {
@@ -126,12 +131,13 @@ watch(model, () => {
 // provider's own default) are selected explicitly.
 function selectDefaultModel() {
   if (models.value.some(option => option.model === model.value) || !fallbackModel) return;
-  const savedModel = saved.value?.model;
+  const selection = (backend.value && props.selections?.[backend.value]) || saved.value;
+  const savedModel = selection?.model;
   const target = (savedModel && models.value.find(option => option.model === savedModel || option.id === savedModel))
     || (savedModel && aliasModel && (aliasModel.model === savedModel || aliasModel.id === savedModel) ? fallbackModel : undefined)
     || fallbackModel;
-  const savedEffort = target.model === savedModel || target === fallbackModel ? saved.value?.reasoningEffort : undefined;
-  const savedTier = target.model === savedModel || target === fallbackModel ? saved.value?.serviceTier : undefined;
+  const savedEffort = target.model === savedModel || target === fallbackModel ? selection?.reasoningEffort : undefined;
+  const savedTier = target.model === savedModel || target === fallbackModel ? selection?.serviceTier : undefined;
   model.value = target.model;
   reasoningEffort.value = target.supportedReasoningEfforts?.some(option => option.reasoningEffort === savedEffort) && savedEffort
     ? savedEffort

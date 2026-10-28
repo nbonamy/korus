@@ -61,6 +61,7 @@ export type BackendHistoryLoadResult = {
 
 export type BackendGoalResult = {
   backendSession: BackendSession;
+  turnId?: string;
   goal?: ThreadGoal;
   cleared?: boolean;
 };
