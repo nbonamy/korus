@@ -104,7 +104,7 @@ describe('state persistence', () => {
     agent.backendDefaults = { kind: 'antigravity', model: 'gemini-3.8-flash-low', permissionMode: 'default' };
     snapshot.general.providerHomes = { antigravity: { homePath: '/private/acp', isolated: true, shareSkills: false } };
     snapshot.general.providerEnabled = { codex: true, antigravity: false };
-    snapshot.general.providerModelDefaults = { antigravity: { model: 'gemini-3.8-flash-low', reasoningEffort: null, serviceTier: null } };
+    snapshot.general.providerModelDefaults = { antigravity: {backend: 'antigravity',  model: 'gemini-3.8-flash-low', reasoningEffort: null, serviceTier: null } };
     snapshot.general.providerApprovalDefaults = { antigravity: 'auto_edit' };
     await store.save(snapshot);
     const restored = await store.load();
@@ -162,7 +162,7 @@ describe('state persistence', () => {
     } as never });
     const location = { kind: 'remote', remoteConnectionId: 'connection-devbox' };
     const input = { name: 'Engineering bugs', enabled: false,
-      prompt: 'Fix and verify', target: { kind: 'newQuickChat' as const, teamId: snapshot.teams[0]!.id, backend },
+      prompt: 'Fix and verify', target: { kind: 'newQuickChat' as const, teamId: snapshot.teams[0]!.id, selection: { backend, model: null, reasoningEffort: null, serviceTier: null } },
         schedule: { intervalMinutes: 360 } };
     try {
       expect(await server.handleMessage({ jsonrpc: '2.0', id: 'create', method: 'automation/create', params: { input, location } })).not.toHaveProperty('error');
@@ -1115,7 +1115,7 @@ describe('state persistence', () => {
       id: 'automation-bugs',
       name: 'GitHub bugs',
       enabled: true,
-      prompt: 'Start by reproducing the issue.', target: { kind: 'newQuickChat' as const, teamId: 'team-app', backend: 'codex' as const },
+      prompt: 'Start by reproducing the issue.', target: { kind: 'newQuickChat' as const, teamId: 'team-app', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
 
 

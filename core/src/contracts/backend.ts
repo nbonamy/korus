@@ -1,3 +1,4 @@
+import type { ExecutionSelection } from './execution';
 import type {
   AgentBackend,
   AppText,
@@ -27,37 +28,15 @@ export type BackendSession =
     reasoningEffort?: ReasoningEffort;
   };
 
-export type BackendDefaults =
-  | { kind: 'antigravity'; model?: string; userSelectedModel?: boolean; permissionMode?: string; reasoningEffort?: ReasoningEffort }
-  | {
-    kind: 'codex';
-    model?: string;
-    userSelectedModel?: boolean;
-    approvalPreset?: CodexApprovalPreset;
-    approvalPolicy?: string;
-    approvalsReviewer?: CodexApprovalsReviewer;
-    sandboxMode?: string;
-    reasoningEffort?: string;
-    serviceTier?: string | null;
-  }
-  | {
-    kind: 'claude';
-    model?: string;
-    userSelectedModel?: boolean;
-    reasoningEffort?: ReasoningEffort;
-    serviceTier?: string | null;
-    permissionMode?: string;
-    thinking?: {
-      type: 'enabled' | 'disabled';
-      budgetTokens?: number;
-    };
-  };
-
-export type AgentModelSelection = {
-  model: string;
-  reasoningEffort: ReasoningEffort | null;
-  serviceTier: string | null;
+/** Provider settings adapt the shared selection to native defaults alongside provider policy. */
+type ProviderExecutionDefaults = {
+  [K in Exclude<keyof ExecutionSelection, 'backend'>]?: K extends 'serviceTier' ? ExecutionSelection[K] : NonNullable<ExecutionSelection[K]>;
 };
+export type BackendDefaults = ProviderExecutionDefaults & { userSelectedModel?: boolean } & (
+  | { kind: 'antigravity'; permissionMode?: string }
+  | { kind: 'codex'; approvalPreset?: CodexApprovalPreset; approvalPolicy?: string; approvalsReviewer?: CodexApprovalsReviewer; sandboxMode?: string }
+  | { kind: 'claude'; permissionMode?: string; thinking?: { type: 'enabled' | 'disabled'; budgetTokens?: number } }
+);
 
 export type CodexThreadSettings = {
   cwd?: string;

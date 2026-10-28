@@ -106,7 +106,7 @@ it('validates persisted execution records and dependency graphs before admitting
     expect(isMission({ ...mission, execution: { ...mission.execution, parallelImplementation } })).toBe(true);
   }
   expect(isMission({ ...mission, execution: { ...mission.execution, parallelImplementation: 'true' } })).toBe(false);
-  expect(isMission({ ...mission, execution: { ...mission.execution, implementationModel: { backend: 'codex', model: 'luna', reasoningEffort: 'low' } } })).toBe(true);
+  expect(isMission({ ...mission, execution: { ...mission.execution, implementationModel: { backend: 'codex', model: 'luna', reasoningEffort: 'low', serviceTier: null } } })).toBe(true);
   for (const implementationModel of [{ backend: 'unknown', model: 'luna' }, { backend: 'codex', model: '' }, { backend: 'codex', model: 'luna', reasoningEffort: 1 }]) {
     expect(isMission({ ...mission, execution: { ...mission.execution, implementationModel } })).toBe(false);
   }

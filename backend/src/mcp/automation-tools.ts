@@ -1,3 +1,4 @@
+import { executionSelectionOverridesSchema } from '../execution-selection-schema';
 import { createHash } from 'node:crypto';
 import * as z from 'zod/v4';
 import type { AppSnapshot, AutomationTarget } from '@workspace/core/contracts';
@@ -35,9 +36,7 @@ export function createAutomationToolModuleProvider(options: {
               z.strictObject({ kind: z.literal('current') }),
               z.strictObject({ kind: z.literal('agent'), agentId: z.string().trim().min(1).describe('An existing agent or Quick Chat ID from list-agents in your team.') }),
             ]).optional(),
-            backend: z.enum(['codex', 'claude']).optional().describe('New Quick Chats only. Otherwise inferred from the caller.'),
-            model: z.string().trim().min(1).max(200).optional().describe('New Quick Chats only. Omit to use saved defaults.'),
-            reasoningEffort: z.string().trim().min(1).max(200).optional().describe('New Quick Chats only. Omit to use saved defaults.'),
+            selection: executionSelectionOverridesSchema.optional().describe('Execution overrides. Same-provider work inherits the caller; a different provider uses its own defaults. Null selects the provider default, including Standard tier.'),
           }),
         }, input => loggedToolResult('create-automation', { agentId }, async () => {
           const snapshot = options.snapshot;
@@ -47,10 +46,10 @@ export function createAutomationToolModuleProvider(options: {
           let target: AutomationTarget;
           if (!input.target || input.target.kind === 'newQuickChat') {
             if (!caller.teamId) throw new McpToolError('Choose a team for this conversation first.');
-            target = { kind: 'newQuickChat', teamId: caller.teamId, backend: input.backend ?? caller.backend,
-              ...(input.model ? { model: input.model } : {}), ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}) };
+            const backend = input.selection?.backend ?? caller.backend;
+            target = { kind: 'newQuickChat', teamId: caller.teamId, selection: { ...input.selection, backend } };
           } else {
-            if (input.backend || input.model || input.reasoningEffort) throw new McpToolError('Existing conversations retain their backend, model and effort. Remove the overrides.');
+            if (input.selection) throw new McpToolError('Existing conversations retain their backend, model and effort. Remove the overrides.');
             const id = input.target.kind === 'current' ? caller.id : input.target.agentId;
             const agent = snapshot.agents.find(candidate => candidate.id === id && candidate.teamId === caller.teamId);
             if (!agent || !canTargetAutomationAgent(snapshot, agent)) throw new McpToolError('Choose an available conversation in your team.');

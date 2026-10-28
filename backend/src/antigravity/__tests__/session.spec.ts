@@ -271,7 +271,7 @@ describe('Antigravity native session', () => {
       // Catalog names intentionally span model families; none identifies a served API model.
       for (const model of usageFixture.configuration.models.availableModels) {
         const before = events.filter(e => e.type === 'antigravity.conversationEventReceived' && e.payload.event.type === 'context.updated').length;
-        expect(await call('agent/prompt/send', { agentId: agent.id, prompt: 'usage-fixture:normal', options: { model: model.modelId } })).not.toHaveProperty('error');
+        expect(await call('agent/prompt/send', { agentId: agent.id, prompt: 'usage-fixture:normal', options: { selection: { model: model.modelId } } })).not.toHaveProperty('error');
         await vi.waitFor(() => expect(agent.status.type).toBe('idle'));
         await vi.waitFor(() => expect(events.filter(e => e.type === 'antigravity.conversationEventReceived' && e.payload.event.type === 'context.updated')).toHaveLength(before + 4));
       }

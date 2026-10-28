@@ -85,7 +85,7 @@ describe('AgentConversationService', () => {
       id: 'automation-1',
       name: 'Automation',
       enabled: true,
-      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-1', backend: 'codex' as const },
+      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-1', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
       schedule: { intervalMinutes: 60 },
       executionLog: [{

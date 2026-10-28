@@ -99,6 +99,7 @@ describe('CodeReviewPanel', () => {
     await wrapper.get('.code-review-panel__start').trigger('click');
     await flushPromises();
     const input = actions.startReview.mock.calls[0]![1] as Record<string, unknown>;
+    expect(() => structuredClone(input)).not.toThrow();
     expect(input).not.toHaveProperty('instructions');
     wrapper.unmount();
   });
@@ -174,7 +175,7 @@ describe('CodeReviewPanel', () => {
   it('restores automatic settings and provider-specific model and effort, and clears unsupported effort on backend switch', async () => {
     const { wrapper, actions } = mountPanel(undefined, undefined, true, {
       backend: 'codex', automation: { enabled: true, maxPriority: 'p1', maxRounds: 4, autoCommit: true },
-      providers: { codex: { model: 'codex-model', reasoningEffort: 'high', serviceTier: 'fast' }, claude: { model: 'claude-model' } },
+      providers: { codex: {backend: 'codex',  model: 'codex-model', reasoningEffort: 'high', serviceTier: 'fast' }, claude: {backend: 'claude', reasoningEffort: null, serviceTier: null,  model: 'claude-model' } },
     });
     await flushPromises();
     expect(wrapper.get<HTMLInputElement>('[role="switch"]').element.checked).toBe(true);
@@ -193,10 +194,7 @@ describe('CodeReviewPanel', () => {
     expect(wrapper.get('.backend-model-selector').text()).toContain('Claude model');
     expect(wrapper.get('.backend-model-selector').text()).not.toContain('high');
     await wrapper.get('.code-review-panel__start').trigger('click');
-    expect(actions.startReview).toHaveBeenLastCalledWith('owner', {
-      scope: { type: 'uncommitted' }, threadMode: 'independent', backend: 'claude', model: 'claude-model', serviceTier: null,
-      automation: { enabled: true, maxPriority: 'p1', maxRounds: 4, autoCommit: true },
-    });
+    expect(actions.startReview).toHaveBeenLastCalledWith('owner', { scope: { type: 'uncommitted' }, threadMode: 'independent', automation: { enabled: true, maxPriority: 'p1', maxRounds: 4, autoCommit: true }, selection: { backend: 'claude', model: 'claude-model', serviceTier: null, reasoningEffort: null } });
     await flushPromises();
     await wrapper.get('.backend-model-selector').trigger('click');
     await flushPromises();
@@ -206,7 +204,7 @@ describe('CodeReviewPanel', () => {
     await flushPromises();
     expect(wrapper.get('.backend-model-selector').text()).toContain('high');
     await wrapper.get('.code-review-panel__start').trigger('click');
-    expect(actions.startReview).toHaveBeenLastCalledWith('owner', expect.objectContaining({ backend: 'codex', model: 'codex-model', reasoningEffort: 'high', serviceTier: null }));
+    expect(actions.startReview).toHaveBeenLastCalledWith('owner', expect.objectContaining({ selection: { backend: 'codex', model: 'codex-model', reasoningEffort: 'high', serviceTier: null } }));
     await flushPromises();
     await wrapper.get('[role="switch"]').setValue(false);
     const currentThread = wrapper.findAll('[role="radio"]').find(radio => radio.text().includes('Current thread'))!;
@@ -281,7 +279,7 @@ describe('CodeReviewPanel', () => {
   it('keeps the saved model and effort when returning from a reviewer to the original setup', async () => {
     const { wrapper } = mountPanel(undefined, undefined, true, {
       backend: 'codex', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3 },
-      providers: { codex: { model: 'codex-model', reasoningEffort: 'high' } },
+      providers: { codex: {backend: 'codex', serviceTier: null,  model: 'codex-model', reasoningEffort: 'high' } },
     });
     await flushPromises();
     const owner = wrapper.props('agent');
@@ -313,13 +311,7 @@ describe('CodeReviewPanel', () => {
     await modelMenu.findAll('[role="menuitemradio"]').find(item => item.text() === 'fast')!.trigger('click');
     await flushPromises();
     await wrapper.findAll('button').find((button) => button.text().includes('Start review'))!.trigger('click');
-    expect(actions.startReview).toHaveBeenCalledWith('owner', {
-      scope: { type: 'uncommitted' },
-      backend: 'codex',
-      model: 'codex-model', reasoningEffort: 'high', serviceTier: 'fast',
-      threadMode: 'independent',
-      automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false },
-    });
+    expect(actions.startReview).toHaveBeenCalledWith('owner', { scope: { type: 'uncommitted' }, threadMode: 'independent', automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false }, selection: { backend: 'codex', model: 'codex-model', reasoningEffort: 'high', serviceTier: 'fast' } });
   });
 
   it('offers branch scope when available and can review it in the current thread', async () => {
@@ -385,13 +377,7 @@ describe('CodeReviewPanel', () => {
     expect(branch.attributes('aria-checked')).toBe('true');
     await wrapper.findAll('button').find((button) => button.text().includes('Start review'))!.trigger('click');
 
-    expect(actions.startReview).toHaveBeenCalledWith('owner', {
-      scope: { type: 'branch', baseRef: 'origin/main' },
-      threadMode: 'independent',
-      backend: 'codex',
-      model: 'codex-model', reasoningEffort: 'high', serviceTier: null,
-      automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false },
-    });
+    expect(actions.startReview).toHaveBeenCalledWith('owner', { scope: { type: 'branch', baseRef: 'origin/main' }, threadMode: 'independent', automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false }, selection: { backend: 'codex', model: 'codex-model', reasoningEffort: 'high', serviceTier: null } });
   });
 
   it('keeps unavailable branch and current-thread choices visible but disabled', () => {
@@ -769,7 +755,7 @@ describe('CodeReviewPanel', () => {
   it('does not send or offer review model overrides for the current thread', async () => {
     const { wrapper, actions } = mountPanel(undefined, undefined, true, {
       backend: 'codex', automation: { enabled: false, maxPriority: 'p2', maxRounds: 3 },
-      providers: { codex: { model: 'codex-model', reasoningEffort: 'high' } },
+      providers: { codex: {backend: 'codex', serviceTier: null,  model: 'codex-model', reasoningEffort: 'high' } },
     });
     await flushPromises();
     expect(wrapper.get('.backend-model-selector').text()).toContain('Codex model');

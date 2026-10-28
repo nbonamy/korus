@@ -12,7 +12,7 @@ const repository: SourceRepository = {
 describe('ProjectCreationService', () => {
   it('creates the project folder and agent before submitting the handoff prompt', async () => {
     const steps: string[] = [];
-    const agent = createAgentFromInput({ name: null, folder: repository.path, backend: 'codex', teamId: 'team-one' });
+    const agent = createAgentFromInput({ name: null, folder: repository.path, teamId: 'team-one', selection: { backend: 'codex' } });
     const service = new ProjectCreationService({
       createRepository: vi.fn(async () => { steps.push('repository'); return repository; }),
       createAgent: vi.fn(async () => { steps.push('agent'); return agent; }),
@@ -45,7 +45,7 @@ describe('ProjectCreationService', () => {
   });
 
   it('keeps an already created project recoverable when its initial prompt fails', async () => {
-    const agent = createAgentFromInput({ name: null, folder: repository.path, backend: 'codex', teamId: 'team-one' });
+    const agent = createAgentFromInput({ name: null, folder: repository.path, teamId: 'team-one', selection: { backend: 'codex' } });
     const service = new ProjectCreationService({
       createRepository: vi.fn().mockResolvedValue(repository),
       createAgent: vi.fn().mockResolvedValue(agent),

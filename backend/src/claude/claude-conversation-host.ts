@@ -1824,7 +1824,7 @@ function claudeTurnParams(
 ): ClaudeTurnParams {
   const claudeOptions = options.backendOptions?.kind === 'claude' ? options.backendOptions : undefined;
   const defaults = agent.backendDefaults?.kind === 'claude' ? agent.backendDefaults : undefined;
-  const tier = options.serviceTier !== undefined ? options.serviceTier : defaults?.serviceTier;
+  const tier = options.selection?.serviceTier !== undefined ? options.selection?.serviceTier : defaults?.serviceTier;
   if (tier != null && !['normal', 'default', 'fast'].includes(tier)) throw new Error('Unsupported Claude service tier.');
   const mcpServerUrl = appMcpServerUrl ? appMcpUrlForAgent(appMcpServerUrl, agent) : null;
   return {
@@ -1832,8 +1832,8 @@ function claudeTurnParams(
     cwd: claudeWorkingDirectory(agent),
     prompt: promptWithSelectedReferences(prompt, options.content),
     sessionId: existingSessionId ?? undefined,
-    model: options.model ?? defaults?.model ?? null,
-    effort: claudeEffort(options.reasoningEffort ?? defaults?.reasoningEffort),
+    model: options.selection?.model ?? defaults?.model ?? null,
+    effort: claudeEffort(options.selection?.reasoningEffort ?? defaults?.reasoningEffort),
     fastMode: tier === 'fast',
     permissionMode: options.planMode ? 'plan' : claudeOptions?.permissionMode ?? defaults?.permissionMode ?? null,
     appendSystemPrompt: appDeveloperInstructions(agent, pluginSettings, effects),

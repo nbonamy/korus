@@ -16,8 +16,7 @@ async function fixture() {
   reviewSetup.mockResolvedValue(setup);
   return { engine, sendPrompt, startReview, reviewSetup, getWorkspace, setup };
 }
-const input = { scope: { type: 'branch' as const, baseRef: 'main' }, threadMode: 'independent' as const, backend: 'claude' as const,
-  model: 'review-model', reasoningEffort: 'high', automation: { enabled: true, maxPriority: 'p2' as const, maxRounds: 3, autoCommit: false } };
+const input = { scope: { type: 'branch' as const, baseRef: 'main' }, threadMode: 'independent' as const, automation: { enabled: true, maxPriority: 'p2' as const, maxRounds: 3, autoCommit: false }, selection: { backend: 'claude' as const, model: 'review-model', reasoningEffort: 'high', serviceTier: null } };
 
 describe('native composer actions', () => {
   it('sends Delegate as a command and keeps the unfinished draft', async () => {

@@ -39,7 +39,7 @@ describe('repository-backed agent creation', () => {
     expect(acquired).toMatchObject({ result: { path: root } });
     expect(request.mock.calls.some(([, method]) => method === 'source/repository/clone')).toBe(false);
     const created = await server.handleMessage({ jsonrpc: '2.0', id: 'create', method: 'agent/create', params: { entityResult: true,
-      input: { name: null, folder: root, teamId: 'pointer', backend: 'codex', repositorySession: { existingBranch: 'feature' } } } });
+      input: { name: null, folder: root, teamId: 'pointer', repositorySession: { existingBranch: 'feature' }, selection: { ...{ backend: 'codex' } } } } });
     expect(created).not.toHaveProperty('error');
     const agent = remoteSnapshot.agents.find(candidate => candidate.folder === `${root}-feature`)!;
     expect(agent).toBeDefined();
@@ -88,7 +88,7 @@ describe('repository-backed agent creation', () => {
     cleanup.unshift(() => rm(destination, { recursive: true, force: true }));
     for (const client of ['desktop', 'companion-write']) {
       const reply = await server.handleMessage({ jsonrpc: '2.0', id: client, method: 'agent/create', params: {
-        _clientId: client, entityResult: true, input: { name: null, folder: root, teamId: 'team-test', backend: 'codex', repositorySession: { existingBranch: 'feature' } },
+        _clientId: client, entityResult: true, input: { name: null, folder: root, teamId: 'team-test', repositorySession: { existingBranch: 'feature' }, selection: { ...{ backend: 'codex' } } },
       } });
       expect(reply).not.toHaveProperty('error');
       expect(snapshot.agents.at(-1)?.folder).toBe(destination);

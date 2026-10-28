@@ -148,7 +148,7 @@ test('Mission review keeps actions visible and applies the implementation model 
     if (process.env.MISSION_REVIEW_ARTIFACTS) await page.screenshot({ path: path.join(process.env.MISSION_REVIEW_ARTIFACTS, 'parallel-implementation-dialog.png') });
     await dialog.getByRole('button', { name: 'Start', exact: true }).click();
     const approval = await page.evaluate(() => window.lastApproval);
-    assert.deepEqual(approval.implementationModel, { backend: 'codex', model: 'luna', reasoningEffort: 'low' });
+    assert.deepEqual(approval.implementationModel, { backend: 'codex', model: 'luna', reasoningEffort: 'low', serviceTier: null });
     assert.equal(approval.parallelImplementation, true);
     if (process.env.MISSION_REVIEW_ARTIFACTS) {
       await page.screenshot({ path: path.join(process.env.MISSION_REVIEW_ARTIFACTS, 'implementation-model.png') });

@@ -135,10 +135,7 @@ describe('automatic-review launch over MCP', () => {
 
   it('honors explicit provider, model, effort, scope, and automation overrides', async () => {
     const test = await harness();
-    const result = await test.call({
-      scope: { type: 'branch', baseRef: 'main' }, backend: 'claude', model: 'requested-model', reasoningEffort: 'medium', serviceTier: null,
-      maxPriority: 'p3', maxRounds: 2, autoCommit: true,
-    });
+    const result = await test.call({ scope: { type: 'branch', baseRef: 'main' }, maxPriority: 'p3', maxRounds: 2, autoCommit: true, selection: { backend: 'claude', model: 'requested-model', reasoningEffort: 'medium', serviceTier: null } });
     expect(result.isError).toBe(false);
     await vi.waitFor(() => expect(test.runCodeReview).toHaveBeenCalledOnce());
     expect(test.runCodeReview.mock.calls[0]![0]).toMatchObject({
@@ -152,7 +149,7 @@ describe('automatic-review launch over MCP', () => {
   it('uses safe first-run limits and does not transfer the caller model to a different provider', async () => {
     const test = await harness();
     delete test.snapshot.general.codeReviewDefaults;
-    expect((await test.call({ scope: { type: 'uncommitted' }, backend: 'claude' })).isError).toBe(false);
+    expect((await test.call({ scope: { type: 'uncommitted' }, selection: { backend: 'claude' } })).isError).toBe(false);
     await vi.waitFor(() => expect(test.runCodeReview).toHaveBeenCalledOnce());
     const reviewer = test.runCodeReview.mock.calls[0]![0];
     expect(reviewer.backend).toBe('claude');

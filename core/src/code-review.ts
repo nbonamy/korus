@@ -1,3 +1,5 @@
+import type { ExecutionSelection, ExecutionSelectionOverrides } from './contracts/execution';
+import { isExecutionSelection, isExecutionSelectionOverrides, readPersistedExecutionSelection } from './execution-selection';
 import type { BackendSession } from './contracts/backend';
 import type { Agent, AgentBackend, AgentGitStatus } from './contracts';
 
@@ -32,11 +34,7 @@ export type CodeReviewThreadMode = 'current' | 'independent';
 
 export type CodeReviewStartInput = {
   instructions?: string;
-  backend?: 'codex' | 'claude' | 'antigravity';
-  model?: string;
-  reasoningEffort?: string;
-  /** Null selects the standard tier; omission retains the reviewer's inherited tier. */
-  serviceTier?: string | null;
+  selection?: ExecutionSelectionOverrides;
   automation?: CodeReviewAutomationSettings;
   scope: CodeReviewScope;
   threadMode: CodeReviewThreadMode;
@@ -53,7 +51,7 @@ export type CodeReviewAutomationSettings = {
 export type CodeReviewPreferences = {
   backend: 'codex' | 'claude' | 'antigravity';
   automation: CodeReviewAutomationSettings;
-  providers: Partial<Record<'codex' | 'claude' | 'antigravity', { model?: string; reasoningEffort?: string; serviceTier?: string | null }>>;
+  providers: Partial<Record<'codex' | 'claude' | 'antigravity', ExecutionSelection>>;
 };
 
 export type CodeReviewAutomation = CodeReviewAutomationSettings & {
@@ -258,13 +256,13 @@ export function cloneCodeReviewSession(session: CodeReviewSession): CodeReviewSe
   return structuredClone(session) as CodeReviewSession;
 }
 
+const reviewInputFields = { instructions: true, selection: true, automation: true, scope: true, threadMode: true } satisfies Record<keyof CodeReviewStartInput, true>;
+
 export function isCodeReviewStartInput(value: unknown): value is CodeReviewStartInput {
-  return isRecord(value) && isCodeReviewScope(value.scope) && isCodeReviewThreadMode(value.threadMode)
+  return isRecord(value) && Object.keys(value).every(key => Object.hasOwn(reviewInputFields, key)) && isCodeReviewScope(value.scope) && isCodeReviewThreadMode(value.threadMode)
     && (value.instructions === undefined || typeof value.instructions === 'string')
-    && (value.backend === undefined || value.backend === 'codex' || value.backend === 'claude' || value.backend === 'antigravity')
-    && optionalSelection(value.model) && optionalSelection(value.reasoningEffort)
-    && (value.serviceTier === null || optionalSelection(value.serviceTier))
-    && (value.threadMode === 'independent' || (value.model === undefined && value.reasoningEffort === undefined && value.serviceTier === undefined))
+    && (value.selection === undefined || isExecutionSelectionOverrides(value.selection))
+    && (value.threadMode === 'independent' || value.selection === undefined)
     && (value.automation === undefined || (isCodeReviewAutomationSettings(value.automation)
       && (!value.automation.enabled || value.threadMode === 'independent')));
 }
@@ -279,12 +277,7 @@ export function isCodeReviewPreferences(value: unknown): value is CodeReviewPref
   return isRecord(value) && (value.backend === 'codex' || value.backend === 'claude' || value.backend === 'antigravity')
     && isCodeReviewAutomationSettings(value.automation) && isRecord(value.providers)
     && Object.entries(value.providers).every(([backend, selection]) => (backend === 'codex' || backend === 'claude' || backend === 'antigravity')
-      && isRecord(selection) && optionalSelection(selection.model) && optionalSelection(selection.reasoningEffort)
-      && (selection.serviceTier === null || optionalSelection(selection.serviceTier)));
-}
-
-function optionalSelection(value: unknown): boolean {
-  return value === undefined || (typeof value === 'string' && value.trim().length > 0 && value.length <= 200);
+      && isExecutionSelection(selection) && selection.backend === backend);
 }
 
 export function isCodeReviewDecisionInput(value: unknown): value is CodeReviewDecisionInput {
@@ -431,4 +424,21 @@ function isReviewRoundStatus(value: unknown): value is CodeReviewRound['status']
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function optionalSelection(value: unknown): boolean {
+  return value === undefined || (typeof value === 'string' && value.trim().length > 0 && value.length <= 200);
+}
+
+export function readPersistedReviewPreferences(value: unknown): CodeReviewPreferences | undefined {
+  if (!isRecord(value) || !isRecord(value.providers)) return undefined;
+  const providers: CodeReviewPreferences['providers'] = {};
+  for (const backend of ['codex', 'claude', 'antigravity'] as const) {
+    if (value.providers[backend] === undefined) continue;
+    const selection = readPersistedExecutionSelection(value.providers[backend], backend);
+    if (!selection) return undefined;
+    providers[backend] = selection;
+  }
+  const result = { ...value, providers };
+  return isCodeReviewPreferences(result) ? result : undefined;
 }

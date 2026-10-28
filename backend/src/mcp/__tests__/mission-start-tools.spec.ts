@@ -33,10 +33,10 @@ describe('create-mission tool', () => {
 
   it('passes the requested provider, model and reasoning effort on to the Mission lead', async () => {
     const { startMission, call } = await setup();
-    const result = await call({ outcome: 'Add CSV export', prompt: 'Goal', backend: 'claude', model: 'claude-opus', reasoningEffort: 'high', serviceTier: 'fast' });
+    const result = await call({ outcome: 'Add CSV export', prompt: 'Goal', selection: { backend: 'claude', model: 'claude-opus', reasoningEffort: 'high', serviceTier: 'fast' } });
     expect(result.isError).toBe(false);
-    expect(startMission).toHaveBeenCalledWith(expect.any(String), { outcome: 'Add CSV export', prompt: 'Goal', backend: 'claude', model: 'claude-opus', reasoningEffort: 'high', serviceTier: 'fast' });
-    expect((await call({ outcome: 'x', prompt: 'y', backend: 'gemini' })).isError).toBe(true);
+    expect(startMission).toHaveBeenCalledWith(expect.any(String), { outcome: 'Add CSV export', prompt: 'Goal', selection: { backend: 'claude', model: 'claude-opus', reasoningEffort: 'high', serviceTier: 'fast' } });
+    expect((await call({ outcome: 'x', prompt: 'y', selection: { backend: 'gemini' } })).isError).toBe(true);
   });
 
   it('is not offered to agents without a team or to mission workers', async () => {

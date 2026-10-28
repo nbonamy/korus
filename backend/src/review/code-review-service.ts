@@ -1,3 +1,4 @@
+import { applyExecutionSelection, executionSelectionForAgent, resolveExecutionSelection } from '@workspace/core/execution-selection';
 import { randomUUID } from 'node:crypto';
 import { product } from '@workspace/core/product';
 import {
@@ -88,21 +89,12 @@ export class CodeReviewService {
     if (agent.codeReview) throw new Error('Reviewers cannot launch another automatic review.');
     if (agent.sessionKind === 'quickChat') throw new Error('Automatic review requires a project workspace.');
     const saved = this.options.snapshot.general.codeReviewDefaults?.automation;
-    return this.start(agent, {
-      scope: input.scope,
-      backend: input.backend ?? agent.backend,
-      model: input.model,
-      reasoningEffort: input.reasoningEffort,
-      serviceTier: input.serviceTier,
-      instructions: input.instructions,
-      threadMode: 'independent',
-      automation: {
+    return this.start(agent, { scope: input.scope, instructions: input.instructions, threadMode: 'independent', automation: {
         enabled: true,
         maxPriority: input.maxPriority ?? saved?.maxPriority ?? 'p2',
         maxRounds: input.maxRounds ?? saved?.maxRounds ?? 3,
         autoCommit: input.autoCommit ?? false,
-      },
-    }, { rememberSettings: false });
+      }, selection: { ...input.selection, backend: input.selection?.backend ?? agent.backend } }, { rememberSettings: false });
   }
 
   start(agent: Agent, input: CodeReviewStartInput, options: { rememberSettings?: boolean } = {}): CodeReviewSession {
@@ -134,7 +126,7 @@ export class CodeReviewService {
 
     const reviewer = input.threadMode === 'current'
       ? agent
-      : this.createIndependentReviewer(agent, input.backend ?? agent.backend);
+      : this.createIndependentReviewer(agent, input.selection?.backend ?? agent.backend);
     this.applySelection(reviewer, input);
     if (options.rememberSettings !== false) this.rememberSettings(reviewer, input);
     if (current?.status === 'failed') this.closeReviewToolContext(current);
@@ -157,7 +149,7 @@ export class CodeReviewService {
     reviewer: Agent,
     input: CodeReviewStartInput,
   ): CodeReviewSession {
-    if (input.backend && input.backend !== reviewer.backend) {
+    if (input.selection?.backend && input.selection?.backend !== reviewer.backend) {
       throw new Error('Start a new review to change the backend of an existing reviewer.');
     }
     const previous = reviewer.codeReview;
@@ -756,13 +748,8 @@ export class CodeReviewService {
   }
 
   private applySelection(reviewer: Agent, input: CodeReviewStartInput): void {
-    if (input.model === undefined && input.reasoningEffort === undefined && input.serviceTier === undefined) return;
-    reviewer.backendDefaults = {
-      ...reviewer.backendDefaults, kind: reviewer.backend,
-      ...(input.model ? { model: input.model, userSelectedModel: true, reasoningEffort: reviewer.backend === 'antigravity' ? undefined : input.reasoningEffort } : {}),
-      ...(reviewer.backend !== 'antigravity' && input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
-      ...(reviewer.backend !== 'antigravity' && input.serviceTier !== undefined ? { serviceTier: input.serviceTier } : {}),
-    };
+    if (!input.selection) return;
+    applyExecutionSelection(reviewer, resolveExecutionSelection(executionSelectionForAgent(reviewer), input.selection));
   }
 
   private rememberSettings(reviewer: Agent, input: CodeReviewStartInput): void {
@@ -772,10 +759,7 @@ export class CodeReviewService {
     this.options.snapshot.general.codeReviewDefaults = {
       backend: reviewer.backend,
       automation: input.automation ?? { enabled: false, maxPriority: previous?.automation.maxPriority ?? 'p2', maxRounds: previous?.automation.maxRounds ?? 3, ...(previous?.automation.autoCommit !== undefined ? { autoCommit: previous.automation.autoCommit } : {}) },
-      providers: { ...previous?.providers, [reviewer.backend]: {
-        ...(input.model ? { model: input.model } : {}), ...(reviewer.backend !== 'antigravity' && input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
-        ...(reviewer.backend !== 'antigravity' && input.serviceTier !== undefined ? { serviceTier: input.serviceTier } : {}),
-      } },
+      providers: { ...previous?.providers, [reviewer.backend]: executionSelectionForAgent(reviewer) },
     };
   }
 
@@ -959,13 +943,7 @@ export class CodeReviewService {
     const name = target.name?.trim()
       || (target.workspace?.kind === 'git' ? target.workspace.branch : undefined)
       || this.options.snapshot.agentGitStatuses[target.id]?.branch;
-    const reviewer = this.options.createAgent({
-      name: name ? `👀 ${name}` : 'Review',
-      folder: target.folder ?? '',
-      avatar: target.avatar,
-      backend,
-      teamId: target.teamId,
-    }, { select: false, afterAgentId: target.id });
+    const reviewer = this.options.createAgent({ name: name ? `👀 ${name}` : 'Review', folder: target.folder ?? '', avatar: target.avatar, teamId: target.teamId, selection: { backend } }, { select: false, afterAgentId: target.id });
     // Start from the selected provider's saved defaults, then inherit compatible source overrides.
     if (sourceDefaults) reviewer.backendDefaults = { ...reviewer.backendDefaults, ...sourceDefaults };
     if (target.workspace) reviewer.workspace = structuredClone(target.workspace);

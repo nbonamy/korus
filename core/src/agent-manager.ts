@@ -1,3 +1,4 @@
+import { applyExecutionSelection, executionSelectionForAgent, hasExecutionOverrides, resolveExecutionSelection } from './execution-selection';
 import type {
   Agent,
   AgentBackend,
@@ -23,7 +24,7 @@ import { workspaceSidebarGroupIdForAgent, workspaceSidebarRepositoryRootForAgent
 
 export function createAgentFromInput(input: CreateAgentInput, createdAt = new Date().toISOString(), teamId = seedTeamId, id = createEntityId('agent')): Agent {
   const name = normalizedOptionalString(input.name) ?? null;
-  const backend = normalizedBackend(input.backend);
+  const backend = normalizedBackend(input.selection?.backend ?? input.backendDefaults?.kind);
   const delegatedByAgentId = normalizedOptionalString(input.delegatedByAgentId);
 
   return {
@@ -50,7 +51,7 @@ export function createAgentInSnapshot(
 ): AppSnapshot {
   const agent = createAgentFromInput(input, createdAt, targetTeamId(snapshot, input.teamId), id);
   if (!input.backendDefaults) applyProviderDefaults(snapshot, agent);
-  if (input.modelSelection) agent.backendDefaults = backendDefaultsWithModel(agent, input.modelSelection);
+  if (input.selection) agent.backendDefaults = backendDefaultsWithModel(agent, input.selection);
   const source = options.afterAgentId
     ? snapshot.agents.find((candidate) => candidate.id === options.afterAgentId)
     : undefined;
@@ -66,13 +67,9 @@ export function createAgentInSnapshot(
 }
 
 export function createQuickChatInSnapshot(snapshot: AppSnapshot, input: CreateQuickChatInput, createdAt = new Date().toISOString(), id = createEntityId('agent'), options: { select?: boolean } = {}): AppSnapshot {
-  const agent = createAgentFromInput({
-    name: null,
-    folder: '',
-    backend: resolveAgentBackend(snapshot, input.backend),
-    ...(input.teamId ? { teamId: input.teamId } : {}),
-  }, createdAt, targetTeamId(snapshot, input.teamId), id);
+  const agent = createAgentFromInput({ name: null, folder: '', ...(input.teamId ? { teamId: input.teamId } : {}), selection: { backend: resolveAgentBackend(snapshot, input.selection?.backend) } }, createdAt, targetTeamId(snapshot, input.teamId), id);
   applyProviderDefaults(snapshot, agent);
+  if (input.selection) agent.backendDefaults = backendDefaultsWithModel(agent, input.selection);
   agent.folder = null;
   agent.sessionKind = 'quickChat';
   return insertAgentInSnapshot(snapshot, agent, options.select);
@@ -83,19 +80,19 @@ export function updateAgentFromInput(snapshot: AppSnapshot, input: UpdateAgentIn
   if (!agent) {
     return null;
   }
-  if (input.backend !== undefined && input.backend !== agent.backend) {
-    const backend = resolveAgentBackend(snapshot, input.backend);
+  if (input.selection?.backend !== undefined && input.selection?.backend !== agent.backend) {
+    const backend = resolveAgentBackend(snapshot, input.selection?.backend);
     if (!canSelectAgentBackend(agent)) throw new Error('Backend can only be changed before the first prompt.');
     agent.backend = backend;
     agent.backendDefaults = defaultBackendDefaults(backend);
     applyProviderDefaults(snapshot, agent);
     agent.updatedAt = updatedAt;
   }
-  if (input.modelSelection) {
-    agent.backendDefaults = backendDefaultsWithModel(agent, input.modelSelection);
+  if (hasExecutionOverrides(input.selection)) {
+    agent.backendDefaults = backendDefaultsWithModel(agent, input.selection!);
     snapshot.general.providerModelDefaults = {
       ...snapshot.general.providerModelDefaults,
-      [agent.backend]: { ...input.modelSelection, ...(agent.backend === 'antigravity' ? { reasoningEffort: null, serviceTier: null } : {}) },
+      [agent.backend]: executionSelectionForAgent(agent),
     };
   }
   if (input.name !== undefined) {
@@ -217,13 +214,7 @@ function normalizedBackend(value: AgentBackend | undefined): AgentBackend {
 
 function applyProviderDefaults(snapshot: AppSnapshot, agent: Agent): void {
   const selection = snapshot.general.providerModelDefaults?.[agent.backend];
-  if (selection) agent.backendDefaults = {
-    ...(agent.backendDefaults?.kind === agent.backend ? agent.backendDefaults : defaultBackendDefaults(agent.backend)),
-    model: selection.model,
-    userSelectedModel: true,
-    ...(agent.backend !== 'antigravity' && selection.reasoningEffort ? { reasoningEffort: selection.reasoningEffort } : {}),
-    ...(agent.backend !== 'antigravity' ? { serviceTier: selection.serviceTier } : {}),
-  } as BackendDefaults;
+  if (selection) applyExecutionSelection(agent, selection);
   const approvals = snapshot.general.providerApprovalDefaults;
   if (agent.backend === 'codex' && approvals?.codex) {
     agent.backendDefaults = approvalBackendDefaultsWithPreset(agent.backendDefaults, approvals.codex);
@@ -234,18 +225,9 @@ function applyProviderDefaults(snapshot: AppSnapshot, agent: Agent): void {
   }
 }
 
-function backendDefaultsWithModel(agent: Agent, selection: NonNullable<CreateAgentInput['modelSelection']>): BackendDefaults {
-  const defaults = agent.backendDefaults?.kind === agent.backend
-    ? agent.backendDefaults
-    : defaultBackendDefaults(agent.backend);
-  const { reasoningEffort: _previousEffort, ...rest } = { reasoningEffort: undefined, ...defaults };
-  return {
-    ...rest,
-    model: selection.model,
-    userSelectedModel: true,
-    ...(agent.backend !== 'antigravity' && selection.reasoningEffort ? { reasoningEffort: selection.reasoningEffort } : {}),
-    ...(agent.backend !== 'antigravity' && selection.serviceTier !== undefined ? { serviceTier: selection.serviceTier } : {}),
-  } as BackendDefaults;
+function backendDefaultsWithModel(agent: Agent, selection: NonNullable<CreateAgentInput['selection']>): BackendDefaults {
+  if (hasExecutionOverrides(selection)) applyExecutionSelection(agent, resolveExecutionSelection(executionSelectionForAgent(agent), selection));
+  return agent.backendDefaults!;
 }
 
 function defaultBackendDefaults(backend: AgentBackend): Agent['backendDefaults'] {
@@ -309,13 +291,14 @@ export function duplicateAgentInSnapshot(
     return null;
   }
 
-  const backend = options.backend === undefined ? source.backend : resolveAgentBackend(snapshot, options.backend);
+  const backend = options.selection?.backend === undefined ? source.backend : resolveAgentBackend(snapshot, options.selection.backend);
   const duplicate = copiedAgent(snapshot, source, 'copy', createdAt, createId, options.name);
   if (backend !== source.backend) {
     duplicate.backend = backend;
     duplicate.backendDefaults = defaultBackendDefaults(backend);
     applyProviderDefaults(snapshot, duplicate);
   }
+  if (options.selection) duplicate.backendDefaults = backendDefaultsWithModel(duplicate, options.selection);
   insertAgentAfterSource(snapshot, source, duplicate);
   if (options.select !== false) {
     snapshot.activeTeamId = duplicate.teamId ?? snapshot.activeTeamId;

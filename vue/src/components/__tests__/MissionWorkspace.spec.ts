@@ -122,9 +122,10 @@ describe('MissionWorkspace', () => {
     await confirm.trigger('click'); await flushPromises();
     expect(executeMission).toHaveBeenCalledExactlyOnceWith({
       id: mission.id, revision: mission.revision, action: 'accept', runId: mission.execution!.runs[0]!.id,
-      implementationModel: { backend: 'claude', model: 'sonnet', reasoningEffort: 'low' },
+      implementationModel: { backend: 'claude', model: 'sonnet', reasoningEffort: 'low', serviceTier: null },
       parallelImplementation: true,
     });
+    expect(() => structuredClone(executeMission.mock.calls[0]![0])).not.toThrow();
     expect(wrapper.props('agents')![0]!.backendDefaults).toMatchObject({ model: 'planner', reasoningEffort: 'high' });
     expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(false);
     await wrapper.setProps({ mission: { ...mission, stage: 'review' } });

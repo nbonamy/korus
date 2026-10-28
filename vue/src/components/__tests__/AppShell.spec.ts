@@ -1505,13 +1505,7 @@ describe('AppShell authentication and conversation', () => {
     await wrapper.findAll('button').find((button) => button.text().includes('Start review'))!.trigger('click');
     await flushPromises();
 
-    expect(startCodeReview).toHaveBeenCalledExactlyOnceWith(source.id, {
-      automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false },
-      backend: 'codex',
-      serviceTier: null,
-      scope: { type: 'uncommitted' },
-      threadMode: 'independent',
-    });
+    expect(startCodeReview).toHaveBeenCalledExactlyOnceWith(source.id, { automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false }, scope: { type: 'uncommitted' }, threadMode: 'independent', selection: { backend: 'codex', serviceTier: null, model: null, reasoningEffort: null } });
   });
 
   it('attaches a finding to the real composer and submits the user question through its stable link', async () => {

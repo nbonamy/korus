@@ -985,6 +985,7 @@ it("hides unavailable cost tooltip rows and empty days while retaining measured 
     await flushPromises();
     await choose(wrapper, "#usage-measure", "Cost");
     const chart = wrapper.get('svg[aria-label="Activity over time"]');
+    expect(chart.findAll("circle.marker.visible")).toHaveLength(0);
     expect(
       chart
         .findAll("path.edge")
@@ -994,6 +995,7 @@ it("hides unavailable cost tooltip rows and empty days while retaining measured 
       .get(`[aria-label="${day(0)} · claude: $0.00"]`)
       .trigger("focus");
     expect(wrapper.get(".chart-tooltip").text()).toContain("$0.00");
+    expect(chart.findAll("circle.marker.visible")).toHaveLength(2);
     expect(wrapper.get(".chart-tooltip").findAll("li")).toHaveLength(2);
     expect(wrapper.get(".chart-tooltip").text()).not.toContain("unknown-model");
     expect(wrapper.get(".chart-tooltip").text()).not.toContain("Unavailable");

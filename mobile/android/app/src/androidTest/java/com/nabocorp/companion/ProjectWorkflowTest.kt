@@ -107,7 +107,7 @@ class ProjectWorkflowTest {
             app.onNodeWithText("group/subgroup/repository").performClick()
             engine.state(state().put("backends", JSONArray(listOf("codex"))).put("projectBranches", gitlabBranches()))
             app.onNodeWithText("develop").assertIsDisplayed().performClick()
-            assertCommand(engine, json("type" to "createProject", "source" to "gitlab", "value" to "gitlab:opaque", "backend" to "codex", "branch" to "develop"))
+            assertCommand(engine, json("type" to "createProject", "source" to "gitlab", "value" to "gitlab:opaque", "selection" to json("backend" to "codex"), "branch" to "develop"))
             engine.state(state(creation = "creating")); engine.state(state())
             app.onNodeWithTag("composer").assertIsDisplayed()
         }
@@ -129,7 +129,7 @@ class ProjectWorkflowTest {
             app.onNodeWithTag("branch-name").performTextInput("feature/android-new")
             app.runOnIdle { engine.model.chooseCreationBackend("codex") }
             app.onNodeWithText("Create Branch").performClick()
-            val expected = json("type" to "createProject", "source" to "gitlab", "value" to "gitlab:opaque", "backend" to "codex",
+            val expected = json("type" to "createProject", "source" to "gitlab", "value" to "gitlab:opaque", "selection" to json("backend" to "codex"),
                 "worktree" to json("branchName" to "feature/android-new", "baseBranch" to "develop"))
             assertCommand(engine, expected)
             engine.state(state(creation = "creating").put("projectBranches", gitlabBranches()))
@@ -169,7 +169,7 @@ class ProjectWorkflowTest {
             assertCommand(engine, json("type" to "loadProjectBranches", "source" to "gitlab", "repositoryId" to "remote:opaque"))
             engine.state(state(host = "remote-host").put("backends", JSONArray(listOf("codex"))).put("projectBranches", gitlabBranches("remote:opaque")))
             app.onNodeWithText("feature/android").performClick()
-            assertCommand(engine, json("type" to "createProject", "source" to "gitlab", "value" to "remote:opaque", "backend" to "codex", "branch" to "feature/android"))
+            assertCommand(engine, json("type" to "createProject", "source" to "gitlab", "value" to "remote:opaque", "selection" to json("backend" to "codex"), "branch" to "feature/android"))
             assertTrue(engine.commands().filter { it.string("type") == "createProject" }.all { it.string("value") == "remote:opaque" })
         }
     }
@@ -189,7 +189,7 @@ class ProjectWorkflowTest {
             app.onNodeWithText("New Branch").assertIsDisplayed()
             app.onNodeWithText("main").assertIsDisplayed()
             app.onNodeWithText("feature/native").performClick()
-            assertCommand(engine, json("type" to "createProject", "source" to "local", "value" to "opaque-local", "backend" to "codex", "branch" to "feature/native"))
+            assertCommand(engine, json("type" to "createProject", "source" to "local", "value" to "opaque-local", "selection" to json("backend" to "codex"), "branch" to "feature/native"))
         }
     }
 
@@ -257,7 +257,7 @@ class ProjectWorkflowTest {
                 app.activityRule.scenario.recreate(); mount(engine)
                 app.onNodeWithTag("project-value").assertTextContains("  native-project  ")
                 app.onNodeWithText("Create Project").performClick()
-                assertCommand(engine, json("type" to "createProject", "source" to "new", "value" to "native-project", "backend" to "claude"))
+                assertCommand(engine, json("type" to "createProject", "source" to "new", "value" to "native-project", "selection" to json("backend" to "claude")))
                 app.onNodeWithText("Preparing your project").assertIsDisplayed()
                 app.onNodeWithContentDescription("Cancel creation").assertDoesNotExist()
                 engine.state(state(creation = "creating"))
@@ -292,7 +292,7 @@ class ProjectWorkflowTest {
                 engine.state(state())
                 app.onNodeWithTag("project-value").assertTextContains("  git@github.com:org/repo.git  ")
                 app.onNodeWithText("Clone Repository").performClick()
-                assertCommand(engine, json("type" to "createProject", "source" to "url", "value" to "git@github.com:org/repo.git", "backend" to "codex"))
+                assertCommand(engine, json("type" to "createProject", "source" to "url", "value" to "git@github.com:org/repo.git", "selection" to json("backend" to "codex")))
                 engine.state(state(creation = "creating")); engine.state(state())
                 newAgent("Quick Chat")
                 assertCommand(engine, json("type" to "newQuickChat", "backend" to "codex"))
@@ -326,7 +326,7 @@ class ProjectWorkflowTest {
             app.runOnIdle { engine.model.chooseCreationBackend("codex") }
             app.onNodeWithTag("branch-search").performTextInput("native")
             app.onNodeWithText("feature/native").performClick()
-            assertCommand(engine, json("type" to "createProject", "source" to "github", "value" to "org/repository", "backend" to "codex", "branch" to "feature/native"))
+            assertCommand(engine, json("type" to "createProject", "source" to "github", "value" to "org/repository", "selection" to json("backend" to "codex"), "branch" to "feature/native"))
             engine.state(state(creation = "creating").put("projectBranches", branches("org/repository")))
             engine.state(state(creation = "failed").put("projectBranches", branches("org/repository")))
             app.onNodeWithText("New Branch").performClick()

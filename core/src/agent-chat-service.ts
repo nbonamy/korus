@@ -56,11 +56,11 @@ export function sendAgentPrompt(
     capabilities: backendDriver.getCapabilities(agent),
   }, emit, snapshot);
 
-  if (agent.backend !== 'antigravity' && options?.serviceTier !== undefined) {
+  if (agent.backend !== 'antigravity' && options?.selection?.serviceTier !== undefined) {
     const defaults = agent.backendDefaults?.kind === agent.backend
       ? agent.backendDefaults
       : { kind: agent.backend };
-    agent.backendDefaults = { ...defaults, serviceTier: options.serviceTier };
+    agent.backendDefaults = { ...defaults, serviceTier: options.selection?.serviceTier };
   }
   const routedOptions = hooks?.appendUserMessage === false
     ? { ...options, recordUserMessage: false }
@@ -120,9 +120,8 @@ function hasPromptOptions(options: SendPromptOptions | undefined): options is Se
     options?.content !== undefined ||
     options?.delegation ||
     (options?.attachments?.length ?? 0) > 0 ||
-    options?.model ||
+    options?.selection ||
     typeof options?.planMode === 'boolean' ||
-    options?.reasoningEffort ||
     (options?.skills?.length ?? 0) > 0 ||
     options?.inputMethod ||
     options?.recordUserMessage === false ||

@@ -92,8 +92,7 @@ class ReviewWorkflowTest {
             reveal(hasContentDescription("Increase maximum rounds")).performClick()
             app.onNodeWithText("Start Review").performClick()
             assertEquals(tree(json("type" to "review", "target" to target().toJson(), "input" to json(
-                "scope" to json("type" to "branch", "baseRef" to "main"), "threadMode" to "independent", "backend" to "codex",
-                "model" to "codex-review", "reasoningEffort" to "high", "instructions" to "Check retries",
+                "scope" to json("type" to "branch", "baseRef" to "main"), "threadMode" to "independent", "selection" to json("backend" to "codex", "model" to "codex-review", "reasoningEffort" to "high", "serviceTier" to null), "instructions" to "Check retries",
                 "automation" to json("enabled" to true, "maxPriority" to "p1", "maxRounds" to 4, "autoCommit" to true)))),
                 tree(engine.commands().single { it.string("type") == "review" }))
             engine.state(state("starting"))
@@ -151,8 +150,8 @@ class ReviewWorkflowTest {
             reveal(hasContentDescription("Reviewer reasoning")).performClick()
             app.onNodeWithText("Low").performClick()
             app.onNodeWithText("Start Review").performClick()
-            assertEquals("claude-review", engine.commands().last().obj("input").string("model"))
-            assertEquals("low", engine.commands().last().obj("input").string("reasoningEffort"))
+            assertEquals("claude-review", engine.commands().last().obj("input").obj("selection").string("model"))
+            assertEquals("low", engine.commands().last().obj("input").obj("selection").string("reasoningEffort"))
             engine.state(state("unknown", setup(backend = "claude")))
             app.onNodeWithText("Start Review").assertIsNotEnabled()
             reveal(hasText("Refresh")).performClick()

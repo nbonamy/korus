@@ -54,7 +54,7 @@ function requestFixture(id: string, input = 10, read = 199990, write5 = 0, write
     delta: { stop_reason: 'end_turn' as SDKAssistantMessage['message']['stop_reason'], stop_sequence: null, stop_details: null, container: null },
     usage: { input_tokens: null, cache_read_input_tokens: null, cache_creation_input_tokens: null,
       output_tokens: output, output_tokens_details: { thinking_tokens: Math.min(20, output) } as SDKAssistantMessage['message']['usage']['output_tokens_details'],
-      iterations: null, server_tool_use: null, fallback_credit: null },
+      iterations: null as SDKAssistantMessage['message']['usage']['iterations'], server_tool_use: null, fallback_credit: null },
   } } satisfies SDKPartialAssistantMessage;
   const stop = { ...envelope, type: 'stream_event', event: { type: 'message_stop' } } satisfies SDKPartialAssistantMessage;
   return { assistant, start, delta, stop };
@@ -362,7 +362,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     const { sdk, driver, server, snapshot } = setup(false, usage);
     const requests: RequestObservation[] = [];
     (driver as AgentBackendDriver).onRequestUsage?.(e => requests.push(e));
-    const sending = driver.sendPrompt(snapshot.agents[0]!, 'CANARY private input', { model: 'selected-alias' });
+    const sending = driver.sendPrompt(snapshot.agents[0]!, 'CANARY private input', { selection: { model: 'selected-alias' } });
     await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
     sdk.emit({ type: 'system', subtype: 'init', session_id: 'requests', model: 'selected-alias' }); await sending;
     // Local SDK notices have no billable model/request, even when shaped like assistant messages.
@@ -435,6 +435,8 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     ['multiple server iterations', 'unsupported-request-iterations'],
     ['rerouted server iteration', 'unsupported-request-iterations'],
     ['single matching server iteration', null],
+    ['single server iteration without a model', null],
+    ['server compaction iteration', 'unsupported-request-iterations'],
     ['unsupported batch tier', 'unsupported-service-tier'],
     ['unsupported priority tier', 'unsupported-service-tier'],
     ['third-party route', 'unknown-provider'],
@@ -464,6 +466,15 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     ];
     if (scenario === 'rerouted server iteration' || scenario === 'single matching server iteration') f.start.event.message.usage.iterations = [
       { type: 'message', model: scenario === 'rerouted server iteration' ? 'claude-haiku-4-5' : 'claude-sonnet-4-5', input_tokens: 10, output_tokens: 20, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, cache_creation: null },
+    ];
+    // Claude reports the served model on the message; ordinary iterations omit it.
+    if (scenario === 'single server iteration without a model') {
+      const iteration = { type: 'message' as const, model: 'claude-sonnet-4-5', input_tokens: 10, output_tokens: 20, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, cache_creation: null };
+      Reflect.deleteProperty(iteration, 'model'); // Observed wire shape differs from the SDK declaration.
+      f.delta.event.usage.iterations = [iteration];
+    }
+    if (scenario === 'server compaction iteration') f.delta.event.usage.iterations = [
+      { type: 'compaction', input_tokens: 10, output_tokens: 20, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, cache_creation: null },
     ];
     // A duplicate/reordered replay of the stream must not reset measured output.
     for (const m of [f.start, f.delta, f.stop, f.start, f.assistant, f.stop]) sdk.emit(m);
@@ -582,7 +593,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
 
   it('observes actual SDK executions once, ignoring chunks and steering, with per-turn main-loop consumption', async()=>{
     const {sdk,driver,snapshot}=setup(false, undefined, [{ value: 'opus', displayName: 'Opus', supportsFastMode: true }]);const observations:import('@workspace/core/usage').ExecutionObservation[]=[];driver.onUsage(o=>observations.push(o));
-    const sending=driver.sendPrompt(snapshot.agents[0]!, 'CANARY prompt', { model: 'opus', reasoningEffort: 'high', serviceTier: 'fast' });
+    const sending=driver.sendPrompt(snapshot.agents[0]!, 'CANARY prompt', { selection: { model: 'opus', reasoningEffort: 'high', serviceTier: 'fast' } });
     await vi.waitFor(()=>expect(sdk.inputs).toHaveLength(1));
     sdk.emit({type:'system',subtype:'init',session_id:'usage-session',model:'claude-sonnet-4-6'});await sending;
     sdk.emit({type:'assistant',session_id:'usage-session',message:{content:[{type:'text',text:'chunk'}],usage:{input_tokens:9999}}});

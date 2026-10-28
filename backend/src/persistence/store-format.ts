@@ -2,8 +2,8 @@ import { product } from '@workspace/core/product';
 import backendPackage from '../../package.json';
 
 export const storeSchemaVersion = 1;
-// Prompt targets and calendar recurrences cannot be read by the old repository-loop roster.
-export const rosterSchemaVersion = 2;
+// Shared execution selections require a reader that understands the nested request shape.
+export const rosterSchemaVersion = 3;
 const storeWrittenBy = `daemon ${backendPackage.version}`;
 
 export class StoreFormatError extends Error {
