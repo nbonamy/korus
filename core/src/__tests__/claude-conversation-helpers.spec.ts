@@ -139,6 +139,7 @@ describe('provider conversation boundaries', () => {
         { type: 'attachment', attachment: { kind: 'image', name: 'image.png', path: '/tmp/image.png', url: 'blob:image', mimeType: 'image/png' } },
         { type: 'media', itemId: 'media-1', media: { url: 'https://example.com/image.png', alt: 'Preview', mimeType: 'image/png', prompt: 'Draw it', title: 'Image' } },
         { type: 'reasoning', itemId: 'reasoning-1', summaryIndex: 0, summary: 'Thinking' },
+        { type: 'text', itemId: 'text-partial', phase: 'partial_answer', text: 'An intermediate answer' },
         { type: 'text', itemId: 'text-1', phase: 'final_answer', text: 'Done' },
         { type: 'tool', id: 'tool-1', kind: 'command', title: 'Test', status: 'completed', statusText: 'done', body: 'pass', metadata: { command: 'npm test' } },
         { type: 'status', text: 'Complete' },

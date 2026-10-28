@@ -287,7 +287,7 @@ export type RendererMessagePart =
   | { type: 'media'; media: RendererMessageMedia; itemId?: string }
   | SurfaceMessageQuestionPart
   | { type: 'reasoning'; summary: string; itemId: string; summaryIndex: number }
-  | { type: 'text'; text: string; itemId?: string; phase?: 'commentary' | 'final_answer' }
+  | { type: 'text'; text: string; itemId?: string; phase?: 'commentary' | 'partial_answer' | 'final_answer' }
   | {
     type: 'tool';
     id: string;
