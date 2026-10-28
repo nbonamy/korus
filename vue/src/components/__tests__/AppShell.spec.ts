@@ -742,6 +742,10 @@ describe('AppShell authentication and conversation', () => {
   });
 
   it('shows the same celebrated completion after GitHub is skipped', async () => {
+    vi.useFakeTimers();
+    // A cleared celebration can still have an expiry scheduled from another flow.
+    useConfetti().celebrate({ durationMs: 0 });
+    useConfetti().clear();
     setFirstRunOnboardingStage('repositories');
     window.app = {
       getCodexAuthentication: vi.fn().mockResolvedValue({
@@ -758,6 +762,7 @@ describe('AppShell authentication and conversation', () => {
 
     expect(wrapper.find('.repositories-onboarding').exists()).toBe(false);
     expect(wrapper.get('.onboarding-complete').text()).toContain("You're all set.");
+    await vi.advanceTimersByTimeAsync(400);
     expect(useConfetti().bursts.value).toHaveLength(1);
     wrapper.unmount();
   });
