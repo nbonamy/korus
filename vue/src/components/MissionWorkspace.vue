@@ -135,6 +135,8 @@
       <MissionConversationRail
         v-model:selected-agent-id="conversationAgentId"
         :mission="mission"
+        :agents="agents"
+        :unread-agent-ids="unreadAgentIds"
         @open-conversation="emit('open-conversation', $event)"
       >
         <template #conversation="{ agentId }"><slot name="conversation" :agent-id="agentId" /></template>
@@ -197,6 +199,7 @@ import type { MissionWorkspaceOpenRequest } from './MissionWorkspaceOpenIn.vue';
 const props = withDefaults(defineProps<{
   agents?: Agent[];
   sidebarCollapsed?: boolean;
+  unreadAgentIds?: string[];
   executeMission?: (input: MissionExecutionInput) => Promise<void>;
   implementationStartProgress?: MissionImplementationStartProgress | null;
   mission: Mission;

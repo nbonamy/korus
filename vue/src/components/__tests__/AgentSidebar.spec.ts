@@ -636,6 +636,42 @@ describe('mission navigation', () => {
     expect(group.find('.agent-sidebar__agent').exists()).toBe(false);
   });
 
+  it('shows a mission as needing input or unread from its agents, like an agent', async () => {
+    const { createMission } = await import('@workspace/core/missions');
+    const { createInitialSnapshot } = await import('@workspace/core/snapshot-construction');
+    const snapshot = createInitialSnapshot();
+    const mission = createMission(snapshot, { outcome: 'Add team billing', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
+    mission.stageAgentIds = { requirements: 'lead' };
+    mission.execution = { runs: [{ id: 'run-1', stage: 'implementation', memberId: 'm', workerId: 'api', status: 'running', skills: [], feedback: '', startedAt: '' }] } as never;
+    const member = (id: string, type: 'idle' | 'working' | 'awaitingInput') => ({ ...agents[0]!, id, status: { type } }) as Agent;
+    const wrapper = mount(AgentSidebar, {
+      props: { agents: [member('lead', 'idle'), member('api', 'idle')], missions: [mission], activeAgentId: null, teamName: 'Team' },
+      global: { components: { ElPopover } },
+    });
+    const dot = () => wrapper.get('[data-group-kind="missions"] .agent-sidebar__status');
+    expect(dot().classes()).not.toContain('agent-sidebar__status--unread');
+    expect(dot().attributes('data-status')).toBe('idle');
+    await wrapper.setProps({ agents: [member('lead', 'working'), member('api', 'idle')] });
+    expect(dot().attributes('data-status')).toBe('working');
+    await wrapper.setProps({ unreadAgentIds: ['api'] });
+    expect(dot().classes()).not.toContain('agent-sidebar__status--unread');
+    expect(dot().attributes('data-status')).toBe('working');
+    await wrapper.setProps({ unreadAgentIds: ['lead', 'api'] });
+    expect(dot().classes()).toContain('agent-sidebar__status--unread');
+    expect(dot().attributes('aria-label')).toBe('Unread activity');
+    await wrapper.setProps({ agents: [member('lead', 'idle'), member('api', 'awaitingInput')] });
+    const missionRow = wrapper.get('[data-group-kind="missions"]');
+    const badge = missionRow.get('.agent-sidebar__input-needed');
+    expect(badge.text()).toBe(wrapper.vm.$t('sidebar.input'));
+    expect(badge.attributes('aria-label')).toBe(wrapper.vm.$t('status.awaitingInput'));
+    expect(missionRow.find('.agent-sidebar__status').exists()).toBe(false);
+    await wrapper.setProps({ agents: [member('lead', 'idle'), member('api', 'idle')] });
+    expect(missionRow.find('.agent-sidebar__input-needed').exists()).toBe(false);
+    expect(dot().classes()).toContain('agent-sidebar__status--unread');
+    await wrapper.setProps({ unreadAgentIds: ['api'] });
+    expect(dot().attributes('data-status')).toBe('idle');
+  });
+
   it('disables mission creation while pending and surfaces creation failures', () => {
     const wrapper = mount(AgentSidebar, {
       props: {

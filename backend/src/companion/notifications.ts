@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { providerConversationEventView } from '@workspace/core/provider-conversation-event';
 import { agentDisplayName } from '@workspace/core/agent-display';
-import { companionTarget, type CompanionWorkspace } from '@workspace/core/companion-protocol';
+import { companionAgents, companionTarget, type CompanionWorkspace } from '@workspace/core/companion-protocol';
 import type { CompanionNotification } from '@workspace/core/companion-notification';
 
 /** Only live attention events create alerts. Snapshots and reconnects never replay them. */
@@ -35,7 +35,8 @@ export class CompanionNotifications {
   }
   create(event: AppBackendEvent, workspace: CompanionWorkspace, revision?: number): CompanionNotification | null {
     const view = providerConversationEventView(event);
-    const agent = workspace.agents.find(agent => agent.id === view.agentId);
+    // Mission workers are not in the team's agent list, but a person still has to answer them.
+    const agent = companionAgents(workspace).find(agent => agent.id === view.agentId);
     const team = workspace.teams.find(team => team.id === agent?.teamId);
     if (!agent || !team) return null;
     if (view.conversationId && view.conversationId !== agentConversationId(agent)) return null;
@@ -51,6 +52,8 @@ export class CompanionNotifications {
       const payload = view.payload as { status?: string; turn?: { id?: string; status?: string } };
       const turn = payload?.turn;
       if (view.type !== 'turn.completed' || (turn?.status ?? payload?.status) !== 'completed') return null;
+      // A mission runs on its own: only a request for input is worth a push, never a finished turn.
+      if (agent && missionAgentIds(workspace).has(agent.id)) return null;
       kind = 'completed'; identity = `${view.conversationId}/${view.turnId ?? turn?.id}`;
       if (!view.turnId && !turn?.id) return null;
     }
@@ -61,4 +64,14 @@ export class CompanionNotifications {
     this.seen.add(id); if (this.seen.size > 1024) this.seen.delete(this.seen.values().next().value!);
     return { id, target, kind, ...(revision === undefined ? {} : { revision }), name: agentDisplayName(agent).slice(0, 100), createdAt: Date.now() };
   }
+}
+
+/** Every mission lead and repository worker retains the mission's input-only alert policy. */
+function missionAgentIds(workspace: CompanionWorkspace): Set<string> {
+  const ids = new Set((workspace.missionAgents ?? []).map(agent => agent.id));
+  for (const mission of workspace.missionProgress ?? []) {
+    if (mission.leadAgentId) ids.add(mission.leadAgentId);
+    for (const ticket of mission.tickets) if (ticket.agentId) ids.add(ticket.agentId);
+  }
+  return ids;
 }
