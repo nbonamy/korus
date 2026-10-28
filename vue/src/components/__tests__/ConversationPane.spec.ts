@@ -17,11 +17,12 @@ import type { ChatTextAnnotation } from '../use-chat-text-annotations';
 import type { VisualizationAnnotation } from '../use-visualization-annotations';
 import { backendChoicesKey, provideBackendSwitch } from '../backend-selection';
 import { setElectronTestClient } from '../../test/client';
-import { antigravityBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { antigravityBackendCapabilities, claudeBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { createAgentComposerState } from '../../agent-composer-state';
 import type { AgentConversationView } from '../../app-state';
 import { agentConversationState } from '../use-agent-conversation';
+import { claudeConversationSnapshot } from '../../test/claude-conversation-fixtures';
 
 const agent: Agent = {
   id: 'agent-dina',
@@ -71,6 +72,37 @@ const nativeWindow = window as Window & { codexAppSdkNative?: CodexNativeRendere
 
 describe('ConversationPane', () => {
   afterEach(() => { delete nativeWindow.codexAppSdkNative; });
+  it('loads consecutive older Claude pages when more history remains', async () => {
+    const snapshot = createInitialSnapshot();
+    const owner = { ...agent, backend: 'claude' as const, backendSession: { kind: 'claude' as const, sessionId: 'session', transport: 'stdio' as const } };
+    const recent = { ...messages[1]!, id: 'recent' };
+    const older = { ...messages[1]!, id: 'older', turnId: 'older-turn' };
+    const view = shallowReactive<AgentConversationView>({ agent: owner, composer: createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(agent.id),
+      composerState: { text: '', selectionStart: 0, selectionEnd: 0 }, codexSnapshot: null,
+      claudeSnapshot: claudeConversationSnapshot([recent], { sessionId: 'session', historyState: { hasOlder: true, loadingOlder: false } }),
+      attachments: [], capabilities: claudeBackendCapabilities, approvals: [], sending: false, queuedPrompts: [],
+      history: { failed: false, hydrating: false, hasOlder: true, loadingOlder: false }, answeredClientRequestIds: new Set() });
+    const loadOlderHistory = vi.fn();
+    const controller = createCodexConversationPaneController({ state: agentConversationState(() => view), actions: { loadOlderHistory } });
+    const wrapper = mountPane({ controller, agent: owner });
+    try {
+      await flushPromises();
+      const viewport = wrapper.get<HTMLElement>('.codex-message-list__viewport');
+      Object.defineProperty(viewport.element, 'clientHeight', { configurable: true, value: 500 });
+      Object.defineProperty(viewport.element, 'scrollHeight', { configurable: true, value: 2000 });
+      viewport.element.scrollTop = 0;
+      await viewport.trigger('scroll');
+      expect(loadOlderHistory).toHaveBeenCalledTimes(1);
+      view.history = { ...view.history, loadingOlder: true };
+      await nextTick();
+      view.claudeSnapshot = claudeConversationSnapshot([older, recent], { sessionId: 'session', historyState: { hasOlder: true, loadingOlder: false } });
+      view.history = { ...view.history, loadingOlder: false };
+      await flushPromises();
+      viewport.element.scrollTop = 0;
+      await viewport.trigger('scroll');
+      expect(loadOlderHistory).toHaveBeenCalledTimes(2);
+    } finally { wrapper.unmount(); }
+  });
   // App-owned skills must remain selectable when the provider has no native skill support.
   it('offers an app-owned imagegen skill in the dollar picker without submitting a prompt', async () => {
     const snapshot = createInitialSnapshot();
