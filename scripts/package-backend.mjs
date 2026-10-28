@@ -3,6 +3,7 @@ import product from '../core/src/product.json' with { type: 'json' };
 import { builtinModules } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const backendDistDir = path.join(rootDir, 'backend/dist');
@@ -54,18 +55,19 @@ async function fileExists(filePath) {
 
 async function assertSelfContainedBackendBundle(filePath) {
   const source = await readFile(filePath, 'utf8');
-  const bareImports = [...source.matchAll(/^\s*import(?:\s+[^'";]+?\s+from)?\s*["']([^"']+)["'];?/gm)]
-    .map((match) => match[1])
-    .filter((specifier) => !isBundledRuntimeSpecifier(specifier));
-
-  if (bareImports.length > 0) {
-    throw new Error(`Backend bundle is not self-contained; found bare package imports: ${[...new Set(bareImports)].join(', ')}`);
+  const imports = [];
+  const visit = node => {
+    const specifier = ts.isImportDeclaration(node) || ts.isExportDeclaration(node) ? node.moduleSpecifier
+      : ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword ? node.arguments[0] : undefined;
+    if (specifier && ts.isStringLiteral(specifier) && !isBundledRuntimeSpecifier(specifier.text)) imports.push(specifier.text);
+    ts.forEachChild(node, visit);
+  };
+  visit(ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, false, ts.ScriptKind.JS));
+  if (imports.length > 0) {
+    throw new Error(`Backend bundle is not self-contained; found external imports: ${[...new Set(imports)].join(', ')}`);
   }
 }
 
 function isBundledRuntimeSpecifier(specifier) {
-  return specifier.startsWith('node:')
-    || specifier.startsWith('.')
-    || specifier.startsWith('/')
-    || builtinModules.includes(specifier);
+  return specifier.startsWith('node:') || builtinModules.includes(specifier);
 }
