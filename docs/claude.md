@@ -249,9 +249,10 @@ analytics calculates historical costs. Conversation history is not a pricing sou
   usage. Cloud/proxy routing or conflicting routing in either layer stays
   unpriced. Settings-resolution failures and unresolved policy helpers also
   leave the provider unknown without preventing the conversation from running.
-- Multiple server-side `iterations`, a different iteration model, or a different
-  iteration kind retain an unsupported pricing reason. They need a richer pricing
-  projection; no turn-wide context or cheaper rate is substituted.
+- A single `message` iteration can omit `model` and uses the enclosing message's
+  served model. An explicitly different model, multiple server-side `iterations`,
+  or a different iteration kind retain an unsupported pricing reason. They need a
+  richer pricing projection; no turn-wide context or cheaper rate is substituted.
 
 Request samples replace earlier revisions of the same response. Result `usage`
 continues to supply execution token/timing analytics and never creates request
