@@ -624,8 +624,15 @@ publishes only after saving.
   conversation; approval advances the Mission through its existing command.
 - Each ticket names exactly one repository. Worktrees are created only for
   affected repositories when code work begins, sharing one Mission suffix and
-  branch name. Repositories run in parallel, work within one repository is
-  serialized, and each worktree records a baseline commit for whole-Mission diff
+  branch name. Repositories run in parallel; work within one repository is
+  serialized unless the user opts into parallel implementation when approving
+  Tickets. That choice is persisted with the implementation model. Parallel
+  attempts use distinct worker conversations in the same repository worktree,
+  with dependency-ready tickets dispatched independently. Shared files and Git
+  state are a disclosed risk: workers stop for user guidance on conflicts and
+  commit only their own changes, using selected lines for mixed files. Other
+  workers' uncommitted changes do not prevent ticket submission. Each worktree
+  records a baseline commit for whole-Mission diff
   review. Failed or cancelled attempts keep their workspace and conversation.
   Implementation assignments bind a stable ticket ID to the run and repository;
   one-based ticket numbers are display context. Workers receive the full assigned
@@ -635,6 +642,9 @@ publishes only after saving.
   Once every ticket's implementation is accepted and saved, the orchestrator
   notifies the Mission lead with a reference to the implementation evidence.
   Continuing to Review remains a user decision.
+  Review waits for every implementation worker to stop, including accepted
+  workers still finishing their provider turns. Failed and cancelled attempts
+  require an explicit ticket retry; sibling completion does not restart them.
 - Tickets approval can persist an independent implementation provider, model and effort.
   Host catalog policy is checked before provisioning and worker launch. This
   selection applies to implementation workers and retries without changing the lead

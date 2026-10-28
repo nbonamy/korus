@@ -21,6 +21,24 @@ const dots = (wrapper: ReturnType<typeof render>) => wrapper.findAll('[role="tab
 });
 
 describe('mission conversation tabs', () => {
+  // The rail owns selection: losing a worker here makes its approvals unreachable from its ticket.
+  it('keeps same-repository workers independently selectable with their own attention', async () => {
+    const shared = structuredClone(mission);
+    shared.artifacts.tickets[1]!.repositoryPath = '/src/api';
+    const wrapper = mount(MissionConversationRail, { props: {
+      mission: shared, agents: [agent('lead'), agent('api', 'awaitingInput'), agent('web')], unreadAgentIds: ['web'], selectedAgentId: 'api',
+    }, slots: { conversation: '<div />' } });
+    const tabs = wrapper.findAll('[role="tab"]');
+    expect(tabs.map(tab => tab.text())).toStrictEqual(['Mission lead', 'api · 1', 'api · 2']);
+    expect(dots(wrapper)).toStrictEqual([null, 'needsInput', 'unread']);
+    expect(tabs[1]!.attributes('aria-selected')).toBe('true');
+    await tabs[2]!.trigger('click');
+    expect(wrapper.emitted('update:selectedAgentId')!.at(-1)).toStrictEqual(['web']);
+    await wrapper.setProps({ selectedAgentId: 'web', mission: { ...shared, revision: shared.revision + 1 } });
+    expect(wrapper.findAll('[role="tab"]')[2]!.attributes('aria-selected')).toBe('true');
+    expect(wrapper.emitted('open-conversation')!.at(-1)).toStrictEqual(['web']);
+  });
+
   it('puts a blue dot on a tab whose agent needs input and a red one on a tab with unread activity', () => {
     const wrapper = render([agent('lead'), agent('api', 'awaitingInput'), agent('web')], ['web']);
     expect(dots(wrapper)).toStrictEqual([null, 'needsInput', 'unread']);

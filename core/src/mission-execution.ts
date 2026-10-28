@@ -1,6 +1,7 @@
 import { product } from './product';
 import { interactiveReviewMarkdownGuidance } from './plan-review';
 import type { Mission, MissionRun, MissionStage, MissionTicketAssignment, MissionWorkspace } from './mission-types';
+import type { Agent } from './contracts';
 
 export type {
   MissionArtifactReadResult,
@@ -40,6 +41,13 @@ export function missionCreatedWorkspaces(mission?: Mission | null): MissionWorks
 
 export function pendingMissionRun(mission: Mission): MissionRun | undefined {
   return mission.execution?.runs.slice().reverse().find(run => ['preparing', 'running', 'awaitingReview'].includes(run.status));
+}
+
+/** Submission accepts evidence before the provider turn necessarily stops editing. */
+export function missionImplementationBusy(mission: Mission, agents: readonly Pick<Agent, 'id' | 'status'>[]): boolean {
+  const runs = mission.execution?.runs.filter(run => run.stage === 'implementation') ?? [];
+  return runs.some(run => ['preparing', 'running', 'awaitingReview'].includes(run.status))
+    || agents.some(agent => runs.some(run => run.workerId === agent.id) && ['working', 'awaitingInput'].includes(agent.status.type));
 }
 
 /** Stable IDs own new assignments; index fallback keeps saved legacy runs readable. */
@@ -83,6 +91,9 @@ export function missionDeveloperInstructions(mission: Mission, run: MissionRun, 
       : `This stage runs from the ${product.name}-owned mission home. No Git worktree is attached yet.`,
     `This is an explicitly assigned Mission task. The ${product.name}-owned Mission skill controls its procedure; repository instructions own project conventions. User approval of artifacts and delivery remains required.`,
     instructions[run.stage],
+    run.stage === 'implementation' && mission.execution?.parallelImplementation
+      ? 'Other agents may be working concurrently in this same worktree, including on the same files. If you detect a conflict or cannot safely distinguish your changes, stop work and ask the user how to proceed. Preserve all other agents’ work. Commit only changes you made for your assigned ticket. If a file contains changes from multiple agents, stage and commit only your own lines or hunks; inspect the staged diff before committing. Never stage the entire worktree or commit another agent’s staged changes. Other agents may leave uncommitted changes: your ticket can finish with their changes still present, provided all of your intended changes are committed.'
+      : '',
     run.stage === 'requirements' ? `Requirements always use interactive review. Write the canonical Mission brief in this format: ${interactiveReviewMarkdownGuidance}` : '',
     run.skills.length ? `Load the assigned procedure through ${product.mcpServerName} MCP before acting: ${run.skills.map(skill => `read-skill with name="${skill.name}"`).join(', ')}.` : 'This stage has no agent-run skill.',
     run.feedback ? `User-provided context and feedback:\n${run.feedback}` : '',

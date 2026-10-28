@@ -81,6 +81,8 @@ export type MissionExecution = {
   teamId: string;
   debugFixture?: true;
   implementationModel?: MissionImplementationModel;
+  /** Opt-in shared-checkout execution; absent means one implementation worker per repository. */
+  parallelImplementation?: boolean;
   repoPath?: string;
   memberIds: string[];
   workspace?: { path: string; branch: string; baseSha?: string; deleted?: true };
@@ -122,7 +124,7 @@ export type MissionExecutionInput = { id: string; revision: number } & (
   | { action: 'configure'; teamId: string; memberIds: string[] }
   | { action: 'attachRepository'; repoPath: string }
   | { action: 'run'; memberId?: string; ticketIndex?: number; feedback?: string }
-  | { action: 'accept'; runId: string; implementationModel?: MissionImplementationModel }
+  | { action: 'accept'; runId: string; implementationModel?: MissionImplementationModel; parallelImplementation?: boolean }
   | { action: 'continueToReview' }
   | { action: 'cancel'; runId: string }
   | { action: 'selectReviewFinding'; findingId: string; selected: boolean }

@@ -40,6 +40,100 @@ function setup() {
 }
 
 describe('mission execution', () => {
+  it('opts into independent workers in one checkout, preserves dependencies and leaves stopped tickets stopped', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'tickets';
+      mission.artifacts.requirements = { problem: 'Billing', acceptance: 'Owner pays' };
+    });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const lead = h.current().execution!.runs[0]!;
+    const first = await h.service.upsertTicket(lead.workerId!, { title: 'Account', body: 'Account API.', repositoryPath });
+    const second = await h.service.upsertTicket(lead.workerId!, { title: 'Invoice', body: 'Invoice API.', repositoryPath });
+    await h.service.upsertTicket(lead.workerId!, { title: 'Checkout', body: 'Join both APIs.', repositoryPath, blockedByTicketIds: [first.ticketId, second.ticketId] });
+    await h.service.submit(lead.workerId!, { summary: 'Ready', artifacts: structuredClone(h.current().artifacts) });
+    await expect(h.command({ action: 'accept', runId: lead.id, parallelImplementation: 'true' })).rejects.toThrow('parallel implementation');
+    await h.command({ action: 'accept', runId: lead.id, parallelImplementation: true });
+    await h.service.waitForLaunches();
+    expect(h.current().execution!.parallelImplementation).toBe(true);
+    expect(h.persisted.mock.calls.at(-1)![0].missions[0].execution.parallelImplementation).toBe(true);
+    expect(h.ports.createWorktree).toHaveBeenCalledTimes(1);
+    const workers = h.current().execution!.runs.filter(run => run.stage === 'implementation');
+    expect(workers.map(run => run.ticketIndex)).toStrictEqual([0, 1]);
+    expect(new Set(workers.map(run => run.workerId)).size).toBe(2);
+    for (const run of workers) {
+      expect(run.status).toBe('running');
+      expect(h.snapshot.agents.find(agent => agent.id === run.workerId)!.folder).toBe(h.current().execution!.workspaces![0]!.path);
+      expect(h.service.developerInstructionsForAgent(run.workerId!)).toContain('concurrently');
+    }
+    const evidence = { changes: 'Own lines committed.', tests: 'API checks passed.' };
+    await h.command({ action: 'cancel', runId: workers[1]!.id });
+    await h.service.submit(workers[0]!.workerId!, { summary: 'Account done', ticketId: first.ticketId, implementation: evidence });
+    await h.service.agentFinished(workers[0]!.workerId!, 'account-turn');
+    await h.service.waitForLaunches();
+    expect(h.current().execution!.runs.filter(run => run.stage === 'implementation')).toHaveLength(2);
+    await expect(h.service.submit(workers[1]!.workerId!, { summary: 'Late invoice', ticketId: second.ticketId, implementation: evidence })).rejects.toThrow('active run');
+    await h.command({ action: 'run', ticketIndex: 1 }); await h.service.waitForLaunches();
+    const retry = h.current().execution!.runs.at(-1)!;
+    expect(retry.workerId).not.toBe(workers[0]!.workerId);
+    expect(retry.workerId).not.toBe(workers[1]!.workerId);
+    h.snapshot.agents.find(agent => agent.id === retry.workerId)!.status = { type: 'working' };
+    await h.service.submit(retry.workerId!, { summary: 'Invoice done', ticketId: second.ticketId, implementation: evidence });
+    await h.service.waitForLaunches();
+    const checkout = h.current().execution!.runs.at(-1)!;
+    expect(checkout).toMatchObject({ stage: 'implementation', ticketIndex: 2, status: 'running' });
+    expect(new Set([...workers, retry, checkout].map(run => run.workerId)).size).toBe(4);
+    // A sibling's new assignment must not depend on the submitter finishing its turn.
+    await h.service.agentFinished(workers[0]!.workerId!, 'account-turn');
+    expect(h.current().execution!.runs.at(-1)!.status).toBe('running');
+    await h.service.submit(checkout.workerId!, { summary: 'Checkout done', ticketId: checkout.ticketId, implementation: evidence });
+    await expect(h.command({ action: 'continueToReview' })).rejects.toThrow('still active');
+    h.snapshot.agents.find(agent => agent.id === retry.workerId)!.status = { type: 'idle' };
+    await h.service.agentFinished(retry.workerId!, 'invoice-turn');
+    await h.service.agentFinished(checkout.workerId!, 'checkout-turn');
+    expect(h.current().artifacts.tickets.every(ticket => ticket.done)).toBe(true);
+    expect(h.current().artifacts.implementation.changes.match(/Own lines committed/g)).toHaveLength(3);
+    await h.command({ action: 'continueToReview' }); await h.service.waitForLaunches();
+    expect(h.current().stage).toBe('review');
+  });
+
+  it('does not start a cancelled parallel assignment after workspace refresh finishes', async () => {
+    const h = setup();
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.execution!.parallelImplementation = true;
+      mission.artifacts.tickets = [{ id: 'mission-ticket-one', title: 'Account', repositoryPath: h.originalAgents[0]!.folder!, done: false }];
+    });
+    let release!: () => void;
+    let entered!: () => void;
+    const refreshing = new Promise<void>(resolve => { entered = resolve; });
+    h.ports.refreshWorkspace.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; entered(); }));
+    await h.command({ action: 'run' });
+    await refreshing;
+    await h.command({ action: 'cancel', runId: h.current().execution!.runs[0]!.id });
+    release(); await h.service.waitForLaunches();
+    expect(h.current().execution!.runs[0]!.status).toBe('cancelled');
+    expect(h.ports.continueStage).not.toHaveBeenCalled();
+  });
+
+  it('starts newly approved implementation even when an earlier backlog attempt was cancelled', async () => {
+    const h = setup();
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'tickets';
+      mission.artifacts.requirements = { problem: 'Billing', acceptance: 'Owner pays' };
+      mission.artifacts.tickets = [{ id: 'mission-ticket-one', title: 'Account', repositoryPath: h.originalAgents[0]!.folder!, done: false }];
+      const base = { memberId: h.originalAgents[0]!.id, skills: [], feedback: '', startedAt: '' };
+      mission.execution!.runs = [
+        { ...base, id: 'old-attempt', stage: 'implementation', ticketIndex: 0, ticketId: 'mission-ticket-one', status: 'cancelled' },
+        { ...base, id: 'new-backlog', stage: 'tickets', status: 'awaitingReview', proposal: structuredClone(mission.artifacts) },
+      ];
+    });
+    await h.command({ action: 'accept', runId: 'new-backlog', parallelImplementation: true });
+    await h.service.waitForLaunches();
+    expect(h.current().execution!.runs.at(-1)).toMatchObject({ stage: 'implementation', ticketId: 'mission-ticket-one', status: 'running' });
+  });
+
   it('retains Mission tools and accepts a later result after an implementation turn ends without submitting', async () => {
     const h = setup();
     await h.configure();

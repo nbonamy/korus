@@ -50,7 +50,7 @@ import { useI18n } from 'vue-i18n';
 import type { Agent } from '@workspace/core/contracts';
 import type { Mission } from '@workspace/core/missions';
 import { agentAttention } from '@workspace/core/mission-attention';
-import { pendingMissionRun } from '@workspace/core/mission-execution';
+import { missionRunTicketIndex, pendingMissionRun } from '@workspace/core/mission-execution';
 import { CodeIcon, SparklesIcon, TargetArrowIcon } from '../shared/icons/app-icons';
 
 type Conversation = { key: string; agentId: string; run: NonNullable<Mission['execution']>['runs'][number] };
@@ -104,17 +104,18 @@ function tabTitle(conversation: Conversation): string {
   if (conversation.run.stage === 'implementation') {
     const repositoryPath = conversation.run.repositoryPath
       ?? props.mission.artifacts.tickets[conversation.run.ticketIndex ?? -1]?.repositoryPath;
-    return repositoryPath?.split(/[\\/]/u).filter(Boolean).at(-1) ?? t('missions.builder');
+    const name = repositoryPath?.split(/[\\/]/u).filter(Boolean).at(-1) ?? t('missions.builder');
+    const siblings = conversations.value.filter(candidate => candidate.run.stage === 'implementation'
+      && (candidate.run.repositoryPath ?? props.mission.artifacts.tickets[candidate.run.ticketIndex ?? -1]?.repositoryPath) === repositoryPath);
+    const index = missionRunTicketIndex(props.mission, conversation.run);
+    return siblings.length > 1 && index !== undefined ? `${name} · ${index + 1}` : name;
   }
   return t('missions.missionLead');
 }
 
 function conversationKey(run: Conversation['run']): string {
   if (run.stage !== 'implementation') return 'mission-lead';
-  const repositoryPath = run.repositoryPath
-    ?? props.mission.artifacts.tickets[run.ticketIndex ?? -1]?.repositoryPath
-    ?? run.workerId;
-  return `repository:${repositoryPath}`;
+  return `worker:${run.workerId}`;
 }
 </script>
 

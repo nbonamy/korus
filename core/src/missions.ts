@@ -125,6 +125,7 @@ export function updateMission(snapshot: AppSnapshot, input: unknown): Mission {
 function isMissionExecution(v: unknown): v is MissionExecution {
   return record(v) && text(v.teamId) && (v.repoPath === undefined || text(v.repoPath)) && Array.isArray(v.memberIds) && v.memberIds.every(text)
     && (v.debugFixture === undefined || v.debugFixture === true)
+    && (v.parallelImplementation === undefined || typeof v.parallelImplementation === 'boolean')
     && (v.implementationModel === undefined || (record(v.implementationModel) && agentBackends.includes(v.implementationModel.backend as typeof agentBackends[number])
       && text(v.implementationModel.model) && !!v.implementationModel.model.trim()
       && (v.implementationModel.reasoningEffort === undefined || (text(v.implementationModel.reasoningEffort) && !!v.implementationModel.reasoningEffort.trim()))

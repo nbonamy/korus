@@ -129,6 +129,14 @@ test('Mission review keeps actions visible and applies the implementation model 
       await writeFile(path.join(process.env.MISSION_REVIEW_ARTIFACTS, 'comment-focus.json'), JSON.stringify(commentFocus, null, 2));
     }
     await page.goto(`${server.resolvedUrls.local[0]}mission-review-layout?tickets`);
+    await page.getByRole('button', { name: 'Implement', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Start implementation', exact: true });
+    await dialog.waitFor();
+    const parallel = dialog.getByRole('switch', { name: 'Allow parallel agents in the same repository', exact: true });
+    assert.equal(await parallel.getAttribute('aria-checked'), 'false');
+    assert.match(await dialog.innerText(), /Agents share files and Git state/);
+    await dialog.locator('.el-switch').click();
+    assert.equal(await parallel.getAttribute('aria-checked'), 'true');
     const modelPicker = page.getByRole('button', { name: 'Coding agent and model', exact: true });
     await modelPicker.waitFor();
     await modelPicker.click();
@@ -136,9 +144,12 @@ test('Mission review keeps actions visible and applies the implementation model 
     await page.getByRole('menuitemradio', { name: 'low', exact: true }).click();
     assert.match(await modelPicker.innerText(), /Luna/);
     assert.match(await modelPicker.innerText(), /low/);
-    await page.getByRole('button', { name: 'Approve and continue', exact: true }).click();
+    await page.getByRole('menuitemradio', { name: 'low', exact: true }).waitFor({ state: 'hidden' });
+    if (process.env.MISSION_REVIEW_ARTIFACTS) await page.screenshot({ path: path.join(process.env.MISSION_REVIEW_ARTIFACTS, 'parallel-implementation-dialog.png') });
+    await dialog.getByRole('button', { name: 'Start', exact: true }).click();
     const approval = await page.evaluate(() => window.lastApproval);
     assert.deepEqual(approval.implementationModel, { backend: 'codex', model: 'luna', reasoningEffort: 'low' });
+    assert.equal(approval.parallelImplementation, true);
     if (process.env.MISSION_REVIEW_ARTIFACTS) {
       await page.screenshot({ path: path.join(process.env.MISSION_REVIEW_ARTIFACTS, 'implementation-model.png') });
       await writeFile(path.join(process.env.MISSION_REVIEW_ARTIFACTS, 'implementation-model.json'), JSON.stringify(approval, null, 2));
