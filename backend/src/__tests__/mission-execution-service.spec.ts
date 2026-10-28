@@ -41,6 +41,67 @@ function setup() {
 }
 
 describe('mission execution', () => {
+  it('stops a lock owner when turn completion releases the lock during interruption', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.execution!.parallelImplementation = true;
+      mission.execution!.workspaces = [{ repositoryPath, path: '/shared/checkout', branch: 'mission/test' }];
+      mission.artifacts.tickets = [{ id: 'a', title: 'A', repositoryPath, done: false }];
+    });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const run = h.current().execution!.runs[0]!;
+    h.service.agentStarted(run.workerId!, 'turn-a');
+    h.snapshot.agents.find(agent => agent.id === run.workerId)!.status = { type: 'working' };
+    await h.service.acquireCommitLock(run.workerId!);
+    h.ports.interrupt.mockImplementation(async () => { await h.service.agentFinished(run.workerId!, 'turn-a'); });
+    await h.command({ action: 'cancel', runId: run.id });
+    expect(h.current().execution!.runs[0]!.status).toBe('cancelled');
+    expect(h.current().execution!.workspaces![0]!.commitLock).toBeUndefined();
+    expect(h.persisted.mock.calls.at(-1)![0].missions[0].execution.runs[0].status).toBe('cancelled');
+  });
+
+  it('finishes an unsubmitted turn when explicit release races with completion', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.execution!.parallelImplementation = true;
+      mission.execution!.workspaces = [{ repositoryPath, path: '/shared/checkout', branch: 'mission/test' }];
+      mission.artifacts.tickets = [{ id: 'a', title: 'A', repositoryPath, done: false }];
+    });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const run = h.current().execution!.runs[0]!;
+    h.service.agentStarted(run.workerId!, 'turn-a');
+    await h.service.acquireCommitLock(run.workerId!);
+    const release = h.service.releaseCommitLock(run.workerId!);
+    const completion = h.service.agentFinished(run.workerId!, 'turn-a');
+    await Promise.all([release, completion]);
+    expect(h.current().execution!.workspaces![0]!.commitLock).toBeUndefined();
+    expect(h.current().execution!.runs[0]!.status).toBe('failed');
+    expect(h.persisted.mock.calls.at(-1)![0].missions[0].execution.runs[0].status).toBe('failed');
+  });
+
+  it('retries completion after a lock release cannot be persisted', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.execution!.parallelImplementation = true;
+      mission.execution!.workspaces = [{ repositoryPath, path: '/shared/checkout', branch: 'mission/test' }];
+      mission.artifacts.tickets = [{ id: 'a', title: 'A', repositoryPath, done: false }];
+    });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const run = h.current().execution!.runs[0]!;
+    h.service.agentStarted(run.workerId!, 'turn-a');
+    await h.service.acquireCommitLock(run.workerId!);
+    h.persisted.mockRejectedValueOnce(new Error('storage unavailable'));
+    await expect(h.service.agentFinished(run.workerId!, 'turn-a')).rejects.toThrow('storage unavailable');
+    await h.service.agentFinished(run.workerId!, 'turn-a');
+    expect(h.current().execution!.workspaces![0]!.commitLock).toBeUndefined();
+    expect(h.current().execution!.runs[0]!.status).toBe('failed');
+  });
   it('publishes the only revision when concurrent recovery checks clear the same lock', async () => {
     const h = setup();
     const owner = h.originalAgents[0]!;

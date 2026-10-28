@@ -115,10 +115,15 @@ export class MissionExecutionService {
         if (!deferred.runIds.length) this.postTurnLaunches.delete(worker.id);
       }
       if (worker && worker.status.type !== 'idle' && worker.status.type !== 'error') await this.ports.interrupt(worker);
-      await this.change(input, current => {
-        const run = current.execution!.runs.find(run => run.id === input.runId)!;
-        run.status = 'cancelled'; run.finishedAt = new Date().toISOString();
+      await this.ports.missions.change(input.id, current => {
+        const latest = current.execution?.runs.find(candidate => candidate.id === input.runId);
+        if (current.status === 'completed' || current.stage !== run.stage || !latest || latest.workerId !== run.workerId
+          || !(['preparing', 'running', 'awaitingReview'].includes(latest.status) || (worker && latest.status === 'failed'))) {
+          throw new Error('This mission changed. Reload before continuing.');
+        }
+        latest.status = 'cancelled'; latest.finishedAt = new Date().toISOString();
       });
+      await this.ports.publish();
       return;
     }
     if (input.action === 'selectReviewFinding') {
@@ -623,12 +628,24 @@ export class MissionExecutionService {
 
   async releaseCommitLock(agentId: string, expectedTurnId?: string): Promise<{ released: true }> {
     const mission = this.ports.snapshot.missions?.find(candidate => candidate.execution?.workspaces?.some(workspace => workspace.commitLock?.agentId === agentId));
-    if (!mission) throw new Error('You do not own a Mission commit lock.');
-    await this.ports.missions.change(mission.id, current => {
+    if (!mission) {
+      if (expectedTurnId) return { released: true };
+      throw new Error('You do not own a Mission commit lock.');
+    }
+    const alreadyReleased = Symbol('lock already released');
+    const released = await this.ports.missions.changeAsync(mission.id, current => {
       const workspace = current.execution?.workspaces?.find(candidate => candidate.commitLock?.agentId === agentId && (!expectedTurnId || candidate.commitLock.turnId === expectedTurnId));
-      if (!workspace) throw new Error('You do not own a Mission commit lock.');
+      if (!workspace) {
+        if (expectedTurnId) throw alreadyReleased;
+        throw new Error('You do not own a Mission commit lock.');
+      }
       delete workspace.commitLock;
+      return true;
+    }).catch(error => {
+      if (error === alreadyReleased) return false;
+      throw error;
     });
+    if (!released) return { released: true };
     await this.ports.publish();
     for (const wake of this.commitLockWaiters) wake();
     return { released: true };
@@ -657,6 +674,15 @@ export class MissionExecutionService {
       if (completed.size > 64) completed.delete(completed.values().next().value!);
       this.completedTurns.set(agentId, completed);
     }
+    try {
+      await this.finishAgentTurn(agentId, turnId);
+    } catch (error) {
+      if (turnId) this.completedTurns.get(agentId)?.delete(turnId);
+      throw error;
+    }
+  }
+
+  private async finishAgentTurn(agentId: string, turnId?: string): Promise<void> {
     if (turnId && this.ports.snapshot.missions?.some(mission => mission.execution?.workspaces?.some(workspace => workspace.commitLock?.agentId === agentId && workspace.commitLock.turnId === turnId))) {
       await this.releaseCommitLock(agentId, turnId);
     }
