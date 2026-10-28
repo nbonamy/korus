@@ -18,6 +18,12 @@ describe('companion attention events', () => {
       target: { hostId: 'host', locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: '{"kind":"codex","threadId":"thread"}' } });
     expect(source.create(completed(), workspace)).toBeNull();
     expect(source.accepts({ type: 'snapshot.updated', payload: {} } as AppBackendEvent)).toBe(false);
+    for (const [name, expected] of [[null, 'korus - feature/notifications'], ['Builder', 'Builder']] as const) {
+      const repository: CompanionWorkspace = { ...workspace, agents: [{ ...workspace.agents[0]!, name,
+        workspace: { kind: 'git', folder: '/private', repositoryRoot: '/private', primaryWorktreeRoot: '/private', repositoryName: 'korus', branch: 'feature/notifications', isLinkedWorktree: false, updatedAt: '' },
+      }] };
+      expect(new CompanionNotifications('host').create(completed(), repository)?.name).toBe(expected);
+    }
   });
   it('uses normalized requests for approval/question identity and handles Claude completion', () => {
     const source = new CompanionNotifications('host');

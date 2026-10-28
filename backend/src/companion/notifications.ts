@@ -67,7 +67,10 @@ export class CompanionNotifications {
     const id = createHash('sha256').update(JSON.stringify([target, kind, identity])).digest('hex');
     if (this.seen.has(id)) return null;
     this.seen.add(id); if (this.seen.size > 1024) this.seen.delete(this.seen.values().next().value!);
-    return { id, target, kind, ...(revision === undefined ? {} : { revision }), name: agentDisplayName(agent).slice(0, 100), createdAt: Date.now() };
+    const label = agentDisplayName(agent);
+    const name = !agent.name?.trim() && agent.sessionKind !== 'quickChat' && agent.workspace?.kind === 'git'
+      ? `${agent.workspace.repositoryName} - ${agent.workspace.branch ?? label}` : label;
+    return { id, target, kind, ...(revision === undefined ? {} : { revision }), name: name.slice(0, 100), createdAt: Date.now() };
   }
 }
 
