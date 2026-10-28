@@ -6,7 +6,9 @@
           $t(
             grouping === "provider"
               ? "analytics.providerUsage"
-              : "analytics.modelUsage",
+              : grouping === "repository"
+                ? "analytics.repositoryUsage"
+                : "analytics.modelUsage",
           )
         }}
       </h3>

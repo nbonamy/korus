@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import {
   averageTtftSeconds,
   chartSeries,
+  groupingOptions,
   niceScale,
   smoothPath,
   sumSpeed,
@@ -101,4 +102,21 @@ it("drops the cents from headline and axis figures once they reach $10, and keep
   expect(usdCompactFormat(null)).toBe("Unavailable");
   expect(measureFormat(1041.24, "cost")).toBe("$1,041");
   expect(measureFormat(1041.24, "cost", false)).toBe("$1,041.24");
+});
+
+it("names repositories by their folder, tells same-named ones apart, and gives turns without one their own label", () => {
+  const series = chartSeries(
+    summary(["/src/korus", "/work/api", "/home/api", "Unknown"]),
+    "turns",
+    "repository",
+  );
+  expect(Object.fromEntries(series.map((entry) => [entry.key, entry.label]))).toStrictEqual({
+    "/src/korus": "korus",
+    "/work/api": "work/api",
+    "/home/api": "home/api",
+    Unknown: "No repository",
+  });
+  // Repositories never borrow a provider's colour: those hues mean Codex, Claude and Antigravity.
+  expect(series.filter((entry) => entry.key !== "Unknown").every((entry) => !/--chart-[123]\)/.test(entry.color))).toBe(true);
+  expect(groupingOptions().map((option) => option.value)).toStrictEqual(["provider", "model", "repository"]);
 });

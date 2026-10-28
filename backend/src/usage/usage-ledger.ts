@@ -614,6 +614,28 @@ export class UsageLedger {
     this.since = since;
     db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
   }
+  /**
+   * One-time fix for turns saved with a working folder instead of the repository. `resolve` maps the
+   * distinct folders to repositories; if it fails nothing is marked done, so the next start tries again.
+   */
+  async migrateRepositories(resolve: (folders: string[]) => Promise<Map<string, string>>): Promise<void> {
+    const db = this.open();
+    if (!db) return;
+    if (db.prepare("SELECT value FROM metadata WHERE key='repository_identity'").get()) return;
+    const folders = db.prepare("SELECT DISTINCT repository FROM executions WHERE repository IS NOT NULL").all()
+      .map((row) => String(row.repository));
+    const mapping = await resolve(folders);
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const update = db.prepare("UPDATE executions SET repository=? WHERE repository=?");
+      for (const [folder, repository] of mapping) if (folder !== repository) update.run(repository, folder);
+      db.prepare("INSERT OR REPLACE INTO metadata VALUES('repository_identity','1')").run();
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
   async close(): Promise<void> {
     this.db?.close();
     this.db = null;

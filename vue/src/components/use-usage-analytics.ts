@@ -1,4 +1,4 @@
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { ElMessageBox } from "element-plus";
 import type { UsageFilter, UsageSummary } from "@workspace/core/usage";
 import type { AgentBackend } from "@workspace/core/contracts";
@@ -15,6 +15,8 @@ export type UsageView = "usage" | "performance";
 export type UsageProjections = {
   provider: UsageSummary;
   model: UsageSummary;
+  /** Read only once someone groups by repository, so the other views do not pay for it. */
+  repository?: UsageSummary;
   /** The period before the selection, for the change badge. */
   previous: UsageSummary | null;
   /** The activity grid's own window, independent of every filter. */
@@ -109,7 +111,7 @@ export function useUsageAnalytics() {
         ...providerQuery(),
       };
       const days = periodDays.value;
-      const [provider, model, activity, previous] = await Promise.all([
+      const [provider, model, activity, previous, repository] = await Promise.all([
         appApi!.getUsage({ ...query, group: "provider" }),
         appApi!.getUsage({ ...query, group: "model" }),
         // Context only: failing to read these never blocks the view. The
@@ -125,6 +127,9 @@ export function useUsageAnalytics() {
             group: "provider",
           })
           .catch(() => null),
+        grouping.value === "repository"
+          ? appApi!.getUsage({ ...query, group: "repository" })
+          : Promise.resolve(undefined),
       ]);
       if (disposed || current !== generation) return;
       if (provider.available === false || model.available === false)
@@ -132,6 +137,7 @@ export function useUsageAnalytics() {
       projections.value = {
         provider,
         model,
+        ...(repository ? { repository } : {}),
         activity: activity?.available === false ? null : activity,
         previous: previous?.available === false ? null : previous,
       };
@@ -153,6 +159,9 @@ export function useUsageAnalytics() {
     filter.value[key] = value;
     void load();
   }
+  watch(grouping, (next) => {
+    if (next === "repository" && !projections.value?.repository) void load(true);
+  });
   function setProvider(provider: string): void {
     filter.value.provider = provider;
     void load();

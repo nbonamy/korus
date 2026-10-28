@@ -1016,3 +1016,31 @@ it("hides unavailable cost tooltip rows and empty days while retaining measured 
     wrapper.unmount();
   }
 });
+
+it("groups usage by repository, naming each by its folder", async () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const getUsage = vi.fn(async (filter?: { group?: string }) => {
+    const rows = filter?.group === "repository"
+      ? [costRow("/src/korus", 12), costRow("/src/website", 3), costRow("Unknown", 1)]
+      : [costRow("claude", 16)];
+    return {
+      recordedSince: 1,
+      retainedSince: 1,
+      rows,
+      daily: [{ day: today, started: 3, measuredTurns: 3, tokens: null, groups: rows }],
+    };
+  });
+  setElectronTestClient({ getUsage });
+  const wrapper = mount(UsagePanel);
+  try {
+    await flushPromises();
+    await choose(wrapper, "#usage-grouping", "Repository");
+    expect(getUsage).toHaveBeenCalledWith(expect.objectContaining({ group: "repository" }));
+    const table = wrapper.get('[aria-label="Usage breakdown"]');
+    expect(table.findAll("thead th")[0]!.text()).toBe("Repository");
+    expect(table.findAll("tbody tr").map((row) => row.findAll("td")[0]!.text()).sort()).toStrictEqual(["No repository", "korus", "website"]);
+    expect(wrapper.get('[aria-label="Usage breakdown"]').element.closest("section")!.querySelector("h3")!.textContent).toContain("Repository usage");
+  } finally {
+    wrapper.unmount();
+  }
+});

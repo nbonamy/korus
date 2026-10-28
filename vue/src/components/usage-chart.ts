@@ -3,7 +3,7 @@ import type { AgentBackend } from "@workspace/core/contracts";
 import { backendDisplayName } from "@workspace/core/backend-driver";
 import { translate } from "../i18n";
 export type UsageMeasure = "turns" | "total" | "input" | "output" | "ratio" | "cost";
-export type UsageGrouping = "provider" | "model";
+export type UsageGrouping = "provider" | "model" | "repository";
 export type UsageSeries = {
   key: string;
   label: string;
@@ -108,6 +108,8 @@ function seriesColor(label: string, group: UsageGrouping): string {
   if (label === "Unknown") return "var(--color-text-muted)";
   if (group === "provider") return slot(providerSlots[label] ?? 4);
   const hash = hashOf(label);
+  // Repositories stay off the provider hues (1-3) so a colour never suggests a provider.
+  if (group === "repository") return shades[(hash >>> 3) % shades.length]!(slot(4 + (hash % 5)));
   const family = modelFamilies.find(([pattern]) => pattern.test(label))?.[1];
   return family
     ? shades[hash % shades.length]!(slot(family))
@@ -131,19 +133,33 @@ export function niceScale(
   const step = fractional ? unit * magnitude : Math.max(1, unit * magnitude);
   return { max: step * ticks, step };
 }
+/** A repository's folder name; when two share one, the folder above tells them apart. */
+function repositoryLabels(paths: string[]): Map<string, string> {
+  const parts = (value: string) => value.split(/[\\/]/u).filter(Boolean);
+  const names = new Map<string, number>();
+  for (const value of paths) names.set(parts(value).at(-1) ?? value, (names.get(parts(value).at(-1) ?? value) ?? 0) + 1);
+  return new Map(paths.map((value) => {
+    const segments = parts(value);
+    const name = segments.at(-1) ?? value;
+    return [value, (names.get(name) ?? 0) > 1 && segments.length > 1 ? segments.slice(-2).join("/") : name];
+  }));
+}
 export function chartSeries(
   summary: UsageSummary | undefined,
   measure: UsageMeasure | "speed",
   group: UsageGrouping,
 ): UsageSeries[] {
+  const repositoryNames = group === "repository" ? repositoryLabels((summary?.rows ?? []).map((row) => row.label)) : undefined;
   return sortUsageValues((summary?.rows ?? [])
     .map((row) => {
       return {
         key: row.label,
         label:
           row.label === "Unknown"
-            ? translate("analytics.unknownModel")
-            : group === "provider" &&
+            ? translate(group === "repository" ? "analytics.unknownRepository" : "analytics.unknownModel")
+            : repositoryNames
+              ? repositoryNames.get(row.label)!
+              : group === "provider" &&
                 ["claude", "codex", "antigravity"].includes(row.label)
               ? backendDisplayName(row.label as AgentBackend)
               : row.label,
@@ -231,6 +247,7 @@ export const measureLabel = (measure: UsageMeasure) =>
 export const groupingOptions = () => [
   { value: "provider" as const, label: translate("analytics.provider") },
   { value: "model" as const, label: translate("analytics.model") },
+  { value: "repository" as const, label: translate("analytics.repository") },
 ];
 export const seconds = (value: number) =>
   translate("analytics.seconds", { value: chartFormat(value) });

@@ -138,7 +138,9 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   const documents = new DocumentWorkspaceService(path.join(backendHomeDir(), "document-workspaces.json"));
   const localUsage = new UsageLedger(path.join(backendHomeDir(), 'usage.sqlite'));
   await localUsage.load();
-  const usage = new UsageService(localUsage, id => snapshot.agents.find(a => a.id === id));
+  const usage = new UsageService(localUsage, id => snapshot.agents.find(a => a.id === id), undefined, undefined, () => snapshot.agents);
+  // Turns saved before the repository was recorded carry a worktree folder; file them under their repository, once.
+  void usage.migrateRepositories();
   const mcpService: AppMcpService = new AppMcpService({
     retainDocument: (agentId, request) => documents.display(agentId, request),
     tasks,
