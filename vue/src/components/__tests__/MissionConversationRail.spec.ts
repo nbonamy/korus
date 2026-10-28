@@ -21,6 +21,15 @@ const dots = (wrapper: ReturnType<typeof render>) => wrapper.findAll('[role="tab
 });
 
 describe('mission conversation tabs', () => {
+  it('distinguishes the original attempt from a retry of the same ticket', async () => {
+    const retried = structuredClone(mission);
+    retried.execution!.runs.push(run('r4', 'implementation', 'retry', { ticketIndex: 0, status: 'running' }) as never);
+    const wrapper = mount(MissionConversationRail, { props: { mission: retried, agents: [agent('lead'), agent('api'), agent('web'), agent('retry')], selectedAgentId: 'api' }, slots: { conversation: '<div />' } });
+    const tabs = wrapper.findAll('[role="tab"]');
+    expect(tabs.map(tab => tab.text())).toStrictEqual(['Mission lead', 'api · 1 · attempt 1', 'web', 'api · 1 · attempt 2']);
+    await tabs[3]!.trigger('click');
+    expect(wrapper.emitted('update:selectedAgentId')!.at(-1)).toStrictEqual(['retry']);
+  });
   // The rail owns selection: losing a worker here makes its approvals unreachable from its ticket.
   it('keeps same-repository workers independently selectable with their own attention', async () => {
     const shared = structuredClone(mission);

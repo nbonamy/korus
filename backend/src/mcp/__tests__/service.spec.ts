@@ -669,12 +669,15 @@ describe('AppMcpService', () => {
     snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
     let active = true;
     const onSetMissionTitle = vi.fn().mockResolvedValue({ success: true, title: 'Add team billing' });
+    const acquireCommitLock = vi.fn().mockResolvedValue({ acquired: true });
+    const releaseCommitLock = vi.fn().mockResolvedValue({ released: true });
     service = new AppMcpService({
       snapshot,
       missionTools: {
         contextForAgent: agentId => active && agentId === 'agent-dina'
           ? { missionId: 'mission-1', runId: 'run-1', stage: 'requirements' }
           : undefined,
+        acquireCommitLock, releaseCommitLock,
         submitResult: vi.fn(),
         upsertTicket: vi.fn(),
         setTitle: onSetMissionTitle,
@@ -697,6 +700,11 @@ describe('AppMcpService', () => {
     expect((await callTool(url, 'agent-dina', 'read-skill', { name: 'mission-review' })).result.isError).toBe(true);
     expect((await callTool(url, 'agent-jesse', 'read-skill', { name: 'mission-shape-requirements' })).result.isError).toBe(true);
     expect(workerToolNames).toEqual(expect.arrayContaining(missionTools));
+    expect(workerToolNames).toEqual(expect.arrayContaining(['acquire-mission-commit-lock', 'release-mission-commit-lock']));
+    expect((await callTool(url, 'agent-dina', 'acquire-mission-commit-lock', {})).result.structuredContent).toStrictEqual({ acquired: true });
+    expect((await callTool(url, 'agent-dina', 'release-mission-commit-lock', {})).result.structuredContent).toStrictEqual({ released: true });
+    expect(acquireCommitLock).toHaveBeenCalledWith('agent-dina', expect.any(AbortSignal));
+    expect(releaseCommitLock).toHaveBeenCalledWith('agent-dina');
     expect(workerToolNames).not.toContain('set-mission-execution-policy');
     expect(workerToolNames).toContain('finish_turn');
     const ordinaryTools = await postJson(agentUrl(url, 'agent-jesse'), {

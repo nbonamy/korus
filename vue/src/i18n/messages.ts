@@ -269,6 +269,7 @@ export const messages = {
       approveAndContinue: 'Approve and continue', reviewInConversation: 'Review the artifact or ask for changes in chat.',
       approveTickets: 'Implement', startImplementation: 'Start implementation', startImplementationAction: 'Start',
       parallelImplementation: 'Allow parallel agents in the same repository',
+      attempt: 'attempt {count}',
       parallelImplementationWarning: 'Agents share files and Git state and may interfere with each other’s changes. If a conflict occurs, they will stop and ask for your guidance.',
       continueToReview: 'Continue to Review',
       implementationStartEyebrow: 'Starting work', implementationStartTitle: 'Preparing worktrees', implementationStartComplete: 'Agents are ready',

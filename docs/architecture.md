@@ -632,7 +632,11 @@ publishes only after saving.
   state are a disclosed risk: workers stop for user guidance on conflicts and
   commit only their own changes, using selected lines for mixed files. Other
   workers' uncommitted changes do not prevent ticket submission. Each worktree
-  records a baseline commit for whole-Mission diff
+  has a persisted cooperative commit lock owned by the worker and provider turn.
+  Parallel workers wait to acquire it before changing the Git index and release it after
+  committing; completed owner turns release it. This coordinates participating
+  workers, not external Git processes or concurrent edits to files.
+  Each worktree records a baseline commit for whole-Mission diff
   review. Failed or cancelled attempts keep their workspace and conversation.
   Implementation assignments bind a stable ticket ID to the run and repository;
   one-based ticket numbers are display context. Workers receive the full assigned

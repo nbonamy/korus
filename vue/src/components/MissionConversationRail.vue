@@ -108,7 +108,9 @@ function tabTitle(conversation: Conversation): string {
     const siblings = conversations.value.filter(candidate => candidate.run.stage === 'implementation'
       && (candidate.run.repositoryPath ?? props.mission.artifacts.tickets[candidate.run.ticketIndex ?? -1]?.repositoryPath) === repositoryPath);
     const index = missionRunTicketIndex(props.mission, conversation.run);
-    return siblings.length > 1 && index !== undefined ? `${name} · ${index + 1}` : name;
+    const attempts = siblings.filter(candidate => missionRunTicketIndex(props.mission, candidate.run) === index);
+    const label = siblings.length > 1 && index !== undefined ? `${name} · ${index + 1}` : name;
+    return attempts.length > 1 ? `${label} · ${t('missions.attempt', { count: attempts.indexOf(conversation) + 1 })}` : label;
   }
   return t('missions.missionLead');
 }

@@ -146,6 +146,8 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     tasks,
     persistSnapshot: () => saveBackendSnapshot(snapshot),
     missionTools: {
+      acquireCommitLock: (agentId, signal) => server.acquireMissionCommitLock(agentId, signal),
+      releaseCommitLock: agentId => server.releaseMissionCommitLock(agentId),
       contextForAgent: agentId => server.missionContext(agentId),
       submitResult: (agentId, input) => server.submitMissionResult(agentId, input),
       upsertTicket: (agentId, input) => server.upsertMissionTicket(agentId, input),

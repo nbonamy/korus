@@ -132,6 +132,7 @@ function isMissionExecution(v: unknown): v is MissionExecution {
       && (v.implementationModel.serviceTier === undefined || (text(v.implementationModel.serviceTier) && !!v.implementationModel.serviceTier.trim()))))
     && (v.workspaceName === undefined || (text(v.workspaceName) && !!v.workspaceName.trim()))
     && (v.workspaces === undefined || (Array.isArray(v.workspaces) && v.workspaces.every(workspace => record(workspace)
+      && (workspace.commitLock === undefined || (record(workspace.commitLock) && text(workspace.commitLock.agentId) && text(workspace.commitLock.runId) && text(workspace.commitLock.turnId)))
       && text(workspace.repositoryPath) && !!workspace.repositoryPath.trim()
       && text(workspace.path) && !!workspace.path.trim() && text(workspace.branch) && !!workspace.branch.trim()
       && (workspace.deleted === undefined || workspace.deleted === true)

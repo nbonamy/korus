@@ -69,7 +69,7 @@ export type MissionRun = {
   draftTickets?: MissionTicket[];
   implementationResult?: { changes: string; tests: string };
 };
-export type MissionWorkspace = { repositoryPath: string; path: string; branch: string; baseSha?: string; deleted?: true };
+export type MissionWorkspace = { repositoryPath: string; path: string; branch: string; baseSha?: string; deleted?: true; commitLock?: { agentId: string; runId: string; turnId: string } };
 export type MissionDelivery = {
   repositoryPath: string;
   agentId: string;

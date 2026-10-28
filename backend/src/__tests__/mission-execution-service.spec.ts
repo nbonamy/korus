@@ -40,6 +40,42 @@ function setup() {
 }
 
 describe('mission execution', () => {
+  it('coordinates index ownership between parallel workers and recovers it on turn completion', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.execution!.parallelImplementation = true;
+      mission.execution!.workspaces = [{ repositoryPath, path: '/shared/checkout', branch: 'mission/test' }];
+      mission.artifacts.tickets = [{ id: 'mission-ticket-a', title: 'A', repositoryPath, done: false }, { id: 'mission-ticket-b', title: 'B', repositoryPath, done: false }];
+    });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const [a, b] = h.current().execution!.runs;
+    h.service.agentStarted(a!.workerId!, 'worker-a-turn');
+    h.service.agentStarted(b!.workerId!, 'worker-b-turn');
+    expect(await h.service.acquireCommitLock(a!.workerId!)).toStrictEqual({ acquired: true });
+    expect(await h.service.acquireCommitLock(a!.workerId!)).toStrictEqual({ acquired: true });
+    const controller = new AbortController();
+    const cancelled = h.service.acquireCommitLock(b!.workerId!, controller.signal);
+    controller.abort();
+    await expect(cancelled).rejects.toThrow();
+    let waiting = true;
+    const pending = h.service.acquireCommitLock(b!.workerId!).then(result => { waiting = false; return result; });
+    await expect(h.service.releaseCommitLock(b!.workerId!)).rejects.toThrow();
+    expect(waiting).toBe(true);
+    await h.service.releaseCommitLock(a!.workerId!);
+    expect(await pending).toStrictEqual({ acquired: true });
+    expect(h.persisted.mock.calls.at(-1)![0].missions[0].execution.workspaces[0].commitLock).toMatchObject({ agentId: b!.workerId, turnId: 'worker-b-turn' });
+    await h.service.agentFinished(b!.workerId!, 'old-turn');
+    const restarted = new MissionExecutionService(h.ports);
+    restarted.agentStarted(a!.workerId!, 'worker-a-turn');
+    let waitingAfterRestart = true;
+    const resumed = restarted.acquireCommitLock(a!.workerId!).then(result => { waitingAfterRestart = false; return result; });
+    await Promise.resolve();
+    expect(waitingAfterRestart).toBe(true);
+    await restarted.agentFinished(b!.workerId!, 'worker-b-turn');
+    expect(await resumed).toStrictEqual({ acquired: true });
+  });
   it('opts into independent workers in one checkout, preserves dependencies and leaves stopped tickets stopped', async () => {
     const h = setup();
     const repositoryPath = h.originalAgents[0]!.folder!;
