@@ -50,8 +50,7 @@ describe('prompt automation configuration', () => {
     ]) expect(createAutomationInSnapshot(snapshot, bad as CreateAutomationInput)).toBeNull();
     createQuickChatInSnapshot(snapshot, { teamId: 'team-app', backend: 'claude' }, 'now', 'quick');
     expect(createAutomationInSnapshot(snapshot, { ...input, target: { kind: 'quickChat', agentId: 'quick' } })).not.toBeNull();
-    snapshot.teams[0]!.remoteConnectionId = 'remote';
-    expect(createAutomationInSnapshot(snapshot, input)).toBeNull();
+    snapshot.agents.find(agent => agent.id === 'agent-dina')!.remoteConnectionId = 'remote';
     expect(createAutomationInSnapshot(snapshot, { ...input, target: { kind: 'agent', agentId: 'agent-dina' } })).toBeNull();
     expect(updateAutomationInSnapshot(snapshot, { ...input, id: 'missing' })).toBeNull();
   });

@@ -140,12 +140,15 @@ describe('SettingsConnectionsPanel', () => {
           createdAt: '2026-06-14T10:00:00.000Z',
           updatedAt: '2026-06-14T10:00:00.000Z',
         }],
-        teams: [{
-          id: 'team-remote',
-          name: 'Remote Team',
-          color: '#1B4FB2',
-          agentIds: [],
+        agents: [{
+          id: 'agent-remote',
+          name: 'Remote agent',
+          folder: '/home/nicolas/src',
+          backend: 'codex',
+          status: { type: 'idle' },
           remoteConnectionId: 'connection-devbox',
+          createdAt: '2026-06-14T10:00:00.000Z',
+          updatedAt: '2026-06-14T10:00:00.000Z',
         }],
         checkRemoteConnection,
         listSourceFolders,
@@ -193,7 +196,7 @@ describe('SettingsConnectionsPanel', () => {
     expect(updateRemoteConnection).toHaveBeenCalledWith('connection-devbox', { sourceFolderPath: '/home/nicolas/src' });
     expect(checkRemoteConnection).toHaveBeenCalledWith('connection-devbox', true);
     expect(ElMessageBox.confirm).toHaveBeenCalledWith(
-      'devbox will be removed. This will also remove 1 connected team from this app: Remote Team. Remote agents, messages, and automations will keep running on the SSH host.',
+      'devbox will be removed. This will also remove 1 agent running there from this app. They keep running on the SSH host.',
       'Delete devbox?',
       {
         cancelButtonText: 'Cancel',

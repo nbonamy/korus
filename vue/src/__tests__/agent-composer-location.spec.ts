@@ -58,7 +58,8 @@ describe('composer catalog locations', () => {
     const remote = snapshot.agents[1]!;
     remote.teamId = 'remote-team';
     remote.folder = local.folder;
-    snapshot.teams.push({ id: remote.teamId, name: 'Remote', agentIds: [remote.id], remoteConnectionId: 'ssh-devbox' });
+    remote.remoteConnectionId = 'ssh-devbox';
+    snapshot.teams.push({ id: remote.teamId, name: 'Remote', agentIds: [remote.id] });
     const model = (id: string) => ({ id, model: id, displayName: id, isDefault: true });
     const listBackendModels = vi.fn(async (id: string) => [model(id === local.id ? 'local-model' : 'remote-model')]);
     stubElectronTestWindow({ app: { listBackendModels } });

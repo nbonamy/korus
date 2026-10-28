@@ -1,5 +1,5 @@
 import { computed, inject, provide, ref, watch, type ComputedRef, type InjectionKey, type Ref } from 'vue';
-import { enabledAgentBackends, providerConnectionsForTeam } from '@workspace/core/agent-backends';
+import { enabledAgentBackends, providerConnectionsForHost } from '@workspace/core/agent-backends';
 import type { AgentBackend, AgentModelSelection, AppSnapshot } from '@workspace/core/contracts';
 import { isAgentBackend } from '@workspace/core/contracts/shared';
 import type { ProviderConnection } from '@workspace/core/contracts/provider-setup';
@@ -43,7 +43,7 @@ export function provideBackendChoices(snapshot: () => AppSnapshot, connect: () =
       ? Object.fromEntries(Object.entries(value).filter(([, backend]) => isAgentBackend(backend)))
       : {};
   } catch { remembered.value = {}; }
-  provide(backendChoicesKey, computed(() => enabledAgentBackends({ providerConnections: providerConnectionsForTeam(snapshot()) })));
+  provide(backendChoicesKey, computed(() => enabledAgentBackends({ providerConnections: providerConnectionsForHost(snapshot()) })));
 }
 
 export function useConnectEngine(): () => void {
@@ -56,7 +56,8 @@ export function useNewAgentBackend(backend: Ref<AgentBackend | undefined>, choic
   }, { immediate: true });
 }
 
-export function useBackendChoices(teamId?: () => string | null | undefined): ComputedRef<AgentBackend[]> {
+/** Engines usable on one host; local when no connection is given. */
+export function useBackendChoices(host?: () => string | null | undefined): ComputedRef<AgentBackend[]> {
   const snapshot = inject(backendSnapshotKey, undefined);
   const hostOverride = inject(backendHostKey, undefined);
   const fallback = inject(backendChoicesKey, computed<AgentBackend[]>(() => []));
@@ -64,26 +65,23 @@ export function useBackendChoices(teamId?: () => string | null | undefined): Com
     const override = hostOverride?.();
     if (override) return preferredChoices(enabledAgentBackends({ providerConnections: override.connections }), override.host);
     const state = snapshot?.();
-    return state ? preferredBackendChoices(state, teamId?.() ?? state.activeTeamId) : fallback.value;
+    return state ? preferredBackendChoices(state, host?.()) : fallback.value;
   });
 }
 
 /**
- * An agent on the team, or failing that on its host, to read the model catalog through.
+ * An agent on a host to read the model catalog through.
  * An explicit id always wins so callers that already know the right agent stay in control.
  */
-export function useCatalogAgentId(teamId?: () => string | null | undefined, explicit?: () => string | undefined): ComputedRef<string> {
+export function useCatalogAgentId(host?: () => string | null | undefined, explicit?: () => string | undefined): ComputedRef<string> {
   const snapshot = inject(backendSnapshotKey, undefined);
   return computed(() => {
     const given = explicit?.();
     if (given) return given;
     const state = snapshot?.();
     if (!state) return '';
-    const id = teamId?.() ?? state.activeTeamId;
-    const host = state.teams.find(team => team.id === id)?.remoteConnectionId;
-    return state.agents.find(agent => agent.teamId === id)?.id
-      ?? state.agents.find(agent => state.teams.find(team => team.id === agent.teamId)?.remoteConnectionId === host)?.id
-      ?? '';
+    const connectionId = host?.() ?? undefined;
+    return state.agents.find(agent => agent.remoteConnectionId === connectionId)?.id ?? '';
   });
 }
 
@@ -101,15 +99,13 @@ export function useAgentHost(agentId: () => string): ComputedRef<string> {
   const snapshot = inject(backendSnapshotKey, undefined);
   return computed(() => {
     const state = snapshot?.();
-    const teamId = state?.agents.find(agent => agent.id === agentId())?.teamId;
-    return state?.teams.find(team => team.id === teamId)?.remoteConnectionId ?? 'local';
+    return state?.agents.find(agent => agent.id === agentId())?.remoteConnectionId ?? 'local';
   });
 }
 
-export function preferredBackendChoices(state: AppSnapshot, teamId = state.activeTeamId): AgentBackend[] {
-  const choices = enabledAgentBackends({ providerConnections: providerConnectionsForTeam(state, teamId) });
-  const host = state.teams.find(team => team.id === teamId)?.remoteConnectionId ?? 'local';
-  return preferredChoices(choices, host);
+export function preferredBackendChoices(state: AppSnapshot, remoteConnectionId?: string | null): AgentBackend[] {
+  const choices = enabledAgentBackends({ providerConnections: providerConnectionsForHost(state, remoteConnectionId) });
+  return preferredChoices(choices, remoteConnectionId || 'local');
 }
 
 function preferredChoices(choices: AgentBackend[], host: string): AgentBackend[] {
@@ -117,12 +113,10 @@ function preferredChoices(choices: AgentBackend[], host: string): AgentBackend[]
   return preferred && choices.includes(preferred) ? [preferred, ...choices.filter(choice => choice !== preferred)] : choices;
 }
 
-export function useRememberBackend(teamId?: () => string | null | undefined) {
-  const snapshot = inject(backendSnapshotKey, undefined);
+export function useRememberBackend(remoteConnectionId?: () => string | null | undefined) {
   const hostOverride = inject(backendHostKey, undefined);
   return (backend: AgentBackend) => {
-    const state = snapshot?.();
-    const host = hostOverride?.()?.host ?? state?.teams.find(team => team.id === (teamId?.() ?? state.activeTeamId))?.remoteConnectionId ?? 'local';
+    const host = hostOverride?.()?.host ?? remoteConnectionId?.() ?? 'local';
     remembered.value = { ...remembered.value, [host]: backend };
     try { localStorage.setItem(preferenceKey, JSON.stringify(remembered.value)); } catch { /* Session preference remains usable. */ }
   };

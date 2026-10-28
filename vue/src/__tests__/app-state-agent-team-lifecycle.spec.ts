@@ -723,34 +723,6 @@ describe('useAppState', () => {
     }
   });
 
-  it('allows removing a sole local remote pointer and adopts the backend fallback team', async () => {
-    const remotePointerSnapshot = createInitialSnapshot();
-    remotePointerSnapshot.teams[0] = {
-      ...remotePointerSnapshot.teams[0]!,
-      remoteConnectionId: 'connection-devbox',
-      remoteTeamId: 'team-remote',
-    };
-    const fallbackSnapshot = structuredClone(remotePointerSnapshot);
-    fallbackSnapshot.teams = [{ id: 'team-local', name: 'Local', agentIds: [] }];
-    fallbackSnapshot.activeTeamId = 'team-local';
-    fallbackSnapshot.agents = [];
-    fallbackSnapshot.activeAgentId = null;
-    const closeTeam = vi.fn().mockResolvedValue(fallbackSnapshot);
-    const disconnectTeam = vi.fn().mockResolvedValue(fallbackSnapshot);
-    stubElectronTestWindow({ app: { closeTeam, disconnectTeam } satisfies Partial<AppApi> });
-    const state = useAppState();
-
-    state.snapshot.value = remotePointerSnapshot;
-    await state.closeTeam('team-app');
-    expect(closeTeam).toHaveBeenCalledExactlyOnceWith('team-app');
-    expect(state.snapshot.value.activeTeamId).toBe('team-local');
-
-    state.snapshot.value = remotePointerSnapshot;
-    await state.disconnectTeam('team-app');
-    expect(disconnectTeam).toHaveBeenCalledExactlyOnceWith('team-app');
-    expect(state.snapshot.value.activeTeamId).toBe('team-local');
-  });
-
   it('returns safe defaults when optional agent preload helpers are unavailable', async () => {
     const remoteSnapshot = createInitialSnapshot();
     stubLegacyElectronTestWindow({
@@ -789,7 +761,6 @@ describe('useAppState', () => {
     await state.reorderAgents({ teamId: 'team-app', agentId: 'agent-dina', beforeAgentId: null });
     await state.restartAgent('agent-dina');
     await state.closeAgent('agent-dina');
-    await state.disconnectTeam('team-app');
     await expect(state.getAutomationSnapshot({ kind: 'remote', remoteConnectionId: 'ssh-1' })).resolves.toBe(before);
     await expect(state.createAutomation({} as never)).resolves.toBeUndefined();
     await expect(state.updateAutomation({ id: 'missing' } as never)).resolves.toBeUndefined();
@@ -1029,7 +1000,6 @@ describe('useAppState', () => {
       listSourceRepositories: vi.fn().mockResolvedValue(repositories),
       previewAgentFile: vi.fn().mockResolvedValue({ path: 'README.md', content: `# ${product.name}` }),
       getAgentGitDiff: vi.fn().mockResolvedValue(undefined),
-      disconnectTeam: vi.fn().mockResolvedValue(initialSnapshot),
       getAutomationSnapshot: vi.fn().mockResolvedValue(initialSnapshot),
       updateSettings: vi.fn().mockResolvedValue(updatedSnapshot),
       listSshHosts: vi.fn().mockResolvedValue([{ host: 'devbox' }]),
@@ -1056,7 +1026,6 @@ describe('useAppState', () => {
     await expect(state.listSourceRepositories('ssh-1')).resolves.toStrictEqual(repositories);
     await expect(state.previewAgentFile('agent-dina', 'README.md')).resolves.toStrictEqual({ path: 'README.md', content: `# ${product.name}` });
     await state.getAgentGitDiff('agent-dina');
-    await state.disconnectTeam('team-other');
     await expect(state.getAutomationSnapshot({ kind: 'remote', remoteConnectionId: 'ssh-1' })).resolves.toBe(initialSnapshot);
     await state.updateSettings({ sourceFolder: { path: '/Users/nbonamy/projects' } });
     await expect(state.listSshHosts()).resolves.toStrictEqual([{ host: 'devbox' }]);
@@ -1218,12 +1187,12 @@ describe('useAppState', () => {
 
     const input = {
       teamId: 'team-app',
-      repositoryRoot: '/Users/nbonamy/src/id8',
-      beforeRepositoryRoot: '/Users/nbonamy/src/agent-workspace',
+      repositoryKey: '/Users/nbonamy/src/id8',
+      beforeRepositoryKey: '/Users/nbonamy/src/agent-workspace',
     };
     await state.reorderRepositories(input);
-    await state.reorderRepositories({ ...input, repositoryRoot: '/missing' });
-    await state.reorderRepositories({ ...input, beforeRepositoryRoot: '/missing' });
+    await state.reorderRepositories({ ...input, repositoryKey: '/missing' });
+    await state.reorderRepositories({ ...input, beforeRepositoryKey: '/missing' });
 
     expect(reorderRepositories).toHaveBeenCalledOnce();
     expect(reorderRepositories).toHaveBeenCalledWith(input);

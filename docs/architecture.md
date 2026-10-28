@@ -251,7 +251,7 @@ start a review, and automatic fixes and local commits require explicit selection
 The companion engine validates the target before submission and reports admission
 back to the native draft; only accepted sends clear their captured text and attachments.
 The laptop stores uploads privately and passes ordinary provider attachment paths
-through its existing prompt route. Nested remote teams remain text-only until their
+through its existing prompt route. Remote agents remain text-only until their
 owning host supports trusted file transfer. Reconnect reconciles available command receipts without replaying prompts
 and retains the last loaded snapshot while rehydrating the same provider session.
 
@@ -361,7 +361,7 @@ Rules:
   fsync and therefore no power-loss guarantee. A slow older write never overwrites
   a newer one.
 - Navigation, ordering and presentation settings are per-client preference
-  profiles; backend policy is shared. A client selecting a remote team never
+  profiles; backend policy is shared. A client selecting a remote agent never
   changes the remote desktop's navigation.
 - Document tabs own transient Markdown lifetime. Display persists the bytes and
   open references before emitting a client effect. If retention fails, display
@@ -421,24 +421,33 @@ mutations, and restores the old home and roster on failure. Provider
 conversation files stay in the old home, and switching back does not recreate the
 removed agents. Remote agents and other providers are untouched.
 
-## Location Routing And Remote Teams
+## Location Routing And Remote Agents
 
-A local `daemon` is the control plane. A remote team is a local pointer
-(`Team.remoteConnectionId` + `Team.remoteTeamId`); the remote `daemon` owns its
-agents, sessions, files, git, worktrees and prompts. Agents never move between
-backend locations.
+A local `daemon` is the control plane. Where an agent runs is a property of the
+agent (`Agent.remoteConnectionId`, absent for local agents), never of a team, so one
+team and one sidebar section can hold local and remote agents side by side. The
+remote `daemon` owns its agents, sessions, files, git, worktrees and prompts.
+Agents never move between backend locations.
 
-- `Team.id` is the local pointer ID. `remoteTeamId` is foreign state: never use it
-  for local membership, active-agent repair, assignment cleanup or migration, and
-  expect it to collide with local IDs.
+- A local team keeps one hidden team per host on the remote `daemon`
+  (`Team.remoteLinks`), created with the first remote agent for that host. The
+  remote team id is foreign state: never use it for local membership,
+  active-agent repair or assignment cleanup, and expect it to collide with local
+  IDs. The link is bookkeeping; the UI never exposes remote teams.
+- Remote agents are projected into the client snapshot with the local team id and
+  their host. Local state never stores them.
 - Location-scoped and agent-scoped requests resolve a `BackendLocation` /
   `AgentLocation`, then run on a handle: local handles use local drivers, remote
   handles forward the same app-owned method. Remote events fan out locally only
-  for agents of a connected pointer. Remote snapshots are returned to the UI, never
+  for agents of a linked hidden team. Remote snapshots are returned to the UI, never
   adopted as local product state.
-- Closing a remote team is destructive (forwarded to the remote); disconnecting
-  removes only the pointer. Deleting a connection removes its pointers and leaves
-  the remote running; an empty local fallback team is created if none remains.
+- Creating an agent on a remote host takes `remoteConnectionId` next to `teamId`
+  and a path on that host. Section actions carry host plus path.
+- Deleting a team removes its hidden teams (and their agents) on every host;
+  deleting a connection drops the links and leaves the remote running.
+- Sidebar sections are keyed by the repository's origin identity, falling back to
+  the path on the agent's own host. Missions, automations, sharing and delegation
+  stay on the local host.
 - Each remote `daemon` owns its own engine availability; local enable flags are not
   mirrored. Automations are managed per location, selected independently of the
   active team.

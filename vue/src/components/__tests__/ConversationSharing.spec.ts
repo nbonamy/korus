@@ -194,7 +194,7 @@ describe('owner Share workflow', () => {
   it('hides sharing for remote-host conversations', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'remote' };
-    snapshot.teams[0]!.remoteConnectionId = 'remote';
+    snapshot.agents[0]!.remoteConnectionId = 'remote';
     const wrapper = mountShell({ snapshot, realAgentSidebar: true, stubRightWorkspacePanel: true, stubTeamRail: true });
     try {
       await flushPromises(); expect(wrapper.find('button[aria-label="Share"]').exists()).toBe(false);

@@ -91,7 +91,7 @@
           <fieldset>
             <legend class="app-section-label">{{ t('automaticReview.model') }}</legend>
             <div class="code-review-panel__model-selectors">
-              <BackendSelector v-model="reviewBackend" :team-id="agent.teamId" class="code-review-panel__backend" size="small" :disabled="busy || threadMode === 'current'" />
+              <BackendSelector v-model="reviewBackend" :remote-connection-id="agent.remoteConnectionId" class="code-review-panel__backend" size="small" :disabled="busy || threadMode === 'current'" />
               <el-select :model-value="threadMode === 'current' ? '' : reviewModel" @update:model-value="reviewModel = $event" :empty-values="[null, undefined]" :aria-label="t('automaticReview.model')" :disabled="busy || modelsLoading || threadMode === 'current'" size="small">
                 <el-option value="" :label="t(effectiveBackend === agent.backend ? 'automaticReview.currentModel' : 'automaticReview.defaultModel')" />
                 <el-option v-for="model in reviewModels.filter(option => option.model)" :key="model.id" :value="model.model" :label="model.displayName" />
@@ -379,7 +379,7 @@ const scope = ref<CodeReviewStartInput["scope"]["type"]>("uncommitted");
 const threadMode = ref<CodeReviewThreadMode>("independent");
 const reviewSettings = useCodeReviewSettings();
 const remembered = reviewSettings.preferences();
-const connectedBackends = useBackendChoices(() => props.agent.teamId);
+const connectedBackends = useBackendChoices(() => props.agent.remoteConnectionId);
 const reviewBackend = ref<Agent['backend'] | undefined>(preferredReviewBackend(props.agent.backend, connectedBackends.value, remembered?.backend));
 const automatic = ref(remembered?.automation.enabled ?? false);
 const automaticSettingsOpen = ref(false);

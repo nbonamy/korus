@@ -6,9 +6,9 @@ import type { BackendSkillSummary } from '@workspace/core/contracts';
 import { opaquePath } from '@workspace/core/companion-projection';
 import { normalizePairingCode } from '@workspace/core/companion-pairing';
 const workspace: CompanionWorkspace = {
-  teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }, { id: 'remote-team', name: 'Remote', agentIds: ['remote-agent'], remoteConnectionId: 'ssh-host' }],
+  teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }, { id: 'remote-team', name: 'Remote', agentIds: ['remote-agent'] }],
   agents: [{ id: 'agent', name: 'Agent', teamId: 'team', folder: '/private', backend: 'codex', status: { type: 'idle' }, createdAt: '', updatedAt: '', mcpSessionId: 'private-session' },
-    { id: 'remote-agent', name: 'Remote', teamId: 'remote-team', folder: '/private', backend: 'claude', status: { type: 'idle' }, createdAt: '', updatedAt: '' }],
+    { id: 'remote-agent', name: 'Remote', teamId: 'remote-team', remoteConnectionId: 'ssh-host', folder: '/private', backend: 'claude', status: { type: 'idle' }, createdAt: '', updatedAt: '' }],
 };
 const target = { hostId: 'host', locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: null };
 function claim(gateway: CompanionGateway, peerId: string, shown: string, name = 'Phone') {
@@ -869,7 +869,7 @@ describe('companion authorization gateway', () => {
     const repositoryId = opaquePath('/code/repo');
     async function ready() {
       const f = fixture(); await f.pair();
-      f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex', 'claude'], 'remote-team': ['claude'] },
+      f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex', 'claude'], 'remote-team': ['claude'], 'ssh-host': ['claude'] },
         agents: [{ ...workspace.agents[0]!, workspace: repository }, { ...workspace.agents[1]!, workspace: { ...repository, repositoryRoot: '/srv/remote', primaryWorktreeRoot: '/srv/remote', repositoryName: 'remote-repo' } }] });
       return f;
     }
@@ -949,7 +949,7 @@ describe('companion authorization gateway', () => {
   describe('starting a quick chat', () => {
     async function ready() {
       const f = fixture(); await f.pair();
-      f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex', 'claude'], 'remote-team': ['claude'] } });
+      f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex', 'claude'], 'remote-team': ['claude'], 'ssh-host': ['claude'] } });
       return f;
     }
     it('creates one for a team and reports it like any other new chat', async () => {

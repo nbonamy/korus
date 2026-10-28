@@ -106,10 +106,8 @@ async function fixture(beforeCreationReturns: (id: string) => Promise<void> = as
 }
 
 describe('mobile chat creation', () => {
-  it.each([false, true])('acquires opaque GitLab selections on the owning host (new branch: %s)', async newBranch => {
+  it.each([false, true])('acquires opaque GitLab selections on the laptop (new branch: %s)', async newBranch => {
     const f = await fixture();
-    f.snapshot.teams[0]!.remoteConnectionId = 'ssh-host';
-    f.snapshot.remoteConnections.connections.push({ id: 'ssh-host', kind: 'ssh', name: 'Host', host: 'host', status: 'ready', providerConnections: f.snapshot.providerConnections, createdAt: '', updatedAt: '' });
     const choices = await f.gateway.request('phone', 'project.repositories.list', { teamId: 'team-test', provider: 'gitlab' }) as { id: string; name: string }[];
     expect(choices).toStrictEqual([{ id: expect.stringMatching(/^repo:[a-f0-9]{64}$/), name: 'org/subgroup/repo' }]);
     const repositoryId = choices[0]!.id;
@@ -120,23 +118,17 @@ describe('mobile chat creation', () => {
     await vi.waitFor(async () => expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'success', agentId: 'new-chat' }));
     expect(f.calls.some(call => call.method === backendMethods.sourceRepositoryClone)).toBe(false);
     expect(f.calls.find(call => call.method === backendMethods.agentCreate)?.params).toMatchObject({ input: { folder: newBranch ? '/code/repo-feature' : '/code/repo-existing', teamId: 'team-test', backend: 'claude' } });
-    expect(f.calls.filter(call => call.method === backendMethods.workProviderBranchesList).every(call => JSON.stringify(call.params).includes('"provider":"gitlab"') && JSON.stringify(call.params).includes('"remoteConnectionId":"ssh-host"'))).toBe(true);
-    if (newBranch) expect(f.calls.find(call => call.method === backendMethods.sourceWorktreeCreate)?.params).toMatchObject({ input: { baseBranch: 'main', requireNewBranch: true, fetchRemoteBranch: true, remoteConnectionId: 'ssh-host' } });
+    expect(f.calls.filter(call => call.method === backendMethods.workProviderBranchesList).every(call => JSON.stringify(call.params).includes('"provider":"gitlab"') && !JSON.stringify(call.params).includes('remoteConnectionId'))).toBe(true);
+    if (newBranch) expect(f.calls.find(call => call.method === backendMethods.sourceWorktreeCreate)?.params).toMatchObject({ input: { baseBranch: 'main', requireNewBranch: true, fetchRemoteBranch: true } });
   });
 
-  it('rejects GitLab IDs from another host, provider, daemon or removed catalog before writes', async () => {
+  it('rejects GitLab IDs from another provider, daemon or removed catalog before writes', async () => {
     const f = await fixture();
     const list = () => f.gateway.request('phone', 'project.repositories.list', { teamId: 'team-test', provider: 'gitlab' }) as Promise<{ id: string }[]>;
     const id = (await list())[0]!.id;
     await expect(f.gateway.request('stranger', 'project.repositories.list', { teamId: 'team-test', provider: 'gitlab' })).rejects.toThrow();
     await expect(f.gateway.request('phone', 'project.repositories.list', { teamId: 'team-test', provider: 'linear' })).rejects.toThrow();
     await expect(f.gateway.request('phone', 'project.repositories.branches', { teamId: 'team-test', provider: 'github', repositoryId: id })).rejects.toThrow();
-    f.snapshot.teams[0]!.remoteConnectionId = 'other-host';
-    f.snapshot.remoteConnections.connections.push({ id: 'other-host', kind: 'ssh', name: 'Other', host: 'other', status: 'ready', providerConnections: f.snapshot.providerConnections, createdAt: '', updatedAt: '' });
-    await expect(f.gateway.request('phone', 'project.repositories.branches', { teamId: 'team-test', provider: 'gitlab', repositoryId: id })).rejects.toThrow();
-    const stale = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', backend: 'codex', source: 'gitlab', value: id }) as { creationId: string };
-    await vi.waitFor(async () => expect(await f.gateway.request('phone', 'agent.create.status', stale)).toMatchObject({ state: 'error' }));
-    delete f.snapshot.teams[0]!.remoteConnectionId;
     f.unavailableProviders.add('gitlab');
     await expect(f.gateway.request('phone', 'project.repositories.branches', { teamId: 'team-test', provider: 'gitlab', repositoryId: id })).rejects.toThrow();
     const other = await fixture();
@@ -144,7 +136,7 @@ describe('mobile chat creation', () => {
     expect(f.calls.some(call => call.method === backendMethods.sourceRepositoryClone || call.method === backendMethods.agentCreate)).toBe(false);
   });
 
-  it.each(['revoke', 'location'] as const)('withholds a GitLab catalog if access changes during the read: %s', async change => {
+  it('withholds a GitLab catalog if access is revoked during the read', async () => {
     let release!: () => void;
     const barrier = new Promise<void>(resolve => { release = resolve; });
     let reached!: () => void;
@@ -152,8 +144,7 @@ describe('mobile chat creation', () => {
     const f = await fixture(undefined, async method => { if (method === backendMethods.workProviderSourcesList) { reached(); await barrier; } });
     const pending = f.gateway.request('phone', 'project.repositories.list', { teamId: 'team-test', provider: 'gitlab' });
     await reading;
-    if (change === 'location') f.snapshot.teams[0]!.remoteConnectionId = 'other';
-    else await f.gateway.revoke('phone');
+    await f.gateway.revoke('phone');
     release();
     await expect(pending).rejects.toThrow();
     expect(f.calls.some(call => call.method === backendMethods.sourceRepositoryClone)).toBe(false);
@@ -239,10 +230,8 @@ describe('mobile chat creation', () => {
     expect(f.calls.some(call => call.method === backendMethods.sourceRepositoryClone)).toBe(false);
   });
 
-  it.each(['new', 'github', 'url'] as const)('starts a project from %s through the owning remote host desktop operations', async source => {
+  it.each(['new', 'github', 'url'] as const)('starts a project from %s on the laptop', async source => {
     const f = await fixture();
-    f.snapshot.teams[0]!.remoteConnectionId = 'ssh-host';
-    f.snapshot.remoteConnections.connections.push({ id: 'ssh-host', kind: 'ssh', name: 'Host', host: 'host', status: 'ready', providerConnections: f.snapshot.providerConnections, createdAt: '', updatedAt: '' });
     const value = source === 'new' ? 'fresh-project' : source === 'github' ? 'org/repo' : 'https://github.com/org/repo.git';
     const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', backend: 'claude', source, value }) as { creationId: string };
     await vi.waitFor(async () => expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'success', agentId: 'new-chat' }));
@@ -250,7 +239,7 @@ describe('mobile chat creation', () => {
     if (source === 'new') {
       expect(f.calls.find(call => call.method === backendMethods.projectCreate)?.params).toStrictEqual({ input: { teamId: 'team-test', backend: 'claude', name: value }, entityResult: true, _clientId: 'companion-write' });
     } else {
-      expect(f.calls.find(call => call.method === backendMethods.sourceRepositoryClone)?.params).toStrictEqual({ input: { url: source === 'github' ? 'https://github.com/org/repo' : value, remoteConnectionId: 'ssh-host' }, _clientId: 'companion-write' });
+      expect(f.calls.find(call => call.method === backendMethods.sourceRepositoryClone)?.params).toStrictEqual({ input: { url: source === 'github' ? 'https://github.com/org/repo' : value }, _clientId: 'companion-write' });
       expect(f.calls.find(call => call.method === backendMethods.agentCreate)?.params).toMatchObject({ input: { folder: '/code/repo', teamId: 'team-test', backend: 'claude' } });
     }
   });
@@ -286,12 +275,11 @@ describe('mobile chat creation', () => {
     expect(f.calls.filter(call => call.method === backendMethods.agentCreate)).toHaveLength(1);
   });
 
-  it('creates a new GitHub branch from a chosen base on the owning host before opening its agent', async () => {
-    const f = await fixture(); f.snapshot.teams[0]!.remoteConnectionId = 'ssh-host';
-    f.snapshot.remoteConnections.connections.push({ id: 'ssh-host', kind: 'ssh', name: 'Host', host: 'host', status: 'ready', providerConnections: f.snapshot.providerConnections, createdAt: '', updatedAt: '' });
+  it('creates a new GitHub branch from a chosen base before opening its agent', async () => {
+    const f = await fixture();
     const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', backend: 'codex', source: 'github', value: 'org/repo', worktree: { branchName: 'feature/new', baseBranch: 'feature/available' } }) as { creationId: string };
     await vi.waitFor(async () => expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'success', agentId: 'new-chat' }));
-    expect(f.calls.find(call => call.method === backendMethods.sourceWorktreeCreate)?.params).toStrictEqual({ input: { repoPath: '/code/repo', branchName: 'feature/new', baseBranch: 'feature/available', requireNewBranch: true, fetchRemoteBranch: true, remoteConnectionId: 'ssh-host' }, _clientId: 'companion-write' });
+    expect(f.calls.find(call => call.method === backendMethods.sourceWorktreeCreate)?.params).toStrictEqual({ input: { repoPath: '/code/repo', branchName: 'feature/new', baseBranch: 'feature/available', requireNewBranch: true, fetchRemoteBranch: true }, _clientId: 'companion-write' });
     expect(f.snapshot.agents.find(agent => agent.id === 'new-chat')?.folder).toBe('/code/repo-feature');
   });
 
@@ -315,14 +303,14 @@ describe('mobile chat creation', () => {
     expect(f.calls.some(call => call.method === backendMethods.sourceRepositoryClone)).toBe(false);
   });
 
-  it('withholds GitHub branches after grant revocation or a team location change', async () => {
-    for (const change of ['revoke', 'location']) {
+  it('withholds GitHub branches after grant revocation', async () => {
+    for (const change of ['revoke']) {
       let release!: () => void;
       const f = await fixture(undefined, method => method === backendMethods.workProviderBranchesList ? new Promise(resolve => { release = resolve; }) : Promise.resolve());
       const pending = f.gateway.request('phone', 'project.github.branches', { teamId: 'team-test', repositoryId: 'org/repo' });
       const denied = expect(pending).rejects.toThrow();
       await vi.waitFor(() => expect(release).toBeTypeOf('function'));
-      if (change === 'revoke') await f.gateway.revoke('phone'); else f.snapshot.teams[0]!.remoteConnectionId = 'replacement';
+      if (change === 'revoke') await f.gateway.revoke('phone');
       release(); await denied;
     }
   });
@@ -359,10 +347,10 @@ describe('mobile chat creation', () => {
     expect(f.calls.some(call => call.method === backendMethods.sourceRepositoryClone || call.method === backendMethods.agentCreate)).toBe(false);
   });
 
-  it('lists the owning host GitHub repositories with only display fields', async () => {
-    const f = await fixture(); f.snapshot.teams[0]!.remoteConnectionId = 'ssh-host';
+  it('lists the laptop GitHub repositories with only display fields', async () => {
+    const f = await fixture();
     expect(await f.gateway.request('phone', 'project.github.list', { teamId: 'team-test' })).toStrictEqual([{ id: 'org/repo', name: 'org/repo' }]);
-    expect(f.calls.find(call => call.method === backendMethods.workProviderSourcesList)?.params).toStrictEqual({ provider: 'github', location: { kind: 'remote', remoteConnectionId: 'ssh-host' }, _clientId: 'companion-read' });
+    expect(f.calls.find(call => call.method === backendMethods.workProviderSourcesList)?.params).toStrictEqual({ provider: 'github', _clientId: 'companion-read' });
   });
 
   it.each([
@@ -384,9 +372,9 @@ describe('mobile chat creation', () => {
       ? [{ state: 'success', agentId: 'new-chat' }, { state: 'success', agentId: 'new-chat-2' }]
       : [{ state: 'success', agentId: 'quick-chat' }, { state: 'success', agentId: 'quick-chat-2' }]);
   });
-  it('lists the desktop branch catalog without exposing checkout paths, routed to the owning host', async () => {
+  it('lists the desktop branch catalog without exposing checkout paths, routed to the host running the repository', async () => {
     const f = await fixture();
-    f.snapshot.teams[0]!.remoteConnectionId = 'ssh-host';
+    f.snapshot.agents[0]!.remoteConnectionId = 'ssh-host';
     expect(await f.gateway.request('phone', 'repository.branches', { teamId: 'team-test', repositoryId: opaquePath('/code/repo') })).toStrictEqual([
       { name: 'main', isDefault: true, isCheckedOut: true },
       { name: 'feature/checked-out', isDefault: false, isCheckedOut: true },

@@ -112,12 +112,9 @@ describe(`${product.name} web operations`, () => {
     const request = vi.fn().mockResolvedValue({});
     await invokeAppWebOperation({ request }, 'checkRemoteConnection', ['devbox', true]);
     await invokeAppWebOperation({ request }, 'checkRemoteConnection', ['devbox', false, ['claude']]);
-    const input = { name: 'Remote', remoteConnectionId: 'devbox', remoteTeamId: 'existing' };
-    await invokeAppWebOperation({ request }, 'createTeam', [input]);
     expect(request.mock.calls).toStrictEqual([
       [backendMethods.connectionsRuntimeInspect, { connectionId: 'devbox' }],
       [backendMethods.connectionsRuntimeSync, { connectionId: 'devbox', backends: ['claude'] }],
-      [backendMethods.teamConnect, { input }],
     ]);
   });
   it.each([

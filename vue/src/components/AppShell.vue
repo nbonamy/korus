@@ -79,7 +79,6 @@
       :forkable-agent-ids="forkableAgentIds"
       :summary-replacement-agent-ids="summaryReplacementAgentIds"
       :list-repository-session-branches="listRepositorySessionBranches"
-      :load-remote-teams="loadRemoteTeams"
       :open-in-applications="openInApplications"
       :quick-agent-shortcuts-visible="quickAgentShortcutsVisible"
       :settings-visible="settingsVisible"
@@ -97,8 +96,8 @@
       @create-agent-from-repository="openRepositorySessionSource"
       @create-agent-on-branch="createRepositorySessionOnBranch"
       @create-agent-worktree-in-repository="openRepositorySessionWorktree"
+      @open-on-remote="openOnRemote"
       @create-quick-chat="createQuickChat"
-      @disconnect-team="$emit('disconnect-team', $event)"
       @duplicate-agent="$emit('duplicate-agent', $event)"
       @edit-agent="openEditAgent"
       @edit-team="openEditTeam"
@@ -175,7 +174,7 @@
         :work-provider-authorization="workProviderAuthorization"
         :work-provider-authorizations="workProviderAuthorizations"
         :remote-connections="snapshot.remoteConnections.connections"
-        :teams="snapshot.teams"
+        :agents="snapshot.agents"
         :list-source-folders="listSourceFolders"
         :list-ssh-hosts="listSshHosts"
         :add-ssh-connection="addSshConnection"
@@ -445,7 +444,6 @@
     <RepositorySessionSourceDialog
       :visible="missionIssuePickerVisible"
       purpose="missionIssue"
-      :location="missionIssueLocation()"
       :source-filter="acceptMissionSource"
       repository-name=""
       :loading="missionIssueLoading"
@@ -483,12 +481,16 @@
       @open-authorization="openGitHubAuthorization"
       @select-repository="selectWorkRepository"
     />
-    <RemoteFolderPickerDialog
-      :list-source-folders="listSourceFolders"
-      :remote-connection-id="activeTeam?.remoteConnectionId ?? ''"
-      :visible="repositoryAcquireRemoteFolderVisible"
-      @close="closeRepositoryAcquireRemoteFolder"
-      @select="selectRepositoryAcquireRemoteFolder"
+    <RemoteTargetDialog
+      v-model:selected-id="remoteTarget.selectedId.value"
+      :visible="remoteTarget.visible.value"
+      :connections="remoteTarget.readyConnections.value"
+      :checkouts="remoteTarget.checkouts.value"
+      :can-confirm="remoteTarget.canConfirm.value"
+      :busy="remoteTarget.busy.value"
+      :error="remoteTarget.error.value"
+      @close="remoteTarget.close"
+      @confirm="remoteTarget.confirm"
     />
     <NewProjectDialog
       :visible="newProjectDialogVisible"
@@ -537,7 +539,6 @@
       :initial-new-worktree-branch-name="pendingNewAgentWorktreeBranchName"
       :initial-source-repository-name="agentDialogSourceRepositoryName"
       :initial-team-id="agentDialogTeamId"
-      :remote-connection-id="agentDialogRemoteConnectionId"
       :source-folder-path="snapshot.sourceFolder.path"
       :source-recent-repo-names="snapshot.sourceFolder.recentRepoNames"
       :source-repositories="sourceRepositories"
@@ -551,9 +552,7 @@
       :visible="teamDialogVisible"
       :mode="teamDialogMode"
       :team="editingTeam"
-      :remote-connections="snapshot.remoteConnections.connections"
       :create-team="createTeam"
-      :load-remote-teams="loadRemoteTeams"
       :update-team="updateTeam"
       @close="teamDialogVisible = false"
     />
@@ -650,6 +649,8 @@ import { resolveRepositorySessionContext, type RepositorySessionSource } from '.
 import NewSourceWorktreeDialog from './NewSourceWorktreeDialog.vue';
 import RepositoryAcquireDialog from './RepositoryAcquireDialog.vue';
 import RemoteFolderPickerDialog from './RemoteFolderPickerDialog.vue';
+import RemoteTargetDialog from './RemoteTargetDialog.vue';
+import { useRemoteTarget, type RemoteTargetRequest } from './use-remote-target';
 import NewProjectDialog from './NewProjectDialog.vue';
 import { preferredBackendChoices, provideBackendChoices, provideBackendSwitch } from './backend-selection';
 import CockpitView from './CockpitView.vue';
@@ -1049,7 +1050,6 @@ const emit = defineEmits<{
   'background-agent-creation-progress': [id: string];
   'consume-markdown-displays': [count: number];
   'close-team': [teamId: string];
-  'disconnect-team': [teamId: string];
   'close-agent': [agentId: string];
   'compress-session': [agentId: string];
   'cleanup-pull-request': [agentId: string];
@@ -1168,11 +1168,6 @@ const missionIssueLoading = ref(false);
 const missionIssueError = ref<string | null>(null);
 const missionSourceMenuItems = computed(() => [{ id: 'issue', type: 'action' as const, label: t('missions.chooseIssue'), icon: BacklogIcon }]);
 
-function missionIssueLocation(): AutomationLocation | undefined {
-  const team = props.snapshot.teams.find(candidate => candidate.id === selectedMission.value?.teamId);
-  return team?.remoteConnectionId ? { kind: 'remote', remoteConnectionId: team.remoteConnectionId } : undefined;
-}
-
 function missionIssueRepositoryIdentities(mission: Mission): Set<string> {
   const team = props.snapshot.teams.find(candidate => candidate.id === mission.teamId);
   const workerIds = new Set((props.snapshot.missions ?? []).flatMap(candidate => (
@@ -1239,8 +1234,7 @@ async function chooseMissionIssue(item: WorkItem): Promise<void> {
 const missionOpenInAvailable = computed(() => {
   const mission = selectedMission.value;
   if (!mission || props.openInApplications.applications.length === 0) return false;
-  const team = props.snapshot.teams.find(candidate => candidate.id === mission.teamId);
-  return !!team && !team.remoteConnectionId;
+  return props.snapshot.teams.some(candidate => candidate.id === mission.teamId);
 });
 function openMissionWorktree(request: MissionWorkspaceOpenRequest): void {
   void openAgentIn(request.agentId, request.application, request.path);
@@ -1356,14 +1350,14 @@ const shareActiveByAgentId = reactive<Record<string, boolean>>({});
 provide(conversationShareActiveByAgentIdKey, shareActiveByAgentId);
 function openShare(agentId: string) {
   const agent = props.snapshot.agents.find(agent => agent.id === agentId);
-  if (!agent || props.snapshot.teams.find(team => team.id === agent.teamId)?.remoteConnectionId) return;
+  if (!agent || agent.remoteConnectionId) return;
   shareTarget.value = conversationShareTarget(agent);
 }
 watch(() => props.snapshot.agents.map(agent => conversationShareTarget(agent)), () => {
   if (!shareTarget.value) return;
   const agent = props.snapshot.agents.find(agent => agent.id === shareTarget.value?.agentId);
   if (!agent || JSON.stringify(conversationShareTarget(agent)) !== JSON.stringify(shareTarget.value)
-    || props.snapshot.teams.find(team => team.id === agent.teamId)?.remoteConnectionId) shareTarget.value = null;
+    || agent.remoteConnectionId) shareTarget.value = null;
 }, { deep: true });
 const shareControl = (input: import('@workspace/core/conversation-sharing').ConversationShareControl) => {
   if (!appApi) return Promise.reject(new Error('Sharing is unavailable.'));
@@ -1598,8 +1592,38 @@ const {
   worktreeRepository: repositorySessionWorktreeRepository,
   worktreeSource: repositorySessionWorktreeSource,
 } = repositorySession;
+const remoteTarget = useRemoteTarget({
+  connections: () => props.snapshot.remoteConnections.connections,
+  listSourceRepositories: (remoteConnectionId) => props.listSourceRepositories(remoteConnectionId),
+  cloneRepository: (input) => props.cloneSourceRepository(input),
+  errorMessage: (error) => localizedErrorMessage(error, t),
+  openMain: async (path, remoteConnectionId, request) => {
+    const backend = preferredBackendChoices(props.snapshot, remoteConnectionId)[0];
+    try {
+      if (!backend) throw new Error(t('remoteTarget.noEngine'));
+      await props.createAgent({
+        name: null,
+        folder: path,
+        backend,
+        sourceRepositoryName: request.repositoryName,
+        remoteConnectionId,
+        ...(activeTeam.value ? { teamId: activeTeam.value.id } : {}),
+      });
+    } catch (error) {
+      ElMessage.error(localizedErrorMessage(error, t));
+    }
+  },
+  openWorktree: (path, remoteConnectionId, request) => openRepositorySessionWorktree({
+    repositoryName: request.repositoryName,
+    repositoryRoot: path,
+    remoteConnectionId,
+    ...(activeTeam.value ? { teamId: activeTeam.value.id } : {}),
+  }),
+});
+function openOnRemote(request: RemoteTargetRequest): void {
+  void remoteTarget.open(request);
+}
 const repositoryAcquisition = useRepositoryAcquisition({
-  activeTeam: () => activeTeam.value,
   activeTeamId: () => props.snapshot.activeTeamId ?? undefined,
   catalog: provider => props.workRepositoriesByProvider[provider],
   chooseLocalFolder: () => props.chooseAgentFolder(),
@@ -1611,10 +1635,9 @@ const repositoryAcquisition = useRepositoryAcquisition({
     const connection = props.snapshot.workBacklog.connections.find(item => item.provider === provider);
     return connection?.detail ? localizedText(connection.detail, t) : null;
   },
-  listSourceRepositories: (remoteConnectionId) => props.listSourceRepositories(remoteConnectionId),
-  loadRepositories: (provider, location) => props.listWorkSources ? props.listWorkSources(provider, location) : location ? props.loadWorkRepositories(provider, location) : props.loadWorkRepositories(provider),
+  loadRepositories: (provider) => props.listWorkSources ? props.listWorkSources(provider) : props.loadWorkRepositories(provider),
   openFolder: async (folder, teamId) => {
-    const backend = preferredBackendChoices(props.snapshot, teamId)[0];
+    const backend = preferredBackendChoices(props.snapshot)[0];
     if (!backend) { openSettings(); return; }
     await props.createAgent({
       name: null,
@@ -1637,7 +1660,6 @@ const {
   catalogLoading: repositoryAcquireCatalogLoading,
   cloneAndOpen: cloneRepositoryAndOpen,
   close: closeRepositoryAcquire,
-  closeRemoteFolderPicker: closeRepositoryAcquireRemoteFolder,
   connect: connectGitHub,
   displayError: repositoryAcquireDisplayError,
   error: repositoryAcquireError,
@@ -1645,10 +1667,8 @@ const {
   open: openRepositoryAcquire,
   openAuthorization: openGitHubAuthorization,
   openExistingFolder: openExistingRepositoryFolder,
-  remoteFolderPickerVisible: repositoryAcquireRemoteFolderVisible,
   repositories: repositoryAcquireRepositories,
   select: selectWorkRepository,
-  selectRemoteFolder: selectRepositoryAcquireRemoteFolder,
   sourceRepositories: repositoryAcquireSourceRepositories,
   visible: repositoryAcquireVisible,
 } = repositoryAcquisition;
@@ -2550,15 +2570,12 @@ const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
     isModalDialogVisible: () => isModalDialogVisible.value,
     showOnboardingGate: () => showOnboardingGate.value,
     teams: () => props.snapshot.teams,
-    remoteConnections: () => props.snapshot.remoteConnections.connections,
-    loadRemoteTeams,
   },
   actions: {
     closeAgent: (agentId) => emit('close-agent', agentId),
     compactSession: compactAgentSession,
     replaceConversationWithSummary: (agentId) => emit('compress-session', agentId),
     closeTeam: (teamId) => emit('close-team', teamId),
-    disconnectTeam: (teamId) => emit('disconnect-team', teamId),
     debugMarkUnread: () => emit('debug-mark-unread'),
     duplicateAgent: (agentId) => emit('duplicate-agent', agentId),
     editAgent: openEditAgent,
@@ -2602,14 +2619,14 @@ const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
 const paletteActions = computed(() => {
   const agent = hasFocusedConversation.value ? currentAgent.value : null;
   const team = activeTeam.value;
-  const remote = team?.remoteConnectionId;
+  const remote = agent?.remoteConnectionId;
   return commandPaletteActions({
     shortcuts: shortcutContext.value, agent, team,
     settings: { embeddedBrowser: appHostCapabilities.embeddedBrowser, appshots: appHostCapabilities.appshots, availableBackends: props.snapshot.providerConnections?.map(provider => provider.backend) ?? [] },
     connected: props.connectionState.status === 'connected',
     hostConnected: !remote || props.snapshot.remoteConnections.connections.some(connection => connection.id === remote && connection.status === 'ready'),
-    engineConnected: Boolean(agent && preferredBackendChoices(props.snapshot, agent.teamId).includes(agent.backend)),
-    canCreateAgent: Boolean(preferredBackendChoices(props.snapshot, team?.id).length),
+    engineConnected: Boolean(agent && preferredBackendChoices(props.snapshot, agent.remoteConnectionId).includes(agent.backend)),
+    canCreateAgent: Boolean(preferredBackendChoices(props.snapshot).length),
     capabilities: { ...defaultBackendCapabilities(agent?.backend ?? 'codex'), ...currentBackendRuntime.value.capabilities },
     gitAvailable: Boolean(currentAgentGitStatus.value && currentAgentGitStatus.value.state !== 'unknown'),
     planAvailable: Boolean(agent && rightWorkspaceFor(agent.id).planPanel),
@@ -2820,13 +2837,6 @@ const editingAgent = computed(() => (
 const editingTeam = computed(() => (
   editingTeamId.value ? props.snapshot.teams.find((team) => team.id === editingTeamId.value) ?? null : null
 ));
-const agentDialogTargetTeam = computed(() => {
-  const targetTeamId = agentDialogTeamId.value ?? activeTeam.value?.id ?? props.snapshot.activeTeamId;
-  return targetTeamId
-    ? props.snapshot.teams.find((team) => team.id === targetTeamId) ?? null
-    : null;
-});
-const agentDialogRemoteConnectionId = computed(() => agentDialogTargetTeam.value?.remoteConnectionId ?? '');
 onMounted(() => {
   void loadAuthentication();
 });
@@ -2855,7 +2865,7 @@ function repositorySessionContext(source?: Pick<RepositorySessionSource, 'agentI
 async function createQuickChat(): Promise<void> {
   const { teamId } = repositorySessionContext(null);
   try {
-    const backend = preferredBackendChoices(props.snapshot, teamId)[0];
+    const backend = preferredBackendChoices(props.snapshot)[0];
     if (!backend) { openSettings(); return; }
     const created = await props.createQuickChat({ backend, ...(teamId ? { teamId } : {}) });
     if (created !== null) activeSurface.value = 'agent';
@@ -2912,14 +2922,6 @@ function openEditTeam(teamId: string): void {
   teamDialogMode.value = 'edit';
   editingTeamId.value = teamId;
   teamDialogVisible.value = true;
-}
-
-async function loadRemoteTeams(connectionId: string): Promise<Team[]> {
-  if (!props.getAutomationSnapshot) {
-    throw new Error(t('surface.team-close-confirmation.remoteTeamsUnavailable'));
-  }
-  const remoteSnapshot = await props.getAutomationSnapshot({ kind: 'remote', remoteConnectionId: connectionId });
-  return remoteSnapshot.teams;
 }
 
 function openEditAgent(agentId: string): void {
@@ -3259,7 +3261,7 @@ async function forwardCodexSteerPrompt(prompt: string, options?: CodexRendererSe
 
 function requireConnectedConversation(): void {
   const agent = currentAgent.value;
-  if (agent && !preferredBackendChoices(props.snapshot, agent.teamId).includes(agent.backend)) {
+  if (agent && !preferredBackendChoices(props.snapshot, agent.remoteConnectionId).includes(agent.backend)) {
     throw new Error(t('engineConnection.required'));
   }
 }

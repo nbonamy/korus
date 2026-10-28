@@ -88,7 +88,7 @@
           v-if="showBackendSelector && agent && backendSwitch"
           class="conversation-pane__backend-selector"
           :model-value="agent.backend"
-          :team-id="agent.teamId"
+          :remote-connection-id="agent.remoteConnectionId"
           size="small"
           :disabled="disabled || backendSwitch.busy.value"
           @update:model-value="$event && selectBackend($event)"
@@ -200,7 +200,7 @@ import { withInferredWorkPhases } from '../shared/inferred-work-phases';
 import { isAppToolVisible, provideAppToolPresentation } from '../tool-presentation';
 import { provideConversationImagePreviews } from './conversation-image-previews';
 const backendSwitch = useBackendSwitch();
-const backendChoices = useBackendChoices(() => props.agent?.teamId);
+const backendChoices = useBackendChoices(() => props.agent?.remoteConnectionId);
 const connectEngine = useConnectEngine();
 async function selectBackend(backend: Agent['backend']): Promise<void> {
   if (!props.agent || !backendSwitch) return;

@@ -157,7 +157,6 @@
         v-model:reasoning-effort="implementationEffort"
         v-model:service-tier="implementationTier"
         :agent-id="missionLead.id"
-        :team-id="mission.teamId"
         :disabled="busy"
       />
       <p v-if="error" class="mission-workspace__error" role="alert">{{ error }}</p>

@@ -5,6 +5,7 @@ import type { WorkspaceSidebarGroup } from '@workspace/core/workspace-sidebar';
 type RepositoryBranchLoader = (input: {
   agentId: string;
   repositoryRoot: string;
+  remoteConnectionId?: string;
 }) => Promise<SourceBranch[]>;
 
 export type RepositorySessionMenuState = {
@@ -33,8 +34,9 @@ export function useRepositorySessionMenu(
     errors.value = { ...errors.value, [group.id]: null };
     try {
       const branches = await branchLoader()?.({
-        agentId: group.sessions[0]!.agentId,
+        agentId: group.repositoryAgentId ?? group.sessions[0]!.agentId,
         repositoryRoot: group.repositoryRoot,
+        ...(group.remoteConnectionId ? { remoteConnectionId: group.remoteConnectionId } : {}),
       }) ?? [];
       defaultBranches.value = {
         ...defaultBranches.value,

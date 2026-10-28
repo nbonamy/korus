@@ -181,11 +181,10 @@ describe('AppBackendServer', () => {
     });
   });
 
-  it('creates a project in the selected remote team', async () => {
+  it('creates a project on the selected remote host', async () => {
     const snapshot = createTestSnapshot();
     snapshot.remoteConnections.connections = [readyRemoteConnection()];
-    snapshot.teams[0].remoteConnectionId = 'connection-devbox';
-    snapshot.teams[0].remoteTeamId = 'team-remote';
+    snapshot.teams[0].remoteLinks = [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }];
     const remoteSnapshot = createRemoteTeamSnapshot([{
       ...createRemoteAgent(),
       folder: '/home/nicolas/src/new-product',
@@ -195,8 +194,8 @@ describe('AppBackendServer', () => {
 
     await expect(server.handleMessage({
       jsonrpc: '2.0', id: 'remote-project', method: backendMethods.projectCreate,
-      params: { input: { name: 'new-product' } },
-    })).resolves.toMatchObject({ result: { agents: [{ folder: '/home/nicolas/src/new-product', teamId: 'team-test' }] } });
+      params: { input: { name: 'new-product', remoteConnectionId: 'connection-devbox' } },
+    })).resolves.toMatchObject({ result: { agents: [{ folder: '/home/nicolas/src/new-product', teamId: 'team-test', remoteConnectionId: 'connection-devbox' }] } });
     expect(remoteClients.request).toHaveBeenCalledWith(
       snapshot.remoteConnections.connections[0],
       backendMethods.projectCreate,
@@ -622,11 +621,10 @@ describe('AppBackendServer', () => {
     expect(snapshot.sourceFolder.recentRepoNames).toStrictEqual([]);
   });
 
-  it('creates agents in remote teams using the team SSH connection', async () => {
+  it('creates agents on a remote host using its SSH connection', async () => {
     const snapshot = createTestSnapshot();
     snapshot.remoteConnections.connections = [readyRemoteConnection()];
-    snapshot.teams[0].remoteConnectionId = 'connection-devbox';
-    snapshot.teams[0].remoteTeamId = 'team-remote';
+    snapshot.teams[0].remoteLinks = [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }];
     const remoteSnapshot = createRemoteTeamSnapshot([{
       ...createRemoteAgent(),
       name: 'Remote Dina',
@@ -654,14 +652,14 @@ describe('AppBackendServer', () => {
           name: 'Remote Dina',
           folder: '/home/nicolas/src/agent-workspace',
           backend: 'codex',
+          remoteConnectionId: 'connection-devbox',
         },
       },
     })).resolves.toMatchObject({
       result: {
         teams: [{
           id: 'team-test',
-          remoteConnectionId: 'connection-devbox',
-          remoteTeamId: 'team-remote',
+          remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }],
           agentIds: ['agent-remote'],
         }],
         agents: [{
@@ -693,8 +691,7 @@ describe('AppBackendServer', () => {
   it('does not wait for remote git status refresh before completing agent creation', async () => {
     const snapshot = createTestSnapshot();
     snapshot.remoteConnections.connections = [readyRemoteConnection()];
-    snapshot.teams[0].remoteConnectionId = 'connection-devbox';
-    snapshot.teams[0].remoteTeamId = 'team-remote';
+    snapshot.teams[0].remoteLinks = [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }];
     const remoteSnapshot = createRemoteTeamSnapshot([{
       ...createRemoteAgent(),
       name: 'Remote Dina',
@@ -722,6 +719,7 @@ describe('AppBackendServer', () => {
             name: 'Remote Dina',
             folder: '/home/nicolas/src/agent-workspace',
             backend: 'codex',
+            remoteConnectionId: 'connection-devbox',
           },
         },
       }),

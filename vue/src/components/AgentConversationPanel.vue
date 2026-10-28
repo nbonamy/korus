@@ -113,7 +113,7 @@ const state = agentConversationState(() => props.view, {
   mentionGroups: () => props.mentionGroups,
   modelMenuItems: () => props.modelMenuItems,
 });
-const engineChoices = useBackendChoices(() => props.view.agent.teamId);
+const engineChoices = useBackendChoices(() => props.view.agent.remoteConnectionId);
 const conversation = useAgentConversation({
   beforeSubmit: async () => {
     if (!engineChoices.value.includes(props.view.agent.backend)) throw new Error(translate('engineConnection.required'));

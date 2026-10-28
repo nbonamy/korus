@@ -127,7 +127,6 @@ export function createClientApiMock(
     updateTeam: unscripted('updateTeam'),
     reorderTeams: unscripted('reorderTeams'),
     closeTeam: unscripted('closeTeam'),
-    disconnectTeam: unscripted('disconnectTeam'),
     selectTeam: unscripted('selectTeam'),
     getAutomationSnapshot: unscripted('getAutomationSnapshot'),
     createAutomation: unscripted('createAutomation'),

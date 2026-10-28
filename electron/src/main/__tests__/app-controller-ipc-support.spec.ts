@@ -383,8 +383,8 @@ describe('AppController', () => {
     };
     const reorderRepositoriesInput: ReorderRepositoriesInput = {
       teamId: 'team-app',
-      repositoryRoot: '/Users/nbonamy/src/agent-workspace',
-      beforeRepositoryRoot: null,
+      repositoryKey: '/Users/nbonamy/src/agent-workspace',
+      beforeRepositoryKey: null,
     };
 
     await controller.initialize();

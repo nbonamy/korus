@@ -36,6 +36,7 @@ export type StartWorkItemsInput = {
   reasoningEffort?: string;
   serviceTier?: string;
   repository?: SourceRepository;
+  remoteConnectionId?: string;
   isCurrent?: () => boolean;
 };
 
@@ -201,7 +202,7 @@ export function useWorkItemRouting(options: {
     const settled = Promise.allSettled(input.items.map(async listedItem => {
       const { agent, item } = await createIsolatedAgent(listedItem, input.teamId, {
         backend: input.backend, model: input.model, reasoningEffort: input.reasoningEffort, serviceTier: input.serviceTier,
-        repository: input.repository, isCurrent: input.isCurrent,
+        repository: input.repository, remoteConnectionId: input.remoteConnectionId, isCurrent: input.isCurrent,
         onPhase: () => {
           if (++prepared !== input.items.length) return;
           const current = creationProgress.value;
@@ -250,7 +251,7 @@ export function useWorkItemRouting(options: {
   async function createIsolatedAgent(
     listedItem: WorkItem,
     teamId: string,
-    creationOptions: { reuseExisting?: boolean; backend?: Agent['backend']; model?: string; reasoningEffort?: string; serviceTier?: string; repository?: SourceRepository; isCurrent?: () => boolean; onPhase?: (phase: 'creatingAgent') => void } = {},
+    creationOptions: { reuseExisting?: boolean; backend?: Agent['backend']; model?: string; reasoningEffort?: string; serviceTier?: string; repository?: SourceRepository; remoteConnectionId?: string; isCurrent?: () => boolean; onPhase?: (phase: 'creatingAgent') => void } = {},
   ): Promise<{ agent: Agent; item: WorkItem }> {
     const team = options.model.snapshot().teams.find((candidate) => candidate.id === teamId);
     if (!team) throw new Error(translate('surface.appShell.theSelectedTeamIsUnavailable'));
@@ -269,7 +270,7 @@ export function useWorkItemRouting(options: {
       repoPath: repository.path,
       branchName: workItemBranchName(item),
       ...(creationOptions.reuseExisting ? { reuseExisting: true } : {}),
-      ...remoteConnection(team),
+      ...(creationOptions.remoteConnectionId ? { remoteConnectionId: creationOptions.remoteConnectionId } : {}),
     });
     ensureCurrent(creationOptions.isCurrent);
     creationOptions.onPhase?.('creatingAgent');
@@ -284,6 +285,7 @@ export function useWorkItemRouting(options: {
       } } : {}),
       sourceRepositoryName: repository.name,
       teamId: team.id,
+      ...(creationOptions.remoteConnectionId ? { remoteConnectionId: creationOptions.remoteConnectionId } : {}),
     });
     if (!agent) throw new Error(`Could not create an agent for ${item.sourceName} ${workItemDisplayIdentifier(item)}.`);
     return { agent, item };
@@ -347,8 +349,7 @@ export function useWorkItemRouting(options: {
 
   async function validateAgentRepository(agent: Agent): Promise<void> {
     if (agent.workspace?.kind !== 'git') throw new Error('The selected code repository is unavailable.');
-    const team = options.model.snapshot().teams.find(team => team.id === agent.teamId);
-    await options.actions.listBranches(agent.workspace.primaryWorktreeRoot, team?.remoteConnectionId);
+    await options.actions.listBranches(agent.workspace.primaryWorktreeRoot, agent.remoteConnectionId);
   }
 
   async function assignWithPrompt(
@@ -399,7 +400,3 @@ function workProviderTitle(provider: WorkItem['provider']): string {
   return workProviderDefinition(provider).label;
 }
 
-function remoteConnection(team: Team): { remoteConnectionId?: string } {
-  const remoteConnectionId = team.remoteConnectionId?.trim();
-  return remoteConnectionId ? { remoteConnectionId } : {};
-}

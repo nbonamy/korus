@@ -54,9 +54,9 @@ export class MissionExecutionService {
     const mission = this.requireMission(input.id);
     if (mission.revision !== input.revision) throw new Error('This mission changed. Reload before continuing.');
     if (input.action === 'configure') {
-      const team = this.ports.snapshot.teams.find(team => team.id === input.teamId && team.id === mission.teamId && !team.remoteConnectionId);
+      const team = this.ports.snapshot.teams.find(team => team.id === input.teamId && team.id === mission.teamId);
       if (!team || !Array.isArray(input.memberIds) || !input.memberIds.length || input.memberIds.length > 20
-        || input.memberIds.some(id => !this.ports.snapshot.agents.some(agent => agent.id === id && agent.teamId === team.id))) throw new Error('Choose a local team and at least one of its agents.');
+        || input.memberIds.some(id => !this.ports.snapshot.agents.some(agent => agent.id === id && agent.teamId === team.id && !agent.remoteConnectionId))) throw new Error('Choose a local team and at least one of its agents.');
       await this.change(input, current => {
         if (current.execution?.workspace || current.execution?.runs.length) throw new Error('Mission workspace configuration is locked after the first run.');
         current.execution = { teamId: team.id, memberIds: [...new Set(input.memberIds)], workspaces: [], runs: [] };

@@ -60,11 +60,11 @@ describe('CockpitWorkInbox', () => {
     const listSourceRepositories = vi.fn().mockResolvedValue([repository]);
     const wrapper = mountInbox([selected], {}, {}, startWorkAction);
     await wrapper.setProps({ connection: { provider: 'linear', status: 'connected' }, listSourceRepositories,
-      teams: [{ id: 'team-one', name: 'Remote', agentIds: [], remoteConnectionId: 'remote-one' }] });
+      teams: [{ id: 'team-one', name: 'Remote', agentIds: [] }] });
     await wrapper.get('.cockpit-inbox__selection input').setValue(true);
     await wrapper.get('.cockpit-inbox__start-work').trigger('click');
     await flushPromises();
-    expect(listSourceRepositories).toHaveBeenCalledWith('remote-one');
+    expect(listSourceRepositories).toHaveBeenCalledWith();
     const fix = wrapper.findAll('.app-dialog__footer button').find(button => button.text() === 'Fix')!;
     await fix.trigger('click');
     expect(startWorkAction).not.toHaveBeenCalled();

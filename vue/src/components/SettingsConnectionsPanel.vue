@@ -249,7 +249,7 @@ import { agentBackends } from '@workspace/core/contracts/shared';
 import type { ProviderConnection } from '@workspace/core/contracts/provider-setup';
 import { ElMessageBox } from 'element-plus';
 import { computed, onMounted, ref } from 'vue';
-import type { AddSshConnectionInput, DevicePairingSession, DevicePairingStatus, PairedDevice, RemoteConnection, SourceFolderListing, SourceFolderListInput, SshHostCandidate, Team, UpdateRemoteConnectionInput, UpdateSettingsInput } from '@workspace/core/contracts';
+import type { AddSshConnectionInput, Agent, DevicePairingSession, DevicePairingStatus, PairedDevice, RemoteConnection, SourceFolderListing, SourceFolderListInput, SshHostCandidate, UpdateRemoteConnectionInput, UpdateSettingsInput } from '@workspace/core/contracts';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { AlertTriangleIcon, ChevronDown, DotsVerticalIcon, RefreshIcon, SettingsIcon, Trash2Icon } from '../shared/icons/app-icons';
@@ -271,7 +271,7 @@ const props = withDefaults(defineProps<{
   providerConnections?: ProviderConnection[];
   listSourceFolders?: (input?: SourceFolderListInput) => Promise<SourceFolderListing>;
   listSshHosts?: () => Promise<SshHostCandidate[]>;
-  teams?: Team[];
+  agents?: Agent[];
   updateRemoteConnection?: (connectionId: string, input: UpdateRemoteConnectionInput) => Promise<void>;
   removeRemoteConnection?: (connectionId: string) => Promise<void>;
   settings?: { preventSleepWhenRemoteAccessEnabled: boolean };
@@ -291,7 +291,7 @@ const props = withDefaults(defineProps<{
   providerConnections: () => [],
   listSourceFolders: async () => ({ path: '', parentPath: null, entries: [] }),
   listSshHosts: async () => [],
-  teams: () => [],
+  agents: () => [],
   updateRemoteConnection: async () => undefined,
   removeRemoteConnection: async () => undefined,
   getRemoteControlStatus: async () => ({ status: 'disabled' as const }),
@@ -539,10 +539,10 @@ function selectConnectionMenuItem(connection: RemoteConnection, itemId: string):
 }
 
 async function confirmRemoveConnection(connection: RemoteConnection): Promise<void> {
-  const connectedTeams = teamsForConnection(connection.id);
+  const remoteAgentCount = props.agents.filter((agent) => agent.remoteConnectionId === connection.id).length;
   try {
     await ElMessageBox.confirm(
-      connectionDeleteMessage(connection, connectedTeams),
+      connectionDeleteMessage(connection, remoteAgentCount),
       `Delete ${connection.name}?`,
       {
         cancelButtonText: translate('common.cancel'),
@@ -557,18 +557,13 @@ async function confirmRemoveConnection(connection: RemoteConnection): Promise<vo
   await props.removeRemoteConnection(connection.id);
 }
 
-function teamsForConnection(connectionId: string): Team[] {
-  return props.teams.filter((team) => team.remoteConnectionId === connectionId);
-}
-
-function connectionDeleteMessage(connection: RemoteConnection, teams: Team[]): string {
-  if (teams.length === 0) {
+function connectionDeleteMessage(connection: RemoteConnection, agentCount: number): string {
+  if (agentCount === 0) {
     return `${connection.name} will be removed.`;
   }
 
-  const teamNames = teams.map((team) => team.name).join(', ');
-  const teamLabel = teams.length === 1 ? 'team' : 'teams';
-  return `${connection.name} will be removed. This will also remove ${teams.length} connected ${teamLabel} from this app: ${teamNames}. Remote agents, messages, and automations will keep running on the SSH host.`;
+  const agentLabel = agentCount === 1 ? 'agent' : 'agents';
+  return `${connection.name} will be removed. This will also remove ${agentCount} ${agentLabel} running there from this app. They keep running on the SSH host.`;
 }
 
 function connectionLabel(connection: RemoteConnection): string {

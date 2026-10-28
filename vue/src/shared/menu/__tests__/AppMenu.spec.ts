@@ -17,6 +17,17 @@ describe('AppMenu', () => {
     } finally { wrapper.unmount(); }
   });
 
+  it('selects a row and its trailing icon action through separate item ids', async () => {
+    const wrapper = mount(AppMenu, { props: { ariaLabel: 'Actions', items: [
+      { id: 'main', type: 'action', label: 'main', secondaryAction: { id: 'main:remote', label: 'Open on a remote machine', icon: SwitchHorizontalIcon } },
+      { id: 'plain', type: 'action', label: 'Plain' },
+    ] } });
+    await wrapper.get('.app-menu__row .app-menu__item').trigger('click');
+    await wrapper.get('button[aria-label="Open on a remote machine"]').trigger('click');
+    expect(wrapper.emitted('select')).toStrictEqual([['main'], ['main:remote']]);
+    expect(wrapper.findAll('.app-menu__row')).toHaveLength(1);
+  });
+
   it('shows information rows that are not actions and cannot be selected', async () => {
     const wrapper = mount(AppMenu, { props: { ariaLabel: 'Diff', items: [
       { id: 'heading', type: 'info', label: 'By file type' },

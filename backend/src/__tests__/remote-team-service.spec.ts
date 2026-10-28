@@ -11,7 +11,7 @@ describe('RemoteTeamService', () => {
   it('includes remote engine availability in the first projected snapshot', async () => {
     const snapshot = createTestSnapshot();
     snapshot.remoteConnections.connections = [readyRemoteConnection()];
-    snapshot.teams = [{ id: 'pointer', name: 'Remote', remoteConnectionId: 'connection-devbox', remoteTeamId: 'team-remote', agentIds: [] }];
+    snapshot.teams = [{ id: 'pointer', name: 'Remote', remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }], agentIds: [] }];
     const remote = createRemoteTeamSnapshot([createRemoteAgent()]);
     remote.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
     const service = new RemoteTeamService({
@@ -28,20 +28,56 @@ describe('RemoteTeamService', () => {
     expect(projected.providerConnections).toEqual(snapshot.providerConnections);
   });
 
-  it('requires an explicit valid team instead of consulting shared navigation', () => {
+  it('requires an explicit valid team instead of consulting shared navigation', async () => {
     const service = new RemoteTeamService({ clients: {} as never, getSnapshot: createTestSnapshot, onForwardedEvent: vi.fn(), onProjectedSnapshotChanged: vi.fn() });
-    expect(() => service.pointerForAgentInput({})).toThrow('target team');
-    expect(() => service.pointerForAgentInput({ teamId: 'missing' })).toThrow('Team not found');
-    expect(service.pointerForAgentInput({ teamId: 'team-test' })).toBeNull();
+    await expect(service.pointerForAgentInput({})).rejects.toThrow('target team');
+    await expect(service.pointerForAgentInput({ teamId: 'missing' })).rejects.toThrow('Team not found');
+    await expect(service.pointerForAgentInput({ teamId: 'team-test' })).resolves.toBeNull();
   });
+
+  it('creates one hidden team per host on first use and reuses it afterwards', async () => {
+    const snapshot = createTestSnapshot();
+    snapshot.remoteConnections.connections = [readyRemoteConnection()];
+    const remote = createRemoteTeamSnapshot([]);
+    const request = vi.fn(async () => structuredClone(remote));
+    const service = new RemoteTeamService({ clients: { request } as never, getSnapshot: () => snapshot, onForwardedEvent: vi.fn(), onProjectedSnapshotChanged: vi.fn() });
+
+    const first = await service.pointerForAgentInput({ teamId: 'team-test', remoteConnectionId: 'connection-devbox' });
+    const second = await service.pointerForAgentInput({ teamId: 'team-test', remoteConnectionId: 'connection-devbox' });
+
+    expect(first).toStrictEqual({ connectionId: 'connection-devbox', localTeamId: 'team-test', remoteTeamId: remote.activeTeamId });
+    expect(second).toStrictEqual(first);
+    expect(snapshot.teams[0]!.remoteLinks).toStrictEqual([{ connectionId: 'connection-devbox', remoteTeamId: remote.activeTeamId }]);
+    expect(request).toHaveBeenCalledOnce();
+    await expect(service.pointerForAgentInput({ teamId: 'team-test', remoteConnectionId: 'unknown' })).rejects.toThrow('Remote connection not found');
+  });
+
+  it('projects remote agents next to local ones in the same team and tags their host', () => {
+    const snapshot = createTestSnapshot();
+    snapshot.remoteConnections.connections = [readyRemoteConnection()];
+    const localAgent = { ...createRemoteAgent(), id: 'agent-local', teamId: 'team-test', name: 'Local' };
+    snapshot.agents = [localAgent];
+    snapshot.teams = [{ id: 'team-test', name: 'Mixed', agentIds: [localAgent.id], remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }] }];
+    const remoteAgent = createRemoteAgent();
+    const service = new RemoteTeamService({ clients: {} as never, getSnapshot: () => snapshot, onForwardedEvent: vi.fn(), onProjectedSnapshotChanged: vi.fn() });
+    service.rememberSnapshot('connection-devbox', createRemoteTeamSnapshot([remoteAgent]));
+
+    const projected = service.clientSnapshotFromKnownRemotes();
+
+    expect(projected.teams[0]).toMatchObject({ name: 'Mixed', agentIds: [localAgent.id, remoteAgent.id] });
+    expect(projected.agents.find((agent) => agent.id === remoteAgent.id)).toMatchObject({ teamId: 'team-test', remoteConnectionId: 'connection-devbox' });
+    expect(projected.agents.find((agent) => agent.id === localAgent.id)?.remoteConnectionId).toBeUndefined();
+    expect(snapshot.teams[0]!.agentIds).toStrictEqual([localAgent.id]);
+    expect(service.connectionIdForAgent(projected.agents.find((agent) => agent.id === remoteAgent.id)!)).toBe('connection-devbox');
+  });
+
   it('adopts valid remote snapshots while rejecting malformed snapshot payloads', async () => {
     const snapshot = createTestSnapshot();
     snapshot.remoteConnections.connections = [readyRemoteConnection()];
     snapshot.teams = [{
       id: 'team-pointer',
       name: 'Remote Core',
-      remoteConnectionId: 'connection-devbox',
-      remoteTeamId: 'team-remote',
+      remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }],
       agentIds: [],
     }];
     const remoteAgent = createRemoteAgent();
@@ -156,8 +192,7 @@ describe('RemoteTeamService', () => {
     snapshot.teams = [{
       id: 'team-pointer',
       name: 'Remote Core',
-      remoteConnectionId: 'connection-devbox',
-      remoteTeamId: 'team-remote',
+      remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }],
       agentIds: [],
     }];
     const remoteAgent = createRemoteAgent();
@@ -234,8 +269,7 @@ describe('RemoteTeamService', () => {
     snapshot.teams = [{
       id: 'team-pointer',
       name: 'Remote Core',
-      remoteConnectionId: 'connection-devbox',
-      remoteTeamId: 'team-remote',
+      remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }],
       agentIds: [],
     }];
     const service = new RemoteTeamService({
@@ -269,9 +303,8 @@ describe('RemoteTeamService', () => {
     snapshot.teams = [{
       id: 'team-pointer',
       name: 'Stale name',
-      remoteConnectionId: 'connection-devbox',
-      remoteTeamId: 'team-remote',
-      agentIds: [remoteAgent.id],
+      remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }],
+      agentIds: [],
     }];
     snapshot.activeTeamId = 'team-pointer';
     snapshot.agents = [remoteAgent, unrelatedAgent];

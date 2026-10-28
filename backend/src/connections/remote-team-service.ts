@@ -2,7 +2,7 @@ import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { isAppSnapshotGetResult, type AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { applyMainEventToSnapshot } from '@workspace/core/snapshot';
 import { decodeAppSnapshot } from '@workspace/core/snapshot-guards';
-import type { Agent, AppSnapshot, CreateAgentInput, CreateTeamInput, RemoteConnection, Team } from '@workspace/core/contracts';
+import type { Agent, AppSnapshot, RemoteConnection, RemoteTeamLink, Team } from '@workspace/core/contracts';
 import { workItemAssignmentKey, type WorkItemAssignmentSource } from '@workspace/core/work-assignments';
 import type { RemoteDaemonClientManager } from './remote-daemon-client';
 
@@ -27,34 +27,36 @@ export class RemoteTeamService {
 
   constructor(private readonly options: RemoteTeamServiceOptions) {}
 
-  connectionIdForAgent(agent: Pick<Agent, 'teamId'>): string | null {
-    const team = agent.teamId
-      ? this.options.getSnapshot().teams.find((candidate) => candidate.id === agent.teamId)
-      : null;
-    return this.connectionIdForTeam(team ?? null);
+  connectionIdForAgent(agent: Pick<Agent, 'remoteConnectionId'>): string | null {
+    return agent.remoteConnectionId?.trim() || null;
   }
 
-  connectionIdForTeam(team: Team | null): string | null {
-    return team?.remoteConnectionId?.trim() || null;
+  linksForTeam(team: Team | null): RemoteTeamLink[] {
+    return team?.remoteLinks ?? [];
   }
 
-  pointerForTeam(team: Team | null): RemoteTeamPointer | null {
-    const connectionId = team?.remoteConnectionId?.trim() ?? '';
-    const remoteTeamId = team?.remoteTeamId?.trim() ?? '';
-    if (!team || !connectionId || !remoteTeamId) return null;
-    return { connectionId, localTeamId: team.id, remoteTeamId };
+  pointerForTeamConnection(team: Team | null, connectionId: string): RemoteTeamPointer | null {
+    const link = this.linksForTeam(team).find((candidate) => candidate.connectionId === connectionId);
+    return team && link ? { connectionId, localTeamId: team.id, remoteTeamId: link.remoteTeamId } : null;
   }
 
-  pointerForAgentInput(input: Pick<CreateAgentInput, 'teamId'>): RemoteTeamPointer | null {
-    return this.pointerForTeam(this.targetTeamForAgentInput(input));
-  }
-
-  targetTeamForAgentInput(input: Pick<CreateAgentInput, 'teamId'>): Team | null {
+  /**
+   * Resolves where an agent creation runs. A local team keeps one hidden team per host on the remote
+   * daemon; the first remote agent for a host creates it.
+   */
+  async pointerForAgentInput(input: { teamId?: string; remoteConnectionId?: string }): Promise<RemoteTeamPointer | null> {
     const snapshot = this.options.getSnapshot();
     if (!input.teamId) throw new Error('A target team is required before resolving its location.');
-    const team = snapshot.teams.find((team) => team.id === input.teamId);
+    const team = snapshot.teams.find((candidate) => candidate.id === input.teamId);
     if (!team) throw new Error(`Team not found: ${input.teamId}`);
-    return team;
+    const connectionId = input.remoteConnectionId?.trim() ?? '';
+    if (!connectionId) return null;
+    this.validateConnection(connectionId);
+    const existing = this.pointerForTeamConnection(team, connectionId);
+    if (existing) return existing;
+    const remoteTeam = await this.createRemoteTeam(connectionId, team);
+    team.remoteLinks = [...(team.remoteLinks ?? []), { connectionId, remoteTeamId: remoteTeam.id }];
+    return { connectionId, localTeamId: team.id, remoteTeamId: remoteTeam.id };
   }
 
   knownSnapshot(connectionId: string): AppSnapshot | undefined {
@@ -88,43 +90,38 @@ export class RemoteTeamService {
     return result.snapshot;
   }
 
-  async resolveTeamForPointerInput(
-    input: Pick<CreateTeamInput, 'name' | 'color' | 'remoteConnectionId' | 'remoteTeamId'>,
-  ): Promise<Team> {
-    const connectionId = input.remoteConnectionId?.trim() ?? '';
-    if (!connectionId) throw new Error('Remote connection is required.');
-
-    const requestedRemoteTeamId = input.remoteTeamId?.trim() ?? '';
-    const remoteSnapshot = requestedRemoteTeamId
-      ? await this.snapshot(connectionId)
-      : await this.request<AppSnapshot>(connectionId, backendMethods.teamCreate, {
-          input: { name: input.name, color: input.color },
-        });
+  private async createRemoteTeam(connectionId: string, localTeam: Team): Promise<Team> {
+    const remoteSnapshot = await this.request<AppSnapshot>(connectionId, backendMethods.teamCreate, {
+      input: { name: localTeam.name, color: localTeam.color ?? '' },
+    });
     this.rememberSnapshot(connectionId, remoteSnapshot);
-
-    const remoteTeam = requestedRemoteTeamId
-      ? remoteSnapshot.teams.find((team) => team.id === requestedRemoteTeamId)
-      : remoteSnapshot.teams.find((team) => team.id === remoteSnapshot.activeTeamId)
-        ?? remoteSnapshot.teams[remoteSnapshot.teams.length - 1];
-    if (!remoteTeam) {
-      throw new Error(requestedRemoteTeamId ? `Remote team not found: ${requestedRemoteTeamId}` : 'Remote team was not created.');
-    }
+    const remoteTeam = remoteSnapshot.teams.find((team) => team.id === remoteSnapshot.activeTeamId)
+      ?? remoteSnapshot.teams[remoteSnapshot.teams.length - 1];
+    if (!remoteTeam) throw new Error('Remote team was not created.');
     return remoteTeam;
   }
 
-  async teamHasAgents(team: Team): Promise<boolean> {
-    if (team.agentIds.length > 0) return true;
-    const pointer = this.pointerForTeam(team);
-    if (!pointer) return false;
-    const cached = this.snapshots.get(pointer.connectionId);
-    if (cached && remoteTeamHasAgents(cached, pointer.remoteTeamId)) return true;
-    return remoteTeamHasAgents(await this.snapshot(pointer.connectionId), pointer.remoteTeamId);
+  /** Removes the hidden remote team of a host (and the agents in it) when a local team goes away. */
+  async deleteRemoteTeams(team: Team): Promise<void> {
+    for (const link of this.linksForTeam(team)) {
+      const remoteSnapshot = await this.request<AppSnapshot>(link.connectionId, backendMethods.teamDelete, { teamId: link.remoteTeamId });
+      this.rememberSnapshot(link.connectionId, remoteSnapshot);
+    }
+  }
+
+  /** Drops links to a host that is no longer configured; its agents disappear from the projection. */
+  forgetConnection(connectionId: string): void {
+    for (const team of this.options.getSnapshot().teams) {
+      if (team.remoteLinks?.some((link) => link.connectionId === connectionId)) {
+        team.remoteLinks = team.remoteLinks.filter((link) => link.connectionId !== connectionId);
+        if (!team.remoteLinks.length) delete team.remoteLinks;
+      }
+    }
+    this.snapshots.delete(connectionId);
   }
 
   async agentOwner(agentId: string): Promise<RemoteAgentOwner | null> {
-    for (const team of this.options.getSnapshot().teams) {
-      const pointer = this.pointerForTeam(team);
-      if (!pointer) continue;
+    for (const pointer of this.pointers()) {
       const cachedAgent = remoteTeamAgent(this.snapshots.get(pointer.connectionId), pointer.remoteTeamId, agentId);
       if (cachedAgent) return { ...pointer, agent: cachedAgent };
       const agent = remoteTeamAgent(await this.snapshot(pointer.connectionId), pointer.remoteTeamId, agentId);
@@ -139,9 +136,7 @@ export class RemoteTeamService {
     const teams = [...snapshot.teams].sort((left, right) => (
       left.id === snapshot.activeTeamId ? -1 : right.id === snapshot.activeTeamId ? 1 : 0
     ));
-    for (const team of teams) {
-      const pointer = this.pointerForTeam(team);
-      if (!pointer) continue;
+    for (const pointer of this.pointers(teams)) {
       const cached = this.snapshots.get(pointer.connectionId);
       const cachedAssignment = cached?.workBacklog.assignments[assignmentKey];
       if (cachedAssignment && remoteTeamAgent(cached, pointer.remoteTeamId, cachedAssignment.agentId)) return pointer;
@@ -150,6 +145,10 @@ export class RemoteTeamService {
       if (assignment && remoteTeamAgent(remoteSnapshot, pointer.remoteTeamId, assignment.agentId)) return pointer;
     }
     return null;
+  }
+
+  private pointers(teams: Team[] = this.options.getSnapshot().teams): RemoteTeamPointer[] {
+    return teams.flatMap((team) => this.linksForTeam(team).map((link) => ({ connectionId: link.connectionId, localTeamId: team.id, remoteTeamId: link.remoteTeamId })));
   }
 
   validateConnection(connectionId: string | undefined): void {
@@ -161,13 +160,12 @@ export class RemoteTeamService {
   }
 
   async clientSnapshot(): Promise<AppSnapshot> {
-    for (const team of this.options.getSnapshot().teams) {
-      const pointer = this.pointerForTeam(team);
-      if (!pointer || this.snapshots.has(pointer.connectionId)) continue;
+    for (const pointer of this.pointers()) {
+      if (this.snapshots.has(pointer.connectionId)) continue;
       try {
         await this.snapshot(pointer.connectionId);
       } catch {
-        // Unknown remotes are projected as empty without losing their local pointer.
+        // Unknown remotes are projected as empty without losing their local link.
       }
     }
     return this.clientSnapshotFromKnownRemotes();
@@ -177,14 +175,9 @@ export class RemoteTeamService {
     const source = this.options.getSnapshot();
     const snapshot = cloneAppSnapshot(source);
     for (const team of snapshot.teams) {
-      const pointer = this.pointerForTeam(team);
-      if (!pointer) continue;
-      const remoteSnapshot = this.snapshots.get(pointer.connectionId);
-      if (remoteSnapshot) {
-        projectRemoteTeam(snapshot, team, remoteSnapshot, pointer.remoteTeamId);
-      } else {
-        team.agentIds = [];
-        delete team.activeAgentId;
+      for (const link of this.linksForTeam(team)) {
+        const remoteSnapshot = this.snapshots.get(link.connectionId);
+        if (remoteSnapshot) projectRemoteTeam(snapshot, team, remoteSnapshot, link);
       }
     }
     applyRemoteActiveAgent(snapshot);
@@ -220,17 +213,12 @@ export class RemoteTeamService {
     if (!agentId) return this.hasTeamPointer(connectionId);
     const remoteSnapshot = this.snapshots.get(connectionId);
     if (!remoteSnapshot) return false;
-    return this.options.getSnapshot().teams.some((team) => {
-      const pointer = this.pointerForTeam(team);
-      return pointer?.connectionId === connectionId
-        && Boolean(remoteTeamAgent(remoteSnapshot, pointer.remoteTeamId, agentId));
-    });
+    return this.pointers().some((pointer) => pointer.connectionId === connectionId
+      && Boolean(remoteTeamAgent(remoteSnapshot, pointer.remoteTeamId, agentId)));
   }
 
   private hasTeamPointer(connectionId: string): boolean {
-    return this.options.getSnapshot().teams.some((team) => (
-      team.remoteConnectionId === connectionId && Boolean(team.remoteTeamId)
-    ));
+    return this.pointers().some((pointer) => pointer.connectionId === connectionId);
   }
 }
 
@@ -245,24 +233,15 @@ function cloneAppSnapshot(snapshot: AppSnapshot): AppSnapshot {
   return JSON.parse(JSON.stringify(snapshot)) as AppSnapshot;
 }
 
-function projectRemoteTeam(target: AppSnapshot, localTeam: Team, remoteSnapshot: AppSnapshot, remoteTeamId: string): void {
-  const remoteTeam = remoteSnapshot.teams.find((team) => team.id === remoteTeamId);
-  if (!remoteTeam) {
-    localTeam.agentIds = [];
-    delete localTeam.activeAgentId;
-    return;
-  }
+function projectRemoteTeam(target: AppSnapshot, localTeam: Team, remoteSnapshot: AppSnapshot, link: RemoteTeamLink): void {
+  const remoteTeam = remoteSnapshot.teams.find((team) => team.id === link.remoteTeamId);
+  if (!remoteTeam) return;
   const remoteAgentIds = new Set(remoteTeam.agentIds);
   const remoteAgents = remoteSnapshot.agents
     .filter((agent) => remoteAgentIds.has(agent.id))
-    .map((agent) => ({ ...agent, teamId: localTeam.id }));
-  localTeam.name = remoteTeam.name;
-  localTeam.avatar = remoteTeam.avatar;
-  localTeam.color = remoteTeam.color;
-  localTeam.agentIds = remoteAgents.map((agent) => agent.id);
-  localTeam.activeAgentId = remoteTeam.activeAgentId && localTeam.agentIds.includes(remoteTeam.activeAgentId)
-    ? remoteTeam.activeAgentId
-    : localTeam.agentIds[0];
+    .map((agent) => ({ ...agent, teamId: localTeam.id, remoteConnectionId: link.connectionId }));
+  localTeam.agentIds = [...localTeam.agentIds.filter((id) => !remoteAgents.some((agent) => agent.id === id)), ...remoteAgents.map((agent) => agent.id)];
+  if (!localTeam.activeAgentId || !localTeam.agentIds.includes(localTeam.activeAgentId)) localTeam.activeAgentId = localTeam.agentIds[0];
 
   const projectedAgentIds = new Set(remoteAgents.map((agent) => agent.id));
   target.agents = [...target.agents.filter((agent) => !projectedAgentIds.has(agent.id)), ...remoteAgents];
@@ -293,8 +272,9 @@ function projectRemoteTeam(target: AppSnapshot, localTeam: Team, remoteSnapshot:
 }
 
 function applyRemoteActiveAgent(snapshot: AppSnapshot): void {
+  if (snapshot.activeAgentId && snapshot.agents.some((agent) => agent.id === snapshot.activeAgentId)) return;
   const activeTeam = snapshot.teams.find((team) => team.id === snapshot.activeTeamId) ?? null;
-  if (!activeTeam?.remoteConnectionId || !activeTeam.remoteTeamId) return;
+  if (!activeTeam?.remoteLinks?.length) return;
   snapshot.activeAgentId = activeTeam.activeAgentId && activeTeam.agentIds.includes(activeTeam.activeAgentId)
     ? activeTeam.activeAgentId
     : activeTeam.agentIds[0] ?? null;
@@ -304,8 +284,4 @@ function remoteTeamAgent(snapshot: AppSnapshot | undefined, remoteTeamId: string
   const remoteTeam = snapshot?.teams.find((team) => team.id === remoteTeamId);
   if (!remoteTeam?.agentIds.includes(agentId)) return null;
   return snapshot?.agents.find((agent) => agent.id === agentId) ?? null;
-}
-
-function remoteTeamHasAgents(snapshot: AppSnapshot, remoteTeamId: string): boolean {
-  return (snapshot.teams.find((team) => team.id === remoteTeamId)?.agentIds.length ?? 0) > 0;
 }

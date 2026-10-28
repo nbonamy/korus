@@ -55,9 +55,8 @@ export class AutomationRunner {
     recordAutomationExecutionInSnapshot(snapshot, automationId, run);
     try {
       if (target.kind !== 'newQuickChat' && (!existing || !canTargetAutomationAgent(snapshot, existing)
-        || (target.kind === 'quickChat') !== (existing.sessionKind === 'quickChat')
-        || snapshot.teams.some(team => team.id === existing.teamId && team.remoteConnectionId))) throw new Error('The automation target is no longer available.');
-      if (target.kind === 'newQuickChat' && !snapshot.teams.some(team => team.id === target.teamId && !team.remoteConnectionId)) throw new Error('The automation team is no longer available.');
+        || (target.kind === 'quickChat') !== (existing.sessionKind === 'quickChat'))) throw new Error('The automation target is no longer available.');
+      if (target.kind === 'newQuickChat' && !snapshot.teams.some(team => team.id === target.teamId)) throw new Error('The automation team is no longer available.');
       await this.options.requireConnectedEngine?.(existing?.backend ?? (target.kind === 'newQuickChat' ? target.backend : 'codex'));
       if (!snapshot.automations.includes(automation) || !automation.enabled) {
         this.fail(automation, run, 'Automation was disabled or deleted before dispatch.');

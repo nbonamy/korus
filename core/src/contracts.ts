@@ -311,10 +311,16 @@ export type Team = {
   name: string;
   avatar?: string;
   color?: string;
-  remoteConnectionId?: string;
-  remoteTeamId?: string;
+  /** Hidden per-host teams on remote daemons that hold this team's remote agents. */
+  remoteLinks?: RemoteTeamLink[];
   agentIds: string[];
   activeAgentId?: string;
+};
+
+/** Foreign state: `remoteTeamId` belongs to the remote daemon and may collide with local ids. */
+export type RemoteTeamLink = {
+  connectionId: string;
+  remoteTeamId: string;
 };
 
 export type BackendApprovalDecision = 'approve' | 'deny';
@@ -371,6 +377,8 @@ export type Agent = {
   handoff?: import('./agent-handoff').AgentHandoff;
   id: string;
   teamId?: string;
+  /** Host that runs this agent; set when projecting remote daemon agents, absent for local agents. */
+  remoteConnectionId?: string;
   delegatedByAgentId?: string;
   delegationContext?: import('./delegation-context').DelegationContext;
   /** User-entered controls for the current delegation turn; never supplied by create-agent. */
@@ -784,11 +792,14 @@ export type CreateAgentInput = {
   delegatedByAgentId?: string;
   sourceRepositoryName?: string;
   teamId?: string;
+  /** Run on this machine instead of locally; `folder` is then a path on that machine. */
+  remoteConnectionId?: string;
 };
 
 export type CreateQuickChatInput = {
   backend?: AgentBackend;
   teamId?: string;
+  remoteConnectionId?: string;
 };
 
 /** Explicit command outcome; requested with entityResult, without changing legacy snapshot responses. */
@@ -797,16 +808,12 @@ export type CreatedAgentResult = { agentId: string; snapshot: AppSnapshot };
 export type CreateTeamInput = {
   name: string;
   color: string;
-  remoteConnectionId?: string;
-  remoteTeamId?: string;
 };
 
 export type UpdateTeamInput = {
   id: string;
   name: string;
   color: string;
-  remoteConnectionId?: string;
-  remoteTeamId?: string;
 };
 
 export type ReorderTeamsInput = {
@@ -841,8 +848,9 @@ export type ReorderAgentsInput = {
 
 export type ReorderRepositoriesInput = {
   teamId: string;
-  repositoryRoot: string;
-  beforeRepositoryRoot: string | null;
+  /** `WorkspaceSidebarGroup.repositoryKey` of the section being moved. */
+  repositoryKey: string;
+  beforeRepositoryKey: string | null;
 };
 
 export type DesktopUpdateState =
@@ -963,7 +971,6 @@ export type AppApi = {
   updateTeam(input: UpdateTeamInput): Promise<AppSnapshot>;
   reorderTeams(input: ReorderTeamsInput): Promise<AppSnapshot>;
   closeTeam(teamId: string): Promise<AppSnapshot>;
-  disconnectTeam(teamId: string): Promise<AppSnapshot>;
   selectTeam(teamId: string): Promise<AppSnapshot>;
   getAutomationSnapshot(location?: AutomationLocation): Promise<AppSnapshot>;
   createAutomation(input: CreateAutomationInput, location?: AutomationLocation): Promise<AppSnapshot>;

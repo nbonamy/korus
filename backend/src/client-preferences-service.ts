@@ -51,7 +51,7 @@ export class ClientPreferencesService {
     } else if (method === backendMethods.clientAgentOrderUpdate) {
       if (!reorderAgentInTeam(snapshot, string(input?.teamId), string(input?.agentId), input?.beforeAgentId == null ? null : string(input.beforeAgentId))) throw new Error('Agent reorder target not found.');
     } else if (method === backendMethods.clientRepositoryOrderUpdate) {
-      if (!reorderRepositoryInTeam(snapshot, string(input?.teamId), string(input?.repositoryRoot), input?.beforeRepositoryRoot == null ? null : string(input.beforeRepositoryRoot))) throw new Error('Repository reorder target not found.');
+      if (!reorderRepositoryInTeam(snapshot, string(input?.teamId), string(input?.repositoryKey), input?.beforeRepositoryKey == null ? null : string(input.beforeRepositoryKey))) throw new Error('Repository reorder target not found.');
     } else if (method === backendMethods.clientTeamOrderUpdate) {
       if (!reorderTeamInSnapshot(snapshot, string(input?.teamId), input?.beforeTeamId == null ? null : string(input.beforeTeamId))) throw new Error('Team reorder target not found.');
     } else if (method === backendMethods.clientAgentExternalApplicationUpdate) {

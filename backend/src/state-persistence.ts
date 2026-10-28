@@ -10,7 +10,7 @@ import { restorePlanReview } from './persistence/legacy-plan-review';
 import { sanitizeClientPreferences } from '@workspace/core/client-preferences';
 import { isAutomationTarget } from '@workspace/core/automation-manager';
 import { normalizeAutomationSchedule } from '@workspace/core/automation-schedule';
-import type { AccountRateLimits, Agent, AgentBackend, AgentContextUsage, AgentSubagentTree, AgentWorkspaceIdentity, AppGeneralSettings, AppSnapshot, BackendDefaults, BackendSession, Automation, AutomationExecutionLogEntry, OpenInApplication, RemoteConnection, RemoteConnectionStatus, RemoteConnectionTransport, RemoteConnectionsState, SourceFolderState, SubagentActivity, SubagentNode, SubagentOperation, Team, ThreadGoal, ThreadPlan, ThreadPlanKind, ThreadPlanStatus, ThreadPlanStep, WorkBacklogAssignment, WorkBacklogState, WorkIntegrationConnection, WorkIntegrationStatus, WorkProviderKind, WorkProviderSettings } from '@workspace/core/contracts';
+import type { AccountRateLimits, Agent, AgentBackend, AgentContextUsage, AgentSubagentTree, AgentWorkspaceIdentity, AppGeneralSettings, AppSnapshot, BackendDefaults, BackendSession, Automation, AutomationExecutionLogEntry, OpenInApplication, RemoteConnection, RemoteConnectionStatus, RemoteConnectionTransport, RemoteTeamLink, RemoteConnectionsState, SourceFolderState, SubagentActivity, SubagentNode, SubagentOperation, Team, ThreadGoal, ThreadPlan, ThreadPlanKind, ThreadPlanStatus, ThreadPlanStep, WorkBacklogAssignment, WorkBacklogState, WorkIntegrationConnection, WorkIntegrationStatus, WorkProviderKind, WorkProviderSettings } from '@workspace/core/contracts';
 import { sanitizeGitRemoteUrl } from '@workspace/core/git-remote';
 import { isCodexApprovalPreset, isCodexApprovalsReviewer } from '@workspace/core/codex-approval-presets';
 import { normalizeGeneralSettings, normalizeSourceFolderState, normalizeThemeSettings } from '@workspace/core/settings';
@@ -184,8 +184,7 @@ export function snapshotFromPersistedState(value: unknown): AppSnapshot {
   const teams = Array.isArray(value.teams)
     ? value.teams.map((team) => sanitizeTeam(team, allAgents, remoteConnectionIds)).filter((team): team is Team => Boolean(team))
     : seed.teams;
-  const remotePointerTeamIds = localRemoteTeamPointerIds(teams);
-  const agents = allAgents.filter((agent) => !agent.teamId || !remotePointerTeamIds.has(agent.teamId));
+  const agents = allAgents;
   const localAgentIds = new Set(agents.map((agent) => agent.id));
   const persistedAutomations = Array.isArray(value.automations) ? value.automations : [];
   workBacklog.assignments = assignmentsForAgents({
@@ -1092,39 +1091,30 @@ function sanitizeTeam(value: unknown, agents: Agent[], remoteConnectionIds: Set<
     ? value.agentIds.filter((agentId): agentId is string => typeof agentId === 'string' && agents.some((agent) => agent.id === agentId))
     : [];
 
-  const remoteConnectionId = typeof value.remoteConnectionId === 'string' && remoteConnectionIds.has(value.remoteConnectionId)
-    ? value.remoteConnectionId
-    : null;
-  const remoteTeamId = remoteConnectionId && typeof value.remoteTeamId === 'string' && value.remoteTeamId.trim()
-    ? value.remoteTeamId
-    : null;
-  const teamAgentIds = remoteConnectionId && remoteTeamId ? [] : agentIds;
+  const remoteLinks = sanitizeRemoteLinks(value, remoteConnectionIds);
 
   return {
     id: value.id,
     name: value.name,
     avatar: typeof value.avatar === 'string' ? value.avatar : undefined,
     color: typeof value.color === 'string' ? value.color : defaultTeamColor,
-    ...(remoteConnectionId ? { remoteConnectionId } : {}),
-    ...(remoteTeamId ? { remoteTeamId } : {}),
-    agentIds: teamAgentIds,
-    activeAgentId: typeof value.activeAgentId === 'string' && teamAgentIds.includes(value.activeAgentId)
+    ...(remoteLinks.length ? { remoteLinks } : {}),
+    agentIds,
+    activeAgentId: typeof value.activeAgentId === 'string' && agentIds.includes(value.activeAgentId)
       ? value.activeAgentId
       : undefined,
   };
 }
 
-function localRemoteTeamPointerIds(teams: Team[]): Set<string> {
-  const ids = new Set<string>();
-  for (const team of teams) {
-    if (!isRemoteTeamPointer(team)) {
-      continue;
-    }
-    // `remoteTeamId` is owned by another daemon and can collide with local team ids.
-    // Only the local pointer team's id participates in local state repair/migration.
-    ids.add(team.id);
+function sanitizeRemoteLinks(value: Record<string, unknown>, remoteConnectionIds: Set<string>): RemoteTeamLink[] {
+  const links = new Map<string, RemoteTeamLink>();
+  for (const candidate of Array.isArray(value.remoteLinks) ? value.remoteLinks : []) {
+    if (!isRecord(candidate) || typeof candidate.connectionId !== 'string' || typeof candidate.remoteTeamId !== 'string') continue;
+    const connectionId = candidate.connectionId.trim();
+    const remoteTeamId = candidate.remoteTeamId.trim();
+    if (connectionId && remoteTeamId && remoteConnectionIds.has(connectionId) && !links.has(connectionId)) links.set(connectionId, { connectionId, remoteTeamId });
   }
-  return ids;
+  return [...links.values()];
 }
 
 function assignmentsForAgents(assignments: WorkBacklogState['assignments'], agentIds: Set<string>): WorkBacklogState['assignments'] {
@@ -1248,14 +1238,14 @@ function sanitizeClaudeThinking(value: unknown): Extract<BackendDefaults, { kind
 }
 
 function repairTeamMembership(snapshot: AppSnapshot): void {
-  const fallbackTeam = snapshot.teams.find((team) => !isRemoteTeamPointer(team));
+  const fallbackTeam = snapshot.teams.find((team) => !team.remoteLinks?.length) ?? snapshot.teams[0];
   if (!fallbackTeam) {
     snapshot.agents = [];
     return;
   }
 
   for (const agent of snapshot.agents) {
-    const team = snapshot.teams.find((candidate) => candidate.id === agent.teamId && !isRemoteTeamPointer(candidate)) ?? fallbackTeam;
+    const team = snapshot.teams.find((candidate) => candidate.id === agent.teamId) ?? fallbackTeam;
     agent.teamId = team.id;
     if (!team.agentIds.includes(agent.id)) {
       team.agentIds.push(agent.id);
@@ -1274,10 +1264,6 @@ function repairedActiveTeamId(snapshot: AppSnapshot): string | null {
   }
 
   return snapshot.teams[0]?.id ?? null;
-}
-
-function isRemoteTeamPointer(team: Team): boolean {
-  return Boolean(team.remoteConnectionId && team.remoteTeamId);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

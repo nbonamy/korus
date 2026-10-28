@@ -86,6 +86,7 @@ export type CreateProjectInput = {
   name: string;
   backend?: import('./shared').AgentBackend;
   teamId?: string;
+  remoteConnectionId?: string;
 };
 
 export type SourceFolderEntry = {

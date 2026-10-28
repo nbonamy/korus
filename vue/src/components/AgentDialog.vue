@@ -153,7 +153,7 @@
     />
 
     <template v-if="!isEditing && backendChoices.length !== 1" #footer-left>
-      <BackendSelector id="agent-dialog-backend" v-model="backend" :team-id="selectedTeam?.id" :disabled="submitting" />
+      <BackendSelector id="agent-dialog-backend" v-model="backend" :remote-connection-id="selectedRemoteConnectionId" :disabled="submitting" />
     </template>
     <template #footer>
       <button class="app-button app-button--tertiary" type="button" @click="close">{{ $t('surface.agentDialog.cancel') }}</button>
@@ -180,7 +180,6 @@ import FormField from '../shared/form/FormField.vue';
 import ClearableTextInput from '../shared/form/ClearableTextInput.vue';
 import BackendSelector from './BackendSelector.vue';
 import { useBackendChoices, useNewAgentBackend } from './backend-selection';
-const backendChoices = useBackendChoices(() => selectedTeam.value?.id);
 import NewSourceWorktreeDialog from './NewSourceWorktreeDialog.vue';
 import RemoteFolderPickerDialog from './RemoteFolderPickerDialog.vue';
 
@@ -262,15 +261,9 @@ const submitLabel = computed(() => isEditing.value ? translate('surface.agentDia
 const teams = computed(() => props.teams);
 const showTeamSelector = computed(() => props.showTeamField && !isEditing.value);
 const selectedTeam = computed(() => teams.value.find((team) => team.id === clientNavigationSelectTeamion.value) ?? null);
+const selectedRemoteConnectionId = computed(() => props.remoteConnectionId?.trim() ?? '');
+const backendChoices = useBackendChoices(() => selectedRemoteConnectionId.value);
 useNewAgentBackend(backend, backendChoices);
-const selectedRemoteConnectionId = computed(() => {
-  if (showTeamSelector.value) {
-    return clientNavigationSelectTeamion.value === newTeamOptionId
-      ? ''
-      : selectedTeam.value?.remoteConnectionId ?? '';
-  }
-  return props.remoteConnectionId?.trim() ?? '';
-});
 const sourceRepositories = computed(() => {
   if (!selectedRemoteConnectionId.value) {
     return props.sourceRepositories ?? [];
@@ -575,6 +568,7 @@ async function submit(): Promise<void> {
         name: name.value.trim() || null,
         folder: folder.value,
         backend: backend.value,
+        ...(selectedRemoteConnectionId.value ? { remoteConnectionId: selectedRemoteConnectionId.value } : {}),
       };
       if (showTeamSelector.value) {
         if (clientNavigationSelectTeamion.value === newTeamOptionId) {

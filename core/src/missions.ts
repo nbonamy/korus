@@ -75,8 +75,8 @@ export function missionStageReady(stage: MissionStage, a: MissionArtifacts): boo
 export function createMission(snapshot: AppSnapshot, input: unknown): Mission {
   if (!record(input) || typeof input.outcome !== 'string' || !input.outcome.trim() || input.outcome.trim().length > 200 || !findMissionWorkflow(input.workflowType)
     || typeof input.teamId !== 'string' || typeof input.orchestratorMemberId !== 'string') throw new Error('Invalid mission outcome or workflow.');
-  const team = snapshot.teams.find(team => team.id === input.teamId && !team.remoteConnectionId);
-  const orchestrator = snapshot.agents.find(agent => agent.id === input.orchestratorMemberId && agent.teamId === team?.id);
+  const team = snapshot.teams.find(team => team.id === input.teamId);
+  const orchestrator = snapshot.agents.find(agent => agent.id === input.orchestratorMemberId && agent.teamId === team?.id && !agent.remoteConnectionId);
   if (!team || !orchestrator) throw new Error('Choose a local team and one of its agents to orchestrate the mission.');
   const now = new Date().toISOString();
   const workflow = findMissionWorkflow(input.workflowType)!;

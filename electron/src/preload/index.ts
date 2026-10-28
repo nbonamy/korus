@@ -106,7 +106,6 @@ const api: AppApi = {
   updateTeam: (input: UpdateTeamInput) => ipc.invoke(ipcChannels.updateTeam, input),
   reorderTeams: (input: ReorderTeamsInput) => ipc.invoke(ipcChannels.reorderTeams, input),
   closeTeam: (teamId: string) => ipc.invoke(ipcChannels.closeTeam, teamId),
-  disconnectTeam: (teamId: string) => ipc.invoke(ipcChannels.disconnectTeam, teamId),
   selectTeam: (teamId: string) => ipc.invoke(ipcChannels.selectTeam, teamId),
   getAutomationSnapshot: (location?: AutomationLocation) => ipc.invoke(ipcChannels.getAutomationSnapshot, location),
   createAutomation: (input: CreateAutomationInput, location?: AutomationLocation) => ipc.invoke(ipcChannels.createAutomation, input, location),

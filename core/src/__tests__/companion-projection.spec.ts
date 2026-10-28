@@ -217,12 +217,12 @@ describe('companion workspace projection', () => {
   it('lists, per team, the engines its laptop can start work with', () => {
     const connection = (backend: string, connected = true) => ({ backend, installed: true, connected });
     const workspace = companionWorkspaceOf({
-      teams: [{ id: 'local', name: 'Local', agentIds: [] }, { id: 'remote', name: 'Remote', agentIds: [], remoteConnectionId: 'box' }, { id: 'down', name: 'Down', agentIds: [], remoteConnectionId: 'off' }],
+      teams: [{ id: 'local', name: 'Local', agentIds: [] }, { id: 'remote', name: 'Remote', agentIds: [] }],
       agents: [], general: { repositoryIcons: {}, modelFavorites: [] } as unknown as AppSnapshot['general'],
       providerConnections: [connection('codex'), connection('claude', false)] as unknown as AppSnapshot['providerConnections'],
       remoteConnections: { connections: [{ id: 'box', status: 'ready', providerConnections: [connection('claude')] }, { id: 'off', status: 'error' }] } as unknown as AppSnapshot['remoteConnections'],
     });
-    expect(workspace.backends).toStrictEqual({ local: ['codex'], remote: ['claude'], down: [] });
+    expect(workspace.backends).toStrictEqual({ local: ['codex'], remote: ['codex'], box: ['claude'], off: [] });
     expect(projectCompanionWorkspace({ ...workspace, agents: [] }).backends).toStrictEqual(workspace.backends);
   });
 });

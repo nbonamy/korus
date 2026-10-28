@@ -235,7 +235,7 @@ export class AppBackendServer {
     }
     for (const entry of state.entries) {
       const team = this.snapshot.teams.find(team => team.id === entry.teamId) ?? this.snapshot.teams.find(team => team.id === this.snapshot.activeTeamId) ?? this.snapshot.teams[0];
-      if (!team || team.remoteConnectionId) continue;
+      if (!team) continue;
       let agent = this.snapshot.agents.find(agent => agent.sharedConversation?.joinId === entry.id);
       if (!agent) {
         const now = new Date().toISOString();
@@ -518,12 +518,7 @@ export class AppBackendServer {
     });
     this.agentRequests = new AgentRequestRegistry({
       getSnapshot: () => this.snapshot,
-      remoteConnectionIdForAgent: (agent) => {
-        const team = agent.teamId
-          ? this.snapshot.teams.find((candidate) => candidate.id === agent.teamId)
-          : null;
-        return team?.remoteConnectionId?.trim() || null;
-      },
+      remoteConnectionIdForAgent: (agent) => agent.remoteConnectionId?.trim() || null,
     });
     this.remoteTeams = new RemoteTeamService({
       clients: this.remoteClients,
@@ -692,8 +687,8 @@ export class AppBackendServer {
   /** `create-mission` from an agent: start the Mission, hand its lead the brief and ask the renderer to open it. */
   async startMissionFromAgent(agentId: string, input: { outcome: string; prompt: string; backend?: Agent['backend']; model?: string; reasoningEffort?: string; serviceTier?: string }): Promise<{ missionId: string; outcome: string }> {
     const caller = this.snapshot.agents.find(agent => agent.id === agentId);
-    const team = this.snapshot.teams.find(candidate => candidate.id === caller?.teamId && !candidate.remoteConnectionId);
-    if (!caller || !team) throw new Error('create-mission needs an agent on a local team.');
+    const team = this.snapshot.teams.find(candidate => candidate.id === caller?.teamId);
+    if (!caller || !team) throw new Error('create-mission needs a local agent.');
     // Checked before anything exists, so a bad model leaves no half-started Mission behind.
     const leadSettings = await this.resolveMissionLeadSettings(caller, input);
     const mission = await this.createMissionAndRun({
@@ -888,7 +883,7 @@ export class AppBackendServer {
         const params = requireRecord(message.params);
         if (message.method === backendMethods.guestConversationControl) {
           const input = params.input as import('@workspace/core/guest-navigation').GuestJoinControl;
-          if (input?.action === 'prepare' && input.teamId && !this.snapshot.teams.some(team => team.id === input.teamId && !team.remoteConnectionId)) throw new Error('Join requires a local team.');
+          if (input?.action === 'prepare' && input.teamId && !this.snapshot.teams.some(team => team.id === input.teamId)) throw new Error('Join requires a team.');
         }
         const result = message.method === backendMethods.guestConversationControl
           ? await joins.control(params.input as import('@workspace/core/guest-navigation').GuestJoinControl, this.snapshot.activeTeamId ?? this.snapshot.teams[0]?.id)
@@ -977,7 +972,7 @@ export class AppBackendServer {
       || message.method === backendMethods.agentCodeReviewDiscard;
     const createsAgent = startsIndependentReview
       || [backendMethods.agentCreate, backendMethods.projectCreate, backendMethods.agentQuickChatCreate, backendMethods.agentDuplicate, backendMethods.agentFork].some((method) => method === message.method);
-    const createsTeam = message.method === backendMethods.teamCreate || message.method === backendMethods.teamConnect;
+    const createsTeam = message.method === backendMethods.teamCreate;
     const before = createsAgent || createsTeam || completesReview ? await this.remoteTeams.clientSnapshot() : undefined;
     const reviewTargetAgentId = completesReview && before && typeof params?.agentId === 'string'
       ? projectClientSnapshot(before, clientId).agents.find((agent) => agent.id === params.agentId)?.codeReview?.targetAgentId
@@ -997,8 +992,7 @@ export class AppBackendServer {
       const effectiveParams = isRecord(request.params) ? request.params : {};
       const input = isRecord(effectiveParams.input) ? effectiveParams.input : {};
       const agent = (before ?? this.remoteTeams.clientSnapshotFromKnownRemotes()).agents.find(candidate => candidate.id === (params?.agentId ?? input.id));
-      const teamId = typeof input.teamId === 'string' ? input.teamId : agent?.teamId;
-      const remote = params?.remoteConnectionId || input.remoteConnectionId || this.snapshot.teams.find(team => team.id === teamId)?.remoteConnectionId;
+            const remote = params?.remoteConnectionId || input.remoteConnectionId || agent?.remoteConnectionId;
       if (!remote && (message.method !== backendMethods.agentUpdate || input.backend !== undefined)) {
         try {
           const duplicateBackend = message.method === backendMethods.agentDuplicate && isRecord(effectiveParams.options) ? effectiveParams.options.backend : undefined;
@@ -1381,7 +1375,7 @@ export class AppBackendServer {
       case backendMethods.connectionsDelete: {
         const connectionId = requireConnectionId(message.params);
         await this.remoteClients.closeConnection(connectionId);
-        this.deleteTeamsForRemoteConnection(connectionId);
+        this.remoteTeams.forgetConnection(connectionId);
         this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.filter((candidate) => candidate.id !== connectionId);
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
@@ -1411,7 +1405,8 @@ export class AppBackendServer {
       }
       case backendMethods.agentCreate: {
         const input = requireAgentCreateInput(message.params);
-        const remoteTeamPointer = this.remoteTeams.pointerForAgentInput(input);
+        const remoteTeamPointer = await this.remoteTeams.pointerForAgentInput(input);
+        delete input.remoteConnectionId;
         if (input.repositorySession !== undefined) {
           const location = this.locationFromRemoteConnectionId(remoteTeamPointer?.connectionId);
           const root = input.folder;
@@ -1446,10 +1441,11 @@ export class AppBackendServer {
       }
       case backendMethods.projectCreate: {
         const input = requireProjectCreateInput(message.params);
-        const remoteTeamPointer = this.remoteTeams.pointerForAgentInput(input);
+        const remoteTeamPointer = await this.remoteTeams.pointerForAgentInput(input);
         if (remoteTeamPointer) {
+          const { remoteConnectionId: _remote, ...remoteInput } = input;
           const remoteSnapshot = await this.remoteTeams.request<AppSnapshot>(remoteTeamPointer.connectionId, backendMethods.projectCreate, {
-            input: { ...input, teamId: remoteTeamPointer.remoteTeamId },
+            input: { ...remoteInput, teamId: remoteTeamPointer.remoteTeamId },
           });
           this.remoteTeams.adoptCreatedAgentSnapshot(remoteTeamPointer, remoteSnapshot);
           if (remoteSnapshot.activeAgentId) onCreated(remoteSnapshot.activeAgentId);
@@ -1497,10 +1493,11 @@ export class AppBackendServer {
       }
       case backendMethods.agentQuickChatCreate: {
         const input = requireQuickChatCreateInput(message.params);
-        const remoteTeamPointer = this.remoteTeams.pointerForAgentInput(input);
+        const remoteTeamPointer = await this.remoteTeams.pointerForAgentInput(input);
         if (remoteTeamPointer) {
+          const { remoteConnectionId: _remote, ...remoteInput } = input;
           const remoteSnapshot = await this.remoteTeams.request<AppSnapshot>(remoteTeamPointer.connectionId, backendMethods.agentQuickChatCreate, {
-            input: { ...input, teamId: remoteTeamPointer.remoteTeamId },
+            input: { ...remoteInput, teamId: remoteTeamPointer.remoteTeamId },
           });
           this.remoteTeams.adoptCreatedAgentSnapshot(remoteTeamPointer, remoteSnapshot);
           if (remoteSnapshot.activeAgentId) onCreated(remoteSnapshot.activeAgentId);
@@ -1629,9 +1626,6 @@ export class AppBackendServer {
           return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Agent or team not found: ${input.agentId} -> ${input.teamId}`);
         }
         if (handoffInProgress(movingAgent)) throw new Error('Wait for the handoff to finish.');
-        if (this.remoteTeams.pointerForTeam(targetTeam)) {
-          return createAppRpcError(message.id, appRpcErrorCodes.internalError, 'Agents cannot be moved between backend locations.');
-        }
         const agent = moveAgentToTeamInSnapshot(this.snapshot, input.agentId, input.teamId);
         if (!agent) {
           return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Agent or team not found: ${input.agentId} -> ${input.teamId}`);
@@ -2516,101 +2510,36 @@ export class AppBackendServer {
           return snapshot;
         });
       }
-      case backendMethods.teamConnect:
       case backendMethods.teamCreate: {
         const input = requireTeamCreateInput(message.params);
-        if (message.method === backendMethods.teamConnect
-          ? !input.remoteConnectionId || !input.remoteTeamId
-          : Boolean(input.remoteTeamId)) {
-          return createAppRpcError(message.id, appRpcErrorCodes.invalidParams,
-            'Use team/connect with a connection and existing team ID, or team/create without an existing team ID.');
-        }
         validateTeamInput(input);
-        this.remoteTeams.validateConnection(input.remoteConnectionId);
-        const remoteConnectionId = input.remoteConnectionId?.trim() ?? '';
-        if (remoteConnectionId) {
-          let remoteTeam: Team;
-          try {
-            remoteTeam = await this.remoteTeams.resolveTeamForPointerInput(input);
-          } catch (error) {
-            return createAppRpcError(message.id, appRpcErrorCodes.internalError, error instanceof Error ? error.message : String(error));
-          }
-          const team = createTeamInSnapshot(this.snapshot, {
-            name: remoteTeam.name,
-            color: remoteTeam.color ?? input.color,
-            remoteConnectionId,
-            remoteTeamId: remoteTeam.id,
-          }, undefined, { select: false });
-          onCreated(team.id);
-        } else {
-          onCreated(createTeamInSnapshot(this.snapshot, input, undefined, { select: false }).id);
-        }
+        onCreated(createTeamInSnapshot(this.snapshot, input, undefined, { select: false }).id);
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
       case backendMethods.teamUpdate: {
         const input = requireTeamUpdateInput(message.params);
         validateTeamInput(input);
-        this.remoteTeams.validateConnection(input.remoteConnectionId);
         const existingTeam = this.snapshot.teams.find((candidate) => candidate.id === input.id) ?? null;
         if (!existingTeam) {
           return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Team not found: ${input.id}`);
         }
-        const existingConnectionId = existingTeam.remoteConnectionId?.trim() ?? '';
-        const nextConnectionId = input.remoteConnectionId?.trim() ?? '';
-        const connectionChanged = existingConnectionId !== nextConnectionId;
-        if (connectionChanged && await this.remoteTeams.teamHasAgents(existingTeam)) {
-          return createAppRpcError(message.id, appRpcErrorCodes.internalError, 'Team connection cannot be changed while it has agents.');
-        }
-
-        const pointer = this.remoteTeams.pointerForTeam(existingTeam);
-        let updateInput = input;
-        if (connectionChanged && nextConnectionId) {
-          let remoteTeam: Team;
-          try {
-            remoteTeam = await this.remoteTeams.resolveTeamForPointerInput(input);
-          } catch (error) {
-            return createAppRpcError(message.id, appRpcErrorCodes.internalError, error instanceof Error ? error.message : String(error));
-          }
-          updateInput = {
-            ...input,
-            remoteConnectionId: nextConnectionId,
-            remoteTeamId: remoteTeam.id,
-          };
-        } else if (pointer && !connectionChanged) {
-          const remoteSnapshot = await this.remoteTeams.request<AppSnapshot>(pointer.connectionId, backendMethods.teamUpdate, {
-            input: {
-              id: pointer.remoteTeamId,
-              name: input.name,
-              color: input.color,
-            },
+        for (const link of this.remoteTeams.linksForTeam(existingTeam)) {
+          const remoteSnapshot = await this.remoteTeams.request<AppSnapshot>(link.connectionId, backendMethods.teamUpdate, {
+            input: { id: link.remoteTeamId, name: input.name, color: input.color },
           });
-          this.remoteTeams.rememberSnapshot(pointer.connectionId, remoteSnapshot);
-          updateInput = {
-            ...input,
-            remoteConnectionId: pointer.connectionId,
-            remoteTeamId: pointer.remoteTeamId,
-          };
+          this.remoteTeams.rememberSnapshot(link.connectionId, remoteSnapshot);
         }
-        try {
-          updateTeamInSnapshot(this.snapshot, updateInput);
-        } catch (error) {
-          return createAppRpcError(message.id, appRpcErrorCodes.internalError, error instanceof Error ? error.message : String(error));
-        }
+        updateTeamInSnapshot(this.snapshot, input);
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
 
       case backendMethods.teamDelete: {
         const teamId = requireTeamId(message.params);
         const existingTeam = this.snapshot.teams.find((candidate) => candidate.id === teamId) ?? null;
-        const pointer = this.remoteTeams.pointerForTeam(existingTeam);
-        if (pointer) {
-          const remoteSnapshot = await this.remoteTeams.request<AppSnapshot>(pointer.connectionId, backendMethods.teamDelete, {
-            teamId: pointer.remoteTeamId,
-          });
-          this.remoteTeams.rememberSnapshot(pointer.connectionId, remoteSnapshot);
-          this.ensureLocalFallbackBeforeRemovingTeam(teamId);
-        } else if (existingTeam) {
+        if (existingTeam) {
           if (this.snapshot.teams.length <= 1) throw new Error('At least one team must remain open.');
+          await this.remoteTeams.deleteRemoteTeams(existingTeam);
+
           const missions = this.snapshot.missions?.filter(candidate => candidate.teamId === teamId) ?? [];
           let deletedMissions = 0;
           try {
@@ -2644,19 +2573,6 @@ export class AppBackendServer {
         for (const agentId of team.agentIds) this.agentRequests.clearAgent(agentId);
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
-      case backendMethods.teamDisconnect: {
-        const teamId = requireTeamId(message.params);
-        const existingTeam = this.snapshot.teams.find((candidate) => candidate.id === teamId) ?? null;
-        if (this.remoteTeams.pointerForTeam(existingTeam)) {
-          this.ensureLocalFallbackBeforeRemovingTeam(teamId);
-        }
-        const team = closeTeamInSnapshot(this.snapshot, teamId);
-        if (!team) {
-          return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Team not found: ${teamId}`);
-        }
-        return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
-      }
-
       case backendMethods.settingsUpdate: {
         const { policy, preferences } = splitSettingsInput(requireSettingsUpdateInput(message.params));
         if (policy.general && 'providerHomes' in policy.general) throw new Error('Provider homes must be changed through provider setup.');
@@ -3458,9 +3374,8 @@ export class AppBackendServer {
     // before crossing the client boundary, which otherwise treats them as local.
     if (!event.agentId && (event.type === 'models.changed' || event.type === 'skills.changed')) {
       const projected = this.remoteTeams.clientSnapshotFromKnownRemotes();
-      const teamIds = new Set(projected.teams.filter((team) => team.remoteConnectionId === connectionId).map((team) => team.id));
       for (const agent of projected.agents) {
-        if (agent.teamId && teamIds.has(agent.teamId) && agent.backend === event.backend) {
+        if (agent.remoteConnectionId === connectionId && agent.backend === event.backend) {
           if (event.type === 'skills.changed' && event.payload.cwd && event.payload.cwd !== agent.folder) continue;
           this.forwardRemoteBackendEvent(connectionId, { ...event, agentId: agent.id });
         }
@@ -3483,36 +3398,6 @@ export class AppBackendServer {
     const fullEvent = this.nextMainEvent(backendEvent);
     this.agentRequests.record(fullEvent, connectionId);
     this.emitRemoteBackendEvent(fullEvent);
-  }
-
-  private deleteTeamsForRemoteConnection(connectionId: string): void {
-    const teamIds = this.snapshot.teams
-      .filter((team) => team.remoteConnectionId === connectionId)
-      .map((team) => team.id);
-    if (teamIds.length === 0) {
-      return;
-    }
-
-    if (teamIds.length === this.snapshot.teams.length) {
-      createTeamInSnapshot(this.snapshot, {
-        name: 'Local',
-        color: teamColors[0] ?? '#1B4FB2',
-      }, new Date().toISOString(), { select: false });
-    }
-
-    for (const teamId of teamIds) {
-      closeTeamInSnapshot(this.snapshot, teamId);
-    }
-  }
-
-  private ensureLocalFallbackBeforeRemovingTeam(teamId: string): void {
-    if (this.snapshot.teams.length !== 1 || this.snapshot.teams[0]?.id !== teamId) {
-      return;
-    }
-    createTeamInSnapshot(this.snapshot, {
-      name: 'Local',
-      color: teamColors[0] ?? '#1B4FB2',
-    }, new Date().toISOString(), { select: false });
   }
 
   private async persistAndEmitSnapshot(): Promise<AppSnapshot> {
@@ -3981,6 +3866,7 @@ function requireProjectCreateInput(params: unknown): CreateProjectInput & { team
   return {
     name: requireString(input.name, 'project name'),
     teamId: requireString(input.teamId, 'team id'),
+    ...(input.remoteConnectionId === undefined ? {} : { remoteConnectionId: requireString(input.remoteConnectionId, 'remote connection id') }),
     ...(input.backend === undefined ? {} : { backend: requireAgentBackend(input.backend) }),
   };
 }
@@ -3990,6 +3876,7 @@ function requireQuickChatCreateInput(params: unknown): CreateQuickChatInput {
   const input = requireRecord(record.input);
   return {
     ...(input.teamId === undefined ? {} : { teamId: requireString(input.teamId, 'team id') }),
+    ...(input.remoteConnectionId === undefined ? {} : { remoteConnectionId: requireString(input.remoteConnectionId, 'remote connection id') }),
     ...(input.backend === undefined ? {} : { backend: requireAgentBackend(input.backend) }),
   };
 }

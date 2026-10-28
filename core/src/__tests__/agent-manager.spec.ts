@@ -440,6 +440,21 @@ describe('agent-manager', () => {
     expect(reorderRepositoryInTeam(snapshot, 'team-app', '/src/missing', null)).toBeNull();
   });
 
+  it('moves an origin-keyed repository with its local and remote agents together', () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.agents[0]!.workspace = { ...gitWorkspace('app'), originUrl: 'git@github.com:org/app.git' };
+    snapshot.agents[1]!.workspace = gitWorkspace('sdk');
+    const remote = duplicateAgentInSnapshot(snapshot, 'agent-dina', '2026-06-05T10:11:12.000Z', () => 'agent-remote')!;
+    remote.remoteConnectionId = 'connection-devbox';
+    remote.workspace = { ...gitWorkspace('app'), primaryWorktreeRoot: '/home/me/app', originUrl: 'https://github.com/org/app' };
+    snapshot.teams[0]!.agentIds = ['agent-dina', 'agent-jesse', 'agent-remote'];
+
+    expect(reorderRepositoryInTeam(snapshot, 'team-app', 'remote:github.com/org/app', null)?.map((agent) => agent.id))
+      .toStrictEqual(['agent-dina', 'agent-remote']);
+    expect(snapshot.teams[0]!.agentIds).toStrictEqual(['agent-jesse', 'agent-dina', 'agent-remote']);
+  });
+
   it('restarts an idle agent by clearing conversation and runtime state', () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));

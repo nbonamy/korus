@@ -69,7 +69,7 @@
     <AgentContextMenu
       :shared="Boolean(contextMenuAgent?.sharedConversation)"
       v-if="contextMenuAgent"
-      :share-available="Boolean(supportsConversationSharing(contextMenuAgent) && !teams.find(team => team.id === contextMenuAgent?.teamId)?.remoteConnectionId)"
+      :share-available="Boolean(supportsConversationSharing(contextMenuAgent) && !contextMenuAgent?.remoteConnectionId)"
       :fork-disabled="!canForkContextMenuAgent"
       :compact-disabled="true"
       :resume-disabled="true"

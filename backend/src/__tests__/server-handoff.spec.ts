@@ -9,7 +9,7 @@ import { createTestSnapshot, createRemoteAgent, createRemoteTeamSnapshot, readyR
 it('routes an ambiguous remote retry through the linked replacement without creating a local agent', async () => {
   const snapshot = createTestSnapshot();
   snapshot.remoteConnections.connections = [readyRemoteConnection()];
-  snapshot.teams = [{ id: 'pointer', name: 'Remote', remoteConnectionId: 'connection-devbox', remoteTeamId: 'team-remote', agentIds: [] }];
+  snapshot.teams = [{ id: 'pointer', name: 'Remote', remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }], agentIds: [] }];
   const replacement = createRemoteAgent();
   replacement.handoff = { operationId: 'once', backend: 'claude', sourceAgentId: 'old-remote', sourceTitle: 'Source', sourceRef: { backend: 'codex', threadId: 'thread' }, targetAgentId: replacement.id, phase: 'complete' };
   const remoteSnapshot = createRemoteTeamSnapshot([replacement]);

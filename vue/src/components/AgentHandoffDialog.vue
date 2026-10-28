@@ -3,7 +3,7 @@
     <form id="agent-handoff-form" class="app-form-dialog agent-handoff-form" @submit.prevent="submitHandoff">
       <div class="agent-handoff-form__destination">
         <FormField :label="t('handoff.engine')">
-          <BackendSelector v-model="backend" :team-id="agent.teamId" :disabled="busy" />
+          <BackendSelector v-model="backend" :remote-connection-id="agent.remoteConnectionId" :disabled="busy" />
           <span v-if="choices.length === 1">{{ backendDisplayName(choices[0]!) }}</span>
         </FormField>
         <FormField :label="t('handoff.model')" label-for="handoff-model">
@@ -56,7 +56,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ close: [] }>();
 const { t } = useI18n();
-const choices = useBackendChoices(() => props.agent.teamId);
+const choices = useBackendChoices(() => props.agent.remoteConnectionId);
 const backend = ref<AgentBackend | undefined>(choices.value.find(choice => choice !== props.agent.backend) ?? choices.value[0]);
 const defaultModel = '__provider_default__';
 const model = ref(defaultModel);

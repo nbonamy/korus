@@ -35,21 +35,21 @@ import BackendIcon from './BackendIcon.vue';
 import { useAgentHost, useBackendChoices, useCatalogAgentId, useNewAgentBackend, useRememberBackend, useSavedModelSelection } from './backend-selection';
 import { cacheModels, cachedModels, defaultReasoningEffort, presentCatalog, useBackendModelCatalog } from './backend-model-catalog';
 
-const props = defineProps<{ agentId?: string; teamId?: string | null; disabled?: boolean; allowedBackends?: AgentBackend[] }>();
+const props = defineProps<{ agentId?: string; remoteConnectionId?: string | null; disabled?: boolean; allowedBackends?: AgentBackend[] }>();
 const backend = defineModel<AgentBackend>('backend');
 const model = defineModel<string>('model', { default: '' });
 const reasoningEffort = defineModel<string>('reasoningEffort', { default: '' });
 /** The model's service tier by id; empty means the standard tier. */
 const serviceTier = defineModel<string>('serviceTier', { default: '' });
-const hostChoices = useBackendChoices(() => props.teamId);
+const hostChoices = useBackendChoices(() => props.remoteConnectionId);
 const choices = computed(() => hostChoices.value.filter(choice => !props.allowedBackends || props.allowedBackends.includes(choice)));
 // Remembering a choice reorders `choices`; the tabs keep a fixed order so they never jump under the pointer.
 const tabs = computed(() => agentBackends.filter(choice => choices.value.includes(choice)));
 useNewAgentBackend(backend, choices);
-const remember = useRememberBackend(() => props.teamId);
-watch(() => props.teamId, () => { if (!props.disabled) backend.value = choices.value[0]; });
+const remember = useRememberBackend(() => props.remoteConnectionId);
+watch(() => props.remoteConnectionId, () => { if (!props.disabled) backend.value = choices.value[0]; });
 const { listModels } = useBackendModelCatalog();
-const catalogAgentId = useCatalogAgentId(() => props.teamId, () => props.agentId);
+const catalogAgentId = useCatalogAgentId(() => props.remoteConnectionId, () => props.agentId);
 const catalogHost = useAgentHost(() => catalogAgentId.value);
 const { t } = useI18n();
 const open = ref(false);
@@ -94,7 +94,7 @@ const modelItems = computed<AppMenuItem[]>(() => [
     };
   }),
 ]);
-watch([backend, catalogAgentId, () => props.teamId], async ([nextBackend, agentId], previous, cleanup) => {
+watch([backend, catalogAgentId, () => props.remoteConnectionId], async ([nextBackend, agentId], previous, cleanup) => {
   let current = true;
   cleanup(() => { current = false; });
   const cached = nextBackend && agentId ? cachedModels(catalogHost.value, nextBackend) : undefined;

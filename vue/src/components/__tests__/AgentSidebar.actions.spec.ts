@@ -184,8 +184,8 @@ describe('AgentSidebar actions', () => {
     expect(wrapper.emitted('reorder-repositories')).toStrictEqual([[
       {
         teamId: 'team-app',
-        repositoryRoot: '~/src/multi-llm-ts',
-        beforeRepositoryRoot: '~/src/id8',
+        repositoryKey: '~/src/multi-llm-ts',
+        beforeRepositoryKey: 'remote:github.com/nbonamy/id8',
       },
     ]]);
   });

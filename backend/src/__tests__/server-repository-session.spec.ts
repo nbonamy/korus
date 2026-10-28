@@ -32,14 +32,14 @@ describe('repository-backed agent creation', () => {
       return result.result;
     });
     const snapshot = createTestSnapshot(); snapshot.remoteConnections.connections = [connection];
-    snapshot.teams.push({ id: 'pointer', name: 'Remote', agentIds: [], remoteConnectionId: connection.id, remoteTeamId: remoteSnapshot.teams[0]!.id });
+    snapshot.teams.push({ id: 'pointer', name: 'Remote', agentIds: [], remoteLinks: [{ connectionId: connection.id, remoteTeamId: remoteSnapshot.teams[0]!.id }] });
     const server = new AppBackendServer({ version: 'test', snapshot, remoteClients: { request, close: async () => {} } as never });
     cleanup.push(() => server.close()); cleanup.push(() => remote.close());
     const acquired = await server.handleMessage({ jsonrpc: '2.0', id: 'acquire', method: 'source/repository/clone', params: { input: { url: 'git@github.com:example/repo.git', reuseExisting: true, remoteConnectionId: connection.id } } });
     expect(acquired).toMatchObject({ result: { path: root } });
     expect(request.mock.calls.some(([, method]) => method === 'source/repository/clone')).toBe(false);
     const created = await server.handleMessage({ jsonrpc: '2.0', id: 'create', method: 'agent/create', params: { entityResult: true,
-      input: { name: null, folder: root, teamId: 'pointer', backend: 'codex', repositorySession: { existingBranch: 'feature' } } } });
+      input: { name: null, folder: root, teamId: 'pointer', remoteConnectionId: connection.id, backend: 'codex', repositorySession: { existingBranch: 'feature' } } } });
     expect(created).not.toHaveProperty('error');
     const agent = remoteSnapshot.agents.find(candidate => candidate.folder === `${root}-feature`)!;
     expect(agent).toBeDefined();

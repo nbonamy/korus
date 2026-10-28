@@ -108,7 +108,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const backendChoices = useBackendChoices(() => props.agent.teamId);
+const backendChoices = useBackendChoices(() => props.agent.remoteConnectionId);
 
 const promptDraft = ref('');
 const canReceivePrompt = computed(() => agentCanReceivePrompt(props.agent));

@@ -14,15 +14,15 @@ export function isAutomationTarget(value: unknown): value is AutomationTarget {
     && (target.reasoningEffort === undefined || typeof target.reasoningEffort === 'string');
 }
 
-export function canTargetAutomationAgent(snapshot: Pick<AppSnapshot, 'teams' | 'missions'>, agent: Agent): boolean {
-  return !agent.codeReview && !snapshot.teams.some(team => team.id === agent.teamId && team.remoteConnectionId)
+export function canTargetAutomationAgent(snapshot: Pick<AppSnapshot, 'missions'>, agent: Agent): boolean {
+  return !agent.codeReview && !agent.remoteConnectionId
     && !(snapshot.missions ?? []).some(mission => Object.values(mission.stageAgentIds).includes(agent.id)
       || mission.execution?.memberIds.includes(agent.id) || mission.execution?.runs.some(run => run.workerId === agent.id));
 }
 
 /** A target is usable only while its conversation (or the team for a fresh Quick Chat) is still local and eligible. */
 export function automationTargetIsAvailable(snapshot: Pick<AppSnapshot, 'teams' | 'agents' | 'missions'>, target: AutomationTarget): boolean {
-  if (target.kind === 'newQuickChat') return snapshot.teams.some(team => team.id === target.teamId && !team.remoteConnectionId);
+  if (target.kind === 'newQuickChat') return snapshot.teams.some(team => team.id === target.teamId);
   const agent = snapshot.agents.find(item => item.id === target.agentId);
   return Boolean(agent && canTargetAutomationAgent(snapshot, agent) && (target.kind === 'quickChat') === (agent.sessionKind === 'quickChat'));
 }

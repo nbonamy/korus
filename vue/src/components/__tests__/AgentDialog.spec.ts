@@ -445,7 +445,7 @@ describe('AgentDialog', () => {
     expect(wrapper.get<HTMLInputElement>('[aria-label="Agent name"]').element.value).toBe('');
   });
 
-  it('creates agents using the target team SSH connection for repositories and worktrees', async () => {
+  it('creates agents on the requested SSH connection for repositories and worktrees', async () => {
     const createAgent = vi.fn().mockResolvedValue(undefined);
     const listSourceRepositories = vi.fn().mockResolvedValue([{
       name: 'agent-workspace',
@@ -478,6 +478,7 @@ describe('AgentDialog', () => {
       folder: '/home/nicolas/src/agent-workspace-ssh-agent',
       backend: 'codex',
       sourceRepositoryName: 'agent-workspace',
+      remoteConnectionId: 'connection-devbox',
     });
   });
 
@@ -528,6 +529,7 @@ describe('AgentDialog', () => {
       name: null,
       folder: '/home/nicolas/src/witsy',
       backend: 'codex',
+      remoteConnectionId: 'connection-devbox',
     });
   });
 

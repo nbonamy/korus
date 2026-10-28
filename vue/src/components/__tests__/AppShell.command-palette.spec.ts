@@ -133,28 +133,6 @@ describe('AppShell command palette', () => {
     else expect(mobileSimulator).not.toHaveBeenCalled();
     wrapper.unmount();
   });
-  it('retains owning-host team lookup and the last remote team disconnect confirmation', async () => {
-    const snapshot = createInitialSnapshot();
-    snapshot.teams[0] = { ...snapshot.teams[0]!, name: 'Remote', remoteConnectionId: 'devbox', remoteTeamId: 'remote-team' };
-    snapshot.remoteConnections.connections = [{ id: 'devbox', kind: 'ssh', name: 'devbox', host: 'devbox', status: 'ready', createdAt: '', updatedAt: '' }];
-    const remoteSnapshot = createEmptySnapshot();
-    remoteSnapshot.teams = [{ id: 'remote-team', name: 'Remote', agentIds: [] }];
-    const getAutomationSnapshot = vi.fn().mockResolvedValue(remoteSnapshot);
-    let resolveConfirm: (value: never) => void = () => {};
-    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockImplementation(() => new Promise(resolve => { resolveConfirm = resolve; }));
-    const wrapper = mountShell({ snapshot, getAutomationSnapshot, stubAgentWorkspace: true });
-    await openPalette();
-    await wrapper.get('.quick-open-dialog input').setValue('close team');
-    await wrapper.get('.quick-open-dialog input').trigger('keydown.enter'); await flushPromises();
-    expect(getAutomationSnapshot).toHaveBeenCalledExactlyOnceWith({ kind: 'remote', remoteConnectionId: 'devbox' });
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('only team on devbox'), 'Cannot delete team', expect.any(Object));
-    expect(wrapper.emitted('disconnect-team')).toBeUndefined();
-    expect(wrapper.emitted('close-team')).toBeUndefined();
-    resolveConfirm('confirm' as never); await flushPromises();
-    expect(wrapper.emitted('disconnect-team')).toStrictEqual([[snapshot.teams[0]!.id]]);
-    expect(wrapper.emitted('close-team')).toBeUndefined();
-    wrapper.unmount();
-  });
   it('routes Git commands through the existing control and its revert confirmation', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;

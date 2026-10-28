@@ -255,7 +255,7 @@
           </el-select>
         </label>
         <label>{{ $t('repositoryBacklog.session') }}
-          <BackendModelSelector v-model:backend="selectedBackend" v-model:model="selectedModel" v-model:reasoning-effort="selectedEffort" v-model:service-tier="selectedTier" :team-id="selectedTeamId" :disabled="startingWork" />
+          <BackendModelSelector v-model:backend="selectedBackend" v-model:model="selectedModel" v-model:reasoning-effort="selectedEffort" v-model:service-tier="selectedTier" :disabled="startingWork" />
         </label>
       </div>
 
@@ -360,8 +360,7 @@ watch([startWorkDialogOpen, selectedTeamId], async () => {
   if (!startWorkDialogOpen.value || workProviderDefinition(props.connection.provider).repositoryBacked) return;
   codeRepositoriesLoading.value = true;
   try {
-    const team = props.teams.find(team => team.id === selectedTeamId.value);
-    const repositories = await props.listSourceRepositories?.(team?.remoteConnectionId) ?? [];
+    const repositories = await props.listSourceRepositories?.() ?? [];
     if (revision === contextRevision) codeRepositories.value = repositories;
   } catch (error) {
     if (revision === contextRevision) startWorkError.value = error instanceof Error ? error.message : String(error);

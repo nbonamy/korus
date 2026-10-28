@@ -247,8 +247,7 @@ function completeSnapshot(): AppSnapshot {
   snapshot.agents.push(claudeAgent);
   snapshot.teams[0]!.agentIds.push(claudeAgent.id);
   snapshot.teams[0]!.activeAgentId = codexAgent.id;
-  snapshot.teams[0]!.remoteConnectionId = 'remote-1';
-  snapshot.teams[0]!.remoteTeamId = 'remote-team-1';
+  snapshot.teams[0]!.remoteLinks = [{ connectionId: 'remote-1', remoteTeamId: 'remote-team-1' }];
   snapshot.automations = [{
     id: 'automation-1',
     name: 'Backlog',

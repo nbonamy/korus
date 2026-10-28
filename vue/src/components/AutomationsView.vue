@@ -223,7 +223,7 @@ provideBackendHost(() => selectedRemoteConnectionId.value
   ? { host: selectedRemoteConnectionId.value, connections: remoteSnapshot.value?.providerConnections ?? [] }
   : null);
 const locationAutomations = computed(() => (isRemoteLocation.value ? (remoteSnapshot.value?.automations ?? []) : props.automations));
-const locationTeams = computed(() => (isRemoteLocation.value ? (remoteSnapshot.value?.teams ?? []) : props.teams).filter(team => !team.remoteConnectionId));
+const locationTeams = computed(() => (isRemoteLocation.value ? (remoteSnapshot.value?.teams ?? []) : props.teams));
 const locationTargets = computed(() => isRemoteLocation.value
   ? { teams: remoteSnapshot.value?.teams ?? [], agents: remoteSnapshot.value?.agents ?? [], missions: remoteSnapshot.value?.missions ?? [] }
   : { teams: props.teams, agents: props.agents, missions: props.missions });

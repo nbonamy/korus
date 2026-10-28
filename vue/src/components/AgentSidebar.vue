@@ -215,7 +215,7 @@
               type="button"
               :aria-label="t('sidebar.createFromRepository')"
               :title="t('sidebar.createFrom')"
-              @click.stop="emit('create-agent-from-repository', { agentId: group.sessions[0]!.agentId, repositoryName: group.label, repositoryRoot: group.repositoryRoot! })"
+              @click.stop="emit('create-agent-from-repository', sectionTarget(group))"
             >
               <GitForkIcon aria-hidden="true" />
             </button>
@@ -281,6 +281,15 @@
                 :title="backendDisplayName(agentsById.get(session.agentId)!.backend)"
               >
                 <BackendIcon :backend="agentsById.get(session.agentId)!.backend" monochrome />
+              </span>
+              <span
+                v-else-if="group.spansHosts && session.remoteConnectionId"
+                class="agent-sidebar__remote-marker"
+                role="img"
+                :aria-label="remoteHostName(session.remoteConnectionId)"
+                :title="remoteHostName(session.remoteConnectionId)"
+              >
+                <ServerIcon aria-hidden="true" />
               </span>
               <span
                 v-if="!group.activity && session.status.type === 'awaitingInput'"
@@ -386,7 +395,7 @@ import { missionWorkflow } from '@workspace/core/mission-workflows';
 import { missionAttention } from '@workspace/core/mission-attention';
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { Agent, OpenInApplication, OpenInApplicationCatalog, ReorderAgentsInput, ReorderRepositoriesInput, SourceBranch, Team } from '@workspace/core/contracts';
+import type { Agent, OpenInApplication, OpenInApplicationCatalog, RemoteConnection, ReorderAgentsInput, ReorderRepositoriesInput, SourceBranch, Team } from '@workspace/core/contracts';
 import { projectWorkspaceSidebar, type SidebarActivity, type WorkspaceSidebarGroup, type WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar';
 import { formatCompactAge, formatElapsed } from '../shared/compact-age';
 import {
@@ -404,6 +413,7 @@ import {
   MessageIcon,
   PanelLeftCloseIcon,
   PlusIcon,
+  ServerIcon,
   TargetArrowIcon,
   Trash2Icon,
 } from '../shared/icons/app-icons';
@@ -451,11 +461,15 @@ const props = defineProps<{
   phoneScope?: boolean;
   quickSwitchShortcutsVisible?: boolean;
   repositoryIcons?: Record<string, string>;
-  listRepositoryBranches?: (input: { agentId: string; repositoryRoot: string }) => Promise<SourceBranch[]>;
+  listRepositoryBranches?: (input: { agentId: string; repositoryRoot: string; remoteConnectionId?: string }) => Promise<SourceBranch[]>;
+  /** Connections for the remote marker and the remote actions of repository menus. */
+  remoteConnections?: RemoteConnection[];
   openInCatalog?: OpenInApplicationCatalog;
 }>();
 
 const { t } = useI18n();
+
+type SectionTarget = { agentId: string; repositoryName: string; repositoryRoot: string; remoteConnectionId?: string };
 
 const emit = defineEmits<{
   'collapse-sidebar': [];
@@ -464,9 +478,10 @@ const emit = defineEmits<{
   'compact-session': [agentId: string];
   'cleanup-pull-request': [agentId: string];
   'update-collapsed-repositories': [repositoryKeys: string[]];
-  'create-agent-from-repository': [payload: { agentId: string; repositoryName: string; repositoryRoot: string }];
-  'create-agent-on-branch': [payload: { agentId: string; repositoryName: string; repositoryRoot: string; branch: SourceBranch }];
-  'create-agent-worktree-in-repository': [payload: { agentId: string; repositoryName: string; repositoryRoot: string }];
+  'create-agent-from-repository': [payload: SectionTarget];
+  'create-agent-on-branch': [payload: SectionTarget & { branch: SourceBranch }];
+  'create-agent-worktree-in-repository': [payload: SectionTarget];
+  'open-on-remote': [payload: { action: 'main' | 'new-worktree'; repositoryName: string; repositoryKey: string; originUrl?: string }];
   'duplicate-agent': [agentId: string];
   'fork-agent': [agentId: string];
   'share-agent': [agentId: string];
@@ -566,12 +581,13 @@ useAgentSidebarMotion(sessionList,
   () => organizationMode.value === 'activity' ? props.teamId ?? '' : null,
   () => workspaceGroups.value.map(group => `${group.id}:${group.sessions.map(session => session.agentId).join(',')}`).join('|'));
 const agentsById = computed(() => new Map(props.agents.map(agent => [agent.id, agent])));
-const backendChoices = useBackendChoices(() => props.teamId);
+const backendChoices = useBackendChoices();
 const quickChatGroup = computed(() => repositoryGroups.value.find((group) => group.kind === 'quickChats') ?? null);
 const contextMenuAgentId = ref<string | null>(null);
 const contextMenuMissionId = ref<string | null>(null);
 const contextMenuRepositoryAgentId = ref<string | null>(null);
 const repositoryMenuItems = computed<AppMenuItem[]>(() => [{ id: 'delete', type: 'action', label: t('repositoryDeletion.action'), icon: Trash2Icon, danger: true }]);
+const hasReadyRemote = computed(() => (props.remoteConnections ?? []).some((connection) => connection.status === 'ready'));
 const repositorySessionMenu = useRepositorySessionMenu(() => props.listRepositoryBranches, t);
 const repositorySessionMenuId = repositorySessionMenu.visibleGroupId;
 const collapsedRepositoryKeys = computed(() => new Set(props.collapsedRepositoryKeys ?? []));
@@ -603,20 +619,18 @@ const canReplaceContextMenuConversation = computed(() => {
 const contextMenuAgentIsLocal = computed(() => {
   const agent = contextMenuAgent.value;
   if (!agent) return false;
-  const team = (props.teams ?? []).find((candidate) => candidate.id === agent.teamId);
-  return !team?.remoteConnectionId;
+  return !agent.remoteConnectionId;
 });
 const contextMenuMoveTargets = computed(() => {
   const agent = contextMenuAgent.value;
   if (!agent) {
     return [];
   }
-  const sourceTeam = (props.teams ?? []).find((team) => team.id === agent.teamId) ?? null;
-  if (sourceTeam?.remoteConnectionId) {
+  if (agent.remoteConnectionId) {
     return [];
   }
 
-  return (props.teams ?? []).filter((team) => team.id !== agent.teamId && !team.remoteConnectionId);
+  return (props.teams ?? []).filter((team) => team.id !== agent.teamId);
 });
 const clientAgentOrderUpdate = useListReorderDrag<string>({
   itemIds: () => props.agents.map((agent) => agent.id),
@@ -646,12 +660,12 @@ const clientRepositoryOrderUpdate = useListReorderDrag<string>({
     const beforeRepository = beforeId === null
       ? null
       : workspaceGroups.value.find((group) => group.id === beforeId) ?? null;
-    if (repository?.kind !== 'repository' || !repository.repositoryRoot) return;
+    if (repository?.kind !== 'repository' || !repository.repositoryKey) return;
 
     emit('reorder-repositories', {
       teamId: props.teamId,
-      repositoryRoot: repository.repositoryRoot,
-      beforeRepositoryRoot: beforeRepository?.repositoryRoot ?? null,
+      repositoryKey: repository.repositoryKey,
+      beforeRepositoryKey: beforeRepository?.repositoryKey ?? null,
     });
   },
 });
@@ -722,6 +736,9 @@ function repositorySessionMenuItems(
   group: WorkspaceSidebarGroup,
 ): AppMenuItem[] {
   const defaultBranch = repositorySessionMenu.defaultBranches.value[group.id];
+  const remoteAction = (id: string) => hasReadyRemote.value
+    ? { secondaryAction: { id, label: t('sidebar.onRemoteMachine'), icon: ServerIcon } }
+    : {};
   return [
     {
       id: 'default-branch',
@@ -729,8 +746,9 @@ function repositorySessionMenuItems(
       label: defaultBranch?.name ?? t('sidebar.defaultBranchUnavailable'),
       icon: GitBranchIcon,
       disabled: !defaultBranch,
+      ...remoteAction('default-branch:remote'),
     },
-    { id: 'new-worktree', type: 'action', label: t('sidebar.newWorktree'), icon: GitForkIcon },
+    { id: 'new-worktree', type: 'action', label: t('sidebar.newWorktree'), icon: GitForkIcon, ...remoteAction('new-worktree:remote') },
   ];
 }
 
@@ -772,17 +790,34 @@ function pullRequestAttentionLabel(session: WorkspaceSidebarSession): string {
   );
 }
 
+/** Where a section action runs: the section's primary checkout, on its own host. */
+function sectionTarget(group: WorkspaceSidebarGroup): SectionTarget {
+  return {
+    agentId: group.repositoryAgentId ?? group.sessions[0]!.agentId,
+    repositoryName: group.label,
+    repositoryRoot: group.repositoryRoot!,
+    ...(group.remoteConnectionId ? { remoteConnectionId: group.remoteConnectionId } : {}),
+  };
+}
+
+function remoteHostName(connectionId: string | undefined): string {
+  return props.remoteConnections?.find((connection) => connection.id === connectionId)?.name ?? '';
+}
+
 function selectRepositorySessionMenuItem(
   group: WorkspaceSidebarGroup,
   itemId: string,
 ): void {
   if (group.kind !== 'repository' || !group.repositoryRoot) return;
-  const payload = {
-    agentId: group.sessions[0]!.agentId,
-    repositoryName: group.label,
-    repositoryRoot: group.repositoryRoot!,
-  };
-  if (itemId === 'default-branch') {
+  const payload = sectionTarget(group);
+  if (itemId === 'default-branch:remote' || itemId === 'new-worktree:remote') {
+    emit('open-on-remote', {
+      action: itemId === 'default-branch:remote' ? 'main' : 'new-worktree',
+      repositoryName: group.label,
+      repositoryKey: group.repositoryKey ?? group.id,
+      ...(group.originUrl ? { originUrl: group.originUrl } : {}),
+    });
+  } else if (itemId === 'default-branch') {
     const branch = repositorySessionMenu.defaultBranches.value[group.id];
     if (branch) {
       emit('create-agent-on-branch', { ...payload, branch });
@@ -1617,6 +1652,22 @@ function onResizePointerEnd(event: PointerEvent): void {
 
 .agent-sidebar__agent-row:hover .agent-sidebar__engine {
   display: grid;
+}
+
+.agent-sidebar__remote-marker {
+  grid-column: 3;
+  display: grid;
+  place-items: center;
+  color: var(--color-text-muted);
+}
+
+.agent-sidebar__remote-marker svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.agent-sidebar__agent:has(.agent-sidebar__remote-marker) {
+  --agent-sidebar-engine-track: 18px;
 }
 
 .agent-sidebar__status[data-status="working"],

@@ -240,7 +240,7 @@ describe('mission backend boundary', () => {
       const events = onEvent.mock.calls.map(([event]) => event);
       expect(events).toContainEqual(expect.objectContaining({ type: 'mission.focusRequested', payload: { missionId: mission.id } }));
       expect(events.findIndex(event => event.type === 'snapshot.updated')).toBeLessThan(events.findIndex(event => event.type === 'mission.focusRequested'));
-      await expect(server.startMissionFromAgent('missing-agent', { outcome: 'x', prompt: 'y' })).rejects.toThrow('local team');
+      await expect(server.startMissionFromAgent('missing-agent', { outcome: 'x', prompt: 'y' })).rejects.toThrow('local agent');
     } finally { await server.close(); }
   });
 

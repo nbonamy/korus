@@ -29,7 +29,7 @@ export function useRepositorySession(options: {
   createIsolatedWorkItemAgent: (
     item: WorkItem,
     teamId: string,
-    options?: { reuseExisting?: boolean; backend?: AgentBackend; model?: string; reasoningEffort?: string; serviceTier?: string; repository?: SourceRepository; isCurrent?: () => boolean; onPhase?: (phase: 'creatingAgent') => void },
+    options?: { reuseExisting?: boolean; backend?: AgentBackend; model?: string; reasoningEffort?: string; serviceTier?: string; repository?: SourceRepository; remoteConnectionId?: string; isCurrent?: () => boolean; onPhase?: (phase: 'creatingAgent') => void },
   ) => Promise<{ agent: Agent; item: WorkItem }>;
   createSourceWorktree: (input: CreateSourceWorktreeInput) => Promise<SourceWorktree>;
   getAgentGitRemote?: (agentId: string) => Promise<string | undefined>;
@@ -68,9 +68,10 @@ export function useRepositorySession(options: {
   const assignmentSessions = computed<WorkItemAssignmentSession[]>(() => {
     const current = source.value;
     if (!current) return [];
-    const { teamId } = context(current);
+    const { teamId, remoteConnectionId } = context(current);
     return options.getSnapshot().agents
       .filter((agent) => (!teamId || agent.teamId === teamId)
+        && agent.remoteConnectionId === remoteConnectionId
         && agent.workspace?.kind === 'git'
         && agent.workspace.primaryWorktreeRoot === current.repositoryRoot)
       .map((agent) => ({
@@ -87,7 +88,7 @@ export function useRepositorySession(options: {
   });
 
   async function open(nextSource: RepositorySessionSource): Promise<void> {
-    backend.value = preferredBackendChoices(options.getSnapshot(), context(nextSource).teamId)[0];
+    backend.value = preferredBackendChoices(options.getSnapshot(), context(nextSource).remoteConnectionId)[0];
     const requestId = ++sourceRequestId;
     source.value = nextSource;
     visible.value = true;
@@ -150,15 +151,15 @@ export function useRepositorySession(options: {
     error.value = null;
   }
 
-  async function listBranches(input: { agentId: string; repositoryRoot: string }): Promise<SourceBranch[]> {
-    const { remoteConnectionId } = context({ agentId: input.agentId });
+  async function listBranches(input: { agentId: string; repositoryRoot: string; remoteConnectionId?: string }): Promise<SourceBranch[]> {
+    const { remoteConnectionId } = context(input);
     return options.listSourceBranches(input.repositoryRoot, remoteConnectionId);
   }
 
   function createOnBranch(payload: RepositorySessionSource & { branch: SourceBranch }): void {
-    backend.value = preferredBackendChoices(options.getSnapshot(), context(payload).teamId)[0];
+    backend.value = preferredBackendChoices(options.getSnapshot(), context(payload).remoteConnectionId)[0];
     const { branch, ...nextSource } = payload;
-    void createSession(nextSource, branch, context(nextSource).teamId);
+    void createSession(nextSource, branch);
   }
 
   async function openWorktree(nextSource: RepositorySessionSource): Promise<void> {
@@ -203,7 +204,7 @@ export function useRepositorySession(options: {
     const nextSource = worktreeSource.value;
     closeWorktree();
     if (!nextSource) return;
-    const { teamId } = context(nextSource);
+    const { teamId, remoteConnectionId } = context(nextSource);
     try {
       await options.createAgent({
         name: null,
@@ -211,6 +212,7 @@ export function useRepositorySession(options: {
         backend: backend.value,
         sourceRepositoryName: nextSource.repositoryName,
         ...(teamId ? { teamId } : {}),
+        ...(remoteConnectionId ? { remoteConnectionId } : {}),
       });
     } catch (caught) {
       options.notifyError(caught instanceof Error ? caught.message : String(caught));
@@ -219,7 +221,7 @@ export function useRepositorySession(options: {
 
   function createForSourceBranch(branch: SourceBranch): void {
     const current = source.value;
-    if (current) void createSession(current, branch, context(current).teamId);
+    if (current) void createSession(current, branch);
   }
 
   async function startWork(selection: WorkItemAssignmentSelection): Promise<void> {
@@ -247,7 +249,7 @@ export function useRepositorySession(options: {
     const current = source.value;
     if (!current) return;
     if (selection.isCurrent && !selection.isCurrent()) return;
-    const { teamId } = context(current);
+    const { teamId, remoteConnectionId } = context(current);
     close();
     if (selection.destination === 'existing') {
       try {
@@ -284,6 +286,7 @@ export function useRepositorySession(options: {
         ...(selection.serviceTier ? { serviceTier: selection.serviceTier } : {}),
         ...(selection.reuseExisting ? { reuseExisting: true } : {}),
         repository: { name: current.repositoryName, path: current.repositoryRoot, worktrees: [] },
+        ...(remoteConnectionId ? { remoteConnectionId } : {}),
         onPhase: (phase) => update({ phase }),
       });
       update({ phase: 'startingPrompt', agentId: agent.id, agentName: agentDisplayName(agent) });
@@ -324,7 +327,8 @@ export function useRepositorySession(options: {
     creationProgress.value = null;
   }
 
-  async function createSession(nextSource: RepositorySessionSource, branch: SourceBranch, teamId?: string): Promise<void> {
+  async function createSession(nextSource: RepositorySessionSource, branch: SourceBranch): Promise<void> {
+    const { teamId, remoteConnectionId } = context(nextSource);
     close();
     try {
       await options.createAgent({
@@ -334,13 +338,14 @@ export function useRepositorySession(options: {
         backend: backend.value,
         sourceRepositoryName: nextSource.repositoryName,
         ...(teamId ? { teamId } : {}),
+        ...(remoteConnectionId ? { remoteConnectionId } : {}),
       });
     } catch (caught) {
       options.notifyError(caught instanceof Error ? caught.message : String(caught));
     }
   }
 
-  function context(current?: Pick<RepositorySessionSource, 'agentId' | 'teamId'> | null) {
+  function context(current?: Pick<RepositorySessionSource, 'agentId' | 'teamId' | 'remoteConnectionId'> | null) {
     return resolveRepositorySessionContext(options.getSnapshot(), current, options.activeTeamId());
   }
 

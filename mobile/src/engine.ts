@@ -209,8 +209,8 @@ export function createEngine(port: EnginePort) {
   let lastState = '';
   // Bumped whenever the person navigates, so a connection still restoring the saved selection gives way.
   let restoreEpoch = 0;
-  const backendChoices = () => state.workspace.value.backends?.[state.teamId.value] ?? [];
-  const engines = () => { const agent = state.agent.value; return agent && backendChoices().length > 1 && canSelectAgentBackend(agent) ? { current: agent.backend, choices: backendChoices() } : null; };
+  const backendChoices = (host = state.teamId.value) => state.workspace.value.backends?.[host] ?? [];
+  const engines = () => { const agent = state.agent.value; const choices = backendChoices(agent?.remoteConnectionId ?? state.teamId.value); return agent && choices.length > 1 && canSelectAgentBackend(agent) ? { current: agent.backend, choices } : null; };
 
   async function rememberSelection() {
     if (!state.laptopId.value || !port.selectionStore) return;
@@ -341,7 +341,7 @@ export function createEngine(port: EnginePort) {
       permissions: { approvalPreset: permissions?.approvalPreset ?? null, permissionMode: permissions?.permissionMode ?? null, presets: [...(capabilities.approvalPresets ?? [])],
         modes: (capabilities.permissionModes ?? []).map((mode) => ({ id: mode.id, label: typeof mode.label === 'string' ? mode.label : mode.label.key })) },
       capabilities: { goals: capabilities.goals, models: capabilities.models, reasoningEffort: capabilities.reasoningEffort, serviceTier: capabilities.serviceTier ?? false,
-        planMode: capabilities.planMode !== 'unsupported', interrupt: capabilities.interrupt && state.status.value === 'connected' && state.conversationReady.value, attachments: capabilities.attachments && !team?.remoteConnectionId },
+        planMode: capabilities.planMode !== 'unsupported', interrupt: capabilities.interrupt && state.status.value === 'connected' && state.conversationReady.value, attachments: capabilities.attachments && !agent?.remoteConnectionId },
       favorites: state.modelFavorites.value.filter((favorite) => favorite.backend === agent?.backend).map(({ modelId, reasoningEffort, serviceTier }) => ({ modelId, reasoningEffort, serviceTier })),
     };
   }

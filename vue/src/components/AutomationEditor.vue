@@ -41,7 +41,7 @@
       <FormSection v-if="form.kind === 'newQuickChat'" density="compact" :title="$t('promptAutomation.model')" title-id="automation-model">
         <FormGrid :columns="3">
           <FormField density="compact" :label="$t('handoff.engine')">
-            <BackendSelector v-model="form.backend" class="automation-editor__backend" :team-id="form.teamId"
+            <BackendSelector v-model="form.backend" class="automation-editor__backend"
               :preserve-selection="Boolean(automation)" show-single-choice />
           </FormField>
           <FormField density="compact" :label="$t('promptAutomation.model')" :help="modelsError ? $t('promptAutomation.modelsUnavailable') : undefined">
@@ -106,7 +106,7 @@ const promptBusy = ref(false);
 const models = ref<BackendModelOption[]>([]);
 const modelsLoading = ref(false);
 const modelsError = ref(false);
-const engineChoices = useBackendChoices(() => form.teamId);
+const engineChoices = useBackendChoices();
 const teamAgents = computed(() => props.agents.filter(agent => agent.teamId === form.teamId));
 const quickChats = computed(() => teamAgents.value.filter(agent => agent.sessionKind === 'quickChat'));
 const agentChats = computed(() => teamAgents.value.filter(agent => agent.sessionKind !== 'quickChat'));

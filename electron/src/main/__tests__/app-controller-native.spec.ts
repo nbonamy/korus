@@ -365,7 +365,7 @@ describe('AppController', () => {
       await expect(openAgentPath(controller, 'agent-dina', 'finder', outsideFile))
         .rejects.toThrow('only available for files inside');
 
-      currentSnapshot(controller).teams[0].remoteConnectionId = 'connection-devbox';
+      currentSnapshot(controller).agents.find(agent => agent.id === 'agent-dina')!.remoteConnectionId = 'connection-devbox';
       await expect(openAgentPath(controller, 'agent-dina', 'finder')).rejects.toThrow('only available for local agents');
       expect(open).not.toHaveBeenCalled();
     } finally {

@@ -40,7 +40,7 @@ import { createAgentComposerState, type AgentComposerConfiguration } from './age
 import { createAgentUnreadState } from './agent-unread-state';
 import { createAgentHistoryState } from './agent-history-state';
 import { createSourceRepositoryState } from './source-repository-state';
-import { workspaceSidebarRepositoryRootForAgent } from '@workspace/core/workspace-sidebar';
+import { workspaceSidebarRepositoryKeyForAgent } from '@workspace/core/workspace-sidebar';
 import { isSnapshotEventOwnedBy, type RendererOnlySnapshotEvent } from '@workspace/core/snapshot-event-ownership';
 
 const snapshot = ref<AppSnapshot>(createEmptySnapshot());
@@ -1074,21 +1074,11 @@ export function useAppState() {
 
   async function closeTeam(teamId: string): Promise<void> {
     const team = snapshot.value.teams.find(candidate => candidate.id === teamId);
-    if (!appApi?.closeTeam || !team || (snapshot.value.teams.length <= 1 && !team.remoteConnectionId)) {
+    if (!appApi?.closeTeam || !team || snapshot.value.teams.length <= 1) {
       return;
     }
 
     adoptNavigationSnapshot(await appApi.closeTeam(teamId));
-    await loadActiveAgentCatalogs();
-  }
-
-  async function disconnectTeam(teamId: string): Promise<void> {
-    const team = snapshot.value.teams.find(candidate => candidate.id === teamId);
-    if (!appApi?.disconnectTeam || !team?.remoteConnectionId) {
-      return;
-    }
-
-    adoptNavigationSnapshot(await appApi.disconnectTeam(teamId));
     await loadActiveAgentCatalogs();
   }
 
@@ -1545,15 +1535,15 @@ export function useAppState() {
 
   async function reorderRepositories(input: ReorderRepositoriesInput): Promise<void> {
     const team = snapshot.value.teams.find((candidate) => candidate.id === input.teamId);
-    const repositoryRoots = new Set((team?.agentIds ?? []).flatMap((agentId) => {
+    const repositoryKeys = new Set((team?.agentIds ?? []).flatMap((agentId) => {
       const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
-      const repositoryRoot = agent ? workspaceSidebarRepositoryRootForAgent(agent) : null;
-      return repositoryRoot ? [repositoryRoot] : [];
+      const repositoryKey = agent ? workspaceSidebarRepositoryKeyForAgent(agent) : null;
+      return repositoryKey ? [repositoryKey] : [];
     }));
     if (
       !appApi?.reorderRepositories ||
-      !repositoryRoots.has(input.repositoryRoot) ||
-      (input.beforeRepositoryRoot !== null && !repositoryRoots.has(input.beforeRepositoryRoot))
+      !repositoryKeys.has(input.repositoryKey) ||
+      (input.beforeRepositoryKey !== null && !repositoryKeys.has(input.beforeRepositoryKey))
     ) {
       return;
     }
@@ -1810,7 +1800,6 @@ export function useAppState() {
     updateTeam,
     reorderTeams,
     closeTeam,
-    disconnectTeam,
     updateAgent,
     updateSettings,
     setCodexResourceSharing,
@@ -1980,7 +1969,7 @@ function backendCapabilitiesForAgent(agent: Agent | null): BackendCapabilities {
   return {
     ...defaults,
     ...runtime?.capabilities,
-    ...(snapshot.value.teams.some(team => team.id === agent?.teamId && team.remoteConnectionId) ? { attachments: false } : {}),
+    ...(agent?.remoteConnectionId ? { attachments: false } : {}),
   };
 }
 

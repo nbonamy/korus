@@ -380,6 +380,64 @@ describe('AgentSidebar sessions', () => {
     }]]);
   });
 
+  describe('remote actions on the repository menu', () => {
+    const connection = (status: 'ready' | 'error') => ({ id: 'devbox', kind: 'ssh' as const, name: 'Devbox', host: 'devbox', status, createdAt: '', updatedAt: '' });
+    async function openMenu(props: Record<string, unknown>) {
+      const git = agents[0]!;
+      if (git.workspace?.kind !== 'git') throw new Error('Expected Git fixture');
+      const wrapper = mount(AgentSidebar, {
+        props: {
+          agents: [{ ...git, workspace: { ...git.workspace, originUrl: 'git@github.com:org/id8.git' } }],
+          activeAgentId: 'agent-dina',
+          listRepositoryBranches: vi.fn().mockResolvedValue([{ name: 'main', isDefault: true, worktreePath: '~/src/id8' }]),
+          teamName: 'Team',
+          ...props,
+        },
+        global: { components: { ElPopover } },
+      });
+      const sessionMenu = wrapper.findAllComponents({ name: 'AppMenuButton' }).find((button) => button.props('ariaLabel').startsWith('New session in'));
+      await sessionMenu?.vm.$emit('update:open', true);
+      await flushPromises();
+      return wrapper;
+    }
+    const remoteButtons = () => [...document.body.querySelectorAll<HTMLButtonElement>('button[aria-label="On a remote machine"]')];
+
+    it('offers a remote icon on each row only while a machine is ready', async () => {
+      await openMenu({ remoteConnections: [connection('error')] });
+      expect(remoteButtons()).toHaveLength(0);
+      document.body.innerHTML = '';
+      await openMenu({ remoteConnections: [connection('ready')] });
+      expect(remoteButtons()).toHaveLength(2);
+    });
+
+    it('keeps the row label local and sends the remote icon to the where dialog with the origin', async () => {
+      const wrapper = await openMenu({ remoteConnections: [connection('ready')] });
+      remoteButtons()[1]!.click();
+      await flushPromises();
+      expect(wrapper.emitted('open-on-remote')).toStrictEqual([[{ action: 'new-worktree', repositoryName: 'id8', repositoryKey: 'remote:github.com/org/id8', originUrl: 'git@github.com:org/id8.git' }]]);
+      expect(wrapper.emitted('create-agent-worktree-in-repository')).toBeUndefined();
+    });
+  });
+
+  it('marks remote rows only in a section that spans hosts and carries the host on section actions', async () => {
+    const git = agents[0]!;
+    if (git.workspace?.kind !== 'git') throw new Error('Expected Git fixture');
+    const origin = 'git@github.com:org/id8.git';
+    const local = { ...git, id: 'local', workspace: { ...git.workspace, originUrl: origin } };
+    const remote = { ...git, id: 'remote', remoteConnectionId: 'devbox', workspace: { ...git.workspace, originUrl: origin, primaryWorktreeRoot: '/srv/id8' } };
+    const remoteConnections = [{ id: 'devbox', kind: 'ssh' as const, name: 'Devbox', host: 'devbox', status: 'ready' as const, createdAt: '', updatedAt: '' }];
+    const wrapper = mount(AgentSidebar, { props: { agents: [local, remote], activeAgentId: 'local', teamName: 'Team', remoteConnections } });
+    expect(wrapper.findAll('.agent-sidebar__remote-marker')).toHaveLength(1);
+    expect(wrapper.get('.agent-sidebar__remote-marker').attributes('title')).toBe('Devbox');
+    await wrapper.get('[aria-label="Create agent from branch, pull request, or issue"]').trigger('click');
+    expect(wrapper.emitted('create-agent-from-repository')).toStrictEqual([[{ agentId: 'local', repositoryName: 'id8', repositoryRoot: '~/src/id8' }]]);
+
+    await wrapper.setProps({ agents: [remote] });
+    expect(wrapper.find('.agent-sidebar__remote-marker').exists()).toBe(false);
+    await wrapper.get('[aria-label="Create agent from branch, pull request, or issue"]').trigger('click');
+    expect(wrapper.emitted('create-agent-from-repository')![1]).toStrictEqual([{ agentId: 'remote', repositoryName: 'id8', repositoryRoot: '/srv/id8', remoteConnectionId: 'devbox' }]);
+  });
+
   it('shows repository branch loading failures in the session menu', async () => {
     const wrapper = mount(AgentSidebar, {
       props: {

@@ -168,7 +168,6 @@
     :quit="quit"
     :restart-app="restartApp"
     @close-team="closeTeam"
-    @disconnect-team="disconnectTeam"
     @close-agent="requestCloseAgent"
     @compress-session="requestSessionCompression"
     @cleanup-pull-request="requestPullRequestCleanup"
@@ -380,7 +379,6 @@ const {
   updateTeam,
   reorderTeams,
   closeTeam,
-  disconnectTeam,
   updateAgent,
   duplicateAgent,
   forkAgent,

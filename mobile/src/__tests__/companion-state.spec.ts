@@ -98,8 +98,8 @@ describe('companion state', () => {
       await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
       const old = state.conversation.value!;
       delayed = true;
-      workspace = { ...workspace, teams: workspace.teams.map(team => change === 'location' ? { ...team, remoteConnectionId: 'new-host' } : team),
-        agents: workspace.agents.map(agent => agent.id !== 'demo-agent' || change === 'location' ? agent : { ...agent, backendSession: change === 'reset' ? undefined : { kind: 'codex', threadId: 'replacement' } }) };
+      workspace = { ...workspace,
+        agents: workspace.agents.map(agent => agent.id !== 'demo-agent' ? agent : change === 'location' ? { ...agent, remoteConnectionId: 'new-host' } : { ...agent, backendSession: change === 'reset' ? undefined : { kind: 'codex', threadId: 'replacement' } }) };
       update(workspace, null);
       expect(state.conversation.value).toBeNull();
       expect(state.canSend.value).toBe(false);

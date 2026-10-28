@@ -98,10 +98,10 @@ const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?
   listSourceWorktrees: [backendMethods.sourceWorktreesList, namedOptional('repoPath', 'remoteConnectionId')],
   suggestSourceWorktreePath: [backendMethods.sourceWorktreePathSuggest, named('input')],
   createSourceWorktree: [backendMethods.sourceWorktreeCreate, named('input')],
+  createTeam: [backendMethods.teamCreate, named('input')],
   updateTeam: [backendMethods.teamUpdate, named('input')],
   reorderTeams: [backendMethods.clientTeamOrderUpdate, named('input')],
   closeTeam: [backendMethods.teamDelete, named('teamId')],
-  disconnectTeam: [backendMethods.teamDisconnect, named('teamId')],
   selectTeam: [backendMethods.clientNavigationSelectTeam, named('teamId')],
   createAutomation: [backendMethods.automationCreate, namedOptional('input', 'location')],
   updateAutomation: [backendMethods.automationUpdate, namedOptional('input', 'location')],
@@ -205,10 +205,6 @@ export async function invokeAppWebOperation(
   }
   if (operation === 'checkRemoteConnection') {
     return backend.request(args[1] === true ? backendMethods.connectionsRuntimeInspect : backendMethods.connectionsRuntimeSync, { connectionId: args[0], ...(args[2] ? { backends: args[2] } : {}) });
-  }
-  if (operation === 'createTeam') {
-    const input = args[0] as { remoteTeamId?: string };
-    return backend.request(input.remoteTeamId ? backendMethods.teamConnect : backendMethods.teamCreate, { input });
   }
   if (operation === 'getSnapshot') {
     return (await backend.request<AppSnapshotGetResult>(backendMethods.snapshotGet)).snapshot;

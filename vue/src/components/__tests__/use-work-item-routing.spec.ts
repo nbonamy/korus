@@ -29,7 +29,7 @@ describe('useWorkItemRouting', () => {
     await expect(harness.routing.createIsolatedAgent({ ...selected, sourceId: 'gitlab.com' }, harness.teamId)).rejects.toThrow(/not available/);
     expect(harness.createWorktree).not.toHaveBeenCalled();
     const repository = { name: 'different-code', path: '/workspace/execution', worktrees: [] };
-    await harness.routing.startMany({ action: 'fix', items: [selected], teamId: harness.teamId, repository });
+    await harness.routing.startMany({ action: 'fix', items: [selected], teamId: harness.teamId, repository, remoteConnectionId: 'gitlab-host' });
     expect(harness.createWorktree).toHaveBeenCalledWith({ repoPath: repository.path, branchName: 'fix/gl-12', remoteConnectionId: 'gitlab-host' });
     expect(harness.assign).toHaveBeenCalledWith({ agentId: harness.createdAgent.id, item: selected, prompt: expect.stringContaining('Work item ID: gitlab:gitlab.com/group/sub/agent-workspace#12') });
   });
@@ -122,7 +122,7 @@ describe('useWorkItemRouting', () => {
   it('starts Linear work in the explicit repository on the selected host and preserves full issue identity', async () => {
     const listedItem = item({ provider: 'linear', id: 'linear:eng-uuid', identifier: 'ENG-12', sourceName: 'Engineering', sourceId: 'linear:team' });
     const harness = createHarness({ item: listedItem, remoteConnectionId: 'remote-dev' });
-    await harness.routing.startMany({ action: 'fix', items: [listedItem], teamId: harness.teamId, repository: { name: 'agent-workspace', path: '/workspace/agent-workspace', worktrees: [] } });
+    await harness.routing.startMany({ action: 'fix', items: [listedItem], teamId: harness.teamId, remoteConnectionId: 'remote-dev', repository: { name: 'agent-workspace', path: '/workspace/agent-workspace', worktrees: [] } });
     expect(harness.createWorktree).toHaveBeenCalledWith({ repoPath: '/workspace/agent-workspace', branchName: 'fix/eng-12', remoteConnectionId: 'remote-dev' });
     expect(harness.assign).toHaveBeenCalledWith({ agentId: harness.createdAgent.id, item: listedItem, prompt: expect.stringContaining('Issue: ENG-12') });
     await expect(harness.routing.createIsolatedAgent(listedItem, harness.teamId)).rejects.toThrow();
@@ -146,7 +146,7 @@ describe('useWorkItemRouting', () => {
     const resolvedItem = { ...listedItem, branchName: 'feature/fix-routing' };
     const harness = createHarness({ item: listedItem, loadItemsResult: [resolvedItem], remoteConnectionId: 'remote-dev' });
 
-    const result = await harness.routing.createIsolatedAgent(listedItem, harness.teamId);
+    const result = await harness.routing.createIsolatedAgent(listedItem, harness.teamId, { remoteConnectionId: 'remote-dev' });
 
     expect(harness.loadItems).toHaveBeenCalledWith('github', listedItem.sourceId, {
       kind: 'pullRequest',
@@ -162,6 +162,7 @@ describe('useWorkItemRouting', () => {
       folder: '/workspace/agent-workspace-feature',
       sourceRepositoryName: 'agent-workspace',
       teamId: harness.teamId,
+      remoteConnectionId: 'remote-dev',
     });
     expect(result).toStrictEqual({ agent: harness.createdAgent, item: resolvedItem });
   });
@@ -229,7 +230,6 @@ function createHarness(input: {
   const agent = snapshot.agents[0]!;
   agent.workspace = { kind: 'git', folder: '/workspace/agent-workspace', repositoryName: 'agent-workspace', repositoryRoot: '/workspace/agent-workspace', primaryWorktreeRoot: '/workspace/agent-workspace', branch: 'main', isLinkedWorktree: false, updatedAt: 'now' };
   const listedItem = input.item ?? item();
-  if (input.remoteConnectionId) team.remoteConnectionId = input.remoteConnectionId;
   if (input.assignedToCurrentAgent) {
     snapshot.workBacklog.assignments[workItemAssignmentKey(listedItem)] = {
       provider: listedItem.provider,

@@ -318,6 +318,7 @@ describe('App', () => {
       ...agent,
       id: 'agent-remote-same-path',
       teamId: 'team-remote',
+      remoteConnectionId: 'connection-devbox',
       name: 'Remote agent',
     };
     snapshot.agents = [agent, remoteAgent];
@@ -328,8 +329,6 @@ describe('App', () => {
       avatar: 'RE',
       color: snapshot.teams[0]!.color,
       agentIds: [remoteAgent.id],
-      remoteConnectionId: 'connection-devbox',
-      remoteTeamId: 'remote-team',
     });
     const getAgentClosePreview = vi.fn().mockResolvedValue({
       repository: 'owner/repo',

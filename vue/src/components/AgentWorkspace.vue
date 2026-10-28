@@ -76,7 +76,7 @@
       :open-in-catalog="openInApplications"
       :subagent-tree="subagentTreeFor(agent.id)"
       :load-subagent-messages="(conversationId) => loadSubagentMessages(agent.id, conversationId)"
-      :backlog-location="snapshot.teams.find(team => team.id === agent.teamId)?.remoteConnectionId ? { kind: 'remote', remoteConnectionId: snapshot.teams.find(team => team.id === agent.teamId)!.remoteConnectionId! } : undefined"
+      :backlog-location="agent.remoteConnectionId ? { kind: 'remote', remoteConnectionId: agent.remoteConnectionId } : undefined"
       :github-repository="snapshot.agentGitStatuses[agent.id]?.githubRepository ?? null"
       :work-assignments="snapshot.workBacklog.assignments"
       :clear-repository-work-assignment="(item) => $emit('remove-work-item-assignment', item)"
@@ -762,8 +762,7 @@ function openRepositoryBacklog(agentId: string): void {
 }
 
 function isLocalAgent(agent: Agent): boolean {
-  const team = props.snapshot.teams.find((candidate) => candidate.id === agent.teamId);
-  return !team?.remoteConnectionId;
+  return !agent.remoteConnectionId;
 }
 
 function attachVisualizationAnnotation(annotation: VisualizationAnnotationInput): void {
