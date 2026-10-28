@@ -1,5 +1,9 @@
 import { expect, it } from "vitest";
 import {
+  activityWindow,
+  browserTimeZone,
+  localDay,
+  shiftDay,
   averageTtftSeconds,
   chartSeries,
   groupingOptions,
@@ -104,9 +108,9 @@ it("drops the cents from headline and axis figures once they reach $10, and keep
   expect(measureFormat(1041.24, "cost", false)).toBe("$1,041.24");
 });
 
-it("names repositories by their folder, tells same-named ones apart, and gives turns without one their own label", () => {
+it("names repositories by their folder, tells same-named ones apart, and names the two kinds of work that have none", () => {
   const series = chartSeries(
-    summary(["/src/korus", "/work/api", "/home/api", "Unknown"]),
+    summary(["/src/korus", "/work/api", "/home/api", "Unknown", "korus:missions"]),
     "turns",
     "repository",
   );
@@ -114,9 +118,29 @@ it("names repositories by their folder, tells same-named ones apart, and gives t
     "/src/korus": "korus",
     "/work/api": "work/api",
     "/home/api": "home/api",
-    Unknown: "No repository",
+    Unknown: "Quick chats",
+    "korus:missions": "Missions",
   });
   // Repositories never borrow a provider's colour: those hues mean Codex, Claude and Antigravity.
   expect(series.filter((entry) => entry.key !== "Unknown").every((entry) => !/--chart-[123]\)/.test(entry.color))).toBe(true);
   expect(groupingOptions().map((option) => option.value)).toStrictEqual(["provider", "model", "repository"]);
+});
+
+it("works out today and the activity window from the reader's own calendar, not UTC", () => {
+  const lateEvening = Date.parse("2026-10-28T03:00:00Z"); // 10pm on the 27th in Chicago
+  expect(localDay(lateEvening, "America/Chicago")).toBe("2026-10-27");
+  expect(localDay(lateEvening, "UTC")).toBe("2026-10-28");
+  expect(typeof browserTimeZone()).toBe("string");
+  const window = activityWindow(lateEvening, "America/Chicago");
+  expect(window.to).toBe("2026-10-27");
+  // 2026-10-27 is a Tuesday: back to that Monday, then 52 more weeks.
+  expect(window.from).toBe("2025-10-27");
+  expect(activityWindow(lateEvening, "UTC").to).toBe("2026-10-28");
+});
+
+it("steps calendar days without being thrown by clock changes", () => {
+  expect(shiftDay("2026-11-02", -1)).toBe("2026-11-01");
+  expect(shiftDay("2026-03-09", -2)).toBe("2026-03-07");
+  expect(shiftDay("2026-10-27", -6)).toBe("2026-10-21");
+  expect(shiftDay("2026-12-30", 3)).toBe("2027-01-02");
 });

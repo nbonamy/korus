@@ -59,6 +59,8 @@ export type UsageFilter = {
   repository?: string;
   agentId?: string;
   apiProvider?: ApiPricingProvider;
+  /** IANA timezone in which days start and end; UTC when absent. Storage is unaffected. */
+  timeZone?: string;
   group?:
     | "provider"
     | "apiProvider"
@@ -148,6 +150,9 @@ export function validConsumption(value: unknown): value is Consumption {
         (record.reasoning as number) <= (record.output as number)))
   );
 }
+
+/** Stands in for the repository of work that happens in a mission's own home rather than in a repository. */
+export const missionsRepositoryKey = "korus:missions";
 
 export function utcDay(time: number): string {
   return new Date(time).toISOString().slice(0, 10);

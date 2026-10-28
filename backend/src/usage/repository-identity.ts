@@ -3,12 +3,17 @@ import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { Agent } from "@workspace/core/contracts";
+import { missionsRepositoryKey } from "@workspace/core/usage";
 
 const run = promisify(execFile);
+
+/** Mission leads work in `<home>/missions/mission-<id>`, a folder of their own with no repository behind it. */
+const missionHome = /(^|[\\/])missions[\\/]mission-[0-9a-f-]+([\\/]|$)/u;
 
 /** The repository an agent's turns belong to: its main folder, however many worktrees it has. */
 export function repositoryIdentityOf(agent: Agent | undefined): string | null {
   if (!agent) return null;
+  if (agent.folder && missionHome.test(agent.folder)) return missionsRepositoryKey;
   if (agent.workspace?.kind === "git") return agent.workspace.primaryWorktreeRoot || agent.workspace.repositoryRoot || agent.folder || null;
   return agent.folder ?? null;
 }
@@ -57,7 +62,8 @@ export async function resolveRepositoryRoots(folders: readonly string[], agents:
   }
   const resolved = new Map<string, string>();
   for (const folder of folders) {
-    const root = known.get(folder)
+    const root = (missionHome.test(folder) ? missionsRepositoryKey : undefined)
+      ?? known.get(folder)
       ?? (await exists(folder) ? await gitRoot(folder) : await siblingRepository(folder));
     if (root) resolved.set(folder, root);
   }

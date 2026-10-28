@@ -255,3 +255,21 @@ it("returns daily provider and model series from the same executions, preserving
     await ledger.close();
   }
 });
+
+it("counts a turn on the day it happened in the reader's timezone, for buckets and date ranges alike", async () => {
+  const at = Date.parse("2026-10-28T03:00:00Z"); // 10pm on the 27th in Chicago
+  const ledger = new UsageLedger(":memory:", () => at);
+  try {
+    await ledger.load();
+    await ledger.observe({ provider: "codex", agentId: "a", sessionId: "s", turnId: "t", model: "m", at, phase: "started" }, { teamId: null, repository: null });
+    const days = (filter: Parameters<UsageLedger["query"]>[0]) => ledger.query(filter).daily?.map((row) => row.day) ?? [];
+    expect(days({})).toStrictEqual(["2026-10-28"]);
+    expect(days({ timeZone: "America/Chicago" })).toStrictEqual(["2026-10-27"]);
+    expect(ledger.query({ from: "2026-10-27", to: "2026-10-27", timeZone: "America/Chicago" }).rows).toHaveLength(1);
+    expect(ledger.query({ from: "2026-10-28", to: "2026-10-28", timeZone: "America/Chicago" }).rows).toHaveLength(0);
+    expect(ledger.query({ from: "2026-10-28", to: "2026-10-28", timeZone: "UTC" }).rows).toHaveLength(1);
+    expect(() => ledger.query({ timeZone: "Mars/Olympus" })).toThrow("Invalid usage filter.");
+  } finally {
+    await ledger.close();
+  }
+});

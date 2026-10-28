@@ -1,9 +1,9 @@
 import { flushPromises, mount } from "@vue/test-utils";
-import { it, expect, vi } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { setElectronTestClient } from "../../test/client";
 import UsagePanel from "../UsagePanel.vue";
 import { ElMessageBox } from "element-plus";
-import { activityWindow } from "../usage-chart";
+import { activityWindow, browserTimeZone, localDay, shiftDay } from "../usage-chart";
 
 it.each(["unmeasured", "partial", "unavailable"])(
   "shows only the known token total for %s activity",
@@ -69,7 +69,7 @@ const chooseProvider = async (wrapper: ReturnType<typeof mount>, value: string) 
 
 it("plots daily model output rates without stacking or treating missing measurements as zero", async () => {
   const day = (offset: number) =>
-    new Date(Date.now() - offset * 86400000).toISOString().slice(0, 10);
+    shiftDay(localDay(), -offset);
   const row = (label: string, outputTokens: number, generationMs: number) => ({
     label,
     started: 2,
@@ -230,7 +230,7 @@ it("opens on total tokens by provider and regroups every chart from one toolbar 
       rows,
       daily: [
         {
-          day: new Date().toISOString().slice(0, 10),
+          day: localDay(),
           started: 4,
           measuredTurns: 1,
           tokens: rows[0]!.tokens,
@@ -594,7 +594,7 @@ it("compares the selection with the previous period and still renders when that 
     measuredTurns: 0,
     tokens: null,
   });
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDay();
   const getUsage = vi.fn(async ({ to }) => ({
     recordedSince: 1,
     retainedSince: 1,
@@ -641,7 +641,7 @@ it("keeps the activity grid outside the provider and date filters", async () => 
 // These client-boundary scenarios protect currency precision, request attribution,
 // unknown coverage and comparison honesty through the real Analytics tree.
 it("shows weighted input ratios as percentages without stacking model ratios or dividing by zero", async () => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDay();
   const row = (label: string, input: number | null, total: number | null) => ({
     ...costRow(label, null),
     tokens: input === null || total === null ? null : {
@@ -751,8 +751,8 @@ it('shows Codex execution costs without unavailable request metadata or pricing 
 });
 
 it("uses request-attributed USD across model/provider filters, daily charts and shares, then returns to tokens and performance", async () => {
-  const today = new Date().toISOString().slice(0, 10);
-  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const today = localDay();
+  const yesterday = shiftDay(localDay(), -1);
   const getUsage = vi.fn(async (filter) => {
     const labels =
       filter.group === "model"
@@ -863,7 +863,7 @@ it.each([
 ])(
   "distinguishes $name costs without diagnostic copy",
   async ({ usd, partial, expected, hero }: { usd?: number | null; partial: boolean; expected: string; hero?: string }) => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDay();
     setElectronTestClient({
       getUsage: vi.fn(async (filter) => {
         const cost = usd === undefined ? undefined : costFixture(usd, partial);
@@ -934,7 +934,7 @@ it.each([
 ])(
   "compares only complete, nonzero-baseline cost periods ($delta)",
   async ({ current, previous, delta }) => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDay();
     setElectronTestClient({
       getUsage: vi.fn(async (filter) => ({
         recordedSince: 1,
@@ -958,7 +958,7 @@ it.each([
 
 it("hides unavailable cost tooltip rows and empty days while retaining measured zeroes and chart gaps", async () => {
   const day = (offset: number) =>
-    new Date(Date.now() - offset * 86400000).toISOString().slice(0, 10);
+    shiftDay(localDay(), -offset);
   const rows = [costRow("claude", 0.04), costRow("codex", 0), costRow("unknown-model", null)];
   const daily = [2, 1, 0].map((offset) => {
     const cost = costFixture(offset === 1 ? null : offset === 0 ? 0 : 0.04);
@@ -1018,10 +1018,10 @@ it("hides unavailable cost tooltip rows and empty days while retaining measured 
 });
 
 it("groups usage by repository, naming each by its folder", async () => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDay();
   const getUsage = vi.fn(async (filter?: { group?: string }) => {
     const rows = filter?.group === "repository"
-      ? [costRow("/src/korus", 12), costRow("/src/website", 3), costRow("Unknown", 1)]
+      ? [costRow("/src/korus", 12), costRow("/src/website", 3), costRow("Unknown", 1), costRow("korus:missions", 2)]
       : [costRow("claude", 16)];
     return {
       recordedSince: 1,
@@ -1038,8 +1038,46 @@ it("groups usage by repository, naming each by its folder", async () => {
     expect(getUsage).toHaveBeenCalledWith(expect.objectContaining({ group: "repository" }));
     const table = wrapper.get('[aria-label="Usage breakdown"]');
     expect(table.findAll("thead th")[0]!.text()).toBe("Repository");
-    expect(table.findAll("tbody tr").map((row) => row.findAll("td")[0]!.text()).sort()).toStrictEqual(["No repository", "korus", "website"]);
+    expect(table.findAll("tbody tr").map((row) => row.findAll("td")[0]!.text()).sort()).toStrictEqual(["Missions", "Quick chats", "korus", "website"]);
     expect(wrapper.get('[aria-label="Usage breakdown"]').element.closest("section")!.querySelector("h3")!.textContent).toContain("Repository usage");
+  } finally {
+    wrapper.unmount();
+  }
+});
+
+describe("refreshing", () => {
+  const usageWith = () => vi.fn(async () => ({
+    recordedSince: 1,
+    retainedSince: 1,
+    rows: [costRow("claude", 1)],
+    daily: [],
+  }));
+
+  it("catches up when the window comes back after being hidden, and stops listening once closed", async () => {
+    const usage = usageWith();
+    setElectronTestClient({ getUsage: usage });
+    const wrapper = mount(UsagePanel);
+    await flushPromises();
+    const loaded = usage.mock.calls.length;
+    document.dispatchEvent(new Event("visibilitychange"));
+    await flushPromises();
+    expect(usage.mock.calls.length).toBeGreaterThan(loaded);
+    wrapper.unmount();
+    const closed = usage.mock.calls.length;
+    document.dispatchEvent(new Event("visibilitychange"));
+    await flushPromises();
+    expect(usage.mock.calls.length).toBe(closed);
+  });
+});
+
+it("asks for days in the reader's timezone, for the selection and for the activity grid alike", async () => {
+  const getUsage = vi.fn(async () => ({ recordedSince: 1, retainedSince: 1, rows: [costRow("claude", 1)], daily: [] }));
+  setElectronTestClient({ getUsage });
+  const wrapper = mount(UsagePanel);
+  try {
+    await flushPromises();
+    expect(getUsage.mock.calls.length).toBeGreaterThan(2);
+    for (const [filter] of getUsage.mock.calls as unknown as [{ timeZone?: string }][]) expect(filter.timeZone).toBe(browserTimeZone());
   } finally {
     wrapper.unmount();
   }

@@ -1,4 +1,5 @@
-import type { UsageCost, UsageSummary } from "@workspace/core/usage";
+import { dayOf } from "@workspace/core/usage-time";
+import { missionsRepositoryKey, type UsageCost, type UsageSummary } from "@workspace/core/usage";
 import type { AgentBackend } from "@workspace/core/contracts";
 import { backendDisplayName } from "@workspace/core/backend-driver";
 import { translate } from "../i18n";
@@ -158,7 +159,7 @@ export function chartSeries(
           row.label === "Unknown"
             ? translate(group === "repository" ? "analytics.unknownRepository" : "analytics.unknownModel")
             : repositoryNames
-              ? repositoryNames.get(row.label)!
+              ? row.label === missionsRepositoryKey ? translate("analytics.missions") : repositoryNames.get(row.label)!
               : group === "provider" &&
                 ["claude", "codex", "antigravity"].includes(row.label)
               ? backendDisplayName(row.label as AgentBackend)
@@ -221,13 +222,19 @@ export const sumSpeed = (speeds: (Speed | undefined)[]): Speed | undefined =>
   );
 /** The activity grid spans whole Monday-first weeks ending with the current one. */
 export const ACTIVITY_WEEKS = 53;
-const utcDay = (at: number) => new Date(at).toISOString().slice(0, 10);
-export function activityWindow(now = Date.now()): { from: string; to: string } {
-  const today = Date.parse(utcDay(now));
+/** The reader's own timezone: days on the Analytics screen start and end on their clock. */
+export const browserTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+/** The calendar day (YYYY-MM-DD) an instant falls on for the reader. */
+export const localDay = (at = Date.now(), timeZone = browserTimeZone()) => dayOf(at, timeZone);
+/** Calendar arithmetic on day labels; days are labels here, so clock changes cannot skew it. */
+export const shiftDay = (day: string, days: number) => new Date(Date.parse(day) + days * 86400000).toISOString().slice(0, 10);
+export function activityWindow(now = Date.now(), timeZone = browserTimeZone()): { from: string; to: string } {
+  const todayLabel = localDay(now, timeZone);
+  const today = Date.parse(todayLabel);
   const sinceMonday = (new Date(today).getUTCDay() + 6) % 7;
   return {
-    from: utcDay(today - (sinceMonday + (ACTIVITY_WEEKS - 1) * 7) * 86400000),
-    to: utcDay(today),
+    from: shiftDay(todayLabel, -(sinceMonday + (ACTIVITY_WEEKS - 1) * 7)),
+    to: todayLabel,
   };
 }
 export const sumValues = (values: (number | null | undefined)[]) =>

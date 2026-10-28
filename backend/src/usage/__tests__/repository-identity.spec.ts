@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Agent } from "@workspace/core/contracts";
+import { missionsRepositoryKey } from "@workspace/core/usage";
 import { repositoryIdentityOf, resolveRepositoryRoots } from "../repository-identity";
 import { UsageLedger } from "../usage-ledger";
 import { UsageService } from "../usage-service";
@@ -22,6 +23,8 @@ describe("repositoryIdentityOf", () => {
     expect(repositoryIdentityOf(agent({ folder: "/notes", workspace: { kind: "folder", folder: "/notes", label: "notes", updatedAt: "" } }))).toBe("/notes");
     expect(repositoryIdentityOf(agent({ folder: "/loose" }))).toBe("/loose");
     expect(repositoryIdentityOf(agent({ folder: null }))).toBeNull();
+    // A mission's lead works in the mission's own home, which belongs to no repository.
+    expect(repositoryIdentityOf(agent({ folder: "/Users/me/.korus/missions/mission-b990325c-7ee9-4f05-99ff-0123456789ab" }))).toBe(missionsRepositoryKey);
     expect(repositoryIdentityOf(undefined)).toBeNull();
   });
 });
@@ -43,6 +46,12 @@ describe("resolveRepositoryRoots", () => {
       [path.join(base, "korus-feature")]: repo,
       [gone]: repo,
     });
+  });
+
+  it("files mission homes under Missions, whether or not they still exist", async () => {
+    const home = "/Users/me/.korus/missions/mission-a236a29c-79b0-4786-a4a3-9d2109d6010f";
+    const map = await resolveRepositoryRoots([home, "C:\\korus\\missions\\mission-1"], []);
+    expect(Object.fromEntries(map)).toStrictEqual({ [home]: missionsRepositoryKey, "C:\\korus\\missions\\mission-1": missionsRepositoryKey });
   });
 
   it("trusts what an agent already knows about its workspace before touching the disk", async () => {
@@ -81,6 +90,17 @@ describe("recording and migrating the repository", () => {
     await usage.migrateRepositories(resolve);
     expect(resolve).toHaveBeenCalledTimes(1);
     await usage.close();
+  });
+
+  it("runs again when an earlier version of the migration already ran, and leaves repositories it filed before alone", async () => {
+    const local = new UsageLedger(":memory:");
+    const usage = new UsageService(local, () => undefined);
+    await local.load();
+    await local.observe({ ...observation("a", "1"), phase: "started" }, { teamId: "t", repository: "/src/korus" });
+    await local.observe({ ...observation("a", "2"), phase: "started" }, { teamId: "t", repository: "/home/.korus/missions/mission-1" });
+    (local as unknown as { open(): { prepare(sql: string): { run(): void } } }).open().prepare("INSERT OR REPLACE INTO metadata VALUES('repository_identity','1')").run();
+    await usage.migrateRepositories(async (folders) => new Map(folders.map((folder) => [folder, folder.includes("missions") ? "korus:missions" : folder])));
+    expect(labels(local)).toStrictEqual(["/src/korus", "korus:missions"]);
   });
 
   it("tries again next start when the guess could not be made", async () => {
