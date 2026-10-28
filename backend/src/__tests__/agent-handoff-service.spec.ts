@@ -27,7 +27,7 @@ function fixture() {
     expect(prompt).toContain('Goal: finish the fix.');
   });
   const service = new AgentHandoffService({ snapshot, create: input => new AgentCreationService(snapshot).create(input), persist, requestNote: note, assertReady: async () => undefined, retire, start });
-  const input = { operationId: 'one', backend: 'claude' as const, model: 'sonnet', instructions: 'Mention the flaky test.' };
+  const input = { operationId: 'one', selection: { backend: 'claude' as const, model: 'sonnet', reasoningEffort: 'high', serviceTier: 'fast' }, instructions: 'Mention the flaky test.' };
   return { snapshot, source, events, persist, note, retire, start, service, input };
 }
 
@@ -35,7 +35,7 @@ describe('agent handoff', () => {
   it.each(['claude', 'antigravity'] as const)('hands off to %s once with a saved note and preserved workspace linkage', async backend => {
     const f = fixture();
     f.snapshot.providerConnections?.push({ backend: 'antigravity', installed: true, connected: true, checking: false });
-    const input = { ...f.input, backend };
+    const input = { ...f.input, selection: { ...f.input.selection, backend } };
     await f.service.run(f.source.id, input);
     const target = f.snapshot.agents[0]!;
     expect(f.snapshot.agents).toHaveLength(1);

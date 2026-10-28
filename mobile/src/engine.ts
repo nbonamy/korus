@@ -3,6 +3,7 @@ import type { CompanionNotification, CompanionPushRegistration } from '@workspac
 import { computed, ref, watch } from 'vue';
 import { promptContentText, trimPromptContent, type CodexPromptPart } from '@codex-app-sdk/core/surface';
 import { hasUnreadActivity } from '@workspace/core/agent-read-state';
+import { missionAgentsAttention, type MissionAttention } from '@workspace/core/mission-attention';
 import { skillDescription, skillDisplayName, skillInsertText, pluginDescription, pluginDisplayName, pluginInsertText } from '@codex-app-sdk/vue';
 import type { Agent, AgentBackend, BackendModelOption } from '@workspace/core/contracts';
 import { canSelectAgentBackend } from '@workspace/core/agent-backends';
@@ -21,9 +22,10 @@ import type { CompanionRequestReply, CompanionClosePreview } from '@workspace/co
 
 /** Everything the native shell draws, as plain data: no framework, no protocol detail. */
 /** A mission as the phone lists it: how far along it is, and each ticket with the worker that has it, if any. */
-export type EngineMission = Omit<CompanionMission, 'tickets'> & { done: number; tickets: (CompanionMission['tickets'][number] & { activity?: string })[] };
+export type EngineMission = Omit<CompanionMission, 'tickets'> & { attention: MissionAttention; done: number; tickets: (CompanionMission['tickets'][number] & { activity?: string })[] };
 export type EngineState = {
   missions: EngineMission[];
+  missionAttention: MissionAttention;
   /** The mission whose ticket worker is open; its conversation is read-only except for what the worker asks. */
   mission: { id: string; outcome: string; lead?: true } | null;
   git: ReturnType<typeof createCompanionState>['git']['view']['value'];
@@ -88,6 +90,7 @@ export type EngineState = {
 };
 
 export type EngineEvent =
+  | { type: 'conversationFile'; requestId: string; agentId: string; preview?: import('@workspace/core/companion-files').CompanionFilePreview; error?: string }
   | { type: 'gitDiff'; diff: string }
   | { type: 'conversationImage'; requestId: string; agentId: string; dataUrl?: string; error?: string }
   | { type: 'notification'; notification: CompanionNotification }
@@ -111,9 +114,10 @@ export type TranscriptContext = {
 
 export type EngineCommand =
   | { type: 'createTeam'; name: string } | { type: 'dismissTeamCreation' }
-  | { type: 'continueMission'; missionId: string } | { type: 'acceptTicket'; missionId: string; number: number } | { type: 'selectFinding'; missionId: string; findingId: string; selected: boolean } | { type: 'fixFindings'; missionId: string } | { type: 'rerunReview'; missionId: string } | { type: 'dismissMissionAction' }
+  | { type: 'finishReview'; missionId: string } | { type: 'continueMission'; missionId: string } | { type: 'acceptTicket'; missionId: string; number: number } | { type: 'selectFinding'; missionId: string; findingId: string; selected: boolean } | { type: 'fixFindings'; missionId: string } | { type: 'rerunReview'; missionId: string } | { type: 'dismissMissionAction' }
   | { type: 'idleSort'; order: 'activity' | 'repository' }
   | { type: 'loadChanges'; scopeId?: string } | { type: 'dismissChanges' }
+  | { type: 'readFilePreview'; requestId: string; agentId: string; input: import('@workspace/core/companion-files').CompanionFileInput }
   | { type: 'readConversationImage'; requestId: string; agentId: string; path: string }
   | { type: 'loadProjectBranches'; repositoryId: string; source?: 'github' | 'gitlab' | 'local' } | { type: 'dismissProjectBranches' }
   | { type: 'loadProjectRepositories'; source?: 'github' | 'gitlab' | 'local' } | { type: 'dismissProjectRepositories' }
@@ -167,6 +171,7 @@ export function createEngine(port: EnginePort) {
   const pairingError = ref('');
   const laptops = ref([...port.connector.laptops]);
   let disposed = false;
+  let startupWork: Promise<void> | null = null;
   let foreground = port.initialActive ?? true;
   const sidebarNow = ref(Date.now());
   const sidebarIdleSort = ref<'activity' | 'repository'>('activity');
@@ -266,8 +271,15 @@ export function createEngine(port: EnginePort) {
     const team = state.workspace.value.teams.find((team) => team.id === agent?.teamId);
     const groups = sidebarGroups.value;
     const active = activeSession(groups);
-    const missions = state.missions.value.filter((mission) => showingAllTeams.value || mission.teamId === state.teamId.value)
-      .map((mission): EngineMission => ({ ...mission, done: mission.tickets.filter((ticket) => ticket.state === 'accepted').length,
+    const visibleMissions = state.missions.value.filter((mission) => showingAllTeams.value || mission.teamId === state.teamId.value);
+    const allAgents = companionAgents(state.workspace.value);
+    const unread = new Set(allAgents.filter(hasUnreadActivity).map(agent => agent.id));
+    const attentionFor = (missions: CompanionMission[]) => {
+      const leads = new Set(missions.flatMap(mission => mission.leadAgentId ? [mission.leadAgentId] : []));
+      const members = new Set([...leads, ...missions.flatMap(mission => mission.tickets.flatMap(ticket => ticket.agentId ? [ticket.agentId] : []))]);
+      return missionAgentsAttention(allAgents.filter(agent => members.has(agent.id)), leads, unread);
+    };
+    const missions = visibleMissions.map((mission): EngineMission => ({ ...mission, attention: attentionFor([mission]), done: mission.tickets.filter((ticket) => ticket.state === 'accepted').length,
         // What a working agent says it is doing is the ticket's live line.
         tickets: mission.tickets.map((ticket) => {
           const activity = ticket.agentId && (ticket.state === 'running' || ticket.state === 'preparing')
@@ -286,7 +298,7 @@ export function createEngine(port: EnginePort) {
     const permissions = state.permissions.value;
     return {
       git: state.git.view.value,
-      missions, mission: owner ? { id: owner.id, outcome: owner.outcome, ...(!ticketOf && owner.leadAgentId === agent?.id ? { lead: true as const } : {}) } : null,
+      missions, missionAttention: attentionFor(visibleMissions), mission: owner ? { id: owner.id, outcome: owner.outcome, ...(!ticketOf && owner.leadAgentId === agent?.id ? { lead: true as const } : {}) } : null,
       laptopId: state.laptopId.value,
       activityGroups: projectMobileActivityGroups(sidebarAgents.value, groups, sidebarNow.value, sidebarIdleSort.value),
       queuedPrompts: (state.workspace.value.queuedPrompts ?? []).filter(prompt => prompt.agentId === agent?.id).map(({ id, text }) => ({ id, text })),
@@ -485,6 +497,15 @@ export function createEngine(port: EnginePort) {
         }
         return;
       }
+      case 'readFilePreview': {
+        try {
+          const preview = await state.readFilePreview(command.agentId, command.input);
+          if (!disposed) port.post({ type: 'conversationFile', requestId: command.requestId, agentId: command.agentId, preview });
+        } catch {
+          if (!disposed) port.post({ type: 'conversationFile', requestId: command.requestId, agentId: command.agentId, error: 'File is unavailable.' });
+        }
+        return;
+      }
       case 'dismissRequest': return state.dismissRequest(command.key);
       case 'respondRequest': return state.respondRequest(command.reply);
       case 'start': return start();
@@ -534,6 +555,12 @@ export function createEngine(port: EnginePort) {
         if (superseded()) return;
         await state.setActive(true);
         if (superseded()) return;
+        if (startupWork) {
+          // Native activation cannot wait for a restore that may itself need the phone to unlock.
+          void startupWork.then(() => { if (!superseded() && startup.value === 'error') void start(); });
+          return;
+        }
+        if (startup.value === 'error') return start();
         if (!choosingConnection && !state.laptopId.value && startup.value === 'ready') {
           const preferred = await preferredLaptop();
           if (!superseded() && preferred) await connect(preferred);
@@ -570,6 +597,7 @@ export function createEngine(port: EnginePort) {
         return;
       }
       case 'dismissTeamCreation': return state.dismissTeamCreation();
+      case 'finishReview': return state.finishReview(command.missionId);
       case 'continueMission': return state.continueMission(command.missionId);
       case 'acceptTicket': return state.acceptTicket(command.missionId, command.number);
       case 'selectFinding': return state.selectFinding(command.missionId, command.findingId, command.selected);
@@ -617,9 +645,9 @@ export function createEngine(port: EnginePort) {
       case 'dismissProjectRepositories': return state.dismissProjectRepositories();
       case 'duplicateAgent': return state.duplicateAgent(command.target, command.backend);
       case 'renameAgent': return state.renameAgent(command.target, command.name);
-      case 'createProject': return state.createProject({ source: command.source, value: command.value, backend: command.backend, ...(command.branch ? { branch: command.branch } : {}), ...(command.worktree ? { worktree: command.worktree } : {}) });
+      case 'createProject': return state.createProject({ source: command.source, value: command.value, ...(command.branch ? { branch: command.branch } : {}), ...(command.worktree ? { worktree: command.worktree } : {}), selection: { ...command.selection } });
       case 'dismissBranches': return state.dismissBranches();
-      case 'newChat': return state.createChat({ repositoryId: command.repositoryId, backend: command.backend, ...(command.existingBranch ? { existingBranch: command.existingBranch } : {}), ...(command.branchName ? { worktree: { branchName: command.branchName } } : {}) }, repositoryTeam(command.repositoryId));
+      case 'newChat': return state.createChat({ repositoryId: command.repositoryId, ...(command.existingBranch ? { existingBranch: command.existingBranch } : {}), ...(command.branchName ? { worktree: { branchName: command.branchName } } : {}), selection: { backend: command.backend } }, repositoryTeam(command.repositoryId));
       case 'backend': return state.selectBackend(command.backend);
       case 'newQuickChat': return state.createQuickChat(command.backend);
       case 'dismissNewChat': return state.dismissChatCreation();
@@ -636,7 +664,11 @@ export function createEngine(port: EnginePort) {
   }
 
   /** Reopens the last successful laptop, or the sole saved pairing. */
-  async function start() {
+  function start(): Promise<void> {
+    return startupWork ??= restoreStartup().finally(() => { startupWork = null; });
+  }
+
+  async function restoreStartup() {
     startup.value = 'loading'; publish();
     try {
       await port.connector.initialize?.();

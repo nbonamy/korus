@@ -742,6 +742,10 @@ describe('AppShell authentication and conversation', () => {
   });
 
   it('shows the same celebrated completion after GitHub is skipped', async () => {
+    vi.useFakeTimers();
+    // A cleared celebration can still have an expiry scheduled from another flow.
+    useConfetti().celebrate({ durationMs: 0 });
+    useConfetti().clear();
     setFirstRunOnboardingStage('repositories');
     window.app = {
       getCodexAuthentication: vi.fn().mockResolvedValue({
@@ -758,6 +762,7 @@ describe('AppShell authentication and conversation', () => {
 
     expect(wrapper.find('.repositories-onboarding').exists()).toBe(false);
     expect(wrapper.get('.onboarding-complete').text()).toContain("You're all set.");
+    await vi.advanceTimersByTimeAsync(400);
     expect(useConfetti().bursts.value).toHaveLength(1);
     wrapper.unmount();
   });
@@ -1500,12 +1505,7 @@ describe('AppShell authentication and conversation', () => {
     await wrapper.findAll('button').find((button) => button.text().includes('Start review'))!.trigger('click');
     await flushPromises();
 
-    expect(startCodeReview).toHaveBeenCalledExactlyOnceWith(source.id, {
-      automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false },
-      backend: 'codex',
-      scope: { type: 'uncommitted' },
-      threadMode: 'independent',
-    });
+    expect(startCodeReview).toHaveBeenCalledExactlyOnceWith(source.id, { automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false }, scope: { type: 'uncommitted' }, threadMode: 'independent', selection: { backend: 'codex', serviceTier: null, model: null, reasoningEffort: null } });
   });
 
   it('attaches a finding to the real composer and submits the user question through its stable link', async () => {

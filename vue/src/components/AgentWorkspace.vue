@@ -23,6 +23,7 @@
       :attachment-annotation-counts="activeAttachmentAnnotationCounts"
       :text-annotations="chatTextAnnotations"
       :visualization-annotations="visualizationAnnotations"
+      :code-annotations="codeAnnotations"
       :review-finding="reviewFindingAttachment"
       :plan="currentTurnPlan"
       :plan-visible="executionPlanVisible"
@@ -37,6 +38,7 @@
       @thread-flag="respondToThreadFlag($event)"
       @remove-text-annotation="removeChatTextAnnotation"
       @remove-visualization-annotation="removeVisualizationAnnotation"
+      @remove-code-annotation="removeCodeAnnotation"
       @remove-review-finding="emit('removeReviewFindingAttachment')"
     />
     </slot>
@@ -107,6 +109,7 @@
       @send-prompt="forwardPrompt"
       @open-browser-settings="emit('openBrowserSettings')"
       @annotate-visualization="attachVisualizationAnnotation"
+      @annotate-code="attachCodeAnnotation"
       @dragover="linkDrag.over"
       @drop="linkDrag.drop"
     />
@@ -185,6 +188,7 @@ import { constrainedRightWorkspaceWidth, type AgentRightWorkspaceState } from '.
 import type { SidePanelGitDiffState } from './side-panel';
 import type { ChatTextAnnotation } from './use-chat-text-annotations';
 import type { VisualizationAnnotation, VisualizationAnnotationInput } from './use-visualization-annotations';
+import type { CodeAnnotation, CodeAnnotationInput } from './use-code-annotations';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { fileBasename } from './use-workspace-previews';
 import {
@@ -204,6 +208,7 @@ const props = defineProps<{
   activeAttachmentAnnotationCounts: Readonly<Record<string, number>>;
   addChatTextAnnotation: (selection: CodexMessageTextSelection, comment: string) => void;
   addVisualizationAnnotation: (annotation: VisualizationAnnotationInput) => void;
+  addCodeAnnotation: (annotation: CodeAnnotationInput) => void;
   agentFiles: AgentFileSearchItem[];
   agentSidebarCollapsed: boolean;
   saveDocumentAs?: (agentId: string, tabId: string) => Promise<void>;
@@ -217,6 +222,7 @@ const props = defineProps<{
   conversationPlan: ThreadPlan | null;
   chatTextAnnotations: readonly ChatTextAnnotation[];
   visualizationAnnotations: readonly VisualizationAnnotation[];
+  codeAnnotations: readonly CodeAnnotation[];
   reviewFindingAttachment?: import('@workspace/core/code-review').CodeReviewFinding | null;
   currentAgent: Agent | null;
   emptySplitPane?: boolean;
@@ -250,6 +256,7 @@ const props = defineProps<{
   openAttachmentImageAnnotation: (attachment: CodexNativeAttachment) => void;
   removeChatTextAnnotation: (annotationId: string) => void;
   removeVisualizationAnnotation: (annotationId: string) => void;
+  removeCodeAnnotation: (annotationId: string) => void;
   openFilePreview: (link: ConversationFileLink) => Promise<void>;
   openFilePreviewForAgent: (agentId: string, filePath: string) => Promise<void>;
   openInApplications: OpenInApplicationCatalog;
@@ -767,6 +774,11 @@ function isLocalAgent(agent: Agent): boolean {
 
 function attachVisualizationAnnotation(annotation: VisualizationAnnotationInput): void {
   props.addVisualizationAnnotation(annotation);
+  focusComposer();
+}
+
+function attachCodeAnnotation(annotation: CodeAnnotationInput): void {
+  props.addCodeAnnotation(annotation);
   focusComposer();
 }
 

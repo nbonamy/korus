@@ -4,6 +4,8 @@ const QUICK_REQUEST_TIMEOUT_MS = 10_000;
 const IO_REQUEST_TIMEOUT_MS = 30_000;
 const LONG_RUNNING_REQUEST_TIMEOUT_MS = 120_000;
 const EXTENDED_REQUEST_TIMEOUT_MS = 10 * 60_000;
+// Fresh SSH setup can download Node, transfer the daemon and install both coding engines.
+const REMOTE_SETUP_REQUEST_TIMEOUT_MS = 15 * 60_000;
 
 /**
  * Every backend action must have an intentional timeout budget.
@@ -165,10 +167,10 @@ const requestTimeoutByMethod = {
   [backendMethods.clientSystemPermissionsGet]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.clientSystemPermissionsScreenRecordingOpen]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.connectionsDelete]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
-  [backendMethods.connectionsSshCreate]: EXTENDED_REQUEST_TIMEOUT_MS,
+  [backendMethods.connectionsSshCreate]: REMOTE_SETUP_REQUEST_TIMEOUT_MS,
   [backendMethods.connectionsSshHostsList]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.connectionsRuntimeInspect]: EXTENDED_REQUEST_TIMEOUT_MS,
-  [backendMethods.connectionsRuntimeSync]: EXTENDED_REQUEST_TIMEOUT_MS,
+  [backendMethods.connectionsRuntimeSync]: REMOTE_SETUP_REQUEST_TIMEOUT_MS,
   [backendMethods.connectionsUpdate]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.codexAuthenticationGet]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.claudeAuthenticationGet]: IO_REQUEST_TIMEOUT_MS,

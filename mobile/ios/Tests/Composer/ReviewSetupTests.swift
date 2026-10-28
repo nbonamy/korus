@@ -16,8 +16,7 @@ final class ReviewSetupTests: XCTestCase {
         choices.instructions = "  Check retries  "
         let input = try XCTUnwrap(choices.input(setup))
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(input)) as? NSDictionary)
-        XCTAssertEqual(json, ["scope": ["type": "branch", "baseRef": "main"], "threadMode": "independent", "backend": "claude",
-                              "model": "review", "reasoningEffort": "high", "instructions": "Check retries",
+        XCTAssertEqual(json, ["scope": ["type": "branch", "baseRef": "main"], "threadMode": "independent", "selection": ["backend": "claude", "model": "review", "reasoningEffort": "high", "serviceTier": NSNull()], "instructions": "Check retries",
                               "automation": ["enabled": false, "maxPriority": "p2", "maxRounds": 3, "autoCommit": false]] as NSDictionary)
         choices.autoCommit = true
         XCTAssertFalse(try XCTUnwrap(choices.input(setup)).automation.autoCommit)
@@ -31,7 +30,7 @@ final class ReviewSetupTests: XCTestCase {
         var choices = ReviewChoices(); choices.load(setup(), initial: true); choices.thread = "current"
         XCTAssertNil(choices.input(setup()))
         let input = try XCTUnwrap(choices.input(setup(current: true)))
-        XCTAssertNil(input.backend); XCTAssertNil(input.model); XCTAssertNil(input.reasoningEffort)
+        XCTAssertNil(input.selection)
         choices.automatic = true
         XCTAssertNil(choices.input(setup(current: true)))
     }

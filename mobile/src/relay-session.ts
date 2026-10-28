@@ -121,6 +121,7 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
       }
     },
     getWorkspace: read,
+    finishReview: async (missionId, revision) => { await call('mission.review.finish', { missionId, revision }); },
     continueMission: async (missionId, revision) => { await call('mission.continue', { missionId, revision }); },
     acceptTicket: async (missionId, revision, runId) => { await call('mission.ticket.accept', { missionId, revision, runId }); },
     selectFinding: async (missionId, revision, findingId, selected) => { await call('mission.finding.select', { missionId, revision, findingId, selected }); },
@@ -128,6 +129,7 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
     rerunReview: async (missionId, revision) => { await call('mission.review.rerun', { missionId, revision }); },
     createTeam: async name => (await call<{ teamId: string }>('team.create', { name })).teamId,
     gitDiff: (agentId, scope) => call('agent.git.diff', { target: target(agentId), scope }),
+    previewFile: (agentId, input) => call('agent.file.preview', { target: target(agentId), input }),
     readImage: (agentId, path) => call('conversation.image.read', { target: target(agentId), path }),
     getUsage: () => call('usage.get', {}),
     async registerPush(registration) {
@@ -173,7 +175,7 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
     async listModels(agentId) { return (await call<{ models: BackendModelOption[] }>('models.list', target(agentId))).models; },
     async listPlugins(agentId) { return (await call<{ plugins: BackendPluginSummary[] }>('plugins.list', target(agentId))).plugins; },
     async listSkills(agentId) { return (await call<{ skills: BackendSkillSummary[] }>('skills.list', target(agentId))).skills; },
-    async selectModel(agentId, selection) { await call('agent.model.select', { target: target(agentId), ...selection }); },
+    async selectModel(agentId, selection) { await call('agent.model.select', { target: target(agentId), selection }); },
     async changeGoal(target, objective) {
       if (closed) throw new Error('Disconnected.');
       await call('agent.goal.set', { target, objective });

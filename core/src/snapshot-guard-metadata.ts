@@ -1,3 +1,4 @@
+import { isExecutionSelection } from './execution-selection';
 import { isPromptContent } from './snapshot-guard-collections';
 import { isRateLimitPause } from './auto-resume';
 import { isAgentReadState } from './agent-read-state';
@@ -136,6 +137,7 @@ function isAgent(value: unknown): boolean {
     optional(value, 'readState', isAgentReadState) &&
     optional(value, 'threadFlags', isThreadFlags) &&
     optional(value, 'rateLimitPause', isRateLimitPause) &&
+    optional(value, 'autoResumePending', isBoolean) &&
     optional(value, 'suggestedPrompt', isString) &&
     optional(value, 'goal', isThreadGoal) &&
     optional(value, 'visualize', isVisualizeSession) &&
@@ -557,9 +559,7 @@ function isGeneralSettings(value: unknown): boolean {
     optional(value, 'providerApprovalDefaults', candidate => isRecord(candidate)
       && optional(candidate, 'codex', isApprovalPreset) && optional(candidate, 'claude', isString) && optional(candidate, 'antigravity', isString)) &&
     optional(value, 'providerModelDefaults', candidate => isRecord(candidate) && Object.entries(candidate).every(([backend, selection]) =>
-      (backend === 'codex' || backend === 'claude' || backend === 'antigravity') && isRecord(selection) && isString(selection.model)
-      && (selection.reasoningEffort === null || isString(selection.reasoningEffort))
-      && (selection.serviceTier === null || isString(selection.serviceTier)))) &&
+      isExecutionSelection(selection) && selection.backend === backend)) &&
     optional(value, 'providerHomes', candidate => isRecord(candidate) && Object.entries(candidate).every(([backend, home]) =>
       (backend === 'codex' || backend === 'claude' || backend === 'antigravity') && isRecord(home) && isString(home.homePath) && isBoolean(home.isolated) && isBoolean(home.shareSkills))) &&
     typeof value.agentListCompact === 'boolean' &&
@@ -568,6 +568,7 @@ function isGeneralSettings(value: unknown): boolean {
     isArrayOf(value.savedPromptDrafts, (draft) => isRecord(draft)
       && isString(draft.id) && isString(draft.agentId) && isString(draft.text) && optional(draft, 'content', isPromptContent) && isNumber(draft.createdAt)) &&
     optional(value, 'autoResumeAfterLimit', isBoolean) &&
+    optional(value, 'autoResumeOnStartup', isBoolean) &&
     typeof value.sessionCompressionWarningEnabled === 'boolean' &&
     includes(['automatic', 'repository', 'off'], value.worktreeInitializationMode) &&
     optional(value, 'useInteractivePlans', isBoolean) &&

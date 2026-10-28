@@ -2,6 +2,8 @@ package com.nabocorp.companion
 
 import androidx.activity.compose.setContent
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import org.json.JSONArray
 import org.json.JSONObject
@@ -33,6 +35,12 @@ class MissionsWorkflowTest {
         NativeEngineFixture(app.activityRule.scenario).use { e ->
             mount(e, state())
             app.onNodeWithContentDescription("Open workspace").performClick()
+            for ((attention, label) in listOf("needsInput" to "Needs input", "unread" to "Unread activity", "working" to "Working", "idle" to "Idle")) {
+                e.state(state().put("missionAttention", attention))
+                app.onNodeWithContentDescription("Missions, 1 active").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, label))
+                if (attention == "needsInput") app.onNodeWithText("Input").assertIsDisplayed()
+                else app.onNodeWithText("Input").assertDoesNotExist()
+            }
             app.onNodeWithContentDescription("Missions, 1 active").performClick()
             // The card says what an agent is on right now.
             app.onNodeWithText("02 Open workers").assertIsDisplayed()
@@ -70,7 +78,10 @@ class MissionsWorkflowTest {
             app.onAllNodesWithText("Continue to Review").onLast().performClick()
             app.waitUntil(5_000) { e.commands().lastOrNull()?.let { it.string("type") == "continueMission" && it.string("missionId") == "m" } == true }
             e.state(state().put("missions", JSONArray().put(JSONObject(done.toString()).put("stage", "review").put("next", "ship"))))
-            app.onNodeWithText("Only available on desktop").assertIsDisplayed()
+            app.onNodeWithText("Only available on desktop").assertDoesNotExist()
+            app.onNode(hasText("Ship") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).assertIsEnabled().performClick()
+            app.onNodeWithText("Ship on desktop").assertIsDisplayed()
+            app.onNodeWithText("OK").performClick()
             app.onNodeWithText("Continue to Review").assertDoesNotExist()
         }
     }
@@ -80,20 +91,62 @@ class MissionsWorkflowTest {
             fun finding(id: String, state: String, selected: Boolean) = json("id" to id, "priority" to "p1", "title" to "Finding $id", "body" to "Why $id matters.", "repository" to "korus",
                 "file" to "auth/session.ts", "line" to 142, "selected" to selected, "state" to state)
             val reviewed = JSONObject(mission.toString()).put("stage", "review").put("done", 2).put("revision", 4)
-                .put("review", json("summary" to "Two issues", "findings" to JSONArray().put(finding("a", "open", true)).put(finding("b", "fixed", false))))
+                .put("review", json("summary" to "Two issues", "ready" to false, "findings" to JSONArray().put(finding("a", "open", true)).put(finding("b", "open", false))))
             mount(e, state().put("missions", JSONArray().put(reviewed)))
             e.model.showMissions("m")
             app.onNodeWithText("1 finding").assertDoesNotExist()
-            app.onNodeWithText("2 findings · 1 fixed").performClick()
-            app.onNodeWithText("Fix 1 selected").assertIsDisplayed()
+            app.onNodeWithText("2 findings · 0 fixed").performClick()
+            app.onNodeWithText("Fix 1 selected").assertIsNotEnabled()
+            app.onNodeWithText("P1 · 2").assertDoesNotExist()
+            app.onNodeWithText("High priority").assertIsDisplayed()
+            app.onNodeWithContentDescription("2 findings").assertIsDisplayed()
+            reviewed.getJSONObject("review").getJSONArray("findings").getJSONObject(1).put("priority", "p2")
+            e.state(state().put("missions", JSONArray().put(reviewed)))
+            app.onNodeWithText("High priority").assertIsDisplayed()
+            app.onNodeWithText("Medium priority").performScrollTo().assertIsDisplayed()
+            reviewed.getJSONObject("review").put("ready", true)
+            e.state(state().put("missions", JSONArray().put(reviewed)))
+            app.onNodeWithText("Fix 1 selected").assertIsEnabled()
             app.onNodeWithContentDescription("Deselect Finding a").performClick()
             app.waitUntil(5_000) { e.commands().lastOrNull()?.let { it.string("type") == "selectFinding" && it.string("findingId") == "a" && !it.optBoolean("selected") } == true }
             app.onNodeWithText("Fix 1 selected").performClick()
             app.onNodeWithText("The other open findings are skipped.").assertIsDisplayed()
             app.onNodeWithText("Fix selected").performClick()
             app.waitUntil(5_000) { e.commands().lastOrNull()?.string("type") == "fixFindings" }
-            app.onNodeWithText("Finding a").performClick()
+            reviewed.getJSONObject("review").put("findings", JSONArray().put(finding("a", "fixing", true)).put(finding("b", "skipped", false)))
+            e.state(state().put("missions", JSONArray().put(reviewed)))
+            app.onNodeWithContentDescription("Back").performClick()
+            app.onNodeWithText("TICKETS").assertDoesNotExist()
+            app.onNodeWithText("2 findings · 0 fixed").assertDoesNotExist()
+            app.onNodeWithText("Finding b").assertDoesNotExist()
+            app.onNodeWithText("0 of 1 fixed").assertIsDisplayed()
+            app.onNodeWithText("Finding a").performScrollTo().performClick()
             app.onNodeWithText("Why a matters.").assertIsDisplayed()
+            app.onNodeWithContentDescription("Back").performClick()
+            // Back from a finding must return to the remediation list, not the old review page.
+            app.onNodeWithText("TICKETS").assertDoesNotExist()
+            reviewed.getJSONObject("review").put("findings", JSONArray().put(finding("a", "fixed", true)).put(finding("b", "skipped", false)))
+            e.state(state().put("missions", JSONArray().put(reviewed)))
+            app.onNodeWithText("1 of 1 fixed").performScrollTo().assertIsDisplayed()
+            app.onNodeWithText("Finding b").assertDoesNotExist()
+            app.onNodeWithText("Re-run review").assertIsEnabled()
+            app.onNodeWithText("Shipping is only available on desktop").assertDoesNotExist()
+            val finishBounds = app.onNodeWithText("Finish review").fetchSemanticsNode().boundsInRoot
+            val rerunBounds = app.onNodeWithText("Re-run review").fetchSemanticsNode().boundsInRoot
+            assertEquals(finishBounds.width, rerunBounds.width, 2f)
+            assertEquals(finishBounds.height, rerunBounds.height, 2f)
+            app.onNodeWithText("Finish review").performClick()
+            app.onNodeWithText("Finish this review?").assertIsDisplayed()
+            app.onNodeWithText("The review will be marked complete. Shipping is only available on desktop.").assertIsDisplayed()
+            app.onAllNodesWithText("Finish review").onLast().performClick()
+            app.waitUntil(5_000) { e.commands().lastOrNull()?.string("type") == "finishReview" }
+            e.state(state().put("missions", JSONArray().put(JSONObject(reviewed.toString()).put("stage", "ship").put("next", "ship"))))
+            app.onNodeWithText("Only available on desktop").assertDoesNotExist()
+            app.onNode(hasText("Ship") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).performScrollTo().assertIsEnabled().performClick()
+            app.onNodeWithText("Ship on desktop").assertIsDisplayed()
+            app.onNodeWithText("Open this mission in the desktop app to ship it.").assertIsDisplayed()
+            app.onNodeWithText("OK").performClick()
+            app.onNodeWithText("Finish review").assertDoesNotExist()
         }
     }
 }

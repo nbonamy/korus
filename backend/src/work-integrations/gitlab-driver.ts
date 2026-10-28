@@ -89,9 +89,9 @@ export class GitLabWorkProviderDriver implements WorkProviderDriver {
     return value.username;
   }
 
-  async listSources(credential: WorkProviderCredential): Promise<WorkSource[]> {
+  async listSources(credential: WorkProviderCredential, owned = false): Promise<WorkSource[]> {
     // Role-based access includes inherited group and shared project permissions.
-    const values = await this.pages(credential, `${API}/projects?min_access_level=10&order_by=id&sort=asc&per_page=100&page=1`);
+    const values = await this.pages(credential, `${API}/projects?${owned ? 'owned=true' : 'min_access_level=10'}&order_by=id&sort=asc&per_page=100&page=1`);
     return values.map(value => {
       if (!record(value) || !nonempty(value.path_with_namespace) || !nonempty(value.path)
         || !validProjectPath(value.path_with_namespace) || value.path !== value.path_with_namespace.split('/').at(-1)
@@ -117,6 +117,24 @@ export class GitLabWorkProviderDriver implements WorkProviderDriver {
     }).sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name));
   }
 
+  private async repositoryScopes(credential: WorkProviderCredential): Promise<{ inside: string[]; outside: string[] }> {
+    const [personal, accessible, groups] = await Promise.all([
+      this.listSources(credential, true), this.listSources(credential),
+      this.pages(credential, `${API}/groups?min_access_level=50&per_page=100&page=1`),
+    ]);
+    const paths = groups.map(group => {
+      if (!record(group) || !nonempty(group.full_path) || !validProjectPath(`${group.full_path}/project`)) {
+        throw new Error('GitLab returned an invalid administered group.');
+      }
+      return group.full_path;
+    });
+    const inside = new Set(personal.map(source => source.id));
+    for (const source of accessible) {
+      if (paths.some(path => source.owner === path || source.owner?.startsWith(`${path}/`))) inside.add(source.id);
+    }
+    return { inside: [...inside], outside: accessible.filter(source => !inside.has(source.id)).map(source => source.id) };
+  }
+
   async listItems(credential: WorkProviderCredential, repositoryId: string, query: WorkItemQuery = {}): Promise<WorkItem[]> {
     const path = projectPath(repositoryId);
     const items: WorkItem[] = [];
@@ -133,7 +151,7 @@ export class GitLabWorkProviderDriver implements WorkProviderDriver {
     const size = Math.max(1, Math.min(100, Math.trunc(query.pageSize ?? 50)));
     if (!Number.isFinite(size)) throw new Error('Invalid GitLab work item page size.');
     const kinds = itemKinds(query);
-    const signature = JSON.stringify([query.assignment ?? 'all', query.kind ?? 'all', query.state ?? 'open', size, credential.accountLabel]);
+    const signature = JSON.stringify([query.assignment ?? 'all', query.kind ?? 'all', query.state ?? 'open', query.involvement, query.repositoryScope, size, credential.accountLabel]);
     let cursor: { signature: string; source: string; kind: WorkItemKind; page: number };
     // GitLab.com restricts /issues?scope=all. Enumerate accessible projects for
     // the all-work feed instead; assigned-to-me uses the bounded global API.
@@ -141,7 +159,9 @@ export class GitLabWorkProviderDriver implements WorkProviderDriver {
       try { if (JSON.parse(Buffer.from(query.cursor, 'base64url').toString('utf8'))?.signature !== signature) throw new Error(); }
       catch { throw new Error('Invalid GitLab work item cursor. Refresh the feed.'); }
     }
-    const sources = query.assignment === 'viewer' ? [''] : (await this.listSources(credential)).map(source => source.id);
+    const scopes = query.repositoryScope ? await this.repositoryScopes(credential) : undefined;
+    const sources = scopes ? query.repositoryScope === 'owned' ? scopes.inside : scopes.outside
+      : query.assignment === 'viewer' || query.involvement ? [''] : (await this.listSources(credential)).map(source => source.id);
     if (query.cursor) {
       try { cursor = JSON.parse(Buffer.from(query.cursor, 'base64url').toString('utf8')); }
       catch { throw new Error('Invalid GitLab work item cursor. Refresh the feed.'); }
@@ -326,7 +346,7 @@ function itemKinds(query: WorkItemQuery): WorkItemKind[] {
 }
 function itemUrl(prefix: string, kind: WorkItemKind, query: GlobalWorkItemQuery, size: number, page: number): string {
   const url = new URL(`${API}${prefix}/${kind === 'issue' ? 'issues' : 'merge_requests'}`);
-  url.search = new URLSearchParams({ scope: query.assignment === 'viewer' ? 'assigned_to_me' : 'all',
+  url.search = new URLSearchParams({ scope: query.involvement === 'author' ? 'created_by_me' : query.involvement === 'reviewer' ? 'reviews_for_me' : query.assignment === 'viewer' ? 'assigned_to_me' : 'all',
     state: query.state === 'closed' && kind === 'pullRequest' ? 'all' : query.state === 'open' || !query.state ? 'opened' : query.state,
     order_by: 'updated_at', sort: 'desc', per_page: String(size), page: String(page) }).toString();
   return url.href;

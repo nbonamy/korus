@@ -3,7 +3,6 @@ import { agentDisplayName } from '@workspace/core/agent-display';
 import type {
   Agent,
   AgentGitBranchInput,
-  ReasoningEffort,
   AppSnapshot,
   CreateAgentInput,
   CreateSourceWorktreeInput,
@@ -31,9 +30,7 @@ export type StartWorkItemsInput = {
   action: WorkItemAssignmentAction;
   items: WorkItem[];
   teamId: string;
-  backend?: Agent['backend'];
-  model?: string;
-  reasoningEffort?: string;
+  selection?: import('@workspace/core/contracts/execution').ExecutionSelection;
   repository?: SourceRepository;
   isCurrent?: () => boolean;
 };
@@ -108,12 +105,8 @@ export function useWorkItemRouting(options: {
     ensureCurrent(input.isCurrent);
 
     const targetAgent = input.target === 'duplicate'
-      ? input.model || (input.backend && input.backend !== sourceAgent.backend)
-        ? await options.actions.createAgent({
-            name: `${sourceAgentName} ${workItemDisplayIdentifier(item)}`, folder: sourceAgent.folder ?? '',
-            backend: input.backend, teamId: sourceAgent.teamId,
-            ...(input.model ? { modelSelection: { model: input.model, ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort as ReasoningEffort } : {}) } } : {}),
-          })
+      ? input.selection?.model || (input.selection?.backend && input.selection?.backend !== sourceAgent.backend)
+        ? await options.actions.createAgent({ name: `${sourceAgentName} ${workItemDisplayIdentifier(item)}`, folder: sourceAgent.folder ?? '', teamId: sourceAgent.teamId, ...(input.selection ? { selection: { ...input.selection } } : {}) })
         : await options.actions.duplicateAgent(sourceAgent.id, {
           select: false,
           name: `${sourceAgentName} ${workItemDisplayIdentifier(item)}`,
@@ -187,7 +180,7 @@ export function useWorkItemRouting(options: {
     const id = crypto.randomUUID();
     const progress = input.items.length === 1
       ? { mode: 'single' as const, progress: {
-          id, state: 'running' as const, backend: input.backend ?? 'codex',
+          id, state: 'running' as const, backend: input.selection?.backend ?? 'codex',
           repositoryName: input.repository?.name ?? workItemRepositoryName(input.items[0]!),
           createWorktree: true, branchName: workItemBranchName(input.items[0]!), hasPrompt: true, phase: 'creatingWorktree' as const,
         } }
@@ -199,7 +192,7 @@ export function useWorkItemRouting(options: {
     let created = 0;
     const settled = Promise.allSettled(input.items.map(async listedItem => {
       const { agent, item } = await createIsolatedAgent(listedItem, input.teamId, {
-        backend: input.backend, model: input.model, reasoningEffort: input.reasoningEffort,
+        selection: input.selection,
         repository: input.repository, isCurrent: input.isCurrent,
         onPhase: () => {
           if (++prepared !== input.items.length) return;
@@ -249,7 +242,7 @@ export function useWorkItemRouting(options: {
   async function createIsolatedAgent(
     listedItem: WorkItem,
     teamId: string,
-    creationOptions: { reuseExisting?: boolean; backend?: Agent['backend']; model?: string; reasoningEffort?: string; repository?: SourceRepository; isCurrent?: () => boolean; onPhase?: (phase: 'creatingAgent') => void } = {},
+    creationOptions: { reuseExisting?: boolean; selection?: import('@workspace/core/contracts/execution').ExecutionSelection; repository?: SourceRepository; isCurrent?: () => boolean; onPhase?: (phase: 'creatingAgent') => void } = {},
   ): Promise<{ agent: Agent; item: WorkItem }> {
     const team = options.model.snapshot().teams.find((candidate) => candidate.id === teamId);
     if (!team) throw new Error(translate('surface.appShell.theSelectedTeamIsUnavailable'));
@@ -275,11 +268,7 @@ export function useWorkItemRouting(options: {
     const agent = await options.actions.createAgent({
       name: null,
       folder: worktree.path,
-      ...(creationOptions.backend ? { backend: creationOptions.backend } : {}),
-      ...(creationOptions.model ? { modelSelection: {
-        model: creationOptions.model,
-        ...(creationOptions.reasoningEffort ? { reasoningEffort: creationOptions.reasoningEffort as ReasoningEffort } : {}),
-      } } : {}),
+      ...(creationOptions.selection ? { selection: { ...creationOptions.selection } } : {}),
       sourceRepositoryName: repository.name,
       teamId: team.id,
     });

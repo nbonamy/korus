@@ -45,11 +45,13 @@
       :focus-kind="panel.focusKind"
       :focus-sequence="panel.focusSequence"
       :group-by-kind="groupByKind"
+      annotatable
       open-file-enabled
       :state="panel.state"
       :word-wrap="wordWrap"
       @all-expanded-change="allExpanded = $event"
       @open-file="emit('openFile', $event)"
+      @annotate="emit('annotate', $event)"
     />
   </section>
 </template>
@@ -60,6 +62,7 @@ import { computed, ref, watch } from 'vue';
 import type { Agent, AgentGitDiffScope, AgentGitStatus } from '@workspace/core/contracts';
 import { DotsVerticalIcon, FileDiffIcon, FolderIcon, FileTextIcon, GitCommitIcon, GitHubIcon, GitLabIcon, ListDetailsIcon, RefreshIcon, TextWrapDisabledIcon, TextWrapIcon } from '../shared/icons/app-icons';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
+import type { CodeAnnotationInput } from './use-code-annotations';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import GitDiffPreviewPanel from './GitDiffPreviewPanel.vue';
 import type { SidePanelGitDiffState } from './side-panel';
@@ -73,6 +76,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   openFile: [filePath: string];
   refresh: [];
+  annotate: [annotation: CodeAnnotationInput];
 }>();
 
 const wordWrap = ref(false);

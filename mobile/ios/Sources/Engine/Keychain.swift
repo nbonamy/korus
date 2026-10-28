@@ -4,18 +4,24 @@ import Security
 /// Device-only secrets (the pairing record and this phone's identity). Entries are readable while unlocked
 /// and never leave the device.
 enum Keychain {
+    struct ReadFailure: Error { let status: OSStatus }
     private static var service: String { (Bundle.main.bundleIdentifier ?? "companion") + ".vault" }
 
     private static func query(_ key: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: key]
     }
 
-    static func read(_ key: String) -> String? {
+    static func read(_ key: String, lookup: (CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus = SecItemCopyMatching) throws -> String? {
         var attributes = query(key)
         attributes[kSecReturnData as String] = true
         var result: CFTypeRef?
-        guard SecItemCopyMatching(attributes as CFDictionary, &result) == errSecSuccess, let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        let status = lookup(attributes as CFDictionary, &result)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess else { throw ReadFailure(status: status) }
+        guard let data = result as? Data, let value = String(data: data, encoding: .utf8) else {
+            throw ReadFailure(status: errSecDecode)
+        }
+        return value
     }
 
     @discardableResult

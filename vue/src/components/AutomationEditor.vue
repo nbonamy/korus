@@ -38,25 +38,10 @@
         </FormGrid>
       </FormSection>
       <AutomationScheduleEditor v-model="schedule" :automation="automation" />
-      <FormSection v-if="form.kind === 'newQuickChat'" density="compact" :title="$t('promptAutomation.model')" title-id="automation-model">
-        <FormGrid :columns="3">
-          <FormField density="compact" :label="$t('handoff.engine')">
-            <BackendSelector v-model="form.backend" class="automation-editor__backend" :team-id="form.teamId"
-              :preserve-selection="Boolean(automation)" show-single-choice />
-          </FormField>
-          <FormField density="compact" :label="$t('promptAutomation.model')" :help="modelsError ? $t('promptAutomation.modelsUnavailable') : undefined">
-            <el-select v-model="form.model" filterable allow-create clearable :loading="modelsLoading"
-              :aria-label="$t('promptAutomation.model')" :placeholder="$t('promptAutomation.defaultModel')">
-              <el-option v-for="model in models" :key="model.model" :value="model.model" :label="model.displayName" />
-            </el-select>
-          </FormField>
-          <FormField density="compact" :label="$t('promptAutomation.effort')">
-            <el-select v-model="form.reasoningEffort" filterable allow-create clearable :aria-label="$t('promptAutomation.effort')"
-              :placeholder="$t('promptAutomation.defaultEffort')">
-              <el-option v-for="effort in efforts" :key="effort.reasoningEffort" :value="effort.reasoningEffort" :label="effort.reasoningEffort" />
-            </el-select>
-          </FormField>
-        </FormGrid>
+      <FormSection v-if="form.kind === 'newQuickChat'" class="automation-editor__model" density="compact" :title="$t('promptAutomation.model')" title-id="automation-model">
+        <BackendModelSelector v-model:selection="selection" :team-id="form.teamId" :agent-id="catalogAgentId"
+          :disabled="saving" @loading="modelsLoading = $event" @error="modelsError = true" />
+        <p v-if="modelsError" class="automation-editor__notice" role="status">{{ $t('promptAutomation.modelsUnavailable') }}</p>
       </FormSection>
       <p v-if="targetRemoved" class="automation-editor__notice" role="alert">{{ $t('promptAutomation.invalidTarget') }}</p>
       <p v-if="error" class="automation-editor__notice" role="alert">{{ error }}</p>
@@ -69,8 +54,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue';
-import type { Agent, AgentBackend, Automation, AutomationSchedule, AutomationTarget, BackendModelOption, CreateAutomationInput, Team } from '@workspace/core/contracts';
+import { computed, provide, reactive, ref, watch } from 'vue';
+import type { Agent, AgentBackend, Automation, AutomationSchedule, AutomationTarget, BackendModelOption, CreateAutomationInput, ExecutionSelection, Team } from '@workspace/core/contracts';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { normalizeAutomationSchedule } from '@workspace/core/automation-schedule';
 import AutomationScheduleEditor from './AutomationScheduleEditor.vue';
@@ -78,14 +63,16 @@ import VoiceTextarea from '../shared/VoiceTextarea.vue';
 import FormGrid from '../shared/form/FormGrid.vue';
 import FormSection from '../shared/form/FormSection.vue';
 import FormField from '../shared/form/FormField.vue';
-import BackendSelector from './BackendSelector.vue';
+import BackendModelSelector from './BackendModelSelector.vue';
+import { defaultExecutionSelection } from '@workspace/core/execution-selection';
+import { backendModelCatalogKey, useBackendModelCatalog } from './backend-model-catalog';
 import { useBackendChoices } from './backend-selection';
 
 const props = withDefaults(defineProps<{
   automation?: Automation | null; mode: 'create' | 'edit'; agents: Agent[]; teams: Team[];
   error?: string | null; saving?: boolean;
   listModels?: (agentId: string, backend: AgentBackend) => Promise<BackendModelOption[]>;
-}>(), { automation: null, error: null, saving: false, listModels: async () => [] });
+}>(), { automation: null, error: null, saving: false });
 const emit = defineEmits<{ cancel: []; submit: [input: CreateAutomationInput] }>();
 const target = props.automation?.target;
 const form = reactive({
@@ -94,16 +81,17 @@ const form = reactive({
   teamId: target?.kind === 'newQuickChat' ? target.teamId
     : props.agents.find(agent => target && agent.id === target.agentId)?.teamId ?? props.teams[0]?.id ?? '',
   agentId: target && target.kind !== 'newQuickChat' && props.agents.some(agent => agent.id === target.agentId) ? target.agentId : '',
-  backend: (target?.kind === 'newQuickChat' ? target.backend : undefined) as AgentBackend | undefined,
-  model: target?.kind === 'newQuickChat' ? target.model ?? '' : '',
-  reasoningEffort: target?.kind === 'newQuickChat' ? target.reasoningEffort ?? '' : '',
+
 });
+const selection = ref<ExecutionSelection | undefined>(target?.kind === 'newQuickChat' ? { ...defaultExecutionSelection(target.selection.backend), ...target.selection } : undefined);
+const inheritedCatalog = useBackendModelCatalog();
+provide(backendModelCatalogKey, { listModels: (agentId, backend) => props.listModels?.(agentId, backend) ?? inheritedCatalog.listModels(agentId, backend) });
+const catalogAgentId = computed(() => props.agents.find(agent => agent.teamId === form.teamId)?.id ?? props.agents[0]?.id ?? '');
 const schedule = ref<AutomationSchedule>(props.automation?.schedule ?? { rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
 // The saved conversation was removed; keep saving blocked until the user picks another.
 const targetRemoved = computed(() => Boolean(target && target.kind !== 'newQuickChat' && form.kind === target.kind && !form.agentId
   && !props.agents.some(agent => agent.id === target.agentId)));
 const promptBusy = ref(false);
-const models = ref<BackendModelOption[]>([]);
 const modelsLoading = ref(false);
 const modelsError = ref(false);
 const engineChoices = useBackendChoices(() => form.teamId);
@@ -128,32 +116,15 @@ function conversationLabel(agent: Agent): string {
     : agent.folder?.split(/[\\/]/).filter(Boolean).at(-1);
   return repository ? `${name} @ ${repository}` : name;
 }
-const efforts = computed(() => models.value.find(model => model.model === form.model)?.supportedReasoningEfforts ?? []);
 const canSubmit = computed(() => !props.saving && !promptBusy.value && Boolean(form.prompt.trim()) && normalizeAutomationSchedule(schedule.value) !== null &&
   (form.kind === 'newQuickChat'
-    ? props.teams.some(team => team.id === form.teamId) && Boolean(form.backend && engineChoices.value.includes(form.backend))
+    ? props.teams.some(team => team.id === form.teamId) && Boolean(selection.value && engineChoices.value.includes(selection.value.backend))
     : targetAgents.value.some(agent => agent.id === form.agentId)));
 watch(() => form.teamId, () => { form.agentId = ''; });
-watch(() => form.backend, (_backend, previous) => { if (previous) { form.model = ''; form.reasoningEffort = ''; } });
-watch(() => form.model, (_model, previous) => { if (previous) form.reasoningEffort = ''; });
-watch([() => form.backend, () => props.agents[0]?.id, () => form.kind], async ([backend, agentId, kind], _previous, cleanup) => {
-  let current = true;
-  cleanup(() => { current = false; });
-  models.value = [];
-  modelsError.value = false;
-  modelsLoading.value = false;
-  if (!backend || !agentId || kind !== 'newQuickChat') return;
-  modelsLoading.value = true;
-  try { const result = await props.listModels(agentId, backend); if (current) models.value = result.filter(model => !model.hidden); }
-  catch { if (current) modelsError.value = true; }
-  finally { if (current) modelsLoading.value = false; }
-}, { immediate: true });
 function submit() {
   if (!canSubmit.value) return;
   const target: AutomationTarget = form.kind === 'newQuickChat'
-    ? { kind: 'newQuickChat', teamId: form.teamId, backend: form.backend!,
-      ...(form.model.trim() ? { model: form.model.trim() } : {}),
-      ...(form.reasoningEffort.trim() ? { reasoningEffort: form.reasoningEffort.trim() } : {}) }
+    ? { kind: 'newQuickChat', teamId: form.teamId, selection: { ...selection.value! } }
     : { kind: form.kind, agentId: form.agentId };
   emit('submit', { name: form.name.trim(), enabled: form.enabled, prompt: form.prompt.trim(), target, schedule: { ...schedule.value } });
 }
@@ -211,6 +182,12 @@ function submit() {
 
 .automation-editor__backend {
   width: 100%;
+}
+
+.automation-editor__model :deep(.form-section__group) {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .automation-editor__prompt .voice-textarea {

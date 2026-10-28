@@ -115,6 +115,10 @@ by mutating user-global tool config.
 - With a `task` contract (`title`, `doneWhen`), a stable parent-scoped `requestId`
   is mandatory and reused after a timeout. Returned `taskId`/`agentId`/status
   describe accepted startup, not completed work.
+- Goal delegation uses the same app-owned goal operation as the composer, with
+  the assignment and its context as the objective. Durable tasks persist that
+  startup choice and keep their result-reporting contract; retries do not start
+  a second goal. Unsupported providers are rejected before provisioning.
 - `complete-task` (worker, before `finish_turn`) saves a provisional result that
   finalizes only after that exact turn succeeds. `wait-tasks` (`any|all`, 0–30 s)
   ends on completion, failure, cancellation, interruption or needs-input; a timeout
@@ -125,7 +129,7 @@ by mutating user-global tool config.
   a later failure leaves the created folder or agent for recovery.
 - `get-diff-stats` is read-only and offered to agents with a working folder. `scope` picks
   `uncommitted` (default), `unstaged`, `staged`, `branch` (optional `baseRef`) or `commit`
-  (needs `sha`); it returns lines added and removed and files changed, in total and per file
+  (needs `sha`) or `lastTurn` (the agent's most recent recorded turn diff); it returns lines added and removed and files changed, in total and per file
   type (code, test, docs, other), using the same classifier as the review pane.
 - `create-mission` lets an agent on a local team start a Mission when the user asks
   (`/mission [instructions]` expands into that request). It creates the Mission with

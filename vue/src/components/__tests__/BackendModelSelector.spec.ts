@@ -3,7 +3,7 @@ import { computed, defineComponent, h } from 'vue';
 import { createEmptySnapshot } from '@workspace/core/snapshot';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ElPopover, ElTabs, ElTabPane } from 'element-plus';
-import type { BackendModelOption } from '@workspace/core/contracts';
+import type { BackendModelOption, ExecutionSelection } from '@workspace/core/contracts';
 import BackendModelSelector from '../BackendModelSelector.vue';
 import { backendChoicesKey, provideBackendChoices } from '../backend-selection';
 import { backendModelCatalogKey } from '../backend-model-catalog';
@@ -15,7 +15,7 @@ afterEach(() => { localStorage.removeItem('app:modelCatalog'); document.body.inn
 describe('BackendModelSelector', () => {
   it('keeps the chosen model and effort when a failed launch remounts the picker', async () => {
     const wrapper = mount(BackendModelSelector, {
-      props: { backend: 'codex', model: 'gpt-fast', reasoningEffort: 'high', agentId: 'agent' },
+      props: { agentId: 'agent', selection: { backend: 'codex', model: 'gpt-fast', reasoningEffort: 'high', serviceTier: null } },
       global: { provide: { [backendModelCatalogKey as symbol]: {
         listModels: async () => [{ id: 'fast', model: 'gpt-fast', displayName: 'GPT Fast' }],
       } } },
@@ -30,11 +30,7 @@ describe('BackendModelSelector', () => {
     const listModels = vi.fn().mockImplementationOnce(() => new Promise(resolve => { oldCatalog = resolve; }))
       .mockResolvedValue([{ id: 'sonnet', model: 'sonnet', displayName: 'Sonnet', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: '' }] }]);
     const wrapper = mount(BackendModelSelector, {
-      props: { backend: 'codex' as const, model: '', reasoningEffort: '', agentId: 'local-agent',
-        'onUpdate:backend': value => wrapper.setProps({ backend: value }),
-        'onUpdate:model': value => wrapper.setProps({ model: value }),
-        'onUpdate:reasoningEffort': value => wrapper.setProps({ reasoningEffort: value }),
-      },
+      props: { agentId: 'local-agent', selection: { backend: 'codex' as const, model: '', reasoningEffort: '', serviceTier: null }, 'onUpdate:selection': (selection: ExecutionSelection | undefined) => wrapper.setProps({ selection }) },
       global: { components: { ElPopover, ElTabs, ElTabPane }, provide: {
         [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']),
         [backendModelCatalogKey as symbol]: { listModels },
@@ -49,13 +45,13 @@ describe('BackendModelSelector', () => {
     await flushPromises();
     expect(listModels).toHaveBeenLastCalledWith('local-agent', 'claude');
     expect(document.body.textContent).not.toContain('Stale model');
-    expect(wrapper.props('model')).toBe('sonnet');
-    expect(wrapper.props('reasoningEffort')).toBe('high');
-    await wrapper.setProps({ agentId: 'remote-agent', reasoningEffort: 'low' });
+    expect(wrapper.props('selection')?.model).toBe('sonnet');
+    expect(wrapper.props('selection')?.reasoningEffort).toBe('high');
+    await wrapper.setProps({ agentId: 'remote-agent', selection: { ...wrapper.props('selection')!, reasoningEffort: 'low' } });
     await flushPromises();
     expect(listModels).toHaveBeenLastCalledWith('remote-agent', 'claude');
-    expect(wrapper.props('model')).toBe('sonnet');
-    expect(wrapper.props('reasoningEffort')).toBe('high');
+    expect(wrapper.props('selection')?.model).toBe('sonnet');
+    expect(wrapper.props('selection')?.reasoningEffort).toBe('high');
   });
 
   it('can be dropped in with only a team: it finds an agent on the team host to read the catalog from', async () => {
@@ -75,7 +71,7 @@ describe('BackendModelSelector', () => {
     const mountFor = (teamId: string) => mount(defineComponent({
       setup() {
         provideBackendChoices(() => snapshot);
-        return () => h(BackendModelSelector, { backend: 'codex', teamId });
+        return () => h(BackendModelSelector, { teamId, selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } });
       },
     }), { global: { provide: { [backendModelCatalogKey as symbol]: { listModels } } } });
     mountFor('local-team');
@@ -88,9 +84,7 @@ describe('BackendModelSelector', () => {
 
   it('picks model and reasoning effort together from a cascading menu', async () => {
     const wrapper = mount(BackendModelSelector, {
-      props: { backend: 'codex' as const, model: '', reasoningEffort: '', agentId: 'agent',
-        'onUpdate:model': value => wrapper.setProps({ model: value }),
-        'onUpdate:reasoningEffort': value => wrapper.setProps({ reasoningEffort: value }) },
+      props: { agentId: 'agent', selection: { backend: 'codex' as const, model: '', reasoningEffort: '', serviceTier: null }, 'onUpdate:selection': (selection: ExecutionSelection | undefined) => wrapper.setProps({ selection }) },
       global: { components: { ElPopover, ElTabs, ElTabPane }, provide: {
         [backendChoicesKey as symbol]: computed(() => ['codex']),
         [backendModelCatalogKey as symbol]: { listModels: async () => [
@@ -107,21 +101,90 @@ describe('BackendModelSelector', () => {
     expect(document.querySelector('input')).toBeNull();
     effort('high').click();
     await flushPromises();
-    expect(wrapper.props('model')).toBe('gpt-fast');
-    expect(wrapper.props('reasoningEffort')).toBe('high');
+    expect(wrapper.props('selection')?.model).toBe('gpt-fast');
+    expect(wrapper.props('selection')?.reasoningEffort).toBe('high');
     expect(wrapper.get('button').text()).toContain('high');
     await wrapper.get('[aria-label="Coding agent and model"]').trigger('click');
     await flushPromises();
     effort('GPT Plain').click();
     await flushPromises();
-    expect(wrapper.props('model')).toBe('gpt-plain');
-    expect(wrapper.props('reasoningEffort')).toBe('');
+    expect(wrapper.props('selection')?.model).toBe('gpt-plain');
+    expect(wrapper.props('selection')?.reasoningEffort).toBeNull();
+  });
+
+  describe('service tiers', () => {
+    const catalog = [
+      { id: 'fast', model: 'gpt-fast', displayName: 'GPT Fast',
+        supportedReasoningEfforts: [{ reasoningEffort: 'low', description: '' }, { reasoningEffort: 'high', description: '' }],
+        serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }, { id: 'ultrafast', name: 'Ultrafast', description: '' }] },
+      { id: 'tiers-only', model: 'gpt-tiers', displayName: 'GPT Tiers', serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }] },
+      { id: 'plain', model: 'gpt-plain', displayName: 'GPT Plain', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: '' }] },
+    ] as BackendModelOption[];
+    function mountSelector(initial: { model?: string; reasoningEffort?: string; serviceTier?: string } = {}) {
+      const wrapper = mount(BackendModelSelector, {
+        props: { agentId: 'agent', selection: { backend: 'codex' as const, model: initial.model ?? '', reasoningEffort: initial.reasoningEffort ?? '', serviceTier: initial.serviceTier ?? '' }, 'onUpdate:selection': (selection: ExecutionSelection | undefined) => wrapper.setProps({ selection }) },
+        global: { components: { ElPopover, ElTabs, ElTabPane }, provide: {
+          [backendChoicesKey as symbol]: computed(() => ['codex']),
+          [backendModelCatalogKey as symbol]: { listModels: async () => catalog },
+        } },
+      });
+      return wrapper;
+    }
+    const open = async (wrapper: ReturnType<typeof mountSelector>) => { await wrapper.get('[aria-label="Coding agent and model"]').trigger('click'); await flushPromises(); };
+    const row = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent?.trim() === label)!;
+
+    it('lists what the model offers under its efforts, after a divider and without section titles', async () => {
+      const wrapper = mountSelector();
+      await flushPromises();
+      await open(wrapper);
+      const submenu = row('low').closest('[role="menu"]')!;
+      expect([...submenu.querySelectorAll('[role="menuitemradio"], [role="separator"]')].map(item => item.getAttribute('role') === 'separator' ? '---' : item.textContent?.trim()))
+        .toStrictEqual(['low', 'high', '---', 'standard', 'fast', 'ultrafast']);
+    });
+
+    it('sets the tier with the model and keeps the effort, and Standard clears it', async () => {
+      const wrapper = mountSelector({ model: 'gpt-fast', reasoningEffort: 'low' });
+      await flushPromises();
+      await open(wrapper);
+      row('ultrafast').click();
+      await flushPromises();
+      expect(wrapper.props('selection')?.model).toBe('gpt-fast');
+      expect(wrapper.props('selection')?.reasoningEffort).toBe('low');
+      expect(wrapper.props('selection')?.serviceTier).toBe('ultrafast');
+      expect(wrapper.get('button').text()).toContain('ultrafast');
+      await open(wrapper);
+      row('standard').click();
+      await flushPromises();
+      expect(wrapper.props('selection')?.serviceTier).toBeNull();
+      expect(wrapper.props('selection')?.reasoningEffort).toBe('low');
+    });
+
+    it('opens a submenu for a model that only has tiers, without a divider', async () => {
+      const wrapper = mountSelector();
+      await flushPromises();
+      await open(wrapper);
+      const submenu = [...document.querySelectorAll('[role="menu"]')].find(menu => [...menu.querySelectorAll('[role="menuitemradio"]')].map(item => item.textContent?.trim()).join() === 'standard,fast')!;
+      expect(submenu).toBeDefined();
+      expect(submenu.querySelectorAll('[role="separator"]')).toHaveLength(0);
+      [...submenu.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent?.trim() === 'fast')!.click();
+      await flushPromises();
+      expect(wrapper.props('selection')?.model).toBe('gpt-tiers');
+      expect(wrapper.props('selection')?.serviceTier).toBe('fast');
+    });
+
+    it('drops a tier the newly chosen model does not offer', async () => {
+      const wrapper = mountSelector({ model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'ultrafast' });
+      await flushPromises();
+      await wrapper.setProps({ selection: { ...wrapper.props('selection')!, model: 'gpt-plain' } });
+      await flushPromises();
+      expect(wrapper.props('selection')?.serviceTier).toBeNull();
+    });
   });
 
   it('shows the last known models instantly and keeps the list stable while refreshing', async () => {
     const catalog = [{ id: 'fast', model: 'gpt-fast', displayName: 'GPT Fast' }];
     const mountSelector = (listModels: () => Promise<BackendModelOption[]>) => mount(BackendModelSelector, {
-      props: { backend: 'codex' as const, model: '', reasoningEffort: '', agentId: 'agent' },
+      props: { agentId: 'agent', selection: { backend: 'codex' as const, model: '', reasoningEffort: '', serviceTier: null } },
       global: { components: { ElPopover, ElTabs, ElTabPane }, provide: {
         [backendChoicesKey as symbol]: computed(() => ['codex']),
         [backendModelCatalogKey as symbol]: { listModels },
@@ -142,7 +205,7 @@ describe('BackendModelSelector', () => {
 
   it('keeps the default row and shows placeholders on a cold first load', async () => {
     const wrapper = mount(BackendModelSelector, {
-      props: { backend: 'codex' as const, model: '', reasoningEffort: '', agentId: 'agent' },
+      props: { agentId: 'agent', selection: { backend: 'codex' as const, model: '', reasoningEffort: '', serviceTier: null } },
       global: { components: { ElPopover, ElTabs, ElTabPane }, provide: {
         [backendChoicesKey as symbol]: computed(() => ['codex']),
         [backendModelCatalogKey as symbol]: { listModels: () => new Promise(() => undefined) },
@@ -157,9 +220,7 @@ describe('BackendModelSelector', () => {
 
   it("selects the provider default model and its default effort explicitly, with no blank 'Default' entries", async () => {
     const wrapper = mount(BackendModelSelector, {
-      props: { backend: 'codex' as const, model: '', reasoningEffort: '', agentId: 'agent',
-        'onUpdate:model': value => wrapper.setProps({ model: value }),
-        'onUpdate:reasoningEffort': value => wrapper.setProps({ reasoningEffort: value }) },
+      props: { agentId: 'agent', selection: { backend: 'codex' as const, model: '', reasoningEffort: '', serviceTier: null }, 'onUpdate:selection': (selection: ExecutionSelection | undefined) => wrapper.setProps({ selection }) },
       global: { components: { ElPopover, ElTabs, ElTabPane }, provide: {
         [backendChoicesKey as symbol]: computed(() => ['codex']),
         [backendModelCatalogKey as symbol]: { listModels: async () => [
@@ -170,8 +231,8 @@ describe('BackendModelSelector', () => {
       } },
     });
     await flushPromises();
-    expect(wrapper.props('model')).toBe('gpt-b');
-    expect(wrapper.props('reasoningEffort')).toBe('medium');
+    expect(wrapper.props('selection')?.model).toBe('gpt-b');
+    expect(wrapper.props('selection')?.reasoningEffort).toBe('medium');
     expect(wrapper.get('button').text()).toContain('medium');
     await wrapper.get('[aria-label="Coding agent and model"]').trigger('click');
     await flushPromises();
@@ -180,8 +241,7 @@ describe('BackendModelSelector', () => {
 
   it("shows the real model behind a provider's default alias instead of the alias row", async () => {
     const wrapper = mount(BackendModelSelector, {
-      props: { backend: 'claude' as const, model: '', reasoningEffort: '', agentId: 'agent',
-        'onUpdate:model': value => wrapper.setProps({ model: value }) },
+      props: { agentId: 'agent', selection: { backend: 'claude' as const, model: '', reasoningEffort: '', serviceTier: null }, 'onUpdate:selection': (selection: ExecutionSelection | undefined) => wrapper.setProps({ selection }) },
       global: { components: { ElPopover, ElTabs, ElTabPane }, provide: {
         [backendChoicesKey as symbol]: computed(() => ['claude']),
         [backendModelCatalogKey as symbol]: { listModels: async () => [
@@ -192,7 +252,7 @@ describe('BackendModelSelector', () => {
       } },
     });
     await flushPromises();
-    expect(wrapper.props('model')).toBe('opus');
+    expect(wrapper.props('selection')?.model).toBe('opus');
     expect(wrapper.get('button').text()).toContain('Opus 5.5');
     await wrapper.get('[aria-label="Coding agent and model"]').trigger('click');
     await flushPromises();
@@ -218,8 +278,7 @@ describe('BackendModelSelector', () => {
         setup() {
           provideBackendChoices(() => snapshot);
           const state = { model: '', effort: '' };
-          return () => h(BackendModelSelector, { backend: 'claude', teamId: 't', model: state.model, reasoningEffort: state.effort,
-            'onUpdate:model': (value: string) => { state.model = value; }, 'onUpdate:reasoningEffort': (value: string) => { state.effort = value; } });
+          return () => h(BackendModelSelector, { teamId: 't', selection: { backend: 'claude', model: state.model, reasoningEffort: state.effort, serviceTier: null }, 'onUpdate:selection': (selection: ExecutionSelection | undefined) => { state.model = selection?.model ?? ''; state.effort = selection?.reasoningEffort ?? ''; } });
         },
       }), { global: { components: { ElPopover, ElTabs, ElTabPane }, provide: { [backendModelCatalogKey as symbol]: { listModels: async () => catalog } } } });
       await flushPromises();
@@ -228,20 +287,20 @@ describe('BackendModelSelector', () => {
 
     it("starts from the user's saved default for the provider, not the catalog's", async () => {
       const selector = await mountWithSaved({ model: 'opus', reasoningEffort: 'low' });
-      expect(selector.emitted('update:model')?.at(-1)).toEqual(['opus']);
-      expect(selector.emitted('update:reasoningEffort')?.at(-1)).toEqual(['low']);
+      expect(selector.emitted('update:selection')?.at(-1)?.map(value => (value as ExecutionSelection).model)).toEqual(['opus']);
+      expect(selector.emitted('update:selection')?.at(-1)?.map(value => (value as ExecutionSelection).reasoningEffort)).toEqual(['low']);
     });
 
     it('resolves a saved alias to the real model and falls back to the model default effort when the saved one is unsupported', async () => {
       const selector = await mountWithSaved({ model: 'default', reasoningEffort: 'ultra' });
-      expect(selector.emitted('update:model')?.at(-1)).toEqual(['sonnet']);
-      expect(selector.emitted('update:reasoningEffort')?.at(-1)).toEqual(['high']);
+      expect(selector.emitted('update:selection')?.at(-1)?.map(value => (value as ExecutionSelection).model)).toEqual(['sonnet']);
+      expect(selector.emitted('update:selection')?.at(-1)?.map(value => (value as ExecutionSelection).reasoningEffort)).toEqual(['high']);
     });
 
     it('uses the provider default when nothing is saved', async () => {
       const selector = await mountWithSaved();
-      expect(selector.emitted('update:model')?.at(-1)).toEqual(['sonnet']);
-      expect(selector.emitted('update:reasoningEffort')?.at(-1)).toEqual(['high']);
+      expect(selector.emitted('update:selection')?.at(-1)?.map(value => (value as ExecutionSelection).model)).toEqual(['sonnet']);
+      expect(selector.emitted('update:selection')?.at(-1)?.map(value => (value as ExecutionSelection).reasoningEffort)).toEqual(['high']);
     });
   });
 });

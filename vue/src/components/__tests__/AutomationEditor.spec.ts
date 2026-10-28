@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
-import { ElInput, ElInputNumber, ElSelect, ElOption, ElOptionGroup, ElSwitch, ElButton } from 'element-plus';
+import { ElInput, ElInputNumber, ElSelect, ElOption, ElOptionGroup, ElSwitch, ElButton, ElPopover, ElTabs, ElTabPane } from 'element-plus';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import type { Automation } from '@workspace/core/contracts';
 import AutomationEditor from '../AutomationEditor.vue';
@@ -10,7 +10,7 @@ const agents = [...snapshot.agents, { ...snapshot.agents[0]!, id: 'quick', name:
 function editor(automation?: Automation) {
   return mount(AutomationEditor, { attachTo: document.body,
     props: { mode: automation ? 'edit' : 'create', agents, teams: snapshot.teams, automation },
-    global: { components: { ElInput, ElInputNumber, ElSelect, ElOption, ElOptionGroup, ElSwitch, ElButton } } });
+    global: { components: { ElInput, ElInputNumber, ElSelect, ElOption, ElOptionGroup, ElSwitch, ElButton, ElPopover, ElTabs, ElTabPane } } });
 }
 async function choose(wrapper: ReturnType<typeof editor>, label: string, option: string) {
   const control = wrapper.get(`[aria-label="${label}"]`);
@@ -30,10 +30,10 @@ describe('AutomationEditor', () => {
     await wrapper.get('form').trigger('submit');
     expect(wrapper.emitted('submit')?.[0]?.[0]).toStrictEqual({
       name: 'Morning', enabled: true, prompt: 'Check my tasks.',
-      target: { kind: 'newQuickChat', teamId: 'team-app', backend: 'codex' }, schedule: { rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+      target: { kind: 'newQuickChat', teamId: 'team-app', selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } }, schedule: { rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
     });
     expect(wrapper.findAll('textarea')).toHaveLength(1);
-    expect(wrapper.find('[aria-label="Coding agent"]').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(true);
     expect(wrapper.findAll('.form-section h3').map(label => label.text())).toEqual(['Run in', 'Schedule', 'Model']);
     expect(wrapper.get('.automation-editor__header').text()).toContain('Enabled');
     expect(wrapper.get('[aria-label="Name"]').attributes('placeholder')).toBe('Name this automation');
@@ -47,7 +47,7 @@ describe('AutomationEditor', () => {
     await wrapper.get('textarea').setValue('Update notes');
     await choose(wrapper, 'Conversation', 'Daily notes');
     expect(wrapper.find('[aria-label="Model"]').exists()).toBe(false);
-    expect(wrapper.find('[aria-label="Coding agent"]').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(false);
     expect(wrapper.find('[aria-label="Effort"]').exists()).toBe(false);
     expect(wrapper.findAll('.form-section h3').map(label => label.text())).toEqual(['Run in', 'Schedule']);
     expect(wrapper.text()).toContain('Uses this conversation’s context');
@@ -57,7 +57,7 @@ describe('AutomationEditor', () => {
     await wrapper.get('form').trigger('submit');
     expect(wrapper.emitted('submit')?.[1]?.[0]).toMatchObject({ target: { kind: 'agent', agentId: 'agent-dina' } });
     await choose(wrapper, 'Conversation', 'New Quick Chat each run');
-    expect(wrapper.find('[aria-label="Coding agent"]').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(true);
     await wrapper.setProps({ agents: [] });
     await choose(wrapper, 'Conversation', 'New Quick Chat each run');
     await wrapper.get('form').trigger('submit');
@@ -66,7 +66,7 @@ describe('AutomationEditor', () => {
 
   it('retains configured model and effort on edit, and surfaces catalog and save errors', async () => {
     const automation: Automation = { id: 'auto', name: 'Check', enabled: true, prompt: 'Check tasks',
-      target: { kind: 'newQuickChat', teamId: 'team-app', backend: 'codex', model: 'chosen', reasoningEffort: 'high' },
+      target: { kind: 'newQuickChat', teamId: 'team-app', selection: { backend: 'codex', model: 'chosen', reasoningEffort: 'high', serviceTier: null } },
       schedule: { intervalMinutes: 90 }, executionLog: [], createdAt: '', updatedAt: '' };
     const wrapper = editor(automation);
     await wrapper.setProps({ listModels: vi.fn().mockRejectedValue(new Error('offline')), error: 'Could not save' });
@@ -79,17 +79,19 @@ describe('AutomationEditor', () => {
     expect(wrapper.emitted('submit')).toHaveLength(1);
   });
 
-  it('uses short effort names instead of provider descriptions', async () => {
+  it('saves the shared picker model, effort and service tier together', async () => {
     const withModels = mount(AutomationEditor, { attachTo: document.body,
       props: { mode: 'create', agents, teams: snapshot.teams, listModels: async () => [{ id: 'model', model: 'model', displayName: 'Model',
-        supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'Greater reasoning depth for complex problems' }] }] },
-      global: { components: { ElInput, ElInputNumber, ElSelect, ElOption, ElOptionGroup, ElSwitch, ElButton } } });
+        supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'Greater reasoning depth for complex problems' }], serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }] }] },
+      global: { components: { ElInput, ElInputNumber, ElSelect, ElOption, ElOptionGroup, ElSwitch, ElButton, ElPopover, ElTabs, ElTabPane } } });
     await flushPromises();
-    await choose(withModels, 'Model', 'Model');
-    await choose(withModels, 'Reasoning effort', 'high');
+    await withModels.get('[aria-label="Coding agent and model"]').trigger('click');
+    await flushPromises();
+    [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent?.trim() === 'fast')!.click();
+    await flushPromises();
     await withModels.get('textarea').setValue('Check tasks');
     await withModels.get('form').trigger('submit');
-    expect(withModels.emitted('submit')?.[0]?.[0]).toMatchObject({ target: { model: 'model', reasoningEffort: 'high' } });
+    expect(withModels.emitted('submit')?.[0]?.[0]).toMatchObject({ target: { selection: { backend: 'codex', model: 'model', reasoningEffort: 'high', serviceTier: 'fast' } } });
   });
 
   it('initializes the selected conversation team and clears the conversation when changing teams', async () => {
@@ -98,7 +100,7 @@ describe('AutomationEditor', () => {
     const wrapper = mount(AutomationEditor, { attachTo: document.body,
       props: { mode: 'edit', automation, teams: [...snapshot.teams, { id: 'other-team', name: 'Other team', agentIds: ['other-agent'] }],
         agents: [...agents, { ...agents[0]!, id: 'other-agent', teamId: 'other-team', name: 'Other worker' }] },
-      global: { components: { ElInput, ElInputNumber, ElSelect, ElOption, ElOptionGroup, ElSwitch, ElButton } } });
+      global: { components: { ElInput, ElInputNumber, ElSelect, ElOption, ElOptionGroup, ElSwitch, ElButton, ElPopover, ElTabs, ElTabPane } } });
     await flushPromises();
     expect(wrapper.get('#automation-team').element.closest('.el-select')?.textContent).toContain('Other team');
     await wrapper.get('form').trigger('submit');

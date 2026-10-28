@@ -9,6 +9,7 @@ import { CompanionFrameDecoder, companionFrameLimit, companionUpdatesProtocol, c
 const transport = vi.hoisted(() => ({ dial: vi.fn(), stop: vi.fn(), connections: [] as any[], requests: [] as { method: string; args: any }[], rendezvous: [] as { code: string }[], known: '', phone: '', publish: (_update: unknown) => {}, endUpdates: () => {}, response: (method: string, args: any): any => ({}) }));
 vi.mock('libp2p', () => ({ createLibp2p: async (config: { privateKey: Parameters<typeof peerIdFromPrivateKey>[0] }) => { transport.phone = peerIdFromPrivateKey(config.privateKey).toString(); return { dialProtocol: transport.dial, getConnections: () => transport.connections, stop: transport.stop, addEventListener: vi.fn() }; } }));
 import { createRelayConnector } from '../relay-connector';
+import { createEngine } from '../engine';
 import { normalizePairingCode } from '@workspace/core/companion-pairing';
 import type { ProtectedVault } from '../protected-storage';
 import { setConnectionDiagnosticSink } from '../connection-diagnostics';
@@ -72,9 +73,9 @@ describe('native relay host adapter', () => {
     };
     const session = await connector.connect(host.hostId);
     try {
-      await expect(session.sendPrompt(target, 'Continue', clientCommandId, { followUpBehavior: mode, model: 'm' })).resolves.toBeUndefined();
+      await expect(session.sendPrompt(target, 'Continue', clientCommandId, { followUpBehavior: mode, selection: { model: 'm' } })).resolves.toBeUndefined();
       expect(transport.requests.filter(request => request.method === 'prompt.submit').map(({ args }) => args)).toStrictEqual([
-        { target, text: 'Continue', clientCommandId, options: { model: 'm', ...(mode === 'queue' ? { followUpBehavior: 'queue' } : {}) } },
+        { target, text: 'Continue', clientCommandId, options: { ...(mode === 'queue' ? { followUpBehavior: 'queue' } : {}), selection: { model: 'm' } } },
       ]);
     } finally { session.close(); await connector.dispose!(); }
   });
@@ -376,14 +377,16 @@ describe('native relay host adapter', () => {
     expect(transport.requests.at(-1)).toMatchObject({ method: 'skills.list', args: { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) } });
     expect(await session.listPlugins!('agent')).toStrictEqual([{ id: 'github', name: 'github', displayName: 'GitHub', enabled: true }]);
     expect(transport.requests.at(-1)).toMatchObject({ method: 'plugins.list', args: { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) } });
-    await session.selectModel!('agent', { model: 'm', reasoningEffort: 'high', serviceTier: null });
+    await session.selectModel!('agent', {backend: 'codex',  model: 'm', reasoningEffort: 'high', serviceTier: null });
     const selectedTarget = { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) };
-    await session.sendPrompt(selectedTarget, 'Go', randomUUID(), { model: 'm', planMode: true }, [{ type: 'image', name: 'photo.jpg', mimeType: 'image/jpeg', data: 'AAAA' }]);
+    await session.sendPrompt(selectedTarget, 'Go', randomUUID(), { planMode: true, selection: { model: 'm' } }, [{ type: 'image', name: 'photo.jpg', mimeType: 'image/jpeg', data: 'AAAA' }]);
     expect(transport.requests.find((request) => request.method === 'models.list')?.args).toStrictEqual(selectedTarget);
-    expect(transport.requests.find((request) => request.method === 'agent.model.select')?.args).toStrictEqual({ target: selectedTarget, model: 'm', reasoningEffort: 'high', serviceTier: null });
-    expect(transport.requests.find((request) => request.method === 'prompt.submit')?.args).toMatchObject({ target: selectedTarget, text: 'Go', options: { model: 'm', planMode: true }, attachments: [{ name: 'photo.jpg', data: 'AAAA' }] });
+    expect(transport.requests.find((request) => request.method === 'agent.model.select')?.args).toStrictEqual({ target: selectedTarget, selection: { backend: 'codex', model: 'm', reasoningEffort: 'high', serviceTier: null } });
+    expect(transport.requests.find((request) => request.method === 'prompt.submit')?.args).toMatchObject({ target: selectedTarget, text: 'Go', options: { planMode: true, selection: { model: 'm' } }, attachments: [{ name: 'photo.jpg', data: 'AAAA' }] });
     await session.gitDiff!('agent', { type: 'staged' });
     expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.git.diff', args: { target: selectedTarget, scope: { type: 'staged' } } });
+    await session.previewFile!('agent', { path: 'src/app.ts', action: 'edit', turnId: 'turn' });
+    expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.file.preview', args: { target: selectedTarget, input: { path: 'src/app.ts', action: 'edit', turnId: 'turn' } } });
     await session.startReview!(selectedTarget, { scope: { type: 'uncommitted' }, threadMode: 'independent' });
     expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.review.start', args: { target: selectedTarget, input: { scope: { type: 'uncommitted' }, threadMode: 'independent' } } });
     await session.interrupt!('agent'); await session.setApprovalPreset!('agent', 'full-access'); await session.setPermissionMode!('agent', 'acceptEdits');
@@ -424,9 +427,21 @@ describe('native relay host adapter', () => {
     expect(saved).not.toContain('K7QD'); expect(saved).not.toContain('M2XP');
     expect(JSON.parse(saved)).toStrictEqual([{ v: 1, relayOrigin: 'wss://relay.example', relayPeerId: host.relay.peerId, hostId: host.hostId, name: 'Paired laptop' }]);
     expect(storage.values.has('device-identity')).toBe(true);
-    const restored = connect(storage); await restored.initialize!();
-    expect(restored.laptops).toEqual([{ id: host.hostId, name: 'Paired laptop' }]);
-    await connector.dispose!(); await restored.dispose!();
+    const identity = storage.values.get('device-identity');
+    const restored = connect(storage);
+    storage.read.mockRejectedValueOnce(new Error('Device storage locked'));
+    const engine = createEngine({ connector: restored, initialActive: false, post: () => {} });
+    try {
+      await engine.start();
+      expect(engine.snapshot().startup).toBe('error');
+      expect(storage.values.get('paired-hosts')).toBe(saved);
+      transport.response = () => ({ teams: [], agents: [] });
+      await engine.dispatch({ type: 'activity', active: true });
+      expect(engine.snapshot()).toMatchObject({ startup: 'ready', connection: 'connected', laptopId: host.hostId,
+        laptops: [{ id: host.hostId, name: 'Paired laptop' }] });
+      expect(storage.values.get('paired-hosts')).toBe(saved);
+      expect(storage.values.get('device-identity')).toBe(identity);
+    } finally { engine.dispose(); await connector.dispose!(); await restored.dispose!(); }
   });
   it('refuses malformed or unavailable codes and never saves a host before approval', async () => {
     const storage = vault(); const connector = connect(storage);
@@ -517,7 +532,7 @@ describe('native relay host adapter', () => {
     const session = await connector.connect(host.hostId); await session.getWorkspace();
     vi.useFakeTimers();
     try {
-      const chat = { teamId: 'team', repositoryId: 'repo', backend: 'claude' as const, worktree: { branchName: 'feature' } };
+      const chat = { teamId: 'team', repositoryId: 'repo', worktree: { branchName: 'feature' }, selection: { backend: 'claude' as const } };
       const created = session.createChat!(chat);
       await vi.advanceTimersByTimeAsync(3000);
       expect(await created).toBe('new-chat');
@@ -551,7 +566,7 @@ describe('native relay host adapter', () => {
     expect(await session.repositoryBranches!('team', 'gitlab', 'repo:opaque')).toStrictEqual(projectBranches);
     expect(transport.requests.at(-1)).toMatchObject({ method: 'project.repositories.branches', args: { teamId: 'team', provider: 'gitlab', repositoryId: 'repo:opaque' } });
     transport.response = method => method === 'project.create' ? { creationId: 'project' } : { state: 'success', agentId: 'project-agent' };
-    const projectInput = { teamId: 'team', source: 'github' as const, value: 'org/repo', backend: 'claude' as const, branch: 'feature/mobile' };
+    const projectInput = { teamId: 'team', source: 'github' as const, value: 'org/repo', branch: 'feature/mobile', selection: { backend: 'claude' as const } };
     expect(await session.createProject!(projectInput)).toBe('project-agent');
     expect(transport.requests.find(request => request.method === 'project.create')?.args).toStrictEqual(projectInput);
     transport.response = method => method === 'project.local.list' ? [{ id: 'opaque-repository', name: 'Local repository' }]

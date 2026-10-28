@@ -28,7 +28,8 @@ it("uses measured values as the donut denominator without drawing unknown measur
       tokens: null,
     },
   ];
-  const wrapper = mount(UsageShare, { props: { series, measure: "total" } });
+  const wrapper = mount(UsageShare, { props: { series: [...series].reverse(), measure: "total" } });
+  expect(wrapper.findAll('li strong').map(row => row.text())).toStrictEqual(['Model A', 'Model B', 'Unknown model']);
   expect(wrapper.findAll("circle[tabindex]")).toHaveLength(2);
   expect(wrapper.findAll("circle[tabindex]")[0]!.attributes("aria-label")).toBe(
     "Model A: 300 · 75%",

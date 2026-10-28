@@ -229,7 +229,7 @@ describe('app startup', () => {
     wrapper.unmount();
   });
 
-  it.each(['rejected', 'disconnected'] as const)('shows a connection problem, not onboarding, after a %s initial snapshot and recovers', async mode => {
+  it.each(['rejected', 'disconnected'] as const)('keeps loading through a %s initial snapshot and recovers automatically', async mode => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
     const { api, emit } = createClientApiMock(snapshot);
@@ -239,7 +239,9 @@ describe('app startup', () => {
     await flushPromises();
 
     expect(wrapper.find('.codex-login--sign-in').exists()).toBe(false);
-    expect(wrapper.get('[role="status"]').text()).toContain('daemon socket is not connected.');
+    expect(wrapper.find('.codex-login--connecting').exists()).toBe(true);
+    expect(wrapper.find('.app-shell__connection-status').exists()).toBe(false);
+    expect(wrapper.find('button').exists()).toBe(false);
     expect(window.sessionStorage.getItem('app:firstRunOnboardingStage')).toBeNull();
     emit({ type: 'client.connectionChanged', source: 'client', payload: { status: 'connected' }, seq: 0, occurredAt: '2026-10-06T00:00:00Z' });
     await flushPromises();
@@ -267,18 +269,29 @@ describe('app startup', () => {
     wrapper.unmount();
   });
 
-  it('allows retry after startup fails without waiting for a transport event', async () => {
+  it('explains delayed startup after fifteen seconds and recovers without interaction', async () => {
+    vi.useFakeTimers();
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
-    const { api } = createClientApiMock(snapshot);
+    const { api, emit } = createClientApiMock(snapshot);
     api.getSnapshotState.mockRejectedValueOnce(new Error('snapshot unavailable'));
     const wrapper = await mountStartup(api);
-    await flushPromises();
-    await wrapper.get('button').trigger('click');
-    await flushPromises();
-    expect(wrapper.find('.codex-login').exists()).toBe(false);
-    expect(wrapper.text()).toContain('Dina');
-    wrapper.unmount();
+    try {
+      await flushPromises();
+      expect(wrapper.find('.codex-login--connecting').exists()).toBe(true);
+      expect(wrapper.find('button').exists()).toBe(false);
+      emit({ type: 'client.connectionChanged', source: 'client', payload: { status: 'reconnecting' }, seq: 0, occurredAt: '2026-10-06T00:00:00Z' });
+      await vi.advanceTimersByTimeAsync(14_999);
+      expect(wrapper.text()).not.toContain('Retrying automatically');
+      await vi.advanceTimersByTimeAsync(1);
+      expect(wrapper.find('.codex-login--connecting').exists()).toBe(true);
+      expect(wrapper.get('[role="status"]').text()).toContain('Still connecting to the daemon. Retrying automatically…');
+      expect(wrapper.find('button').exists()).toBe(false);
+      emit({ type: 'client.connectionChanged', source: 'client', payload: { status: 'connected' }, seq: 0, occurredAt: '2026-10-06T00:00:15Z' });
+      await flushPromises();
+      expect(wrapper.find('.codex-login').exists()).toBe(false);
+      expect(wrapper.text()).toContain('Dina');
+    } finally { wrapper.unmount(); vi.useRealTimers(); }
   });
 
   it('still offers onboarding for a confirmed fresh install', async () => {

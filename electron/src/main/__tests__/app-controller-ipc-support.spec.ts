@@ -362,12 +362,7 @@ describe('AppController', () => {
     };
     const request = vi.fn().mockResolvedValue(backendSnapshot);
     const controller = new AppController(snapshot, createBackendClient({ request }));
-    const createInput: CreateAgentInput = {
-      name: 'Backend Dina',
-      folder: '/Users/nbonamy/src/agent-workspace',
-      backend: 'codex',
-      teamId: 'team-app',
-    };
+    const createInput: CreateAgentInput = { name: 'Backend Dina', folder: '/Users/nbonamy/src/agent-workspace', teamId: 'team-app', selection: { backend: 'codex' } };
     const updateInput: UpdateAgentInput = {
       id: 'agent-dina',
       name: 'Backend Dina',
@@ -497,14 +492,14 @@ describe('AppController', () => {
 
     await expect(listSshHosts(controller)).resolves.toBe(hosts);
     await expect(addSshConnection(controller, input)).resolves.toBe(backendSnapshot);
-    await expect(checkRemoteConnection(controller, 'connection-devbox')).resolves.toBe(backendSnapshot);
+    await expect(checkRemoteConnection(controller, 'connection-devbox', ['claude'])).resolves.toBe(backendSnapshot);
     await expect(updateRemoteConnection(controller, 'connection-devbox', { sourceFolderPath: '~/src' })).resolves.toBe(backendSnapshot);
     await expect(listSourceFolders(controller, { remoteConnectionId: 'connection-devbox', path: '/home/nicolas' })).resolves.toBe(folders);
     await expect(removeRemoteConnection(controller, 'connection-devbox')).resolves.toBe(backendSnapshot);
 
     expect(request).toHaveBeenCalledWith('connections/sshHosts/list', undefined);
     expect(request).toHaveBeenCalledWith('connections/ssh/create', { input });
-    expect(request).toHaveBeenCalledWith('connections/runtime/sync', { connectionId: 'connection-devbox' });
+    expect(request).toHaveBeenCalledWith('connections/runtime/sync', { connectionId: 'connection-devbox', backends: ['claude'] });
     expect(request).toHaveBeenCalledWith('connections/update', {
       connectionId: 'connection-devbox',
       input: { sourceFolderPath: '~/src' },
@@ -566,7 +561,7 @@ describe('AppController', () => {
     const createInput: CreateAutomationInput = {
       name: 'GitHub bugs',
       enabled: true,
-      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-app', backend: 'codex' as const },
+      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-app', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
       schedule: { intervalMinutes: 60 },
     };
@@ -605,7 +600,7 @@ describe('AppController', () => {
     const createInput: CreateAutomationInput = {
       name: 'Remote bugs',
       enabled: true,
-      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-remote', backend: 'codex' as const },
+      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-remote', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
       schedule: { intervalMinutes: 60 },
     };
@@ -629,7 +624,7 @@ function automationFixture(teamId = 'team-app'): Automation {
     id: 'automation-bugs',
     name: 'GitHub bugs',
     enabled: true,
-    prompt: 'Check tasks', target: { kind: 'newQuickChat', teamId, backend: 'codex' },
+    prompt: 'Check tasks', target: { kind: 'newQuickChat', teamId, selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } },
     schedule: { intervalMinutes: 60 },
     executionLog: [],
     createdAt: '2026-06-09T12:00:00.000Z',
@@ -877,10 +872,10 @@ async function addSshConnection(controller: AppController, input: AddSshConnecti
   }).addSshConnection(input);
 }
 
-async function checkRemoteConnection(controller: AppController, connectionId: string): Promise<AppSnapshot> {
+async function checkRemoteConnection(controller: AppController, connectionId: string, backends: import('@workspace/core/contracts').AgentBackend[]): Promise<AppSnapshot> {
   return (controller as unknown as {
-    checkRemoteConnection(connectionId: string): Promise<AppSnapshot>;
-  }).checkRemoteConnection(connectionId);
+    checkRemoteConnection(connectionId: string, inspectOnly?: boolean, backends?: import('@workspace/core/contracts').AgentBackend[]): Promise<AppSnapshot>;
+  }).checkRemoteConnection(connectionId, false, backends);
 }
 
 async function listSourceFolders(controller: AppController, input: { remoteConnectionId: string; path: string }) {

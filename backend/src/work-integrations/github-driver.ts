@@ -6,7 +6,7 @@ import { requireWorkProviderToken, type WorkProviderCredential, type WorkProvide
 const GITHUB_API_BASE_URL = 'https://api.github.com';
 const GITHUB_OAUTH_BASE_URL = 'https://github.com/login';
 const GITHUB_API_VERSION = '2022-11-28';
-const DEFAULT_SCOPE = 'repo read:user';
+const DEFAULT_SCOPE = 'repo read:user read:org';
 
 export class GitHubWorkProviderDriver implements WorkProviderDriver {
   readonly provider = 'github' as const;
@@ -211,27 +211,155 @@ export class GitHubWorkProviderDriver implements WorkProviderDriver {
   }
 
   async listGlobalItems(token: WorkProviderCredential, query: GlobalWorkItemQuery = {}): Promise<WorkItemPage> {
-    const page = query.cursor === undefined ? 1 : Number(query.cursor);
+    const viewer = query.repositoryScope ? token.accountLabel ?? await this.currentAccountLabel(token) : token.accountLabel;
+    const owners = query.repositoryScope ? await this.managedRepositoryOwners(token, viewer!) : undefined;
+    return this.listGlobalItemsPage(viewer ? { ...token, accountLabel: viewer } : token, query, owners);
+  }
+
+  private async managedRepositoryOwners(token: WorkProviderCredential, viewer: string): Promise<string[]> {
+    const organizations = new Set<string>();
+    const visited = new Set<string>();
+    let after: string | null = null;
+    do {
+      // App user tokens can return an empty REST membership list despite an
+      // organization-admin role. Organization-owned repository metadata exposes
+      // that role without relying on the membership-list permission boundary.
+      const response = await this.apiRequest(token, '/graphql', { method: 'POST', body: JSON.stringify({
+        query: `query AdministeredRepositoryOwners($after: String) {
+          viewer { login repositories(first: 100, after: $after, affiliations: [ORGANIZATION_MEMBER]) {
+            nodes { owner { login ... on Organization { viewerCanAdminister } } }
+            pageInfo { hasNextPage endCursor }
+          } }
+        }`, variables: { after },
+      }) });
+      const user = isRecord(response) && isRecord(response.data) ? response.data.viewer : null;
+      const repositories = isRecord(user) ? user.repositories : null;
+      if (!isRecord(response) || response.errors || !isRecord(user) || typeof user.login !== 'string'
+        || user.login.toLowerCase() !== viewer.toLowerCase() || !isRecord(repositories)
+        || !Array.isArray(repositories.nodes) || !isRecord(repositories.pageInfo)
+        || typeof repositories.pageInfo.hasNextPage !== 'boolean') {
+        throw new Error('GitHub could not determine administered organizations. Check the GitHub connection.');
+      }
+      for (const node of repositories.nodes) {
+        const owner = isRecord(node) ? node.owner : null;
+        if (!isRecord(owner) || typeof owner.login !== 'string' || !owner.login.trim()
+          || typeof owner.viewerCanAdminister !== 'boolean') throw new Error('GitHub returned invalid organization ownership.');
+        if (owner.viewerCanAdminister) organizations.add(owner.login.toLowerCase());
+      }
+      const info = repositories.pageInfo;
+      after = info.hasNextPage ? typeof info.endCursor === 'string' && info.endCursor ? info.endCursor : '' : null;
+      if (after === '' || after !== null && visited.has(after)) throw new Error('GitHub organization pagination could not complete.');
+      if (after) visited.add(after);
+    } while (after);
+    organizations.delete(viewer.toLowerCase());
+    return [viewer.toLowerCase(), ...[...organizations].sort()];
+  }
+
+  private async listGlobalItemsPage(token: WorkProviderCredential, query: GlobalWorkItemQuery, owners?: string[]): Promise<WorkItemPage> {
+    if ((query.repositoryScope === 'owned' || query.involvement) && query.repositoryScope !== 'notOwned' && (!query.kind || query.kind === 'all')) {
+      return this.listMixedSearchItems(token, query, owners);
+    }
+    let page = query.cursor === undefined ? 1 : Number(query.cursor);
     if (!Number.isSafeInteger(page) || page < 1) throw new Error('Invalid work item page.');
     const pageSize = Math.max(1, Math.min(100, Math.trunc(query.pageSize ?? 50)));
+    if (query.repositoryScope !== 'notOwned' && (query.repositoryScope || query.involvement || (query.kind && query.kind !== 'all'))) {
+      const qualifiers: string[] = [];
+      if (query.kind && query.kind !== 'all') qualifiers.push(query.kind === 'issue' ? 'is:issue' : 'is:pull-request');
+      if ((query.state ?? 'open') !== 'all') qualifiers.push(`is:${query.state ?? 'open'}`);
+      if (query.repositoryScope || query.involvement || query.assignment === 'viewer') {
+        const viewer = token.accountLabel ?? await this.currentAccountLabel(token);
+        if (query.repositoryScope === 'owned') qualifiers.push(`user:${viewer}`, ...(owners ?? []).slice(1).map(owner => `org:${owner}`));
+        if (query.involvement || query.assignment === 'viewer') {
+          const field = query.involvement === 'author' ? 'author' : query.involvement === 'reviewer' ? 'review-requested' : 'assignee';
+          qualifiers.push(`${field}:${viewer}`);
+        }
+      }
+      const params = new URLSearchParams({ q: qualifiers.join(' '), sort: 'updated', order: 'desc', per_page: String(pageSize), page: String(page) });
+      const response = await this.apiPageRequest(token, `/search/issues?${params}`);
+      if (!isRecord(response.value) || !Array.isArray(response.value.items)) throw new Error('GitHub returned an invalid work item search response.');
+      return {
+        items: response.value.items.map(githubAssignedIssue).filter((item): item is WorkItem => item !== null)
+          .map(item => ({ ...item, assignedToViewer: Boolean(token.accountLabel && item.assignees?.includes(token.accountLabel)) })),
+        ...(linkedPageUrl(response.linkHeader, 'next') ? { nextCursor: String(page + 1) } : {}),
+        ...(typeof response.value.total_count === 'number' ? { totalItems: response.value.total_count } : {}),
+      };
+    }
     const assignment = query.assignment === 'viewer' ? 'assigned' : 'all';
     const state = query.state ?? 'open';
-    const path = `/issues?filter=${assignment}&state=${state}&sort=updated&direction=desc&per_page=${pageSize}&page=${page}`;
-    const response = await this.apiPageRequest(
-      token,
-      path,
-    );
-    if (!Array.isArray(response.value)) {
-      throw new Error('GitHub returned an invalid global issues response.');
+    const outsideOwners = query.repositoryScope === 'notOwned' ? new Set(owners) : null;
+    // Keep the account's accessible work feed as the boundary. A negative owner
+    // search would also include unrelated public repositories across GitHub.
+    for (let scanned = 0; scanned < 10_000; scanned++, page++) {
+      const path = `/issues?filter=${assignment}&state=${state}&sort=updated&direction=desc&per_page=${pageSize}&page=${page}`;
+      const response = await this.apiPageRequest(token, path);
+      if (!Array.isArray(response.value)) throw new Error('GitHub returned an invalid global issues response.');
+      const items = response.value.map(githubAssignedIssue)
+        .filter((item): item is WorkItem => item !== null)
+        .filter(item => query.kind === undefined || query.kind === 'all' || item.kind === query.kind)
+        .filter(item => !outsideOwners || !outsideOwners.has(item.sourceId.split('/')[0]!.toLowerCase()));
+      const next = linkedPageUrl(response.linkHeader, 'next');
+      if (outsideOwners && !items.length && next) continue;
+      return {
+        items: items.map(item => ({ ...item, assignedToViewer: Boolean(token.accountLabel && item.assignees?.includes(token.accountLabel)) })),
+        ...(next ? { nextCursor: String(page + 1) } : {}),
+      };
     }
-    const items = response.value
-      .map(githubAssignedIssue)
-      .filter((item): item is WorkItem => item !== null)
-      .filter((item) => query.kind === undefined || query.kind === 'all' || item.kind === query.kind);
-    return {
-      items: items.map(item => ({ ...item, assignedToViewer: Boolean(token.accountLabel && item.assignees?.includes(token.accountLabel)) })),
-      ...(linkedPageUrl(response.linkHeader, 'next') ? { nextCursor: String(page + 1) } : {}),
+    throw new Error('GitHub pagination could not complete. Narrow the backlog and retry.');
+  }
+
+  private async listMixedSearchItems(token: WorkProviderCredential, query: GlobalWorkItemQuery, owners?: string[]): Promise<WorkItemPage> {
+    const viewer = token.accountLabel ?? await this.currentAccountLabel(token);
+    const size = Math.max(1, Math.min(100, Math.trunc(query.pageSize ?? 50)));
+    const signature = JSON.stringify([viewer, query.repositoryScope, query.involvement, query.assignment ?? 'all', query.state ?? 'open', size, owners]);
+    if (!Number.isFinite(size)) throw new Error('Invalid work item page size.');
+    type Position = { page: number; offset: number } | null;
+    let cursor: { signature: string; issue: Position; pullRequest: Position } = {
+      signature, issue: { page: 1, offset: 0 }, pullRequest: { page: 1, offset: 0 },
     };
+    if (query.cursor !== undefined) {
+      const validPosition = (value: unknown): boolean => value === null || (isRecord(value)
+        && Number.isSafeInteger(value.page) && Number(value.page) >= 1
+        && Number.isSafeInteger(value.offset) && Number(value.offset) >= 0 && Number(value.offset) < size);
+      try {
+        cursor = JSON.parse(Buffer.from(query.cursor, 'base64url').toString('utf8'));
+        if (!cursor || cursor.signature !== signature || !validPosition(cursor.issue) || !validPosition(cursor.pullRequest)) throw new Error();
+      } catch { throw new Error('Invalid GitHub work item cursor. Refresh the feed.'); }
+    }
+    const feeds = (['issue', 'pullRequest'] as const).map(kind => ({
+      kind, position: cursor[kind], items: [] as WorkItem[], nextPage: undefined as number | undefined, loaded: false,
+    }));
+    const load = async (feed: typeof feeds[number]) => {
+      while (feed.position && !feed.loaded) {
+        const result = await this.listGlobalItemsPage({ ...token, accountLabel: viewer }, {
+          ...query, kind: feed.kind, cursor: String(feed.position.page), pageSize: size,
+        }, owners);
+        feed.items = result.items;
+        feed.nextPage = result.nextCursor ? Number(result.nextCursor) : undefined;
+        feed.loaded = true;
+        if (feed.position.offset >= feed.items.length) {
+          feed.position = feed.nextPage ? { page: feed.nextPage, offset: 0 } : null;
+          feed.loaded = false;
+        }
+      }
+    };
+    const items: WorkItem[] = [];
+    // Merge two sorted streams. Keep only page positions in the cursor; partially
+    // consumed pages are re-read rather than embedding work items or holding state.
+    while (items.length < size) {
+      await Promise.all(feeds.map(load));
+      const available = feeds.filter(feed => feed.position !== null);
+      available.sort((a, b) => b.items[b.position!.offset]!.updatedAt.localeCompare(a.items[a.position!.offset]!.updatedAt));
+      const feed = available[0];
+      if (!feed?.position) break;
+      items.push(feed.items[feed.position.offset]!);
+      feed.position.offset += 1;
+      if (feed.position.offset === feed.items.length) {
+        feed.position = feed.nextPage ? { page: feed.nextPage, offset: 0 } : null;
+        feed.loaded = false;
+      }
+    }
+    const next = { signature, issue: feeds[0]!.position, pullRequest: feeds[1]!.position };
+    return { items, ...(next.issue || next.pullRequest ? { nextCursor: Buffer.from(JSON.stringify(next)).toString('base64url') } : {}) };
   }
 
   async listItems(token: WorkProviderCredential, repositoryId: string, query: WorkItemQuery = {}): Promise<WorkItem[]> {

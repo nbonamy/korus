@@ -110,6 +110,9 @@ export type WorkItemQuery = {
 
 export type GlobalWorkItemQuery = WorkItemQuery & {
   assignment?: 'all' | 'viewer';
+  involvement?: 'author' | 'reviewer';
+  /** Owned includes personal repositories and administered organizations; notOwned excludes both. */
+  repositoryScope?: 'owned' | 'notOwned';
   cursor?: string;
   pageSize?: number;
 };
@@ -148,7 +151,7 @@ export type WorkItem = {
 export type AutomationTarget =
   | { kind: 'agent'; agentId: string }
   | { kind: 'quickChat'; agentId: string }
-  | { kind: 'newQuickChat'; teamId: string; backend: import('./shared').AgentBackend; model?: string; reasoningEffort?: string };
+  | { kind: 'newQuickChat'; teamId: string; selection: import('./execution').ExecutionSelectionOverrides & Pick<import('./execution').ExecutionSelection, 'backend'> };
 
 export type AutomationSchedule = { intervalMinutes: number } | { rrule: string; timeZone: string };
 

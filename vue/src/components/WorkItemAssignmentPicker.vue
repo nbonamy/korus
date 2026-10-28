@@ -47,7 +47,7 @@
         <section class="work-item-assignment-picker__section">
           <h3 class="app-section-label">{{ t('repositoryBacklog.session') }}</h3>
           <div v-if="destination === 'new'" class="work-item-assignment-picker__model-selectors">
-            <BackendModelSelector v-model:backend="backend" v-model:model="model" v-model:reasoning-effort="reasoningEffort" :agent-id="modelCatalogAgentId" :disabled="busy" />
+            <BackendModelSelector v-model:selection="executionSelection" :agent-id="modelCatalogAgentId" :disabled="busy" />
           </div>
           <el-select
             v-else
@@ -106,6 +106,7 @@
 </template>
 
 <script setup lang="ts">
+import { useExecutionSelection } from '../execution-selection';
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { IconAlertTriangle, IconCopy, IconGitBranch, IconGitPullRequest, IconRobotFace } from '@tabler/icons-vue';
@@ -114,8 +115,7 @@ import type { WorkItemAssignmentAction } from '@workspace/core/work-item-prompts
 import WorktreeReusePrompt from './WorktreeReusePrompt.vue';
 import BackendModelSelector from './BackendModelSelector.vue';
 import { useBackendChoices, useNewAgentBackend } from './backend-selection';
-const backend = defineModel<import('@workspace/core/contracts').AgentBackend>('backend');
-useNewAgentBackend(backend, useBackendChoices());
+const backendBinding = defineModel<import('@workspace/core/contracts').AgentBackend>('backend');
 
 export type WorkItemAssignmentDestination = 'existing' | 'new';
 
@@ -127,9 +127,7 @@ export type WorkItemAssignmentSession = {
 
 export type WorkItemAssignmentSelection = {
   isCurrent?: () => boolean;
-  backend?: import('@workspace/core/contracts').AgentBackend;
-  model?: string;
-  reasoningEffort?: string;
+  selection?: import('@workspace/core/contracts/execution').ExecutionSelection;
   action: WorkItemAssignmentAction;
   agentId?: string;
   destination: WorkItemAssignmentDestination;
@@ -158,11 +156,14 @@ const emit = defineEmits<{
   submit: [selection: WorkItemAssignmentSelection];
 }>();
 
+const { selection: executionSelection, backend } = useExecutionSelection();
+if (backendBinding.value) backend.value = backendBinding.value;
+watch(backendBinding, value => { backend.value = value; });
+watch(backend, value => { backendBinding.value = value; }, { flush: 'sync' });
+useNewAgentBackend(backend, useBackendChoices());
 const { t } = useI18n();
 const destination = ref<WorkItemAssignmentDestination>('new');
 const selectedAgentId = ref('');
-const model = ref('');
-const reasoningEffort = ref('');
 const modelCatalogAgentId = computed(() => props.modelAgentId || props.sessions[0]?.agentId || '');
 const reuseAction = ref<WorkItemAssignmentAction | 'custom' | null>(null);
 const secondaryAction = computed<WorkItemAssignmentAction>(() => props.item.kind === 'pullRequest' ? 'addressFeedback' : 'investigate');
@@ -217,9 +218,7 @@ function confirmReuse(): void {
 function selection(reuseExisting = false): Omit<WorkItemAssignmentSelection, 'action'> {
   return {
     destination: destination.value,
-    ...(destination.value === 'new' ? { backend: backend.value } : {}),
-    ...(destination.value === 'new' && model.value ? { model: model.value } : {}),
-    ...(destination.value === 'new' && reasoningEffort.value ? { reasoningEffort: reasoningEffort.value } : {}),
+    ...(destination.value === 'new' ? { selection: executionSelection.value ? { ...executionSelection.value } : undefined } : {}),
     ...(destination.value === 'existing' ? { agentId: selectedAgentId.value } : {}),
     item: props.item,
     ...(reuseExisting ? { reuseExisting: true } : {}),

@@ -18,7 +18,7 @@
       class="conversation-pane__surface"
       :controller="controller"
       :escape-interrupt="keyboardActive"
-      :has-composer-context="textAnnotations.length > 0 || visualizationAnnotations.length > 0"
+      :has-composer-context="textAnnotations.length > 0 || visualizationAnnotations.length > 0 || codeAnnotations.length > 0"
       :message-text-selection="true"
       :transform-message="transformConversationMessage"
       :tool-visibility="isAppToolVisible"
@@ -189,6 +189,7 @@ import { canSelectAgentBackend } from '@workspace/core/agent-backends';
 import { ElMessage } from 'element-plus';
 import type { ChatTextAnnotation } from './use-chat-text-annotations';
 import type { VisualizationAnnotation } from './use-visualization-annotations';
+import { describeCodeRange, type CodeAnnotation } from './use-code-annotations';
 import type { CodeReviewFinding } from '@workspace/core/code-review';
 import {
   presentCollaborationMessage,
@@ -222,6 +223,7 @@ const props = withDefaults(defineProps<{
   attachmentAnnotationCounts?: Readonly<Record<string, number>>;
   textAnnotations?: readonly ChatTextAnnotation[];
   visualizationAnnotations?: readonly VisualizationAnnotation[];
+  codeAnnotations?: readonly CodeAnnotation[];
   reviewFinding?: CodeReviewFinding | null;
   plan?: ThreadPlan | null;
   planVisible?: boolean;
@@ -241,6 +243,7 @@ const props = withDefaults(defineProps<{
   attachmentAnnotationCounts: () => ({}),
   textAnnotations: () => [],
   visualizationAnnotations: () => [],
+  codeAnnotations: () => [],
   reviewFinding: null,
   planVisible: true,
   historyLoadFailed: false,
@@ -264,6 +267,7 @@ const emit = defineEmits<{
   'close-plan': [];
   'remove-text-annotation': [annotationId: string];
   'remove-visualization-annotation': [annotationId: string];
+  'remove-code-annotation': [annotationId: string];
   'remove-review-finding': [];
   'retry-history': [];
   'thread-flag': [response: ThreadFlagResponse];
@@ -424,6 +428,13 @@ const composerContextCards = computed<ComposerContextCard[]>(() => [
     title: annotation.comment,
     removeLabel: `${t('chat.composerContext.removeVisualizationAnnotation')}: ${annotation.comment}`,
   })),
+  ...props.codeAnnotations.map((annotation) => ({
+    id: `code-annotation:${annotation.id}`,
+    label: t('chat.composerContext.codeAnnotation'),
+    detail: `${annotation.path.split('/').pop()}:${annotation.startLine === annotation.endLine ? annotation.startLine : `${annotation.startLine}-${annotation.endLine}`}`,
+    title: annotation.comment,
+    removeLabel: `${t('chat.composerContext.removeCodeAnnotation')}: ${describeCodeRange(annotation)}`,
+  })),
   ...(props.reviewFinding ? [{
     id: 'review-finding',
     label: props.reviewFinding.priority.toUpperCase(),
@@ -490,6 +501,10 @@ function removeComposerContextCard(itemId: string): void {
   }
   if (itemId.startsWith('visualization-annotation:')) {
     emit('remove-visualization-annotation', itemId.slice('visualization-annotation:'.length));
+    return;
+  }
+  if (itemId.startsWith('code-annotation:')) {
+    emit('remove-code-annotation', itemId.slice('code-annotation:'.length));
   }
 }
 
@@ -609,6 +624,10 @@ defineExpose({ focusComposer, openSavedDraftPicker, saveCurrentDraft });
   gap: var(--space-2);
   max-width: var(--conversation-content-width);
   text-align: center;
+}
+
+.conversation-pane__empty h1 {
+  line-height: 1.2;
 }
 
 .conversation-pane__empty-actions {

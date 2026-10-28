@@ -1,3 +1,4 @@
+import type { ExecutionSelection } from './contracts/execution';
 export type MissionWorkflowType = 'shapeAndShipFeature';
 export type MissionStage = 'requirements' | 'tickets' | 'implementation' | 'review' | 'ship';
 export type MissionReviewDebugState = 'identified' | 'remediated';
@@ -34,11 +35,7 @@ export type MissionArtifactFile = {
   size: number;
   updatedAt: string;
 };
-export type MissionImplementationModel = {
-  backend: import('./contracts').AgentBackend;
-  model: string;
-  reasoningEffort?: string;
-};
+
 export type MissionTicketAssignment = {
   ticketId: string;
   ticketNumber: number;
@@ -67,7 +64,7 @@ export type MissionRun = {
   draftTickets?: MissionTicket[];
   implementationResult?: { changes: string; tests: string };
 };
-export type MissionWorkspace = { repositoryPath: string; path: string; branch: string; baseSha?: string; deleted?: true };
+export type MissionWorkspace = { repositoryPath: string; path: string; branch: string; baseSha?: string; deleted?: true; commitLock?: { agentId: string; runId: string; turnId: string } };
 export type MissionDelivery = {
   repositoryPath: string;
   agentId: string;
@@ -78,7 +75,9 @@ export type MissionDelivery = {
 export type MissionExecution = {
   teamId: string;
   debugFixture?: true;
-  implementationModel?: MissionImplementationModel;
+  implementationModel?: ExecutionSelection;
+  /** Opt-in shared-checkout execution; absent means one implementation worker per repository. */
+  parallelImplementation?: boolean;
   repoPath?: string;
   memberIds: string[];
   workspace?: { path: string; branch: string; baseSha?: string; deleted?: true };
@@ -120,7 +119,7 @@ export type MissionExecutionInput = { id: string; revision: number } & (
   | { action: 'configure'; teamId: string; memberIds: string[] }
   | { action: 'attachRepository'; repoPath: string }
   | { action: 'run'; memberId?: string; ticketIndex?: number; feedback?: string }
-  | { action: 'accept'; runId: string; implementationModel?: MissionImplementationModel }
+  | { action: 'accept'; runId: string; implementationModel?: ExecutionSelection; parallelImplementation?: boolean }
   | { action: 'continueToReview' }
   | { action: 'cancel'; runId: string }
   | { action: 'selectReviewFinding'; findingId: string; selected: boolean }

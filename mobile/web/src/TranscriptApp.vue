@@ -1,5 +1,6 @@
 <template>
-  <div class="transcript" :style="{ '--transcript-top': `${insets.top}px`, '--transcript-bottom': `${insets.bottom}px` }">
+  <div class="transcript-layout" :class="{ 'transcript-layout--preview': files.state.value }" :style="{ '--transcript-top': `${insets.top}px`, '--transcript-bottom': `${insets.bottom}px`, '--transcript-leading': `${insets.leading}px`, '--transcript-trailing': `${insets.trailing}px` }">
+  <div class="transcript">
     <button v-if="history.failed" class="app-button app-button--tertiary transcript__history-retry" @click="loadOlder">Couldn’t load earlier messages. Retry</button>
     <div v-if="imageLoading" class="transcript__media-status" role="status">Loading image…</div>
     <ConversationPane
@@ -24,6 +25,8 @@
       </template>
     </ConversationPane>
   </div>
+  <FilePreviewPane v-if="files.state.value" :state="files.state.value" @close="files.close" @refresh="files.refresh" @mode="files.mode" />
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -35,6 +38,8 @@ import ConversationPane from '@workspace/vue/components/ConversationPane.vue';
 import { backendChoicesKey } from '@workspace/vue/components/backend-selection';
 import type { CompanionConversation, CompanionHistoryState } from '../../src/companion-port';
 import { handler } from './native';
+import FilePreviewPane from './FilePreviewPane.vue';
+import { createTranscriptFiles } from './transcript-files';
 import { TranscriptReplicas } from '../../src/transcript-replica';
 import type { ProviderConversationFrame } from '@workspace/core/contracts';
 import type { CompanionCheckpoint } from '@workspace/core/companion-journal';
@@ -43,8 +48,11 @@ const frame = shallowRef<CompanionConversation | null>(null);
 const agent = shallowRef<Agent | null>(null);
 const agents = shallowRef<Agent[]>([]);
 const ready = shallowRef(false);
+const files = createTranscriptFiles({ agentId: () => agent.value?.id,
+  revision: () => JSON.stringify([agent.value?.readState?.revision, agent.value?.updatedAt]),
+  post: event => { void handler('transcript').postMessage(JSON.stringify(event)); } });
 const engines = shallowRef<{ current: string; choices: string[] } | null>(null);
-const insets = reactive({ top: 0, bottom: 0 });
+const insets = reactive({ top: 0, bottom: 0, leading: 0, trailing: 0 });
 const history = shallowRef<CompanionHistoryState>({ hasOlder: false, loadingOlder: false, failed: false });
 provide(backendChoicesKey, computed(() => [...new Set(agents.value.map((candidate) => candidate.backend))]));
 
@@ -117,6 +125,7 @@ const controller = createCodexConversationPaneController({
     openLink(link) {
       if (link.kind === 'external') void handler('transcript').postMessage(JSON.stringify({ type: 'openExternal', url: link.href }));
       else if (/\.(png|jpe?g|gif|webp|avif|bmp|heic|heif)$/i.test(link.path)) void openFileImage(link.path, link.path.split(/[\\/]/).at(-1) || 'Image');
+      else files.open({ path: link.path, ...(link.action ? { action: link.action } : {}), ...(link.turnId ? { turnId: link.turnId } : {}), ...(link.line ? { line: link.line } : {}) });
     },
     async openImage(image) {
       const agentId = agent.value?.id;
@@ -161,6 +170,8 @@ type Context = { agentId: string; generation: number; ready: boolean; agent: Age
 const peerAgents = (peers: Context['peers'] = []) => peers.map((peer) => ({ id: peer.id, name: peer.label }) as Agent);
 let currentAgentId = '';
 function applyContext(message: Context) {
+  if (!message.ready || agent.value?.id !== message.agent?.id || JSON.stringify(agent.value?.backendSession) !== JSON.stringify(message.agent?.backendSession) || (fileGeneration !== message.generation)) files.reset();
+  fileGeneration = message.generation;
   if (agent.value?.id !== message.agent?.id || JSON.stringify(agent.value?.backendSession) !== JSON.stringify(message.agent?.backendSession)) { ++imageOpenEpoch; imageLoading.value = false; }
   agent.value = message.agent; agents.value = peerAgents(message.peers);
   ready.value = message.ready ?? false; engines.value = message.engines ?? null;
@@ -169,8 +180,10 @@ function applyContext(message: Context) {
 
 const replicas = new TranscriptReplicas();
 let generation = -1;
+let fileGeneration = -1;
 let presentation = 0;
 window.companionTranscript = {
+  closeFile: files.close,
   setImage,
   async setTransfer(json: string) {
     const message = JSON.parse(json) as Context & { identity: string; checkpoint: CompanionCheckpoint; frames: ProviderConversationFrame[] };
@@ -187,6 +200,7 @@ window.companionTranscript = {
     return { identity: message.identity, checkpoint: cached.checkpoint, agentId: message.agent.id, revision: message.agent.readState?.revision ?? 0, generation: message.generation };
   },
   setContent(json) {
+    if ((JSON.parse(json) as { type?: string }).type === 'conversationFile') { files.receive(JSON.parse(json)); return; }
     if ((JSON.parse(json) as { type?: string }).type === 'conversationImage') { setImage(json); return; }
     const reply = JSON.parse(json) as { requestId: string; agentId: string; sessionId: string; chunk?: ConversationContentChunk; error?: string };
     const pending = contentRequests.get(reply.requestId);
@@ -222,16 +236,24 @@ window.companionTranscript = {
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     return revision === presentation ? { agentId: message.agent.id, revision: message.agent.readState?.revision ?? 0, generation: message.generation } : null;
   },
-  setInsets(top, bottom) { insets.top = top; insets.bottom = bottom; },
+  setInsets(top, bottom, leading = 0, trailing = 0) { insets.top = top; insets.bottom = bottom; insets.leading = leading; insets.trailing = trailing; },
 };
 </script>
 
 <style>
 html, body, #app { height: 100%; margin: 0; background: transparent; overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
-.transcript { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; box-sizing: border-box; padding: var(--transcript-top) 0 var(--transcript-bottom); }
+.transcript-layout { display: flex; height: 100%; width: 100%; overflow: hidden; }
+.transcript-layout > .transcript { flex: 1; min-width: 0; }
+.transcript-layout > .transcript-file { flex: 0 0 100%; box-sizing: border-box; padding: var(--transcript-top) var(--transcript-trailing) var(--transcript-bottom) var(--transcript-leading); }
+.transcript-layout--preview > .transcript { display: none; }
+@media (min-width: 700px) {
+  .transcript-layout--preview > .transcript { display: flex; }
+  .transcript-layout > .transcript-file { flex-basis: 50%; }
+}
+.transcript { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; box-sizing: border-box; padding: var(--transcript-top) var(--transcript-trailing) var(--transcript-bottom) var(--transcript-leading); }
 /* History errors must not resize the reading viewport when shown or dismissed. */
-.transcript__history-retry { position: absolute; z-index: 1; top: calc(var(--transcript-top) + 8px); left: 16px; right: 16px; background: var(--color-surface-lowest); }
-.transcript__media-status { position: absolute; z-index: 2; top: calc(var(--transcript-top) + 8px); left: 16px; right: 16px; padding: 8px; text-align: center; color: var(--color-text-muted); background: var(--color-surface-lowest); }
+.transcript__history-retry { position: absolute; z-index: 1; top: calc(var(--transcript-top) + 8px); left: calc(var(--transcript-leading) + 16px); right: calc(var(--transcript-trailing) + 16px); background: var(--color-surface-lowest); }
+.transcript__media-status { position: absolute; z-index: 2; top: calc(var(--transcript-top) + 8px); left: calc(var(--transcript-leading) + 16px); right: calc(var(--transcript-trailing) + 16px); padding: 8px; text-align: center; color: var(--color-text-muted); background: var(--color-surface-lowest); }
 /* Keep secondary transcript text legible at a phone's viewing distance. */
 .transcript, .transcript :where(.codex-chat-theme) {
   --font-size-12: 14px;

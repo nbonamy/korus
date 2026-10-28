@@ -42,7 +42,9 @@ export type CompanionReviewFinding = { id: string; priority: 'p0' | 'p1' | 'p2' 
   repository: string; file?: string; line?: number; endLine?: number;
   selected: boolean; state: 'open' | 'fixing' | 'fixed' | 'skipped' };
 /** The review's verdict and findings, so a person can choose what to fix without opening the desktop. */
-export type CompanionMissionReview = { summary: string; findings: CompanionReviewFinding[] };
+export type CompanionMissionReview = { summary: string; findings: CompanionReviewFinding[];
+  /** The latest Review run has submitted its result; absent on older daemons. */
+  ready?: boolean; runId?: string };
 /** `agentId` is the worker implementing the ticket; it is listed in the workspace's `missionAgents`. */
 /** `after` lists the numbers of the unfinished tickets this one waits for. */
 export type CompanionMissionTicket = { number: number; title: string; state: CompanionMissionTicketState; agentId?: string; after?: number[];
@@ -68,9 +70,9 @@ export type CompanionUsage = { backend: AgentBackend; limits: Pick<AccountRateLi
 /** A branch choice without host filesystem paths. */
 export type CompanionBranch = { name: string; isDefault: boolean; isCheckedOut: boolean };
 /** A new chat in a listed repository: default checkout, existing branch, or new worktree. */
-export type CompanionNewChat = { teamId: string; repositoryId: string; backend: AgentBackend; existingBranch?: string; worktree?: { branchName: string } };
+export type CompanionNewChat = { teamId: string; repositoryId: string; selection: import('./contracts/execution').ExecutionSelectionOverrides & { backend: AgentBackend }; existingBranch?: string; worktree?: { branchName: string } };
 /** Project acquisition runs on the team's host; the phone sends no host filesystem paths. */
-export type CompanionProjectInput = { teamId: string; backend: AgentBackend; source: 'new' | 'local' | 'github' | 'gitlab' | 'url'; value: string; branch?: string; worktree?: { branchName: string; baseBranch: string } };
+export type CompanionProjectInput = { teamId: string; selection: import('./contracts/execution').ExecutionSelectionOverrides & { backend: AgentBackend }; source: 'new' | 'local' | 'github' | 'gitlab' | 'url'; value: string; branch?: string; worktree?: { branchName: string; baseBranch: string } };
 export type CompanionProjectBranch = { name: string; isDefault: boolean };
 export type CompanionRepositoryProvider = 'github' | 'gitlab';
 /** Opaque selection bound to the owning daemon, host location and provider catalog. */

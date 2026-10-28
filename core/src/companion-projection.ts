@@ -6,6 +6,8 @@ import type { Mission, MissionReviewFinding } from './mission-types';
 import { missionStageReady } from './missions';
 import { enabledAgentBackends, providerConnectionsForTeam } from './agent-backends';
 import { repositoryIconForAgent } from './workspace-sidebar';
+import { missionLeadAgentId } from './mission-attention';
+import { missionImplementationBusy } from './mission-execution';
 
 const encoder = new TextEncoder();
 /** Stable per path, reveals no directory names, and ends with the folder name so label fallbacks keep working. */
@@ -76,25 +78,12 @@ function ticketState(mission: Mission, index: number): { state: CompanionMission
   return { state: (ticket.dependsOn ?? []).every((blocker) => tickets[blocker]?.done) ? 'queued' : 'blocked' };
 }
 
-const missionStages = ['requirements', 'tickets', 'implementation', 'review', 'ship'] as const;
-/** The current or latest earlier stage's lead; implementation agents belong to repositories, not the lead role. */
-function missionLead(mission: Mission): string | undefined {
-  const agents = mission.stageAgentIds ?? {};
-  for (let index = missionStages.indexOf(mission.stage); index >= 0; index--) {
-    const stage = missionStages[index]!;
-    if (stage === 'implementation') continue;
-    const id = agents[stage];
-    if (id) return id;
-  }
-  return undefined;
-}
-
 /** Implementation with every ticket done moves on to review; a reviewed mission is ready to ship. */
-function missionNext(mission: Mission): 'review' | 'ship' | undefined {
+function missionNext(mission: Mission, agents: readonly Agent[]): 'review' | 'ship' | undefined {
   if (mission.status !== 'active') return undefined;
   // The workspace must reach the phone even if one saved mission is malformed.
   const ready = (stage: Mission['stage']) => { try { return missionStageReady(stage, mission.artifacts); } catch { return false; } };
-  if (mission.stage === 'implementation' && ready('implementation')) return 'review';
+  if (mission.stage === 'implementation' && ready('implementation') && !missionImplementationBusy(mission, agents)) return 'review';
   if (mission.stage === 'ship' || (mission.stage === 'review' && ready('review'))) return 'ship';
   return undefined;
 }
@@ -104,7 +93,10 @@ const lastSegments = (value: string, count: number) => value.replace(/\\/gu, '/'
 /** The review as the phone needs it: what was found, where, and what has happened to it, with no host paths. */
 function missionReview(mission: Mission): CompanionMissionReview | undefined {
   const review = mission.artifacts?.review;
-  if (!review || (!review.summary?.trim() && !review.findings?.length)) return undefined;
+  const run = mission.execution?.runs.slice().reverse().find(candidate => candidate.stage === 'review');
+  const ready = mission.status === 'active' && mission.stage === 'review' && run?.status === 'awaitingReview' && Boolean(run.proposal && run.workerId);
+  const summary = (ready ? run?.proposal?.review.summary : undefined) ?? review?.summary ?? '';
+  if (!review || (!summary.trim() && !review.findings?.length)) return undefined;
   const findings = (review.findings ?? []).slice(0, maxReviewFindings).map((finding: MissionReviewFinding): CompanionReviewFinding => {
     const file = finding.location?.file ? lastSegments(finding.location.file, 2) : '';
     return { id: finding.id, priority: finding.priority, title: finding.title.slice(0, maxMissionText), body: finding.body.slice(0, 4_000),
@@ -112,7 +104,7 @@ function missionReview(mission: Mission): CompanionMissionReview | undefined {
       ...(finding.location?.line === undefined ? {} : { line: finding.location.line }), ...(finding.location?.endLine === undefined ? {} : { endLine: finding.location.endLine }),
       selected: finding.selected, state: finding.remediation.state };
   });
-  return { summary: review.summary.slice(0, 4_000), findings };
+  return { summary: summary.slice(0, 4_000), findings, ready, ...(ready && run ? { runId: run.id } : {}) };
 }
 
 /** When the work began: the first implementation run, else when the mission was created. */
@@ -122,14 +114,14 @@ function missionStart(mission: Mission): string {
 }
 
 /** Active missions first, then the most recent: the phone shows what is moving and what just finished. */
-function companionMissionsOf(source: { missions?: Mission[] }): { missions: CompanionMission[]; workerIds: Set<string> } {
+function companionMissionsOf(source: { missions?: Mission[]; agents: Agent[] }): { missions: CompanionMission[]; workerIds: Set<string> } {
   // Ticket workers and the leads that are mission workers themselves: neither is in the agent list, both must be openable.
   const workerIds = new Set<string>();
   const ranked = [...(source.missions ?? [])].filter((mission) => mission.artifacts?.tickets)
     .sort((a, b) => Number(b.status === 'active') - Number(a.status === 'active') || Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
     .slice(0, maxCompanionMissions);
   const missions = ranked.map((mission): CompanionMission => ({ id: mission.id, teamId: mission.teamId, outcome: mission.outcome.slice(0, maxMissionText), stage: mission.stage,
-    status: mission.status, startedAt: missionStart(mission), updatedAt: mission.updatedAt, ...(missionLead(mission) ? { leadAgentId: missionLead(mission)! } : {}), revision: mission.revision, ...(missionNext(mission) ? { next: missionNext(mission)! } : {}), ...(missionReview(mission) ? { review: missionReview(mission)! } : {}),
+    status: mission.status, startedAt: missionStart(mission), updatedAt: mission.updatedAt, ...(missionLeadAgentId(mission) ? { leadAgentId: missionLeadAgentId(mission)! } : {}), revision: mission.revision, ...(missionNext(mission, source.agents) ? { next: missionNext(mission, source.agents)! } : {}), ...(missionReview(mission) ? { review: missionReview(mission)! } : {}),
     tickets: mission.artifacts.tickets.map((ticket, index) => {
       const { state, workerId, runId } = ticketState(mission, index);
       if (workerId) workerIds.add(workerId);
@@ -148,7 +140,7 @@ export function companionWorkspaceOf(snapshot: Pick<AppSnapshot, 'teams' | 'agen
       .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))[0];
     return [id, projectGitStatus({ ...status, ...(turn ? { lastTurn: turn } : {}) })];
   }));
-  const { missions, workerIds: ticketWorkerIds } = companionMissionsOf({ missions: snapshot.missions });
+  const { missions, workerIds: ticketWorkerIds } = companionMissionsOf(snapshot);
   return { ...(gitStatuses ? { gitStatuses } : {}), missionProgress: missions, missionAgents: snapshot.agents.filter((agent) => ticketWorkerIds.has(agent.id)), queuedPrompts: snapshot.queuedPrompts?.map(({ id, agentId, text }) => ({ id, agentId, text })), agentRequests: snapshot.agentRequests ?? {}, teams: snapshot.teams, agents: snapshot.agents.filter((agent) => !workerIds.has(agent.id)), repositoryIcons: snapshot.general.repositoryIcons, modelFavorites: snapshot.general.modelFavorites,
     backends: Object.fromEntries(snapshot.teams.map((team) => [team.id, enabledAgentBackends({ providerConnections: providerConnectionsForTeam({ ...snapshot, remoteConnections: snapshot.remoteConnections ?? { connections: [] } } as AppSnapshot, team.id) })])) };
 }

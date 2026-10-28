@@ -32,8 +32,8 @@ describe('mobile project acquisition', () => {
       await engine.dispatch({ type: 'loadProjectBranches', source: 'gitlab', repositoryId: 'repo:opaque' });
       expect(repositoryBranches).toHaveBeenCalledExactlyOnceWith('demo-team', 'gitlab', 'repo:opaque');
       expect(engine.snapshot().projectBranches.items).toStrictEqual([{ name: 'main', isDefault: true }]);
-      await engine.dispatch({ type: 'createProject', source: 'gitlab', value: 'repo:opaque', branch: 'main', backend: 'codex' });
-      expect(createProject).toHaveBeenCalledExactlyOnceWith({ teamId: 'demo-team', source: 'gitlab', value: 'repo:opaque', branch: 'main', backend: 'codex' });
+      await engine.dispatch({ type: 'createProject', source: 'gitlab', value: 'repo:opaque', branch: 'main', selection: { backend: 'codex' } });
+      expect(createProject).toHaveBeenCalledExactlyOnceWith({ teamId: 'demo-team', source: 'gitlab', value: 'repo:opaque', branch: 'main', selection: { ...{ backend: 'codex' } } });
     } finally { engine.dispose(); }
   });
 
@@ -88,8 +88,7 @@ describe('mobile project acquisition', () => {
       await engine.dispatch({ type: 'loadProjectBranches', source: 'gitlab', repositoryId: 'second:opaque' });
       expect(engine.snapshot().projectBranches.status).toBe('failed');
       await engine.dispatch({ type: 'loadProjectBranches', source: 'gitlab', repositoryId: 'second:opaque' });
-      const input = { source: 'gitlab' as const, value: 'second:opaque', backend: 'codex' as const,
-        worktree: { branchName: 'feature/mobile', baseBranch: 'develop' } };
+      const input = { source: 'gitlab' as const, value: 'second:opaque', worktree: { branchName: 'feature/mobile', baseBranch: 'develop' }, selection: { backend: 'codex' as const } };
       await engine.dispatch({ type: 'createProject', ...input });
       expect(engine.snapshot().chatCreation).toBe('failed');
       expect(engine.snapshot().projectBranches.items).toStrictEqual([{ name: 'develop', isDefault: true }]);
@@ -114,8 +113,8 @@ describe('mobile project acquisition', () => {
       await engine.dispatch({ type: 'loadProjectBranches', source: 'local', repositoryId: 'opaque-repo' });
       expect(engine.snapshot().projectBranches.items).toStrictEqual([{ name: 'main', isDefault: true }]);
       expect(githubRepositories).not.toHaveBeenCalled();
-      await engine.dispatch({ type: 'createProject', source: 'local', value: 'opaque-repo', branch: 'main', backend: 'codex' });
-      expect(createProject).toHaveBeenCalledExactlyOnceWith({ teamId: 'demo-team', source: 'local', value: 'opaque-repo', branch: 'main', backend: 'codex' });
+      await engine.dispatch({ type: 'createProject', source: 'local', value: 'opaque-repo', branch: 'main', selection: { backend: 'codex' } });
+      expect(createProject).toHaveBeenCalledExactlyOnceWith({ teamId: 'demo-team', source: 'local', value: 'opaque-repo', branch: 'main', selection: { ...{ backend: 'codex' } } });
       expect(engine.snapshot().agentId).toBe('demo-reviewer');
     } finally { engine.dispose(); }
   });
@@ -159,8 +158,8 @@ describe('mobile project acquisition', () => {
       await f.engine.start();
       await f.engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
       const value = source === 'new' ? 'fresh-project' : source === 'gitlab' ? 'gitlab:opaque' : source === 'github' ? 'org/repo' : 'https://github.com/org/repo';
-      await f.engine.dispatch({ type: 'createProject', source, value, backend: 'codex' });
-      expect(f.createProject).toHaveBeenCalledExactlyOnceWith({ teamId: 'demo-team', source, value, backend: 'codex' });
+      await f.engine.dispatch({ type: 'createProject', source, value, selection: { backend: 'codex' } });
+      expect(f.createProject).toHaveBeenCalledExactlyOnceWith({ teamId: 'demo-team', source, value, selection: { ...{ backend: 'codex' } } });
       expect(f.engine.snapshot().agentId).toBe('demo-reviewer');
       expect(f.engine.snapshot().chatCreation).toBe('idle');
       expect(f.list).not.toHaveBeenCalled();
@@ -184,8 +183,8 @@ describe('mobile project acquisition', () => {
       const pending = engine.dispatch({ type: 'loadProjectBranches', repositoryId: 'other/repo' });
       await engine.dispatch({ type: 'dismissProjectBranches' }); release(branches); await pending;
       expect(engine.snapshot().projectBranches).toStrictEqual({ repositoryId: null, status: 'idle', items: [] });
-      await engine.dispatch({ type: 'createProject', source: 'github', value: 'org/repo', branch: 'feature/mobile', backend: 'codex' });
-      expect(createProject).toHaveBeenCalledExactlyOnceWith({ teamId: 'demo-team', source: 'github', value: 'org/repo', branch: 'feature/mobile', backend: 'codex' });
+      await engine.dispatch({ type: 'createProject', source: 'github', value: 'org/repo', branch: 'feature/mobile', selection: { backend: 'codex' } });
+      expect(createProject).toHaveBeenCalledExactlyOnceWith({ teamId: 'demo-team', source: 'github', value: 'org/repo', branch: 'feature/mobile', selection: { ...{ backend: 'codex' } } });
     } finally { engine.dispose(); }
   });
 
@@ -195,9 +194,9 @@ describe('mobile project acquisition', () => {
     try {
       await f.engine.start(); await f.engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
       const worktree = { branchName: 'feature/new', baseBranch: 'main' };
-      const pending = f.engine.dispatch({ type: 'createProject', source: 'github', value: 'org/repo', backend: 'codex', worktree });
+      const pending = f.engine.dispatch({ type: 'createProject', source: 'github', value: 'org/repo', worktree, selection: { backend: 'codex' } });
       expect(f.engine.snapshot().chatCreation).toBe('creating');
-      expect(f.createProject).toHaveBeenCalledExactlyOnceWith({ teamId: 'demo-team', source: 'github', value: 'org/repo', backend: 'codex', worktree });
+      expect(f.createProject).toHaveBeenCalledExactlyOnceWith({ teamId: 'demo-team', source: 'github', value: 'org/repo', worktree, selection: { ...{ backend: 'codex' } } });
       release('demo-reviewer'); await pending;
       expect(f.engine.snapshot().agentId).toBe('demo-reviewer');
       expect(f.engine.snapshot().chatCreation).toBe('idle');

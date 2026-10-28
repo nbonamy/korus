@@ -126,12 +126,12 @@ describe(`${product.name} web operations`, () => {
   it('distinguishes inspection from synchronization and connecting from creating a remote team', async () => {
     const request = vi.fn().mockResolvedValue({});
     await invokeAppWebOperation({ request }, 'checkRemoteConnection', ['devbox', true]);
-    await invokeAppWebOperation({ request }, 'checkRemoteConnection', ['devbox', false]);
+    await invokeAppWebOperation({ request }, 'checkRemoteConnection', ['devbox', false, ['claude']]);
     const input = { name: 'Remote', remoteConnectionId: 'devbox', remoteTeamId: 'existing' };
     await invokeAppWebOperation({ request }, 'createTeam', [input]);
     expect(request.mock.calls).toStrictEqual([
       [backendMethods.connectionsRuntimeInspect, { connectionId: 'devbox' }],
-      [backendMethods.connectionsRuntimeSync, { connectionId: 'devbox' }],
+      [backendMethods.connectionsRuntimeSync, { connectionId: 'devbox', backends: ['claude'] }],
       [backendMethods.teamConnect, { input }],
     ]);
   });

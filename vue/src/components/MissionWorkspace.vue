@@ -6,6 +6,7 @@
         <h1 class="workspace-header__title">{{ mission.outcome }}</h1>
       </div>
       <span class="mission-workspace__mission-status" :data-status="mission.status">{{ t(`missions.${mission.status}`) }}</span>
+      <MissionCostMenu :mission="mission" />
     </WorkspaceHeader>
 
     <div class="mission-workspace__body workspace-body">
@@ -134,6 +135,8 @@
       <MissionConversationRail
         v-model:selected-agent-id="conversationAgentId"
         :mission="mission"
+        :agents="agents"
+        :unread-agent-ids="unreadAgentIds"
         @open-conversation="emit('open-conversation', $event)"
       >
         <template #conversation="{ agentId }"><slot name="conversation" :agent-id="agentId" /></template>
@@ -149,13 +152,25 @@
   >
     <div class="mission-workspace__start-options">
       <BackendModelSelector
-        v-model:backend="implementationBackend"
-        v-model:model="implementationModel"
-        v-model:reasoning-effort="implementationEffort"
+        v-model:selection="implementationSelection"
         :agent-id="missionLead.id"
         :team-id="mission.teamId"
         :disabled="busy"
       />
+      <div>
+        <div class="mission-workspace__parallel-option">
+          <span>{{ t('missions.parallelImplementation') }}</span>
+          <el-switch
+            v-model="parallelImplementation"
+            :aria-label="t('missions.parallelImplementation')"
+            :aria-describedby="`mission-parallel-warning-${mission.id}`"
+            :disabled="busy"
+          />
+        </div>
+        <p :id="`mission-parallel-warning-${mission.id}`" class="mission-workspace__parallel-warning">
+          {{ t('missions.parallelImplementationWarning') }}
+        </p>
+      </div>
       <p v-if="error" class="mission-workspace__error" role="alert">{{ error }}</p>
     </div>
     <template #footer>
@@ -170,18 +185,20 @@
 </template>
 
 <script setup lang="ts">
+import { useExecutionSelection } from '../execution-selection';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { Agent, AgentBackend, OpenInApplicationCatalog } from '@workspace/core/contracts';
+import type { Agent, OpenInApplicationCatalog } from '@workspace/core/contracts';
 import type { Mission, MissionArtifacts, MissionReviewFinding, MissionStage } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
-import { pendingMissionRun, type MissionArtifactReadResult, type MissionExecutionInput, type MissionImplementationStartProgress } from '@workspace/core/mission-execution';
+import { missionImplementationBusy, pendingMissionRun, type MissionArtifactReadResult, type MissionExecutionInput, type MissionImplementationStartProgress } from '@workspace/core/mission-execution';
 import { ArrowRightIcon, CheckIcon, FileTextIcon, MessageCircleIcon, PlayerPlayIcon } from '../shared/icons/app-icons';
 import BackendModelSelector from './BackendModelSelector.vue';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import MarkdownPanel from './MarkdownPanel.vue';
 import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import WorkspaceHeader from '../shared/WorkspaceHeader.vue';
+import MissionCostMenu from './MissionCostMenu.vue';
 import MissionConversationRail from './MissionConversationRail.vue';
 import MissionImplementationBoard from './MissionImplementationBoard.vue';
 import type { WorkspaceProvisioningOperation } from './WorkspaceProvisioningProgressDialog.vue';
@@ -194,6 +211,7 @@ import type { MissionWorkspaceOpenRequest } from './MissionWorkspaceOpenIn.vue';
 
 const props = withDefaults(defineProps<{
   agents?: Agent[];
+  unreadAgentIds?: string[];
   sidebarCollapsed?: boolean;
   executeMission?: (input: MissionExecutionInput) => Promise<void>;
   implementationStartProgress?: MissionImplementationStartProgress | null;
@@ -218,6 +236,7 @@ const error = ref('');
 const artifactError = ref('');
 const feedbackBusy = ref(false);
 const feedbackReset = ref(0);
+const { selection: implementationSelection, backend: implementationBackend, model: implementationModel, reasoningEffort: implementationEffort, serviceTier: implementationTier } = useExecutionSelection();
 const implementationStarting = ref(false);
 const implementationStartRepositories = ref<string[]>([]);
 const implementationStartTicketCount = ref(0);
@@ -260,7 +279,8 @@ const stageHeadingTitle = computed(() => (
     : t(`missions.artifactTitle.${viewedStage.value}`)
 ));
 const workflow = computed(() => missionWorkflow(props.mission.workflow.type));
-const implementationReady = computed(() => workflow.value.stageReady('implementation', props.mission.artifacts) && !activeRun.value);
+const implementationReady = computed(() => workflow.value.stageReady('implementation', props.mission.artifacts)
+  && !activeRun.value && !missionImplementationBusy(props.mission, props.agents));
 const currentIndex = computed(() => workflow.value.stages.indexOf(props.mission.stage));
 const codeAgentId = computed(() => props.mission.execution?.runs.slice().reverse().find(run => run.workerId)?.workerId);
 const conversationAgentId = ref('');
@@ -342,16 +362,17 @@ const missionLead = computed(() => {
   const run = execution?.runs.slice().reverse().find(run => (run.stage === 'requirements' || run.stage === 'tickets') && run.workerId);
   return props.agents.find(agent => agent.id === (run?.workerId ?? execution?.memberIds[0]));
 });
-const implementationBackend = ref<AgentBackend>();
-const implementationModel = ref('');
-const implementationEffort = ref('');
+const parallelImplementation = ref(false);
 const implementationApprovalVisible = ref(false);
 function resetImplementationModel(): void {
+  parallelImplementation.value = props.mission.execution?.parallelImplementation ?? false;
   const selected = props.mission.execution?.implementationModel;
   const lead = missionLead.value;
   implementationBackend.value = selected?.backend ?? lead?.backend;
   implementationModel.value = selected?.model ?? lead?.backendDefaults?.model ?? '';
   implementationEffort.value = selected?.reasoningEffort ?? lead?.backendDefaults?.reasoningEffort ?? '';
+  // The selector drops a tier the model does not offer, so the lead's tier can only prefill what still applies.
+  implementationTier.value = selected ? selected.serviceTier ?? '' : (lead?.backendDefaults && 'serviceTier' in lead.backendDefaults ? lead.backendDefaults.serviceTier : null) ?? '';
 }
 watch(() => `${props.mission.id}:${activeRun.value?.id}:${missionLead.value?.id ?? ''}`, resetImplementationModel, { immediate: true });
 watch(() => [props.mission.id, props.mission.revision, activeRun.value?.id, viewedStage.value], () => {
@@ -382,10 +403,8 @@ async function approveProposal(): Promise<void> {
   }
   try {
     await props.executeMission({ id: props.mission.id, revision: props.mission.revision, action: 'accept', runId: run.id,
-      ...(startsImplementation && implementationBackend.value && implementationModel.value ? { implementationModel: {
-        backend: implementationBackend.value, model: implementationModel.value,
-        ...(implementationEffort.value ? { reasoningEffort: implementationEffort.value } : {}),
-      } } : {}),
+      ...(startsImplementation ? { parallelImplementation: parallelImplementation.value } : {}),
+      ...(startsImplementation && implementationBackend.value && implementationModel.value ? { implementationModel: { ...implementationSelection.value! } } : {}),
     });
     implementationApprovalVisible.value = false;
   } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); }

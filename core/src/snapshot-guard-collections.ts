@@ -1,3 +1,4 @@
+import { isExecutionSelectionOverrides } from './execution-selection';
 import { normalizePromptContent } from '@codex-app-sdk/core/surface';
 import { fileKinds } from './file-kind';
 import { isDelegationOverrides } from './delegation-context';
@@ -41,7 +42,7 @@ function isRendererMessagePart(value: unknown): boolean {
     case 'text':
       return typeof value.text === 'string' &&
         optional(value, 'itemId', isString) &&
-        optional(value, 'phase', (candidate) => includes(['commentary', 'final_answer'], candidate));
+        optional(value, 'phase', (candidate) => includes(['commentary', 'partial_answer', 'final_answer'], candidate));
     case 'tool':
       return typeof value.id === 'string' &&
         typeof value.kind === 'string' &&
@@ -93,10 +94,8 @@ function isSendPromptOptions(value: unknown): boolean {
     optional(value, 'content', isPromptContent) &&
     optional(value, 'delegation', isDelegationOverrides) &&
     optional(value, 'attachments', (candidate) => isArrayOf(candidate, isPromptAttachment)) &&
-    optional(value, 'model', isNullableString) &&
+    optional(value, 'selection', isExecutionSelectionOverrides) &&
     optional(value, 'planMode', isBoolean) &&
-    optional(value, 'reasoningEffort', isNullableString) &&
-    optional(value, 'serviceTier', isNullableString) &&
     optional(value, 'skills', (candidate) => isArrayOf(candidate, isPromptSkill)) &&
     optional(value, 'inputMethod', (candidate) => includes(['typed', 'dictated'], candidate)) &&
     optional(value, 'recordUserMessage', isBoolean) &&
@@ -128,9 +127,7 @@ function isBackendPromptOptions(value: unknown): boolean {
   if (!isRecord(value)) return false;
   if (value.kind === 'antigravity') return optional(value, 'permissionMode', isNullableString);
   if (value.kind === 'codex') {
-    return optional(value, 'reasoningEffort', isNullableString) &&
-      optional(value, 'serviceTier', isNullableString) &&
-      optional(value, 'skills', (candidate) => isArrayOf(candidate, isPromptSkill));
+    return optional(value, 'skills', (candidate) => isArrayOf(candidate, isPromptSkill));
   }
   return value.kind === 'claude' &&
     optional(value, 'thinkingBudgetTokens', isNullableNumber) &&

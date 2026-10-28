@@ -1,4 +1,7 @@
 import { RunProfileService } from './run-profile-service';
+import { applyExecutionSelection, defaultExecutionSelection, executionSelectionForAgent, resolveExecutionSelection } from '@workspace/core/execution-selection';
+import type { ExecutionSelection, ExecutionSelectionOverrides } from '@workspace/core/contracts/execution';
+import { executionSelectionSchema, executionSelectionOverridesSchema } from './execution-selection-schema';
 import { normalizePromptContent } from '@codex-app-sdk/core/surface';
 import type { GuestJoins } from './sharing/guest-joins';
 import { ConversationShares, type ConversationSharingOptions } from './sharing/conversation-shares';
@@ -27,7 +30,7 @@ import type { DurableTaskService } from './agents/durable-task-service';
 import { ProviderConnections } from './provider-connections';
 import type { Requirements } from './requirements';
 import { backendCodexHomeDir } from './state';
-import { isProviderConnection, type ProviderAuthentication } from '@workspace/core/contracts/provider-setup';
+import { isProviderConnection, type ProviderAuthentication, type ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
 import { MissionExecutionService } from './mission-execution-service';
 import { applyMissionDebugFixture } from './mission-debug-fixtures';
 import { applyMissionScreenshotFixture, isMissionScreenshotAgent, missionScreenshotConversation, missionScreenshotModel } from './mission-screenshot-fixture';
@@ -192,11 +195,11 @@ export class AppBackendServer {
   private readonly browserExtensionPackages: BrowserExtensionPackages;
   private readonly tasks?: DurableTaskService;
 
-  async sendTaskPrompt(agent: Agent, prompt: string): Promise<BackendSendResult> {
+  async sendTaskPrompt(agent: Agent, prompt: string, goal?: boolean): Promise<BackendSendResult> {
     await this.requireConnectedEngine(agent.backend);
     if (!this.snapshot.agents.includes(agent)) throw new Error('Agent was removed before task prompt admission.');
     if (this.tasks?.mayStartAutomatedPrompt(agent.id) === false || agent.planReview?.status === 'pending') throw new Error('Agent is stopped or waiting for a review decision.');
-    const receipt = await this.agentPrompts.sendWithReceipt(agent, prompt);
+    const receipt = await this.agentPrompts.sendWithReceipt(agent, prompt, undefined, undefined, undefined, goal);
     await this.persistSnapshotOnly();
     return receipt;
   }
@@ -297,6 +300,9 @@ export class AppBackendServer {
   private readonly providerSetup?: import('./provider-setup').ProviderSetup;
   private readonly skills: SkillManager;
   private readonly autoResume: AutoResumeService;
+  private readonly recoveryTurns = new Map<string, string>();
+  private readonly stoppingAgents = new Set<string>();
+  private closing = false;
   private readonly providerConnections?: ProviderConnections;
 
   private readonly conversationShares?: ConversationShares;
@@ -343,15 +349,8 @@ export class AppBackendServer {
     this.agentCreation = options.agentCreation ?? new AgentCreationService(this.snapshot);
     this.projectCreation = new ProjectCreationService({
       createRepository: name => this.createLocalSourceRepository(name),
-      createAgent: async ({ repository, teamId, backend, backendDefaults }) => {
-        const input: CreateAgentInput = {
-          name: null,
-          folder: repository.path,
-          backend,
-          sourceRepositoryName: repository.name,
-          teamId,
-          ...(backendDefaults ? { backendDefaults } : {}),
-        };
+      createAgent: async ({ repository, teamId, selection, backendDefaults }) => {
+        const input: CreateAgentInput = { name: null, folder: repository.path, sourceRepositoryName: repository.name, teamId, ...(backendDefaults ? { backendDefaults } : {}), selection };
         await this.validateAgentInput(input, null);
         const agent = this.agentCreation.create(input, { select: false });
         await this.agentWorkspaces.refreshIdentity(agent.id);
@@ -467,7 +466,15 @@ export class AppBackendServer {
         if (!agent) throw new Error('Mission Review worker is unavailable.');
         await this.agentPrompts.sendAndWaitForAcceptance(agent, prompt);
       },
+      sendMessage: this.sendAgentMessage,
       interrupt: agent => this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent }),
+      isCommitLockOwnerStopped: async agent => {
+        if (!agent.backendSession) return false;
+        const loaded = await this.handleAgentDriverRequest(agent, backendMethods.driverConversationLoad, { agent });
+        if (!loaded) return false;
+        await this.handleAgentDriverRequest(agent, backendMethods.driverHandoffCheck, { agent });
+        return true;
+      },
     });
     this.planReviews = new AgentPlanReviewService({
       persist: () => this.persistAndEmitSnapshot(),
@@ -547,7 +554,7 @@ export class AppBackendServer {
         progress: payload => this.applyAndEmitBackendEvent({ agentId: payload.agentId, type: 'git.branchWorkProgress', payload }),
         provision: async (parent, input, folder, agentId) => {
           const worker = this.snapshot.agents.find(candidate => candidate.id === agentId)
-            ?? this.agentCreation.create({ name: input.branchName, folder, backend: parent.backend, teamId: parent.teamId, delegatedByAgentId: parent.id }, { id: agentId, select: false });
+            ?? this.agentCreation.create({ name: input.branchName, folder, teamId: parent.teamId, delegatedByAgentId: parent.id, selection: { backend: parent.backend } }, { id: agentId, select: false });
           if (worker.folder !== folder) throw new Error('Reserved agent is bound to a different folder.');
           await this.agentWorkspaces.refreshIdentity(worker.id);
           await this.agentWorkspaces.refreshGitStatus(worker.id);
@@ -613,6 +620,8 @@ export class AppBackendServer {
   async submitMissionResult(agentId: string, input: MissionResultInput) {
     return this.missionExecution.submit(agentId, input);
   }
+  acquireMissionCommitLock(agentId: string, signal?: AbortSignal) { return this.missionExecution.acquireCommitLock(agentId, signal); }
+  releaseMissionCommitLock(agentId: string) { return this.missionExecution.releaseCommitLock(agentId); }
 
   async closeAgentFromMcp(callerAgentId: string, agentId: string): Promise<void> {
     const caller = this.snapshot.agents.find(agent => agent.id === callerAgentId);
@@ -670,13 +679,15 @@ export class AppBackendServer {
   /** The lead's provider and model for `create-mission`, checked against the provider's own catalog. */
   private async resolveMissionLeadSettings(
     caller: Agent,
-    input: { backend?: Agent['backend']; model?: string; reasoningEffort?: string; serviceTier?: string },
-  ): Promise<{ backend: Agent['backend']; backendDefaults: NonNullable<Agent['backendDefaults']> } | undefined> {
-    const { model, reasoningEffort, serviceTier } = input;
-    if (!input.backend && !model && !reasoningEffort && !serviceTier) return undefined;
+    input: { selection?: ExecutionSelectionOverrides },
+  ): Promise<ExecutionSelection | undefined> {
+    if (!input.selection) return undefined;
+    const { model, reasoningEffort, serviceTier } = input.selection;
     if ((reasoningEffort || serviceTier) && !model) throw new Error('A reasoning effort or service tier needs a model.');
-    const backend = resolveAgentBackend(this.snapshot, input.backend ?? caller.backend);
-    if (!model) return { backend, backendDefaults: { kind: backend } as NonNullable<Agent['backendDefaults']> };
+    const backend = resolveAgentBackend(this.snapshot, input.selection?.backend ?? caller.backend);
+    const base = backend === caller.backend ? executionSelectionForAgent(caller) : this.snapshot.general.providerModelDefaults?.[backend] ?? defaultExecutionSelection(backend);
+    const selection = resolveExecutionSelection(base, input.selection);
+    if (!model) return selection;
     const catalog = await this.handleAgentDriverRequest({ ...caller, backend, backendSession: undefined, backendDefaults: undefined }, backendMethods.driverModelsList, { agent: { ...caller, backend, backendSession: undefined, backendDefaults: undefined } }) as BackendModelOption[];
     const visible = catalog.filter(option => !option.hidden);
     const selected = visible.find(option => option.model === model);
@@ -689,11 +700,11 @@ export class AppBackendServer {
       const supported = selected.serviceTiers?.map(tier => tier.id).join(', ') || 'none';
       throw new Error(`${model} does not offer service tier ${serviceTier}. Supported: ${supported}.`);
     }
-    return { backend, backendDefaults: { kind: backend, model, userSelectedModel: true, ...(reasoningEffort ? { reasoningEffort } : {}), ...(serviceTier ? { serviceTier } : {}) } as NonNullable<Agent['backendDefaults']> };
+    return selection;
   }
 
   /** `create-mission` from an agent: start the Mission, hand its lead the brief and ask the renderer to open it. */
-  async startMissionFromAgent(agentId: string, input: { outcome: string; prompt: string; backend?: Agent['backend']; model?: string; reasoningEffort?: string; serviceTier?: string }): Promise<{ missionId: string; outcome: string }> {
+  async startMissionFromAgent(agentId: string, input: { outcome: string; prompt: string; selection?: ExecutionSelectionOverrides }): Promise<{ missionId: string; outcome: string }> {
     const caller = this.snapshot.agents.find(agent => agent.id === agentId);
     const team = this.snapshot.teams.find(candidate => candidate.id === caller?.teamId && !candidate.remoteConnectionId);
     if (!caller || !team) throw new Error('create-mission needs an agent on a local team.');
@@ -710,7 +721,7 @@ export class AppBackendServer {
     const leadAgent = leadSettings ? this.snapshot.agents.find(agent => agent.id === lead) : undefined;
     if (leadAgent && leadSettings) {
       leadAgent.backend = leadSettings.backend;
-      leadAgent.backendDefaults = leadSettings.backendDefaults;
+      applyExecutionSelection(leadAgent, leadSettings);
     }
     this.agentPrompts.send(lead, input.prompt);
     this.emitSnapshotUpdated(await this.remoteTeams.clientSnapshot());
@@ -723,19 +734,13 @@ export class AppBackendServer {
     return { missionId: mission.id, outcome: mission.outcome };
   }
 
-  async createProjectFromQuickChat(agentId: string, name: string, prompt: string, backend?: Agent['backend']): Promise<CreatedProject> {
+  async createProjectFromQuickChat(agentId: string, name: string, prompt: string, selection?: ExecutionSelectionOverrides): Promise<CreatedProject> {
     const caller = this.snapshot.agents.find(agent => agent.id === agentId);
     if (caller?.sessionKind !== 'quickChat' || !caller.teamId) {
       throw new Error('create-project is available only in a Quick Chat with a team.');
     }
     if (!prompt.trim()) throw new Error('A self-contained project handoff prompt is required.');
-    return this.projectCreation.create({
-      name,
-      teamId: caller.teamId,
-      backend: resolveAgentBackend(this.snapshot, backend ?? caller.backend),
-      backendDefaults: !backend || backend === caller.backend ? caller.backendDefaults : undefined,
-      prompt,
-    }, payload => this.applyAndEmitBackendEvent({ agentId: caller.id, type: 'agentCreation.progress', payload }));
+    return this.projectCreation.create({ name, teamId: caller.teamId, backendDefaults: !selection?.backend || selection.backend === caller.backend ? caller.backendDefaults : undefined, prompt, selection: { ...selection, backend: resolveAgentBackend(this.snapshot, selection?.backend ?? caller.backend) } }, payload => this.applyAndEmitBackendEvent({ agentId: caller.id, type: 'agentCreation.progress', payload }));
   }
 
   async upsertMissionTicket(agentId: string, input: import('@workspace/core/mission-execution').MissionTicketDraftInput) {
@@ -860,6 +865,50 @@ export class AppBackendServer {
     await this.missionExecution.refreshOwnedSkills();
     await this.missionExecution.recoverInterruptedRuns();
     for (const agent of this.snapshot.agents) await this.codeReviews?.resumeInterrupted(agent);
+    await this.resumeInterruptedWork();
+  }
+
+  private async resumeInterruptedWork(): Promise<void> {
+    for (const agent of this.snapshot.agents) {
+      if (this.closing) return;
+      if (!agent.autoResumePending || agent.sharedConversation || this.remoteTeams.connectionIdForAgent(agent)) continue;
+      if (agent.status.type !== 'idle' || this.recoveryTurns.has(agent.id)) continue;
+      const conversationId = agentConversationId(agent);
+      const backend = agent.backend;
+      delete agent.autoResumePending;
+      await this.persistSnapshotOnly();
+      if (this.closing || this.snapshot.general.autoResumeOnStartup === false || !conversationId || !this.snapshot.agents.includes(agent)
+        || agent.backend !== backend || agentConversationId(agent) !== conversationId || agent.status.type !== 'idle') continue;
+      try { await this.agentConversations.continueInterruptedTurn(agent.id); }
+      catch (error) {
+        warnMain('startup', 'could not resume interrupted work', { agentId: agent.id, message: String(error) });
+        if (!this.closing && this.snapshot.agents.includes(agent) && agent.status.type === 'idle' && !agent.autoResumePending) {
+          this.applyAndEmitBackendEvent({ agentId: agent.id, type: 'agent.statusChanged',
+            payload: { type: 'error', message: 'Could not resume interrupted work. Try again manually.' } });
+        }
+      }
+    }
+  }
+
+  private observeRecoveryTurn(event: BackendPublishedEvent): void {
+    const view = providerConversationEventView(event);
+    const agent = view.agentId && this.snapshot.agents.find(candidate => candidate.id === view.agentId);
+    if (!agent || agent.sharedConversation || this.remoteTeams.connectionIdForAgent(agent)) return;
+    const currentConversationId = agentConversationId(agent);
+    if (view.conversationId && currentConversationId && view.conversationId !== currentConversationId) return;
+    if (view.type === 'turn.started' && view.turnId && !this.stoppingAgents.has(agent.id)) {
+      this.recoveryTurns.set(agent.id, view.turnId);
+      agent.autoResumePending = true;
+      void this.persistSnapshotOnly().catch(error => warnMain('startup', 'could not save active work', { message: String(error) }));
+    } else if (view.type === 'turn.completed' && view.turnId && this.recoveryTurns.get(agent.id) === view.turnId) {
+      this.recoveryTurns.delete(agent.id);
+      delete agent.autoResumePending;
+      void this.persistSnapshotOnly().catch(error => warnMain('startup', 'could not save completed work', { message: String(error) }));
+    } else if (event.type === 'agent.statusChanged' && event.payload.type === 'error') {
+      this.recoveryTurns.delete(agent.id);
+      delete agent.autoResumePending;
+      void this.persistSnapshotOnly().catch(error => warnMain('startup', 'could not save failed work', { message: String(error) }));
+    }
   }
 
   async requireConnectedEngine(backend?: Agent['backend']): Promise<Agent['backend']> {
@@ -1002,10 +1051,12 @@ export class AppBackendServer {
       const agent = (before ?? this.remoteTeams.clientSnapshotFromKnownRemotes()).agents.find(candidate => candidate.id === (params?.agentId ?? input.id));
       const teamId = typeof input.teamId === 'string' ? input.teamId : agent?.teamId;
       const remote = params?.remoteConnectionId || input.remoteConnectionId || this.snapshot.teams.find(team => team.id === teamId)?.remoteConnectionId;
-      if (!remote && (message.method !== backendMethods.agentUpdate || input.backend !== undefined)) {
+      const requestedSelection = isRecord(input.selection) ? input.selection : {};
+      if (!remote && (message.method !== backendMethods.agentUpdate || requestedSelection.backend !== undefined)) {
         try {
-          const duplicateBackend = message.method === backendMethods.agentDuplicate && isRecord(effectiveParams.options) ? effectiveParams.options.backend : undefined;
-          const requested = isAgentBackend(duplicateBackend) ? duplicateBackend : isAgentBackend(input.backend) ? input.backend : agent?.backend;
+          const duplicateOptions = message.method === backendMethods.agentDuplicate && isRecord(effectiveParams.options) ? effectiveParams.options : {};
+          const duplicateBackend = isRecord(duplicateOptions.selection) ? duplicateOptions.selection.backend : undefined;
+          const requested = isAgentBackend(duplicateBackend) ? duplicateBackend : isAgentBackend(requestedSelection.backend) ? requestedSelection.backend : agent?.backend;
           if (this.providerConnections) await this.requireConnectedEngine(requested);
         } catch (error) {
           return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, error instanceof Error ? error.message : String(error));
@@ -1310,11 +1361,9 @@ export class AppBackendServer {
         return createAppRpcResult(message.id, await this.sshConnections.listHostCandidates());
       case backendMethods.connectionsSshCreate: {
         const input = requireAddSshConnectionInput(message.params);
-        const connection = await this.sshConnections.createConnection(input);
-        this.snapshot.remoteConnections.connections = [
-          ...this.snapshot.remoteConnections.connections.filter((candidate) => candidate.host !== connection.host),
-          connection,
-        ];
+        const existing = this.snapshot.remoteConnections.connections.find(candidate => candidate.host === input.host.trim());
+        const connection = existing ?? await this.sshConnections.createConnection(input);
+        if (!existing) this.snapshot.remoteConnections.connections.push(connection);
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
       case backendMethods.connectionsRuntimeInspect:
@@ -1325,25 +1374,43 @@ export class AppBackendServer {
           return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Remote connection not found: ${connectionId}`);
         }
         if (message.method === backendMethods.connectionsRuntimeInspect) {
-          const inspected = await this.sshConnections.inspectVersions(connection);
+          if (connection.status === 'checking') return createAppRpcResult(message.id, await this.remoteTeams.clientSnapshot());
+          const probing = { ...connection, status: connection.status === 'ready' ? 'ready' as const : 'checking' as const, detail: 'Checking the remote environment…' };
+          this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map(candidate => candidate === connection ? probing : candidate);
+          await this.persistAndEmitSnapshot();
+          let inspected: RemoteConnection;
+          try {
+            inspected = await this.sshConnections.inspectVersions(connection);
+            if (inspected.status === 'ready' && inspected.daemonVersion === this.options.version) {
+              const providers = await this.remoteClients.request<unknown>(inspected, backendMethods.providerConnectionsGet);
+              if (!Array.isArray(providers) || !providers.every(isProviderConnection)) throw new Error('Remote engine connections are unavailable. Update the remote runtime.');
+              inspected.providerConnections = providers;
+            }
+          }
+          catch (error) { inspected = { ...connection, status: connection.status === 'ready' && this.remoteClients.isConnected?.(connectionId) ? 'ready' : 'error', detail: error instanceof Error ? error.message : String(error), lastCheckedAt: new Date().toISOString() }; }
           // Do not replace a connection edited or deleted while SSH was probing.
-          this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map((candidate) => (
-            candidate === connection ? { ...candidate, daemonVersion: inspected.daemonVersion, codexVersion: inspected.codexVersion, detail: inspected.detail } : candidate
-          ));
+          this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map(candidate => candidate === probing ? inspected : candidate);
           return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
         }
-        await this.remoteClients.closeConnection(connectionId);
-        const checked = await this.sshConnections.checkConnection(connection);
-        this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map((candidate) => (
-          candidate.id === connectionId ? checked : candidate
-        ));
-        if (checked.status === 'ready' && checked.transport) {
-          const remoteSnapshot = await this.remoteTeams.request<AppSnapshot>(
-            connectionId,
-            backendMethods.workProviderConnectionsReload,
-          );
-          this.remoteTeams.rememberSnapshot(connectionId, remoteSnapshot);
+        const params = requireRecord(message.params);
+        const backends = params.backends === undefined ? [] : params.backends;
+        if (!Array.isArray(backends) || !backends.every(isAgentBackend)) throw new Error('Invalid setup engines.');
+        await this.prepareRemoteConnectionUpdate(connection);
+        const progress = async (detail: string) => {
+          this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map(candidate => candidate.id === connectionId ? { ...candidate, detail } : candidate);
+          await this.persistAndEmitSnapshot();
+        };
+        let checked = await this.sshConnections.checkConnection(connection, backends, progress);
+        if (checked.status === 'ready' && backends.includes('antigravity')) {
+          await progress('Installing Antigravity…');
+          try {
+            const installed = await this.remoteClients.request<ProviderSetupStatus>(checked, backendMethods.providerInstall, { backend: 'antigravity', _clientId: 'remote-controller' });
+            if (!installed.installed) throw new Error('Antigravity installation could not be verified.');
+          }
+          catch (error) { checked = { ...checked, status: 'error', detail: error instanceof Error ? error.message : String(error) }; }
         }
+        this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map(candidate => candidate.id === connectionId ? checked : candidate);
+        await this.activateRemoteConnection(checked);
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
       case backendMethods.connectionsUpdate: {
@@ -1445,7 +1512,7 @@ export class AppBackendServer {
         }
         const team = this.snapshot.teams.find(candidate => candidate.id === input.teamId);
         if (!team) throw new Error(`Team not found: ${input.teamId}`);
-        const created = await this.projectCreation.create({ ...input, teamId: team.id, backend: resolveAgentBackend(this.snapshot, input.backend) });
+        const created = await this.projectCreation.create({ ...input, teamId: team.id, selection: { ...input.selection, backend: resolveAgentBackend(this.snapshot, input.selection?.backend) } });
         onCreated(created.agent.id);
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
@@ -1580,11 +1647,10 @@ export class AppBackendServer {
         const agentId = requireString(params.agentId, 'agentId');
         const value = requireRecord(params.input);
         const operationId = requireString(value.operationId, 'operationId');
-        if (!operationId.trim() || operationId.length > 128 || !isAgentBackend(value.backend)) throw new Error('Invalid handoff request.');
+        if (!operationId.trim() || operationId.length > 128) throw new Error('Invalid handoff request.');
         if (value.instructions !== undefined && (typeof value.instructions !== 'string' || value.instructions.length > 4000)) throw new Error('Handoff instructions must be at most 4,000 characters.');
         const input: AgentHandoffInput = {
-          operationId, backend: value.backend as Agent['backend'],
-          ...(value.model === undefined ? {} : { model: requireString(value.model, 'model') }),
+          operationId, selection: executionSelectionSchema.parse(value.selection),
           ...(value.instructions === undefined ? {} : { instructions: value.instructions as string }),
         };
         const replacement = this.snapshot.agents.find(agent => agent.handoff?.sourceAgentId === agentId && agent.handoff.operationId === operationId);
@@ -2447,25 +2513,32 @@ export class AppBackendServer {
       case backendMethods.agentInterrupt: {
         const agentId = requireAgentId(message.params);
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentInterrupt, { agentId }, async (agent) => {
-          this.autoResume.cancel(agent.id);
-          if (await this.codeReviews?.interruptSimulatedInspection(agent)) return this.snapshot;
-          await this.tasks?.blockParent(agentId);
-          // The inspection can settle before the provider acknowledges interruption.
-          const inspectionRoundId = this.codeReviews?.activeInspectionRoundId(agent);
+          this.stoppingAgents.add(agent.id);
           try {
-            const result = await this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent }) as BackendSendResult;
-            agent.backendSession = result.backendSession;
-            const reviewChanged = await this.codeReviews?.handleTurnInterrupted(agent, inspectionRoundId) ?? false;
-            if (!reviewChanged) await this.persistSnapshotOnly();
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            this.applyAndEmitBackendEvent({
-              agentId,
-              type: 'agent.statusChanged',
-              payload: { type: 'error', message: `Failed to interrupt ${backendDisplayName(agent.backend)}: ${errorMessage}` },
-            });
+            this.recoveryTurns.delete(agent.id);
+            if (agent.autoResumePending) {
+              delete agent.autoResumePending;
+              await this.persistSnapshotOnly();
+            }
+            this.autoResume.cancel(agent.id);
+            if (await this.codeReviews?.interruptSimulatedInspection(agent)) return this.snapshot;
+            await this.tasks?.blockParent(agentId);
+            // The inspection can settle before the provider acknowledges interruption.
+            const inspectionRoundId = this.codeReviews?.activeInspectionRoundId(agent);
+            try {
+              const result = await this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent }) as BackendSendResult;
+              agent.backendSession = result.backendSession;
+              const reviewChanged = await this.codeReviews?.handleTurnInterrupted(agent, inspectionRoundId) ?? false;
+              if (!reviewChanged) await this.persistSnapshotOnly();
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              this.applyAndEmitBackendEvent({ agentId, type: 'agent.statusChanged',
+                payload: { type: 'error', message: `Failed to interrupt ${backendDisplayName(agent.backend)}: ${errorMessage}` } });
+            }
+            return this.snapshot;
+          } finally {
+            this.stoppingAgents.delete(agent.id);
           }
-          return this.snapshot;
         });
       }
       case backendMethods.agentTasksList: {
@@ -2859,6 +2932,14 @@ export class AppBackendServer {
         const connectionId = requireOptionalConnectionId(message.params);
         if (connectionId && message.method !== backendMethods.providerSetupConfigure) {
           const input = requireRecord(message.params);
+          if (!isAgentBackend(input.backend)) throw new Error('Unknown provider.');
+          if (message.method === backendMethods.providerInstall && input.backend !== 'antigravity') {
+            const connection = this.snapshot.remoteConnections.connections.find(candidate => candidate.id === connectionId);
+            if (!connection || connection.status !== 'ready') throw new Error('Connect the SSH host before installing an engine.');
+            if (input.backend === 'codex') await this.sshConnections.ensureRemoteCodexInstalled(connection.host);
+            else await this.sshConnections.ensureRemoteClaudeInstalled(connection.host);
+            return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, backendMethods.providerRefresh, { backend: input.backend }));
+          }
           return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, message.method, { backend: input.backend }));
         }
         if (!this.providerSetup) throw new Error('Provider setup is unavailable.');
@@ -3285,6 +3366,7 @@ export class AppBackendServer {
   }
 
   async close(): Promise<void> {
+    this.closing = true;
     this.conversationShares?.close();
     await this.options.guestJoins?.close();
     this.autoResume.close();
@@ -3578,6 +3660,7 @@ export class AppBackendServer {
       backend: agent.backend,
       getRuntimeStatus: () => ({ backend: agent.backend, status: 'running' }),
       getCapabilities: () => defaultBackendCapabilities(agent.backend),
+      setGoal: async (currentAgent, objective) => this.handleAgentDriverRequest(currentAgent, backendMethods.driverGoalUpdate, { agent: currentAgent, objective }) as Promise<BackendGoalResult>,
       tryHandlePromptCommand: (currentAgent, prompt) => (
         this.remoteTeams.connectionIdForAgent(currentAgent) ? null : this.requireDriverRpc().tryHandlePromptCommand(currentAgent, prompt)
       ),
@@ -3678,6 +3761,7 @@ export class AppBackendServer {
 
   private applyAndEmitBackendEvent(event: BackendEvent): void {
     const fullEvent = this.nextMainEvent(event);
+    this.observeRecoveryTurn(fullEvent);
     this.options.usage?.observeEvent(fullEvent);
     applyMainEventToSnapshot(this.snapshot, fullEvent);
     this.observeShareTargetChange(fullEvent);
@@ -3736,11 +3820,16 @@ export class AppBackendServer {
       }
     }
     const fullEvent = this.nextMainEvent(event);
+    this.observeRecoveryTurn(fullEvent);
     this.options.usage?.observeEvent(fullEvent);
     applyMainEventToSnapshot(this.snapshot, fullEvent);
     this.observeShareTargetChange(fullEvent);
     this.delegatedWorkReports.handleEvent(fullEvent);
     for (const listener of this.handoffListeners) listener(fullEvent);
+    if (fullEvent.agentId && providerConversationEventView(fullEvent).type === 'turn.started') {
+      const turnId = providerConversationEventView(fullEvent).turnId;
+      if (turnId) this.missionExecution.agentStarted(fullEvent.agentId, turnId);
+    }
     if (fullEvent.agentId && providerConversationEventView(fullEvent).type === 'turn.completed') {
       void this.missionExecution.agentFinished(fullEvent.agentId, providerConversationEventView(fullEvent).turnId).catch(error => warnMain('missions', 'failed to record mission completion', { message: String(error) }));
     }
@@ -3789,6 +3878,31 @@ export class AppBackendServer {
       seq: this.nextEventSeq(),
       occurredAt: event.occurredAt ?? new Date().toISOString(),
     };
+  }
+
+  private async prepareRemoteConnectionUpdate(connection: RemoteConnection): Promise<void> {
+    if (connection.status === 'checking') throw new Error('SSH setup is already in progress.');
+    const agents = this.remoteTeams.knownSnapshot(connection.id)?.agents ?? [];
+    if (agents.some(agent => agent.status.type === 'working' || agent.status.type === 'awaitingInput')) {
+      throw new Error('Finish active turns and pending input on this host before updating Korus.');
+    }
+    this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map(candidate => candidate === connection
+      ? { ...candidate, status: 'checking', detail: 'Setting up the SSH host…' } : candidate);
+    await this.persistAndEmitSnapshot();
+    await this.remoteClients.closeConnection(connection.id);
+  }
+
+  private async activateRemoteConnection(connection: RemoteConnection): Promise<void> {
+    if (connection.status !== 'ready' || !connection.transport) return;
+    try {
+      const remoteSnapshot = await this.remoteTeams.request<AppSnapshot>(connection.id, backendMethods.workProviderConnectionsReload);
+      this.remoteTeams.rememberSnapshot(connection.id, remoteSnapshot);
+    } catch (error) {
+      await this.remoteClients.closeConnection(connection.id);
+      this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map(candidate => candidate === connection
+        ? { ...candidate, status: 'error', detail: error instanceof Error ? error.message : String(error), transport: undefined }
+        : candidate);
+    }
   }
 
   private nextEventSeq(): number {
@@ -3937,10 +4051,21 @@ function globalWorkItemQuery(value: unknown): import('@workspace/core/contracts'
   const query = requireRecord(value);
   const base = workItemQuery(query) ?? {};
   const assignment = query.assignment;
+  const involvement = query.involvement;
+  const repositoryScope = query.repositoryScope;
   const cursor = query.cursor;
   const pageSize = query.pageSize;
   if (assignment !== undefined && assignment !== 'all' && assignment !== 'viewer') {
     throw new Error('Invalid global work item assignment filter.');
+  }
+  if (involvement !== undefined && involvement !== 'author' && involvement !== 'reviewer') {
+    throw new Error('Invalid global work item involvement filter.');
+  }
+  if (involvement === 'reviewer' && base.kind !== 'pullRequest') {
+    throw new Error('Review requests require pull requests.');
+  }
+  if (repositoryScope !== undefined && repositoryScope !== 'owned' && repositoryScope !== 'notOwned') {
+    throw new Error('Invalid global work item repository scope.');
   }
   if (cursor !== undefined && (typeof cursor !== 'string' || !cursor || cursor.length > 4096)) {
     throw new Error('Invalid global work item cursor.');
@@ -3950,10 +4075,17 @@ function globalWorkItemQuery(value: unknown): import('@workspace/core/contracts'
   }
   return {
     ...base,
+    ...(involvement ? { involvement } : {}),
+    ...(repositoryScope ? { repositoryScope } : {}),
     ...(assignment ? { assignment } : {}),
     ...(typeof cursor === 'string' ? { cursor } : {}),
     ...(typeof pageSize === 'number' ? { pageSize } : {}),
   };
+}
+
+function requireExecutionSelection(input: Record<string, unknown>): ExecutionSelectionOverrides | undefined {
+  if ('backend' in input || 'modelSelection' in input) throw new Error('Invalid backend selection. Use selection instead of backend or modelSelection.');
+  return input.selection === undefined ? undefined : executionSelectionOverridesSchema.parse(input.selection);
 }
 
 function requireAgentCreateInput(params: unknown): CreateAgentInput {
@@ -3961,6 +4093,7 @@ function requireAgentCreateInput(params: unknown): CreateAgentInput {
   const input = requireRecord(record.input);
   return {
     ...input,
+    ...(requireExecutionSelection(input) === undefined ? {} : { selection: requireExecutionSelection(input) }),
     name: input.name === null ? null : requireString(input.name, 'agent name'),
   } as CreateAgentInput;
 }
@@ -3970,7 +4103,7 @@ function requireProjectCreateInput(params: unknown): CreateProjectInput & { team
   return {
     name: requireString(input.name, 'project name'),
     teamId: requireString(input.teamId, 'team id'),
-    ...(input.backend === undefined ? {} : { backend: requireAgentBackend(input.backend) }),
+    ...(requireExecutionSelection(input) === undefined ? {} : { selection: requireExecutionSelection(input) }),
   };
 }
 
@@ -3979,7 +4112,7 @@ function requireQuickChatCreateInput(params: unknown): CreateQuickChatInput {
   const input = requireRecord(record.input);
   return {
     ...(input.teamId === undefined ? {} : { teamId: requireString(input.teamId, 'team id') }),
-    ...(input.backend === undefined ? {} : { backend: requireAgentBackend(input.backend) }),
+    ...(requireExecutionSelection(input) === undefined ? {} : { selection: requireExecutionSelection(input) }),
   };
 }
 
@@ -3994,15 +4127,8 @@ function requireAgentUpdateInput(params: unknown): UpdateAgentInput {
   const result: UpdateAgentInput = {
     id: requireString(input.id, 'agent id'),
   };
-  if (input.backend !== undefined) result.backend = requireAgentBackend(input.backend);
-  if ('modelSelection' in input) {
-    const selection = requireRecord(input.modelSelection);
-    result.modelSelection = {
-      model: requireString(selection.model, 'composer model'),
-      reasoningEffort: selection.reasoningEffort === null ? null : requireString(selection.reasoningEffort, 'composer reasoning effort'),
-      serviceTier: selection.serviceTier === null ? null : requireString(selection.serviceTier, 'composer service tier'),
-    };
-  }
+  const selection = requireExecutionSelection(input);
+  if (selection !== undefined) result.selection = selection;
   if ('name' in input) {
     result.name = input.name === null ? null : requireString(input.name, 'agent name');
   }
@@ -4011,7 +4137,7 @@ function requireAgentUpdateInput(params: unknown): UpdateAgentInput {
       ? null
       : requireAgentGitDiffTarget(input.gitDiffTarget);
   }
-  if (result.name === undefined && result.gitDiffTarget === undefined && result.backend === undefined && result.modelSelection === undefined) {
+  if (result.name === undefined && result.gitDiffTarget === undefined && result.selection?.backend === undefined && result.selection === undefined) {
     throw new Error('Agent update must include a name, backend, model selection, or Git diff target.');
   }
   return result;
@@ -4151,9 +4277,7 @@ function requireDuplicateAgentRequest(params: unknown): { agentId: string; optio
   }
 
   const options = requireRecord(record.options);
-  if (options.backend !== undefined && !isAgentBackend(options.backend)) {
-    throw new Error('Invalid backend.');
-  }
+  const selection = requireExecutionSelection(options);
   if (options.select !== undefined && typeof options.select !== 'boolean') {
     throw new Error('select must be a boolean.');
   }
@@ -4164,7 +4288,7 @@ function requireDuplicateAgentRequest(params: unknown): { agentId: string; optio
     agentId,
     options: {
       ...(options.select === undefined ? {} : { select: options.select }),
-      ...(isAgentBackend(options.backend) ? { backend: options.backend } : {}),
+      ...(selection === undefined ? {} : { selection }),
       ...(options.name === undefined ? {} : { name: options.name.trim() }),
     },
   };

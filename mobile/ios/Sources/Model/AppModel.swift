@@ -11,6 +11,12 @@ final class AppModel {
     var notificationError: String?
     var pushRegistrationFailed = false
     var git = GitChangesState()
+    var filePreviewOpen = false {
+        didSet {
+            if oldValue && !filePreviewOpen { acknowledgeRead() }
+            notifications.visibleChanged(visibleNotificationTarget)
+        }
+    }
     @ObservationIgnored lazy var changesHost = ChangesHost()
     var changesOpen = false {
         didSet {
@@ -57,6 +63,7 @@ final class AppModel {
     var laptops: [EngineState.Laptop] = []
     /// What the laptop's missions look like from here, and the mission whose ticket worker is open.
     var missions: [MissionSummary] = []
+    var missionAttention: MissionAttention = .idle
     var workerMission: MissionReference?
     /// "idle", "working" or "failed": a move on a mission is a request the laptop can refuse.
     var missionAction = "idle"
@@ -147,6 +154,8 @@ final class AppModel {
     var mentions = EngineState.Suggestions()
     var skills = EngineState.Suggestions()
     private var conversationRead = ConversationReadState()
+    /// On a wide display (a Duo unfolded, split views) the agents sit beside the conversation instead of sliding over it.
+    var persistentSidebar = false
     var drawerOpen = false { didSet { if !drawerOpen { acknowledgeRead(); notifications.visibleChanged(visibleNotificationTarget) } } }
     let dictation = DictationController(capture: AppleDictationCapture())
     var isLive = false
@@ -193,6 +202,10 @@ final class AppModel {
             self.presentedImage = image
         }
         transcript.onReadContent = { [weak self] request in self?.engine.dispatch(request) }
+        transcript.onFilePreviewVisibility = { [weak self] open in
+            self?.filePreviewOpen = open
+            if open { self?.dictation.cancel() }
+        }
         transcript.onChooseBackend = { [weak self] backend in self?.chooseBackend(backend) }
         transcript.onLoadOlder = { [weak self] id in self?.command("loadOlder", ["agentId": id]) }
         transcript.onRenderFailed = { [weak self] in
@@ -269,6 +282,7 @@ final class AppModel {
         if let shown = presentedRequest, !requests.contains(where: { $0.key == shown.key }) { presentedRequest = nil }
         set(\.connection, state.connection)
         set(\.missions, state.missions ?? [])
+        set(\.missionAttention, state.missionAttention ?? .idle)
         set(\.workerMission, state.mission)
         set(\.missionAction, state.missionAction ?? "idle")
         set(\.connectionDetail, state.errorDetail ?? "")
@@ -307,7 +321,7 @@ final class AppModel {
         let agentChanged = activeAgentID != nextAgentID
         if agentChanged { dictation.cancel() }
         set(\.activeAgentID, nextAgentID)
-        if agentChanged { reviewOpen = false; presentedImage = nil; changesOpen = false }
+        if agentChanged { reviewOpen = false; presentedImage = nil; changesOpen = false; filePreviewOpen = false }
         set(\.header, state.header.map {
             ConversationHeader(title: $0.title, repository: $0.repository, status: $0.status,
                                statusText: $0.statusText == $0.status.rawValue ? $0.status.label : $0.statusText, icon: $0.icon)
@@ -322,7 +336,7 @@ final class AppModel {
         set(\.planMode, state.composer.planMode)
         set(\.approvalPreset, state.permissions.approvalPreset)
         set(\.approvalPresets, state.permissions.presets)
-        if let target = composerDrafts.target, target != state.composerTarget { reviewOpen = false; presentedImage = nil; changesOpen = false }
+        if let target = composerDrafts.target, target != state.composerTarget { reviewOpen = false; presentedImage = nil; changesOpen = false; filePreviewOpen = false }
         composerDrafts.select(state.composerTarget)
         set(\.supportsGoals, state.capabilities.goals ?? false)
         set(\.goal, state.goal)
@@ -526,7 +540,7 @@ final class AppModel {
     func createProject(source: NewProjectSource, value: String, backend: String, branch: String? = nil, worktree: [String: String]? = nil) {
         guard canStartChat, backends.contains(backend), chatCreation != .creating else { return }
         preferredBackend = backend
-        var fields: [String: Any] = ["source": source.rawValue, "value": value, "backend": backend]
+        var fields: [String: Any] = ["source": source.rawValue, "value": value, "selection": ["backend": backend]]
         if let branch { fields["branch"] = branch }
         if let worktree { fields["worktree"] = worktree }
         command("createProject", fields)
@@ -556,12 +570,12 @@ final class AppModel {
     private func acknowledgeRead() {
         guard connection == .connected, conversationReady else { return }
         guard let read = conversationRead.acknowledgement(activeAgentId: activeAgentID,
-            foreground: foreground && UIApplication.shared.applicationState == .active, drawerOpen: drawerOpen, reviewOpen: reviewOpen || changesOpen, imageOpen: presentedImage != nil, unlocked: screenUnlocked) else { return }
+            foreground: foreground && UIApplication.shared.applicationState == .active, drawerOpen: drawerOpen, reviewOpen: reviewOpen || changesOpen || filePreviewOpen, imageOpen: presentedImage != nil, unlocked: screenUnlocked) else { return }
         command("read", ["agentId": read.agentId, "revision": read.revision, "generation": conversationGeneration])
     }
 
     private var visibleNotificationTarget: ChatNotification.Target? {
-        guard screenUnlocked, foreground, !drawerOpen, !reviewOpen, !changesOpen, presentedImage == nil, let target = composerDrafts.target else { return nil }
+        guard screenUnlocked, foreground, !drawerOpen, !reviewOpen, !changesOpen, !filePreviewOpen, presentedImage == nil, let target = composerDrafts.target else { return nil }
         return .init(hostId: target.hostId, locationId: target.locationId, teamId: target.teamId, agentId: target.agentId, sessionId: target.sessionId)
     }
     func receive(_ notification: ChatNotification) {

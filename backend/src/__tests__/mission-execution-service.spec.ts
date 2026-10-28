@@ -29,8 +29,10 @@ function setup() {
     refreshConversationContext: vi.fn().mockResolvedValue(undefined),
     continueStage: vi.fn().mockResolvedValue(undefined),
     startRemediation: vi.fn().mockResolvedValue(undefined),
+    sendMessage: vi.fn(),
     ensureStageSkills: vi.fn(async (_missionId: string, stage: MissionStage) => missionStageSkills(stage)),
-    interrupt: vi.fn().mockResolvedValue(undefined) };
+    interrupt: vi.fn().mockResolvedValue(undefined),
+    isCommitLockOwnerStopped: vi.fn().mockResolvedValue(false) };
   const service = new MissionExecutionService(ports);
   const current = () => snapshot.missions![0]!;
   const command = (input: Record<string, unknown>) => service.execute({ id: mission.id, revision: current().revision, ...input } as Parameters<typeof service.execute>[0]);
@@ -39,6 +41,393 @@ function setup() {
 }
 
 describe('mission execution', () => {
+  it('releases only the submitting worker lock once its implementation result is saved and wakes waiters', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.execution!.parallelImplementation = true;
+      mission.execution!.workspaces = [{ repositoryPath, path: '/shared/checkout', branch: 'mission/test' }];
+      mission.artifacts.tickets = ['a', 'b', 'c'].map(id => ({ id: `mission-ticket-${id}`, title: id, repositoryPath, done: false }));
+    });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const [a, b, c] = h.current().execution!.runs;
+    h.service.agentStarted(a!.workerId!, 'turn-a');
+    h.service.agentStarted(b!.workerId!, 'turn-b');
+    await h.service.acquireCommitLock(a!.workerId!);
+    const lock = structuredClone(h.current().execution!.workspaces![0]!.commitLock);
+    const evidence = { changes: 'Ticket committed.', tests: 'Checks passed.' };
+    const result = (ticket: string) => ({ summary: 'Done', ticketId: `mission-ticket-${ticket}`, implementation: evidence });
+    await h.service.submit(c!.workerId!, result('c'));
+    expect(h.current().execution!.workspaces![0]!.commitLock).toStrictEqual(lock);
+    await expect(h.service.submit(a!.workerId!, result('wrong-ticket'))).rejects.toThrow('Expected ticket');
+    expect(h.current().execution!.workspaces![0]!.commitLock).toStrictEqual(lock);
+    h.persisted.mockRejectedValueOnce(new Error('storage unavailable'));
+    await expect(h.service.submit(a!.workerId!, result('a'))).rejects.toThrow('storage unavailable');
+    expect(h.current().execution!.workspaces![0]!.commitLock).toStrictEqual(lock);
+    expect(h.current().execution!.runs.find(run => run.id === a!.id)!.status).toBe('running');
+    h.persisted.mockClear();
+    const controller = new AbortController();
+    const waiting = h.service.acquireCommitLock(b!.workerId!, controller.signal);
+    try {
+      await new Promise(resolve => setImmediate(resolve));
+      expect(await h.service.submit(a!.workerId!, result('a'))).toStrictEqual({ success: true, status: 'accepted' });
+      const saved = h.persisted.mock.calls.map(([snapshot]) => snapshot.missions[0])
+        .find(mission => mission.execution.runs.find((run: { id: string }) => run.id === a!.id)?.status === 'accepted');
+      expect(saved.execution.workspaces[0].commitLock).toBeUndefined();
+      expect(await waiting).toStrictEqual({ acquired: true });
+      expect(h.current().execution!.workspaces![0]!.commitLock?.agentId).toBe(b!.workerId);
+      await h.service.agentFinished(a!.workerId!, 'turn-a');
+      expect(h.current().execution!.workspaces![0]!.commitLock?.agentId).toBe(b!.workerId);
+    } finally {
+      controller.abort();
+      await waiting.catch(() => undefined);
+    }
+  });
+
+  it('stops a lock owner when turn completion releases the lock during interruption', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.execution!.parallelImplementation = true;
+      mission.execution!.workspaces = [{ repositoryPath, path: '/shared/checkout', branch: 'mission/test' }];
+      mission.artifacts.tickets = [{ id: 'a', title: 'A', repositoryPath, done: false }];
+    });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const run = h.current().execution!.runs[0]!;
+    h.service.agentStarted(run.workerId!, 'turn-a');
+    h.snapshot.agents.find(agent => agent.id === run.workerId)!.status = { type: 'working' };
+    await h.service.acquireCommitLock(run.workerId!);
+    h.ports.interrupt.mockImplementation(async () => { await h.service.agentFinished(run.workerId!, 'turn-a'); });
+    await h.command({ action: 'cancel', runId: run.id });
+    expect(h.current().execution!.runs[0]!.status).toBe('cancelled');
+    expect(h.current().execution!.workspaces![0]!.commitLock).toBeUndefined();
+    expect(h.persisted.mock.calls.at(-1)![0].missions[0].execution.runs[0].status).toBe('cancelled');
+  });
+
+  it('finishes an unsubmitted turn when explicit release races with completion', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.execution!.parallelImplementation = true;
+      mission.execution!.workspaces = [{ repositoryPath, path: '/shared/checkout', branch: 'mission/test' }];
+      mission.artifacts.tickets = [{ id: 'a', title: 'A', repositoryPath, done: false }];
+    });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const run = h.current().execution!.runs[0]!;
+    h.service.agentStarted(run.workerId!, 'turn-a');
+    await h.service.acquireCommitLock(run.workerId!);
+    const release = h.service.releaseCommitLock(run.workerId!);
+    const completion = h.service.agentFinished(run.workerId!, 'turn-a');
+    await Promise.all([release, completion]);
+    expect(h.current().execution!.workspaces![0]!.commitLock).toBeUndefined();
+    expect(h.current().execution!.runs[0]!.status).toBe('failed');
+    expect(h.persisted.mock.calls.at(-1)![0].missions[0].execution.runs[0].status).toBe('failed');
+  });
+
+  it('retries completion after a lock release cannot be persisted', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.execution!.parallelImplementation = true;
+      mission.execution!.workspaces = [{ repositoryPath, path: '/shared/checkout', branch: 'mission/test' }];
+      mission.artifacts.tickets = [{ id: 'a', title: 'A', repositoryPath, done: false }];
+    });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const run = h.current().execution!.runs[0]!;
+    h.service.agentStarted(run.workerId!, 'turn-a');
+    await h.service.acquireCommitLock(run.workerId!);
+    h.persisted.mockRejectedValueOnce(new Error('storage unavailable'));
+    await expect(h.service.agentFinished(run.workerId!, 'turn-a')).rejects.toThrow('storage unavailable');
+    await vi.waitFor(() => {
+      expect(h.current().execution!.workspaces![0]!.commitLock).toBeUndefined();
+      expect(h.current().execution!.runs[0]!.status).toBe('failed');
+    }, { timeout: 3000 });
+  });
+  it('releases the old lock after a new provider turn starts during retry', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.execution!.parallelImplementation = true;
+      mission.execution!.workspaces = [{ repositoryPath, path: '/shared/checkout', branch: 'mission/test' }];
+      mission.artifacts.tickets = [{ id: 'a', title: 'A', repositoryPath, done: false }];
+    });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const run = h.current().execution!.runs[0]!;
+    h.service.agentStarted(run.workerId!, 'old-turn');
+    await h.service.acquireCommitLock(run.workerId!);
+    h.persisted.mockRejectedValueOnce(new Error('storage unavailable'));
+    await expect(h.service.agentFinished(run.workerId!, 'old-turn')).rejects.toThrow('storage unavailable');
+    h.service.agentStarted(run.workerId!, 'new-turn');
+    await vi.waitFor(() => expect(h.current().execution!.workspaces![0]!.commitLock).toBeUndefined(), { timeout: 3000 });
+    expect(h.current().execution!.runs[0]!.status).toBe('running');
+  });
+  it('stops a preparing run while its worker assignment is being persisted', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.execution!.parallelImplementation = true;
+      mission.execution!.workspaces = [{ repositoryPath, path: '/shared/checkout', branch: 'mission/test' }];
+      mission.artifacts.tickets = [{ id: 'a', title: 'A', repositoryPath, done: false }];
+    });
+    let release!: () => void;
+    let entered!: () => void;
+    const persisting = new Promise<void>(resolve => { entered = resolve; });
+    h.persisted.mockImplementation(async snapshot => {
+      const run = snapshot.missions[0].execution.runs[0];
+      if (run?.workerId && run.status === 'preparing') {
+        entered();
+        await new Promise<void>(resolve => { release = resolve; });
+      }
+    });
+    await h.command({ action: 'run' });
+    await persisting;
+    const stop = h.command({ action: 'cancel', runId: h.current().execution!.runs[0]!.id });
+    release();
+    await stop;
+    await h.service.waitForLaunches();
+    expect(h.current().execution!.runs[0]!.status).toBe('cancelled');
+    expect(h.ports.continueStage).not.toHaveBeenCalled();
+  });
+  it('continues a preparing run if Stop cannot be persisted', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.execution!.parallelImplementation = true;
+      mission.execution!.workspaces = [{ repositoryPath, path: '/shared/checkout', branch: 'mission/test' }];
+      mission.artifacts.tickets = [{ id: 'a', title: 'A', repositoryPath, done: false }];
+    });
+    let release!: () => void;
+    let entered!: () => void;
+    const persisting = new Promise<void>(resolve => { entered = resolve; });
+    h.persisted.mockImplementation(async snapshot => {
+      const run = snapshot.missions[0].execution.runs[0];
+      if (run?.status === 'cancelled') throw new Error('storage unavailable');
+      if (run?.workerId && run.status === 'preparing') {
+        entered();
+        await new Promise<void>(resolve => { release = resolve; });
+      }
+    });
+    await h.command({ action: 'run' });
+    await persisting;
+    const stop = h.command({ action: 'cancel', runId: h.current().execution!.runs[0]!.id });
+    release();
+    await expect(stop).rejects.toThrow('storage unavailable');
+    await h.service.waitForLaunches();
+    expect(h.current().execution!.runs[0]!.status).toBe('running');
+    expect(h.ports.continueStage).toHaveBeenCalledOnce();
+  });
+  it('publishes the only revision when concurrent recovery checks clear the same lock', async () => {
+    const h = setup();
+    const owner = h.originalAgents[0]!;
+    await h.store.change(h.current().id, mission => {
+      mission.execution!.workspaces = [{ repositoryPath: owner.folder!, path: '/shared/checkout', branch: 'mission/test',
+        commitLock: { agentId: owner.id, runId: 'run', turnId: 'old-turn' } }];
+    });
+    const restarted = new MissionExecutionService(h.ports);
+    let confirmStopped!: (stopped: boolean) => void;
+    const stopped = new Promise<boolean>(resolve => { confirmStopped = resolve; });
+    h.ports.isCommitLockOwnerStopped.mockReturnValue(stopped);
+    const revision = h.current().revision;
+    const recoveries = [restarted.recoverInterruptedRuns(), restarted.recoverInterruptedRuns()];
+    expect(h.ports.isCommitLockOwnerStopped).toHaveBeenCalledTimes(2);
+    confirmStopped(true);
+    await Promise.all(recoveries);
+    expect(h.current().execution!.workspaces![0]!.commitLock).toBeUndefined();
+    expect(h.current().revision).toBe(revision + 1);
+    expect(h.ports.publish).toHaveBeenCalledTimes(1);
+    expect(h.persisted.mock.calls.at(-1)![0].missions[0].revision).toBe(h.current().revision);
+  });
+  it('recovers a persisted lock only after the provider confirms the owning turn stopped', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.execution!.parallelImplementation = true;
+      mission.execution!.workspaces = [{ repositoryPath, path: '/shared/checkout', branch: 'mission/test' }];
+      mission.artifacts.tickets = [{ id: 'a', title: 'A', repositoryPath, done: false }, { id: 'b', title: 'B', repositoryPath, done: false }];
+    });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const [a, b] = h.current().execution!.runs;
+    h.service.agentStarted(a!.workerId!, 'old-turn');
+    await h.service.acquireCommitLock(a!.workerId!);
+    const restarted = new MissionExecutionService(h.ports);
+    await restarted.recoverInterruptedRuns();
+    expect(h.current().execution!.workspaces![0]!.commitLock?.agentId).toBe(a!.workerId);
+    restarted.agentStarted(b!.workerId!, 'new-turn');
+    vi.useFakeTimers();
+    try {
+      const waiting = restarted.acquireCommitLock(b!.workerId!);
+      await vi.advanceTimersByTimeAsync(0);
+      h.ports.isCommitLockOwnerStopped.mockResolvedValue(true);
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(await waiting).toStrictEqual({ acquired: true });
+    } finally { vi.useRealTimers(); }
+    expect(h.persisted.mock.calls.at(-1)![0].missions[0].execution.workspaces[0].commitLock.agentId).toBe(b!.workerId);
+  });
+  it('coordinates index ownership between parallel workers and recovers it on turn completion', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.execution!.parallelImplementation = true;
+      mission.execution!.workspaces = [{ repositoryPath, path: '/shared/checkout', branch: 'mission/test' }];
+      mission.artifacts.tickets = [{ id: 'mission-ticket-a', title: 'A', repositoryPath, done: false }, { id: 'mission-ticket-b', title: 'B', repositoryPath, done: false }];
+    });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const [a, b] = h.current().execution!.runs;
+    h.service.agentStarted(a!.workerId!, 'worker-a-turn');
+    h.service.agentStarted(b!.workerId!, 'worker-b-turn');
+    expect(await h.service.acquireCommitLock(a!.workerId!)).toStrictEqual({ acquired: true });
+    expect(await h.service.acquireCommitLock(a!.workerId!)).toStrictEqual({ acquired: true });
+    const controller = new AbortController();
+    const cancelled = h.service.acquireCommitLock(b!.workerId!, controller.signal);
+    controller.abort();
+    await expect(cancelled).rejects.toThrow();
+    let waiting = true;
+    const pending = h.service.acquireCommitLock(b!.workerId!).then(result => { waiting = false; return result; });
+    await expect(h.service.releaseCommitLock(b!.workerId!)).rejects.toThrow();
+    expect(waiting).toBe(true);
+    await h.service.releaseCommitLock(a!.workerId!);
+    expect(await pending).toStrictEqual({ acquired: true });
+    expect(h.persisted.mock.calls.at(-1)![0].missions[0].execution.workspaces[0].commitLock).toMatchObject({ agentId: b!.workerId, turnId: 'worker-b-turn' });
+    await h.service.agentFinished(b!.workerId!, 'old-turn');
+    const restarted = new MissionExecutionService(h.ports);
+    restarted.agentStarted(a!.workerId!, 'worker-a-turn');
+    let waitingAfterRestart = true;
+    const resumed = restarted.acquireCommitLock(a!.workerId!).then(result => { waitingAfterRestart = false; return result; });
+    await Promise.resolve();
+    expect(waitingAfterRestart).toBe(true);
+    await restarted.agentFinished(b!.workerId!, 'worker-b-turn');
+    expect(await resumed).toStrictEqual({ acquired: true });
+  });
+  it('keeps the published mission revision usable while a worker waits for the commit lock', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.execution!.parallelImplementation = true;
+      mission.execution!.workspaces = [{ repositoryPath, path: '/shared/checkout', branch: 'mission/test' }];
+      mission.artifacts.tickets = [{ id: 'a', title: 'A', repositoryPath, done: false }, { id: 'b', title: 'B', repositoryPath, done: false }];
+    });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const [a, b] = h.current().execution!.runs;
+    h.service.agentStarted(a!.workerId!, 'turn-a');
+    h.service.agentStarted(b!.workerId!, 'turn-b');
+    await h.service.acquireCommitLock(a!.workerId!);
+    const revision = h.current().revision;
+    const controller = new AbortController();
+    const waiting = h.service.acquireCommitLock(b!.workerId!, controller.signal);
+    try {
+      await new Promise(resolve => setImmediate(resolve));
+      expect(h.current().revision).toBe(revision);
+      await h.service.execute({ id: h.current().id, revision, action: 'cancel', runId: b!.id });
+      expect(h.current().execution!.runs.find(run => run.id === b!.id)!.status).toBe('cancelled');
+    } finally {
+      controller.abort();
+      await expect(waiting).rejects.toThrow();
+    }
+  });
+  it('opts into independent workers in one checkout, preserves dependencies and leaves stopped tickets stopped', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'tickets';
+      mission.artifacts.requirements = { problem: 'Billing', acceptance: 'Owner pays' };
+    });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const lead = h.current().execution!.runs[0]!;
+    const first = await h.service.upsertTicket(lead.workerId!, { title: 'Account', body: 'Account API.', repositoryPath });
+    const second = await h.service.upsertTicket(lead.workerId!, { title: 'Invoice', body: 'Invoice API.', repositoryPath });
+    await h.service.upsertTicket(lead.workerId!, { title: 'Checkout', body: 'Join both APIs.', repositoryPath, blockedByTicketIds: [first.ticketId, second.ticketId] });
+    await h.service.submit(lead.workerId!, { summary: 'Ready', artifacts: structuredClone(h.current().artifacts) });
+    await expect(h.command({ action: 'accept', runId: lead.id, parallelImplementation: 'true' })).rejects.toThrow('parallel implementation');
+    await h.command({ action: 'accept', runId: lead.id, parallelImplementation: true });
+    await h.service.waitForLaunches();
+    expect(h.current().execution!.parallelImplementation).toBe(true);
+    expect(h.persisted.mock.calls.at(-1)![0].missions[0].execution.parallelImplementation).toBe(true);
+    expect(h.ports.createWorktree).toHaveBeenCalledTimes(1);
+    const workers = h.current().execution!.runs.filter(run => run.stage === 'implementation');
+    expect(workers.map(run => run.ticketIndex)).toStrictEqual([0, 1]);
+    expect(new Set(workers.map(run => run.workerId)).size).toBe(2);
+    for (const run of workers) {
+      expect(run.status).toBe('running');
+      expect(h.snapshot.agents.find(agent => agent.id === run.workerId)!.folder).toBe(h.current().execution!.workspaces![0]!.path);
+      expect(h.service.developerInstructionsForAgent(run.workerId!)).toContain('concurrently');
+    }
+    const evidence = { changes: 'Own lines committed.', tests: 'API checks passed.' };
+    await h.command({ action: 'cancel', runId: workers[1]!.id });
+    await h.service.submit(workers[0]!.workerId!, { summary: 'Account done', ticketId: first.ticketId, implementation: evidence });
+    await h.service.agentFinished(workers[0]!.workerId!, 'account-turn');
+    await h.service.waitForLaunches();
+    expect(h.current().execution!.runs.filter(run => run.stage === 'implementation')).toHaveLength(2);
+    await expect(h.service.submit(workers[1]!.workerId!, { summary: 'Late invoice', ticketId: second.ticketId, implementation: evidence })).rejects.toThrow('active run');
+    await h.command({ action: 'run', ticketIndex: 1 }); await h.service.waitForLaunches();
+    const retry = h.current().execution!.runs.at(-1)!;
+    expect(retry.workerId).not.toBe(workers[0]!.workerId);
+    expect(retry.workerId).not.toBe(workers[1]!.workerId);
+    h.snapshot.agents.find(agent => agent.id === retry.workerId)!.status = { type: 'working' };
+    await h.service.submit(retry.workerId!, { summary: 'Invoice done', ticketId: second.ticketId, implementation: evidence });
+    await h.service.waitForLaunches();
+    const checkout = h.current().execution!.runs.at(-1)!;
+    expect(checkout).toMatchObject({ stage: 'implementation', ticketIndex: 2, status: 'running' });
+    expect(new Set([...workers, retry, checkout].map(run => run.workerId)).size).toBe(4);
+    // A sibling's new assignment must not depend on the submitter finishing its turn.
+    await h.service.agentFinished(workers[0]!.workerId!, 'account-turn');
+    expect(h.current().execution!.runs.at(-1)!.status).toBe('running');
+    await h.service.submit(checkout.workerId!, { summary: 'Checkout done', ticketId: checkout.ticketId, implementation: evidence });
+    await expect(h.command({ action: 'continueToReview' })).rejects.toThrow('still active');
+    h.snapshot.agents.find(agent => agent.id === retry.workerId)!.status = { type: 'idle' };
+    await h.service.agentFinished(retry.workerId!, 'invoice-turn');
+    await h.service.agentFinished(checkout.workerId!, 'checkout-turn');
+    expect(h.current().artifacts.tickets.every(ticket => ticket.done)).toBe(true);
+    expect(h.current().artifacts.implementation.changes.match(/Own lines committed/g)).toHaveLength(3);
+    await h.command({ action: 'continueToReview' }); await h.service.waitForLaunches();
+    expect(h.current().stage).toBe('review');
+  });
+
+  it('does not start a cancelled parallel assignment after workspace refresh finishes', async () => {
+    const h = setup();
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.execution!.parallelImplementation = true;
+      mission.artifacts.tickets = [{ id: 'mission-ticket-one', title: 'Account', repositoryPath: h.originalAgents[0]!.folder!, done: false }];
+    });
+    let release!: () => void;
+    let entered!: () => void;
+    const refreshing = new Promise<void>(resolve => { entered = resolve; });
+    h.ports.refreshWorkspace.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; entered(); }));
+    await h.command({ action: 'run' });
+    await refreshing;
+    await h.command({ action: 'cancel', runId: h.current().execution!.runs[0]!.id });
+    release(); await h.service.waitForLaunches();
+    expect(h.current().execution!.runs[0]!.status).toBe('cancelled');
+    expect(h.ports.continueStage).not.toHaveBeenCalled();
+  });
+
+  it('starts newly approved implementation even when an earlier backlog attempt was cancelled', async () => {
+    const h = setup();
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'tickets';
+      mission.artifacts.requirements = { problem: 'Billing', acceptance: 'Owner pays' };
+      mission.artifacts.tickets = [{ id: 'mission-ticket-one', title: 'Account', repositoryPath: h.originalAgents[0]!.folder!, done: false }];
+      const base = { memberId: h.originalAgents[0]!.id, skills: [], feedback: '', startedAt: '' };
+      mission.execution!.runs = [
+        { ...base, id: 'old-attempt', stage: 'implementation', ticketIndex: 0, ticketId: 'mission-ticket-one', status: 'cancelled' },
+        { ...base, id: 'new-backlog', stage: 'tickets', status: 'awaitingReview', proposal: structuredClone(mission.artifacts) },
+      ];
+    });
+    await h.command({ action: 'accept', runId: 'new-backlog', parallelImplementation: true });
+    await h.service.waitForLaunches();
+    expect(h.current().execution!.runs.at(-1)).toMatchObject({ stage: 'implementation', ticketId: 'mission-ticket-one', status: 'running' });
+  });
+
   it('retains Mission tools and accepts a later result after an implementation turn ends without submitting', async () => {
     const h = setup();
     await h.configure();
@@ -106,8 +495,9 @@ describe('mission execution', () => {
   });
 
   it.each([
-    { backend: 'codex', model: 'luna' },
-    { backend: 'claude', model: 'sonnet' },
+    { backend: 'codex', model: 'luna', reasoningEffort: null, serviceTier: 'ultrafast' },
+    { backend: 'codex', model: 'luna', reasoningEffort: null, serviceTier: null },
+    { backend: 'claude', model: 'sonnet', reasoningEffort: null, serviceTier: null },
   ] as const)('validates and persists the $backend implementation model before provisioning, without changing the lead', async (selection) => {
     const h = setup();
     h.snapshot.providerConnections = [
@@ -124,7 +514,7 @@ describe('mission execution', () => {
       { id: 'sonnet', model: 'sonnet', displayName: 'Sonnet', supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'Low' }] },
     ] : [
       { id: 'planner', model: 'planner', displayName: 'Planner', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'High' }] },
-      { id: 'luna', model: 'luna', displayName: 'Luna', supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'Low' }] },
+      { id: 'luna', model: 'luna', displayName: 'Luna', supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'Low' }], serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }, { id: 'ultrafast', name: 'Ultrafast', description: '' }] },
     ]);
     Object.assign(h.ports, { listModels });
     await h.store.change(h.current().id, mission => {
@@ -139,12 +529,13 @@ describe('mission execution', () => {
     });
     for (const implementationModel of [
       { backend: 'claude', model: 'luna' }, { backend: 'codex', model: 'missing' }, { backend: 'codex', model: 'luna', reasoningEffort: 'high' },
+      { backend: 'codex', model: 'luna', serviceTier: 'turbo' }, { backend: 'codex', model: 'planner', serviceTier: 'fast' },
     ]) {
-      await expect(h.command({ action: 'accept', runId: 'tickets-ready', implementationModel })).rejects.toThrow(/model|effort|provider/i);
+      await expect(h.command({ action: 'accept', runId: 'tickets-ready', implementationModel })).rejects.toThrow(/model|effort|provider|tier/i);
       expect(h.ports.createWorktree).not.toHaveBeenCalled();
       expect(h.current().stage).toBe('tickets');
     }
-    await h.store.change(h.current().id, mission => { mission.execution!.implementationModel = { backend: 'codex', model: 'missing' }; });
+    await h.store.change(h.current().id, mission => { mission.execution!.implementationModel = {reasoningEffort: null, serviceTier: null,  backend: 'codex', model: 'missing' }; });
     await expect(h.command({ action: 'accept', runId: 'tickets-ready' })).rejects.toThrow(/model/i);
     expect(h.ports.createWorktree).not.toHaveBeenCalled();
     h.snapshot.providerConnections![1]!.enabled = false;
@@ -167,10 +558,11 @@ describe('mission execution', () => {
     const worker = h.snapshot.agents.find(agent => agent.id === firstRun.workerId)!;
     expect(worker.backend).toBe(selection.backend);
     expect(worker.backendDefaults).toMatchObject({ kind: selection.backend, model: selection.model, reasoningEffort: 'low' });
-    if (selection.backend === 'codex') expect(worker.backendDefaults).toMatchObject({ serviceTier: 'fast' });
+    // The tier is exactly what was chosen with the model, never whatever the lead happened to be using.
+    if (selection.backend === 'codex' && 'serviceTier' in selection) expect(worker.backendDefaults).toMatchObject({ serviceTier: selection.serviceTier });
     else {
       expect(worker.backendDefaults).toMatchObject({ permissionMode: 'acceptEdits' });
-      expect(worker.backendDefaults).not.toHaveProperty('serviceTier');
+      expect(worker.backendDefaults?.serviceTier).toBeNull();
       expect(listModels).toHaveBeenCalledWith(expect.objectContaining({ backend: 'claude', backendSession: undefined, backendDefaults: undefined }));
     }
     expect(lead.backendDefaults).toMatchObject({ model: 'planner', reasoningEffort: 'high' });
@@ -357,6 +749,36 @@ describe('mission execution', () => {
     await expect(h.service.reportReviewFinding(apiWorkerId, {
       priority: 'p3', title: 'Not allowed', body: 'Implementers only remediate assigned findings.', repositoryPath: '/repo/api',
     })).rejects.toThrow('active Mission Review stage');
+
+    // Each repository reports its own outcome to the lead only after its turn ends.
+    await h.service.updateReviewFinding(apiWorkerId, {
+      findingId: 'finding-api-1', status: 'fixed', evidence: 'API regression passes; committed abc123.',
+    });
+    await h.service.updateReviewFinding(apiWorkerId, {
+      findingId: 'finding-api-2', status: 'fixed', evidence: 'Validation regression passes; committed def456.',
+    });
+    expect(h.ports.sendMessage).not.toHaveBeenCalled();
+    await h.service.agentFinished(apiWorkerId, 'api-remediation');
+    expect(h.ports.sendMessage).toHaveBeenCalledTimes(1);
+    const [sender, recipient, report] = h.ports.sendMessage.mock.calls[0]!;
+    expect([sender, recipient]).toStrictEqual([apiWorkerId, h.originalAgents[0]!.id]);
+    expect(report).toContain('/repo/api');
+    expect(report).toContain('finding-api-1');
+    expect(report).toContain('API regression passes; committed abc123.');
+    expect(report).toContain('Validation regression passes; committed def456.');
+    expect(report).not.toContain('finding-web');
+    expect(h.current().artifacts.review.findings?.map(finding => finding.remediation.state)).toStrictEqual(['fixed', 'fixed', 'fixing']);
+
+    await h.service.agentFinished(webWorkerId, 'web-remediation');
+    expect(h.ports.sendMessage).toHaveBeenCalledTimes(2);
+    expect(h.ports.sendMessage).toHaveBeenLastCalledWith(webWorkerId, h.originalAgents[0]!.id,
+      expect.stringMatching(/finding-web.*unresolved/s));
+    expect(h.current().artifacts.review.findings?.[2]?.remediation.state).toBe('open');
+    await h.service.agentFinished(apiWorkerId, 'api-remediation');
+    await h.service.agentFinished(webWorkerId, 'web-remediation');
+    expect(h.ports.sendMessage).toHaveBeenCalledTimes(2);
+    expect(h.current().stage).toBe('review');
+    expect(h.ports.continueStage).not.toHaveBeenCalled();
   });
 
   it('freezes a debug Review selection into fixed and skipped findings without dispatching a provider turn', async () => {
@@ -660,7 +1082,7 @@ describe('mission execution', () => {
     expect(h.current().artifacts.tickets).toStrictEqual([]);
   });
 
-  it('provisions one shared Mission branch and accepts independent repository results into the Review stage', async () => {
+  it('provisions one shared Mission branch and informs the lead when all repositories finish, before user-approved Review', async () => {
     const h = setup();
     const repositoryPaths = ['/repo/billing-service', '/repo/invoice-service'];
     for (const [index, repositoryPath] of repositoryPaths.entries()) {
@@ -729,18 +1151,29 @@ describe('mission execution', () => {
       expect(worker.backendDefaults).not.toBe(missionLead.backendDefaults);
     }
 
+    const leadPromptCount = h.ports.continueStage.mock.calls.filter(([id]) => id === missionLead.id).length;
     for (const [index, run] of implementationRuns.entries()) {
       const artifacts: MissionArtifacts = structuredClone(h.current().artifacts);
       artifacts.requirements.problem = 'Unapproved upstream edit';
       artifacts.tickets[index]!.done = true;
       artifacts.implementation = { changes: `Changed ticket ${index}`, tests: `Tests for ${index} passed` };
+      if (index === implementationRuns.length - 1) h.persisted.mockImplementationOnce(async snapshot => {
+        expect(snapshot.missions[0].artifacts.tickets.every((ticket: { done: boolean }) => ticket.done)).toBe(true);
+        expect(h.ports.continueStage.mock.calls.filter(([id]) => id === missionLead.id)).toHaveLength(leadPromptCount);
+      });
       await expect(h.service.submit(run.workerId!, {
         ...(index === 0 ? { artifacts } : { ticketId: run.ticketId, implementation: artifacts.implementation }), summary: 'Implemented',
       })).resolves.toEqual({ success: true, status: 'accepted' });
       await h.service.agentFinished(run.workerId!);
+      expect(h.ports.continueStage.mock.calls.filter(([id]) => id === missionLead.id)).toHaveLength(leadPromptCount + (index === implementationRuns.length - 1 ? 1 : 0));
     }
 
     await h.service.waitForLaunches();
+    const completion = h.ports.continueStage.mock.calls.filter(([id]) => id === missionLead.id).at(-1)![1];
+    expect(completion).toContain(h.current().outcome);
+    expect(completion).toContain('read-mission-artifact');
+    await h.service.agentFinished(implementationRuns.at(-1)!.workerId!);
+    expect(h.ports.continueStage.mock.calls.filter(([id]) => id === missionLead.id)).toHaveLength(leadPromptCount + 1);
     expect(h.current().artifacts.tickets.every(ticket => ticket.done)).toBe(true);
     expect(h.current().artifacts.requirements.problem).toBe('Billing');
     expect(h.current().artifacts.implementation.tests).toContain('Tests for 0 passed');

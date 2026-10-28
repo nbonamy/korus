@@ -118,21 +118,19 @@ describe(`${product.name} MCP tool registration`, () => {
     createServer();
 
     const registration = mocks.registerTool.mock.calls.find(([name]) => name === 'create-agent');
-    const definition = registration?.[1] as { description: string; inputSchema: Record<string, unknown> } | undefined;
+    const definition = registration?.[1] as { description: string; inputSchema: { shape: Record<string, unknown> } } | undefined;
     expect(definition?.description).toContain(`${product.name} co-agent`);
-    expect(Object.keys(definition?.inputSchema ?? {})).toStrictEqual([
+    expect(Object.keys(definition?.inputSchema.shape ?? {})).toStrictEqual([
       'requestId',
       'task',
       'name',
-      'backend',
-      'model',
-      'reasoningEffort',
-      'serviceTier',
+      'selection',
       'repoPath',
       'createWorktree',
       'branchName',
       'destinationPath',
       'prompt',
+      'goal',
       'startingContext',
       'instructions',
     ]);
@@ -160,7 +158,7 @@ describe(`${product.name} MCP tool registration`, () => {
     ['list-repos', {}, 'listSourceRepositories', ['agent-dina']],
     ['list-worktrees', { repoPath: '/src/app' }, 'listSourceWorktrees', ['agent-dina', '/src/app']],
     ['create-worktree', { repoPath: '/src/app', branchName: 'tests' }, 'createSourceWorktree', ['agent-dina', { repoPath: '/src/app', branchName: 'tests' }]],
-    ['create-agent', { repoPath: '/src/app', backend: 'claude' }, 'createAgent', ['agent-dina', { repoPath: '/src/app', backend: 'claude' }]],
+    ['create-agent', { repoPath: '/src/app', selection: { backend: 'claude' } }, 'createAgent', ['agent-dina', { repoPath: '/src/app', selection: { backend: 'claude' } }]],
     ['display-markdown', { markdown: '# Report' }, 'displayMarkdown', ['agent-dina', { markdown: '# Report' }]],
   ])('adapts %s arguments to the coordinator', async (tool, input, method, expectedArguments) => {
     createServer();
@@ -262,17 +260,7 @@ describe(`${product.name} MCP tool registration`, () => {
       destinationPath: '/src/app-tests',
     });
 
-    const agentInput = {
-      name: 'Tester',
-      backend: 'codex',
-      model: 'gpt-5.6-sol',
-      reasoningEffort: 'high',
-      repoPath: '/src/app',
-      createWorktree: true,
-      branchName: 'tests',
-      destinationPath: '/src/app-tests',
-      prompt: 'Run the focused tests and fix the failure.',
-    };
+    const agentInput = { name: 'Tester', repoPath: '/src/app', createWorktree: true, branchName: 'tests', destinationPath: '/src/app-tests', prompt: 'Run the focused tests and fix the failure.', selection: { backend: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'high' } };
     await handlers.get('create-agent')?.(agentInput);
     expect(coordinator.createAgent).toHaveBeenCalledWith('agent-dina', agentInput);
 

@@ -155,7 +155,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if ((input.scope.type === 'branch' && (!setup.branchChanges || input.scope.baseRef !== setup.baseRef))
       || (input.scope.type === 'uncommitted' && !setup.uncommitted)
       || (input.threadMode === 'current' && (!setup.currentThread || input.automation?.enabled))
-      || (input.threadMode === 'independent' && input.backend !== setup.backend)) return;
+      || (input.threadMode === 'independent' && input.selection?.backend !== setup.backend)) return;
     review.value = { status: 'starting', setup };
     try {
       const reviewerId = await active.startReview(setup.target, input);
@@ -495,6 +495,14 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if (!valid()) throw new Error('Conversation changed.');
     return image;
   }
+  async function readFilePreview(id: string, input: import('@workspace/core/companion-files').CompanionFileInput) {
+    const active = session; const epoch = selectionEpoch;
+    const valid = () => active === session && epoch === selectionEpoch && id === agentId.value && status.value === 'connected';
+    if (!valid() || !active?.previewFile) throw new Error('File previews require an updated desktop.');
+    const preview = await active.previewFile(id, input);
+    if (!valid()) throw new Error('Conversation changed.');
+    return preview;
+  }
 
   async function loadOlder(id: string) {
     const active = session;
@@ -614,6 +622,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (session === active) { missionAction.value = 'failed'; void refreshWorkspace(active).catch(() => {}); }
     }
   }
+  const finishReview = (missionId: string) => actOnMission((active, mission) => active.finishReview?.(mission.id, mission.revision), missionId);
   const continueMission = (missionId: string) => actOnMission((active, mission) => active.continueMission?.(mission.id, mission.revision), missionId);
   const acceptTicket = (missionId: string, number: number) => actOnMission((active, mission) => {
     const runId = mission.tickets.find((ticket) => ticket.number === number && ticket.state === 'awaitingReview')?.runId;
@@ -698,9 +707,9 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     // The link to the laptop.
     status, error, errorDetail, laptopId, connect, setActive, disconnect, chooseConnection, reconnect, revoke, registerPush, pushRegistrationFailed,
     // What the laptop hosts, and which of it is selected.
-    teamId, agentId, workspace, agents, agent, missions, selectTeam, selectAgent, selectBackend, markRead, createTeam, teamCreation, dismissTeamCreation, missionAction, continueMission, acceptTicket, selectFinding, fixFindings, rerunReview, dismissMissionAction,
+    teamId, agentId, workspace, agents, agent, missions, selectTeam, selectAgent, selectBackend, markRead, createTeam, teamCreation, dismissTeamCreation, missionAction, finishReview, continueMission, acceptTicket, selectFinding, fixFindings, rerunReview, dismissMissionAction,
     // The selected conversation and its history.
-    conversation, conversationReady, conversationGeneration, loading, refreshing, history, loadOlder, readImage, readConversationContent,
+    conversation, conversationReady, conversationGeneration, loading, refreshing, history, loadOlder, readImage, readFilePreview, readConversationContent,
     conversationUpdates: (since: import('@workspace/core/companion-journal').CompanionCheckpoint | null) => {
       const target = currentTarget();
       return target ? connector.conversationUpdates?.(target, since) ?? null : null;

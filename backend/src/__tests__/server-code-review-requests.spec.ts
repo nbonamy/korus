@@ -312,7 +312,7 @@ describe('AppBackendServer code review workflow', () => {
 
     const started = await request(server, backendMethods.agentCodeReviewStart, {
       agentId: owner.id,
-      input: { scope: { type: 'uncommitted' }, threadMode: 'independent', backend, model: 'review-model', reasoningEffort: 'low', instructions: 'Focus on permission boundaries.' },
+      input: { scope: { type: 'uncommitted' }, threadMode: 'independent', selection: { backend, model: 'review-model', reasoningEffort: 'low' }, instructions: 'Focus on permission boundaries.' },
     });
     const reviewer = snapshot.agents.find((candidate) => candidate.id !== owner.id)!;
     await vi.waitFor(() => expect(reviewer.codeReview?.status).toBe('ready'));
@@ -332,7 +332,7 @@ describe('AppBackendServer code review workflow', () => {
     });
     expect(snapshot.agentGitStatuses[reviewer.id]).toStrictEqual(snapshot.agentGitStatuses[owner.id]);
     expect(owner.backendDefaults).toMatchObject({ model: 'gpt-5.6-sol', reasoningEffort: 'high' });
-    expect(snapshot.general.codeReviewDefaults?.providers[backend]).toStrictEqual({ model: 'review-model', ...(backend === 'antigravity' ? {} : { reasoningEffort: 'low' }) });
+    expect(snapshot.general.codeReviewDefaults?.providers[backend]).toStrictEqual({backend, reasoningEffort: null, serviceTier: null, model: 'review-model', ...(backend === 'antigravity' ? {} : { reasoningEffort: 'low' }) });
     if (backend === 'antigravity') expect(reviewer.backendDefaults?.reasoningEffort).toBeUndefined();
     const round = session.rounds[0]!;
     expect(runCodeReview).toHaveBeenNthCalledWith(1, reviewer, expect.objectContaining({

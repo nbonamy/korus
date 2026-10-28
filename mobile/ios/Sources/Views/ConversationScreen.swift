@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ConversationScreen: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         NavigationStack {
@@ -11,7 +12,7 @@ struct ConversationScreen: View {
                     .accessibilityHidden(model.loadingConversation)
                     .allowsHitTesting(!model.loadingConversation)
                     .onChange(of: proxy.safeAreaInsets, initial: true) { _, insets in
-                        model.transcript.setInsets(top: insets.top, bottom: insets.bottom)
+                        model.transcript.setInsets(top: insets.top, bottom: insets.bottom, leading: insets.leading, trailing: insets.trailing)
                     }
             }
             .overlay {
@@ -59,6 +60,7 @@ struct ConversationScreen: View {
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
+                if !model.filePreviewOpen {
                 VStack(spacing: 0) {
                     if let request = model.requests.first {
                         HStack(spacing: 0) {
@@ -90,10 +92,12 @@ struct ConversationScreen: View {
                     }
                     ComposerView()
                 }
+                }
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button {
+                    // The sidebar is always there on a wide display, so only the way back to a mission is needed.
+                    if sizeClass != .regular || model.workerMission != nil { Button {
                         if let mission = model.workerMission { model.showMissions(mission.id) } else { model.drawerOpen.toggle() }
                     } label: {
                         Image(systemName: model.workerMission == nil ? "line.3.horizontal" : "chevron.left")
@@ -101,7 +105,7 @@ struct ConversationScreen: View {
                     .buttonBorderShape(.circle)
                     .toolbarDot(model.teams.hasUnreadActivity)
                     .accessibilityLabel(model.workerMission == nil ? "Agents" : "Back to mission")
-                    .accessibilityValue(model.workerMission == nil && model.teams.hasUnreadActivity ? "Unread activity" : "")
+                    .accessibilityValue(model.workerMission == nil && model.teams.hasUnreadActivity ? "Unread activity" : "") }
                 }
                 ToolbarItem(placement: .principal) { HeaderTitle() }
                 ToolbarItem(placement: .topBarTrailing) {

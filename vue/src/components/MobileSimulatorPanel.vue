@@ -115,8 +115,8 @@
         </div>
       </template>
     </div>
-    <div v-else-if="poweringOff" class="mobile-simulator__screen mobile-simulator__screen--status" role="status">
-      <span class="app-spinner app-spinner--sm" aria-hidden="true" />{{ $t('surface.mobileSimulator.poweringOff') }}
+    <div v-else-if="poweringOff || changingPose" class="mobile-simulator__screen mobile-simulator__screen--status" role="status">
+      <span class="app-spinner app-spinner--sm" aria-hidden="true" />{{ $t(poweringOff ? 'surface.mobileSimulator.poweringOff' : changingPose === 'fold' ? 'surface.mobileSimulator.folding' : 'surface.mobileSimulator.unfolding') }}
     </div>
     <div v-else class="mobile-simulator__screen">
       <MobileLiveScreen
@@ -124,6 +124,7 @@
         :agent-id="agentId"
         :attachment-id="attachment.id"
         :platform="attachment.device.platform"
+        :foldable="attachment.device.foldable"
         :disabled="busy"
         @keydown="keyDown"
         @button="button"
@@ -163,6 +164,14 @@
         >
           <IconRotate2 aria-hidden="true" />
         </button>
+        <template v-if="attachment.device.foldable">
+          <button type="button" class="mobile-simulator__icon-button" :aria-label="$t('surface.mobileSimulator.fold')" :title="$t('surface.mobileSimulator.fold')" :disabled="busy" @click="setFolded(true)">
+            <DuoPoseIcon pose="folded" />
+          </button>
+          <button type="button" class="mobile-simulator__icon-button" :aria-label="$t('surface.mobileSimulator.unfold')" :title="$t('surface.mobileSimulator.unfold')" :disabled="busy" @click="setFolded(false)">
+            <DuoPoseIcon pose="unfolded" />
+          </button>
+        </template>
         <button
           type="button"
           class="mobile-simulator__icon-button"
@@ -225,12 +234,14 @@ import { ElMessage } from 'element-plus';
 import { translate } from '../i18n';
 import { appApi, appPlatformActions } from '../platform-api';
 import MobileLiveScreen from './MobileLiveScreen.vue';
+import { DuoPoseIcon } from '../shared/icons/app-icons';
 const props = defineProps<{ agentId: string; visible: boolean }>();
 const attachment = ref<MobileAttachment | null>(null);
 const catalog = ref<MobileCatalog>({ devices: [], setup: [] });
 const platform = ref<MobileDevice['platform'] | ''>('');
 const pending = ref('');
 const poweringOff = ref(false);
+const changingPose = ref<'fold' | 'unfold' | null>(null);
 const loaded = ref(false);
 const pickerOpen = ref(false);
 const pickerTrigger = ref<HTMLElement>();
@@ -298,6 +309,16 @@ async function detach() {
 }
 async function rotate() {
   if (attachment.value && !busy.value) await run({ action: 'rotate', attachmentId: attachment.value.id });
+}
+async function setFolded(folded: boolean) {
+  if (!attachment.value || busy.value) return;
+  const identity = generation;
+  changingPose.value = folded ? 'fold' : 'unfold';
+  try {
+    await run({ action: changingPose.value, attachmentId: attachment.value.id });
+  } finally {
+    if (identity === generation) changingPose.value = null;
+  }
 }
 async function powerOff() {
   if (!attachment.value || busy.value) return;
@@ -446,6 +467,7 @@ watch(
     platform.value = '';
     pending.value = '';
     poweringOff.value = false;
+    changingPose.value = null;
     loaded.value = false;
     pickerOpen.value = false;
     catalog.value = { devices: [], setup: [] };

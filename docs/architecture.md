@@ -58,6 +58,9 @@ in Electron. Its pane and provider-independent MCP tool share that authority;
 [the MCP model](mcp.md#mobile-simulators) records the attachment and coordinate rules.
 Normal video teardown settles pending reads with an ended result; cleanup is
 idempotent and cannot stop a replacement view. Native stream failures remain errors.
+Fold controls are exposed from the simulator's device type, independently of its
+editable name. Desktop-only hinge changes close the old view and wait for the
+active display to settle before capturing new dimensions and accepting touch.
 
 Host capabilities are enforced in `daemon` as well as in the UI: a persisted
 desktop preference cannot enable a tool the host does not provide.
@@ -376,6 +379,10 @@ Rules:
 - Writes are serialized, same-directory temp file plus atomic rename, with no
   fsync and therefore no power-loss guarantee. A slow older write never overwrites
   a newer one.
+- Active agent turns carry a roster recovery flag. The owning daemon clears it
+  on completion or explicit stop and uses the provider driver to continue flagged
+  work at startup when the setting is enabled. Remote agents are recovered by
+  their owning daemon.
 - Navigation, ordering and presentation settings are per-client preference
   profiles; backend policy is shared. A client selecting a remote team never
   changes the remote desktop's navigation.
@@ -640,18 +647,41 @@ publishes only after saving.
   conversation; approval advances the Mission through its existing command.
 - Each ticket names exactly one repository. Worktrees are created only for
   affected repositories when code work begins, sharing one Mission suffix and
-  branch name. Repositories run in parallel, work within one repository is
-  serialized, and each worktree records a baseline commit for whole-Mission diff
+  branch name. Repositories run in parallel; work within one repository is
+  serialized unless the user opts into parallel implementation when approving
+  Tickets. That choice is persisted with the implementation model. Parallel
+  attempts use distinct worker conversations in the same repository worktree,
+  with dependency-ready tickets dispatched independently. Shared files and Git
+  state are a disclosed risk: workers stop for user guidance on conflicts and
+  commit only their own changes, using selected lines for mixed files. Other
+  workers' uncommitted changes do not prevent ticket submission. Each worktree
+  has a persisted cooperative commit lock owned by the worker and provider turn.
+  Parallel workers wait to acquire it before changing the Git index and release it after
+  committing; successful ticket submission also releases any lock held by that
+  assignment in the same durable update. Completed owner turns release it. After a
+  daemon restart, a persisted lock is released only after the provider conversation
+  is loaded and confirmed idle; unavailable or active owners retain it. This coordinates participating
+  workers, not external Git processes or concurrent edits to files.
+  Each worktree records a baseline commit for whole-Mission diff
   review. Failed or cancelled attempts keep their workspace and conversation.
   Implementation assignments bind a stable ticket ID to the run and repository;
   one-based ticket numbers are display context. Workers receive the full assigned
   ticket and accepted requirements rather than reconstructing assignments from a
   backlog. Identity-bound submission updates only that ticket and serially merges
   its evidence with other repositories' results. Legacy runs retain index fallback.
+  Once every ticket's implementation is accepted and saved, the orchestrator
+  notifies the Mission lead with a reference to the implementation evidence.
+  Continuing to Review remains a user decision.
+  Review waits for every implementation worker to stop, including accepted
+  workers still finishing their provider turns. Failed and cancelled attempts
+  require an explicit ticket retry; sibling completion does not restart them.
 - Tickets approval can persist an independent implementation provider, model and effort.
   Host catalog policy is checked before provisioning and worker launch. This
   selection applies to implementation workers and retries without changing the lead
   or the Review configuration.
+- Each repository's remediation turn reports its recorded fixes, verification
+  evidence and unresolved findings to the Mission lead through agent messaging.
+  Reports do not start another Review or advance the Mission.
 - Agents never publish or merge: delivery reuses Korus's diff and explicit
   commit/push/PR controls. Ship completes only after every affected repository
   produced a PR or merged.
@@ -675,6 +705,10 @@ target and reviewer agents) plus an opaque reviewer session reference.
 - Independent reviews reset the reviewer's conversation between rounds to reduce
   anchoring; every round receives the cumulative ledger (all prior skips, fixes
   and decisions) in a `<context>` block.
+- Independent reviewers retain their selected provider, model, effort and service
+  tier across rounds and retries. Review preferences keep these choices per provider;
+  an explicit Standard tier clears inherited Fast mode. Current-thread reviews use
+  the thread's existing settings.
 - Per-review instructions belong to the review session, survive retries
   and fresh rounds, and never become saved reviewer defaults. Unsubmitted drafts
   stay local to the agent's review tab and are discarded when that tab closes.
@@ -787,12 +821,34 @@ wiring, never branches in assignment, Mission, Settings or automation code.
 - Assignments are provider-neutral records keyed by provider and item ID. Agents
   update status through `update-work-item`; the record survives deletion of its
   agent, and Korus status never changes the tracker's own workflow state.
+- GitHub mixed-kind search feeds merge independently paginated issue and pull
+  request searches by descending update time; GitHub App user tokens cannot
+  search both kinds in one request. Opaque continuations bind each stream's page
+  and consumed offset to the account and filters. Only pages needed for the next
+  result page are read; partially consumed provider pages are re-read on resume.
+  Per-kind totals are not presented as a combined feed total. Outside-owned
+  GitHub work is filtered from the authenticated account feed, skipping empty
+  pages, rather than searching unrelated public repositories. GitLab excludes
+  the owned-project catalog from accessible projects for the outside scope.
+  Inside includes personal repositories and repositories of organizations where
+  the viewer can administer the organization. GitHub discovers accessible
+  organization owners through paginated repository metadata and the organization's
+  `viewerCanAdminister` flag; App user tokens can return empty REST membership
+  lists despite an administrator role. GitLab includes projects
+  under groups where the viewer is an Owner, including descendant subgroups.
+  Ownership discovery is paginated and failures surface instead of silently
+  moving managed repositories into the outside scope.
 - GitLab backlog identity includes the host, full project namespace and native
   item reference (`#` for issues, `!` for merge requests). Repository reads exhaust
   API pages; global reads return opaque continuations bound to account and filters.
   The all-work feed walks accessible projects because GitLab.com restricts global
-  issue reads with `scope=all`. Assigned-to-me reads use the global API. Direct and
-  `glab` connections share this normalization and perform no native workflow writes.
+  issue reads with `scope=all`. Personal issue, author and reviewer filters apply
+  at the provider before pagination; these feeds use the global API. Owned-project
+  feeds enumerate explicitly owned projects. Direct and `glab` connections share
+  this normalization and perform no native workflow writes.
+- Authored pull requests use a read-only feedback check distinct from code review:
+  inspect current discussion and unresolved feedback against the current branch.
+  Addressing feedback remains a separate action that permits implementation.
 - An assignment prompt is a short user-visible request plus a hidden `<context>`
   block holding the action instructions, the `update-work-item` protocol and the
   item's content. Item text is untrusted, so a closing tag inside it is escaped

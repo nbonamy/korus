@@ -80,6 +80,16 @@ remain full-square. Composite the canonical vector into thumbnails, the social
 card, and the channel banner rather than asking image generation to redraw it.
 Re-export the films after updating their shared `website/assets/app-icon.png`.
 
+The hero pairs the desktop `assets/mission-screenshot.png` with
+`assets/screens/hero-mission-mobile.webp`, captured from the native iPhone app
+using matching demo data. Both show **Ship team invitations** in Implementation:
+two of three tickets complete, with **Send invitation emails** in progress.
+The screens sit beside each other without overlap; preserve the desktop capture.
+The Anywhere section uses the unaltered Mission and Changes screens from
+`mobile/app-store/screenshots/iphone-6.3/`, resized to WebP in `assets/screens/`.
+Keep the mobile UI intact and use neutral demo data. The page's social preview
+uses `assets/og.png`.
+
 The hero leads with three visitor problems—parallel work, reliable results,
 and big ideas—each answered by a self-hosted product film: Delegation, Code
 Review, and Mission. Quick Chat, Visualize, and Sharing films sit in the feature cards.
@@ -442,11 +452,14 @@ keep the checked take under `videos/local/narrated/sharing-film/` and render wit
 
 ### Manual downloads
 
-The header and hero detect the visitor's desktop OS without external scripts.
-All platforms remain accessible: macOS Apple silicon, Windows x64 (unsigned),
+The header and hero detect the visitor's platform without external scripts.
+iPhone Download buttons open the App Store listing from
+`core/src/product.json` (`companionAppStoreUrl`). The download chooser also
+includes an explicit iPhone link without JavaScript. All desktop platforms
+remain accessible: macOS Apple silicon, Windows x64 (unsigned),
 and Linux x64 / ARM64 with DEB, RPM, and ZIP choices. Browser OS detection does
-not infer CPU architecture; Linux always opens the explicit choices. Mobile,
-ChromeOS, and unknown browsers open all downloads. The chooser also works
+not infer CPU architecture; Linux always opens the explicit choices. Android,
+iPad, ChromeOS, and unknown browsers open all downloads. The chooser also works
 without JavaScript.
 
 Public download URLs use `/releases/latest/download/<filename>` so they follow

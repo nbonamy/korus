@@ -1,7 +1,7 @@
 import type { CodexPromptPart } from '@codex-app-sdk/core/surface';
 import type { CompanionCheckpoint, CompanionSync } from '@workspace/core/companion-journal';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
-import type { AgentBackend, AgentModelSelection, BackendModelOption, BackendSkillSummary, BackendPluginSummary, PromptSkillInput, ProviderConversationFrame } from '@workspace/core/contracts';
+import type { AgentBackend, ExecutionSelection, BackendModelOption, BackendSkillSummary, BackendPluginSummary, PromptSkillInput, ProviderConversationFrame } from '@workspace/core/contracts';
 import type { CompanionBranch, CompanionNewChat, CompanionRequestReply, CompanionCloseOptions, CompanionClosePreview, CompanionTarget } from '@workspace/core/companion-protocol';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import type { CompanionUsage, CompanionProjectInput, CompanionGitHubRepository } from '@workspace/core/companion-protocol';
@@ -13,8 +13,8 @@ export type CompanionConversation = Extract<ProviderConversationFrame, {
 export type { CompanionWorkspace } from '@workspace/core/companion-protocol';
 import type { CompanionWorkspace } from '@workspace/core/companion-protocol';
 /** The composer choices that travel with a prompt, as the desktop sends them. */
-export type CompanionPromptOptions = { content?: readonly CodexPromptPart[]; followUpBehavior?: 'queue' | 'steer'; skills?: PromptSkillInput[]; model?: string | null; reasoningEffort?: string | null; serviceTier?: string | null; planMode?: boolean; inputMethod?: 'typed' | 'dictated';
-  delegation?: { startingContext: 'conversation' | 'handoff'; instructions?: string } };
+export type CompanionPromptOptions = Omit<import('@workspace/core/contracts').RendererSendPromptOptions, 'attachments' | 'backendOptions'> & { followUpBehavior?: 'queue' | 'steer' };
+
 /** Where and how a review of an agent's changes starts. */
 export type { CompanionReviewInput } from '@workspace/core/companion-review';
 import type { CompanionReviewInput, CompanionReviewSetup } from '@workspace/core/companion-review';
@@ -32,6 +32,7 @@ type CompanionLink = {
 type CompanionOperations = {
   createTeam?(name: string): Promise<string>;
   /** Move a finished mission on to review, or accept a ticket waiting for it; `revision` is the mission as the phone saw it. */
+  finishReview?(missionId: string, revision: number): Promise<void>;
   continueMission?(missionId: string, revision: number): Promise<void>;
   acceptTicket?(missionId: string, revision: number, runId: string): Promise<void>;
   /** A review's findings: choose what to fix, fix it, and review again once nothing is open. */
@@ -39,6 +40,7 @@ type CompanionOperations = {
   fixFindings?(missionId: string, revision: number): Promise<void>;
   rerunReview?(missionId: string, revision: number): Promise<void>;
   gitDiff?(agentId: string, scope: import('@workspace/core/contracts').AgentGitDiffTarget): Promise<import('@workspace/core/contracts').AgentGitDiff>;
+  previewFile?(agentId: string, input: import('@workspace/core/companion-files').CompanionFileInput): Promise<import('@workspace/core/companion-files').CompanionFilePreview>;
   readImage?(agentId: string, path: string): Promise<import('@workspace/core/companion-protocol').CompanionImage>;
   repositoryCatalog?(teamId: string, provider: import('@workspace/core/companion-protocol').CompanionRepositoryProvider): Promise<CompanionGitHubRepository[]>;
   repositoryBranches?(teamId: string, provider: import('@workspace/core/companion-protocol').CompanionRepositoryProvider, repositoryId: string): Promise<import('@workspace/core/companion-protocol').CompanionProjectBranch[]>;
@@ -66,7 +68,7 @@ type CompanionOperations = {
   listModels?(agentId: string): Promise<BackendModelOption[]>;
   listPlugins?(agentId: string): Promise<BackendPluginSummary[]>;
   listSkills?(agentId: string): Promise<BackendSkillSummary[]>;
-  selectModel?(agentId: string, selection: AgentModelSelection): Promise<void>;
+  selectModel?(agentId: string, selection: ExecutionSelection): Promise<void>;
   changeGoal?(target: CompanionTarget, objective: string | null): Promise<void>;
   updateQueuedPrompt?(target: CompanionTarget, promptId: string, action: 'steer' | 'delete'): Promise<void>;
   interrupt?(agentId: string): Promise<void>;

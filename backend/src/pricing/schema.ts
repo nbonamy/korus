@@ -87,49 +87,45 @@ export const sourcePricingSchema = z.object({
   message: 'Source model needs a name or base_model',
 });
 
-const provider = z.enum(['openai', 'anthropic', 'google']);
+export const pricingBaselineDate = '2026-10-01T00:00:00.000Z';
 const sha = z.string().regex(/^[a-f0-9]{40}$/);
-const model = z.strictObject({
-  id: z.string().min(1), provider,
-  canonicalId: z.string().min(1).optional(),
-  availability: z.enum(['priced', 'unpriced']),
-  cost: cost.optional(),
+const pricingEvent = z.strictObject({
+  date: z.iso.datetime(),
+  availability: z.enum(['priced', 'unpriced', 'removed']),
+  rates: cost.optional(),
   serviceTiers: z.array(z.string().min(1)).optional(),
   cache: cacheSupport.optional(),
   modes: modes.optional(),
-  source: z.strictObject({ path: z.string().min(1), blobSha: sha, urls: z.array(z.url()) }),
-}).refine((value) => (value.availability === 'priced') === (value.cost !== undefined), {
-  message: 'Unpriced models must omit cost; priced models must retain cost',
+  source: z.strictObject({ revision: sha, collectedAt: z.iso.datetime(), blobSha: sha.optional() }),
+}).refine((value) => (value.availability === 'priced') === (value.rates !== undefined), {
+  message: 'Only priced events must retain rates',
+}).refine(value => value.availability === 'removed' || value.source.blobSha !== undefined, {
+  message: 'Pricing events must retain their source blob hash',
 });
-
-const snapshot = z.strictObject({
-  date: z.iso.datetime(),
-  openai: z.array(model).min(1), anthropic: z.array(model).min(1), google: z.array(model).min(1),
-  provenance: z.strictObject({
-    repository: z.literal('https://github.com/anomalyco/models.dev'),
-    revision: sha, collectedAt: z.iso.datetime(), schemaVersion: z.literal(1), currency: z.literal('USD'),
+const modelHistory = z.strictObject({
+  metadata: z.strictObject({
+    canonicalId: z.string().min(1).optional(),
+    source: z.strictObject({ path: z.string().min(1), urls: z.array(z.url()) }),
   }),
+  cost: z.array(pricingEvent).min(1),
 }).superRefine((value, context) => {
-  for (const name of ['openai', 'anthropic', 'google'] as const) {
-    const models = value[name];
-    if (models.some((entry) => entry.provider !== name) || new Set(models.map((entry) => entry.id)).size !== models.length) {
-      context.addIssue({ code: 'custom', message: `Invalid or duplicate ${name} identity` });
-    }
-    if (!models.some((entry) => entry.availability === 'priced')) {
-      context.addIssue({ code: 'custom', message: `No priced models for required provider ${name}` });
+  for (let index = 0; index < value.cost.length; index += 1) {
+    const date = Date.parse(value.cost[index].date);
+    if (date < Date.parse(pricingBaselineDate) || (index > 0 && date <= Date.parse(value.cost[index - 1].date))) {
+      context.addIssue({ code: 'custom', message: 'Model pricing events must have increasing timestamps at or after the pricing baseline' });
     }
   }
 });
-
-export const pricingHistorySchema = z.array(snapshot).min(1).superRefine((history, context) => {
-  if (history[0].date !== '2026-10-01T00:00:00.000Z') {
-    context.addIssue({ code: 'custom', message: 'Initial pricing date must be October 1, 2026 UTC' });
+const providerHistory = z.record(z.string().min(1), modelHistory).superRefine((models, context) => {
+  if (!Object.values(models).some(model => model.cost[0].date === pricingBaselineDate)) {
+    context.addIssue({ code: 'custom', message: 'Provider must retain its October 1, 2026 baseline' });
   }
-  for (let index = 1; index < history.length; index += 1) {
-    if (Date.parse(history[index].date) <= Date.parse(history[index - 1].date)) {
-      context.addIssue({ code: 'custom', message: 'Pricing snapshots must have increasing timestamps' });
-    }
+  if (!Object.values(models).some(model => model.cost.at(-1)!.availability === 'priced')) {
+    context.addIssue({ code: 'custom', message: 'Provider must contain priced models' });
   }
 });
 
+export const pricingHistorySchema = z.strictObject({
+  openai: providerHistory, anthropic: providerHistory, google: providerHistory,
+});
 export type PricingHistory = z.infer<typeof pricingHistorySchema>;

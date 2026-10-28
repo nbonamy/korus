@@ -527,11 +527,42 @@ describe('companion state', () => {
       await vi.waitFor(() => expect(state.models.value).toHaveLength(2));
       expect(state.composerSettings.value).toMatchObject({ model: { id: 'fast' }, reasoningEffort: 'medium', planMode: false });
       state.updateComposerSettings({ modelId: 'deep' });
-      expect(selectModel).toHaveBeenCalledExactlyOnceWith('demo-agent', { model: 'deep-1', reasoningEffort: 'high', serviceTier: null });
+      expect(selectModel).toHaveBeenCalledExactlyOnceWith('demo-agent', { model: 'deep-1', reasoningEffort: 'high', serviceTier: null, backend: 'codex' });
       state.updateComposerSettings({ planMode: true });
       expect(selectModel).toHaveBeenCalledTimes(1);
       await state.submit('Do it');
-      expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Do it', expect.any(String), { model: 'deep-1', planMode: true, reasoningEffort: 'high' });
+      expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Do it', expect.any(String), { planMode: true, selection: { model: 'deep-1', reasoningEffort: 'high' } });
+    } finally { state.dispose(); }
+  });
+  it('preserves supported reasoning effort across model switches and otherwise selects the middle available effort', async () => {
+    const connector = createDemoConnector(); const original = connector.connect;
+    const efforts = (...values: string[]) => values.map(reasoningEffort => ({ reasoningEffort, description: '' }));
+    const models = [
+      { id: 'first', model: 'first', displayName: 'First', isDefault: true, defaultReasoningEffort: 'high', supportedReasoningEfforts: efforts('low', 'medium', 'high') },
+      { id: 'shared', model: 'shared', displayName: 'Shared', defaultReasoningEffort: 'low', supportedReasoningEfforts: efforts('low', 'high') },
+      { id: 'other', model: 'other', displayName: 'Other', defaultReasoningEffort: 'low', supportedReasoningEfforts: efforts('minimal', 'low', 'medium', 'max') },
+      { id: 'none', model: 'none', displayName: 'None', supportedReasoningEfforts: [] },
+    ];
+    const selectModel = vi.fn(async () => {}); const sendPrompt = vi.fn(async () => {});
+    connector.connect = async id => ({ ...await original(id), listModels: async () => models, selectModel, sendPrompt });
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
+      await vi.waitFor(() => expect(state.models.value).toHaveLength(4));
+      state.updateComposerSettings({ modelId: 'shared' });
+      expect(state.composerSettings.value?.reasoningEffort).toBe('high');
+      expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'shared', reasoningEffort: 'high', serviceTier: null, backend: 'codex' });
+      state.updateComposerSettings({ modelId: 'other' });
+      expect(state.composerSettings.value?.reasoningEffort).toBe('medium');
+      expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'other', reasoningEffort: 'medium', serviceTier: null, backend: 'codex' });
+      await state.submit('Do it');
+      expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Do it', expect.any(String), { planMode: false, selection: { model: 'other', reasoningEffort: 'medium' } });
+      state.updateComposerSettings({ modelId: 'none' });
+      expect(state.composerSettings.value?.reasoningEffort).toBeNull();
+      expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'none', reasoningEffort: null, serviceTier: null, backend: 'codex' });
+      state.updateComposerSettings({ modelId: 'first' });
+      expect(state.composerSettings.value?.reasoningEffort).toBe('medium');
+      expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'first', reasoningEffort: 'medium', serviceTier: null, backend: 'codex' });
     } finally { state.dispose(); }
   });
   it('sends a prompt to the session it was written for, even if the session is replaced while the draft is saved', async () => {

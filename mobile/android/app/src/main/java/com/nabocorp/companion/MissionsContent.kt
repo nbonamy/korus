@@ -114,12 +114,12 @@ internal fun elapsedText(millis: Long): String {
 
 /** The missions, in the main area where a conversation would be: the list, or one mission with its stage and tickets. */
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable internal fun MissionsScreen(model: CompanionModel, openDrawer: () -> Unit) {
+@Composable internal fun MissionsScreen(model: CompanionModel, wide: Boolean = false, openDrawer: () -> Unit) {
     val detail = model.missionDetail?.let { id -> model.missions.firstOrNull { it.string("id") == id } }
     val active = model.missions.count { it.isActiveMission }
     val back = {
         when {
-            model.missionReview?.isNotEmpty() == true -> model.missionReview = ""
+            model.missionReview?.isNotEmpty() == true -> model.missionReview = if (detail?.remediationReview != null) null else ""
             model.missionReview != null -> model.missionReview = null
             model.missionDetail != null -> model.missionDetail = null
             else -> model.missionsOpen = false
@@ -139,10 +139,15 @@ internal fun elapsedText(millis: Long): String {
             },
             navigationIcon = {
                 if (detail != null) IconButton(onClick = { back() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, if (reviewing) "Back" else "Back to missions") }
-                else IconButton(onClick = openDrawer) { Icon(Icons.Outlined.Menu, "Open workspace") }
+                else if (!wide) IconButton(onClick = openDrawer) { Icon(Icons.Outlined.Menu, "Open workspace") }
             },
         )
-    }, bottomBar = { if (detail != null && model.missionReview == "") ReviewActions(model, detail) }) { padding ->
+    }, bottomBar = {
+        if (detail != null && (model.missionReview == "" || (model.missionReview == null && detail.remediationReview != null))) {
+            if (detail.string("stage") == "review") ReviewActions(model, detail)
+            else if (model.missionReview == "") Column(Modifier.padding(16.dp)) { NextStep(model, detail) }
+        }
+    }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             when {
                 detail != null && model.missionReview == "" -> ReviewList(model, detail)
@@ -223,6 +228,7 @@ internal fun elapsedText(millis: Long): String {
                     else -> Text(mission.missionSummary.substringBefore(" ·"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+            MissionAttentionIndicator(mission.string("attention"))
             Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -233,36 +239,46 @@ internal fun elapsedText(millis: Long): String {
         Icon(Icons.Outlined.CheckCircle, null, tint = MaterialTheme.colorScheme.outline)
         Spacer(Modifier.width(12.dp))
         Text(mission.string("outcome"), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        MissionAttentionIndicator(mission.string("attention"))
         Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable private fun MissionDetail(model: CompanionModel, mission: JSONObject) {
     StageTracker(mission.stageIndex, finished = !mission.isActiveMission)
-    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text(mission.string("outcome"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                MissionGauge(mission, 84.dp, 9.dp)
-                Spacer(Modifier.width(16.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val total = mission.items("tickets").size
-                    Text(if (total == 0) mission.missionSummary else "${mission.optInt("done")} of $total ${if (total == 1) "ticket" else "tickets"}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    var now by remember { mutableStateOf(Instant.now()) }
-                    LaunchedEffect(Unit) { while (true) { delay(30_000); now = Instant.now() } }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        mission.elapsedMillis(now)?.let { Chip(Icons.Outlined.Schedule, elapsedText(it)) }
-                        if (mission.workingCount > 0) Chip(Icons.Outlined.Groups, "${mission.workingCount} working", MaterialTheme.colorScheme.primary)
+    val remediation = mission.remediationReview
+    if (remediation != null) {
+        Text(mission.string("outcome"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+        ReviewSummary(remediation)
+    } else {
+        Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text(mission.string("outcome"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    MissionGauge(mission, 84.dp, 9.dp)
+                    Spacer(Modifier.width(16.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val total = mission.items("tickets").size
+                        Text(if (total == 0) mission.missionSummary else "${mission.optInt("done")} of $total ${if (total == 1) "ticket" else "tickets"}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        var now by remember { mutableStateOf(Instant.now()) }
+                        LaunchedEffect(Unit) { while (true) { delay(30_000); now = Instant.now() } }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            mission.elapsedMillis(now)?.let { Chip(Icons.Outlined.Schedule, elapsedText(it)) }
+                            if (mission.workingCount > 0) Chip(Icons.Outlined.Groups, "${mission.workingCount} working", MaterialTheme.colorScheme.primary)
+                        }
                     }
                 }
             }
         }
     }
     NextStep(model, mission)
-    mission.optJSONObject("review")?.let { ReviewRow(it) { model.missionReview = "" } }
+    if (remediation == null) mission.optJSONObject("review")?.let { ReviewRow(it) { model.missionReview = "" } }
     mission.string("leadAgentId").takeIf { it.isNotBlank() }?.let { lead -> LeadRow(missionStage(mission)) { model.openTicket(lead) } }
     val tickets = mission.items("tickets")
-    if (tickets.isNotEmpty()) {
+    if (remediation != null) {
+        SectionLabel("Review findings")
+        FindingGroups(model, mission.string("id"), remediation.findings)
+    } else if (tickets.isNotEmpty()) {
         SectionLabel("Tickets")
         Column { tickets.forEachIndexed { index, ticket -> TicketRow(model, ticket, first = index == 0, last = index == tickets.lastIndex) } }
     }
@@ -273,6 +289,7 @@ private fun missionStage(mission: JSONObject) = stages.firstOrNull { it.first ==
 /** The one move a phone can make on a mission: on to review. Shipping stays on the desktop, and says so. */
 @Composable private fun NextStep(model: CompanionModel, mission: JSONObject) {
     var confirming by remember { mutableStateOf(false) }
+    var shippingInfo by remember { mutableStateOf(false) }
     val working = model.state.string("missionAction") == "working"
     if (mission.canContinueToReview) {
         Button({ confirming = true }, Modifier.fillMaxWidth().heightIn(min = 52.dp), enabled = !working, shape = RoundedCornerShape(16.dp)) {
@@ -283,21 +300,34 @@ private fun missionStage(mission: JSONObject) = stages.firstOrNull { it.first ==
             confirmButton = { TextButton({ confirming = false; model.command("continueMission", "missionId" to mission.string("id")) }) { Text("Continue to Review") } },
             dismissButton = { TextButton({ confirming = false }) { Text("Cancel") } })
     } else if (mission.shipsOnDesktop) {
-        Column(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            OutlinedButton({}, Modifier.fillMaxWidth().heightIn(min = 52.dp), enabled = false, shape = RoundedCornerShape(16.dp)) {
-                Icon(Icons.Outlined.Lock, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Ship", fontWeight = FontWeight.SemiBold)
-            }
-            Text("Only available on desktop", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Button({ shippingInfo = true }, Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) {
+            Icon(Icons.AutoMirrored.Outlined.Send, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Ship", fontWeight = FontWeight.SemiBold)
         }
+        if (shippingInfo) AlertDialog(onDismissRequest = { shippingInfo = false }, title = { Text("Ship on desktop") },
+            text = { Text("Open this mission in the desktop app to ship it.") },
+            confirmButton = { TextButton({ shippingInfo = false }) { Text("OK") } })
     }
+}
+
+private fun priorityHeading(priority: String) = when (priority.lowercase()) {
+    "p0" -> "Critical priority"; "p1" -> "High priority"; "p2" -> "Medium priority"; "p3" -> "Low priority"; else -> priority.uppercase()
 }
 
 @Composable private fun priorityColor(priority: String) = when (priority.lowercase()) { "p0", "p1" -> MaterialTheme.colorScheme.error; "p2" -> CompanionColors.worktree; else -> MaterialTheme.colorScheme.onSurfaceVariant }
 private val JSONObject.findings get() = items("findings")
+private val JSONObject.canFinish get() = optBoolean("ready") && findings.all { it.string("state") in listOf("fixed", "skipped") }
+private val JSONObject.canFix get() = optBoolean("ready") && selectedOpen > 0 && count("fixing") == 0
+private val JSONObject.remediationReview: JSONObject? get() {
+    val review = optJSONObject("review") ?: return null
+    if (review.findings.none { it.string("state") != "open" }) return null
+    val selected = review.findings.filter { it.string("state") != "skipped" && (it.optBoolean("selected") || it.string("state") in listOf("fixing", "fixed")) }
+    if (selected.isEmpty()) return null
+    return json("summary" to review.string("summary"), "ready" to review.optBoolean("ready"), "findings" to org.json.JSONArray(selected))
+}
 private fun JSONObject.count(state: String) = findings.count { it.string("state") == state }
 private val JSONObject.selectedOpen get() = findings.count { it.string("state") == "open" && it.optBoolean("selected") }
 /** Only once nothing is open or being fixed can the review run again. */
-private val JSONObject.canRerun get() = findings.isNotEmpty() && findings.all { it.string("state") in listOf("fixed", "skipped") }
+private val JSONObject.canRerun get() = optBoolean("ready") && findings.isNotEmpty() && findings.all { it.string("state") in listOf("fixed", "skipped") }
 private val JSONObject.findingLocation: String? get() {
     val file = string("file").takeIf { it.isNotBlank() } ?: return null
     if (!has("line")) return file
@@ -338,6 +368,12 @@ private val JSONObject.findingLocation: String? get() {
 @Composable private fun ReviewList(model: CompanionModel, mission: JSONObject) {
     val review = mission.optJSONObject("review") ?: return
     val findings = review.findings
+    ReviewSummary(review)
+    FindingGroups(model, mission.string("id"), findings)
+}
+
+@Composable private fun ReviewSummary(review: JSONObject) {
+    val findings = review.findings
     val fixed = review.count("fixed")
     Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -358,12 +394,20 @@ private val JSONObject.findingLocation: String? get() {
             }
         }
     }
+}
+
+@Composable private fun FindingGroups(model: CompanionModel, missionId: String, findings: List<JSONObject>) {
     findings.groupBy { it.string("priority") }.toSortedMap().forEach { (priority, group) ->
-        Text("${priority.uppercase()} · ${group.size}", Modifier.padding(start = 4.dp).semantics { heading() }, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = priorityColor(priority))
+        Row(Modifier.padding(horizontal = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(priorityHeading(priority), Modifier.semantics { heading() }, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text("${group.size}", Modifier.background(MaterialTheme.colorScheme.surfaceContainerLow, CircleShape).padding(horizontal = 8.dp, vertical = 3.dp)
+                .semantics { contentDescription = "${group.size} ${if (group.size == 1) "finding" else "findings"}" },
+                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
             Column {
                 group.forEachIndexed { index, finding ->
-                    FindingRow(model, mission.string("id"), finding)
+                    FindingRow(model, missionId, finding)
                     if (index < group.lastIndex) HorizontalDivider(Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant)
                 }
             }
@@ -396,23 +440,33 @@ private val JSONObject.findingLocation: String? get() {
     val fixing = review.count("fixing")
     val selected = review.selectedOpen
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 2.dp) {
-        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp)) {
-            if (fixing > 0) Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp).padding(top = 12.dp, bottom = 6.dp)) {
+            if (review.canFinish) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button({ confirming = "finish" }, Modifier.weight(1f).heightIn(min = 52.dp), enabled = !working, shape = RoundedCornerShape(14.dp)) { Text("Finish review", fontWeight = FontWeight.SemiBold) }
+                    OutlinedButton({ confirming = "rerun" }, Modifier.weight(1f).heightIn(min = 52.dp), enabled = review.canRerun && !working, shape = RoundedCornerShape(14.dp)) { Text("Re-run review", fontWeight = FontWeight.SemiBold) }
+                }
+            } else if (fixing > 0) Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(10.dp))
                 Text("Fixing $fixing ${if (fixing == 1) "finding" else "findings"} — the agent is working on your laptop", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button({ confirming = "fix" }, Modifier.weight(1f).heightIn(min = 48.dp), enabled = selected > 0 && !working, shape = RoundedCornerShape(14.dp)) {
+                Button({ confirming = "fix" }, Modifier.weight(1f).heightIn(min = 52.dp), enabled = review.canFix && !working, shape = RoundedCornerShape(14.dp)) {
                     Text(if (selected > 0) "Fix $selected selected" else "Fix selected", fontWeight = FontWeight.SemiBold)
                 }
-                TextButton({ confirming = "rerun" }, enabled = review.canRerun && !working) { Text("Re-run review") }
+                OutlinedButton({ confirming = "rerun" }, Modifier.weight(1f).heightIn(min = 52.dp), enabled = review.canRerun && !working, shape = RoundedCornerShape(14.dp)) { Text("Re-run review", fontWeight = FontWeight.SemiBold) }
             }
         }
     }
     confirming?.let { kind ->
-        val fix = kind == "fix"
-        AlertDialog(onDismissRequest = { confirming = null }, title = { Text(if (fix) "Fix $selected ${if (selected == 1) "finding" else "findings"}?" else "Review again?") },
-            text = { Text(if (fix) "The other open findings are skipped." else "Every finding was fixed or skipped. The review starts right away.") },
-            confirmButton = { TextButton({ confirming = null; model.command(if (fix) "fixFindings" else "rerunReview", "missionId" to mission.string("id")) }) { Text(if (fix) "Fix selected" else "Re-run review") } },
+        val title = when (kind) { "fix" -> "Fix $selected ${if (selected == 1) "finding" else "findings"}?"; "finish" -> "Finish this review?"; else -> "Review again?" }
+        val label = when (kind) { "fix" -> "Fix selected"; "finish" -> "Finish review"; else -> "Re-run review" }
+        val enabled = !working && when (kind) { "fix" -> review.canFix; "finish" -> review.canFinish; else -> review.canRerun }
+        AlertDialog(onDismissRequest = { confirming = null }, title = { Text(title) },
+            text = { Text(when (kind) { "fix" -> "The other open findings are skipped."; "finish" -> "The review will be marked complete. Shipping is only available on desktop."; else -> "Every finding was fixed or skipped. The review starts right away." }) },
+            confirmButton = { TextButton({
+                confirming = null
+                model.command(when (kind) { "fix" -> "fixFindings"; "finish" -> "finishReview"; else -> "rerunReview" }, "missionId" to mission.string("id"))
+            }, enabled = enabled) { Text(label) } },
             dismissButton = { TextButton({ confirming = null }) { Text("Cancel") } })
     }
 }

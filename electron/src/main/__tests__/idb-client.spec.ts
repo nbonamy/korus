@@ -121,6 +121,10 @@ describe('idb companion wire protocol', () => {
     expect(await client.inspect()).toContain('Settings');
   });
   it('delivers touch, swipe, Home, shifted ASCII and foreground launch in wire order', async () => {
+    await client.setHingeAngle(0);
+    await client.setHingeAngle(180);
+    expect(events).toStrictEqual([{ hinge: { angle: 0 } }, { hinge: { angle: 180 } }]);
+    events = [];
     await client.tap(100, 200);
     await client.swipe(100, 200, 300, 400, 0.5);
     await client.button('home');

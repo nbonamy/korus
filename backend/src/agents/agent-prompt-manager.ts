@@ -32,10 +32,10 @@ export class AgentPromptManager {
     return this.sendWithReceipt(agent, prompt, options, expectedSessionId, clientId).then(() => undefined);
   }
 
-  sendWithReceipt(agent: Agent, prompt: string, options?: SendPromptOptions, expectedSessionId?: string | null, clientId?: string): Promise<BackendSendResult> {
+  sendWithReceipt(agent: Agent, prompt: string, options?: SendPromptOptions, expectedSessionId?: string | null, clientId?: string, goal?: boolean): Promise<BackendSendResult> {
     if (!canStartPrompt(agent)) return Promise.reject(new PromptRejectedError('Agent is busy. Try the review decision again when idle.'));
     return new Promise((resolve, reject) => {
-      this.start(agent, prompt, options, undefined, { resolve, reject, expectedSessionId }, clientId);
+      this.start(agent, prompt, options, undefined, { resolve, reject, expectedSessionId, goal }, clientId);
     });
   }
 
@@ -103,7 +103,7 @@ export class AgentPromptManager {
     this.inFlightQueuedPrompts.clear();
   }
 
-  private start(agent: Agent, prompt: string, promptOptions?: SendPromptOptions, queuedPromptId?: string, acceptance?: { resolve: (receipt: BackendSendResult) => void; reject: (error: Error) => void; expectedSessionId?: string | null }, clientId?: string): AppSnapshot {
+  private start(agent: Agent, prompt: string, promptOptions?: SendPromptOptions, queuedPromptId?: string, acceptance?: { resolve: (receipt: BackendSendResult) => void; reject: (error: Error) => void; expectedSessionId?: string | null; goal?: boolean }, clientId?: string): AppSnapshot {
     const snapshot = this.options.getSnapshot();
     if (this.options.isEngineConnected?.(agent) === false) {
       acceptance?.reject(new PromptRejectedError('Engine is not connected. Reconnect in Settings.'));
@@ -128,6 +128,7 @@ export class AgentPromptManager {
         promptOptions,
         this.options.applyEvent,
         {
+          goal: acceptance?.goal,
           plainText: clientId === 'guest:approved',
           appendUserMessage: !queuedPrompt || (!queuedPrompt.submitted && (queuedPrompt.attempts ?? 0) === 0),
           onBackendSessionUpdated: async (_result, wasNewSession) => {

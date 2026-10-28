@@ -312,6 +312,109 @@ describe('GitHubWorkProviderDriver', () => {
     );
   });
 
+  it('queries personal issue, authored PR and review feeds before pagination', async () => {
+    const fetch = vi.fn(async (input: string) => {
+      const url = new URL(input);
+      if (url.pathname === '/graphql') return organizationPage([]);
+      if (url.pathname === '/user/memberships/orgs') return jsonResponse([]);
+      expect(url.pathname).toBe('/search/issues');
+      expect(url.searchParams.get('page')).toBe('2');
+      return jsonResponse({ total_count: 51, items: [{ number: 24, title: 'Review this change', user: { login: 'someone-else' },
+        html_url: 'https://github.com/org/repo/pull/24', repository_url: 'https://api.github.com/repos/org/repo',
+        ...(url.searchParams.get('q')?.includes('is:pull-request') ? { pull_request: {} } : {}), state: 'open', labels: [], created_at: '2026-01-01', updated_at: '2026-01-02' }] },
+        { link: '<https://api.github.com/search/issues?page=3>; rel="next"' });
+    });
+    vi.stubGlobal('fetch', fetch);
+    const driver = new GitHubWorkProviderDriver('client-id');
+    const token = { provider: 'github' as const, accessToken: 'secret', tokenType: 'bearer', accountLabel: 'alice', connectedAt: 'now' };
+    for (const [query, search] of [
+      [{ assignment: 'viewer', kind: 'issue' }, 'is:issue is:open assignee:alice'],
+      [{ involvement: 'author', kind: 'pullRequest' }, 'is:pull-request is:open author:alice'],
+      [{ involvement: 'reviewer', kind: 'pullRequest' }, 'is:pull-request is:open review-requested:alice'],
+      [{ repositoryScope: 'owned', kind: 'issue' }, 'is:issue is:open user:alice'],
+      [{ repositoryScope: 'owned', kind: 'pullRequest' }, 'is:pull-request is:open user:alice'],
+    ] as const) {
+      expect(await driver.listGlobalItems(token, { ...query, cursor: '2', pageSize: 25 })).toMatchObject({
+        items: [{ kind: query.kind, sourceId: 'org/repo', number: 24, authorName: 'someone-else' }], nextCursor: '3', totalItems: 51,
+      });
+      expect(new URL(fetch.mock.calls.at(-1)![0]).searchParams.get('q')).toBe(search);
+    }
+  });
+
+  it('merges owned issues and PRs newest-first across partially consumed provider pages', async () => {
+    const fetch = vi.fn(async (input: string) => {
+      const url = new URL(input), search = url.searchParams.get('q') ?? '';
+      if (url.pathname === '/graphql') return organizationPage([]);
+      if (url.pathname === '/user/memberships/orgs') return jsonResponse([]);
+      if (!/is:(issue|pull-request)\b/.test(search)) return new Response(JSON.stringify({ message: "Query must include 'is:issue' or 'is:pull-request'" }), { status: 422 });
+      expect(search).toContain('user:alice');
+      expect(url.searchParams.get('per_page')).toBe('2');
+      const pull = search.includes('is:pull-request'), page = Number(url.searchParams.get('page'));
+      const numbers = search.includes('is:closed') ? (pull ? [22] : []) : pull ? (page === 1 ? [24, 23] : [22]) : page === 1 ? [12, 11] : page === 2 ? [10, 9] : [8];
+      return jsonResponse({ total_count: pull ? 3 : 5, items: numbers.map(number => ({
+        number, title: `Work ${number}`, user: { login: 'someone-else' }, state: 'open', labels: [],
+        html_url: `https://github.com/alice/repo/${pull ? 'pull' : 'issues'}/${number}`,
+        repository_url: 'https://api.github.com/repos/alice/repo', ...(pull ? { pull_request: {} } : {}),
+        created_at: '2026-01-01', updated_at: `2026-01-${String(pull ? number === 24 ? 13 : number === 23 ? 7 : 6 : number).padStart(2, '0')}T00:00:00Z`,
+      })) }, numbers.length === 2 ? { link: `<https://api.github.com/search/issues?page=${page + 1}>; rel="next"` } : {});
+    });
+    vi.stubGlobal('fetch', fetch);
+    const driver = new GitHubWorkProviderDriver('id');
+    const token = { provider: 'github' as const, accessToken: 'secret', tokenType: 'bearer', accountLabel: 'alice', connectedAt: 'now' };
+    const query = { repositoryScope: 'owned' as const, kind: 'all' as const, pageSize: 2 };
+    let cursor: string | undefined;
+    const items = [];
+    for (let page = 0; page < 4; page += 1) {
+      const result = await driver.listGlobalItems(token, { ...query, cursor });
+      expect(result.items.length).toBeLessThanOrEqual(2);
+      items.push(...result.items.map(item => [item.kind, item.number]));
+      cursor = result.nextCursor;
+      if (page === 0) {
+        await expect(driver.listGlobalItems(token, { ...query, state: 'closed', cursor })).rejects.toThrow(/cursor/i);
+        const searches = fetch.mock.calls.filter(([url]) => new URL(url).pathname === '/search/issues');
+        expect(searches).toHaveLength(2);
+        expect(searches.every(([url]) => new URL(url).searchParams.get('page') === '1')).toBe(true);
+      } else if (page < 3) expect(cursor).toBeTruthy();
+    }
+    expect(items).toStrictEqual([['pullRequest', 24], ['issue', 12], ['issue', 11], ['issue', 10], ['issue', 9], ['issue', 8], ['pullRequest', 23], ['pullRequest', 22]]);
+    expect(cursor).toBeUndefined();
+    expect(await driver.listGlobalItems(token, { ...query, state: 'closed' })).toMatchObject({ items: [{ kind: 'pullRequest', number: 22 }] });
+  });
+
+  it('classifies org-admin work with App credentials even when REST memberships are empty', async () => {
+    const fetch = vi.fn(async (input: string, init?: RequestInit) => {
+      const url = new URL(input), page = Number(url.searchParams.get('page'));
+      if (url.pathname === '/user/memberships/orgs') return jsonResponse([]);
+      if (url.pathname === '/graphql') {
+        expect(init?.method).toBe('POST');
+        const after = JSON.parse(String(init?.body)).variables.after;
+        expect([null, 'org-page-two']).toContain(after);
+        return after === null ? organizationPage([
+          { login: 'ORG', viewerCanAdminister: true },
+          { login: 'member-org', viewerCanAdminister: false },
+          { login: 'pending-org', viewerCanAdminister: false },
+        ], 'org-page-two') : organizationPage([{ login: 'later-org', viewerCanAdminister: true }]);
+      }
+      const search = url.pathname === '/search/issues';
+      if (search) expect(url.searchParams.get('q')).toBe('is:issue is:open user:alice org:later-org org:org');
+      else expect(url.pathname).toBe('/issues');
+      const owners = search ? ['alice', 'org', 'later-org'] : page === 1 ? ['alice'] : page === 2 ? ['ALICE', 'org', 'later-org'] : ['other', 'member-org', 'pending-org'];
+      return jsonResponse(search ? { total_count: owners.length, items: owners.map(owner => work(owner)) } : owners.map(owner => work(owner)),
+        !search && page < 3 ? { link: `<https://api.github.com/issues?page=${page+1}>; rel="next"` } : {});
+      function work(owner: string) { return { number: page, title: 'Accessible work', state: 'open', labels: [],
+        repository_url: `https://api.github.com/repos/${owner}/repo`, html_url: `https://github.com/${owner}/repo/issues/${page}`,
+        created_at: '2026-01-01', updated_at: `2026-01-0${4-page}` }; }
+    });
+    vi.stubGlobal('fetch', fetch);
+    const driver = new GitHubWorkProviderDriver('id');
+    const token = { provider: 'github' as const, accessToken: 'secret', tokenType: 'bearer', accountLabel: 'alice', connectedAt: 'now' };
+    const outside = await driver.listGlobalItems(token, { repositoryScope: 'notOwned' });
+    expect(outside.items.map(item => item.sourceId)).toStrictEqual(['other/repo', 'member-org/repo', 'pending-org/repo']);
+    expect(outside.nextCursor).toBeUndefined();
+    const inside = await driver.listGlobalItems(token, { repositoryScope: 'owned', kind: 'issue' });
+    expect(inside.items.map(item => item.sourceId)).toStrictEqual(['alice/repo', 'org/repo', 'later-org/repo']);
+  });
+
   it('returns a continuation without fetching the final page to manufacture a total', async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(jsonResponse([{
@@ -427,6 +530,12 @@ describe('GitHubWorkProviderDriver', () => {
     );
   });
 });
+
+function organizationPage(owners: { login: string; viewerCanAdminister: boolean }[], next: string | null = null): Response {
+  return jsonResponse({ data: { viewer: { login: 'alice', repositories: {
+    nodes: owners.map(owner => ({ owner })), pageInfo: { hasNextPage: Boolean(next), endCursor: next },
+  } } } });
+}
 
 function jsonResponse(value: unknown, headers: Record<string, string> = {}): Response {
   return {

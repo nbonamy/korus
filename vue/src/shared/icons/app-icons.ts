@@ -4,6 +4,7 @@ export { default as LinearIcon } from './LinearIcon.vue';
 export { default as BacklogIcon } from './BacklogIcon.vue';
 export { default as FolderSparkleIcon } from './FolderSparkleIcon.vue';
 export { default as ProductMarkIcon } from './ProductMarkIcon.vue';
+export { default as DuoPoseIcon } from './DuoPoseIcon.vue';
 // Softer corners than Tabler's sharp play triangle.
 export { default as PlayerPlayIcon } from './PlayerPlayIcon.vue';
 
@@ -78,6 +79,7 @@ export {
   IconCircle as Circle,
   IconRectangle as RectangleIcon,
   IconRefresh as RefreshIcon,
+  IconSearch as SearchIcon,
   IconRobotFace as RobotFaceIcon,
   IconSend as SendIcon,
   IconScan as ScanIcon,

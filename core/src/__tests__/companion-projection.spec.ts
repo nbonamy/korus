@@ -105,6 +105,10 @@ describe('companion workspace projection', () => {
       const artifacts = (patch: Record<string, unknown> = {}) => ({ tickets: [ticket('A', { done: true })], requirements: { problem: 'p', acceptance: 'a' }, implementation: { changes: 'c', tests: 't' }, review: { summary: '', pullRequestUrl: '' }, ...patch });
       const next = (patch: Record<string, unknown>) => projectCompanionWorkspace(source([mission('m', patch)])).missionProgress[0]!.next;
       expect(next({ stage: 'implementation', artifacts: artifacts() })).toBe('review');
+      const active = projectCompanionWorkspace(source([mission('m', {
+        artifacts: artifacts(), execution: { runs: [run(0, 'accepted', 'w1')] },
+      })], [agent('w1', { status: { type: 'working' } })]));
+      expect(active.missionProgress[0]!.next).toBeUndefined();
       // Tickets done but the implementation record missing, or a ticket still open, is not ready.
       expect(next({ stage: 'implementation', artifacts: artifacts({ implementation: { changes: '', tests: '' } }) })).toBeUndefined();
       expect(next({ stage: 'implementation', artifacts: artifacts({ tickets: [ticket('A')] }) })).toBeUndefined();
@@ -132,6 +136,27 @@ describe('companion workspace projection', () => {
       expect(JSON.stringify(review)).not.toContain('/Users/me');
       // A mission with nothing reviewed yet sends no review at all.
       expect(projectCompanionWorkspace(source([mission('empty', { artifacts: { tickets: [], review: { summary: '', pullRequestUrl: '', findings: [] } } })])).missionProgress[0]).not.toHaveProperty('review');
+    });
+    it('enables finding remediation only after the latest review has submitted its result', () => {
+      const artifacts = { tickets: [], review: { summary: 'Findings are arriving', findings: [] } };
+      const submitted = { id: 'review-1', stage: 'review', status: 'awaitingReview', workerId: 'reviewer', proposal: { review: { summary: 'Submitted review' } } };
+      const ready = (runs: unknown[], patch = {}) => projectCompanionWorkspace(source([mission('m', {
+        stage: 'review', artifacts, execution: { runs }, ...patch,
+      })])).missionProgress[0]!.review!.ready;
+      expect(ready([])).toBe(false);
+      expect(ready([submitted])).toBe(true);
+      // A submitted review with no findings still needs an explicit acceptance action.
+      const empty = projectCompanionWorkspace(source([mission('m', { stage: 'review',
+        artifacts: { tickets: [], review: { summary: '', findings: [] } }, execution: { runs: [submitted] },
+      })])).missionProgress[0]!.review;
+      expect(empty).toStrictEqual({ summary: 'Submitted review', findings: [], ready: true, runId: 'review-1' });
+      for (const status of ['preparing', 'running', 'failed', 'cancelled']) {
+        expect(ready([submitted, { ...submitted, id: 'review-2', status }])).toBe(false);
+      }
+      expect(ready([{ ...submitted, proposal: undefined }])).toBe(false);
+      expect(ready([{ ...submitted, workerId: undefined }])).toBe(false);
+      expect(ready([submitted], { stage: 'ship' })).toBe(false);
+      expect(ready([submitted], { status: 'completed' })).toBe(false);
     });
     it('omits missions of teams the phone cannot see', () => {
       expect(projectCompanionWorkspace(source([mission('elsewhere', { teamId: 'other' })])).missionProgress).toStrictEqual([]);

@@ -1,3 +1,5 @@
+import type { ExecutionSelectionOverrides } from '@workspace/core/contracts/execution';
+import { executionSelectionOverridesSchema } from '../execution-selection-schema';
 import type { AppSnapshot } from '@workspace/core/contracts';
 import * as z from 'zod/v4';
 import type { CreatedProject } from '../projects/project-creation-service';
@@ -5,7 +7,7 @@ import { loggedToolResult, type AppMcpToolModuleProvider } from './tool-modules'
 
 export function createQuickChatProjectToolModuleProvider(options: {
   snapshot: AppSnapshot;
-  createProject: (agentId: string, name: string, prompt: string, backend?: 'codex' | 'claude' | 'antigravity') => Promise<CreatedProject>;
+  createProject: (agentId: string, name: string, prompt: string, selection?: ExecutionSelectionOverrides) => Promise<CreatedProject>;
 }): AppMcpToolModuleProvider {
   return {
     id: 'quick-chat-project',
@@ -16,17 +18,17 @@ export function createQuickChatProjectToolModuleProvider(options: {
         register: server => {
           server.registerTool('create-project', {
             description: 'Create a project folder and agent only on explicit request. Read korus-delegation first. Uses the configured source folder without initializing Git; preserves this Quick Chat.',
-            inputSchema: {
-              backend: z.enum(['codex', 'claude', 'antigravity']).optional().describe('Coding backend; defaults to this Quick Chat’s backend.'),
+            inputSchema: z.strictObject({
+              selection: executionSelectionOverridesSchema.optional().describe('Execution overrides; defaults to this Quick Chat’s selection.'),
               name: z.string().trim().min(1).describe('A single folder name for the new project.'),
               prompt: z.string().trim().min(1).describe('Self-contained first prompt for the new project agent, summarizing the agreed outcome and relevant decisions.'),
-            },
-          }, ({ name, prompt, backend }) => loggedToolResult('create-project', {
+            }),
+          }, ({ name, prompt, selection }) => loggedToolResult('create-project', {
             agentId,
             name,
             promptLength: prompt.length,
           }, async () => {
-            const created = await options.createProject(agentId, name, prompt, backend);
+            const created = await options.createProject(agentId, name, prompt, selection);
             return {
               success: true,
               agentId: created.agent.id,

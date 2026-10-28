@@ -54,7 +54,7 @@ function requestFixture(id: string, input = 10, read = 199990, write5 = 0, write
     delta: { stop_reason: 'end_turn' as SDKAssistantMessage['message']['stop_reason'], stop_sequence: null, stop_details: null, container: null },
     usage: { input_tokens: null, cache_read_input_tokens: null, cache_creation_input_tokens: null,
       output_tokens: output, output_tokens_details: { thinking_tokens: Math.min(20, output) } as SDKAssistantMessage['message']['usage']['output_tokens_details'],
-      iterations: null, server_tool_use: null, fallback_credit: null },
+      iterations: null as SDKAssistantMessage['message']['usage']['iterations'], server_tool_use: null, fallback_credit: null },
   } } satisfies SDKPartialAssistantMessage;
   const stop = { ...envelope, type: 'stream_event', event: { type: 'message_stop' } } satisfies SDKPartialAssistantMessage;
   return { assistant, start, delta, stop };
@@ -84,6 +84,31 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     vi.unstubAllEnvs();
   });
 
+  it('continues an interrupted session through the provider operation', async () => {
+    const { sdk, driver, snapshot, events } = setup();
+    const sessionId = randomUUID();
+    const owner = snapshot.agents[0]!;
+    owner.backendSession = { kind: 'claude', sessionId, transport: 'stdio' };
+    const pending = driver.continueInterruptedTurn(owner);
+    await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
+    expect(sdk.options[0]?.resume).toBe(sessionId);
+    expect(sdk.inputs[0]?.message.content).toEqual([{ type: 'text', text: 'continue' }]);
+    expect(sdk.inputs[0]?.uuid).toBeTypeOf('string');
+    sdk.emit({ type: 'system', subtype: 'init', session_id: sessionId });
+    expect(await pending).toMatchObject({ backendSession: { kind: 'claude', sessionId }, activeTurnId: expect.any(String) });
+    sdk.emit({ type: 'assistant', session_id: sessionId, message: { content: [{ type: 'text', text: 'No response requested.' }] } });
+    sdk.emit({ type: 'result', subtype: 'success', session_id: sessionId, is_error: false });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(events.some(event => event.type === 'claude.conversationEventReceived' && event.payload.event.type === 'turn.completed')).toBe(false);
+    expect(JSON.stringify(events)).not.toContain('No response requested.');
+    expect(owner.autoResumePending).toBe(true);
+    sdk.emit({ type: 'user', session_id: sessionId, uuid: sdk.inputs[0]!.uuid, isReplay: true, message: sdk.inputs[0]!.message });
+    sdk.emit({ type: 'assistant', session_id: sessionId, message: { content: [{ type: 'text', text: 'Continuing the work.' }] } });
+    sdk.emit({ type: 'result', subtype: 'success', session_id: sessionId, is_error: false });
+    await vi.waitFor(() => expect(events.some(event => event.type === 'claude.conversationEventReceived' && event.payload.event.type === 'turn.completed')).toBe(true));
+    expect(owner.autoResumePending).toBeUndefined();
+  });
+
   it('keeps selected mention identities across submission and native history reload', async () => {
     const home = await mkdtemp(path.join(os.tmpdir(), 'claude-mentions-')); homes.push(home);
     const { sdk, driver, snapshot, events } = setup(false, undefined, [], home);
@@ -91,6 +116,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     const content = [{ type: 'text' as const, text: '$cp vs ' }, { type: 'mention' as const, kind: 'skill' as const, id: '/skills/cp/SKILL.md', label: 'Commit and push', value: 'cp' }];
     const pending = driver.sendPrompt(owner, '$cp vs Commit and push\n\n<context>Keep this host context.</context>', { content });
     await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
+    expect(owner.autoResumePending).toBe(true);
     const input = sdk.inputs[0]!;
     expect(input.uuid).toBeTypeOf('string');
     expect(input.message.content).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'text', text: expect.stringContaining('$cp vs [$cp](/skills/cp/SKILL.md)\n\n<context>Keep this host context.</context>') })]));
@@ -100,6 +126,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     expect(submitted?.type === 'claude.conversationEventReceived' && submitted.payload.event.type === 'message.userSubmitted' && submitted.payload.event.payload.message.metadata?.promptContent).toStrictEqual(content);
     sdk.emit({ type: 'result', subtype: 'success', session_id: sessionId, is_error: false });
     await vi.waitFor(() => expect(events.some(event => event.type === 'claude.conversationEventReceived' && event.payload.event.type === 'turn.completed')).toBe(true));
+    expect(owner.autoResumePending).toBeUndefined();
     await driver.releaseConversation(owner.id);
     const project = path.join(home, '.claude', 'projects', '-tmp-project'); await mkdir(project, { recursive: true });
     await writeFile(path.join(project, `${sessionId}.jsonl`), JSON.stringify({ type: 'user', uuid: input.uuid, message: input.message }) + '\n');
@@ -354,7 +381,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     const folder = await mkdtemp(path.join(os.tmpdir(), 'claude-request-ledger-')); homes.push(folder);
     const file = path.join(folder, 'usage.sqlite');
     const prices = structuredClone(loadPricingHistory());
-    prices[0]!.anthropic.find(m => m.id === 'claude-sonnet-4-5')!.cost!.text!.input!.overrides = [
+    prices.anthropic['claude-sonnet-4-5'].cost.at(-1)!.rates!.text!.input!.overrides = [
       { when: { context: { gt: 200000 } }, price: 6 },
     ];
     const ledger = new UsageLedger(file, Date.now, prices); await ledger.load();
@@ -362,9 +389,11 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     const { sdk, driver, server, snapshot } = setup(false, usage);
     const requests: RequestObservation[] = [];
     (driver as AgentBackendDriver).onRequestUsage?.(e => requests.push(e));
-    const sending = driver.sendPrompt(snapshot.agents[0]!, 'CANARY private input', { model: 'selected-alias' });
+    const sending = driver.sendPrompt(snapshot.agents[0]!, 'CANARY private input', { selection: { model: 'selected-alias' } });
     await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
     sdk.emit({ type: 'system', subtype: 'init', session_id: 'requests', model: 'selected-alias' }); await sending;
+    // Local SDK notices have no billable model/request, even when shaped like assistant messages.
+    sdk.emit(requestFixture('sdk-notice', 0, 0, 0, 0, 0, '<synthetic>').assistant);
     const fixtures = [requestFixture('boundary'), requestFixture('above', 11),
       requestFixture('fast', 100, 8000, 50, 100, 200, 'claude-opus-5-5', null, 'fast', 'us')];
     for (const f of fixtures) { sdk.emit(f.start); sdk.emit(f.assistant); sdk.emit(f.delta); sdk.emit(f.delta); sdk.emit(f.stop); sdk.emit(f.assistant);
@@ -433,12 +462,14 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     ['multiple server iterations', 'unsupported-request-iterations'],
     ['rerouted server iteration', 'unsupported-request-iterations'],
     ['single matching server iteration', null],
+    ['single server iteration without a model', null],
+    ['server compaction iteration', 'unsupported-request-iterations'],
     ['unsupported batch tier', 'unsupported-service-tier'],
     ['unsupported priority tier', 'unsupported-service-tier'],
     ['third-party route', 'unknown-provider'],
   ] as const)('keeps %s evidence precise through SDK transport and analytics', async (scenario, reason) => {
     const prices = structuredClone(loadPricingHistory());
-    const cost = prices[0]!.anthropic.find(m => m.id === 'claude-sonnet-4-5')!.cost!;
+    const cost = prices.anthropic['claude-sonnet-4-5'].cost.at(-1)!.rates!;
     if (scenario === 'unknown reasoning category discount') cost.multipliers = [{ when: { region: { equals: 'global' } }, factor: { text: { output: { price: 0.5 } } } }];
     if (scenario === 'unknown differently priced reasoning') cost.text!.output!.reasoning = 30;
     if (scenario === 'unknown adjusted reasoning') { cost.text!.output!.reasoning = 15; cost.multipliers = [{ when: { region: { equals: 'global' } }, factor: { text: { output: { reasoning: 2 } } } }]; }
@@ -462,6 +493,15 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     ];
     if (scenario === 'rerouted server iteration' || scenario === 'single matching server iteration') f.start.event.message.usage.iterations = [
       { type: 'message', model: scenario === 'rerouted server iteration' ? 'claude-haiku-4-5' : 'claude-sonnet-4-5', input_tokens: 10, output_tokens: 20, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, cache_creation: null },
+    ];
+    // Claude reports the served model on the message; ordinary iterations omit it.
+    if (scenario === 'single server iteration without a model') {
+      const iteration = { type: 'message' as const, model: 'claude-sonnet-4-5', input_tokens: 10, output_tokens: 20, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, cache_creation: null };
+      Reflect.deleteProperty(iteration, 'model'); // Observed wire shape differs from the SDK declaration.
+      f.delta.event.usage.iterations = [iteration];
+    }
+    if (scenario === 'server compaction iteration') f.delta.event.usage.iterations = [
+      { type: 'compaction', input_tokens: 10, output_tokens: 20, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, cache_creation: null },
     ];
     // A duplicate/reordered replay of the stream must not reset measured output.
     for (const m of [f.start, f.delta, f.stop, f.start, f.assistant, f.stop]) sdk.emit(m);
@@ -580,7 +620,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
 
   it('observes actual SDK executions once, ignoring chunks and steering, with per-turn main-loop consumption', async()=>{
     const {sdk,driver,snapshot}=setup(false, undefined, [{ value: 'opus', displayName: 'Opus', supportsFastMode: true }]);const observations:import('@workspace/core/usage').ExecutionObservation[]=[];driver.onUsage(o=>observations.push(o));
-    const sending=driver.sendPrompt(snapshot.agents[0]!, 'CANARY prompt', { model: 'opus', reasoningEffort: 'high', serviceTier: 'fast' });
+    const sending=driver.sendPrompt(snapshot.agents[0]!, 'CANARY prompt', { selection: { model: 'opus', reasoningEffort: 'high', serviceTier: 'fast' } });
     await vi.waitFor(()=>expect(sdk.inputs).toHaveLength(1));
     sdk.emit({type:'system',subtype:'init',session_id:'usage-session',model:'claude-sonnet-4-6'});await sending;
     sdk.emit({type:'assistant',session_id:'usage-session',message:{content:[{type:'text',text:'chunk'}],usage:{input_tokens:9999}}});

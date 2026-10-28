@@ -75,11 +75,16 @@ import org.json.JSONObject
         if (model.missions.isNotEmpty()) {
             val active = model.missions.count { it.isActiveMission }
             Row(Modifier.fillMaxWidth().clickable { model.showMissions(); close() }.padding(horizontal = 20.dp, vertical = 12.dp)
-                .semantics(mergeDescendants = true) { contentDescription = if (active > 0) "Missions, $active active" else "Missions" }, verticalAlignment = Alignment.CenterVertically) {
+                .semantics(mergeDescendants = true) {
+                    contentDescription = if (active > 0) "Missions, $active active" else "Missions"
+                    stateDescription = missionAttentionLabel(state.string("missionAttention"))
+                }, verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.TrackChanges, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.width(12.dp))
                 Text("Missions", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                 if (active > 0) Text("$active active", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.width(8.dp))
+                MissionAttentionIndicator(state.string("missionAttention"), model.drawerVisible && model.foreground)
             }
         }
         var repositoryMenu by remember(sidebar.owner) { mutableStateOf<JSONObject?>(null) }
@@ -187,6 +192,27 @@ import org.json.JSONObject
     Box(Modifier.size(8.dp).background(CompanionColors.unread, CircleShape))
 }
 
+internal fun missionAttentionLabel(attention: String): String = when (attention) {
+    "needsInput" -> "Needs input"
+    "unread" -> "Unread activity"
+    "working" -> "Working"
+    else -> "Idle"
+}
+
+@Composable internal fun MissionAttentionIndicator(attention: String, animate: Boolean = true) {
+    when (attention) {
+        "needsInput" -> InputBadge()
+        "unread" -> UnreadDot()
+        "working" -> if (animate) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+    }
+}
+
+@Composable private fun InputBadge() {
+    Surface(shape = CircleShape, color = CompanionColors.worktree.copy(alpha = 0.18f)) {
+        Text("Input", Modifier.widthIn(min = 46.dp).padding(horizontal = 8.dp, vertical = 2.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = CompanionColors.worktree)
+    }
+}
+
 /** Repository icons are display data, never host paths or remote fetch instructions. */
 @Composable private fun DrawerGroupIcon(group: JSONObject?) {
     val icon = group?.string("icon").orEmpty()
@@ -237,9 +263,7 @@ import org.json.JSONObject
         }
         if (unread) UnreadDot()
         if (repositoryRow && status == "working" && model.drawerVisible && model.foreground) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
-        if (repositoryRow && status == "awaitingInput") Surface(shape = CircleShape, color = CompanionColors.worktree.copy(alpha = 0.18f)) {
-            Text("Input", Modifier.widthIn(min = 46.dp).padding(horizontal = 8.dp, vertical = 2.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = CompanionColors.worktree)
-        }
+        if (repositoryRow && status == "awaitingInput") InputBadge()
         if (status == "error") {
             if (repositoryRow) Box(Modifier.size(9.dp).background(MaterialTheme.colorScheme.error, CircleShape))
             else Icon(Icons.Outlined.ErrorOutline, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)

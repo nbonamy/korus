@@ -184,7 +184,7 @@ The protocol is transport-neutral JSON-RPC 2.0, one message per line.
 | --- | --- |
 | stdio (`korusd --stdio`) | bundled local backend; same framing SSH uses |
 | Unix socket (`korusd serve`, `APP_HOME/daemon.sock`) | optional always-on single-host daemon |
-| SSH stdio | remote locations: `ssh <host> "node ~/.korus/daemon.mjs connect \|\| exec node ~/.korus/daemon.mjs --stdio"` |
+| SSH stdio | remote locations: noninteractive SSH with keepalives, an app-private Node runtime, and a version-checked socket bridge or one-shot backend |
 | WebSocket (web host) | browser, allowlisted operations only |
 
 - Electron's default `APP_BACKEND_MODE=auto` connects to a running local daemon,
@@ -192,9 +192,10 @@ The protocol is transport-neutral JSON-RPC 2.0, one message per line.
   transport with bounded backoff and **never** falls back to a fresh bundled
   daemon after an established connection drops: that would fork authoritative
   state.
-- `connect` bridges SSH stdio to a remote `daemon serve` socket when one is
-  running, else the shell fallback starts a one-shot stdio backend. Sync never
-  installs, starts or restarts a persistent remote daemon.
+- `connect` checks the running socket owner's version before bridging SSH stdio.
+  Only an unavailable socket permits a one-shot stdio backend; an incompatible
+  live owner requires restarting its service and never permits a second state
+  writer. Setup never installs or restarts a persistent remote service.
 - No unauthenticated LAN server. Keep Unix sockets in a user-private `APP_HOME`;
   bind any HTTP transport (including the MCP server) to loopback. Add per-user
   tokens before named pipes, cross-user access or any network transport. TCP or
@@ -358,14 +359,19 @@ recent twenty. The workers implementing tickets stay out of the agent list but a
 listed separately, so a phone can open one from its mission. A worker is talked to like any agent (prompts, answers
 to its questions and approvals, interrupts, model and permission choices), but the phone cannot rename, restart,
 close, duplicate or re-engine it; the laptop refuses those. Repository workers are titled by repository name;
-the mission lead is selected independently from non-implementation stages. Host paths stay on the laptop. Five mission actions exist
-and no others: continuing a completed implementation to review, accepting a ticket's run that awaits
-acceptance, and, during review, selecting an open finding, fixing the selected ones and reviewing again.
-A review's findings cross with titles, explanations and locations trimmed to the last two path segments. Every action carries the mission revision the phone saw and is checked against the mission as it stands.
+the mission lead is selected independently from non-implementation stages. Host paths stay on the laptop. Mission actions are limited to continuing a completed implementation to review, accepting a ticket's run that awaits
+acceptance, and, during review, selecting an open finding, fixing the selected ones, reviewing again and accepting the submitted review after its findings are fixed or skipped. Acceptance uses the desktop operation; shipping remains desktop-owned.
+A review's findings cross with titles, explanations and locations trimmed to the last two path segments. Review readiness comes from the latest run's submitted result, independently of findings that arrive while it is running; missing readiness on an older daemon does not authorize remediation. Every action carries the mission revision the phone saw and is checked against the mission as it stands.
 Git status counts and available diff scopes cross as presentation metadata, without
 host paths or patch contents. Diffs are fetched through a target-bound, read-only
 gateway operation that uses the owning daemon’s Git service; the gateway rechecks
 the device grant and conversation identity before returning the patch.
+Transcript file previews use the same target-bound reads and the desktop's file-preview
+and Git operations. Only the selected file's bounded patch and current source cross
+the companion seam. A turn's patch stays distinct from the current file; unavailable
+historical diffs never silently become uncommitted changes. Both native clients host
+the shared file pane, whose memory-only cache is bounded and cleared on conversation
+or connection identity changes. Switching Diff/Source reuses the loaded response.
 Project acquisition uses the owning team's desktop operations for new repositories,
 local repository selection, GitHub and GitLab discovery, and URL cloning. The phone
 sends names, catalog IDs or network Git URLs rather than filesystem paths. The local catalog
@@ -429,6 +435,9 @@ reconnection), `RelayClient` (admission and push, one admission at a time) and
 `StreamServer` (request and update streams). The phone's is `relay-network` (the node
 and device identity), `relay-pairing` (stored laptops and the pairing flow) and
 `relay-session` (one laptop connection and the conversation caches later sessions share).
+Protected-storage read failures are distinct from missing records. A locked Keychain cannot
+turn a saved pairing or device identity into an empty value. Failed pairing restores remain
+retryable, and foreground activation retries startup after protected storage becomes available.
 
 The phone's state (`companion-state`) keeps the connection, the selection and the conversation, and composes small
 parts for the rest: `remote-list` (every list read from the laptop on demand, dropped when its context changes),
@@ -597,6 +606,9 @@ Attention alerts are suppressed when the desktop is focused on the exact active
 conversation, matched by host, location, team, agent and session. Other conversations
 remain eligible regardless of where the prompt started; unavailable desktop focus
 information does not suppress alerts. Read-clearing events are always delivered.
+Nonblocking questions never send attention alerts. Mission leads and repository
+workers alert only for blocking questions and approvals;
+finishing a turn does not send a Mission alert.
 A brief grace period lets visible clients acknowledge the attention revision before
 delivery; the daemon rechecks the shared read checkpoint after that period.
 A foreground phone receives live in-app alerts
@@ -650,11 +662,30 @@ agents or automation runs prompt for a restart.
 
 ### Remote Hosts (SSH)
 
-Connection records live in `daemon`. Sync uploads the self-contained `daemon.mjs`,
-mirrors `provider-tokens.json` and asks the remote to reload connections. It never
-installs provider CLIs or copies state files, shell profiles or conversation data.
-Provider detection and authentication run on the owning host. Version
-discovery still accepts the previous `daemon` CLI name for hosts not yet upgraded.
+Connection records live in `daemon`. Saving a host is independent of read-only
+inspection and installation. Initialization requires an explicit selection of
+providers; progress is persisted on the connection record. Setup installs the checksum-pinned Node
+runtime from `node-runtime-release.json` into the remote user's private app
+directory, verifies the staged self-contained `daemon.mjs` before replacing it,
+and confirms activation through the remote backend. System Node and shell
+profiles remain user-owned. SSH uses key authentication, keepalives and first-use
+host-key trust; changed host keys remain rejected.
+
+Updates close the app's SSH client and reconnect after installation. Known active
+turns or pending input block the update. Retrying a saved host retains its
+connection identity and team pointers. Failed activation is persisted as a
+recoverable connection error, rather than reported as ready. Version inspection
+does not install software or close a running client.
+
+Setup mirrors a local `provider-tokens.json` when present; absence of a local file
+preserves the remote host's credentials. It never copies app state or conversation
+data. Only selected providers are installed; existing engine installations are
+preserved. Engine installation runs on the owning host: Codex uses the user's
+`~/.local` npm prefix and Claude uses its native installer. Detection, account
+sign-in and provider upgrades belong to that host, independently of Korus updates.
+User-local Codex upgrades verify package ownership and retain the `~/.local` npm
+prefix even when the Node runtime has a different default global directory.
+Version discovery accepts the previous daemon CLI name for hosts not yet upgraded.
 
 ## Development
 
@@ -856,13 +887,23 @@ manage MCP tools: treat it as a privileged control plane.
 `npm run pricing:update` collects Models.dev provider pricing from the public
 GitHub API and raw source files at one immutable revision. The collector verifies
 Git blob hashes, requires all three providers, validates pricing rules and the
-existing history, and atomically appends a full snapshot only when pricing
-content changes. Revision, comments and source links do not trigger snapshots.
-The initial snapshot is effective October 1, 2026 UTC; subsequent timestamps
-record when a change was observed, rather than asserting its actual start date.
+existing history, and atomically appends dated cost events only to models whose
+pricing content changes. Revision, comments and source links do not trigger events.
+`backend/src/pricing/history.json` is keyed by provider, then exact model ID; each
+model has shared metadata and a `cost` array. Each event retains rates, pricing
+rules and immutable source evidence. Removal records an event without erasing
+past prices; reappearance appends another event. The baseline is effective October
+1, 2026 UTC. Automatic refreshes record when a change was observed. A launch-date
+entry for a newly listed model requires published pricing evidence.
 
-`backend/src/pricing/history.json` retains exact provider/model identities,
-context predicates, service tiers, mode mappings, category-specific multipliers,
+The pricing workflow runs daily and supports manual dispatch on `main`. It
+validates the collector and offline bundles before committing changed history
+with the repository's Actions token; unchanged prices produce no commit.
+Concurrent pricing runs are serialized. If `main` advances during collection,
+the push fails rather than replacing newer repository changes. Bot pushes do not
+trigger the separate Quality workflow, so pricing validation runs before the push.
+
+The catalog retains context predicates, service tiers, mode mappings, category-specific multipliers,
 cache reads, and cache-write lifetime maps. Missing rates remain absent; explicit
 zero rates remain zero. Models without source prices are marked unpriced. The
 schema retains explicit billing units: token and character prices are USD per
@@ -873,8 +914,10 @@ estimates.
 Matching source overrides merge fields in order, including nested cache fields;
 all matching multipliers then apply only to the categories they name. Mode
 configuration maps names to request fields but does not establish a request's
-actually served tier. Each snapshot retains its source revision, and each model
-retains its source path, blob hash and documentation links for coverage diagnosis.
+actually served tier. Each pricing event retains its source revision, collection
+time and blob hash; model metadata retains the source path and documentation
+links for coverage diagnosis. Removal events reference the revision that omits
+the model and have no source blob.
 The catalog is statically embedded in the standalone daemon bundle, which is also
 copied into desktop resources. Builds and runtime catalog reads require no pricing
 network calls.
@@ -892,6 +935,8 @@ invalidated after completion.
 Claude execution consumption covers the main agent loop; independently observed billable requests retain their own identities.
 Reasoning is included in output. Cache categories must not be added to input.
 Provider quotas remain separate account-scoped views.
+Claude SDK `<synthetic>` assistant notices are not model responses or billable
+requests; retained placeholder request rows are ignored by usage queries.
 
 Request measurements have a separate identity scoped by backend provider, session,
 turn and request. Providers emit them through the optional `onRequestUsage` seam;
@@ -903,9 +948,9 @@ increase a persistent revision; stale revisions, changed request timestamps and
 final-to-provisional updates cannot replace newer evidence. Requests and their
 parent grouping metadata survive restart without storing conversation content.
 
-The backend prices each final request using the latest snapshot effective at its
-request timestamp. Exact model IDs are required; requested tiers do not establish
-served tiers. A documented default requires explicit producer evidence. Context
+The backend prices each final request using that model's latest cost event
+effective at the request timestamp. Exact model IDs are required; requested tiers
+do not establish served tiers. A documented default requires explicit producer evidence. Context
 predicates use their authored strict/inclusive operators, matching overrides merge
 in order, and matching multipliers affect only their named categories. Included
 cache reads/writes are subtracted from input and included reasoning is separated

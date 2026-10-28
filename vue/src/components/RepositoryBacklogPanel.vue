@@ -639,7 +639,7 @@ async function startWork(selection: Omit<WorkItemAssignmentSelection, 'action'> 
   operationError.value = null;
   try {
     const input: RepositoryWorkStartInput = selection.destination === 'new'
-      ? { action: selection.action, item, target: 'duplicate', backend: selection.backend, ...(selection.model ? { model: selection.model } : {}), ...(selection.reasoningEffort ? { reasoningEffort: selection.reasoningEffort } : {}), workspace: { kind: 'worktree', branchName: branchName.value.trim() } }
+      ? { action: selection.action, item, target: 'duplicate', selection: selection.selection, workspace: { kind: 'worktree', branchName: branchName.value.trim() } }
       : { action: selection.action, item, target: 'current', workspace: { kind: 'current' } };
     await props.startWorkAction({ ...input, isCurrent });
     if (!isCurrent()) return;

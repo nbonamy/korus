@@ -67,7 +67,6 @@ export function celebrate(options: ConfettiOptions = {}): string {
 
 export function clearConfetti(): void {
   bursts.value = [];
-  sequence = 0;
 }
 
 function confettiPiece(burstId: string, index: number, durationMs: number): ConfettiPiece {

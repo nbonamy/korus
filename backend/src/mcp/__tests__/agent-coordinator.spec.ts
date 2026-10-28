@@ -353,35 +353,13 @@ describe('AppMcpAgentCoordinator', () => {
       destinationPath: '/src/app-coverage',
     });
 
-    await coordinator.createAgent('agent-dina', {
-      repoPath: ' /src/app ',
-      name: ' New Agent ',
-      model: ' gpt-5.6-sol ',
-      reasoningEffort: ' high ',
-      serviceTier: ' fast ',
-      createWorktree: true,
-      branchName: ' coverage ',
-      destinationPath: ' /src/app-coverage ',
-      prompt: ' Fix the flaky test. ',
-    });
-    expect(onCreateAgent).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), {
-      repoPath: '/src/app',
-      name: 'New Agent',
-      backend: 'codex',
-      model: 'gpt-5.6-sol',
-      reasoningEffort: 'high',
-      serviceTier: 'fast',
-      createWorktree: true,
-      branchName: 'coverage',
-      destinationPath: '/src/app-coverage',
-      prompt: 'Fix the flaky test.',
-      teamId: 'team-app',
-    });
+    await coordinator.createAgent('agent-dina', { repoPath: ' /src/app ', name: ' New Agent ', createWorktree: true, branchName: ' coverage ', destinationPath: ' /src/app-coverage ', prompt: ' Fix the flaky test. ', selection: { model: ' gpt-5.6-sol ', reasoningEffort: ' high ', serviceTier: ' fast ' } });
+    expect(onCreateAgent).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), { repoPath: '/src/app', name: 'New Agent', createWorktree: true, branchName: 'coverage', destinationPath: '/src/app-coverage', prompt: 'Fix the flaky test.', teamId: 'team-app', selection: { backend: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'high', serviceTier: 'fast' } });
     agents[0]!.backend = 'claude';
     await coordinator.createAgent('agent-dina', { repoPath: '/src/app' });
-    expect(onCreateAgent).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ backend: 'claude' }));
-    await coordinator.createAgent('agent-dina', { repoPath: '/src/app', backend: 'codex' });
-    expect(onCreateAgent).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ backend: 'codex' }));
+    expect(onCreateAgent).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ selection: { backend: 'claude' } }));
+    await coordinator.createAgent('agent-dina', { repoPath: '/src/app', selection: { backend: 'codex' } });
+    expect(onCreateAgent).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ selection: { backend: 'codex' } }));
   });
 
   it('reports unavailable agent creation', async () => {

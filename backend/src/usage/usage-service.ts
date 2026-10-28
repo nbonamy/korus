@@ -2,6 +2,7 @@ import type { Agent, MainToRendererEvent } from "@workspace/core/contracts";
 import type { ExecutionObservation, RequestObservation } from "@workspace/core/usage";
 import { UsageLedger } from "./usage-ledger";
 import { TurnClock } from "./turn-clock";
+import { repositoryIdentityOf, resolveRepositoryRoots } from "./repository-identity";
 import { providerConversationEventView } from "@workspace/core/provider-conversation-event";
 /** Tool calls an event reports as running or finished, however the provider surfaces them. */
 function toolStates(view: {
@@ -45,6 +46,7 @@ export class UsageService {
     private readonly agent: (id: string) => Agent | undefined,
     private readonly clock: TurnClock = new TurnClock(),
     private readonly now: () => number = () => performance.now(),
+    private readonly agents: () => readonly Agent[] = () => [],
   ) {}
   /** Feeds the turn clock from the one stream every provider's events pass through. */
   observeEvent(event: MainToRendererEvent): void {
@@ -110,10 +112,16 @@ export class UsageService {
       .then(async () => {
         await this.local.observe(event, {
           teamId: agent?.teamId ?? null,
-          repository: agent?.folder ?? null,
+          repository: repositoryIdentityOf(agent),
         });
       })
       .catch(() => undefined);
+  }
+  /** Re-files turns recorded before the repository was tracked under their repository; runs once. */
+  migrateRepositories(resolve: (folders: string[]) => Promise<Map<string, string>> = folders => resolveRepositoryRoots(folders, this.agents())): Promise<void> {
+    const migration = this.chain.then(() => this.local.migrateRepositories(resolve));
+    this.chain = migration.catch(() => undefined);
+    return migration.catch(() => undefined);
   }
   observeRequest(event: RequestObservation): void {
     this.chain = this.chain.then(async () => { await this.local.observeRequest(event); }).catch(() => undefined);

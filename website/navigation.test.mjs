@@ -80,6 +80,32 @@ test("navigation, films, and cards work at desktop and phone widths", async () =
         );
       }
       const header = page.getByRole("banner");
+      const heroScreens = page.locator(".hero-shot img");
+      assert.equal(
+        await heroScreens.count(),
+        2,
+        "The hero shows separate desktop and phone screens",
+      );
+      const desktopScreen = await heroScreens.first().boundingBox();
+      const phoneScreen = await heroScreens.last().boundingBox();
+      assert.ok(
+        phoneScreen.x >= desktopScreen.x + desktopScreen.width,
+        "The phone sits next to the desktop without covering it",
+      );
+      for (const preview of await page
+        .locator(".hero-shot img, .anywhere-previews img")
+        .all()) {
+        await preview.scrollIntoViewIfNeeded();
+        await page.waitForFunction(
+          (node) => node.complete && node.naturalWidth > 0,
+          await preview.elementHandle(),
+        );
+        const bounds = await preview.boundingBox();
+        assert.ok(
+          bounds.x >= 0 && bounds.x + bounds.width <= width,
+          `Desktop and iPhone previews fit at ${width}px`,
+        );
+      }
       const youtube = header.getByRole("link", {
         name: "YouTube",
         exact: true,
@@ -260,14 +286,14 @@ test("navigation, films, and cards work at desktop and phone widths", async () =
       new URL(page.url()).pathname,
       "/docs/features/automations.html",
     );
-    // OS is a shortcut, never an inferred CPU architecture or a mobile download.
+    // iPhone opens its store; desktop shortcuts never infer CPU architecture.
     for (const [userAgent, touch, platform] of [
       ["Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", false, "macos"],
       ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", false, "windows"],
       ["Mozilla/5.0 (X11; Linux x86_64)", false, "linux"],
       ["Mozilla/5.0 (X11; Linux aarch64)", false, "linux"],
       ["Mozilla/5.0 (Linux; Android 14)", true, null],
-      ["Mozilla/5.0 (iPhone; CPU iPhone OS 18_0)", true, null],
+      ["Mozilla/5.0 (iPhone; CPU iPhone OS 18_0)", true, "ios"],
       ["Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", true, null],
       ["Mozilla/5.0 (X11; CrOS x86_64)", false, null],
       ["Unknown browser", false, null],
@@ -297,16 +323,22 @@ test("navigation, films, and cards work at desktop and phone widths", async () =
       );
       const shortcut = visitor.locator(".header-cta");
       const installer =
-        platform && platform !== "linux"
+        platform && !["linux", "ios"].includes(platform)
           ? visitor
               .locator(`[data-platform="${platform}"] a[data-installer]`)
               .first()
           : null;
       const target =
-        installer && (await installer.count())
-          ? await installer.getAttribute("href")
-          : `#download${platform ? `-${platform}` : ""}`;
+        platform === "ios"
+          ? "https://apps.apple.com/us/app/korus-mobile/id6822816255"
+          : installer && (await installer.count())
+            ? await installer.getAttribute("href")
+            : `#download${platform ? `-${platform}` : ""}`;
       assert.equal(await shortcut.getAttribute("href"), target, userAgent);
+      for (const link of await visitor
+        .locator("[data-platform-download]")
+        .all())
+        assert.equal(await link.getAttribute("href"), target, userAgent);
       assert.equal(
         await visitor.locator("[data-detected]").count(),
         platform ? 1 : 0,
@@ -710,10 +742,18 @@ test("navigation, films, and cards work at desktop and phone widths", async () =
     );
     await noScript.locator(".header-cta").click();
     assert.equal(new URL(noScript.url()).hash, "#download");
-    assert.equal(await noScript.locator(".download-option").count(), 3);
+    assert.equal(await noScript.locator(".download-option").count(), 4);
     assert.equal(await noScript.locator(".download-architecture").count(), 2);
-    for (const link of await noScript.locator(".download-formats a").all())
+    for (const link of await noScript
+      .locator(
+        '.download-option:not([data-platform="ios"]) .download-formats a',
+      )
+      .all())
       assert.match(await link.getAttribute("href"), /^https:\/\/github\.com\//);
+    assert.equal(
+      await noScript.locator('[data-platform="ios"] a').getAttribute("href"),
+      "https://apps.apple.com/us/app/korus-mobile/id6822816255",
+    );
     const heroLink = noScript.getByRole("link", { name: "Watch with sound" });
     const heroMedia = await noScript.request.get(
       new URL(await heroLink.getAttribute("href"), origin).href,

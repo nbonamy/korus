@@ -1,14 +1,17 @@
+import backendPackage from '../../package.json';
 import { product, parseDaemonVersion } from '@workspace/core/product';
+import { randomUUID } from 'node:crypto';
 import { access, readFile } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import type { AddSshConnectionInput, ClaudeAuthentication, RemoteConnection, SshHostCandidate } from '@workspace/core/contracts';
+import type { AgentBackend, AddSshConnectionInput, ClaudeAuthentication, RemoteConnection, SshHostCandidate } from '@workspace/core/contracts';
 import { createEntityId } from '@workspace/core/ids';
 import { backendProviderTokensFilePath } from '../state';
 import { remoteCodexVersionCommand } from './remote-codex-command';
 import { remoteClaudeAuthenticationCommand, remoteClaudeInstallCommand, remoteClaudeVersionCommand } from './remote-claude-install';
+import { remoteEnvironmentCommand, remoteNodeInstallCommand } from './remote-node';
 
 type ExecResult = {
   stdout: string;
@@ -50,10 +53,10 @@ export class SshConnectionService {
   async createConnection(input: AddSshConnectionInput): Promise<RemoteConnection> {
     const createdAt = this.nowIso();
     const base = normalizeSshConnectionInput(input, createdAt, this.deps.createId?.() ?? createEntityId('connection'));
-    return this.checkConnection(base);
+    return base;
   }
 
-  async checkConnection(connection: RemoteConnection): Promise<RemoteConnection> {
+  async checkConnection(connection: RemoteConnection, backends: AgentBackend[] = [], progress: (detail: string) => Promise<void> = async () => {}): Promise<RemoteConnection> {
     const checkedAt = this.nowIso();
     let next: RemoteConnection = {
       ...connection,
@@ -64,18 +67,32 @@ export class SshConnectionService {
     };
 
     try {
+      await progress(`Installing ${product.name}…`);
       await this.installRemoteDaemon(next.host);
       await this.syncRemoteProviderTokens(next.host);
       const daemonVersion = await this.remoteDaemonVersion(next.host);
-      const codexVersion = await this.remoteCodexVersion(next.host).catch(() => undefined);
-      const claudeVersion = await this.remoteClaudeVersion(next.host).catch(() => undefined);
+      if (!daemonVersion) throw new Error('Remote daemon returned an invalid version.');
+      let [codexVersion, claudeVersion] = await Promise.all([
+        this.remoteCodexVersion(next.host).catch(() => undefined),
+        this.remoteClaudeVersion(next.host).catch(() => undefined),
+      ]);
+      if (backends.includes('codex') && !codexVersion) {
+        await progress('Installing Codex…');
+        codexVersion = await this.ensureRemoteCodexInstalled(next.host);
+      }
+      if (backends.includes('claude') && !claudeVersion) {
+        await progress('Installing Claude Code…');
+        claudeVersion = await this.ensureRemoteClaudeInstalled(next.host);
+      }
+      await progress('Verifying the remote environment…');
       const runtimeVersions = [`${product.daemonName} ${daemonVersion}`, ...(codexVersion ? [`Codex ${codexVersion}`] : []), ...(claudeVersion ? [`Claude ${claudeVersion}`] : [])];
       next = {
         ...next,
         status: 'ready',
         ...(daemonVersion ? { daemonVersion } : {}),
         codexVersion,
-        detail: `Ready (${runtimeVersions.join(', ')})`,
+        ...(claudeVersion ? { claudeVersion } : {}),
+        detail: `Connected (${runtimeVersions.join(', ')})`,
         installedAt: checkedAt,
         transport: sshStdioTransport(next.host),
         updatedAt: checkedAt,
@@ -96,38 +113,48 @@ export class SshConnectionService {
   }
 
   async inspectVersions(connection: RemoteConnection): Promise<RemoteConnection> {
-    const [daemonVersion, codexVersion] = await Promise.all([
-      this.remoteDaemonVersion(connection.host),
+    // Only a successful SSH command can report a missing runtime. Transport errors
+    // remain errors instead of being mistaken for permission to install software.
+    const daemonVersion = await this.remoteDaemonVersion(connection.host, true);
+    const [codexVersion, claudeVersion] = await Promise.all([
       this.remoteCodexVersion(connection.host).catch(() => undefined),
+      this.remoteClaudeVersion(connection.host).catch(() => undefined),
     ]);
-    const runtimeVersions = [`${product.daemonName} ${daemonVersion}`, `Codex ${codexVersion || 'unknown'}`];
-    let claudeWarning = '';
-    {
-      try {
-        runtimeVersions.push(`Claude ${await this.remoteClaudeVersion(connection.host)}`);
-      } catch (error) {
-        claudeWarning = `; Claude unavailable: ${error instanceof Error ? error.message : String(error)}`;
-      }
-    }
-    return { ...connection, daemonVersion, codexVersion,
-      detail: `Ready (${runtimeVersions.join(', ')})${claudeWarning}` };
+    const versions = [daemonVersion ? `${product.daemonName} ${daemonVersion}` : '',
+      codexVersion ? `Codex ${codexVersion}` : '', claudeVersion ? `Claude ${claudeVersion}` : ''].filter(Boolean);
+    return { ...connection, daemonVersion, codexVersion, claudeVersion,
+      status: daemonVersion ? 'ready' : 'saved',
+      transport: daemonVersion ? sshStdioTransport(connection.host) : undefined,
+      lastCheckedAt: this.nowIso(),
+      detail: daemonVersion ? `Connected (${versions.join(', ')})` : 'Environment setup required.',
+    };
   }
 
   async ensureRemoteClaudeInstalled(host: string): Promise<string> {
-    const result = await (this.deps.run ?? runCommand)('ssh', [
+    const result = await this.run('ssh', [
       '-o',
       'BatchMode=yes',
       '-o',
       'ConnectTimeout=10',
       host,
-      remoteClaudeInstallCommand(),
+      remoteEnvironmentCommand(remoteClaudeInstallCommand()),
     ], { timeoutMs: 360_000 });
     return parseRemoteClaudeVersion(result.stdout);
   }
 
+  async ensureRemoteCodexInstalled(host: string): Promise<string> {
+    const result = await this.run('ssh', [
+      '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', host,
+      remoteEnvironmentCommand(`set -eu\nif command -v codex >/dev/null 2>&1 && codex --version >/dev/null 2>&1; then codex --version; exit 0; fi\nnpm install --global --prefix "$HOME/.local" @openai/codex\n"$HOME/.local/bin/codex" --version`),
+    ], { timeoutMs: 360_000 });
+    const version = /^codex-cli\s+(\S+)/mu.exec(result.stdout)?.[1];
+    if (!version) throw new Error('Remote Codex installation could not be verified.');
+    return version;
+  }
+
   async getRemoteClaudeAuthentication(host: string): Promise<ClaudeAuthentication> {
     try {
-      const result = await (this.deps.run ?? runCommand)('ssh', [
+      const result = await this.run('ssh', [
         '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', host, remoteClaudeAuthenticationCommand(),
       ], { timeoutMs: 15_000 });
       const status: unknown = JSON.parse(result.stdout);
@@ -139,7 +166,7 @@ export class SshConnectionService {
   }
 
   private async remoteClaudeVersion(host: string): Promise<string> {
-    const result = await (this.deps.run ?? runCommand)('ssh', [
+    const result = await this.run('ssh', [
       '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', host, remoteClaudeVersionCommand(),
     ], { timeoutMs: 15_000 });
     return parseRemoteClaudeVersion(result.stdout);
@@ -152,29 +179,30 @@ export class SshConnectionService {
 
   private async installRemoteDaemon(host: string): Promise<void> {
     const localDaemon = await this.resolveLocalDaemonScript();
+    const stagedDaemon = `~/${product.homeDirectory}/daemon-${randomUUID()}.mjs`;
     await this.run('ssh', [
       '-o',
       'BatchMode=yes',
       '-o',
       'ConnectTimeout=10',
       host,
-      `mkdir -p ~/${product.homeDirectory}`,
-    ]);
+      remoteNodeInstallCommand(),
+    ], { timeoutMs: 240_000 });
     await this.run('scp', [
       '-o',
       'BatchMode=yes',
       '-o',
       'ConnectTimeout=10',
       localDaemon,
-      `${host}:~/${product.homeDirectory}/daemon.mjs.tmp`,
-    ]);
+      `${host}:${stagedDaemon}`,
+    ], { timeoutMs: 120_000 });
     await this.run('ssh', [
       '-o',
       'BatchMode=yes',
       '-o',
       'ConnectTimeout=10',
       host,
-      `mv ~/${product.homeDirectory}/daemon.mjs.tmp ${remoteDaemonPath} && chmod 600 ${remoteDaemonPath}`,
+      remoteEnvironmentCommand(`set -eu\nversion=$(node ${stagedDaemon} --version)\n[ "$version" = "${product.daemonName} ${backendPackage.version}" ] || { echo "Remote Korus verification failed; previous installation kept." >&2; exit 1; }\nchmod 600 ${stagedDaemon}\nmv ${stagedDaemon} ${remoteDaemonPath}`),
     ]);
   }
 
@@ -184,14 +212,6 @@ export class SshConnectionService {
       await (this.deps.accessFile ?? access)(localProviderTokens, fsConstants.R_OK);
     } catch (error) {
       if (isNodeError(error) && error.code === 'ENOENT') {
-        await this.run('ssh', [
-          '-o',
-          'BatchMode=yes',
-          '-o',
-          'ConnectTimeout=10',
-          host,
-          `rm -f ${remoteProviderTokensPath}`,
-        ]);
         return;
       }
       throw error;
@@ -204,7 +224,7 @@ export class SshConnectionService {
       'ConnectTimeout=10',
       localProviderTokens,
       `${host}:~/${product.homeDirectory}/provider-tokens.json.tmp`,
-    ]);
+    ], { timeoutMs: 120_000 });
     await this.run('ssh', [
       '-o',
       'BatchMode=yes',
@@ -215,24 +235,26 @@ export class SshConnectionService {
     ]);
   }
 
-  private async remoteDaemonVersion(host: string): Promise<string> {
+  private async remoteDaemonVersion(host: string, allowMissing = false): Promise<string | undefined> {
     const result = await this.run('ssh', [
       '-o',
       'BatchMode=yes',
       '-o',
       'ConnectTimeout=10',
       host,
-      `node ${remoteDaemonPath} --version`,
+      remoteEnvironmentCommand(allowMissing ? `node ${remoteDaemonPath} --version 2>/dev/null || true` : `node ${remoteDaemonPath} --version`),
     ]);
     const version = parseDaemonVersion(result.stdout);
-    if (!version) throw new Error('Remote daemon returned an invalid version.');
-    return version;
+    if (!version && !allowMissing) throw new Error('Remote daemon returned an invalid version.');
+    return version ?? undefined;
   }
 
   private async resolveLocalDaemonScript(): Promise<string> {
+    const entrypoint = this.deps.argv?.[1] ?? process.argv[1];
     const candidates = [
+      // A source-linked daemon may inherit an installed desktop's older assets path.
+      entrypoint && path.basename(entrypoint) === 'daemon.mjs' ? entrypoint : undefined,
       path.join(this.deps.assetsPath ?? process.env.APP_ASSETS_PATH ?? path.resolve(process.cwd(), 'assets'), 'daemon', 'daemon.mjs'),
-      this.deps.argv?.[1] ?? process.argv[1],
     ].filter((candidate): candidate is string => Boolean(candidate && candidate.endsWith('.mjs')));
 
     for (const candidate of candidates) {
@@ -247,8 +269,8 @@ export class SshConnectionService {
     throw new Error('No bundled daemon script was found to install on the remote host.');
   }
 
-  private run(command: string, args: string[]): Promise<ExecResult> {
-    return (this.deps.run ?? runCommand)(command, args, { timeoutMs: connectTimeoutMs });
+  private run(command: string, args: string[], options = { timeoutMs: connectTimeoutMs }): Promise<ExecResult> {
+    return (this.deps.run ?? runCommand)(command, ['-o', 'StrictHostKeyChecking=accept-new', ...args], options);
   }
 
   private nowIso(): string {
@@ -298,8 +320,10 @@ export function sshStdioTransport(host: string): RemoteConnection['transport'] {
     type: 'ssh-stdio',
     command: 'ssh',
     args: [
+      '-T', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3',
+      '-o', 'StrictHostKeyChecking=accept-new',
       host,
-      `node ${remoteDaemonPath} connect || exec node ${remoteDaemonPath} --stdio`,
+      remoteEnvironmentCommand(`node ${remoteDaemonPath} connect || { code=$?; [ "$code" -eq 1 ] || exit "$code"; exec node ${remoteDaemonPath} --stdio; }`),
     ],
   };
 }
@@ -393,7 +417,7 @@ function validPort(value: unknown): value is number {
 }
 
 function isConcreteHostAlias(host: string): boolean {
-  return /^[A-Za-z0-9._-]+$/.test(host);
+  return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(host);
 }
 
 function parseRemoteClaudeVersion(output: string): string {

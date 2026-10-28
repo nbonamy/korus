@@ -1,9 +1,12 @@
 import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import { listAgentFolderFiles, previewAgentFolderFile, readAgentFolderFileChunk } from '../agent-files';
 
+const execFileAsync = promisify(execFile);
 const tempFolders: string[] = [];
 
 describe('listAgentFolderFiles', () => {
@@ -60,6 +63,52 @@ describe('listAgentFolderFiles', () => {
     await expect(listAgentFolderFiles(folder)).resolves.toStrictEqual([
       { name: 'package.json', path: 'package.json' },
     ]);
+  });
+
+  describe('in a Git repository', () => {
+    const git = (folder: string, ...args: string[]) => execFileAsync('git', args, { cwd: folder });
+
+    it('lists tracked and untracked files but not ignored ones, so ignored folders cannot use up the budget', async () => {
+      const folder = await createTempFolder();
+      await git(folder, 'init', '-q');
+      await writeFile(path.join(folder, '.gitignore'), '.scratch/\n');
+      await mkdir(path.join(folder, '.scratch'), { recursive: true });
+      for (const name of ['a', 'b', 'c', 'd', 'e']) await writeFile(path.join(folder, '.scratch', `${name}.json`), '{}');
+      await mkdir(path.join(folder, 'src', 'pricing'), { recursive: true });
+      await writeFile(path.join(folder, 'src', 'pricing', 'history.json'), '{}');
+      await writeFile(path.join(folder, 'src', 'notes.md'), 'untracked');
+      await git(folder, 'add', '.gitignore', 'src/pricing/history.json');
+
+      await expect(listAgentFolderFiles(folder, { maxFiles: 3 })).resolves.toStrictEqual([
+        { name: '.gitignore', path: '.gitignore' },
+        { name: 'notes.md', path: 'src/notes.md' },
+        { name: 'history.json', path: 'src/pricing/history.json' },
+      ]);
+    });
+
+    it('walks the disk when Git lists nothing, such as a folder the parent repository ignores', async () => {
+      const parent = await createTempFolder();
+      await git(parent, 'init', '-q');
+      await writeFile(path.join(parent, '.gitignore'), 'inner/\n');
+      await mkdir(path.join(parent, 'inner'), { recursive: true });
+      await writeFile(path.join(parent, 'inner', 'file.txt'), 'x');
+
+      await expect(listAgentFolderFiles(path.join(parent, 'inner'))).resolves.toStrictEqual([{ name: 'file.txt', path: 'file.txt' }]);
+    });
+
+    it('leaves out tracked files that were deleted, symbolic links and generated folders', async () => {
+      const folder = await createTempFolder();
+      await git(folder, 'init', '-q');
+      await mkdir(path.join(folder, 'node_modules', 'pkg'), { recursive: true });
+      await writeFile(path.join(folder, 'node_modules', 'pkg', 'index.js'), 'tracked anyway');
+      await writeFile(path.join(folder, 'gone.txt'), 'x');
+      await writeFile(path.join(folder, 'package.json'), '{}');
+      await symlink(path.join(folder, 'package.json'), path.join(folder, 'package-link.json'));
+      await git(folder, 'add', '-f', '.');
+      await rm(path.join(folder, 'gone.txt'));
+
+      await expect(listAgentFolderFiles(folder)).resolves.toStrictEqual([{ name: 'package.json', path: 'package.json' }]);
+    });
   });
 
   it('honors max file limits', async () => {

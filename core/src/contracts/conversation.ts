@@ -1,3 +1,4 @@
+import type { ExecutionSelectionOverrides } from './execution';
 import type { CodexPromptPart, SurfaceMessageQuestionPart } from '@codex-app-sdk/core/surface';
 import type { ReasoningEffort } from './shared';
 
@@ -235,10 +236,8 @@ export type SendPromptOptions = {
   /** User-selected options for the /delegate command, consumed by the app adapter. */
   delegation?: import('../delegation-context').DelegationOverrides;
   attachments?: readonly PromptAttachment[];
-  model?: string | null;
+  selection?: ExecutionSelectionOverrides;
   planMode?: boolean;
-  reasoningEffort?: ReasoningEffort | null;
-  serviceTier?: string | null;
   skills?: PromptSkillInput[];
   inputMethod?: 'typed' | 'dictated';
   /** Internal delivery hint: the provider must not create another visible user row. */
@@ -256,8 +255,6 @@ export type BackendPromptOptions =
   | { kind: 'antigravity'; permissionMode?: string | null }
   | {
     kind: 'codex';
-    reasoningEffort?: ReasoningEffort | null;
-    serviceTier?: string | null;
     skills?: PromptSkillInput[];
   }
   | {
@@ -287,7 +284,7 @@ export type RendererMessagePart =
   | { type: 'media'; media: RendererMessageMedia; itemId?: string }
   | SurfaceMessageQuestionPart
   | { type: 'reasoning'; summary: string; itemId: string; summaryIndex: number }
-  | { type: 'text'; text: string; itemId?: string; phase?: 'commentary' | 'final_answer' }
+  | { type: 'text'; text: string; itemId?: string; phase?: 'commentary' | 'partial_answer' | 'final_answer' }
   | {
     type: 'tool';
     id: string;

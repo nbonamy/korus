@@ -9,7 +9,7 @@ struct ReviewState: Decodable, Equatable {
 struct ReviewSetup: Decodable, Equatable {
     struct Model: Decodable, Equatable, Identifiable { let id: String; let name: String; let efforts: [String] }
     struct Preferences: Decodable, Equatable {
-        struct Selection: Decodable, Equatable { let model: String?; let reasoningEffort: String? }
+        struct Selection: Decodable, Equatable { let model: String?; let reasoningEffort: String?; var serviceTier: String? = nil }
         let providers: [String: Selection]
     }
     let target: ComposerTarget
@@ -34,9 +34,7 @@ struct ReviewChoices {
         struct Automation: Encodable { let enabled: Bool; let maxPriority: String; let maxRounds: Int; let autoCommit: Bool }
         let scope: Scope
         let threadMode: String
-        let backend: String?
-        let model: String?
-        let reasoningEffort: String?
+        let selection: ExecutionSelection?
         let instructions: String?
         let automation: Automation
     }
@@ -45,6 +43,7 @@ struct ReviewChoices {
     var backend = ""
     var model = ""
     var effort = ""
+    var serviceTier: String?
     var instructions = ""
     var automatic = false
     var priority = "p2"
@@ -57,6 +56,7 @@ struct ReviewChoices {
         let saved = setup.preferences?.providers[backend]
         model = setup.models.first(where: { $0.id == saved?.model })?.id ?? ""
         effort = setup.models.first(where: { $0.id == model })?.efforts.first(where: { $0 == saved?.reasoningEffort }) ?? ""
+        serviceTier = saved?.serviceTier
     }
 
     func input(_ setup: ReviewSetup) -> Input? {
@@ -68,9 +68,23 @@ struct ReviewChoices {
         let selected = setup.models.first { $0.id == model }
         let text = instructions.trimmingCharacters(in: .whitespacesAndNewlines)
         return Input(scope: .init(type: scope, baseRef: scope == "branch" ? setup.baseRef : nil), threadMode: thread,
-                     backend: independent ? backend : nil, model: independent ? selected?.id : nil,
-                     reasoningEffort: independent && selected?.efforts.contains(effort) == true ? effort : nil,
+                     selection: independent ? .init(backend: backend, model: selected?.id, reasoningEffort: selected?.efforts.contains(effort) == true ? effort : nil, serviceTier: serviceTier) : nil,
                      instructions: text.isEmpty ? nil : text,
                      automation: .init(enabled: automatic, maxPriority: priority, maxRounds: min(10, max(1, rounds)), autoCommit: automatic && autoCommit))
+    }
+}
+
+struct ExecutionSelection: Encodable {
+    let backend: String
+    let model: String?
+    let reasoningEffort: String?
+    let serviceTier: String?
+    enum CodingKeys: String, CodingKey { case backend, model, reasoningEffort, serviceTier }
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(backend, forKey: .backend)
+        try values.encode(model, forKey: .model)
+        try values.encode(reasoningEffort, forKey: .reasoningEffort)
+        try values.encode(serviceTier, forKey: .serviceTier)
     }
 }

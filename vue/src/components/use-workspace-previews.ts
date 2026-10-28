@@ -1,3 +1,4 @@
+import { diffForPath } from '@workspace/core/file-diff';
 import { watch } from 'vue';
 import type { FileKind } from '@workspace/core/file-kind';
 import { agentConversationId } from '@workspace/core/plan-review';
@@ -339,20 +340,6 @@ function gitReviewPanel(
   };
 }
 
-function diffForPath(diff: string, filePath: string): string | null {
-  const targetPath = normalizePathSeparators(filePath).replace(/^\.\//u, '');
-  const sections = diff.split(/(?=^diff --git )/mu).filter((section) => section.startsWith('diff --git '));
-  return sections.find((section) => {
-    const header = section.split('\n', 1)[0] ?? '';
-    const separator = header.indexOf(' b/');
-    if (separator < 0) return false;
-    const beforePath = header.slice('diff --git a/'.length, separator);
-    const afterPath = header.slice(separator + ' b/'.length);
-    return [beforePath, afterPath].some((candidate) => (
-      normalizePathSeparators(candidate).replace(/^[ab]\//u, '') === targetPath
-    ));
-  }) ?? null;
-}
 
 function filePreviewPanel(
   filePath: string,

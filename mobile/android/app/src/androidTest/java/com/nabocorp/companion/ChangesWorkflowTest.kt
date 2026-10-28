@@ -55,6 +55,36 @@ class ChangesWorkflowTest {
     private fun tree(v: Any?): Any? = when(v) { JSONObject.NULL -> null; is JSONObject -> v.keys().asSequence().associateWith { tree(v.get(it)) }; is JSONArray -> (0 until v.length()).map { tree(v.get(it)) }; else -> v }
     private fun last(e: NativeEngineFixture, expected: JSONObject) = assertEquals(tree(expected),tree(e.commands().last()))
 
+    @Test fun transcriptFilePreviewHidesComposerRoutesOneReadAndBackRestoresDraft() {
+        NativeEngineFixture(app.activityRule.scenario).use { e ->
+            app.waitUntil(20_000) { e.model.state.string("startup") == "ready" }; e.state(state()); mount(e)
+            app.onNodeWithTag("composer").performTextInput("Keep this draft")
+            val agent = json("id" to "agent", "name" to "Agent", "backend" to "codex", "status" to json("type" to "idle"))
+            val payload = json("agentId" to "agent", "agent" to agent, "generation" to 1, "ready" to true, "peers" to JSONArray(),
+                "frame" to json("payload" to json("snapshot" to json("messages" to JSONArray().put(json("id" to "m", "role" to "assistant", "status" to "complete", "parts" to JSONArray().put(json("type" to "text", "text" to "Read [app.kt](src/app.kt:1)")))), "turns" to JSONArray(), "busy" to false))))
+            e.event("conversation", payload)
+            fun js(script: String): String {
+                val done = CountDownLatch(1); val value = AtomicReference("")
+                app.activityRule.scenario.onActivity { e.model.transcript.view.evaluateJavascript(script) { value.set(it); done.countDown() } }
+                assertTrue(done.await(5,TimeUnit.SECONDS)); return value.get()
+            }
+            app.waitUntil(10_000) { js("!!document.querySelector('a[href=\"src/app.kt:1\"]')") == "true" }
+            js("document.querySelector('a[href=\"src/app.kt:1\"]').click();true")
+            app.waitUntil(5000) { commands(e,"readFilePreview").isNotEmpty() }
+            app.onNodeWithTag("composer").assertDoesNotExist()
+            val request = commands(e,"readFilePreview").last()
+            assertEquals("agent",request.string("agentId"))
+            assertEquals("src/app.kt",request.obj("input").string("path"))
+            e.event("conversationFile",json("type" to "conversationFile", "requestId" to request.string("requestId"),"agentId" to "agent", "preview" to json("path" to "src/app.kt", "source" to json("path" to "src/app.kt","kind" to "text","size" to 20,"content" to "val nativeSource = true"), "diff" to patch("nativeChange"), "diffScope" to "turn")))
+            app.waitUntil(10_000) { js("document.body.textContent.includes('nativeSource')") == "true" }
+            js("Array.from(document.querySelectorAll('[aria-label=\"File view\"] button')).find(b => b.textContent === 'Diff').click();true")
+            app.waitUntil(10_000) { js("document.body.textContent.includes('nativeChange')") == "true" }
+            assertEquals(1,commands(e,"readFilePreview").size)
+            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+            app.onNodeWithTag("composer").assertTextContains("Keep this draft")
+        }
+    }
+
     @Test fun scopesRenderActualPatchesAndKeepSelectionAndComposerAcrossRecreation() {
         NativeEngineFixture(app.activityRule.scenario).use { e ->
             app.waitUntil(20_000) { e.model.state.string("startup") == "ready" }; e.state(state()); mount(e)

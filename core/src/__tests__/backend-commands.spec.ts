@@ -16,10 +16,4 @@ describe('backend command catalog', () => {
       id: `${backend}.compact`, submitOnSelect: true,
     });
   });
-
-  it('offers pending goal entry only for Codex', () => {
-    expect(defaultBackendCommands('codex').find((command) => command.slashName === 'goal'))
-      .toMatchObject({ composerMode: { label: 'Goal' } });
-    expect(defaultBackendCommands('claude').some((command) => command.slashName === 'goal')).toBe(false);
-  });
 });

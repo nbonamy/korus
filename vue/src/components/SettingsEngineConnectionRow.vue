@@ -2,17 +2,28 @@
   <div v-if="compact" class="settings-engine-connection--compact">
     <FormRow :title="title ?? $t('engineConnection.title')" :error="error">
       <template #control>
-        <ProviderInstallActions v-if="installed === false && backend" :backend="backend" :busy="busy" @refresh="emit('refresh')" @install="emit('install')" />
+        <template v-if="overflow">
+          <el-button v-if="installed === false" size="small" :disabled="busy || saving || updateBusy" @click="emit('install')">{{ $t('auth.installProvider') }}</el-button>
+          <el-button v-else-if="!connected && !pending" size="small" :disabled="busy || saving || updateBusy" @click="emit('connect')">{{ $t('engineConnection.connect') }}</el-button>
+          <el-button v-else-if="updateAvailable && !pending" size="small" :disabled="busy || saving || updateBusy" @click="emit('upgrade')">{{ $t('engineConnection.update') }}</el-button>
+          <AppMenuButton :ariaLabel="t('engineConnection.actions', { name: title })" :items="overflowItems" @select="selectOverflowItem">
+            <template #trigger="{ attrs }">
+              <button v-bind="attrs" class="settings-engine-connection__menu" type="button" :aria-label="t('engineConnection.actions', { name: title })"><DotsVerticalIcon aria-hidden="true" /></button>
+            </template>
+          </AppMenuButton>
+        </template>
+        <ProviderInstallActions v-else-if="installed === false && backend" :backend="backend" :busy="busy" :automated="installable" @refresh="emit('refresh')" @install="emit('install')" />
         <button v-else-if="pending" class="app-button app-button--tertiary" type="button" aria-busy="true" :disabled="busy" @click="emit('cancel')">{{ $t('auth.cancel') }}</button>
         <el-button v-else-if="connected" size="small" :disabled="busy || saving" @click="emit('disconnect')">{{ $t('engineConnection.disconnect') }}</el-button>
         <el-button v-else size="small" :disabled="busy || saving" @click="emit('connect')">
           {{ $t('engineConnection.connect') }}
         </el-button>
-        <el-switch :model-value="connected && enabled !== false" :loading="saving" :disabled="!connected || busy || saving || pending" :aria-label="`${$t('engineConnection.enabled')} · ${title ?? $t('engineConnection.title')}`" @update:model-value="toggle" />
+        <el-switch v-if="!overflow" :model-value="connected && enabled !== false" :loading="saving" :disabled="!connected || busy || saving || pending" :aria-label="`${$t('engineConnection.enabled')} · ${title ?? $t('engineConnection.title')}`" @update:model-value="toggle" />
       </template>
       <template #copy>
+        <span v-if="overflow && version" class="settings-engine-connection__version" :title="version">{{ version }}</span>
         <span v-if="accountLabel" :title="accountLabel">{{ accountLabel }}</span>
-        <span v-if="busy && !pending" role="status">{{ $t('auth.checking') }}</span>
+        <span v-if="busy && !pending && !overflow" role="status">{{ $t('auth.checking') }}</span>
         <span v-else-if="!pending && !accountLabel">{{ statusLabel }}</span>
       </template>
     </FormRow>
@@ -55,10 +66,31 @@ import FormRow from '../shared/form/FormRow.vue';
 import BackendIcon from './BackendIcon.vue';
 import ProviderInstallActions from './ProviderInstallActions.vue';
 import StatusPill from '../shared/form/StatusPill.vue';
-const props = withDefaults(defineProps<{ backend?: AgentBackend; installed?: boolean; compact?: boolean; title?: string; connected?: boolean; enabled?: boolean; busy?: boolean; pending?: boolean; error?: string | null; authentication?: ProviderAuthentication; setEnabled?: (enabled: boolean) => unknown }>(), { enabled: true, installed: true });
-const emit = defineEmits<{ connect: []; disconnect: []; cancel: []; refresh: []; install: [] }>();
+import AppMenuButton from '../shared/menu/AppMenuButton.vue';
+import type { AppMenuItem } from '../shared/menu/app-menu';
+import { DotsVerticalIcon, RefreshIcon, QuitIcon } from '../shared/icons/app-icons';
+const props = withDefaults(defineProps<{ backend?: AgentBackend; installed?: boolean; compact?: boolean; installable?: boolean; overflow?: boolean; version?: string; updateAvailable?: boolean; updateBusy?: boolean; menuItems?: AppMenuItem[]; title?: string; connected?: boolean; enabled?: boolean; busy?: boolean; pending?: boolean; error?: string | null; authentication?: ProviderAuthentication; setEnabled?: (enabled: boolean) => unknown }>(), { enabled: true, installed: true });
+const emit = defineEmits<{ connect: []; disconnect: []; cancel: []; refresh: []; install: []; upgrade: []; 'menu-select': [id: string] }>();
 const { t } = useI18n();
 const saving = ref(false);
+const overflowItems = computed<AppMenuItem[]>(() => {
+  const disabled = props.busy || saving.value || props.updateBusy;
+  const items: AppMenuItem[] = [];
+  if (props.pending) items.push({ id: 'cancel', type: 'action', label: t('auth.cancel'), disabled });
+  items.push({ id: 'refresh', type: 'action', label: t('engineConnection.refreshStatus'), icon: RefreshIcon, disabled });
+  if (props.menuItems?.length) items.push(...props.menuItems);
+  if (props.connected) items.push(
+    { id: 'disconnect', type: 'action', label: t('engineConnection.disconnect'), icon: QuitIcon, disabled },
+  );
+  return items;
+});
+function selectOverflowItem(id: string): void {
+  if (id === 'install') emit('install');
+  else if (id === 'refresh') emit('refresh');
+  else if (id === 'disconnect') emit('disconnect');
+  else if (id === 'cancel') emit('cancel');
+  else emit('menu-select', id);
+}
 const accountLabel = computed(() => {
   const auth = props.authentication;
   if (!auth || auth.kind === 'antigravity') return '';
@@ -77,7 +109,7 @@ const state = computed(() => {
 const tone = computed(() => state.value === 'active' ? 'success' : state.value === 'pending' ? 'warning' : 'neutral');
 const statusLabel = computed(() => {
   if (props.pending) return t('engineConnection.waiting');
-  if (props.busy) return t('auth.checking');
+  if (props.busy && !props.overflow) return t('auth.checking');
   if (!props.installed) return t('auth.notDetected');
   if (!props.connected) return t('engineConnection.disconnected');
   return props.enabled !== false ? t('engineConnection.connected') : t('engineConnection.connectedDisabled');
@@ -200,5 +232,25 @@ async function toggle(value: string | number | boolean) {
 .settings-engine-connection--compact :deep(.form-row__control) {
   justify-self: end;
   gap: var(--space-6);
+}
+
+.settings-engine-connection__menu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2);
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.settings-engine-connection__menu svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.settings-engine-connection--compact :deep(.form-row__copy .settings-engine-connection__version) {
+  flex: 0 0 auto;
 }
 </style>

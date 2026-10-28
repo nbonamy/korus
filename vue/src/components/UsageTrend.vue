@@ -90,7 +90,7 @@
               class="marker"
               :class="{
                 visible:
-                  isRate || measure === 'cost' || active === point.index,
+                  isRate || active === point.index,
               }"
               :cx="point.x"
               :cy="yOf(layer.upper[point.index]!)"
@@ -135,7 +135,7 @@
         <strong class="tooltip-day">{{ dayLabel(hovered.day, true) }}</strong>
         <ul>
           <li
-            v-for="segment in [...hovered.segments].reverse()"
+            v-for="segment in tooltipSegments"
             :key="segment.key"
           >
             <i :style="{ background: segment.color }" />
@@ -156,7 +156,7 @@
       </div>
     </div>
     <div v-if="series.length > 1" class="chart-legend">
-      <span v-for="item in series" :key="item.key"
+      <span v-for="item in legendSeries" :key="item.key"
         ><i :style="{ background: item.color }" />{{ item.label }}</span
       >
     </div>
@@ -172,7 +172,7 @@ import {
   measureFormat,
   niceScale,
   smoothPath,
-  tokensPerSecond,
+  sortUsageValues,
   type UsageMeasure,
   type UsageSeries,
 } from "./usage-chart";
@@ -184,6 +184,7 @@ const props = defineProps<{
   to: string;
   subtitle?: string;
 }>();
+const legendSeries = computed(() => sortUsageValues(props.series, row => row.value));
 const isSpeed = computed(() => props.measure === "speed");
 const isRate = computed(() => isSpeed.value || props.measure === "ratio");
 const title = computed(() =>
@@ -192,10 +193,7 @@ const title = computed(() =>
 type DailyGroup = NonNullable<
   NonNullable<UsageSummary["daily"]>[number]["groups"]
 >[number];
-const valueOf = (group: DailyGroup) =>
-  props.measure === "speed"
-    ? tokensPerSecond(group.speed)
-    : chartValue(group, props.measure);
+const valueOf = (group: DailyGroup) => chartValue(group, props.measure);
 const metricFormat = (value: number | null) => {
   if (props.measure === "speed")
     return `${chartFormat(value, true)} ${translate("analytics.tokensPerSecond")}`;
@@ -415,6 +413,7 @@ const layers = computed(() => {
 const hovered = computed(() =>
   active.value === null ? null : (points.value[active.value] ?? null),
 );
+const tooltipSegments = computed(() => sortUsageValues(hovered.value?.segments ?? [], row => row.value));
 const tooltipStyle = computed(() => {
   const point = hovered.value;
   if (!point) return {};

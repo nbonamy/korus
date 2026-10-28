@@ -74,7 +74,7 @@ describe('daemon entrypoint', () => {
       onMessage: (message) => ({
         jsonrpc: '2.0',
         id: 'id' in message ? message.id : null,
-        result: { method: 'method' in message ? message.method : 'none' },
+        result: 'id' in message && message.id === '__korus-verify-version' ? { version: '1.0.0' } : { method: 'method' in message ? message.method : 'none' },
       }),
     });
     await socketServer.start();
@@ -83,7 +83,7 @@ describe('daemon entrypoint', () => {
     const outputChunks: Buffer[] = [];
     output.on('data', (chunk: Buffer) => outputChunks.push(chunk));
 
-    const connect = connectToDaemon({ input, output, socketPath });
+    const connect = connectToDaemon({ input, output, socketPath, expectedVersion: '1.0.0' });
     input.write('{"jsonrpc":"2.0","id":"health","method":"backend/health/get"}\n');
     await waitFor(() => Buffer.concat(outputChunks).toString('utf8').includes('"backend/health/get"'));
     input.end();
@@ -94,6 +94,18 @@ describe('daemon entrypoint', () => {
       id: 'health',
       result: { method: 'backend/health/get' },
     });
+  });
+
+  it('refuses an outdated running daemon without starting a second writer', async () => {
+    const socketPath = await tempSocketPath();
+    socketServer = new LocalSocketRpcServer({ socketPath, onMessage: message => ({ jsonrpc: '2.0', id: 'id' in message ? message.id : null, result: { version: '0.35.1' } }) });
+    await socketServer.start();
+    const input = new PassThrough(), output = new PassThrough(), stderr = new PassThrough();
+    const errors: Buffer[] = [];
+    stderr.on('data', chunk => errors.push(chunk));
+    await expect(connectToDaemon({ input, output, stderr, socketPath, expectedVersion: '0.45.1' })).resolves.toBe(2);
+    expect(Buffer.concat(errors).toString()).toContain('Restart');
+    expect(output.readableLength).toBe(0);
   });
 
   it('exits non-zero when daemon connect cannot reach the daemon socket', async () => {
@@ -131,7 +143,7 @@ describe('daemon entrypoint', () => {
 
     (failingStream === 'socket' ? socket : failingStream === 'input' ? input : output).emit('error', new Error('stream failed'));
 
-    await expect(connect).resolves.toBe(1);
+    await expect(connect).resolves.toBe(3);
   });
 });
 

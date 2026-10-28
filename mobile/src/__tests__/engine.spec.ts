@@ -410,7 +410,7 @@ describe('companion engine', () => {
       expect(listBranches).toHaveBeenCalledExactlyOnceWith('second-team', '/second/repo');
       expect(latest()).toMatchObject({ teamId: 'demo-team', allTeams: true });
       await engine.dispatch({ type: 'newChat', repositoryId: '/second/repo', backend: 'codex', existingBranch: 'main' });
-      expect(createChat).toHaveBeenCalledExactlyOnceWith({ teamId: 'second-team', repositoryId: '/second/repo', backend: 'codex', existingBranch: 'main' });
+      expect(createChat).toHaveBeenCalledExactlyOnceWith({ teamId: 'second-team', repositoryId: '/second/repo', existingBranch: 'main', selection: { backend: 'codex' } });
       expect(latest()).toMatchObject({ teamId: 'second-team', agentId: 'demo-reviewer', allTeams: true, chatCreation: 'idle' });
     } finally { engine.dispose(); }
   });
@@ -626,15 +626,24 @@ describe('companion engine', () => {
     }
     engine.dispose();
   });
-  it('shows pairing only after checking storage, and permits retry after a storage failure', async () => {
+  it.each(['retry', 'foreground', 'during restore'])('checks storage before pairing and recovers from a storage failure on %s', async recovery => {
     const connector = unpaired();
-    connector.initialize = vi.fn().mockRejectedValueOnce(new Error('Keychain unavailable')).mockResolvedValue(undefined);
+    let fail!: (error: Error) => void;
+    connector.initialize = vi.fn().mockImplementationOnce(() => new Promise<void>((_, reject) => { fail = reject; })).mockResolvedValue(undefined);
     const { engine, latest } = open(connector);
-    await engine.start();
-    expect(latest().startup).toBe('error');
-    await engine.dispatch({ type: 'start' });
-    expect(latest()).toMatchObject({ startup: 'ready', connection: 'unpaired', laptops: [] });
-    engine.dispose();
+    try {
+      const starting = engine.start();
+      expect(latest().startup).toBe('loading');
+      const resumed = recovery === 'during restore' ? engine.dispatch({ type: 'activity', active: true }) : undefined;
+      fail(new Error('Keychain unavailable')); await starting;
+      if (resumed) await resumed;
+      else {
+        expect(latest().startup).toBe('error');
+        await engine.dispatch(recovery === 'retry' ? { type: 'start' } : { type: 'activity', active: true });
+      }
+      expect(latest()).toMatchObject({ startup: 'ready', connection: 'unpaired', laptops: [] });
+      expect(connector.initialize).toHaveBeenCalledTimes(2);
+    } finally { engine.dispose(); }
   });
   it('publishes conversation loading until the selected thread arrives and clears it on failure', async () => {
     const connector = createDemoConnector(); const connect = connector.connect;
@@ -849,9 +858,9 @@ describe('companion engine', () => {
       for (const serviceTier of ['fast', null]) {
         await engine.dispatch({ type: 'composer', change: { serviceTier } });
         expect(latest().composer.serviceTier).toBe(serviceTier);
-        expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'model', reasoningEffort: 'high', serviceTier });
+        expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'model', reasoningEffort: 'high', serviceTier, backend: 'codex' });
         await engine.dispatch({ type: 'send', text: 'Continue' });
-        expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Continue', expect.any(String), expect.objectContaining({ serviceTier }));
+        expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Continue', expect.any(String), expect.objectContaining({ selection: expect.objectContaining({ serviceTier }) }));
       }
     } finally { engine.dispose(); }
   });
@@ -930,7 +939,7 @@ describe('companion engine', () => {
       const { engine, latest } = await opened(createChat);
       expect(latest()).toMatchObject({ backends: ['codex', 'claude'], chatCreation: 'idle' });
       await engine.dispatch({ type: 'newChat', repositoryId: '/abc/repo', backend: 'claude', branchName: 'feature' });
-      expect(createChat).toHaveBeenCalledWith({ teamId: 'demo-team', repositoryId: '/abc/repo', backend: 'claude', worktree: { branchName: 'feature' } });
+      expect(createChat).toHaveBeenCalledWith({ teamId: 'demo-team', repositoryId: '/abc/repo', worktree: { branchName: 'feature' }, selection: { backend: 'claude' } });
       expect(latest()).toMatchObject({ agentId: 'demo-reviewer', chatCreation: 'idle' });
       engine.dispose();
     });
@@ -969,7 +978,7 @@ describe('companion engine', () => {
       const { engine, latest } = await opened(createChat);
       const before = latest().agentId;
       await engine.dispatch({ type: 'newChat', repositoryId: '/abc/repo', backend: 'codex' });
-      expect(createChat).toHaveBeenCalledWith({ teamId: 'demo-team', repositoryId: '/abc/repo', backend: 'codex' });
+      expect(createChat).toHaveBeenCalledWith({ teamId: 'demo-team', repositoryId: '/abc/repo', selection: { backend: 'codex' } });
       expect(latest()).toMatchObject({ chatCreation: 'failed', agentId: before });
       await engine.dispatch({ type: 'dismissNewChat' });
       expect(latest().chatCreation).toBe('idle');

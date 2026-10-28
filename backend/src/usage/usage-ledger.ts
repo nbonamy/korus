@@ -1,7 +1,8 @@
 import { chmodSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { isUtcDay, utcDay } from "@workspace/core/usage";
+import { isUtcDay } from "@workspace/core/usage";
+import { dayOf, dayStart, nextDay, validTimeZone } from "@workspace/core/usage-time";
 import {
   validConsumption,
   validRequestObservation,
@@ -30,6 +31,7 @@ export class UsageLedger {
   private db: DatabaseSync | null = null;
   private since: number;
   private available = true;
+  private zone = "UTC";
   constructor(
     private readonly file: string,
     private readonly now: () => number = Date.now,
@@ -238,6 +240,7 @@ export class UsageLedger {
   async observeRequest(event: RequestObservation): Promise<boolean> {
     if (
       !validRequestObservation(event) ||
+      (event.provider === "claude" && event.model === "<synthetic>") ||
       event.at < this.now() - retention ||
       event.at > this.now() + 60000
     )
@@ -313,6 +316,7 @@ export class UsageLedger {
             "repository",
             "agentId",
             "group",
+            "timeZone",
           ].includes(k),
       ) ||
       Object.values(filter).some(
@@ -327,11 +331,14 @@ export class UsageLedger {
           "repository",
           "agentId",
         ].includes(filter.group)) ||
+      (filter.timeZone !== undefined && !validTimeZone(filter.timeZone)) ||
       (filter.from && !isUtcDay(filter.from)) ||
       (filter.to && !isUtcDay(filter.to)) ||
       (filter.from && filter.to && filter.from > filter.to)
     )
       throw new Error("Invalid usage filter.");
+    // Queries are synchronous, so the zone can ride along for the cost bucketing helper.
+    this.zone = filter.timeZone ?? "UTC";
     const db = this.open(),
       rows = new Map<string, Bucket>(),
       daily = new Map<string, Bucket>(),
@@ -340,7 +347,7 @@ export class UsageLedger {
     if (db) {
       const requestRows = db
         .prepare(
-          "SELECT r.observation,e.* FROM requests r JOIN executions e USING(provider,session_id,turn_id) WHERE e.started_at>=? AND r.at>=? ORDER BY r.at,r.request_id",
+          "SELECT r.observation,e.* FROM requests r JOIN executions e USING(provider,session_id,turn_id) WHERE e.started_at>=? AND r.at>=? AND (r.provider<>'claude' OR json_extract(r.observation,'$.model') IS NOT '<synthetic>') ORDER BY r.at,r.request_id",
         )
         .all(this.now() - retention, this.now() - retention);
       const observedExecutions = new Set(
@@ -352,11 +359,11 @@ export class UsageLedger {
         args: (string | number)[] = [this.now() - retention];
       if (filter.from) {
         conditions.push("started_at>=?");
-        args.push(Date.parse(filter.from));
+        args.push(dayStart(filter.from, filter.timeZone));
       }
       if (filter.to) {
         conditions.push("started_at<?");
-        args.push(Date.parse(filter.to) + 86400000);
+        args.push(dayStart(nextDay(filter.to), filter.timeZone));
       }
       for (const [key, column] of [
         ["provider", "provider"],
@@ -403,8 +410,8 @@ export class UsageLedger {
           : "All";
         if (!filter.apiProvider) {
           this.aggregate(rows, record, label);
-          this.aggregate(daily, record, utcDay(record.startedAt));
-          const day = utcDay(record.startedAt);
+          this.aggregate(daily, record, dayOf(record.startedAt, filter.timeZone));
+          const day = dayOf(record.startedAt, filter.timeZone);
           const groups = dailyGroups.get(day) ?? new Map<string, Bucket>();
           this.aggregate(groups, record, label);
           dailyGroups.set(day, groups);
@@ -437,8 +444,8 @@ export class UsageLedger {
         const event = JSON.parse(String(row.observation)) as RequestObservation;
         const parent = this.decode(row);
         if (
-          (filter.from && event.at < Date.parse(filter.from)) ||
-          (filter.to && event.at >= Date.parse(filter.to) + 86400000) ||
+          (filter.from && event.at < dayStart(filter.from, filter.timeZone)) ||
+          (filter.to && event.at >= dayStart(nextDay(filter.to), filter.timeZone)) ||
           (filter.model && event.model !== filter.model) ||
           (filter.apiProvider && event.apiProvider !== filter.apiProvider) ||
           (["provider", "agentId", "teamId", "repository"] as const).some(
@@ -522,7 +529,7 @@ export class UsageLedger {
     unknownReason?: UsageCostReason,
     execution = false,
   ): void {
-    const day = utcDay(at);
+    const day = dayOf(at, this.zone);
     const groups = dailyGroups.get(day) ?? new Map<string, Bucket>();
     dailyGroups.set(day, groups);
     for (const bucket of [
@@ -612,6 +619,29 @@ export class UsageLedger {
     }
     this.since = since;
     db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  }
+  /**
+   * One-time fix for turns saved with a working folder instead of the repository. `resolve` maps the
+   * distinct folders to repositories; if it fails nothing is marked done, so the next start tries again.
+   */
+  async migrateRepositories(resolve: (folders: string[]) => Promise<Map<string, string>>): Promise<void> {
+    const db = this.open();
+    if (!db) return;
+    // Bump the version when the rules change so history is filed again under them.
+    if (db.prepare("SELECT value FROM metadata WHERE key='repository_identity'").get()?.value === "2") return;
+    const folders = db.prepare("SELECT DISTINCT repository FROM executions WHERE repository IS NOT NULL").all()
+      .map((row) => String(row.repository));
+    const mapping = await resolve(folders);
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const update = db.prepare("UPDATE executions SET repository=? WHERE repository=?");
+      for (const [folder, repository] of mapping) if (folder !== repository) update.run(repository, folder);
+      db.prepare("INSERT OR REPLACE INTO metadata VALUES('repository_identity','2')").run();
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
   }
   async close(): Promise<void> {
     this.db?.close();

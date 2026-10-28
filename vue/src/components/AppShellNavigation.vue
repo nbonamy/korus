@@ -38,6 +38,7 @@
       ref="agentSidebar"
       v-if="showAgentSidebar"
       :agents="sidebarAgents"
+      :mission-agents="snapshot.agents"
       :forkable-agent-ids="forkableAgentIds"
       :summary-replacement-agent-ids="summaryReplacementAgentIds"
       :active-agent-id="activeMissionId ? null : currentAgent?.id ?? null"
@@ -49,6 +50,7 @@
       @create-mission="$emit('create-mission')"
       @delete-repository="$emit('delete-repository', $event)"
       @delete-mission="$emit('delete-mission', $event)"
+      @create-agent-in-mission-worktree="$emit('create-agent-in-mission-worktree', $event)"
       @select-mission="$emit('select-mission', $event)"
       :unread-agent-ids="unreadAgentIds"
       :teams="snapshot.teams"
@@ -159,6 +161,7 @@ const emit = defineEmits<{
   'create-quick-chat': [];
   'create-mission': [];
   'delete-mission': [id: string];
+  'create-agent-in-mission-worktree': [payload: { missionId: string; worktreePath: string }];
   'delete-repository': [agentId: string];
   'select-mission': [id: string];
   'disconnect-team': [teamId: string];

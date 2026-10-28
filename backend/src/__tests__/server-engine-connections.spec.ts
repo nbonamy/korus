@@ -24,7 +24,7 @@ describe('connected engine admission', () => {
     try {
       await expect(server.requireConnectedEngine('antigravity')).rejects.toThrow('not connected');
       connected = true;
-      const created = await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'agent/quickChat/create', params: { input: { teamId: 'team-test', backend: 'antigravity' } } });
+      const created = await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'agent/quickChat/create', params: { input: { teamId: 'team-test', selection: { ...{ backend: 'antigravity' } } } } });
       expect(created).toMatchObject({ result: { agents: [expect.objectContaining({ backend: 'antigravity' })] } });
       const agent = snapshot.agents[0]!;
       snapshot.queuedPrompts = [{ id: 'queued', agentId: agent.id, text: 'Later', createdAt: '' }];
@@ -89,7 +89,7 @@ describe('connected engine admission', () => {
       expect(snapshot.providerConnections?.find(engine => engine.backend === 'codex')).toMatchObject({ connected: true, enabled: true });
       expect(agent.status.type).toBe('working');
       expect(snapshot.queuedPrompts).toMatchObject([{ id: 'queued', text: 'Later' }]);
-      expect(await server.handleMessage({ jsonrpc: '2.0', id: 4, method: 'agent/quickChat/create', params: { input: { teamId: 'team-test', backend: 'claude' } } }))
+      expect(await server.handleMessage({ jsonrpc: '2.0', id: 4, method: 'agent/quickChat/create', params: { input: { teamId: 'team-test', selection: { ...{ backend: 'claude' } } } } }))
         .toMatchObject({ error: { message: expect.stringContaining('disabled') } });
       await server.handleMessage({ jsonrpc: '2.0', id: 5, method: 'provider/enabled/set', params: { backend: 'claude', enabled: true } });
       expect(snapshot.providerConnections?.[0]).toMatchObject({ connected: true, enabled: true });

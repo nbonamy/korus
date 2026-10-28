@@ -9,6 +9,23 @@ import type { GuestJoinView } from '@workspace/core/guest-navigation';
 // Mounted shell catches entry-point routing, duplicate grants, missing disclosure,
 // stale async results and accidental credential display. Provider UI is a boundary fake.
 afterEach(() => { document.body.innerHTML = ''; vi.restoreAllMocks(); });
+
+/** Active shares have a header button; inactive shares use the agent actions menu. */
+async function openShareDialog(wrapper: { element: Element }) {
+  const share = wrapper.element.querySelector<HTMLElement>('.agent-header__activity button[aria-label="Share"]');
+  if (share) {
+    share.click();
+  } else {
+    const more = wrapper.element.querySelector<HTMLElement>('.agent-header__activity button[aria-label="Agent actions"]');
+    expect(more).not.toBeNull();
+    more!.click();
+    await flushPromises();
+    const item = Array.from(wrapper.element.querySelectorAll<HTMLElement>('.agent-header__activity [role="menuitem"]')).find(candidate => candidate.textContent?.trim() === 'Share');
+    expect(item).toBeDefined();
+    item!.click();
+  }
+  await flushPromises();
+}
 describe('owner Share workflow', () => {
   it('moves a named suggestion from the composer drawer into the owner draft and deletes another without submitting', async () => {
     const snapshot = createInitialSnapshot(); const agent = snapshot.agents[0]!;
@@ -92,15 +109,15 @@ describe('owner Share workflow', () => {
     const wrapper = mountShell({ snapshot, realAgentSidebar: true, stubRightWorkspacePanel: true, stubTeamRail: true });
     try {
       await flushPromises();
-      const share = wrapper.get('button[aria-label="Share"]');
-      expect(share.text()).toBe('');
-      expect(share.find('svg').exists()).toBe(true);
-      await share.trigger('click'); await flushPromises();
+      const more = wrapper.get('button[aria-label="Agent actions"]');
+      expect(more.text()).toBe('');
+      expect(more.find('svg').exists()).toBe(true);
+      await openShareDialog(wrapper);
       expect(wrapper.text()).toContain('Anyone with this link');
       expect(wrapper.text()).toContain('full available history');
       expect(conversationShareControl.mock.calls.map(([input]) => input.action)).toStrictEqual(['status']);
       expect(wrapper.findAll('.app-dialog__footer button').map(button => button.text())).toStrictEqual(['Close', 'Share']);
-      const button = (text: string) => wrapper.findAll('button').find(button => button.text() === text)!;
+      const button = (text: string) => wrapper.findAll('.app-dialog__footer button').find(button => button.text() === text)!;
       await button('Share').trigger('click'); await flushPromises();
       expect(writeText).toHaveBeenLastCalledWith(link);
       expect(wrapper.findComponent({ name: 'ConversationShareDialog' }).exists()).toBe(false);
@@ -112,7 +129,7 @@ describe('owner Share workflow', () => {
       expect(writeText).toHaveBeenCalledTimes(2);
       expect(wrapper.findComponent({ name: 'ConversationShareDialog' }).exists()).toBe(false);
       expect(conversationShareControl.mock.calls.map(([input]) => input.action)).toStrictEqual(['status', 'create', 'status', 'copy']);
-      await share.trigger('click'); await flushPromises();
+      await openShareDialog(wrapper);
       await button('Stop sharing').trigger('click'); await flushPromises();
       expect(conversationShareControl.mock.calls.at(-1)![0]).toStrictEqual({ action: 'revoke', target: expect.objectContaining({ agentId: agent.id }), handle: active.handle });
       expect(wrapper.findComponent({ name: 'ConversationShareDialog' }).exists()).toBe(false);
@@ -130,8 +147,8 @@ describe('owner Share workflow', () => {
     setElectronTestClient({ conversationShareControl });
     const wrapper = mountShell({ snapshot, stubRightWorkspacePanel: true, stubTeamRail: true });
     try {
-      const button = (text: string) => wrapper.findAll('button').find(button => button.text() === text)!;
-      await wrapper.get('button[aria-label="Share"]').trigger('click'); await flushPromises();
+      const button = (text: string) => wrapper.findAll('.app-dialog__footer button').find(button => button.text() === text)!;
+      await openShareDialog(wrapper);
       expect(wrapper.text()).not.toContain('storage-secret');
       await button('Try again').trigger('click'); await flushPromises();
       await button('Share').trigger('click'); await flushPromises();
@@ -154,11 +171,11 @@ describe('owner Share workflow', () => {
     setElectronTestClient({ conversationShareControl: vi.fn().mockRejectedValue(new Error(message)) });
     const wrapper = mountShell({ snapshot, stubRightWorkspacePanel: true, stubTeamRail: true });
     try {
-      await wrapper.get('button[aria-label="Share"]').trigger('click'); await flushPromises();
+      await openShareDialog(wrapper);
       expect(wrapper.text()).toContain(expected);
       const retry = wrapper.findAll('button').find(button => button.text() === 'Try again')!;
       expect(retry.attributes('disabled')).toBeUndefined();
-      expect(wrapper.findAll('button').some(button => button.text() === 'Share')).toBe(false);
+      expect(wrapper.findAll('.app-dialog__footer button').some(button => button.text() === 'Share')).toBe(false);
     } finally { wrapper.unmount(); }
   });
   it('keeps relay diagnostics internal while preserving active link controls', async () => {
@@ -168,18 +185,18 @@ describe('owner Share workflow', () => {
     setElectronTestClient({ conversationShareControl: async () => ({ state: { active, handle: active ? 'a'.repeat(32) : null, connectedGuests: null, availability } }) });
     const wrapper = mountShell({ snapshot, stubRightWorkspacePanel: true, stubTeamRail: true });
     try {
-      await wrapper.get('button[aria-label="Share"]').trigger('click'); await flushPromises();
+      await openShareDialog(wrapper);
       expect(wrapper.text()).toContain('Sharing is temporarily unavailable');
       expect(wrapper.text()).not.toContain('relay');
       expect(wrapper.findAll('button').some(button => button.text() === 'Copy link')).toBe(true);
       wrapper.findComponent({ name: 'ConversationShareDialog' }).vm.$emit('close'); await flushPromises();
       availability = 'upgradeRequired';
-      await wrapper.get('button[aria-label="Share"]').trigger('click'); await flushPromises();
+      await openShareDialog(wrapper);
       expect(wrapper.text()).toContain('Sharing is temporarily unavailable');
       expect(wrapper.text()).not.toContain('relay upgrade');
       wrapper.findComponent({ name: 'ConversationShareDialog' }).vm.$emit('close'); await flushPromises();
       active = false; availability = 'unavailable';
-      await wrapper.get('button[aria-label="Share"]').trigger('click'); await flushPromises();
+      await openShareDialog(wrapper);
       expect(wrapper.text()).not.toContain('saved link will work');
     } finally { wrapper.unmount(); }
   });

@@ -590,19 +590,19 @@ describe('SettingsView', () => {
         },
     });
 
-    expect(wrapper.text()).toContain(`Remote ${product.name} agents`);
+    expect(wrapper.find('[aria-labelledby="settings-connections-remotes-title"]').exists()).toBe(true);
     expect(wrapper.text()).toContain('devbox');
 
     await wrapper.get('[aria-label="devbox actions"]').trigger('click');
     await flushPromises();
-    bodyButton('Sync')?.click();
+    bodyButton('Reconnect')?.click();
     await flushPromises();
     await wrapper.get('[aria-label="devbox actions"]').trigger('click');
     await flushPromises();
     bodyButton('Delete')?.click();
     await flushPromises();
 
-    expect(checkRemoteConnection).toHaveBeenCalledWith('connection-devbox');
+    expect(checkRemoteConnection).toHaveBeenCalledWith('connection-devbox', true);
     expect(removeRemoteConnection).toHaveBeenCalledWith('connection-devbox');
   });
 

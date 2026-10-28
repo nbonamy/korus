@@ -12,7 +12,7 @@ import path from 'node:path';
 
 type Message = Record<string, unknown>;
 type Call = ClientUnaryCall | ClientWritableStream<Message> | ClientDuplexStream<Message, Message>;
-type Target = { udid: string; screen_dimensions?: { width: number; width_points: number } };
+type Target = { udid: string; screen_dimensions?: { width: number; width_points: number }; displays?: { name: string; integrated: boolean; active: boolean }[] };
 const MAX_BYTES = 12 * 1024 * 1024;
 const KEY_DELAY_SECONDS = 0.03;
 const TEXT_CHUNK = 100;
@@ -56,6 +56,12 @@ export class IdbClient {
   /** idb orientation: 1 portrait, 2 upside down, 3 landscape left, 4 landscape right; 0 when unknown. */
   async getOrientation(): Promise<number> {
     return Number((await this.unary('get_orientation', {})).orientation) || 0;
+  }
+  async setHingeAngle(angle: 0 | 180): Promise<void> {
+    await this.hid([{ hinge: { angle } }]);
+  }
+  async getHingeAngle(): Promise<number> {
+    return Number((await this.unary('hinge_angle', {})).angle);
   }
   async inspect(): Promise<string> {
     const value = (await this.unary('accessibility_info', { format: 0 })).json;

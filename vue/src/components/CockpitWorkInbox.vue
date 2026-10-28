@@ -166,8 +166,8 @@
                   <EyeIcon aria-hidden="true" />
                 </button>
               </el-tooltip>
-              <el-tooltip v-if="!row.assignment" :content="$t('backlogSource.startItem', { identifier: workItemDisplayIdentifier(row.item) })" placement="top" :show-after="300">
-                <button class="cockpit-inbox__row-action" type="button" :aria-label="$t('backlogSource.startItem', { identifier: workItemDisplayIdentifier(row.item) })" @click.stop="openStartWorkDialog(row.item)">
+              <el-tooltip v-if="!row.assignment" :content="startItemLabel(row.item)" placement="top" :show-after="300">
+                <button class="cockpit-inbox__row-action" type="button" :aria-label="startItemLabel(row.item)" @click.stop="openStartWorkDialog(row.item)">
                   <PlayerPlayIcon aria-hidden="true" />
                 </button>
               </el-tooltip>
@@ -255,15 +255,15 @@
           </el-select>
         </label>
         <label>{{ $t('repositoryBacklog.session') }}
-          <BackendModelSelector v-model:backend="selectedBackend" v-model:model="selectedModel" v-model:reasoning-effort="selectedEffort" :team-id="selectedTeamId" :disabled="startingWork" />
+          <BackendModelSelector v-model:selection="selectedSelection" :team-id="selectedTeamId" :disabled="startingWork" />
         </label>
       </div>
 
       <template #footer>
         <div class="app-dialog__footer">
           <button class="app-button app-button--tertiary" type="button" :disabled="startingWork" @click="closeStartWorkDialog(false)">{{ $t('surface.cockpitWorkInbox.cancel') }}</button>
-          <button class="app-button app-button--secondary" type="button" :disabled="startingWork || !selectedTeamId || !selectedBackend" @click="startSelectedWork('investigate')">{{ $t('surface.cockpitWorkInbox.investigate') }}</button>
-          <button class="app-button app-button--primary" type="button" :disabled="startingWork || !selectedTeamId || !selectedBackend" @click="startSelectedWork('fix')">{{ $t('surface.cockpitWorkInbox.fix') }}</button>
+          <button class="app-button app-button--secondary" type="button" :disabled="startingWork || !selectedTeamId || !selectedBackend" @click="startSelectedWork(secondaryLaunchAction)">{{ $t(`repositoryBacklog.${secondaryLaunchAction}`) }}</button>
+          <button class="app-button app-button--primary" type="button" :disabled="startingWork || !selectedTeamId || !selectedBackend" @click="startSelectedWork(primaryLaunchAction)">{{ $t(`repositoryBacklog.${primaryLaunchAction}`) }}</button>
         </div>
       </template>
     </el-dialog>
@@ -271,6 +271,8 @@
 </template>
 
 <script setup lang="ts">
+import { useExecutionSelection } from '../execution-selection';
+import type { BacklogScope } from './use-cockpit-backlog';
 import { workProviderIcon } from './work-provider-icons';
 import { workItemDisplayIdentifier } from '@workspace/core/work-item-prompts';
 import { workProviderDefinition } from '@workspace/core/work-providers';
@@ -300,7 +302,7 @@ const props = withDefaults(defineProps<{
   assignments: Record<string, WorkBacklogAssignment>;
   connection: WorkIntegrationConnection;
   error: string | null;
-  globalScope?: 'assignedToMe' | 'all' | null;
+  globalScope?: BacklogScope | null;
   items: WorkItem[];
   page?: number;
   pageLoading?: boolean;
@@ -335,15 +337,13 @@ const emit = defineEmits<{
 
 const searchOpen = ref(false);
 const searchInput = ref<{ focus: () => void } | null>(null);
+const { selection: selectedSelection, backend: selectedBackend, model: selectedModel, reasoningEffort: selectedEffort, serviceTier: selectedTier } = useExecutionSelection();
 const selectedItemIds = ref(new Set<string>());
 const startWorkDialogOpen = ref(false);
 const detailItem = ref<WorkItem | null>(null);
 const startingWork = ref(false);
 const startWorkError = ref<string | null>(null);
 const selectedTeamId = ref('');
-const selectedBackend = ref<Agent['backend']>();
-const selectedModel = ref('');
-const selectedEffort = ref('');
 const singleLaunchItem = ref<WorkItem | null>(null);
 const launchItems = computed(() => singleLaunchItem.value ? [singleLaunchItem.value] : selectedItems.value);
 const codeRepositories = ref<import('@workspace/core/contracts').SourceRepository[]>([]);
@@ -379,18 +379,19 @@ const assigneeOptions = computed(() => [...new Set(props.items.flatMap((item) =>
 // The global feed defaults to "assigned to me"; surface it as the active assignee filter.
 const assignedToMeValue = '@me';
 const assigneeSelection = computed(() => props.selectedAssigneeLogin
-  ?? (!props.selectedRepositoryId && props.globalScope === 'assignedToMe' ? assignedToMeValue : null));
+  ?? (!props.selectedRepositoryId && (props.globalScope === 'assignedToMe' || props.globalScope === 'myIssues') ? assignedToMeValue : null));
 const activeFilterCount = computed(() => [props.selectedRepositoryId, props.selectedTagName, assigneeSelection.value].filter(Boolean).length);
 const scopePromptVisible = computed(() => (
   !props.selectedRepositoryId && !props.globalScope && (activeView.value === 'all' || activeView.value === 'backlog')
 ));
 const allRows = computed<InboxRow[]>(() => props.items.filter((item) => item.state === 'open').map(toRow));
 // Empty means every type; the control only exists for providers that have pull requests.
-const kindFilter = ref<Array<'issue' | 'pullRequest'>>([]);
+const kindFilter = defineModel<Array<'issue' | 'pullRequest'>>('kindFilter', { default: () => [] });
 const activeKindFilter = computed(() => workProviderDefinition(props.connection.provider).pullRequests ? kindFilter.value : []);
 const filteredRows = computed(() => {
   const query = effectiveSearchQuery.value.trim().toLocaleLowerCase();
   return allRows.value.filter((row) => {
+    if (props.statusFilter && row.assignment?.status !== props.statusFilter) return false;
     if (props.selectedRepositoryId && row.item.sourceId !== props.selectedRepositoryId) return false;
     if (props.selectedTagName && !row.item.labels.some((label) => label.name === props.selectedTagName)) return false;
     if (props.selectedAssigneeLogin && !(row.item.assignees ?? []).includes(props.selectedAssigneeLogin)) return false;
@@ -400,28 +401,15 @@ const filteredRows = computed(() => {
   });
 });
 const rows = computed(() => filteredRows.value.filter((row) => {
-  if (props.statusFilter && row.assignment?.status !== props.statusFilter) return false;
   if (activeView.value === 'backlog') return !row.assignment;
   if (activeView.value === 'wip') return isActiveAssignment(row.assignment);
   if (activeView.value === 'focus') return isActiveAssignment(row.assignment) && (row.priority === 'attention' || row.priority === 'review');
   return true;
 }));
-const scopedAssignments = computed(() => Object.values(props.assignments).filter((assignment) => {
-  if (assignment.provider !== props.connection.provider) return false;
-  return !props.selectedRepositoryId || assignment.itemId.startsWith(`${props.selectedRepositoryId}#`);
-}));
-const scopedActiveAssignments = computed(() => scopedAssignments.value.filter(isActiveAssignment));
-const hasGlobalTotal = computed(() => Boolean(props.globalScope) && props.totalItems !== undefined);
-const totalAssignmentCount = computed(() => hasGlobalTotal.value
-  ? scopedActiveAssignments.value.length
-  : filteredRows.value.filter((row) => isActiveAssignment(row.assignment)).length);
-const totalFocusCount = computed(() => hasGlobalTotal.value
-  ? scopedActiveAssignments.value.filter((assignment) => assignment.status === 'blocked' || assignment.status === 'readyForReview').length
-  : filteredRows.value.filter((row) => isActiveAssignment(row.assignment) && (row.priority === 'attention' || row.priority === 'review')).length);
-const effectiveTotalItems = computed(() => props.globalScope ? props.totalItems ?? filteredRows.value.length : filteredRows.value.length);
-const totalBacklogCount = computed(() => hasGlobalTotal.value
-  ? Math.max(0, effectiveTotalItems.value - scopedActiveAssignments.value.length)
-  : filteredRows.value.filter((row) => !row.assignment).length);
+// Tab counts share the rendered page and filters; the provider total stays in pagination.
+const totalAssignmentCount = computed(() => filteredRows.value.filter((row) => isActiveAssignment(row.assignment)).length);
+const totalFocusCount = computed(() => filteredRows.value.filter((row) => isActiveAssignment(row.assignment) && (row.priority === 'attention' || row.priority === 'review')).length);
+const totalBacklogCount = computed(() => filteredRows.value.filter((row) => !row.assignment).length);
 const viewContextKey = computed(() => `${props.connection.provider}:${props.selectedRepositoryId ?? `global:${props.globalScope ?? 'unselected'}`}`);
 watch(viewContextKey, () => { ++contextRevision; detailItem.value = null; startWorkDialogOpen.value = false; selectedItemIds.value = new Set(); }, { flush: 'sync' });
 const priorityOrder: Priority[] = ['attention', 'review', 'progress', 'ready'];
@@ -431,7 +419,7 @@ const groupedRows = computed(() => priorityOrder.map((priority) => ({
   rows: rows.value.filter((row) => row.priority === priority).sort((a, b) => b.activityAt.localeCompare(a.activityAt)),
 })).filter((group) => group.rows.length > 0));
 const viewOptions = computed(() => [
-  { id: 'all' as const, label: translate('surface.cockpitWorkInbox.all'), count: effectiveTotalItems.value },
+  { id: 'all' as const, label: translate('surface.cockpitWorkInbox.all'), count: filteredRows.value.length },
   { id: 'backlog' as const, label: translate('surface.cockpitWorkInbox.backlog'), count: totalBacklogCount.value },
   { id: 'wip' as const, label: translate('surface.cockpitWorkInbox.wIP'), count: totalAssignmentCount.value },
   { id: 'focus' as const, label: translate('surface.cockpitWorkInbox.focus'), count: totalFocusCount.value },
@@ -461,7 +449,7 @@ watch([viewContextKey, () => props.status, totalFocusCount, totalAssignmentCount
     activeViewInitialized = true;
     pendingViewContext = null;
     pendingViewContextLoadingObserved = false;
-    applyActiveView(preferredActiveView());
+    applyActiveView(props.activeView === 'all' ? 'all' : preferredActiveView());
     return;
   }
 
@@ -557,6 +545,18 @@ function toggleSelection(row: InboxRow): void {
   selectedItemIds.value = next;
 }
 
+function isOwnPullRequest(item: WorkItem): boolean {
+  return item.kind === 'pullRequest' && Boolean(props.connection.accountLabel && item.authorName)
+    && item.authorName!.toLowerCase() === props.connection.accountLabel!.toLowerCase();
+}
+function startItemLabel(item: WorkItem): string {
+  return translate(isOwnPullRequest(item) ? 'backlogSource.checkFeedbackItem' : 'backlogSource.startItem', { identifier: workItemDisplayIdentifier(item) });
+}
+const launchPullRequestsOnly = computed(() => launchItems.value.length > 0 && launchItems.value.every(item => item.kind === 'pullRequest'));
+const primaryLaunchAction = computed(() => launchPullRequestsOnly.value
+  ? launchItems.value.every(isOwnPullRequest) ? 'checkFeedback' : 'review' : 'fix');
+const secondaryLaunchAction = computed(() => launchPullRequestsOnly.value ? 'addressFeedback' : 'investigate');
+
 function openStartWorkDialog(item?: WorkItem): void {
   if (startingWork.value) return;
   singleLaunchItem.value = item?.id ? item : null;
@@ -570,7 +570,7 @@ function closeStartWorkDialog(visible = false): void {
   if (!visible && !startingWork.value) startWorkDialogOpen.value = false;
 }
 
-async function startSelectedWork(action: 'investigate' | 'fix'): Promise<void> {
+async function startSelectedWork(action: StartWorkItemsInput['action']): Promise<void> {
   const items = [...launchItems.value];
   if (!selectedTeamId.value || !selectedBackend.value || items.length === 0) return;
   const repository = codeRepositories.value.find(repository => repository.path === selectedCodeRepositoryPath.value);
@@ -582,9 +582,7 @@ async function startSelectedWork(action: 'investigate' | 'fix'): Promise<void> {
   startingWork.value = true;
   startWorkError.value = null;
   try {
-    await props.startWorkAction({ action, items, teamId: selectedTeamId.value, backend: selectedBackend.value,
-      ...(selectedModel.value ? { model: selectedModel.value } : {}),
-      ...(selectedEffort.value ? { reasoningEffort: selectedEffort.value } : {}),
+    await props.startWorkAction({ action, items, teamId: selectedTeamId.value, selection: selectedSelection.value,
       ...(repository ? { repository, isCurrent: () => revision === contextRevision } : {}) });
     if (revision !== contextRevision) return;
     selectedItemIds.value = new Set([...selectedItemIds.value].filter(id => !items.some(item => item.id === id)));

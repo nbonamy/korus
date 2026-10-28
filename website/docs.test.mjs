@@ -160,7 +160,17 @@ test("the built website has reachable documentation pages, anchors, and assets",
       "Landing page links to the docs",
     );
     const home = documents.get("docs/index.html").window.document;
-    const downloads = [...landing.querySelectorAll(".download-formats a")];
+    assert.equal(
+      landing.querySelector('[data-platform="ios"] a')?.href,
+      "https://apps.apple.com/us/app/korus-mobile/id6822816255",
+      "iPhone visitors can also find the App Store without JavaScript",
+    );
+    assert.ok(landing.querySelector("#anywhere h2"));
+    const downloads = [
+      ...landing.querySelectorAll(
+        '.download-option:not([data-platform="ios"]) .download-formats a',
+      ),
+    ];
     assert.ok(
       downloads.length >= 4,
       "Each platform and Linux architecture has a download entry",

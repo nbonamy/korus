@@ -3,6 +3,7 @@ import SwiftUI
 /// Missions the laptop is running or has finished, in the same surface as a conversation; the phone only follows them.
 struct MissionsScreen: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         @Bindable var model = model
@@ -29,9 +30,11 @@ struct MissionsScreen: View {
             .overlay { if model.missions.isEmpty { ContentUnavailableView("No missions", systemImage: "target") } }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { model.drawerOpen.toggle() } label: { Image(systemName: "line.3.horizontal") }
-                        .buttonBorderShape(.circle)
-                        .accessibilityLabel("Agents")
+                    if sizeClass != .regular {
+                        Button { model.drawerOpen.toggle() } label: { Image(systemName: "line.3.horizontal") }
+                            .buttonBorderShape(.circle)
+                            .accessibilityLabel("Agents")
+                    }
                 }
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 1) {
@@ -144,6 +147,7 @@ private struct MissionCard: View {
                 }
             }
             Spacer(minLength: 0)
+            MissionAttentionIndicator(attention: mission.attention ?? .idle)
             Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
         }
         .padding(.horizontal, 20).padding(.vertical, 20)
@@ -161,6 +165,7 @@ private struct CompletedRow: View {
             Image(systemName: "checkmark.circle.fill").foregroundStyle(.secondary).font(.title3)
             Text(mission.outcome).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
             Spacer(minLength: 0)
+            MissionAttentionIndicator(attention: mission.attention ?? .idle)
             Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
@@ -182,11 +187,19 @@ private struct MissionDetailScreen: View {
                     StageTracker(current: mission.stageIndex, finished: !mission.isActive)
                     Summary(mission: mission)
                     NextStep(mission: mission)
-                    if let review = mission.review { ReviewRow(missionID: mission.id, review: review) }
+                    if mission.remediationReview == nil, let review = mission.review { ReviewRow(missionID: mission.id, review: review) }
                     if let lead = mission.leadAgentId { LeadRow(stage: mission.stageLabel, agentId: lead) }
-                    if !mission.tickets.isEmpty { Timeline(mission: mission) }
+                    if let review = mission.remediationReview {
+                        VStack(alignment: .leading, spacing: 14) {
+                            Text("Review findings").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            FindingGroups(missionID: mission.id, review: review)
+                        }
+                    } else if !mission.tickets.isEmpty { Timeline(mission: mission) }
                 }
                 .padding(.horizontal, 16).padding(.vertical, 8)
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if mission.stage == "review", mission.remediationReview != nil, let review = mission.review { ReviewActions(missionID: mission.id, review: review) }
             }
             .navigationTitle("Mission")
             .navigationBarTitleDisplayMode(.inline)
@@ -233,16 +246,20 @@ private struct Summary: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(mission.outcome).font(.subheadline.weight(.semibold))
-            HStack(spacing: 16) {
-                MissionGauge(mission: mission, size: 84, lineWidth: 9)
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(mission.tickets.isEmpty ? mission.stageLabel : "\(mission.done) of \(mission.tickets.count) \(mission.tickets.count == 1 ? "ticket" : "tickets")")
-                        .font(.title3.weight(.semibold))
-                    HStack(spacing: 8) {
-                        TimelineView(.periodic(from: .now, by: 30)) { context in
-                            if let seconds = mission.elapsed(now: context.date) { Chip(symbol: "clock", text: MissionSummary.elapsedText(seconds)) }
+            if let review = mission.remediationReview {
+                ReviewProgress(review: review)
+            } else {
+                HStack(spacing: 16) {
+                    MissionGauge(mission: mission, size: 84, lineWidth: 9)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(mission.tickets.isEmpty ? mission.stageLabel : "\(mission.done) of \(mission.tickets.count) \(mission.tickets.count == 1 ? "ticket" : "tickets")")
+                            .font(.title3.weight(.semibold))
+                        HStack(spacing: 8) {
+                            TimelineView(.periodic(from: .now, by: 30)) { context in
+                                if let seconds = mission.elapsed(now: context.date) { Chip(symbol: "clock", text: MissionSummary.elapsedText(seconds)) }
+                            }
+                            if mission.workingCount > 0 { Chip(symbol: "person.2", text: "\(mission.workingCount) working", tint: .accentColor) }
                         }
-                        if mission.workingCount > 0 { Chip(symbol: "person.2", text: "\(mission.workingCount) working", tint: .accentColor) }
                     }
                 }
             }
@@ -258,6 +275,7 @@ private struct NextStep: View {
     @Environment(AppModel.self) private var model
     let mission: MissionSummary
     @State private var confirming = false
+    @State private var shippingInfo = false
 
     var body: some View {
         if mission.canContinueToReview {
@@ -274,14 +292,14 @@ private struct NextStep: View {
                 Button("Continue to Review") { model.command("continueMission", ["missionId": mission.id]) }
             } message: { Text("Implementation is complete. The review starts right away.") }
         } else if mission.shipsOnDesktop {
-            VStack(spacing: 6) {
-                Button {} label: {
-                    Label("Ship", systemImage: "lock").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).padding(.vertical, 14)
-                }
-                .buttonStyle(.bordered).buttonBorderShape(.roundedRectangle(radius: 16)).disabled(true)
-                Text("Only available on desktop").font(.caption).foregroundStyle(.secondary)
+            Button { shippingInfo = true } label: {
+                Label("Ship", systemImage: "paperplane").font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity).padding(.vertical, 12)
             }
-            .accessibilityElement(children: .combine)
+            .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 16))
+            .alert("Ship on desktop", isPresented: $shippingInfo) {
+                Button("OK", role: .cancel) {}
+            } message: { Text("Open this mission in the desktop app to ship it.") }
         }
     }
 }
@@ -315,6 +333,16 @@ private struct LeadRow: View {
 private extension MissionReviewSummary {
     var headline: String {
         findings.isEmpty ? "No findings" : "\(findings.count) \(findings.count == 1 ? "finding" : "findings") · \(fixedCount) fixed"
+    }
+}
+
+private func priorityHeading(_ priority: String) -> String {
+    switch priority.lowercased() {
+    case "p0": "Critical priority"
+    case "p1": "High priority"
+    case "p2": "Medium priority"
+    case "p3": "Low priority"
+    default: priority.uppercased()
     }
 }
 
@@ -357,42 +385,35 @@ private struct ReviewRow: View {
 private struct ReviewScreen: View {
     @Environment(AppModel.self) private var model
     let missionID: String
-    @State private var confirming: Confirmation?
-    private enum Confirmation: Identifiable { case fix, rerun; var id: Self { self } }
-
     var body: some View {
         if let mission = model.missions.first(where: { $0.id == missionID }), let review = mission.review {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
                     ReviewSummaryCard(review: review)
-                    ForEach(review.groups, id: \.priority) { group in
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack(spacing: 6) {
-                                Text(group.priority).font(.caption.weight(.bold)).foregroundStyle(priorityTint(group.priority))
-                                Text("· \(group.findings.count)").font(.caption.weight(.semibold)).foregroundStyle(priorityTint(group.priority))
-                            }
-                            .padding(.leading, 4)
-                            VStack(spacing: 0) {
-                                ForEach(Array(group.findings.enumerated()), id: \.element.id) { index, finding in
-                                    FindingRow(missionID: missionID, finding: finding)
-                                    if index < group.findings.count - 1 { Divider().padding(.leading, 52) }
-                                }
-                            }
-                            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        }
-                    }
+                    FindingGroups(missionID: missionID, review: review)
                 }
                 .padding(.horizontal, 16).padding(.vertical, 8)
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) { actions(review) }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if mission.stage == "review" { ReviewActions(missionID: missionID, review: review) }
+                else { NextStep(mission: mission).padding(16) }
+            }
             .navigationTitle("Review")
             .navigationBarTitleDisplayMode(.inline)
         } else {
             ContentUnavailableView("Review unavailable", systemImage: "checklist")
         }
     }
+}
 
-    @ViewBuilder private func actions(_ review: MissionReviewSummary) -> some View {
+private struct ReviewActions: View {
+    @Environment(AppModel.self) private var model
+    let missionID: String
+    let review: MissionReviewSummary
+    @State private var confirming: Confirmation?
+    private enum Confirmation: Identifiable { case fix, rerun, finish; var id: Self { self } }
+
+    var body: some View {
         let working = model.missionAction == "working"
         VStack(spacing: 8) {
             if review.fixingCount > 0 {
@@ -403,28 +424,75 @@ private struct ReviewScreen: View {
                 }
             } else {
                 HStack(spacing: 12) {
-                    Button { confirming = .fix } label: {
-                        Text(review.selectedCount > 0 ? "Fix \(review.selectedCount) selected" : "Fix selected").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).padding(.vertical, 12)
+                    Button { confirming = review.canFinish ? .finish : .fix } label: {
+                        Text(review.canFinish ? "Finish review" : review.selectedCount > 0 ? "Fix \(review.selectedCount) selected" : "Fix selected")
+                            .font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).padding(.vertical, 10)
                     }
-                    .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 14))
-                    .disabled(review.selectedCount == 0 || working)
-                    Button("Re-run review") { confirming = .rerun }
-                        .font(.subheadline.weight(.medium)).disabled(!review.canRerun || working)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(working || (!review.canFinish && !review.canFix))
+                    Button { confirming = .rerun } label: {
+                        Text("Re-run review").font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity).padding(.vertical, 10)
+                    }
+                    .buttonStyle(.bordered).disabled(!review.canRerun || working)
                 }
+                .buttonBorderShape(.roundedRectangle(radius: 14))
             }
         }
-        .padding(.horizontal, 16).padding(.vertical, 12)
+        .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 6)
         .background(.bar)
-        .confirmationDialog(confirming == .fix ? "Fix \(review.selectedCount) \(review.selectedCount == 1 ? "finding" : "findings")?" : "Review again?", isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } }), titleVisibility: .visible) {
-            if confirming == .fix { Button("Fix selected") { model.command("fixFindings", ["missionId": missionID]) } }
-            else { Button("Re-run review") { model.command("rerunReview", ["missionId": missionID]) } }
+        .alert(confirming == .fix ? "Fix \(review.selectedCount) \(review.selectedCount == 1 ? "finding" : "findings")?" : confirming == .finish ? "Finish this review?" : "Review again?", isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } })) {
+            Button("Cancel", role: .cancel) { confirming = nil }
+            if confirming == .fix { Button("Fix selected") { model.command("fixFindings", ["missionId": missionID]) }.disabled(!review.canFix || working) }
+            else if confirming == .finish { Button("Finish review") { model.command("finishReview", ["missionId": missionID]) }.disabled(!review.canFinish || working) }
+            else { Button("Re-run review") { model.command("rerunReview", ["missionId": missionID]) }.disabled(!review.canRerun || working) }
         } message: {
-            Text(confirming == .fix ? "The other open findings are skipped." : "Every finding was fixed or skipped. The review starts right away.")
+            Text(confirming == .fix ? "The other open findings are skipped." : confirming == .finish ? "The review will be marked complete. Shipping is only available on desktop." : "Every finding was fixed or skipped. The review starts right away.")
+        }
+    }
+}
+
+private struct FindingGroups: View {
+    let missionID: String
+    let review: MissionReviewSummary
+
+    var body: some View {
+        ForEach(review.groups, id: \.priority) { group in
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Text(priorityHeading(group.priority)).font(.subheadline.weight(.semibold))
+                    Text("\(group.findings.count)").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Color(.secondarySystemBackground), in: Capsule())
+                        .accessibilityLabel("\(group.findings.count) \(group.findings.count == 1 ? "finding" : "findings")")
+                }
+                .padding(.horizontal, 4)
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isHeader)
+                VStack(spacing: 0) {
+                    ForEach(Array(group.findings.enumerated()), id: \.element.id) { index, finding in
+                        FindingRow(missionID: missionID, finding: finding)
+                        if index < group.findings.count - 1 { Divider().padding(.leading, 52) }
+                    }
+                }
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
         }
     }
 }
 
 private struct ReviewSummaryCard: View {
+    let review: MissionReviewSummary
+
+    var body: some View {
+        ReviewProgress(review: review)
+        .padding(16)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct ReviewProgress: View {
     let review: MissionReviewSummary
 
     var body: some View {
@@ -443,9 +511,6 @@ private struct ReviewSummaryCard: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(16)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .accessibilityElement(children: .combine)
     }
 }
 

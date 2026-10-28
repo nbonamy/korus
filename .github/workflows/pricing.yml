@@ -1,0 +1,48 @@
+name: Update pricing
+on:
+  schedule:
+    - cron: '23 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pricing-update
+  cancel-in-progress: false
+
+jobs:
+  pricing:
+    name: Refresh model pricing
+    if: github.repository == 'nbonamy/korus' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm install --global npm@10.9.4
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Validate pricing collector
+        run: node --test scripts/update-pricing.test.mjs
+      - run: npm run pricing:update
+      - name: Verify offline pricing bundles
+        run: node --test scripts/pricing-build.test.mjs
+      - name: Commit changed pricing
+        run: |
+          git add -- backend/src/pricing/history.json
+          if git diff --cached --quiet; then
+            echo 'Pricing is unchanged.'
+            exit 0
+          fi
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore: update model pricing'
+          git push origin HEAD:main

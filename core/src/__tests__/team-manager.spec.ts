@@ -172,7 +172,7 @@ describe('team-manager', () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
     const skwadTeam = createTeamInSnapshot(snapshot, { name: 'Skwad', color: '#46A857' }, '2026-06-05T10:11:12.000Z');
-    const target = (teamId: string) => ({ kind: 'newQuickChat', teamId, backend: 'codex' }) as const;
+    const target = (teamId: string) => ({ kind: 'newQuickChat', teamId, selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } }) as const;
     const closing = createAutomationInSnapshot(snapshot, { prompt: 'Check', schedule: { intervalMinutes: 60 }, target: target('team-app') }, 'created', () => 'closing')!;
     const staying = createAutomationInSnapshot(snapshot, { prompt: 'Check', schedule: { intervalMinutes: 60 }, target: target(skwadTeam.id) }, 'created', () => 'staying')!;
 

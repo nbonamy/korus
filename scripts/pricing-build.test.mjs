@@ -46,7 +46,7 @@ const history = loadPricingHistory();
 console.log(JSON.stringify(history));
 `]);
       const history = JSON.parse(output);
-      assert.equal(history[0].date, '2026-10-01T00:00:00.000Z');
+      assert.equal(history.openai['gpt-6-sol'].cost[0].date, '2026-10-01T00:00:00.000Z');
       assert.deepEqual(history, expected);
       results.push(history);
       const home = path.join(temp, 'state', String(results.length));

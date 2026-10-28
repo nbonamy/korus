@@ -1,6 +1,6 @@
 <template>
   <span class="provider-install-actions">
-    <button v-if="backend === 'antigravity'" type="button" :aria-label="$t('antigravity.install')" :disabled="busy || disabled" :aria-busy="busy || undefined" @click="emit('install')">
+    <button v-if="automated || backend === 'antigravity'" type="button" :aria-label="backend === 'antigravity' ? $t('antigravity.install') : $t('auth.installProvider')" :disabled="busy || disabled" :aria-busy="busy || undefined" @click="emit('install')">
       <ElIcon v-if="busy" :size="12" class="is-loading" aria-hidden="true"><RefreshIcon /></ElIcon>
       {{ $t('auth.installProvider') }}
     </button>
@@ -18,7 +18,7 @@ import type { AgentBackend } from '@workspace/core/contracts';
 import { appPlatformActions } from '../platform-api';
 import { RefreshIcon } from '../shared/icons/app-icons';
 
-const props = defineProps<{ backend: AgentBackend; busy?: boolean; disabled?: boolean }>();
+const props = defineProps<{ backend: AgentBackend; busy?: boolean; disabled?: boolean; automated?: boolean }>();
 const emit = defineEmits<{ refresh: []; install: [] }>();
 const url = computed(() => props.backend === 'codex'
   ? 'https://learn.chatgpt.com/docs/codex/cli#getting-started'

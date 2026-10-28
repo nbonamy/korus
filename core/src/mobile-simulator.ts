@@ -4,6 +4,7 @@ export type MobileDevice = {
   platform: 'ios' | 'android';
   name: string;
   state: 'booted' | 'shutdown';
+  foldable?: boolean;
   owner?: string;
 };
 export type MobileAttachment = { id: string; device: MobileDevice };
@@ -62,8 +63,10 @@ export type MobileRequest =
   | { action: 'detach'; attachmentId: string }
   | { action: 'screenshot'; attachmentId: string }
   | { action: 'inspect'; attachmentId: string }
-  /** Rotation is pane-only; the agent tool never exposes it. */
+  /** Device pose controls are pane-only; the agent tool never exposes them. */
   | { action: 'rotate'; attachmentId: string }
+  | { action: 'fold'; attachmentId: string }
+  | { action: 'unfold'; attachmentId: string }
   | { action: 'shutdown'; attachmentId: string }
   | (MobileAction & { attachmentId: string });
 export type MobileResult = {

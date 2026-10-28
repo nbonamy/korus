@@ -1,4 +1,4 @@
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { ElMessageBox } from "element-plus";
 import type { UsageFilter, UsageSummary } from "@workspace/core/usage";
 import type { AgentBackend } from "@workspace/core/contracts";
@@ -6,6 +6,9 @@ import { appApi } from "../platform-api";
 import { translate } from "../i18n";
 import {
   activityWindow,
+  browserTimeZone,
+  localDay,
+  shiftDay,
   chartSeries,
   type UsageGrouping,
   type UsageMeasure,
@@ -15,14 +18,15 @@ export type UsageView = "usage" | "performance";
 export type UsageProjections = {
   provider: UsageSummary;
   model: UsageSummary;
+  /** Read only once someone groups by repository, so the other views do not pay for it. */
+  repository?: UsageSummary;
   /** The period before the selection, for the change badge. */
   previous: UsageSummary | null;
   /** The activity grid's own window, independent of every filter. */
   activity: UsageSummary | null;
 };
 
-const day = (at: number) => new Date(at).toISOString().slice(0, 10);
-const POLL_MS = 5000;
+const today = () => localDay();
 
 /**
  * Owns the Analytics screen's filters, the projections read from the local
@@ -34,8 +38,8 @@ export function useUsageAnalytics() {
   const measure = ref<UsageMeasure>("total");
   const grouping = ref<UsageGrouping>("model");
   const filter = ref({
-    from: day(Date.now() - 6 * 86400000),
-    to: day(Date.now()),
+    from: shiftDay(today(), -6),
+    to: today(),
     provider: "",
   });
   const projections = ref<UsageProjections | null>(null);
@@ -48,8 +52,8 @@ export function useUsageAnalytics() {
     () =>
       [7, 30, 90].find(
         (days) =>
-          filter.value.to === day(Date.now()) &&
-          filter.value.from === day(Date.now() - (days - 1) * 86400000),
+          filter.value.to === today() &&
+          filter.value.from === shiftDay(today(), -(days - 1)),
       ) ?? null,
   );
   const periodDays = computed(
@@ -107,24 +111,28 @@ export function useUsageAnalytics() {
         from: filter.value.from,
         to: filter.value.to,
         ...providerQuery(),
+        timeZone: browserTimeZone(),
       };
       const days = periodDays.value;
-      const [provider, model, activity, previous] = await Promise.all([
+      const [provider, model, activity, previous, repository] = await Promise.all([
         appApi!.getUsage({ ...query, group: "provider" }),
         appApi!.getUsage({ ...query, group: "model" }),
         // Context only: failing to read these never blocks the view. The
         // activity grid is a lifetime overview, so no filter applies to it.
         appApi!
-          .getUsage({ ...activityWindow(), group: "provider" })
+          .getUsage({ ...activityWindow(), timeZone: browserTimeZone(), group: "provider" })
           .catch(() => null),
         appApi!
           .getUsage({
             ...query,
-            from: day(Date.parse(filter.value.from) - days * 86400000),
-            to: day(Date.parse(filter.value.from) - 86400000),
+            from: shiftDay(filter.value.from, -days),
+            to: shiftDay(filter.value.from, -1),
             group: "provider",
           })
           .catch(() => null),
+        grouping.value === "repository"
+          ? appApi!.getUsage({ ...query, group: "repository" })
+          : Promise.resolve(undefined),
       ]);
       if (disposed || current !== generation) return;
       if (provider.available === false || model.available === false)
@@ -132,6 +140,7 @@ export function useUsageAnalytics() {
       projections.value = {
         provider,
         model,
+        ...(repository ? { repository } : {}),
         activity: activity?.available === false ? null : activity,
         previous: previous?.available === false ? null : previous,
       };
@@ -145,14 +154,17 @@ export function useUsageAnalytics() {
     }
   }
   function setRange(days: number): void {
-    filter.value.from = day(Date.now() - (days - 1) * 86400000);
-    filter.value.to = day(Date.now());
+    filter.value.from = shiftDay(today(), -(days - 1));
+    filter.value.to = today();
     void load();
   }
   function setDate(key: "from" | "to", value: string): void {
     filter.value[key] = value;
     void load();
   }
+  watch(grouping, (next) => {
+    if (next === "repository" && !projections.value?.repository) void load(true);
+  });
   function setProvider(provider: string): void {
     filter.value.provider = provider;
     void load();
@@ -184,17 +196,18 @@ export function useUsageAnalytics() {
     }
   }
 
-  let timer: ReturnType<typeof setInterval> | undefined;
+  // No timer: the Refresh button reads again on demand, and the page catches up when it becomes visible.
+  const refresh = () => {
+    if (!busy.value && !clearing.value && !document.hidden) void load(true);
+  };
   onMounted(() => {
     void load();
-    timer = setInterval(() => {
-      if (!busy.value && !clearing.value && !document.hidden) void load(true);
-    }, POLL_MS);
+    document.addEventListener("visibilitychange", refresh);
   });
   onUnmounted(() => {
     disposed = true;
     generation++;
-    clearInterval(timer);
+    document.removeEventListener("visibilitychange", refresh);
   });
 
   return {

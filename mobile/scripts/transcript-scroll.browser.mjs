@@ -1,10 +1,79 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { createServer } from 'vite';
 import { chromium, webkit } from 'playwright';
 
 const browserEngine = process.env.TRANSCRIPT_BROWSER === 'webkit' ? webkit : chromium;
+
+test('mobile diff types show matching totals and toggle one file filter without extra reads', async () => {
+  const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
+  let browser;
+  const evidence = [];
+  const patch = (path, added, removed) => [
+    `diff --git a/${path} b/${path}`, `--- a/${path}`, `+++ b/${path}`,
+    `@@ -1,${removed} +1,${added} @@`,
+    ...Array.from({ length: removed }, (_, i) => `-old ${i}`),
+    ...Array.from({ length: added }, (_, i) => `+new ${i}`),
+  ].join('\n');
+  const diff = [patch('src/app.ts', 2, 1), patch('src/app.spec.ts', 1, 1), patch('docs/readme.md', 3, 2), patch('package.json', 1, 1)].join('\n');
+  try {
+    await server.listen(); browser = await browserEngine.launch();
+    const page = await browser.newPage({ viewport: { width: 393, height: 740 } });
+    await page.addInitScript(() => {
+      window.changesMessages = [];
+      window.webkit = { messageHandlers: { changes: { postMessage(message) { window.changesMessages.push(message); } } } };
+    });
+    await page.goto(`${server.resolvedUrls.local[0]}changes.html`);
+    await page.waitForFunction(() => window.companionChanges);
+    const setDiff = value => page.evaluate(diff => window.companionChanges.setDiff(JSON.stringify({ diff })), value);
+    await setDiff(diff); // Raw patches from older daemons carry no byKind metadata.
+    const types = page.getByRole('group', { name: 'Files', exact: true });
+    await types.waitFor({ timeout: 2000 });
+    const files = page.locator('.git-diff-preview-panel__file-header');
+    assert.equal(await types.getByRole('button').count(), 4);
+    for (const [label, plus, minus, name] of [['Code', 2, 1, 'app.ts'], ['Tests', 1, 1, 'app.spec.ts'], ['Documentation', 3, 2, 'readme.md'], ['Other', 1, 1, 'package.json']]) {
+      const chip = types.getByRole('button', { name: new RegExp(`^${label}: 1 file, \\+${plus}, -${minus}$`) });
+      assert.ok(await chip.isVisible());
+      await chip.click();
+      assert.equal(await chip.getAttribute('aria-pressed'), 'true');
+      assert.equal(await types.locator('[aria-pressed="true"]').count(), 1);
+      assert.equal(await files.count(), 1);
+      assert.match(await files.first().textContent(), new RegExp(name.replaceAll('.', '\\.')));
+    }
+    await types.getByRole('button', { name: /^Other:/ }).click();
+    assert.equal(await types.locator('[aria-pressed="true"]').count(), 0);
+    assert.equal(await files.count(), 4);
+    for (const width of [320, 393]) {
+      await page.setViewportSize({ width, height: 740 });
+      for (const theme of ['light', 'dark']) {
+        await page.emulateMedia({ colorScheme: theme });
+        const geometry = await types.evaluate(el => ({ width: el.clientWidth, scroll: el.scrollWidth,
+          chipHeights: Array.from(el.querySelectorAll('button'), b => b.getBoundingClientRect().height),
+          pageWidth: document.documentElement.scrollWidth, viewport: innerWidth }));
+        assert.ok(geometry.chipHeights.every(height => height >= 44));
+        assert.ok(geometry.pageWidth <= width, 'chips scroll inside the row, not the page');
+        evidence.push({ width, theme, ...geometry });
+      }
+    }
+    await setDiff(patch('docs/only.md', 1, 1));
+    assert.equal(await types.getByRole('button').count(), 1);
+    await types.getByRole('button', { name: /^Documentation:/ }).click();
+    await setDiff(patch('src/fresh.ts', 1, 1));
+    assert.equal(await types.locator('[aria-pressed="true"]').count(), 0, 'new patches cannot retain a stale filter');
+    assert.match(await files.first().textContent(), /fresh\.ts/);
+    await setDiff('diff --git a/assets/icon.png b/assets/icon.png\nBinary files a/assets/icon.png and b/assets/icon.png differ\n');
+    assert.ok(await types.getByRole('button', { name: 'Other: 1 file, +0, -0', exact: true }).isVisible(), 'binary files still count as changes');
+    assert.equal(await files.count(), 1);
+    await setDiff('');
+    assert.equal(await page.getByRole('group', { name: 'Files', exact: true }).count(), 0);
+    assert.equal(await page.evaluate(() => window.changesMessages.length), 1, 'filtering uses the loaded patch, with no native/backend reads');
+    const directory = fileURLToPath(new URL('../../.app-dev/mobile-diff-kind-evidence/', import.meta.url));
+    await mkdir(directory, { recursive: true });
+    await writeFile(`${directory}/${process.env.TRANSCRIPT_BROWSER === 'webkit' ? 'webkit' : 'chromium'}.json`, JSON.stringify({ passed: true, evidence }, null, 2));
+  } finally { await browser?.close(); await server.close(); }
+});
 
 // Protects mobile folding controls and the bounded, touch-scrollable file area.
 test('changes can collapse and expand every file without losing the phone layout', async () => {
@@ -331,6 +400,9 @@ test('transcript links ask iOS to open external destinations without navigating 
     ]);
     assert.equal(page.url(), original);
     assert.equal(page.context().pages().length, 1);
+    const preview = page.getByRole('complementary', { name: 'File preview' });
+    assert.ok(await preview.isVisible(), 'local file links open the file pane rather than the external browser');
+    await preview.getByRole('button', { name: 'Close file preview' }).click();
     assert.ok(await page.getByRole('link', { name: 'Website', exact: true }).isVisible());
   } finally { await browser?.close(); await server.close(); }
 });
