@@ -271,7 +271,7 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
         await pause(200)
         let sourceVisible = await js("document.querySelector('[aria-label=\"File preview\"]')?.textContent.includes('nativeSource')") as? Bool ?? false
         check(fileOpen && sourceVisible, "file links traverse the real native bridge and show current source")
-        _ = await js("Array.from(document.querySelectorAll('[aria-label=\"File view\"] button')).find(b => b.textContent === 'Diff').click()")
+        _ = await js("document.querySelector('[aria-label=\"Show diff\"]').click()")
         await pause(150)
         let patchVisible = await js("document.querySelector('[aria-label=\"File preview\"]')?.textContent.includes('nativeChange')") as? Bool ?? false
         check(patchVisible && fileReads == 1, "Diff and Source reuse one native file response")
