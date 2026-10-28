@@ -4,6 +4,45 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.45.0] - 2026-10-27
+
+### New features
+
+- **Backlog shortcuts:** Jump to assigned issues, PRs awaiting your review, your
+  own PRs, and work inside or outside your repositories, including organizations
+  you administer.
+- **PR feedback:** Start an agent to check your pull requests for unresolved
+  review comments and summarize what needs attention.
+- **Usage menus:** See tokens and cost from the chat menu, or a Mission breakdown
+  by lead, repository, and total.
+- **Implementation models:** Choose the provider, model, reasoning effort, and
+  service tier when starting Mission implementation or assigning work.
+- **iPhone Duo simulator:** Embed the foldable simulator, switch between folded
+  and unfolded layouts, and see a loading indicator while the device changes shape.
+- **Mission handoffs:** The lead receives an update when all tickets are implemented
+  and when repository agents finish review fixes.
+- **Mobile reviews:** Read the final verdict and finish a Mission review from
+  your phone.
+- **Mobile diffs:** Filter changed files by code, tests, documentation, or other
+  file types.
+
+### Improvements and fixes
+
+- Show Mission activity consistently on desktop and mobile, with notifications
+  only for blocking questions and approvals.
+- Include the repository and branch in notifications for unnamed agents.
+- Show costs for more models and remove synthetic Claude entries from Analytics.
+- Sort chart legends and tooltips by their displayed values, highest first.
+- Keep the startup loading screen visible while the background service reconnects.
+- Fix Quick Open missing tracked files inside ignored folders.
+- Keep agents beside the conversation on wide iOS and Android screens.
+- Recover saved mobile pairing after unlocking the phone, and preserve reasoning
+  effort when switching models.
+- Refresh syntax highlighting in conversation code blocks.
+- **Codex 0.164.0:** Update compatibility with the latest supported Codex CLI.
+  Some older conversations remain readable and accept new messages, but individual
+  turns can no longer be edited, retried, or deleted.
+
 ## [0.44.0] - 2026-10-26
 
 ### New features
