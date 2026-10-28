@@ -3,6 +3,7 @@ import { reactive } from 'vue';
 import { ElInput, ElSelect, ElOption, ElOptionGroup, ElSwitch, ElButton, ElPopover, ElMessageBox } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
+import { createMission } from '@workspace/core/missions';
 import type { Automation, CreateAutomationInput, RemoteConnection, UpdateAutomationInput } from '@workspace/core/contracts';
 import AutomationsView from '../AutomationsView.vue';
 
@@ -33,6 +34,28 @@ async function menu(wrapper: ReturnType<typeof view>, action: string) {
 }
 afterEach(() => { vi.restoreAllMocks(); });
 describe('AutomationsView', () => {
+  it('keeps mission source teammates selectable without offering mission workers', async () => {
+    const teamSnapshot = createInitialSnapshot();
+    const mission = createMission(teamSnapshot, { outcome: 'Ship a feature', workflowType: 'shapeAndShipFeature', teamId: 'team-app', orchestratorMemberId: 'agent-dina' });
+    teamSnapshot.agents.push(...['Mission lead', 'Repository worker'].map((name, index) => ({ ...teamSnapshot.agents[0]!, id: `worker-${index}`, name })));
+    mission.stageAgentIds.requirements = 'worker-0';
+    mission.execution!.runs.push({ id: 'run', stage: 'implementation', memberId: 'agent-dina', workerId: 'worker-1', status: 'running', skills: [], feedback: '', startedAt: '' });
+    const updateAutomation = vi.fn().mockResolvedValue(undefined);
+    const wrapper = view({ agents: teamSnapshot.agents, teams: teamSnapshot.teams, missions: teamSnapshot.missions,
+      automations: [automation({ target: { kind: 'agent', agentId: 'agent-dina' } })], updateAutomation });
+    await menu(wrapper, 'Edit');
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    const control = wrapper.get('[aria-label="Conversation"]');
+    await control.trigger('click'); await flushPromises();
+    const options = document.getElementById(control.attributes('aria-controls')!)!.textContent;
+    expect(options).toContain('Dina @ agent-workspace');
+    expect(options).toContain('Jesse');
+    expect(options).not.toContain('Mission lead');
+    expect(options).not.toContain('Repository worker');
+    await wrapper.get('form').trigger('submit'); await flushPromises();
+    expect(updateAutomation).toHaveBeenCalledWith(expect.objectContaining({ id: 'auto', target: { kind: 'agent', agentId: 'agent-dina' } }));
+  });
+
   it('creates and edits scheduled prompts through the real editor', async () => {
     const warnings = vi.spyOn(console, 'warn');
     // Electron IPC rejects reactive proxies, including nested schedule values.
