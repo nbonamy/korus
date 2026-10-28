@@ -147,6 +147,7 @@ private struct MissionCard: View {
                 }
             }
             Spacer(minLength: 0)
+            MissionAttentionIndicator(attention: mission.attention ?? .idle)
             Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
         }
         .padding(.horizontal, 20).padding(.vertical, 20)
@@ -164,6 +165,7 @@ private struct CompletedRow: View {
             Image(systemName: "checkmark.circle.fill").foregroundStyle(.secondary).font(.title3)
             Text(mission.outcome).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
             Spacer(minLength: 0)
+            MissionAttentionIndicator(attention: mission.attention ?? .idle)
             Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
         }
         .padding(.horizontal, 14).padding(.vertical, 12)

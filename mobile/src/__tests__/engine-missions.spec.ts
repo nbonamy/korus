@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
+import { nextTick } from 'vue';
 import { createEngine } from '../engine';
 import { createDemoConnector } from '../demo-connector';
 import type { Agent } from '@workspace/core/contracts';
-import type { CompanionMission } from '@workspace/core/companion-protocol';
+import type { CompanionMission, CompanionWorkspace } from '@workspace/core/companion-protocol';
+import type { CompanionSession } from '../companion-port';
 
 const now = '2026-01-01T00:00:00Z';
 const worker = (id: string, teamId: string): Agent => ({ id, teamId, name: null, folder: null, backend: 'codex', status: { type: 'working' }, createdAt: now, updatedAt: now, conversationTitle: `Ticket ${id}` });
@@ -35,12 +37,34 @@ function missionConnector(actions: Pick<import('../companion-port').CompanionSes
 
 describe('mobile missions', () => {
   it('lists the open team\'s missions with how many tickets are accepted', async () => {
-    const engine = createEngine({ connector: missionConnector(), post: () => {} });
+    const connector = missionConnector(), connect = connector.connect;
+    let workspace!: CompanionWorkspace;
+    let update!: Parameters<NonNullable<CompanionSession['onUpdate']>>[0];
+    connector.connect = async id => {
+      const session = await connect(id); workspace = await session.getWorkspace();
+      return { ...session, getWorkspace: async () => workspace, onUpdate(listener) { update = listener; return () => {}; } };
+    };
+    const engine = createEngine({ connector, post: () => {} });
     try {
       await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
       expect(engine.snapshot().missions).toMatchObject([{ id: 'm-here', done: 1, tickets: [{ number: 1 }, { number: 2, agentId: 'w-here', activity: 'editing gitlab-client.ts' }, { number: 3, state: 'blocked' }, { number: 4, state: 'awaitingReview', runId: 'run-4' }] }]);
       // Only a ticket being worked on carries a live line.
       expect(engine.snapshot().missions[0]!.tickets.map((ticket) => 'activity' in ticket)).toStrictEqual([false, true, false, false]);
+      for (const [lead, repo, unread, attention] of [
+        ['idle', 'awaitingInput', ['demo-agent'], 'needsInput'],
+        ['working', 'idle', ['demo-agent', 'w-here'], 'unread'],
+        ['idle', 'working', ['w-here'], 'working'],
+        ['idle', 'idle', ['w-here'], 'idle'],
+        ['awaitingInput', 'working', [], 'needsInput'],
+        ['working', 'idle', [], 'working'],
+      ] as const) {
+        const change = (agent: Agent): Agent => ({ ...agent, status: { type: agent.id === 'demo-agent' ? lead : repo },
+          readState: { revision: 2, readRevision: unread.some(id => id === agent.id) ? 1 : 2 } });
+        workspace = { ...workspace, agents: workspace.agents.map(change), missionAgents: workspace.missionAgents!.map(change) };
+        update(workspace, null); await nextTick();
+        expect(engine.snapshot().missions[0]).toMatchObject({ attention });
+        expect(engine.snapshot()).toMatchObject({ missionAttention: attention });
+      }
     } finally { engine.dispose(); }
   });
   it.each(['demo-agent', 'w-here'])('opens a repository worker separately from the mission lead (%s)', async leadAgentId => {

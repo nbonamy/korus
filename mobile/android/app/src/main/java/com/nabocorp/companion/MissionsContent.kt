@@ -228,6 +228,7 @@ internal fun elapsedText(millis: Long): String {
                     else -> Text(mission.missionSummary.substringBefore(" ·"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+            MissionAttentionIndicator(mission.string("attention"))
             Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -238,6 +239,7 @@ internal fun elapsedText(millis: Long): String {
         Icon(Icons.Outlined.CheckCircle, null, tint = MaterialTheme.colorScheme.outline)
         Spacer(Modifier.width(12.dp))
         Text(mission.string("outcome"), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        MissionAttentionIndicator(mission.string("attention"))
         Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

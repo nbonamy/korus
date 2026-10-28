@@ -38,6 +38,7 @@
       ref="agentSidebar"
       v-if="showAgentSidebar"
       :agents="sidebarAgents"
+      :mission-agents="snapshot.agents"
       :forkable-agent-ids="forkableAgentIds"
       :summary-replacement-agent-ids="summaryReplacementAgentIds"
       :active-agent-id="activeMissionId ? null : currentAgent?.id ?? null"

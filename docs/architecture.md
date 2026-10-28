@@ -632,6 +632,9 @@ publishes only after saving.
   ticket and accepted requirements rather than reconstructing assignments from a
   backlog. Identity-bound submission updates only that ticket and serially merges
   its evidence with other repositories' results. Legacy runs retain index fallback.
+  Once every ticket's implementation is accepted and saved, the orchestrator
+  notifies the Mission lead with a reference to the implementation evidence.
+  Continuing to Review remains a user decision.
 - Tickets approval can persist an independent implementation provider, model and effort.
   Host catalog policy is checked before provisioning and worker launch. This
   selection applies to implementation workers and retries without changing the lead

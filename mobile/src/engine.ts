@@ -3,6 +3,7 @@ import type { CompanionNotification, CompanionPushRegistration } from '@workspac
 import { computed, ref, watch } from 'vue';
 import { promptContentText, trimPromptContent, type CodexPromptPart } from '@codex-app-sdk/core/surface';
 import { hasUnreadActivity } from '@workspace/core/agent-read-state';
+import { missionAgentsAttention, type MissionAttention } from '@workspace/core/mission-attention';
 import { skillDescription, skillDisplayName, skillInsertText, pluginDescription, pluginDisplayName, pluginInsertText } from '@codex-app-sdk/vue';
 import type { Agent, AgentBackend, BackendModelOption } from '@workspace/core/contracts';
 import { canSelectAgentBackend } from '@workspace/core/agent-backends';
@@ -21,9 +22,10 @@ import type { CompanionRequestReply, CompanionClosePreview } from '@workspace/co
 
 /** Everything the native shell draws, as plain data: no framework, no protocol detail. */
 /** A mission as the phone lists it: how far along it is, and each ticket with the worker that has it, if any. */
-export type EngineMission = Omit<CompanionMission, 'tickets'> & { done: number; tickets: (CompanionMission['tickets'][number] & { activity?: string })[] };
+export type EngineMission = Omit<CompanionMission, 'tickets'> & { attention: MissionAttention; done: number; tickets: (CompanionMission['tickets'][number] & { activity?: string })[] };
 export type EngineState = {
   missions: EngineMission[];
+  missionAttention: MissionAttention;
   /** The mission whose ticket worker is open; its conversation is read-only except for what the worker asks. */
   mission: { id: string; outcome: string; lead?: true } | null;
   git: ReturnType<typeof createCompanionState>['git']['view']['value'];
@@ -267,8 +269,15 @@ export function createEngine(port: EnginePort) {
     const team = state.workspace.value.teams.find((team) => team.id === agent?.teamId);
     const groups = sidebarGroups.value;
     const active = activeSession(groups);
-    const missions = state.missions.value.filter((mission) => showingAllTeams.value || mission.teamId === state.teamId.value)
-      .map((mission): EngineMission => ({ ...mission, done: mission.tickets.filter((ticket) => ticket.state === 'accepted').length,
+    const visibleMissions = state.missions.value.filter((mission) => showingAllTeams.value || mission.teamId === state.teamId.value);
+    const allAgents = companionAgents(state.workspace.value);
+    const unread = new Set(allAgents.filter(hasUnreadActivity).map(agent => agent.id));
+    const attentionFor = (missions: CompanionMission[]) => {
+      const leads = new Set(missions.flatMap(mission => mission.leadAgentId ? [mission.leadAgentId] : []));
+      const members = new Set([...leads, ...missions.flatMap(mission => mission.tickets.flatMap(ticket => ticket.agentId ? [ticket.agentId] : []))]);
+      return missionAgentsAttention(allAgents.filter(agent => members.has(agent.id)), leads, unread);
+    };
+    const missions = visibleMissions.map((mission): EngineMission => ({ ...mission, attention: attentionFor([mission]), done: mission.tickets.filter((ticket) => ticket.state === 'accepted').length,
         // What a working agent says it is doing is the ticket's live line.
         tickets: mission.tickets.map((ticket) => {
           const activity = ticket.agentId && (ticket.state === 'running' || ticket.state === 'preparing')
@@ -287,7 +296,7 @@ export function createEngine(port: EnginePort) {
     const permissions = state.permissions.value;
     return {
       git: state.git.view.value,
-      missions, mission: owner ? { id: owner.id, outcome: owner.outcome, ...(!ticketOf && owner.leadAgentId === agent?.id ? { lead: true as const } : {}) } : null,
+      missions, missionAttention: attentionFor(visibleMissions), mission: owner ? { id: owner.id, outcome: owner.outcome, ...(!ticketOf && owner.leadAgentId === agent?.id ? { lead: true as const } : {}) } : null,
       laptopId: state.laptopId.value,
       activityGroups: projectMobileActivityGroups(sidebarAgents.value, groups, sidebarNow.value, sidebarIdleSort.value),
       queuedPrompts: (state.workspace.value.queuedPrompts ?? []).filter(prompt => prompt.agentId === agent?.id).map(({ id, text }) => ({ id, text })),

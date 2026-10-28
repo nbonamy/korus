@@ -57,6 +57,7 @@ final class AppModel {
     var laptops: [EngineState.Laptop] = []
     /// What the laptop's missions look like from here, and the mission whose ticket worker is open.
     var missions: [MissionSummary] = []
+    var missionAttention: MissionAttention = .idle
     var workerMission: MissionReference?
     /// "idle", "working" or "failed": a move on a mission is a request the laptop can refuse.
     var missionAction = "idle"
@@ -271,6 +272,7 @@ final class AppModel {
         if let shown = presentedRequest, !requests.contains(where: { $0.key == shown.key }) { presentedRequest = nil }
         set(\.connection, state.connection)
         set(\.missions, state.missions ?? [])
+        set(\.missionAttention, state.missionAttention ?? .idle)
         set(\.workerMission, state.mission)
         set(\.missionAction, state.missionAction ?? "idle")
         set(\.connectionDetail, state.errorDetail ?? "")
