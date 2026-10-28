@@ -9,7 +9,7 @@ import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import { isMissionArtifacts, missionTicketReady, type Mission, type MissionArtifacts, type MissionReviewFinding, type MissionStage } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
 import { missionLeadAgentId } from '@workspace/core/mission-attention';
-import { missionRunAssignment, missionRunTicketIndex, pendingMissionRun, type MissionArtifactReadResult, type MissionArtifactWriteInput, type MissionExecutionInput, type MissionImplementationStartProgress, type MissionResultInput, type MissionReviewFindingInput, type MissionReviewFindingUpdateInput, type MissionRun, type MissionTicketDraftInput, type MissionTicketDraftResult, type MissionToolContext } from '@workspace/core/mission-execution';
+import { missionImplementationBusy, missionRunAssignment, missionRunTicketIndex, pendingMissionRun, type MissionArtifactReadResult, type MissionArtifactWriteInput, type MissionExecutionInput, type MissionImplementationStartProgress, type MissionResultInput, type MissionReviewFindingInput, type MissionReviewFindingUpdateInput, type MissionRun, type MissionTicketDraftInput, type MissionTicketDraftResult, type MissionToolContext } from '@workspace/core/mission-execution';
 import type { MissionService } from './mission-service';
 import { MissionAgentTools } from './mission-agent-tools';
 import { missionAgent, missionTeamRepositories, sameSkills, shouldCompactBeforeRun, stageKickoffPrompt } from './mission-execution-policy';
@@ -34,6 +34,7 @@ export type MissionExecutionPorts = {
   startRemediation(agentId: string, prompt: string): Promise<void>;
   sendMessage?(fromAgentId: string, toAgentId: string, content: string): void;
   interrupt(agent: Agent): Promise<unknown>;
+  isCommitLockOwnerStopped?(agent: Agent): Promise<boolean>;
 };
 
 /** Mission policy owns durable runs; provider hosts still own conversations and turns. */
@@ -44,9 +45,19 @@ export class MissionExecutionService {
   private readonly remediationTurns = new Map<string, { missionId: string; leadId: string; findingIds: string[]; frozenFindingIds: string[] }>();
   private readonly nonResultTurns = new Set<string>();
   private readonly completedTurns = new Map<string, Set<string>>();
+  private readonly activeTurns = new Map<string, string>();
+  private readonly cancellingRuns = new Map<string, Promise<void>>();
+  private readonly completionRetries = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly commitLockWaiters = new Set<() => void>();
+  private readonly recoveredLocks = new Set<string>();
   private readonly agentTools: MissionAgentTools;
   private readonly workspaces: MissionWorkspaceService;
   constructor(private readonly ports: MissionExecutionPorts) {
+    for (const mission of ports.snapshot.missions ?? []) {
+      for (const workspace of mission.execution?.workspaces ?? []) {
+        if (workspace.commitLock) this.recoveredLocks.add(JSON.stringify([mission.id, workspace.repositoryPath, workspace.commitLock]));
+      }
+    }
     this.agentTools = new MissionAgentTools(ports, input => this.execute(input));
     this.workspaces = new MissionWorkspaceService(ports);
   }
@@ -101,17 +112,30 @@ export class MissionExecutionService {
     if (input.action === 'cancel') {
       const run = mission.execution?.runs.find(run => run.id === input.runId);
       if (!run || !['preparing', 'running', 'awaitingReview'].includes(run.status)) throw new Error('No cancellable mission run.');
-      const worker = this.agent(run.workerId);
-      const deferred = worker && this.postTurnLaunches.get(worker.id);
-      if (worker && deferred?.runIds.includes(run.id)) {
-        deferred.runIds = deferred.runIds.filter(id => id !== run.id);
-        if (!deferred.runIds.length) this.postTurnLaunches.delete(worker.id);
+      if (this.cancellingRuns.has(run.id)) throw new Error('This run is already being stopped.');
+      let finishCancellation!: () => void;
+      this.cancellingRuns.set(run.id, new Promise<void>(resolve => { finishCancellation = resolve; }));
+      try {
+        const worker = this.agent(run.workerId);
+        const deferred = worker && this.postTurnLaunches.get(worker.id);
+        if (worker && deferred?.runIds.includes(run.id)) {
+          deferred.runIds = deferred.runIds.filter(id => id !== run.id);
+          if (!deferred.runIds.length) this.postTurnLaunches.delete(worker.id);
+        }
+        if (worker && worker.status.type !== 'idle' && worker.status.type !== 'error') await this.ports.interrupt(worker);
+        await this.ports.missions.change(input.id, current => {
+          const latest = current.execution?.runs.find(candidate => candidate.id === input.runId);
+          if (current.status === 'completed' || current.stage !== run.stage || !latest || (run.workerId && latest.workerId !== run.workerId)
+            || !(['preparing', 'running', 'awaitingReview'].includes(latest.status) || (worker && latest.status === 'failed'))) {
+            throw new Error('This mission changed. Reload before continuing.');
+          }
+          latest.status = 'cancelled'; latest.finishedAt = new Date().toISOString();
+        });
+        await this.ports.publish();
+      } finally {
+        this.cancellingRuns.delete(run.id);
+        finishCancellation();
       }
-      if (worker && worker.status.type !== 'idle' && worker.status.type !== 'error') await this.ports.interrupt(worker);
-      await this.change(input, current => {
-        const run = current.execution!.runs.find(run => run.id === input.runId)!;
-        run.status = 'cancelled'; run.finishedAt = new Date().toISOString();
-      });
       return;
     }
     if (input.action === 'selectReviewFinding') {
@@ -289,6 +313,10 @@ export class MissionExecutionService {
         const run = current.execution?.runs.find(run => run.id === input.runId);
         if (!run || run.status !== 'awaitingReview' || !run.proposal || run.stage !== current.stage) throw new Error('No current proposal to accept.');
         if (input.implementationModel !== undefined && run.stage !== 'tickets') throw new Error('Choose the implementation model when approving Tickets.');
+        if (input.parallelImplementation !== undefined) {
+          if (run.stage !== 'tickets' || typeof input.parallelImplementation !== 'boolean') throw new Error('Choose parallel implementation when approving Tickets.');
+          current.execution!.parallelImplementation = input.parallelImplementation;
+        }
         const implementationModel = input.implementationModel ?? current.execution?.implementationModel;
         if (run.stage === 'tickets' && implementationModel) {
           current.execution!.implementationModel = await this.validateImplementationModel(current, implementationModel);
@@ -315,17 +343,7 @@ export class MissionExecutionService {
         }
         nextRunIds = this.enqueueRuns(current, {});
       });
-      for (const runId of nextRunIds) {
-        const run = this.requireMission(input.id).execution!.runs.find(candidate => candidate.id === runId)!;
-        const worker = this.agent(run.workerId);
-        // A submitted proposal can be approved before its provider turn ends.
-        // Keep the next run preparing until the reused worker can be refreshed.
-        if (worker && ['working', 'awaitingInput'].includes(worker.status.type)) {
-          this.postTurnLaunches.set(worker.id, { missionId: input.id, runIds: [runId] });
-        } else {
-          void this.startLaunch(input.id, runId);
-        }
-      }
+      this.dispatchRuns(input.id, nextRunIds);
       if (implementationCompleted) await this.notifyImplementationComplete(this.requireMission(input.id));
       return;
     }
@@ -335,6 +353,9 @@ export class MissionExecutionService {
         if (current.stage !== 'implementation') throw new Error('Only Implementation can continue to Review.');
         if (!missionWorkflow(current.workflow.type).stageReady('implementation', current.artifacts)) throw new Error('Complete every implementation ticket before continuing to Review.');
         if (pendingMissionRun(current)) throw new Error('Wait for the current implementation run to finish.');
+        if (missionImplementationBusy(current, this.ports.snapshot.agents)) {
+          throw new Error('An implementation worker is still active. Wait for it to finish before Review.');
+        }
         current.stage = 'review';
         runId = this.enqueueRun(current, {});
       });
@@ -365,7 +386,7 @@ export class MissionExecutionService {
       runIds = this.enqueueRuns(current, input);
       if (!runIds.length) throw new Error('No implementation ticket is ready to start.');
     });
-    for (const runId of runIds) void this.startLaunch(input.id, runId);
+    this.dispatchRuns(input.id, runIds);
   }
 
   async recordMerge(agentId: string, sourceFolder: string | null, worktreeDeleted: boolean, pushPending = false): Promise<void> {
@@ -399,6 +420,11 @@ export class MissionExecutionService {
   }
 
   async recoverInterruptedRuns(): Promise<void> {
+    for (const mission of this.ports.snapshot.missions ?? []) {
+      for (const workspace of mission.execution?.workspaces ?? []) {
+        await this.recoverCommitLock(mission.id, workspace.repositoryPath);
+      }
+    }
     for (const mission of this.ports.snapshot.missions ?? []) {
       if (mission.execution?.debugFixture) continue;
       const fixing = mission.artifacts.review.findings?.filter(finding => finding.remediation.state === 'fixing') ?? [];
@@ -476,6 +502,7 @@ export class MissionExecutionService {
     let status: 'awaitingReview' | 'accepted' = 'awaitingReview';
     let nextRunIds: string[] = [];
     let implementationCompleted = false;
+    let commitLockReleased = false;
     await this.ports.missions.changeAsync(context.missionId, async mission => {
       const workflow = missionWorkflow(mission.workflow.type);
       const run = mission.execution?.runs.find(run => run.id === context.runId);
@@ -523,17 +550,125 @@ export class MissionExecutionService {
       if (run.stage === 'implementation') {
         implementationCompleted = this.acceptImplementationResult(mission, run);
         await this.persistImplementationArtifact(mission);
+        const workspace = mission.execution?.workspaces?.find(workspace => workspace.commitLock?.agentId === agentId && workspace.commitLock.runId === run.id);
+        if (workspace) {
+          delete workspace.commitLock;
+          commitLockReleased = true;
+        }
         status = 'accepted';
         nextRunIds = this.enqueueRuns(mission, {});
       }
     });
+    if (commitLockReleased) for (const wake of this.commitLockWaiters) wake();
     await this.ports.publish();
-    if (nextRunIds.length) this.postTurnLaunches.set(agentId, { missionId: context.missionId, runIds: nextRunIds });
+    this.dispatchRuns(context.missionId, nextRunIds, agentId);
     if (implementationCompleted) await this.notifyImplementationComplete(this.requireMission(context.missionId));
     return { success: true, status };
   }
 
   contextForAgent(agentId: string): MissionToolContext | undefined { return this.agentTools.contextForAgent(agentId); }
+  async acquireCommitLock(agentId: string, signal?: AbortSignal): Promise<{ acquired: true }> {
+    const context = this.agentTools.contextForAgent(agentId);
+    if (!context || context.stage !== 'implementation') throw new Error('No active implementation assignment.');
+    const turnId = this.activeTurns.get(agentId);
+    if (!turnId) throw new Error('The active provider turn is unavailable. Retry when the turn is active.');
+    while (true) {
+      if (signal?.aborted) throw new Error('Commit lock request cancelled.');
+      const run = this.requireMission(context.missionId).execution?.runs.find(candidate => candidate.id === context.runId);
+      if (run?.repositoryPath) await this.recoverCommitLock(context.missionId, run.repositoryPath);
+      let wake!: () => void;
+      const released = new Promise<void>(resolve => { wake = resolve; });
+      this.commitLockWaiters.add(wake);
+      signal?.addEventListener('abort', wake, { once: true });
+      // A provider may be unavailable at startup, or finish a restored turn without
+      // delivering its completion event. Recheck persisted owners while waiting.
+      const retryRecovery = this.recoveredLocks.size ? setTimeout(wake, 5_000) : undefined;
+      try {
+        const busy = Symbol('commit lock busy');
+        const acquired = await this.ports.missions.changeAsync(context.missionId, mission => {
+          if (signal?.aborted || this.activeTurns.get(agentId) !== turnId) throw new Error('The requesting provider turn is no longer active.');
+          const run = mission.execution?.runs.find(candidate => candidate.id === context.runId);
+          if (!mission.execution?.parallelImplementation || !run || run.status !== 'running' || !this.agentTools.ownsWritableRun(mission, run.id, agentId)) throw new Error('No active parallel implementation assignment.');
+          const workspace = mission.execution.workspaces?.find(candidate => candidate.repositoryPath === run.repositoryPath && !candidate.deleted);
+          if (!workspace) throw new Error('Mission workspace is unavailable.');
+          // Abort the transaction so a waiter does not persist an unpublished revision.
+          if (workspace.commitLock && (workspace.commitLock.agentId !== agentId || workspace.commitLock.runId !== run.id)) throw busy;
+          workspace.commitLock = { agentId, runId: run.id, turnId };
+          return true;
+        }).catch(error => {
+          if (error === busy) return false;
+          throw error;
+        });
+        if (acquired) {
+          if (signal?.aborted || this.activeTurns.get(agentId) !== turnId) {
+            await this.releaseCommitLock(agentId, turnId);
+            throw new Error('The requesting provider turn is no longer active.');
+          }
+          await this.ports.publish();
+          return { acquired: true };
+        }
+        await released;
+      } finally {
+        if (retryRecovery) clearTimeout(retryRecovery);
+        this.commitLockWaiters.delete(wake);
+        signal?.removeEventListener('abort', wake);
+      }
+    }
+  }
+
+  private async recoverCommitLock(missionId: string, repositoryPath: string): Promise<void> {
+    const workspace = this.ports.snapshot.missions?.find(mission => mission.id === missionId)?.execution?.workspaces?.find(item => item.repositoryPath === repositoryPath);
+    const lock = workspace?.commitLock;
+    if (!lock) return;
+    const key = JSON.stringify([missionId, repositoryPath, lock]);
+    if (!this.recoveredLocks.has(key) || this.activeTurns.has(lock.agentId)) return;
+    const owner = this.agent(lock.agentId);
+    if (!owner || !this.ports.isCommitLockOwnerStopped) return;
+    let stopped = false;
+    try { stopped = await this.ports.isCommitLockOwnerStopped(owner); } catch { return; }
+    if (!stopped) return;
+    const changed = Symbol('commit lock changed');
+    const released = await this.ports.missions.changeAsync(missionId, mission => {
+      const current = mission.execution?.workspaces?.find(item => item.repositoryPath === repositoryPath)?.commitLock;
+      if (!current || JSON.stringify(current) !== JSON.stringify(lock) || this.activeTurns.has(lock.agentId)) throw changed;
+      const target = mission.execution!.workspaces!.find(item => item.repositoryPath === repositoryPath)!;
+      delete target.commitLock;
+      return true;
+    }).catch(error => {
+      if (error === changed) return false;
+      throw error;
+    });
+    if (released) {
+      this.recoveredLocks.delete(key);
+      await this.ports.publish();
+      for (const wake of this.commitLockWaiters) wake();
+    }
+  }
+
+  async releaseCommitLock(agentId: string, expectedTurnId?: string): Promise<{ released: true }> {
+    const mission = this.ports.snapshot.missions?.find(candidate => candidate.execution?.workspaces?.some(workspace => workspace.commitLock?.agentId === agentId));
+    if (!mission) {
+      if (expectedTurnId) return { released: true };
+      throw new Error('You do not own a Mission commit lock.');
+    }
+    const alreadyReleased = Symbol('lock already released');
+    const released = await this.ports.missions.changeAsync(mission.id, current => {
+      const workspace = current.execution?.workspaces?.find(candidate => candidate.commitLock?.agentId === agentId && (!expectedTurnId || candidate.commitLock.turnId === expectedTurnId));
+      if (!workspace) {
+        if (expectedTurnId) throw alreadyReleased;
+        throw new Error('You do not own a Mission commit lock.');
+      }
+      delete workspace.commitLock;
+      return true;
+    }).catch(error => {
+      if (error === alreadyReleased) return false;
+      throw error;
+    });
+    if (!released) return { released: true };
+    await this.ports.publish();
+    for (const wake of this.commitLockWaiters) wake();
+    return { released: true };
+  }
   developerInstructionsForAgent(agentId: string): string | undefined { return this.agentTools.developerInstructionsForAgent(agentId); }
   listArtifacts(agentId: string) { return this.agentTools.listArtifacts(agentId); }
   readArtifact(agentId: string, stage: MissionStage): Promise<MissionArtifactReadResult> { return this.agentTools.readArtifact(agentId, stage); }
@@ -545,7 +680,10 @@ export class MissionExecutionService {
   setTitle(agentId: string, title: string): Promise<{ success: true; title: string }> { return this.agentTools.setTitle(agentId, title); }
   attachRepository(agentId: string, repoPath: string): Promise<{ success: true; repoPath: string }> { return this.agentTools.attachRepository(agentId, repoPath); }
 
+  agentStarted(agentId: string, turnId: string): void { this.activeTurns.set(agentId, turnId); }
+
   async agentFinished(agentId: string, turnId?: string): Promise<void> {
+    const activeTurn = this.activeTurns.get(agentId);
     if (turnId) {
       const completed = this.completedTurns.get(agentId) ?? new Set<string>();
       if (completed.has(turnId)) return;
@@ -554,6 +692,35 @@ export class MissionExecutionService {
       if (completed.size > 64) completed.delete(completed.values().next().value!);
       this.completedTurns.set(agentId, completed);
     }
+    try {
+      if (activeTurn && turnId && activeTurn !== turnId) {
+        await this.releaseCommitLock(agentId, turnId);
+        return;
+      }
+      await this.finishAgentTurn(agentId, turnId);
+    } catch (error) {
+      if (turnId) {
+        this.completedTurns.get(agentId)?.delete(turnId);
+        const key = JSON.stringify([agentId, turnId]);
+        if (!this.completionRetries.has(key)) {
+          const timer = setTimeout(() => {
+            this.completionRetries.delete(key);
+            void this.agentFinished(agentId, turnId).catch(() => undefined);
+          }, 1000);
+          timer.unref();
+          this.completionRetries.set(key, timer);
+        }
+      }
+      throw error;
+    }
+  }
+
+  private async finishAgentTurn(agentId: string, turnId?: string): Promise<void> {
+    if (turnId && this.ports.snapshot.missions?.some(mission => mission.execution?.workspaces?.some(workspace => workspace.commitLock?.agentId === agentId && workspace.commitLock.turnId === turnId))) {
+      await this.releaseCommitLock(agentId, turnId);
+    }
+    if (turnId && this.activeTurns.get(agentId) === turnId) this.activeTurns.delete(agentId);
+    for (const wake of this.commitLockWaiters) wake();
     const remediationTurn = this.remediationTurns.get(agentId);
     if (remediationTurn) {
       this.remediationTurns.delete(agentId);
@@ -604,11 +771,17 @@ export class MissionExecutionService {
     const mission = this.requireMission(id);
     const run = mission.execution!.runs.find(run => run.id === runId)!;
     if (run.status === 'cancelled') return;
+    const canLaunch = async () => {
+      await this.cancellingRuns.get(runId);
+      return this.ports.snapshot.missions?.some(current => current.id === id && current.stage === run.stage
+        && current.execution?.runs.some(candidate => candidate.id === runId && ['preparing', 'running'].includes(candidate.status)));
+    };
     const member = this.agent(run.memberId);
     if (!member) throw new Error('Assigned team member was removed.');
     const implementationModel = run.stage === 'implementation' && mission.execution?.implementationModel
       ? await this.validateImplementationModel(mission, mission.execution.implementationModel) : undefined;
     const missionHome = await this.ports.ensureMissionHome(mission.id);
+    if (!await canLaunch()) return;
     const repositoryPath = run.repositoryPath ?? mission.artifacts.tickets[run.ticketIndex ?? -1]?.repositoryPath;
     const workspace = repositoryPath
       ? mission.execution!.workspaces?.find(candidate => candidate.repositoryPath === repositoryPath)
@@ -634,6 +807,7 @@ export class MissionExecutionService {
       applyExecutionSelection(worker, implementationModel);
     }
     await this.ports.refreshWorkspace(worker.id);
+    if (!await canLaunch()) return;
     await this.ports.missions.change(id, current => {
       const currentRun = current.execution!.runs.find(run => run.id === runId)!;
       currentRun.workerId = worker.id;
@@ -642,13 +816,16 @@ export class MissionExecutionService {
     });
     await this.ports.publish();
     const skills = await this.ports.ensureStageSkills(mission.id, run.stage);
+    if (!await canLaunch()) return;
     await this.ports.missions.change(id, current => {
       const currentRun = current.execution!.runs.find(candidate => candidate.id === runId)!;
       if (currentRun.status !== 'cancelled') currentRun.skills = skills;
     });
     await this.ports.publish();
+    if (!await canLaunch()) return;
     if (reusedWorker && worker.backendSession) {
       await this.ports.refreshConversationContext(worker);
+      if (!await canLaunch()) return;
       if (defaultBackendCommands(worker.backend).some(command => command.name === 'compact') && shouldCompactBeforeRun(mission, run, worker.id)) {
         this.nonResultTurns.add(worker.id);
         try {
@@ -659,7 +836,7 @@ export class MissionExecutionService {
         }
       }
     }
-    if (run.stage !== 'requirements') await this.ports.continueStage(worker.id, stageKickoffPrompt(mission, run));
+    if (await canLaunch() && run.stage !== 'requirements') await this.ports.continueStage(worker.id, stageKickoffPrompt(mission, run));
   }
 
   private async validateImplementationModel(mission: Mission, selection: ExecutionSelection): Promise<ExecutionSelection> {
@@ -702,12 +879,17 @@ export class MissionExecutionService {
     const candidates = input.ticketIndex === undefined
       ? mission.artifacts.tickets.map((_, index) => index)
       : [input.ticketIndex];
+    const backlogRun = execution.runs.slice().reverse().find(run => run.stage === 'tickets' && run.status === 'accepted');
+    const attempts = backlogRun ? execution.runs.slice(execution.runs.indexOf(backlogRun) + 1) : execution.runs;
     const runIds: string[] = [];
     for (const ticketIndex of candidates) {
       const ticket = mission.artifacts.tickets[ticketIndex];
       const repositoryPath = ticket?.repositoryPath;
       if (!ticket || !repositoryPath || !missionTicketReady(mission.artifacts.tickets, ticketIndex)
-        || activeTickets.has(ticketIndex) || busyRepositories.has(repositoryPath)) continue;
+        || activeTickets.has(ticketIndex) || (!execution.parallelImplementation && busyRepositories.has(repositoryPath))) continue;
+      const previous = attempts.slice().reverse().find(run => run.stage === 'implementation' && missionRunTicketIndex(mission, run) === ticketIndex);
+      // A sibling's completion must not undo a user's Stop or silently retry a failure.
+      if (input.ticketIndex === undefined && previous && ['failed', 'cancelled'].includes(previous.status)) continue;
       const runId = this.enqueueImplementationRun(mission, ticketIndex, repositoryPath, input);
       runIds.push(runId);
       busyRepositories.add(repositoryPath);
@@ -749,7 +931,9 @@ export class MissionExecutionService {
       id: runId,
       stage: 'implementation',
       memberId,
-      ...(repositoryWorker?.workerId ? { workerId: repositoryWorker.workerId } : {}),
+      // Parallel assignments get their own conversation, including retries. No busy
+      // or accepted-but-still-finishing repository worker can be reassigned.
+      ...(!execution.parallelImplementation && repositoryWorker?.workerId ? { workerId: repositoryWorker.workerId } : {}),
       ticketIndex,
       ticketId: (mission.artifacts.tickets[ticketIndex]!.id ??= createEntityId('mission-ticket')),
       repositoryPath,
@@ -809,6 +993,19 @@ export class MissionExecutionService {
   }
 
   private agent(id: string | undefined): Agent | undefined { return missionAgent(this.ports.snapshot, id); }
+  private dispatchRuns(missionId: string, runIds: string[], submittingAgentId?: string): void {
+    for (const runId of runIds) {
+      const run = this.requireMission(missionId).execution!.runs.find(candidate => candidate.id === runId)!;
+      const worker = this.agent(run.workerId);
+      // Only the worker being reused must wait for its previous provider turn.
+      if (worker && (worker.id === submittingAgentId || ['working', 'awaitingInput'].includes(worker.status.type))) {
+        const pending = this.postTurnLaunches.get(worker.id)?.runIds ?? [];
+        this.postTurnLaunches.set(worker.id, { missionId, runIds: [...new Set([...pending, runId])] });
+      } else {
+        void this.startLaunch(missionId, runId);
+      }
+    }
+  }
   private requireNoActiveRun(mission: Mission): void {
     if (pendingMissionRun(mission)) throw new Error('Review or stop the existing run first.');
     if (mission.execution?.runs.some(run => { const worker = this.agent(run.workerId); return worker && ['working', 'awaitingInput'].includes(worker.status.type); })) throw new Error('A mission worker is still active. Stop it before starting another run.');

@@ -50,6 +50,7 @@ import { useI18n } from 'vue-i18n';
 import type { Agent } from '@workspace/core/contracts';
 import type { Mission } from '@workspace/core/missions';
 import { agentAttention, missionLeadAgentId } from '@workspace/core/mission-attention';
+import { missionRunTicketIndex } from '@workspace/core/mission-execution';
 import { CodeIcon, SparklesIcon, TargetArrowIcon } from '../shared/icons/app-icons';
 
 type Conversation = { key: string; agentId: string; run: NonNullable<Mission['execution']>['runs'][number] };
@@ -117,17 +118,20 @@ function tabTitle(conversation: Conversation): string {
   if (conversation.run.stage === 'implementation') {
     const repositoryPath = conversation.run.repositoryPath
       ?? props.mission.artifacts.tickets[conversation.run.ticketIndex ?? -1]?.repositoryPath;
-    return repositoryPath?.split(/[\\/]/u).filter(Boolean).at(-1) ?? t('missions.builder');
+    const name = repositoryPath?.split(/[\\/]/u).filter(Boolean).at(-1) ?? t('missions.builder');
+    const siblings = conversations.value.filter(candidate => candidate.run.stage === 'implementation'
+      && (candidate.run.repositoryPath ?? props.mission.artifacts.tickets[candidate.run.ticketIndex ?? -1]?.repositoryPath) === repositoryPath);
+    const index = missionRunTicketIndex(props.mission, conversation.run);
+    const attempts = siblings.filter(candidate => missionRunTicketIndex(props.mission, candidate.run) === index);
+    const label = siblings.length > 1 && index !== undefined ? `${name} · ${index + 1}` : name;
+    return attempts.length > 1 ? `${label} · ${t('missions.attempt', { count: attempts.indexOf(conversation) + 1 })}` : label;
   }
   return t('missions.missionLead');
 }
 
 function conversationKey(run: Conversation['run']): string {
   if (run.stage !== 'implementation') return 'mission-lead';
-  const repositoryPath = run.repositoryPath
-    ?? props.mission.artifacts.tickets[run.ticketIndex ?? -1]?.repositoryPath
-    ?? run.workerId;
-  return `repository:${repositoryPath}`;
+  return `worker:${run.workerId}`;
 }
 </script>
 

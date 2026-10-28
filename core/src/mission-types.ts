@@ -64,7 +64,7 @@ export type MissionRun = {
   draftTickets?: MissionTicket[];
   implementationResult?: { changes: string; tests: string };
 };
-export type MissionWorkspace = { repositoryPath: string; path: string; branch: string; baseSha?: string; deleted?: true };
+export type MissionWorkspace = { repositoryPath: string; path: string; branch: string; baseSha?: string; deleted?: true; commitLock?: { agentId: string; runId: string; turnId: string } };
 export type MissionDelivery = {
   repositoryPath: string;
   agentId: string;
@@ -76,6 +76,8 @@ export type MissionExecution = {
   teamId: string;
   debugFixture?: true;
   implementationModel?: ExecutionSelection;
+  /** Opt-in shared-checkout execution; absent means one implementation worker per repository. */
+  parallelImplementation?: boolean;
   repoPath?: string;
   memberIds: string[];
   workspace?: { path: string; branch: string; baseSha?: string; deleted?: true };
@@ -117,7 +119,7 @@ export type MissionExecutionInput = { id: string; revision: number } & (
   | { action: 'configure'; teamId: string; memberIds: string[] }
   | { action: 'attachRepository'; repoPath: string }
   | { action: 'run'; memberId?: string; ticketIndex?: number; feedback?: string }
-  | { action: 'accept'; runId: string; implementationModel?: ExecutionSelection }
+  | { action: 'accept'; runId: string; implementationModel?: ExecutionSelection; parallelImplementation?: boolean }
   | { action: 'continueToReview' }
   | { action: 'cancel'; runId: string }
   | { action: 'selectReviewFinding'; findingId: string; selected: boolean }

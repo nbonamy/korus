@@ -1,5 +1,4 @@
 import { isExecutionSelection } from './execution-selection';
-import { agentBackends } from './contracts/shared';
 import { pendingMissionRun } from './mission-execution';
 import type { AppSnapshot } from './contracts';
 import { createEntityId } from './ids';
@@ -126,9 +125,11 @@ export function updateMission(snapshot: AppSnapshot, input: unknown): Mission {
 function isMissionExecution(v: unknown): v is MissionExecution {
   return record(v) && text(v.teamId) && (v.repoPath === undefined || text(v.repoPath)) && Array.isArray(v.memberIds) && v.memberIds.every(text)
     && (v.debugFixture === undefined || v.debugFixture === true)
+    && (v.parallelImplementation === undefined || typeof v.parallelImplementation === 'boolean')
     && (v.implementationModel === undefined || isExecutionSelection(v.implementationModel))
     && (v.workspaceName === undefined || (text(v.workspaceName) && !!v.workspaceName.trim()))
     && (v.workspaces === undefined || (Array.isArray(v.workspaces) && v.workspaces.every(workspace => record(workspace)
+      && (workspace.commitLock === undefined || (record(workspace.commitLock) && text(workspace.commitLock.agentId) && text(workspace.commitLock.runId) && text(workspace.commitLock.turnId)))
       && text(workspace.repositoryPath) && !!workspace.repositoryPath.trim()
       && text(workspace.path) && !!workspace.path.trim() && text(workspace.branch) && !!workspace.branch.trim()
       && (workspace.deleted === undefined || workspace.deleted === true)

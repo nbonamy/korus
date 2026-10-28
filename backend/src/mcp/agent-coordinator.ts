@@ -149,6 +149,8 @@ export type McpCreateAgentResponse = {
 };
 
 export type MissionToolPort = {
+  acquireCommitLock?(agentId: string, signal?: AbortSignal): Promise<{ acquired: boolean }>;
+  releaseCommitLock?(agentId: string): Promise<{ released: true }>;
   contextForAgent(agentId: string): MissionToolContext | undefined;
   submitResult(agentId: string, input: MissionResultInput): Promise<{ success: true; status: 'awaitingReview' | 'accepted' }>;
   upsertTicket(agentId: string, input: MissionTicketDraftInput): Promise<MissionTicketDraftResult>;
@@ -389,6 +391,18 @@ export class AppMcpAgentCoordinator {
     this.requireAgent(agentId);
     if (!this.missionTools) throw new McpToolError('Mission result submission is unavailable.');
     return this.missionTools.submitResult(agentId, input);
+  }
+
+  async acquireMissionCommitLock(agentId: string, signal?: AbortSignal) {
+    this.requireAgent(agentId);
+    if (!this.missionTools?.acquireCommitLock) throw new McpToolError('Mission commit locking is unavailable.');
+    return this.missionTools.acquireCommitLock(agentId, signal);
+  }
+
+  async releaseMissionCommitLock(agentId: string) {
+    this.requireAgent(agentId);
+    if (!this.missionTools?.releaseCommitLock) throw new McpToolError('Mission commit locking is unavailable.');
+    return this.missionTools.releaseCommitLock(agentId);
   }
 
   async upsertMissionTicket(agentId: string, input: MissionTicketDraftInput) {

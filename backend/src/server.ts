@@ -465,6 +465,13 @@ export class AppBackendServer {
       },
       sendMessage: this.sendAgentMessage,
       interrupt: agent => this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent }),
+      isCommitLockOwnerStopped: async agent => {
+        if (!agent.backendSession) return false;
+        const loaded = await this.handleAgentDriverRequest(agent, backendMethods.driverConversationLoad, { agent });
+        if (!loaded) return false;
+        await this.handleAgentDriverRequest(agent, backendMethods.driverHandoffCheck, { agent });
+        return true;
+      },
     });
     this.planReviews = new AgentPlanReviewService({
       persist: () => this.persistAndEmitSnapshot(),
@@ -609,6 +616,8 @@ export class AppBackendServer {
   async submitMissionResult(agentId: string, input: MissionResultInput) {
     return this.missionExecution.submit(agentId, input);
   }
+  acquireMissionCommitLock(agentId: string, signal?: AbortSignal) { return this.missionExecution.acquireCommitLock(agentId, signal); }
+  releaseMissionCommitLock(agentId: string) { return this.missionExecution.releaseCommitLock(agentId); }
 
   async closeAgentFromMcp(callerAgentId: string, agentId: string): Promise<void> {
     const caller = this.snapshot.agents.find(agent => agent.id === callerAgentId);
@@ -3765,6 +3774,10 @@ export class AppBackendServer {
     this.observeShareTargetChange(fullEvent);
     this.delegatedWorkReports.handleEvent(fullEvent);
     for (const listener of this.handoffListeners) listener(fullEvent);
+    if (fullEvent.agentId && providerConversationEventView(fullEvent).type === 'turn.started') {
+      const turnId = providerConversationEventView(fullEvent).turnId;
+      if (turnId) this.missionExecution.agentStarted(fullEvent.agentId, turnId);
+    }
     if (fullEvent.agentId && providerConversationEventView(fullEvent).type === 'turn.completed') {
       void this.missionExecution.agentFinished(fullEvent.agentId, providerConversationEventView(fullEvent).turnId).catch(error => warnMain('missions', 'failed to record mission completion', { message: String(error) }));
     }
