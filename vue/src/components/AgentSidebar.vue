@@ -357,6 +357,8 @@
       :x="contextMenuPosition.x"
       :y="contextMenuPosition.y"
       @delete="deleteContextMission"
+      :workspaces="contextMissionWorkspaces"
+      @create-agent="createAgentInContextMissionWorktree"
       @close="closeMissionContextMenu"
     />
 
@@ -384,6 +386,7 @@ import { supportsConversationSharing } from '@workspace/core/conversation-sharin
 import type { Mission } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
 import { missionAttention } from '@workspace/core/mission-attention';
+import { missionCreatedWorkspaces } from '@workspace/core/mission-execution';
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Agent, OpenInApplication, OpenInApplicationCatalog, ReorderAgentsInput, ReorderRepositoriesInput, SourceBranch, Team } from '@workspace/core/contracts';
@@ -484,6 +487,7 @@ const emit = defineEmits<{
   'create-quick-chat': [];
   'create-mission': [];
   'delete-mission': [id: string];
+  'create-agent-in-mission-worktree': [payload: { missionId: string; worktreePath: string }];
   'delete-repository': [agentId: string];
   'select-mission': [id: string];
   'update-repository-icon': [payload: { repositoryKey: string; repositoryRoot: string; icon: string | undefined }];
@@ -570,6 +574,7 @@ const backendChoices = useBackendChoices(() => props.teamId);
 const quickChatGroup = computed(() => repositoryGroups.value.find((group) => group.kind === 'quickChats') ?? null);
 const contextMenuAgentId = ref<string | null>(null);
 const contextMenuMissionId = ref<string | null>(null);
+const contextMissionWorkspaces = computed(() => missionCreatedWorkspaces(props.missions?.find(mission => mission.id === contextMenuMissionId.value)));
 const contextMenuRepositoryAgentId = ref<string | null>(null);
 const repositoryMenuItems = computed<AppMenuItem[]>(() => [{ id: 'delete', type: 'action', label: t('repositoryDeletion.action'), icon: Trash2Icon, danger: true }]);
 const repositorySessionMenu = useRepositorySessionMenu(() => props.listRepositoryBranches, t);
@@ -832,6 +837,13 @@ function deleteContextMission(): void {
   const missionId = contextMenuMissionId.value;
   if (!missionId) return;
   emit('delete-mission', missionId);
+  closeMissionContextMenu();
+}
+
+function createAgentInContextMissionWorktree(worktreePath: string): void {
+  const missionId = contextMenuMissionId.value;
+  if (!missionId) return;
+  emit('create-agent-in-mission-worktree', { missionId, worktreePath });
   closeMissionContextMenu();
 }
 

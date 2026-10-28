@@ -64,6 +64,7 @@
       :phone-scope="compactViewport"
       @create-mission="createNewMission"
       @delete-mission="deleteMissionFromSidebar"
+      @create-agent-in-mission-worktree="createAgentInMissionWorktree"
       @delete-repository="repositoryDeletionAgentId = $event"
       @select-mission="selectMission"
       :active-team="activeTeam"
@@ -696,7 +697,7 @@ import type { MissionWorkspaceOpenRequest } from './MissionWorkspaceOpenIn.vue';
 import ConversationPane from './ConversationPane.vue';
 import AppMenu from '../shared/menu/AppMenu.vue';
 import type { Mission, CreateMissionInput, DeleteMissionInput } from '@workspace/core/missions';
-import type { MissionImplementationStartProgress } from '@workspace/core/mission-execution';
+import { missionCreatedWorkspaces, type MissionImplementationStartProgress } from '@workspace/core/mission-execution';
 import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
 import SettingsView from './SettingsView.vue';
 import FirstRunOnboardingGate from './FirstRunOnboardingGate.vue';
@@ -1297,6 +1298,20 @@ function deleteMissionFromSidebar(id: string): void {
   if (!props.snapshot.missions?.some(candidate => candidate.id === id)) return;
   missionDeleteTargetId.value = id;
   missionDeleteError.value = '';
+}
+
+async function createAgentInMissionWorktree(input: { missionId: string; worktreePath: string }): Promise<void> {
+  const mission = props.snapshot.missions?.find(candidate => candidate.id === input.missionId);
+  const workspace = missionCreatedWorkspaces(mission).find(candidate => candidate.path === input.worktreePath);
+  if (!mission || !workspace) return;
+  const backend = preferredBackendChoices(props.snapshot, mission.teamId)[0];
+  if (!backend) { openSettings(); return; }
+  try {
+    const agent = await props.createAgent({ name: mission.outcome, folder: workspace.path, backend, teamId: mission.teamId });
+    if (agent) selectAgentFromShell(agent.id);
+  } catch (error) {
+    ElMessage.error(localizedErrorMessage(error, t));
+  }
 }
 
 function closeMissionDeleteDialog(): void {
