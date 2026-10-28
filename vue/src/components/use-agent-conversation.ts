@@ -10,6 +10,7 @@ import { localizedText } from '../i18n/errors';
 import { useImageAnnotation } from './use-image-annotation';
 import { useChatTextAnnotations } from './use-chat-text-annotations';
 import { useVisualizationAnnotations } from './use-visualization-annotations';
+import { useCodeAnnotations } from './use-code-annotations';
 import { claudePaneClientRequests } from './claude-pane-client-requests';
 import { antigravityPaneClientRequests } from './antigravity-pane-client-requests';
 import { conversationCommandMenuItems } from './conversation-command-menu';
@@ -153,6 +154,7 @@ export function useAgentConversation(options: {
   });
   const chatTextAnnotation = useChatTextAnnotations({ currentAgentId: options.agentId });
   const visualizationAnnotation = useVisualizationAnnotations({ currentAgentId: options.agentId });
+  const codeAnnotation = useCodeAnnotations({ currentAgentId: options.agentId });
   const threadFlagBusy = ref(false);
   async function respondToThreadFlag(response: ThreadFlagResponse): Promise<void> {
     if (threadFlagBusy.value || !options.agentId()) return;
@@ -173,8 +175,9 @@ export function useAgentConversation(options: {
     const capturedImages = imageAnnotation.capture();
     await options.beforeSubmit?.();
     await visualizationAnnotation.forward(prompt, sendOptions, (text, visualOptions) =>
-      chatTextAnnotation.forward(text, visualOptions, (annotatedText, textOptions) =>
-        imageAnnotation.forward(annotatedText, textOptions, (finalText, finalOptions) => send(id, finalText, finalOptions), capturedImages)));
+      codeAnnotation.forward(text, visualOptions, (codeText, codeOptions) =>
+        chatTextAnnotation.forward(codeText, codeOptions, (annotatedText, textOptions) =>
+          imageAnnotation.forward(annotatedText, textOptions, (finalText, finalOptions) => send(id, finalText, finalOptions), capturedImages))));
   }
   const actions: CodexConversationPaneActions = {
     clearGoal: () => options.actions.clearGoal(agentId()),
@@ -215,7 +218,7 @@ export function useAgentConversation(options: {
     ...options.overrides,
   };
   const controller = createCodexConversationPaneController({ state: options.state, actions });
-  return { controller, imageAnnotation, chatTextAnnotation, visualizationAnnotation, threadFlagBusy, respondToThreadFlag };
+  return { controller, imageAnnotation, chatTextAnnotation, visualizationAnnotation, codeAnnotation, threadFlagBusy, respondToThreadFlag };
 }
 
 function permissionMenuItems(view: AgentConversationView): CodexComposerMenuItem[] {

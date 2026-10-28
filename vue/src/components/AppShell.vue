@@ -305,6 +305,7 @@
         :active-attachment-annotation-counts="activeAttachmentAnnotationCounts"
         :add-chat-text-annotation="addChatTextAnnotation"
         :add-visualization-annotation="addFocusedVisualizationAnnotation"
+        :add-code-annotation="addFocusedCodeAnnotation"
         :agent-files="agentFiles"
         :agent-sidebar-collapsed="agentSidebarCollapsed || compactViewport"
         :close-right-workspace-tab="closeRightWorkspaceTab"
@@ -319,6 +320,7 @@
         :conversation-plan="conversationPlan"
         :chat-text-annotations="activeChatTextAnnotations"
         :visualization-annotations="activeVisualizationAnnotations"
+        :code-annotations="activeCodeAnnotations"
         :review-finding-attachment="activeReviewFindingAttachment"
         :create-agent-git-pull-request="props.createAgentGitPullRequest"
         :current-agent="currentAgent"
@@ -350,6 +352,7 @@
         :open-attachment-image-annotation="openAttachmentImageAnnotation"
         :remove-chat-text-annotation="removeChatTextAnnotation"
         :remove-visualization-annotation="removeVisualizationAnnotation"
+        :remove-code-annotation="removeCodeAnnotation"
         :open-file-preview="openFilePreview"
         :open-file-preview-for-agent="openFilePreviewForAgent"
         :open-in-applications="openInApplications"
@@ -737,6 +740,7 @@ import type { RightWorkspaceTab } from './right-workspace';
 import { useImageAnnotation } from './use-image-annotation';
 import { useChatTextAnnotations } from './use-chat-text-annotations';
 import { useVisualizationAnnotations } from './use-visualization-annotations';
+import { useCodeAnnotations } from './use-code-annotations';
 import { useCockpitBacklog } from './use-cockpit-backlog';
 import { provideBacklogConnections } from './backlog-providers';
 import { useWorkspacePreviews } from './use-workspace-previews';
@@ -1789,6 +1793,10 @@ watch([
     if (activeSurface.value === 'agent' && !isModalDialogVisible.value) focusedConversationPanel()?.focusComposer();
   });
 }, { flush: 'post' });
+function addFocusedCodeAnnotation(annotation: import('./use-code-annotations').CodeAnnotationInput): void {
+  if (splitLayout.value === 'single') addCodeAnnotation(annotation);
+  else splitPanels.get(currentAgent.value?.id ?? '')?.addCodeAnnotation(annotation);
+}
 function addFocusedVisualizationAnnotation(annotation: import('./use-visualization-annotations').VisualizationAnnotationInput): void {
   if (splitLayout.value === 'single') addVisualizationAnnotation(annotation);
   else splitPanels.get(currentAgent.value?.id ?? '')?.addVisualizationAnnotation(annotation);
@@ -1956,6 +1964,15 @@ const {
   forward: forwardCodexPromptWithVisualizationAnnotations,
   remove: removeVisualizationAnnotation,
 } = visualizationAnnotation;
+const codeAnnotation = useCodeAnnotations({
+  currentAgentId: () => currentAgent.value?.id,
+});
+const {
+  activeAnnotations: activeCodeAnnotations,
+  add: addCodeAnnotation,
+  forward: forwardCodexPromptWithCodeAnnotations,
+  remove: removeCodeAnnotation,
+} = codeAnnotation;
 const cockpitBacklogState = useCockpitBacklog({
   configure: (input) => props.configureWorkBacklog(input),
   confirmLoadAll: async () => {
@@ -3200,14 +3217,18 @@ async function forwardCodexPrompt(prompt: string, options?: CodexRendererSendMes
   await forwardCodexPromptWithVisualizationAnnotations(
     prompt,
     options,
-    (visualizationPrompt, visualizationOptions) => forwardCodexPromptWithChatTextAnnotations(
+    (visualizationPrompt, visualizationOptions) => forwardCodexPromptWithCodeAnnotations(
       visualizationPrompt,
       visualizationOptions,
-      (nextPrompt, nextOptions) => forwardCodexPromptWithImageAnnotations(
-        nextPrompt,
-        nextOptions,
-        forwardPrompt,
-        capturedImages,
+      (codePrompt, codeOptions) => forwardCodexPromptWithChatTextAnnotations(
+        codePrompt,
+        codeOptions,
+        (nextPrompt, nextOptions) => forwardCodexPromptWithImageAnnotations(
+          nextPrompt,
+          nextOptions,
+          forwardPrompt,
+          capturedImages,
+        ),
       ),
     ),
   );
@@ -3219,14 +3240,18 @@ async function forwardCodexSteerPrompt(prompt: string, options?: CodexRendererSe
   await forwardCodexPromptWithVisualizationAnnotations(
     prompt,
     options,
-    (visualizationPrompt, visualizationOptions) => forwardCodexPromptWithChatTextAnnotations(
+    (visualizationPrompt, visualizationOptions) => forwardCodexPromptWithCodeAnnotations(
       visualizationPrompt,
       visualizationOptions,
-      (nextPrompt, nextOptions) => forwardCodexPromptWithImageAnnotations(
-        nextPrompt,
-        nextOptions,
-        forwardSteerPrompt,
-        capturedImages,
+      (codePrompt, codeOptions) => forwardCodexPromptWithChatTextAnnotations(
+        codePrompt,
+        codeOptions,
+        (nextPrompt, nextOptions) => forwardCodexPromptWithImageAnnotations(
+          nextPrompt,
+          nextOptions,
+          forwardSteerPrompt,
+          capturedImages,
+        ),
       ),
     ),
   );

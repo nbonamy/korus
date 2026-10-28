@@ -995,11 +995,20 @@ export const messages = {
         remove: 'Remove chat annotation',
         save: 'Add annotation',
       },
+      codeAnnotations: {
+        annotate: 'Annotate',
+        annotateLine: 'Annotate this line',
+        commentLabel: 'Code annotation comment',
+        commentPlaceholder: 'What should change?',
+        save: 'Add annotation',
+      },
       composerContext: {
         label: 'Composer context',
         removeReviewFinding: 'Remove review finding',
         visualizationAnnotation: 'Annotation',
         removeVisualizationAnnotation: 'Remove diagram annotation',
+        codeAnnotation: 'Code',
+        removeCodeAnnotation: 'Remove code annotation',
       },
       collaboration: {
         messageFrom: 'Message from {name}',

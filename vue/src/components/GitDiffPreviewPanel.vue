@@ -1,7 +1,8 @@
 <template>
   <article
+    ref="surface"
     class="git-diff-preview-panel"
-    :class="{ 'git-diff-preview-panel--wrap': wordWrap }"
+    :class="{ 'git-diff-preview-panel--wrap': wordWrap, 'git-diff-preview-panel--annotatable': annotatable }"
     :aria-busy="state === 'loading'"
   >
     <div
@@ -57,6 +58,7 @@
         v-for="file in (group.kind && !isGroupExpanded(group.kind) ? [] : group.files)"
         :key="file.key"
         class="git-diff-preview-panel__file"
+        :data-code-path="file.fullPath"
       >
         <div class="git-diff-preview-panel__file-header-row">
           <button
@@ -119,11 +121,26 @@
               :key="`${chunk.key}-${index}`"
               class="git-diff-preview-panel__line"
               :class="`git-diff-preview-panel__line--${line.kind}`"
+              :data-code-line="codeLine(line)"
+              :data-code-side="codeLine(line) ? (line.kind === 'deleted' ? 'old' : 'new') : undefined"
+              :data-code-prefix="codeLine(line) ? line.marker : undefined"
             >
+              <button
+                v-if="annotatable && codeLine(line)"
+                class="git-diff-preview-panel__annotate"
+                type="button"
+                tabindex="-1"
+                :aria-label="$t('chat.codeAnnotations.annotateLine')"
+                :title="$t('chat.codeAnnotations.annotateLine')"
+                @mousedown.prevent="plusPressed($event)"
+                @click="plusClicked($event)"
+              >
+                <IconPlus aria-hidden="true" />
+              </button>
               <span class="git-diff-preview-panel__line-number">{{ line.oldNumber }}</span>
               <span class="git-diff-preview-panel__line-number">{{ line.newNumber }}</span>
               <span class="git-diff-preview-panel__line-marker">{{ line.marker }}</span>
-              <code>{{ line.content }}</code>
+              <code data-code-text>{{ line.content }}</code>
             </div>
           </div>
         </div>
@@ -138,17 +155,27 @@
       v-else
       class="git-diff-preview-panel__empty"
     > {{ $t('surface.gitDiffPreviewPanel.noDiffContent') }} </div>
+    <CodeSelectionAnnotation
+      v-if="annotatable"
+      :selection="code.selection.value"
+      :commenting="code.commenting.value"
+      @dismiss="code.clear"
+      @save="saveAnnotation"
+    />
   </article>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { IconBrandJavascript, IconBrandTypescript, IconBrandVue, IconFileCode } from '@tabler/icons-vue';
+import { IconBrandJavascript, IconBrandTypescript, IconBrandVue, IconFileCode, IconPlus } from '@tabler/icons-vue';
 import parseGitDiff, { type AnyChunk, type AnyFileChange, type Chunk } from 'parse-git-diff';
 import { translate } from '../i18n';
 import { ChevronDown, ChevronRightIcon, FileArrowRightIcon } from '../shared/icons/app-icons';
 import { classifyFile, fileKinds, type FileKind } from '@workspace/core/file-kind';
 import { fileKindColor, fileKindCount, fileKindLabel } from './file-kind-presentation';
+import CodeSelectionAnnotation from './CodeSelectionAnnotation.vue';
+import type { CodeAnnotationInput } from './use-code-annotations';
+import { useCodeSelection, type CodeSelection } from './use-code-selection';
 
 const props = withDefaults(defineProps<{
   diff: string;
@@ -162,6 +189,8 @@ const props = withDefaults(defineProps<{
   focusSequence?: number;
   /** Lists files under code, tests, documentation and other headers instead of in diff order. */
   groupByKind?: boolean;
+  /** Annotate from a line's plus button, or select code text. */
+  annotatable?: boolean;
   openFileEnabled?: boolean;
   state?: 'idle' | 'loading' | 'error';
   wordWrap?: boolean;
@@ -172,6 +201,7 @@ const props = withDefaults(defineProps<{
   fileKindFilter: null,
   focusKind: null,
   focusSequence: 0,
+  annotatable: false,
   groupByKind: false,
   openFileEnabled: false,
   state: 'idle',
@@ -181,6 +211,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   allExpandedChange: [isAllExpanded: boolean];
   openFile: [filePath: string];
+  annotate: [annotation: CodeAnnotationInput];
 }>();
 
 type DiffLineKind = 'added' | 'deleted' | 'context' | 'message';
@@ -216,6 +247,33 @@ type DiffFileView = {
 };
 
 type DiffFileIconKind = 'javascript' | 'typescript' | 'vue' | 'code';
+
+const surface = ref<HTMLElement | null>(null);
+const code = useCodeSelection(surface);
+watch(() => props.diff, () => code.clear());
+
+/** The number a line goes by in the annotation: the old file's for a removed line, the new file's otherwise. */
+function codeLine(line: DiffLineView): string | undefined {
+  if (line.kind === 'message') return undefined;
+  return (line.kind === 'deleted' ? line.oldNumber : line.newNumber) || undefined;
+}
+
+/** Pressing a line's number or its plus picks the line; dragging on from there picks a range. */
+function plusPressed(event: MouseEvent): void {
+  if (!props.annotatable || event.button !== 0) return;
+  const row = (event.currentTarget as HTMLElement).closest<HTMLElement>('[data-code-line]');
+  if (row) code.lineDragStart(row, event);
+}
+
+function plusClicked(event: MouseEvent): void {
+  if (!props.annotatable || event.detail !== 0 || event.button !== 0) return;
+  const row = (event.currentTarget as HTMLElement).closest<HTMLElement>('[data-code-line]');
+  if (row) code.commentLine(row, event);
+}
+
+function saveAnnotation({ selection, comment }: { selection: CodeSelection; comment: string }): void {
+  emit('annotate', { path: selection.path, startLine: selection.startLine, endLine: selection.endLine, ...(selection.side ? { side: selection.side } : {}), text: selection.text, comment });
+}
 
 const parsed = computed(() => {
   if (!props.diff.trim()) {
@@ -667,6 +725,7 @@ function mapLine(line: Chunk['changes'][number]): DiffLineView {
 }
 
 .git-diff-preview-panel__line {
+  position: relative;
   display: grid;
   grid-template-columns: 5ch 5ch 2ch max-content;
   width: 100%;
@@ -686,6 +745,45 @@ function mapLine(line: Chunk['changes'][number]): DiffLineView {
 
 .git-diff-preview-panel__line--message {
   color: var(--color-text-muted);
+}
+
+.git-diff-preview-panel--annotatable .git-diff-preview-panel__line-number {
+  cursor: pointer;
+}
+
+/* The affordance for pointing at a line: a small square plus in the margin, shown while the line is hovered. */
+.git-diff-preview-panel__annotate {
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  opacity: 0;
+  transform: translateY(-50%);
+  cursor: pointer;
+}
+
+.git-diff-preview-panel__annotate :deep(svg) {
+  width: 12px;
+  height: 12px;
+}
+
+.git-diff-preview-panel__line:hover .git-diff-preview-panel__annotate,
+.git-diff-preview-panel__annotate:focus-visible {
+  opacity: 1;
+}
+
+.git-diff-preview-panel__line.code-annotation-line--selected {
+  box-shadow: inset 3px 0 0 var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
 }
 
 .git-diff-preview-panel__line-number,
