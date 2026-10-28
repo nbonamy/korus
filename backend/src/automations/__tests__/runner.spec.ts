@@ -4,7 +4,7 @@ import { createAgentInSnapshot } from '@workspace/core/agent-manager';
 import type { Automation } from '@workspace/core/contracts';
 import { AutomationRunner, automationIsDue } from '../runner';
 
-function setup(target: Automation['target'] = { kind: 'newQuickChat', teamId: 'team', backend: 'codex' }) {
+function setup(target: Automation['target'] = { kind: 'newQuickChat', teamId: 'team', selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } }) {
   const snapshot = createEmptySnapshot();
   snapshot.teams = [{ id: 'team', name: 'Team', agentIds: [] }];
   snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, enabled: true, checking: false }];
@@ -96,11 +96,11 @@ describe('scheduled prompts', () => {
   });
 
   it('honors fresh-chat model overrides without changing global settings or permission defaults', async () => {
-    const { snapshot, runner, automation } = setup({ kind: 'newQuickChat', teamId: 'team', backend: 'codex', model: 'chosen', reasoningEffort: 'high' });
+    const { snapshot, runner, automation } = setup({ kind: 'newQuickChat', teamId: 'team', selection: { backend: 'codex', model: 'chosen', reasoningEffort: 'high', serviceTier: 'fast' } });
     const general = structuredClone(snapshot.general);
     await runner.runAutomation('auto');
     expect(snapshot.agents.find(agent => agent.id === automation.executionLog[0]!.agentId)?.backendDefaults)
-      .toMatchObject({ model: 'chosen', reasoningEffort: 'high' });
+      .toMatchObject({ model: 'chosen', reasoningEffort: 'high', serviceTier: 'fast' });
     expect(snapshot.general).toStrictEqual(general);
   });
 
@@ -126,7 +126,7 @@ describe('scheduled prompts', () => {
     expect(automation.executionLog[0]).toMatchObject({ status: 'failed', error: 'Session expired' });
   });
   it.each(['codex', 'claude', 'antigravity'] as const)('creates fresh %s quick chats without changing selection or provider, retaining run history', async backend => {
-    const { snapshot, automation, runner, sendPrompt } = setup({ kind: 'newQuickChat', teamId: 'team', backend });
+    const { snapshot, automation, runner, sendPrompt } = setup({ kind: 'newQuickChat', teamId: 'team', selection: { backend, model: null, reasoningEffort: null, serviceTier: null } });
     snapshot.providerConnections = [{ backend, installed: true, connected: true, enabled: true, checking: false }];
     const conversationRef = backend === 'codex' ? { backend, threadId: 'thread' } : { backend, sessionId: 'session', folder: null };
     sendPrompt.mockResolvedValue(conversationRef);

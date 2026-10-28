@@ -258,16 +258,16 @@ describe('mission backend boundary', () => {
     const server = new AppBackendServer({ version: 'test', pid: 1, snapshot, driverRpc: new BackendDriverRpc(new Map([['codex', driver]])), saveSnapshot: async () => undefined, onEvent: vi.fn() });
     try {
       const caller = snapshot.agents[0]!;
-      const started = await server.startMissionFromAgent(caller.id, { outcome: 'Add CSV export', prompt: 'Goal', model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'fast' });
+      const started = await server.startMissionFromAgent(caller.id, { outcome: 'Add CSV export', prompt: 'Goal', selection: { model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'fast' } });
       const lead = snapshot.agents.find(agent => agent.id === snapshot.missions!.find(mission => mission.id === started.missionId)!.execution!.runs.at(-1)!.workerId)!;
       expect(lead).toMatchObject({ backend: 'codex', backendDefaults: { kind: 'codex', model: 'gpt-fast', userSelectedModel: true, reasoningEffort: 'high', serviceTier: 'fast' } });
       await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: lead.id, backendDefaults: expect.objectContaining({ model: 'gpt-fast' }) }), 'Goal', undefined));
       const missions = snapshot.missions!.length;
-      await expect(server.startMissionFromAgent(caller.id, { outcome: 'x', prompt: 'y', model: 'nope' })).rejects.toThrow('gpt-fast, gpt-big');
-      await expect(server.startMissionFromAgent(caller.id, { outcome: 'x', prompt: 'y', model: 'gpt-big', reasoningEffort: 'low' })).rejects.toThrow('reasoning effort');
-      await expect(server.startMissionFromAgent(caller.id, { outcome: 'x', prompt: 'y', reasoningEffort: 'low' })).rejects.toThrow('needs a model');
-      await expect(server.startMissionFromAgent(caller.id, { outcome: 'x', prompt: 'y', serviceTier: 'fast' })).rejects.toThrow('needs a model');
-      await expect(server.startMissionFromAgent(caller.id, { outcome: 'x', prompt: 'y', model: 'gpt-big', serviceTier: 'fast' })).rejects.toThrow('service tier fast');
+      await expect(server.startMissionFromAgent(caller.id, { outcome: 'x', prompt: 'y', selection: { model: 'nope' } })).rejects.toThrow('gpt-fast, gpt-big');
+      await expect(server.startMissionFromAgent(caller.id, { outcome: 'x', prompt: 'y', selection: { model: 'gpt-big', reasoningEffort: 'low' } })).rejects.toThrow('reasoning effort');
+      await expect(server.startMissionFromAgent(caller.id, { outcome: 'x', prompt: 'y', selection: { reasoningEffort: 'low' } })).rejects.toThrow('needs a model');
+      await expect(server.startMissionFromAgent(caller.id, { outcome: 'x', prompt: 'y', selection: { serviceTier: 'fast' } })).rejects.toThrow('needs a model');
+      await expect(server.startMissionFromAgent(caller.id, { outcome: 'x', prompt: 'y', selection: { model: 'gpt-big', serviceTier: 'fast' } })).rejects.toThrow('service tier fast');
       expect(snapshot.missions!.length).toBe(missions);
     } finally { await server.close(); }
   });

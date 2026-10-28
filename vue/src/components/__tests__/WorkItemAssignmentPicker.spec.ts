@@ -53,7 +53,7 @@ describe('WorkItemAssignmentPicker', () => {
     await wrapper.vm.$nextTick();
     await wrapper.get('.app-button--primary').trigger('click');
     expect(wrapper.emitted('submit')).toStrictEqual([[
-      { action: 'fix', destination: 'new', item: issue, backend: 'codex', model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'fast' },
+      { action: 'fix', destination: 'new', item: issue, selection: { backend: 'codex', model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'fast' } },
     ]]);
   });
 
@@ -86,7 +86,7 @@ describe('WorkItemAssignmentPicker', () => {
     await wrapper.get('.app-button--primary').trigger('click');
 
     expect(wrapper.emitted('submit')).toStrictEqual([[
-      { action: 'fix', destination: 'new', item: issue, backend: 'claude' },
+      { action: 'fix', destination: 'new', item: issue, selection: { backend: 'claude', model: null, reasoningEffort: null, serviceTier: null } },
     ]]);
     await destinationButtons[1]!.trigger('click');
     expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(false);
@@ -164,7 +164,7 @@ describe('WorkItemAssignmentPicker', () => {
     await wrapper.get('.app-button--primary').trigger('click');
 
     expect(wrapper.emitted('submit')).toStrictEqual([[
-      { action: 'fix', destination: 'new', item: issue, reuseExisting: true, backend: 'codex' },
+      { action: 'fix', destination: 'new', item: issue, reuseExisting: true, selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } },
     ]]);
   });
 });

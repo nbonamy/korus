@@ -249,14 +249,7 @@ describe('AppShell work routing', () => {
     await flushPromises();
     expect(listSourceBranches).not.toHaveBeenCalled();
     expect(createSourceWorktree).not.toHaveBeenCalled();
-    expect(createAgent).toHaveBeenCalledWith({
-      name: null,
-      folder: '/Users/nbonamy/src/agent-workspace',
-      repositorySession: { existingBranch: 'main' },
-      backend: 'codex',
-      sourceRepositoryName: 'agent-workspace',
-      teamId: 'team-app',
-    });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/agent-workspace', repositorySession: { existingBranch: 'main' }, sourceRepositoryName: 'agent-workspace', teamId: 'team-app', selection: { ...{ backend: 'codex' } } });
     listSourceBranches.mockClear();
     createAgent.mockClear();
 
@@ -301,24 +294,13 @@ describe('AppShell work routing', () => {
       repositoryRoot: '/Users/nbonamy/src/agent-workspace',
     });
     await flushPromises();
-    sourceDialog.vm.$emit('start-work-item', {
-      action: 'fix',
-      destination: 'new',
-      item: issue,
-      backend: 'codex',
-      model: 'gpt-fast',
-      reasoningEffort: 'high',
-      serviceTier: 'fast',
-    });
+    sourceDialog.vm.$emit('start-work-item', { action: 'fix', destination: 'new', item: issue, selection: { backend: 'codex', model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'fast' } });
     await flushPromises();
     expect(createSourceWorktree).toHaveBeenCalledWith({
       repoPath: '/Users/nbonamy/src/agent-workspace',
       branchName: 'fix/gh-24',
     });
-    expect(createAgent).toHaveBeenCalledWith(expect.objectContaining({
-      backend: 'codex',
-      modelSelection: { model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'fast' },
-    }));
+    expect(createAgent).toHaveBeenCalledWith(expect.objectContaining({ selection: { ...{ backend: 'codex' }, ...{ model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'fast', backend: 'codex' } } }));
     expect(assignWorkItemAction).toHaveBeenCalledWith(expect.objectContaining({
       agentId: preparedAgent.id,
       item: issue,
@@ -339,14 +321,7 @@ describe('AppShell work routing', () => {
     sourceDialog.vm.$emit('select-branch', { name: 'feat/work-routing', isDefault: false });
     await flushPromises();
     expect(createSourceWorktree).not.toHaveBeenCalled();
-    expect(createAgent).toHaveBeenCalledWith({
-      name: null,
-      folder: '/Users/nbonamy/src/agent-workspace',
-      repositorySession: { existingBranch: 'feat/work-routing' },
-      backend: 'codex',
-      sourceRepositoryName: 'agent-workspace',
-      teamId: 'team-app',
-    });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/agent-workspace', repositorySession: { existingBranch: 'feat/work-routing' }, sourceRepositoryName: 'agent-workspace', teamId: 'team-app', selection: { ...{ backend: 'codex' } } });
     expect(wrapper.getComponent({ name: 'RepositorySessionSourceDialog' }).props('visible')).toBe(false);
 
     createAgent.mockClear();
@@ -368,13 +343,7 @@ describe('AppShell work routing', () => {
       path: '/Users/nbonamy/src/agent-workspace-feature-session',
     });
     await flushPromises();
-    expect(createAgent).toHaveBeenCalledWith({
-      name: null,
-      folder: '/Users/nbonamy/src/agent-workspace-feature-session',
-      backend: 'codex',
-      sourceRepositoryName: 'agent-workspace',
-      teamId: 'team-app',
-    });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/agent-workspace-feature-session', sourceRepositoryName: 'agent-workspace', teamId: 'team-app', selection: { ...{ backend: 'codex' } } });
   });
 
   it('creates quick chats inside the active team', async () => {
@@ -385,7 +354,7 @@ describe('AppShell work routing', () => {
     wrapper.getComponent({ name: 'AgentSidebar' }).vm.$emit('create-quick-chat');
     await flushPromises();
 
-    expect(createQuickChat).toHaveBeenCalledWith({ teamId: 'team-app', backend: 'codex' });
+    expect(createQuickChat).toHaveBeenCalledWith({ teamId: 'team-app', selection: { ...{ backend: 'codex' } } });
   });
 
   it('creates a new Git project and opens an agent in it', async () => {
@@ -401,7 +370,7 @@ describe('AppShell work routing', () => {
     dialog.vm.$emit('create', 'fresh-project', 'claude');
     await flushPromises();
 
-    expect(createProject).toHaveBeenCalledWith({ name: 'fresh-project', teamId: 'team-app', backend: 'claude' });
+    expect(createProject).toHaveBeenCalledWith({ name: 'fresh-project', teamId: 'team-app', selection: { ...{ backend: 'claude' } } });
     expect(dialog.props('visible')).toBe(false);
   });
 
@@ -417,7 +386,7 @@ describe('AppShell work routing', () => {
     await dialog.get('.app-button--primary').trigger('click');
     await flushPromises();
 
-    expect(createProject).toHaveBeenCalledWith({ name: 'fresh-project', teamId: 'team-remote', backend: 'codex' });
+    expect(createProject).toHaveBeenCalledWith({ name: 'fresh-project', teamId: 'team-remote', selection: { ...{ backend: 'codex' } } });
   });
 
   it.each([
@@ -436,7 +405,7 @@ describe('AppShell work routing', () => {
     await flushPromises();
 
     if (folder) {
-      expect(createAgent).toHaveBeenCalledExactlyOnceWith({ name: null, folder, backend: 'codex', teamId: 'team-app' });
+      expect(createAgent).toHaveBeenCalledExactlyOnceWith({ name: null, folder, teamId: 'team-app', selection: { ...{ backend: 'codex' } } });
     } else {
       expect(createAgent).not.toHaveBeenCalled();
     }
@@ -476,12 +445,7 @@ describe('AppShell work routing', () => {
 
     expect(listSourceBranches).not.toHaveBeenCalled();
     expect(wrapper.getComponent({ name: 'RepositorySessionSourceDialog' }).props('visible')).toBe(false);
-    expect(createAgent).toHaveBeenCalledWith({
-      name: null,
-      folder: '/home/nicolas/src/existing-project',
-      backend: 'codex',
-      teamId: 'team-remote',
-    });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/home/nicolas/src/existing-project', teamId: 'team-remote', selection: { ...{ backend: 'codex' } } });
   });
 
   it('acquires a nested GitLab project and opens its branch', async () => {
@@ -960,13 +924,7 @@ describe('AppShell work routing', () => {
       name: 'GitHub #12',
       color: '#1B4FB2',
     });
-    expect(createAgent).toHaveBeenCalledWith({
-      name: null,
-      folder: '/Users/nbonamy/src/agent-workspace-fix-gh-12',
-      backend: 'codex',
-      sourceRepositoryName: 'agent-workspace',
-      teamId: 'team-github-12',
-    });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/agent-workspace-fix-gh-12', sourceRepositoryName: 'agent-workspace', teamId: 'team-github-12', selection: { ...{ backend: 'codex' } } });
     expect(wrapper.emitted('assign-work-item')).toStrictEqual([[{
       agentId: 'agent-issue',
       item,
@@ -987,7 +945,7 @@ describe('AppShell work routing', () => {
       name: input.name,
       avatar: input.avatar,
       folder: input.folder,
-      backend: input.backend,
+      backend: input.selection?.backend,
       backendDefaults: { kind: 'codex' as const },
       status: { type: 'idle' as const },
       createdAt: '2026-08-13T00:00:00.000Z',
@@ -1009,9 +967,9 @@ describe('AppShell work routing', () => {
 
     await wrapper.get('[aria-label="Backlog"]').trigger('click');
     const startWorkItemsAction = wrapper.findComponent({ name: 'BacklogView' }).props('startWorkItemsAction') as (input: {
-      action: 'investigate' | 'fix'; items: WorkItem[]; teamId: string; backend?: Agent['backend'];
+      action: 'investigate' | 'fix'; items: WorkItem[]; teamId: string; selection?: import('@workspace/core/contracts').ExecutionSelectionOverrides;
     }) => Promise<void>;
-    await startWorkItemsAction({ action: 'fix', items: [first, second], teamId: 'team-app', backend: 'claude' });
+    await startWorkItemsAction({ action: 'fix', items: [first, second], teamId: 'team-app', selection: { backend: 'claude' } });
 
     expect(createSourceWorktree).toHaveBeenNthCalledWith(1, {
       repoPath: '/Users/nbonamy/src/agent-workspace',
@@ -1021,20 +979,8 @@ describe('AppShell work routing', () => {
       repoPath: '/Users/nbonamy/src/agent-workspace',
       branchName: 'fix/gh-13',
     });
-    expect(createAgent).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      backend: 'claude',
-      name: null,
-      folder: '/Users/nbonamy/src/agent-workspace-fix-gh-12',
-      sourceRepositoryName: 'agent-workspace',
-      teamId: 'team-app',
-    }));
-    expect(createAgent).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      backend: 'claude',
-      name: null,
-      folder: '/Users/nbonamy/src/agent-workspace-fix-gh-13',
-      sourceRepositoryName: 'agent-workspace',
-      teamId: 'team-app',
-    }));
+    expect(createAgent).toHaveBeenNthCalledWith(1, expect.objectContaining({ name: null, folder: '/Users/nbonamy/src/agent-workspace-fix-gh-12', sourceRepositoryName: 'agent-workspace', teamId: 'team-app', selection: { ...{ backend: 'claude' } } }));
+    expect(createAgent).toHaveBeenNthCalledWith(2, expect.objectContaining({ name: null, folder: '/Users/nbonamy/src/agent-workspace-fix-gh-13', sourceRepositoryName: 'agent-workspace', teamId: 'team-app', selection: { ...{ backend: 'claude' } } }));
     expect(assignWorkItemAction).toHaveBeenCalledTimes(2);
     expect(assignWorkItemAction.mock.calls[0]?.[0].prompt).toContain('Fix this GitHub issue');
   });

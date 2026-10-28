@@ -107,9 +107,9 @@ describe('mission execution', () => {
   });
 
   it.each([
-    { backend: 'codex', model: 'luna', serviceTier: 'ultrafast' },
-    { backend: 'codex', model: 'luna' },
-    { backend: 'claude', model: 'sonnet' },
+    { backend: 'codex', model: 'luna', reasoningEffort: null, serviceTier: 'ultrafast' },
+    { backend: 'codex', model: 'luna', reasoningEffort: null, serviceTier: null },
+    { backend: 'claude', model: 'sonnet', reasoningEffort: null, serviceTier: null },
   ] as const)('validates and persists the $backend implementation model before provisioning, without changing the lead', async (selection) => {
     const h = setup();
     h.snapshot.providerConnections = [
@@ -147,7 +147,7 @@ describe('mission execution', () => {
       expect(h.ports.createWorktree).not.toHaveBeenCalled();
       expect(h.current().stage).toBe('tickets');
     }
-    await h.store.change(h.current().id, mission => { mission.execution!.implementationModel = { backend: 'codex', model: 'missing' }; });
+    await h.store.change(h.current().id, mission => { mission.execution!.implementationModel = {reasoningEffort: null, serviceTier: null,  backend: 'codex', model: 'missing' }; });
     await expect(h.command({ action: 'accept', runId: 'tickets-ready' })).rejects.toThrow(/model/i);
     expect(h.ports.createWorktree).not.toHaveBeenCalled();
     h.snapshot.providerConnections![1]!.enabled = false;
@@ -172,10 +172,9 @@ describe('mission execution', () => {
     expect(worker.backendDefaults).toMatchObject({ kind: selection.backend, model: selection.model, reasoningEffort: 'low' });
     // The tier is exactly what was chosen with the model, never whatever the lead happened to be using.
     if (selection.backend === 'codex' && 'serviceTier' in selection) expect(worker.backendDefaults).toMatchObject({ serviceTier: selection.serviceTier });
-    else if (selection.backend === 'codex') expect(worker.backendDefaults).not.toHaveProperty('serviceTier');
     else {
       expect(worker.backendDefaults).toMatchObject({ permissionMode: 'acceptEdits' });
-      expect(worker.backendDefaults).not.toHaveProperty('serviceTier');
+      expect(worker.backendDefaults?.serviceTier).toBeNull();
       expect(listModels).toHaveBeenCalledWith(expect.objectContaining({ backend: 'claude', backendSession: undefined, backendDefaults: undefined }));
     }
     expect(lead.backendDefaults).toMatchObject({ model: 'planner', reasoningEffort: 'high' });

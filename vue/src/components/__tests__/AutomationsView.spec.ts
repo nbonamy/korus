@@ -8,7 +8,7 @@ import AutomationsView from '../AutomationsView.vue';
 
 const snapshot = createInitialSnapshot();
 function automation(overrides: Partial<Automation> = {}): Automation {
-  return { id: 'auto', name: 'Morning', enabled: true, prompt: 'Check tasks', target: { kind: 'newQuickChat', teamId: 'team-app', backend: 'codex' },
+  return { id: 'auto', name: 'Morning', enabled: true, prompt: 'Check tasks', target: { kind: 'newQuickChat', teamId: 'team-app', selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } },
     schedule: { intervalMinutes: 60 }, executionLog: [], createdAt: '', updatedAt: '', ...overrides };
 }
 const remote: RemoteConnection = { id: 'remote', kind: 'ssh', name: 'devbox', host: 'devbox', status: 'ready',
@@ -50,7 +50,7 @@ describe('AutomationsView', () => {
     await wrapper.get('textarea').setValue('Check tasks');
     await flushPromises();
     await wrapper.get('form').trigger('submit'); await flushPromises();
-    expect(createAutomation).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Check tasks', target: { kind: 'newQuickChat', teamId: 'team-app', backend: 'codex' } }));
+    expect(createAutomation).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Check tasks', target: { kind: 'newQuickChat', teamId: 'team-app', selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } } }));
     expect(wrapper.findAll('[role="alert"]').map(alert => alert.text())).toStrictEqual([]);
     expect(wrapper.find('form').exists()).toBe(false);
     await wrapper.setProps({ automations: [automation()] });
@@ -66,7 +66,7 @@ describe('AutomationsView', () => {
   it('routes remote creation and runs only to the selected host without requiring a work provider', async () => {
     const remoteSnapshot = createInitialSnapshot();
     remoteSnapshot.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
-    remoteSnapshot.automations = [automation({ target: { kind: 'newQuickChat', teamId: 'team-app', backend: 'claude' } })];
+    remoteSnapshot.automations = [automation({ target: { kind: 'newQuickChat', teamId: 'team-app', selection: { backend: 'claude', model: null, reasoningEffort: null, serviceTier: null } } })];
     const createAutomation = vi.fn().mockResolvedValue(remoteSnapshot);
     const runAutomation = vi.fn().mockResolvedValue(remoteSnapshot);
     const wrapper = view({ remoteConnections: [remote], getAutomationSnapshot: async () => remoteSnapshot, createAutomation, runAutomation });
@@ -76,7 +76,7 @@ describe('AutomationsView', () => {
     await wrapper.findAll('button').find(button => button.text() === 'New Automation')!.trigger('click');
     await wrapper.get('textarea').setValue('Remote check');
     await wrapper.get('form').trigger('submit'); await flushPromises();
-    expect(createAutomation).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Remote check', target: { kind: 'newQuickChat', teamId: 'team-app', backend: 'claude' } }), { kind: 'remote', remoteConnectionId: 'remote' });
+    expect(createAutomation).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Remote check', target: { kind: 'newQuickChat', teamId: 'team-app', selection: { backend: 'claude', model: null, reasoningEffort: null, serviceTier: null } } }), { kind: 'remote', remoteConnectionId: 'remote' });
   });
 
   it('retains the editor on save failure and shows remote failures without replacing local data', async () => {
@@ -154,7 +154,7 @@ describe('AutomationsView', () => {
     await toggle.trigger('click'); await flushPromises();
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     expect(updateAutomation).toHaveBeenCalledWith({ id: 'auto', name: 'Morning', enabled: false, prompt: 'Check tasks',
-      target: { kind: 'newQuickChat', teamId: 'team-app', backend: 'codex' }, schedule: { intervalMinutes: 60 } });
+      target: { kind: 'newQuickChat', teamId: 'team-app', selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } }, schedule: { intervalMinutes: 60 } });
     await wrapper.setProps({ automations: [automation({ enabled: false })] });
     await wrapper.get('[aria-label="Enable Morning"]').trigger('click'); await flushPromises();
     expect(updateAutomation).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'auto', enabled: true }));

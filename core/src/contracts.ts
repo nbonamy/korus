@@ -1,3 +1,4 @@
+import type { ExecutionSelection, ExecutionSelectionOverrides } from './contracts/execution';
 import type {
   AgentBackend,
   AppText,
@@ -63,7 +64,6 @@ import type {
 } from './contracts/connections';
 import type {
   AccountRateLimits,
-  AgentModelSelection,
   BackendConnectionState,
   BackendDefaults,
   BackendModelOption,
@@ -178,7 +178,6 @@ export type {
 export type {
   AccountRateLimitWindow,
   AccountRateLimits,
-  AgentModelSelection,
   BackendCapabilities,
   BackendCommandSummary,
   BackendConnectionState,
@@ -477,12 +476,7 @@ export type SpokenAnnouncementQueueResult = {
   reason?: 'suppressed' | 'unsupported' | 'rateLimited' | 'superseded';
 };
 
-export type ModelFavorite = {
-  backend: AgentBackend;
-  modelId: string;
-  reasoningEffort: ReasoningEffort | null;
-  serviceTier: string | null;
-};
+export type ModelFavorite = Omit<ExecutionSelection, 'model'> & { modelId: string };
 
 export type SavedPromptDraft = {
   id: string;
@@ -516,7 +510,7 @@ export type AppGeneralSettings = {
   providerHomes?: Partial<Record<AgentBackend, import('./contracts/provider-setup').ProviderHomeSettings>>;
   providerEnabled?: Partial<Record<AgentBackend, boolean>>;
   /** Last model selection made in a chat, per provider; seeds new agents. */
-  providerModelDefaults?: Partial<Record<AgentBackend, AgentModelSelection>>;
+  providerModelDefaults?: Partial<Record<AgentBackend, ExecutionSelection>>;
   codeReviewInstructions?: string;
   codeReviewDefaults?: import('./code-review').CodeReviewPreferences;
   /** Last explicitly selected approval mode; seeds new chats without changing existing ones. */
@@ -767,6 +761,8 @@ export type AppCommand =
   | { type: 'save-active-prompt-draft' }
   | { type: 'toggle-spoken-announcements-muted' };
 
+export type { ExecutionSelection, ExecutionSelectionOverrides } from './contracts/execution';
+
 export type CreateAgentInput = {
   name: string | null;
   folder: string;
@@ -777,18 +773,17 @@ export type CreateAgentInput = {
     worktree?: Omit<CreateSourceWorktreeInput, 'repoPath' | 'remoteConnectionId'>;
   };
   avatar?: string;
-  backend?: AgentBackend;
   backendDefaults?: BackendDefaults;
   /** A model chosen at creation, layered over the provider defaults (unlike `backendDefaults`, which replaces them). */
-  modelSelection?: Pick<AgentModelSelection, 'model'> & Partial<AgentModelSelection>;
+  selection?: ExecutionSelectionOverrides;
   delegatedByAgentId?: string;
   sourceRepositoryName?: string;
   teamId?: string;
 };
 
 export type CreateQuickChatInput = {
-  backend?: AgentBackend;
   teamId?: string;
+  selection?: ExecutionSelectionOverrides;
 };
 
 /** Explicit command outcome; requested with entityResult, without changing legacy snapshot responses. */
@@ -816,8 +811,7 @@ export type ReorderTeamsInput = {
 
 export type UpdateAgentInput = {
   id: string;
-  backend?: AgentBackend;
-  modelSelection?: AgentModelSelection;
+  selection?: ExecutionSelectionOverrides;
   name?: string | null;
   gitDiffTarget?: AgentGitDiffTarget | null;
 };
@@ -825,7 +819,7 @@ export type UpdateAgentInput = {
 export type DuplicateAgentOptions = {
   select?: boolean;
   name?: string;
-  backend?: AgentBackend;
+  selection?: ExecutionSelectionOverrides;
 };
 
 export type MoveAgentToTeamInput = {

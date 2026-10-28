@@ -1,3 +1,4 @@
+import type { ExecutionSelection } from './contracts/execution';
 export type MissionWorkflowType = 'shapeAndShipFeature';
 export type MissionStage = 'requirements' | 'tickets' | 'implementation' | 'review' | 'ship';
 export type MissionReviewDebugState = 'identified' | 'remediated';
@@ -34,13 +35,7 @@ export type MissionArtifactFile = {
   size: number;
   updatedAt: string;
 };
-export type MissionImplementationModel = {
-  backend: import('./contracts').AgentBackend;
-  model: string;
-  reasoningEffort?: string;
-  /** The model's service tier by id; absent means the standard tier. */
-  serviceTier?: string;
-};
+
 export type MissionTicketAssignment = {
   ticketId: string;
   ticketNumber: number;
@@ -80,7 +75,7 @@ export type MissionDelivery = {
 export type MissionExecution = {
   teamId: string;
   debugFixture?: true;
-  implementationModel?: MissionImplementationModel;
+  implementationModel?: ExecutionSelection;
   repoPath?: string;
   memberIds: string[];
   workspace?: { path: string; branch: string; baseSha?: string; deleted?: true };
@@ -122,7 +117,7 @@ export type MissionExecutionInput = { id: string; revision: number } & (
   | { action: 'configure'; teamId: string; memberIds: string[] }
   | { action: 'attachRepository'; repoPath: string }
   | { action: 'run'; memberId?: string; ticketIndex?: number; feedback?: string }
-  | { action: 'accept'; runId: string; implementationModel?: MissionImplementationModel }
+  | { action: 'accept'; runId: string; implementationModel?: ExecutionSelection }
   | { action: 'continueToReview' }
   | { action: 'cancel'; runId: string }
   | { action: 'selectReviewFinding'; findingId: string; selected: boolean }

@@ -24,8 +24,9 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { executionSelectionControls } from '../execution-selection';
 import { useI18n } from 'vue-i18n';
-import type { AgentBackend, BackendModelOption } from '@workspace/core/contracts';
+import type { AgentBackend, BackendModelOption, ExecutionSelection } from '@workspace/core/contracts';
 import { backendDisplayName } from '@workspace/core/backend-driver';
 import { agentBackends } from '@workspace/core/contracts/shared';
 import AppMenu from '../shared/menu/AppMenu.vue';
@@ -37,14 +38,14 @@ import { cacheModels, cachedModels, defaultReasoningEffort, presentCatalog, useB
 
 const props = defineProps<{
   agentId?: string; teamId?: string | null; disabled?: boolean; allowedBackends?: AgentBackend[];
-  selections?: Partial<Record<AgentBackend, { model?: string; reasoningEffort?: string; serviceTier?: string | null }>>;
+  selections?: Partial<Record<AgentBackend, ExecutionSelection>>;
 }>();
 const emit = defineEmits<{ loading: [loading: boolean]; error: [error: unknown] }>();
-const backend = defineModel<AgentBackend>('backend');
-const model = defineModel<string>('model', { default: '' });
-const reasoningEffort = defineModel<string>('reasoningEffort', { default: '' });
-/** The model's service tier by id; empty means the standard tier. */
-const serviceTier = defineModel<string>('serviceTier', { default: '' });
+const selectionBinding = defineModel<ExecutionSelection>('selection');
+const selection = ref(selectionBinding.value);
+watch(selectionBinding, value => { selection.value = value; }, { flush: 'sync' });
+watch(selection, value => { selectionBinding.value = value; }, { flush: 'sync' });
+const { backend, model, reasoningEffort, serviceTier } = executionSelectionControls(selection);
 const hostChoices = useBackendChoices(() => props.teamId);
 const choices = computed(() => hostChoices.value.filter(choice => !props.allowedBackends || props.allowedBackends.includes(choice)));
 // Remembering a choice reorders `choices`; the tabs keep a fixed order so they never jump under the pointer.
@@ -126,7 +127,7 @@ watch([backend, catalogAgentId, () => props.teamId], async ([nextBackend, agentI
 watch(model, () => {
   if (!efforts.value.some(option => option.reasoningEffort === reasoningEffort.value)) reasoningEffort.value = defaultReasoningEffort(selectedModel.value);
   if (serviceTier.value && !selectedModel.value?.serviceTiers?.some(tier => tier.id === serviceTier.value)) serviceTier.value = '';
-});
+}, { flush: 'sync' });
 // There is no blank "default" entry: the user's saved model and effort for this provider (else the
 // provider's own default) are selected explicitly.
 function selectDefaultModel() {

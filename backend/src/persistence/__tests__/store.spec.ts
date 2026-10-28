@@ -98,7 +98,7 @@ describe('AppStateStore', () => {
     expect(restarted.repositoryVisualizations).toStrictEqual(expected.repositoryVisualizations);
   });
 
-  it.each([1, 2])('loads supported agents and preserves unknown providers across schema-%i saves and restarts', async (schemaVersion) => {
+  it.each([1, 2, 3])('loads supported agents and preserves unknown providers across schema-%i saves and restarts', async (schemaVersion) => {
     const snapshot = createInitialSnapshot();
     await new AppStateStore(home).save(snapshot);
     const roster = await readJson('roster.json');
@@ -128,7 +128,7 @@ describe('AppStateStore', () => {
     expect(restored.subagentTrees[unknown.id]).toBeUndefined();
     expect(restored.workBacklog.assignments.future).toBeUndefined();
     expect(logs.join('\n')).toContain(unknown.id);
-    if (schemaVersion === 2) expect(await readFile(file('roster.json'), 'utf8')).toBe(original);
+    if (schemaVersion === 3) expect(await readFile(file('roster.json'), 'utf8')).toBe(original);
     restored.agents[0]!.name = 'Changed while future provider is unavailable';
     await store.save(restored);
 
@@ -190,13 +190,14 @@ describe('AppStateStore', () => {
     expect(await readFile(file('roster.json'), 'utf8')).toBe(original);
   });
 
-  it('protects calendar automations from schema-1 readers and retains them across restart', async () => {
+  it('protects execution selections from older readers and retains calendar automations across restart', async () => {
     const snapshot = snapshotWithCalendar();
     await new AppStateStore(home).save(snapshot);
     const roster = await readFile(file('roster.json'), 'utf8');
 
     // Released schema-1 builds must fail before their old entity sanitizer drops the schedule.
     expect(() => parseStoreFile('roster.json', roster, 1)).toThrowError(/supports up to schema 1/);
+    expect(() => parseStoreFile('roster.json', roster, 2)).toThrowError(/supports up to schema 2/);
     const restarted = new AppStateStore(home);
     const restored = await restarted.load();
     expect(restored.automations).toStrictEqual(snapshot.automations);
@@ -210,6 +211,9 @@ describe('AppStateStore', () => {
     await new AppStateStore(home).save(snapshot);
     const roster = await readJson('roster.json');
     roster.schemaVersion = 1;
+    const calendar = (roster.data.automations as Array<Record<string, unknown>>)[0]!;
+    calendar.target = { kind: 'newQuickChat', teamId: snapshot.teams[0]!.id, backend: 'codex', model: 'chosen', reasoningEffort: 'high' };
+    snapshot.automations[0]!.target = { kind: 'newQuickChat', teamId: snapshot.teams[0]!.id, selection: { backend: 'codex', model: 'chosen', reasoningEffort: 'high' } };
     (roster.data.automations as unknown[]).push({ id: 'old-loop', name: 'Old loop', enabled: true,
       teamId: snapshot.teams[0]!.id, backend: 'codex', repositories: [{ provider: 'github', id: 'org/repo' }],
       schedule: { intervalMinutes: 60 }, createdAt: '', updatedAt: '', executionLog: [] });
@@ -254,7 +258,7 @@ describe('AppStateStore', () => {
     await store.save(snapshotWithVisualizations());
 
     expect((await readdir(home)).sort()).toStrictEqual(['roster.json', 'settings.json', 'visualizations']);
-    expect((await readJson('roster.json')).schemaVersion).toBe(2);
+    expect((await readJson('roster.json')).schemaVersion).toBe(3);
     expect((await readJson('settings.json')).schemaVersion).toBe(1);
     const [directory] = await readdir(file('visualizations'));
     expect(directory).toMatch(/^app-[0-9a-f]{8}$/);
@@ -264,7 +268,7 @@ describe('AppStateStore', () => {
   it('restores the saved snapshot in a fresh process', async () => {
     const snapshot = snapshotWithVisualizations();
     snapshot.general.providerApprovalDefaults = { codex: 'ask-for-approval', claude: 'acceptEdits' };
-    snapshot.general.codeReviewDefaults = { backend: 'codex', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3, autoCommit: true }, providers: { codex: { model: 'review-model', reasoningEffort: 'high', serviceTier: 'fast' }, claude: { model: 'sonnet', serviceTier: null } } };
+    snapshot.general.codeReviewDefaults = { backend: 'codex', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3, autoCommit: true }, providers: { codex: {backend: 'codex',  model: 'review-model', reasoningEffort: 'high', serviceTier: 'fast' }, claude: {backend: 'claude', reasoningEffort: null,  model: 'sonnet', serviceTier: null } } };
     await new AppStateStore(home).save(snapshot);
 
     const restored = await new AppStateStore(home).load();
@@ -274,7 +278,7 @@ describe('AppStateStore', () => {
     expected.teams[0]!.activeAgentId = expected.activeAgentId ?? undefined;
     expect(restored).toStrictEqual(expected);
     expect(restored.general.providerApprovalDefaults).toStrictEqual({ codex: 'ask-for-approval', claude: 'acceptEdits' });
-    expect(restored.general.codeReviewDefaults).toStrictEqual({ backend: 'codex', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3, autoCommit: true }, providers: { codex: { model: 'review-model', reasoningEffort: 'high', serviceTier: 'fast' }, claude: { model: 'sonnet', serviceTier: null } } });
+    expect(restored.general.codeReviewDefaults).toStrictEqual({ backend: 'codex', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3, autoCommit: true }, providers: { codex: {backend: 'codex',  model: 'review-model', reasoningEffort: 'high', serviceTier: 'fast' }, claude: {backend: 'claude', reasoningEffort: null,  model: 'sonnet', serviceTier: null } } });
     expect((await readJson('settings.json')).schemaVersion).toBe(1);
     expect(restored.repositoryVisualizations?.['/projects/app']?.map((item) => item.id)).toStrictEqual(['visualization-a', 'visualization-b']);
   });
@@ -324,7 +328,7 @@ describe('AppStateStore', () => {
 
   it('refuses a roster written by a newer build and leaves it untouched', async () => {
     await new AppStateStore(home).save(createInitialSnapshot());
-    const newer = JSON.stringify({ schemaVersion: 3, writtenBy: 'daemon 9.9.9', data: {} });
+    const newer = JSON.stringify({ schemaVersion: 4, writtenBy: 'daemon 9.9.9', data: {} });
     await writeFile(file('roster.json'), newer);
 
     await expect(new AppStateStore(home).load()).rejects.toThrowError(/daemon 9\.9\.9/);

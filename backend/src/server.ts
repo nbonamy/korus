@@ -1,3 +1,6 @@
+import { applyExecutionSelection, defaultExecutionSelection, executionSelectionForAgent, resolveExecutionSelection } from '@workspace/core/execution-selection';
+import type { ExecutionSelection, ExecutionSelectionOverrides } from '@workspace/core/contracts/execution';
+import { executionSelectionSchema, executionSelectionOverridesSchema } from './execution-selection-schema';
 import { normalizePromptContent } from '@codex-app-sdk/core/surface';
 import type { GuestJoins } from './sharing/guest-joins';
 import { ConversationShares, type ConversationSharingOptions } from './sharing/conversation-shares';
@@ -340,15 +343,8 @@ export class AppBackendServer {
     this.agentCreation = options.agentCreation ?? new AgentCreationService(this.snapshot);
     this.projectCreation = new ProjectCreationService({
       createRepository: name => this.createLocalSourceRepository(name),
-      createAgent: async ({ repository, teamId, backend, backendDefaults }) => {
-        const input: CreateAgentInput = {
-          name: null,
-          folder: repository.path,
-          backend,
-          sourceRepositoryName: repository.name,
-          teamId,
-          ...(backendDefaults ? { backendDefaults } : {}),
-        };
+      createAgent: async ({ repository, teamId, selection, backendDefaults }) => {
+        const input: CreateAgentInput = { name: null, folder: repository.path, sourceRepositoryName: repository.name, teamId, ...(backendDefaults ? { backendDefaults } : {}), selection };
         await this.validateAgentInput(input, null);
         const agent = this.agentCreation.create(input, { select: false });
         await this.agentWorkspaces.refreshIdentity(agent.id);
@@ -544,7 +540,7 @@ export class AppBackendServer {
         progress: payload => this.applyAndEmitBackendEvent({ agentId: payload.agentId, type: 'git.branchWorkProgress', payload }),
         provision: async (parent, input, folder, agentId) => {
           const worker = this.snapshot.agents.find(candidate => candidate.id === agentId)
-            ?? this.agentCreation.create({ name: input.branchName, folder, backend: parent.backend, teamId: parent.teamId, delegatedByAgentId: parent.id }, { id: agentId, select: false });
+            ?? this.agentCreation.create({ name: input.branchName, folder, teamId: parent.teamId, delegatedByAgentId: parent.id, selection: { backend: parent.backend } }, { id: agentId, select: false });
           if (worker.folder !== folder) throw new Error('Reserved agent is bound to a different folder.');
           await this.agentWorkspaces.refreshIdentity(worker.id);
           await this.agentWorkspaces.refreshGitStatus(worker.id);
@@ -667,13 +663,15 @@ export class AppBackendServer {
   /** The lead's provider and model for `create-mission`, checked against the provider's own catalog. */
   private async resolveMissionLeadSettings(
     caller: Agent,
-    input: { backend?: Agent['backend']; model?: string; reasoningEffort?: string; serviceTier?: string },
-  ): Promise<{ backend: Agent['backend']; backendDefaults: NonNullable<Agent['backendDefaults']> } | undefined> {
-    const { model, reasoningEffort, serviceTier } = input;
-    if (!input.backend && !model && !reasoningEffort && !serviceTier) return undefined;
+    input: { selection?: ExecutionSelectionOverrides },
+  ): Promise<ExecutionSelection | undefined> {
+    if (!input.selection) return undefined;
+    const { model, reasoningEffort, serviceTier } = input.selection;
     if ((reasoningEffort || serviceTier) && !model) throw new Error('A reasoning effort or service tier needs a model.');
-    const backend = resolveAgentBackend(this.snapshot, input.backend ?? caller.backend);
-    if (!model) return { backend, backendDefaults: { kind: backend } as NonNullable<Agent['backendDefaults']> };
+    const backend = resolveAgentBackend(this.snapshot, input.selection?.backend ?? caller.backend);
+    const base = backend === caller.backend ? executionSelectionForAgent(caller) : this.snapshot.general.providerModelDefaults?.[backend] ?? defaultExecutionSelection(backend);
+    const selection = resolveExecutionSelection(base, input.selection);
+    if (!model) return selection;
     const catalog = await this.handleAgentDriverRequest({ ...caller, backend, backendSession: undefined, backendDefaults: undefined }, backendMethods.driverModelsList, { agent: { ...caller, backend, backendSession: undefined, backendDefaults: undefined } }) as BackendModelOption[];
     const visible = catalog.filter(option => !option.hidden);
     const selected = visible.find(option => option.model === model);
@@ -686,11 +684,11 @@ export class AppBackendServer {
       const supported = selected.serviceTiers?.map(tier => tier.id).join(', ') || 'none';
       throw new Error(`${model} does not offer service tier ${serviceTier}. Supported: ${supported}.`);
     }
-    return { backend, backendDefaults: { kind: backend, model, userSelectedModel: true, ...(reasoningEffort ? { reasoningEffort } : {}), ...(serviceTier ? { serviceTier } : {}) } as NonNullable<Agent['backendDefaults']> };
+    return selection;
   }
 
   /** `create-mission` from an agent: start the Mission, hand its lead the brief and ask the renderer to open it. */
-  async startMissionFromAgent(agentId: string, input: { outcome: string; prompt: string; backend?: Agent['backend']; model?: string; reasoningEffort?: string; serviceTier?: string }): Promise<{ missionId: string; outcome: string }> {
+  async startMissionFromAgent(agentId: string, input: { outcome: string; prompt: string; selection?: ExecutionSelectionOverrides }): Promise<{ missionId: string; outcome: string }> {
     const caller = this.snapshot.agents.find(agent => agent.id === agentId);
     const team = this.snapshot.teams.find(candidate => candidate.id === caller?.teamId && !candidate.remoteConnectionId);
     if (!caller || !team) throw new Error('create-mission needs an agent on a local team.');
@@ -707,7 +705,7 @@ export class AppBackendServer {
     const leadAgent = leadSettings ? this.snapshot.agents.find(agent => agent.id === lead) : undefined;
     if (leadAgent && leadSettings) {
       leadAgent.backend = leadSettings.backend;
-      leadAgent.backendDefaults = leadSettings.backendDefaults;
+      applyExecutionSelection(leadAgent, leadSettings);
     }
     this.agentPrompts.send(lead, input.prompt);
     this.emitSnapshotUpdated(await this.remoteTeams.clientSnapshot());
@@ -720,19 +718,13 @@ export class AppBackendServer {
     return { missionId: mission.id, outcome: mission.outcome };
   }
 
-  async createProjectFromQuickChat(agentId: string, name: string, prompt: string, backend?: Agent['backend']): Promise<CreatedProject> {
+  async createProjectFromQuickChat(agentId: string, name: string, prompt: string, selection?: ExecutionSelectionOverrides): Promise<CreatedProject> {
     const caller = this.snapshot.agents.find(agent => agent.id === agentId);
     if (caller?.sessionKind !== 'quickChat' || !caller.teamId) {
       throw new Error('create-project is available only in a Quick Chat with a team.');
     }
     if (!prompt.trim()) throw new Error('A self-contained project handoff prompt is required.');
-    return this.projectCreation.create({
-      name,
-      teamId: caller.teamId,
-      backend: resolveAgentBackend(this.snapshot, backend ?? caller.backend),
-      backendDefaults: !backend || backend === caller.backend ? caller.backendDefaults : undefined,
-      prompt,
-    }, payload => this.applyAndEmitBackendEvent({ agentId: caller.id, type: 'agentCreation.progress', payload }));
+    return this.projectCreation.create({ name, teamId: caller.teamId, backendDefaults: !selection?.backend || selection.backend === caller.backend ? caller.backendDefaults : undefined, prompt, selection: { ...selection, backend: resolveAgentBackend(this.snapshot, selection?.backend ?? caller.backend) } }, payload => this.applyAndEmitBackendEvent({ agentId: caller.id, type: 'agentCreation.progress', payload }));
   }
 
   async upsertMissionTicket(agentId: string, input: import('@workspace/core/mission-execution').MissionTicketDraftInput) {
@@ -999,10 +991,12 @@ export class AppBackendServer {
       const agent = (before ?? this.remoteTeams.clientSnapshotFromKnownRemotes()).agents.find(candidate => candidate.id === (params?.agentId ?? input.id));
       const teamId = typeof input.teamId === 'string' ? input.teamId : agent?.teamId;
       const remote = params?.remoteConnectionId || input.remoteConnectionId || this.snapshot.teams.find(team => team.id === teamId)?.remoteConnectionId;
-      if (!remote && (message.method !== backendMethods.agentUpdate || input.backend !== undefined)) {
+      const requestedSelection = isRecord(input.selection) ? input.selection : {};
+      if (!remote && (message.method !== backendMethods.agentUpdate || requestedSelection.backend !== undefined)) {
         try {
-          const duplicateBackend = message.method === backendMethods.agentDuplicate && isRecord(effectiveParams.options) ? effectiveParams.options.backend : undefined;
-          const requested = isAgentBackend(duplicateBackend) ? duplicateBackend : isAgentBackend(input.backend) ? input.backend : agent?.backend;
+          const duplicateOptions = message.method === backendMethods.agentDuplicate && isRecord(effectiveParams.options) ? effectiveParams.options : {};
+          const duplicateBackend = isRecord(duplicateOptions.selection) ? duplicateOptions.selection.backend : undefined;
+          const requested = isAgentBackend(duplicateBackend) ? duplicateBackend : isAgentBackend(requestedSelection.backend) ? requestedSelection.backend : agent?.backend;
           if (this.providerConnections) await this.requireConnectedEngine(requested);
         } catch (error) {
           return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, error instanceof Error ? error.message : String(error));
@@ -1457,7 +1451,7 @@ export class AppBackendServer {
         }
         const team = this.snapshot.teams.find(candidate => candidate.id === input.teamId);
         if (!team) throw new Error(`Team not found: ${input.teamId}`);
-        const created = await this.projectCreation.create({ ...input, teamId: team.id, backend: resolveAgentBackend(this.snapshot, input.backend) });
+        const created = await this.projectCreation.create({ ...input, teamId: team.id, selection: { ...input.selection, backend: resolveAgentBackend(this.snapshot, input.selection?.backend) } });
         onCreated(created.agent.id);
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
@@ -1592,11 +1586,10 @@ export class AppBackendServer {
         const agentId = requireString(params.agentId, 'agentId');
         const value = requireRecord(params.input);
         const operationId = requireString(value.operationId, 'operationId');
-        if (!operationId.trim() || operationId.length > 128 || !isAgentBackend(value.backend)) throw new Error('Invalid handoff request.');
+        if (!operationId.trim() || operationId.length > 128) throw new Error('Invalid handoff request.');
         if (value.instructions !== undefined && (typeof value.instructions !== 'string' || value.instructions.length > 4000)) throw new Error('Handoff instructions must be at most 4,000 characters.');
         const input: AgentHandoffInput = {
-          operationId, backend: value.backend as Agent['backend'],
-          ...(value.model === undefined ? {} : { model: requireString(value.model, 'model') }),
+          operationId, selection: executionSelectionSchema.parse(value.selection),
           ...(value.instructions === undefined ? {} : { instructions: value.instructions as string }),
         };
         const replacement = this.snapshot.agents.find(agent => agent.handoff?.sourceAgentId === agentId && agent.handoff.operationId === operationId);
@@ -3968,11 +3961,17 @@ function globalWorkItemQuery(value: unknown): import('@workspace/core/contracts'
   };
 }
 
+function requireExecutionSelection(input: Record<string, unknown>): ExecutionSelectionOverrides | undefined {
+  if ('backend' in input || 'modelSelection' in input) throw new Error('Invalid backend selection. Use selection instead of backend or modelSelection.');
+  return input.selection === undefined ? undefined : executionSelectionOverridesSchema.parse(input.selection);
+}
+
 function requireAgentCreateInput(params: unknown): CreateAgentInput {
   const record = requireRecord(params);
   const input = requireRecord(record.input);
   return {
     ...input,
+    ...(requireExecutionSelection(input) === undefined ? {} : { selection: requireExecutionSelection(input) }),
     name: input.name === null ? null : requireString(input.name, 'agent name'),
   } as CreateAgentInput;
 }
@@ -3982,7 +3981,7 @@ function requireProjectCreateInput(params: unknown): CreateProjectInput & { team
   return {
     name: requireString(input.name, 'project name'),
     teamId: requireString(input.teamId, 'team id'),
-    ...(input.backend === undefined ? {} : { backend: requireAgentBackend(input.backend) }),
+    ...(requireExecutionSelection(input) === undefined ? {} : { selection: requireExecutionSelection(input) }),
   };
 }
 
@@ -3991,7 +3990,7 @@ function requireQuickChatCreateInput(params: unknown): CreateQuickChatInput {
   const input = requireRecord(record.input);
   return {
     ...(input.teamId === undefined ? {} : { teamId: requireString(input.teamId, 'team id') }),
-    ...(input.backend === undefined ? {} : { backend: requireAgentBackend(input.backend) }),
+    ...(requireExecutionSelection(input) === undefined ? {} : { selection: requireExecutionSelection(input) }),
   };
 }
 
@@ -4006,15 +4005,8 @@ function requireAgentUpdateInput(params: unknown): UpdateAgentInput {
   const result: UpdateAgentInput = {
     id: requireString(input.id, 'agent id'),
   };
-  if (input.backend !== undefined) result.backend = requireAgentBackend(input.backend);
-  if ('modelSelection' in input) {
-    const selection = requireRecord(input.modelSelection);
-    result.modelSelection = {
-      model: requireString(selection.model, 'composer model'),
-      reasoningEffort: selection.reasoningEffort === null ? null : requireString(selection.reasoningEffort, 'composer reasoning effort'),
-      serviceTier: selection.serviceTier === null ? null : requireString(selection.serviceTier, 'composer service tier'),
-    };
-  }
+  const selection = requireExecutionSelection(input);
+  if (selection !== undefined) result.selection = selection;
   if ('name' in input) {
     result.name = input.name === null ? null : requireString(input.name, 'agent name');
   }
@@ -4023,7 +4015,7 @@ function requireAgentUpdateInput(params: unknown): UpdateAgentInput {
       ? null
       : requireAgentGitDiffTarget(input.gitDiffTarget);
   }
-  if (result.name === undefined && result.gitDiffTarget === undefined && result.backend === undefined && result.modelSelection === undefined) {
+  if (result.name === undefined && result.gitDiffTarget === undefined && result.selection?.backend === undefined && result.selection === undefined) {
     throw new Error('Agent update must include a name, backend, model selection, or Git diff target.');
   }
   return result;
@@ -4163,9 +4155,7 @@ function requireDuplicateAgentRequest(params: unknown): { agentId: string; optio
   }
 
   const options = requireRecord(record.options);
-  if (options.backend !== undefined && !isAgentBackend(options.backend)) {
-    throw new Error('Invalid backend.');
-  }
+  const selection = requireExecutionSelection(options);
   if (options.select !== undefined && typeof options.select !== 'boolean') {
     throw new Error('select must be a boolean.');
   }
@@ -4176,7 +4166,7 @@ function requireDuplicateAgentRequest(params: unknown): { agentId: string; optio
     agentId,
     options: {
       ...(options.select === undefined ? {} : { select: options.select }),
-      ...(isAgentBackend(options.backend) ? { backend: options.backend } : {}),
+      ...(selection === undefined ? {} : { selection }),
       ...(options.name === undefined ? {} : { name: options.name.trim() }),
     },
   };

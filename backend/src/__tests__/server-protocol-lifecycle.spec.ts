@@ -113,8 +113,9 @@ describe('AppBackendServer', () => {
 
     const invalidRequests: Array<[string, unknown, string]> = [
       [backendMethods.agentCreate, { input: { name: '', folder: '' } }, 'name'],
+      [backendMethods.agentCreate, { input: { name: 'Agent', folder: '/tmp', backend: 'claude' } }, 'Use selection'],
       [backendMethods.agentUpdate, { input: { id: 'agent-1', name: 42 } }, 'agent name'],
-      [backendMethods.agentUpdate, { input: { id: 'agent-1', modelSelection: { model: 'sol', reasoningEffort: 42, serviceTier: null } } }, 'reasoning effort'],
+      [backendMethods.agentUpdate, { input: { id: 'agent-1', selection: { backend: 'codex', model: 'sol', reasoningEffort: 42, serviceTier: null } } }, 'reasoningEffort'],
       [backendMethods.agentFork, { agentId: 'agent-1', turnId: 42 }, 'turnId'],
       [backendMethods.clientAgentExternalApplicationUpdate, { agentId: 'agent-1', application: 'emacs' }, 'application'],
       [backendMethods.teamCreate, { input: { name: '', color: '#123456' } }, 'name'],

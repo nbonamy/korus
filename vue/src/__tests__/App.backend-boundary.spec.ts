@@ -153,11 +153,7 @@ describe('Unified backend → mounted application', () => {
     api.startCodeReview.mockResolvedValue(cleared);
     await wrapper.get('.code-review-panel__start').trigger('click');
     await flushPromises();
-    expect(api.startCodeReview).toHaveBeenCalledExactlyOnceWith(agent.id, {
-      automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false },
-      backend: 'codex', scope: { type: 'uncommitted' }, threadMode: 'independent', serviceTier: null,
-      ...(instructions ? { instructions } : {}),
-    });
+    expect(api.startCodeReview).toHaveBeenCalledExactlyOnceWith(agent.id, { automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false }, scope: { type: 'uncommitted' }, threadMode: 'independent', ...(instructions ? { instructions } : {}), selection: { backend: 'codex', serviceTier: null, model: null, reasoningEffort: null } });
   });
 
   it('handles app-owned thread flag execution, dismissal, and review routing through the client seam', async () => {
@@ -410,13 +406,7 @@ describe('Unified backend → mounted application', () => {
     await targetWorkspace.findAll('button').find((button) => button.text().includes('Start review'))!.trigger('click');
     await flushPromises();
 
-    expect(api.startCodeReview).toHaveBeenCalledExactlyOnceWith(agent.id, {
-      automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false },
-      backend: 'codex',
-      serviceTier: null,
-      scope: { type: 'uncommitted' },
-      threadMode: 'independent',
-    });
+    expect(api.startCodeReview).toHaveBeenCalledExactlyOnceWith(agent.id, { automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false }, scope: { type: 'uncommitted' }, threadMode: 'independent', selection: { backend: 'codex', serviceTier: null, model: null, reasoningEffort: null } });
     const reviewerPanel = wrapper.findAllComponents({ name: 'CodeReviewPanel' })
       .find((panel) => (panel.props('agent') as { id: string }).id === reviewer.id);
     expect(reviewerPanel?.props('agent')).toMatchObject({

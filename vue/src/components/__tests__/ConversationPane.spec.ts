@@ -224,11 +224,7 @@ describe('ConversationPane', () => {
   });
 
   it('keeps an interrupted handoff and its saved note visible after restoring the agent', () => {
-    const wrapper = mountPane({ controller: controllerFor([]), agent: { ...agent, handoff: {
-      operationId: 'once', backend: 'codex', sourceAgentId: 'old', sourceTitle: 'Original',
-      sourceRef: { backend: 'claude', sessionId: 'old-session', folder: '/repo' },
-      phase: 'failed', error: 'Check the target conversation before resending.', note: 'The next action is to review the diff.',
-    } } });
+    const wrapper = mountPane({ controller: controllerFor([]), agent: { ...agent, handoff: { operationId: 'once', sourceAgentId: 'old', sourceTitle: 'Original', sourceRef: { backend: 'claude', sessionId: 'old-session', folder: '/repo' }, phase: 'failed', error: 'Check the target conversation before resending.', note: 'The next action is to review the diff.', selection: {model: null, reasoningEffort: null, serviceTier: null,  backend: 'codex' } } } });
     expect(wrapper.get('[role="status"]').text()).toContain('Check the target conversation before resending.');
     expect(wrapper.get('details pre').text()).toBe('The next action is to review the diff.');
   });

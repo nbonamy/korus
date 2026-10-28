@@ -92,10 +92,7 @@
             <legend class="app-section-label">{{ t('automaticReview.model') }}</legend>
             <BackendModelSelector
               :key="`${agent.id}:${modelReload}`"
-              v-model:backend="reviewBackend"
-              v-model:model="reviewModel"
-              v-model:reasoning-effort="reviewEffort"
-              v-model:service-tier="reviewTier"
+              v-model:selection="reviewSelection"
               :agent-id="agent.id"
               :team-id="agent.teamId"
               :selections="selections"
@@ -317,6 +314,7 @@
 </template>
 
 <script setup lang="ts">
+import { useExecutionSelection } from '../execution-selection';
 import { computed, inject, provide, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
@@ -383,15 +381,14 @@ const reviewSettings = useCodeReviewSettings();
 provide(backendModelCatalogKey, { listModels: reviewSettings.listModels });
 const remembered = reviewSettings.preferences();
 const connectedBackends = useBackendChoices(() => props.agent.teamId);
-const reviewBackend = ref<Agent['backend'] | undefined>(preferredReviewBackend(props.agent.backend, connectedBackends.value, remembered?.backend));
+const { selection: reviewSelection, backend: reviewBackend, model: reviewModel, reasoningEffort: reviewEffort, serviceTier: reviewTier } = useExecutionSelection();
+const initialBackend = preferredReviewBackend(props.agent.backend, connectedBackends.value, remembered?.backend);
+if (initialBackend) reviewBackend.value = initialBackend;
 const automatic = ref(remembered?.automation.enabled ?? false);
 const automaticSettingsOpen = ref(false);
 const maxPriority = ref<CodeReviewPriority>(remembered?.automation.maxPriority ?? 'p2');
 const maxRounds = ref(remembered?.automation.maxRounds ?? 3);
 const autoCommit = ref(remembered?.automation.autoCommit ?? false);
-const reviewModel = ref('');
-const reviewEffort = ref('');
-const reviewTier = ref('');
 const modelsLoading = ref(false);
 const modelsError = ref(false);
 const modelReload = ref(0);
@@ -400,7 +397,7 @@ const selections = { ...remembered?.providers };
 watch(automatic, enabled => { if (enabled) threadMode.value = 'independent'; });
 watch([effectiveBackend, () => props.agent.id, () => Boolean(props.agent.codeReview)], ([backend], previous) => {
   const sameSetup = previous?.[1] === props.agent.id && !previous?.[2] && !props.agent.codeReview;
-  if (previous?.[0] && sameSetup && !modelsLoading.value) selections[previous[0]] = { model: reviewModel.value, reasoningEffort: reviewEffort.value, serviceTier: reviewTier.value || null };
+  if (previous?.[0] && sameSetup && !modelsLoading.value) selections[previous[0]] = reviewSelection.value!;
   else if (!sameSetup) Object.assign(selections, reviewSettings.preferences()?.providers);
   reviewModel.value = backend ? selections[backend]?.model ?? '' : '';
   reviewEffort.value = backend ? selections[backend]?.reasoningEffort ?? '' : '';
@@ -627,10 +624,7 @@ function startSelectedReview(): void {
   void run(() => props.startReview(props.agent.id, {
     scope: reviewScope, threadMode: threadMode.value,
     ...(instructions.value.trim() ? { instructions: instructions.value.trim() } : {}),
-    ...(threadMode.value === 'independent' ? { backend: reviewBackend.value } : {}),
-    ...(threadMode.value === 'independent' && reviewModel.value ? { model: reviewModel.value } : {}),
-    ...(threadMode.value === 'independent' && reviewEffort.value ? { reasoningEffort: reviewEffort.value } : {}),
-    ...(threadMode.value === 'independent' ? { serviceTier: reviewTier.value || null } : {}),
+    ...(threadMode.value === 'independent' ? { selection: { ...reviewSelection.value! } } : {}),
     automation: { enabled: automatic.value, maxPriority: maxPriority.value, maxRounds: maxRounds.value ?? 3, autoCommit: autoCommit.value },
   }));
 }

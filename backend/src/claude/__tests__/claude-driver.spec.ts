@@ -215,10 +215,7 @@ describe('ClaudeBackendDriver', () => {
     const events: unknown[] = [];
     driver.onEvent((event) => events.push(unwrapClaudeConversationEvent(event)));
 
-    const sendResult = driver.sendPrompt(agent, 'hello claude', {
-      model: 'claude-sonnet-4-5',
-      backendOptions: { kind: 'claude', permissionMode: 'acceptEdits' },
-    });
+    const sendResult = driver.sendPrompt(agent, 'hello claude', { backendOptions: { kind: 'claude', permissionMode: 'acceptEdits' }, selection: { model: 'claude-sonnet-4-5' } });
     expect(transport.startTurn).toHaveBeenCalledWith(expect.objectContaining({
       cwd: '/Users/nbonamy/src/agent-workspace',
       prompt: 'hello claude',
@@ -564,7 +561,7 @@ describe('ClaudeBackendDriver', () => {
     const events: unknown[] = [];
     driver.onEvent((event) => events.push(unwrapClaudeConversationEvent(event)));
 
-    const started = driver.sendPrompt(agent, 'hello', { reasoningEffort: 'high' });
+    const started = driver.sendPrompt(agent, 'hello', { selection: { reasoningEffort: 'high' } });
     expect(transport.startTurn).toHaveBeenCalledWith(expect.objectContaining({ effort: 'high' }), expect.any(Function), expect.any(Function), expect.any(Function), expect.any(Function));
     transport.emit({ type: 'system', subtype: 'init', session_id: 'claude-session-catalog' });
     await started;

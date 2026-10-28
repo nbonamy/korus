@@ -261,7 +261,7 @@ describe('RepositorySessionSourceDialog', () => {
 
     await wrapper.get('.app-button--primary').trigger('click');
     expect(wrapper.emitted('start-work-item')).toStrictEqual([[
-      { action: 'fix', destination: 'new', item: issue, backend: 'codex', isCurrent: expect.any(Function) },
+      { action: 'fix', destination: 'new', item: issue, isCurrent: expect.any(Function), selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } },
     ]]);
   });
 

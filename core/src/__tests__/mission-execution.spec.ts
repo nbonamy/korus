@@ -99,7 +99,7 @@ it('validates persisted execution records and dependency graphs before admitting
   const run: MissionRun = { id: 'run', stage: 'requirements', memberId: 'member', workerId: 'worker', status: 'running', skills: [{ name: 'grilling', path: '/skill' }], feedback: '', startedAt: 'now', finishedAt: 'later', summary: 'Ready', error: 'old error', proposal: structuredClone(mission.artifacts), ticketIndex: 0 };
   mission.execution = { teamId: 'team', memberIds: ['member'], workspaceName: 'billing-work', workspaces: [{ repositoryPath: '/repo', path: '/isolated', branch: 'mission/billing-work', baseSha: 'a'.repeat(40) }], runs: [run] };
   expect(isMission(mission)).toBe(true);
-  expect(isMission({ ...mission, execution: { ...mission.execution, implementationModel: { backend: 'codex', model: 'luna', reasoningEffort: 'low' } } })).toBe(true);
+  expect(isMission({ ...mission, execution: { ...mission.execution, implementationModel: { backend: 'codex', model: 'luna', reasoningEffort: 'low', serviceTier: null } } })).toBe(true);
   for (const implementationModel of [{ backend: 'unknown', model: 'luna' }, { backend: 'codex', model: '' }, { backend: 'codex', model: 'luna', reasoningEffort: 1 }]) {
     expect(isMission({ ...mission, execution: { ...mission.execution, implementationModel } })).toBe(false);
   }

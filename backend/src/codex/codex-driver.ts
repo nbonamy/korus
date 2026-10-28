@@ -143,30 +143,8 @@ export class CodexBackendDriver implements AgentBackendDriver {
   }
 
   preparePromptOptions(_agent: Agent, options?: SendPromptOptions): SendPromptOptions | undefined {
-    const selectedSkills = options?.skills ?? [];
-    const existingCodexOptions = options?.backendOptions?.kind === 'codex' ? options.backendOptions : undefined;
-    const reasoningEffort = options?.reasoningEffort ?? existingCodexOptions?.reasoningEffort ?? null;
-    const serviceTier = options?.serviceTier !== undefined
-      ? options.serviceTier
-      : existingCodexOptions?.serviceTier;
-    const skills = selectedSkills.length > 0 ? selectedSkills : existingCodexOptions?.skills ?? [];
-    const backendOptions = reasoningEffort || serviceTier !== undefined || skills.length > 0
-      ? {
-        kind: 'codex' as const,
-        ...(reasoningEffort ? { reasoningEffort } : {}),
-        ...(serviceTier !== undefined ? { serviceTier } : {}),
-        ...(skills.length > 0 ? { skills } : {}),
-      }
-      : undefined;
-
-    return cleanedPromptOptions({
-      ...(options?.content === undefined ? {} : { content: options.content }),
-      ...(options?.delegation ? { delegation: options.delegation } : {}),
-      ...(options?.attachments?.length ? { attachments: options.attachments } : {}),
-      model: options?.model ?? null,
-      ...(typeof options?.planMode === 'boolean' ? { planMode: options.planMode } : {}),
-      ...(backendOptions ? { backendOptions } : {}),
-    });
+    const skills = options?.skills?.length ? options.skills : options?.backendOptions?.kind === 'codex' ? options.backendOptions.skills : undefined;
+    return cleanedPromptOptions({ ...options, ...(skills?.length ? { skills } : {}) });
   }
 
   async sendPrompt(agent: Agent, prompt: string, options?: SendPromptOptions): Promise<BackendSendResult> {
@@ -348,7 +326,7 @@ export class CodexBackendDriver implements AgentBackendDriver {
 }
 
 function cleanedPromptOptions(options: SendPromptOptions): SendPromptOptions | undefined {
-  return options.content !== undefined || (options.attachments?.length ?? 0) > 0 || options.model || typeof options.planMode === 'boolean' || options.backendOptions || options.delegation
+  return options.content !== undefined || (options.attachments?.length ?? 0) > 0 || (options.skills?.length ?? 0) > 0 || options.selection || typeof options.planMode === 'boolean' || options.backendOptions || options.delegation
     ? options
     : undefined;
 }

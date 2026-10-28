@@ -1,3 +1,5 @@
+import { applyExecutionSelection } from '@workspace/core/execution-selection';
+import type { ExecutionSelection } from '@workspace/core/contracts/execution';
 import type { Agent, AppSnapshot, BackendModelOption, CreateSourceWorktreeInput, SourceWorktree } from '@workspace/core/contracts';
 import { createAgentInSnapshot } from '@workspace/core/agent-manager';
 import { resolveAgentBackend } from '@workspace/core/agent-backends';
@@ -7,7 +9,7 @@ import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import { isMissionArtifacts, missionTicketReady, type Mission, type MissionArtifacts, type MissionReviewFinding, type MissionStage } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
 import { missionLeadAgentId } from '@workspace/core/mission-attention';
-import { missionRunAssignment, missionRunTicketIndex, pendingMissionRun, type MissionImplementationModel, type MissionArtifactReadResult, type MissionArtifactWriteInput, type MissionExecutionInput, type MissionImplementationStartProgress, type MissionResultInput, type MissionReviewFindingInput, type MissionReviewFindingUpdateInput, type MissionRun, type MissionTicketDraftInput, type MissionTicketDraftResult, type MissionToolContext } from '@workspace/core/mission-execution';
+import { missionRunAssignment, missionRunTicketIndex, pendingMissionRun, type MissionArtifactReadResult, type MissionArtifactWriteInput, type MissionExecutionInput, type MissionImplementationStartProgress, type MissionResultInput, type MissionReviewFindingInput, type MissionReviewFindingUpdateInput, type MissionRun, type MissionTicketDraftInput, type MissionTicketDraftResult, type MissionToolContext } from '@workspace/core/mission-execution';
 import type { MissionService } from './mission-service';
 import { MissionAgentTools } from './mission-agent-tools';
 import { missionAgent, missionTeamRepositories, sameSkills, shouldCompactBeforeRun, stageKickoffPrompt } from './mission-execution-policy';
@@ -621,13 +623,7 @@ export class MissionExecutionService {
       const lead = leadRun ? this.agent(leadRun.workerId) : member;
       if (!lead) throw new Error('The main Mission agent is unavailable.');
       const workerId = createEntityId('agent');
-      createAgentInSnapshot(this.ports.snapshot, {
-        name: `${member.name || 'Agent'} · ${mission.outcome} · ${run.stage}`,
-        teamId: mission.execution!.teamId, folder: workingFolder,
-        backend: implementationModel?.backend ?? lead.backend,
-        ...(implementationModel && implementationModel.backend !== lead.backend ? {} : { backendDefaults: structuredClone(lead.backendDefaults) }),
-        avatar: member.avatar,
-      }, undefined, workerId, { select: false });
+      createAgentInSnapshot(this.ports.snapshot, { name: `${member.name || 'Agent'} · ${mission.outcome} · ${run.stage}`, teamId: mission.execution!.teamId, folder: workingFolder, ...(implementationModel && implementationModel.backend !== lead.backend ? {} : { backendDefaults: structuredClone(lead.backendDefaults) }), avatar: member.avatar, selection: { backend: implementationModel?.backend ?? lead.backend } }, undefined, workerId, { select: false });
       worker = this.agent(workerId)!;
       await this.ports.missions.change(id, current => {
         current.execution!.runs.find(run => run.id === runId)!.workerId = worker!.id;
@@ -635,12 +631,7 @@ export class MissionExecutionService {
     }
     if (implementationModel) {
       if (worker.backend !== implementationModel.backend) throw new Error('The implementation worker provider does not match the selected model.');
-      // The tier is part of the choice: the lead's own tier must not carry over to a model picked on its own.
-      const { serviceTier: _leadTier, ...inherited } = worker.backendDefaults as typeof worker.backendDefaults & { serviceTier?: string | null };
-      worker.backendDefaults = {
-        ...inherited, kind: worker.backend, model: implementationModel.model, userSelectedModel: true, reasoningEffort: implementationModel.reasoningEffort,
-        ...(implementationModel.serviceTier ? { serviceTier: implementationModel.serviceTier } : {}),
-      } as typeof worker.backendDefaults;
+      applyExecutionSelection(worker, implementationModel);
     }
     await this.ports.refreshWorkspace(worker.id);
     await this.ports.missions.change(id, current => {
@@ -671,7 +662,7 @@ export class MissionExecutionService {
     if (run.stage !== 'requirements') await this.ports.continueStage(worker.id, stageKickoffPrompt(mission, run));
   }
 
-  private async validateImplementationModel(mission: Mission, selection: MissionImplementationModel): Promise<MissionImplementationModel> {
+  private async validateImplementationModel(mission: Mission, selection: ExecutionSelection): Promise<ExecutionSelection> {
     const leadRun = mission.execution!.runs.slice().reverse().find(run => (run.stage === 'requirements' || run.stage === 'tickets') && run.workerId);
     const lead = this.agent(leadRun?.workerId ?? mission.execution!.memberIds[0]);
     if (!lead || !selection) throw new Error('Choose an implementation model.');
@@ -685,10 +676,10 @@ export class MissionExecutionService {
     if (effort !== undefined && !model.supportedReasoningEfforts?.some(option => option.reasoningEffort === effort)) {
       throw new Error('Choose a supported reasoning effort for the implementation model.');
     }
-    if (selection.serviceTier !== undefined && !model.serviceTiers?.some(tier => tier.id === selection.serviceTier)) {
+    if (selection.serviceTier !== null && !model.serviceTiers?.some(tier => tier.id === selection.serviceTier)) {
       throw new Error('Choose a supported service tier for the implementation model.');
     }
-    return { backend, model: model.model, ...(effort ? { reasoningEffort: effort } : {}), ...(selection.serviceTier ? { serviceTier: selection.serviceTier } : {}) };
+    return { ...selection, backend, model: model.model, reasoningEffort: effort ?? null };
   }
 
   private requireMission(id: string): Mission {

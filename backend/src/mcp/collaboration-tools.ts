@@ -1,3 +1,4 @@
+import { executionSelectionOverridesSchema } from '../execution-selection-schema';
 import { product } from '@workspace/core/product';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import * as z from 'zod/v4';
@@ -162,14 +163,11 @@ function registerCollaborationTools(
 
   server.registerTool('create-agent', {
     description: `Create a ${product.name} co-agent in your team, optionally in an isolated worktree. Read korus-delegation before delegating. With a prompt, returns after startup acceptance, not task completion.`,
-    inputSchema: {
+    inputSchema: z.strictObject({
       requestId: z.string().trim().min(1).max(200).optional().describe('Required in task mode. Reuse the same stable ID when retrying this creation call.'),
       task: taskContractSchema.optional().describe('Saved assignment contract. Requires prompt and requestId; returns taskId for wait-tasks.'),
       name: z.string().optional().describe('Optional custom name. When omitted, the agent displays its branch or folder name.'),
-      backend: z.enum(['codex', 'claude', 'antigravity']).optional().describe('Coding backend. Defaults to the caller’s backend.'),
-      model: z.string().optional().describe('Optional model override. Inherits the caller model when the backend matches.'),
-      reasoningEffort: z.string().optional().describe('Optional reasoning effort override. Inherits the caller effort when the backend matches.'),
-      serviceTier: z.string().optional().describe('Optional service tier override, for example a fast mode. Inherits the caller tier when the backend matches. Ignored for antigravity.'),
+      selection: executionSelectionOverridesSchema.optional().describe('Execution overrides. Same-provider work inherits the caller; a different provider uses its own defaults. Null selects the provider default, including Standard tier.'),
       repoPath: z.string().describe('Repository or worktree folder path.'),
       createWorktree: z.boolean().optional().describe('If true, create a new worktree from repoPath before creating the agent.'),
       branchName: z.string().optional().describe('Branch name for the new worktree. Required when createWorktree is true.'),
@@ -178,17 +176,14 @@ function registerCollaborationTools(
       goal: z.boolean().optional().describe('Run the delegated assignment as a native goal instead of a regular prompt. Requires prompt and a goal-capable backend (Codex or Claude). Claude limits the complete objective, including assignment context, to 4,000 characters.'),
       startingContext: z.enum(['conversation', 'handoff']).optional().describe('Worktree delegation override: continue the native conversation or start fresh with a handoff. Defaults to saved preferences; unsupported/cross-provider continuation falls back visibly.'),
       instructions: z.string().optional().describe(`Assignment guidance and missing context; requires prompt. Applied to forks and handoffs. Saved user instructions take priority; ${product.name} supplies explicit per-task user overrides separately. No secrets.`),
-    },
-  }, ({ name, backend, model, reasoningEffort, serviceTier, repoPath, createWorktree, branchName, destinationPath, prompt, goal, instructions, task, requestId, startingContext }) => loggedToolResult('create-agent', {
+    }),
+  }, ({ name, selection, repoPath, createWorktree, branchName, destinationPath, prompt, goal, instructions, task, requestId, startingContext }) => loggedToolResult('create-agent', {
     agentId: callerAgentId,
     repoPath,
     createWorktree: createWorktree === true,
   }, () => coordinator.createAgent(callerAgentId, {
     name,
-    backend,
-    model,
-    reasoningEffort,
-    serviceTier,
+    selection,
     repoPath,
     createWorktree,
     branchName,

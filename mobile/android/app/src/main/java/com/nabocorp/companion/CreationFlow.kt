@@ -49,14 +49,14 @@ internal data class CreationFlow(
         return when (kind) {
             CreationKind.PROJECT, CreationKind.URL -> {
                 if (input.isEmpty() || kind == CreationKind.PROJECT && (input in listOf(".", "..") || input.any { it == '/' || it == '\\' })) return null
-                json("type" to "createProject", "source" to if (kind == CreationKind.PROJECT) "new" else "url", "value" to input, "backend" to backend)
+                json("type" to "createProject", "source" to if (kind == CreationKind.PROJECT) "new" else "url", "value" to input, "selection" to json("backend" to backend))
             }
             CreationKind.GITHUB, CreationKind.GITLAB, CreationKind.LOCAL -> {
                 val repository = repositoryId ?: return null
                 val catalog = catalog(state)
                 if (catalog.string("status") != "loaded") return null
                 val names = catalog.items("items").map { it.string("name") }
-                json("type" to "createProject", "source" to projectSource, "value" to repository, "backend" to backend).apply {
+                json("type" to "createProject", "source" to projectSource, "value" to repository, "selection" to json("backend" to backend)).apply {
                     if (newBranch) {
                         val branch = branchName.trim()
                         if (branch.isBlank() || names.contains(branch) || !names.contains(baseBranch)) return null

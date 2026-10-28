@@ -1,3 +1,4 @@
+import { readPersistedExecutionSelection } from './execution-selection';
 import { normalizePromptContent } from '@codex-app-sdk/core/surface';
 import { MAX_DELEGATION_INSTRUCTIONS_LENGTH } from './delegation-context';
 import { workProviderKinds } from './work-providers';
@@ -6,7 +7,7 @@ import { spokenAnnouncementVoices, type AppGeneralSettings, type AppPluginSettin
 import { repositoryIconKeyForRemote } from './git-remote';
 import { isApprovalPreset } from './approval-presets';
 import { claudeBackendCapabilities } from './backend-capabilities';
-import { isCodeReviewPreferences } from './code-review';
+import { readPersistedReviewPreferences } from './code-review';
 import { normalizeGitSettings } from './git-preferences';
 import { normalizeBrowserBookmarks } from './browser-bookmarks';
 
@@ -156,7 +157,7 @@ export function normalizeGeneralSettings(value: unknown): AppGeneralSettings {
     ...(isRecord(value.providerHomes) ? { providerHomes: normalizeProviderHomes(value.providerHomes) } : {}),
     ...(isRecord(value.providerEnabled) ? { providerEnabled: Object.fromEntries(Object.entries(value.providerEnabled).filter(([backend, enabled]) => (isAgentBackend(backend)) && typeof enabled === 'boolean')) } : {}),
     ...(isRecord(value.providerModelDefaults) ? { providerModelDefaults: normalizeProviderModelDefaults(value.providerModelDefaults) } : {}),
-    ...(isCodeReviewPreferences(value.codeReviewDefaults) ? { codeReviewDefaults: structuredClone(value.codeReviewDefaults) } : {}),
+    ...(readPersistedReviewPreferences(value.codeReviewDefaults) ? { codeReviewDefaults: readPersistedReviewPreferences(value.codeReviewDefaults)! } : {}),
     ...(isRecord(value.providerApprovalDefaults) ? { providerApprovalDefaults: normalizeProviderApprovalDefaults(value.providerApprovalDefaults) } : {}),
     agentListCompact: value.agentListCompact === true,
     cockpitAgentViewMode: value.cockpitAgentViewMode === 'recent' ? 'recent' : 'teams',
@@ -194,13 +195,10 @@ function normalizeProviderModelDefaults(value: Record<string, unknown>): NonNull
   const defaults: NonNullable<AppGeneralSettings['providerModelDefaults']> = {};
   for (const backend of ['codex', 'claude', 'antigravity'] as const) {
     const entry = value[backend];
-    const model = isRecord(entry) ? normalizeString(entry.model) : undefined;
-    if (!isRecord(entry) || !model) continue;
-    defaults[backend] = {
-      model,
-      reasoningEffort: backend === 'antigravity' ? null : normalizeString(entry.reasoningEffort) || null,
-      serviceTier: backend === 'antigravity' ? null : normalizeString(entry.serviceTier) || null,
-    } as NonNullable<typeof defaults[typeof backend]>;
+    if (isRecord(entry) && entry.model !== undefined && entry.model !== null && !normalizeString(entry.model)) continue;
+    const selection = readPersistedExecutionSelection(isRecord(entry) ? { ...entry, model: normalizeString(entry.model) || null, reasoningEffort: normalizeString(entry.reasoningEffort) || null, serviceTier: normalizeString(entry.serviceTier) || null } : entry, backend);
+    if (!selection) continue;
+    defaults[backend] = backend === 'antigravity' ? { ...selection, reasoningEffort: null, serviceTier: null } : selection;
   }
   return defaults;
 }

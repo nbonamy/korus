@@ -97,7 +97,7 @@ export class AntigravityHost implements AgentBackendDriver {
     const content = options?.content === undefined ? undefined : normalizePromptContent(options.content);
     const attachments = await acpAttachments(options?.attachments ?? []);
     const session = await this.ensure(agent);
-    const model = options?.model ?? (agent.backendDefaults?.kind === this.backend ? agent.backendDefaults.model : undefined);
+    const model = options?.selection?.model ?? (agent.backendDefaults?.kind === this.backend ? agent.backendDefaults.model : undefined);
     if (model) await session.setModel(model);
     const permission = options?.backendOptions?.kind === this.backend ? options.backendOptions.permissionMode
       : agent.backendDefaults?.kind === this.backend ? agent.backendDefaults.permissionMode : undefined;

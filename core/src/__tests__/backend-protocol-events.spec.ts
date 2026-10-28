@@ -519,8 +519,7 @@ describe(`${product.name} backend event decoder`, () => {
         id: 'prompt-codex',
         text: 'Inspect the attached files',
         submitted: true,
-        options: {
-          attachments: [
+        options: { attachments: [
             {
               type: 'image',
               path: '/tmp/screenshot.png',
@@ -535,21 +534,7 @@ describe(`${product.name} backend event decoder`, () => {
               name: 'report.txt',
               mimeType: 'text/plain',
             },
-          ],
-          model: null,
-          reasoningEffort: 'high',
-          serviceTier: null,
-          planMode: true,
-          skills: [{ name: 'review', path: '/skills/review/SKILL.md' }],
-          inputMethod: 'dictated',
-          recordUserMessage: false,
-          backendOptions: {
-            kind: 'codex',
-            reasoningEffort: null,
-            serviceTier: 'priority',
-            skills: [{ name: 'review', path: '/skills/review/SKILL.md' }],
-          },
-        },
+          ], planMode: true, skills: [{ name: 'review', path: '/skills/review/SKILL.md' }], inputMethod: 'dictated', recordUserMessage: false, backendOptions: { kind: 'codex', skills: [{ name: 'review', path: '/skills/review/SKILL.md' }] }, selection: { model: null, reasoningEffort: 'high', serviceTier: null } },
       },
     };
     const claudePrompt = {

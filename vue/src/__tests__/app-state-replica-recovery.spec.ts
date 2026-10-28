@@ -42,7 +42,7 @@ describe('useAppState', () => {
     expect(state.activeAgent.value?.id).toBe(owner.id);
     expect(state.selectedReasoningEffort.value).toBe('high');
     await state.sendAgentPrompt(owner.id, 'Continue');
-    expect(sendPrompt).toHaveBeenCalledExactlyOnceWith(owner.id, 'Continue', expect.objectContaining({ model: 'gpt-6-astra', reasoningEffort: 'high' }));
+    expect(sendPrompt).toHaveBeenCalledExactlyOnceWith(owner.id, 'Continue', expect.objectContaining({ selection: { model: 'gpt-6-astra', reasoningEffort: 'high' } }));
     receive({ seq: 2, source: 'backend', occurredAt: '2026-10-05T13:44:00.000Z', type: 'snapshot.updated', payload: createEmptySnapshot() });
     expect(state.activeAgent.value).toBeNull();
     expect(state.selectedModelId.value).toBeNull();

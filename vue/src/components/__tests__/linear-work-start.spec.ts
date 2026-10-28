@@ -61,7 +61,7 @@ describe('Linear issue to repository session', () => {
     await wrapper.get('.work-item-assignment-picker .app-button--primary').trigger('click');
     await flushPromises();
     expect(createWorktree).toHaveBeenCalledWith({ repoPath: '/remote/code', branchName: 'fix/eng-12', remoteConnectionId: 'remote-code' });
-    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/remote/code-eng-12', backend: 'codex', sourceRepositoryName: 'code', teamId: team.id });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/remote/code-eng-12', sourceRepositoryName: 'code', teamId: team.id, selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } });
     expect(assign).toHaveBeenCalledWith({ agentId: createdAgent.id, item: issue, prompt: expect.stringContaining('Issue: ENG-12') });
     expect(assign.mock.calls[0]![0].prompt).toContain(issue.body);
     expect(session.visible.value).toBe(false);

@@ -251,8 +251,8 @@ describe('agent chat service', () => {
     const snapshot = createInitialSnapshot();
     const backendDriver = createFakeBackendDriver(Promise.resolve({ backendSession: { kind: 'codex', threadId: 'thread-1' }, turnId: 'turn-1' }));
     backendDriver.preparePromptOptions = vi.fn((_agent, options) => ({
-      model: options?.model,
-      backendOptions: { kind: 'codex' as const, reasoningEffort: options?.reasoningEffort },
+      selection: options?.selection,
+      backendOptions: { kind: 'codex' as const },
     }));
 
     sendAgentPrompt(
@@ -260,18 +260,17 @@ describe('agent chat service', () => {
       backendDriver,
       'agent-dina',
       'hello',
-      { model: 'gpt-5.1-codex', reasoningEffort: 'high' },
+      { selection: { model: 'gpt-5.1-codex', reasoningEffort: 'high' } },
       vi.fn(),
     );
 
     expect(backendDriver.preparePromptOptions).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), {
-      model: 'gpt-5.1-codex',
-      reasoningEffort: 'high',
+      selection: { model: 'gpt-5.1-codex', reasoningEffort: 'high' },
     });
     expect(backendDriver.sendPrompt).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'agent-dina' }),
       'hello',
-      { model: 'gpt-5.1-codex', backendOptions: { kind: 'codex', reasoningEffort: 'high' } },
+      { selection: { model: 'gpt-5.1-codex', reasoningEffort: 'high' }, backendOptions: { kind: 'codex' } },
     );
   });
 
@@ -288,7 +287,7 @@ describe('agent chat service', () => {
       backendDriver,
       'agent-dina',
       'run fast',
-      { model: 'gpt-5.6-sol', serviceTier: 'fast' },
+      { selection: { model: 'gpt-5.6-sol', serviceTier: 'fast' } },
       vi.fn(),
     );
 

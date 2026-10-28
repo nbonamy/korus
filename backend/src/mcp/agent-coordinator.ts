@@ -1,3 +1,5 @@
+import { executionSelectionOverridesSchema } from '../execution-selection-schema';
+import type { ExecutionSelectionOverrides } from '@workspace/core/contracts/execution';
 import type { MissionArtifactReadResult, MissionArtifactWriteInput, MissionResultInput, MissionReviewFindingInput, MissionReviewFindingUpdateInput, MissionTicketDraftInput, MissionTicketDraftResult, MissionToolContext } from '@workspace/core/mission-execution';
 import type { MissionArtifactFile, MissionStage } from '@workspace/core/missions';
 import { randomUUID } from 'node:crypto';
@@ -122,16 +124,13 @@ export type McpCreateAgentInput = {
   goal?: boolean;
   requestId?: string;
   task?: TaskContract;
-  backend?: AgentBackend;
+  selection?: ExecutionSelectionOverrides;
   branchName?: string;
   createWorktree?: boolean;
   destinationPath?: string;
-  model?: string;
   name?: string;
   prompt?: string;
   instructions?: string;
-  reasoningEffort?: string;
-  serviceTier?: string;
   startingContext?: import('@workspace/core/delegation-context').DelegationStartingContext;
   repoPath: string;
 };
@@ -174,7 +173,7 @@ export type AppMcpAgentCoordinatorOptions = {
   onListSourceRepositories?: () => SourceRepository[] | Promise<SourceRepository[]>;
   onListSourceWorktrees?: (repoPath: string) => SourceWorktree[] | Promise<SourceWorktree[]>;
   onCreateSourceWorktree?: (input: CreateSourceWorktreeInput) => SourceWorktree | Promise<SourceWorktree>;
-  onCreateAgent?: (agent: Agent, input: McpCreateAgentInput & { backend: AgentBackend; teamId?: string }) => McpCreateAgentResponse | Promise<McpCreateAgentResponse>;
+  onCreateAgent?: (agent: Agent, input: McpCreateAgentInput & { teamId?: string }) => McpCreateAgentResponse | Promise<McpCreateAgentResponse>;
   onCloseAgent?: (callerAgentId: string, agentId: string) => Promise<void>;
   createId?: () => string;
   now?: () => Date;
@@ -200,7 +199,7 @@ export class AppMcpAgentCoordinator {
   private readonly onListSourceRepositories?: () => SourceRepository[] | Promise<SourceRepository[]>;
   private readonly onListSourceWorktrees?: (repoPath: string) => SourceWorktree[] | Promise<SourceWorktree[]>;
   private readonly onCreateSourceWorktree?: (input: CreateSourceWorktreeInput) => SourceWorktree | Promise<SourceWorktree>;
-  private readonly onCreateAgent?: (agent: Agent, input: McpCreateAgentInput & { backend: AgentBackend; teamId?: string }) => McpCreateAgentResponse | Promise<McpCreateAgentResponse>;
+  private readonly onCreateAgent?: (agent: Agent, input: McpCreateAgentInput & { teamId?: string }) => McpCreateAgentResponse | Promise<McpCreateAgentResponse>;
   private readonly onCloseAgent?: AppMcpAgentCoordinatorOptions['onCloseAgent'];
   private readonly createId: () => string;
   private readonly now: () => Date;
@@ -514,10 +513,7 @@ export class AppMcpAgentCoordinator {
       name: input.name?.trim(),
       prompt: input.prompt?.trim() || undefined,
       instructions: input.instructions?.trim() || undefined,
-      backend: input.backend ?? agent.backend,
-      model: input.model?.trim() || undefined,
-      reasoningEffort: input.reasoningEffort?.trim() || undefined,
-      serviceTier: input.serviceTier?.trim() || undefined,
+      selection: executionSelectionOverridesSchema.parse({ ...input.selection, backend: input.selection?.backend ?? agent.backend }),
       repoPath: input.repoPath.trim(),
       createWorktree: input.createWorktree,
       startingContext: input.startingContext,

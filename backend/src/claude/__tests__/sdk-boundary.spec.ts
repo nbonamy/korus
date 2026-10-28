@@ -362,7 +362,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     const { sdk, driver, server, snapshot } = setup(false, usage);
     const requests: RequestObservation[] = [];
     (driver as AgentBackendDriver).onRequestUsage?.(e => requests.push(e));
-    const sending = driver.sendPrompt(snapshot.agents[0]!, 'CANARY private input', { model: 'selected-alias' });
+    const sending = driver.sendPrompt(snapshot.agents[0]!, 'CANARY private input', { selection: { model: 'selected-alias' } });
     await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
     sdk.emit({ type: 'system', subtype: 'init', session_id: 'requests', model: 'selected-alias' }); await sending;
     // Local SDK notices have no billable model/request, even when shaped like assistant messages.
@@ -593,7 +593,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
 
   it('observes actual SDK executions once, ignoring chunks and steering, with per-turn main-loop consumption', async()=>{
     const {sdk,driver,snapshot}=setup(false, undefined, [{ value: 'opus', displayName: 'Opus', supportsFastMode: true }]);const observations:import('@workspace/core/usage').ExecutionObservation[]=[];driver.onUsage(o=>observations.push(o));
-    const sending=driver.sendPrompt(snapshot.agents[0]!, 'CANARY prompt', { model: 'opus', reasoningEffort: 'high', serviceTier: 'fast' });
+    const sending=driver.sendPrompt(snapshot.agents[0]!, 'CANARY prompt', { selection: { model: 'opus', reasoningEffort: 'high', serviceTier: 'fast' } });
     await vi.waitFor(()=>expect(sdk.inputs).toHaveLength(1));
     sdk.emit({type:'system',subtype:'init',session_id:'usage-session',model:'claude-sonnet-4-6'});await sending;
     sdk.emit({type:'assistant',session_id:'usage-session',message:{content:[{type:'text',text:'chunk'}],usage:{input_tokens:9999}}});

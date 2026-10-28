@@ -540,7 +540,7 @@ final class AppModel {
     func createProject(source: NewProjectSource, value: String, backend: String, branch: String? = nil, worktree: [String: String]? = nil) {
         guard canStartChat, backends.contains(backend), chatCreation != .creating else { return }
         preferredBackend = backend
-        var fields: [String: Any] = ["source": source.rawValue, "value": value, "backend": backend]
+        var fields: [String: Any] = ["source": source.rawValue, "value": value, "selection": ["backend": backend]]
         if let branch { fields["branch"] = branch }
         if let worktree { fields["worktree"] = worktree }
         command("createProject", fields)

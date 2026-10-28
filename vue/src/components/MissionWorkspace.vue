@@ -152,10 +152,7 @@
   >
     <div class="mission-workspace__start-options">
       <BackendModelSelector
-        v-model:backend="implementationBackend"
-        v-model:model="implementationModel"
-        v-model:reasoning-effort="implementationEffort"
-        v-model:service-tier="implementationTier"
+        v-model:selection="implementationSelection"
         :agent-id="missionLead.id"
         :team-id="mission.teamId"
         :disabled="busy"
@@ -174,6 +171,7 @@
 </template>
 
 <script setup lang="ts">
+import { useExecutionSelection } from '../execution-selection';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Agent, AgentBackend, OpenInApplicationCatalog } from '@workspace/core/contracts';
@@ -224,6 +222,7 @@ const error = ref('');
 const artifactError = ref('');
 const feedbackBusy = ref(false);
 const feedbackReset = ref(0);
+const { selection: implementationSelection, backend: implementationBackend, model: implementationModel, reasoningEffort: implementationEffort, serviceTier: implementationTier } = useExecutionSelection();
 const implementationStarting = ref(false);
 const implementationStartRepositories = ref<string[]>([]);
 const implementationStartTicketCount = ref(0);
@@ -348,10 +347,6 @@ const missionLead = computed(() => {
   const run = execution?.runs.slice().reverse().find(run => (run.stage === 'requirements' || run.stage === 'tickets') && run.workerId);
   return props.agents.find(agent => agent.id === (run?.workerId ?? execution?.memberIds[0]));
 });
-const implementationBackend = ref<AgentBackend>();
-const implementationModel = ref('');
-const implementationEffort = ref('');
-const implementationTier = ref('');
 const implementationApprovalVisible = ref(false);
 function resetImplementationModel(): void {
   const selected = props.mission.execution?.implementationModel;
@@ -391,11 +386,7 @@ async function approveProposal(): Promise<void> {
   }
   try {
     await props.executeMission({ id: props.mission.id, revision: props.mission.revision, action: 'accept', runId: run.id,
-      ...(startsImplementation && implementationBackend.value && implementationModel.value ? { implementationModel: {
-        backend: implementationBackend.value, model: implementationModel.value,
-        ...(implementationEffort.value ? { reasoningEffort: implementationEffort.value } : {}),
-        ...(implementationTier.value ? { serviceTier: implementationTier.value } : {}),
-      } } : {}),
+      ...(startsImplementation && implementationBackend.value && implementationModel.value ? { implementationModel: { ...implementationSelection.value! } } : {}),
     });
     implementationApprovalVisible.value = false;
   } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); }

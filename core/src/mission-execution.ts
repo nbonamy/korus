@@ -9,7 +9,6 @@ export type {
   MissionExecution,
   MissionExecutionInput,
   MissionResultInput,
-  MissionImplementationModel,
   MissionTicketAssignment,
   MissionRun,
   MissionReviewFindingInput,
