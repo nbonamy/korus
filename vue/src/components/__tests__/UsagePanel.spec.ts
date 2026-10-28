@@ -85,7 +85,7 @@ it("plots daily model output rates without stacking or treating missing measurem
   const summary = {
     recordedSince: 1,
     retainedSince: 1,
-    rows: [row("sonnet", 300, 8000), row("gpt-6-luna", 250, 10000)],
+    rows: [row("sonnet", 300, 8000), { ...row("gpt-6-luna", 250, 10000), started: 20 }],
     daily: [
       {
         day: day(2),
@@ -120,6 +120,7 @@ it("plots daily model output rates without stacking or treating missing measurem
       .find((tab) => tab.text() === "Model performance")!
       .trigger("click");
     const chart = wrapper.get('svg[aria-label="Output speed over time"]');
+    expect(wrapper.findAll('.chart-legend span').map(row => row.text())).toStrictEqual(['sonnet', 'gpt-6-luna']);
     const sonnet = chart.get(`[aria-label="${day(2)} · sonnet: 25 tokens/s"]`);
     const gpt = chart.get(`[aria-label="${day(2)} · gpt-6-luna: 25 tokens/s"]`);
     expect(sonnet.attributes("cy")).toBe(gpt.attributes("cy"));
@@ -127,6 +128,7 @@ it("plots daily model output rates without stacking or treating missing measurem
     await sonnet.trigger("focus");
     expect(wrapper.get(".chart-tooltip").text()).toContain("25 tokens/s");
     expect(wrapper.get(".chart-tooltip").text()).not.toContain("Total");
+    expect(wrapper.findAll('.chart-tooltip .tooltip-name').map(row => row.text())).toStrictEqual(['gpt-6-luna', 'sonnet']);
     const latest = chart.get(`[aria-label="${day(0)} · sonnet: 50 tokens/s"]`);
     chart.element.dispatchEvent(
       new MouseEvent("pointermove", {
@@ -677,7 +679,7 @@ it("shows weighted input ratios as percentages without stacking model ratios or 
     expect(Number(b.attributes("cy"))).toBeLessThan(Number(zero.attributes("cy")));
     await b.trigger("focus");
     expect(wrapper.get(".chart-tooltip").findAll("li").map(item => item.text())).toStrictEqual([
-      "model-zero0%", "model-b50%", "model-a99.8%",
+      "model-a99.8%", "model-b50%", "model-zero0%",
     ]);
     expect(wrapper.find(".tooltip-total").exists()).toBe(false);
     expect(wrapper.get('[aria-label="Usage share"] .ring-total').text()).toBe("10.2K");
@@ -999,7 +1001,7 @@ it("hides unavailable cost tooltip rows and empty days while retaining measured 
     const last = chart.get(`[aria-label="${day(0)} · claude: $0.00"]`);
     await first.trigger("focus");
     expect(wrapper.get(".chart-tooltip").findAll("li").map(row => row.text())).toStrictEqual([
-      "codex$0.00", "claude$0.04",
+      "claude$0.04", "codex$0.00",
     ]);
     expect(wrapper.get(".tooltip-total").text()).toContain("$0.04");
     chart.element.dispatchEvent(

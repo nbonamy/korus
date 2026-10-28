@@ -256,6 +256,7 @@ it("reads a day's stacked contributions and total from the tooltip on keyboard f
           tokens: token,
           groups: [group("claude", 5), group("codex", 3)],
         },
+        { day: "2026-10-11", started: 8, measuredTurns: 8, tokens: token, groups: [group("claude", 1), group("codex", 7)] },
       ],
     },
   });
@@ -266,6 +267,9 @@ it("reads a day's stacked contributions and total from the tooltip on keyboard f
   expect(tooltip).toContain("Codex");
   expect(tooltip).toContain("Total");
   expect(tooltip).toContain("8");
+  expect(wrapper.findAll('.chart-tooltip .tooltip-name').map(row => row.text())).toStrictEqual(['Claude Code', 'Codex']);
+  await wrapper.get('[aria-label="2026-10-11 · Codex: 7"]').trigger('focus');
+  expect(wrapper.findAll('.chart-tooltip .tooltip-name').map(row => row.text())).toStrictEqual(['Codex', 'Claude Code']);
   await wrapper.get('[aria-label="2026-10-10 · Codex: 3"]').trigger("blur");
   expect(wrapper.find(".chart-tooltip").exists()).toBe(false);
   wrapper.unmount();

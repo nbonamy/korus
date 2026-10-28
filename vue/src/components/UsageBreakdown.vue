@@ -61,6 +61,7 @@ import UsageCard from "./UsageCard.vue";
 import {
   chartFormat,
   usdFormat,
+  sortUsageValues,
   type UsageGrouping,
   type UsageSeries,
 } from "./usage-chart";
@@ -68,9 +69,7 @@ const props = defineProps<{
   series: UsageSeries[];
   grouping: UsageGrouping;
 }>();
-const rows = computed(() => [...props.series].sort((a, b) =>
-  (b.tokens ?? -1) - (a.tokens ?? -1) || a.label.localeCompare(b.label),
-));
+const rows = computed(() => sortUsageValues(props.series, row => row.tokens));
 const measuredTotal = computed(() =>
   props.series.reduce((n, row) => n + (row.tokens ?? 0), 0),
 );

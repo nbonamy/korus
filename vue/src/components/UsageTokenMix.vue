@@ -15,7 +15,7 @@
         />
       </div>
       <ul class="mix-legend">
-        <li v-for="part in parts" :key="part.id">
+        <li v-for="part in legendParts" :key="part.id">
           <i :style="{ background: part.color }" />
           <span>{{ part.label }}</span>
           <b>{{ chartFormat(part.percent) }}%</b>
@@ -29,7 +29,7 @@ import { computed } from "vue";
 import type { UsageSummary } from "@workspace/core/usage";
 import { translate } from "../i18n";
 import UsageStatTile from "./UsageStatTile.vue";
-import { chartFormat, sumValues } from "./usage-chart";
+import { chartFormat, sortUsageValues, sumValues } from "./usage-chart";
 const props = defineProps<{
   rows: UsageSummary["rows"];
 }>();
@@ -85,6 +85,7 @@ const parts = computed(() => {
       : [];
   });
 });
+const legendParts = computed(() => sortUsageValues(parts.value, part => part.percent));
 </script>
 <style scoped>
 .mix-bar {

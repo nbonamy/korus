@@ -13,6 +13,12 @@ export type UsageSeries = {
   tokens: number | null;
   cost?: UsageCost;
 };
+/** Rank the displayed measurement, keeping unavailable values last and ties stable by label. */
+export function sortUsageValues<T extends { label: string }>(rows: readonly T[], value: (row: T) => number | null | undefined): T[] {
+  return [...rows].sort((a, b) =>
+    (value(b) ?? -Infinity) - (value(a) ?? -Infinity) || a.label.localeCompare(b.label),
+  );
+}
 export const chartFormat = (
   value: number | null | undefined,
   compact = false,
@@ -65,10 +71,13 @@ export const chartValue = (
     started: number;
     tokens: UsageSummary["rows"][number]["tokens"];
     cost?: UsageCost;
+    speed?: Speed;
   },
-  measure: UsageMeasure,
+  measure: UsageMeasure | "speed",
 ) =>
-  measure === "cost"
+  measure === "speed"
+    ? tokensPerSecond(row.speed)
+    : measure === "cost"
     ? (row.cost?.usd ?? null)
     : measure === "ratio"
       ? inputRatio(row.tokens)
@@ -124,10 +133,10 @@ export function niceScale(
 }
 export function chartSeries(
   summary: UsageSummary | undefined,
-  measure: UsageMeasure,
+  measure: UsageMeasure | "speed",
   group: UsageGrouping,
 ): UsageSeries[] {
-  return (summary?.rows ?? [])
+  return sortUsageValues((summary?.rows ?? [])
     .map((row) => {
       return {
         key: row.label,
@@ -144,11 +153,7 @@ export function chartSeries(
         tokens: row.tokens?.total ?? null,
         ...(row.cost ? { cost: row.cost } : {}),
       };
-    })
-    .sort(
-      (a, b) =>
-        (b.value ?? -1) - (a.value ?? -1) || a.label.localeCompare(b.label),
-    );
+    }), row => row.value);
 }
 /** Monotone cubic path through the points: smooth, never overshooting the data. */
 export function smoothPath(
