@@ -41,6 +41,50 @@ function setup() {
 }
 
 describe('mission execution', () => {
+  it('releases only the submitting worker lock once its implementation result is saved and wakes waiters', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.execution!.parallelImplementation = true;
+      mission.execution!.workspaces = [{ repositoryPath, path: '/shared/checkout', branch: 'mission/test' }];
+      mission.artifacts.tickets = ['a', 'b', 'c'].map(id => ({ id: `mission-ticket-${id}`, title: id, repositoryPath, done: false }));
+    });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const [a, b, c] = h.current().execution!.runs;
+    h.service.agentStarted(a!.workerId!, 'turn-a');
+    h.service.agentStarted(b!.workerId!, 'turn-b');
+    await h.service.acquireCommitLock(a!.workerId!);
+    const lock = structuredClone(h.current().execution!.workspaces![0]!.commitLock);
+    const evidence = { changes: 'Ticket committed.', tests: 'Checks passed.' };
+    const result = (ticket: string) => ({ summary: 'Done', ticketId: `mission-ticket-${ticket}`, implementation: evidence });
+    await h.service.submit(c!.workerId!, result('c'));
+    expect(h.current().execution!.workspaces![0]!.commitLock).toStrictEqual(lock);
+    await expect(h.service.submit(a!.workerId!, result('wrong-ticket'))).rejects.toThrow('Expected ticket');
+    expect(h.current().execution!.workspaces![0]!.commitLock).toStrictEqual(lock);
+    h.persisted.mockRejectedValueOnce(new Error('storage unavailable'));
+    await expect(h.service.submit(a!.workerId!, result('a'))).rejects.toThrow('storage unavailable');
+    expect(h.current().execution!.workspaces![0]!.commitLock).toStrictEqual(lock);
+    expect(h.current().execution!.runs.find(run => run.id === a!.id)!.status).toBe('running');
+    h.persisted.mockClear();
+    const controller = new AbortController();
+    const waiting = h.service.acquireCommitLock(b!.workerId!, controller.signal);
+    try {
+      await new Promise(resolve => setImmediate(resolve));
+      expect(await h.service.submit(a!.workerId!, result('a'))).toStrictEqual({ success: true, status: 'accepted' });
+      const saved = h.persisted.mock.calls.map(([snapshot]) => snapshot.missions[0])
+        .find(mission => mission.execution.runs.find((run: { id: string }) => run.id === a!.id)?.status === 'accepted');
+      expect(saved.execution.workspaces[0].commitLock).toBeUndefined();
+      expect(await waiting).toStrictEqual({ acquired: true });
+      expect(h.current().execution!.workspaces![0]!.commitLock?.agentId).toBe(b!.workerId);
+      await h.service.agentFinished(a!.workerId!, 'turn-a');
+      expect(h.current().execution!.workspaces![0]!.commitLock?.agentId).toBe(b!.workerId);
+    } finally {
+      controller.abort();
+      await waiting.catch(() => undefined);
+    }
+  });
+
   it('stops a lock owner when turn completion releases the lock during interruption', async () => {
     const h = setup();
     const repositoryPath = h.originalAgents[0]!.folder!;

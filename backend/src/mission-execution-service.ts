@@ -500,6 +500,7 @@ export class MissionExecutionService {
     let status: 'awaitingReview' | 'accepted' = 'awaitingReview';
     let nextRunIds: string[] = [];
     let implementationCompleted = false;
+    let commitLockReleased = false;
     await this.ports.missions.changeAsync(context.missionId, async mission => {
       const workflow = missionWorkflow(mission.workflow.type);
       const run = mission.execution?.runs.find(run => run.id === context.runId);
@@ -547,10 +548,16 @@ export class MissionExecutionService {
       if (run.stage === 'implementation') {
         implementationCompleted = this.acceptImplementationResult(mission, run);
         await this.persistImplementationArtifact(mission);
+        const workspace = mission.execution?.workspaces?.find(workspace => workspace.commitLock?.agentId === agentId && workspace.commitLock.runId === run.id);
+        if (workspace) {
+          delete workspace.commitLock;
+          commitLockReleased = true;
+        }
         status = 'accepted';
         nextRunIds = this.enqueueRuns(mission, {});
       }
     });
+    if (commitLockReleased) for (const wake of this.commitLockWaiters) wake();
     await this.ports.publish();
     this.dispatchRuns(context.missionId, nextRunIds, agentId);
     if (implementationCompleted) await this.notifyImplementationComplete(this.requireMission(context.missionId));

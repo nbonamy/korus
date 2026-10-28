@@ -634,9 +634,10 @@ publishes only after saving.
   workers' uncommitted changes do not prevent ticket submission. Each worktree
   has a persisted cooperative commit lock owned by the worker and provider turn.
   Parallel workers wait to acquire it before changing the Git index and release it after
-  committing; completed owner turns release it. After a daemon restart, a persisted
-  lock is released only after the provider conversation is loaded and confirmed
-  idle; unavailable or active owners retain it. This coordinates participating
+  committing; successful ticket submission also releases any lock held by that
+  assignment in the same durable update. Completed owner turns release it. After a
+  daemon restart, a persisted lock is released only after the provider conversation
+  is loaded and confirmed idle; unavailable or active owners retain it. This coordinates participating
   workers, not external Git processes or concurrent edits to files.
   Each worktree records a baseline commit for whole-Mission diff
   review. Failed or cancelled attempts keep their workspace and conversation.
