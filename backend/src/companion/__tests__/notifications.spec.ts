@@ -21,11 +21,11 @@ describe('companion attention events', () => {
   });
   it('uses normalized requests for approval/question identity and handles Claude completion', () => {
     const source = new CompanionNotifications('host');
-    const asyncQuestion = { type: 'agentRequest.created', agentId: 'agent', payload: { request: { id: 'async', conversationId: 'thread', kind: 'question', question: { itemId: 'async', delivery: 'async', blocking: false, questions: [] } } } } as AppBackendEvent;
+    const asyncQuestion = { type: 'agentRequest.created', agentId: 'agent', backend: 'codex', seq: 1, occurredAt: '', payload: { request: { id: 'async', conversationId: 'thread', kind: 'question', question: { itemId: 'async', delivery: 'async', blocking: false, questions: [] } } } } as AppBackendEvent;
     expect(source.accepts(asyncQuestion)).toBe(false);
     expect(source.create(asyncQuestion, workspace)).toBeNull();
     for (const kind of ['question', 'approval', 'toolConfirmation']) {
-      const event = { type: 'agentRequest.created', agentId: 'agent', payload: { request: { id: kind, conversationId: 'thread', kind, question: { itemId: kind, delivery: 'tool', blocking: true, questions: [] } } } } as AppBackendEvent;
+      const event = { type: 'agentRequest.created', agentId: 'agent', backend: 'codex', seq: 1, occurredAt: '', payload: { request: { id: kind, conversationId: 'thread', kind, question: { itemId: kind, delivery: 'tool', blocking: true, questions: [] } } } } as AppBackendEvent;
       expect(source.accepts(event)).toBe(true);
       expect(source.create(event, workspace)?.kind).toBe(kind === 'question' ? 'question' : 'approval');
       expect(source.create(event, workspace)).toBeNull();
@@ -42,7 +42,7 @@ describe('companion attention events', () => {
       missionAgents: [worker],
       missionProgress: [{ id: 'mission', teamId: 'team', outcome: 'Billing', stage: 'implementation', status: 'active', startedAt: '', updatedAt: '', revision: 1, leadAgentId: 'agent', tickets: [{ number: 1, title: 'api', state: 'running', agentId: 'worker' }] }],
     };
-    const request = (agentId: string, conversationId: string): AppBackendEvent => ({ type: 'agentRequest.created', agentId, payload: { request: { id: `${agentId}-q`, conversationId, kind: 'question', question: { itemId: `${agentId}-q`, delivery: 'tool', blocking: true, questions: [] } } } }) as AppBackendEvent;
+    const request = (agentId: string, conversationId: string): AppBackendEvent => ({ type: 'agentRequest.created', agentId, backend: 'codex', seq: 1, occurredAt: '', payload: { request: { id: `${agentId}-q`, conversationId, kind: 'question', question: { itemId: `${agentId}-q`, delivery: 'tool', blocking: true, questions: [] } } } }) as AppBackendEvent;
     const completedFor = (agentId: string, threadId: string): AppBackendEvent => ({ type: 'codex.conversationEventReceived', agentId, backend: 'codex', threadId, payload: { revision: 1, event: { type: 'turn.completed', conversationId: threadId, turnId: 'turn', payload: { status: 'completed' } } } }) as AppBackendEvent;
 
     it('asks the phone to step in when a repository worker or the lead needs input', () => {

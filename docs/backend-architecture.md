@@ -599,6 +599,9 @@ Attention alerts are suppressed when the desktop is focused on the exact active
 conversation, matched by host, location, team, agent and session. Other conversations
 remain eligible regardless of where the prompt started; unavailable desktop focus
 information does not suppress alerts. Read-clearing events are always delivered.
+Nonblocking questions never send attention alerts. Mission leads and repository
+workers alert only for blocking questions and approvals;
+finishing a turn does not send a Mission alert.
 A brief grace period lets visible clients acknowledge the attention revision before
 delivery; the daemon rechecks the shared read checkpoint after that period.
 A foreground phone receives live in-app alerts

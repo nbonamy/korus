@@ -31,7 +31,11 @@ export class CompanionNotifications {
     ];
   }
   accepts(event: AppBackendEvent) {
-    return event.type === 'agentRequest.created' || providerConversationEventView(event).type === 'turn.completed';
+    if (event.type === 'agentRequest.created') {
+      const request = event.payload.request;
+      return request.kind !== 'question' || request.question.blocking;
+    }
+    return providerConversationEventView(event).type === 'turn.completed';
   }
   create(event: AppBackendEvent, workspace: CompanionWorkspace, revision?: number): CompanionNotification | null {
     const view = providerConversationEventView(event);
@@ -44,6 +48,7 @@ export class CompanionNotifications {
     if (event.type === 'agent.updated' && revision !== undefined) {
       kind = 'read'; identity = `read/${revision}`;
     } else if (event.type === 'agentRequest.created') {
+      if (!this.accepts(event)) return null;
       const request = event.payload.request;
       if (request.conversationId !== agentConversationId(agent)) return null;
       kind = request.kind === 'question' ? 'question' : 'approval';
