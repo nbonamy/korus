@@ -603,14 +603,16 @@ export class MissionExecutionService {
     let stopped = false;
     try { stopped = await this.ports.isCommitLockOwnerStopped(owner); } catch { return; }
     if (!stopped) return;
-    let released = false;
-    await this.ports.missions.change(missionId, mission => {
+    const changed = Symbol('commit lock changed');
+    const released = await this.ports.missions.changeAsync(missionId, mission => {
       const current = mission.execution?.workspaces?.find(item => item.repositoryPath === repositoryPath)?.commitLock;
-      if (current && JSON.stringify(current) === JSON.stringify(lock) && !this.activeTurns.has(lock.agentId)) {
-        const target = mission.execution!.workspaces!.find(item => item.repositoryPath === repositoryPath)!;
-        delete target.commitLock;
-        released = true;
-      }
+      if (!current || JSON.stringify(current) !== JSON.stringify(lock) || this.activeTurns.has(lock.agentId)) throw changed;
+      const target = mission.execution!.workspaces!.find(item => item.repositoryPath === repositoryPath)!;
+      delete target.commitLock;
+      return true;
+    }).catch(error => {
+      if (error === changed) return false;
+      throw error;
     });
     if (released) {
       this.recoveredLocks.delete(key);

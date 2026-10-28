@@ -41,6 +41,27 @@ function setup() {
 }
 
 describe('mission execution', () => {
+  it('publishes the only revision when concurrent recovery checks clear the same lock', async () => {
+    const h = setup();
+    const owner = h.originalAgents[0]!;
+    await h.store.change(h.current().id, mission => {
+      mission.execution!.workspaces = [{ repositoryPath: owner.folder!, path: '/shared/checkout', branch: 'mission/test',
+        commitLock: { agentId: owner.id, runId: 'run', turnId: 'old-turn' } }];
+    });
+    const restarted = new MissionExecutionService(h.ports);
+    let confirmStopped!: (stopped: boolean) => void;
+    const stopped = new Promise<boolean>(resolve => { confirmStopped = resolve; });
+    h.ports.isCommitLockOwnerStopped.mockReturnValue(stopped);
+    const revision = h.current().revision;
+    const recoveries = [restarted.recoverInterruptedRuns(), restarted.recoverInterruptedRuns()];
+    expect(h.ports.isCommitLockOwnerStopped).toHaveBeenCalledTimes(2);
+    confirmStopped(true);
+    await Promise.all(recoveries);
+    expect(h.current().execution!.workspaces![0]!.commitLock).toBeUndefined();
+    expect(h.current().revision).toBe(revision + 1);
+    expect(h.ports.publish).toHaveBeenCalledTimes(1);
+    expect(h.persisted.mock.calls.at(-1)![0].missions[0].revision).toBe(h.current().revision);
+  });
   it('recovers a persisted lock only after the provider confirms the owning turn stopped', async () => {
     const h = setup();
     const repositoryPath = h.originalAgents[0]!.folder!;
