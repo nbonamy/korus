@@ -26,7 +26,7 @@ import type { DurableTaskService } from './agents/durable-task-service';
 import { ProviderConnections } from './provider-connections';
 import type { Requirements } from './requirements';
 import { backendCodexHomeDir } from './state';
-import { isProviderConnection, type ProviderAuthentication } from '@workspace/core/contracts/provider-setup';
+import { isProviderConnection, type ProviderAuthentication, type ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
 import { MissionExecutionService } from './mission-execution-service';
 import { applyMissionDebugFixture } from './mission-debug-fixtures';
 import { applyMissionScreenshotFixture, isMissionScreenshotAgent, missionScreenshotConversation, missionScreenshotModel } from './mission-screenshot-fixture';
@@ -1308,15 +1308,8 @@ export class AppBackendServer {
       case backendMethods.connectionsSshCreate: {
         const input = requireAddSshConnectionInput(message.params);
         const existing = this.snapshot.remoteConnections.connections.find(candidate => candidate.host === input.host.trim());
-        if (existing) await this.prepareRemoteConnectionUpdate(existing);
-        const connection = existing
-          ? await this.sshConnections.checkConnection(existing)
-          : await this.sshConnections.createConnection(input);
-        this.snapshot.remoteConnections.connections = [
-          ...this.snapshot.remoteConnections.connections.filter((candidate) => candidate.host !== connection.host),
-          connection,
-        ];
-        await this.activateRemoteConnection(connection);
+        const connection = existing ?? await this.sshConnections.createConnection(input);
+        if (!existing) this.snapshot.remoteConnections.connections.push(connection);
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
       case backendMethods.connectionsRuntimeInspect:
@@ -1328,20 +1321,41 @@ export class AppBackendServer {
         }
         if (message.method === backendMethods.connectionsRuntimeInspect) {
           if (connection.status === 'checking') return createAppRpcResult(message.id, await this.remoteTeams.clientSnapshot());
+          const probing = { ...connection, status: connection.status === 'ready' ? 'ready' as const : 'checking' as const, detail: 'Checking the remote environment…' };
+          this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map(candidate => candidate === connection ? probing : candidate);
+          await this.persistAndEmitSnapshot();
           let inspected: RemoteConnection;
-          try { inspected = await this.sshConnections.inspectVersions(connection); }
-          catch (error) { inspected = { ...connection, status: this.remoteClients.isConnected?.(connectionId) ? connection.status : 'error', detail: error instanceof Error ? error.message : String(error), lastCheckedAt: new Date().toISOString() }; }
+          try {
+            inspected = await this.sshConnections.inspectVersions(connection);
+            if (inspected.status === 'ready' && inspected.daemonVersion === this.options.version) {
+              const providers = await this.remoteClients.request<unknown>(inspected, backendMethods.providerConnectionsGet);
+              if (!Array.isArray(providers) || !providers.every(isProviderConnection)) throw new Error('Remote engine connections are unavailable. Update the remote runtime.');
+              inspected.providerConnections = providers;
+            }
+          }
+          catch (error) { inspected = { ...connection, status: connection.status === 'ready' && this.remoteClients.isConnected?.(connectionId) ? 'ready' : 'error', detail: error instanceof Error ? error.message : String(error), lastCheckedAt: new Date().toISOString() }; }
           // Do not replace a connection edited or deleted while SSH was probing.
-          this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map((candidate) => (
-            candidate === connection ? { ...candidate, daemonVersion: inspected.daemonVersion, codexVersion: inspected.codexVersion, detail: inspected.detail, status: inspected.status, lastCheckedAt: inspected.lastCheckedAt } : candidate
-          ));
+          this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map(candidate => candidate === probing ? inspected : candidate);
           return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
         }
+        const params = requireRecord(message.params);
+        const backends = params.backends === undefined ? [] : params.backends;
+        if (!Array.isArray(backends) || !backends.every(isAgentBackend)) throw new Error('Invalid setup engines.');
         await this.prepareRemoteConnectionUpdate(connection);
-        const checked = await this.sshConnections.checkConnection(connection);
-        this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map((candidate) => (
-          candidate.id === connectionId ? checked : candidate
-        ));
+        const progress = async (detail: string) => {
+          this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map(candidate => candidate.id === connectionId ? { ...candidate, detail } : candidate);
+          await this.persistAndEmitSnapshot();
+        };
+        let checked = await this.sshConnections.checkConnection(connection, backends, progress);
+        if (checked.status === 'ready' && backends.includes('antigravity')) {
+          await progress('Installing Antigravity…');
+          try {
+            const installed = await this.remoteClients.request<ProviderSetupStatus>(checked, backendMethods.providerInstall, { backend: 'antigravity', _clientId: 'remote-controller' });
+            if (!installed.installed) throw new Error('Antigravity installation could not be verified.');
+          }
+          catch (error) { checked = { ...checked, status: 'error', detail: error instanceof Error ? error.message : String(error) }; }
+        }
+        this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map(candidate => candidate.id === connectionId ? checked : candidate);
         await this.activateRemoteConnection(checked);
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }

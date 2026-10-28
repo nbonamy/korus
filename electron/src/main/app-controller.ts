@@ -1,4 +1,4 @@
-import type { WorkProviderConnectOptions } from '@workspace/core/contracts';
+import type { AgentBackend, WorkProviderConnectOptions } from '@workspace/core/contracts';
 import { mobileRuntimePaths } from './mobile/runtime';
 import { MobileSimulatorService } from './mobile/service';
 import { NativeMobileAdapter } from './mobile/adapter';
@@ -225,8 +225,8 @@ export class AppController {
       return this.addSshConnection(input);
     });
 
-    ipc.handle(ipcChannels.checkRemoteConnection, async (_event, connectionId: string, inspectOnly?: boolean) => {
-      return this.checkRemoteConnection(connectionId, inspectOnly);
+    ipc.handle(ipcChannels.checkRemoteConnection, async (_event, connectionId: string, inspectOnly?: boolean, backends?: AgentBackend[]) => {
+      return this.checkRemoteConnection(connectionId, inspectOnly, backends);
     });
 
     ipc.handle(ipcChannels.updateRemoteConnection, async (_event, connectionId: string, input: UpdateRemoteConnectionInput) => {
@@ -880,8 +880,8 @@ export class AppController {
     return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.connectionsSshCreate, { input }));
   }
 
-  private async checkRemoteConnection(connectionId: string, inspectOnly?: boolean): Promise<AppSnapshot> {
-    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(inspectOnly ? backendMethods.connectionsRuntimeInspect : backendMethods.connectionsRuntimeSync, { connectionId }));
+  private async checkRemoteConnection(connectionId: string, inspectOnly?: boolean, backends?: AgentBackend[]): Promise<AppSnapshot> {
+    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(inspectOnly ? backendMethods.connectionsRuntimeInspect : backendMethods.connectionsRuntimeSync, { connectionId, ...(backends ? { backends } : {}) }));
   }
 
   private async updateRemoteConnection(connectionId: string, input: UpdateRemoteConnectionInput): Promise<AppSnapshot> {

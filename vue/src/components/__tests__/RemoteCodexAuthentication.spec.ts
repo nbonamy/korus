@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CodexAuthentication, RemoteConnection } from '@workspace/core/contracts';
 import RemoteCodexAuthentication from '../RemoteCodexAuthentication.vue';
 import { configureElectronTestClient } from '../../test/client';
@@ -17,7 +17,8 @@ function api() {
 function render(client = api()) {
   return { client, wrapper: mount(RemoteCodexAuthentication, { props: { connection, api: client } }) };
 }
-afterEach(() => vi.useRealTimers());
+beforeEach(() => { vi.spyOn(window, 'open').mockReturnValue(null); });
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe('RemoteCodexAuthentication', () => {
   it('copies only the device code, confirms success, and allows retry after clipboard failure', async () => {
@@ -26,8 +27,6 @@ describe('RemoteCodexAuthentication', () => {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     try {
       const { wrapper } = render();
-      await flushPromises();
-      await wrapper.get('button').trigger('click');
       await flushPromises();
       await wrapper.get('[aria-label="Copy device code"]').trigger('click');
       await flushPromises();
@@ -43,15 +42,14 @@ describe('RemoteCodexAuthentication', () => {
     }
   });
 
-  it('starts login on the selected host and polls until the SDK reports its account', async () => {
+  it('starts login immediately on the selected host and polls until the SDK reports its account', async () => {
     vi.useFakeTimers();
     const { client, wrapper } = render();
     await flushPromises();
     expect(client.getCodexAuthentication).toHaveBeenCalledWith('wall-e');
-    expect(wrapper.get('button').classes()).toContain('app-button--secondary');
-    await wrapper.get('button').trigger('click');
-    await flushPromises();
-    expect(client.startCodexChatGptDeviceCodeLogin).toHaveBeenCalledWith('wall-e');
+
+    expect(client.startCodexChatGptDeviceCodeLogin).toHaveBeenCalledExactlyOnceWith('wall-e');
+    expect(window.open).not.toHaveBeenCalled();
     expect(wrapper.text()).toContain(pending.userCode);
     const open = vi.spyOn(window, 'open').mockReturnValue(null);
     await wrapper.findAll('button').find(button => button.text() === 'Open sign-in page')!.trigger('click');
@@ -72,8 +70,6 @@ describe('RemoteCodexAuthentication', () => {
   it('cancels exactly the pending login and preserves it across unrelated connection metadata refreshes', async () => {
     const { client, wrapper } = render();
     await flushPromises();
-    await wrapper.get('button').trigger('click');
-    await flushPromises();
     await wrapper.setProps({ connection: { ...connection, detail: 'Refreshed versions' } });
     expect(wrapper.text()).toContain(pending.userCode);
     expect(client.cancelCodexChatGptLogin).not.toHaveBeenCalled();
@@ -89,7 +85,6 @@ describe('RemoteCodexAuthentication', () => {
     client.startCodexChatGptDeviceCodeLogin.mockImplementation(() => new Promise(done => { resolve = done; }));
     const { wrapper } = render(client);
     await flushPromises();
-    await wrapper.get('button').trigger('click');
     wrapper.unmount();
     resolve(pending);
     await flushPromises();
@@ -101,13 +96,14 @@ describe('RemoteCodexAuthentication', () => {
     client.startCodexChatGptDeviceCodeLogin.mockRejectedValueOnce(new Error('Device code login unavailable'));
     const { wrapper } = render(client);
     await flushPromises();
+    expect(wrapper.text()).toContain('Device code login unavailable');
+    expect(wrapper.get('button').text()).toBe('Retry sign-in');
     await wrapper.get('button').trigger('click');
     await flushPromises();
-    expect(wrapper.text()).toContain('Device code login unavailable');
-    expect(wrapper.get('button').text()).toBe('Connect ChatGPT');
+    expect(wrapper.text()).toContain(pending.userCode);
   });
 
-  it('shows an unavailable Codex state, then offers sign-in after a successful retry', async () => {
+  it('retries an unavailable Codex account check and starts sign-in without another click', async () => {
     const client = api();
     client.getCodexAuthentication.mockRejectedValueOnce(new Error("Error invoking remote method 'codex:authentication:get': Error: Codex app-server transport is not started"));
     const { wrapper } = render(client);
@@ -117,16 +113,13 @@ describe('RemoteCodexAuthentication', () => {
     expect(wrapper.get('button').text()).toBe('Retry account check');
     await wrapper.get('button').trigger('click');
     await flushPromises();
-    expect(wrapper.text()).toContain('Codex needs sign-in on this host.');
-    expect(wrapper.get('button').text()).toBe('Connect ChatGPT');
-    expect(client.startCodexChatGptDeviceCodeLogin).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain(pending.userCode);
+    expect(client.startCodexChatGptDeviceCodeLogin).toHaveBeenCalledExactlyOnceWith('wall-e');
   });
 
   it('reports login expiry and clears the code', async () => {
     vi.useFakeTimers();
     const { client, wrapper } = render();
-    await flushPromises();
-    await wrapper.get('button').trigger('click');
     await flushPromises();
     client.getCodexAuthentication.mockResolvedValue({ ...signedOut, login: { status: 'error', error: 'Code expired' } });
     await vi.advanceTimersByTimeAsync(2_000);
@@ -143,7 +136,7 @@ describe('RemoteCodexAuthentication', () => {
     await flushPromises();
     resolve({ ...signedOut, account: { type: 'apiKey' } });
     await flushPromises();
-    expect(wrapper.text()).toContain('Connect ChatGPT');
+    expect(wrapper.text()).toContain(pending.userCode);
     expect(wrapper.text()).not.toContain('Codex connected');
     expect(client.getCodexAuthentication).toHaveBeenLastCalledWith('eve');
   });
@@ -157,13 +150,11 @@ describe('RemoteCodexAuthentication', () => {
     await wrapper.setProps({ connection });
     await flushPromises();
     expect(client.getCodexAuthentication).toHaveBeenCalledWith(connection.id);
-    expect(wrapper.text()).toContain('Connect ChatGPT');
+    expect(wrapper.text()).toContain(pending.userCode);
   });
 
   it('keeps the code available when cancellation fails and allows another attempt', async () => {
     const { client, wrapper } = render();
-    await flushPromises();
-    await wrapper.get('button').trigger('click');
     await flushPromises();
     client.cancelCodexChatGptLogin.mockRejectedValueOnce('SSH disconnected');
     await wrapper.findAll('button').find(button => button.text() === 'Cancel')!.trigger('click');
@@ -178,8 +169,6 @@ describe('RemoteCodexAuthentication', () => {
   it('retries transient polling failures and stops polling when unmounted', async () => {
     vi.useFakeTimers();
     const { client, wrapper } = render();
-    await flushPromises();
-    await wrapper.get('button').trigger('click');
     await flushPromises();
     client.getCodexAuthentication.mockRejectedValueOnce('Connection lost');
     await vi.advanceTimersByTimeAsync(2_000);

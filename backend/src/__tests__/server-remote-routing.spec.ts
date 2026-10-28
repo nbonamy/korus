@@ -1,6 +1,6 @@
 import { product } from '@workspace/core/product';
 import { describe, expect, it, vi } from 'vitest';
-import type { AppSnapshot } from '@workspace/core/contracts';
+import type { AgentBackend, RemoteConnection, AppSnapshot } from '@workspace/core/contracts';
 import { AppBackendServer } from '../server';
 import { BackendDriverRpc } from '../driver-rpc';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
@@ -43,7 +43,7 @@ describe('AppBackendServer', () => {
     const server = new AppBackendServer({ version: 'test', snapshot, saveSnapshot, remoteClients: remoteClients as never, sshConnections: sshConnections as never });
     try {
       const request = { jsonrpc: '2.0' as const, id: 'sync', method: 'connections/runtime/sync', params: { connectionId: connection.id } };
-      const failed = await server.handleMessage({ ...request, method: 'connections/ssh/create', params: { input: { host: connection.host } } });
+      const failed = await server.handleMessage(request);
       expect(failed).toMatchObject({ result: { remoteConnections: { connections: [expect.objectContaining({ status: 'error', detail: expect.stringContaining('could not start') })] } } });
       expect(saveSnapshot).toHaveBeenCalled();
       expect(snapshot.remoteConnections.connections[0]?.id).toBe(connection.id);
@@ -109,13 +109,15 @@ describe('AppBackendServer', () => {
       inspectVersions: vi.fn().mockResolvedValue({ ...connection, daemonVersion: '0.19.1', codexVersion: '0.143.0', detail: 'versions' }),
       checkConnection: vi.fn(),
     };
-    const remoteClients = { closeConnection: vi.fn(), isConnected: vi.fn().mockReturnValue(false) };
-    const server = new AppBackendServer({ version: 'test', pid: 1, snapshot, sshConnections: sshConnections as never, remoteClients: remoteClients as never });
+    const engines = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const remoteClients = { request: vi.fn().mockResolvedValue(engines), closeConnection: vi.fn(), isConnected: vi.fn().mockReturnValue(false) };
+    const server = new AppBackendServer({ version: '0.19.1', pid: 1, snapshot, sshConnections: sshConnections as never, remoteClients: remoteClients as never });
     const result = await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'connections/runtime/inspect', params: { connectionId: connection.id } });
     expect(result).toMatchObject({ result: { remoteConnections: { connections: [expect.objectContaining({ codexVersion: '0.143.0' })] } } });
     expect(remoteClients.closeConnection).not.toHaveBeenCalled();
     expect(sshConnections.checkConnection).not.toHaveBeenCalled();
     expect(sshConnections.inspectVersions).toHaveBeenCalledWith(connection);
+    expect(snapshot.remoteConnections.connections[0]?.providerConnections).toStrictEqual(engines);
     sshConnections.inspectVersions.mockRejectedValueOnce(new Error('SSH host is offline.'));
     expect(await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'connections/runtime/inspect', params: { connectionId: connection.id } }))
       .toMatchObject({ result: { remoteConnections: { connections: [expect.objectContaining({ status: 'error', detail: 'SSH host is offline.' })] } } });
@@ -124,6 +126,10 @@ describe('AppBackendServer', () => {
     sshConnections.inspectVersions.mockRejectedValueOnce(new Error('Version probe timed out.'));
     expect(await server.handleMessage({ jsonrpc: '2.0', id: 3, method: 'connections/runtime/inspect', params: { connectionId: connection.id } }))
       .toMatchObject({ result: { remoteConnections: { connections: [expect.objectContaining({ status: 'ready' })] } } });
+    remoteClients.isConnected.mockReturnValue(false);
+    remoteClients.request.mockResolvedValueOnce({} as never);
+    expect(await server.handleMessage({ jsonrpc: '2.0', id: 4, method: 'connections/runtime/inspect', params: { connectionId: connection.id } }))
+      .toMatchObject({ result: { remoteConnections: { connections: [expect.objectContaining({ status: 'error' })] } } });
   });
 
   it('routes SSH connection discovery and persistence through daemon', async () => {
@@ -141,7 +147,7 @@ describe('AppBackendServer', () => {
         kind: 'ssh',
         name: 'devbox',
         host: 'devbox',
-        status: 'ready',
+        status: 'saved',
         transport: {
           type: 'ssh-stdio',
           command: 'ssh',
@@ -190,7 +196,7 @@ describe('AppBackendServer', () => {
           connections: [{
             id: 'connection-devbox',
             host: 'devbox',
-            status: 'ready',
+            status: 'saved',
           }],
         },
       },
@@ -202,6 +208,38 @@ describe('AppBackendServer', () => {
       user: 'nicolas',
     });
     expect(saveSnapshot).toHaveBeenCalledWith(snapshot);
+  });
+
+  it.each(['claude', 'antigravity'] as const)('publishes inspection and selected %s setup progress', async backend => {
+    const snapshot = createTestSnapshot();
+    const connection = { ...readyRemoteConnection(), status: 'saved' as const, transport: undefined };
+    snapshot.remoteConnections.connections = [connection];
+    const phases: string[] = [];
+    let inspect!: (value: RemoteConnection) => void;
+    const sshConnections = {
+      inspectVersions: vi.fn(() => new Promise<RemoteConnection>(resolve => { inspect = resolve; })),
+      checkConnection: vi.fn(async (saved: RemoteConnection, backends: AgentBackend[], progress: (detail: string) => Promise<void>) => {
+        expect(backends).toStrictEqual([backend]);
+        if (backend === 'claude') await progress('Installing Claude Code…');
+        return { ...readyRemoteConnection(), id: saved.id };
+      }),
+    };
+    const server = new AppBackendServer({ version: 'test', snapshot,
+      saveSnapshot: async value => { phases.push(value.remoteConnections.connections[0]?.detail ?? ''); },
+      sshConnections: sshConnections as never,
+      remoteClients: { request: vi.fn(async (_connection: RemoteConnection, method: string) => method === 'provider/install' ? { backend: 'antigravity', installed: true } : createTestSnapshot()), closeConnection: vi.fn(), close: vi.fn() } as never,
+    });
+    try {
+      const inspecting = server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'connections/runtime/inspect', params: { connectionId: connection.id } });
+      await vi.waitFor(() => expect(sshConnections.inspectVersions).toHaveBeenCalledOnce());
+      expect(snapshot.remoteConnections.connections[0]?.status).toBe('checking');
+      inspect(connection);
+      await inspecting;
+      expect(snapshot.remoteConnections.connections[0]?.status).toBe('saved');
+      await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'connections/runtime/sync', params: { connectionId: connection.id, backends: [backend] } });
+      expect(phases).toContain(backend === 'claude' ? 'Installing Claude Code…' : 'Installing Antigravity…');
+      expect(snapshot.remoteConnections.connections[0]?.status).toBe('ready');
+    } finally { await server.close(); }
   });
 
   it('checks and removes remote connections through daemon', async () => {

@@ -602,7 +602,7 @@ describe('SettingsView', () => {
     bodyButton('Delete')?.click();
     await flushPromises();
 
-    expect(checkRemoteConnection).toHaveBeenCalledWith('connection-devbox');
+    expect(checkRemoteConnection).toHaveBeenCalledWith('connection-devbox', true);
     expect(removeRemoteConnection).toHaveBeenCalledWith('connection-devbox');
   });
 

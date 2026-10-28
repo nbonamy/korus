@@ -6,7 +6,7 @@ import { constants as fsConstants } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import type { AddSshConnectionInput, ClaudeAuthentication, RemoteConnection, SshHostCandidate } from '@workspace/core/contracts';
+import type { AgentBackend, AddSshConnectionInput, ClaudeAuthentication, RemoteConnection, SshHostCandidate } from '@workspace/core/contracts';
 import { createEntityId } from '@workspace/core/ids';
 import { backendProviderTokensFilePath } from '../state';
 import { remoteCodexVersionCommand } from './remote-codex-command';
@@ -53,10 +53,10 @@ export class SshConnectionService {
   async createConnection(input: AddSshConnectionInput): Promise<RemoteConnection> {
     const createdAt = this.nowIso();
     const base = normalizeSshConnectionInput(input, createdAt, this.deps.createId?.() ?? createEntityId('connection'));
-    return this.checkConnection(base);
+    return base;
   }
 
-  async checkConnection(connection: RemoteConnection): Promise<RemoteConnection> {
+  async checkConnection(connection: RemoteConnection, backends: AgentBackend[] = [], progress: (detail: string) => Promise<void> = async () => {}): Promise<RemoteConnection> {
     const checkedAt = this.nowIso();
     let next: RemoteConnection = {
       ...connection,
@@ -67,27 +67,31 @@ export class SshConnectionService {
     };
 
     try {
+      await progress(`Installing ${product.name}…`);
       await this.installRemoteDaemon(next.host);
       await this.syncRemoteProviderTokens(next.host);
       const daemonVersion = await this.remoteDaemonVersion(next.host);
+      if (!daemonVersion) throw new Error('Remote daemon returned an invalid version.');
       let [codexVersion, claudeVersion] = await Promise.all([
         this.remoteCodexVersion(next.host).catch(() => undefined),
         this.remoteClaudeVersion(next.host).catch(() => undefined),
       ]);
-      if (!codexVersion && !claudeVersion) {
-        const engines = await Promise.allSettled([
-          this.ensureRemoteCodexInstalled(next.host), this.ensureRemoteClaudeInstalled(next.host),
-        ]);
-        for (const engine of engines) if (engine.status === 'rejected') throw engine.reason;
-        codexVersion = (engines[0] as PromiseFulfilledResult<string>).value;
-        claudeVersion = (engines[1] as PromiseFulfilledResult<string>).value;
+      if (backends.includes('codex') && !codexVersion) {
+        await progress('Installing Codex…');
+        codexVersion = await this.ensureRemoteCodexInstalled(next.host);
       }
+      if (backends.includes('claude') && !claudeVersion) {
+        await progress('Installing Claude Code…');
+        claudeVersion = await this.ensureRemoteClaudeInstalled(next.host);
+      }
+      await progress('Verifying the remote environment…');
       const runtimeVersions = [`${product.daemonName} ${daemonVersion}`, ...(codexVersion ? [`Codex ${codexVersion}`] : []), ...(claudeVersion ? [`Claude ${claudeVersion}`] : [])];
       next = {
         ...next,
         status: 'ready',
         ...(daemonVersion ? { daemonVersion } : {}),
         codexVersion,
+        ...(claudeVersion ? { claudeVersion } : {}),
         detail: `Connected (${runtimeVersions.join(', ')})`,
         installedAt: checkedAt,
         transport: sshStdioTransport(next.host),
@@ -109,21 +113,21 @@ export class SshConnectionService {
   }
 
   async inspectVersions(connection: RemoteConnection): Promise<RemoteConnection> {
-    const [daemonVersion, codexVersion] = await Promise.all([
-      this.remoteDaemonVersion(connection.host),
+    // Only a successful SSH command can report a missing runtime. Transport errors
+    // remain errors instead of being mistaken for permission to install software.
+    const daemonVersion = await this.remoteDaemonVersion(connection.host, true);
+    const [codexVersion, claudeVersion] = await Promise.all([
       this.remoteCodexVersion(connection.host).catch(() => undefined),
+      this.remoteClaudeVersion(connection.host).catch(() => undefined),
     ]);
-    const runtimeVersions = [`${product.daemonName} ${daemonVersion}`, `Codex ${codexVersion || 'unknown'}`];
-    let claudeWarning = '';
-    {
-      try {
-        runtimeVersions.push(`Claude ${await this.remoteClaudeVersion(connection.host)}`);
-      } catch (error) {
-        claudeWarning = `; Claude unavailable: ${error instanceof Error ? error.message : String(error)}`;
-      }
-    }
-    return { ...connection, daemonVersion, codexVersion, lastCheckedAt: this.nowIso(),
-      detail: `Connected (${runtimeVersions.join(', ')})${claudeWarning}` };
+    const versions = [daemonVersion ? `${product.daemonName} ${daemonVersion}` : '',
+      codexVersion ? `Codex ${codexVersion}` : '', claudeVersion ? `Claude ${claudeVersion}` : ''].filter(Boolean);
+    return { ...connection, daemonVersion, codexVersion, claudeVersion,
+      status: daemonVersion ? 'ready' : 'saved',
+      transport: daemonVersion ? sshStdioTransport(connection.host) : undefined,
+      lastCheckedAt: this.nowIso(),
+      detail: daemonVersion ? `Connected (${versions.join(', ')})` : 'Environment setup required.',
+    };
   }
 
   async ensureRemoteClaudeInstalled(host: string): Promise<string> {
@@ -231,18 +235,18 @@ export class SshConnectionService {
     ]);
   }
 
-  private async remoteDaemonVersion(host: string): Promise<string> {
+  private async remoteDaemonVersion(host: string, allowMissing = false): Promise<string | undefined> {
     const result = await this.run('ssh', [
       '-o',
       'BatchMode=yes',
       '-o',
       'ConnectTimeout=10',
       host,
-      remoteEnvironmentCommand(`node ${remoteDaemonPath} --version`),
+      remoteEnvironmentCommand(allowMissing ? `node ${remoteDaemonPath} --version 2>/dev/null || true` : `node ${remoteDaemonPath} --version`),
     ]);
     const version = parseDaemonVersion(result.stdout);
-    if (!version) throw new Error('Remote daemon returned an invalid version.');
-    return version;
+    if (!version && !allowMissing) throw new Error('Remote daemon returned an invalid version.');
+    return version ?? undefined;
   }
 
   private async resolveLocalDaemonScript(): Promise<string> {

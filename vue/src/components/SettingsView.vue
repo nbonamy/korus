@@ -125,6 +125,7 @@
           v-else-if="activeTab === 'connections'"
           :app-version="appVersion"
           :connections="remoteConnections"
+          :provider-connections="providerConnections"
           :settings="generalSettings"
           :update-settings="updateSettings"
           :teams="teams"
@@ -221,7 +222,7 @@ const props = withDefaults(defineProps<{
   listSourceFolders?: (input?: SourceFolderListInput) => Promise<SourceFolderListing>;
   listSshHosts?: () => Promise<SshHostCandidate[]>;
   addSshConnection?: (input: AddSshConnectionInput) => Promise<void>;
-  checkRemoteConnection?: (connectionId: string, inspectOnly?: boolean) => Promise<void>;
+  checkRemoteConnection?: (connectionId: string, inspectOnly?: boolean, backends?: AgentBackend[]) => Promise<void>;
   updateRemoteConnection?: (connectionId: string, input: UpdateRemoteConnectionInput) => Promise<void>;
   removeRemoteConnection?: (connectionId: string) => Promise<void>;
   companionControl?: (input: import('@workspace/core/companion-protocol').CompanionControl) => Promise<import('@workspace/core/companion-protocol').CompanionControlResult>;

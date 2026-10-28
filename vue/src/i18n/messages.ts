@@ -199,7 +199,7 @@ export const messages = {
       savedNote: 'Saved handoff note', source: 'Source conversation',
     },
     engineConnection: {
-      title: 'Account', connect: 'Connect', connected: 'Connected',
+      title: 'Account', connect: 'Connect', connected: 'Connected', update: 'Update', actions: '{name} actions', refreshStatus: 'Refresh status',
       disconnect: 'Disconnect', disconnected: 'Disconnected', apiKey: 'API key', subscription: 'Claude subscription', amazonBedrock: 'Amazon Bedrock',
       enabled: 'Enable engine', waiting: 'Waiting for sign-in', connectedDisabled: 'Connected · disabled',
       updateFailedTitle: 'Engine status unchanged',

@@ -886,7 +886,7 @@ export type AppApi = {
   getSnapshotState(): Promise<RendererSnapshotState>;
   listSshHosts(): Promise<SshHostCandidate[]>;
   addSshConnection(input: AddSshConnectionInput): Promise<AppSnapshot>;
-  checkRemoteConnection(connectionId: string, inspectOnly?: boolean): Promise<AppSnapshot>;
+  checkRemoteConnection(connectionId: string, inspectOnly?: boolean, backends?: AgentBackend[]): Promise<AppSnapshot>;
   updateRemoteConnection(connectionId: string, input: UpdateRemoteConnectionInput): Promise<AppSnapshot>;
   removeRemoteConnection(connectionId: string): Promise<AppSnapshot>;
   guestConversationControl(input: import('./guest-navigation').GuestJoinControl): Promise<import('./guest-navigation').GuestJoinState>;

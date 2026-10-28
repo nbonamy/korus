@@ -79,6 +79,7 @@ export {
   IconCircle as Circle,
   IconRectangle as RectangleIcon,
   IconRefresh as RefreshIcon,
+  IconSearch as SearchIcon,
   IconRobotFace as RobotFaceIcon,
   IconSend as SendIcon,
   IconScan as ScanIcon,

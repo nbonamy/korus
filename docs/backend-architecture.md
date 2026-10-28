@@ -662,7 +662,9 @@ agents or automation runs prompt for a restart.
 
 ### Remote Hosts (SSH)
 
-Connection records live in `daemon`. Setup installs the checksum-pinned Node
+Connection records live in `daemon`. Saving a host is independent of read-only
+inspection and installation. Initialization requires an explicit selection of
+providers; progress is persisted on the connection record. Setup installs the checksum-pinned Node
 runtime from `node-runtime-release.json` into the remote user's private app
 directory, verifies the staged self-contained `daemon.mjs` before replacing it,
 and confirms activation through the remote backend. System Node and shell
@@ -677,8 +679,8 @@ does not install software or close a running client.
 
 Setup mirrors a local `provider-tokens.json` when present; absence of a local file
 preserves the remote host's credentials. It never copies app state or conversation
-data. A host with neither coding engine receives Codex and Claude during setup;
-existing engine installations are preserved. Engine installation runs on the owning host: Codex uses the user's
+data. Only selected providers are installed; existing engine installations are
+preserved. Engine installation runs on the owning host: Codex uses the user's
 `~/.local` npm prefix and Claude uses its native installer. Detection, account
 sign-in and provider upgrades belong to that host, independently of Korus updates.
 User-local Codex upgrades verify package ownership and retain the `~/.local` npm

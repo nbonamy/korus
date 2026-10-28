@@ -204,7 +204,7 @@ export async function invokeAppWebOperation(
     return result ?? (await backend.request<AppSnapshotGetResult>(backendMethods.snapshotGet)).snapshot;
   }
   if (operation === 'checkRemoteConnection') {
-    return backend.request(args[1] === true ? backendMethods.connectionsRuntimeInspect : backendMethods.connectionsRuntimeSync, { connectionId: args[0] });
+    return backend.request(args[1] === true ? backendMethods.connectionsRuntimeInspect : backendMethods.connectionsRuntimeSync, { connectionId: args[0], ...(args[2] ? { backends: args[2] } : {}) });
   }
   if (operation === 'createTeam') {
     const input = args[0] as { remoteTeamId?: string };

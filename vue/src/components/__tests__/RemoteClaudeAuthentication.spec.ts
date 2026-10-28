@@ -18,14 +18,11 @@ describe('RemoteClaudeAuthentication', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     try {
-      const api = { getClaudeAuthentication: vi.fn().mockResolvedValueOnce({ loggedIn: false }).mockResolvedValue({ loggedIn: true }) };
+      const api = { getClaudeAuthentication: vi.fn().mockResolvedValue({ loggedIn: true }) };
       const wrapper = mount(RemoteClaudeAuthentication, { props: { connection, api } });
       await flushPromises();
-      expect(api.getClaudeAuthentication).toHaveBeenCalledWith('wall-e');
-      expect(wrapper.text()).toContain('Claude needs sign-in on this host.');
+      expect(api.getClaudeAuthentication).not.toHaveBeenCalled();
 
-      await wrapper.get('button').trigger('click');
-      await flushPromises();
       expect(document.body.textContent).toContain('On wall-e, run one of these commands:');
       expect(document.body.textContent).toContain('Claude subscription');
       expect(document.body.textContent).toContain('Anthropic Console (API billing)');
@@ -43,6 +40,7 @@ describe('RemoteClaudeAuthentication', () => {
       expect(writeText).toHaveBeenCalledTimes(2);
       (document.body.querySelector('.app-dialog__footer .app-button--primary') as HTMLButtonElement).click();
       await flushPromises();
+      expect(api.getClaudeAuthentication).toHaveBeenCalledExactlyOnceWith('wall-e');
       expect(wrapper.text()).toContain('Claude connected');
       expect(document.body.querySelector('.remote-claude-auth__command')).toBeNull();
     } finally {
@@ -51,15 +49,18 @@ describe('RemoteClaudeAuthentication', () => {
     }
   });
 
-  it('offers a retry when auth status is unavailable', async () => {
+  it('keeps the selected login home when an explicit status refresh fails and allows retry', async () => {
     const api = { getClaudeAuthentication: vi.fn().mockRejectedValueOnce(new Error('SSH disconnected')).mockResolvedValue({ loggedIn: false }) };
-    const wrapper = mount(RemoteClaudeAuthentication, { props: { connection, api } });
+    const wrapper = mount(RemoteClaudeAuthentication, { props: { connection, api, authentication: { loggedIn: false, configDirectory: '/remote/claude-selected' } } });
+    await flushPromises();
+    (document.body.querySelector('.app-dialog__footer .app-button--primary') as HTMLButtonElement).click();
     await flushPromises();
     expect(wrapper.text()).toContain('Could not check Claude on this host.');
     expect(wrapper.text()).not.toContain('SSH disconnected');
+    expect(document.body.querySelector('code')?.textContent).toContain("CLAUDE_CONFIG_DIR='/remote/claude-selected'");
     await wrapper.get('button').trigger('click');
     await flushPromises();
-    expect(wrapper.text()).toContain('Connect Claude');
+    expect(document.body.textContent).toContain('Claude subscription');
   });
 
   it('ignores a late response from another host and does not check offline connections', async () => {
@@ -68,16 +69,18 @@ describe('RemoteClaudeAuthentication', () => {
       .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
       .mockResolvedValue({ loggedIn: false }) };
     const wrapper = mount(RemoteClaudeAuthentication, { props: { connection, api } });
+    (document.body.querySelector('.app-dialog__footer .app-button--primary') as HTMLButtonElement).click();
+    await flushPromises();
     await wrapper.setProps({ connection: { ...connection, id: 'eve', host: 'eve' } });
     await flushPromises();
     resolveFirst({ loggedIn: true });
     await flushPromises();
-    expect(wrapper.text()).toContain('Connect Claude');
+    expect(document.body.textContent).toContain('Claude subscription');
     expect(wrapper.text()).not.toContain('Claude connected');
-    expect(api.getClaudeAuthentication).toHaveBeenLastCalledWith('eve');
+    expect(api.getClaudeAuthentication).toHaveBeenCalledExactlyOnceWith('wall-e');
 
     await wrapper.setProps({ connection: { ...connection, status: 'error' } });
     await flushPromises();
-    expect(api.getClaudeAuthentication).toHaveBeenCalledTimes(2);
+    expect(api.getClaudeAuthentication).toHaveBeenCalledOnce();
   });
 });

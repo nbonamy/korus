@@ -2,9 +2,11 @@ import { product } from '@workspace/core/product';
 import { flushPromises, mount } from '@vue/test-utils';
 import { ElMessageBox } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { SourceFolderListInput } from '@workspace/core/contracts';
+import type { RemoteConnection, SourceFolderListInput } from '@workspace/core/contracts';
 import type { CompanionControl } from '@workspace/core/companion-protocol';
 import { codexPairingUrl } from '../../device-pairing';
+import { configureAppClient } from '../../platform-api';
+import { createClientApiMock } from '../../test/client-api-mock';
 import SettingsConnectionsPanel from '../SettingsConnectionsPanel.vue';
 const installedCodexVersion = '0.159.3';
 
@@ -24,6 +26,7 @@ async function expandAll(wrapper: ReturnType<typeof mount>) {
 
 describe('SettingsConnectionsPanel', () => {
   afterEach(() => {
+    configureAppClient(undefined);
     vi.useRealTimers();
     vi.restoreAllMocks();
     document.body.innerHTML = '';
@@ -157,7 +160,7 @@ describe('SettingsConnectionsPanel', () => {
     expect(wrapper.text()).toContain('nicolas@devbox.internal');
     expect(wrapper.text()).not.toContain('Ready (daemon 0.1.0)');
     await expandAll(wrapper);
-    expect(wrapper.text()).toContain('Ready (daemon 0.1.0)');
+    expect(wrapper.find('.remote-engine-connections').exists()).toBe(true);
 
     await wrapper.get('[aria-label="Connection settings for devbox"]').trigger('click');
     await flushPromises();
@@ -188,7 +191,7 @@ describe('SettingsConnectionsPanel', () => {
     expect(listSourceFolders).toHaveBeenCalledWith({ remoteConnectionId: 'connection-devbox', path: '~/src' });
     expect(listSourceFolders).toHaveBeenCalledWith({ remoteConnectionId: 'connection-devbox', path: '/home/nicolas/src' });
     expect(updateRemoteConnection).toHaveBeenCalledWith('connection-devbox', { sourceFolderPath: '/home/nicolas/src' });
-    expect(checkRemoteConnection).toHaveBeenCalledWith('connection-devbox');
+    expect(checkRemoteConnection).toHaveBeenCalledWith('connection-devbox', true);
     expect(ElMessageBox.confirm).toHaveBeenCalledWith(
       'devbox will be removed. This will also remove 1 connected team from this app: Remote Team. Remote agents, messages, and automations will keep running on the SSH host.',
       'Delete devbox?',
@@ -242,7 +245,7 @@ describe('SettingsConnectionsPanel', () => {
 
     expect(wrapper.findAll('.settings-connections-panel__upgrade')).toHaveLength(1);
     expect(checkRemoteConnection).toHaveBeenCalledWith('connection-current', true);
-    expect(checkRemoteConnection).toHaveBeenCalledWith('connection-outdated');
+    expect(checkRemoteConnection).toHaveBeenCalledWith('connection-outdated', false, []);
     await wrapper.setProps({ connections: [{ ...wrapper.props('connections')![1]!, codexVersion: '0.143.0' }] });
     expect(wrapper.find('.settings-connections-panel__upgrade').exists()).toBe(false);
     await wrapper.setProps({ connections: [{ ...wrapper.props('connections')![0]!, codexVersion: '' }] });
@@ -251,7 +254,12 @@ describe('SettingsConnectionsPanel', () => {
     expect(wrapper.find('.settings-connections-panel__upgrade').exists()).toBe(false);
   });
 
-  it('shows the inspected Claude version in remote connection settings', async () => {
+  it('shows one host activity indicator and requires a connected coding agent for a green host', async () => {
+    const { api } = createClientApiMock();
+    api.getProviderConnections.mockResolvedValue([{ backend: 'claude', installed: true, connected: true, checking: false }]);
+    let finishVersionCheck!: (value: import('@workspace/core/contracts/provider-updates').ProviderUpdateStatus) => void;
+    api.getProviderUpdate.mockImplementation(() => new Promise(resolve => { finishVersionCheck = resolve; }));
+    configureAppClient({ platform: 'desktop', api });
     const wrapper = mount(SettingsConnectionsPanel, {
       props: {
         connections: [{
@@ -261,6 +269,7 @@ describe('SettingsConnectionsPanel', () => {
           host: 'devbox',
           status: 'ready',
           detail: 'Ready (daemon 0.21.1, Codex 0.155.1, Claude 2.1.283)',
+          providerConnections: [{ backend: 'claude', installed: true, connected: false, checking: false }],
           createdAt: '2026-06-14T10:00:00.000Z',
           updatedAt: '2026-06-14T10:00:00.000Z',
         }],
@@ -268,7 +277,17 @@ describe('SettingsConnectionsPanel', () => {
     });
 
     await expandAll(wrapper);
-    expect(wrapper.get('.settings-connections-panel__detail').text()).toContain('Claude 2.1.283');
+    await flushPromises();
+    expect(wrapper.findAll('.app-spinner')).toHaveLength(1);
+    expect(wrapper.find('.settings-connections-panel__indicator .app-spinner').exists()).toBe(true);
+    finishVersionCheck({ backend: 'claude', installedVersion: '2.1.283', status: 'current', method: 'native', canUpgrade: false, busy: false });
+    await flushPromises();
+    expect(wrapper.get('.remote-engine-connections').text()).toContain('2.1.283');
+    expect(wrapper.find('.settings-connections-panel__dot--error').exists()).toBe(true);
+    const ready = wrapper.props('connections')![0]!;
+    await wrapper.setProps({ connections: [{ ...ready, providerConnections: [{ backend: 'claude', installed: true, connected: true, checking: false }] }] });
+    expect(wrapper.find('.settings-connections-panel__dot--ready').exists()).toBe(true);
+    wrapper.unmount();
   });
 
   it('shows both engine connections whenever the remote host is ready', async () => {
@@ -286,43 +305,58 @@ describe('SettingsConnectionsPanel', () => {
     expect(wrapper.find('.remote-engine-connections').exists()).toBe(false);
   });
 
-  it('loads ssh hosts and adds the selected connection', async () => {
-    const listSshHosts = vi.fn().mockResolvedValue([{
-      host: 'devbox',
-      hostName: 'devbox.internal',
-      user: 'nicolas',
-      port: 2222,
-    }]);
-    const addSshConnection = vi.fn().mockResolvedValue(undefined);
-    const wrapper = mount(SettingsConnectionsPanel, {
-      props: {
-        connections: [],
-        listSshHosts,
-        addSshConnection,
-      },
-      global: {
-        },
-    });
-
-    await wrapper.findAll('button').find((button) => button.text() === 'Add remote')?.trigger('click');
+  it('connects first, checks in the folded row, and initializes only the selected local engines', async () => {
+    const connection: RemoteConnection = { id: 'devbox', kind: 'ssh', name: 'devbox', host: 'devbox', status: 'saved', createdAt: '', updatedAt: '' };
+    let finishInspection!: () => void;
+    let finishSetup!: () => void;
+    const addSshConnection = vi.fn(async () => { await wrapper.setProps({ connections: [connection] }); });
+    const checkRemoteConnection = vi.fn((_id: string, inspectOnly?: boolean) => new Promise<void>(resolve => {
+      if (inspectOnly) finishInspection = resolve;
+      else finishSetup = resolve;
+    }));
+    const wrapper = mount(SettingsConnectionsPanel, { props: {
+      appVersion: '0.45.1', addSshConnection, checkRemoteConnection,
+      listSshHosts: async () => [{ host: 'devbox' }],
+      providerConnections: [
+        { backend: 'codex', installed: true, connected: true, checking: false },
+        { backend: 'claude', installed: true, connected: true, checking: false },
+        { backend: 'antigravity', installed: false, connected: false, checking: false },
+      ],
+    } });
+    await wrapper.findAll('button').find(button => button.text() === 'Add remote')!.trigger('click');
     await flushPromises();
-
-    expect(listSshHosts).toHaveBeenCalledOnce();
-    expect(document.body.textContent).toContain('devbox');
-    expect(document.body.textContent).toContain('nicolas@devbox.internal:2222');
-
-    const connectButton = [...document.body.querySelectorAll('button')]
-      .find((button) => button.textContent?.includes('Set up and connect'));
-    connectButton?.click();
+    bodyButton('Connect')!.click();
     await flushPromises();
-
-    expect(addSshConnection).toHaveBeenCalledWith({
-      name: 'devbox',
-      host: 'devbox',
-      hostName: 'devbox.internal',
-      user: 'nicolas',
-      port: 2222,
-    });
+    expect(addSshConnection).toHaveBeenCalledExactlyOnceWith({ name: 'devbox', host: 'devbox' });
+    expect(checkRemoteConnection).toHaveBeenCalledExactlyOnceWith('devbox', true);
+    expect(document.body.textContent).not.toContain('Add SSH connection');
+    expect(wrapper.get('.settings-connections-panel__identity').attributes('aria-expanded')).toBe('false');
+    expect(wrapper.find('[role="status"]').exists()).toBe(true);
+    finishInspection();
+    await flushPromises();
+    const checkboxes = [...document.body.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
+    expect(checkboxes).toHaveLength(3);
+    expect(checkboxes.map(input => [input.checked, input.disabled])).toStrictEqual([[true, true], [true, false], [true, false]]);
+    checkboxes[1]!.click();
+    checkboxes[2]!.click();
+    await flushPromises();
+    expect(bodyButton('OK')!.disabled).toBe(true);
+    checkboxes[1]!.click();
+    await flushPromises();
+    bodyButton('OK')!.click();
+    await flushPromises();
+    expect(checkRemoteConnection).toHaveBeenLastCalledWith('devbox', false, ['codex']);
+    expect(document.body.textContent).not.toContain('Initialize environment');
+    await wrapper.setProps({ connections: [{ ...connection, status: 'checking', detail: 'Installing Codex…' }] });
+    expect(wrapper.get('.settings-connections-panel__progress').text()).toContain('Installing Codex');
+    expect(wrapper.findAll('.app-spinner')).toHaveLength(1);
+    expect(wrapper.get('.settings-connections-panel__identity').attributes('aria-expanded')).toBe('false');
+    await wrapper.setProps({ connections: [{ ...connection, status: 'ready', daemonVersion: '0.45.1', codexVersion: '1.0' }] });
+    finishSetup();
+    await flushPromises();
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
+    expect(wrapper.get('.settings-connections-panel__identity').attributes('aria-expanded')).toBe('false');
+    wrapper.unmount();
   });
 
   it('keeps setup failures visible and lets the user retry from the connection row', async () => {
@@ -334,12 +368,12 @@ describe('SettingsConnectionsPanel', () => {
     const setup = wrapper.findAll('button').find(button => button.text().includes('Set up'));
     expect(setup).toBeDefined();
     await setup!.trigger('click');
-    expect(wrapper.text()).toContain('Setting up');
-    expect(setup!.attributes('disabled')).toBeDefined();
+    expect(wrapper.find('[role="status"]').exists()).toBe(true);
+    expect(wrapper.findAll('button').some(button => button.text().includes('Set up'))).toBe(false);
     fail(new Error('SSH host is offline.'));
     await flushPromises();
     expect(wrapper.get('[role="alert"]').text()).toContain('SSH host is offline.');
-    expect(setup!.attributes('disabled')).toBeUndefined();
+    expect(wrapper.findAll('button').some(button => button.text().includes('Set up'))).toBe(true);
     wrapper.unmount();
   });
 
@@ -401,6 +435,7 @@ describe('SettingsConnectionsPanel', () => {
     await wrapper.findAll('button').find((button) => button.text() === 'Revoke')?.trigger('click');
     await flushPromises();
     expect(revokePairedDevice).toHaveBeenCalledWith('environment-1', 'client-1');
+    configureAppClient(undefined);
     vi.useRealTimers();
   });
 
