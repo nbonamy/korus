@@ -560,15 +560,20 @@ export class MissionExecutionService {
       // delivering its completion event. Recheck persisted owners while waiting.
       const retryRecovery = this.recoveredLocks.size ? setTimeout(wake, 5_000) : undefined;
       try {
+        const busy = Symbol('commit lock busy');
         const acquired = await this.ports.missions.changeAsync(context.missionId, mission => {
           if (signal?.aborted || this.activeTurns.get(agentId) !== turnId) throw new Error('The requesting provider turn is no longer active.');
           const run = mission.execution?.runs.find(candidate => candidate.id === context.runId);
           if (!mission.execution?.parallelImplementation || !run || run.status !== 'running' || !this.agentTools.ownsWritableRun(mission, run.id, agentId)) throw new Error('No active parallel implementation assignment.');
           const workspace = mission.execution.workspaces?.find(candidate => candidate.repositoryPath === run.repositoryPath && !candidate.deleted);
           if (!workspace) throw new Error('Mission workspace is unavailable.');
-          if (workspace.commitLock && (workspace.commitLock.agentId !== agentId || workspace.commitLock.runId !== run.id)) return false;
+          // Abort the transaction so a waiter does not persist an unpublished revision.
+          if (workspace.commitLock && (workspace.commitLock.agentId !== agentId || workspace.commitLock.runId !== run.id)) throw busy;
           workspace.commitLock = { agentId, runId: run.id, turnId };
           return true;
+        }).catch(error => {
+          if (error === busy) return false;
+          throw error;
         });
         if (acquired) {
           if (signal?.aborted || this.activeTurns.get(agentId) !== turnId) {

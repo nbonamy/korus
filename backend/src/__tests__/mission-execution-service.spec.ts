@@ -104,6 +104,33 @@ describe('mission execution', () => {
     await restarted.agentFinished(b!.workerId!, 'worker-b-turn');
     expect(await resumed).toStrictEqual({ acquired: true });
   });
+  it('keeps the published mission revision usable while a worker waits for the commit lock', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.execution!.parallelImplementation = true;
+      mission.execution!.workspaces = [{ repositoryPath, path: '/shared/checkout', branch: 'mission/test' }];
+      mission.artifacts.tickets = [{ id: 'a', title: 'A', repositoryPath, done: false }, { id: 'b', title: 'B', repositoryPath, done: false }];
+    });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const [a, b] = h.current().execution!.runs;
+    h.service.agentStarted(a!.workerId!, 'turn-a');
+    h.service.agentStarted(b!.workerId!, 'turn-b');
+    await h.service.acquireCommitLock(a!.workerId!);
+    const revision = h.current().revision;
+    const controller = new AbortController();
+    const waiting = h.service.acquireCommitLock(b!.workerId!, controller.signal);
+    try {
+      await new Promise(resolve => setImmediate(resolve));
+      expect(h.current().revision).toBe(revision);
+      await h.service.execute({ id: h.current().id, revision, action: 'cancel', runId: b!.id });
+      expect(h.current().execution!.runs.find(run => run.id === b!.id)!.status).toBe('cancelled');
+    } finally {
+      controller.abort();
+      await expect(waiting).rejects.toThrow();
+    }
+  });
   it('opts into independent workers in one checkout, preserves dependencies and leaves stopped tickets stopped', async () => {
     const h = setup();
     const repositoryPath = h.originalAgents[0]!.folder!;
