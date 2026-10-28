@@ -35,6 +35,8 @@ export type CodeReviewStartInput = {
   backend?: 'codex' | 'claude' | 'antigravity';
   model?: string;
   reasoningEffort?: string;
+  /** Null selects the standard tier; omission retains the reviewer's inherited tier. */
+  serviceTier?: string | null;
   automation?: CodeReviewAutomationSettings;
   scope: CodeReviewScope;
   threadMode: CodeReviewThreadMode;
@@ -51,7 +53,7 @@ export type CodeReviewAutomationSettings = {
 export type CodeReviewPreferences = {
   backend: 'codex' | 'claude' | 'antigravity';
   automation: CodeReviewAutomationSettings;
-  providers: Partial<Record<'codex' | 'claude' | 'antigravity', { model?: string; reasoningEffort?: string }>>;
+  providers: Partial<Record<'codex' | 'claude' | 'antigravity', { model?: string; reasoningEffort?: string; serviceTier?: string | null }>>;
 };
 
 export type CodeReviewAutomation = CodeReviewAutomationSettings & {
@@ -261,7 +263,8 @@ export function isCodeReviewStartInput(value: unknown): value is CodeReviewStart
     && (value.instructions === undefined || typeof value.instructions === 'string')
     && (value.backend === undefined || value.backend === 'codex' || value.backend === 'claude' || value.backend === 'antigravity')
     && optionalSelection(value.model) && optionalSelection(value.reasoningEffort)
-    && (value.threadMode === 'independent' || (value.model === undefined && value.reasoningEffort === undefined))
+    && (value.serviceTier === null || optionalSelection(value.serviceTier))
+    && (value.threadMode === 'independent' || (value.model === undefined && value.reasoningEffort === undefined && value.serviceTier === undefined))
     && (value.automation === undefined || (isCodeReviewAutomationSettings(value.automation)
       && (!value.automation.enabled || value.threadMode === 'independent')));
 }
@@ -276,7 +279,8 @@ export function isCodeReviewPreferences(value: unknown): value is CodeReviewPref
   return isRecord(value) && (value.backend === 'codex' || value.backend === 'claude' || value.backend === 'antigravity')
     && isCodeReviewAutomationSettings(value.automation) && isRecord(value.providers)
     && Object.entries(value.providers).every(([backend, selection]) => (backend === 'codex' || backend === 'claude' || backend === 'antigravity')
-      && isRecord(selection) && optionalSelection(selection.model) && optionalSelection(selection.reasoningEffort));
+      && isRecord(selection) && optionalSelection(selection.model) && optionalSelection(selection.reasoningEffort)
+      && (selection.serviceTier === null || optionalSelection(selection.serviceTier)));
 }
 
 function optionalSelection(value: unknown): boolean {

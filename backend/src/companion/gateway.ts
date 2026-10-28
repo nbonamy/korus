@@ -53,6 +53,7 @@ const promptOptionsSchema = z.object({
 const reviewSchema = z.object({ target: targetSchema, input: z.object({ scope: z.discriminatedUnion('type', [z.object({ type: z.literal('uncommitted') }).strict(), z.object({ type: z.literal('branch'), baseRef: z.string().min(1).max(200) }).strict()]),
   threadMode: z.enum(['current', 'independent']), instructions: z.string().max(100_000).optional(),
   backend: z.enum(['codex', 'claude', 'antigravity']).optional(), model: identity.optional(), reasoningEffort: z.string().min(1).max(40).optional(),
+  serviceTier: z.string().min(1).max(200).nullable().optional(),
   automation: z.object({ enabled: z.boolean(), maxPriority: z.enum(['p0', 'p1', 'p2', 'p3']), maxRounds: z.number().int().min(1).max(10), autoCommit: z.boolean().optional() }).strict().optional(),
 }).strict().refine(isCodeReviewStartInput) }).strict();
 /** A branch name git accepts and no option or path trick can hide in. */

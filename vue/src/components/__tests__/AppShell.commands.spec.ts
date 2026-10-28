@@ -889,7 +889,7 @@ describe('AppShell dialogs and commands', () => {
     expect(wrapper.emitted('duplicate-agent')).toStrictEqual([['agent-dina']]);
     expect(wrapper.emitted('restart-agent')).toStrictEqual([['agent-dina']]);
     expect(getAgentGitDiff).toHaveBeenCalledWith('agent-dina');
-    expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toStrictEqual(['Changes', 'Review', 'Browser']);
+    expect(wrapper.get('[aria-label="Right workspace tabs"]').findAll('[role="tab"]').map((tab) => tab.text())).toStrictEqual(['Changes', 'Review', 'Browser']);
     expect(wrapper.text()).toContain('Rename agent');
 
     wrapper.unmount();

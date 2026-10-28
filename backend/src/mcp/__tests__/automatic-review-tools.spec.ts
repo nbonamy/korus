@@ -136,13 +136,13 @@ describe('automatic-review launch over MCP', () => {
   it('honors explicit provider, model, effort, scope, and automation overrides', async () => {
     const test = await harness();
     const result = await test.call({
-      scope: { type: 'branch', baseRef: 'main' }, backend: 'claude', model: 'requested-model', reasoningEffort: 'medium',
+      scope: { type: 'branch', baseRef: 'main' }, backend: 'claude', model: 'requested-model', reasoningEffort: 'medium', serviceTier: null,
       maxPriority: 'p3', maxRounds: 2, autoCommit: true,
     });
     expect(result.isError).toBe(false);
     await vi.waitFor(() => expect(test.runCodeReview).toHaveBeenCalledOnce());
     expect(test.runCodeReview.mock.calls[0]![0]).toMatchObject({
-      backend: 'claude', backendDefaults: { model: 'requested-model', reasoningEffort: 'medium' },
+      backend: 'claude', backendDefaults: { model: 'requested-model', reasoningEffort: 'medium', serviceTier: null },
       codeReview: { scope: { type: 'branch', baseRef: 'main' }, automation: { maxPriority: 'p3', maxRounds: 2, autoCommit: true } },
     });
     test.complete();

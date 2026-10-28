@@ -155,7 +155,7 @@ describe('Unified backend → mounted application', () => {
     await flushPromises();
     expect(api.startCodeReview).toHaveBeenCalledExactlyOnceWith(agent.id, {
       automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false },
-      backend: 'codex', scope: { type: 'uncommitted' }, threadMode: 'independent',
+      backend: 'codex', scope: { type: 'uncommitted' }, threadMode: 'independent', serviceTier: null,
       ...(instructions ? { instructions } : {}),
     });
   });
@@ -413,6 +413,7 @@ describe('Unified backend → mounted application', () => {
     expect(api.startCodeReview).toHaveBeenCalledExactlyOnceWith(agent.id, {
       automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false },
       backend: 'codex',
+      serviceTier: null,
       scope: { type: 'uncommitted' },
       threadMode: 'independent',
     });

@@ -371,10 +371,10 @@ describe('CodeReviewService', () => {
     test.owner.status = { type: 'working' };
     test.snapshot.agents.push({ ...agent('another-worker'), status: { type: 'awaitingInput' } });
     const session = test.service.start(test.owner, {
-      scope: { type: 'uncommitted' }, threadMode: 'independent', backend: 'codex', model: 'review-model', reasoningEffort: 'high',
+      scope: { type: 'uncommitted' }, threadMode: 'independent', backend: 'codex', model: 'review-model', reasoningEffort: 'high', serviceTier: 'fast',
       automation: { enabled: true, maxPriority: 'p2', maxRounds: 3, ...(autoCommit !== undefined ? { autoCommit } : {}) },
     });
-    expect(reviewer(test, session).backendDefaults).toMatchObject({ model: 'review-model', reasoningEffort: 'high' });
+    expect(reviewer(test, session).backendDefaults).toMatchObject({ model: 'review-model', reasoningEffort: 'high', serviceTier: 'fast' });
     await vi.waitFor(() => expect(test.deleted).toHaveLength(1));
     expect(test.git.commit).toHaveBeenCalledTimes(autoCommit ? 1 : 0);
     expect(session.automation).toMatchObject({ fingerprint: autoCommit ? 'committed' : 'fixed', head: (autoCommit ? 'c' : 'b').repeat(40), commits: autoCommit ? ['c'.repeat(40)] : [] });
@@ -398,7 +398,7 @@ describe('CodeReviewService', () => {
     expect(session.rounds[1]?.summary).toBe('No actionable findings.');
     expect(test.saveReport).toHaveBeenCalledTimes(2);
     expect(test.saveReport.mock.invocationCallOrder[0]).toBeLessThan(test.resetReviewer.mock.invocationCallOrder[0]!);
-    expect(test.snapshot.general.codeReviewDefaults).toMatchObject({ backend: 'codex', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3 }, providers: { codex: { model: 'review-model', reasoningEffort: 'high' } } });
+    expect(test.snapshot.general.codeReviewDefaults).toMatchObject({ backend: 'codex', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3 }, providers: { codex: { model: 'review-model', reasoningEffort: 'high', serviceTier: 'fast' } } });
     expect(test.snapshot.general.codeReviewDefaults?.automation.autoCommit).toBe(autoCommit);
   });
 
@@ -581,6 +581,17 @@ describe('CodeReviewService', () => {
     expect(test.turns[0]!.prompt).toContain(`mcp__${product.mcpServerName}__report_finding`);
     expect(test.turns[0]!.prompt).toContain(`mcp__${product.mcpServerName}__finish_review_round`);
     expect(test.turns[0]!.prompt).not.toContain('mcp__workspace__');
+  });
+
+  it('uses Standard for a review without changing the source agent’s Fast tier', () => {
+    const test = harness([]);
+    test.owner.backendDefaults = { kind: 'codex', model: 'owner-model', serviceTier: 'fast' };
+    const session = test.service.start(test.owner, {
+      scope: { type: 'uncommitted' }, threadMode: 'independent', model: 'review-model', serviceTier: null,
+    });
+    expect(reviewer(test, session).backendDefaults).toMatchObject({ model: 'review-model', serviceTier: null });
+    expect(test.owner.backendDefaults.serviceTier).toBe('fast');
+    expect(test.snapshot.general.codeReviewDefaults?.providers.codex).toStrictEqual({ model: 'review-model', serviceTier: null });
   });
   it.each([undefined, 'default'] as const)('inherits saved Claude permissions unless the source has an explicit mode (%s)', async permissionMode => {
     const test = harness([async () => ({ text: '', findingCount: 0 })]);

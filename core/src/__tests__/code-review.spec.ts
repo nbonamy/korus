@@ -114,6 +114,11 @@ describe('code review ledger', () => {
     expect(isCodeReviewStartInput({ ...automatic, model: {} })).toBe(false);
     expect(isCodeReviewStartInput({ scope: { type: 'uncommitted' }, threadMode: 'current', model: 'review-model' })).toBe(false);
     expect(isCodeReviewStartInput({ scope: { type: 'uncommitted' }, threadMode: 'current', reasoningEffort: 'high' })).toBe(false);
+    expect(isCodeReviewStartInput({ ...automatic, serviceTier: 'fast' })).toBe(true);
+    expect(isCodeReviewStartInput({ ...automatic, serviceTier: null })).toBe(true);
+    expect(isCodeReviewStartInput({ ...automatic, serviceTier: 1 })).toBe(false);
+    expect(isCodeReviewStartInput({ ...automatic, serviceTier: '' })).toBe(false);
+    expect(isCodeReviewStartInput({ scope: { type: 'uncommitted' }, threadMode: 'current', serviceTier: null })).toBe(false);
     expect(isCodeReviewStartInput({ scope: { type: 'uncommitted' }, threadMode: 'independent', model: 'review-model' })).toBe(true);
   });
 

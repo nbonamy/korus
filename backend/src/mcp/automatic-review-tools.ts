@@ -32,6 +32,7 @@ export function createAutomaticReviewToolModuleProvider(options: {
               backend: z.enum(['codex', 'claude', 'antigravity']).optional().describe('Requested override; defaults to the caller.'),
               model: z.string().trim().min(1).max(200).optional().describe('Optional requested model. Same-provider reviews inherit the caller’s model; a different provider uses its own defaults.'),
               reasoningEffort: z.string().trim().min(1).max(200).optional().describe('Optional requested effort. With no model override, same-provider reviews inherit the caller’s effort; an explicit model without effort uses that model’s default.'),
+              serviceTier: z.string().trim().min(1).max(200).nullable().optional().describe('Provider service tier ID; null selects Standard. Omit to inherit the reviewer’s tier.'),
               maxPriority: findingPrioritySchema.optional().describe('Highest numerical priority to fix; defaults to saved settings or p2 (P0–P2).'),
               maxRounds: z.number().int().min(1).max(10).optional().describe('Review round limit including final verification; defaults to saved settings or 3.'),
               autoCommit: z.boolean().optional().describe('False unless local commits are explicitly authorized, regardless of saved defaults. Includes reviewed working changes and fixes.'),
