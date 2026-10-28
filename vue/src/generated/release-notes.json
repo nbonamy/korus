@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.45.0",
+  "currentVersion": "0.45.1",
   "releases": [
+    {
+      "version": "0.45.1",
+      "releasedAt": "2026-10-27",
+      "sourceSha256": "e0ef4cff0bddfecf92c8c6eab9cde1ca6b053fc13935d4b0269524505000ddba",
+      "markdown": "### Improvements and fixes\n\n- **Analytics by repository:** Compare usage across repositories, with worktrees\n  grouped under their repository and separate entries for Missions and Quick Chats.\n- Count Analytics activity and date ranges in your local timezone.\n- Keep Analytics charts steady while you read; refresh on demand or when returning\n  to the screen."
+    },
     {
       "version": "0.45.0",
       "releasedAt": "2026-10-27",

@@ -4,6 +4,16 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.45.1] - 2026-10-27
+
+### Improvements and fixes
+
+- **Analytics by repository:** Compare usage across repositories, with worktrees
+  grouped under their repository and separate entries for Missions and Quick Chats.
+- Count Analytics activity and date ranges in your local timezone.
+- Keep Analytics charts steady while you read; refresh on demand or when returning
+  to the screen.
+
 ## [0.45.0] - 2026-10-27
 
 ### New features

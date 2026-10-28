@@ -1,6 +1,6 @@
 {
   "name": "@workspace/backend",
-  "version": "0.45.0",
+  "version": "0.45.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -30,7 +30,7 @@
     "@libp2p/websockets": "10.1.22",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@multiformats/multiaddr": "13.0.3",
-    "@workspace/core": "0.45.0",
+    "@workspace/core": "0.45.1",
     "google-auth-library": "^11.3.1",
     "libp2p": "3.3.12",
     "marked": "17.0.6",
