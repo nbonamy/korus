@@ -150,7 +150,7 @@ struct ComposerView: View {
             }
         }
         .padding(10)
-        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 28, style: .continuous))
+        .glassEffect(.regular, in: .rect(cornerRadius: 28, style: .continuous))
         .padding(.horizontal, 12)
         .padding(.bottom, 6)
         // Let iOS own keyboard dismissal. Animating this collapse independently
