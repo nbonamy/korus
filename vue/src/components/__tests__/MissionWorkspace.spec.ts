@@ -72,6 +72,43 @@ function mountWorkspace(mission: Mission, options: {
 }
 
 describe('MissionWorkspace', () => {
+  it('remembers each mission conversation after reopening and falls back to the lead when its worker disappears', async () => {
+    const snapshot = createInitialSnapshot();
+    const leadId = snapshot.agents[0]!.id;
+    const workerId = snapshot.agents[1]!.id;
+    const mission = missionWithRun('accepted');
+    mission.stage = 'implementation';
+    mission.execution!.runs.push({ id: 'implementation', stage: 'implementation', memberId: workerId, workerId,
+      repositoryPath: '/src/billing-service', status: 'running', skills: [], feedback: '', startedAt: '' });
+    let wrapper = mountWorkspace(mission, { agents: snapshot.agents });
+    await flushPromises();
+    expect(wrapper.get('.conversation-slot').text()).toContain(leadId);
+    await wrapper.get('[aria-label="Mission conversations"]').findAll('[role="tab"]')[1]!.trigger('click');
+    expect(wrapper.get('.conversation-slot').text()).toContain(workerId);
+    const otherWorker = { ...snapshot.agents[1]!, id: 'other-worker' };
+    snapshot.agents.push(otherWorker);
+    mission.execution!.runs.push({ id: 'other-implementation', stage: 'implementation', memberId: workerId, workerId: otherWorker.id,
+      repositoryPath: '/src/other-service', status: 'running', skills: [], feedback: '', startedAt: '' });
+    await wrapper.setProps({ mission: structuredClone(mission), agents: snapshot.agents });
+    expect(wrapper.get('.conversation-slot').text()).toContain(workerId);
+    wrapper.unmount();
+    const otherMission = mountWorkspace(missionWithRun('accepted'));
+    await flushPromises();
+    expect(otherMission.get('.conversation-slot').text()).toContain(leadId);
+    otherMission.unmount();
+    wrapper = mountWorkspace(mission, { agents: snapshot.agents });
+    await flushPromises();
+    expect(wrapper.get('.conversation-slot').text()).toContain(workerId);
+    await wrapper.setProps({ agents: snapshot.agents.filter(agent => agent.id !== workerId) });
+    expect(wrapper.get('.conversation-slot').text()).toContain(leadId);
+    expect(wrapper.get('[aria-label="Mission conversations"]').text()).not.toContain('billing-service');
+    wrapper.unmount();
+    wrapper = mountWorkspace(mission, { agents: snapshot.agents });
+    await flushPromises();
+    expect(wrapper.get('.conversation-slot').text()).toContain(leadId);
+    wrapper.unmount();
+  });
+
   it('selects the implementation model in a cancellable approval dialog without changing the lead', async () => {
     const mission = missionWithRun('awaitingReview', true);
     mission.stage = 'tickets';
@@ -489,6 +526,8 @@ describe('MissionWorkspace', () => {
     expect(tabs).toHaveLength(2);
     expect(tabs.map(tab => tab.attributes('aria-label'))).toStrictEqual(['Mission lead', 'billing-service']);
     expect(tabs.map(tab => tab.text())).toStrictEqual(['Mission lead', 'billing-service']);
+    expect(tabs[0]!.attributes('aria-selected')).toBe('true');
+    await tabs[1]!.trigger('click');
     expect(tabs[1]!.attributes('aria-selected')).toBe('true');
     expect(wrapper.get('[aria-label="Stage conversation"]').get('header').text()).toContain('billing-serviceBuilderOAuth connection');
     expect(wrapper.get('.conversation-slot').text()).toContain(snapshot.agents[1]!.id);

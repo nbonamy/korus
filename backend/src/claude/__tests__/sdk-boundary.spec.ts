@@ -84,6 +84,31 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     vi.unstubAllEnvs();
   });
 
+  it('continues an interrupted session through the provider operation', async () => {
+    const { sdk, driver, snapshot, events } = setup();
+    const sessionId = randomUUID();
+    const owner = snapshot.agents[0]!;
+    owner.backendSession = { kind: 'claude', sessionId, transport: 'stdio' };
+    const pending = driver.continueInterruptedTurn(owner);
+    await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
+    expect(sdk.options[0]?.resume).toBe(sessionId);
+    expect(sdk.inputs[0]?.message.content).toEqual([{ type: 'text', text: 'continue' }]);
+    expect(sdk.inputs[0]?.uuid).toBeTypeOf('string');
+    sdk.emit({ type: 'system', subtype: 'init', session_id: sessionId });
+    expect(await pending).toMatchObject({ backendSession: { kind: 'claude', sessionId }, activeTurnId: expect.any(String) });
+    sdk.emit({ type: 'assistant', session_id: sessionId, message: { content: [{ type: 'text', text: 'No response requested.' }] } });
+    sdk.emit({ type: 'result', subtype: 'success', session_id: sessionId, is_error: false });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(events.some(event => event.type === 'claude.conversationEventReceived' && event.payload.event.type === 'turn.completed')).toBe(false);
+    expect(JSON.stringify(events)).not.toContain('No response requested.');
+    expect(owner.autoResumePending).toBe(true);
+    sdk.emit({ type: 'user', session_id: sessionId, uuid: sdk.inputs[0]!.uuid, isReplay: true, message: sdk.inputs[0]!.message });
+    sdk.emit({ type: 'assistant', session_id: sessionId, message: { content: [{ type: 'text', text: 'Continuing the work.' }] } });
+    sdk.emit({ type: 'result', subtype: 'success', session_id: sessionId, is_error: false });
+    await vi.waitFor(() => expect(events.some(event => event.type === 'claude.conversationEventReceived' && event.payload.event.type === 'turn.completed')).toBe(true));
+    expect(owner.autoResumePending).toBeUndefined();
+  });
+
   it('keeps selected mention identities across submission and native history reload', async () => {
     const home = await mkdtemp(path.join(os.tmpdir(), 'claude-mentions-')); homes.push(home);
     const { sdk, driver, snapshot, events } = setup(false, undefined, [], home);
@@ -91,6 +116,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     const content = [{ type: 'text' as const, text: '$cp vs ' }, { type: 'mention' as const, kind: 'skill' as const, id: '/skills/cp/SKILL.md', label: 'Commit and push', value: 'cp' }];
     const pending = driver.sendPrompt(owner, '$cp vs Commit and push\n\n<context>Keep this host context.</context>', { content });
     await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
+    expect(owner.autoResumePending).toBe(true);
     const input = sdk.inputs[0]!;
     expect(input.uuid).toBeTypeOf('string');
     expect(input.message.content).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'text', text: expect.stringContaining('$cp vs [$cp](/skills/cp/SKILL.md)\n\n<context>Keep this host context.</context>') })]));
@@ -100,6 +126,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     expect(submitted?.type === 'claude.conversationEventReceived' && submitted.payload.event.type === 'message.userSubmitted' && submitted.payload.event.payload.message.metadata?.promptContent).toStrictEqual(content);
     sdk.emit({ type: 'result', subtype: 'success', session_id: sessionId, is_error: false });
     await vi.waitFor(() => expect(events.some(event => event.type === 'claude.conversationEventReceived' && event.payload.event.type === 'turn.completed')).toBe(true));
+    expect(owner.autoResumePending).toBeUndefined();
     await driver.releaseConversation(owner.id);
     const project = path.join(home, '.claude', 'projects', '-tmp-project'); await mkdir(project, { recursive: true });
     await writeFile(path.join(project, `${sessionId}.jsonl`), JSON.stringify({ type: 'user', uuid: input.uuid, message: input.message }) + '\n');

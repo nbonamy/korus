@@ -267,11 +267,16 @@ describe('AppStateStore', () => {
 
   it('restores the saved snapshot in a fresh process', async () => {
     const snapshot = snapshotWithVisualizations();
+    snapshot.agents[0]!.autoResumePending = true;
+    snapshot.general.autoResumeOnStartup = false;
     snapshot.general.providerApprovalDefaults = { codex: 'ask-for-approval', claude: 'acceptEdits' };
     snapshot.general.codeReviewDefaults = { backend: 'codex', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3, autoCommit: true }, providers: { codex: {backend: 'codex',  model: 'review-model', reasoningEffort: 'high', serviceTier: 'fast' }, claude: {backend: 'claude', reasoningEffort: null,  model: 'sonnet', serviceTier: null } } };
     await new AppStateStore(home).save(snapshot);
 
     const restored = await new AppStateStore(home).load();
+    expect((await readJson('roster.json')).schemaVersion).toBe(3);
+    expect(restored.agents[0]!.autoResumePending).toBe(true);
+    expect(restored.general.autoResumeOnStartup).toBe(false);
 
     const expected = snapshotFromPersistedState(persistedStateFromSnapshot(snapshot));
     // The selection is stored once, on the active team.

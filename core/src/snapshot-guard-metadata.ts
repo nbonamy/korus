@@ -137,6 +137,7 @@ function isAgent(value: unknown): boolean {
     optional(value, 'readState', isAgentReadState) &&
     optional(value, 'threadFlags', isThreadFlags) &&
     optional(value, 'rateLimitPause', isRateLimitPause) &&
+    optional(value, 'autoResumePending', isBoolean) &&
     optional(value, 'suggestedPrompt', isString) &&
     optional(value, 'goal', isThreadGoal) &&
     optional(value, 'visualize', isVisualizeSession) &&
@@ -567,6 +568,7 @@ function isGeneralSettings(value: unknown): boolean {
     isArrayOf(value.savedPromptDrafts, (draft) => isRecord(draft)
       && isString(draft.id) && isString(draft.agentId) && isString(draft.text) && optional(draft, 'content', isPromptContent) && isNumber(draft.createdAt)) &&
     optional(value, 'autoResumeAfterLimit', isBoolean) &&
+    optional(value, 'autoResumeOnStartup', isBoolean) &&
     typeof value.sessionCompressionWarningEnabled === 'boolean' &&
     includes(['automatic', 'repository', 'off'], value.worktreeInitializationMode) &&
     optional(value, 'useInteractivePlans', isBoolean) &&

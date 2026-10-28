@@ -297,6 +297,9 @@ export class AppBackendServer {
   private readonly providerSetup?: import('./provider-setup').ProviderSetup;
   private readonly skills: SkillManager;
   private readonly autoResume: AutoResumeService;
+  private readonly recoveryTurns = new Map<string, string>();
+  private readonly stoppingAgents = new Set<string>();
+  private closing = false;
   private readonly providerConnections?: ProviderConnections;
 
   private readonly conversationShares?: ConversationShares;
@@ -858,6 +861,50 @@ export class AppBackendServer {
     await this.missionExecution.refreshOwnedSkills();
     await this.missionExecution.recoverInterruptedRuns();
     for (const agent of this.snapshot.agents) await this.codeReviews?.resumeInterrupted(agent);
+    await this.resumeInterruptedWork();
+  }
+
+  private async resumeInterruptedWork(): Promise<void> {
+    for (const agent of this.snapshot.agents) {
+      if (this.closing) return;
+      if (!agent.autoResumePending || agent.sharedConversation || this.remoteTeams.connectionIdForAgent(agent)) continue;
+      if (agent.status.type !== 'idle' || this.recoveryTurns.has(agent.id)) continue;
+      const conversationId = agentConversationId(agent);
+      const backend = agent.backend;
+      delete agent.autoResumePending;
+      await this.persistSnapshotOnly();
+      if (this.closing || this.snapshot.general.autoResumeOnStartup === false || !conversationId || !this.snapshot.agents.includes(agent)
+        || agent.backend !== backend || agentConversationId(agent) !== conversationId || agent.status.type !== 'idle') continue;
+      try { await this.agentConversations.continueInterruptedTurn(agent.id); }
+      catch (error) {
+        warnMain('startup', 'could not resume interrupted work', { agentId: agent.id, message: String(error) });
+        if (!this.closing && this.snapshot.agents.includes(agent) && agent.status.type === 'idle' && !agent.autoResumePending) {
+          this.applyAndEmitBackendEvent({ agentId: agent.id, type: 'agent.statusChanged',
+            payload: { type: 'error', message: 'Could not resume interrupted work. Try again manually.' } });
+        }
+      }
+    }
+  }
+
+  private observeRecoveryTurn(event: BackendPublishedEvent): void {
+    const view = providerConversationEventView(event);
+    const agent = view.agentId && this.snapshot.agents.find(candidate => candidate.id === view.agentId);
+    if (!agent || agent.sharedConversation || this.remoteTeams.connectionIdForAgent(agent)) return;
+    const currentConversationId = agentConversationId(agent);
+    if (view.conversationId && currentConversationId && view.conversationId !== currentConversationId) return;
+    if (view.type === 'turn.started' && view.turnId && !this.stoppingAgents.has(agent.id)) {
+      this.recoveryTurns.set(agent.id, view.turnId);
+      agent.autoResumePending = true;
+      void this.persistSnapshotOnly().catch(error => warnMain('startup', 'could not save active work', { message: String(error) }));
+    } else if (view.type === 'turn.completed' && view.turnId && this.recoveryTurns.get(agent.id) === view.turnId) {
+      this.recoveryTurns.delete(agent.id);
+      delete agent.autoResumePending;
+      void this.persistSnapshotOnly().catch(error => warnMain('startup', 'could not save completed work', { message: String(error) }));
+    } else if (event.type === 'agent.statusChanged' && event.payload.type === 'error') {
+      this.recoveryTurns.delete(agent.id);
+      delete agent.autoResumePending;
+      void this.persistSnapshotOnly().catch(error => warnMain('startup', 'could not save failed work', { message: String(error) }));
+    }
   }
 
   async requireConnectedEngine(backend?: Agent['backend']): Promise<Agent['backend']> {
@@ -2438,25 +2485,32 @@ export class AppBackendServer {
       case backendMethods.agentInterrupt: {
         const agentId = requireAgentId(message.params);
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentInterrupt, { agentId }, async (agent) => {
-          this.autoResume.cancel(agent.id);
-          if (await this.codeReviews?.interruptSimulatedInspection(agent)) return this.snapshot;
-          await this.tasks?.blockParent(agentId);
-          // The inspection can settle before the provider acknowledges interruption.
-          const inspectionRoundId = this.codeReviews?.activeInspectionRoundId(agent);
+          this.stoppingAgents.add(agent.id);
           try {
-            const result = await this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent }) as BackendSendResult;
-            agent.backendSession = result.backendSession;
-            const reviewChanged = await this.codeReviews?.handleTurnInterrupted(agent, inspectionRoundId) ?? false;
-            if (!reviewChanged) await this.persistSnapshotOnly();
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            this.applyAndEmitBackendEvent({
-              agentId,
-              type: 'agent.statusChanged',
-              payload: { type: 'error', message: `Failed to interrupt ${backendDisplayName(agent.backend)}: ${errorMessage}` },
-            });
+            this.recoveryTurns.delete(agent.id);
+            if (agent.autoResumePending) {
+              delete agent.autoResumePending;
+              await this.persistSnapshotOnly();
+            }
+            this.autoResume.cancel(agent.id);
+            if (await this.codeReviews?.interruptSimulatedInspection(agent)) return this.snapshot;
+            await this.tasks?.blockParent(agentId);
+            // The inspection can settle before the provider acknowledges interruption.
+            const inspectionRoundId = this.codeReviews?.activeInspectionRoundId(agent);
+            try {
+              const result = await this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent }) as BackendSendResult;
+              agent.backendSession = result.backendSession;
+              const reviewChanged = await this.codeReviews?.handleTurnInterrupted(agent, inspectionRoundId) ?? false;
+              if (!reviewChanged) await this.persistSnapshotOnly();
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              this.applyAndEmitBackendEvent({ agentId, type: 'agent.statusChanged',
+                payload: { type: 'error', message: `Failed to interrupt ${backendDisplayName(agent.backend)}: ${errorMessage}` } });
+            }
+            return this.snapshot;
+          } finally {
+            this.stoppingAgents.delete(agent.id);
           }
-          return this.snapshot;
         });
       }
       case backendMethods.agentTasksList: {
@@ -3264,6 +3318,7 @@ export class AppBackendServer {
   }
 
   async close(): Promise<void> {
+    this.closing = true;
     this.conversationShares?.close();
     await this.options.guestJoins?.close();
     this.autoResume.close();
@@ -3654,6 +3709,7 @@ export class AppBackendServer {
 
   private applyAndEmitBackendEvent(event: BackendEvent): void {
     const fullEvent = this.nextMainEvent(event);
+    this.observeRecoveryTurn(fullEvent);
     this.options.usage?.observeEvent(fullEvent);
     applyMainEventToSnapshot(this.snapshot, fullEvent);
     this.observeShareTargetChange(fullEvent);
@@ -3712,6 +3768,7 @@ export class AppBackendServer {
       }
     }
     const fullEvent = this.nextMainEvent(event);
+    this.observeRecoveryTurn(fullEvent);
     this.options.usage?.observeEvent(fullEvent);
     applyMainEventToSnapshot(this.snapshot, fullEvent);
     this.observeShareTargetChange(fullEvent);

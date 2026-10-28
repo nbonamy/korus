@@ -401,6 +401,8 @@ export type Agent = {
   /** Optional next-prompt hint, never composer draft text. Cleared on a new prompt or conversation reset. */
   suggestedPrompt?: string;
   rateLimitPause?: import('./auto-resume').RateLimitPause;
+  /** A running turn may need continuation if this daemon restarts. */
+  autoResumePending?: boolean;
   goal?: ThreadGoal;
   visualize?: import('./visualize').VisualizeSession;
   isRegistered?: boolean;
@@ -529,6 +531,7 @@ export type AppGeneralSettings = {
   worktreeDelegationStartingContext?: import('./delegation-context').DelegationStartingContext;
   worktreeDelegationInstructions?: string;
   autoResumeAfterLimit?: boolean;
+  autoResumeOnStartup?: boolean;
   sessionCompressionWarningEnabled: boolean;
   repositoryIcons: Record<string, string>;
   appshots: AppshotSettings;

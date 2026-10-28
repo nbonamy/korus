@@ -40,6 +40,7 @@ describe('mission conversation tabs', () => {
     const tabs = wrapper.findAll('[role="tab"]');
     expect(tabs.map(tab => tab.text())).toStrictEqual(['Mission lead', 'api · 1', 'api · 2']);
     expect(dots(wrapper)).toStrictEqual([null, 'needsInput', 'unread']);
+    await tabs[1]!.trigger('click');
     expect(tabs[1]!.attributes('aria-selected')).toBe('true');
     await tabs[2]!.trigger('click');
     expect(wrapper.emitted('update:selectedAgentId')!.at(-1)).toStrictEqual(['web']);

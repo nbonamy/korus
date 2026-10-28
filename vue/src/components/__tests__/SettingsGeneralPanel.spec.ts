@@ -34,7 +34,8 @@ describe('SettingsGeneralPanel', () => {
     const wrapper = mountPanel({ updateSettings });
 
     await flushPromises();
-    await wrapper.findComponent({ name: 'ElSwitch' }).vm.$emit('update:modelValue', false);
+    await wrapper.findAllComponents({ name: 'ElSwitch' })
+      .find(candidate => candidate.attributes('aria-label') === 'Prevent sleep while agents run')!.vm.$emit('update:modelValue', false);
 
     expect(wrapper.text()).toContain('Prevent sleep while agents run');
     expect(wrapper.text()).not.toContain('Worktree initialization');
@@ -58,6 +59,17 @@ describe('SettingsGeneralPanel', () => {
     expect(updateSettings).toHaveBeenCalledWith({
       general: { celebrationsEnabled: false },
     });
+  });
+  it('enables startup recovery by default and lets the user turn it off', async () => {
+    const updateSettings = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mountPanel({ updateSettings });
+    await flushPromises();
+    const control = wrapper.findAllComponents({ name: 'ElSwitch' })
+      .find(candidate => candidate.attributes('aria-label') === 'Resume interrupted work on startup');
+    expect(control).toBeDefined();
+    expect(control!.props('modelValue')).toBe(true);
+    await control!.vm.$emit('update:modelValue', false);
+    expect(updateSettings).toHaveBeenCalledWith({ general: { autoResumeOnStartup: false } });
   });
   it('toggles the background service through Settings', async () => {
     const confirm = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue('cancel');

@@ -360,6 +360,10 @@ Rules:
 - Writes are serialized, same-directory temp file plus atomic rename, with no
   fsync and therefore no power-loss guarantee. A slow older write never overwrites
   a newer one.
+- Active agent turns carry a roster recovery flag. The owning daemon clears it
+  on completion or explicit stop and uses the provider driver to continue flagged
+  work at startup when the setting is enabled. Remote agents are recovered by
+  their owning daemon.
 - Navigation, ordering and presentation settings are per-client preference
   profiles; backend policy is shared. A client selecting a remote team never
   changes the remote desktop's navigation.

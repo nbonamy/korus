@@ -7,6 +7,8 @@ export type ClaudeTurnParams = {
   cwd: string;
   prompt: string;
   messageId?: ReturnType<typeof randomUUID>;
+  /** Ignore cold-resume output until this input is replayed by the SDK. */
+  waitForInputReplay?: boolean;
   sessionId?: string;
   model?: string | null;
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null;

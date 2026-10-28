@@ -192,6 +192,7 @@ function expectedEmptySnapshot(): AppSnapshot {
       backlogRepositoryFavorites: {},
       savedPromptDrafts: [],
       autoResumeAfterLimit: true,
+      autoResumeOnStartup: true,
       sessionCompressionWarningEnabled: true,
       useInteractivePlans: true,
       worktreeInitializationMode: 'automatic',
