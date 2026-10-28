@@ -26,7 +26,7 @@ const issue: WorkItem = {
 describe('WorkItemAssignmentPicker', () => {
   it('lets a new agent start with a chosen backend, model and reasoning effort', async () => {
     const listModels = vi.fn(async () => [
-      { id: 'm1', model: 'gpt-fast', displayName: 'GPT Fast', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'High' }] },
+      { id: 'm1', model: 'gpt-fast', displayName: 'GPT Fast', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'High' }], serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }] },
       { id: 'm2', model: 'hidden', displayName: 'Hidden', hidden: true },
     ]);
     const wrapper = mount(WorkItemAssignmentPicker, {
@@ -48,9 +48,12 @@ describe('WorkItemAssignmentPicker', () => {
 
     [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(option => option.textContent?.trim() === 'high')!.click();
     await wrapper.vm.$nextTick();
+    await wrapper.get('[aria-label="Coding agent and model"]').trigger('click');
+    [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(option => option.textContent?.trim() === 'fast')!.click();
+    await wrapper.vm.$nextTick();
     await wrapper.get('.app-button--primary').trigger('click');
     expect(wrapper.emitted('submit')).toStrictEqual([[
-      { action: 'fix', destination: 'new', item: issue, backend: 'codex', model: 'gpt-fast', reasoningEffort: 'high' },
+      { action: 'fix', destination: 'new', item: issue, backend: 'codex', model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'fast' },
     ]]);
   });
 

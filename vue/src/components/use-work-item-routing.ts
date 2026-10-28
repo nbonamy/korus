@@ -34,6 +34,7 @@ export type StartWorkItemsInput = {
   backend?: Agent['backend'];
   model?: string;
   reasoningEffort?: string;
+  serviceTier?: string;
   repository?: SourceRepository;
   isCurrent?: () => boolean;
 };
@@ -112,7 +113,7 @@ export function useWorkItemRouting(options: {
         ? await options.actions.createAgent({
             name: `${sourceAgentName} ${workItemDisplayIdentifier(item)}`, folder: sourceAgent.folder ?? '',
             backend: input.backend, teamId: sourceAgent.teamId,
-            ...(input.model ? { modelSelection: { model: input.model, ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort as ReasoningEffort } : {}) } } : {}),
+            ...(input.model ? { modelSelection: { model: input.model, ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort as ReasoningEffort } : {}), ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}) } } : {}),
           })
         : await options.actions.duplicateAgent(sourceAgent.id, {
           select: false,
@@ -199,7 +200,7 @@ export function useWorkItemRouting(options: {
     let created = 0;
     const settled = Promise.allSettled(input.items.map(async listedItem => {
       const { agent, item } = await createIsolatedAgent(listedItem, input.teamId, {
-        backend: input.backend, model: input.model, reasoningEffort: input.reasoningEffort,
+        backend: input.backend, model: input.model, reasoningEffort: input.reasoningEffort, serviceTier: input.serviceTier,
         repository: input.repository, isCurrent: input.isCurrent,
         onPhase: () => {
           if (++prepared !== input.items.length) return;
@@ -249,7 +250,7 @@ export function useWorkItemRouting(options: {
   async function createIsolatedAgent(
     listedItem: WorkItem,
     teamId: string,
-    creationOptions: { reuseExisting?: boolean; backend?: Agent['backend']; model?: string; reasoningEffort?: string; repository?: SourceRepository; isCurrent?: () => boolean; onPhase?: (phase: 'creatingAgent') => void } = {},
+    creationOptions: { reuseExisting?: boolean; backend?: Agent['backend']; model?: string; reasoningEffort?: string; serviceTier?: string; repository?: SourceRepository; isCurrent?: () => boolean; onPhase?: (phase: 'creatingAgent') => void } = {},
   ): Promise<{ agent: Agent; item: WorkItem }> {
     const team = options.model.snapshot().teams.find((candidate) => candidate.id === teamId);
     if (!team) throw new Error(translate('surface.appShell.theSelectedTeamIsUnavailable'));
@@ -279,6 +280,7 @@ export function useWorkItemRouting(options: {
       ...(creationOptions.model ? { modelSelection: {
         model: creationOptions.model,
         ...(creationOptions.reasoningEffort ? { reasoningEffort: creationOptions.reasoningEffort as ReasoningEffort } : {}),
+        ...(creationOptions.serviceTier ? { serviceTier: creationOptions.serviceTier } : {}),
       } } : {}),
       sourceRepositoryName: repository.name,
       teamId: team.id,

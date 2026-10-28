@@ -255,7 +255,7 @@
           </el-select>
         </label>
         <label>{{ $t('repositoryBacklog.session') }}
-          <BackendModelSelector v-model:backend="selectedBackend" v-model:model="selectedModel" v-model:reasoning-effort="selectedEffort" :team-id="selectedTeamId" :disabled="startingWork" />
+          <BackendModelSelector v-model:backend="selectedBackend" v-model:model="selectedModel" v-model:reasoning-effort="selectedEffort" v-model:service-tier="selectedTier" :team-id="selectedTeamId" :disabled="startingWork" />
         </label>
       </div>
 
@@ -345,6 +345,7 @@ const selectedTeamId = ref('');
 const selectedBackend = ref<Agent['backend']>();
 const selectedModel = ref('');
 const selectedEffort = ref('');
+const selectedTier = ref('');
 const singleLaunchItem = ref<WorkItem | null>(null);
 const launchItems = computed(() => singleLaunchItem.value ? [singleLaunchItem.value] : selectedItems.value);
 const codeRepositories = ref<import('@workspace/core/contracts').SourceRepository[]>([]);
@@ -586,6 +587,7 @@ async function startSelectedWork(action: StartWorkItemsInput['action']): Promise
     await props.startWorkAction({ action, items, teamId: selectedTeamId.value, backend: selectedBackend.value,
       ...(selectedModel.value ? { model: selectedModel.value } : {}),
       ...(selectedEffort.value ? { reasoningEffort: selectedEffort.value } : {}),
+      ...(selectedTier.value ? { serviceTier: selectedTier.value } : {}),
       ...(repository ? { repository, isCurrent: () => revision === contextRevision } : {}) });
     if (revision !== contextRevision) return;
     selectedItemIds.value = new Set([...selectedItemIds.value].filter(id => !items.some(item => item.id === id)));

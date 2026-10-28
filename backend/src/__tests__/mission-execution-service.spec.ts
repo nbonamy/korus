@@ -107,6 +107,7 @@ describe('mission execution', () => {
   });
 
   it.each([
+    { backend: 'codex', model: 'luna', serviceTier: 'ultrafast' },
     { backend: 'codex', model: 'luna' },
     { backend: 'claude', model: 'sonnet' },
   ] as const)('validates and persists the $backend implementation model before provisioning, without changing the lead', async (selection) => {
@@ -125,7 +126,7 @@ describe('mission execution', () => {
       { id: 'sonnet', model: 'sonnet', displayName: 'Sonnet', supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'Low' }] },
     ] : [
       { id: 'planner', model: 'planner', displayName: 'Planner', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'High' }] },
-      { id: 'luna', model: 'luna', displayName: 'Luna', supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'Low' }] },
+      { id: 'luna', model: 'luna', displayName: 'Luna', supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'Low' }], serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }, { id: 'ultrafast', name: 'Ultrafast', description: '' }] },
     ]);
     Object.assign(h.ports, { listModels });
     await h.store.change(h.current().id, mission => {
@@ -140,8 +141,9 @@ describe('mission execution', () => {
     });
     for (const implementationModel of [
       { backend: 'claude', model: 'luna' }, { backend: 'codex', model: 'missing' }, { backend: 'codex', model: 'luna', reasoningEffort: 'high' },
+      { backend: 'codex', model: 'luna', serviceTier: 'turbo' }, { backend: 'codex', model: 'planner', serviceTier: 'fast' },
     ]) {
-      await expect(h.command({ action: 'accept', runId: 'tickets-ready', implementationModel })).rejects.toThrow(/model|effort|provider/i);
+      await expect(h.command({ action: 'accept', runId: 'tickets-ready', implementationModel })).rejects.toThrow(/model|effort|provider|tier/i);
       expect(h.ports.createWorktree).not.toHaveBeenCalled();
       expect(h.current().stage).toBe('tickets');
     }
@@ -168,7 +170,9 @@ describe('mission execution', () => {
     const worker = h.snapshot.agents.find(agent => agent.id === firstRun.workerId)!;
     expect(worker.backend).toBe(selection.backend);
     expect(worker.backendDefaults).toMatchObject({ kind: selection.backend, model: selection.model, reasoningEffort: 'low' });
-    if (selection.backend === 'codex') expect(worker.backendDefaults).toMatchObject({ serviceTier: 'fast' });
+    // The tier is exactly what was chosen with the model, never whatever the lead happened to be using.
+    if (selection.backend === 'codex' && 'serviceTier' in selection) expect(worker.backendDefaults).toMatchObject({ serviceTier: selection.serviceTier });
+    else if (selection.backend === 'codex') expect(worker.backendDefaults).not.toHaveProperty('serviceTier');
     else {
       expect(worker.backendDefaults).toMatchObject({ permissionMode: 'acceptEdits' });
       expect(worker.backendDefaults).not.toHaveProperty('serviceTier');
@@ -691,7 +695,7 @@ describe('mission execution', () => {
     expect(h.current().artifacts.tickets).toStrictEqual([]);
   });
 
-  it('provisions one shared Mission branch and accepts independent repository results into the Review stage', async () => {
+  it('provisions one shared Mission branch and informs the lead when all repositories finish, before user-approved Review', async () => {
     const h = setup();
     const repositoryPaths = ['/repo/billing-service', '/repo/invoice-service'];
     for (const [index, repositoryPath] of repositoryPaths.entries()) {
@@ -760,18 +764,29 @@ describe('mission execution', () => {
       expect(worker.backendDefaults).not.toBe(missionLead.backendDefaults);
     }
 
+    const leadPromptCount = h.ports.continueStage.mock.calls.filter(([id]) => id === missionLead.id).length;
     for (const [index, run] of implementationRuns.entries()) {
       const artifacts: MissionArtifacts = structuredClone(h.current().artifacts);
       artifacts.requirements.problem = 'Unapproved upstream edit';
       artifacts.tickets[index]!.done = true;
       artifacts.implementation = { changes: `Changed ticket ${index}`, tests: `Tests for ${index} passed` };
+      if (index === implementationRuns.length - 1) h.persisted.mockImplementationOnce(async snapshot => {
+        expect(snapshot.missions[0].artifacts.tickets.every((ticket: { done: boolean }) => ticket.done)).toBe(true);
+        expect(h.ports.continueStage.mock.calls.filter(([id]) => id === missionLead.id)).toHaveLength(leadPromptCount);
+      });
       await expect(h.service.submit(run.workerId!, {
         ...(index === 0 ? { artifacts } : { ticketId: run.ticketId, implementation: artifacts.implementation }), summary: 'Implemented',
       })).resolves.toEqual({ success: true, status: 'accepted' });
       await h.service.agentFinished(run.workerId!);
+      expect(h.ports.continueStage.mock.calls.filter(([id]) => id === missionLead.id)).toHaveLength(leadPromptCount + (index === implementationRuns.length - 1 ? 1 : 0));
     }
 
     await h.service.waitForLaunches();
+    const completion = h.ports.continueStage.mock.calls.filter(([id]) => id === missionLead.id).at(-1)![1];
+    expect(completion).toContain(h.current().outcome);
+    expect(completion).toContain('read-mission-artifact');
+    await h.service.agentFinished(implementationRuns.at(-1)!.workerId!);
+    expect(h.ports.continueStage.mock.calls.filter(([id]) => id === missionLead.id)).toHaveLength(leadPromptCount + 1);
     expect(h.current().artifacts.tickets.every(ticket => ticket.done)).toBe(true);
     expect(h.current().artifacts.requirements.problem).toBe('Billing');
     expect(h.current().artifacts.implementation.tests).toContain('Tests for 0 passed');

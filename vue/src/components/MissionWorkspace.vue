@@ -155,6 +155,7 @@
         v-model:backend="implementationBackend"
         v-model:model="implementationModel"
         v-model:reasoning-effort="implementationEffort"
+        v-model:service-tier="implementationTier"
         :agent-id="missionLead.id"
         :team-id="mission.teamId"
         :disabled="busy"
@@ -198,8 +199,8 @@ import type { MissionWorkspaceOpenRequest } from './MissionWorkspaceOpenIn.vue';
 
 const props = withDefaults(defineProps<{
   agents?: Agent[];
-  sidebarCollapsed?: boolean;
   unreadAgentIds?: string[];
+  sidebarCollapsed?: boolean;
   executeMission?: (input: MissionExecutionInput) => Promise<void>;
   implementationStartProgress?: MissionImplementationStartProgress | null;
   mission: Mission;
@@ -350,6 +351,7 @@ const missionLead = computed(() => {
 const implementationBackend = ref<AgentBackend>();
 const implementationModel = ref('');
 const implementationEffort = ref('');
+const implementationTier = ref('');
 const implementationApprovalVisible = ref(false);
 function resetImplementationModel(): void {
   const selected = props.mission.execution?.implementationModel;
@@ -357,6 +359,8 @@ function resetImplementationModel(): void {
   implementationBackend.value = selected?.backend ?? lead?.backend;
   implementationModel.value = selected?.model ?? lead?.backendDefaults?.model ?? '';
   implementationEffort.value = selected?.reasoningEffort ?? lead?.backendDefaults?.reasoningEffort ?? '';
+  // The selector drops a tier the model does not offer, so the lead's tier can only prefill what still applies.
+  implementationTier.value = selected ? selected.serviceTier ?? '' : (lead?.backendDefaults && 'serviceTier' in lead.backendDefaults ? lead.backendDefaults.serviceTier : null) ?? '';
 }
 watch(() => `${props.mission.id}:${activeRun.value?.id}:${missionLead.value?.id ?? ''}`, resetImplementationModel, { immediate: true });
 watch(() => [props.mission.id, props.mission.revision, activeRun.value?.id, viewedStage.value], () => {
@@ -390,6 +394,7 @@ async function approveProposal(): Promise<void> {
       ...(startsImplementation && implementationBackend.value && implementationModel.value ? { implementationModel: {
         backend: implementationBackend.value, model: implementationModel.value,
         ...(implementationEffort.value ? { reasoningEffort: implementationEffort.value } : {}),
+        ...(implementationTier.value ? { serviceTier: implementationTier.value } : {}),
       } } : {}),
     });
     implementationApprovalVisible.value = false;

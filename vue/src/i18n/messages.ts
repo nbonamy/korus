@@ -54,7 +54,7 @@ export const messages = {
       description: 'Repositories, issues and merge requests',
       setup: `Register a ${product.name} public OAuth application on GitLab.com with the api and mcp scopes, then set APP_GITLAB_CLIENT_ID on the owning host and restart it.`,
     },
-    modelPicker: { label: 'Coding agent and model', model: 'Model', loading: 'Loading models…' },
+    modelPicker: { label: 'Coding agent and model', model: 'Model', loading: 'Loading models…', standardTier: 'Standard' },
     mobileChanges: { files: 'Files', collapseAll: 'Collapse all', expandAll: 'Expand all' },
     analytics: {
       cost: 'Cost', tokenShare: 'Usage share (tokens)', tokenMeasure: 'Token measure', ratio: 'Ratio', inputRatio: 'Input ratio', costUnavailable: 'Unavailable',

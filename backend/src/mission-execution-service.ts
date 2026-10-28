@@ -6,6 +6,7 @@ import { isAbsolute, relative, sep } from 'node:path';
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import { isMissionArtifacts, missionTicketReady, type Mission, type MissionArtifacts, type MissionReviewFinding, type MissionStage } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
+import { missionLeadAgentId } from '@workspace/core/mission-attention';
 import { missionRunAssignment, missionRunTicketIndex, pendingMissionRun, type MissionImplementationModel, type MissionArtifactReadResult, type MissionArtifactWriteInput, type MissionExecutionInput, type MissionImplementationStartProgress, type MissionResultInput, type MissionReviewFindingInput, type MissionReviewFindingUpdateInput, type MissionRun, type MissionTicketDraftInput, type MissionTicketDraftResult, type MissionToolContext } from '@workspace/core/mission-execution';
 import type { MissionService } from './mission-service';
 import { MissionAgentTools } from './mission-agent-tools';
@@ -268,6 +269,7 @@ export class MissionExecutionService {
     }
     if (input.action === 'accept') {
       let nextRunIds: string[] = [];
+      let implementationCompleted = false;
       const startsImplementation = mission.stage === 'tickets';
       const implementationTickets = mission.execution?.runs.find(run => run.id === input.runId)?.proposal?.tickets
         ?? mission.artifacts.tickets;
@@ -290,7 +292,7 @@ export class MissionExecutionService {
           current.execution!.implementationModel = await this.validateImplementationModel(current, implementationModel);
         }
         if (run.stage === 'implementation') {
-          this.acceptImplementationResult(current, run);
+          implementationCompleted = this.acceptImplementationResult(current, run);
           await this.persistImplementationArtifact(current);
         } else {
           if (run.stage === 'tickets' && !workflow.stageReady('tickets', run.proposal)) {
@@ -322,6 +324,7 @@ export class MissionExecutionService {
           void this.startLaunch(input.id, runId);
         }
       }
+      if (implementationCompleted) await this.notifyImplementationComplete(this.requireMission(input.id));
       return;
     }
     if (input.action === 'continueToReview') {
@@ -470,6 +473,7 @@ export class MissionExecutionService {
     if (!context) throw new Error('This agent does not own an active run for this mission stage.');
     let status: 'awaitingReview' | 'accepted' = 'awaitingReview';
     let nextRunIds: string[] = [];
+    let implementationCompleted = false;
     await this.ports.missions.changeAsync(context.missionId, async mission => {
       const workflow = missionWorkflow(mission.workflow.type);
       const run = mission.execution?.runs.find(run => run.id === context.runId);
@@ -515,7 +519,7 @@ export class MissionExecutionService {
       run.proposal = proposal; run.summary = input.summary.trim(); run.status = 'awaitingReview'; run.finishedAt = new Date().toISOString();
       delete run.error;
       if (run.stage === 'implementation') {
-        this.acceptImplementationResult(mission, run);
+        implementationCompleted = this.acceptImplementationResult(mission, run);
         await this.persistImplementationArtifact(mission);
         status = 'accepted';
         nextRunIds = this.enqueueRuns(mission, {});
@@ -523,6 +527,7 @@ export class MissionExecutionService {
     });
     await this.ports.publish();
     if (nextRunIds.length) this.postTurnLaunches.set(agentId, { missionId: context.missionId, runIds: nextRunIds });
+    if (implementationCompleted) await this.notifyImplementationComplete(this.requireMission(context.missionId));
     return { success: true, status };
   }
 
@@ -630,7 +635,12 @@ export class MissionExecutionService {
     }
     if (implementationModel) {
       if (worker.backend !== implementationModel.backend) throw new Error('The implementation worker provider does not match the selected model.');
-      worker.backendDefaults = { ...worker.backendDefaults, kind: worker.backend, model: implementationModel.model, userSelectedModel: true, reasoningEffort: implementationModel.reasoningEffort };
+      // The tier is part of the choice: the lead's own tier must not carry over to a model picked on its own.
+      const { serviceTier: _leadTier, ...inherited } = worker.backendDefaults as typeof worker.backendDefaults & { serviceTier?: string | null };
+      worker.backendDefaults = {
+        ...inherited, kind: worker.backend, model: implementationModel.model, userSelectedModel: true, reasoningEffort: implementationModel.reasoningEffort,
+        ...(implementationModel.serviceTier ? { serviceTier: implementationModel.serviceTier } : {}),
+      } as typeof worker.backendDefaults;
     }
     await this.ports.refreshWorkspace(worker.id);
     await this.ports.missions.change(id, current => {
@@ -675,7 +685,10 @@ export class MissionExecutionService {
     if (effort !== undefined && !model.supportedReasoningEfforts?.some(option => option.reasoningEffort === effort)) {
       throw new Error('Choose a supported reasoning effort for the implementation model.');
     }
-    return { backend, model: model.model, ...(effort ? { reasoningEffort: effort } : {}) };
+    if (selection.serviceTier !== undefined && !model.serviceTiers?.some(tier => tier.id === selection.serviceTier)) {
+      throw new Error('Choose a supported service tier for the implementation model.');
+    }
+    return { backend, model: model.model, ...(effort ? { reasoningEffort: effort } : {}), ...(selection.serviceTier ? { serviceTier: selection.serviceTier } : {}) };
   }
 
   private requireMission(id: string): Mission {
@@ -757,16 +770,30 @@ export class MissionExecutionService {
     return runId;
   }
 
-  private acceptImplementationResult(mission: Mission, run: MissionRun): void {
+  private acceptImplementationResult(mission: Mission, run: MissionRun): boolean {
     const index = missionRunTicketIndex(mission, run);
     const result = run.implementationResult;
     if (index === undefined || !mission.artifacts.tickets[index] || !result) throw new Error('Implementation evidence is incomplete.');
+    const wasComplete = mission.artifacts.tickets.every(ticket => ticket.done);
     mission.artifacts.tickets[index]!.done = true;
     mission.artifacts.implementation = {
       changes: [mission.artifacts.implementation.changes, result.changes].filter(Boolean).join('\n\n'),
       tests: [mission.artifacts.implementation.tests, result.tests].filter(Boolean).join('\n\n'),
     };
     run.status = 'accepted';
+    return !wasComplete && mission.artifacts.tickets.every(ticket => ticket.done);
+  }
+
+  private async notifyImplementationComplete(mission: Mission): Promise<void> {
+    const leadId = missionLeadAgentId(mission);
+    if (!leadId || !this.agent(leadId)) return;
+    const report = [
+      `Mission orchestrator update: all ${mission.artifacts.tickets.length} implementation tickets are complete.`,
+      `Mission: ${mission.outcome} (${mission.id}).`,
+      'Implementation evidence is saved. Read it with read-mission-artifact for stage="implementation".',
+      'Give the user a concise completion update. The Mission remains in Implementation until the user chooses to continue to Review. This message does not authorize Review, stage advancement, push, merge or PR creation.',
+    ].join('\n');
+    await this.ports.continueStage(leadId, `<context>\n${report.replace(/<\/?context>/giu, tag => tag.replace('<', '&lt;'))}\n</context>`);
   }
 
   private async persistImplementationArtifact(mission: Mission): Promise<void> {

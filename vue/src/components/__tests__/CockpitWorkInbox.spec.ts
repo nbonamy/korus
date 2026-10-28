@@ -1,3 +1,4 @@
+import type { BackendModelOption } from '@workspace/core/contracts';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed } from 'vue';
 import { createEmptySnapshot } from '@workspace/core/snapshot';
@@ -324,6 +325,23 @@ describe('CockpitWorkInbox', () => {
     expect(startWorkAction).toHaveBeenCalledWith({ action: 'investigate', items: [second], teamId: 'team-two', backend: 'claude', model: 'gpt-fast' });
   });
 
+  it('starts agents on the service tier chosen with the model', async () => {
+    const second = item(22, 'Second repo work', 'repo-two');
+    const startWorkAction = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mountInbox([second], {}, {}, startWorkAction, [
+      { id: 'fast', model: 'gpt-fast', displayName: 'GPT Fast', serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }, { id: 'ultrafast', name: 'Ultrafast', description: '' }] },
+    ]);
+    await wrapper.get('.cockpit-inbox__row').trigger('click');
+    await wrapper.findAllComponents({ name: 'ElButton' }).find((button) => button.text().includes('Start work'))!.trigger('click');
+    await flushPromises();
+    await wrapper.get('[aria-label="Coding agent and model"]').trigger('click');
+    await flushPromises();
+    [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(row => row.textContent?.trim() === 'ultrafast')!.click();
+    await flushPromises();
+    await wrapper.findAll('.app-dialog__footer button').find((button) => button.text() === 'Investigate')?.trigger('click');
+    expect(startWorkAction).toHaveBeenCalledWith(expect.objectContaining({ action: 'investigate', items: [second], model: 'gpt-fast', serviceTier: 'ultrafast' }));
+  });
+
   it('guides unfiltered global views before loading cross-repository work', async () => {
     const wrapper = mountInbox([], {}, { activeView: 'all', globalScope: null });
 
@@ -365,6 +383,7 @@ function mountInbox(
   assignments: Record<string, WorkBacklogAssignment> = {},
   filters: { activeView?: 'all' | 'backlog' | 'wip' | 'focus'; globalScope?: 'assignedToMe' | 'all' | null; page?: number; hasNextPage?: boolean; pageLoading?: boolean; pageSize?: number; statusFilter?: 'inProgress' | 'blocked' | 'readyForReview' | null; totalItems?: number } = {},
   startWorkAction = vi.fn().mockResolvedValue(undefined),
+  models: BackendModelOption[] = [{ id: 'fast', model: 'gpt-fast', displayName: 'GPT Fast' }],
 ) {
   return mount(CockpitWorkInbox, {
     global: { provide: {
@@ -374,7 +393,7 @@ function mountInbox(
         teams: [{ id: 'team-one', name: 'Team One', agentIds: ['agent-one'] }],
         agents: [agent('agent-one', 'Dina')],
       }),
-      [backendModelCatalogKey as symbol]: { listModels: vi.fn(async () => [{ id: 'fast', model: 'gpt-fast', displayName: 'GPT Fast' }]) },
+      [backendModelCatalogKey as symbol]: { listModels: vi.fn(async () => models) },
     } },
     props: {
       agents: [agent('agent-one', 'Dina'), agent('agent-two', 'Jesse')], assignments,

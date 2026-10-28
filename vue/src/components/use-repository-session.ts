@@ -29,7 +29,7 @@ export function useRepositorySession(options: {
   createIsolatedWorkItemAgent: (
     item: WorkItem,
     teamId: string,
-    options?: { reuseExisting?: boolean; backend?: AgentBackend; model?: string; reasoningEffort?: string; repository?: SourceRepository; isCurrent?: () => boolean; onPhase?: (phase: 'creatingAgent') => void },
+    options?: { reuseExisting?: boolean; backend?: AgentBackend; model?: string; reasoningEffort?: string; serviceTier?: string; repository?: SourceRepository; isCurrent?: () => boolean; onPhase?: (phase: 'creatingAgent') => void },
   ) => Promise<{ agent: Agent; item: WorkItem }>;
   createSourceWorktree: (input: CreateSourceWorktreeInput) => Promise<SourceWorktree>;
   getAgentGitRemote?: (agentId: string) => Promise<string | undefined>;
@@ -281,6 +281,7 @@ export function useRepositorySession(options: {
         backend: resolvedBackend,
         ...(selection.model ? { model: selection.model } : {}),
         ...(selection.reasoningEffort ? { reasoningEffort: selection.reasoningEffort } : {}),
+        ...(selection.serviceTier ? { serviceTier: selection.serviceTier } : {}),
         ...(selection.reuseExisting ? { reuseExisting: true } : {}),
         repository: { name: current.repositoryName, path: current.repositoryRoot, worktrees: [] },
         onPhase: (phase) => update({ phase }),

@@ -118,6 +118,78 @@ describe('BackendModelSelector', () => {
     expect(wrapper.props('reasoningEffort')).toBe('');
   });
 
+  describe('service tiers', () => {
+    const catalog = [
+      { id: 'fast', model: 'gpt-fast', displayName: 'GPT Fast',
+        supportedReasoningEfforts: [{ reasoningEffort: 'low', description: '' }, { reasoningEffort: 'high', description: '' }],
+        serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }, { id: 'ultrafast', name: 'Ultrafast', description: '' }] },
+      { id: 'tiers-only', model: 'gpt-tiers', displayName: 'GPT Tiers', serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }] },
+      { id: 'plain', model: 'gpt-plain', displayName: 'GPT Plain', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: '' }] },
+    ] as BackendModelOption[];
+    function mountSelector(initial: { model?: string; reasoningEffort?: string; serviceTier?: string } = {}) {
+      const wrapper = mount(BackendModelSelector, {
+        props: { backend: 'codex' as const, model: initial.model ?? '', reasoningEffort: initial.reasoningEffort ?? '', serviceTier: initial.serviceTier ?? '', agentId: 'agent',
+          'onUpdate:model': value => wrapper.setProps({ model: value }),
+          'onUpdate:reasoningEffort': value => wrapper.setProps({ reasoningEffort: value }),
+          'onUpdate:serviceTier': value => wrapper.setProps({ serviceTier: value }) },
+        global: { components: { ElPopover, ElTabs, ElTabPane }, provide: {
+          [backendChoicesKey as symbol]: computed(() => ['codex']),
+          [backendModelCatalogKey as symbol]: { listModels: async () => catalog },
+        } },
+      });
+      return wrapper;
+    }
+    const open = async (wrapper: ReturnType<typeof mountSelector>) => { await wrapper.get('[aria-label="Coding agent and model"]').trigger('click'); await flushPromises(); };
+    const row = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent?.trim() === label)!;
+
+    it('lists what the model offers under its efforts, after a divider and without section titles', async () => {
+      const wrapper = mountSelector();
+      await flushPromises();
+      await open(wrapper);
+      const submenu = row('low').closest('[role="menu"]')!;
+      expect([...submenu.querySelectorAll('[role="menuitemradio"], [role="separator"]')].map(item => item.getAttribute('role') === 'separator' ? '---' : item.textContent?.trim()))
+        .toStrictEqual(['low', 'high', '---', 'standard', 'fast', 'ultrafast']);
+    });
+
+    it('sets the tier with the model and keeps the effort, and Standard clears it', async () => {
+      const wrapper = mountSelector({ model: 'gpt-fast', reasoningEffort: 'low' });
+      await flushPromises();
+      await open(wrapper);
+      row('ultrafast').click();
+      await flushPromises();
+      expect(wrapper.props('model')).toBe('gpt-fast');
+      expect(wrapper.props('reasoningEffort')).toBe('low');
+      expect(wrapper.props('serviceTier')).toBe('ultrafast');
+      expect(wrapper.get('button').text()).toContain('ultrafast');
+      await open(wrapper);
+      row('standard').click();
+      await flushPromises();
+      expect(wrapper.props('serviceTier')).toBe('');
+      expect(wrapper.props('reasoningEffort')).toBe('low');
+    });
+
+    it('opens a submenu for a model that only has tiers, without a divider', async () => {
+      const wrapper = mountSelector();
+      await flushPromises();
+      await open(wrapper);
+      const submenu = [...document.querySelectorAll('[role="menu"]')].find(menu => [...menu.querySelectorAll('[role="menuitemradio"]')].map(item => item.textContent?.trim()).join() === 'standard,fast')!;
+      expect(submenu).toBeDefined();
+      expect(submenu.querySelectorAll('[role="separator"]')).toHaveLength(0);
+      [...submenu.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent?.trim() === 'fast')!.click();
+      await flushPromises();
+      expect(wrapper.props('model')).toBe('gpt-tiers');
+      expect(wrapper.props('serviceTier')).toBe('fast');
+    });
+
+    it('drops a tier the newly chosen model does not offer', async () => {
+      const wrapper = mountSelector({ model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'ultrafast' });
+      await flushPromises();
+      await wrapper.setProps({ model: 'gpt-plain' });
+      await flushPromises();
+      expect(wrapper.props('serviceTier')).toBe('');
+    });
+  });
+
   it('shows the last known models instantly and keeps the list stable while refreshing', async () => {
     const catalog = [{ id: 'fast', model: 'gpt-fast', displayName: 'GPT Fast' }];
     const mountSelector = (listModels: () => Promise<BackendModelOption[]>) => mount(BackendModelSelector, {

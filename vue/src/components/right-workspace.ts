@@ -22,6 +22,7 @@ export type RepositoryWorkStartInput = {
   backend?: import('@workspace/core/contracts').AgentBackend;
   model?: string;
   reasoningEffort?: string;
+  serviceTier?: string;
   action: WorkItemAssignmentAction | 'custom';
   item: WorkItem;
   target: 'current' | 'duplicate';
