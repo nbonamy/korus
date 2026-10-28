@@ -80,12 +80,15 @@ remain full-square. Composite the canonical vector into thumbnails, the social
 card, and the channel banner rather than asking image generation to redraw it.
 Re-export the films after updating their shared `website/assets/app-icon.png`.
 
-The hero banner uses `assets/workspace-anywhere.webp`, converted from the approved
-`mobile/app-store/artwork/header.png` showing the desktop and iPhone together.
+The hero pairs the desktop `assets/mission-screenshot.png` with
+`assets/screens/hero-mission-mobile.webp`, captured from the native iPhone app
+using matching demo data. Both show **Ship team invitations** in Implementation:
+two of three tickets complete, with **Send invitation emails** in progress.
+The screens sit beside each other without overlap; preserve the desktop capture.
 The Anywhere section uses the unaltered Mission and Changes screens from
 `mobile/app-store/screenshots/iphone-6.3/`, resized to WebP in `assets/screens/`.
-Keep the mobile UI intact and use neutral demo data. The same banner supplies
-the page's social preview.
+Keep the mobile UI intact and use neutral demo data. The page's social preview
+uses `assets/og.png`.
 
 The hero leads with three visitor problems—parallel work, reliable results,
 and big ideas—each answered by a self-hosted product film: Delegation, Code

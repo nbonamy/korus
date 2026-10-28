@@ -80,6 +80,18 @@ test("navigation, films, and cards work at desktop and phone widths", async () =
         );
       }
       const header = page.getByRole("banner");
+      const heroScreens = page.locator(".hero-shot img");
+      assert.equal(
+        await heroScreens.count(),
+        2,
+        "The hero shows separate desktop and phone screens",
+      );
+      const desktopScreen = await heroScreens.first().boundingBox();
+      const phoneScreen = await heroScreens.last().boundingBox();
+      assert.ok(
+        phoneScreen.x >= desktopScreen.x + desktopScreen.width,
+        "The phone sits next to the desktop without covering it",
+      );
       for (const preview of await page
         .locator(".hero-shot img, .anywhere-previews img")
         .all()) {

@@ -262,15 +262,28 @@ body > .site-header {
 
 /* Large app screenshot */
 .hero-shot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.26fr);
+  align-items: center;
+  gap: clamp(10px, 2vw, 28px);
   margin: 64px 0 0;
+  padding: clamp(12px, 2.6vw, 36px);
   overflow: hidden;
   border-radius: 28px;
-  background: #edf4fd;
+  background: var(--panel);
 }
 .hero-shot img {
   display: block;
   width: 100%;
   height: auto;
+}
+.hero-desktop {
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgb(0 0 0 / 14%);
+}
+.hero-phone {
+  border-radius: clamp(8px, 1.8vw, 24px);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 14%);
 }
 
 /* The same workspace, away from the desk. */
