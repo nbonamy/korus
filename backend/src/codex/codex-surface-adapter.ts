@@ -44,6 +44,7 @@ import { agentFolder } from '@workspace/core/agent-folder';
 import { shouldSyncConversationTitleFromAgent } from '@workspace/core/conversation-title';
 import type { CodexConversation, CodexSurface } from '@codex-app-sdk/backend';
 import { CodexImageGeneration } from './codex-image-generation';
+import { statusFromSnapshot } from './codex-status';
 import type {
   CodexConversationEvent,
   CodexConversationSummary,
@@ -2046,24 +2047,6 @@ function boundedToolMetadata(metadata: Record<string, unknown> | undefined): Rec
     }
   }
   return Object.keys(bounded).length > 0 ? bounded : undefined;
-}
-
-function statusFromSnapshot(snapshot: CodexConversationSnapshot): AgentStatus {
-  if (snapshot.error) return { type: 'error', message: snapshot.error };
-  if (snapshot.threadStatus?.type === 'active') {
-    if (snapshot.threadStatus.activeFlags.includes('waitingOnApproval')) {
-      return { type: 'awaitingInput', detail: { key: 'backend.awaitingApproval' } };
-    }
-    if (snapshot.threadStatus.activeFlags.includes('waitingOnUserInput')) {
-      return { type: 'awaitingInput', detail: { key: 'backend.awaitingUserInput' } };
-    }
-  }
-  if (snapshot.clientRequests.some((request) => (
-    request.kind !== 'ask_user' || request.payload.request.blocking !== false
-  )) || snapshot.approvals.length > 0) {
-    return { type: 'awaitingInput', detail: { key: 'backend.awaitingUserInput' } };
-  }
-  return snapshot.busy || snapshot.goal?.status === 'active' ? { type: 'working' } : { type: 'idle' };
 }
 
 function runtimeStatus(snapshot: CodexSurfaceSnapshot): BackendRuntimeStatus {
