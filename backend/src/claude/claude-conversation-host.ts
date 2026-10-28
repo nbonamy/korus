@@ -320,6 +320,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
 
   async continueInterruptedTurn(agent: Agent): Promise<import('@workspace/core/backend-driver').BackendTurnActionResult> {
     if (agent.backendSession?.kind !== 'claude') throw new Error('No Claude session to continue.');
+    if (!this.conversationReplicasByAgentId.has(agent.id)) await this.loadConversation(agent);
     const result = await this.sendPromptWithConfiguration(agent, 'continue', {}, undefined, false, true);
     return { backendSession: result.backendSession, activeTurnId: result.turnId ?? null };
   }

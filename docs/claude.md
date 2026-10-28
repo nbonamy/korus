@@ -120,6 +120,8 @@ read, so appends cannot move the older-history cursor. Cold reads still parse th
 native file on the owning backend; the retained history and cursor are ephemeral
 and cleared on release or session replacement. Reads overtaken by a newer load,
 release, or live turn cannot replace that conversation.
+Interrupted-session continuation hydrates history before starting the live turn,
+so the live replica retains its older-page cursor.
 
 Oversized message content stays on the owning host behind an agent/session-scoped
 content reference. The conversation carries a preview; explicit reads retrieve the

@@ -14,6 +14,7 @@ import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import type { AppCommand, AppApi, Team } from '@workspace/core/contracts';
 import { useConfetti } from '../../shared/confetti/use-confetti';
 import { codexConversationSnapshot, codexTextMessage } from '../../test/codex-conversation-fixtures';
+import { claudeConversationSnapshot } from '../../test/claude-conversation-fixtures';
 
 import {
   clickPortaledMenuItem,
@@ -49,6 +50,36 @@ afterEach(() => {
 });
 
 describe('AppShell dialogs and commands', () => {
+  it('can page back to the first Claude request across multiple older pages', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    agent.backend = 'claude'; agent.backendSession = { kind: 'claude', sessionId: 'session', transport: 'stdio' };
+    const row = (id: string, text: string, role: 'user' | 'assistant' = 'assistant') => ({ id, agentId: agent.id, role, status: 'complete' as const,
+      turnId: id, createdAt: '', parts: [{ type: 'text' as const, text }] });
+    const recent = row('recent', 'Recent work'), older = row('older', 'Earlier work'), first = row('first', 'Original request', 'user');
+    const history = (messages: ReturnType<typeof row>[], hasOlder: boolean) => claudeConversationSnapshot(messages, {
+      agentId: agent.id, sessionId: 'session', historyState: { hasOlder, loadingOlder: false },
+    });
+    const loadOlderAgentHistory = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mountShell({ snapshot, stubAgentWorkspace: false, realConversationPane: true, claudeConversationSnapshot: history([recent], true) });
+    try {
+      await wrapper.setProps({ loadOlderAgentHistory }); await flushPromises();
+      const viewport = wrapper.get<HTMLElement>('.codex-message-list__viewport');
+      Object.defineProperty(viewport.element, 'clientHeight', { configurable: true, value: 500 });
+      Object.defineProperty(viewport.element, 'scrollHeight', { configurable: true, value: 2000 });
+      viewport.element.scrollTop = 0; await viewport.trigger('scroll');
+      expect(loadOlderAgentHistory).toHaveBeenCalledTimes(1);
+      await wrapper.setProps({ historyLoadingOlder: true });
+      await wrapper.setProps({ claudeConversationSnapshot: history([older, recent], true), historyLoadingOlder: false });
+      await flushPromises(); viewport.element.scrollTop = 0; await viewport.trigger('scroll');
+      expect(loadOlderAgentHistory).toHaveBeenCalledTimes(2);
+      await wrapper.setProps({ historyLoadingOlder: true });
+      await wrapper.setProps({ claudeConversationSnapshot: history([first, older, recent], false), historyLoadingOlder: false });
+      await flushPromises();
+      expect(wrapper.text()).toContain('Original request');
+    } finally { wrapper.unmount(); }
+  });
+
   it('toggles the uncommitted-changes review simulation through the native command', async () => {
     let listener!: (command: AppCommand) => void;
     window.app = {

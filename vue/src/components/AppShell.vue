@@ -2256,7 +2256,7 @@ const conversationPaneState: CodexConversationPaneState = {
         && conversationMessages.value.length === 0
         && (providerConversation.value?.historyLoading ?? (props.isLoading || props.isConversationLoading));
     },
-    get loadingOlder() { return providerConversation.value?.historyState?.loadingOlder ?? props.historyLoadingOlder; },
+    get loadingOlder() { return Boolean(providerConversation.value?.historyState?.loadingOlder || props.historyLoadingOlder); },
   },
   thread: {
     get approvals() { return effectiveApprovals.value; },
