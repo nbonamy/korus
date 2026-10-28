@@ -56,6 +56,10 @@ export class RemoteDaemonClientManager {
     this.clients.clear();
   }
 
+  isConnected(connectionId: string): boolean {
+    return this.clients.get(connectionId)?.isRunning() ?? false;
+  }
+
   async closeConnection(connectionId: string): Promise<void> {
     const client = this.clients.get(connectionId);
     if (!client) {
@@ -85,8 +89,12 @@ export class RemoteDaemonClientManager {
         this.clients.delete(connection.id);
       }
     });
-    await client.start();
     this.clients.set(connection.id, client);
+    try { await client.start(); }
+    catch (error) {
+      if (this.clients.get(connection.id) === client) this.clients.delete(connection.id);
+      throw error;
+    }
     return client;
   }
 }
@@ -132,7 +140,9 @@ class RemoteDaemonClient {
     child.once('exit', (code, signal) => {
       this.flushStderr();
       this.process = null;
-      this.rejectPending(new Error(`remote daemon exited before responding (code=${code ?? 'null'}, signal=${signal ?? 'null'}).`));
+      this.rejectPending(new Error(code === 2
+        ? 'Restart the running Korus service on this SSH host to finish the update.'
+        : `remote daemon exited before responding (code=${code ?? 'null'}, signal=${signal ?? 'null'}).`));
       this.onStopped();
     });
     child.once('error', (error) => {

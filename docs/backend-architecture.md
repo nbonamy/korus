@@ -184,7 +184,7 @@ The protocol is transport-neutral JSON-RPC 2.0, one message per line.
 | --- | --- |
 | stdio (`korusd --stdio`) | bundled local backend; same framing SSH uses |
 | Unix socket (`korusd serve`, `APP_HOME/daemon.sock`) | optional always-on single-host daemon |
-| SSH stdio | remote locations: `ssh <host> "node ~/.korus/daemon.mjs connect \|\| exec node ~/.korus/daemon.mjs --stdio"` |
+| SSH stdio | remote locations: noninteractive SSH with keepalives, an app-private Node runtime, and a version-checked socket bridge or one-shot backend |
 | WebSocket (web host) | browser, allowlisted operations only |
 
 - Electron's default `APP_BACKEND_MODE=auto` connects to a running local daemon,
@@ -192,9 +192,10 @@ The protocol is transport-neutral JSON-RPC 2.0, one message per line.
   transport with bounded backoff and **never** falls back to a fresh bundled
   daemon after an established connection drops: that would fork authoritative
   state.
-- `connect` bridges SSH stdio to a remote `daemon serve` socket when one is
-  running, else the shell fallback starts a one-shot stdio backend. Sync never
-  installs, starts or restarts a persistent remote daemon.
+- `connect` checks the running socket owner's version before bridging SSH stdio.
+  Only an unavailable socket permits a one-shot stdio backend; an incompatible
+  live owner requires restarting its service and never permits a second state
+  writer. Setup never installs or restarts a persistent remote service.
 - No unauthenticated LAN server. Keep Unix sockets in a user-private `APP_HOME`;
   bind any HTTP transport (including the MCP server) to loopback. Add per-user
   tokens before named pipes, cross-user access or any network transport. TCP or
@@ -661,11 +662,28 @@ agents or automation runs prompt for a restart.
 
 ### Remote Hosts (SSH)
 
-Connection records live in `daemon`. Sync uploads the self-contained `daemon.mjs`,
-mirrors `provider-tokens.json` and asks the remote to reload connections. It never
-installs provider CLIs or copies state files, shell profiles or conversation data.
-Provider detection and authentication run on the owning host. Version
-discovery still accepts the previous `daemon` CLI name for hosts not yet upgraded.
+Connection records live in `daemon`. Setup installs the checksum-pinned Node
+runtime from `node-runtime-release.json` into the remote user's private app
+directory, verifies the staged self-contained `daemon.mjs` before replacing it,
+and confirms activation through the remote backend. System Node and shell
+profiles remain user-owned. SSH uses key authentication, keepalives and first-use
+host-key trust; changed host keys remain rejected.
+
+Updates close the app's SSH client and reconnect after installation. Known active
+turns or pending input block the update. Retrying a saved host retains its
+connection identity and team pointers. Failed activation is persisted as a
+recoverable connection error, rather than reported as ready. Version inspection
+does not install software or close a running client.
+
+Setup mirrors a local `provider-tokens.json` when present; absence of a local file
+preserves the remote host's credentials. It never copies app state or conversation
+data. A host with neither coding engine receives Codex and Claude during setup;
+existing engine installations are preserved. Engine installation runs on the owning host: Codex uses the user's
+`~/.local` npm prefix and Claude uses its native installer. Detection, account
+sign-in and provider upgrades belong to that host, independently of Korus updates.
+User-local Codex upgrades verify package ownership and retain the `~/.local` npm
+prefix even when the Node runtime has a different default global directory.
+Version discovery accepts the previous daemon CLI name for hosts not yet upgraded.
 
 ## Development
 

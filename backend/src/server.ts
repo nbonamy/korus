@@ -1307,11 +1307,16 @@ export class AppBackendServer {
         return createAppRpcResult(message.id, await this.sshConnections.listHostCandidates());
       case backendMethods.connectionsSshCreate: {
         const input = requireAddSshConnectionInput(message.params);
-        const connection = await this.sshConnections.createConnection(input);
+        const existing = this.snapshot.remoteConnections.connections.find(candidate => candidate.host === input.host.trim());
+        if (existing) await this.prepareRemoteConnectionUpdate(existing);
+        const connection = existing
+          ? await this.sshConnections.checkConnection(existing)
+          : await this.sshConnections.createConnection(input);
         this.snapshot.remoteConnections.connections = [
           ...this.snapshot.remoteConnections.connections.filter((candidate) => candidate.host !== connection.host),
           connection,
         ];
+        await this.activateRemoteConnection(connection);
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
       case backendMethods.connectionsRuntimeInspect:
@@ -1322,25 +1327,22 @@ export class AppBackendServer {
           return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Remote connection not found: ${connectionId}`);
         }
         if (message.method === backendMethods.connectionsRuntimeInspect) {
-          const inspected = await this.sshConnections.inspectVersions(connection);
+          if (connection.status === 'checking') return createAppRpcResult(message.id, await this.remoteTeams.clientSnapshot());
+          let inspected: RemoteConnection;
+          try { inspected = await this.sshConnections.inspectVersions(connection); }
+          catch (error) { inspected = { ...connection, status: this.remoteClients.isConnected?.(connectionId) ? connection.status : 'error', detail: error instanceof Error ? error.message : String(error), lastCheckedAt: new Date().toISOString() }; }
           // Do not replace a connection edited or deleted while SSH was probing.
           this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map((candidate) => (
-            candidate === connection ? { ...candidate, daemonVersion: inspected.daemonVersion, codexVersion: inspected.codexVersion, detail: inspected.detail } : candidate
+            candidate === connection ? { ...candidate, daemonVersion: inspected.daemonVersion, codexVersion: inspected.codexVersion, detail: inspected.detail, status: inspected.status, lastCheckedAt: inspected.lastCheckedAt } : candidate
           ));
           return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
         }
-        await this.remoteClients.closeConnection(connectionId);
+        await this.prepareRemoteConnectionUpdate(connection);
         const checked = await this.sshConnections.checkConnection(connection);
         this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map((candidate) => (
           candidate.id === connectionId ? checked : candidate
         ));
-        if (checked.status === 'ready' && checked.transport) {
-          const remoteSnapshot = await this.remoteTeams.request<AppSnapshot>(
-            connectionId,
-            backendMethods.workProviderConnectionsReload,
-          );
-          this.remoteTeams.rememberSnapshot(connectionId, remoteSnapshot);
-        }
+        await this.activateRemoteConnection(checked);
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
       case backendMethods.connectionsUpdate: {
@@ -2823,6 +2825,14 @@ export class AppBackendServer {
         const connectionId = requireOptionalConnectionId(message.params);
         if (connectionId && message.method !== backendMethods.providerSetupConfigure) {
           const input = requireRecord(message.params);
+          if (!isAgentBackend(input.backend)) throw new Error('Unknown provider.');
+          if (message.method === backendMethods.providerInstall && input.backend !== 'antigravity') {
+            const connection = this.snapshot.remoteConnections.connections.find(candidate => candidate.id === connectionId);
+            if (!connection || connection.status !== 'ready') throw new Error('Connect the SSH host before installing an engine.');
+            if (input.backend === 'codex') await this.sshConnections.ensureRemoteCodexInstalled(connection.host);
+            else await this.sshConnections.ensureRemoteClaudeInstalled(connection.host);
+            return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, backendMethods.providerRefresh, { backend: input.backend }));
+          }
           return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, message.method, { backend: input.backend }));
         }
         if (!this.providerSetup) throw new Error('Provider setup is unavailable.');
@@ -3738,6 +3748,31 @@ export class AppBackendServer {
       seq: this.nextEventSeq(),
       occurredAt: event.occurredAt ?? new Date().toISOString(),
     };
+  }
+
+  private async prepareRemoteConnectionUpdate(connection: RemoteConnection): Promise<void> {
+    if (connection.status === 'checking') throw new Error('SSH setup is already in progress.');
+    const agents = this.remoteTeams.knownSnapshot(connection.id)?.agents ?? [];
+    if (agents.some(agent => agent.status.type === 'working' || agent.status.type === 'awaitingInput')) {
+      throw new Error('Finish active turns and pending input on this host before updating Korus.');
+    }
+    this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map(candidate => candidate === connection
+      ? { ...candidate, status: 'checking', detail: 'Setting up the SSH host…' } : candidate);
+    await this.persistAndEmitSnapshot();
+    await this.remoteClients.closeConnection(connection.id);
+  }
+
+  private async activateRemoteConnection(connection: RemoteConnection): Promise<void> {
+    if (connection.status !== 'ready' || !connection.transport) return;
+    try {
+      const remoteSnapshot = await this.remoteTeams.request<AppSnapshot>(connection.id, backendMethods.workProviderConnectionsReload);
+      this.remoteTeams.rememberSnapshot(connection.id, remoteSnapshot);
+    } catch (error) {
+      await this.remoteClients.closeConnection(connection.id);
+      this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map(candidate => candidate === connection
+        ? { ...candidate, status: 'error', detail: error instanceof Error ? error.message : String(error), transport: undefined }
+        : candidate);
+    }
   }
 
   private nextEventSeq(): number {

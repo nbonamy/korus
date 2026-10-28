@@ -2,7 +2,7 @@
   <div v-if="compact" class="settings-engine-connection--compact">
     <FormRow :title="title ?? $t('engineConnection.title')" :error="error">
       <template #control>
-        <ProviderInstallActions v-if="installed === false && backend" :backend="backend" :busy="busy" @refresh="emit('refresh')" @install="emit('install')" />
+        <ProviderInstallActions v-if="installed === false && backend" :backend="backend" :busy="busy" :automated="installable" @refresh="emit('refresh')" @install="emit('install')" />
         <button v-else-if="pending" class="app-button app-button--tertiary" type="button" aria-busy="true" :disabled="busy" @click="emit('cancel')">{{ $t('auth.cancel') }}</button>
         <el-button v-else-if="connected" size="small" :disabled="busy || saving" @click="emit('disconnect')">{{ $t('engineConnection.disconnect') }}</el-button>
         <el-button v-else size="small" :disabled="busy || saving" @click="emit('connect')">
@@ -55,7 +55,7 @@ import FormRow from '../shared/form/FormRow.vue';
 import BackendIcon from './BackendIcon.vue';
 import ProviderInstallActions from './ProviderInstallActions.vue';
 import StatusPill from '../shared/form/StatusPill.vue';
-const props = withDefaults(defineProps<{ backend?: AgentBackend; installed?: boolean; compact?: boolean; title?: string; connected?: boolean; enabled?: boolean; busy?: boolean; pending?: boolean; error?: string | null; authentication?: ProviderAuthentication; setEnabled?: (enabled: boolean) => unknown }>(), { enabled: true, installed: true });
+const props = withDefaults(defineProps<{ backend?: AgentBackend; installed?: boolean; compact?: boolean; installable?: boolean; title?: string; connected?: boolean; enabled?: boolean; busy?: boolean; pending?: boolean; error?: string | null; authentication?: ProviderAuthentication; setEnabled?: (enabled: boolean) => unknown }>(), { enabled: true, installed: true });
 const emit = defineEmits<{ connect: []; disconnect: []; cancel: []; refresh: []; install: [] }>();
 const { t } = useI18n();
 const saving = ref(false);

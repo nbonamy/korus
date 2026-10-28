@@ -177,7 +177,7 @@ describe('SettingsConnectionsPanel', () => {
 
     await wrapper.get('[aria-label="devbox actions"]').trigger('click');
     await flushPromises();
-    bodyButton('Sync')?.click();
+    bodyButton('Reconnect')?.click();
     await flushPromises();
 
     await wrapper.get('[aria-label="devbox actions"]').trigger('click');
@@ -234,10 +234,9 @@ describe('SettingsConnectionsPanel', () => {
     });
 
     expect(wrapper.findAll('[aria-label="Upgrade available"]')).toHaveLength(1);
-    expect(wrapper.find('.settings-connections-panel__upgrade').exists()).toBe(false);
-    await expandAll(wrapper);
+    expect(wrapper.find('.settings-connections-panel__upgrade').exists()).toBe(true);
     const upgrade = wrapper.get('.settings-connections-panel__upgrade');
-    expect(upgrade.text()).toBe('Upgrade');
+    expect(upgrade.text()).toContain('Update');
     await upgrade.trigger('click');
     await flushPromises();
 
@@ -313,7 +312,7 @@ describe('SettingsConnectionsPanel', () => {
     expect(document.body.textContent).toContain('nicolas@devbox.internal:2222');
 
     const connectButton = [...document.body.querySelectorAll('button')]
-      .find((button) => button.textContent?.includes('Connect'));
+      .find((button) => button.textContent?.includes('Set up and connect'));
     connectButton?.click();
     await flushPromises();
 
@@ -324,6 +323,24 @@ describe('SettingsConnectionsPanel', () => {
       user: 'nicolas',
       port: 2222,
     });
+  });
+
+  it('keeps setup failures visible and lets the user retry from the connection row', async () => {
+    let fail: (error: Error) => void = () => {};
+    const checkRemoteConnection = vi.fn(() => new Promise<void>((_resolve, reject) => { fail = reject; }));
+    const wrapper = mount(SettingsConnectionsPanel, { props: { checkRemoteConnection, connections: [{
+      id: 'broken', host: 'devbox', name: 'devbox', kind: 'ssh', status: 'error', detail: 'Permission denied (publickey).', createdAt: '', updatedAt: '',
+    }] } });
+    const setup = wrapper.findAll('button').find(button => button.text().includes('Set up'));
+    expect(setup).toBeDefined();
+    await setup!.trigger('click');
+    expect(wrapper.text()).toContain('Setting up');
+    expect(setup!.attributes('disabled')).toBeDefined();
+    fail(new Error('SSH host is offline.'));
+    await flushPromises();
+    expect(wrapper.get('[role="alert"]').text()).toContain('SSH host is offline.');
+    expect(setup!.attributes('disabled')).toBeUndefined();
+    wrapper.unmount();
   });
 
   it('pairs and revokes Codex mobile devices', async () => {

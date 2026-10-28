@@ -44,7 +44,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   }
 
   if (argv.includes('connect')) {
-    process.exitCode = await connectToDaemon();
+    process.exitCode = await connectToDaemon({ expectedVersion: DAEMON_VERSION });
     return;
   }
 
@@ -60,6 +60,7 @@ export type ConnectToDaemonOptions = {
   output?: Writable;
   socketPath?: string;
   stderr?: Writable;
+  expectedVersion?: string;
 };
 
 export async function connectToDaemon(options: ConnectToDaemonOptions = {}): Promise<number> {
@@ -90,6 +91,13 @@ export async function connectToDaemon(options: ConnectToDaemonOptions = {}): Pro
     return 1;
   }
 
+  if (options.expectedVersion && !await verifySocketVersion(socket, options.expectedVersion)) {
+    socket.destroy();
+    stderr.write('Restart the running Korus service on this SSH host to finish the update. Its version differs from the installed version.\n');
+    // Only a missing socket permits stdio fallback. An incompatible live owner must never fork state.
+    return 2;
+  }
+
   return new Promise<number>((resolve) => {
     let finished = false;
     const finish = (code: number) => {
@@ -104,12 +112,48 @@ export async function connectToDaemon(options: ConnectToDaemonOptions = {}): Pro
     };
 
     socket.once('close', () => finish(0));
-    socket.once('error', () => finish(1));
-    input.once('error', () => finish(1));
-    output.once('error', () => finish(1));
+    socket.once('error', () => finish(3));
+    input.once('error', () => finish(3));
+    output.once('error', () => finish(3));
     input.pipe(socket);
     socket.pipe(output);
     input.resume();
+  });
+}
+
+function verifySocketVersion(socket: net.Socket, version: string): Promise<boolean> {
+  return new Promise(resolve => {
+    let buffer = '';
+    const finish = (valid: boolean) => {
+      clearTimeout(timer);
+      socket.off('data', onData);
+      socket.off('error', onError);
+      socket.off('close', onError);
+      resolve(valid);
+    };
+    const onError = () => finish(false);
+    const onData = (chunk: Buffer) => {
+      buffer += chunk.toString();
+      if (buffer.length > 65536) { finish(false); return; }
+      let newline: number;
+      while ((newline = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, newline);
+        buffer = buffer.slice(newline + 1);
+        try {
+          const response = JSON.parse(line);
+          if (response.id !== '__korus-verify-version') continue;
+          socket.pause();
+          finish(response.result?.version === version);
+          if (buffer) socket.unshift(Buffer.from(buffer));
+          return;
+        } catch { finish(false); return; }
+      }
+    };
+    const timer = setTimeout(onError, 5_000);
+    socket.on('data', onData);
+    socket.once('error', onError);
+    socket.once('close', onError);
+    socket.write(`${JSON.stringify({ jsonrpc: '2.0', id: '__korus-verify-version', method: backendMethods.backendHealthGet })}\n`);
   });
 }
 

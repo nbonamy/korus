@@ -57,6 +57,14 @@
           />
         </button>
         <div class="settings-connections-panel__actions">
+          <el-button
+            v-if="canUpgrade(connection) || connection.status !== 'ready' || checkingConnectionId === connection.id"
+            class="settings-connections-panel__upgrade"
+            size="small"
+            :loading="checkingConnectionId === connection.id"
+            :disabled="checkingConnectionId !== null"
+            @click="checkConnection(connection.id)"
+          >{{ checkingConnectionId === connection.id ? $t('surface.settingsConnectionsPanel.syncing') : canUpgrade(connection) ? $t('surface.settingsConnectionsPanel.upgrade') : $t('surface.settingsConnectionsPanel.setUp') }}</el-button>
           <button
             type="button"
             :aria-label="$t('dynamic.settings.connection', { connection: connection.name })"
@@ -82,20 +90,16 @@
           :id="`connection-details-${connection.id}`"
           class="settings-connections-panel__details"
         >
+          <p v-if="operationErrors[connection.id]" class="settings-connections-panel__error" role="alert">{{ operationErrors[connection.id] }}</p>
           <span
-            v-if="connection.detail"
+            v-if="connection.detail && !operationErrors[connection.id]"
             class="settings-connections-panel__detail"
+            :class="{ 'settings-connections-panel__detail--error': connection.status === 'error' }"
+            :role="connection.status === 'error' ? 'alert' : undefined"
           >
             <em>{{ connection.detail }}</em>
-            <button
-              v-if="canUpgrade(connection)"
-              class="settings-connections-panel__upgrade"
-              type="button"
-              :disabled="checkingConnectionId === connection.id"
-              @click="checkConnection(connection.id)"
-            >{{ $t('surface.settingsConnectionsPanel.upgrade') }}</button>
           </span>
-          <RemoteEngineConnections v-if="connection.status === 'ready'" class="settings-connections-panel__engines" :connection="connection" />
+          <RemoteEngineConnections v-if="connection.status === 'ready' && checkingConnectionId !== connection.id" class="settings-connections-panel__engines" :connection="connection" />
         </div>
       </article>
     </FormSection>
@@ -208,7 +212,7 @@
               :loading="addingHost === host.host"
               :disabled="addingHost !== null"
               @click="addConnection(host)"
-            > {{ $t('surface.settingsConnectionsPanel.connect') }} </el-button>
+            > {{ $t(addingHost === host.host ? 'surface.settingsConnectionsPanel.syncing' : 'surface.settingsConnectionsPanel.connect') }} </el-button>
           </article>
         </div>
       </div>
@@ -289,6 +293,7 @@ const loadingHosts = ref(false);
 const hostError = ref<string | null>(null);
 const addingHost = ref<string | null>(null);
 const checkingConnectionId = ref<string | null>(null);
+const operationErrors = ref<Record<string, string>>({});
 const settingsConnection = ref<RemoteConnection | null>(null);
 const settingsSourceFolderPath = ref('');
 const settingsError = ref<string | null>(null);
@@ -300,7 +305,7 @@ const settingsDialogTitle = computed(() => (
   settingsConnection.value ? `${settingsConnection.value.name} settings` : translate('surface.settingsConnectionsPanel.sSHSettings')
 ));
 const sshHosts = computed(() => {
-  const connectedHosts = new Set(props.connections.map((connection) => connection.host));
+  const connectedHosts = new Set(props.connections.filter(connection => connection.status !== 'error').map((connection) => connection.host));
   return hosts.value.filter((host) => !connectedHosts.has(host.host));
 });
 
@@ -330,6 +335,11 @@ async function addConnection(host: SshHostCandidate): Promise<void> {
       name: host.host,
       ...host,
     });
+    const connection = props.connections.find(connection => connection.host === host.host);
+    if (connection) {
+      expandedConnections.value[connection.id] = true;
+      if (connection.status === 'error') throw new Error(connection.detail || translate('surface.settingsConnectionsPanel.setupFailed'));
+    }
     addDialogVisible.value = false;
   } catch (error) {
     hostError.value = error instanceof Error ? error.message : String(error);
@@ -339,9 +349,14 @@ async function addConnection(host: SshHostCandidate): Promise<void> {
 }
 
 async function checkConnection(connectionId: string): Promise<void> {
+  if (checkingConnectionId.value) return;
   checkingConnectionId.value = connectionId;
+  expandedConnections.value[connectionId] = true;
+  delete operationErrors.value[connectionId];
   try {
     await props.checkRemoteConnection(connectionId);
+  } catch (error) {
+    operationErrors.value[connectionId] = error instanceof Error ? error.message : String(error);
   } finally {
     checkingConnectionId.value = null;
   }
@@ -403,7 +418,7 @@ function connectionMenuItems(connection: RemoteConnection): AppMenuItem[] {
     id: 'check',
     type: 'action',
     label: checkingConnectionId.value === connection.id ? translate('surface.settingsConnectionsPanel.syncing') : translate('surface.settingsConnectionsPanel.sync'),
-    disabled: checkingConnectionId.value === connection.id,
+    disabled: checkingConnectionId.value !== null,
     icon: RefreshIcon,
   }, {
     id: 'delete',
@@ -636,22 +651,12 @@ function statusLabel(status: RemoteConnection['status']): string {
 
 .settings-connections-panel__upgrade {
   flex: 0 0 auto;
-  padding: 0;
-  border: 0;
-  color: var(--color-primary);
-  background: transparent;
-  cursor: pointer;
-  font: inherit;
 }
 
-.settings-connections-panel__upgrade:hover,
-.settings-connections-panel__upgrade:focus-visible {
-  text-decoration: underline;
-}
-
-.settings-connections-panel__upgrade:disabled {
-  cursor: default;
-  opacity: 0.6;
+.settings-connections-panel__detail--error em {
+  color: var(--color-error);
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .settings-connections-panel__actions {
@@ -661,7 +666,7 @@ function statusLabel(status: RemoteConnection['status']): string {
   gap: var(--space-2);
 }
 
-.settings-connections-panel__actions button {
+.settings-connections-panel__actions button:not(.settings-connections-panel__upgrade) {
   width: 28px;
   height: 28px;
   display: grid;
@@ -673,8 +678,8 @@ function statusLabel(status: RemoteConnection['status']): string {
   cursor: pointer;
 }
 
-.settings-connections-panel__actions button:hover,
-.settings-connections-panel__actions button:focus-visible {
+.settings-connections-panel__actions button:not(.settings-connections-panel__upgrade):hover,
+.settings-connections-panel__actions button:not(.settings-connections-panel__upgrade):focus-visible {
   color: var(--color-text);
 }
 

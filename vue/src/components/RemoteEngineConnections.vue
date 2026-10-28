@@ -1,7 +1,7 @@
 <template>
   <div class="remote-engine-connections">
     <template v-for="engine in engines" :key="engine.backend">
-      <SettingsEngineConnectionRow compact :backend="engine.backend" :installed="engine.installed" :title="backendDisplayName(engine.backend)" :authentication="engine.authentication" :connected="engine.connected" :enabled="engine.enabled" :busy="busy" :set-enabled="enabled => setEnabled(engine.backend, enabled)" @refresh="refreshProvider(engine.backend)" @install="installProvider(engine.backend)" @connect="connect(engine)" @disconnect="disconnect(engine.backend)" />
+      <SettingsEngineConnectionRow compact installable :backend="engine.backend" :installed="engine.installed" :title="backendDisplayName(engine.backend)" :authentication="engine.authentication" :connected="engine.connected" :enabled="engine.enabled" :busy="busy" :set-enabled="enabled => setEnabled(engine.backend, enabled)" @refresh="refreshProvider(engine.backend)" @install="installProvider(engine.backend)" @connect="connect(engine)" @disconnect="disconnect(engine.backend)" />
       <RemoteCodexAuthentication v-if="signingIn === engine.backend && engine.backend === 'codex'" :connection="connection" @connected="finishConnection" />
       <ProviderUpdateRow v-if="engine.installed && engine.backend !== 'antigravity'" :backend="engine.backend" :remote-connection-id="connection.id" />
       <RemoteClaudeAuthentication v-if="signingIn === engine.backend && engine.backend === 'claude'" :connection="connection" @connected="finishConnection" />

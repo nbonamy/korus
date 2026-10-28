@@ -11,13 +11,14 @@ function fixture(resolved: string) {
   });
   const fetchText = vi.fn(async () => JSON.stringify({ version: '1.2.0' }));
   const read = vi.fn(async () => JSON.stringify({ name: '@openai/codex' }));
+  const realpath = vi.fn(async (file: string) => file === '/tools/bin/npm' ? '/tools/lib/node_modules/npm/bin/npm-cli.js' : file.startsWith('/tools/lib/') ? file : resolved);
   const runtime = new ProviderUpdateRuntime({ command: backend => backend, claudeHome: () => '/user/.claude' }, {
     home: '/user', platform: 'darwin',
     resolve: command => command === '/tools/bin/node' ? command : command === 'npm' ? '/tools/bin/npm' : command === 'brew' ? '/brew/bin/brew' : `/user/.local/bin/${command}`,
-    realpath: async file => file === '/tools/bin/npm' ? '/tools/lib/node_modules/npm/bin/npm-cli.js' : file.startsWith('/tools/lib/') ? file : resolved,
+    realpath,
     run, read, fetchText,
   });
-  return { runtime, run, read, fetchText };
+  return { runtime, run, read, fetchText, realpath };
 }
 
 describe('installed provider updates', () => {
@@ -57,6 +58,16 @@ describe('installed provider updates', () => {
     const installation = await f.runtime.inspect('codex');
     expect(installation).toMatchObject({ method: 'manual', command: undefined });
     await expect(f.runtime.upgrade(installation)).rejects.toThrow('Manual');
+  });
+
+  it('updates an SSH-installed user-local Codex in the same prefix even when Node has another global root', async () => {
+    const root = '/user/.local/lib/node_modules/@openai/codex';
+    const f = fixture(`${root}/bin/codex.js`);
+    f.realpath.mockImplementation(async file => file === root ? root : file === '/user/.local/bin/codex' ? `${root}/bin/codex.js` : file === '/tools/bin/npm' ? '/tools/lib/node_modules/npm/bin/npm-cli.js' : file);
+    const installation = await f.runtime.inspect('codex');
+    expect(installation.method).toBe('npm');
+    await f.runtime.upgrade(installation);
+    expect(f.run).toHaveBeenLastCalledWith('/tools/bin/node', ['/tools/lib/node_modules/npm/bin/npm-cli.js', 'install', '-g', '--prefix', '/user/.local', '@openai/codex@1.2.0'], 300_000, expect.any(Object));
   });
 
   it('uses Homebrew availability rather than npm latest and preserves the stable cask', async () => {

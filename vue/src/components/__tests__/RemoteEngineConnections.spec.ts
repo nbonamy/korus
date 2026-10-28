@@ -78,19 +78,19 @@ describe('RemoteEngineConnections', () => {
     wrapper.unmount();
   });
 
-  it('installs Antigravity on its owning remote host and refreshes its availability without signing in', async () => {
+  it.each(['antigravity', 'codex', 'claude'] as const)('installs %s on its owning remote host and refreshes its availability without signing in', async (backend) => {
     const { api } = createClientApiMock();
-    const engine = { backend: 'antigravity' as const, installed: false, connected: false, checking: false };
+    const engine = { backend, installed: false, connected: false, checking: false };
     api.getProviderConnections.mockResolvedValueOnce([engine]).mockResolvedValue([{ ...engine, installed: true }]);
     api.installProvider.mockResolvedValue({ backend: 'antigravity', installed: true, locked: false, isolated: true, shareSkills: false, homePath: '/remote/app/antigravity-home' });
     configureAppClient({ platform: 'desktop', api });
     const wrapper = mount(RemoteEngineConnections, { props: { connection } });
     await flushPromises();
-    await wrapper.get('button[aria-label="Install Antigravity"]').trigger('click');
+    await wrapper.get('.provider-install-actions button').trigger('click');
     await flushPromises();
-    expect(api.installProvider).toHaveBeenCalledExactlyOnceWith('antigravity', 'wall-e');
+    expect(api.installProvider).toHaveBeenCalledExactlyOnceWith(backend, 'wall-e');
     expect(api.getProviderConnections).toHaveBeenLastCalledWith('wall-e');
-    expect(wrapper.find('button[aria-label="Install Antigravity"]').exists()).toBe(false);
+    expect(wrapper.find('.provider-install-actions').exists()).toBe(false);
     expect(wrapper.get('.form-row__control button').text()).toBe('Connect');
     expect(api.authenticateProvider).not.toHaveBeenCalled();
     wrapper.unmount();
@@ -108,10 +108,7 @@ describe('RemoteEngineConnections', () => {
     const wrapper = mount(RemoteEngineConnections, { props: { connection } });
     await flushPromises();
 
-    expect(wrapper.findAll('a').map(link => link.attributes('href'))).toEqual([
-      'https://learn.chatgpt.com/docs/codex/cli#getting-started',
-      'https://code.claude.com/docs/en/quickstart#step-1-install-claude-code',
-    ]);
+    expect(wrapper.findAll('.provider-install-actions')).toHaveLength(2);
     await wrapper.findAll('button').filter(button => button.attributes('aria-label') === 'Check again')[1]!.trigger('click');
     await flushPromises();
     expect(api.refreshProvider).toHaveBeenCalledExactlyOnceWith('claude', 'wall-e');
