@@ -13,7 +13,7 @@
     "test:native:transcript": "node scripts/transcript-host.native.mjs",
     "test:native:projects": "node scripts/project-picker.native.mjs",
     "test:native:android:release": "node --test scripts/android-release.native.mjs",
-    "test:scroll": "node --test scripts/transcript-scroll.browser.mjs",
+    "test:scroll": "node --test scripts/transcript-scroll.browser.mjs scripts/file-preview.browser.mjs",
     "build:web": "vite build --config web/vite.config.ts"
   },
   "dependencies": {

@@ -400,6 +400,9 @@ test('transcript links ask iOS to open external destinations without navigating 
     ]);
     assert.equal(page.url(), original);
     assert.equal(page.context().pages().length, 1);
+    const preview = page.getByRole('complementary', { name: 'File preview' });
+    assert.ok(await preview.isVisible(), 'local file links open the file pane rather than the external browser');
+    await preview.getByRole('button', { name: 'Close file preview' }).click();
     assert.ok(await page.getByRole('link', { name: 'Website', exact: true }).isVisible());
   } finally { await browser?.close(); await server.close(); }
 });

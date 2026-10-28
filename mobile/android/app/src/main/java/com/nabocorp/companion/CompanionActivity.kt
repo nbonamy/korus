@@ -175,6 +175,7 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
     LaunchedEffect(model.navigationDismissal) { if (model.navigationDismissal > 0) drawer.close() }
     LaunchedEffect(model.sheet) { model.acknowledge() }
     LaunchedEffect(model.attachmentPreview) { model.acknowledge() }
+    BackHandler(enabled = model.filePreviewOpen) { model.dismissFilePreview() }
     Box {
         // The engine stays mounted across native navigation, with no accessible or visible content.
         WebContent(model.engine, Modifier.size(1.dp),interactive = false)
@@ -207,7 +208,7 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                                     MissionContextBar(model)
                                 }
                             },
-                            bottomBar = { if (state.string("agentId").isNotBlank()) Column {
+                            bottomBar = { if (!model.filePreviewOpen && state.string("agentId").isNotBlank()) Column {
                                 RequestBanner(model)
                                 Composer(model, pickAttachment, toggleDictation)
                             } },
@@ -218,8 +219,10 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                     }
                 }
                 if (wide) Row(Modifier.fillMaxSize()) {
-                    Surface(Modifier.width(340.dp).fillMaxHeight(), color = MaterialTheme.colorScheme.background) { DrawerContent(model, close = {}) }
-                    VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    if (!model.filePreviewOpen) {
+                        Surface(Modifier.width(340.dp).fillMaxHeight(), color = MaterialTheme.colorScheme.background) { DrawerContent(model, close = {}) }
+                        VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
                     Box(Modifier.weight(1f).fillMaxHeight()) { main() }
                 } else ModalNavigationDrawer(drawerState = drawer, drawerContent = {
                     ModalDrawerSheet(Modifier.widthIn(max = 360.dp), drawerContainerColor = MaterialTheme.colorScheme.background) {

@@ -11,6 +11,12 @@ final class AppModel {
     var notificationError: String?
     var pushRegistrationFailed = false
     var git = GitChangesState()
+    var filePreviewOpen = false {
+        didSet {
+            if oldValue && !filePreviewOpen { acknowledgeRead() }
+            notifications.visibleChanged(visibleNotificationTarget)
+        }
+    }
     @ObservationIgnored lazy var changesHost = ChangesHost()
     var changesOpen = false {
         didSet {
@@ -196,6 +202,10 @@ final class AppModel {
             self.presentedImage = image
         }
         transcript.onReadContent = { [weak self] request in self?.engine.dispatch(request) }
+        transcript.onFilePreviewVisibility = { [weak self] open in
+            self?.filePreviewOpen = open
+            if open { self?.dictation.cancel() }
+        }
         transcript.onChooseBackend = { [weak self] backend in self?.chooseBackend(backend) }
         transcript.onLoadOlder = { [weak self] id in self?.command("loadOlder", ["agentId": id]) }
         transcript.onRenderFailed = { [weak self] in
@@ -311,7 +321,7 @@ final class AppModel {
         let agentChanged = activeAgentID != nextAgentID
         if agentChanged { dictation.cancel() }
         set(\.activeAgentID, nextAgentID)
-        if agentChanged { reviewOpen = false; presentedImage = nil; changesOpen = false }
+        if agentChanged { reviewOpen = false; presentedImage = nil; changesOpen = false; filePreviewOpen = false }
         set(\.header, state.header.map {
             ConversationHeader(title: $0.title, repository: $0.repository, status: $0.status,
                                statusText: $0.statusText == $0.status.rawValue ? $0.status.label : $0.statusText, icon: $0.icon)
@@ -326,7 +336,7 @@ final class AppModel {
         set(\.planMode, state.composer.planMode)
         set(\.approvalPreset, state.permissions.approvalPreset)
         set(\.approvalPresets, state.permissions.presets)
-        if let target = composerDrafts.target, target != state.composerTarget { reviewOpen = false; presentedImage = nil; changesOpen = false }
+        if let target = composerDrafts.target, target != state.composerTarget { reviewOpen = false; presentedImage = nil; changesOpen = false; filePreviewOpen = false }
         composerDrafts.select(state.composerTarget)
         set(\.supportsGoals, state.capabilities.goals ?? false)
         set(\.goal, state.goal)
@@ -560,12 +570,12 @@ final class AppModel {
     private func acknowledgeRead() {
         guard connection == .connected, conversationReady else { return }
         guard let read = conversationRead.acknowledgement(activeAgentId: activeAgentID,
-            foreground: foreground && UIApplication.shared.applicationState == .active, drawerOpen: drawerOpen, reviewOpen: reviewOpen || changesOpen, imageOpen: presentedImage != nil, unlocked: screenUnlocked) else { return }
+            foreground: foreground && UIApplication.shared.applicationState == .active, drawerOpen: drawerOpen, reviewOpen: reviewOpen || changesOpen || filePreviewOpen, imageOpen: presentedImage != nil, unlocked: screenUnlocked) else { return }
         command("read", ["agentId": read.agentId, "revision": read.revision, "generation": conversationGeneration])
     }
 
     private var visibleNotificationTarget: ChatNotification.Target? {
-        guard screenUnlocked, foreground, !drawerOpen, !reviewOpen, !changesOpen, presentedImage == nil, let target = composerDrafts.target else { return nil }
+        guard screenUnlocked, foreground, !drawerOpen, !reviewOpen, !changesOpen, !filePreviewOpen, presentedImage == nil, let target = composerDrafts.target else { return nil }
         return .init(hostId: target.hostId, locationId: target.locationId, teamId: target.teamId, agentId: target.agentId, sessionId: target.sessionId)
     }
     func receive(_ notification: ChatNotification) {

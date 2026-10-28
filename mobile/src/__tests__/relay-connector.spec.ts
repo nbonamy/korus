@@ -385,6 +385,8 @@ describe('native relay host adapter', () => {
     expect(transport.requests.find((request) => request.method === 'prompt.submit')?.args).toMatchObject({ target: selectedTarget, text: 'Go', options: { model: 'm', planMode: true }, attachments: [{ name: 'photo.jpg', data: 'AAAA' }] });
     await session.gitDiff!('agent', { type: 'staged' });
     expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.git.diff', args: { target: selectedTarget, scope: { type: 'staged' } } });
+    await session.previewFile!('agent', { path: 'src/app.ts', action: 'edit', turnId: 'turn' });
+    expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.file.preview', args: { target: selectedTarget, input: { path: 'src/app.ts', action: 'edit', turnId: 'turn' } } });
     await session.startReview!(selectedTarget, { scope: { type: 'uncommitted' }, threadMode: 'independent' });
     expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.review.start', args: { target: selectedTarget, input: { scope: { type: 'uncommitted' }, threadMode: 'independent' } } });
     await session.interrupt!('agent'); await session.setApprovalPreset!('agent', 'full-access'); await session.setPermissionMode!('agent', 'acceptEdits');

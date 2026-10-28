@@ -90,6 +90,7 @@ export type EngineState = {
 };
 
 export type EngineEvent =
+  | { type: 'conversationFile'; requestId: string; agentId: string; preview?: import('@workspace/core/companion-files').CompanionFilePreview; error?: string }
   | { type: 'gitDiff'; diff: string }
   | { type: 'conversationImage'; requestId: string; agentId: string; dataUrl?: string; error?: string }
   | { type: 'notification'; notification: CompanionNotification }
@@ -116,6 +117,7 @@ export type EngineCommand =
   | { type: 'finishReview'; missionId: string } | { type: 'continueMission'; missionId: string } | { type: 'acceptTicket'; missionId: string; number: number } | { type: 'selectFinding'; missionId: string; findingId: string; selected: boolean } | { type: 'fixFindings'; missionId: string } | { type: 'rerunReview'; missionId: string } | { type: 'dismissMissionAction' }
   | { type: 'idleSort'; order: 'activity' | 'repository' }
   | { type: 'loadChanges'; scopeId?: string } | { type: 'dismissChanges' }
+  | { type: 'readFilePreview'; requestId: string; agentId: string; input: import('@workspace/core/companion-files').CompanionFileInput }
   | { type: 'readConversationImage'; requestId: string; agentId: string; path: string }
   | { type: 'loadProjectBranches'; repositoryId: string; source?: 'github' | 'gitlab' | 'local' } | { type: 'dismissProjectBranches' }
   | { type: 'loadProjectRepositories'; source?: 'github' | 'gitlab' | 'local' } | { type: 'dismissProjectRepositories' }
@@ -492,6 +494,15 @@ export function createEngine(port: EnginePort) {
           if (!disposed) port.post({ type: 'conversationImage', requestId: command.requestId, agentId: command.agentId, ...image });
         } catch {
           if (!disposed) port.post({ type: 'conversationImage', requestId: command.requestId, agentId: command.agentId, error: 'Image is unavailable.' });
+        }
+        return;
+      }
+      case 'readFilePreview': {
+        try {
+          const preview = await state.readFilePreview(command.agentId, command.input);
+          if (!disposed) port.post({ type: 'conversationFile', requestId: command.requestId, agentId: command.agentId, preview });
+        } catch {
+          if (!disposed) port.post({ type: 'conversationFile', requestId: command.requestId, agentId: command.agentId, error: 'File is unavailable.' });
         }
         return;
       }

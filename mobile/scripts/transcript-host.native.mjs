@@ -36,10 +36,14 @@ try {
     '-o', path.join(app, 'TranscriptTests'), ...sources.map(source => path.join(ios, source))]);
   run('codesign', ['--force', '--sign', '-', app]);
   const runtimes = JSON.parse(run('xcrun', ['simctl', 'list', 'runtimes', '--json'])).runtimes;
-  const runtime = runtimes.filter(value => value.isAvailable && value.name.startsWith('iOS ') && Number(value.version.split('.')[0]) >= 26)
-    .sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }))[0];
+  const candidates = runtimes.filter(value => value.isAvailable && value.name.startsWith('iOS ') && Number(value.version.split('.')[0]) >= 26)
+    .sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }));
+  const runtime = candidates.find(value => value.supportedDeviceTypes.some(type => type.productFamily === 'iPhone' && !type.name.includes('Duo'))) ?? candidates[0];
   assert.ok(runtime, 'Install an iOS 26 or newer simulator runtime.');
-  simulator = run('xcrun', ['simctl', 'create', 'Korus Transcript Tests', 'com.apple.CoreSimulator.SimDeviceType.iPhone-17', runtime.identifier]);
+  const deviceType = runtime.supportedDeviceTypes.find(type => type.productFamily === 'iPhone' && !type.name.includes('Duo'))
+    ?? runtime.supportedDeviceTypes.find(type => type.productFamily === 'iPhone');
+  assert.ok(deviceType, 'The selected runtime must support an iPhone simulator.');
+  simulator = run('xcrun', ['simctl', 'create', 'Korus Transcript Tests', deviceType.identifier, runtime.identifier]);
   run('xcrun', ['simctl', 'boot', simulator]);
   console.log('Booting isolated native transcript tests:', simulator);
   run('xcrun', ['simctl', 'bootstatus', simulator, '-b']);

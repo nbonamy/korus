@@ -129,6 +129,7 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
     rerunReview: async (missionId, revision) => { await call('mission.review.rerun', { missionId, revision }); },
     createTeam: async name => (await call<{ teamId: string }>('team.create', { name })).teamId,
     gitDiff: (agentId, scope) => call('agent.git.diff', { target: target(agentId), scope }),
+    previewFile: (agentId, input) => call('agent.file.preview', { target: target(agentId), input }),
     readImage: (agentId, path) => call('conversation.image.read', { target: target(agentId), path }),
     getUsage: () => call('usage.get', {}),
     async registerPush(registration) {

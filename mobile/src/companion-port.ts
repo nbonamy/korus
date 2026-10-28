@@ -40,6 +40,7 @@ type CompanionOperations = {
   fixFindings?(missionId: string, revision: number): Promise<void>;
   rerunReview?(missionId: string, revision: number): Promise<void>;
   gitDiff?(agentId: string, scope: import('@workspace/core/contracts').AgentGitDiffTarget): Promise<import('@workspace/core/contracts').AgentGitDiff>;
+  previewFile?(agentId: string, input: import('@workspace/core/companion-files').CompanionFileInput): Promise<import('@workspace/core/companion-files').CompanionFilePreview>;
   readImage?(agentId: string, path: string): Promise<import('@workspace/core/companion-protocol').CompanionImage>;
   repositoryCatalog?(teamId: string, provider: import('@workspace/core/companion-protocol').CompanionRepositoryProvider): Promise<CompanionGitHubRepository[]>;
   repositoryBranches?(teamId: string, provider: import('@workspace/core/companion-protocol').CompanionRepositoryProvider, repositoryId: string): Promise<import('@workspace/core/companion-protocol').CompanionProjectBranch[]>;

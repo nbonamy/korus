@@ -365,6 +365,12 @@ Git status counts and available diff scopes cross as presentation metadata, with
 host paths or patch contents. Diffs are fetched through a target-bound, read-only
 gateway operation that uses the owning daemon’s Git service; the gateway rechecks
 the device grant and conversation identity before returning the patch.
+Transcript file previews use the same target-bound reads and the desktop's file-preview
+and Git operations. Only the selected file's bounded patch and current source cross
+the companion seam. A turn's patch stays distinct from the current file; unavailable
+historical diffs never silently become uncommitted changes. Both native clients host
+the shared file pane, whose memory-only cache is bounded and cleared on conversation
+or connection identity changes. Switching Diff/Source reuses the loaded response.
 Project acquisition uses the owning team's desktop operations for new repositories,
 local repository selection, GitHub and GitLab discovery, and URL cloning. The phone
 sends names, catalog IDs or network Git URLs rather than filesystem paths. The local catalog

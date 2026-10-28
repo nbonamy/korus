@@ -7,6 +7,7 @@ import UIKit
 final class TranscriptHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
     let webView: WKWebView
     var onOpenImage: ((String, ImagePreview) -> Void)?
+    var onFilePreviewVisibility: ((Bool) -> Void)?
     var onLoadOlder: ((String) -> Void)?
     var onReadContent: (([String: Any]) -> Void)?
     var onChooseBackend: ((String) -> Void)?
@@ -175,7 +176,11 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
             onLoadOlder?(agentID)
             return
         }
-        if ["readConversationContent", "readConversationImage"].contains(event["type"] as? String ?? ""), message.frameInfo.isMainFrame {
+        if event["type"] as? String == "filePreviewVisibility", message.frameInfo.isMainFrame, let open = event["open"] as? Bool {
+            onFilePreviewVisibility?(open)
+            return
+        }
+        if ["readConversationContent", "readConversationImage", "readFilePreview"].contains(event["type"] as? String ?? ""), message.frameInfo.isMainFrame {
             onReadContent?(event)
             return
         }

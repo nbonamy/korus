@@ -117,7 +117,7 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
         ] {
             var text = initial
             var caret: NSRange?
-            let editor = ComposerEditor(text: Binding(get: { text }, set: { text = $0 }),
+            let editor = ComposerEditor(text: Binding(get: { text }, set: { text = $0 }), chips: .constant([]),
                 selection: Binding(get: { caret }, set: { caret = $0 }), focused: .constant(false), query: .constant(nil),
                 suggestions: [], editable: true, maxLines: 1, placeholder: proposed ?? "Message", suggestedPrompt: proposed)
             let hosting = UIHostingController(rootView: editor)
@@ -252,6 +252,32 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
         _ = await js("document.querySelector('a[href=\"/tmp/shot.png\"]').click()")
         await wait { openedImage }
         check(openedImage && imageReads >= 2, "ordinary image links deliver bytes to the native viewer without model-specific links")
+
+        var fileOpen = false
+        var fileReads = 0
+        host.onFilePreviewVisibility = { fileOpen = $0 }
+        host.onReadContent = { [weak self] request in
+            guard request["type"] as? String == "readFilePreview", let self else { return }
+            fileReads += 1
+            let preview: [String: Any] = ["path": "src/app.swift", "source": ["path": "src/app.swift", "kind": "text", "size": 20, "content": "let nativeSource = true"],
+                "diff": "diff --git a/src/app.swift b/src/app.swift\n--- a/src/app.swift\n+++ b/src/app.swift\n@@ -1 +1 @@\n-old\n+nativeChange\n", "diffScope": "turn"]
+            let response: [String: Any] = ["type": "conversationFile", "requestId": request["requestId"]!, "agentId": request["agentId"]!, "preview": preview]
+            self.host.receiveContent(String(data: try! JSONSerialization.data(withJSONObject: response), encoding: .utf8)!)
+        }
+        host.submit(.conversation, frame(29, text: "Read [app.swift](src/app.swift:1)"))
+        await wait { self.lastReceipt?.revision == 29 }
+        _ = await js("document.querySelector('a[href=\"src/app.swift:1\"]').click()")
+        await wait { fileOpen && fileReads == 1 }
+        await pause(200)
+        let sourceVisible = await js("document.querySelector('[aria-label=\"File preview\"]')?.textContent.includes('nativeSource')") as? Bool ?? false
+        check(fileOpen && sourceVisible, "file links traverse the real native bridge and show current source")
+        _ = await js("Array.from(document.querySelectorAll('[aria-label=\"File view\"] button')).find(b => b.textContent === 'Diff').click()")
+        await pause(150)
+        let patchVisible = await js("document.querySelector('[aria-label=\"File preview\"]')?.textContent.includes('nativeChange')") as? Bool ?? false
+        check(patchVisible && fileReads == 1, "Diff and Source reuse one native file response")
+        _ = await js("window.companionTranscript.closeFile()")
+        await wait { !fileOpen }
+        check(!fileOpen, "closing a file preview restores native conversation chrome")
 
         let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("transcript-results.json")
         try! JSONSerialization.data(withJSONObject: checks, options: [.prettyPrinted, .sortedKeys]).write(to: url)

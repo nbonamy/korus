@@ -49,8 +49,10 @@ struct RootView: View {
         GeometryReader { proxy in
             HStack(spacing: 0) {
                 // A tall inner display is barely wider than the sidebar was: it takes a share of the width, not a fixed size.
-                DrawerView().frame(width: min(sidebarWidth, max(260, proxy.size.width * 0.38)))
-                Divider().ignoresSafeArea()
+                if !model.filePreviewOpen {
+                    DrawerView().frame(width: min(sidebarWidth, max(260, proxy.size.width * 0.38)))
+                    Divider().ignoresSafeArea()
+                }
                 ZStack {
                     ConversationScreen()
                     if model.missionsOpen { MissionsScreen() }

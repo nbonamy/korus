@@ -60,6 +60,7 @@ struct ConversationScreen: View {
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
+                if !model.filePreviewOpen {
                 VStack(spacing: 0) {
                     if let request = model.requests.first {
                         HStack(spacing: 0) {
@@ -90,6 +91,7 @@ struct ConversationScreen: View {
                         .background(.regularMaterial)
                     }
                     ComposerView()
+                }
                 }
             }
             .toolbar {
