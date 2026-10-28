@@ -6,25 +6,32 @@ const userAgent = navigator.userAgent;
 const mobile =
   /Android|iPhone|iPad|iPod|CrOS/i.test(userAgent) ||
   (/Macintosh/i.test(userAgent) && navigator.maxTouchPoints > 1);
-const platform = mobile
-  ? null
-  : /Windows/i.test(userAgent)
-    ? "windows"
-    : /Macintosh|Mac OS X/i.test(userAgent)
-      ? "macos"
-      : /Linux/i.test(userAgent)
-        ? "linux"
-        : null;
+const platform = /iPhone/i.test(userAgent)
+  ? "ios"
+  : mobile
+    ? null
+    : /Windows/i.test(userAgent)
+      ? "windows"
+      : /Macintosh|Mac OS X/i.test(userAgent)
+        ? "macos"
+        : /Linux/i.test(userAgent)
+          ? "linux"
+          : null;
 if (platform) {
   const option = document.querySelector(`[data-platform="${platform}"]`);
   option?.setAttribute("data-detected", "");
   const installer =
-    platform !== "linux" && option?.querySelector("a[data-installer]");
+    platform === "ios"
+      ? option?.querySelector("a")
+      : platform !== "linux" && option?.querySelector("a[data-installer]");
   for (const link of document.querySelectorAll("[data-platform-download]")) {
     link.href = installer ? installer.href : `#download-${platform}`;
-    const label = { macos: "macOS", windows: "Windows", linux: "Linux" }[
-      platform
-    ];
+    const label = {
+      macos: "macOS",
+      windows: "Windows",
+      linux: "Linux",
+      ios: "iPhone",
+    }[platform];
     link.querySelector("[data-platform-label]").textContent = ` for ${label}`;
     link.setAttribute("aria-label", `Download for ${label}`);
   }

@@ -85,6 +85,9 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         private set
     internal var changesOpen by mutableStateOf(false)
         private set
+    internal var filePreviewOpen by mutableStateOf(false)
+        private set
+    internal fun dismissFilePreview() { transcript.call("companionTranscript", "closeFile", ""); filePreviewOpen = false; acknowledge() }
     private var changesTarget: ConversationTarget? = null
     private var requestSelection: PendingRequest? = null
     private var requestOpen by mutableStateOf(false)
@@ -123,7 +126,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     val canAttach get() = state.obj("capabilities").optBoolean("attachments") && composerDrafts.target != null && !composerDrafts.goalMode
         && !composerDrafts.importing && !composerDrafts.sending && !dictation.active && composerDrafts.items.size < ComposerDrafts.MAX_COUNT
     val canDictate get() = foreground && screenUnlocked && !drawerVisible && sheet == null && attachmentPreview == null && conversationImage == null
-        && !reviewOpen && !changesOpen && creation == null && presentedRequest == null && composerDrafts.target != null && !composerDrafts.sending && !composerDrafts.importing
+        && !reviewOpen && !changesOpen && !filePreviewOpen && creation == null && presentedRequest == null && composerDrafts.target != null && !composerDrafts.sending && !composerDrafts.importing
     var foreground = false
         private set
     private var engineReady = false
@@ -588,10 +591,10 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     }
     fun acknowledge() {
         if (navigatingNotification != null || fatalError || engineRecovering || !state.connection.isConnected || !state.optBoolean("conversationReady") || !transcript.usable) { attention.visibleTarget = null; return }
-        attention.visibleTarget = if (foreground && screenUnlocked && !drawerVisible && !reviewOpen && !changesOpen && creation == null && presentedRequest == null && sheet == null && attachmentPreview == null && conversationImage == null && renderedAgent == state.string("agentId") && state.string("startup") == "ready")
+        attention.visibleTarget = if (foreground && screenUnlocked && !drawerVisible && !reviewOpen && !changesOpen && !filePreviewOpen && creation == null && presentedRequest == null && sheet == null && attachmentPreview == null && conversationImage == null && renderedAgent == state.string("agentId") && state.string("startup") == "ready")
             state.optJSONObject("composerTarget")?.let(ConversationTarget::parse) else null
         val read = receipt ?: return
-        if (!foreground || !screenUnlocked || drawerVisible || reviewOpen || changesOpen || creation != null || presentedRequest != null || sheet != null || attachmentPreview != null || conversationImage != null || read.string("agentId") != state.string("agentId")
+        if (!foreground || !screenUnlocked || drawerVisible || reviewOpen || changesOpen || filePreviewOpen || creation != null || presentedRequest != null || sheet != null || attachmentPreview != null || conversationImage != null || read.string("agentId") != state.string("agentId")
             || read.optInt("generation") != state.optInt("conversationGeneration")) return
         dispatch(JSONObject(read.toString()).put("type", "read"))
     }
@@ -644,7 +647,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
                     if (oldId != nextId || composerDrafts.target != nextTarget) {
                         dictation.cancel()
                         reviewOpen = false; reviewChoices = ReviewChoices(); reviewLoadedBackend = null
-                        receipt = null; renderedAgent = ""; attachmentPreview = null; conversationImage = null
+                        receipt = null; renderedAgent = ""; attachmentPreview = null; conversationImage = null; filePreviewOpen = false
                     }
                     composerDrafts.select(nextTarget)
                     if (!next.obj("capabilities").optBoolean("goals") || next.obj("composer").optBoolean("planMode")) composerDrafts.setGoalMode(false)
@@ -662,6 +665,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
                 }
                 "conversationContext" -> { latestContext = payload; context = payload; drainTranscript() }
                 "conversationContent" -> transcript.call("companionTranscript", "setContent", payload)
+                "conversationFile" -> transcript.call("companionTranscript", "setContent", payload)
                 "conversationImage" -> transcript.call("companionTranscript", "setImage", payload)
                 "gitDiff" -> if (changesOpen && changesTarget == composerDrafts.target) {
                     diff = JSONObject(payload).string("diff"); if (changesReady) changes.call("companionChanges", "setDiff", payload)
@@ -675,7 +679,8 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
             when (body.string("type")) {
                 "ready" -> { transcriptReady = true; drainTranscript() }
                 "loadOlder" -> command("loadOlder", "agentId" to body.string("agentId"))
-                "readConversationImage", "readConversationContent" -> dispatch(body)
+                "readConversationImage", "readConversationContent", "readFilePreview" -> dispatch(body)
+                "filePreviewVisibility" -> { filePreviewOpen = body.optBoolean("open"); if (filePreviewOpen) dictation.cancel(); acknowledge() }
                 "backend" -> { chooseCreationBackend(body.string("backend")); dispatch(body) }
                 "openExternal" -> openExternal(getApplication(), body.string("url"))
                 "openImage" -> if (foreground && screenUnlocked && !fatalError && !engineRecovering && state.string("agentId").isNotBlank()

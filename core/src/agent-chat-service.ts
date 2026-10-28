@@ -10,6 +10,8 @@ export type AgentChatEventEmitter = (
 ) => void;
 
 export type SendAgentPromptHooks = {
+  /** Trusted delegated startup; uses the provider's native goal operation. */
+  goal?: boolean;
   /** Backend-owned handoff transaction only; never exposed as a prompt option. */
   handoff?: boolean;
   /** Trusted guest admission: no product commands, exact owner-approved text. */
@@ -36,13 +38,14 @@ export function sendAgentPrompt(
   if (!agent || (!trimmedPrompt && !hasAttachments) || isBusy(agent.status)) {
     return snapshot;
   }
+  if (hooks?.goal && (!backendDriver.getCapabilities(agent).goals || !backendDriver.setGoal)) throw new Error('This backend does not support goals.');
   if (options?.delegation !== undefined && !isDelegationOverrides(options.delegation)) throw new Error('Invalid worktree delegation overrides.');
 
   agent.hasSubmittedPrompt = true;
   // Only app-submitted controls can override saved user preferences. Agent-
   // generated create-agent instructions never populate this field.
   const delegationControls = captureUserDelegationOverrides(agent, options?.delegation);
-  const promptResult = hooks?.plainText ? null : backendDriver.tryHandlePromptCommand?.(agent, trimmedPrompt) ?? null;
+  const promptResult = hooks?.plainText || hooks?.goal ? null : backendDriver.tryHandlePromptCommand?.(agent, trimmedPrompt) ?? null;
   const hadBackendSession = Boolean(agent.backendSession);
 
   updateAgentStatus(agentId, { type: 'working' }, emit, snapshot);
@@ -65,7 +68,16 @@ export function sendAgentPrompt(
   const preparedOptions = backendDriver.preparePromptOptions?.(agent, routedOptions) ?? routedOptions;
   const deliveredPrompt = hooks?.plainText ? prompt : options?.planMode === true && snapshot.general.useInteractivePlans !== false
     ? interactivePlanPrompt(trimmedPrompt) : trimmedPrompt;
-  const sendResult = promptResult
+  const sendResult = hooks?.goal
+    ? backendDriver.setGoal!(agent, trimmedPrompt).then(result => {
+      agent.backendSession = result.backendSession;
+      if (result.goal) {
+        agent.goal = result.goal;
+        emit({ agentId, threadId: result.goal.threadId, type: 'conversation.goalUpdated', payload: { goal: result.goal } });
+      }
+      return result;
+    })
+    : promptResult
     ?? (hasPromptOptions(preparedOptions)
       ? backendDriver.sendPrompt(agent, deliveredPrompt, preparedOptions)
       : backendDriver.sendPrompt(agent, deliveredPrompt));

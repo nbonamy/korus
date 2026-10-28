@@ -47,6 +47,7 @@ struct DrawerView: View {
                     Text("Missions")
                     Spacer()
                     if active > 0 { Text("\(active) active").font(.subheadline).foregroundStyle(.secondary) }
+                    MissionAttentionIndicator(attention: model.missionAttention)
                     Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
                 }
                 .font(.body)
@@ -360,6 +361,15 @@ private struct SessionRow: View {
 struct UnreadDot: View {
     var body: some View {
         Circle().fill(Color.red).frame(width: 8, height: 8).accessibilityLabel("Unread activity")
+    }
+}
+
+struct MissionAttentionIndicator: View {
+    let attention: MissionAttention
+
+    var body: some View {
+        if attention == .unread { UnreadDot() }
+        else { StatusDot(status: attention.agentStatus) }
     }
 }
 

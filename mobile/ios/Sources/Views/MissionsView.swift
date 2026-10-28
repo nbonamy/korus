@@ -3,6 +3,7 @@ import SwiftUI
 /// Missions the laptop is running or has finished, in the same surface as a conversation; the phone only follows them.
 struct MissionsScreen: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         @Bindable var model = model
@@ -29,9 +30,11 @@ struct MissionsScreen: View {
             .overlay { if model.missions.isEmpty { ContentUnavailableView("No missions", systemImage: "target") } }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { model.drawerOpen.toggle() } label: { Image(systemName: "line.3.horizontal") }
-                        .buttonBorderShape(.circle)
-                        .accessibilityLabel("Agents")
+                    if sizeClass != .regular {
+                        Button { model.drawerOpen.toggle() } label: { Image(systemName: "line.3.horizontal") }
+                            .buttonBorderShape(.circle)
+                            .accessibilityLabel("Agents")
+                    }
                 }
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 1) {
@@ -144,6 +147,7 @@ private struct MissionCard: View {
                 }
             }
             Spacer(minLength: 0)
+            MissionAttentionIndicator(attention: mission.attention ?? .idle)
             Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
         }
         .padding(.horizontal, 20).padding(.vertical, 20)
@@ -161,6 +165,7 @@ private struct CompletedRow: View {
             Image(systemName: "checkmark.circle.fill").foregroundStyle(.secondary).font(.title3)
             Text(mission.outcome).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
             Spacer(minLength: 0)
+            MissionAttentionIndicator(attention: mission.attention ?? .idle)
             Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
         }
         .padding(.horizontal, 14).padding(.vertical, 12)

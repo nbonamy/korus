@@ -9,7 +9,7 @@ import { handoffInProgress } from '@workspace/core/agent-handoff';
 import { requireAgentFolder } from '@workspace/core/agent-folder';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { resolveAgentBackend } from '@workspace/core/agent-backends';
-import type { AgentBackendDriver, BackendConversationForkResult, BackendEvent, BackendSendResult } from '@workspace/core/backend-driver';
+import type { AgentBackendDriver, BackendConversationForkResult, BackendEvent, BackendGoalResult, BackendSendResult } from '@workspace/core/backend-driver';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type {
   Agent,
@@ -296,7 +296,8 @@ export class AppMcpService {
     return {
       backend: agent.backend,
       getRuntimeStatus: () => ({ backend: agent.backend, status: 'running' }),
-      getCapabilities: () => defaultBackendCapabilities(agent.backend),
+      getCapabilities: currentAgent => this.requireDriverRpc().getCapabilities(currentAgent),
+      setGoal: (currentAgent, objective) => this.requireDriverRpc().handle(backendMethods.driverGoalUpdate, { agent: currentAgent, objective }) as Promise<BackendGoalResult>,
       tryHandlePromptCommand: (currentAgent, prompt) => (
         this.requireDriverRpc().tryHandlePromptCommand(currentAgent, prompt)
       ),
@@ -442,6 +443,12 @@ export class AppMcpService {
     assignmentUserInstructions?: Agent['delegationUserInstructions'],
   ): Promise<McpCreateAgentResponse> {
     const prompt = input.prompt?.trim() ?? '';
+    if (input.goal && !prompt && !assignmentPrompt) return { success: false, message: 'prompt is required when goal is true' };
+    if (input.goal) {
+      const backend = resolveAgentBackend(this.snapshot, input.backend ?? caller.backend);
+      const target = { ...caller, id: intendedId ?? '', backend, backendSession: undefined, backendDefaults: delegatedBackendDefaults(caller, input) };
+      if (!this.requireDriverRpc().getCapabilities(target).goals) return { success: false, message: 'This backend does not support goals.' };
+    }
     const instructions = input.instructions?.trim();
     const userOverrides = input.createWorktree && !assignmentPrompt ? caller.userDelegationOverrides : undefined;
     const startingContext = userOverrides?.startingContext ?? input.startingContext ?? this.snapshot.general.worktreeDelegationStartingContext ?? 'handoff';
@@ -462,6 +469,7 @@ export class AppMcpService {
       if (!this.tasks) throw new Error('Durable tasks are unavailable.');
       const task = await this.tasks.create(caller, {
         requestId: input.requestId ?? '', task: input.task, prompt: fullPrompt,
+        ...(input.goal ? { goal: true } : {}),
         ...(userInstructions ? { delegationUserInstructions: userInstructions } : {}),
         backend: input.backend ?? caller.backend, specification: input,
         workspace: {
@@ -555,7 +563,7 @@ export class AppMcpService {
           type: 'agentCreation.progress',
           payload: { ...progress, state: 'running', phase: 'startingPrompt' },
         });
-        await this.startAgentWithPrompt(createdAgent, delegatedAssignmentPrompt(createdAgent, fullPrompt));
+        await this.startAgentWithPrompt(createdAgent, delegatedAssignmentPrompt(createdAgent, fullPrompt), input.goal);
       }
 
       const createdAgentName = agentDisplayName(createdAgent);
@@ -639,7 +647,7 @@ export class AppMcpService {
     });
   }
 
-  private startAgentWithPrompt(agent: Agent, prompt: string): Promise<BackendSendResult> {
+  private startAgentWithPrompt(agent: Agent, prompt: string, goal?: boolean): Promise<BackendSendResult> {
     return new Promise((resolve, reject) => {
       this.recordPromptInputMethod(agent.id, 'typed');
       sendAgentPrompt(
@@ -650,6 +658,7 @@ export class AppMcpService {
         undefined,
         (event) => this.emit(event),
         {
+          goal,
           onBackendSessionUpdated: () => this.emitSnapshotUpdated(agent.id),
           onPromptFailed: reject,
           onPromptStarted: result => resolve(result),

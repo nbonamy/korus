@@ -296,13 +296,14 @@ export class ClaudeConversationHost implements AgentBackendDriver {
 
   async setGoal(agent: Agent, objective: string): Promise<import('@workspace/core/backend-driver').BackendGoalResult> {
     const condition = objective.trim();
-    if (!condition || condition === 'clear') throw new Error('Enter a goal condition.');
+    if (!condition || /^(?:clear|stop|off|reset|none|cancel)$/i.test(condition)) throw new Error('Enter a goal condition instead of a clear command.');
+    if (condition.length > 4000) throw new Error('Claude goal conditions must be at most 4,000 characters, including assignment context.');
     const now = Date.now() / 1000;
     const started = await this.sendPrompt(agent, `/goal ${condition}`, { recordUserMessage: false });
     if (started.backendSession.kind !== 'claude') throw new Error('Claude did not return a session.');
     const goal: ThreadGoal = { threadId: started.backendSession.sessionId, objective: condition, status: 'active', tokenBudget: null, tokensUsed: 0, timeUsedSeconds: 0, createdAt: now, updatedAt: now };
     this.goalsByAgentId.set(agent.id, goal);
-    return { backendSession: started.backendSession, goal };
+    return { backendSession: started.backendSession, ...(started.turnId ? { turnId: started.turnId } : {}), goal };
   }
 
   async clearGoal(agent: Agent): Promise<import('@workspace/core/backend-driver').BackendGoalResult> {

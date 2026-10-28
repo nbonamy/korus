@@ -126,6 +126,7 @@ import {
   chartSeries,
   providerColorForModel,
   sumSpeed,
+  sortUsageValues,
   tokensPerSecond,
 } from "./usage-chart";
 
@@ -135,7 +136,7 @@ const props = defineProps<{
   to: string;
 }>();
 const speedSeries = computed(() =>
-  chartSeries(props.summary, "turns", "model").filter((series) =>
+  chartSeries(props.summary, "speed", "model").filter((series) =>
     props.summary.daily?.some((day) =>
       day.groups?.some(
         (group) =>
@@ -188,11 +189,7 @@ const ttftRanking = computed(() =>
 );
 /** Highest provider-reported generation rate first. */
 const speedRanking = computed(() =>
-  [...rows.value].sort(
-    (a, b) =>
-      (b.speed ?? -1) - (a.speed ?? -1) ||
-      a.label.localeCompare(b.label),
-  ).map((row) => ({
+  sortUsageValues(rows.value, row => row.speed).map((row) => ({
     ...row,
     speedWidth: relativeWidth(row.speed, maximumSpeed.value),
   })),

@@ -354,7 +354,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     const folder = await mkdtemp(path.join(os.tmpdir(), 'claude-request-ledger-')); homes.push(folder);
     const file = path.join(folder, 'usage.sqlite');
     const prices = structuredClone(loadPricingHistory());
-    prices[0]!.anthropic.find(m => m.id === 'claude-sonnet-4-5')!.cost!.text!.input!.overrides = [
+    prices.anthropic['claude-sonnet-4-5'].cost.at(-1)!.rates!.text!.input!.overrides = [
       { when: { context: { gt: 200000 } }, price: 6 },
     ];
     const ledger = new UsageLedger(file, Date.now, prices); await ledger.load();
@@ -365,6 +365,8 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     const sending = driver.sendPrompt(snapshot.agents[0]!, 'CANARY private input', { model: 'selected-alias' });
     await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
     sdk.emit({ type: 'system', subtype: 'init', session_id: 'requests', model: 'selected-alias' }); await sending;
+    // Local SDK notices have no billable model/request, even when shaped like assistant messages.
+    sdk.emit(requestFixture('sdk-notice', 0, 0, 0, 0, 0, '<synthetic>').assistant);
     const fixtures = [requestFixture('boundary'), requestFixture('above', 11),
       requestFixture('fast', 100, 8000, 50, 100, 200, 'claude-opus-5-5', null, 'fast', 'us')];
     for (const f of fixtures) { sdk.emit(f.start); sdk.emit(f.assistant); sdk.emit(f.delta); sdk.emit(f.delta); sdk.emit(f.stop); sdk.emit(f.assistant);
@@ -438,7 +440,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     ['third-party route', 'unknown-provider'],
   ] as const)('keeps %s evidence precise through SDK transport and analytics', async (scenario, reason) => {
     const prices = structuredClone(loadPricingHistory());
-    const cost = prices[0]!.anthropic.find(m => m.id === 'claude-sonnet-4-5')!.cost!;
+    const cost = prices.anthropic['claude-sonnet-4-5'].cost.at(-1)!.rates!;
     if (scenario === 'unknown reasoning category discount') cost.multipliers = [{ when: { region: { equals: 'global' } }, factor: { text: { output: { price: 0.5 } } } }];
     if (scenario === 'unknown differently priced reasoning') cost.text!.output!.reasoning = 30;
     if (scenario === 'unknown adjusted reasoning') { cost.text!.output!.reasoning = 15; cost.multipliers = [{ when: { region: { equals: 'global' } }, factor: { text: { output: { reasoning: 2 } } } }]; }

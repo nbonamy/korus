@@ -6,9 +6,10 @@ import { createTeamInSnapshot } from '@workspace/core/team-manager';
 import { describe, expect, it, vi } from 'vitest';
 import AppShellNavigation from '../AppShellNavigation.vue';
 
-function mountNavigation(snapshot = createInitialSnapshot()) {
+function mountNavigation(snapshot = createInitialSnapshot(), renderSidebar = false) {
   const activeTeam = snapshot.teams[0] ?? null;
   return shallowMount(AppShellNavigation, {
+    global: { stubs: { AgentSidebar: !renderSidebar } },
     props: {
       activeTeam,
       activeTeamAgents: snapshot.agents,
@@ -78,9 +79,10 @@ describe('AppShellNavigation', () => {
     ]);
   });
 
-  it('keeps mission-owned agents out of the global sidebar', () => {
+  it('keeps the mission lead out of the global sidebar while showing its unread activity on the mission', async () => {
     const snapshot = createInitialSnapshot();
     const mission = createMission(snapshot, { outcome: 'New mission', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
+    mission.stageAgentIds = { requirements: snapshot.agents[1]!.id };
     mission.execution = {
       teamId: snapshot.teams[0]!.id,
       repoPath: snapshot.agents[0]!.folder!,
@@ -92,11 +94,18 @@ describe('AppShellNavigation', () => {
       }],
     };
 
-    const sidebar = mountNavigation(snapshot).getComponent({ name: 'AgentSidebar' });
+    const wrapper = mountNavigation(snapshot, true);
+    const sidebar = wrapper.getComponent({ name: 'AgentSidebar' });
 
     expect(sidebar.props('agents').map((agent: { id: string }) => agent.id))
       .toStrictEqual([snapshot.agents[0]!.id]);
     expect(sidebar.props('missions')).toStrictEqual([mission]);
+    await wrapper.setProps({ unreadAgentIds: [snapshot.agents[1]!.id] });
+    const dot = () => sidebar.get('[data-group-kind="missions"] .agent-sidebar__status');
+    expect(dot().attributes('aria-label')).toBe('Unread activity');
+    expect(dot().classes()).toContain('agent-sidebar__status--unread');
+    await wrapper.setProps({ unreadAgentIds: [] });
+    expect(dot().classes()).not.toContain('agent-sidebar__status--unread');
   });
 
   it('shows only missions from the active team', () => {

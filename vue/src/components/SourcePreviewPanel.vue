@@ -1,7 +1,9 @@
 <template>
   <article
+    ref="surface"
     class="source-preview-panel"
     :class="{
+      'source-preview-panel--annotatable': canAnnotate,
       'source-preview-panel--hide-line-numbers': !showLineNumbers,
       'source-preview-panel--wrap': wordWrap,
     }"
@@ -20,32 +22,107 @@
     <div
       v-else-if="content.trim()"
       class="source-preview-panel__content codex-markdown"
+      :data-code-path="canAnnotate ? path : undefined"
+      @mousedown="plusPressed"
+      @click="plusClicked"
       v-html="renderCodeBlock(content, language ?? undefined)"
     />
     <div
       v-else
       class="source-preview-panel__empty"
     > {{ $t('surface.sourcePreviewPanel.noSourceContent') }} </div>
+    <CodeSelectionAnnotation
+      v-if="canAnnotate"
+      :selection="code.selection.value"
+      :commenting="code.commenting.value"
+      @dismiss="code.clear"
+      @save="saveAnnotation"
+    />
   </article>
 </template>
 
 <script setup lang="ts">
 import { renderCodeBlock } from '@codex-app-sdk/vue';
+import { computed, nextTick, onUpdated, ref, watch } from 'vue';
+import { translate } from '../i18n';
+import CodeSelectionAnnotation from './CodeSelectionAnnotation.vue';
+import type { CodeAnnotationInput } from './use-code-annotations';
+import { useCodeSelection, type CodeSelection } from './use-code-selection';
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   content: string;
   error?: string | null;
   language?: string | null;
+  /** The file shown; annotating needs it to say where a comment belongs. */
+  path?: string;
+  /** Annotate from a line's plus button, or select code text. */
+  annotatable?: boolean;
   showLineNumbers?: boolean;
   state?: 'idle' | 'loading' | 'error';
   wordWrap?: boolean;
 }>(), {
   error: null,
   language: null,
+  path: undefined,
+  annotatable: false,
   showLineNumbers: true,
   state: 'idle',
   wordWrap: false,
 });
+
+const emit = defineEmits<{ annotate: [annotation: CodeAnnotationInput] }>();
+
+const surface = ref<HTMLElement | null>(null);
+const code = useCodeSelection(surface);
+const canAnnotate = computed(() => props.annotatable && Boolean(props.path));
+
+/** The highlighter draws the lines without numbers (a counter does); give each one its number to point at. */
+function numberLines(): void {
+  const lines = surface.value?.querySelectorAll<HTMLElement>('.source-preview-panel__content .line') ?? [];
+  lines.forEach((line, index) => {
+    if (canAnnotate.value) line.setAttribute('data-code-line', String(index + 1));
+    else line.removeAttribute('data-code-line');
+    const existing = line.querySelector('button[data-code-annotation-trigger]');
+    if (!canAnnotate.value || !props.showLineNumbers) { existing?.remove(); return; }
+    if (existing) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'source-preview-panel__annotate';
+    button.setAttribute('data-code-annotation-trigger', '');
+    button.setAttribute('aria-label', translate('chat.codeAnnotations.annotateLine'));
+    button.title = translate('chat.codeAnnotations.annotateLine');
+    button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+    line.prepend(button);
+  });
+}
+watch([() => props.content, () => props.language, () => props.state, () => props.showLineNumbers, canAnnotate], () => {
+  code.clear();
+  void nextTick(numberLines);
+}, { immediate: true, flush: 'post' });
+watch(surface, () => void nextTick(numberLines));
+onUpdated(numberLines);
+
+function plusLine(event: MouseEvent): HTMLElement | null {
+  if (!canAnnotate.value || !props.showLineNumbers || event.button !== 0 || !(event.target instanceof Element)) return null;
+  return event.target.closest('[data-code-annotation-trigger]')?.closest<HTMLElement>('.line') ?? null;
+}
+
+function plusPressed(event: MouseEvent): void {
+  const line = plusLine(event);
+  if (!line) return;
+  event.preventDefault();
+  code.lineDragStart(line, event);
+}
+
+function plusClicked(event: MouseEvent): void {
+  if (event.detail !== 0) return;
+  const line = plusLine(event);
+  if (line) code.commentLine(line, event);
+}
+
+function saveAnnotation({ selection, comment }: { selection: CodeSelection; comment: string }): void {
+  emit('annotate', { path: selection.path, startLine: selection.startLine, endLine: selection.endLine, text: selection.text, comment });
+}
 </script>
 
 <style scoped>
@@ -121,6 +198,38 @@ withDefaults(defineProps<{
   .source-preview-panel__content
   :deep(.line::before) {
   content: none;
+}
+
+.source-preview-panel__content :deep(.line.code-annotation-line--selected) {
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-primary);
+}
+
+/* The affordance for pointing at a line: a small square plus over the margin, shown while the line is hovered. */
+.source-preview-panel__content :deep(.source-preview-panel__annotate) {
+  position: absolute;
+  top: calc((var(--source-preview-line-height) - 16px) / 2);
+  left: 2px;
+  display: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  cursor: pointer;
+}
+
+.source-preview-panel__content :deep(.line:hover .source-preview-panel__annotate),
+.source-preview-panel__content :deep(.source-preview-panel__annotate:focus-visible) {
+  display: grid;
+}
+
+.source-preview-panel__content :deep(.source-preview-panel__annotate svg) {
+  width: 12px;
+  height: 12px;
 }
 
 .source-preview-panel__content :deep(.line::before) {

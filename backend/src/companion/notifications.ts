@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { providerConversationEventView } from '@workspace/core/provider-conversation-event';
 import { agentDisplayName } from '@workspace/core/agent-display';
-import { companionTarget, type CompanionWorkspace } from '@workspace/core/companion-protocol';
+import { companionAgents, companionTarget, type CompanionWorkspace } from '@workspace/core/companion-protocol';
 import type { CompanionNotification } from '@workspace/core/companion-notification';
 
 /** Only live attention events create alerts. Snapshots and reconnects never replay them. */
@@ -31,11 +31,16 @@ export class CompanionNotifications {
     ];
   }
   accepts(event: AppBackendEvent) {
-    return event.type === 'agentRequest.created' || providerConversationEventView(event).type === 'turn.completed';
+    if (event.type === 'agentRequest.created') {
+      const request = event.payload.request;
+      return request.kind !== 'question' || request.question.blocking;
+    }
+    return providerConversationEventView(event).type === 'turn.completed';
   }
   create(event: AppBackendEvent, workspace: CompanionWorkspace, revision?: number): CompanionNotification | null {
     const view = providerConversationEventView(event);
-    const agent = workspace.agents.find(agent => agent.id === view.agentId);
+    // Mission workers are not in the team's agent list, but a person still has to answer them.
+    const agent = companionAgents(workspace).find(agent => agent.id === view.agentId);
     const team = workspace.teams.find(team => team.id === agent?.teamId);
     if (!agent || !team) return null;
     if (view.conversationId && view.conversationId !== agentConversationId(agent)) return null;
@@ -43,6 +48,7 @@ export class CompanionNotifications {
     if (event.type === 'agent.updated' && revision !== undefined) {
       kind = 'read'; identity = `read/${revision}`;
     } else if (event.type === 'agentRequest.created') {
+      if (!this.accepts(event)) return null;
       const request = event.payload.request;
       if (request.conversationId !== agentConversationId(agent)) return null;
       kind = request.kind === 'question' ? 'question' : 'approval';
@@ -51,6 +57,8 @@ export class CompanionNotifications {
       const payload = view.payload as { status?: string; turn?: { id?: string; status?: string } };
       const turn = payload?.turn;
       if (view.type !== 'turn.completed' || (turn?.status ?? payload?.status) !== 'completed') return null;
+      // A mission runs on its own: only a request for input is worth a push, never a finished turn.
+      if (agent && missionAgentIds(workspace).has(agent.id)) return null;
       kind = 'completed'; identity = `${view.conversationId}/${view.turnId ?? turn?.id}`;
       if (!view.turnId && !turn?.id) return null;
     }
@@ -59,6 +67,19 @@ export class CompanionNotifications {
     const id = createHash('sha256').update(JSON.stringify([target, kind, identity])).digest('hex');
     if (this.seen.has(id)) return null;
     this.seen.add(id); if (this.seen.size > 1024) this.seen.delete(this.seen.values().next().value!);
-    return { id, target, kind, ...(revision === undefined ? {} : { revision }), name: agentDisplayName(agent).slice(0, 100), createdAt: Date.now() };
+    const label = agentDisplayName(agent);
+    const name = !agent.name?.trim() && agent.sessionKind !== 'quickChat' && agent.workspace?.kind === 'git'
+      ? `${agent.workspace.repositoryName} - ${agent.workspace.branch ?? label}` : label;
+    return { id, target, kind, ...(revision === undefined ? {} : { revision }), name: name.slice(0, 100), createdAt: Date.now() };
   }
+}
+
+/** Every mission lead and repository worker retains the mission's input-only alert policy. */
+function missionAgentIds(workspace: CompanionWorkspace): Set<string> {
+  const ids = new Set((workspace.missionAgents ?? []).map(agent => agent.id));
+  for (const mission of workspace.missionProgress ?? []) {
+    if (mission.leadAgentId) ids.add(mission.leadAgentId);
+    for (const ticket of mission.tickets) if (ticket.agentId) ids.add(ticket.agentId);
+  }
+  return ids;
 }

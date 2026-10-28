@@ -74,7 +74,11 @@ export class ProviderUpdateRuntime {
           // npm's default prefix is derived from process.execPath. Its shebang
           // must not accidentally pick the desktop's private Node from PATH.
           const npmCli = await this.io.realpath(npm);
-          const root = (await this.io.run(npmNode, [npmCli, 'root', '-g'], 10_000)).trim();
+          let root = (await this.io.run(npmNode, [npmCli, 'root', '-g'], 10_000)).trim();
+          const prefix = path.join(this.io.home, '.local');
+          const userLocal = backend === 'codex' && path.resolve(executable) === path.join(prefix, 'bin', 'codex')
+            && inside(resolved, path.join(prefix, 'lib', 'node_modules', packages.codex));
+          if (userLocal) root = path.join(prefix, 'lib', 'node_modules');
           const packageRoot = path.join(root, packages[backend]);
           const canonicalRoot = await this.io.realpath(packageRoot).catch(() => '');
           if (canonicalRoot && inside(resolved, canonicalRoot)) {
@@ -84,7 +88,7 @@ export class ProviderUpdateRuntime {
               latestVersion = backend === 'claude' && channel === 'stable'
                 ? exactVersion((await this.io.fetchText('https://downloads.claude.ai/claude-code-releases/stable')).trim())
                 : await this.registryVersion(backend);
-              if (latestVersion) command = { file: npmNode, args: [npmCli, 'install', '-g', `${packages[backend]}@${latestVersion}`] };
+              if (latestVersion) command = { file: npmNode, args: [npmCli, 'install', '-g', ...(userLocal ? ['--prefix', prefix] : []), `${packages[backend]}@${latestVersion}`] };
             }
           }
         }

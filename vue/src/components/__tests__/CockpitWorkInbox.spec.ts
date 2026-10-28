@@ -1,3 +1,4 @@
+import type { BackendModelOption } from '@workspace/core/contracts';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed } from 'vue';
 import { createEmptySnapshot } from '@workspace/core/snapshot';
@@ -31,6 +32,26 @@ describe('CockpitWorkInbox', () => {
     finish();
     await flushPromises();
     expect(wrapper.findAll<HTMLInputElement>('.cockpit-inbox__selection input')[0]!.element.checked).toBe(true);
+  });
+  it('checks feedback for authored PRs and reviews other PRs while retaining the address-feedback action', async () => {
+    const own = { ...item(21, 'My PR', 'repo-one'), kind: 'pullRequest' as const, authorName: 'NICOLAS' };
+    const other = { ...item(22, 'Other PR', 'repo-two'), kind: 'pullRequest' as const, authorName: 'someone-else' };
+    const start = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mountInbox([own, other], {}, { activeView: 'all' }, start);
+    await wrapper.get('[aria-label="Check feedback on #21"]').trigger('click');
+    await wrapper.get('.app-dialog__footer .app-button--primary').trigger('click');
+    expect(start).toHaveBeenLastCalledWith(expect.objectContaining({ action: 'checkFeedback', items: [own] }));
+    await flushPromises();
+    await wrapper.get('[aria-label="Check feedback on #21"]').trigger('click');
+    const address = wrapper.get('.app-dialog__footer .app-button--secondary');
+    expect(address.text()).toBe('Address feedback');
+    await address.trigger('click');
+    expect(start).toHaveBeenLastCalledWith(expect.objectContaining({ action: 'addressFeedback', items: [own] }));
+    await flushPromises();
+    await wrapper.get('[aria-label="Start work on #22"]').trigger('click');
+    expect(wrapper.get('.app-dialog__footer .app-button--primary').text()).toBe('Review');
+    await wrapper.get('.app-dialog__footer .app-button--primary').trigger('click');
+    expect(start).toHaveBeenLastCalledWith(expect.objectContaining({ action: 'review', items: [other] }));
   });
   it('requires an explicit code repository for Linear batches and invalidates a submitted selection on source change', async () => {
     const selected = { ...item(12, 'Repair login', 'linear:team'), provider: 'linear' as const, id: 'linear:uuid', identifier: 'ENG-12' };
@@ -304,6 +325,23 @@ describe('CockpitWorkInbox', () => {
     expect(startWorkAction).toHaveBeenCalledWith({ action: 'investigate', items: [second], teamId: 'team-two', backend: 'claude', model: 'gpt-fast' });
   });
 
+  it('starts agents on the service tier chosen with the model', async () => {
+    const second = item(22, 'Second repo work', 'repo-two');
+    const startWorkAction = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mountInbox([second], {}, {}, startWorkAction, [
+      { id: 'fast', model: 'gpt-fast', displayName: 'GPT Fast', serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }, { id: 'ultrafast', name: 'Ultrafast', description: '' }] },
+    ]);
+    await wrapper.get('.cockpit-inbox__row').trigger('click');
+    await wrapper.findAllComponents({ name: 'ElButton' }).find((button) => button.text().includes('Start work'))!.trigger('click');
+    await flushPromises();
+    await wrapper.get('[aria-label="Coding agent and model"]').trigger('click');
+    await flushPromises();
+    [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(row => row.textContent?.trim() === 'ultrafast')!.click();
+    await flushPromises();
+    await wrapper.findAll('.app-dialog__footer button').find((button) => button.text() === 'Investigate')?.trigger('click');
+    expect(startWorkAction).toHaveBeenCalledWith(expect.objectContaining({ action: 'investigate', items: [second], model: 'gpt-fast', serviceTier: 'ultrafast' }));
+  });
+
   it('guides unfiltered global views before loading cross-repository work', async () => {
     const wrapper = mountInbox([], {}, { activeView: 'all', globalScope: null });
 
@@ -345,6 +383,7 @@ function mountInbox(
   assignments: Record<string, WorkBacklogAssignment> = {},
   filters: { activeView?: 'all' | 'backlog' | 'wip' | 'focus'; globalScope?: 'assignedToMe' | 'all' | null; page?: number; hasNextPage?: boolean; pageLoading?: boolean; pageSize?: number; statusFilter?: 'inProgress' | 'blocked' | 'readyForReview' | null; totalItems?: number } = {},
   startWorkAction = vi.fn().mockResolvedValue(undefined),
+  models: BackendModelOption[] = [{ id: 'fast', model: 'gpt-fast', displayName: 'GPT Fast' }],
 ) {
   return mount(CockpitWorkInbox, {
     global: { provide: {
@@ -354,7 +393,7 @@ function mountInbox(
         teams: [{ id: 'team-one', name: 'Team One', agentIds: ['agent-one'] }],
         agents: [agent('agent-one', 'Dina')],
       }),
-      [backendModelCatalogKey as symbol]: { listModels: vi.fn(async () => [{ id: 'fast', model: 'gpt-fast', displayName: 'GPT Fast' }]) },
+      [backendModelCatalogKey as symbol]: { listModels: vi.fn(async () => models) },
     } },
     props: {
       agents: [agent('agent-one', 'Dina'), agent('agent-two', 'Jesse')], assignments,

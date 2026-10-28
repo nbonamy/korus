@@ -21,16 +21,17 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function setup(attached = true) {
+function setup(attached = true, device: MobileDevice = attachment.device) {
   vi.useFakeTimers();
+  const current = { ...attachment, device };
   let shutdownGate: Promise<void> | undefined;
   const mobileSimulator = vi.fn(async (_agent: string, input: MobileRequest) => {
     if (input.action === 'attach') attached = true;
     if (input.action === 'shutdown') await shutdownGate;
     if (input.action === 'detach' || input.action === 'shutdown') attached = false;
     return {
-      attachment: attached ? attachment : null,
-      ...(input.action === 'list' ? { catalog: { devices: [attachment.device], setup: [] } } : {}),
+      attachment: attached ? current : null,
+      ...(input.action === 'list' ? { catalog: { devices: [device], setup: [] } } : {}),
       ...(input.action === 'screenshot' ? { frame } : {}),
     };
   });
@@ -49,6 +50,37 @@ function setup(attached = true) {
 }
 
 describe('MobileSimulatorPanel', () => {
+  it('folds and unfolds a Duo and starts a fresh live view for each screen size', async () => {
+    const { wrapper, mobileSimulator, mobileSimulatorView } = setup(true, { ...attachment.device, platform: 'ios', name: 'My Duo', foldable: true });
+    try {
+      await flushPromises();
+      for (const [label, action] of [['Fold', 'fold'], ['Unfold', 'unfold']] as const) {
+        let release!: () => void;
+        mobileSimulator.mockImplementationOnce(async () => {
+          await new Promise<void>((resolve) => { release = resolve; });
+          return { attachment: { ...attachment, device: { ...attachment.device, platform: 'ios', foldable: true } } };
+        });
+        const starts = mobileSimulatorView.mock.calls.filter(([, request]) => request.action === 'start').length;
+        await wrapper.get(`[aria-label="${label}"]`).trigger('click');
+        await flushPromises();
+        expect(mobileSimulator).toHaveBeenCalledWith('a', { action, attachmentId: 'session' });
+        expect(wrapper.get('[role="status"]').text()).toBe(action === 'fold' ? 'Folding…' : 'Unfolding…');
+        expect(wrapper.find('img').exists()).toBe(false);
+        expect(wrapper.get(`[aria-label="${label}"]`).attributes('disabled')).toBeDefined();
+        release();
+        await flushPromises();
+        expect(wrapper.find('[role="status"]').exists()).toBe(false);
+        expect(mobileSimulatorView.mock.calls.filter(([, request]) => request.action === 'start')).toHaveLength(starts + 1);
+        expect(wrapper.get('img').attributes('src')).toBe('blob:native-frame');
+      }
+      mobileSimulator.mockRejectedValueOnce(new Error('Display did not settle.'));
+      await wrapper.get('[aria-label="Fold"]').trigger('click');
+      await flushPromises();
+      expect(wrapper.find('[role="status"]').exists()).toBe(false);
+      expect(wrapper.get('[role="alert"]').text()).toContain('Display did not settle.');
+      expect(wrapper.get('[aria-label="Fold"]').attributes('disabled')).toBeUndefined();
+    } finally { wrapper.unmount(); }
+  });
   it('uses live video for Android, routes typing and detaches without screenshot polling', async () => {
     const { wrapper, mobileSimulator, mobileSimulatorView } = setup();
     await flushPromises();

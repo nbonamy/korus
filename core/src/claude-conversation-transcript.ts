@@ -31,7 +31,7 @@ export function appendAssistantDelta(
   delta: string,
   createdAt: string,
   itemId?: string,
-  phase?: 'commentary' | 'final_answer',
+  phase?: Extract<RendererMessagePart, { type: 'text' }>['phase'],
 ): void {
   const message = ensureAssistantMessage(snapshot, agentId, turnId, assistantMessageId(turnId), createdAt);
   if (message.status !== 'complete') {

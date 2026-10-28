@@ -14,6 +14,7 @@ export type DelegatedTask = {
   backend: AgentBackend;
   assignment: TaskContract;
   prompt: string;
+  goal?: boolean;
   delegationUserInstructions?: import('./delegation-context').DelegationUserInstructions;
   workspace?: TaskWorkspace;
   attemptId: string;

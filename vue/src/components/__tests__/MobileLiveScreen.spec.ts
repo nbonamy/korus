@@ -25,7 +25,7 @@ function setup(startResult: MobileViewResult = { viewId: 'view' }) {
   const wrapper = mount(MobileLiveScreen, {
     props: { agentId: 'a', attachmentId: 'device-session', disabled: false },
   });
-  async function frame(rotation?: 0 | 1 | 2 | 3, viewId = 'view') {
+  async function frame(rotation?: 0 | 1 | 2 | 3, viewId = 'view', size = { width: 1200, height: 2400 }, imageSize = size) {
     readers.shift()!.resolve({
       viewId,
       frame: {
@@ -33,11 +33,14 @@ function setup(startResult: MobileViewResult = { viewId: 'view' }) {
         geometry: 0,
         ...(rotation === undefined ? {} : { rotation }),
         data: new Uint8Array([255, 216, 255, 217]),
-        width: 1200,
-        height: 2400,
+        ...size,
       },
     });
     await flushPromises();
+    Object.defineProperties(wrapper.get('img').element, {
+      naturalWidth: { configurable: true, value: imageSize.width },
+      naturalHeight: { configurable: true, value: imageSize.height },
+    });
     await wrapper.get('img').trigger('load');
     await flushPromises();
   }
@@ -213,6 +216,23 @@ describe('MobileLiveScreen', () => {
     expect(device.attributes('data-platform')).toBe('android');
     await frame(1);
     expect(wrapper.get('.mobile-live-screen__device').attributes('data-landscape')).toBe('true');
+    await wrapper.setProps({ platform: 'ios', foldable: true });
+    await frame(0, 'view', { width: 1398, height: 2034 });
+    expect(wrapper.get('[aria-label="Volume up"]').classes()).toContain('mobile-live-screen__hw--top');
+    expect(wrapper.get('[aria-label="Volume up"]').attributes('style')).toContain('left: 45%');
+    await frame(0, 'view', { width: 2853, height: 2007 }, { width: 1004, height: 1426 });
+    expect(wrapper.get('[aria-label="Volume up"]').attributes('style')).toContain('left: 73%');
+    const shape = (device.element as HTMLElement).style.getPropertyValue('--mobile-screen-ratio');
+    expect(device.attributes('data-image-rotation')).toBe('1');
+    // The native stream can also deliver an already-wide buffer after unfolding.
+    await frame(0, 'view', { width: 2853, height: 2007 }, { width: 1426, height: 1004 });
+    expect(device.attributes('data-image-rotation')).toBe('0');
+    expect((device.element as HTMLElement).style.getPropertyValue('--mobile-screen-ratio')).toBe(shape);
+    await frame(1, 'view', { width: 2007, height: 2853 }, { width: 1004, height: 1426 });
+    expect((device.element as HTMLElement).style.getPropertyValue('--mobile-screen-ratio')).toBe(shape);
+    expect(device.attributes('data-image-rotation')).toBe('1');
+    await wrapper.get('[aria-label="Volume up"]').trigger('click');
+    expect(wrapper.emitted('button')).toEqual([['volumeUp']]);
   });
 
   it.each([

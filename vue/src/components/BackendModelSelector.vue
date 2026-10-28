@@ -5,6 +5,7 @@
         <BackendIcon v-if="backend" :backend="backend" />
         <span class="backend-model-selector__label">{{ selectedModel?.displayName ?? (backend ? backendDisplayName(backend) : '') }}</span>
         <span v-if="reasoningEffort" class="backend-model-selector__effort">{{ reasoningEffort }}</span>
+        <span v-if="serviceTierName" class="backend-model-selector__effort">{{ serviceTierName }}</span>
         <ChevronDown class="backend-model-selector__chevron" aria-hidden="true" />
       </button>
     </template>
@@ -38,6 +39,8 @@ const props = defineProps<{ agentId?: string; teamId?: string | null; disabled?:
 const backend = defineModel<AgentBackend>('backend');
 const model = defineModel<string>('model', { default: '' });
 const reasoningEffort = defineModel<string>('reasoningEffort', { default: '' });
+/** The model's service tier by id; empty means the standard tier. */
+const serviceTier = defineModel<string>('serviceTier', { default: '' });
 const hostChoices = useBackendChoices(() => props.teamId);
 const choices = computed(() => hostChoices.value.filter(choice => !props.allowedBackends || props.allowedBackends.includes(choice)));
 // Remembering a choice reorders `choices`; the tabs keep a fixed order so they never jump under the pointer.
@@ -63,18 +66,29 @@ function showCatalog(catalog: BackendModelOption[]) {
 }
 const selectedModel = computed(() => models.value.find(option => option.model === model.value));
 const efforts = computed(() => selectedModel.value?.supportedReasoningEfforts ?? []);
-// A model that supports reasoning efforts opens a submenu of them, so model and effort are one gesture.
+// Lowercase like the effort next to it, so the two read as one setting.
+const tierLabel = (name: string) => name.toLowerCase();
+const serviceTierName = computed(() => tierLabel(selectedModel.value?.serviceTiers?.find(tier => tier.id === serviceTier.value)?.name ?? ''));
+// A model with reasoning efforts or service tiers opens a submenu of them, so model, effort and tier are one gesture.
 const modelItems = computed<AppMenuItem[]>(() => [
   ...models.value.map((option): AppMenuItem => {
     const selected = model.value === option.model;
-    if (!option.supportedReasoningEfforts?.length) return { id: `model:${option.model}`, label: option.displayName, type: 'radio', checked: selected };
+    const tiers = option.serviceTiers ?? [];
+    if (!option.supportedReasoningEfforts?.length && !tiers.length) return { id: `model:${option.model}`, label: option.displayName, type: 'radio', checked: selected };
+    const summary = [selected ? reasoningEffort.value : '', selected ? tierLabel(tiers.find(tier => tier.id === serviceTier.value)?.name ?? '') : ''].filter(Boolean).join(' · ');
     return {
       id: `submenu:${option.model}`, type: 'submenu', label: option.displayName, checked: selected,
-      ...(selected && reasoningEffort.value ? { value: reasoningEffort.value } : {}),
+      ...(summary ? { value: summary } : {}),
       items: [
-        ...option.supportedReasoningEfforts.map((effort): AppMenuItem => ({
+        ...(option.supportedReasoningEfforts ?? []).map((effort): AppMenuItem => ({
           id: `effort:${option.model}:${effort.reasoningEffort}`, label: effort.reasoningEffort, type: 'radio',
           checked: selected && reasoningEffort.value === effort.reasoningEffort,
+        })),
+        ...(option.supportedReasoningEfforts?.length && tiers.length ? [{ id: `separator:${option.model}`, type: 'separator' as const }] : []),
+        // The standard tier is "no tier"; the others are whatever the provider offers, however many.
+        ...(tiers.length ? [{ id: `tier:${option.model}:`, label: tierLabel(t('modelPicker.standardTier')), type: 'radio' as const, checked: selected && !serviceTier.value }] : []),
+        ...tiers.map((tier): AppMenuItem => ({
+          id: `tier:${option.model}:${tier.id}`, label: tierLabel(tier.name), type: 'radio', checked: selected && serviceTier.value === tier.id,
         })),
       ],
     };
@@ -88,6 +102,7 @@ watch([backend, catalogAgentId, () => props.teamId], async ([nextBackend, agentI
   if (previous?.length) {
     model.value = '';
     reasoningEffort.value = '';
+    serviceTier.value = '';
   }
   selectDefaultModel();
   loading.value = false;
@@ -105,6 +120,7 @@ watch([backend, catalogAgentId, () => props.teamId], async ([nextBackend, agentI
 }, { immediate: true });
 watch(model, () => {
   if (!efforts.value.some(option => option.reasoningEffort === reasoningEffort.value)) reasoningEffort.value = defaultReasoningEffort(selectedModel.value);
+  if (serviceTier.value && !selectedModel.value?.serviceTiers?.some(tier => tier.id === serviceTier.value)) serviceTier.value = '';
 });
 // There is no blank "default" entry: the user's saved model and effort for this provider (else the
 // provider's own default) are selected explicitly.
@@ -115,17 +131,25 @@ function selectDefaultModel() {
     || (savedModel && aliasModel && (aliasModel.model === savedModel || aliasModel.id === savedModel) ? fallbackModel : undefined)
     || fallbackModel;
   const savedEffort = target.model === savedModel || target === fallbackModel ? saved.value?.reasoningEffort : undefined;
+  const savedTier = target.model === savedModel || target === fallbackModel ? saved.value?.serviceTier : undefined;
   model.value = target.model;
   reasoningEffort.value = target.supportedReasoningEfforts?.some(option => option.reasoningEffort === savedEffort) && savedEffort
     ? savedEffort
     : defaultReasoningEffort(target);
+  serviceTier.value = savedTier && target.serviceTiers?.some(tier => tier.id === savedTier) ? savedTier : '';
 }
 function selectModel(id: string) {
-  const [kind, chosen = '', ...effort] = id.split(':');
+  const [kind, chosen = '', ...rest] = id.split(':');
+  const sameModel = model.value === chosen;
   if (kind === 'effort') {
     // Setting the model resets the effort, so the effort is applied once that watcher has run.
     model.value = chosen;
-    reasoningEffort.value = effort.join(':');
+    reasoningEffort.value = rest.join(':');
+  } else if (kind === 'tier') {
+    // Choosing a tier on the model already in use keeps its effort; on another model that model's default effort applies.
+    model.value = chosen;
+    serviceTier.value = rest.join(':');
+    if (!sameModel) reasoningEffort.value = defaultReasoningEffort(models.value.find(option => option.model === chosen));
   } else model.value = chosen;
   open.value = false;
 }

@@ -10,14 +10,19 @@ export default defineConfig({
   markdown: {
     config(md) {
       md.core.ruler.before("normalize", "product-download", (state) => {
-        state.src = state.src.replaceAll(
-          "__PRODUCT_DOWNLOAD_URL__",
-          `${product.websiteUrl}/#download`,
-        );
-        state.src = state.src.replaceAll(
-          "__PRODUCT_PRIVACY_URL__",
-          `${product.websiteUrl}/privacy/`,
-        );
+        state.src = state.src
+          .replaceAll(
+            "__PRODUCT_DOWNLOAD_URL__",
+            `${product.websiteUrl}/#download`,
+          )
+          .replaceAll(
+            "__PRODUCT_COMPANION_APP_STORE_URL__",
+            product.companionAppStoreUrl,
+          )
+          .replaceAll(
+            "__PRODUCT_PRIVACY_URL__",
+            `${product.websiteUrl}/privacy/`,
+          );
       });
     },
   },

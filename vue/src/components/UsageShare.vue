@@ -93,7 +93,7 @@
       </svg>
       <ul>
         <li
-          v-for="row in series"
+          v-for="row in orderedSeries"
           :key="row.key"
           :class="{ dimmed: active !== null && active !== row.key }"
           @pointerenter="active = row.key"
@@ -126,6 +126,7 @@ import { computed, ref, useId } from "vue";
 import {
   chartFormat,
   measureFormat,
+  sortUsageValues,
   type UsageMeasure,
   type UsageSeries,
 } from "./usage-chart";
@@ -134,6 +135,7 @@ const props = defineProps<{
   measure: Exclude<UsageMeasure, "ratio">;
   subtitle?: string;
 }>();
+const orderedSeries = computed(() => sortUsageValues(props.series, row => row.value));
 const uid = useId();
 const radius = 58,
   thickness = 16,
@@ -147,7 +149,7 @@ const total = computed(() =>
 );
 const slices = computed(() => {
   let offset = 0;
-  return props.series.flatMap((row) => {
+  return orderedSeries.value.flatMap((row) => {
     if (!total.value || row.value === null || row.value <= 0) return [];
     const length = (row.value / total.value) * circumference,
       slice = {

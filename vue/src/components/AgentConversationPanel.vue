@@ -18,6 +18,7 @@
     :visualization-annotations="
       conversation.visualizationAnnotation.activeAnnotations.value
     "
+    :code-annotations="conversation.codeAnnotation.activeAnnotations.value"
     :review-finding="reviewFinding"
     :thread-flag-busy="conversation.threadFlagBusy.value"
     :plan="plan"
@@ -33,6 +34,7 @@
     @remove-visualization-annotation="
       conversation.visualizationAnnotation.remove
     "
+    @remove-code-annotation="conversation.codeAnnotation.remove"
     @remove-review-finding="emit('remove-review-finding')"
   />
   <ImageAnnotationDialog
@@ -71,6 +73,7 @@ import {
   type AgentConversationActions,
 } from './use-agent-conversation';
 import type { VisualizationAnnotationInput } from './use-visualization-annotations';
+import type { CodeAnnotationInput } from './use-code-annotations';
 import ConversationPane from './ConversationPane.vue';
 import ImageAnnotationDialog from './ImageAnnotationDialog.vue';
 
@@ -154,10 +157,15 @@ function addVisualizationAnnotation(
   conversation.visualizationAnnotation.add(annotation);
   pane.value?.focusComposer();
 }
+function addCodeAnnotation(annotation: CodeAnnotationInput): void {
+  conversation.codeAnnotation.add(annotation);
+  pane.value?.focusComposer();
+}
 defineExpose({
   focusComposer: () => pane.value?.focusComposer(),
   saveCurrentDraft: () => pane.value?.saveCurrentDraft(),
   openSavedDraftPicker: () => pane.value?.openSavedDraftPicker(),
   addVisualizationAnnotation,
+  addCodeAnnotation,
 });
 </script>

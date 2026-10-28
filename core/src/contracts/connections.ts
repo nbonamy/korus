@@ -29,6 +29,7 @@ export type RemoteConnection = {
   status: RemoteConnectionStatus;
   daemonVersion?: string;
   codexVersion?: string;
+  claudeVersion?: string;
   detail?: string;
   sourceFolderPath?: string;
   transport?: RemoteConnectionTransport;

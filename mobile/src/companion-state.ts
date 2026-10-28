@@ -495,6 +495,14 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if (!valid()) throw new Error('Conversation changed.');
     return image;
   }
+  async function readFilePreview(id: string, input: import('@workspace/core/companion-files').CompanionFileInput) {
+    const active = session; const epoch = selectionEpoch;
+    const valid = () => active === session && epoch === selectionEpoch && id === agentId.value && status.value === 'connected';
+    if (!valid() || !active?.previewFile) throw new Error('File previews require an updated desktop.');
+    const preview = await active.previewFile(id, input);
+    if (!valid()) throw new Error('Conversation changed.');
+    return preview;
+  }
 
   async function loadOlder(id: string) {
     const active = session;
@@ -701,7 +709,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     // What the laptop hosts, and which of it is selected.
     teamId, agentId, workspace, agents, agent, missions, selectTeam, selectAgent, selectBackend, markRead, createTeam, teamCreation, dismissTeamCreation, missionAction, finishReview, continueMission, acceptTicket, selectFinding, fixFindings, rerunReview, dismissMissionAction,
     // The selected conversation and its history.
-    conversation, conversationReady, conversationGeneration, loading, refreshing, history, loadOlder, readImage, readConversationContent,
+    conversation, conversationReady, conversationGeneration, loading, refreshing, history, loadOlder, readImage, readFilePreview, readConversationContent,
     conversationUpdates: (since: import('@workspace/core/companion-journal').CompanionCheckpoint | null) => {
       const target = currentTarget();
       return target ? connector.conversationUpdates?.(target, since) ?? null : null;

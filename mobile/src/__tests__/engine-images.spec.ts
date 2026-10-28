@@ -3,6 +3,27 @@ import { createDemoConnector } from '../demo-connector';
 import { createEngine, type EngineEvent } from '../engine';
 
 describe('conversation image bridge', () => {
+  it('loads file previews only on demand and discards a late reply after switching agents', async () => {
+    const preview = { path: 'src/app.ts', source: { path: 'src/app.ts', kind: 'text' as const, size: 3, content: 'new' }, diff: 'patch', diffScope: 'turn' as const };
+    const read = vi.fn(async (_agent: string, _input: unknown) => preview);
+    const connector = createDemoConnector(); const connect = connector.connect;
+    connector.connect = async id => ({ ...await connect(id), previewFile: read });
+    const events: EngineEvent[] = [];
+    const engine = createEngine({ connector, post: event => events.push(event) });
+    try {
+      await engine.start();
+      expect(read).not.toHaveBeenCalled();
+      const input = { path: 'src/app.ts', action: 'edit' as const, turnId: 'turn' };
+      await engine.dispatch({ type: 'readFilePreview', requestId: 'one', agentId: 'demo-agent', input });
+      expect(read).toHaveBeenCalledExactlyOnceWith('demo-agent', input);
+      expect(events.filter(event => event.type === 'conversationFile')).toStrictEqual([{ type: 'conversationFile', requestId: 'one', agentId: 'demo-agent', preview }]);
+      let release!: (value: typeof preview) => void;
+      read.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+      const pending = engine.dispatch({ type: 'readFilePreview', requestId: 'two', agentId: 'demo-agent', input });
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' }); release(preview); await pending;
+      expect(events.filter(event => event.type === 'conversationFile').at(-1)).toStrictEqual({ type: 'conversationFile', requestId: 'two', agentId: 'demo-agent', error: 'File is unavailable.' });
+    } finally { engine.dispose(); }
+  });
   it('returns laptop image bytes to the requester and rejects a response after navigation', async () => {
     let release!: (image: { dataUrl: string }) => void;
     const image = { dataUrl: 'data:image/png;base64,cG5n' };

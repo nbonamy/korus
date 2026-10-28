@@ -3,7 +3,7 @@ import { product } from './product';
 import { workItemAssignmentKey } from './work-assignments';
 import { workProviderDefinition } from './work-providers';
 
-export type WorkItemAssignmentAction = 'addressFeedback' | 'fix' | 'investigate' | 'review';
+export type WorkItemAssignmentAction = 'addressFeedback' | 'checkFeedback' | 'fix' | 'investigate' | 'review';
 
 type WorkItemPromptOptions = {
   assignment?: string;
@@ -43,6 +43,7 @@ function workItemVisibleRequest(item: WorkItem, action?: WorkItemAssignmentActio
   if (action === 'investigate') return `Investigate ${subject}`;
   if (action === 'fix') return `Fix ${subject}`;
   if (action === 'review') return `Review ${subject}`;
+  if (action === 'checkFeedback') return `Check review feedback on ${subject}`;
   if (action === 'addressFeedback') return `Address review feedback on ${subject}`;
   return `Work on ${subject}`;
 }
@@ -77,6 +78,9 @@ function workItemActionInstruction(item: WorkItem, action?: WorkItemAssignmentAc
   }
   if (action === 'fix') {
     return `Fix this ${provider} issue. Reproduce the problem, implement the fix, verify it, and summarize the outcome.`;
+  }
+  if (action === 'checkFeedback') {
+    return `Inspect the latest reviews and discussion on this ${provider} ${request}. Identify unresolved actionable feedback that the current branch has not already addressed. Summarize what remains; if nothing needs attention, say so. Do not modify files.`;
   }
   if (action === 'addressFeedback') {
     return `Address actionable review feedback on this ${provider} ${request}. Inspect the current review comments, update the branch, verify the changes, and summarize what you addressed.`;

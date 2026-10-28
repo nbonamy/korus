@@ -16,6 +16,7 @@ import { createTaskToolModuleProvider } from '../task-tools';
 import { codexSdkFixture, sdkSnapshot } from '../../codex/__tests__/sdk-surface-fixture';
 import { ClaudeBackendDriver } from '../../claude/claude-driver';
 import { ClaudeAgentSdkTransport } from '../../claude/agent-sdk-transport';
+import { AntigravityHost } from '../../antigravity/antigravity-host';
 import { createQueryHarness } from '../../claude/__tests__/sdk-query-fixture';
 
 vi.mock('@workspace/core/runtime-discovery', () => ({ resolveRuntimeLaunch: (command: string, env: NodeJS.ProcessEnv | undefined) => ({ command, env: { ...process.env, ...env } }) }));
@@ -50,8 +51,8 @@ async function setup(parentBackend: 'codex' | 'claude') {
   }
   let mcp!: AppMcpService;
   let server!: AppBackendServer;
-  const tasks = new DurableTaskService({ tasks: [], save: data => store.saveTasks(data), agent: id => snapshot.agents.find(agent => agent.id === id), send: async (agent, prompt) => {
-    const receipt = await server.sendTaskPrompt(agent, prompt);
+  const tasks = new DurableTaskService({ tasks: [], save: data => store.saveTasks(data), agent: id => snapshot.agents.find(agent => agent.id === id), send: async (agent, prompt, goal) => {
+    const receipt = await server.sendTaskPrompt(agent, prompt, goal);
     await store.save(snapshot);
     return receipt;
   }, interrupt: (agent, expectedTurnId) => rpc.handle(backendMethods.driverInterrupt, { agent, expectedTurnId }), onError: error => { throw error; } });
@@ -71,6 +72,67 @@ async function setup(parentBackend: 'codex' | 'claude') {
 }
 
 describe('durable tasks through authenticated MCP and real provider adapters', () => {
+  it.each([
+    { backend: 'codex', durable: false }, { backend: 'codex', durable: true },
+    { backend: 'claude', durable: false }, { backend: 'claude', durable: true },
+  ] as const)('starts the delegated assignment as a native goal ($backend, durable: $durable)', async ({ backend, durable }) => {
+    const f = await setup('codex');
+    const native = f.codex.conversation('codex-worker');
+    native.handle.setGoal.mockImplementation(async objective => {
+      native.setSnapshot({ goal: { threadId: 'codex-worker', objective, status: 'active', tokenBudget: null, tokensUsed: 0, timeUsedSeconds: 0, createdAt: 1, updatedAt: 1 } });
+      return native.handle.getSnapshot();
+    });
+    const creating = f.call(f.parent.id, 'create-agent', {
+      repoPath: '/repo', backend, prompt: 'Implement the assignment', instructions: 'Verify the result', goal: true,
+      ...(durable ? { requestId: 'goal-worker', task: { title: 'Goal worker', doneWhen: 'Verified' } } : {}),
+    });
+    if (backend === 'claude') {
+      await vi.waitFor(() => expect(f.claudeSdk.inputs).toHaveLength(1));
+      f.claudeSdk.emit({ type: 'system', subtype: 'init', session_id: 'claude-worker' });
+    }
+    const created = await creating;
+    expect(created.isError).toBe(false);
+    expect(created.structuredContent.promptSubmitted).toBe(true);
+    if (backend === 'claude') expect(f.claudeSdk.inputs[0]!.message.content).toEqual([{ type: 'text', text: expect.stringMatching(/^\/goal /) }]);
+    const worker = f.snapshot.agents.find(agent => agent.id === created.structuredContent.agentId)!;
+    expect(worker.goal).toMatchObject({ status: 'active', objective: expect.stringContaining('Implement the assignment') });
+    expect(worker.goal!.objective).toContain('Verify the result');
+    expect(native.handle.sendMessage).not.toHaveBeenCalled();
+    if (backend === 'codex') expect(native.handle.setGoal).toHaveBeenCalledOnce();
+    if (durable) {
+      expect((await f.store.loadTasks())[0]).toMatchObject({ goal: true });
+      const retry = await f.call(f.parent.id, 'create-agent', { repoPath: '/repo', backend, prompt: 'Implement the assignment', instructions: 'Verify the result', goal: true, requestId: 'goal-worker', task: { title: 'Goal worker', doneWhen: 'Verified' } });
+      expect(retry.structuredContent.agentId).toBe(worker.id);
+      expect(backend === 'claude' ? f.claudeSdk.inputs.length : native.handle.setGoal.mock.calls.length).toBe(1);
+    }
+  });
+
+  it('rejects a missing goal prompt or unsupported provider before creating a worker', async () => {
+    const f = await setup('codex');
+    await f.rpc.replaceDriver('antigravity', () => new AntigravityHost());
+    f.snapshot.providerConnections!.push({ backend: 'antigravity', installed: true, connected: true, checking: false });
+    const count = f.snapshot.agents.length;
+    for (const [input, message] of [
+      [{ repoPath: '/repo', goal: true }, 'prompt is required when goal is true'],
+      [{ repoPath: '/repo', goal: true, prompt: 'Work', backend: 'antigravity' }, 'This backend does not support goals.'],
+    ] as const) {
+      const result = await f.call(f.parent.id, 'create-agent', input);
+      expect(result.structuredContent).toStrictEqual({ success: false, message });
+      expect(f.snapshot.agents).toHaveLength(count);
+    }
+    expect(f.codex.surface.createConversation).not.toHaveBeenCalled();
+    expect(f.claudeSdk.createQuery).not.toHaveBeenCalled();
+  });
+
+  it('uses the driver goal capability rather than the provider default before provisioning', async () => {
+    const f = await setup('codex');
+    vi.spyOn(f.codex.driver, 'getCapabilities').mockReturnValue({ ...f.codex.driver.getCapabilities(f.parent), goals: false });
+    const count = f.snapshot.agents.length;
+    const result = await f.call(f.parent.id, 'create-agent', { repoPath: '/repo', goal: true, prompt: 'Perform the assignment' });
+    expect(result.structuredContent).toStrictEqual({ success: false, message: 'This backend does not support goals.' });
+    expect(f.snapshot.agents).toHaveLength(count);
+  });
+
   it.each([
     { durable: false, parent: 'codex', permissionMode: 'auto' },
     { durable: true, parent: 'codex', permissionMode: 'auto' },

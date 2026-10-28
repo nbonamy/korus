@@ -55,6 +55,7 @@ export default defineConfig(({ mode }) => {
         output: {
           entryFileNames: 'daemon.mjs',
           format: 'es',
+          codeSplitting: false,
         },
       },
     },

@@ -71,7 +71,7 @@ export function appendAssistantDeltaWithPlanFilter(
   delta: string,
   itemId: string | undefined,
   updatedAt: string,
-  phase?: 'commentary' | 'final_answer',
+  phase?: ConversationEventPayload<'message.delta'>['phase'],
 ): void {
   if (!delta) {
     return;

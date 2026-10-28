@@ -38,6 +38,8 @@ export type MissionImplementationModel = {
   backend: import('./contracts').AgentBackend;
   model: string;
   reasoningEffort?: string;
+  /** The model's service tier by id; absent means the standard tier. */
+  serviceTier?: string;
 };
 export type MissionTicketAssignment = {
   ticketId: string;

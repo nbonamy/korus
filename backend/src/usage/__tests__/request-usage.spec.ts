@@ -57,6 +57,19 @@ async function start(ledger: UsageLedger, event = parent) {
   await ledger.observe(event, attribution);
 }
 
+it("prices Terra usage with its published input, cached input and output rates", async () => {
+  const launched = Date.parse('2026-10-26T12:00:00Z');
+  const ledger = new UsageLedger(':memory:', () => launched);
+  try {
+    await start(ledger, { ...parent, at: launched, provider: 'codex', model: 'gpt-6.1-terra',
+      tokens: { input: 300000, output: 1000, cacheRead: 200000, cacheWrite: null, reasoning: 200 },
+      requestCoverage: 'partial', requestCoverageReason: 'public-runtime-request-evidence-unavailable' });
+    expect(ledger.query({ group: 'model' }).rows.map(row => [row.label, row.cost?.usd])).toStrictEqual([
+      ['gpt-6.1-terra', 0.115],
+    ]);
+  } finally { await ledger.close(); }
+});
+
 it("prices Codex execution counters with cached reads, normal missing tiers and no context premium without inventing requests", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'codex-cost-'));
   const file = path.join(dir, 'usage.sqlite');
@@ -159,9 +172,16 @@ it("prices disjoint cache lifetimes and reasoning once, replaces replayed sample
     };
     expect(ledger.query().cost).toStrictEqual(expected);
     await ledger.close();
+    // A placeholder persisted by an earlier SDK adapter cannot become a model or a charged request on reload.
+    const placeholder = request({ requestId: 'sdk-notice', model: '<synthetic>', status: 'provisional' });
+    const stored = new DatabaseSync(file);
+    stored.prepare('INSERT INTO requests VALUES(?,?,?,?,?,?,?,?)').run(placeholder.provider, placeholder.sessionId,
+      placeholder.turnId, placeholder.requestId, placeholder.at, placeholder.revision, placeholder.status, JSON.stringify(placeholder));
+    stored.close();
     ledger = new UsageLedger(file, () => at + 60000);
     await ledger.load();
     expect(await ledger.observeRequest(request())).toBe(false);
+    expect(await ledger.observeRequest({ ...placeholder, revision: 1 })).toBe(false);
     expect(
       await ledger.observeRequest(
         request({ revision: 1, status: "provisional" }),
@@ -196,15 +216,11 @@ it("prices disjoint cache lifetimes and reasoning once, replaces replayed sample
 
 it("uses strict context thresholds, served tiers and category-specific discounts before daily/model aggregation", async () => {
   const history = loadPricingHistory();
-  const second = structuredClone(history[0]);
+  const second = structuredClone(history.google["gemini-2.5-pro"].cost[0]);
   second.date = "2026-10-16T00:00:00.000Z";
-  second.google.find(
-    (m) => m.id === "gemini-2.5-pro",
-  )!.cost!.text!.output!.price = 20;
-  const ledger = new UsageLedger(":memory:", () => at + 60000, [
-    ...history,
-    second,
-  ]);
+  second.rates!.text!.output!.price = 20;
+  history.google["gemini-2.5-pro"].cost.push(second);
+  const ledger = new UsageLedger(":memory:", () => at + 60000, history);
   try {
     await start(ledger);
     const base = request({
@@ -243,7 +259,7 @@ it("uses strict context thresholds, served tiers and category-specific discounts
       attribution,
     );
     // At boundary: 100k*1.25*.5 + 100k*.125 + 1k*10*.5 = .08.
-    // Above boundary: .125 + .025 + .0075 = .1575. New snapshot: .085.
+    // Above boundary: .125 + .025 + .0075 = .1575. New pricing event: .085.
     expect(ledger.query().cost).toMatchObject({
       usd: 0.35805,
       coverage: "complete",
@@ -288,21 +304,21 @@ it("uses strict context thresholds, served tiers and category-specific discounts
 
 it("leaves incomplete, provisional, unknown and pre-baseline requests unpriced while retaining genuine zero", async () => {
   const history = loadPricingHistory();
-  const zero = structuredClone(history[0].anthropic[0]);
-  zero.id = "zero";
-  zero.cost = {
+  const zero = structuredClone(history.anthropic["claude-sonnet-4-6"]);
+  zero.cost[0].rates = {
     text: {
       input: { unit: "token", price: 0 },
       output: { unit: "token", price: 0 },
     },
   };
-  history[0].anthropic.push(zero);
+  history.anthropic.zero = zero;
   const ledger = new UsageLedger(":memory:", () => at, history);
   try {
     await start(ledger);
     const cases: [Partial<RequestObservation>, string][] = [
       [{ at: Date.parse("2026-09-30T23:59:59Z") }, "before-pricing-history"],
       [{ model: "unknown" }, "unknown-model"],
+      [{ model: "constructor" }, "unknown-model"],
       [{ apiProvider: null }, "unknown-provider"],
       [
         { tokens: { ...request().tokens, cacheRead: null } },
@@ -617,8 +633,8 @@ it("rejects invalid/orphaned samples and identity changes, permits provisional f
 
 it("honors ordered predicate composition and explicit-cache/reasoning overrides without discounting unrelated categories", async () => {
   const history = loadPricingHistory();
-  const model = history[0].anthropic.find((m) => m.id === "claude-sonnet-4-6")!;
-  model.cost = {
+  const model = history.anthropic["claude-sonnet-4-6"].cost[0];
+  model.rates = {
     text: {
       input: {
         unit: "token",

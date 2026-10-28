@@ -175,6 +175,8 @@ export class BackendDriverRpc {
 
   isBusy(backend: AgentBackend): boolean { return (this.inFlight.get(backend) ?? 0) > 0; }
 
+  getCapabilities(agent: Agent) { return this.requireDriver(agent.backend).getCapabilities(agent); }
+
   async refreshConversationContext(agent: Agent): Promise<void> {
     const driver = this.requireDriver(agent.backend);
     if (!agent.backendSession || !driver.releaseConversation || !driver.loadConversation) return;

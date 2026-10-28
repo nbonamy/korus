@@ -431,7 +431,11 @@ describe('RemoteDaemonClientManager', () => {
     const manager = new RemoteDaemonClientManager({ spawnProcess: spawnProcess as never });
 
     const firstResult = manager.request(readyConnection(), 'backend/health/get');
-    await vi.waitFor(() => expect(firstChild.stdinLines()).toHaveLength(1));
+    const parallelResult = manager.request(readyConnection(), 'backend/health/get');
+    await vi.waitFor(() => expect(firstChild.stdinLines()).toHaveLength(2));
+    expect(spawnProcess).toHaveBeenCalledTimes(1);
+    const parallelRequest = JSON.parse(firstChild.stdinLines()[1]!) as { id: number };
+    firstChild.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: parallelRequest.id, result: { ok: true } })}\n`);
     const firstRequest = JSON.parse(firstChild.stdinLines()[0]!) as { id: number };
     firstChild.stdout.write(`${JSON.stringify({
       jsonrpc: '2.0',
@@ -439,6 +443,7 @@ describe('RemoteDaemonClientManager', () => {
       result: { ok: true },
     })}\n`);
     await expect(firstResult).resolves.toStrictEqual({ ok: true });
+    await expect(parallelResult).resolves.toStrictEqual({ ok: true });
 
     firstChild.process.emit('exit', 0, null);
 

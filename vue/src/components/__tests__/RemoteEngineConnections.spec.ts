@@ -1,17 +1,38 @@
 import { product } from '@workspace/core/product';
 import { flushPromises, mount } from '@vue/test-utils';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RemoteConnection } from '@workspace/core/contracts';
+import { ElMessageBox } from 'element-plus';
 import { configureAppClient } from '../../platform-api';
-import { createClientApiMock } from '../../test/client-api-mock';
+import { createClientApiMock as createBaseClientApiMock } from '../../test/client-api-mock';
 import RemoteEngineConnections from '../RemoteEngineConnections.vue';
-import { ElSwitch } from 'element-plus';
+function createClientApiMock() {
+  const result = createBaseClientApiMock();
+  result.api.getProviderUpdate.mockImplementation(async backend => ({ backend, status: 'current', installedVersion: '1.0', method: 'npm', canUpgrade: false, busy: false }));
+  return result;
+}
+
+async function openMenu(wrapper: ReturnType<typeof mount>, index = 0) {
+  await wrapper.findAll('button[aria-haspopup="menu"]')[index]!.trigger('click');
+  await flushPromises();
+}
+function menuItem(label: string): HTMLButtonElement {
+  const button = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menu"] button')].find(button => button.textContent?.trim() === label);
+  if (!button) throw new Error(`Missing menu item: ${label}`);
+  return button;
+}
+async function choose(wrapper: ReturnType<typeof mount>, label: string, index = 0) {
+  await openMenu(wrapper, index);
+  menuItem(label).click();
+  await flushPromises();
+}
 
 const connection: RemoteConnection = {
   id: 'wall-e', host: 'wall-e', name: 'wall-e', kind: 'ssh', status: 'ready', createdAt: '', updatedAt: '',
 };
 
-afterEach(() => { configureAppClient(undefined); document.body.innerHTML = ''; });
+beforeEach(() => { vi.spyOn(window, 'open').mockReturnValue(null); });
+afterEach(() => { vi.useRealTimers(); configureAppClient(undefined); document.body.innerHTML = ''; vi.restoreAllMocks(); });
 
 describe('RemoteEngineConnections', () => {
   it('keeps Antigravity sign-in native without offering unsupported remote upgrades', async () => {
@@ -28,32 +49,30 @@ describe('RemoteEngineConnections', () => {
     expect(api.authenticateProvider).not.toHaveBeenCalled();
     wrapper.unmount();
   });
-  it('toggles an authenticated remote engine from cached status without another auth check', async () => {
+  it('keeps the connected account on one row and routes refresh and upgrade actions to its host', async () => {
     const { api } = createClientApiMock();
-    const engine = { backend: 'claude' as const, installed: true, connected: true, checking: false, enabled: true,
+    const engine = { backend: 'claude' as const, installed: true, connected: true, checking: false,
       authentication: { kind: 'claude' as const, connected: true, state: { loggedIn: true, account: { type: 'subscription' as const, email: 'user@example.com', subscription: 'pro' } } },
     };
     api.getProviderConnections.mockResolvedValue([engine]);
-    api.setProviderEnabled.mockResolvedValueOnce([{ ...engine, enabled: false }]).mockResolvedValue([engine]);
+    const update = { backend: 'claude' as const, status: 'available' as const, installedVersion: '1.0', latestVersion: '2.0', method: 'native' as const, canUpgrade: true, busy: false, token: 'verified-installation' };
+    api.getProviderUpdate.mockResolvedValue(update);
+    api.setProviderUpdate.mockResolvedValue({ ...update, status: 'current', installedVersion: '2.0', canUpgrade: false });
+    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never);
     configureAppClient({ platform: 'desktop', api });
-    const wrapper = mount(RemoteEngineConnections, { props: { connection }, global: { components: { ElSwitch } } });
+    const wrapper = mount(RemoteEngineConnections, { props: { connection } });
     await flushPromises();
     const row = wrapper.get('.form-row');
-    expect(row.text()).toContain('Claude Code');
     expect(row.text()).toContain('user@example.com · pro');
-    expect(row.get('button').text()).toBe('Disconnect');
-    expect(row.get('[role="switch"]').attributes('aria-label')).toBe('Enable engine · Claude Code');
-    await wrapper.get('[role="switch"]').trigger('click');
+    expect(row.text()).toContain('1.0');
+    await choose(wrapper, 'Check for updates');
+    expect(api.getProviderUpdate).toHaveBeenLastCalledWith('claude', 'wall-e', true);
+    await row.findAll('button').find(button => button.text() === 'Update')!.trigger('click');
     await flushPromises();
-    expect(api.setProviderEnabled).toHaveBeenCalledExactlyOnceWith('claude', false, 'wall-e');
-    expect(wrapper.get('.form-row__control button').text()).toBe('Disconnect');
-    expect(wrapper.get('[role="switch"]').attributes('aria-checked')).toBe('false');
-    await wrapper.get('[role="switch"]').trigger('click');
-    await flushPromises();
-    expect(api.setProviderEnabled).toHaveBeenLastCalledWith('claude', true, 'wall-e');
-    expect(wrapper.get('.form-row__control button').text()).toBe('Disconnect');
+    expect(api.setProviderUpdate).toHaveBeenCalledExactlyOnceWith('claude', { action: 'upgrade', confirmed: true, token: 'verified-installation' }, 'wall-e');
+    expect(row.text()).toContain('2.0');
     expect(api.getClaudeAuthentication).not.toHaveBeenCalled();
-    expect(api.disconnectProvider).not.toHaveBeenCalled();
+    wrapper.unmount();
   });
 
   it.each(['codex', 'claude'] as const)('keeps remote %s connected on logout failure and refreshes after successful logout', async backend => {
@@ -64,13 +83,10 @@ describe('RemoteEngineConnections', () => {
     configureAppClient({ platform: 'desktop', api });
     const wrapper = mount(RemoteEngineConnections, { props: { connection } });
     await flushPromises();
-    await wrapper.get('.form-row__control button').trigger('click');
-    await flushPromises();
+    await choose(wrapper, 'Disconnect');
     expect(api.disconnectProvider).toHaveBeenCalledExactlyOnceWith(backend, 'wall-e');
     expect(wrapper.get('[role="alert"]').text()).toBe('Could not sign out. Please try again.');
-    expect(wrapper.get('.form-row__control button').text()).toBe('Disconnect');
-    await wrapper.get('.form-row__control button').trigger('click');
-    await flushPromises();
+    await choose(wrapper, 'Disconnect');
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     expect(wrapper.get('.form-row__control button').text()).toBe('Connect');
     expect(api.getProviderConnections).toHaveBeenLastCalledWith('wall-e');
@@ -78,52 +94,71 @@ describe('RemoteEngineConnections', () => {
     wrapper.unmount();
   });
 
-  it('installs Antigravity on its owning remote host and refreshes its availability without signing in', async () => {
+  it.each(['antigravity', 'codex', 'claude'] as const)('installs %s on its owning remote host and refreshes its availability without signing in', async (backend) => {
     const { api } = createClientApiMock();
-    const engine = { backend: 'antigravity' as const, installed: false, connected: false, checking: false };
+    const engine = { backend, installed: false, connected: false, checking: false };
     api.getProviderConnections.mockResolvedValueOnce([engine]).mockResolvedValue([{ ...engine, installed: true }]);
     api.installProvider.mockResolvedValue({ backend: 'antigravity', installed: true, locked: false, isolated: true, shareSkills: false, homePath: '/remote/app/antigravity-home' });
     configureAppClient({ platform: 'desktop', api });
     const wrapper = mount(RemoteEngineConnections, { props: { connection } });
     await flushPromises();
-    await wrapper.get('button[aria-label="Install Antigravity"]').trigger('click');
+    await wrapper.findAll('button').find(button => button.text() === 'Install')!.trigger('click');
     await flushPromises();
-    expect(api.installProvider).toHaveBeenCalledExactlyOnceWith('antigravity', 'wall-e');
+    expect(api.installProvider).toHaveBeenCalledExactlyOnceWith(backend, 'wall-e');
     expect(api.getProviderConnections).toHaveBeenLastCalledWith('wall-e');
-    expect(wrapper.find('button[aria-label="Install Antigravity"]').exists()).toBe(false);
+    expect(wrapper.find('.provider-install-actions').exists()).toBe(false);
     expect(wrapper.get('.form-row__control button').text()).toBe('Connect');
     expect(api.authenticateProvider).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 
-  it('rechecks the owning remote host after external installation and signs in separately', async () => {
+  it.each(['codex', 'claude'] as const)('rechecks external installation and starts %s sign-in with one Connect click', async backend => {
+    vi.useFakeTimers();
     const { api } = createClientApiMock();
     const missing = (['codex', 'claude'] as const).map(backend => ({ backend, installed: false, connected: false, checking: false }));
-    api.getProviderConnections.mockResolvedValueOnce(missing).mockResolvedValue([
-      missing[0]!, { ...missing[1]!, installed: true },
-    ]);
-    api.refreshProvider.mockResolvedValue({ backend: 'claude', installed: true, locked: false, isolated: true, shareSkills: true, homePath: '/remote/app/claude-home' });
+    api.getProviderConnections.mockResolvedValueOnce(missing).mockResolvedValue(missing.map(engine => ({ ...engine, installed: engine.backend === backend, enabled: false, ...(engine.backend === 'claude' ? { authentication: { kind: 'claude' as const, connected: false, state: { loggedIn: false, configDirectory: '/remote/app/claude-home' } } } : {}) })));
+    api.refreshProvider.mockResolvedValue({ backend, installed: true, locked: false, isolated: true, shareSkills: true, homePath: '/remote/app/claude-home' });
     api.getClaudeAuthentication.mockResolvedValue({ loggedIn: false, configDirectory: '/remote/app/claude-home' });
+    api.getCodexAuthentication.mockResolvedValue({ account: null, requiresOpenaiAuth: true, login: { status: 'idle', error: null } });
+    api.cancelCodexChatGptLogin.mockResolvedValue({ account: null, requiresOpenaiAuth: true, login: { status: 'cancelled', error: null } });
+    api.startCodexChatGptDeviceCodeLogin.mockResolvedValue({ loginId: 'remote-login', userCode: 'REMOTE-CODE', verificationUrl: 'https://auth.openai.com/codex/device' });
+    if (backend === 'codex') api.startCodexChatGptDeviceCodeLogin.mockRejectedValueOnce(new Error('Temporary login error'));
     configureAppClient({ platform: 'desktop', api });
     const wrapper = mount(RemoteEngineConnections, { props: { connection } });
     await flushPromises();
 
-    expect(wrapper.findAll('a').map(link => link.attributes('href'))).toEqual([
-      'https://learn.chatgpt.com/docs/codex/cli#getting-started',
-      'https://code.claude.com/docs/en/quickstart#step-1-install-claude-code',
-    ]);
-    await wrapper.findAll('button').filter(button => button.attributes('aria-label') === 'Check again')[1]!.trigger('click');
-    await flushPromises();
-    expect(api.refreshProvider).toHaveBeenCalledExactlyOnceWith('claude', 'wall-e');
+    expect(wrapper.findAll('button').filter(button => button.text() === 'Install')).toHaveLength(2);
+    await choose(wrapper, 'Refresh status', backend === 'codex' ? 0 : 1);
+    expect(api.refreshProvider).toHaveBeenCalledExactlyOnceWith(backend, 'wall-e');
     expect(api.getProviderConnections).toHaveBeenLastCalledWith('wall-e');
     expect(api.getClaudeAuthentication).not.toHaveBeenCalled();
     expect(api.getCodexAuthentication).not.toHaveBeenCalled();
     await wrapper.findAll('button').find(button => button.text() === 'Connect')!.trigger('click');
     await flushPromises();
-    expect(api.getClaudeAuthentication).toHaveBeenCalledWith('wall-e');
-    await wrapper.findAll('button').find(button => button.text() === 'Connect Claude')!.trigger('click');
+    if (backend === 'claude') {
+      expect(api.getClaudeAuthentication).not.toHaveBeenCalled();
+      expect(document.body.textContent).toContain("CLAUDE_CONFIG_DIR='/remote/app/claude-home' claude auth login --console");
+    } else {
+      expect(api.startCodexChatGptDeviceCodeLogin).toHaveBeenCalledExactlyOnceWith('wall-e');
+      expect(wrapper.emitted('activity')?.at(-1)).toStrictEqual([false]);
+      await wrapper.findAll('button').find(button => button.text() === 'Retry sign-in')!.trigger('click');
+      await flushPromises();
+      expect(wrapper.text()).toContain('REMOTE-CODE');
+      expect(wrapper.emitted('activity')?.at(-1)).toStrictEqual([true]);
+    }
+    const connected = [{ backend, installed: true, connected: true, checking: false, enabled: true }];
+    api.setProviderEnabled.mockResolvedValue(connected);
+    api.getProviderConnections.mockResolvedValue(connected);
+    if (backend === 'claude') {
+      api.getClaudeAuthentication.mockResolvedValue({ loggedIn: true, configDirectory: '/remote/app/claude-home' });
+      (document.body.querySelector('.app-dialog__footer .app-button--primary') as HTMLButtonElement).click();
+    } else {
+      api.getCodexAuthentication.mockResolvedValue({ account: { type: 'chatgpt', email: 'remote@example.com', planType: 'plus' }, requiresOpenaiAuth: true, login: { status: 'completed', error: null } });
+      await vi.advanceTimersByTimeAsync(2_000);
+    }
     await flushPromises();
-    expect(document.body.textContent).toContain("CLAUDE_CONFIG_DIR='/remote/app/claude-home' claude auth login --console");
+    expect(api.setProviderEnabled).toHaveBeenCalledExactlyOnceWith(backend, true, 'wall-e');
+    expect(wrapper.get('.form-row').text()).toContain('Connected');
     wrapper.unmount();
   });
 

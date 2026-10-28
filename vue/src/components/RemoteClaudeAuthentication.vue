@@ -1,25 +1,20 @@
 <template>
-  <section class="remote-claude-auth" aria-live="polite">
+  <section class="remote-claude-auth" :class="{ 'remote-claude-auth--dialog-only': authentication && !error }" aria-live="polite">
     <span v-if="authentication?.loggedIn">{{ $t('surface.remoteClaudeAuth.connected') }}</span>
-    <template v-else-if="authentication">
-      <span>{{ $t('surface.remoteClaudeAuth.signInRequired') }}</span>
-      <button class="app-button app-button--secondary" type="button" @click="dialogVisible = true">
-        {{ $t('surface.remoteClaudeAuth.connect') }}
-      </button>
-    </template>
     <template v-else-if="error">
       <span :title="error">{{ $t('surface.remoteClaudeAuth.unavailable') }}</span>
       <button class="app-button app-button--secondary" type="button" :disabled="checking" @click="refresh">
         {{ $t('surface.remoteClaudeAuth.retry') }}
       </button>
     </template>
-    <span v-else>{{ $t('surface.remoteClaudeAuth.checking') }}</span>
+    <span v-else-if="!authentication" class="remote-claude-auth__progress" role="status">{{ $t('surface.remoteClaudeAuth.checking') }}</span>
 
     <FormDialog
       v-model="dialogVisible"
       :title="$t('surface.remoteClaudeAuth.dialogTitle')"
       :subtitle="$t('surface.remoteClaudeAuth.runOnHost', { host: connection.host })"
       :teleported="true"
+      @update:model-value="!$event && emit('cancel')"
     >
       <div class="app-form-dialog">
         <FormField v-for="option in loginOptions" :key="option.id" :label="$t(option.labelKey)">
@@ -32,7 +27,7 @@
         <p v-if="error" class="remote-claude-auth__error">{{ $t('surface.remoteClaudeAuth.unavailable') }}</p>
       </div>
       <template #footer>
-        <button class="app-button app-button--tertiary" type="button" @click="dialogVisible = false">{{ $t('surface.remoteClaudeAuth.close') }}</button>
+        <button class="app-button app-button--tertiary" type="button" @click="dialogVisible = false; emit('cancel')">{{ $t('surface.remoteClaudeAuth.close') }}</button>
         <button class="app-button app-button--primary" type="button" :disabled="checking" :aria-busy="checking" @click="refresh">
           {{ $t('surface.remoteClaudeAuth.refresh') }}
         </button>
@@ -50,8 +45,8 @@ import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
 
 type ClaudeAuthApi = Pick<AppApi, 'getClaudeAuthentication'>;
-const props = defineProps<{ connection: RemoteConnection; api?: ClaudeAuthApi }>();
-const emit = defineEmits<{ connected: [] }>();
+const props = defineProps<{ connection: RemoteConnection; authentication?: ClaudeAuthentication; api?: ClaudeAuthApi }>();
+const emit = defineEmits<{ connected: []; cancel: []; activity: [active: boolean] }>();
 const baseLoginOptions = [
   { id: 'claudeai', labelKey: 'surface.remoteClaudeAuth.subscriptionLabel', copyKey: 'surface.remoteClaudeAuth.copySubscription', copiedKey: 'surface.remoteClaudeAuth.copiedSubscription', command: 'claude auth login --claudeai' },
   { id: 'console', labelKey: 'surface.remoteClaudeAuth.consoleLabel', copyKey: 'surface.remoteClaudeAuth.copyConsole', copiedKey: 'surface.remoteClaudeAuth.copiedConsole', command: 'claude auth login --console' },
@@ -63,6 +58,7 @@ const loginOptions = computed(() => baseLoginOptions.map(option => ({
   command: `${authentication.value?.configDirectory ? `CLAUDE_CONFIG_DIR='${authentication.value.configDirectory.replaceAll("'", "'\\''")}' ` : 'env -u CLAUDE_CONFIG_DIR '}${authentication.value?.executablePath ? `'${authentication.value.executablePath.replaceAll("'", "'\\''")}' auth login --${option.id}` : option.command}`,
 })));
 const checking = ref(false);
+watch(checking, active => emit('activity', active), { immediate: true });
 const error = ref('');
 const dialogVisible = ref(false);
 const copiedCommand = ref<LoginOptionId | null>(null);
@@ -79,10 +75,10 @@ async function refresh(): Promise<void> {
     const result = await client.getClaudeAuthentication(props.connection.id);
     if (expectedRevision !== revision) return;
     authentication.value = result;
-      if (result.loggedIn) { dialogVisible.value = false; emit('connected'); }
+    if (result.loggedIn) { dialogVisible.value = false; emit('connected'); }
+    else dialogVisible.value = true;
   } catch (cause) {
     if (expectedRevision !== revision) return;
-    authentication.value = null;
     error.value = cause instanceof Error ? cause.message : String(cause);
   } finally {
     if (expectedRevision === revision) checking.value = false;
@@ -104,26 +100,35 @@ async function copyCommand(optionId: LoginOptionId): Promise<void> {
 
 watch([() => props.connection.id, () => props.connection.status, () => props.connection.installedAt], () => {
   ++revision;
-  authentication.value = null;
+  authentication.value = { ...props.authentication, loggedIn: false };
   checking.value = false;
   error.value = '';
-  dialogVisible.value = false;
+  dialogVisible.value = props.connection.status === 'ready';
   copiedCommand.value = null;
   copyFailedCommand.value = null;
-  void refresh();
 }, { immediate: true });
-onScopeDispose(() => { ++revision; });
+onScopeDispose(() => { ++revision; emit('activity', false); });
 </script>
 
 <style scoped>
 .remote-claude-auth {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--space-4);
-  margin-top: var(--space-4);
+  margin-top: var(--space-2);
+  margin-bottom: var(--space-8);
   color: var(--color-text-muted);
   font-size: var(--font-size-12);
+}
+
+.remote-claude-auth__progress {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.remote-claude-auth--dialog-only {
+  margin: 0;
 }
 
 .remote-claude-auth__command-row {

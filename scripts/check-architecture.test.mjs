@@ -153,7 +153,9 @@ test("mobile code only receives app-owned contracts and browser-safe UI", async 
 test("telemetry projection and serialization cannot import delivery code or call network/timer globals", async () => {
   const accepted = await checkFixture({
     "backend/src/usage/usage-ledger.ts":
-      "import { DatabaseSync } from 'node:sqlite';\nimport { serializeDailyTelemetry } from '@workspace/core/telemetry';\n",
+      "import { DatabaseSync } from 'node:sqlite';\nimport { serializeDailyTelemetry } from '@workspace/core/telemetry';\nimport { dayStart } from '@workspace/core/usage-time';\n",
+    "backend/src/usage/usage-service.ts":
+      "import { repositoryIdentityOf, resolveRepositoryRoots } from './repository-identity';\n",
     "backend/src/telemetry/consent-service.ts":
       "import { randomUUID } from 'node:crypto';\nimport type { TelemetryDeliveryPort } from '@workspace/core/telemetry-consent';\n",
     "core/src/telemetry.ts": "const example = 'fetch()';\n",

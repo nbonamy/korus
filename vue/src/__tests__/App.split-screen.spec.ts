@@ -1,6 +1,5 @@
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
-import { ElPopover } from 'element-plus';
 import App from '../App.vue';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { installBackendFixture } from '../test/backend-fixture';
@@ -41,7 +40,7 @@ describe('split-screen conversations', () => {
       return { ...snapshot };
     });
     const mountApp = async () => {
-      const wrapper = mount(App, { attachTo: document.body, global: { components: { ElPopover } } });
+      const wrapper = mount(App, { attachTo: document.body });
       await flushPromises();
       return wrapper;
     };
@@ -119,7 +118,7 @@ describe('split-screen conversations', () => {
       await flushPromises();
     };
     installBackendFixture(createInitialSnapshot());
-    let wrapper = mount(App, { attachTo: document.body, global: { components: { ElPopover } } });
+    let wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
     await chooseLayout(wrapper, '4-Pane Split');
     await wrapper.findAll('.agent-split-grid__pane')[3]!.trigger('pointerdown');
@@ -127,7 +126,7 @@ describe('split-screen conversations', () => {
     expect(wrapper.find('.agent-split-grid').exists()).toBe(false);
     expect(wrapper.find('[contenteditable="true"]').exists()).toBe(true);
     wrapper.unmount();
-    wrapper = mount(App, { attachTo: document.body, global: { components: { ElPopover } } });
+    wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
     await resizeWindow(false);
     expect(wrapper.get('.agent-split-grid').attributes('data-layout')).toBe('4-quadrant');
@@ -143,7 +142,7 @@ describe('split-screen conversations', () => {
       teams: snapshot.teams.map(team => ({ ...team, activeAgentId: id })),
     }));
     api.startCodeReview.mockResolvedValue(snapshot);
-    const wrapper = mount(App, { attachTo: document.body, global: { components: { ElPopover } } });
+    const wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
     await chooseLayout(wrapper, 'Vertical Split');
     const panes = wrapper.findAll('.agent-split-grid__pane');
@@ -202,7 +201,7 @@ describe('split-screen conversations', () => {
       }
       return snapshot;
     });
-    const wrapper = mount(App, { attachTo: document.body, global: { components: { ElPopover } } });
+    const wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
     if (layout !== 'Single Pane') await chooseLayout(wrapper, layout);
     const select = async (id: string) => {
@@ -250,7 +249,7 @@ describe('split-screen conversations', () => {
       teams: snapshot.teams.map(team => ({ ...team, activeAgentId: id })),
     }));
     api.getAgentGitDiff.mockResolvedValue({ target: { type: 'uncommitted' }, summary: { addedLines: 12, removedLines: 3, changedFiles: 1 }, diff: '', sections: [] });
-    const wrapper = mount(App, { attachTo: document.body, global: { components: { ElPopover } } });
+    const wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
     await chooseLayout(wrapper, layout);
     const panes = wrapper.findAll('.agent-split-grid__pane');
@@ -306,7 +305,6 @@ describe('split-screen conversations', () => {
     const { emit, api } = installBackendFixture(snapshot);
     const wrapper = mount(App, {
       attachTo: document.body,
-      global: { components: { ElPopover } },
     });
     await flushPromises();
     await chooseLayout(wrapper, 'Vertical Split');
@@ -337,7 +335,6 @@ describe('split-screen conversations', () => {
     const { api } = installBackendFixture(createInitialSnapshot());
     const wrapper = mount(App, {
       attachTo: document.body,
-      global: { components: { ElPopover } },
     });
     await flushPromises();
     const layoutButton = wrapper.get('button[aria-label="Conversation layout"]');
@@ -419,7 +416,6 @@ describe('split-screen conversations', () => {
     });
     const wrapper = mount(App, {
       attachTo: document.body,
-      global: { components: { ElPopover } },
     });
     await flushPromises();
     await chooseLayout(wrapper, 'Vertical Split');
@@ -500,7 +496,6 @@ describe('split-screen conversations', () => {
     });
     const wrapper = mount(App, {
       attachTo: document.body,
-      global: { components: { ElPopover } },
     });
     await flushPromises();
     await chooseLayout(wrapper, 'Vertical Split');
@@ -557,7 +552,6 @@ describe('split-screen conversations', () => {
     api.loadConversationHistory.mockResolvedValue(snapshot);
     const wrapper = mount(App, {
       attachTo: document.body,
-      global: { components: { ElPopover } },
     });
     await flushPromises();
     await chooseLayout(wrapper, 'Vertical Split');
@@ -633,7 +627,6 @@ describe('split-screen conversations', () => {
     api.sendPrompt.mockResolvedValue(snapshot);
     const wrapper = mount(App, {
       attachTo: document.body,
-      global: { components: { ElPopover } },
     });
     await flushPromises();
     await chooseLayout(wrapper, 'Vertical Split');

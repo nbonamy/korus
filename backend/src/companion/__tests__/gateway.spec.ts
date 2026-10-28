@@ -20,6 +20,7 @@ function fixture(autoAcceptCode?: string) {
   const port = { onEvent: () => () => {}, push: vi.fn(async (_peerId: string, _registration: unknown, _notification: unknown) => 'sent' as const), changeGoal: vi.fn(async () => {}), updateQueuedPrompt: vi.fn(async () => {}), markRead: vi.fn(async () => {}), respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), synchronize: vi.fn(async () => ({ checkpoint: { epoch: 'epoch', revision: 1 }, frames: [] })), conversation: vi.fn(), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async () => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
     models: vi.fn(async () => [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }]), selectModel: vi.fn(async () => {}),
     gitDiff: vi.fn(async () => ({ target: { type: 'uncommitted' as const }, summary: { changedFiles: 1, addedLines: 2, removedLines: 1 }, diff: 'patch', sections: [] })),
+    previewFile: vi.fn(async (_id: string, path: string) => ({ path, kind: 'text' as const, size: 12, content: 'current source' })),
     renameAgent: vi.fn(async () => {}), readImage: vi.fn(async () => ({ dataUrl: 'data:image/png;base64,cG5n' })),
     plugins: vi.fn(async () => [{ id: 'github@bundled', name: 'github', displayName: 'GitHub', enabled: true }]),
     skills: vi.fn(async (): Promise<BackendSkillSummary[]> => [{ name: 'review', path: '/skills/review/SKILL.md', enabled: true }]),
@@ -37,6 +38,35 @@ function fixture(autoAcceptCode?: string) {
     } };
 }
 describe('companion authorization gateway', () => {
+  it('previews one file using desktop reads, keeps historical diffs distinct, and rejects stale authority', async () => {
+    const f = fixture(); await f.pair();
+    const patch = (name: string) => `diff --git a/${name} b/${name}\n--- a/${name}\n+++ b/${name}\n@@ -1 +1 @@\n-old\n+new\n`;
+    f.port.gitDiff.mockResolvedValue({ target: { type: 'uncommitted' }, summary: { changedFiles: 2, addedLines: 2, removedLines: 2 }, diff: patch('src/one.ts') + patch('other.ts'), sections: [] });
+    const input = { target, input: { path: '/private/src/one.ts', action: 'edit', turnId: 'old-turn' } };
+    const result = await f.gateway.request('phone', 'agent.file.preview', input);
+    expect(result).toMatchObject({ path: 'src/one.ts', diff: patch('src/one.ts'), diffScope: 'turn', source: { content: 'current source' } });
+    expect(f.port.previewFile).toHaveBeenCalledExactlyOnceWith('agent', '/private/src/one.ts');
+    expect(f.port.gitDiff).toHaveBeenCalledExactlyOnceWith('agent', { type: 'turn', turnId: 'old-turn' });
+    f.port.previewFile.mockRejectedValueOnce(new Error('deleted'));
+    expect(await f.gateway.request('phone', 'agent.file.preview', input)).toMatchObject({ source: null, diff: patch('src/one.ts') });
+    const quoted = 'diff --git "a/src/\\303\\251.ts" "b/src/\\303\\251.ts"\n--- "a/src/\\303\\251.ts"\n+++ "b/src/\\303\\251.ts"\n@@ -1 +1 @@\n-old\n+new\n';
+    f.port.gitDiff.mockResolvedValueOnce({ target: { type: 'uncommitted' }, summary: { changedFiles: 1, addedLines: 1, removedLines: 1 }, diff: quoted, sections: [] });
+    expect(await f.gateway.request('phone', 'agent.file.preview', { target, input: { path: 'src/é.ts' } })).toMatchObject({ diff: quoted, diffScope: 'uncommitted' });
+    f.port.gitDiff.mockRejectedValueOnce(new Error('Historic patch removed'));
+    expect(await f.gateway.request('phone', 'agent.file.preview', input)).toMatchObject({ source: { content: 'current source' }, diff: null, diffScope: 'turn', diffUnavailable: true });
+    f.port.previewFile.mockResolvedValueOnce({ path: 'src/one.ts', kind: 'text', size: 3_000_000, content: 'x'.repeat(3_000_000) });
+    f.port.gitDiff.mockResolvedValueOnce({ target: { type: 'uncommitted' }, summary: { changedFiles: 1, addedLines: 1, removedLines: 1 }, diff: patch('src/one.ts') + '+'.repeat(2_000_000), sections: [] });
+    expect(await f.gateway.request('phone', 'agent.file.preview', input)).toMatchObject({ source: { kind: 'tooLarge' }, diff: null, diffUnavailable: true });
+    for (const input of [{ path: '' }, { path: 'a\0b' }, { path: 'a', folder: '/' }]) {
+      await expect(f.gateway.request('phone', 'agent.file.preview', { target, input })).rejects.toThrow();
+    }
+    let release!: () => void;
+    f.port.previewFile.mockImplementationOnce(async () => { await new Promise<void>(resolve => { release = resolve; }); return { path: 'one.ts', kind: 'text', size: 1, content: 'secret' }; });
+    const pending = f.gateway.request('phone', 'agent.file.preview', input);
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    await f.gateway.revoke('phone'); release();
+    await expect(pending).rejects.toThrow('not authorized');
+  });
   it('tells a newly approved phone what the laptop is called, and stays silent when it does not know', async () => {
     const f = fixture();
     const approve = async (peer: string) => {
@@ -466,11 +496,12 @@ describe('companion authorization gateway', () => {
   describe('every agent operation', () => {
     const question = { id: 'q', conversationId: 'conversation', kind: 'question' as const, question: { itemId: 'item', delivery: 'tool' as const, blocking: true, questions: [] } };
     const claude = { backend: 'claude' as const, backendSession: { kind: 'claude' as const, sessionId: 'session' } };
-    type Row = { args: (target: CompanionTarget) => object; effect: 'renameAgent' | 'duplicateAgent' | 'synchronize' | 'gitDiff' | 'updateQueuedPrompt' | 'readImage' | 'markRead' | 'conversation' | 'loadOlderHistory' | 'readConversationContent' | 'respondRequest' | 'skills' | 'plugins' | 'models' | 'selectModel' | 'interrupt' | 'setApprovalPreset' | 'setPermissionMode' | 'changeGoal' | 'setBackend' | 'restart' | 'closePreview' | 'close' | 'reviewSetup' | 'startReview'; read?: true; agent?: object };
+    type Row = { args: (target: CompanionTarget) => object; effect: 'previewFile' | 'renameAgent' | 'duplicateAgent' | 'synchronize' | 'gitDiff' | 'updateQueuedPrompt' | 'readImage' | 'markRead' | 'conversation' | 'loadOlderHistory' | 'readConversationContent' | 'respondRequest' | 'skills' | 'plugins' | 'models' | 'selectModel' | 'interrupt' | 'setApprovalPreset' | 'setPermissionMode' | 'changeGoal' | 'setBackend' | 'restart' | 'closePreview' | 'close' | 'reviewSetup' | 'startReview'; read?: true; agent?: object };
     const rows: Record<string, Row> = {
       'agent.rename': { args: t => ({ target: t, name: 'Renamed' }), effect: 'renameAgent' },
       'agent.duplicate': { args: t => ({ target: t, backend: 'claude' }), effect: 'duplicateAgent' },
       'agent.git.diff': { args: t => ({ target: t, scope: { type: 'uncommitted' } }), effect: 'gitDiff', read: true },
+      'agent.file.preview': { args: t => ({ target: t, input: { path: 'src/one.ts' } }), effect: 'previewFile', read: true },
       'conversation.read': { args: (t) => ({ target: t, revision: 1 }), effect: 'markRead' },
       'conversation.synchronize': { args: t => ({ target: t, checkpoint: null }), effect: 'synchronize', read: true },
       'conversation.subscribe': { args: (t) => t, effect: 'conversation', read: true },

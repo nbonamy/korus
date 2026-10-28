@@ -41,7 +41,7 @@ function isRendererMessagePart(value: unknown): boolean {
     case 'text':
       return typeof value.text === 'string' &&
         optional(value, 'itemId', isString) &&
-        optional(value, 'phase', (candidate) => includes(['commentary', 'final_answer'], candidate));
+        optional(value, 'phase', (candidate) => includes(['commentary', 'partial_answer', 'final_answer'], candidate));
     case 'tool':
       return typeof value.id === 'string' &&
         typeof value.kind === 'string' &&

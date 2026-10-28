@@ -68,6 +68,7 @@
       :phone-scope="compactViewport"
       @create-mission="createNewMission"
       @delete-mission="deleteMissionFromSidebar"
+      @create-agent-in-mission-worktree="createAgentInMissionWorktree"
       @delete-repository="repositoryDeletionAgentId = $event"
       @select-mission="selectMission"
       :active-team="activeTeam"
@@ -270,7 +271,7 @@
         @select-work-provider="cockpitBacklogState.selectProvider"
         @select-agent="selectAgentFromCockpit"
       />
-      <MissionWorkspace v-else-if="activeSurface === 'mission' && selectedMission" :key="selectedMission.id" :agents="snapshot.agents" :sidebar-collapsed="agentSidebarCollapsed || compactViewport" @expand-sidebar="expandSidebar" :mission="selectedMission" :implementation-start-progress="missionImplementationStartProgress" :read-mission-artifact="readMissionArtifact" :execute-mission="executeMission" :send-mission-prompt="forwardPrompt" :open-in-available="missionOpenInAvailable" :open-in-applications="openInApplications" @chat-about-review-finding="prepareMissionReviewDiscussion" @open-conversation="emit('select-agent', $event)" @open-worktree="openMissionWorktree">
+      <MissionWorkspace v-else-if="activeSurface === 'mission' && selectedMission" :key="selectedMission.id" :agents="snapshot.agents" :unread-agent-ids="unreadAgentIds" :sidebar-collapsed="agentSidebarCollapsed || compactViewport" @expand-sidebar="expandSidebar" :mission="selectedMission" :implementation-start-progress="missionImplementationStartProgress" :read-mission-artifact="readMissionArtifact" :execute-mission="executeMission" :send-mission-prompt="forwardPrompt" :open-in-available="missionOpenInAvailable" :open-in-applications="openInApplications" @chat-about-review-finding="prepareMissionReviewDiscussion" @open-conversation="emit('select-agent', $event)" @open-worktree="openMissionWorktree">
         <template #code-review="{ agentId, reviewSummary, chatAboutFinding }">
           <MissionCodeReview v-if="snapshot.agents.find(agent => agent.id === agentId) && props.getAgentGitDiff" :agent="snapshot.agents.find(agent => agent.id === agentId)!" :agents="snapshot.agents" :git-statuses="snapshot.agentGitStatuses" :get-diff="props.getAgentGitDiff" :mission="selectedMission" :review-summary="reviewSummary" :execute-mission="executeMission" :open-in-available="missionOpenInAvailable" :open-in-applications="openInApplications" @chat-about-finding="chatAboutFinding" @open-worktree="openMissionWorktree" />
         </template>
@@ -309,6 +310,7 @@
         :active-attachment-annotation-counts="activeAttachmentAnnotationCounts"
         :add-chat-text-annotation="addChatTextAnnotation"
         :add-visualization-annotation="addFocusedVisualizationAnnotation"
+        :add-code-annotation="addFocusedCodeAnnotation"
         :agent-files="agentFiles"
         :agent-sidebar-collapsed="agentSidebarCollapsed || compactViewport"
         :close-right-workspace-tab="closeRightWorkspaceTab"
@@ -323,6 +325,7 @@
         :conversation-plan="conversationPlan"
         :chat-text-annotations="activeChatTextAnnotations"
         :visualization-annotations="activeVisualizationAnnotations"
+        :code-annotations="activeCodeAnnotations"
         :review-finding-attachment="activeReviewFindingAttachment"
         :create-agent-git-pull-request="props.createAgentGitPullRequest"
         :current-agent="currentAgent"
@@ -354,6 +357,7 @@
         :open-attachment-image-annotation="openAttachmentImageAnnotation"
         :remove-chat-text-annotation="removeChatTextAnnotation"
         :remove-visualization-annotation="removeVisualizationAnnotation"
+        :remove-code-annotation="removeCodeAnnotation"
         :open-file-preview="openFilePreview"
         :open-file-preview-for-agent="openFilePreviewForAgent"
         :open-in-applications="openInApplications"
@@ -697,7 +701,7 @@ import type { MissionWorkspaceOpenRequest } from './MissionWorkspaceOpenIn.vue';
 import ConversationPane from './ConversationPane.vue';
 import AppMenu from '../shared/menu/AppMenu.vue';
 import type { Mission, CreateMissionInput, DeleteMissionInput } from '@workspace/core/missions';
-import type { MissionImplementationStartProgress } from '@workspace/core/mission-execution';
+import { missionCreatedWorkspaces, type MissionImplementationStartProgress } from '@workspace/core/mission-execution';
 import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
 import SettingsView from './SettingsView.vue';
 import TelemetryConsentNotice from './TelemetryConsentNotice.vue';
@@ -742,6 +746,7 @@ import type { RightWorkspaceTab } from './right-workspace';
 import { useImageAnnotation } from './use-image-annotation';
 import { useChatTextAnnotations } from './use-chat-text-annotations';
 import { useVisualizationAnnotations } from './use-visualization-annotations';
+import { useCodeAnnotations } from './use-code-annotations';
 import { useCockpitBacklog } from './use-cockpit-backlog';
 import { provideBacklogConnections } from './backlog-providers';
 import { useWorkspacePreviews } from './use-workspace-previews';
@@ -849,7 +854,7 @@ const props = withDefaults(defineProps<{
   getPluginStatus?: () => Promise<import('@workspace/core/contracts').AppPluginStatus>;
   listSshHosts?: () => Promise<SshHostCandidate[]>;
   addSshConnection?: (input: AddSshConnectionInput) => Promise<void>;
-  checkRemoteConnection?: (connectionId: string, inspectOnly?: boolean) => Promise<void>;
+  checkRemoteConnection?: (connectionId: string, inspectOnly?: boolean, backends?: AgentBackend[]) => Promise<void>;
   updateRemoteConnection?: (connectionId: string, input: UpdateRemoteConnectionInput) => Promise<void>;
   removeRemoteConnection?: (connectionId: string) => Promise<void>;
   companionControl?: (input: import('@workspace/core/companion-protocol').CompanionControl) => Promise<import('@workspace/core/companion-protocol').CompanionControlResult>;
@@ -1298,6 +1303,20 @@ function deleteMissionFromSidebar(id: string): void {
   if (!props.snapshot.missions?.some(candidate => candidate.id === id)) return;
   missionDeleteTargetId.value = id;
   missionDeleteError.value = '';
+}
+
+async function createAgentInMissionWorktree(input: { missionId: string; worktreePath: string }): Promise<void> {
+  const mission = props.snapshot.missions?.find(candidate => candidate.id === input.missionId);
+  const workspace = missionCreatedWorkspaces(mission).find(candidate => candidate.path === input.worktreePath);
+  if (!mission || !workspace) return;
+  const backend = preferredBackendChoices(props.snapshot, mission.teamId)[0];
+  if (!backend) { openSettings(); return; }
+  try {
+    const agent = await props.createAgent({ name: mission.outcome, folder: workspace.path, backend, teamId: mission.teamId });
+    if (agent) selectAgentFromShell(agent.id);
+  } catch (error) {
+    ElMessage.error(localizedErrorMessage(error, t));
+  }
 }
 
 function closeMissionDeleteDialog(): void {
@@ -1798,6 +1817,10 @@ watch([
     if (activeSurface.value === 'agent' && !isModalDialogVisible.value) focusedConversationPanel()?.focusComposer();
   });
 }, { flush: 'post' });
+function addFocusedCodeAnnotation(annotation: import('./use-code-annotations').CodeAnnotationInput): void {
+  if (splitLayout.value === 'single') addCodeAnnotation(annotation);
+  else splitPanels.get(currentAgent.value?.id ?? '')?.addCodeAnnotation(annotation);
+}
 function addFocusedVisualizationAnnotation(annotation: import('./use-visualization-annotations').VisualizationAnnotationInput): void {
   if (splitLayout.value === 'single') addVisualizationAnnotation(annotation);
   else splitPanels.get(currentAgent.value?.id ?? '')?.addVisualizationAnnotation(annotation);
@@ -1965,6 +1988,15 @@ const {
   forward: forwardCodexPromptWithVisualizationAnnotations,
   remove: removeVisualizationAnnotation,
 } = visualizationAnnotation;
+const codeAnnotation = useCodeAnnotations({
+  currentAgentId: () => currentAgent.value?.id,
+});
+const {
+  activeAnnotations: activeCodeAnnotations,
+  add: addCodeAnnotation,
+  forward: forwardCodexPromptWithCodeAnnotations,
+  remove: removeCodeAnnotation,
+} = codeAnnotation;
 const cockpitBacklogState = useCockpitBacklog({
   configure: (input) => props.configureWorkBacklog(input),
   confirmLoadAll: async () => {
@@ -3209,14 +3241,18 @@ async function forwardCodexPrompt(prompt: string, options?: CodexRendererSendMes
   await forwardCodexPromptWithVisualizationAnnotations(
     prompt,
     options,
-    (visualizationPrompt, visualizationOptions) => forwardCodexPromptWithChatTextAnnotations(
+    (visualizationPrompt, visualizationOptions) => forwardCodexPromptWithCodeAnnotations(
       visualizationPrompt,
       visualizationOptions,
-      (nextPrompt, nextOptions) => forwardCodexPromptWithImageAnnotations(
-        nextPrompt,
-        nextOptions,
-        forwardPrompt,
-        capturedImages,
+      (codePrompt, codeOptions) => forwardCodexPromptWithChatTextAnnotations(
+        codePrompt,
+        codeOptions,
+        (nextPrompt, nextOptions) => forwardCodexPromptWithImageAnnotations(
+          nextPrompt,
+          nextOptions,
+          forwardPrompt,
+          capturedImages,
+        ),
       ),
     ),
   );
@@ -3228,14 +3264,18 @@ async function forwardCodexSteerPrompt(prompt: string, options?: CodexRendererSe
   await forwardCodexPromptWithVisualizationAnnotations(
     prompt,
     options,
-    (visualizationPrompt, visualizationOptions) => forwardCodexPromptWithChatTextAnnotations(
+    (visualizationPrompt, visualizationOptions) => forwardCodexPromptWithCodeAnnotations(
       visualizationPrompt,
       visualizationOptions,
-      (nextPrompt, nextOptions) => forwardCodexPromptWithImageAnnotations(
-        nextPrompt,
-        nextOptions,
-        forwardSteerPrompt,
-        capturedImages,
+      (codePrompt, codeOptions) => forwardCodexPromptWithChatTextAnnotations(
+        codePrompt,
+        codeOptions,
+        (nextPrompt, nextOptions) => forwardCodexPromptWithImageAnnotations(
+          nextPrompt,
+          nextOptions,
+          forwardSteerPrompt,
+          capturedImages,
+        ),
       ),
     ),
   );

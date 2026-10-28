@@ -1,5 +1,5 @@
 Bundled mobile simulator third-party notices
-Native idb 1.6.7 dependencies: facebook/idb 87c21a4fec1a7b59e836a9370d97bc19062bfc7a Package.resolved
+Native idb 1.7.7 dependencies: facebook/idb 1de1629a8e5e9838d841689e122d0bd0085a92b6 Package.resolved
 JavaScript dependencies: versions listed with each notice.
 Identical license texts are grouped; all source attributions are retained.
 

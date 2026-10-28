@@ -1,8 +1,8 @@
 {
-  "version": "1.6.7",
-  "sourceRevision": "87c21a4fec1a7b59e836a9370d97bc19062bfc7a",
+  "version": "1.7.7",
+  "sourceRevision": "1de1629a8e5e9838d841689e122d0bd0085a92b6",
   "platform": "darwin",
   "arch": "arm64",
-  "url": "https://github.com/facebook/idb/releases/download/v1.6.7/idb-companion.macos-arm64.tar.gz",
-  "sha256": "644a49879570e05d4e916e2f5398e28495bf3e6baa769dd263ca54a00d23cb93"
+  "url": "https://github.com/facebook/idb/releases/download/v1.7.7/idb-companion.macos-arm64.tar.gz",
+  "sha256": "d0e4e10a7bbd85a6ce67966acb5fca0a87fd14cd026b79f8ec3ee6c338f4a166"
 }

@@ -16,8 +16,8 @@ type CockpitBacklogConfiguration = {
   sourceId: string | null;
   tagName: string | null;
 };
-export type BacklogScope = 'assignedToMe' | 'all' | 'myIssues' | 'myPullRequests' | 'reviewRequests' | 'ownedWork';
-const backlogScopes: BacklogScope[] = ['assignedToMe', 'all', 'myIssues', 'myPullRequests', 'reviewRequests', 'ownedWork'];
+export type BacklogScope = 'assignedToMe' | 'all' | 'myIssues' | 'myPullRequests' | 'reviewRequests' | 'ownedWork' | 'outsideWork';
+const backlogScopes: BacklogScope[] = ['assignedToMe', 'all', 'myIssues', 'myPullRequests', 'reviewRequests', 'ownedWork', 'outsideWork'];
 type GlobalFeed = {
   error: string | null;
   page: number;
@@ -55,6 +55,7 @@ export function useCockpitBacklog(options: {
     myPullRequests: emptyFeed(),
     reviewRequests: emptyFeed(),
     ownedWork: emptyFeed(),
+    outsideWork: emptyFeed(),
   });
 
   const savedConfiguration = computed<CockpitBacklogConfiguration>(() => {
@@ -226,7 +227,7 @@ export function useCockpitBacklog(options: {
         assignment: scope === 'assignedToMe' || scope === 'myIssues' ? 'viewer' : 'all',
         ...(scope === 'myIssues' ? { kind: 'issue' as const } : {}),
         ...(scope === 'myPullRequests' || scope === 'reviewRequests' ? { kind: 'pullRequest' as const, involvement: scope === 'myPullRequests' ? 'author' as const : 'reviewer' as const } : {}),
-        ...(scope === 'ownedWork' ? { kind: 'all' as const, repositoryScope: 'owned' as const } : {}),
+        ...(['ownedWork', 'outsideWork'].includes(scope) ? { kind: 'all' as const, repositoryScope: scope === 'ownedWork' ? 'owned' as const : 'notOwned' as const } : {}),
         state: 'open',
         ...(page > 1 ? { cursor: feed.cursors[page] } : {}),
         pageSize: globalPageSize,

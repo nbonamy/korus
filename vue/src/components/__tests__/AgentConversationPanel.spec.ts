@@ -12,6 +12,45 @@ import AgentConversationPanel from '../AgentConversationPanel.vue';
 import { backendChoicesKey } from '../backend-selection';
 
 describe('AgentConversationPanel', () => {
+  it('toggles Goal mode in a Claude composer and submits the objective to that agent', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[1]!;
+    agent.backend = 'claude'; agent.backendDefaults = { kind: 'claude' };
+    const view = shallowReactive<AgentConversationView>({
+      agent, codexSnapshot: null, claudeSnapshot: claudeConversationSnapshot([], { agentId: agent.id }),
+      composer: createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(agent.id),
+      composerState: { text: 'Verify the feature', selectionStart: 18, selectionEnd: 18 },
+      attachments: [], capabilities: claudeBackendCapabilities, approvals: [], sending: false,
+      queuedPrompts: [], history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false },
+      answeredClientRequestIds: new Set(),
+    });
+    const actions: AgentConversationActions = {
+      planReview: vi.fn(), clearGoal: vi.fn(), threadFlag: vi.fn(), prepare: vi.fn(), loadOlder: vi.fn(),
+      send: vi.fn(), steer: vi.fn(), interrupt: vi.fn(), deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(),
+      continueInterruptedTurn: vi.fn(), resolveApproval: vi.fn(), clientResponse: vi.fn(),
+      selectModel: vi.fn(), selectReasoningEffort: vi.fn(), selectServiceTier: vi.fn(), setPlanMode: vi.fn(),
+      setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(),
+      updateComposerState: (_id, state) => { view.composerState = state; }, updateAttachments: vi.fn(),
+      deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
+    };
+    const wrapper = mount(AgentConversationPanel, { props: {
+      view, actions, agents: snapshot.agents, focused: true, mentionGroups: [], modelMenuItems: [], selectModelMenuItem: vi.fn(),
+      savedPromptDrafts: [], savePromptDraft: vi.fn(), removePromptDraft: vi.fn(), openLink: vi.fn(), openImage: vi.fn(), openVisualization: vi.fn(),
+    }, global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } } });
+    try {
+      await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
+      const goal = wrapper.findAll('[role="menuitemcheckbox"]').find(item => item.text() === 'Goal mode');
+      expect(goal).toBeDefined();
+      await goal!.trigger('click');
+      expect(wrapper.find('[aria-label="Remove Goal command"]').exists()).toBe(true);
+      expect(wrapper.get('.chat-rich-text-editor').text()).toBe('Verify the feature');
+      expect(actions.send).not.toHaveBeenCalled();
+      await wrapper.get('form').trigger('submit');
+      await flushPromises();
+      expect(actions.send).toHaveBeenCalledExactlyOnceWith(agent.id, '/goal Verify the feature', undefined);
+    } finally { wrapper.unmount(); }
+  });
+
   it('shows only the active agent suggestion as a placeholder without changing its draft', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;

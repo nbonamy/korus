@@ -115,6 +115,10 @@ by mutating user-global tool config.
 - With a `task` contract (`title`, `doneWhen`), a stable parent-scoped `requestId`
   is mandatory and reused after a timeout. Returned `taskId`/`agentId`/status
   describe accepted startup, not completed work.
+- Goal delegation uses the same app-owned goal operation as the composer, with
+  the assignment and its context as the objective. Durable tasks persist that
+  startup choice and keep their result-reporting contract; retries do not start
+  a second goal. Unsupported providers are rejected before provisioning.
 - `complete-task` (worker, before `finish_turn`) saves a provisional result that
   finalizes only after that exact turn succeeds. `wait-tasks` (`any|all`, 0–30 s)
   ends on completion, failure, cancellation, interruption or needs-input; a timeout

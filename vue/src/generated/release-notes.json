@@ -1,7 +1,19 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.44.0",
+  "currentVersion": "0.45.1",
   "releases": [
+    {
+      "version": "0.45.1",
+      "releasedAt": "2026-10-27",
+      "sourceSha256": "e0ef4cff0bddfecf92c8c6eab9cde1ca6b053fc13935d4b0269524505000ddba",
+      "markdown": "### Improvements and fixes\n\n- **Analytics by repository:** Compare usage across repositories, with worktrees\n  grouped under their repository and separate entries for Missions and Quick Chats.\n- Count Analytics activity and date ranges in your local timezone.\n- Keep Analytics charts steady while you read; refresh on demand or when returning\n  to the screen."
+    },
+    {
+      "version": "0.45.0",
+      "releasedAt": "2026-10-27",
+      "sourceSha256": "ae2a3e49a7e1728f40012280b755980c87eca1711256f7e2f805bf8ab85a0ce7",
+      "markdown": "### New features\n\n- **Backlog shortcuts:** Jump to assigned issues, PRs awaiting your review, your\n  own PRs, and work inside or outside your repositories, including organizations\n  you administer.\n- **PR feedback:** Start an agent to check your pull requests for unresolved\n  review comments and summarize what needs attention.\n- **Usage menus:** See tokens and cost from the chat menu, or a Mission breakdown\n  by lead, repository, and total.\n- **Implementation models:** Choose the provider, model, reasoning effort, and\n  service tier when starting Mission implementation or assigning work.\n- **iPhone Duo simulator:** Embed the foldable simulator, switch between folded\n  and unfolded layouts, and see a loading indicator while the device changes shape.\n- **Mission handoffs:** The lead receives an update when all tickets are implemented\n  and when repository agents finish review fixes.\n- **Mobile reviews:** Read the final verdict and finish a Mission review from\n  your phone.\n- **Mobile diffs:** Filter changed files by code, tests, documentation, or other\n  file types.\n\n### Improvements and fixes\n\n- Show Mission activity consistently on desktop and mobile, with notifications\n  only for blocking questions and approvals.\n- Include the repository and branch in notifications for unnamed agents.\n- Show costs for more models and remove synthetic Claude entries from Analytics.\n- Sort chart legends and tooltips by their displayed values, highest first.\n- Keep the startup loading screen visible while the background service reconnects.\n- Fix Quick Open missing tracked files inside ignored folders.\n- Keep agents beside the conversation on wide iOS and Android screens.\n- Recover saved mobile pairing after unlocking the phone, and preserve reasoning\n  effort when switching models.\n- Refresh syntax highlighting in conversation code blocks.\n- **Codex 0.164.0:** Update compatibility with the latest supported Codex CLI.\n  Some older conversations remain readable and accept new messages, but individual\n  turns can no longer be edited, retried, or deleted."
+    },
     {
       "version": "0.44.0",
       "releasedAt": "2026-10-26",

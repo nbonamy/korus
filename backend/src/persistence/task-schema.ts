@@ -25,6 +25,7 @@ const taskSchema = z.looseObject({
   id: text, requestId: text.max(200), requestFingerprint: text,
   parentAgentId: text, workerAgentId: text, backend: z.enum(['codex', 'claude', 'antigravity']),
   assignment: taskContractSchema.loose(), prompt: text.max(100000), attemptId: text,
+  goal: z.boolean().optional(),
   delegationUserInstructions: z.looseObject({ saved: z.string().max(MAX_DELEGATION_INSTRUCTIONS_LENGTH), taskSpecific: z.string().max(MAX_DELEGATION_INSTRUCTIONS_LENGTH).optional() }).optional(),
   workspace: z.looseObject({ repositoryPath: text, branchName: text.optional(), destinationPath: text.optional() }).optional(),
   state: z.enum(['preparing', 'running', 'needs-input', 'interrupted', 'failed', 'completed', 'cancelled']),

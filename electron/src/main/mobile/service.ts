@@ -184,6 +184,14 @@ export class MobileSimulatorService {
       if (view) view.displayRotation = await this.adapter.displayRotation(current.device);
       return { attachment: current };
     }
+    if (input.action === 'fold' || input.action === 'unfold') {
+      if (!userInitiated) throw new Error('Only the desktop user can fold a device.');
+      if (!current.device.foldable || current.device.platform !== 'ios') throw new Error('This simulator does not support folding.');
+      if (this.views.get(agentId)?.touching) throw new Error('A pane touch is in progress. Try again after release.');
+      this.closeView(agentId);
+      await this.adapter.setFolded(current.device, input.action === 'fold');
+      return { attachment: current };
+    }
     if (input.action === 'shutdown') {
       this.closeView(agentId);
       this.adapter.detach(current.device);

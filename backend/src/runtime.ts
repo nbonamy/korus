@@ -130,7 +130,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     tasks: savedTasks,
     save: saveBackendTasks,
     agent: id => snapshot.agents.find(agent => agent.id === id),
-    send: (agent, prompt) => server.sendTaskPrompt(agent, prompt),
+    send: (agent, prompt, goal) => server.sendTaskPrompt(agent, prompt, goal),
     interrupt: (agent, expectedTurnId) => driverRpc.handle(backendMethods.driverInterrupt, { agent, expectedTurnId }),
     readHistory: agent => {
       const ref = conversationRefFromAgent(agent);
@@ -147,7 +147,9 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   const documents = new DocumentWorkspaceService(path.join(backendHomeDir(), "document-workspaces.json"));
   const localUsage = new UsageLedger(path.join(backendHomeDir(), 'usage.sqlite'));
   await localUsage.load();
-  const usage = new UsageService(localUsage, id => snapshot.agents.find(a => a.id === id));
+  const usage = new UsageService(localUsage, id => snapshot.agents.find(a => a.id === id), undefined, undefined, () => snapshot.agents);
+  // Turns saved before the repository was recorded carry a worktree folder; file them under their repository, once.
+  void usage.migrateRepositories();
   if (telemetryConsent && process.env.APP_HOST !== 'web') {
     telemetryUpload = await TelemetryUploadService.open({
       file: path.join(backendHomeDir(), 'telemetry-delivery.json'),

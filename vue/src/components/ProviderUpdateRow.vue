@@ -1,5 +1,6 @@
 <template>
-  <FormRow :title="$t('providerUpdate.version')">
+  <slot v-if="$slots.default" :summary="enabled === false || backend === 'antigravity' || (!state && loading) ? '' : versionSummary" :upgrade-available="state?.status === 'available' && state.canUpgrade" :busy="loading || pending" :upgrade="upgrade" :menu-items="updateMenuItems" :select-menu-item="selectUpdateMenuItem" />
+  <FormRow v-else :title="$t('providerUpdate.version')">
     <template #copy>
       <span class="provider-update__version" :class="{ 'provider-update__current': state?.status === 'current', 'provider-update__available': state?.status === 'available' || pending }" :role="errorText ? 'alert' : pending ? 'status' : undefined">
         <span class="provider-update__summary" :title="versionSummary">{{ versionSummary }}</span>
@@ -25,10 +26,12 @@ import type { AgentBackend } from '@workspace/core/contracts';
 import type { ProviderUpdateStatus } from '@workspace/core/contracts/provider-updates';
 import { appApi, appPlatformActions } from '../platform-api';
 import FormRow from '../shared/form/FormRow.vue';
-import { RefreshIcon } from '../shared/icons/app-icons';
+import { RefreshIcon, SearchIcon } from '../shared/icons/app-icons';
 import { providerUpdatePreviewKey } from './provider-update-preview';
+import type { AppMenuItem } from '../shared/menu/app-menu';
 
-const props = defineProps<{ backend: Exclude<AgentBackend, 'antigravity'>; remoteConnectionId?: string }>();
+const props = withDefaults(defineProps<{ backend: AgentBackend; remoteConnectionId?: string; enabled?: boolean }>(), { enabled: true });
+const emit = defineEmits<{ activity: [active: boolean] }>();
 const preview = inject(providerUpdatePreviewKey, ref(false));
 const { t } = useI18n();
 const state = ref<ProviderUpdateStatus>();
@@ -38,6 +41,7 @@ let revision = 0;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let previewTimer: ReturnType<typeof setTimeout> | undefined;
 const pending = computed(() => state.value?.status === 'waiting' || state.value?.status === 'upgrading');
+watch(() => loading.value || pending.value, active => emit('activity', active), { immediate: true });
 const errorText = computed(() => failed.value ? t('providerUpdate.errors.checkFailed') : state.value?.error ? t(`providerUpdate.errors.${state.value.error}`) : undefined);
 const versionSummary = computed(() => {
   const status = state.value?.status;
@@ -49,6 +53,21 @@ const versionSummary = computed(() => {
   return [state.value?.installedVersion, detail].filter(Boolean).join(' · ') || '—';
 });
 const instructionsUrl = computed(() => props.backend === 'codex' ? 'https://learn.chatgpt.com/docs/codex/cli#getting-started' : 'https://code.claude.com/docs/en/setup#update-claude-code');
+const updateMenuItems = computed<AppMenuItem[]>(() => {
+  if (props.enabled === false || props.backend === 'antigravity') return [];
+  const items: AppMenuItem[] = [{ id: 'check-updates', type: 'action', label: t('providerUpdate.check'), icon: SearchIcon, disabled: loading.value || pending.value }];
+  if (state.value?.status === 'available' && state.value.canUpgrade) items.unshift({ id: 'upgrade', type: 'action', label: t('engineConnection.update'), disabled: loading.value });
+  if (state.value?.status === 'waiting') items.unshift({ id: 'cancel-update', type: 'action', label: t('common.cancel'), disabled: loading.value });
+  if (state.value?.status === 'manual' || (state.value?.status === 'available' && !state.value.canUpgrade)) items.push({ id: 'update-instructions', type: 'action', label: t('providerUpdate.instructions') });
+  return items;
+});
+
+function selectUpdateMenuItem(id: string): void {
+  if (id === 'check-updates') void refresh(true);
+  else if (id === 'upgrade') void upgrade();
+  else if (id === 'cancel-update') void cancel();
+  else if (id === 'update-instructions') void appPlatformActions.openExternal?.(instructionsUrl.value);
+}
 
 function poll() {
   clearTimeout(timer);
@@ -75,6 +94,7 @@ function changePreview(action: 'upgrade' | 'cancel') {
   }, 2_000);
 }
 async function refresh(force = false) {
+  if (props.enabled === false || props.backend === 'antigravity') return;
   if (preview.value) { resetPreview(); return; }
   const expected = revision;
   loading.value = true;
@@ -108,10 +128,10 @@ async function change(input: import('@workspace/core/contracts/provider-updates'
   } catch { if (revision === expected) failed.value = true; }
   finally { if (revision === expected) { loading.value = false; poll(); } }
 }
-watch(() => [props.backend, props.remoteConnectionId, preview.value], () => {
+watch(() => [props.backend, props.remoteConnectionId, props.enabled, preview.value], () => {
   ++revision; clearTimeout(timer); clearTimeout(previewTimer); state.value = undefined; void refresh();
 }, { immediate: true, flush: 'sync' });
-onScopeDispose(() => { ++revision; clearTimeout(timer); clearTimeout(previewTimer); });
+onScopeDispose(() => { ++revision; clearTimeout(timer); clearTimeout(previewTimer); emit('activity', false); });
 </script>
 
 <style scoped>

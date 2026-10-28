@@ -3,7 +3,7 @@ import type {
   UsageCostReason,
   UsageRecord,
 } from "@workspace/core/usage";
-import type { PricingHistory } from "./schema";
+import { pricingBaselineDate, type PricingHistory } from "./schema";
 
 type ObjectValue = { [key: string]: unknown };
 type Match = boolean | null;
@@ -81,16 +81,14 @@ export function priceRequest(
   const fail = (reason: UsageCostReason): RequestPrice => ({ reason });
   if (request.unavailableReason) return fail(request.unavailableReason);
   if (request.status !== "final") return fail("provisional-usage");
-  const snapshot = [...history]
-    .reverse()
-    .find((s) => Date.parse(s.date) <= request.at);
-  if (!snapshot) return fail("before-pricing-history");
+  if (request.at < Date.parse(pricingBaselineDate)) return fail("before-pricing-history");
   if (!request.apiProvider) return fail("unknown-provider");
-  const model = snapshot[request.apiProvider].find(
-    (m) => m.id === request.model,
-  );
-  if (!model) return fail("unknown-model");
-  if (!model.cost) return fail("unpriced-model");
+  const models = history[request.apiProvider];
+  if (!request.model || !Object.hasOwn(models, request.model)) return fail("unknown-model");
+  const model = [...models[request.model].cost].reverse()
+    .find(event => Date.parse(event.date) <= request.at);
+  if (!model || model.availability === 'removed') return fail("unknown-model");
+  if (!model.rates) return fail("unpriced-model");
   if (request.modality !== "text") return fail("unsupported-token-modality");
   const t = request.tokens;
   if (
@@ -157,7 +155,7 @@ export function priceRequest(
     ),
   ]);
   if (tier && !knownTiers.has(tier)) return fail("unsupported-service-tier");
-  let cost: ObjectValue = model.cost;
+  let cost: ObjectValue = model.rates;
   if (mode?.service_tier && mode.service_tier !== tier)
     return fail("unsupported-service-tier");
   if (!mode) {
@@ -316,7 +314,7 @@ export function priceRequest(
         multipliers.reduce<number>((n, f) => n * factorAt(f, item.path), 1)) /
       1e6;
   }
-  return { usd: Number(usd.toPrecision(15)), snapshot: snapshot.date };
+  return { usd: Number(usd.toPrecision(15)), snapshot: model.date };
 }
 
 /** Price retained execution counters without fabricating billable request identities. */

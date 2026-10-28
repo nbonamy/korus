@@ -61,6 +61,11 @@ export function useRemoteCodexAuthentication(connection: () => RemoteConnection,
     }
   }
 
+  async function connect(expectedRevision = revision): Promise<void> {
+    await refresh(expectedRevision);
+    if (expectedRevision === revision && authentication.value && !connected.value) await start();
+  }
+
   async function cancel(): Promise<void> {
     const client = api();
     if (!client || !login.value || busy.value) return;
@@ -88,7 +93,7 @@ export function useRemoteCodexAuthentication(connection: () => RemoteConnection,
     login.value = null;
     busy.value = false;
     error.value = '';
-    void refresh();
+    void connect();
   }, { immediate: true });
   onScopeDispose(() => {
     ++revision;
@@ -96,5 +101,5 @@ export function useRemoteCodexAuthentication(connection: () => RemoteConnection,
     cancelPending(connection().id, login.value);
   });
 
-  return { authentication, login, connected, busy, error, start, cancel, refresh: () => refresh() };
+  return { authentication, login, connected, busy, error, start, cancel, refresh: () => connect() };
 }

@@ -122,6 +122,11 @@ await writeFile(
   landing
     .replaceAll("__PRODUCT_NAME__", product.name)
     .replaceAll("__PRODUCT_WEBSITE_URL__", product.websiteUrl)
+    .replaceAll(
+      "__PRODUCT_COMPANION_APP_STORE_URL__",
+      product.companionAppStoreUrl,
+    )
+    .replaceAll("__PRODUCT_COMPANION_NAME__", product.companionName)
     .replaceAll("__PRODUCT_REPOSITORY_URL__", product.repositoryUrl)
     .replaceAll("__PRODUCT_RELEASE_URL__", downloads.releaseUrl),
 );

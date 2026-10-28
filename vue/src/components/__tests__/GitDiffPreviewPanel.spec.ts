@@ -186,3 +186,84 @@ describe('GitDiffPreviewPanel', () => {
     }).text()).toContain('No diff content.');
   });
 });
+
+describe('annotating a diff', () => {
+  const diff = [
+    'diff --git a/src/a.ts b/src/a.ts', '--- a/src/a.ts', '+++ b/src/a.ts', '@@ -1,3 +1,3 @@',
+    ' keep', '-old', '+new', ' tail',
+    'diff --git a/src/b.ts b/src/b.ts', '--- a/src/b.ts', '+++ b/src/b.ts', '@@ -1 +1 @@', '-b1', '+b2',
+  ].join('\n');
+  const Popup = { name: 'AnnotationPopup', props: ['description', 'anchor'], emits: ['submit', 'cancel'], template: '<form class="popup" />' };
+  const mountPanel = (annotatable = true) => mount(GitDiffPreviewPanel, { props: { diff, annotatable }, global: { stubs: { AnnotationPopup: Popup } } });
+  const rows = (wrapper: ReturnType<typeof mountPanel>) => wrapper.findAll('.git-diff-preview-panel__line');
+  const plus = (row: ReturnType<typeof rows>[number]) => row.get('.git-diff-preview-panel__annotate');
+
+  it('marks each line with its file and number, on the side the line belongs to', () => {
+    const lines = rows(mountPanel()).map(row => [row.attributes('data-code-line'), row.attributes('data-code-side'), row.attributes('data-code-prefix')]);
+    expect(lines).toStrictEqual([['1', 'new', ' '], ['2', 'old', '-'], ['2', 'new', '+'], ['3', 'new', ' '], ['1', 'old', '-'], ['1', 'new', '+']]);
+    expect(mountPanel().findAll('[data-code-path]').map(file => file.attributes('data-code-path'))).toStrictEqual(['src/a.ts', 'src/b.ts']);
+  });
+
+  it('opens the annotation box directly from plus, quoting the line with its marker', async () => {
+    const wrapper = mountPanel();
+    await plus(rows(wrapper)[2]!).trigger('click');
+    expect(rows(wrapper)[2]!.classes()).toContain('code-annotation-line--selected');
+    wrapper.getComponent(Popup).vm.$emit('submit', 'Rename for clarity.');
+    expect(wrapper.emitted('annotate')).toStrictEqual([[{ path: 'src/a.ts', startLine: 2, endLine: 2, side: 'new', text: '+new', comment: 'Rename for clarity.' }]]);
+  });
+
+  it('shows a plus in the margin of each line that can be annotated, and it picks that line', async () => {
+    const wrapper = mountPanel();
+    expect(wrapper.findAll('.git-diff-preview-panel__annotate')).toHaveLength(6);
+    expect(mountPanel(false).findAll('.git-diff-preview-panel__annotate')).toHaveLength(0);
+    await rows(wrapper)[0]!.get('.git-diff-preview-panel__line-number').trigger('mousedown');
+    rows(wrapper)[3]!.element.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    await wrapper.vm.$nextTick();
+    expect(wrapper.findComponent(Popup).exists()).toBe(false);
+    expect(wrapper.find('.code-annotation-line--selected').exists()).toBe(false);
+    await rows(wrapper)[1]!.get('.git-diff-preview-panel__annotate').trigger('click');
+    expect(wrapper.findComponent(Popup).exists()).toBe(true);
+    await rows(wrapper)[3]!.get('.git-diff-preview-panel__annotate').trigger('click', { shiftKey: true });
+    wrapper.getComponent(Popup).vm.$emit('submit', 'Hunk.');
+    expect(wrapper.emitted('annotate')![0]![0]).toMatchObject({ startLine: 2, endLine: 3, text: '-old\n+new\n tail' });
+  });
+
+  it('annotates a range with shift, including the removed lines it covers', async () => {
+    const wrapper = mountPanel();
+    await plus(rows(wrapper)[0]!).trigger('click');
+    await plus(rows(wrapper)[3]!).trigger('click', { shiftKey: true });
+    wrapper.getComponent(Popup).vm.$emit('submit', 'Whole hunk.');
+    expect(wrapper.emitted('annotate')![0]![0]).toMatchObject({ path: 'src/a.ts', startLine: 1, endLine: 3, side: 'new', text: ' keep\n-old\n+new\n tail' });
+  });
+
+  it('opens the annotation box when a drag from plus ends', async () => {
+    const wrapper = mountPanel();
+    await plus(rows(wrapper)[0]!).trigger('mousedown');
+    expect(wrapper.findComponent(Popup).exists()).toBe(false);
+    rows(wrapper)[3]!.element.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    await wrapper.vm.$nextTick();
+    expect(rows(wrapper).map(row => row.classes().includes('code-annotation-line--selected'))).toStrictEqual([true, true, true, true, false, false]);
+    wrapper.getComponent(Popup).vm.$emit('submit', 'Whole hunk.');
+    expect(wrapper.emitted('annotate')![0]![0]).toMatchObject({ path: 'src/a.ts', startLine: 1, endLine: 3, text: ' keep\n-old\n+new\n tail' });
+  });
+
+  it('numbers a removed line by the old file', async () => {
+    const wrapper = mountPanel();
+    await plus(rows(wrapper)[4]!).trigger('click');
+    wrapper.getComponent(Popup).vm.$emit('submit', 'Why remove?');
+    expect(wrapper.emitted('annotate')![0]![0]).toMatchObject({ path: 'src/b.ts', startLine: 1, endLine: 1, side: 'old', text: '-b1' });
+  });
+
+  it('forgets the selection when the diff is replaced, and offers nothing unless annotating is on', async () => {
+    const wrapper = mountPanel();
+    await plus(rows(wrapper)[1]!).trigger('click');
+    expect(wrapper.findComponent(Popup).exists()).toBe(true);
+    await wrapper.setProps({ diff: diff.replace('new', 'newer') });
+    expect(wrapper.find('.code-selection-annotation__add').exists()).toBe(false);
+    const plain = mountPanel(false);
+    await rows(plain)[1]!.get('.git-diff-preview-panel__line-number').trigger('mousedown');
+    expect(plain.find('.code-selection-annotation__add').exists()).toBe(false);
+  });
+});

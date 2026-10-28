@@ -25,6 +25,7 @@ import type { CompanionUsage, CompanionProjectInput, CompanionGitHubRepository, 
 import type { CompanionUpload } from './uploads';
 import { generatePairingCode, normalizePairingCode, pairingLifetimeMs } from '@workspace/core/companion-pairing';
 import { conversationImageReference } from './images';
+import { previewFile } from './file-preview';
 import { companionMaxDevices, companionMaxInvitations } from '@workspace/core/companion-relay';
 import { pushRegistrationSchema } from './push-registration';
 
@@ -84,6 +85,7 @@ export type GatewayPort = {
   executeMission?(input: { id: string; revision: number } & ({ action: 'continueToReview' } | { action: 'accept'; runId: string }
     | { action: 'selectReviewFinding'; findingId: string; selected: boolean } | { action: 'fixSelectedReviewFindings' } | { action: 'rerunReview' })): Promise<void>;
   gitDiff?(agentId: string, scope: AgentGitDiffTarget): Promise<AgentGitDiff>;
+  previewFile?(agentId: string, path: string): Promise<import('@workspace/core/contracts').AgentFilePreviewResult>;
   readImage?(agentId: string, path: string): Promise<import('@workspace/core/companion-protocol').CompanionImage>;
   repositoryCatalog?(provider: CompanionRepositoryProvider, remoteConnectionId?: string): Promise<CompanionRepository[]>;
   repositoryBranches?(repositoryId: string, provider: CompanionRepositoryProvider, remoteConnectionId?: string): Promise<CompanionProjectBranch[]>;
@@ -173,6 +175,10 @@ function currentReset(frame: CompanionReset, current: CompanionAgent, target: Co
 }
 /** Every operation a phone may call on an agent; none can bypass the dispatcher's target and grant checks. */
 const agentOperations = {
+  'agent.file.preview': agentOperation(withTarget(z.object({ input: z.object({
+    path: z.string().trim().min(1).max(4096).refine(value => !value.includes('\0')),
+    action: z.enum(['read', 'edit', 'create']).optional(), turnId: identity.optional(), line: z.number().int().positive().safe().optional(),
+  }).strict() }).strict()))({ act: (port, agent, { input }) => previewFile(port, agent, input), read: {} }),
   'agent.git.diff': agentOperation(withTarget(z.object({ scope: z.discriminatedUnion('type', [
     z.object({ type: z.literal('uncommitted') }).strict(), z.object({ type: z.literal('unstaged') }).strict(), z.object({ type: z.literal('staged') }).strict(),
     z.object({ type: z.literal('branch'), baseRef: z.string().min(1).max(1024) }).strict(),

@@ -204,9 +204,22 @@ struct MissionReviewSummary: Decodable, Hashable {
     }
 }
 
+enum MissionAttention: String, Decodable {
+    case needsInput, unread, working, idle
+
+    var agentStatus: AgentStatus {
+        switch self {
+        case .needsInput: .awaitingInput
+        case .working: .working
+        case .unread, .idle: .idle
+        }
+    }
+}
+
 struct MissionSummary: Decodable, Hashable, Identifiable {
     let id: String; let outcome: String; let stage: String; let status: String; let done: Int; let tickets: [MissionTicketSummary]
     let startedAt: String?; let updatedAt: String?
+    let attention: MissionAttention?
     /// The ordinary agent leading the mission through its current stage.
     let leadAgentId: String?
     /// What a person can do next: move on to review, or ship, which only the desktop does.

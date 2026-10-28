@@ -22,11 +22,17 @@
           :key="conversation.key"
           type="button"
           role="tab"
-          :aria-label="tabTitle(conversation)"
+          :aria-label="tabLabel(conversation)"
           :aria-selected="conversation.key === selectedConversation?.key"
           @click="selectedAgentId = conversation.agentId"
         >
           <strong>{{ tabTitle(conversation) }}</strong>
+          <i
+            v-if="attentionOf(conversation)"
+            class="mission-conversation-rail__dot"
+            :data-attention="attentionOf(conversation)"
+            aria-hidden="true"
+          />
         </button>
       </div>
     </div>
@@ -41,12 +47,14 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import type { Agent } from '@workspace/core/contracts';
 import type { Mission } from '@workspace/core/missions';
+import { agentAttention } from '@workspace/core/mission-attention';
 import { pendingMissionRun } from '@workspace/core/mission-execution';
 import { CodeIcon, SparklesIcon, TargetArrowIcon } from '../shared/icons/app-icons';
 
 type Conversation = { key: string; agentId: string; run: NonNullable<Mission['execution']>['runs'][number] };
-const props = defineProps<{ mission: Mission }>();
+const props = defineProps<{ mission: Mission; agents?: Agent[]; unreadAgentIds?: string[] }>();
 const selectedAgentId = defineModel<string>('selectedAgentId', { default: '' });
 const emit = defineEmits<{ 'open-conversation': [agentId: string] }>();
 const { t } = useI18n();
@@ -83,6 +91,14 @@ watch(preferredAgentId, (agentId, previous) => {
   if (!selectedAgentId.value || selectedAgentId.value === previous) selectedAgentId.value = agentId;
 }, { immediate: true });
 watch(conversationAgentId, agentId => { if (agentId) emit('open-conversation', agentId); }, { immediate: true });
+
+const unreadIds = computed(() => new Set(props.unreadAgentIds ?? []));
+const attentionOf = (conversation: Conversation) => agentAttention(props.agents?.find(agent => agent.id === conversation.agentId), unreadIds.value);
+function tabLabel(conversation: Conversation): string {
+  const attention = attentionOf(conversation);
+  if (!attention) return tabTitle(conversation);
+  return `${tabTitle(conversation)}, ${attention === 'needsInput' ? t('status.awaitingInput') : t('sidebar.unread')}`;
+}
 
 function tabTitle(conversation: Conversation): string {
   if (conversation.run.stage === 'implementation') {
@@ -196,6 +212,7 @@ function conversationKey(run: Conversation['run']): string {
 
 .mission-conversation-rail__switcher button {
   display: flex;
+  gap: var(--space-4);
   min-width: 0;
   flex: 0 0 auto;
   align-items: center;
@@ -217,6 +234,19 @@ function conversationKey(run: Conversation['run']): string {
 .mission-conversation-rail__switcher button[aria-selected="true"] {
   border-bottom-color: var(--color-primary);
   color: var(--color-text);
+}
+
+.mission-conversation-rail__dot {
+  align-self: center;
+  flex: 0 0 auto;
+  width: var(--agent-status-dot-size, 8px);
+  height: var(--agent-status-dot-size, 8px);
+  border-radius: var(--radius-full);
+  background: var(--color-error);
+}
+
+.mission-conversation-rail__dot[data-attention="needsInput"] {
+  background: var(--color-primary);
 }
 
 .mission-conversation-rail__switcher strong {

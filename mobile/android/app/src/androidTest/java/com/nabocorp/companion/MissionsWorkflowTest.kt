@@ -35,6 +35,12 @@ class MissionsWorkflowTest {
         NativeEngineFixture(app.activityRule.scenario).use { e ->
             mount(e, state())
             app.onNodeWithContentDescription("Open workspace").performClick()
+            for ((attention, label) in listOf("needsInput" to "Needs input", "unread" to "Unread activity", "working" to "Working", "idle" to "Idle")) {
+                e.state(state().put("missionAttention", attention))
+                app.onNodeWithContentDescription("Missions, 1 active").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, label))
+                if (attention == "needsInput") app.onNodeWithText("Input").assertIsDisplayed()
+                else app.onNodeWithText("Input").assertDoesNotExist()
+            }
             app.onNodeWithContentDescription("Missions, 1 active").performClick()
             // The card says what an agent is on right now.
             app.onNodeWithText("02 Open workers").assertIsDisplayed()

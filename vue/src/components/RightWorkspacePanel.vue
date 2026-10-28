@@ -182,6 +182,7 @@
       :panel="gitPanel"
       @open-file="emit('previewFile', $event)"
       @refresh="emit('refreshGitDiff', gitPanel.target)"
+      @annotate="emit('annotateCode', $event)"
     />
 
     <CodeReviewPanel
@@ -320,7 +321,10 @@
         :content="sourceFilePanel(tab)?.content ?? ''"
         :error="sourceFilePanel(tab)?.error"
         :language="sourceFilePanel(tab)?.language"
+        :path="sourceFilePanel(tab)?.path"
         :state="sourceFilePanel(tab)?.state"
+        annotatable
+        @annotate="emit('annotateCode', $event)"
       />
     </div>
 
@@ -334,6 +338,8 @@
         :diff="diffPanel(tab)?.diff ?? ''"
         :error="diffPanel(tab)?.error"
         :state="diffPanel(tab)?.state"
+        annotatable
+        @annotate="emit('annotateCode', $event)"
       />
     </div>
 
@@ -528,6 +534,7 @@ const currentNativeReview = computed(() => {
 const codeReviewInstructions = defineModel<string>('codeReviewInstructions', { default: '' });
 const emit = defineEmits<{
   annotateVisualization: [annotation: import('./use-visualization-annotations').VisualizationAnnotationInput];
+  annotateCode: [annotation: import('./use-code-annotations').CodeAnnotationInput];
   browserUrlChange: [tab: 'browser' | RightWorkspaceBrowserTab, url: string];
   closeTab: [tab: RightWorkspaceTab];
   openTab: [tab: RightWorkspaceTab];

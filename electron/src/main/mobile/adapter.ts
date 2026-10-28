@@ -21,6 +21,7 @@ export interface MobileAdapter {
   perform(device: MobileDevice, action: MobileAction, screen?: DeviceScreen): Promise<void>;
   inspect(device: MobileDevice): Promise<string>;
   rotate(device: MobileDevice): Promise<void>;
+  setFolded(device: MobileDevice, folded: boolean): Promise<void>;
   /** False once the device has been closed or powered off outside the app. */
   isRunning(device: MobileDevice): Promise<boolean>;
   /** Clockwise quarter turns that show the device's framebuffer upright. */
@@ -67,7 +68,7 @@ export class NativeMobileAdapter implements MobileAdapter {
           });
         else
           for (const [runtime, devices] of Object.entries(
-            result.devices as Record<string, { udid: string; name: string; state: string }[]>,
+            result.devices as Record<string, { udid: string; name: string; state: string; deviceTypeIdentifier?: string }[]>,
           )) {
             if (!runtime.includes('.iOS-')) continue;
             for (const device of devices)
@@ -76,6 +77,7 @@ export class NativeMobileAdapter implements MobileAdapter {
                 name: device.name,
                 platform: 'ios',
                 state: device.state === 'Booted' ? 'booted' : 'shutdown',
+                ...(device.deviceTypeIdentifier === 'com.apple.CoreSimulator.SimDeviceType.iPhone-Duo' ? { foldable: true } : {}),
               });
           }
         if (bridge && !catalog.devices.some((device) => device.platform === 'ios'))
@@ -324,6 +326,26 @@ export class NativeMobileAdapter implements MobileAdapter {
     } catch {
       return true; // adb itself failing says nothing about this device; keep the attachment.
     }
+  }
+
+  async setFolded(device: MobileDevice, folded: boolean): Promise<void> {
+    if (device.platform !== 'ios' || !device.foldable) throw new Error('This simulator does not support folding.');
+    const client = this.ios(device);
+    const angle = folded ? 0 : 180;
+    await client.setHingeAngle(angle);
+    this.orientations.delete(device.id);
+    // A delivered hinge event can precede the display switch. Do not restart
+    // capture until the active screen agrees with the measured pose.
+    const deadline = Date.now() + 10_000;
+    do {
+      const measured = await client.getHingeAngle();
+      const target = await client.describe();
+      if (Math.abs(measured - angle) <= 0.5 && target.displays?.some(display => display.active && display.integrated && display.name === (folded ? 'LCD' : 'LCD-1'))) {
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    } while (Date.now() < deadline);
+    throw new Error('The simulator display is still changing. Try folding or unfolding again.');
   }
 
   async displayRotation(device: MobileDevice): Promise<0 | 1 | 2 | 3> {

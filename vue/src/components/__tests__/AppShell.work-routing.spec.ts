@@ -305,12 +305,20 @@ describe('AppShell work routing', () => {
       action: 'fix',
       destination: 'new',
       item: issue,
+      backend: 'codex',
+      model: 'gpt-fast',
+      reasoningEffort: 'high',
+      serviceTier: 'fast',
     });
     await flushPromises();
     expect(createSourceWorktree).toHaveBeenCalledWith({
       repoPath: '/Users/nbonamy/src/agent-workspace',
       branchName: 'fix/gh-24',
     });
+    expect(createAgent).toHaveBeenCalledWith(expect.objectContaining({
+      backend: 'codex',
+      modelSelection: { model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'fast' },
+    }));
     expect(assignWorkItemAction).toHaveBeenCalledWith(expect.objectContaining({
       agentId: preparedAgent.id,
       item: issue,

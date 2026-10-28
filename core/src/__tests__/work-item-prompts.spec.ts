@@ -76,6 +76,7 @@ describe('work item prompts', () => {
     const visible = (prompt: string) => prompt.split('</context>\n\n')[1];
 
     expect(visible(workItemAssignmentPrompt(issue, { action: 'investigate' }))).toBe('Investigate GitHub issue #42 — Keep queued messages visible');
+    expect(visible(workItemAssignmentPrompt(pullRequest, { action: 'checkFeedback' }))).toBe('Check review feedback on GitHub pull request #42 — Keep queued messages visible');
     expect(visible(workItemAssignmentPrompt(pullRequest, { action: 'review' }))).toBe('Review GitHub pull request #42 — Keep queued messages visible');
     expect(visible(workItemAssignmentPrompt(pullRequest, { action: 'addressFeedback' }))).toBe('Address review feedback on GitHub pull request #42 — Keep queued messages visible');
     expect(visible(workItemAssignmentPrompt(issue))).toBe('Work on GitHub issue #42 — Keep queued messages visible');
@@ -99,6 +100,7 @@ describe('work item prompts', () => {
     expect(workItemAssignmentPrompt(workItem(), { action: 'fix' })).toContain('Reproduce the problem, implement the fix, verify it');
 
     const pullRequest = workItem({ kind: 'pullRequest' });
+    expect(workItemAssignmentPrompt(pullRequest, { action: 'checkFeedback' })).toMatch(/unresolved.*current branch[\s\S]*Do not modify files/);
     expect(workItemAssignmentPrompt(pullRequest, { action: 'addressFeedback' })).toContain('Inspect the current review comments, update the branch');
     expect(workItemAssignmentPrompt(pullRequest, { action: 'review' })).toContain('Report concrete findings and do not modify files.');
   });

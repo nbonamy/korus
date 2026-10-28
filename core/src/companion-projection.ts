@@ -6,6 +6,7 @@ import type { Mission, MissionReviewFinding } from './mission-types';
 import { missionStageReady } from './missions';
 import { enabledAgentBackends, providerConnectionsForTeam } from './agent-backends';
 import { repositoryIconForAgent } from './workspace-sidebar';
+import { missionLeadAgentId } from './mission-attention';
 
 const encoder = new TextEncoder();
 /** Stable per path, reveals no directory names, and ends with the folder name so label fallbacks keep working. */
@@ -76,19 +77,6 @@ function ticketState(mission: Mission, index: number): { state: CompanionMission
   return { state: (ticket.dependsOn ?? []).every((blocker) => tickets[blocker]?.done) ? 'queued' : 'blocked' };
 }
 
-const missionStages = ['requirements', 'tickets', 'implementation', 'review', 'ship'] as const;
-/** The current or latest earlier stage's lead; implementation agents belong to repositories, not the lead role. */
-function missionLead(mission: Mission): string | undefined {
-  const agents = mission.stageAgentIds ?? {};
-  for (let index = missionStages.indexOf(mission.stage); index >= 0; index--) {
-    const stage = missionStages[index]!;
-    if (stage === 'implementation') continue;
-    const id = agents[stage];
-    if (id) return id;
-  }
-  return undefined;
-}
-
 /** Implementation with every ticket done moves on to review; a reviewed mission is ready to ship. */
 function missionNext(mission: Mission): 'review' | 'ship' | undefined {
   if (mission.status !== 'active') return undefined;
@@ -132,7 +120,7 @@ function companionMissionsOf(source: { missions?: Mission[] }): { missions: Comp
     .sort((a, b) => Number(b.status === 'active') - Number(a.status === 'active') || Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
     .slice(0, maxCompanionMissions);
   const missions = ranked.map((mission): CompanionMission => ({ id: mission.id, teamId: mission.teamId, outcome: mission.outcome.slice(0, maxMissionText), stage: mission.stage,
-    status: mission.status, startedAt: missionStart(mission), updatedAt: mission.updatedAt, ...(missionLead(mission) ? { leadAgentId: missionLead(mission)! } : {}), revision: mission.revision, ...(missionNext(mission) ? { next: missionNext(mission)! } : {}), ...(missionReview(mission) ? { review: missionReview(mission)! } : {}),
+    status: mission.status, startedAt: missionStart(mission), updatedAt: mission.updatedAt, ...(missionLeadAgentId(mission) ? { leadAgentId: missionLeadAgentId(mission)! } : {}), revision: mission.revision, ...(missionNext(mission) ? { next: missionNext(mission)! } : {}), ...(missionReview(mission) ? { review: missionReview(mission)! } : {}),
     tickets: mission.artifacts.tickets.map((ticket, index) => {
       const { state, workerId, runId } = ticketState(mission, index);
       if (workerId) workerIds.add(workerId);

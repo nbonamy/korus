@@ -86,7 +86,7 @@
           <div v-for="mission in missions" :key="mission.id" class="agent-sidebar__agent-row">
             <button
               class="agent-sidebar__agent"
-              :class="{ 'agent-sidebar__agent--active': activeMissionId === mission.id }"
+              :class="{ 'agent-sidebar__agent--active': activeMissionId === mission.id, 'agent-sidebar__agent--awaiting-input': attentionOf(mission) === 'needsInput' }"
               type="button"
               :aria-pressed="activeMissionId === mission.id"
               @click="emit('select-mission', mission.id)"
@@ -99,9 +99,17 @@
                 >{{ mission.outcome }}</strong>
               </span>
               <span
+                v-if="attentionOf(mission) === 'needsInput'"
+                class="agent-sidebar__input-needed"
+                :title="missionStatusLabel(mission)"
+                :aria-label="missionStatusLabel(mission)"
+              >{{ t('sidebar.input') }}</span>
+              <span
+                v-else
                 class="agent-sidebar__status"
-                :data-status="mission.status === 'completed' ? 'idle' : 'working'"
-                :aria-label="missionProgressLabel(mission)"
+                :class="{ 'agent-sidebar__status--unread': attentionOf(mission) === 'unread' }"
+                :data-status="missionDotStatus(mission)"
+                :aria-label="missionStatusLabel(mission)"
               />
             </button>
           </div>
@@ -349,6 +357,8 @@
       :x="contextMenuPosition.x"
       :y="contextMenuPosition.y"
       @delete="deleteContextMission"
+      :workspaces="contextMissionWorkspaces"
+      @create-agent="createAgentInContextMissionWorktree"
       @close="closeMissionContextMenu"
     />
 
@@ -375,6 +385,8 @@
 import { supportsConversationSharing } from '@workspace/core/conversation-sharing';
 import type { Mission } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
+import { missionAttention } from '@workspace/core/mission-attention';
+import { missionCreatedWorkspaces } from '@workspace/core/mission-execution';
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Agent, OpenInApplication, OpenInApplicationCatalog, ReorderAgentsInput, ReorderRepositoriesInput, SourceBranch, Team } from '@workspace/core/contracts';
@@ -421,6 +433,7 @@ import RepositoryAgentRow from './RepositoryAgentRow.vue';
 
 const props = defineProps<{
   agents: Agent[];
+  missionAgents?: Agent[];
   missions?: Mission[];
   activeMissionId?: string | null;
   activeAgentId: string | null;
@@ -474,6 +487,7 @@ const emit = defineEmits<{
   'create-quick-chat': [];
   'create-mission': [];
   'delete-mission': [id: string];
+  'create-agent-in-mission-worktree': [payload: { missionId: string; worktreePath: string }];
   'delete-repository': [agentId: string];
   'select-mission': [id: string];
   'update-repository-icon': [payload: { repositoryKey: string; repositoryRoot: string; icon: string | undefined }];
@@ -560,6 +574,7 @@ const backendChoices = useBackendChoices(() => props.teamId);
 const quickChatGroup = computed(() => repositoryGroups.value.find((group) => group.kind === 'quickChats') ?? null);
 const contextMenuAgentId = ref<string | null>(null);
 const contextMenuMissionId = ref<string | null>(null);
+const contextMissionWorkspaces = computed(() => missionCreatedWorkspaces(props.missions?.find(mission => mission.id === contextMenuMissionId.value)));
 const contextMenuRepositoryAgentId = ref<string | null>(null);
 const repositoryMenuItems = computed<AppMenuItem[]>(() => [{ id: 'delete', type: 'action', label: t('repositoryDeletion.action'), icon: Trash2Icon, danger: true }]);
 const repositorySessionMenu = useRepositorySessionMenu(() => props.listRepositoryBranches, t);
@@ -728,6 +743,19 @@ function statusLabel(status: Agent['status']['type']): string {
   return t(`status.${status}`);
 }
 
+const unreadAgentIdSet = computed(() => new Set(props.unreadAgentIds ?? []));
+const attentionOf = (mission: Mission) => missionAttention(mission, props.missionAgents ?? props.agents, unreadAgentIdSet.value);
+function missionDotStatus(mission: Mission): 'awaitingInput' | 'working' | 'idle' {
+  const attention = attentionOf(mission);
+  return attention === 'needsInput' ? 'awaitingInput' : attention === 'working' ? 'working' : 'idle';
+}
+function missionStatusLabel(mission: Mission): string {
+  const attention = attentionOf(mission);
+  if (attention === 'needsInput') return statusLabel('awaitingInput');
+  if (attention === 'unread') return t('sidebar.unread');
+  return missionProgressLabel(mission);
+}
+
 function missionProgressLabel(mission: Mission): string {
   if (mission.status === 'completed') return t('missions.completed');
   const stages = missionWorkflow(mission.workflow.type).stages;
@@ -809,6 +837,13 @@ function deleteContextMission(): void {
   const missionId = contextMenuMissionId.value;
   if (!missionId) return;
   emit('delete-mission', missionId);
+  closeMissionContextMenu();
+}
+
+function createAgentInContextMissionWorktree(worktreePath: string): void {
+  const missionId = contextMenuMissionId.value;
+  if (!missionId) return;
+  emit('create-agent-in-mission-worktree', { missionId, worktreePath });
   closeMissionContextMenu();
 }
 

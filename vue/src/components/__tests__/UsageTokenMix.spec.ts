@@ -33,8 +33,8 @@ it("stacks inclusive input and output once and labels cache/reasoning shares aga
       wrapper.findAll(".mix-legend li").map((part) => part.text()),
     ).toStrictEqual([
       "Input tokens71.4%",
-      "Output tokens28.6%",
       "Cache read (% of input)60%",
+      "Output tokens28.6%",
       "Reasoning (% of output)25%",
     ]);
     await wrapper.setProps({

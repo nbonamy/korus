@@ -126,6 +126,35 @@ describe('MissionWorkspace', () => {
     wrapper.unmount();
   });
 
+  it('starts implementation on the chosen service tier, prefilled from the lead while the model still offers it', async () => {
+    const mission = missionWithRun('awaitingReview', true);
+    mission.stage = 'tickets';
+    mission.execution!.runs[0]!.stage = 'tickets';
+    mission.execution!.runs[0]!.proposal!.tickets = [{ title: 'Checkout', repositoryPath: '/repo', done: false }];
+    const agents = createInitialSnapshot().agents;
+    agents[0]!.backendDefaults = { kind: 'codex', model: 'planner', reasoningEffort: 'high', serviceTier: 'fast' };
+    const executeMission = vi.fn().mockResolvedValue(undefined);
+    const tiers = [{ id: 'fast', name: 'Fast', description: '' }, { id: 'ultrafast', name: 'Ultrafast', description: '' }];
+    const wrapper = mountWorkspace(mission, { agents: [], executeMission, models: { codex: [
+      { id: 'planner', model: 'planner', displayName: 'Planner', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'High' }], serviceTiers: tiers },
+      { id: 'luna', model: 'luna', displayName: 'Luna', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'Low' }] },
+    ] } });
+    await flushPromises();
+    await wrapper.setProps({ agents }); await flushPromises();
+    await wrapper.get('.mission-workspace__stage-header .app-button--primary').trigger('click'); await flushPromises();
+    const picker = wrapper.get('[aria-label="Coding agent and model"]');
+    expect(picker.text()).toContain('fast');
+    await picker.trigger('click'); await flushPromises();
+    [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent?.trim() === 'ultrafast')!.click();
+    await flushPromises();
+    await wrapper.get('[role="dialog"] .app-button--primary').trigger('click'); await flushPromises();
+    expect(executeMission).toHaveBeenCalledExactlyOnceWith({
+      id: mission.id, revision: mission.revision, action: 'accept', runId: mission.execution!.runs[0]!.id,
+      implementationModel: { backend: 'codex', model: 'planner', reasoningEffort: 'high', serviceTier: 'ultrafast' },
+    });
+    wrapper.unmount();
+  });
+
   it('waits for the user to move completed Implementation into Review', async () => {
     const mission = missionWithRun('accepted', true);
     mission.stage = 'implementation';

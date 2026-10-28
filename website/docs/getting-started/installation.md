@@ -1,5 +1,5 @@
 ---
-description: Download and install the Korus desktop app.
+description: Download Korus for your computer and iPhone.
 ---
 
 # Installation
@@ -21,6 +21,12 @@ Choose the **Windows x64 installer** from [Downloads](__PRODUCT_DOWNLOAD_URL__),
 ## Install on Linux
 
 Choose **x64** or **ARM64** to match your system, then select the **DEB**, **RPM**, or **ZIP** format from [Downloads](__PRODUCT_DOWNLOAD_URL__). Use your distribution's package manager for DEB or RPM files; extract the ZIP for a manual installation. Korus does not infer Linux architecture from your browser.
+
+## Install on iPhone
+
+Download [Korus Mobile from the App Store](__PRODUCT_COMPANION_APP_STORE_URL__) on an iPhone running iOS 26 or later. It connects to Korus on your Mac, Windows, or Linux computer so you can continue conversations, follow Missions, review changes, and respond to your agents away from your desk.
+
+Enable mobile access in **Settings → Connections** on the computer, pair your phone, and approve it on the desktop. Keep the computer awake, running Korus, and connected to the internet. See [Continue from your phone](../features/workspace#continue-from-your-phone) for pairing and connection settings.
 
 ## Updates
 

@@ -328,7 +328,9 @@ const shortcuts = computed(() => [
     { id: 'myPullRequests' as const, title: translate(props.workProvider === 'gitlab' ? 'gitlabBacklog.mergeRequests' : 'surface.cockpitWorkInbox.pullRequests'), subtitle: translate('backlogShortcuts.createdByMe'), icon: 'pullRequest' as const },
     { id: 'ownedWork' as const, title: translate('backlogShortcuts.work'), subtitle: translate(props.workProvider === 'gitlab' ? 'backlogShortcuts.inMyProjects' : 'backlogShortcuts.inMyRepositories'), icon: 'repository' as const },
   ] : []),
-  { id: 'all' as const, title: translate('backlogShortcuts.allWork'), subtitle: translate(workProviderDefinition(props.workProvider ?? 'github').repositoryBacked ? 'backlogShortcuts.acrossRepositories' : 'backlogShortcuts.acrossSources'), icon: 'all' as const },
+  workProviderDefinition(props.workProvider ?? 'github').repositoryBacked
+    ? { id: 'outsideWork' as const, title: translate('backlogShortcuts.work'), subtitle: translate(props.workProvider === 'gitlab' ? 'backlogShortcuts.outsideMyProjects' : 'backlogShortcuts.outsideMyRepositories'), icon: 'all' as const }
+    : { id: 'all' as const, title: translate('backlogShortcuts.allWork'), subtitle: translate('backlogShortcuts.acrossSources'), icon: 'all' as const },
 ]);
 const activeShortcut = computed(() => {
   const backlog = props.workBacklog;

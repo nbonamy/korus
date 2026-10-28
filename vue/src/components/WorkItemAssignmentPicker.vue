@@ -47,7 +47,7 @@
         <section class="work-item-assignment-picker__section">
           <h3 class="app-section-label">{{ t('repositoryBacklog.session') }}</h3>
           <div v-if="destination === 'new'" class="work-item-assignment-picker__model-selectors">
-            <BackendModelSelector v-model:backend="backend" v-model:model="model" v-model:reasoning-effort="reasoningEffort" :agent-id="modelCatalogAgentId" :disabled="busy" />
+            <BackendModelSelector v-model:backend="backend" v-model:model="model" v-model:reasoning-effort="reasoningEffort" v-model:service-tier="serviceTier" :agent-id="modelCatalogAgentId" :disabled="busy" />
           </div>
           <el-select
             v-else
@@ -130,6 +130,7 @@ export type WorkItemAssignmentSelection = {
   backend?: import('@workspace/core/contracts').AgentBackend;
   model?: string;
   reasoningEffort?: string;
+  serviceTier?: string;
   action: WorkItemAssignmentAction;
   agentId?: string;
   destination: WorkItemAssignmentDestination;
@@ -163,6 +164,7 @@ const destination = ref<WorkItemAssignmentDestination>('new');
 const selectedAgentId = ref('');
 const model = ref('');
 const reasoningEffort = ref('');
+const serviceTier = ref('');
 const modelCatalogAgentId = computed(() => props.modelAgentId || props.sessions[0]?.agentId || '');
 const reuseAction = ref<WorkItemAssignmentAction | 'custom' | null>(null);
 const secondaryAction = computed<WorkItemAssignmentAction>(() => props.item.kind === 'pullRequest' ? 'addressFeedback' : 'investigate');
@@ -220,6 +222,7 @@ function selection(reuseExisting = false): Omit<WorkItemAssignmentSelection, 'ac
     ...(destination.value === 'new' ? { backend: backend.value } : {}),
     ...(destination.value === 'new' && model.value ? { model: model.value } : {}),
     ...(destination.value === 'new' && reasoningEffort.value ? { reasoningEffort: reasoningEffort.value } : {}),
+    ...(destination.value === 'new' && serviceTier.value ? { serviceTier: serviceTier.value } : {}),
     ...(destination.value === 'existing' ? { agentId: selectedAgentId.value } : {}),
     item: props.item,
     ...(reuseExisting ? { reuseExisting: true } : {}),

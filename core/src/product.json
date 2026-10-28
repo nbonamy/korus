@@ -11,6 +11,7 @@
   "repository": "nbonamy/korus",
   "repositoryUrl": "https://github.com/nbonamy/korus",
   "websiteUrl": "https://meetkorus.dev",
+  "companionAppStoreUrl": "https://apps.apple.com/us/app/korus-mobile/id6822816255",
   "updateBaseUrl": "https://update.electronjs.org",
   "deploymentRoot": "/var/www/korus",
   "downloadFileName": "korus-macos-arm64.dmg",

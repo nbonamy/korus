@@ -248,6 +248,7 @@ export class CompanionManager {
     this.gateway = new CompanionGateway(peerIdFromPrivateKey(this.key).toString(), saved.gateway, {
       hostName: () => this.hostName,
       gitDiff: (agentId, target) => this.backend.request(backendMethods.agentGitDiffGet, { agentId, target, _clientId: 'companion-read' }),
+      previewFile: (agentId, filePath) => this.backend.request(backendMethods.agentFilePreview, { agentId, filePath, _clientId: 'companion-read' }),
       readImage: (agentId, filePath) => readConversationImage(() => this.backend.request(backendMethods.agentFilePreview, { agentId, filePath, _clientId: 'companion-read' })),
       localRepositories: remote => projects.localList(remote),
       localBranches: (repositoryId, remote) => projects.localBranches(repositoryId, remote),
