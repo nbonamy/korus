@@ -2910,10 +2910,17 @@ function closeNewProjectDialog(): void {
 }
 
 async function createNewProject(name: string, backend: Agent['backend']): Promise<void> {
+  if (newProjectBusy.value) return;
   const { teamId } = repositorySessionContext(null);
+  const team = props.snapshot.teams.find(team => team.id === teamId);
   newProjectBusy.value = true;
   newProjectError.value = null;
   try {
+    if (!team?.remoteConnectionId && !props.snapshot.sourceFolder.path.trim()) {
+      const folder = await props.chooseSourceFolder();
+      if (!folder) return;
+      await props.updateSettings({ sourceFolder: { path: folder } });
+    }
     await props.createProject({
       name,
       selection: { backend },
