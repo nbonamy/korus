@@ -186,8 +186,12 @@ export type AppBackendRequestMap = {
     result: import('../remote-collaboration').RemoteWorkerResult;
   };
   [backendMethods.collaborationPromptSend]: {
-    params: { agentId: string; prompt: string; goal?: boolean; message?: boolean };
+    params: { agentId: string; prompt: string; goal?: boolean };
     result: import('../backend-driver').BackendSendResult;
+  };
+  [backendMethods.collaborationMessageSend]: {
+    params: { agentId: string; messageId: string; prompt: string };
+    result: { accepted: true };
   };
   [backendMethods.clientCollaborationCall]: {
     params: import('../remote-collaboration').RemoteCollaborationCall;

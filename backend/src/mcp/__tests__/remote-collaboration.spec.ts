@@ -35,7 +35,7 @@ async function host(snapshot: AppSnapshot, label: string, remoteClients?: unknow
     getCollaborationAgents: () => server.collaborationAgents(),
     createRemoteWorker: (...args) => server.provisionRemoteWorker(...args),
     sendRemotePrompt: (agent, prompt, goal) => server.sendTaskPrompt(agent, prompt, goal),
-    sendRemoteMessage: (agent, prompt) => server.deliverRemoteMessage(agent, prompt),
+    sendRemoteMessage: (agent, prompt, messageId) => server.deliverRemoteMessage(agent, prompt, messageId),
     forwardCollaboration: (agentId, name, args) => server.forwardCollaborationCall(agentId, name, args),
     closeAgent: (caller, worker) => server.closeAgentFromMcp(caller, worker),
     toolModuleProviders: [createTaskToolModuleProvider(tasks, id => Boolean(snapshot.teams.find(team => team.id === snapshot.agents.find(agent => agent.id === id)?.teamId)?.collaborationOwnerId))],
@@ -64,6 +64,40 @@ async function host(snapshot: AppSnapshot, label: string, remoteClients?: unknow
     });
   }
   return { server, mcp, snapshot, store, tasks, provider, events, createWorktree };
+}
+
+async function connectedPair() {
+  const local = createInitialSnapshot();
+  local.providerConnections = [{ backend: 'codex', connected: true, installed: true, checking: false }];
+  local.remoteConnections.connections = [readyRemoteConnection()];
+  const remote = createInitialSnapshot();
+  remote.agents = [];
+  remote.teams.forEach(team => { team.agentIds = []; });
+  remote.providerConnections = local.providerConnections;
+  let owner!: Awaited<ReturnType<typeof host>>;
+  const workerHost = await host(remote, 'remote', undefined, input => owner.server.handleRemoteCollaborationCall('connection-devbox', input));
+  const network = { online: true, loseReply: false };
+  const clients = { close: vi.fn(), request: vi.fn(async (_connection, method, params, onEvent) => {
+    if (!network.online) throw new Error('Host disconnected');
+    workerHost.events.clear();
+    if (onEvent) workerHost.events.add(onEvent);
+    const response = await workerHost.server.handleMessage({ jsonrpc: '2.0', id: 'ssh', method, params });
+    if (!response || 'error' in response) throw new Error(response && 'error' in response ? response.error.message : 'No response');
+    if (network.loseReply && method === 'collaboration/message/send') {
+      network.loseReply = false;
+      throw new Error('SSH reply lost after admission');
+    }
+    return response.result;
+  }) };
+  owner = await host(local, 'local', clients);
+  const created = await owner.server.handleMessage({ jsonrpc: '2.0', id: 'ui', method: backendMethods.agentQuickChatCreate,
+    params: { input: { teamId: local.teams[0]!.id, remoteConnectionId: 'connection-devbox', selection: { backend: 'codex' } }, entityResult: true } });
+  if (!created || 'error' in created) throw new Error('UI chat creation failed');
+  const workerId = (created.result as { agentId: string }).agentId;
+  const worker = remote.agents.find(agent => agent.id === workerId)!;
+  worker.backendSession = { kind: 'codex', threadId: 'remote-worker' };
+  return { owner, workerHost, network, clients, worker,
+    send: (content: string) => owner.mcp.callTool(local.agents[0]!.id, 'send-message', { to: workerId, content }) };
 }
 
 describe('collaboration across daemon ownership boundaries', () => {
@@ -100,6 +134,95 @@ describe('collaboration across daemon ownership boundaries', () => {
     expect(local.agents.find(agent => agent.id === child.structuredContent?.agentId)).toMatchObject({ teamId: local.teams[0]!.id, delegatedByAgentId: workerId });
     const ownerId = local.teams[0]!.remoteLinks![0]!.collaborationOwnerId;
     expect(remote.teams.find(team => team.id === local.teams[0]!.remoteLinks![0]!.remoteTeamId)?.collaborationOwnerId).toBe(ownerId);
+  });
+
+  it.each(['approval', 'failed steering', 'non-steerable provider'] as const)('queues remote messages on the worker during %s and drains them after idle', async state => {
+    const { owner, workerHost, worker, send } = await connectedPair();
+    const conversation = workerHost.provider.conversation('remote-worker');
+    conversation.setSnapshot({ busy: true, activeTurnId: 'remote-turn' });
+    if (state === 'failed steering') conversation.handle.steerMessage.mockRejectedValueOnce(new Error('Turn changed'));
+    if (state === 'non-steerable provider') {
+      // Driver capabilities are the server's provider boundary; this host cannot steer its active turn.
+      const capabilities = workerHost.provider.driver.getCapabilities(worker);
+      vi.spyOn(workerHost.provider.driver, 'getCapabilities').mockReturnValue({ ...capabilities, steerPrompt: false });
+    }
+    workerHost.server.emitEvent({ agentId: worker.id, type: 'agent.statusChanged', payload: state === 'approval'
+      ? { type: 'awaitingInput' } : { type: 'working' } });
+    expect((await send('Handle this when ready')).isError).toBe(false);
+    await vi.waitFor(() => expect(workerHost.snapshot.queuedPrompts).toEqual([
+      expect.objectContaining({ agentId: worker.id, text: expect.stringContaining('Handle this when ready') }),
+    ]));
+    expect(owner.snapshot.queuedPrompts).toStrictEqual([]);
+    expect(await owner.server.handleMessage({ jsonrpc: '2.0', id: 'queue', method: backendMethods.snapshotGet }))
+      .toMatchObject({ result: { snapshot: { queuedPrompts: [expect.objectContaining({ agentId: worker.id })] } } });
+    conversation.setSnapshot({ busy: false, activeTurnId: null });
+    workerHost.server.emitEvent({ agentId: worker.id, type: 'agent.statusChanged', payload: { type: 'idle' } });
+    await vi.waitFor(() => expect(conversation.handle.sendMessage).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(workerHost.snapshot.queuedPrompts).toStrictEqual([]));
+    if (state === 'non-steerable provider') expect(conversation.handle.steerMessage).not.toHaveBeenCalled();
+  });
+
+  it('retries offline remote messages and deduplicates admission after a lost reply', async () => {
+    const { owner, workerHost, worker, network, send } = await connectedPair();
+    const conversation = workerHost.provider.conversation('remote-worker');
+    network.online = false;
+    expect((await send('Read after reconnect')).isError).toBe(false);
+    await vi.waitFor(() => expect(owner.snapshot.queuedPrompts).toStrictEqual([]));
+    network.online = true;
+    await vi.waitFor(() => expect(conversation.handle.sendMessage).toHaveBeenCalledOnce(), { timeout: 4000 });
+    workerHost.server.emitEvent({ agentId: worker.id, type: 'agent.statusChanged', payload: { type: 'awaitingInput' } });
+    network.loseReply = true;
+    expect((await send('Admit exactly once')).isError).toBe(false);
+    await vi.waitFor(() => expect(network.loseReply).toBe(false));
+    await vi.waitFor(async () => expect((await workerHost.mcp.callTool(worker.id, 'check-messages', { markAsRead: false })).structuredContent?.messages).toStrictEqual([]), { timeout: 4000 });
+    expect(workerHost.snapshot.queuedPrompts).toHaveLength(1);
+    workerHost.server.emitEvent({ agentId: worker.id, type: 'agent.statusChanged', payload: { type: 'idle' } });
+    await vi.waitFor(() => expect(conversation.handle.sendMessage).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(workerHost.snapshot.queuedPrompts).toStrictEqual([]));
+    expect(owner.snapshot.queuedPrompts).toStrictEqual([]);
+  });
+
+  it.each(['confirmed deletion', 'lost deletion reply'] as const)('resumes mixed-host cleanup after restart following %s', async failure => {
+    const local = createInitialSnapshot();
+    const team = local.teams[0]!;
+    local.teams.push({ id: 'local-fallback', name: 'Other', agentIds: [] });
+    local.remoteConnections.connections = [readyRemoteConnection(), { ...readyRemoteConnection(), id: 'second-host', name: 'second' }];
+    team.remoteLinks = [{ connectionId: 'connection-devbox', remoteTeamId: 'first-team' }, { connectionId: 'second-host', remoteTeamId: 'second-team' }];
+    const first = createInitialSnapshot();
+    first.teams.push({ id: 'first-team', name: 'First hidden', agentIds: [] });
+    const second = createInitialSnapshot();
+    second.teams.push({ id: 'second-team', name: 'Second hidden', agentIds: [] });
+    const firstHost = await host(first, 'first');
+    const secondHost = await host(second, 'second');
+    const keptAgents = [first.agents[0]!.id, second.agents[0]!.id];
+    let online = false;
+    let loseReply = failure === 'lost deletion reply';
+    const clients = { close: vi.fn(), request: vi.fn(async (connection, method, params) => {
+      if (connection.id === 'second-host' && !online) throw new Error('Second host disconnected');
+      const target = connection.id === 'second-host' ? secondHost : firstHost;
+      const response = await target.server.handleMessage({ jsonrpc: '2.0', id: 'ssh', method, params });
+      if (!response || 'error' in response) throw new Error(response && 'error' in response ? response.error.message : 'No response');
+      if (loseReply && method === backendMethods.teamDelete) { loseReply = false; throw new Error('Deletion reply lost'); }
+      return response.result;
+    }) };
+    let owner = await host(local, 'local', clients);
+    await owner.store.save(local);
+    const deletion = { jsonrpc: '2.0', id: 'delete', method: backendMethods.teamDelete, params: { teamId: team.id } } as const;
+    await expect(owner.server.handleMessage(deletion)).rejects.toThrow(failure === 'confirmed deletion' ? 'Second host disconnected' : 'Deletion reply lost');
+    expect(first.teams.some(team => team.id === 'first-team')).toBe(false);
+    const restored = await owner.store.load();
+    expect(restored.teams.find(candidate => candidate.id === team.id)?.remoteLinks?.map(link => link.connectionId))
+      .toStrictEqual(failure === 'confirmed deletion' ? ['second-host'] : ['connection-devbox', 'second-host']);
+    await owner.mcp.stop();
+    await owner.server.close();
+    owner = await host(restored, 'restarted', clients);
+    online = true;
+    expect(await owner.server.handleMessage(deletion)).toMatchObject({ result: { teams: [{ id: 'local-fallback' }] } });
+    expect([first.agents[0]!.id, second.agents[0]!.id]).toStrictEqual(keptAgents);
+    expect(second.teams.some(team => team.id === 'second-team')).toBe(false);
+    const lastRealTeam = { jsonrpc: '2.0', id: 'protected', method: backendMethods.teamDelete,
+      params: { teamId: first.teams[0]!.id, missingOk: true } } as const;
+    await expect(firstHost.server.handleMessage(lastRealTeam)).rejects.toThrow('At least one team must remain open');
   });
 
   it.each(['completion', 'cancellation', 'controller outage'] as const)('creates once on the selected host, exchanges messages, and persists remote %s', async lifecycle => {

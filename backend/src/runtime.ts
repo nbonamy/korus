@@ -152,7 +152,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     getCollaborationAgents: () => server.collaborationAgents(),
     createRemoteWorker: (...args) => server.provisionRemoteWorker(...args),
     sendRemotePrompt: (agent, prompt, goal) => server.sendTaskPrompt(agent, prompt, goal),
-    sendRemoteMessage: (agent, prompt) => server.deliverRemoteMessage(agent, prompt),
+    sendRemoteMessage: (agent, prompt, messageId) => server.deliverRemoteMessage(agent, prompt, messageId),
     forwardCollaboration: (agentId, name, args) => server.forwardCollaborationCall(agentId, name, args),
     retainDocument: (agentId, request) => documents.display(agentId, request),
     tasks,

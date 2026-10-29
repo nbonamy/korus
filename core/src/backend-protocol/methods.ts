@@ -3,6 +3,7 @@ export const backendMethods = {
   collaborationTeamBind: 'collaboration/team/bind',
   collaborationWorkerCreate: 'collaboration/worker/create',
   collaborationPromptSend: 'collaboration/prompt/send',
+  collaborationMessageSend: 'collaboration/message/send',
   guestConversationControl: 'client/guest/conversation/control',
   guestConversationImage: 'client/guest/conversation/image',
   guestConversationContent: 'client/guest/conversation/content',

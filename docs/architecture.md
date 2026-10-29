@@ -453,7 +453,10 @@ Agents never move between backend locations.
 - Creating an agent on a remote host takes `remoteConnectionId` next to `teamId`
   and a path on that host. Section actions carry host plus path.
 - Deleting a team removes its hidden teams (and their agents) on every host;
-  deleting a connection drops the links and leaves the remote running.
+  successful host cleanup is persisted before continuing. Linked-team deletion
+  accepts an already absent team, so a lost reply or controller restart can be
+  retried without removing unrelated teams. Deleting a connection drops the links
+  and leaves the remote running.
 - Sidebar sections are keyed by the repository's origin identity, falling back to
   the path on the agent's own host. Missions and sharing stay on the local host.
 - The controlling daemon owns collaboration and durable tasks for a mixed-host
@@ -462,6 +465,11 @@ Agents never move between backend locations.
   Callbacks validate the connection, team and caller before executing. Execution,
   native tool access and files remain owned by the worker's daemon. Cross-host
   conversation continuation uses a handoff rather than a foreign provider session.
+- Teammate messages are admitted separately from task startup. The worker daemon
+  steers or queues admitted messages and drains its own queue. The controller
+  serializes delivery per recipient and retries unconfirmed admissions with the
+  same message ID; the worker retains the last admission per recipient for lost
+  replies. Inbox, admission receipts and prompt queues are process-local.
 - Remote task receipts and results are saved by the controller. Provider events
   from the owning host settle the submitting turn before result delivery. A lost
   controller makes collaboration calls fail explicitly; missing outcomes remain

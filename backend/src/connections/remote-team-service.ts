@@ -129,10 +129,13 @@ export class RemoteTeamService {
   }
 
   /** Removes the hidden remote team of a host (and the agents in it) when a local team goes away. */
-  async deleteRemoteTeams(team: Team): Promise<void> {
-    for (const link of this.linksForTeam(team)) {
-      const remoteSnapshot = await this.request<AppSnapshot>(link.connectionId, backendMethods.teamDelete, { teamId: link.remoteTeamId });
+  async deleteRemoteTeams(team: Team, persist: () => Promise<unknown>): Promise<void> {
+    for (const link of [...this.linksForTeam(team)]) {
+      const remoteSnapshot = await this.request<AppSnapshot>(link.connectionId, backendMethods.teamDelete, { teamId: link.remoteTeamId, missingOk: true });
       this.rememberSnapshot(link.connectionId, remoteSnapshot);
+      team.remoteLinks = team.remoteLinks?.filter(candidate => candidate !== link);
+      if (!team.remoteLinks?.length) delete team.remoteLinks;
+      await persist();
     }
   }
 
@@ -325,6 +328,10 @@ function projectRemoteTeam(target: AppSnapshot, localTeam: Team, remoteSnapshot:
     ...Object.fromEntries(Object.entries(target.agentRequests ?? {}).filter(([agentId]) => !projectedAgentIds.has(agentId))),
     ...Object.fromEntries(Object.entries(remoteSnapshot.agentRequests ?? {}).filter(([agentId]) => projectedAgentIds.has(agentId))),
   };
+  target.queuedPrompts = [
+    ...(target.queuedPrompts ?? []).filter(prompt => !projectedAgentIds.has(prompt.agentId)),
+    ...(remoteSnapshot.queuedPrompts ?? []).filter(prompt => projectedAgentIds.has(prompt.agentId)),
+  ];
   target.backendApprovals = {
     ...Object.fromEntries(Object.entries(target.backendApprovals).filter(([agentId]) => !projectedAgentIds.has(agentId))),
     ...Object.fromEntries(Object.entries(remoteSnapshot.backendApprovals).filter(([agentId]) => projectedAgentIds.has(agentId))),

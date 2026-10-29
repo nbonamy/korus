@@ -228,9 +228,39 @@ export class AppBackendServer {
     return ref ? this.handleAgentDriverRequest(agent, backendMethods.driverConversationMessagesGet, { ref, agentId: agent.id }) as Promise<RendererMessage[]> : [];
   }
 
-  async deliverRemoteMessage(agent: Agent, prompt: string): Promise<unknown> {
+  async deliverRemoteMessage(agent: Agent, prompt: string, messageId: string): Promise<{ accepted: true }> {
     if (!agent.remoteConnectionId) throw new Error('Expected a remote recipient.');
-    return this.remoteTeams.request(agent.remoteConnectionId, backendMethods.collaborationPromptSend, { agentId: agent.id, prompt, message: true });
+    return this.remoteTeams.request(agent.remoteConnectionId, backendMethods.collaborationMessageSend, { agentId: agent.id, prompt, messageId });
+  }
+
+  // The controller sends one message at a time per agent, retaining its ID until admission is acknowledged.
+  // Keep the last admission through a lost SSH reply, without retaining an unbounded message history.
+  private readonly remoteMessageAdmissions = new Map<string, { id: string; prompt: string; result: Promise<{ accepted: true }> }>();
+
+  private admitRemoteMessage(agent: Agent, messageId: string, prompt: string): Promise<{ accepted: true }> {
+    const previous = this.remoteMessageAdmissions.get(agent.id);
+    if (previous?.id === messageId) {
+      if (previous.prompt !== prompt) throw new Error('Message ID already belongs to different content.');
+      return previous.result;
+    }
+    const result = (previous?.result ?? Promise.resolve()).catch(() => undefined).then(async (): Promise<{ accepted: true }> => {
+      if (!this.snapshot.agents.includes(agent)) throw new Error('Remote recipient was removed before admission.');
+      if (agent.status.type === 'working' && this.requireDriverRpc().getCapabilities(agent).steerPrompt) {
+        try {
+          await this.handleAgentDriverRequest(agent, backendMethods.driverPromptSteer, { agent, prompt });
+          return { accepted: true };
+        } catch {
+          // A changing turn or failed steer still admits the message to the host's ordinary queue.
+        }
+      }
+      this.handleBackendEvent({ agentId: agent.id, type: 'agent.promptQueued', payload: { id: messageId, text: prompt } });
+      return { accepted: true };
+    });
+    this.remoteMessageAdmissions.set(agent.id, { id: messageId, prompt, result });
+    void result.catch(() => {
+      if (this.remoteMessageAdmissions.get(agent.id)?.result === result) this.remoteMessageAdmissions.delete(agent.id);
+    });
+    return result;
   }
 
   private async remoteAgentPointer(input: { teamId?: string; remoteConnectionId?: string }): Promise<RemoteTeamPointer | null> {
@@ -1273,10 +1303,14 @@ export class AppBackendServer {
         const agent = this.snapshot.agents.find(agent => agent.id === requireString(params.agentId, 'agentId'));
         if (!agent) throw new Error('Remote worker not found.');
         const prompt = requireString(params.prompt, 'prompt');
-        if (params.message === true && agent.status.type === 'working' && defaultBackendCapabilities(agent.backend).steerPrompt) {
-          return createAppRpcResult(message.id, await this.handleAgentDriverRequest(agent, backendMethods.driverPromptSteer, { agent, prompt }));
-        }
         return createAppRpcResult(message.id, await this.sendTaskPrompt(agent, prompt, params.goal === true));
+      }
+      case backendMethods.collaborationMessageSend: {
+        const params = requireRecord(message.params);
+        const agent = this.snapshot.agents.find(agent => agent.id === requireString(params.agentId, 'agentId'));
+        if (!agent) throw new Error('Remote recipient not found.');
+        return createAppRpcResult(message.id, await this.admitRemoteMessage(agent,
+          requireString(params.messageId, 'messageId'), requireString(params.prompt, 'prompt')));
       }
       case backendMethods.agentMarkRead: {
         const params = requireRecord(message.params);
@@ -2771,9 +2805,13 @@ export class AppBackendServer {
       case backendMethods.teamDelete: {
         const teamId = requireTeamId(message.params);
         const existingTeam = this.snapshot.teams.find((candidate) => candidate.id === teamId) ?? null;
+        // Linked-team cleanup can be retried after the owning host deleted it but its reply was lost.
+        if (!existingTeam && requireRecord(message.params).missingOk === true) {
+          return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
+        }
         if (existingTeam) {
           if (this.snapshot.teams.length <= 1) throw new Error('At least one team must remain open.');
-          await this.remoteTeams.deleteRemoteTeams(existingTeam);
+          await this.remoteTeams.deleteRemoteTeams(existingTeam, () => this.persistSnapshotOnly());
 
           const missions = this.snapshot.missions?.filter(candidate => candidate.teamId === teamId) ?? [];
           let deletedMissions = 0;

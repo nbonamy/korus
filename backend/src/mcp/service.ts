@@ -64,7 +64,7 @@ export type AppMcpServiceOptions = {
   getCollaborationAgents?: () => Agent[];
   createRemoteWorker?: (caller: Agent, input: McpCreateAgentInput & { teamId?: string }, intendedId?: string, assignmentPrompt?: string, userInstructions?: Agent['delegationUserInstructions']) => Promise<Agent>;
   sendRemotePrompt?: (agent: Agent, prompt: string, goal?: boolean) => Promise<BackendSendResult>;
-  sendRemoteMessage?: (agent: Agent, prompt: string) => Promise<unknown>;
+  sendRemoteMessage?: (agent: Agent, prompt: string, messageId: string) => Promise<{ accepted: true }>;
   forwardCollaboration?: (agentId: string, name: string, args: Record<string, unknown>) => Promise<CallToolResult | undefined>;
   retainDocument?: (agentId: string, request: import('@workspace/core/contracts').SidePanelMarkdownRequest) => Promise<import('@workspace/core/contracts').SidePanelMarkdownRequest>;
   tasks?: DurableTaskService;
@@ -108,6 +108,9 @@ export class AppMcpService {
   private eventSink: ((event: BackendEvent) => void) | null = null;
   private driverRpc: BackendDriverRpc | null = null;
   private readonly queuedMessageIds = new Set<string>();
+  private readonly remoteMessageDeliveries = new Set<string>();
+  private readonly remoteMessageRetries = new Map<string, ReturnType<typeof setTimeout>>();
+  private stopped = false;
   private readonly promptInputMethodsByAgentId = new Map<string, SendPromptOptions['inputMethod']>();
   private readonly reviewTools = new ReviewToolRegistry();
   private readonly agentCreation: AgentCreationService;
@@ -203,6 +206,7 @@ export class AppMcpService {
   }
 
   start(): Promise<string> {
+    this.stopped = false;
     return this.server.start();
   }
 
@@ -222,6 +226,9 @@ export class AppMcpService {
   }
 
   stop(): Promise<void> {
+    this.stopped = true;
+    for (const timer of this.remoteMessageRetries.values()) clearTimeout(timer);
+    this.remoteMessageRetries.clear();
     return this.server.stop();
   }
 
@@ -258,14 +265,7 @@ export class AppMcpService {
     }
 
     if (agent.remoteConnectionId) {
-      try {
-        if (!this.options.sendRemoteMessage) throw new Error('Remote message delivery is unavailable.');
-        await this.options.sendRemoteMessage(agent, agentMessagesPrompt(messages));
-        this.coordinator.markMessagesRead(messages.map(message => message.id));
-        this.emitDequeuedMessages(agentId, messages.map(message => message.id));
-      } catch {
-        this.emitQueuedMessages(agentId, messages);
-      }
+      await this.deliverRemoteMessages(agentId);
       return;
     }
 
@@ -312,6 +312,38 @@ export class AppMcpService {
       },
     );
     this.emitSnapshotUpdated(agent.id);
+  }
+
+  private async deliverRemoteMessages(agentId: string): Promise<void> {
+    if (this.stopped || this.remoteMessageDeliveries.has(agentId)) return;
+    const retry = this.remoteMessageRetries.get(agentId);
+    if (retry) clearTimeout(retry);
+    this.remoteMessageRetries.delete(agentId);
+    this.remoteMessageDeliveries.add(agentId);
+    try {
+      while (!this.stopped) {
+        const agent = this.getCollaborationAgents().find(candidate => candidate.id === agentId);
+        const message = this.coordinator.peekUnreadMessages(agentId)[0];
+        if (!agent?.remoteConnectionId || !message) return;
+        if (!this.options.sendRemoteMessage) throw new Error('Remote message delivery is unavailable.');
+        const result = await this.options.sendRemoteMessage(agent, agentMessagesPrompt([message]), message.id);
+        if (result?.accepted !== true) throw new Error('The remote host did not acknowledge message admission.');
+        this.coordinator.markMessagesRead([message.id]);
+      }
+    } catch {
+      // Unconfirmed messages stay unread on the controller; the worker owns all admitted prompt queues.
+      // Retry with the same ID after transport failures, including when reconnect produces no idle event.
+      if (!this.stopped) {
+        const timer = setTimeout(() => {
+          this.remoteMessageRetries.delete(agentId);
+          void this.deliverRemoteMessages(agentId);
+        }, 1000);
+        timer.unref();
+        this.remoteMessageRetries.set(agentId, timer);
+      }
+    } finally {
+      this.remoteMessageDeliveries.delete(agentId);
+    }
   }
 
   private emitQueuedMessages(agentId: string, messages: Array<MessageInfo & { id: string }>, submitted = false): void {

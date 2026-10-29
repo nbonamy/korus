@@ -261,7 +261,7 @@ describe('AppBackendServer', () => {
     expect(remoteClients.request).toHaveBeenCalledWith(
       snapshot.remoteConnections.connections[0],
       'team/delete',
-      { teamId: 'team-remote', _clientId: 'remote-controller' },
+      { teamId: 'team-remote', missingOk: true, _clientId: 'remote-controller' },
       expect.any(Function),
     );
     expect(snapshot.teams.map((team) => team.id)).toStrictEqual(['team-test']);

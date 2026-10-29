@@ -41,6 +41,7 @@ const requestTimeoutByMethod = {
   [backendMethods.collaborationTeamBind]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.collaborationWorkerCreate]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.collaborationPromptSend]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
+  [backendMethods.collaborationMessageSend]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.agentTaskCancel]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.agentHandoff]: EXTENDED_REQUEST_TIMEOUT_MS,
   [backendMethods.driverHandoffCheck]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
