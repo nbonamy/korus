@@ -471,6 +471,8 @@ export const messages = {
       noOrigin: 'No origin URL, so it can’t be cloned here',
       open: 'Open',
       cloneAndOpen: 'Clone and open',
+      next: 'Next',
+      cloneAndContinue: 'Clone and continue',
       noEngine: 'Connect a coding engine on that machine first.',
       modelsUnavailable: 'Couldn’t load models: {detail}',
       loadingModels: 'Loading models…',

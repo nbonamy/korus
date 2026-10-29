@@ -123,7 +123,12 @@ const progress = computed(() => {
   return null;
 });
 
-const confirmLabel = computed(() => t(props.checkouts[selectedId.value]?.state === 'missing' ? 'remoteTarget.cloneAndOpen' : 'remoteTarget.open'));
+// A worktree continues in its own dialog, so it moves on rather than opens.
+const confirmLabel = computed(() => {
+  const clones = props.checkouts[selectedId.value]?.state === 'missing';
+  if (props.action === 'new-worktree') return t(clones ? 'remoteTarget.cloneAndContinue' : 'remoteTarget.next');
+  return t(clones ? 'remoteTarget.cloneAndOpen' : 'remoteTarget.open');
+});
 
 /** A machine nobody has asked yet can be chosen; one known to be unusable cannot. */
 function isSelectable(connectionId: string): boolean {

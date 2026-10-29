@@ -19,6 +19,14 @@ describe('RemoteTargetDialog', () => {
     expect(mountDialog({ 'wall-e': { state: 'cloned', path: '/x' } }, { action: 'new-worktree' }).text()).toContain('New korus worktree on a remote machine');
   });
 
+  it('moves on instead of opening when the action continues in a worktree dialog', () => {
+    const button = (wrapper: ReturnType<typeof mountDialog>) => wrapper.findAll('.app-button').at(-1)!.text();
+    expect(button(mountDialog({ 'wall-e': { state: 'cloned', path: '/x' } }, { action: 'new-worktree' }))).toBe('Next');
+    expect(button(mountDialog({ 'wall-e': { state: 'missing' } }, { action: 'new-worktree' }))).toBe('Clone and continue');
+    expect(button(mountDialog({ 'wall-e': { state: 'cloned', path: '/x' } }))).toBe('Open');
+    expect(button(mountDialog({ 'wall-e': { state: 'missing' } }))).toBe('Clone and open');
+  });
+
   it('shows one progress screen during the first lookup, without a footer', () => {
     const wrapper = mountDialog({ 'wall-e': { state: 'checking' } });
     expect(wrapper.get('.git-operation-feedback').text()).toContain('Looking for korus');
