@@ -10,31 +10,42 @@ const checkout = (path: string, remoteIdentity = 'github.com/nbonamy/korus'): So
 
 function setup(repositories: Record<string, SourceRepository[] | Error>, overrides: { clone?: (input: CloneSourceRepositoryInput) => Promise<SourceRepository> } = {}) {
   const store = new Map<string, string>();
+  const list = vi.fn(async (id: string) => { const value = repositories[id]; if (value instanceof Error) throw value; return value ?? []; });
   const openMain = vi.fn().mockResolvedValue(undefined);
   const openWorktree = vi.fn().mockResolvedValue(undefined);
   const cloneRepository = vi.fn(overrides.clone ?? (async () => checkout('/home/me/src/korus')));
   const target = useRemoteTarget({
     connections: () => [connection('devbox', 'ready', '/home/me/src'), connection('offline', 'error'), connection('lab')],
-    listSourceRepositories: async (id) => { const value = repositories[id]; if (value instanceof Error) throw value; return value ?? []; },
+    listSourceRepositories: list,
     cloneRepository, openMain, openWorktree,
     storage: { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => { store.set(key, value); } },
   });
-  return { target, store, openMain, openWorktree, cloneRepository };
+  return { target, store, openMain, openWorktree, cloneRepository, list };
 }
 
 describe('remote target', () => {
-  it('checks every ready machine by origin identity and ignores machines that are not ready', async () => {
-    const { target } = setup({ devbox: [checkout('/srv/korus')], lab: [checkout('/other', 'github.com/other/repo')] });
+  it('checks only the chosen machine on open and the others when they are chosen', async () => {
+    const { target, list } = setup({ devbox: [checkout('/srv/korus')], lab: [checkout('/other', 'github.com/other/repo')] });
     await target.open(request);
     expect(target.readyConnections.value.map((item) => item.id)).toStrictEqual(['devbox', 'lab']);
-    expect(target.checkouts.value).toStrictEqual({ devbox: { state: 'cloned', path: '/srv/korus' }, lab: { state: 'missing' } });
+    expect(target.checkouts.value).toStrictEqual({ devbox: { state: 'cloned', path: '/srv/korus' } });
+    expect(list.mock.calls.map(([id]) => id)).toStrictEqual(['devbox']);
+
+    target.selectedId.value = 'lab';
+    await vi.waitFor(() => expect(target.checkouts.value.lab).toStrictEqual({ state: 'missing' }));
+    expect(list.mock.calls.map(([id]) => id)).toStrictEqual(['devbox', 'lab']);
+
+    target.selectedId.value = 'devbox';
+    await Promise.resolve();
+    expect(list).toHaveBeenCalledTimes(2);
   });
 
   it('reports where a missing repository will be cloned and why a machine cannot be checked', async () => {
     const { target } = setup({ devbox: [], lab: new Error('Host unreachable') });
     await target.open(request);
     expect(target.checkouts.value.devbox).toStrictEqual({ state: 'missing', cloneTo: '/home/me/src' });
-    expect(target.checkouts.value.lab).toStrictEqual({ state: 'unreachable', message: 'Host unreachable' });
+    target.selectedId.value = 'lab';
+    await vi.waitFor(() => expect(target.checkouts.value.lab).toStrictEqual({ state: 'unreachable', message: 'Host unreachable' }));
   });
 
   it('cannot clone a repository without an origin and never queries the machines', async () => {

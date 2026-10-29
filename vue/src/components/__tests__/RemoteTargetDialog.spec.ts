@@ -19,16 +19,22 @@ describe('RemoteTargetDialog', () => {
     expect(mountDialog({ 'wall-e': { state: 'cloned', path: '/x' } }, { action: 'new-worktree' }).text()).toContain('New korus worktree on a remote machine');
   });
 
-  it('shows one progress screen while the machines are being checked, without a footer', () => {
-    const wrapper = mountDialog({ 'wall-e': { state: 'checking' }, devbox: { state: 'checking' } });
+  it('shows one progress screen during the first lookup, without a footer', () => {
+    const wrapper = mountDialog({ 'wall-e': { state: 'checking' } });
     expect(wrapper.get('.git-operation-feedback').text()).toContain('Looking for korus');
-    expect(wrapper.text()).toContain('On wall-e, devbox');
+    expect(wrapper.text()).toContain('On wall-e');
     expect(wrapper.find('.el-select').exists()).toBe(false);
     expect(wrapper.find('.remote-target-dialog--progress').exists()).toBe(true);
   });
 
-  it('lists the machines once any answer is in', () => {
-    const wrapper = mountDialog({ 'wall-e': { state: 'missing', cloneTo: '/home/me/src' }, devbox: { state: 'checking' } }, { canConfirm: true });
+  it('keeps the select while another machine is being checked', () => {
+    const wrapper = mountDialog({ 'wall-e': { state: 'missing' }, devbox: { state: 'checking' } }, { selectedId: 'devbox' });
+    expect(wrapper.find('.git-operation-feedback').exists()).toBe(false);
+    expect(wrapper.text()).toContain('Checking…');
+  });
+
+  it('lists the machines once an answer is in', () => {
+    const wrapper = mountDialog({ 'wall-e': { state: 'missing', cloneTo: '/home/me/src' } }, { canConfirm: true });
     expect(wrapper.find('.git-operation-feedback').exists()).toBe(false);
     expect(wrapper.find('.remote-target-dialog--progress').exists()).toBe(false);
     expect(wrapper.find('.el-select').exists()).toBe(true);

@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
 import type { CloneSourceRepositoryInput, ExecutionSelection, RemoteConnection, SourceRepository } from '@workspace/core/contracts';
 
@@ -19,7 +19,7 @@ export type RemoteCheckout =
 
 const lastHostKey = (repositoryKey: string) => `remoteTarget:lastHost:${repositoryKey}`;
 
-/** The "where" step of opening a repository on a remote machine: check each machine, clone when needed, then continue. */
+/** The "where" step of opening a repository on a remote machine: check the chosen machine, clone when needed, then continue. */
 export function useRemoteTarget(options: {
   connections: () => RemoteConnection[];
   listSourceRepositories: (remoteConnectionId: string) => Promise<SourceRepository[]>;
@@ -57,21 +57,30 @@ export function useRemoteTarget(options: {
     const ready = readyConnections.value;
     const remembered = storage()?.getItem(lastHostKey(next.repositoryKey)) ?? '';
     selectedId.value = ready.find((connection) => connection.id === remembered)?.id ?? ready[0]?.id ?? '';
-    const identity = next.originUrl ? canonicalGitRemoteIdentity(next.originUrl) : undefined;
-    checkouts.value = Object.fromEntries(ready.map((connection) => [connection.id, (identity ? { state: 'checking' } : { state: 'noOrigin' }) as RemoteCheckout]));
-    if (!identity) return;
-    await Promise.all(ready.map(async (connection) => {
-      let result: RemoteCheckout;
-      try {
-        const repositories = await options.listSourceRepositories(connection.id);
-        const match = repositories.find((repository) => repository.remoteIdentity === identity);
-        result = match ? { state: 'cloned', path: match.path } : { state: 'missing', ...(connection.sourceFolderPath ? { cloneTo: connection.sourceFolderPath } : {}) };
-      } catch (cause) {
-        result = { state: 'unreachable', message: message(cause) };
-      }
-      if (mine === epoch) checkouts.value = { ...checkouts.value, [connection.id]: result };
-    }));
+    identity = next.originUrl ? canonicalGitRemoteIdentity(next.originUrl) : undefined;
+    // A machine is only asked when it is chosen: the first one now, the others on selection.
+    checkouts.value = identity ? {} : Object.fromEntries(ready.map((connection) => [connection.id, { state: 'noOrigin' } as RemoteCheckout]));
+    if (selectedId.value) await check(selectedId.value, mine);
   }
+
+  let identity: string | undefined;
+
+  async function check(connectionId: string, mine = epoch): Promise<void> {
+    const connection = readyConnections.value.find((candidate) => candidate.id === connectionId);
+    if (!connection || !identity || checkouts.value[connectionId]) return;
+    checkouts.value = { ...checkouts.value, [connectionId]: { state: 'checking' } };
+    let result: RemoteCheckout;
+    try {
+      const repositories = await options.listSourceRepositories(connectionId);
+      const match = repositories.find((repository) => repository.remoteIdentity === identity);
+      result = match ? { state: 'cloned', path: match.path } : { state: 'missing', ...(connection.sourceFolderPath ? { cloneTo: connection.sourceFolderPath } : {}) };
+    } catch (cause) {
+      result = { state: 'unreachable', message: message(cause) };
+    }
+    if (mine === epoch) checkouts.value = { ...checkouts.value, [connectionId]: result };
+  }
+
+  watch(selectedId, (connectionId) => { if (visible.value && connectionId) void check(connectionId); });
 
   function close(): void {
     ++epoch;

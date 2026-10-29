@@ -112,17 +112,17 @@ const modelsLoading = ref(false);
 
 /** Looking up machines and cloning are waits, not choices: they get their own screen. */
 const progress = computed(() => {
-  const states = props.connections.map((connection) => props.checkouts[connection.id]?.state ?? 'checking');
   if (props.busy && props.checkouts[selectedId.value]?.state === 'missing') {
     return {
       title: t('remoteTarget.cloningTitle', { repository: props.repositoryName }),
       detail: t('remoteTarget.onHost', { host: props.connections.find((connection) => connection.id === selectedId.value)?.name ?? '' }),
     };
   }
-  if (states.length && states.every((state) => state === 'checking')) {
+  // Only the first lookup takes over the dialog; later machines are checked inline.
+  if (props.checkouts[selectedId.value]?.state === 'checking' && Object.values(props.checkouts).every((checkout) => checkout.state === 'checking')) {
     return {
       title: t('remoteTarget.checkingTitle', { repository: props.repositoryName }),
-      detail: t('remoteTarget.onHost', { host: props.connections.map((connection) => connection.name).join(', ') }),
+      detail: t('remoteTarget.onHost', { host: props.connections.find((connection) => connection.id === selectedId.value)?.name ?? '' }),
     };
   }
   return null;
@@ -130,14 +130,16 @@ const progress = computed(() => {
 
 const confirmLabel = computed(() => t(props.checkouts[selectedId.value]?.state === 'missing' ? 'remoteTarget.cloneAndOpen' : 'remoteTarget.open'));
 
+/** A machine nobody has asked yet can be chosen; one known to be unusable cannot. */
 function isSelectable(connectionId: string): boolean {
   const state = props.checkouts[connectionId]?.state;
-  return state === 'cloned' || state === 'missing';
+  return state === undefined || state === 'checking' || state === 'cloned' || state === 'missing';
 }
 
 function statusText(connectionId: string): string {
   const checkout = props.checkouts[connectionId];
-  if (!checkout || checkout.state === 'checking') return t('remoteTarget.checking');
+  if (!checkout) return '';
+  if (checkout.state === 'checking') return t('remoteTarget.checking');
   if (checkout.state === 'cloned') return t('remoteTarget.cloned', { path: checkout.path });
   if (checkout.state === 'missing') return checkout.cloneTo ? t('remoteTarget.willCloneTo', { path: checkout.cloneTo }) : t('remoteTarget.willClone');
   if (checkout.state === 'noOrigin') return t('remoteTarget.noOrigin');
