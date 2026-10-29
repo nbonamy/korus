@@ -75,7 +75,6 @@ const AGENT_HISTORY_CACHE_TTL_MS = 15 * 60 * 1_000;
 const SESSION_HANDOFF_TARGET_CHARACTERS = 4_000;
 const SESSION_HANDOFF_MAX_CHARACTERS = 6_000;
 const SESSION_HANDOFF_TIMEOUT_MS = 8 * 60 * 1_000;
-const REVIEW_TIMEOUT_MS = 30 * 60 * 1_000;
 const SESSION_HANDOFF_MODEL = 'gpt-5.6-luna';
 const SESSION_HANDOFF_REASONING_EFFORT = 'low';
 
@@ -405,7 +404,7 @@ export class CodexSurfaceAgentAdapter {
       if (!targetTurnId) throw new Error('Codex did not start the review round.');
       const immediate = completedBeforeTarget.get(targetTurnId)
         ?? started.turns.find((turn) => turn.id === targetTurnId && turn.status !== 'inProgress')?.status;
-      const status = immediate ?? await reviewCompletion(completion);
+      const status = immediate ?? await completion;
       const snapshot = conversation.getSnapshot();
       const completedFinalAnswer = sessionFinalAnswerText(snapshot.messages, targetTurnId);
       if (status !== 'completed' && !(status === 'interrupted' && completedFinalAnswer)) {
@@ -1815,15 +1814,6 @@ function sessionHandoffCompletion(
       },
     );
   });
-}
-
-function reviewCompletion(completion: Promise<CodexSurfaceTurnStatus>): Promise<CodexSurfaceTurnStatus> {
-  return Promise.race([
-    completion,
-    new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('Code review timed out.')), REVIEW_TIMEOUT_MS);
-    }),
-  ]);
 }
 
 function subagentStatusFromTurn(

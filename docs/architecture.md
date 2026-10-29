@@ -778,6 +778,8 @@ target and reviewer agents) plus an opaque reviewer session reference.
   conversation is never disposed.
 - New independent reviewers follow their source agent in each client's saved order;
   an explicit user reorder takes precedence.
+- Codex review rounds wait for their matching terminal turn event without a fixed
+  duration limit; elapsed time alone does not fail an active review.
 - Independent reviews reset the reviewer's conversation between rounds to reduce
   anchoring; every round receives the cumulative ledger (all prior skips, fixes
   and decisions) in a `<context>` block.

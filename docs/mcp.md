@@ -93,9 +93,10 @@ by mutating user-global tool config.
   `delegate_to_worktree` is accepted as a legacy alias and normalized on restore
   and tool calls. Workflow-managed agents retain their own proposal lifecycle;
   delegated co-agents cannot offer recursive work proposals.
-- Proposal responses use the agent-scoped flag service for delegation, Mission
-  creation and dismissal. Execution submits to the source conversation through the
-  existing creation procedures, with explicit scope and publication constraints.
+- Proposal responses use the agent-scoped flag service for current-conversation
+  implementation, delegation, Mission creation and dismissal. Implementation
+  submits to the source conversation using its current agent and workspace;
+  delegation and Mission creation use their existing procedures and authority boundaries.
   One in-flight response covers both proposal aliases. Acceptance clears the
   proposal; submission failure preserves it for retry. Review readiness is separate:
   new user prompts clear `ready_for_review`, and handoffs assess it unless review
