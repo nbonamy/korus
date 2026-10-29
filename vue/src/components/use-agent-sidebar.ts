@@ -5,10 +5,10 @@ import { missionAttention } from '@workspace/core/mission-attention';
 import { missionCreatedWorkspaces } from '@workspace/core/mission-execution';
 import { computed, reactive, ref, toRefs, markRaw } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { Agent, OpenInApplication, OpenInApplicationCatalog } from '@workspace/core/contracts';
+import type { Agent, OpenInApplication, OpenInApplicationCatalog, RemoteConnection } from '@workspace/core/contracts';
 import { projectWorkspaceSidebar, type SidebarActivity, type WorkspaceSidebarGroup, type WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar';
 import { formatCompactAge, formatElapsed } from '../shared/compact-age';
-import { BellIcon, CircleCheckIcon, ClockHour8Icon, LoaderIcon, MoonIcon, FolderIcon, GitBranchIcon, GitForkIcon, Trash2Icon } from '../shared/icons/app-icons';
+import { BellIcon, CircleCheckIcon, ClockHour8Icon, LoaderIcon, MoonIcon, FolderIcon, GitBranchIcon, GitForkIcon, NetworkIcon, Trash2Icon } from '../shared/icons/app-icons';
 import { useBackendChoices } from './backend-selection';
 import { backendDisplayName } from '@workspace/core/backend-driver';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
@@ -20,7 +20,7 @@ import { useRepositorySessionMenu } from './use-repository-session-menu';
 import { useAgentSidebarOrganization } from './use-agent-sidebar-organization';
 import { useAgentSidebarMotion } from './use-agent-sidebar-motion';
 import ScrollHintRows from './ScrollHintRows.vue';
-import type { AgentSidebarProps, AgentSidebarEmit } from './agent-sidebar-contracts';
+import type { AgentSidebarProps, AgentSidebarEmit, SidebarRepositoryTarget } from './agent-sidebar-contracts';
 
 export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit) {
   const { t } = useI18n();
@@ -104,13 +104,14 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     () => organizationMode.value === 'activity' ? props.teamId ?? '' : null,
     () => workspaceGroups.value.map(group => `${group.id}:${group.sessions.map(session => session.agentId).join(',')}`).join('|'));
   const agentsById = computed(() => new Map(props.agents.map(agent => [agent.id, agent])));
-  const backendChoices = useBackendChoices(() => props.teamId);
+  const backendChoices = useBackendChoices();
   const contextMenuAgentId = ref<string | null>(null);
   const contextMenuMissionId = ref<string | null>(null);
   const contextMissionWorkspaces = computed(() => missionCreatedWorkspaces(props.missions?.find(mission => mission.id === contextMenuMissionId.value)));
   const contextMenuRepositoryAgentId = ref<string | null>(null);
   const repositoryMenuItems = computed<AppMenuItem[]>(() => [{ id: 'delete', type: 'action', label: t('repositoryDeletion.action'), icon: Trash2Icon, danger: true }]);
-  const repositorySessionMenu = markRaw(useRepositorySessionMenu(() => props.listRepositoryBranches, t));
+  const hasReadyRemote = computed(() => (props.remoteConnections ?? []).some(connection => connection.status === 'ready'));
+  const repositorySessionMenu = markRaw(useRepositorySessionMenu(() => props.listRepositoryBranches, t, () => repositoryGroups.value));
   const repositorySessionMenuId = repositorySessionMenu.visibleGroupId;
   const collapsedRepositoryKeys = computed(() => new Set(props.collapsedRepositoryKeys ?? []));
   const contextMenuPosition = ref({ x: 0, y: 0 });
@@ -141,20 +142,18 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
   const contextMenuAgentIsLocal = computed(() => {
     const agent = contextMenuAgent.value;
     if (!agent) return false;
-    const team = (props.teams ?? []).find((candidate) => candidate.id === agent.teamId);
-    return !team?.remoteConnectionId;
+    return !agent.remoteConnectionId;
   });
   const contextMenuMoveTargets = computed(() => {
     const agent = contextMenuAgent.value;
     if (!agent) {
       return [];
     }
-    const sourceTeam = (props.teams ?? []).find((team) => team.id === agent.teamId) ?? null;
-    if (sourceTeam?.remoteConnectionId) {
+    if (agent.remoteConnectionId) {
       return [];
     }
 
-    return (props.teams ?? []).filter((team) => team.id !== agent.teamId && !team.remoteConnectionId);
+    return (props.teams ?? []).filter((team) => team.id !== agent.teamId);
   });
   const clientAgentOrderUpdate = useListReorderDrag<string>({
     itemIds: () => props.agents.map((agent) => agent.id),
@@ -184,12 +183,12 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
       const beforeRepository = beforeId === null
         ? null
         : workspaceGroups.value.find((group) => group.id === beforeId) ?? null;
-      if (repository?.kind !== 'repository' || !repository.repositoryRoot) return;
+      if (repository?.kind !== 'repository' || !repository.repositoryKey) return;
 
       emit('reorder-repositories', {
         teamId: props.teamId,
-        repositoryRoot: repository.repositoryRoot,
-        beforeRepositoryRoot: beforeRepository?.repositoryRoot ?? null,
+        repositoryKey: repository.repositoryKey,
+        beforeRepositoryKey: beforeRepository?.repositoryKey ?? null,
       });
     },
   });
@@ -260,6 +259,9 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     group: WorkspaceSidebarGroup,
   ): AppMenuItem[] {
     const defaultBranch = repositorySessionMenu.defaultBranches.value[group.id];
+    const remoteAction = (id: string) => hasReadyRemote.value
+      ? { secondaryAction: { id, label: t('sidebar.onRemoteMachine'), icon: NetworkIcon } }
+      : {};
     return [
       {
         id: 'default-branch',
@@ -267,8 +269,9 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
         label: defaultBranch?.name ?? t('sidebar.defaultBranchUnavailable'),
         icon: GitBranchIcon,
         disabled: !defaultBranch,
+        ...remoteAction('default-branch:remote'),
       },
-      { id: 'new-worktree', type: 'action', label: t('sidebar.newWorktree'), icon: GitForkIcon },
+      { id: 'new-worktree', type: 'action', label: t('sidebar.newWorktree'), icon: GitForkIcon, ...remoteAction('new-worktree:remote') },
     ];
   }
 
@@ -310,17 +313,38 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     );
   }
 
+  function sectionTarget(group: WorkspaceSidebarGroup): SidebarRepositoryTarget {
+    return {
+      agentId: group.repositoryAgentId ?? group.sessions[0]!.agentId,
+      repositoryName: group.label,
+      repositoryRoot: group.repositoryRoot!,
+      ...(group.remoteConnectionId ? { remoteConnectionId: group.remoteConnectionId } : {}),
+      ...(group.originUrl ? { originUrl: group.originUrl } : {}),
+    };
+  }
+
+  function remoteConnection(connectionId: string | undefined): RemoteConnection | undefined {
+    return props.remoteConnections?.find(connection => connection.id === connectionId);
+  }
+
+  function rowHost(session: WorkspaceSidebarSession): RemoteConnection | undefined {
+    return remoteConnection(session.remoteConnectionId);
+  }
+
   function selectRepositorySessionMenuItem(
     group: WorkspaceSidebarGroup,
     itemId: string,
   ): void {
     if (group.kind !== 'repository' || !group.repositoryRoot) return;
-    const payload = {
-      agentId: group.sessions[0]!.agentId,
-      repositoryName: group.label,
-      repositoryRoot: group.repositoryRoot!,
-    };
-    if (itemId === 'default-branch') {
+    const payload = sectionTarget(group);
+    if (itemId === 'default-branch:remote' || itemId === 'new-worktree:remote') {
+      emit('open-on-remote', {
+        action: itemId === 'default-branch:remote' ? 'main' : 'new-worktree',
+        repositoryName: group.label,
+        repositoryKey: group.repositoryKey ?? group.id,
+        ...(group.originUrl ? { originUrl: group.originUrl } : {}),
+      });
+    } else if (itemId === 'default-branch') {
       const branch = repositorySessionMenu.defaultBranches.value[group.id];
       if (branch) {
         emit('create-agent-on-branch', { ...payload, branch });
@@ -500,6 +524,9 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     toggleWorkspace,
     repositorySessionMenuId,
     repositorySessionMenuItems,
+    sectionTarget,
+    remoteConnection,
+    rowHost,
     repositorySessionMenu,
     setRepositorySessionMenuVisible,
     selectRepositorySessionMenuItem,

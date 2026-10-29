@@ -123,11 +123,11 @@ describe('provider onboarding setup', () => {
     const local = { ...createRemoteAgent(), id: 'local', teamId: 'team-test', backend: 'claude' as const, status: { type: 'idle' as const } };
     const quick = { ...local, id: 'quick', folder: null, sessionKind: 'quickChat' as const };
     const other = { ...local, id: 'other', backend: 'codex' as const };
-    const remote = { ...local, id: 'remote', teamId: 'team-remote' };
+    const remote = { ...local, id: 'remote', teamId: 'team-remote', remoteConnectionId: 'remote-host' };
     snapshot.agents = [local, quick, other, remote];
     snapshot.teams[0]!.agentIds = ['local', 'quick', 'other'];
     snapshot.teams[0]!.activeAgentId = 'local';
-    snapshot.teams.push({ id: 'team-remote', name: 'Remote', remoteConnectionId: 'remote-host', agentIds: ['remote'] });
+    snapshot.teams.push({ id: 'team-remote', name: 'Remote', agentIds: ['remote'] });
     snapshot.activeAgentId = 'local';
     snapshot.queuedPrompts = [{ id: 'queued', agentId: 'quick', text: 'later', createdAt: 'now' }];
     snapshot.general.savedPromptDrafts = [{ id: 'draft', agentId: 'quick', text: 'draft', createdAt: 1 }];

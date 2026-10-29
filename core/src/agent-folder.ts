@@ -4,7 +4,6 @@ import type { Agent, AppSnapshot } from './contracts';
 export function repositoryPeersForAgent(agent: Agent, snapshot: Pick<AppSnapshot, 'agents' | 'teams'>): Agent[] {
   const workspace = agent.workspace;
   if (agent.sessionKind === 'quickChat' || workspace?.kind !== 'git') return [];
-  const host = (candidate: Agent) => snapshot.teams.find(team => team.id === candidate.teamId)?.remoteConnectionId;
   const sourceTeam = snapshot.teams.find(team => team.id === agent.teamId);
   const orderedIds = [
     ...(sourceTeam?.agentIds ?? []),
@@ -13,7 +12,7 @@ export function repositoryPeersForAgent(agent: Agent, snapshot: Pick<AppSnapshot
   const order = new Map(orderedIds.map((id, index) => [id, index]));
   return snapshot.agents.filter(candidate => candidate.id !== agent.id && candidate.sessionKind !== 'quickChat'
     && candidate.workspace?.kind === 'git' && candidate.workspace.primaryWorktreeRoot === workspace.primaryWorktreeRoot
-    && host(candidate) === host(agent))
+    && candidate.remoteConnectionId === agent.remoteConnectionId)
     .sort((left, right) => (order.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (order.get(right.id) ?? Number.MAX_SAFE_INTEGER));
 }
 

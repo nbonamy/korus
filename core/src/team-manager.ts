@@ -10,15 +10,11 @@ export function createTeamInSnapshot(
 ): Team {
   const name = normalizedTeamName(input.name);
   const color = normalizedTeamColor(input.color);
-  const remoteConnectionId = normalizedOptionalString(input.remoteConnectionId);
-  const remoteTeamId = normalizedOptionalString(input.remoteTeamId);
   const team: Team = {
     id: uniqueTeamId(snapshot, name, createdAt),
     name,
     avatar: teamInitials(name),
     color,
-    ...(remoteConnectionId ? { remoteConnectionId } : {}),
-    ...(remoteTeamId ? { remoteTeamId } : {}),
     agentIds: [],
   };
 
@@ -56,21 +52,6 @@ export function updateTeamInSnapshot(snapshot: AppSnapshot, input: UpdateTeamInp
   team.name = normalizedTeamName(input.name);
   team.avatar = teamInitials(team.name);
   team.color = normalizedTeamColor(input.color);
-  const nextRemoteConnectionId = normalizedOptionalString(input.remoteConnectionId);
-  if (team.agentIds.length > 0 && nextRemoteConnectionId !== (team.remoteConnectionId ?? null)) {
-    throw new Error('Team connection cannot be changed while it has agents.');
-  }
-  if (nextRemoteConnectionId) {
-    team.remoteConnectionId = nextRemoteConnectionId;
-  } else {
-    delete team.remoteConnectionId;
-  }
-  const nextRemoteTeamId = normalizedOptionalString(input.remoteTeamId);
-  if (nextRemoteTeamId) {
-    team.remoteTeamId = nextRemoteTeamId;
-  } else if (!nextRemoteConnectionId) {
-    delete team.remoteTeamId;
-  }
   return team;
 }
 
@@ -147,11 +128,6 @@ function normalizedTeamName(name: string): string {
 function normalizedTeamColor(color: string): string {
   const normalized = color.trim().toUpperCase();
   return teamColors.find((candidate) => candidate === normalized) ?? defaultTeamColor;
-}
-
-function normalizedOptionalString(value: string | undefined): string | null {
-  const normalized = value?.trim() ?? '';
-  return normalized ? normalized : null;
 }
 
 function uniqueTeamId(snapshot: AppSnapshot, name: string, createdAt: string): string {

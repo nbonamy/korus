@@ -165,7 +165,6 @@
       <BackendModelSelector
         v-model:selection="implementationSelection"
         :agent-id="missionLead.id"
-        :team-id="mission.teamId"
         :disabled="busy"
       />
       <div>

@@ -121,7 +121,7 @@ struct ConversationScreen: View {
                                 Button("Rename Agent", systemImage: "pencil") { model.openAgentRename() }
                                     .disabled(!model.canManageSession)
                                 Button("Duplicate Agent", systemImage: "plus.square.on.square") { model.duplicateAgent() }
-                                    .disabled(!model.canManageSession || !model.canStartChat || model.chatCreation == .creating)
+                                    .disabled(!model.canDuplicateAgent)
                                 Divider()
                                 Button("Restart Session", systemImage: "arrow.clockwise") { model.restartSession() }
                                     .disabled(!model.canManageSession || model.isWorking)

@@ -2,11 +2,12 @@ import type { Agent, AppCommand } from '@workspace/core/contracts';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import type { CodexConversationPaneController, CodexMessageImage, CodexMessageImageContext } from '@codex-app-sdk/vue';
 import { reactive } from 'vue';
-import { shallowMount } from '@vue/test-utils';
+import { DOMWrapper, flushPromises, mount, shallowMount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import AgentWorkspace from '../AgentWorkspace.vue';
 import type { AgentRightWorkspaceState } from '../use-right-workspace-state';
 import type { RightWorkspaceTab } from '../right-workspace';
+import { stubElectronTestWindow } from '../../test/client';
 
 function createWorkspaceState(): AgentRightWorkspaceState {
   return {
@@ -30,7 +31,7 @@ function createWorkspaceState(): AgentRightWorkspaceState {
   };
 }
 
-function mountWorkspace(configureSnapshot?: (snapshot: ReturnType<typeof createInitialSnapshot>) => void) {
+function mountWorkspace(configureSnapshot?: (snapshot: ReturnType<typeof createInitialSnapshot>) => void, realRunProfiles = false) {
   const snapshot = createInitialSnapshot();
   configureSnapshot?.(snapshot);
   const currentAgent = snapshot.agents[0] as Agent;
@@ -43,9 +44,9 @@ function mountWorkspace(configureSnapshot?: (snapshot: ReturnType<typeof createI
     workspace.open = true;
   });
   const updateAgent = vi.fn().mockResolvedValue(undefined);
-  const wrapper = shallowMount(AgentWorkspace, {
+  const wrapper = (realRunProfiles ? mount : shallowMount)(AgentWorkspace, {
     attachTo: document.body,
-    global: { stubs: { AgentHeader: false } },
+    global: { stubs: { AgentHeader: false, ...(realRunProfiles ? { ConversationPane: true, RightWorkspacePanel: true } : {}) } },
     props: {
       activeAttachmentAnnotationCounts: {},
       addChatTextAnnotation: vi.fn(),
@@ -127,6 +128,23 @@ function mountWorkspace(configureSnapshot?: (snapshot: ReturnType<typeof createI
 }
 
 describe('AgentWorkspace', () => {
+  it('identifies a remote command by its agent host within a mixed team', async () => {
+    const profile = { id: 'dev', name: 'Dev', command: 'npm run dev', directory: '.', previewUrl: 'http://127.0.0.1:43210' };
+    const catalog = { repository: '/remote/repo', worktree: '/remote/worktree', profiles: [profile], targets: { dev: { cwd: '/remote/worktree' } }, runs: [] };
+    stubElectronTestWindow({ app: { getRunProfiles: vi.fn().mockResolvedValue(catalog), startRunProfile: vi.fn().mockResolvedValue({ id: 'run', agentId: 'agent-dina', profileId: profile.id, command: profile.command, cwd: '/remote/worktree', state: 'running', startedAt: '', output: '', outputTruncated: false }) } });
+    const { wrapper } = mountWorkspace(snapshot => {
+      snapshot.agents[0]!.remoteConnectionId = 'devbox';
+      snapshot.remoteConnections.connections = [{ id: 'devbox', kind: 'ssh', name: 'Devbox', host: 'devbox', status: 'ready', createdAt: '', updatedAt: '' }];
+    }, true);
+    try {
+      await wrapper.get('button[aria-label="Run profiles"]').trigger('click');
+      await flushPromises();
+      await new DOMWrapper(document.body).findAll('[role="menuitem"]').find(item => item.text().includes('Dev'))!.trigger('click');
+      await flushPromises();
+      expect(new DOMWrapper(document.body).get('[role="dialog"]').text()).toContain('Devbox');
+    } finally { wrapper.unmount(); }
+  });
+
   it('opens a profile preview in the selected agent’s existing browser workspace', async () => {
     const { wrapper, workspace, currentAgent, openRightWorkspaceTab } = mountWorkspace();
     wrapper.getComponent({ name: 'AgentHeader' }).vm.$emit('run-preview', 'http://127.0.0.1:43210');

@@ -16,7 +16,6 @@ describe('Linear issue to repository session', () => {
   it('starts through the rendered picker with the current repository and remote host, then hands off the exact issue', async () => {
     const snapshot = createInitialSnapshot();
     const team = snapshot.teams[0]!;
-    team.remoteConnectionId = 'remote-code';
     const createdAgent = { ...snapshot.agents[0]!, id: 'new-agent' };
     const issue: WorkItem = { provider: 'linear', id: 'linear:issue', identifier: 'ENG-12', number: 12, sourceId: 'linear:team',
       sourceName: 'Engineering', title: 'Fix login', body: 'Steps to reproduce', url: 'https://linear.app/acme/issue/ENG-12',
@@ -51,7 +50,7 @@ describe('Linear issue to repository session', () => {
       template: `<RepositorySessionSourceDialog :visible="session.visible.value" repository-name="code" :branches="session.branches.value" :location="{ kind: 'remote', remoteConnectionId: 'remote-code' }" @start-work-item="session.startWork" @close="session.close" />`,
     });
     const wrapper = mount(Host, { global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex']) } } });
-    await session.open({ repositoryRoot: '/remote/code', repositoryName: 'code', teamId: team.id });
+    await session.open({ repositoryRoot: '/remote/code', repositoryName: 'code', teamId: team.id, remoteConnectionId: 'remote-code' });
     await wrapper.findAll('[role="tab"]')[2]!.trigger('click');
     await wrapper.get('[aria-label="Backlog provider"] select').setValue('linear');
     await flushPromises();
@@ -61,7 +60,7 @@ describe('Linear issue to repository session', () => {
     await wrapper.get('.work-item-assignment-picker .app-button--primary').trigger('click');
     await flushPromises();
     expect(createWorktree).toHaveBeenCalledWith({ repoPath: '/remote/code', branchName: 'fix/eng-12', remoteConnectionId: 'remote-code' });
-    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/remote/code-eng-12', sourceRepositoryName: 'code', teamId: team.id, selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/remote/code-eng-12', sourceRepositoryName: 'code', teamId: team.id, remoteConnectionId: 'remote-code', selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } });
     expect(assign).toHaveBeenCalledWith({ agentId: createdAgent.id, item: issue, prompt: expect.stringContaining('Issue: ENG-12') });
     expect(assign.mock.calls[0]![0].prompt).toContain(issue.body);
     expect(session.visible.value).toBe(false);

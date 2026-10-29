@@ -162,6 +162,7 @@
             @click="toggleWorkspace(group)"
           >
             <strong>{{ group.label }}</strong>
+            <RemoteHostIndicator v-if="group.kind === 'repository' && group.remoteConnectionId" class="agent-sidebar__host" :connection-id="group.remoteConnectionId" :connection="remoteConnection(group.remoteConnectionId)" />
           </button>
           <span
             v-if="group.kind === 'quickChats'"
@@ -181,7 +182,7 @@
               type="button"
               :aria-label="t('sidebar.createFromRepository')"
               :title="t('sidebar.createFrom')"
-              @click.stop="emit('create-agent-from-repository', { agentId: group.sessions[0]!.agentId, repositoryName: group.label, repositoryRoot: group.repositoryRoot! })"
+              @click.stop="emit('create-agent-from-repository', sectionTarget(group))"
             >
               <GitForkIcon aria-hidden="true" />
             </button>
@@ -214,6 +215,7 @@
               v-bind="clientAgentOrderUpdate.dragItemAttributes(session.agentId)"
               :session="session"
               :group-kind="group.kind"
+              :host="rowHost(session)"
               v-show="!isWorkspaceCollapsed(group)"
               class="agent-sidebar__agent"
               :class="[
@@ -314,6 +316,7 @@ import RepositoryIconPicker from './RepositoryIconPicker.vue';
 import StartWorkMenu from './StartWorkMenu.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import RepositoryAgentRow from './RepositoryAgentRow.vue';
+import RemoteHostIndicator from './RemoteHostIndicator.vue';
 
 const props = defineProps<{ model: AgentSidebarModel }>();
 const {
@@ -345,6 +348,9 @@ const {
   toggleWorkspace,
   repositorySessionMenuId,
   repositorySessionMenuItems,
+  sectionTarget,
+  remoteConnection,
+  rowHost,
   repositorySessionMenu,
   setRepositorySessionMenuVisible,
   selectRepositorySessionMenuItem,
@@ -373,6 +379,9 @@ const {
 <style scoped src="./agent-row.css"></style>
 <style scoped src="./agent-sidebar-common.css"></style>
 <style scoped>
+.agent-sidebar__host {
+  margin-left: var(--space-6);
+}
 
 .agent-sidebar__workspace-group > .agent-sidebar__group-rows {
   display: contents;

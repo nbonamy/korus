@@ -37,7 +37,7 @@ describe('run profile app-owned boundary', () => {
     expect(await request(f.server, 'agent/runProfileActions/get', { agentId: 'one', directory: '.' })).toMatchObject({ result: { actions: [{ name: 'test', command: 'npm run test', directory: '.', source: 'package.json' }], warnings: [] } });
     expect((await f.runProfiles.get('one', f.root)).runs).toStrictEqual([]);
   });
-  it.each(['agent/delete', 'team/delete', 'team/disconnect', 'shutdown'])('stops owned commands when removing their owner via %s', async method => {
+  it.each(['agent/delete', 'team/delete', 'shutdown'])('stops owned commands when removing their owner via %s', async method => {
     const f = await local();
     const run = await f.start();
     if (method === 'shutdown') await f.server.close();
@@ -61,14 +61,26 @@ describe('run profile app-owned boundary', () => {
     expect(await f.start()).toMatchObject({ agentId: 'one', profileId: run.profileId, state: 'running' });
   });
 
-  it('routes catalog/start/output/stop to the owning remote daemon, without local execution', async () => {
+  it('routes profiles by agent host and stops only the disconnected host in a mixed team', async () => {
     const snapshot = createTestSnapshot();
     const connection = readyRemoteConnection();
-    snapshot.remoteConnections.connections = [connection];
-    snapshot.teams = [{ id: 'pointer', name: 'Remote', remoteConnectionId: connection.id, remoteTeamId: 'team-remote', agentIds: [] }];
+    const otherConnection = { ...connection, id: 'other-host', name: 'Other host' };
+    snapshot.remoteConnections.connections = [connection, otherConnection];
+    snapshot.agents = [{ ...createRemoteAgent(), id: 'local-agent', teamId: 'pointer' }];
+    snapshot.teams = [{ id: 'pointer', name: 'Mixed', remoteLinks: [
+      { connectionId: connection.id, remoteTeamId: 'team-remote' },
+      { connectionId: otherConnection.id, remoteTeamId: 'team-remote' },
+    ], agentIds: ['local-agent'] }];
+    snapshot.activeTeamId = 'pointer';
     const remote = createRemoteTeamSnapshot([createRemoteAgent()]);
+    const otherRemote = createRemoteTeamSnapshot([{ ...createRemoteAgent(), id: 'other-remote-agent' }]);
     const response = { repository: '/remote/repo', worktree: '/remote/worktree', profiles: [], targets: {}, runs: [] };
-    const remoteClients = { request: vi.fn(async (_connection, method: string) => method === 'snapshot/get' ? { snapshot: remote, lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } } : response), close: vi.fn() };
+    const remoteClients = { request: vi.fn(async (owner, method: string) => {
+      const ownedSnapshot = owner.id === connection.id ? remote : otherRemote;
+      if (method === 'snapshot/get') return { snapshot: ownedSnapshot, lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } };
+      if (method === 'collaboration/team/bind') return ownedSnapshot;
+      return response;
+    }), close: vi.fn(), closeConnection: vi.fn() };
     const runProfiles = { get: vi.fn(), discover: vi.fn(), start: vi.fn(), stop: vi.fn(), retainAgents: vi.fn(), close: vi.fn() };
     const server = new AppBackendServer({ version: 'test', snapshot, remoteClients: remoteClients as never, runProfiles: runProfiles as never });
     resources.push({ server });
@@ -76,8 +88,13 @@ describe('run profile app-owned boundary', () => {
       expect(await request(server, method, { agentId: 'agent-remote', ...extra })).toMatchObject({ result: response });
       expect(remoteClients.request).toHaveBeenLastCalledWith(connection, method, { agentId: 'agent-remote', ...extra, _clientId: 'remote-controller' }, expect.any(Function));
     }
-    await request(server, 'team/disconnect', { teamId: 'pointer' });
+    const disconnected = await request(server, 'connections/delete', { connectionId: connection.id });
     expect(remoteClients.request).toHaveBeenCalledWith(connection, 'agent/profileRuns/stop', { agentId: 'agent-remote', _clientId: 'remote-controller' }, expect.any(Function));
+    expect(remoteClients.request).not.toHaveBeenCalledWith(otherConnection, 'agent/profileRuns/stop', expect.anything(), expect.any(Function));
+    expect(remoteClients.closeConnection).toHaveBeenCalledExactlyOnceWith(connection.id);
+    expect(disconnected).toMatchObject({ result: { teams: [{ id: 'pointer' }], agents: [
+      { id: 'local-agent' }, { id: 'other-remote-agent', remoteConnectionId: otherConnection.id },
+    ] } });
     expect(runProfiles.get).not.toHaveBeenCalled(); expect(runProfiles.start).not.toHaveBeenCalled(); expect(runProfiles.stop).not.toHaveBeenCalled();
     expect(runProfiles.discover).not.toHaveBeenCalled();
   });

@@ -1498,82 +1498,16 @@ describe('state persistence', () => {
     });
   });
 
-  it('restores remote teams as pointer-only state when the connection exists', () => {
+  it('keeps hidden remote team links next to local agents', () => {
     const snapshot = createInitialSnapshot();
     snapshot.remoteConnections.connections = [readyRemoteConnection()];
-    snapshot.teams[0].remoteConnectionId = 'connection-devbox';
-    snapshot.teams[0].remoteTeamId = 'team-remote';
-    snapshot.workBacklog.assignments = {
-      'github:nbonamy/agent-workspace#12': {
-        provider: 'github',
-        itemId: 'nbonamy/agent-workspace#12',
-        agentId: 'agent-dina',
-        assignedAt: '2026-06-14T10:00:00.000Z',
-        policy: 'review',
-        status: 'inProgress',
-      },
-    };
+    snapshot.teams[0].remoteLinks = [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }];
+    const localAgentIds = [...snapshot.teams[0].agentIds];
 
     const restored = snapshotFromPersistedState(persistedStateFromSnapshot(snapshot));
 
-    expect(restored.teams[0].remoteConnectionId).toBe('connection-devbox');
-    expect(restored.teams[0].remoteTeamId).toBe('team-remote');
-    expect(restored.teams[0].agentIds).toStrictEqual([]);
-    expect(restored.teams[0].activeAgentId).toBeUndefined();
-    expect(restored.agents).toStrictEqual([]);
-    expect(restored.activeAgentId).toBeNull();
-    expect(restored.workBacklog.assignments).toStrictEqual({});
-  });
-
-  it('does not treat a remote team id collision as local team membership', () => {
-    const restored = snapshotFromPersistedState({
-      teams: [
-        {
-          id: 'team-remote-pointer',
-          name: 'Remote Pointer',
-          remoteConnectionId: 'connection-devbox',
-          remoteTeamId: 'team-app',
-          agentIds: ['agent-stale-remote'],
-          activeAgentId: 'agent-stale-remote',
-        },
-        {
-          id: 'team-app',
-          name: 'Local',
-          agentIds: ['agent-local'],
-          activeAgentId: 'agent-local',
-        },
-      ],
-      agents: [
-        {
-          id: 'agent-stale-remote',
-          teamId: 'team-remote-pointer',
-          name: 'Stale Remote',
-          folder: '/home/nicolas/src/remote',
-          backend: 'codex',
-          createdAt: '2026-06-14T10:00:00.000Z',
-          updatedAt: '2026-06-14T10:00:00.000Z',
-        },
-        {
-          id: 'agent-local',
-          teamId: 'team-app',
-          name: 'Local',
-          folder: '/Users/nicolas/src/local',
-          backend: 'codex',
-          createdAt: '2026-06-14T10:00:00.000Z',
-          updatedAt: '2026-06-14T10:00:00.000Z',
-        },
-      ],
-      activeTeamId: 'team-app',
-      activeAgentId: 'agent-local',
-      remoteConnections: { connections: [readyRemoteConnection()] },
-      theme: defaultThemeSettings,
-    });
-
-    expect(restored.teams.find((team) => team.id === 'team-remote-pointer')?.agentIds).toStrictEqual([]);
-    expect(restored.teams.find((team) => team.id === 'team-app')?.agentIds).toStrictEqual(['agent-local']);
-    expect(restored.agents.map((agent) => agent.id)).toStrictEqual(['agent-local']);
-    expect(restored.activeTeamId).toBe('team-app');
-    expect(restored.activeAgentId).toBe('agent-local');
+    expect(restored.teams[0].remoteLinks).toStrictEqual([{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }]);
+    expect(restored.teams[0].agentIds).toStrictEqual(localAgentIds);
   });
 
   it('repairs orphaned local agents to a local team instead of a remote pointer', () => {
@@ -1582,8 +1516,7 @@ describe('state persistence', () => {
         {
           id: 'team-remote-pointer',
           name: 'Remote Pointer',
-          remoteConnectionId: 'connection-devbox',
-          remoteTeamId: 'team-remote',
+          remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }],
           agentIds: [],
         },
         {
@@ -1619,8 +1552,7 @@ describe('state persistence', () => {
       teams: [{
         id: 'team-remote',
         name: 'Remote',
-        remoteConnectionId: 'missing-connection',
-        remoteTeamId: 'team-remote',
+        remoteLinks: [{ connectionId: 'missing-connection', remoteTeamId: 'team-remote' }],
         agentIds: ['agent-remote'],
       }],
       agents: [{
@@ -1637,8 +1569,7 @@ describe('state persistence', () => {
       remoteConnections: { connections: [] },
     });
 
-    expect(restored.teams[0].remoteConnectionId).toBeUndefined();
-    expect(restored.teams[0].remoteTeamId).toBeUndefined();
+    expect(restored.teams[0].remoteLinks).toBeUndefined();
   });
 
   it('sanitizes invalid source folder settings', () => {

@@ -117,7 +117,6 @@ export const ipcChannels = {
   updateTeam: 'team:update',
   reorderTeams: 'team:reorder',
   closeTeam: 'team:close',
-  disconnectTeam: 'team:disconnect',
   selectTeam: 'team:select',
   getAutomationSnapshot: 'automation:snapshot:get',
   createAutomation: 'automation:create',

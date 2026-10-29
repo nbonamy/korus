@@ -35,7 +35,7 @@ export async function previewRepositoryDeletion(snapshot: AppSnapshot, agent: Ag
   ))) throw new Error('Finish or delete Missions using this repository before deleting it.');
   const agents: RepositoryDeletionPreview['agents'] = [];
   for (const candidate of snapshot.agents) {
-    if (!candidate.folder || snapshot.teams.some(team => team.remoteConnectionId && team.agentIds.includes(candidate.id))) continue;
+    if (!candidate.folder || candidate.remoteConnectionId) continue;
     const folder = await realpath(candidate.folder).catch(() => resolve(candidate.folder!));
     if (paths.some(root => inside(folder, root))) agents.push({ id: candidate.id, name: candidate.name ?? basename(folder) });
   }

@@ -283,8 +283,8 @@ export class AppController {
       return this.listWorkItems(provider, repositoryId, location, query);
     });
 
-    ipc.handle(ipcChannels.listBackendModels, async (_event, agentId: string, backend?: import('@workspace/core/contracts').AgentBackend) => {
-      return this.listBackendModels(agentId, backend);
+    ipc.handle(ipcChannels.listBackendModels, async (_event, agentId: string | null, backend?: import('@workspace/core/contracts').AgentBackend, remoteConnectionId?: string) => {
+      return this.listBackendModels(agentId, backend, remoteConnectionId);
     });
 
     ipc.handle(ipcChannels.listBackendPlugins, async (_event, agentId: string) => {
@@ -409,10 +409,6 @@ export class AppController {
 
     ipc.handle(ipcChannels.closeTeam, async (_event, teamId: string) => {
       return this.closeTeam(teamId);
-    });
-
-    ipc.handle(ipcChannels.disconnectTeam, async (_event, teamId: string) => {
-      return this.disconnectTeam(teamId);
     });
 
     ipc.handle(ipcChannels.selectTeam, async (_event, teamId: string) => {
@@ -1000,8 +996,7 @@ export class AppController {
     if (!agent) {
       throw new Error(`Agent not found: ${agentId}`);
     }
-    const team = this.snapshot?.teams.find((candidate) => candidate.id === agent.teamId);
-    if (team?.remoteConnectionId) {
+    if (agent.remoteConnectionId) {
       throw new Error('Open In is only available for local agents.');
     }
 
@@ -1059,7 +1054,7 @@ export class AppController {
   }
 
   private async createTeam(input: CreateTeamInput): Promise<AppSnapshot> {
-    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(input.remoteTeamId ? backendMethods.teamConnect : backendMethods.teamCreate, { input }));
+    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.teamCreate, { input }));
   }
 
   private async updateTeam(input: UpdateTeamInput): Promise<AppSnapshot> {
@@ -1072,10 +1067,6 @@ export class AppController {
 
   private async closeTeam(teamId: string): Promise<AppSnapshot> {
     return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.teamDelete, { teamId }));
-  }
-
-  private async disconnectTeam(teamId: string): Promise<AppSnapshot> {
-    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.teamDisconnect, { teamId }));
   }
 
   private async selectTeam(teamId: string): Promise<AppSnapshot> {
@@ -1308,8 +1299,7 @@ export class AppController {
   private requireMobileAgent(agentId: string): void {
     const agent = this.snapshot?.agents.find(agent => agent.id === agentId);
     if (!agent) throw new Error('Agent not found.');
-    const team = this.snapshot?.teams.find(team => team.id === agent.teamId);
-    if (team?.remoteConnectionId) throw new Error('Mobile simulators are available to local agents only.');
+    if (agent.remoteConnectionId) throw new Error('Mobile simulators are available to local agents only.');
     this.mobileSimulator.retainAgents(this.snapshot!.agents.map(agent => agent.id));
   }
 
@@ -1469,8 +1459,10 @@ export class AppController {
     return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentPermissionModeUpdate, { agentId, mode }));
   }
 
-  private async listBackendModels(agentId: string, backend?: import('@workspace/core/contracts').AgentBackend): Promise<BackendModelOption[]> {
-    return this.requireBackendClient().request(backendMethods.agentModelsList, { agentId, ...(backend ? { backend } : {}) });
+  private async listBackendModels(agentId: string | null, backend?: import('@workspace/core/contracts').AgentBackend, remoteConnectionId?: string): Promise<BackendModelOption[]> {
+    return this.requireBackendClient().request(backendMethods.agentModelsList, {
+      ...(agentId ? { agentId } : {}), ...(backend ? { backend } : {}), ...(remoteConnectionId ? { remoteConnectionId } : {}),
+    });
   }
 
   private async listBackendPlugins(agentId: string): Promise<BackendPluginSummary[]> {

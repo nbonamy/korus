@@ -291,7 +291,7 @@ export class ConversationShares {
     return snapshot.agents.flatMap(agent => {
       const team = snapshot.teams.find(team => team.id === agent.teamId);
       const target = conversationShareTarget(agent);
-      return team && !team.remoteConnectionId && target ? [target] : [];
+      return team && !agent.remoteConnectionId && target ? [target] : [];
     });
   }
   private currentTarget(target: ConversationShareTarget): boolean {
@@ -299,7 +299,7 @@ export class ConversationShares {
     const agent = snapshot.agents.find(agent => agent.id === target.agentId);
     const team = snapshot.teams.find(team => team.id === agent?.teamId);
     const current = agent && conversationShareTarget(agent);
-    return Boolean(team && !team.remoteConnectionId && current && sameTarget(current, target));
+    return Boolean(team && !agent?.remoteConnectionId && current && sameTarget(current, target));
   }
   private state(active: ShareRecord | undefined, configured: boolean, target = active?.target): ConversationShareState {
     const records = active ? (this.saved?.proposals ?? []).filter(record => record.handle === active.handle) : [];

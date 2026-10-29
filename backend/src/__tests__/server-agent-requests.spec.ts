@@ -386,8 +386,8 @@ describe('AppBackendServer', () => {
         params: {
           input: {
             teamId: 'team-test',
-            repositoryRoot: '/src/agent-workspace',
-            beforeRepositoryRoot: null,
+            repositoryKey: '/src/agent-workspace',
+            beforeRepositoryKey: null,
           },
         },
       })).resolves.toMatchObject({ result: { activeTeamId: 'team-test' } });

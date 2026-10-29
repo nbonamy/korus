@@ -14,7 +14,7 @@ describe('client isolation regressions', () => {
     snapshot.remoteConnections.connections = [connection];
     snapshot.teams.push(
       { id: 'local-other', name: 'Other', agentIds: [] },
-      { id: 'pointer', name: 'Devbox', agentIds: [], remoteConnectionId: connection.id, remoteTeamId: 'team-remote' },
+      { id: 'pointer', name: 'Devbox', agentIds: [], remoteLinks: [{ connectionId: connection.id, remoteTeamId: 'team-remote' }] },
     );
     const request = vi.fn(async (_connection: unknown, method: string, params: unknown) => {
       const result = await daemon.handleMessage({ jsonrpc: '2.0', id: 1, method, params } as AppRpcRequest);
@@ -26,7 +26,7 @@ describe('client isolation regressions', () => {
       await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'client/navigation/selectTeam', params: { _clientId: 'remote-client', teamId: 'pointer' } });
       await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'client/navigation/selectTeam', params: { _clientId: 'local-client', teamId: 'local-other' } });
       const input = method === 'agent/create' ? { name: 'New', folder: '/tmp', selection: { backend: 'codex' } } : {};
-      const results = await Promise.all(['remote-client', 'local-client'].map((_clientId) => server.handleMessage({ jsonrpc: '2.0', id: _clientId, method, params: { _clientId, input } })));
+      const results = await Promise.all(['remote-client', 'local-client'].map((_clientId) => server.handleMessage({ jsonrpc: '2.0', id: _clientId, method, params: { _clientId, input: _clientId === 'remote-client' ? { ...input, remoteConnectionId: connection.id } : input } })));
       expect(results[0]).toMatchObject({ result: { activeTeamId: 'pointer' } });
       expect(results[1]).toMatchObject({ result: { activeTeamId: 'local-other' } });
       expect(remoteSnapshot.agents).toHaveLength(1);
@@ -35,7 +35,7 @@ describe('client isolation regressions', () => {
       expect(snapshot.agents[0]?.teamId).toBe('local-other');
       expect(snapshot.teams[0]?.agentIds).toEqual([]);
       expect(snapshot.activeTeamId).toBe('team-test');
-      await expect(server.handleMessage({ jsonrpc: '2.0', id: 3, method, params: { _clientId: 'remote-client', input: { ...input, teamId: 'missing' } } })).resolves.toHaveProperty('error');
+      await expect(server.handleMessage({ jsonrpc: '2.0', id: 3, method, params: { _clientId: 'remote-client', input: { ...input, teamId: 'missing', remoteConnectionId: connection.id } } })).resolves.toHaveProperty('error');
       expect(snapshot.agents).toHaveLength(1);
       expect(remoteSnapshot.agents).toHaveLength(1);
     } finally { await server.close(); await daemon.close(); }
@@ -79,7 +79,7 @@ describe('client isolation regressions', () => {
     const snapshot = createTestSnapshot();
     const connection = readyRemoteConnection();
     snapshot.remoteConnections.connections = [connection];
-    snapshot.teams.push({ id: 'pointer', name: 'Devbox', agentIds: [], remoteConnectionId: connection.id, remoteTeamId: 'team-remote' });
+    snapshot.teams.push({ id: 'pointer', name: 'Devbox', agentIds: [], remoteLinks: [{ connectionId: connection.id, remoteTeamId: 'team-remote' }] });
     const request = vi.fn(async (_connection: unknown, method: string, params: unknown) => {
       const response = await daemon.handleMessage({ jsonrpc: '2.0', id: 1, method, params } as AppRpcRequest);
       if (response && 'result' in response) return response.result;

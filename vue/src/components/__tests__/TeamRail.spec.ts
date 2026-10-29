@@ -33,15 +33,6 @@ const teams: Team[] = [
   },
 ];
 
-const remoteConnection: RemoteConnection = {
-  id: 'connection-devbox',
-  kind: 'ssh',
-  name: 'wall-e',
-  host: 'wall-e',
-  status: 'ready',
-  createdAt: '2026-06-14T10:00:00.000Z',
-  updatedAt: '2026-06-14T10:00:00.000Z',
-};
 
 describe('TeamRail', () => {
   it('matches the selection ring to the selected team color', async () => {
@@ -424,131 +415,6 @@ describe('TeamRail', () => {
     expect(wrapper.emitted('close-team')).toStrictEqual([['team-app']]);
   });
 
-  it('disconnects a remote team immediately without deleting it remotely', async () => {
-    const remoteTeams: Team[] = [
-      teams[0],
-      {
-        ...teams[1],
-        remoteConnectionId: 'connection-devbox',
-        remoteTeamId: 'team-remote',
-      },
-    ];
-    const wrapper = mountRail({
-      teams: remoteTeams,
-      activeTeamId: 'team-sk',
-    });
-    const confirm = vi.spyOn(ElMessageBox, 'confirm');
-
-    await wrapper.get(`[aria-label="${product.name}"]`).trigger('contextmenu');
-    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Disconnect')?.trigger('click');
-    await flushPromises();
-
-    expect(confirm).not.toHaveBeenCalled();
-    expect(wrapper.emitted('disconnect-team')).toStrictEqual([['team-app']]);
-    expect(wrapper.emitted('close-team')).toBeUndefined();
-  });
-
-  it('confirms before deleting a remote team on the remote backend', async () => {
-    const remoteTeams: Team[] = [
-      teams[0],
-      {
-        ...teams[1],
-        remoteConnectionId: 'connection-devbox',
-        remoteTeamId: 'team-remote',
-      },
-    ];
-    const wrapper = mountRail({
-      teams: remoteTeams,
-      activeTeamId: 'team-sk',
-      remoteConnections: [remoteConnection],
-      loadRemoteTeams: vi.fn().mockResolvedValue([
-        { id: 'team-remote', name: `${product.name}`, agentIds: [] },
-        { id: 'team-other', name: 'Other', agentIds: [] },
-      ]),
-    });
-    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never);
-
-    await wrapper.get(`[aria-label="${product.name}"]`).trigger('contextmenu');
-    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Delete Team')?.trigger('click');
-    await flushPromises();
-
-    expect(confirm).toHaveBeenCalledWith(
-      'Agents, missions and quick chats will be deleted on the remote backend. Mission worktrees will not be deleted.',
-      `Delete ${product.name}?`,
-      {
-        cancelButtonText: 'Cancel',
-        confirmButtonText: 'Delete Team',
-        type: 'warning',
-      },
-    );
-    expect(wrapper.emitted('close-team')).toStrictEqual([['team-app']]);
-    expect(wrapper.emitted('disconnect-team')).toBeUndefined();
-  });
-
-  it('offers to disconnect instead of deleting the only team on a remote host', async () => {
-    const remoteTeam = { ...teams[1]!, name: 'BUG', remoteConnectionId: remoteConnection.id, remoteTeamId: 'team-remote' };
-    const loadRemoteTeams = vi.fn().mockResolvedValue([{ id: 'team-remote', name: 'BUG', agentIds: [] }]);
-    const wrapper = mountRail({
-      teams: [remoteTeam],
-      activeTeamId: remoteTeam.id,
-      remoteConnections: [remoteConnection],
-      loadRemoteTeams,
-    });
-    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never);
-
-    await wrapper.get('[aria-label="BUG"]').trigger('contextmenu');
-    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Delete Team')?.trigger('click');
-    await flushPromises();
-
-    expect(loadRemoteTeams).toHaveBeenCalledExactlyOnceWith(remoteConnection.id);
-    expect(confirm).toHaveBeenCalledExactlyOnceWith(
-      'BUG is the only team on wall-e, so it can’t be deleted. Do you want to disconnect instead?',
-      'Cannot delete team',
-      { cancelButtonText: 'Cancel', confirmButtonText: 'Yes', type: 'info' },
-    );
-    expect(wrapper.emitted('disconnect-team')).toStrictEqual([[remoteTeam.id]]);
-    expect(wrapper.emitted('close-team')).toBeUndefined();
-  });
-
-  it('leaves the only remote team connected when the user cancels', async () => {
-    const remoteTeam = { ...teams[1]!, name: 'BUG', remoteConnectionId: remoteConnection.id, remoteTeamId: 'team-remote' };
-    const wrapper = mountRail({
-      teams: [teams[0]!, remoteTeam],
-      activeTeamId: remoteTeam.id,
-      remoteConnections: [remoteConnection],
-      loadRemoteTeams: vi.fn().mockResolvedValue([{ id: 'team-remote', name: 'BUG', agentIds: [] }]),
-    });
-    vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue('cancel');
-
-    await wrapper.get('[aria-label="BUG"]').trigger('contextmenu');
-    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Delete Team')?.trigger('click');
-    await flushPromises();
-
-    expect(wrapper.emitted('disconnect-team')).toBeUndefined();
-    expect(wrapper.emitted('close-team')).toBeUndefined();
-  });
-
-  it('does not offer remote deletion when the host team list cannot be read', async () => {
-    const remoteTeam = { ...teams[1]!, name: 'BUG', remoteConnectionId: remoteConnection.id, remoteTeamId: 'team-remote' };
-    const wrapper = mountRail({
-      teams: [teams[0]!, remoteTeam],
-      activeTeamId: remoteTeam.id,
-      remoteConnections: [remoteConnection],
-      loadRemoteTeams: vi.fn().mockRejectedValue(new Error('Host unavailable')),
-    });
-    const confirm = vi.spyOn(ElMessageBox, 'confirm');
-    const showError = vi.spyOn(ElMessage, 'error').mockImplementation(() => undefined as never);
-
-    await wrapper.get('[aria-label="BUG"]').trigger('contextmenu');
-    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Delete Team')?.trigger('click');
-    await flushPromises();
-
-    expect(confirm).not.toHaveBeenCalled();
-    expect(showError).toHaveBeenCalledWith('Host unavailable');
-    expect(wrapper.emitted('disconnect-team')).toBeUndefined();
-    expect(wrapper.emitted('close-team')).toBeUndefined();
-  });
-
   it('keeps floating UI open for inside clicks and closes it for escape or outside clicks', async () => {
     const wrapper = mountRail({
       teams,
@@ -598,8 +464,6 @@ describe('TeamRail', () => {
 
 function mountRail(props: {
   teams: Team[];
-  remoteConnections?: RemoteConnection[];
-  loadRemoteTeams?: (connectionId: string) => Promise<Team[]>;
   activeTeamId: string | null;
   backlogActive?: boolean;
   cockpitActive?: boolean;

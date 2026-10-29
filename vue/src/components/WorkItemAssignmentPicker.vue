@@ -47,7 +47,7 @@
         <section class="work-item-assignment-picker__section">
           <h3 class="app-section-label">{{ t('repositoryBacklog.session') }}</h3>
           <div v-if="destination === 'new'" class="work-item-assignment-picker__model-selectors">
-            <BackendModelSelector v-model:selection="executionSelection" :agent-id="modelCatalogAgentId" :disabled="busy" />
+            <BackendModelSelector v-model:selection="executionSelection" :agent-id="modelCatalogAgentId" :remote-connection-id="remoteConnectionId" :disabled="busy" />
           </div>
           <el-select
             v-else
@@ -142,6 +142,7 @@ const props = withDefaults(defineProps<{
   existingWorktreePath?: string;
   item: WorkItem;
   modelAgentId?: string;
+  remoteConnectionId?: string;
   sessions?: WorkItemAssignmentSession[];
 }>(), {
   busy: false,
@@ -160,7 +161,7 @@ const { selection: executionSelection, backend } = useExecutionSelection();
 if (backendBinding.value) backend.value = backendBinding.value;
 watch(backendBinding, value => { backend.value = value; });
 watch(backend, value => { backendBinding.value = value; }, { flush: 'sync' });
-useNewAgentBackend(backend, useBackendChoices());
+useNewAgentBackend(backend, useBackendChoices(() => props.remoteConnectionId));
 const { t } = useI18n();
 const destination = ref<WorkItemAssignmentDestination>('new');
 const selectedAgentId = ref('');

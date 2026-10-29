@@ -61,11 +61,11 @@ export class CompanionProjectAcquisition {
   }
 
   async localList(remoteConnectionId?: string): Promise<CompanionGitHubRepository[]> {
-    return (await this.localSources(remoteConnectionId)).map(({ path, name }) => ({ id: opaquePath(path), name }));
+    return (await this.localSources(remoteConnectionId)).map(({ path, name }) => ({ id: opaquePath(path, remoteConnectionId), name }));
   }
 
   private async localRepository(repositoryId: string, remoteConnectionId?: string) {
-    const repository = (await this.localSources(remoteConnectionId)).find(item => opaquePath(item.path) === repositoryId);
+    const repository = (await this.localSources(remoteConnectionId)).find(item => opaquePath(item.path, remoteConnectionId) === repositoryId);
     if (!repository) throw new Error('Repository not found. Refresh the repository list.');
     return repository;
   }
