@@ -11,6 +11,7 @@ import { createEntityId } from '@workspace/core/ids';
 import { backendProviderTokensFilePath } from '../state';
 import { remoteCodexVersionCommand } from './remote-codex-command';
 import { remoteClaudeAuthenticationCommand, remoteClaudeInstallCommand, remoteClaudeVersionCommand } from './remote-claude-install';
+import { exclusiveHomeEnvironment } from '../home-lock';
 import { remoteEngineLinkCommand } from './remote-engine-links';
 import { remoteEnvironmentCommand, remoteNodeInstallCommand } from './remote-node';
 
@@ -334,7 +335,7 @@ export function sshStdioTransport(host: string): RemoteConnection['transport'] {
       '-T', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3',
       '-o', 'StrictHostKeyChecking=accept-new',
       host,
-      remoteEnvironmentCommand(`node ${remoteDaemonPath} connect || { code=$?; [ "$code" -eq 1 ] || exit "$code"; exec node ${remoteDaemonPath} --stdio; }`),
+      remoteEnvironmentCommand(`node ${remoteDaemonPath} connect || { code=$?; [ "$code" -eq 1 ] || exit "$code"; exec env ${exclusiveHomeEnvironment}=1 node ${remoteDaemonPath} --stdio; }`),
     ],
   };
 }

@@ -687,6 +687,15 @@ User-local Codex upgrades verify package ownership and retain the `~/.local` npm
 prefix even when the Node runtime has a different default global directory.
 Version discovery accepts the previous daemon CLI name for hosts not yet upgraded.
 
+An SSH daemon owns its host's home exclusively. Each connection launches its own
+stdio daemon with its own in-memory state, so two live daemons on one home overwrite
+each other's saves and agents or teams vanish and reappear. The launch sets
+`APP_EXCLUSIVE_HOME=1`, which takes a `daemon.lock` in the home: a stale lock (dead
+owner) is taken over, a live owner is waited for briefly while it shuts down, and
+otherwise the new daemon exits with a message naming the duplicate session. Two saved
+connections to the same machine therefore cannot both be active. Local and
+`serve` daemons do not take the lock.
+
 Every connect, install and reconnect (the read-only inspection) links the host's `codex` and `claude` into the
 private `bin` directory, which the SSH launch puts first on PATH, and drops the link
 of an engine that is gone. The daemon resolves a linked engine with one file check

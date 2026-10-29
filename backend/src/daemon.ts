@@ -4,7 +4,8 @@ import { pathToFileURL } from 'node:url';
 import net from 'node:net';
 import type { Readable, Writable } from 'node:stream';
 import { createDaemonRuntime, type DaemonRuntime, type DaemonRuntimeOptions } from './runtime';
-import { backendSocketPath } from './state';
+import { backendHomeDir, backendSocketPath } from './state';
+import { acquireHomeLock, exclusiveHomeEnvironment, HomeInUseError, type HomeLock } from './home-lock';
 import { LocalSocketRpcServer } from './socket-server';
 import { StdioRpcPeer } from './stdio';
 import { debugMain, flushBackendLogs, logMain, warnMain } from './log';
@@ -158,6 +159,17 @@ function verifySocketVersion(socket: net.Socket, version: string): Promise<boole
 }
 
 async function runStdio(): Promise<void> {
+  let homeLock: HomeLock | null = null;
+  if (process.env[exclusiveHomeEnvironment] === '1') {
+    try {
+      homeLock = await acquireHomeLock(backendHomeDir());
+    } catch (error) {
+      if (!(error instanceof HomeInUseError)) throw error;
+      process.stderr.write(`${error.message}\n`);
+      process.exitCode = 4;
+      return;
+    }
+  }
   let runtime: DaemonRuntime;
   const stdio = new StdioRpcPeer({
     input: process.stdin,
@@ -183,6 +195,7 @@ async function runStdio(): Promise<void> {
     stdio.stop();
     await runtime.stop();
     await flushBackendLogs();
+    await homeLock?.release();
   };
   process.once('SIGTERM', () => {
     void stop().finally(() => process.exit(0));

@@ -195,6 +195,12 @@ Host bad;alias
     expect(commands.some((command) => command.includes('ln -sfn'))).toBe(false);
   });
 
+  it('launches the SSH daemon as the exclusive owner of the host home', () => {
+    const command = sshStdioTransport('devbox')!.args.at(-1)!;
+    expect(command).toContain('exec env APP_EXCLUSIVE_HOME=1 node');
+    expect(command).toContain('--stdio');
+  });
+
   it('keeps a Claude-only host ready without installing Codex', async () => {
     const run = vi.fn(async (command: string, args: string[]) => {
       const remoteCommand = args.at(-1) ?? '';
@@ -248,7 +254,7 @@ Host bad;alias
         '-T', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3',
         '-o', 'StrictHostKeyChecking=accept-new',
         'devbox',
-        remoteEnvironmentCommand(`node ~/${product.homeDirectory}/daemon.mjs connect || { code=$?; [ "$code" -eq 1 ] || exit "$code"; exec node ~/${product.homeDirectory}/daemon.mjs --stdio; }`),
+        remoteEnvironmentCommand(`node ~/${product.homeDirectory}/daemon.mjs connect || { code=$?; [ "$code" -eq 1 ] || exit "$code"; exec env APP_EXCLUSIVE_HOME=1 node ~/${product.homeDirectory}/daemon.mjs --stdio; }`),
       ],
     });
   });
