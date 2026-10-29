@@ -275,6 +275,9 @@ describe('companion authorization gateway', () => {
     expect(await f.gateway.request('phone', 'agent.review.setup', { target })).toStrictEqual(setup);
     await expect(f.gateway.request('phone', 'agent.review.start', { target: { ...target, sessionId: 'old' }, input: { scope: { type: 'uncommitted' }, threadMode: 'independent' } })).rejects.toThrow('stale');
     expect(f.port.startReview).not.toHaveBeenCalled();
+    const input = { scope: { type: 'uncommitted' }, threadMode: 'independent', selection: { model: 'reviewer', serviceTier: 'fast' } };
+    await f.gateway.request('phone', 'agent.review.start', { target, input });
+    expect(f.port.startReview).toHaveBeenCalledExactlyOnceWith('agent', input);
     f.port.reviewSetup.mockImplementationOnce(async () => { await f.gateway.revoke('phone'); return setup; });
     await expect(f.gateway.request('phone', 'agent.review.setup', { target })).rejects.toThrow('authorized');
   });
@@ -512,7 +515,7 @@ describe('companion authorization gateway', () => {
       'skills.list': { args: (t) => t, effect: 'skills', read: true },
       'plugins.list': { args: (t) => t, effect: 'plugins', read: true },
       'models.list': { args: (t) => t, effect: 'models', read: true },
-      'agent.model.select': { args: (t) => ({ target: t, model: 'gpt', reasoningEffort: null, serviceTier: null }), effect: 'selectModel' },
+      'agent.model.select': { args: (t) => ({ target: t, selection: { backend: 'codex', model: 'gpt', reasoningEffort: null, serviceTier: null } }), effect: 'selectModel' },
       'agent.interrupt': { args: (t) => t, effect: 'interrupt' },
       'agent.approvalPreset.set': { args: (t) => ({ target: t, preset: 'full-access' }), effect: 'setApprovalPreset' },
       'agent.permissionMode.set': { args: (t) => ({ target: t, mode: 'acceptEdits' }), effect: 'setPermissionMode' },
@@ -705,11 +708,11 @@ describe('companion authorization gateway', () => {
     const f = fixture(); await f.pair();
     expect(await f.gateway.request('phone', 'models.list', target)).toStrictEqual({ models: [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }] });
     expect(f.port.models).toHaveBeenCalledExactlyOnceWith('agent');
-    await f.gateway.request('phone', 'agent.model.select', { target, model: 'gpt', reasoningEffort: 'high', serviceTier: null });
-    expect(f.port.selectModel).toHaveBeenCalledExactlyOnceWith('agent', { model: 'gpt', reasoningEffort: 'high', serviceTier: null });
+    await f.gateway.request('phone', 'agent.model.select', { target, selection: { backend: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: null } });
+    expect(f.port.selectModel).toHaveBeenCalledExactlyOnceWith('agent', { backend: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: null });
     await expect(f.gateway.request('phone', 'models.list', { ...target, agentId: 'unknown' })).rejects.toThrow('stale');
-    await expect(f.gateway.request('phone', 'agent.model.select', { target: { ...target, agentId: 'unknown' }, model: 'gpt', reasoningEffort: null, serviceTier: null })).rejects.toThrow('stale');
-    await expect(f.gateway.request('phone', 'agent.model.select', { target, model: 'gpt', reasoningEffort: null, serviceTier: null, extra: 1 })).rejects.toThrow();
+    await expect(f.gateway.request('phone', 'agent.model.select', { target: { ...target, agentId: 'unknown' }, selection: { backend: 'codex', model: 'gpt', reasoningEffort: null, serviceTier: null } })).rejects.toThrow('stale');
+    await expect(f.gateway.request('phone', 'agent.model.select', { target, extra: 1, selection: { backend: 'codex', model: 'gpt', reasoningEffort: null, serviceTier: null } })).rejects.toThrow();
     await expect(f.gateway.request('stranger', 'models.list', target)).rejects.toThrow('authorized');
   });
   it('lets the phone stop an agent and change its permissions, only for agents the laptop shows', async () => {
@@ -735,7 +738,7 @@ describe('companion authorization gateway', () => {
     const old = { ...target, sessionId: JSON.stringify({ kind: 'codex', threadId: 'replaced' }) };
     const commands: [string, object][] = [
       ['agent.interrupt', old], ['models.list', old],
-      ['agent.model.select', { target: old, model: 'gpt', reasoningEffort: null, serviceTier: null }],
+      ['agent.model.select', { target: old, selection: { backend: 'codex', model: 'gpt', reasoningEffort: null, serviceTier: null } }],
       ['agent.approvalPreset.set', { target: old, preset: 'full-access' }], ['agent.permissionMode.set', { target: old, mode: 'acceptEdits' }],
       ['agent.backend.set', { target: old, backend: 'claude' }],
       ['agent.review.start', { target: old, input: { scope: { type: 'uncommitted' }, threadMode: 'independent' } }],
@@ -745,7 +748,7 @@ describe('companion authorization gateway', () => {
   });
   it('starts a review for a shown agent with a validated scope, and passes delegation choices with a prompt', async () => {
     const f = fixture(); await f.pair();
-    const input = { scope: { type: 'branch', baseRef: 'main' }, threadMode: 'independent', instructions: 'Focus on security', backend: 'claude', model: 'review-model', reasoningEffort: 'high', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3, autoCommit: false } };
+    const input = { scope: { type: 'branch', baseRef: 'main' }, threadMode: 'independent', instructions: 'Focus on security', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3, autoCommit: false }, selection: { backend: 'claude', model: 'review-model', reasoningEffort: 'high' } };
     await f.gateway.request('phone', 'agent.review.start', { target, input });
     expect(f.port.startReview).toHaveBeenCalledExactlyOnceWith('agent', input);
     await expect(f.gateway.request('phone', 'agent.review.start', { target: { ...target, agentId: 'unknown' }, input })).rejects.toThrow('stale');
@@ -760,7 +763,7 @@ describe('companion authorization gateway', () => {
   });
   it('forwards composer options with a prompt and treats different options as a different command', async () => {
     const f = fixture(); await f.pair();
-    const command = { target, text: 'Plan it', clientCommandId: randomUUID(), options: { model: 'gpt', reasoningEffort: 'high', serviceTier: null, planMode: true } };
+    const command = { target, text: 'Plan it', clientCommandId: randomUUID(), options: { planMode: true, selection: { backend: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: null } } };
     await f.gateway.request('phone', 'prompt.submit', command);
     expect(f.port.submit).toHaveBeenCalledExactlyOnceWith(target, 'Plan it', 'mobile:phone', command.options);
     await expect(f.gateway.request('phone', 'prompt.submit', { ...command, options: { ...command.options, planMode: false } })).rejects.toThrow('reused');
@@ -876,36 +879,36 @@ describe('companion authorization gateway', () => {
     const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
     it('creates in the default checkout or in a new worktree, with real paths the phone never saw', async () => {
       const f = await ready();
-      const { creationId } = await f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, backend: 'claude' }) as { creationId: string };
-      expect(f.port.createChat).toHaveBeenCalledWith({ teamId: 'team', backend: 'claude', repositoryName: 'repo', repositoryRoot: '/code/repo', defaultBranch: 'main' });
+      const { creationId } = await f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, selection: { backend: 'claude' } }) as { creationId: string };
+      expect(f.port.createChat).toHaveBeenCalledWith({ teamId: 'team', selection: { backend: 'claude' }, repositoryName: 'repo', repositoryRoot: '/code/repo', defaultBranch: 'main' });
       await settled();
       expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'success', agentId: 'created' });
-      await f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, backend: 'codex', worktree: { branchName: 'feature/login' } });
-      expect(f.port.createChat).toHaveBeenLastCalledWith(expect.objectContaining({ backend: 'codex', worktree: { branchName: 'feature/login' } }));
+      await f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, worktree: { branchName: 'feature/login' }, selection: { backend: 'codex' } });
+      expect(f.port.createChat).toHaveBeenLastCalledWith(expect.objectContaining({ selection: { backend: 'codex' }, worktree: { branchName: 'feature/login' } }));
     });
     it('places a chat of a remote team on its own laptop', async () => {
       const f = await ready();
-      await f.gateway.request('phone', 'agent.create', { teamId: 'remote-team', repositoryId: opaquePath('/srv/remote'), backend: 'claude' });
+      await f.gateway.request('phone', 'agent.create', { teamId: 'remote-team', repositoryId: opaquePath('/srv/remote'), selection: { backend: 'claude' } });
       expect(f.port.createChat).toHaveBeenCalledWith(expect.objectContaining({ remoteConnectionId: 'ssh-host', repositoryRoot: '/srv/remote' }));
     });
     it.each([
       ['an unknown repository', { repositoryId: 'nope' }],
       ['a repository of another team', { teamId: 'remote-team' }],
       ['an unknown team', { teamId: 'ghost' }],
-      ['an engine the team cannot use', { teamId: 'remote-team', repositoryId: opaquePath('/srv/remote'), backend: 'codex' }],
+      ['an engine the team cannot use', { teamId: 'remote-team', repositoryId: opaquePath('/srv/remote'), selection: { backend: 'codex' } }],
       ['an unsupported engine', { backend: 'other' }],
       ...['', '-rf', '../x', 'a..b', 'a b', 'a/', 'x.lock', 'a//b', '/abs'].map((branchName): [string, object] => [`the branch ${JSON.stringify(branchName)}`, { worktree: { branchName } }]),
       ['an extra field', { folder: '/etc' }],
     ] satisfies [string, object][])('rejects %s', async (_name: string, change: object) => {
       const f = await ready();
-      await expect(f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, backend: 'claude', ...change })).rejects.toThrow();
+      await expect(f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, selection: { backend: 'claude' }, ...change })).rejects.toThrow();
       expect(f.port.createChat).not.toHaveBeenCalled();
     });
     it('needs a paired phone, reports a failure, and answers only the phone that started it', async () => {
       const f = await ready();
-      await expect(f.gateway.request('stranger', 'agent.create', { teamId: 'team', repositoryId, backend: 'claude' })).rejects.toThrow('authorized');
+      await expect(f.gateway.request('stranger', 'agent.create', { teamId: 'team', repositoryId, selection: { backend: 'claude' } })).rejects.toThrow('authorized');
       f.port.createChat.mockRejectedValueOnce(new Error('Branch exists'));
-      const { creationId } = await f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, backend: 'claude' }) as { creationId: string };
+      const { creationId } = await f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, selection: { backend: 'claude' } }) as { creationId: string };
       await settled();
       expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'error', error: 'Branch exists' });
       await expect(f.gateway.request('stranger', 'agent.create.status', { creationId })).rejects.toThrow('authorized');
@@ -914,8 +917,8 @@ describe('companion authorization gateway', () => {
     it('caps the creations a phone runs at once', async () => {
       const f = await ready();
       f.port.createChat.mockImplementation(() => new Promise(() => {}));
-      for (let index = 0; index < 3; index++) await f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, backend: 'claude' });
-      await expect(f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, backend: 'claude' })).rejects.toThrow('Too many');
+      for (let index = 0; index < 3; index++) await f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, selection: { backend: 'claude' } });
+      await expect(f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, selection: { backend: 'claude' } })).rejects.toThrow('Too many');
     });
   });
   describe('choosing the engine of an empty chat', () => {

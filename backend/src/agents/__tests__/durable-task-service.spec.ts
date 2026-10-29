@@ -10,7 +10,7 @@ const services: DurableTaskService[] = [];
 afterEach(() => { for (const service of services.splice(0)) service.close(); });
 
 function fixture(saved: DelegatedTask[] = [], readHistory?: (agent: Agent) => Promise<RendererMessage[]>) {
-  const parent = createAgentFromInput({ folder: '/repo', backend: 'codex', name: 'parent' });
+  const parent = createAgentFromInput({ folder: '/repo', name: 'parent', selection: { backend: 'codex' } });
   if (saved[0]) parent.id = saved[0].parentAgentId;
   const agents: Agent[] = [parent];
   let disk = structuredClone(saved);
@@ -30,7 +30,7 @@ function fixture(saved: DelegatedTask[] = [], readHistory?: (agent: Agent) => Pr
     service.handleEvent({ agentId, type, turnId, payload } as BackendPublishedEvent);
   }
   const provision = vi.fn(async (task: DelegatedTask) => {
-    const worker = createAgentFromInput({ folder: '/repo/worker', backend: 'codex', name: 'worker' });
+    const worker = createAgentFromInput({ folder: '/repo/worker', name: 'worker', selection: { backend: 'codex' } });
     worker.id = task.workerAgentId;
     agents.push(worker);
     return worker;

@@ -347,7 +347,7 @@ async function toggleAutomation(automationId: string, enabled: boolean): Promise
   try {
     const { id, name, prompt, target, schedule } = automation;
     // Store objects are reactive proxies; IPC needs plain data.
-    refreshLocationFromSnapshot(await updateLocationAutomation({ id, name, enabled, prompt, target: { ...target }, schedule: { ...schedule } }));
+    refreshLocationFromSnapshot(await updateLocationAutomation({ id, name, enabled, prompt, target: target.kind === 'newQuickChat' ? { ...target, selection: { ...target.selection } } : { ...target }, schedule: { ...schedule } }));
   } catch (error) { operationError.value = error instanceof Error ? error.message : String(error); }
   finally { togglingAutomationId.value = null; }
 }

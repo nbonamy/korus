@@ -55,7 +55,7 @@ describe('AppShell command palette', () => {
     await wrapper.get('.quick-open-dialog input').setValue('quick chat');
     await wrapper.get('.quick-open-dialog input').trigger('keydown.enter');
     await flushPromises();
-    expect(createQuickChat).toHaveBeenCalledExactlyOnceWith({ backend: 'codex', teamId: snapshot.activeTeamId });
+    expect(createQuickChat).toHaveBeenCalledExactlyOnceWith({ teamId: snapshot.activeTeamId, selection: { ...{ backend: 'codex' } } });
     expect(wrapper.find('#settings-appearance-title').exists()).toBe(!created);
     expect(wrapper.find('.agent-workspace').exists()).toBe(created);
     wrapper.unmount();

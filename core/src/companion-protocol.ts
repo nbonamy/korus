@@ -70,9 +70,9 @@ export type CompanionUsage = { backend: AgentBackend; limits: Pick<AccountRateLi
 /** A branch choice without host filesystem paths. */
 export type CompanionBranch = { name: string; isDefault: boolean; isCheckedOut: boolean };
 /** A new chat in a listed repository: default checkout, existing branch, or new worktree. */
-export type CompanionNewChat = { teamId: string; repositoryId: string; backend: AgentBackend; existingBranch?: string; worktree?: { branchName: string } };
+export type CompanionNewChat = { teamId: string; repositoryId: string; selection: import('./contracts/execution').ExecutionSelectionOverrides & { backend: AgentBackend }; existingBranch?: string; worktree?: { branchName: string } };
 /** Project acquisition runs on the team's host; the phone sends no host filesystem paths. */
-export type CompanionProjectInput = { teamId: string; backend: AgentBackend; source: 'new' | 'local' | 'github' | 'gitlab' | 'url'; value: string; branch?: string; worktree?: { branchName: string; baseBranch: string } };
+export type CompanionProjectInput = { teamId: string; selection: import('./contracts/execution').ExecutionSelectionOverrides & { backend: AgentBackend }; source: 'new' | 'local' | 'github' | 'gitlab' | 'url'; value: string; branch?: string; worktree?: { branchName: string; baseBranch: string } };
 export type CompanionProjectBranch = { name: string; isDefault: boolean };
 export type CompanionRepositoryProvider = 'github' | 'gitlab';
 /** Opaque selection bound to the owning daemon, host location and provider catalog. */

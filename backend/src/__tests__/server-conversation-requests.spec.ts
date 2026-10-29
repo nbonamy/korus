@@ -336,28 +336,14 @@ describe('AppBackendServer', () => {
         _clientId: clientId,
         agentId: 'agent-dina',
         prompt,
-        options: {
-          model: 'sol',
-          reasoningEffort: 'high',
-          serviceTier: 'fast',
-          attachments: [{ type: 'file', path: '/tmp/queue.txt', name: 'queue.txt' }],
-          inputMethod: 'dictated',
-          ...delegation,
-        },
+        options: { attachments: [{ type: 'file', path: '/tmp/queue.txt', name: 'queue.txt' }], inputMethod: 'dictated', ...delegation, selection: { model: 'sol', reasoningEffort: 'high', serviceTier: 'fast' } },
       },
     });
     expect(onPromptSource).not.toHaveBeenCalled();
     expect(snapshot.queuedPrompts).toEqual([expect.objectContaining({
       agentId: 'agent-dina',
       text: prompt,
-      options: {
-        model: 'sol',
-        reasoningEffort: 'high',
-        serviceTier: 'fast',
-        attachments: [{ type: 'file', path: '/tmp/queue.txt', name: 'queue.txt' }],
-        inputMethod: 'dictated',
-        ...delegation,
-      },
+      options: { attachments: [{ type: 'file', path: '/tmp/queue.txt', name: 'queue.txt' }], inputMethod: 'dictated', ...delegation, selection: { model: 'sol', reasoningEffort: 'high', serviceTier: 'fast' } },
     })]);
     expect(snapshot.agents[0]?.threadFlags).toBeUndefined();
     expect(sendPrompt).not.toHaveBeenCalled();
@@ -393,18 +379,14 @@ describe('AppBackendServer', () => {
     await flushMicrotasks();
     expect(onPromptSource).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), clientId);
     expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), delivered, {
-      model: 'sol',
-      reasoningEffort: 'high',
-      serviceTier: 'fast',
+      selection: { model: 'sol', reasoningEffort: 'high', serviceTier: 'fast' },
       attachments: [{ type: 'file', path: '/tmp/queue.txt', name: 'queue.txt' }],
       inputMethod: 'dictated',
       ...delegation,
     });
     expect(sendPrompt).toHaveBeenCalledTimes(1);
     expect(onPromptStarting).toHaveBeenCalledWith('agent-dina', {
-      model: 'sol',
-      reasoningEffort: 'high',
-      serviceTier: 'fast',
+      selection: { model: 'sol', reasoningEffort: 'high', serviceTier: 'fast' },
       attachments: [{ type: 'file', path: '/tmp/queue.txt', name: 'queue.txt' }],
       inputMethod: 'dictated',
       ...delegation,

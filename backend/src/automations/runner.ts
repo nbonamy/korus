@@ -1,3 +1,4 @@
+import { applyExecutionSelection, executionSelectionForAgent, resolveExecutionSelection } from '@workspace/core/execution-selection';
 import type { Agent, AppSnapshot, Automation, AutomationExecutionLogEntry, BackendConversationRef, MainToRendererEvent } from '@workspace/core/contracts';
 import { createQuickChatInSnapshot } from '@workspace/core/agent-manager';
 import { agentDisplayName } from '@workspace/core/agent-display';
@@ -57,7 +58,7 @@ export class AutomationRunner {
       if (target.kind !== 'newQuickChat' && (!existing || !canTargetAutomationAgent(snapshot, existing)
         || (target.kind === 'quickChat') !== (existing.sessionKind === 'quickChat'))) throw new Error('The automation target is no longer available.');
       if (target.kind === 'newQuickChat' && !snapshot.teams.some(team => team.id === target.teamId)) throw new Error('The automation team is no longer available.');
-      await this.options.requireConnectedEngine?.(existing?.backend ?? (target.kind === 'newQuickChat' ? target.backend : 'codex'));
+      await this.options.requireConnectedEngine?.(existing?.backend ?? (target.kind === 'newQuickChat' ? target.selection.backend : 'codex'));
       if (!snapshot.automations.includes(automation) || !automation.enabled) {
         this.fail(automation, run, 'Automation was disabled or deleted before dispatch.');
         await this.publish();
@@ -66,14 +67,10 @@ export class AutomationRunner {
       let agent = existing;
       if (target.kind === 'newQuickChat') {
         const id = createEntityId('agent');
-        createQuickChatInSnapshot(snapshot, { teamId: target.teamId, backend: target.backend }, run.startedAt, id, { select: false });
+        createQuickChatInSnapshot(snapshot, { teamId: target.teamId, selection: { backend: target.selection.backend } }, run.startedAt, id, { select: false });
         agent = snapshot.agents.find(item => item.id === id)!;
         agent.name = automation.name;
-        if (target.model) {
-          agent.backendDefaults = { ...agent.backendDefaults!, model: target.model, userSelectedModel: true, reasoningEffort: target.reasoningEffort };
-        } else if (target.reasoningEffort) {
-          agent.backendDefaults = { ...agent.backendDefaults!, reasoningEffort: target.reasoningEffort };
-        }
+        applyExecutionSelection(agent, resolveExecutionSelection(executionSelectionForAgent(agent), target.selection));
       }
       if (!agent || !snapshot.agents.includes(agent)) throw new Error('The automation target is no longer available.');
       run.agentId = agent.id;

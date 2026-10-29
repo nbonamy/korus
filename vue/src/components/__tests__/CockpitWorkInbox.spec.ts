@@ -27,7 +27,7 @@ describe('CockpitWorkInbox', () => {
     (Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')).find(button => button.textContent?.includes('GPT Fast'))!).click();
     await flushPromises();
     await wrapper.findAll('.app-dialog__footer button').find(button => button.text() === 'Fix')!.trigger('click');
-    expect(start).toHaveBeenCalledWith(expect.objectContaining({ items: [second], backend: 'codex', model: 'gpt-fast' }));
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({ items: [second], selection: { backend: 'codex', model: 'gpt-fast', reasoningEffort: null, serviceTier: null } }));
     expect(wrapper.find('.cockpit-inbox__start-dialog').exists()).toBe(false);
     finish();
     await flushPromises();
@@ -322,7 +322,7 @@ describe('CockpitWorkInbox', () => {
     await flushPromises();
 
     await wrapper.findAll('.app-dialog__footer button').find((button) => button.text() === 'Investigate')?.trigger('click');
-    expect(startWorkAction).toHaveBeenCalledWith({ action: 'investigate', items: [second], teamId: 'team-two', backend: 'claude', model: 'gpt-fast' });
+    expect(startWorkAction).toHaveBeenCalledWith({ action: 'investigate', items: [second], teamId: 'team-two', selection: { backend: 'claude', model: 'gpt-fast', reasoningEffort: null, serviceTier: null } });
   });
 
   it('starts agents on the service tier chosen with the model', async () => {
@@ -339,7 +339,7 @@ describe('CockpitWorkInbox', () => {
     [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(row => row.textContent?.trim() === 'ultrafast')!.click();
     await flushPromises();
     await wrapper.findAll('.app-dialog__footer button').find((button) => button.text() === 'Investigate')?.trigger('click');
-    expect(startWorkAction).toHaveBeenCalledWith(expect.objectContaining({ action: 'investigate', items: [second], model: 'gpt-fast', serviceTier: 'ultrafast' }));
+    expect(startWorkAction).toHaveBeenCalledWith(expect.objectContaining({ action: 'investigate', items: [second], selection: expect.objectContaining({ model: 'gpt-fast', serviceTier: 'ultrafast' }) }));
   });
 
   it('guides unfiltered global views before loading cross-repository work', async () => {

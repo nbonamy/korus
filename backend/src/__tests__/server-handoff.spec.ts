@@ -11,14 +11,14 @@ it('routes an ambiguous remote retry through the linked replacement without crea
   snapshot.remoteConnections.connections = [readyRemoteConnection()];
   snapshot.teams = [{ id: 'pointer', name: 'Remote', remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }], agentIds: [] }];
   const replacement = createRemoteAgent();
-  replacement.handoff = { operationId: 'once', backend: 'claude', sourceAgentId: 'old-remote', sourceTitle: 'Source', sourceRef: { backend: 'codex', threadId: 'thread' }, targetAgentId: replacement.id, phase: 'complete' };
+  replacement.handoff = { operationId: 'once', sourceAgentId: 'old-remote', sourceTitle: 'Source', sourceRef: { backend: 'codex', threadId: 'thread' }, targetAgentId: replacement.id, phase: 'complete', selection: {model: null, reasoningEffort: null, serviceTier: null,  backend: 'claude' } };
   const remoteSnapshot = createRemoteTeamSnapshot([replacement]);
   const remoteClients = {
     request: vi.fn().mockResolvedValueOnce({ snapshot: remoteSnapshot, lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } }).mockResolvedValue(remoteSnapshot),
     close: vi.fn().mockResolvedValue(undefined),
   };
   const server = new AppBackendServer({ version: 'test', snapshot, remoteClients: remoteClients as never });
-  const params = { agentId: 'old-remote', input: { operationId: 'once', backend: 'claude' } };
+  const params = { agentId: 'old-remote', input: { operationId: 'once', selection: { backend: 'claude', model: null, reasoningEffort: null, serviceTier: null } } };
   try {
     await server.handleMessage({ jsonrpc: '2.0', id: 'retry', method: 'agent/handoff/start', params });
     expect(remoteClients.request).toHaveBeenLastCalledWith(snapshot.remoteConnections.connections[0], 'agent/handoff/start', { ...params, _clientId: 'remote-controller' }, expect.any(Function));
@@ -63,7 +63,7 @@ describe.each(['codex', 'claude'] as const)('%s handoff routing', backend => {
     }
     const persisted: unknown[] = [];
     const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new BackendDriverRpc(drivers), saveSnapshot: async value => { persisted.push(structuredClone(value)); } });
-    const params = { agentId: 'source', input: { operationId: 'once', backend: targetBackend } };
+    const params = { agentId: 'source', input: { operationId: 'once', selection: { backend: targetBackend, model: null, reasoningEffort: null, serviceTier: null } } };
     const operation = server.handleMessage({ jsonrpc: '2.0', id: 'handoff', method: 'agent/handoff/start', params });
     await vi.waitFor(() => expect(sourceSend).toHaveBeenCalledOnce());
     await expect(server.handleMessage({ jsonrpc: '2.0', id: 'prompt', method: 'agent/prompt/send', params: { agentId: 'source', prompt: 'Competing work' } })).rejects.toThrow('handoff');

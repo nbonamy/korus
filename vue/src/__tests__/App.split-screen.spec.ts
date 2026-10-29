@@ -650,7 +650,7 @@ describe('split-screen conversations', () => {
     expect(api.sendPrompt).toHaveBeenCalledWith(
       second.id,
       'Use my favorite',
-      expect.objectContaining({ model: 'test-model', reasoningEffort: 'high' }),
+      expect.objectContaining({ selection: { model: 'test-model', reasoningEffort: 'high' } }),
     );
   });
 });

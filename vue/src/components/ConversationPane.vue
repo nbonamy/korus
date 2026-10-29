@@ -626,6 +626,10 @@ defineExpose({ focusComposer, openSavedDraftPicker, saveCurrentDraft });
   text-align: center;
 }
 
+.conversation-pane__empty h1 {
+  line-height: 1.2;
+}
+
 .conversation-pane__empty-actions {
   width: min(360px, 100%);
   margin: var(--space-8) auto 0;

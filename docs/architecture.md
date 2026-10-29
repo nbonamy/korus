@@ -360,6 +360,10 @@ Rules:
 - Writes are serialized, same-directory temp file plus atomic rename, with no
   fsync and therefore no power-loss guarantee. A slow older write never overwrites
   a newer one.
+- Active agent turns carry a roster recovery flag. The owning daemon clears it
+  on completion or explicit stop and uses the provider driver to continue flagged
+  work at startup when the setting is enabled. Remote agents are recovered by
+  their owning daemon.
 - Navigation, ordering and presentation settings are per-client preference
   profiles; backend policy is shared. A client selecting a remote agent never
   changes the remote desktop's navigation.
@@ -633,8 +637,22 @@ publishes only after saving.
   conversation; approval advances the Mission through its existing command.
 - Each ticket names exactly one repository. Worktrees are created only for
   affected repositories when code work begins, sharing one Mission suffix and
-  branch name. Repositories run in parallel, work within one repository is
-  serialized, and each worktree records a baseline commit for whole-Mission diff
+  branch name. Repositories run in parallel; work within one repository is
+  serialized unless the user opts into parallel implementation when approving
+  Tickets. That choice is persisted with the implementation model. Parallel
+  attempts use distinct worker conversations in the same repository worktree,
+  with dependency-ready tickets dispatched independently. Shared files and Git
+  state are a disclosed risk: workers stop for user guidance on conflicts and
+  commit only their own changes, using selected lines for mixed files. Other
+  workers' uncommitted changes do not prevent ticket submission. Each worktree
+  has a persisted cooperative commit lock owned by the worker and provider turn.
+  Parallel workers wait to acquire it before changing the Git index and release it after
+  committing; successful ticket submission also releases any lock held by that
+  assignment in the same durable update. Completed owner turns release it. After a
+  daemon restart, a persisted lock is released only after the provider conversation
+  is loaded and confirmed idle; unavailable or active owners retain it. This coordinates participating
+  workers, not external Git processes or concurrent edits to files.
+  Each worktree records a baseline commit for whole-Mission diff
   review. Failed or cancelled attempts keep their workspace and conversation.
   Implementation assignments bind a stable ticket ID to the run and repository;
   one-based ticket numbers are display context. Workers receive the full assigned
@@ -644,6 +662,9 @@ publishes only after saving.
   Once every ticket's implementation is accepted and saved, the orchestrator
   notifies the Mission lead with a reference to the implementation evidence.
   Continuing to Review remains a user decision.
+  Review waits for every implementation worker to stop, including accepted
+  workers still finishing their provider turns. Failed and cancelled attempts
+  require an explicit ticket retry; sibling completion does not restart them.
 - Tickets approval can persist an independent implementation provider, model and effort.
   Host catalog policy is checked before provisioning and worker launch. This
   selection applies to implementation workers and retries without changing the lead
@@ -674,6 +695,10 @@ target and reviewer agents) plus an opaque reviewer session reference.
 - Independent reviews reset the reviewer's conversation between rounds to reduce
   anchoring; every round receives the cumulative ledger (all prior skips, fixes
   and decisions) in a `<context>` block.
+- Independent reviewers retain their selected provider, model, effort and service
+  tier across rounds and retries. Review preferences keep these choices per provider;
+  an explicit Standard tier clears inherited Fast mode. Current-thread reviews use
+  the thread's existing settings.
 - Per-review instructions belong to the review session, survive retries
   and fresh rounds, and never become saved reviewer defaults. Unsubmitted drafts
   stay local to the agent's review tab and are discarded when that tab closes.

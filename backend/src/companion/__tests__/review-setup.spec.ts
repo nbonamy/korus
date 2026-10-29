@@ -7,7 +7,7 @@ import type { CompanionBackendPort } from '../manager';
 function fixture() {
   const snapshot = createTestSnapshot();
   snapshot.agents = [{ id: 'a', teamId: 'team-test', name: 'Agent', backend: 'codex', folder: '/private/workspace', status: { type: 'idle' }, createdAt: '', updatedAt: '' }];
-  snapshot.general.codeReviewDefaults = { backend: 'claude', automation: { enabled: true, maxPriority: 'p1', maxRounds: 2, autoCommit: true }, providers: { claude: { model: 'reviewer', reasoningEffort: 'high' } } };
+  snapshot.general.codeReviewDefaults = { backend: 'claude', automation: { enabled: true, maxPriority: 'p1', maxRounds: 2, autoCommit: true }, providers: { claude: {backend: 'claude', serviceTier: null,  model: 'reviewer', reasoningEffort: 'high' } } };
   const request = vi.fn(async (method: string) => {
     if (method === backendMethods.snapshotGet) return { snapshot };
     if (method === backendMethods.agentModelsList) return [{ id: 'id', model: 'reviewer', displayName: 'Reviewer', supportedReasoningEfforts: [{ reasoningEffort: 'high' }] }, { id: 'hidden', model: 'hidden', hidden: true }];

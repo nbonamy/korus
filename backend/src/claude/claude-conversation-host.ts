@@ -296,13 +296,14 @@ export class ClaudeConversationHost implements AgentBackendDriver {
 
   async setGoal(agent: Agent, objective: string): Promise<import('@workspace/core/backend-driver').BackendGoalResult> {
     const condition = objective.trim();
-    if (!condition || condition === 'clear') throw new Error('Enter a goal condition.');
+    if (!condition || /^(?:clear|stop|off|reset|none|cancel)$/i.test(condition)) throw new Error('Enter a goal condition instead of a clear command.');
+    if (condition.length > 4000) throw new Error('Claude goal conditions must be at most 4,000 characters, including assignment context.');
     const now = Date.now() / 1000;
     const started = await this.sendPrompt(agent, `/goal ${condition}`, { recordUserMessage: false });
     if (started.backendSession.kind !== 'claude') throw new Error('Claude did not return a session.');
     const goal: ThreadGoal = { threadId: started.backendSession.sessionId, objective: condition, status: 'active', tokenBudget: null, tokensUsed: 0, timeUsedSeconds: 0, createdAt: now, updatedAt: now };
     this.goalsByAgentId.set(agent.id, goal);
-    return { backendSession: started.backendSession, goal };
+    return { backendSession: started.backendSession, ...(started.turnId ? { turnId: started.turnId } : {}), goal };
   }
 
   async clearGoal(agent: Agent): Promise<import('@workspace/core/backend-driver').BackendGoalResult> {
@@ -315,6 +316,13 @@ export class ClaudeConversationHost implements AgentBackendDriver {
 
   async sendPrompt(agent: Agent, prompt: string, options: SendPromptOptions = {}): Promise<BackendSendResult> {
     return this.sendPromptWithConfiguration(agent, prompt, options);
+  }
+
+  async continueInterruptedTurn(agent: Agent): Promise<import('@workspace/core/backend-driver').BackendTurnActionResult> {
+    if (agent.backendSession?.kind !== 'claude') throw new Error('No Claude session to continue.');
+    if (!this.conversationReplicasByAgentId.has(agent.id)) await this.loadConversation(agent);
+    const result = await this.sendPromptWithConfiguration(agent, 'continue', {}, undefined, false, true);
+    return { backendSession: result.backendSession, activeTurnId: result.turnId ?? null };
   }
 
   async steerPrompt(agent: Agent, prompt: string, options: SendPromptOptions = {}): Promise<BackendSendResult> {
@@ -342,6 +350,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     options: SendPromptOptions,
     review?: ClaudeReviewTurnConfiguration,
     waitForCompletion = false,
+    waitForInputReplay = false,
   ): Promise<BackendSendResult> {
     if (this.forkingAgentIds.has(agent.id)) throw new Error('Claude conversation is being forked.');
     if (this.activeTurnsByAgentId.has(agent.id)) {
@@ -377,6 +386,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
         ? { ...defaults, mcpServerUrl: review.mcpServerUrl, allowedTools: review.allowedTools }
         : defaults;
       if (messageId) turnParams.messageId = messageId;
+      if (waitForInputReplay) turnParams.waitForInputReplay = true;
       const handle = this.transport.startTurn(
         turnParams,
         (message) => {
@@ -1823,7 +1833,7 @@ function claudeTurnParams(
 ): ClaudeTurnParams {
   const claudeOptions = options.backendOptions?.kind === 'claude' ? options.backendOptions : undefined;
   const defaults = agent.backendDefaults?.kind === 'claude' ? agent.backendDefaults : undefined;
-  const tier = options.serviceTier !== undefined ? options.serviceTier : defaults?.serviceTier;
+  const tier = options.selection?.serviceTier !== undefined ? options.selection?.serviceTier : defaults?.serviceTier;
   if (tier != null && !['normal', 'default', 'fast'].includes(tier)) throw new Error('Unsupported Claude service tier.');
   const mcpServerUrl = appMcpServerUrl ? appMcpUrlForAgent(appMcpServerUrl, agent) : null;
   return {
@@ -1831,8 +1841,8 @@ function claudeTurnParams(
     cwd: claudeWorkingDirectory(agent),
     prompt: promptWithSelectedReferences(prompt, options.content),
     sessionId: existingSessionId ?? undefined,
-    model: options.model ?? defaults?.model ?? null,
-    effort: claudeEffort(options.reasoningEffort ?? defaults?.reasoningEffort),
+    model: options.selection?.model ?? defaults?.model ?? null,
+    effort: claudeEffort(options.selection?.reasoningEffort ?? defaults?.reasoningEffort),
     fastMode: tier === 'fast',
     permissionMode: options.planMode ? 'plan' : claudeOptions?.permissionMode ?? defaults?.permissionMode ?? null,
     appendSystemPrompt: appDeveloperInstructions(agent, pluginSettings, effects),

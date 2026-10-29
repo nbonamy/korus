@@ -155,7 +155,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if ((input.scope.type === 'branch' && (!setup.branchChanges || input.scope.baseRef !== setup.baseRef))
       || (input.scope.type === 'uncommitted' && !setup.uncommitted)
       || (input.threadMode === 'current' && (!setup.currentThread || input.automation?.enabled))
-      || (input.threadMode === 'independent' && input.backend !== setup.backend)) return;
+      || (input.threadMode === 'independent' && input.selection?.backend !== setup.backend)) return;
     review.value = { status: 'starting', setup };
     try {
       const reviewerId = await active.startReview(setup.target, input);

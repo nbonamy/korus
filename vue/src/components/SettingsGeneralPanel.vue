@@ -21,6 +21,19 @@
         </template>
       </FormRow>
       <FormRow
+        as="label"
+        :title="$t('surface.settingsGeneralPanel.resumeInterruptedWorkOnStartup')"
+        :description="$t('surface.settingsGeneralPanel.continueAgentsWorkingWhenKorusStopped')"
+      >
+        <template #control>
+          <el-switch
+            :model-value="settings.autoResumeOnStartup !== false"
+            :aria-label="$t('surface.settingsGeneralPanel.resumeInterruptedWorkOnStartup')"
+            @update:model-value="updateAutoResumeOnStartup"
+          />
+        </template>
+      </FormRow>
+      <FormRow
         v-if="appHostCapabilities.daemonManagement"
         as="label"
         :title="$t('surface.settingsGeneralPanel.preventSleepWhileAgentsRun')"
@@ -392,6 +405,10 @@ function updatePreventSleep(value: boolean | string | number): void {
       preventSleepWhenAgentsRun: value === true,
     },
   });
+}
+
+function updateAutoResumeOnStartup(value: boolean | string | number): void {
+  void props.updateSettings?.({ general: { autoResumeOnStartup: value === true } });
 }
 
 function updateFollowUpBehavior(value: string | number | boolean): void {

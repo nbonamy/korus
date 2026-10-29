@@ -1,3 +1,4 @@
+import { defaultExecutionSelection } from '@workspace/core/execution-selection';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { preferredBackendChoices } from './backend-selection';
 import type {
@@ -29,7 +30,7 @@ export function useRepositorySession(options: {
   createIsolatedWorkItemAgent: (
     item: WorkItem,
     teamId: string,
-    options?: { reuseExisting?: boolean; backend?: AgentBackend; model?: string; reasoningEffort?: string; serviceTier?: string; repository?: SourceRepository; remoteConnectionId?: string; isCurrent?: () => boolean; onPhase?: (phase: 'creatingAgent') => void },
+    options?: { reuseExisting?: boolean; selection?: import('@workspace/core/contracts/execution').ExecutionSelection; repository?: SourceRepository; remoteConnectionId?: string; isCurrent?: () => boolean; onPhase?: (phase: 'creatingAgent') => void },
   ) => Promise<{ agent: Agent; item: WorkItem }>;
   createSourceWorktree: (input: CreateSourceWorktreeInput) => Promise<SourceWorktree>;
   getAgentGitRemote?: (agentId: string) => Promise<string | undefined>;
@@ -206,14 +207,7 @@ export function useRepositorySession(options: {
     if (!nextSource) return;
     const { teamId, remoteConnectionId } = context(nextSource);
     try {
-      await options.createAgent({
-        name: null,
-        folder: worktree.path,
-        backend: backend.value,
-        sourceRepositoryName: nextSource.repositoryName,
-        ...(teamId ? { teamId } : {}),
-        ...(remoteConnectionId ? { remoteConnectionId } : {}),
-      });
+      await options.createAgent({ name: null, folder: worktree.path, sourceRepositoryName: nextSource.repositoryName, ...(teamId ? { teamId } : {}), ...(remoteConnectionId ? { remoteConnectionId } : {}), selection: { backend: backend.value } });
     } catch (caught) {
       options.notifyError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -263,7 +257,7 @@ export function useRepositorySession(options: {
 
     const id = `work-item-${Date.now()}`;
     const branchName = workItemBranchName(selection.item);
-    const resolvedBackend = selection.backend ?? backend.value ?? 'codex';
+    const resolvedBackend = selection.selection?.backend ?? backend.value ?? 'codex';
     creationProgress.value = {
       id,
       state: 'running',
@@ -280,10 +274,7 @@ export function useRepositorySession(options: {
     try {
       if (!teamId) throw new Error(translate('surface.appShell.createOrSelectATeamBeforeStartingRepositoryWork'));
       const { agent, item } = await options.createIsolatedWorkItemAgent(selection.item, teamId, {
-        backend: resolvedBackend,
-        ...(selection.model ? { model: selection.model } : {}),
-        ...(selection.reasoningEffort ? { reasoningEffort: selection.reasoningEffort } : {}),
-        ...(selection.serviceTier ? { serviceTier: selection.serviceTier } : {}),
+        selection: selection.selection ?? defaultExecutionSelection(resolvedBackend),
         ...(selection.reuseExisting ? { reuseExisting: true } : {}),
         repository: { name: current.repositoryName, path: current.repositoryRoot, worktrees: [] },
         ...(remoteConnectionId ? { remoteConnectionId } : {}),
@@ -331,15 +322,7 @@ export function useRepositorySession(options: {
     const { teamId, remoteConnectionId } = context(nextSource);
     close();
     try {
-      await options.createAgent({
-        name: null,
-        folder: nextSource.repositoryRoot,
-        repositorySession: { existingBranch: branch.name },
-        backend: backend.value,
-        sourceRepositoryName: nextSource.repositoryName,
-        ...(teamId ? { teamId } : {}),
-        ...(remoteConnectionId ? { remoteConnectionId } : {}),
-      });
+      await options.createAgent({ name: null, folder: nextSource.repositoryRoot, repositorySession: { existingBranch: branch.name }, sourceRepositoryName: nextSource.repositoryName, ...(teamId ? { teamId } : {}), ...(remoteConnectionId ? { remoteConnectionId } : {}), selection: { backend: backend.value } });
     } catch (caught) {
       options.notifyError(caught instanceof Error ? caught.message : String(caught));
     }

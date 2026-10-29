@@ -121,10 +121,10 @@ const {
 } = workProviders;
 const agentComposer = createAgentComposerState({
   getSnapshot: () => snapshot.value,
-  persistSelection: async (agentId, modelSelection) => {
+  persistSelection: async (agentId, selection) => {
     const api = appApi;
     if (!api?.updateAgent) throw new Error('Agent settings are unavailable.');
-    const updated = await api.updateAgent({ id: agentId, modelSelection });
+    const updated = await api.updateAgent({ id: agentId, selection });
     if (api === appApi) adoptBackgroundSnapshot(updated);
   },
   onSelectionSaveError: (error) => ElMessage.error(error instanceof Error ? error.message : String(error)),
@@ -1261,7 +1261,7 @@ export function useAppState() {
     }
 
     adoptBackgroundSnapshot(await appApi.updateAgent(input));
-    if (input.backend) synchronizeComposerSelectionForAgent(input.id);
+    if (input.selection?.backend) synchronizeComposerSelectionForAgent(input.id);
     await loadActiveAgentCatalogs(input.id);
   }
 

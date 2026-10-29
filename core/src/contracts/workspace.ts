@@ -84,7 +84,7 @@ export type CreateSourceRepositoryInput = {
 
 export type CreateProjectInput = {
   name: string;
-  backend?: import('./shared').AgentBackend;
+  selection?: import('./execution').ExecutionSelectionOverrides;
   teamId?: string;
   remoteConnectionId?: string;
 };

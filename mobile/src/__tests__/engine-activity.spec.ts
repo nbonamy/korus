@@ -104,11 +104,11 @@ describe('native activity drawer feed', () => {
       expect(engine.snapshot().capabilities.serviceTier).toBe(true);
       expect(engine.snapshot().composer.serviceTier).toBe('fast');
       await engine.dispatch({ type: 'send', text: 'Continue' });
-      expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Continue', expect.any(String), expect.objectContaining({ serviceTier: 'fast' }));
+      expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Continue', expect.any(String), expect.objectContaining({ selection: expect.objectContaining({ serviceTier: 'fast' }) }));
       await engine.dispatch({ type: 'composer', change: { serviceTier: null } });
-      expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'opus', reasoningEffort: null, serviceTier: null });
+      expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'opus', reasoningEffort: null, serviceTier: null, backend: 'claude' });
       await engine.dispatch({ type: 'send', text: 'Continue normally' });
-      expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Continue normally', expect.any(String), expect.objectContaining({ serviceTier: null }));
+      expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Continue normally', expect.any(String), expect.objectContaining({ selection: expect.objectContaining({ serviceTier: null }) }));
     } finally { engine.dispose(); }
   });
 });

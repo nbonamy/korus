@@ -22,6 +22,14 @@ function registerMissionTools(
   coordinator: AppMcpAgentCoordinator,
   callerAgentId: string,
 ): void {
+  server.registerTool('acquire-mission-commit-lock', {
+    description: 'Wait for and acquire the cooperative commit lock for your parallel Mission workspace before touching the Git index. No parameters.',
+    inputSchema: {},
+  }, (_input, extra) => loggedToolResult('acquire-mission-commit-lock', { callerAgentId }, () => coordinator.acquireMissionCommitLock(callerAgentId, extra.signal)));
+  server.registerTool('release-mission-commit-lock', {
+    description: 'Release the cooperative Mission commit lock you own after completing or abandoning the staging and commit sequence. No parameters.',
+    inputSchema: {},
+  }, () => loggedToolResult('release-mission-commit-lock', { callerAgentId }, () => coordinator.releaseMissionCommitLock(callerAgentId)));
   server.registerTool('set-mission-title', {
     description: 'Rename the active Mission once its intended outcome is clear. Use a concise outcome-oriented title. The active Mission and run are inferred from your authenticated agent identity.',
     inputSchema: {

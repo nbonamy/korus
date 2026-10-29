@@ -645,9 +645,9 @@ export function createEngine(port: EnginePort) {
       case 'dismissProjectRepositories': return state.dismissProjectRepositories();
       case 'duplicateAgent': return state.duplicateAgent(command.target, command.backend);
       case 'renameAgent': return state.renameAgent(command.target, command.name);
-      case 'createProject': return state.createProject({ source: command.source, value: command.value, backend: command.backend, ...(command.branch ? { branch: command.branch } : {}), ...(command.worktree ? { worktree: command.worktree } : {}) });
+      case 'createProject': return state.createProject({ source: command.source, value: command.value, ...(command.branch ? { branch: command.branch } : {}), ...(command.worktree ? { worktree: command.worktree } : {}), selection: { ...command.selection } });
       case 'dismissBranches': return state.dismissBranches();
-      case 'newChat': return state.createChat({ repositoryId: command.repositoryId, backend: command.backend, ...(command.existingBranch ? { existingBranch: command.existingBranch } : {}), ...(command.branchName ? { worktree: { branchName: command.branchName } } : {}) }, repositoryTeam(command.repositoryId));
+      case 'newChat': return state.createChat({ repositoryId: command.repositoryId, ...(command.existingBranch ? { existingBranch: command.existingBranch } : {}), ...(command.branchName ? { worktree: { branchName: command.branchName } } : {}), selection: { backend: command.backend } }, repositoryTeam(command.repositoryId));
       case 'backend': return state.selectBackend(command.backend);
       case 'newQuickChat': return state.createQuickChat(command.backend);
       case 'dismissNewChat': return state.dismissChatCreation();

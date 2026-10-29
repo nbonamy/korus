@@ -1,8 +1,9 @@
+import { readPersistedExecutionSelection } from '@workspace/core/execution-selection';
 import { isRateLimitPause } from '@workspace/core/auto-resume';
 import { isAgentReadState } from '@workspace/core/agent-read-state';
 import { isDelegationContext, isTurnDelegationOverrides, isDelegationUserInstructions } from '@workspace/core/delegation-context';
 import { isWorkProviderKind, workProviderKinds } from '@workspace/core/work-providers';
-import { isAgentHandoff } from '@workspace/core/agent-handoff';
+import { readPersistedAgentHandoff } from '@workspace/core/agent-handoff';
 import { isMission } from '@workspace/core/missions';
 import { isThreadFlags } from '@workspace/core/thread-flags';
 import { backendCodexHomeDir } from './state';
@@ -77,6 +78,7 @@ export type PersistedAgent = Pick<Agent, 'id' | 'name' | 'folder' | 'createdAt' 
   threadFlags?: import('@workspace/core/thread-flags').ThreadFlags;
   suggestedPrompt?: string;
   rateLimitPause?: Agent['rateLimitPause'];
+  autoResumePending?: boolean;
   goal?: ThreadGoal;
   visualize?: Omit<VisualizeSession, 'visualizations'> & { visualizations?: Visualization[] };
   statusText?: string;
@@ -155,6 +157,7 @@ function persistedAgentFromSnapshot(agent: Agent, libraries?: RepositoryVisualiz
     ...(agent.plan ? { plan: cloneThreadPlan(agent.plan) } : {}),
     ...(agent.threadFlags ? { threadFlags: structuredClone(agent.threadFlags) } : {}),
     ...(agent.rateLimitPause ? { rateLimitPause: { ...agent.rateLimitPause } } : {}),
+    ...(agent.autoResumePending ? { autoResumePending: true } : {}),
     ...(agent.suggestedPrompt ? { suggestedPrompt: agent.suggestedPrompt } : {}),
     ...(agent.planReview ? { planReview: { ...agent.planReview } } : {}),
     ...(agent.codeReview ? { codeReview: cloneCodeReviewSession(agent.codeReview) } : {}),
@@ -194,7 +197,7 @@ export function snapshotFromPersistedState(value: unknown): AppSnapshot {
   const snapshot: AppSnapshot = {
     ...seed,
     ...(value.clientPreferences ? { clientPreferences: sanitizeClientPreferences(value.clientPreferences) } : {}),
-    ...(Array.isArray(value.missions) ? { missions: value.missions.filter(isMission).map(m => structuredClone(m)) } : {}),
+    ...(Array.isArray(value.missions) ? { missions: value.missions.map(migrateMissionSelection).filter(isMission).map(m => structuredClone(m)) } : {}),
     teams: teams.length > 0 ? teams : seed.teams,
     agents,
     ...(Object.keys(durableLibraries).length ? { repositoryVisualizations: durableLibraries } : {}),
@@ -382,7 +385,7 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
   const visualize = sanitizeVisualizeSession(value.visualize ?? value.design, repositoryRoot ? libraries[repositoryRoot] : undefined);
   return {
     id: value.id,
-    ...(isAgentHandoff(value.handoff) ? { handoff: structuredClone(value.handoff) } : {}),
+    ...(readPersistedAgentHandoff(value.handoff) ? { handoff: readPersistedAgentHandoff(value.handoff) } : {}),
     teamId: typeof value.teamId === 'string' ? value.teamId : undefined,
     ...(isDelegationContext(value.delegationContext) ? { delegationContext: { ...value.delegationContext } } : {}),
     ...(isTurnDelegationOverrides(value.userDelegationOverrides) ? { userDelegationOverrides: structuredClone(value.userDelegationOverrides) } : {}),
@@ -411,6 +414,7 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
     ...(plan ? { plan } : {}),
     ...(isThreadFlags(value.threadFlags) ? { threadFlags: structuredClone(value.threadFlags) } : {}),
     ...(isRateLimitPause(value.rateLimitPause) ? { rateLimitPause: { ...value.rateLimitPause } } : {}),
+    ...(value.autoResumePending === true ? { autoResumePending: true } : {}),
     ...(typeof value.suggestedPrompt === 'string' && value.suggestedPrompt.trim() ? { suggestedPrompt: value.suggestedPrompt.trim() } : {}),
     ...(planReview ? { planReview } : {}),
     ...(isCodeReviewSession(value.codeReview)
@@ -1029,6 +1033,17 @@ function cloneAutomation(automation: Automation): Automation {
 }
 
 function sanitizeAutomation(value: unknown): Automation | null {
+  if (isRecord(value) && isRecord(value.target) && value.target.kind === 'newQuickChat') {
+    const target = value.target;
+    const selection = target.selection ?? {
+      backend: target.backend,
+      ...(target.model === undefined ? {} : { model: target.model }),
+      ...(target.reasoningEffort === undefined ? {} : { reasoningEffort: target.reasoningEffort }),
+      ...(target.serviceTier === undefined ? {} : { serviceTier: target.serviceTier }),
+    };
+    value = { ...value, target: { kind: 'newQuickChat', teamId: target.teamId, selection } };
+  }
+
   const schedule = isRecord(value) ? normalizeAutomationSchedule(value.schedule) : null;
   if (!isRecord(value) || typeof value.id !== 'string' || typeof value.name !== 'string'
     || typeof value.createdAt !== 'string' || typeof value.updatedAt !== 'string'
@@ -1272,4 +1287,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return Boolean(error && typeof error === 'object' && 'code' in error);
+}
+
+function migrateMissionSelection(value: unknown): unknown {
+  if (!isRecord(value) || !isRecord(value.execution) || value.execution.implementationModel === undefined) return value;
+  const selection = readPersistedExecutionSelection(value.execution.implementationModel);
+  return selection ? { ...value, execution: { ...value.execution, implementationModel: selection } } : value;
 }

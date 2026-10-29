@@ -175,7 +175,7 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
     async listModels(agentId) { return (await call<{ models: BackendModelOption[] }>('models.list', target(agentId))).models; },
     async listPlugins(agentId) { return (await call<{ plugins: BackendPluginSummary[] }>('plugins.list', target(agentId))).plugins; },
     async listSkills(agentId) { return (await call<{ skills: BackendSkillSummary[] }>('skills.list', target(agentId))).skills; },
-    async selectModel(agentId, selection) { await call('agent.model.select', { target: target(agentId), ...selection }); },
+    async selectModel(agentId, selection) { await call('agent.model.select', { target: target(agentId), selection }); },
     async changeGoal(target, objective) {
       if (closed) throw new Error('Disconnected.');
       await call('agent.goal.set', { target, objective });

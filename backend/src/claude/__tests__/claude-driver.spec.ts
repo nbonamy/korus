@@ -27,6 +27,18 @@ function unwrapClaudeConversationEvent(event: BackendEvent) {
 }
 
 describe('ClaudeBackendDriver', () => {
+  it.each([
+    ...['', 'clear', 'stop', 'off', 'reset', 'none', 'cancel'].map(objective => ({ label: objective || 'empty', objective })),
+    { label: 'oversized', objective: 'x'.repeat(4001) },
+  ])('rejects invalid native goal conditions before starting work ($label)', async ({ objective }) => {
+    const transport = createFakeTransport();
+    vi.mocked(transport.startTurn).mockImplementation(() => { throw new Error('Unexpected provider execution'); });
+    const driver = new ClaudeBackendDriver(transport);
+    try {
+      await expect(driver.setGoal(agent, objective)).rejects.toThrow('goal condition');
+      expect(transport.startTurn).not.toHaveBeenCalled();
+    } finally { await driver.close(); }
+  });
   it('delegates from a running source at its completed native boundary and rebinds the child query', async () => {
     const transport = createConcurrentFakeTransport();
     const forkWorktreeSession = vi.fn().mockResolvedValue('child-native');
@@ -203,10 +215,7 @@ describe('ClaudeBackendDriver', () => {
     const events: unknown[] = [];
     driver.onEvent((event) => events.push(unwrapClaudeConversationEvent(event)));
 
-    const sendResult = driver.sendPrompt(agent, 'hello claude', {
-      model: 'claude-sonnet-4-5',
-      backendOptions: { kind: 'claude', permissionMode: 'acceptEdits' },
-    });
+    const sendResult = driver.sendPrompt(agent, 'hello claude', { backendOptions: { kind: 'claude', permissionMode: 'acceptEdits' }, selection: { model: 'claude-sonnet-4-5' } });
     expect(transport.startTurn).toHaveBeenCalledWith(expect.objectContaining({
       cwd: '/Users/nbonamy/src/agent-workspace',
       prompt: 'hello claude',
@@ -552,7 +561,7 @@ describe('ClaudeBackendDriver', () => {
     const events: unknown[] = [];
     driver.onEvent((event) => events.push(unwrapClaudeConversationEvent(event)));
 
-    const started = driver.sendPrompt(agent, 'hello', { reasoningEffort: 'high' });
+    const started = driver.sendPrompt(agent, 'hello', { selection: { reasoningEffort: 'high' } });
     expect(transport.startTurn).toHaveBeenCalledWith(expect.objectContaining({ effort: 'high' }), expect.any(Function), expect.any(Function), expect.any(Function), expect.any(Function));
     transport.emit({ type: 'system', subtype: 'init', session_id: 'claude-session-catalog' });
     await started;

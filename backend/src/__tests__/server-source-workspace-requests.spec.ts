@@ -208,7 +208,7 @@ describe('AppBackendServer', () => {
     const snapshot = createTestSnapshot();
     snapshot.general.claudeCodeEnabled = true;
     snapshot.sourceFolder = { path: '/src', initialized: true, recentRepoNames: [] };
-    createQuickChatInSnapshot(snapshot, { teamId: 'team-test', backend }, undefined, 'agent-quick-chat', { select: false });
+    createQuickChatInSnapshot(snapshot, { teamId: 'team-test', selection: { backend } }, undefined, 'agent-quick-chat', { select: false });
     const backendSession = backend === 'codex'
       ? { kind: 'codex', threadId: 'thread-project' }
       : { kind: 'claude', sessionId: 'session-project', transport: 'stdio' };
@@ -648,12 +648,7 @@ describe('AppBackendServer', () => {
       id: 'remote-agent',
       method: 'agent/create',
       params: {
-        input: {
-          name: 'Remote Dina',
-          folder: '/home/nicolas/src/agent-workspace',
-          backend: 'codex',
-          remoteConnectionId: 'connection-devbox',
-        },
+        input: { name: 'Remote Dina', folder: '/home/nicolas/src/agent-workspace', selection: { backend: 'codex' }, remoteConnectionId: 'connection-devbox' },
       },
     })).resolves.toMatchObject({
       result: {
@@ -675,12 +670,7 @@ describe('AppBackendServer', () => {
       snapshot.remoteConnections.connections[0],
       'agent/create',
       { ...{
-        input: {
-          name: 'Remote Dina',
-          folder: '/home/nicolas/src/agent-workspace',
-          backend: 'codex',
-          teamId: 'team-remote',
-        },
+        input: { name: 'Remote Dina', folder: '/home/nicolas/src/agent-workspace', teamId: 'team-remote', selection: { ...{ backend: 'codex' } } },
       }, _clientId: 'remote-controller' },
       expect.any(Function),
     );
@@ -715,12 +705,7 @@ describe('AppBackendServer', () => {
         id: 'remote-agent',
         method: 'agent/create',
         params: {
-          input: {
-            name: 'Remote Dina',
-            folder: '/home/nicolas/src/agent-workspace',
-            backend: 'codex',
-            remoteConnectionId: 'connection-devbox',
-          },
+          input: { name: 'Remote Dina', folder: '/home/nicolas/src/agent-workspace', selection: { backend: 'codex' }, remoteConnectionId: 'connection-devbox' },
         },
       }),
       new Promise((resolve) => {
@@ -743,12 +728,7 @@ describe('AppBackendServer', () => {
       snapshot.remoteConnections.connections[0],
       'agent/create',
       { ...{
-        input: {
-          name: 'Remote Dina',
-          folder: '/home/nicolas/src/agent-workspace',
-          backend: 'codex',
-          teamId: 'team-remote',
-        },
+        input: { name: 'Remote Dina', folder: '/home/nicolas/src/agent-workspace', teamId: 'team-remote', selection: { ...{ backend: 'codex' } } },
       }, _clientId: 'remote-controller' },
       expect.any(Function),
     );

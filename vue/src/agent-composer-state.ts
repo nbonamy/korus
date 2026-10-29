@@ -1,7 +1,7 @@
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type {
   Agent,
-  AgentModelSelection,
+  ExecutionSelection,
   AgentFileSearchItem,
   AppSnapshot,
   BackendCapabilities,
@@ -33,7 +33,7 @@ export type AgentComposerConfiguration = {
   selectedReasoningEffort: ReasoningEffort | null;
   selectedServiceTier: string | null;
   planMode: boolean;
-  pendingSelection: AgentModelSelection | null;
+  pendingSelection: ExecutionSelection | null;
 };
 
 type ComposerMainEvent = Extract<
@@ -44,7 +44,7 @@ type ComposerModeEvent = Extract<ComposerMainEvent, { type: 'conversation.modeUp
 
 export function createAgentComposerState(options: {
   getSnapshot: () => AppSnapshot;
-  persistSelection?: (agentId: string, selection: AgentModelSelection) => Promise<void>;
+  persistSelection?: (agentId: string, selection: ExecutionSelection) => Promise<void>;
   onSelectionSaveError?: (error: unknown) => void;
 }) {
   const backendModels = ref<BackendModelOption[]>([]);
@@ -244,7 +244,7 @@ export function createAgentComposerState(options: {
     const agent = snapshot().agents.find((candidate) => candidate.id === agentId);
     if (!agent) return;
     const backend = agent.backend;
-    const selection: AgentModelSelection = { model: model.model, reasoningEffort, serviceTier };
+    const selection: ExecutionSelection = { backend, model: model.model, reasoningEffort, serviceTier };
     configuration(agentId).pendingSelection = selection;
     if (!options.persistSelection) return;
     const previous = selectionSavesByAgentId.get(agentId) ?? Promise.resolve();
@@ -575,11 +575,13 @@ export function createAgentComposerState(options: {
       !reasoningEffort && serviceTier === undefined
     ) return undefined;
     return {
-      ...(promptModel ? { model: promptModel.model } : {}),
+      ...((promptModel || reasoningEffort || serviceTier !== undefined) ? { selection: {
+        ...(promptModel ? { model: promptModel.model } : {}),
+        ...(reasoningEffort ? { reasoningEffort } : {}),
+        ...(serviceTier !== undefined ? { serviceTier } : {}),
+      } } : {}),
       ...(capabilities.planMode === 'native' ? { planMode: isActiveAgent ? planMode.value : current.planMode } : {}),
       ...(capabilities.planMode === 'prompted' && (isActiveAgent ? planMode.value : current.planMode) ? { planMode: true } : {}),
-      ...(reasoningEffort ? { reasoningEffort } : {}),
-      ...(serviceTier !== undefined ? { serviceTier } : {}),
     };
   }
 
@@ -646,13 +648,8 @@ function selectDefaultModel(configuration: AgentComposerConfiguration): void {
   configuration.selectedServiceTier = fallback ? defaultServiceTier(fallback) : null;
 }
 
-function selectionFromAgent(agent: Agent | undefined): {
-  source: string;
-  model: string | null;
-  reasoningEffort: ReasoningEffort | null;
-  serviceTier: string | null;
-} {
-  if (!agent) return { source: 'missing', model: null, reasoningEffort: null, serviceTier: null };
+function selectionFromAgent(agent: Agent | undefined): ExecutionSelection & { source: string } {
+  if (!agent) return { source: 'missing', backend: 'codex', model: null, reasoningEffort: null, serviceTier: null };
   const defaults = agent.backendDefaults?.kind === agent.backend ? agent.backendDefaults : undefined;
   const preferred = defaults?.userSelectedModel === true ? defaults : undefined;
   const claudeSession = agent.backendSession?.kind === 'claude' ? agent.backendSession : undefined;
@@ -663,7 +660,7 @@ function selectionFromAgent(agent: Agent | undefined): {
     ? agent.backendSession.threadId
     : agent.backendSession?.sessionId ?? 'new';
   return {
-    source: JSON.stringify([agent.backend, sessionId, model, reasoningEffort, serviceTier]),
+    backend: agent.backend, source: JSON.stringify([agent.backend, sessionId, model, reasoningEffort, serviceTier]),
     model,
     reasoningEffort,
     serviceTier,
@@ -696,7 +693,7 @@ function synchronizeSelectionWithAgent(configuration: AgentComposerConfiguration
   if (configuration.modelStatus === 'loaded') selectDefaultModel(configuration);
 }
 
-function sameSelection(left: AgentModelSelection | null | undefined, right: { model: string | null; reasoningEffort: ReasoningEffort | null; serviceTier: string | null } | null | undefined): boolean {
+function sameSelection(left: ExecutionSelection | null | undefined, right: ExecutionSelection | null | undefined): boolean {
   return Boolean(left && right && left.model === right.model &&
     left.reasoningEffort === right.reasoningEffort && left.serviceTier === right.serviceTier);
 }

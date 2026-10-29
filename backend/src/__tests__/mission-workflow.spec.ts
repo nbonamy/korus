@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot-construction';
 import { createMission, type MissionArtifacts } from '@workspace/core/missions';
-import type { MissionExecutionInput } from '@workspace/core/mission-execution';
+import type { MissionExecutionInput, MissionRun } from '@workspace/core/mission-execution';
 import { MissionService } from '../mission-service';
 import { MissionExecutionService } from '../mission-execution-service';
 import { missionStageSkills, readBundledSkill } from '../bundled-skills/catalog';
@@ -15,7 +15,11 @@ import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../state
 const exec = promisify(execFile);
 
 
-it.each(['codex', 'antigravity'] as const)('keeps %s orchestrators and workers through the full Mission without inventing unsupported compaction', async backend => {
+it.each([
+  { backend: 'codex', parallel: false },
+  { backend: 'antigravity', parallel: false },
+  { backend: 'codex', parallel: true },
+] as const)('keeps $backend workers through the full Mission (parallel: $parallel)', async ({ backend, parallel }) => {
   const folder = await mkdtemp(join(tmpdir(), 'app-mission-workflow-'));
   const repo = join(folder, 'repo');
   await exec('git', ['init', repo]);
@@ -54,8 +58,7 @@ it.each(['codex', 'antigravity'] as const)('keeps %s orchestrators and workers t
     const current = () => snapshot.missions![0]!;
     const command = (input: Omit<MissionExecutionInput, 'id' | 'revision'> | Record<string, unknown>) => service.execute({ ...input, id: mission.id, revision: current().revision } as MissionExecutionInput);
     await command({ action: 'attachRepository', repoPath: repo });
-    const submit = async (artifacts: MissionArtifacts) => {
-      const run = current().execution!.runs.at(-1)!;
+    const submit = async (artifacts: MissionArtifacts, run: MissionRun = current().execution!.runs.at(-1)!) => {
       if (run.stage !== 'tickets' && run.stage !== 'implementation') await service.writeArtifact(run.workerId!, { stage: run.stage, content: `# ${run.stage}\nMission artifact.` });
       const result = await service.submit(run.workerId!, { summary: `${run.stage} ready`, artifacts });
       if (run.stage === 'implementation') {
@@ -65,16 +68,18 @@ it.each(['codex', 'antigravity'] as const)('keeps %s orchestrators and workers t
       } else {
         expect(result.status).toBe('awaitingReview');
         expect(current().execution!.runs.find(candidate => candidate.id === run.id)!.status).toBe('awaitingReview');
-        await command({ action: 'accept', runId: run.id });
+        await command({ action: 'accept', runId: run.id, ...(run.stage === 'tickets' ? { parallelImplementation: parallel } : {}) });
       }
     };
     await command({ action: 'run' });
     for (const stage of ['requirements', 'tickets', 'implementation', 'review'] as const) {
       expect(current().stage).toBe(stage);
-      const count = stage === 'implementation' ? 2 : 1;
+      const count = stage === 'implementation' ? (parallel ? 3 : 2) : 1;
       for (let attempt = 0; attempt < count; attempt++) {
         await service.waitForLaunches();
-        const run = current().execution!.runs.at(-1)!;
+        const run = stage === 'implementation' && parallel
+          ? current().execution!.runs.find(candidate => candidate.stage === 'implementation' && candidate.ticketIndex === [0, 2, 1][attempt])!
+          : current().execution!.runs.at(-1)!;
         expect(run.status).toBe('running');
         expect(run.skills).toHaveLength(1);
         expect(run.skills[0]).not.toHaveProperty('path');
@@ -86,16 +91,24 @@ it.each(['codex', 'antigravity'] as const)('keeps %s orchestrators and workers t
         } else if (stage === 'tickets') {
           const account = await service.upsertTicket(run.workerId!, { title: 'Billing account', body: 'Create the billing account.', repositoryPath: repo, reference: 'https://example.com/issues/1' });
           await service.upsertTicket(run.workerId!, { title: 'Owner checkout', body: 'Add owner checkout.', repositoryPath: repo, reference: 'https://example.com/issues/2', blockedByTicketIds: [account.ticketId] });
+          if (parallel) await service.upsertTicket(run.workerId!, { title: 'Invoices', body: 'Add invoices.', repositoryPath: repo });
         } else if (stage === 'implementation') {
-          expect(run.ticketIndex).toBe(attempt);
+          expect(run.ticketIndex).toBe(parallel ? [0, 2, 1][attempt] : attempt);
           const workspace = current().execution!.workspaces![0]!.path;
+          if (parallel && attempt === 0) {
+            const active = current().execution!.runs.filter(candidate => candidate.stage === 'implementation');
+            expect(active.map(candidate => candidate.ticketIndex)).toStrictEqual([0, 2]);
+            expect(active.every(candidate => candidate.status === 'running')).toBe(true);
+            expect(new Set(active.map(candidate => candidate.workerId)).size).toBe(2);
+            expect(active.map(candidate => snapshot.agents.find(agent => agent.id === candidate.workerId)!.folder)).toStrictEqual([workspace, workspace]);
+          }
           await writeFile(join(workspace, `ticket-${run.ticketIndex}.txt`), 'implemented\n');
-          await git(workspace, ['add', '.']);
+          await git(workspace, ['add', `ticket-${run.ticketIndex}.txt`]);
           await git(workspace, ['commit', '-m', `feat: implement ticket ${run.ticketIndex}`]);
           artifacts.tickets[run.ticketIndex!]!.done = true;
           artifacts.implementation = { changes: `ticket-${run.ticketIndex}.txt`, tests: `verification ${run.ticketIndex} passed` };
         } else artifacts.review = { summary: 'Acceptance checked against the mission baseline and both commits.', pullRequestUrl: '' };
-        await submit(artifacts);
+        await submit(artifacts, run);
       }
       if (stage === 'implementation') {
         expect(current().stage).toBe('implementation');
@@ -110,17 +123,19 @@ it.each(['codex', 'antigravity'] as const)('keeps %s orchestrators and workers t
     expect(current().status).toBe('completed');
     expect(current().execution!.workspaces![0]!.baseSha).toBe(baseline);
     expect(current().execution!.runs[0]!.workerId).toBe(current().execution!.runs[1]!.workerId);
-    expect(current().execution!.runs[2]!.workerId).toBe(current().execution!.runs[3]!.workerId);
+    if (parallel) expect(new Set(current().execution!.runs.filter(run => run.stage === 'implementation').map(run => run.workerId)).size).toBe(3);
+    else expect(current().execution!.runs[2]!.workerId).toBe(current().execution!.runs[3]!.workerId);
     expect(current().execution!.runs[2]!.workerId).not.toBe(current().execution!.runs[1]!.workerId);
-    expect(current().execution!.runs[4]!.workerId).toBe(current().execution!.runs[1]!.workerId);
-    expect(new Set(current().execution!.runs.map(run => run.workerId)).size).toBe(2);
+    expect(current().execution!.runs.at(-1)!.workerId).toBe(current().execution!.runs[1]!.workerId);
+    expect(new Set(current().execution!.runs.map(run => run.workerId)).size).toBe(parallel ? 4 : 2);
     expect(await readWorktreeHead(repo)).toBe(baseline);
     expect(await readFile(join(repo, 'billing.txt'), 'utf8')).toBe('original\n');
     expect((await git(repo, ['status', '--porcelain'])).stdout).toBe('');
     const restored = snapshotFromPersistedState(disk);
     expect(restored.missions).toEqual(snapshot.missions);
+    expect(restored.missions![0]!.execution!.parallelImplementation).toBe(parallel);
     expect(restored.missions![0]!.artifacts.tickets[1]!.reference).toBe('https://example.com/issues/2');
     expect(restored.missions![0]!.execution!.runs.every(run => run.status === 'accepted')).toBe(true);
-    expect(prompts.includes('/compact')).toBe(backend === 'codex');
+    expect(prompts.includes('/compact')).toBe(backend === 'codex' && !parallel);
   } finally { await rm(folder, { recursive: true, force: true }); }
 });

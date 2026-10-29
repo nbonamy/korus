@@ -550,7 +550,7 @@ describe('AppBackendServer', () => {
       jsonrpc: '2.0',
       id: 'create-remote-claude-chat',
       method: 'agent/quickChat/create',
-      params: { input: { teamId: 'team-pointer', backend: 'claude', remoteConnectionId: 'connection-devbox' } },
+      params: { input: { teamId: 'team-pointer', selection: { backend: 'claude' }, remoteConnectionId: 'connection-devbox' } },
     });
 
     expect(sshConnections.ensureRemoteClaudeInstalled).not.toHaveBeenCalled();

@@ -70,11 +70,7 @@ describe('AgentDialog', () => {
     await chooseCustomFolder(wrapper);
     await saveButton(wrapper).trigger('click');
 
-    expect(createAgent).toHaveBeenCalledWith({
-      name: null,
-      folder: '/Users/nbonamy/src/new-agent',
-      backend: 'codex',
-    });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/new-agent', selection: { ...{ backend: 'codex' } } });
     expect(wrapper.emitted('close')).toStrictEqual([[]]);
   });
 
@@ -89,11 +85,7 @@ describe('AgentDialog', () => {
     await chooseCustomFolder(wrapper);
     await saveButton(wrapper).trigger('click');
 
-    expect(createAgent).toHaveBeenCalledWith({
-      name: 'Custom Agent',
-      folder: '/Users/nbonamy/src/new-agent',
-      backend: 'codex',
-    });
+    expect(createAgent).toHaveBeenCalledWith({ name: 'Custom Agent', folder: '/Users/nbonamy/src/new-agent', selection: { ...{ backend: 'codex' } } });
   });
 
   it('creates a Claude Code agent when selected', async () => {
@@ -108,11 +100,7 @@ describe('AgentDialog', () => {
     await emitSelect(wrapper, 'agent-dialog-backend', 'claude');
     await saveButton(wrapper).trigger('click');
 
-    expect(createAgent).toHaveBeenCalledWith({
-      name: null,
-      folder: '/Users/nbonamy/src/claude-agent',
-      backend: 'claude',
-    });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/claude-agent', selection: { ...{ backend: 'claude' } } });
   });
 
   it('keeps the folder empty when folder selection is cancelled', async () => {
@@ -214,12 +202,7 @@ describe('AgentDialog', () => {
 
     await saveButton(wrapper).trigger('click');
 
-    expect(createAgent).toHaveBeenCalledWith({
-      name: null,
-      folder: '/Users/nbonamy/src/issue-agent',
-      backend: 'codex',
-      newTeamName: 'GitHub #12',
-    });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/issue-agent', newTeamName: 'GitHub #12', selection: { ...{ backend: 'codex' } } });
   });
 
   it('creates ticket-driven agents in an existing selected team', async () => {
@@ -248,12 +231,7 @@ describe('AgentDialog', () => {
     await chooseCustomFolder(wrapper);
     await saveButton(wrapper).trigger('click');
 
-    expect(createAgent).toHaveBeenCalledWith({
-      name: null,
-      folder: '/Users/nbonamy/src/existing-team-agent',
-      backend: 'codex',
-      teamId: 'team-skwad',
-    });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/existing-team-agent', teamId: 'team-skwad', selection: { ...{ backend: 'codex' } } });
   });
 
   it('allows renaming non-idle agents', async () => {
@@ -330,12 +308,7 @@ describe('AgentDialog', () => {
     expect(wrapper.get('#agent-dialog-name').attributes('placeholder')).toBe('source-folder');
     await saveButton(wrapper).trigger('click');
 
-    expect(createAgent).toHaveBeenCalledWith({
-      name: null,
-      folder: '/Users/nbonamy/src/agent-workspace-source-folder',
-      backend: 'codex',
-      sourceRepositoryName: 'agent-workspace',
-    });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/agent-workspace-source-folder', sourceRepositoryName: 'agent-workspace', selection: { ...{ backend: 'codex' } } });
   });
 
   it('prefers an explicitly requested repository for quick agent creation', async () => {
@@ -401,12 +374,7 @@ describe('AgentDialog', () => {
       repoPath: '/Users/nbonamy/src/agent-workspace',
       branchName: 'fix/gh-24',
     });
-    expect(createAgent).toHaveBeenCalledWith({
-      name: 'agent-workspace - gh-24',
-      folder: '/Users/nbonamy/src/agent-workspace-fix-gh-24',
-      backend: 'codex',
-      sourceRepositoryName: 'agent-workspace',
-    });
+    expect(createAgent).toHaveBeenCalledWith({ name: 'agent-workspace - gh-24', folder: '/Users/nbonamy/src/agent-workspace-fix-gh-24', sourceRepositoryName: 'agent-workspace', selection: { ...{ backend: 'codex' } } });
   });
 
   it('keeps the selected repository when streaming snapshots replace team state', async () => {
@@ -473,13 +441,7 @@ describe('AgentDialog', () => {
     await nextTick();
     await saveButton(wrapper).trigger('click');
 
-    expect(createAgent).toHaveBeenCalledWith({
-      name: null,
-      folder: '/home/nicolas/src/agent-workspace-ssh-agent',
-      backend: 'codex',
-      sourceRepositoryName: 'agent-workspace',
-      remoteConnectionId: 'connection-devbox',
-    });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/home/nicolas/src/agent-workspace-ssh-agent', sourceRepositoryName: 'agent-workspace', selection: { backend: 'codex' }, remoteConnectionId: 'connection-devbox' });
   });
 
   it('picks a custom folder through the selected SSH connection', async () => {
@@ -525,12 +487,7 @@ describe('AgentDialog', () => {
     expect(listSourceFolders).toHaveBeenCalledWith({ remoteConnectionId: 'connection-devbox' });
     expect(listSourceFolders).toHaveBeenCalledWith({ remoteConnectionId: 'connection-devbox', path: '/home/nicolas/src' });
     expect(listSourceFolders).toHaveBeenCalledWith({ remoteConnectionId: 'connection-devbox', path: '/home/nicolas/src/witsy' });
-    expect(createAgent).toHaveBeenCalledWith({
-      name: null,
-      folder: '/home/nicolas/src/witsy',
-      backend: 'codex',
-      remoteConnectionId: 'connection-devbox',
-    });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/home/nicolas/src/witsy', selection: { backend: 'codex' }, remoteConnectionId: 'connection-devbox' });
   });
 
   it('loads selected repository worktrees through the backend list action', async () => {

@@ -45,36 +45,44 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Agent } from '@workspace/core/contracts';
 import type { Mission } from '@workspace/core/missions';
-import { agentAttention } from '@workspace/core/mission-attention';
-import { pendingMissionRun } from '@workspace/core/mission-execution';
+import { agentAttention, missionLeadAgentId } from '@workspace/core/mission-attention';
+import { missionRunTicketIndex } from '@workspace/core/mission-execution';
 import { CodeIcon, SparklesIcon, TargetArrowIcon } from '../shared/icons/app-icons';
 
 type Conversation = { key: string; agentId: string; run: NonNullable<Mission['execution']>['runs'][number] };
 const props = defineProps<{ mission: Mission; agents?: Agent[]; unreadAgentIds?: string[] }>();
-const selectedAgentId = defineModel<string>('selectedAgentId', { default: '' });
+const selectionBinding = defineModel<string>('selectedAgentId', { default: '' });
+const selectedAgentId = ref(selectionBinding.value);
+watch(selectionBinding, value => { selectedAgentId.value = value; }, { flush: 'sync' });
+watch(selectedAgentId, value => { selectionBinding.value = value; }, { flush: 'sync' });
 const emit = defineEmits<{ 'open-conversation': [agentId: string] }>();
 const { t } = useI18n();
-const activeRun = computed(() => pendingMissionRun(props.mission));
-const preferredAgentId = computed(() => activeRun.value?.workerId
-  ?? props.mission.execution?.runs.slice().reverse().find(run => run.stage === props.mission.stage && run.workerId)?.workerId
-  ?? props.mission.stageAgentIds[props.mission.stage]
-  ?? '');
+const storageKey = (missionId: string) => `app.missionConversation.${missionId}`;
+watch(() => props.mission.id, id => {
+  try { selectedAgentId.value = window.localStorage.getItem(storageKey(id)) ?? ''; }
+  catch { selectedAgentId.value = ''; }
+}, { immediate: true });
+const availableAgentIds = computed(() => new Set(props.agents?.map(agent => agent.id) ?? []));
 const conversations = computed<Conversation[]>(() => {
   const entries = new Map<string, Conversation>();
   for (const run of props.mission.execution?.runs ?? []) {
-    if (!run.workerId) continue;
+    if (!run.workerId || !availableAgentIds.value.has(run.workerId)) continue;
     const key = conversationKey(run);
     entries.set(key, { key, agentId: run.workerId, run });
   }
   return [...entries.values()];
 });
+const leadAgentId = computed(() => {
+  const lead = missionLeadAgentId(props.mission);
+  return lead && availableAgentIds.value.has(lead) ? lead : conversations.value.find(conversation => conversation.key === 'mission-lead')?.agentId ?? '';
+});
 const selectedConversation = computed(() => conversations.value.find(conversation => conversation.agentId === selectedAgentId.value)
-  ?? conversations.value.find(conversation => conversation.agentId === preferredAgentId.value));
-const conversationAgentId = computed(() => selectedConversation.value?.agentId ?? preferredAgentId.value);
+  ?? conversations.value.find(conversation => conversation.agentId === leadAgentId.value));
+const conversationAgentId = computed(() => selectedConversation.value?.agentId ?? leadAgentId.value);
 const headerTitle = computed(() => selectedConversation.value ? tabTitle(selectedConversation.value) : t('missions.missionLead'));
 const headerRole = computed(() => selectedConversation.value?.run.stage === 'implementation'
   ? t('missions.builder')
@@ -87,8 +95,14 @@ const headerHint = computed(() => {
   return run ? t(`missions.stageActivity.${run.stage}`) : t('missions.missionLeadHint');
 });
 
-watch(preferredAgentId, (agentId, previous) => {
-  if (!selectedAgentId.value || selectedAgentId.value === previous) selectedAgentId.value = agentId;
+watch([selectedAgentId, conversations, leadAgentId], ([selected, choices, lead]) => {
+  if (selected !== lead && !choices.some(conversation => conversation.agentId === selected)) selectedAgentId.value = lead;
+}, { immediate: true });
+watch([() => props.mission.id, selectedAgentId], ([id, agentId]) => {
+  try {
+    if (agentId) window.localStorage.setItem(storageKey(id), agentId);
+    else window.localStorage.removeItem(storageKey(id));
+  } catch { /* Keep the current selection when client storage is unavailable. */ }
 }, { immediate: true });
 watch(conversationAgentId, agentId => { if (agentId) emit('open-conversation', agentId); }, { immediate: true });
 
@@ -104,17 +118,20 @@ function tabTitle(conversation: Conversation): string {
   if (conversation.run.stage === 'implementation') {
     const repositoryPath = conversation.run.repositoryPath
       ?? props.mission.artifacts.tickets[conversation.run.ticketIndex ?? -1]?.repositoryPath;
-    return repositoryPath?.split(/[\\/]/u).filter(Boolean).at(-1) ?? t('missions.builder');
+    const name = repositoryPath?.split(/[\\/]/u).filter(Boolean).at(-1) ?? t('missions.builder');
+    const siblings = conversations.value.filter(candidate => candidate.run.stage === 'implementation'
+      && (candidate.run.repositoryPath ?? props.mission.artifacts.tickets[candidate.run.ticketIndex ?? -1]?.repositoryPath) === repositoryPath);
+    const index = missionRunTicketIndex(props.mission, conversation.run);
+    const attempts = siblings.filter(candidate => missionRunTicketIndex(props.mission, candidate.run) === index);
+    const label = siblings.length > 1 && index !== undefined ? `${name} · ${index + 1}` : name;
+    return attempts.length > 1 ? `${label} · ${t('missions.attempt', { count: attempts.indexOf(conversation) + 1 })}` : label;
   }
   return t('missions.missionLead');
 }
 
 function conversationKey(run: Conversation['run']): string {
   if (run.stage !== 'implementation') return 'mission-lead';
-  const repositoryPath = run.repositoryPath
-    ?? props.mission.artifacts.tickets[run.ticketIndex ?? -1]?.repositoryPath
-    ?? run.workerId;
-  return `repository:${repositoryPath}`;
+  return `worker:${run.workerId}`;
 }
 </script>
 

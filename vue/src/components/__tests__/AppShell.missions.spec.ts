@@ -23,6 +23,33 @@ function representGitHubRepository(agent: ReturnType<typeof createInitialSnapsho
 }
 
 describe('AppShell missions', () => {
+  it('creates a named team agent in the selected existing Mission worktree from its context menu', async () => {
+    const snapshot = createInitialSnapshot();
+    const mission = createMission(snapshot, { outcome: 'Add team billing', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
+    mission.execution!.workspaces = [
+      { repositoryPath: '/repos/api', path: '/worktrees/billing-api', branch: 'mission/billing' },
+      { repositoryPath: '/repos/web', path: '/worktrees/billing-web', branch: 'mission/billing' },
+      { repositoryPath: '/repos/removed', path: '/worktrees/removed', branch: 'mission/billing', deleted: true },
+    ];
+    const createAgent = vi.fn().mockResolvedValue({ ...snapshot.agents[0]!, id: 'manual-agent', name: mission.outcome });
+    const createSourceWorktree = vi.fn();
+    const wrapper = mountShell({ snapshot, realAgentSidebar: true, stubAgentWorkspace: true, createAgent, createSourceWorktree });
+    const row = () => wrapper.get('[data-group-kind="missions"] .agent-sidebar__agent');
+    const menuItems = () => Array.from(document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'));
+    try {
+      for (const [repository, folder] of [['api', '/worktrees/billing-api'], ['web', '/worktrees/billing-web']]) {
+        await row().trigger('contextmenu', { clientX: 80, clientY: 120 });
+        expect(menuItems().map(button => button.textContent?.trim())).toStrictEqual(['New agent in mission worktree', 'api', 'web', 'Delete mission']);
+        menuItems().find(button => button.textContent?.trim() === repository)!.click();
+        await flushPromises();
+        expect(createAgent).toHaveBeenLastCalledWith({ name: mission.outcome, folder, teamId: mission.teamId, selection: { ...{ backend: 'codex' } } });
+        expect(wrapper.emitted('select-agent')?.at(-1)).toStrictEqual(['manual-agent']);
+        expect(document.body.querySelector('[aria-label="Mission actions"]')).toBeNull();
+      }
+      expect(createSourceWorktree).not.toHaveBeenCalled();
+    } finally { wrapper.unmount(); }
+  });
+
   it.each(['linear', 'gitlab'] as const)('forwards %s issue context and rejects selection after the requirements stage', async provider => {
     const snapshot = createInitialSnapshot();
     const mission = createMission(snapshot, { outcome: 'New mission', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });

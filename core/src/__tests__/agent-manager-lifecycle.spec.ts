@@ -101,17 +101,21 @@ describe('agent-manager lifecycle', () => {
 
     const restartSnapshot = createInitialSnapshot();
     restartSnapshot.agents[0].conversationTitle = 'Clear on restart';
+    restartSnapshot.agents[0].autoResumePending = true;
     restartAgentConversation(restartSnapshot, 'agent-dina');
     expect(restartSnapshot.agents[0].conversationTitle).toBeUndefined();
+    expect(restartSnapshot.agents[0].autoResumePending).toBeUndefined();
 
     const resumeSnapshot = createInitialSnapshot();
     resumeSnapshot.agents[0].conversationTitle = 'Clear on resume';
+    resumeSnapshot.agents[0].autoResumePending = true;
     resumeAgentConversationInSnapshot(
       resumeSnapshot,
       'agent-dina',
       { kind: 'codex', threadId: 'thread-resumed' },
     );
     expect(resumeSnapshot.agents[0].conversationTitle).toBeUndefined();
+    expect(resumeSnapshot.agents[0].autoResumePending).toBeUndefined();
   });
 
   it('normalizes agent creation input and clones matching backend defaults', () => {

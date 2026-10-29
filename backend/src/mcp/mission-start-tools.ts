@@ -1,3 +1,5 @@
+import type { ExecutionSelectionOverrides } from '@workspace/core/contracts/execution';
+import { executionSelectionOverridesSchema } from '../execution-selection-schema';
 import type { AppSnapshot } from '@workspace/core/contracts';
 import * as z from 'zod/v4';
 import { loggedToolResult, type AppMcpToolModuleProvider } from './tool-modules';
@@ -6,10 +8,7 @@ export type StartedMission = { missionId: string; outcome: string };
 export type MissionStartInput = {
   outcome: string;
   prompt: string;
-  backend?: 'codex' | 'claude' | 'antigravity';
-  model?: string;
-  reasoningEffort?: string;
-  serviceTier?: string;
+  selection?: ExecutionSelectionOverrides;
 };
 
 /** Lets an ordinary agent start a Mission from the conversation, the way /mission asks it to. */
@@ -32,14 +31,11 @@ export function createMissionStartToolModuleProvider(options: {
             inputSchema: z.strictObject({
               outcome: z.string().trim().min(1).max(200).describe('One-line title of the desired result, at most 120 characters.'),
               prompt: z.string().trim().min(1).max(20_000).describe('Complete, self-contained first message for the Mission lead: goal, constraints, decisions made and how success is checked.'),
-            backend: z.enum(['codex', 'claude', 'antigravity']).optional().describe('Provider for the Mission lead. Defaults to this agent’s provider. Set it only when the user asks for one.'),
-            model: z.string().trim().min(1).optional().describe('Model for the Mission lead, as the provider names it. Defaults to this agent’s model. Set it only when the user asks for one; an unknown model is rejected with the available ones.'),
-            reasoningEffort: z.string().trim().min(1).optional().describe('Reasoning effort for the Mission lead. Needs model.'),
-            serviceTier: z.string().trim().min(1).optional().describe('Service tier for the Mission lead, for example a fast mode, as the model offers it. Needs model. Rejected with the supported tiers when the model has none.'),
+            selection: executionSelectionOverridesSchema.optional().describe('Execution overrides. Same-provider work inherits the caller; a different provider uses its own defaults. Null selects the provider default, including Standard tier.'),
             }),
             annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-          }, ({ outcome, prompt, backend, model, reasoningEffort, serviceTier }) => loggedToolResult('create-mission', { agentId, outcomeLength: outcome.length, promptLength: prompt.length, backend, model }, async () => {
-            const started = await options.startMission(agentId, { outcome, prompt, ...(backend ? { backend } : {}), ...(model ? { model } : {}), ...(reasoningEffort ? { reasoningEffort } : {}), ...(serviceTier ? { serviceTier } : {}) });
+          }, ({ outcome, prompt, selection }) => loggedToolResult('create-mission', { agentId, outcomeLength: outcome.length, promptLength: prompt.length, backend: selection?.backend, model: selection?.model }, async () => {
+            const started = await options.startMission(agentId, { outcome, prompt, selection });
             return { success: true, missionId: started.missionId, outcome: started.outcome, message: 'The Mission was started and opened for the user.' };
           }));
         },

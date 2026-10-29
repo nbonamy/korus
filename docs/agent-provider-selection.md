@@ -115,3 +115,5 @@ report their own connections.
   engine without another login. Disabling preserves histories, drafts, queues and
   running turns, blocks new work, and pending Korus prompts resume on re-enable.
   Credential renewal and sign-in stay with the provider runtimes.
+
+Execution choices cross application and process boundaries as the shared `ExecutionSelection` value. Admission inputs may carry typed overrides; the owning host resolves those against the selected provider before execution. Provider policy and observed conversation settings remain separate. Runtime validation and provider adapters cover every selection field so additions require updating those boundaries. Saved selections are normalized on load, and the roster schema prevents older daemons from rewriting the migrated layout.

@@ -25,7 +25,7 @@ describe('client isolation regressions', () => {
     try {
       await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'client/navigation/selectTeam', params: { _clientId: 'remote-client', teamId: 'pointer' } });
       await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'client/navigation/selectTeam', params: { _clientId: 'local-client', teamId: 'local-other' } });
-      const input = method === 'agent/create' ? { name: 'New', folder: '/tmp', backend: 'codex' } : {};
+      const input = method === 'agent/create' ? { name: 'New', folder: '/tmp', selection: { backend: 'codex' } } : {};
       const results = await Promise.all(['remote-client', 'local-client'].map((_clientId) => server.handleMessage({ jsonrpc: '2.0', id: _clientId, method, params: { _clientId, input: _clientId === 'remote-client' ? { ...input, remoteConnectionId: connection.id } : input } })));
       expect(results[0]).toMatchObject({ result: { activeTeamId: 'pointer' } });
       expect(results[1]).toMatchObject({ result: { activeTeamId: 'local-other' } });

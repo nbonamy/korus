@@ -7,6 +7,7 @@ import { missionStageReady } from './missions';
 import { enabledAgentBackends, providerConnectionsForHost } from './agent-backends';
 import { repositoryIconForAgent } from './workspace-sidebar';
 import { missionLeadAgentId } from './mission-attention';
+import { missionImplementationBusy } from './mission-execution';
 
 const encoder = new TextEncoder();
 /** Stable per path, reveals no directory names, and ends with the folder name so label fallbacks keep working. */
@@ -78,11 +79,11 @@ function ticketState(mission: Mission, index: number): { state: CompanionMission
 }
 
 /** Implementation with every ticket done moves on to review; a reviewed mission is ready to ship. */
-function missionNext(mission: Mission): 'review' | 'ship' | undefined {
+function missionNext(mission: Mission, agents: readonly Agent[]): 'review' | 'ship' | undefined {
   if (mission.status !== 'active') return undefined;
   // The workspace must reach the phone even if one saved mission is malformed.
   const ready = (stage: Mission['stage']) => { try { return missionStageReady(stage, mission.artifacts); } catch { return false; } };
-  if (mission.stage === 'implementation' && ready('implementation')) return 'review';
+  if (mission.stage === 'implementation' && ready('implementation') && !missionImplementationBusy(mission, agents)) return 'review';
   if (mission.stage === 'ship' || (mission.stage === 'review' && ready('review'))) return 'ship';
   return undefined;
 }
@@ -113,14 +114,14 @@ function missionStart(mission: Mission): string {
 }
 
 /** Active missions first, then the most recent: the phone shows what is moving and what just finished. */
-function companionMissionsOf(source: { missions?: Mission[] }): { missions: CompanionMission[]; workerIds: Set<string> } {
+function companionMissionsOf(source: { missions?: Mission[]; agents: Agent[] }): { missions: CompanionMission[]; workerIds: Set<string> } {
   // Ticket workers and the leads that are mission workers themselves: neither is in the agent list, both must be openable.
   const workerIds = new Set<string>();
   const ranked = [...(source.missions ?? [])].filter((mission) => mission.artifacts?.tickets)
     .sort((a, b) => Number(b.status === 'active') - Number(a.status === 'active') || Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
     .slice(0, maxCompanionMissions);
   const missions = ranked.map((mission): CompanionMission => ({ id: mission.id, teamId: mission.teamId, outcome: mission.outcome.slice(0, maxMissionText), stage: mission.stage,
-    status: mission.status, startedAt: missionStart(mission), updatedAt: mission.updatedAt, ...(missionLeadAgentId(mission) ? { leadAgentId: missionLeadAgentId(mission)! } : {}), revision: mission.revision, ...(missionNext(mission) ? { next: missionNext(mission)! } : {}), ...(missionReview(mission) ? { review: missionReview(mission)! } : {}),
+    status: mission.status, startedAt: missionStart(mission), updatedAt: mission.updatedAt, ...(missionLeadAgentId(mission) ? { leadAgentId: missionLeadAgentId(mission)! } : {}), revision: mission.revision, ...(missionNext(mission, source.agents) ? { next: missionNext(mission, source.agents)! } : {}), ...(missionReview(mission) ? { review: missionReview(mission)! } : {}),
     tickets: mission.artifacts.tickets.map((ticket, index) => {
       const { state, workerId, runId } = ticketState(mission, index);
       if (workerId) workerIds.add(workerId);
@@ -139,7 +140,7 @@ export function companionWorkspaceOf(snapshot: Pick<AppSnapshot, 'teams' | 'agen
       .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))[0];
     return [id, projectGitStatus({ ...status, ...(turn ? { lastTurn: turn } : {}) })];
   }));
-  const { missions, workerIds: ticketWorkerIds } = companionMissionsOf({ missions: snapshot.missions });
+  const { missions, workerIds: ticketWorkerIds } = companionMissionsOf(snapshot);
   return { ...(gitStatuses ? { gitStatuses } : {}), missionProgress: missions, missionAgents: snapshot.agents.filter((agent) => ticketWorkerIds.has(agent.id)), queuedPrompts: snapshot.queuedPrompts?.map(({ id, agentId, text }) => ({ id, agentId, text })), agentRequests: snapshot.agentRequests ?? {}, teams: snapshot.teams, agents: snapshot.agents.filter((agent) => !workerIds.has(agent.id)), repositoryIcons: snapshot.general.repositoryIcons, modelFavorites: snapshot.general.modelFavorites,
     backends: Object.fromEntries([
       ...snapshot.teams.map((team) => [team.id, enabledAgentBackends({ providerConnections: snapshot.providerConnections ?? [] })] as const),

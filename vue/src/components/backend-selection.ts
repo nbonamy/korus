@@ -1,6 +1,6 @@
 import { computed, inject, provide, ref, watch, type ComputedRef, type InjectionKey, type Ref } from 'vue';
 import { enabledAgentBackends, providerConnectionsForHost } from '@workspace/core/agent-backends';
-import type { AgentBackend, AgentModelSelection, AppSnapshot } from '@workspace/core/contracts';
+import type { AgentBackend, ExecutionSelection, AppSnapshot } from '@workspace/core/contracts';
 import { isAgentBackend } from '@workspace/core/contracts/shared';
 import type { ProviderConnection } from '@workspace/core/contracts/provider-setup';
 
@@ -86,7 +86,7 @@ export function useCatalogAgentId(host?: () => string | null | undefined, explic
 }
 
 /** The model and effort the user last chose for a provider; new agents start from it. */
-export function useSavedModelSelection(backend: () => AgentBackend | undefined): ComputedRef<AgentModelSelection | undefined> {
+export function useSavedModelSelection(backend: () => AgentBackend | undefined): ComputedRef<ExecutionSelection | undefined> {
   const snapshot = inject(backendSnapshotKey, undefined);
   return computed(() => {
     const current = backend();

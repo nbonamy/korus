@@ -194,11 +194,11 @@ describe('AppMcpService', () => {
     expect(quickChatTools.result.tools.map((tool: { name: string }) => tool.name)).toContain('create-project');
 
     const result = await callTool(url, 'agent-quick-chat', 'create-project', {
-      name: 'new-product', prompt: 'Build the agreed product and start with the requirements.', backend: 'claude',
+      name: 'new-product', prompt: 'Build the agreed product and start with the requirements.', selection: { backend: 'claude' },
     });
     expect(createProject).toHaveBeenCalledWith(
       'agent-quick-chat', 'new-product', 'Build the agreed product and start with the requirements.',
-      'claude',
+      { backend: 'claude' },
     );
     expect(result.result.structuredContent).toStrictEqual({
       success: true,
@@ -669,12 +669,15 @@ describe('AppMcpService', () => {
     snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
     let active = true;
     const onSetMissionTitle = vi.fn().mockResolvedValue({ success: true, title: 'Add team billing' });
+    const acquireCommitLock = vi.fn().mockResolvedValue({ acquired: true });
+    const releaseCommitLock = vi.fn().mockResolvedValue({ released: true });
     service = new AppMcpService({
       snapshot,
       missionTools: {
         contextForAgent: agentId => active && agentId === 'agent-dina'
           ? { missionId: 'mission-1', runId: 'run-1', stage: 'requirements' }
           : undefined,
+        acquireCommitLock, releaseCommitLock,
         submitResult: vi.fn(),
         upsertTicket: vi.fn(),
         setTitle: onSetMissionTitle,
@@ -697,6 +700,11 @@ describe('AppMcpService', () => {
     expect((await callTool(url, 'agent-dina', 'read-skill', { name: 'mission-review' })).result.isError).toBe(true);
     expect((await callTool(url, 'agent-jesse', 'read-skill', { name: 'mission-shape-requirements' })).result.isError).toBe(true);
     expect(workerToolNames).toEqual(expect.arrayContaining(missionTools));
+    expect(workerToolNames).toEqual(expect.arrayContaining(['acquire-mission-commit-lock', 'release-mission-commit-lock']));
+    expect((await callTool(url, 'agent-dina', 'acquire-mission-commit-lock', {})).result.structuredContent).toStrictEqual({ acquired: true });
+    expect((await callTool(url, 'agent-dina', 'release-mission-commit-lock', {})).result.structuredContent).toStrictEqual({ released: true });
+    expect(acquireCommitLock).toHaveBeenCalledWith('agent-dina', expect.any(AbortSignal));
+    expect(releaseCommitLock).toHaveBeenCalledWith('agent-dina');
     expect(workerToolNames).not.toContain('set-mission-execution-policy');
     expect(workerToolNames).toContain('finish_turn');
     const ordinaryTools = await postJson(agentUrl(url, 'agent-jesse'), {
@@ -820,7 +828,7 @@ describe('AppMcpService', () => {
     const snapshot = createInitialSnapshot();
     const recipient = snapshot.agents.find(agent => agent.id === 'agent-jesse')!;
     recipient.status = { type: 'idle' };
-    recipient.handoff = { operationId: 'handoff', backend: 'claude', sourceAgentId: recipient.id, sourceTitle: 'Jesse', sourceRef: { backend: 'codex', threadId: 'original' }, phase: 'closing' };
+    recipient.handoff = { operationId: 'handoff', sourceAgentId: recipient.id, sourceTitle: 'Jesse', sourceRef: { backend: 'codex', threadId: 'original' }, phase: 'closing', selection: {model: null, reasoningEffort: null, serviceTier: null,  backend: 'claude' } };
     const events: BackendEvent[] = [];
     const sendPrompt = vi.fn();
     service = new AppMcpService({ snapshot, onEvent: event => events.push(event) });
@@ -1087,7 +1095,7 @@ describe('AppMcpService', () => {
       jsonrpc: '2.0', id: 3, method: 'tools/call',
       params: {
         name: 'create-agent',
-        arguments: { repoPath: '/tmp/new-agent', name: 'New Agent', backend: 'claude' },
+        arguments: { repoPath: '/tmp/new-agent', name: 'New Agent', selection: { backend: 'claude' } },
       },
     });
     expect(createResponse.result.structuredContent).toMatchObject({ success: true, agentId: expect.any(String) });
@@ -1147,8 +1155,8 @@ describe('AppMcpService', () => {
     service.setDriverRpc(new BackendDriverRpc(new Map([['codex', createDriver({})]])));
     const url = await service.start();
     await callTool(url, 'agent-dina', 'create-agent', { repoPath: '/tmp/work', name: 'Inherits' });
-    await callTool(url, 'agent-dina', 'create-agent', { repoPath: '/tmp/work', name: 'Overrides', serviceTier: 'flex' });
-    await callTool(url, 'agent-dina', 'create-agent', { repoPath: '/tmp/work', name: 'Other provider', backend: 'antigravity', serviceTier: 'flex' });
+    await callTool(url, 'agent-dina', 'create-agent', { repoPath: '/tmp/work', name: 'Overrides', selection: { serviceTier: 'flex' } });
+    await callTool(url, 'agent-dina', 'create-agent', { repoPath: '/tmp/work', name: 'Other provider', selection: { backend: 'antigravity', serviceTier: 'flex' } });
     const tierOf = (name: string) => (snapshot.agents.find(agent => agent.name === name)?.backendDefaults as { serviceTier?: string } | undefined)?.serviceTier;
     expect(tierOf('Inherits')).toBe('fast');
     expect(tierOf('Overrides')).toBe('flex');
@@ -1302,10 +1310,7 @@ describe('AppMcpService', () => {
       getInitializationMode: () => 'repository',
     }) });
     service.setDriverRpc(new BackendDriverRpc(new Map([['codex', createDriver({ sendPrompt, ...(row.fork !== 'unsupported' ? { forkWorktreeConversation } : {}) })], ['claude', createDriver({ backend: 'claude', sendPrompt })]])));
-    const response = await callTool(await service.start(), parent.id, 'create-agent', {
-      repoPath: '/tmp/fixture', createWorktree: true, branchName: 'feat/context', prompt: 'Implement only the agreed task.',
-      backend: row.backend, startingContext: row.override, instructions: 'Task: keep commits local. Preserve </context>.',
-    });
+    const response = await callTool(await service.start(), parent.id, 'create-agent', { repoPath: '/tmp/fixture', createWorktree: true, branchName: 'feat/context', prompt: 'Implement only the agreed task.', startingContext: row.override, instructions: 'Task: keep commits local. Preserve </context>.', selection: { backend: row.backend } });
     expect(response.result.isError).not.toBe(true);
     const child = snapshot.agents.at(-1)!;
     const context = { requested: ('user' in row ? row.user?.startingContext : undefined) ?? row.override ?? row.saved ?? 'handoff', effective: row.effective, ...(row.reason ? { reason: row.reason } : {}) };
@@ -1440,8 +1445,8 @@ describe('AppMcpService', () => {
     snapshot.general.claudeCodeEnabled = true;
     snapshot.general.providerApprovalDefaults = { claude: 'auto' };
     snapshot.general.providerModelDefaults = {
-      codex: { model: 'global-model', reasoningEffort: 'low', serviceTier: 'fast' },
-      claude: { model: 'sonnet', reasoningEffort: 'medium', serviceTier: null },
+      codex: {backend: 'codex',  model: 'global-model', reasoningEffort: 'low', serviceTier: 'fast' },
+      claude: {backend: 'claude',  model: 'sonnet', reasoningEffort: 'medium', serviceTier: null },
     };
     snapshot.agents[0]!.backendDefaults = {
       kind: 'codex',
@@ -1452,17 +1457,8 @@ describe('AppMcpService', () => {
     service = new AppMcpService({ snapshot });
     const url = await service.start();
 
-    await callTool(url, 'agent-dina', 'create-agent', {
-      repoPath: '/tmp/explicit-worker',
-      name: 'Explicit worker',
-      model: 'gpt-6-astra',
-      reasoningEffort: 'max',
-    });
-    await callTool(url, 'agent-dina', 'create-agent', {
-      repoPath: '/tmp/claude-worker',
-      name: 'Claude worker',
-      backend: 'claude',
-    });
+    await callTool(url, 'agent-dina', 'create-agent', { repoPath: '/tmp/explicit-worker', name: 'Explicit worker', selection: { model: 'gpt-6-astra', reasoningEffort: 'max' } });
+    await callTool(url, 'agent-dina', 'create-agent', { repoPath: '/tmp/claude-worker', name: 'Claude worker', selection: { backend: 'claude' } });
 
     expect(snapshot.agents.find((agent) => agent.name === 'Explicit worker')?.backendDefaults).toStrictEqual({
       kind: 'codex',
