@@ -471,6 +471,7 @@ export const messages = {
       open: 'Open',
       cloneAndOpen: 'Clone and open',
       noEngine: 'Connect a coding engine on that machine first.',
+      modelsUnavailable: 'Couldn’t load models: {detail}',
     },
     sidebar: {
       agents: 'Agents',

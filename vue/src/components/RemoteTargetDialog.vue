@@ -34,6 +34,15 @@
         v-model:selection="selection"
         :remote-connection-id="selectedId"
         :disabled="busy"
+        @loading="$event && (modelsError = null)"
+        @error="modelsError = $event instanceof Error ? $event.message : String($event)"
+      />
+      <el-alert
+        v-if="showEngine && modelsError"
+        :title="t('remoteTarget.modelsUnavailable', { detail: modelsError })"
+        type="warning"
+        :closable="false"
+        show-icon
       />
 
       <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
@@ -55,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { RemoteConnection } from '@workspace/core/contracts';
 import type { ExecutionSelection } from '@workspace/core/contracts';
@@ -82,6 +91,7 @@ defineEmits<{
 const selectedId = defineModel<string>('selectedId', { default: '' });
 const selection = defineModel<ExecutionSelection | undefined>('selection');
 const { t } = useI18n();
+const modelsError = ref<string | null>(null);
 
 const confirmLabel = computed(() => t(props.checkouts[selectedId.value]?.state === 'missing' ? 'remoteTarget.cloneAndOpen' : 'remoteTarget.open'));
 
