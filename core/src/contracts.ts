@@ -406,6 +406,7 @@ export type Agent = {
   autoResumePending?: boolean;
   goal?: ThreadGoal;
   visualize?: import('./visualize').VisualizeSession;
+  designWorkspace?: import('./design').DesignWorkspace;
   isRegistered?: boolean;
   mcpSessionId?: string;
   statusText?: string;
@@ -859,6 +860,7 @@ export type AppApi = {
   browserExtensions(agentId: string | null, action: import('./browser-extensions').BrowserExtensionAction, managerId?: string, browserId?: string): Promise<import('./browser-extensions').BrowserExtensionState>;
   getUsage(filter?: import('./usage').UsageFilter): Promise<import('./usage').UsageSummary>;
   clearUsage(): Promise<void>;
+  design(agentId: string, input: import('./design').DesignRequest): Promise<import('./design').DesignResult>;
   startVisualize(agentId: string, input?: import('./visualize').StartVisualizeInput): Promise<AppSnapshot>;
   setVisualizeOpen(agentId: string, input: import('./visualize').SetVisualizeOpenInput): Promise<AppSnapshot>;
   generateVisualizationSuggestion(agentId: string, input: import('./visualize').GenerateVisualizationSuggestionInput): Promise<AppSnapshot>;

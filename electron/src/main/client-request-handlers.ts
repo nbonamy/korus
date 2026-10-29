@@ -1,3 +1,4 @@
+import { captureDesign } from './design-capture';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { app, BrowserWindow, shell } from 'electron';
 import type { SystemPermissionsStatus } from '@workspace/core/contracts';
@@ -46,6 +47,7 @@ export function createRuntimeClientRequestHandlers(overrides: Pick<ClientRequest
 
 export function createClientRequestHandlers(options: ClientRequestHandlersOptions): Record<string, ClientRequestHandler> {
   return {
+    [backendMethods.clientDesignCapture]: params => captureDesign(requireRecord(params) as import('@workspace/core/design').DesignCaptureInput),
     [backendMethods.clientFocusGet]: () => ({ focused: options.desktopFocused?.() === true }),
     [backendMethods.clientExternalOpen]: async (params) => {
       const record = requireRecord(params);

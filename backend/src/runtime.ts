@@ -1,3 +1,5 @@
+import { DesignService } from './design-service';
+import { createDesignToolModuleProvider } from './mcp/design-tools';
 import { GuestJoins } from './sharing/guest-joins';
 import { UsageService } from './usage/usage-service';
 import { UsageLedger } from './usage/usage-ledger';
@@ -138,6 +140,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     },
     onError: error => warnMain('tasks', 'transition failed', { message: String(error) }),
   });
+  const designService = new DesignService({ capture: embeddedBrowserAvailable ? input => options.requestClient<string>(backendMethods.clientDesignCapture, input) : undefined, snapshot, persist: () => saveBackendSnapshot(snapshot), publish: () => server?.emitEvent({ type: 'snapshot.updated', payload: snapshot }) });
   const visualizeService = new VisualizeService({
     snapshot,
     generatedImagesRoot: path.join(backendCodexHomeDir(), 'generated_images'),
@@ -199,6 +202,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
         ? (agentId, input) => options.requestClient(backendMethods.clientMobileSimulatorExecute, { agentId, input })
         : undefined),
       createVisualizeToolModuleProvider(visualizeService),
+      createDesignToolModuleProvider(designService),
       createTaskToolModuleProvider(tasks),
     ],
   });
@@ -335,6 +339,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     agentGitService,
     agentCreation,
     visualizeService,
+    designService,
     driverRpc,
     onEvent: (event) => { companion.event(event); options.emitEvent(event); },
     onBackendEventApplied: (event) => { mcpService.handleBackendEvent(event); tasks.handleEvent(event); automationRunner.handleEvent(event); },
@@ -357,6 +362,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
       requestHandlers: {
         [backendMethods.clientExternalOpen]: (params) => options.requestClient(backendMethods.clientExternalOpen, params),
         [backendMethods.clientSpokenAnnouncementQueue]: (params) => options.requestClient(backendMethods.clientSpokenAnnouncementQueue, params),
+        [backendMethods.clientDesignCapture]: params => options.requestClient(backendMethods.clientDesignCapture, params),
         [backendMethods.clientBrowserOpen]: (params) => options.requestClient(backendMethods.clientBrowserOpen, params),
         [backendMethods.clientBrowserExecute]: (params) => options.requestClient(backendMethods.clientBrowserExecute, params),
         [backendMethods.clientComputerUseExecute]: (params) => options.requestClient(backendMethods.clientComputerUseExecute, params),

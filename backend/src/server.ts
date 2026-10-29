@@ -1,3 +1,4 @@
+import { DesignService, designPrompt, designImplementationPrompt } from './design-service';
 import { applyExecutionSelection, defaultExecutionSelection, executionSelectionForAgent, resolveExecutionSelection } from '@workspace/core/execution-selection';
 import type { ExecutionSelection, ExecutionSelectionOverrides } from '@workspace/core/contracts/execution';
 import { executionSelectionSchema, executionSelectionOverridesSchema } from './execution-selection-schema';
@@ -149,6 +150,7 @@ export type AppBackendServerOptions = {
   saveCodeReviewReport?: (agent: Agent, session: CodeReviewSession) => Promise<string>;
   agentCreation?: AgentCreationService;
   worktreeInitializationForFolder?: (folder: string) => Agent['worktreeInitialization'];
+  designService?: DesignService;
   visualizeService?: VisualizeService;
 };
 
@@ -290,6 +292,7 @@ export class AppBackendServer {
   private readonly codeReviews?: CodeReviewService;
   private readonly agentCreation: AgentCreationService;
   private readonly projectCreation: ProjectCreationService;
+  private readonly design: DesignService;
   private readonly visualize: VisualizeService;
   private readonly deleteMissionHome: (missionId: string) => Promise<void>;
   private unsubscribeDriverEvents?: () => void;
@@ -416,6 +419,7 @@ export class AppBackendServer {
       resume: agent => this.agentPrompts.sendAndWaitForAcceptance(agent, 'continue', undefined, companionSessionId(agent)),
       onError: error => warnMain('auto-resume', 'could not resume conversation', { message: String(error) }),
     });
+    this.design = options.designService ?? new DesignService({ snapshot: this.snapshot, persist: async () => { await this.persistSnapshotOnly(); }, publish: () => { void this.emitProjectedSnapshot(); } });
     this.visualize = options.visualizeService ?? new VisualizeService({
       snapshot: this.snapshot,
       generatedImagesRoot: path.join(os.tmpdir(), 'agent-workspace-generated-images'),
@@ -1866,6 +1870,17 @@ export class AppBackendServer {
           filePath: requireString(params.filePath, 'filePath'),
           ...offset,
         }));
+      }
+      case backendMethods.agentDesign: {
+        const agentId = requireStringParam(message.params, 'agentId');
+        const input = requireRecordParam(message.params, 'input') as unknown as import('@workspace/core/design').DesignRequest;
+        return this.routeAgentResultRequest(message.id, agentId, message.method, { agentId, input }, async (agent) => {
+          const result = await this.design.execute(agentId, input);
+          if (input.type === 'open' && input.prompt?.trim()) this.agentPrompts.send(agentId, designPrompt(input.prompt));
+          if (input.type === 'implement') await this.agentPrompts.sendAndWaitForAcceptance(agent, designImplementationPrompt(result.workspace, input.artboardId));
+          if (input.type === 'comment') this.agentPrompts.send(agentId, designPrompt(input.text, `Element comment target: ${JSON.stringify({ documentId: result.workspace.document?.id, nodeId: input.nodeId, revision: result.workspace.document?.revision })}. `));
+          return result;
+        });
       }
       case backendMethods.agentVisualizeStart: {
         const agentId = requireStringParam(message.params, 'agentId');

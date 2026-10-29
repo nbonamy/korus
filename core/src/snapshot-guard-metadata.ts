@@ -1,3 +1,4 @@
+import { isDesignWorkspace } from './design';
 import { isExecutionSelection } from './execution-selection';
 import { isPromptContent } from './snapshot-guard-collections';
 import { isRateLimitPause } from './auto-resume';
@@ -142,6 +143,7 @@ function isAgent(value: unknown): boolean {
     optional(value, 'autoResumePending', isBoolean) &&
     optional(value, 'suggestedPrompt', isString) &&
     optional(value, 'goal', isThreadGoal) &&
+    optional(value, 'designWorkspace', isDesignWorkspace) &&
     optional(value, 'visualize', isVisualizeSession) &&
     optional(value, 'isRegistered', isBoolean) &&
     optional(value, 'mcpSessionId', isString) &&

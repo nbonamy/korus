@@ -15,6 +15,7 @@ type ParamsFactory = (args: unknown[]) => unknown;
 const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?]>> = {
   getUsage: [backendMethods.usageGet, namedOptional('filter')],
   clearUsage: [backendMethods.usageClear],
+  design: [backendMethods.agentDesign, named('agentId', 'input')],
   startVisualize: [backendMethods.agentVisualizeStart, namedOptional('agentId', 'input')],
   setVisualizeOpen: [backendMethods.agentVisualizeOpenSet, named('agentId', 'input')],
   generateVisualizationSuggestion: [backendMethods.agentVisualizationSuggestionGenerate, named('agentId', 'input')],

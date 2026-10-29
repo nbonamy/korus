@@ -295,3 +295,70 @@ batches are one undo unit; editor history is local and resets on remount. Git
 workspace diagrams belong to the primary worktree's repository identity, so linked
 worktree agents share the library, while pane visibility, suggestions, selection and
 tool authorization stay conversation-scoped.
+
+## Design Documents
+
+Design keeps authored HTML node trees, stable IDs, embedded CSS and data-image assets
+in daemon-owned documents. User and agent edits share serialized, revision-checked
+operations. Text changes target leaves; structural operations preserve unrelated
+nodes. Full-document replacement is unavailable after creation. Persistent undo and
+named checkpoints recover saved content while revisions remain monotonic.
+
+Artboard operations share the same atomic edit batches. Duplication remaps authored
+IDs, CSS selectors and interaction targets; it leaves comments on their original
+targets. Each artboard can own its stylesheet, with the document stylesheet as a
+legacy fallback. The chosen direction and design notes are saved content, distinct
+from the editor's current selection. Undo/redo retain both document content and
+artboard operations across reloads.
+
+Artboard coordinates belong to saved content; viewport pan and zoom do not.
+Artboards without explicit coordinates retain their derived horizontal positions.
+Moving an artboard never rewrites the layout inside it.
+
+Layer moves preserve stable identity and comments within their artboard; copies get
+new identities and remapped CSS selectors and internal targets. Removing a subtree
+also removes its comments and clears links to its removed targets. Element style
+and attribute patches use null to remove an authored override. Structural edits
+cannot move artboard roots, create cycles, or insert children into text/void nodes.
+
+The inspector retains dirty drafts when a newer document arrives; applying a stale
+draft fails without replacing either version. Pane state and selection belong to
+the agent. A missing provider reference does not discard the design; opening the
+pane can attach its saved document to the agent's current conversation.
+
+The shared canvas gives every artboard its own opaque-origin frame at a common
+zoom. Canvas navigation and inspector visibility are local presentation state;
+they do not mutate authored content. An active gesture freezes rendered content
+until it finishes, while newer authoritative revisions continue arriving. A stale
+gesture stays available for explicit retry or discard against the latest document.
+
+Artboards render at an opaque origin in a sandboxed iframe with a restrictive CSP.
+The gesture bridge checks source, token and stable node identity; it exposes no app
+capabilities. Play follows declared artboard navigation and Back actions, alongside
+local visibility/scroll actions and native controls. Screen history and live form
+state are presentation state, separate from saved selection and authored content.
+Navigation messages resolve their action from the saved node, never from a frame's
+supplied target. Copies remap local targets; removing a target clears its actions.
+Desktop captures use a disposable sandboxed renderer with a private
+session and disabled page scripts. HTML exports embed styles/assets; the handoff
+includes stable targets and comments, plus a selected-artboard PNG on desktop.
+Multi-artboard HTML exports use isolated frames to preserve independent viewports
+and CSS cascades. Each exported entry includes its reachable screens and keeps a
+local playback history, so navigation works offline without an app bridge.
+
+Coding handoff checks the reviewed revision, saves the chosen direction and sends
+an immutable snapshot of that proposal, its reachable screens and their comments
+to the owning agent. Later design edits cannot change the submitted specification.
+Success requires provider acceptance; a rejected request retains the design and
+reports the error so the user can review and retry.
+
+Generated Tweaks bind named controls to authored node styles, including CSS
+variables. The style remains authoritative; changing or removing a control never
+resets its chosen value. Copies receive independent control IDs and targets, and
+removing a target removes its controls. Manual CSS outside a control's choices
+remains valid and is displayed as a custom value.
+
+Dragging a control previews locally and commits one revision-checked edit on
+release. A concurrent edit leaves the preview available for explicit retry or
+discard; retry cannot reinterpret a changed control definition. The same persistent
+undo and checkpoint history recovers both controls and their authored values.

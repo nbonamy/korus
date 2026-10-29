@@ -1822,6 +1822,8 @@ const splitActions = computed<AgentConversationActions | undefined>(() => props.
   ...props.agentConversationActions,
   send: async (agentId, prompt, options) => {
     await backendSwitch.settled();
+    const design = prompt.match(/^\/design(?:\s+([\s\S]*))?$/u);
+    if (design && !options?.attachments?.length) return startDesignForAgent(agentId, design[1]?.trim());
     const visualize = prompt.match(/^\/visualize(?:\s+([\s\S]*))?$/u);
     if (visualize && !options?.attachments?.length) {
       return startVisualizeForAgent(agentId, visualize[1]?.trim() ? { prompt: visualize[1].trim() } : undefined);
@@ -1873,6 +1875,12 @@ async function openCodeReviewForAgent(agentId: string, instructions?: string): P
   openRightWorkspaceTab('codeReview', agentId);
 }
 
+async function startDesignForAgent(agentId: string, prompt?: string): Promise<void> {
+  if (!appApi) throw new Error('Design is unavailable.');
+  await appApi.design(agentId, { type: 'open', ...(prompt ? { prompt } : {}) });
+  openRightWorkspaceTab('design', agentId);
+}
+
 async function startVisualizeForAgent(agentId: string, input?: import('@workspace/core/visualize').StartVisualizeInput): Promise<void> {
   const alreadyOpen = rightWorkspaceFor(agentId).tabs.includes('visualize');
   openRightWorkspaceTab('visualize', agentId);
@@ -1887,6 +1895,7 @@ async function startVisualizeForAgent(agentId: string, input?: import('@workspac
 function closeRightWorkspaceTab(agentId: string, tab: RightWorkspaceTab): void {
   documentWorkspaces.recordClose(agentId, tab);
   closeRightWorkspaceTabLocal(agentId, tab);
+  if (tab === 'design') void appApi?.design(agentId, { type: 'close' }).catch(error => { openRightWorkspaceTabLocal('design', agentId); ElMessage.error(localizedErrorMessage(error, t)); });
   const visualize = props.snapshot.agents.find(agent => agent.id === agentId)?.visualize;
   if (tab === 'visualize' && visualize?.isOpen) {
     void props.setVisualizeOpen(agentId, { open: false }).catch(error => {
@@ -1896,6 +1905,16 @@ function closeRightWorkspaceTab(agentId: string, tab: RightWorkspaceTab): void {
   }
 }
 
+watch(
+  () => props.snapshot.agents.map(agent => ({ agentId: agent.id, design: agent.designWorkspace })),
+  entries => {
+    for (const { agentId, design } of entries) {
+      const workspace = rightWorkspaceFor(agentId);
+      if (design?.isOpen && !workspace.tabs.includes('design')) openRightWorkspaceTabLocal('design', agentId);
+      else if (design && !design.isOpen && workspace.tabs.includes('design')) closeRightWorkspaceTabLocal(agentId, 'design');
+    }
+  }, { immediate: true, flush: 'sync' },
+);
 watch(
   () => props.snapshot.agents.map(agent => ({ agentId: agent.id, visualize: agent.visualize })),
   entries => {
@@ -3191,6 +3210,8 @@ function prepareMissionReviewDiscussion(payload: PendingMissionReviewDiscussion)
 }
 
 function forwardPrompt(prompt: string, options?: RendererSendPromptOptions): void | Promise<void> {
+  const designCommand = prompt.match(/^\/design(?:\s+([\s\S]*))?$/u);
+  if (designCommand && !options?.attachments?.length && currentAgent.value) return startDesignForAgent(currentAgent.value.id, designCommand[1]?.trim());
   const visualizeCommand = prompt.match(/^\/visualize(?:\s+([\s\S]*))?$/u);
   if (visualizeCommand && !options?.attachments?.length && currentAgent.value) {
     const direction = visualizeCommand[1]?.trim();

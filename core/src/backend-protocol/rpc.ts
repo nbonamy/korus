@@ -81,6 +81,7 @@ export type AppBackendRequestMap = {
   [backendMethods.repositoryDelete]: { params: { agentId: string; input: import('../contracts/workspace').DeleteRepositoryInput }; result: AppSnapshot };
   [backendMethods.browserExtensionPackages]: { params: { input: import('../browser-extensions').BrowserExtensionPackageRequest }; result: import('../browser-extensions').BrowserExtensionPackageState };
   [backendMethods.agentMarkRead]: { params: { agentId: string; revision: number }; result: null };
+  [backendMethods.agentDesign]: { params: { agentId: string; input: import('../design').DesignRequest }; result: import('../design').DesignResult };
   [backendMethods.agentVisualizeStart]: {
     params: { agentId: string; input?: import('../visualize').StartVisualizeInput };
     result: AppSnapshot;

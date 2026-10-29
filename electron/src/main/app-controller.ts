@@ -615,6 +615,9 @@ export class AppController {
     ipc.handle(ipcChannels.respondToPlanReview, async (_event, agentId: string, response: import('@workspace/core/plan-review').PlanReviewResponse) => {
       return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentPlanReviewRespond, { agentId, response }));
     });
+    ipc.handle(ipcChannels.design, (_event, agentId: string, input: import('@workspace/core/design').DesignRequest) => (
+      this.requireBackendClient().request(backendMethods.agentDesign, { agentId, input })
+    ));
     ipc.handle(ipcChannels.startVisualize, async (_event, agentId: string, input?: import('@workspace/core/visualize').StartVisualizeInput) => (
       this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentVisualizeStart, { agentId, input }))
     ));

@@ -3,6 +3,32 @@ import { surfaceMessages } from './surface-messages';
 
 export const messages = {
   en: {
+    design: {
+      buildThis: 'Build this', sendForCoding: 'Send for coding', sentForCoding: 'Sent for coding', reviewComment: 'Comment on this proposal', buildHelp: 'Your agent will implement this direction and its linked screens using the saved design and your comments.',
+      proposalComment: 'Proposal comment', commentOn: 'Comment on {title}', commentPlaceholder: 'What would you like to change?',
+      title: 'Design', revision: 'r{revision}', edit: 'Edit', play: 'Play', export: 'Export',
+      discardReload: 'Discard draft and reload', emptyTitle: 'Build something together', emptyHelp: 'Describe a design in the conversation with /design, then select an element to edit it or leave a comment.',
+      artboard: 'Artboard', zoom: 'Zoom', fit: 'Fit', undo: 'Undo', element: 'Element', text: 'Text', color: 'Text color', fill: 'Fill',
+      onClick: 'On click', noInteraction: 'None', interactionTarget: 'Interaction target', action_navigate: 'Go to artboard', action_back: 'Go back', action_toggle: 'Toggle visibility', action_show: 'Show element', action_hide: 'Hide element', action_scroll: 'Scroll to element',
+      tweaks: 'Tweaks', noTweaks: 'Ask your agent to add controls for this artboard.', fromStyles: 'From stylesheet', retryTweak: 'Apply my tweak', tweakChanged: 'This control has changed. Discard the preview and choose a new value.',
+      code: 'Code', codeRegion: 'Design code', copyCode: 'Copy {format}', copiedCode: 'Copied {format}', copyFailed: 'Unable to copy. Select the code and copy it manually.',
+      arrangeArtboards: 'Arrange in row', moveArtboardHint: 'Drag to move · Arrow keys to nudge · Shift for larger steps',
+      history: 'Design history', properties: 'Properties', closeInspector: 'Close inspector', fitAll: 'Fit all artboards', restoreNamed: 'Restore {name}', focusArtboard: 'Focus {name}',
+      hideInspector: 'Hide inspector', showInspector: 'Show inspector', fitArtboard: 'Fit artboard', panCanvas: 'Pan canvas', selectElements: 'Select elements',
+      redo: 'Redo', save: 'Save', compare: 'Compare', backToArtboard: 'Back to artboard', alternatives: 'Design alternatives',
+      editArtboard: 'Edit {name}', chooseArtboard: 'Choose {name}', choose: 'Choose', chosen: 'Chosen', chooseDirection: 'Use this direction',
+      artboardActions: 'Artboard actions', addArtboard: 'Add artboard', duplicateArtboard: 'Duplicate artboard', artboardSettings: 'Artboard settings', removeArtboard: 'Remove artboard',
+      artboardName: 'Artboard name', newArtboard: 'Untitled artboard', notes: 'Design notes', exportArtboard: 'This artboard', exportAll: 'All artboards',
+      invalidArtboard: 'Enter a name, a width from 240 to 3840, and a height from 160 to 3840.',
+      layers: 'Layers', elementActions: 'Element actions', parentLayer: 'Parent layer', addText: 'Add text', addContainer: 'Add container', addButton: 'Add button',
+      duplicateElement: 'Duplicate element', removeElement: 'Remove element', moveUp: 'Move up', moveDown: 'Move down', newText: 'Your text', newButton: 'Button',
+      layout: 'Layout', display: 'Display', direction: 'Direction', justify: 'Distribute', align: 'Align', wrap: 'Wrap', position: 'Position', inherit: 'From stylesheet',
+      columns: 'Grid columns', flex: 'Flex size', left: 'Left', top: 'Top', margin: 'Margin', border: 'Border',
+      resizeWidth: 'Resize width', resizeHeight: 'Resize height', resizeSize: 'Resize width and height', retryCanvas: 'Apply my canvas edit', canvasNotSaved: 'The canvas edit has not been saved. Retry or discard it.',
+      fontSize: 'Font size', fontFamily: 'Font family', padding: 'Padding', gap: 'Gap', width: 'Width', height: 'Height', radius: 'Radius',
+      saving: 'Saving…', unsaved: 'Unsaved changes', saved: 'Saved', apply: 'Apply', comment: 'Element comment', sendComment: 'Send to agent',
+      checkpoint: 'Checkpoint name', saveCheckpoint: 'Save checkpoint', restore: 'Restore checkpoint', targetRemoved: 'This element was removed. Reload to choose another element.', applyFirst: 'Apply your changes or discard the draft before switching artboards.',
+    },
     guest: {
       joinWithInvite: 'Join with invite…', invitation: 'Invitation or share link', shared: 'Shared conversation', propose: 'Propose message', placeholder: 'Propose a message…', send: 'Send', dismiss: 'Dismiss', pending: 'Waiting for owner approval', queued: 'Approved · queued', submitted: 'Sent to agent', dismissed: 'Dismissed', rejected: 'Access ended', unresolved: 'Delivery unresolved · not resent', dispatching: 'Sending…', proposalFailed: 'Could not confirm this proposal. Retry to check its existing delivery.',
 
