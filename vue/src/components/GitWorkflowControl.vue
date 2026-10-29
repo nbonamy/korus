@@ -330,7 +330,7 @@
         <el-switch v-model="reportBack" size="small" />
         <span>{{ $t('surface.gitWorkflowControl.reportBackTo', { name: reportBackAgentName }) }}</span>
       </label>
-      <template v-else>
+      <div v-else class="git-workflow-control__report-back-row">
         <label class="git-workflow-control__check git-workflow-control__report-back">
           <el-switch v-model="reportBack" size="small" :disabled="!reportBack && !reportBackAgents.length" :aria-label="$t('surface.gitWorkflowControl.reportToAnotherAgent')" />
           <span>{{ $t('surface.gitWorkflowControl.reportToAnotherAgent') }}</span>
@@ -339,7 +339,7 @@
           :aria-label="$t('surface.gitWorkflowControl.reportRecipient')" :placeholder="$t('surface.gitWorkflowControl.reportRecipient')">
           <el-option v-for="recipient in reportBackAgents" :key="recipient.id" :value="recipient.id" :label="recipient.name" />
         </el-select>
-      </template>
+      </div>
       <label v-if="workflow?.isLinkedWorktree" class="git-workflow-control__check git-workflow-control__merge-cleanup">
         <el-switch v-model="deleteWorktree" size="small" />
         <span>{{ $t('surface.gitWorkflowControl.deleteWorktreeAfterMerging') }}</span>
@@ -1737,6 +1737,23 @@ function handleMainEvent(event: MainToRendererEvent): void {
 .git-workflow-control__report-back {
   min-height: var(--space-24);
   box-sizing: border-box;
+}
+
+.git-workflow-control__report-back-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  border-top: 1px solid var(--color-border);
+}
+
+.git-workflow-control__report-back-row > label {
+  flex: none;
+  border-top: 0;
+}
+
+.git-workflow-control__report-back-row > .el-select {
+  flex: 1;
+  min-width: 0;
 }
 
 .git-workflow-control__stats {
