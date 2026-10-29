@@ -15,6 +15,7 @@ import type { ConversationShareResult } from '@workspace/core/conversation-shari
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { decodeAppBackendEvent } from '@workspace/core/backend-protocol/events';
 import { product } from '@workspace/core/product';
+import { codexSdkFixture, sdkSnapshot } from '../codex/__tests__/sdk-surface-fixture';
 
 // Failure modes: duplicate/racing creates, failed writes, restart, stale session,
 // remote host, stale revoke, or diagnostics/events accidentally carrying a bearer.
@@ -69,14 +70,15 @@ describe('owner conversation sharing RPC and protected persistence', () => {
   it.each(['queue', 'steer'] as const)('uses the sending guest’s %s choice despite the owner preferences', async preference => {
     const f = await fixture();
     f.snapshot.clientPreferences = { controller: { general: { followUpBehavior: preference === 'queue' ? 'steer' : 'queue' } }, desktop: { general: { followUpBehavior: preference === 'queue' ? 'steer' : 'queue' } } };
-    const sendPrompt = vi.fn(async () => ({ backendSession: { kind: 'codex' as const, threadId: 'original' }, turnId: 'turn', messageId: 'message' }));
-    const steerPrompt = vi.fn(async () => ({ backendSession: { kind: 'codex' as const, threadId: 'original' }, turnId: 'turn', messageId: 'steered-message' }));
-    const commands = vi.fn();
-    const driver: AgentBackendDriver = {
-      backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }), getCapabilities: () => codexBackendCapabilities,
-      sendPrompt, steerPrompt, tryHandlePromptCommand: commands,
-      interrupt: async () => ({ backendSession: { kind: 'codex', threadId: 'original' } }), respondToAgentRequest: async () => undefined, close: async () => undefined, onEvent: () => () => {},
-    };
+    const { driver, conversation } = codexSdkFixture();
+    const session = conversation('original');
+    const sendPrompt = session.handle.sendMessage, steerPrompt = session.handle.steerMessage;
+    const message = { id: 'guest-message', role: 'user' as const, status: 'complete' as const, turnId: 'turn', parts: [{ type: 'text' as const, text: '/mission plain guest prompt' }] };
+    // Identical earlier messages in the same turn must never acquire this guest's authorship.
+    const prior = [{ ...message, id: 'owner-message' }, { ...message, id: 'earlier-steer', kind: 'steer' as const }];
+    session.setSnapshot({ turnIds: ['turn'], activeTurnId: 'turn', messages: prior });
+    sendPrompt.mockResolvedValue(sdkSnapshot('original', { turnIds: ['turn'], activeTurnId: 'turn', messages: [message] }));
+    steerPrompt.mockResolvedValue(sdkSnapshot('original', { turnIds: ['turn'], activeTurnId: 'turn', messages: [...prior, { ...message, kind: 'steer' }] }));
     const server = f.start(new BackendDriverRpc(new Map([['codex', driver]])));
     try {
       const share = await f.request(server, { action: 'create', target: f.target });
@@ -88,7 +90,7 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       await server.proposeConversationGuest(share.state.handle!, ownerId, 'Alex', input);
       if (preference === 'steer') {
         await vi.waitFor(() => expect(steerPrompt).toHaveBeenCalledTimes(1));
-        expect(steerPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: f.target.agentId, backendSession: { kind: 'codex', threadId: 'original' } }), input.text);
+        expect(steerPrompt).toHaveBeenCalledWith(input.text, {});
         expect(sendPrompt).not.toHaveBeenCalled();
       } else {
         await new Promise(resolve => setTimeout(resolve, 30));
@@ -98,8 +100,18 @@ describe('owner conversation sharing RPC and protected persistence', () => {
         await server.proposeConversationGuest(share.state.handle!, ownerId, 'Alex', input);
         await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledTimes(1));
       }
-      expect(commands).not.toHaveBeenCalled();
+      expect(sendPrompt.mock.calls[0]?.[0] ?? steerPrompt.mock.calls[0]?.[0]).toBe(input.text);
+      await vi.waitFor(async () => expect((await server.conversationGuestProposals(share.state.handle!, ownerId)).proposals).toContainEqual(expect.objectContaining({ id: input.id, status: 'submitted', messageId: message.id, text: '' })));
+      expect((await f.request(server, { action: 'status', target: f.target })).state.authors).toStrictEqual([{ messageId: message.id, identity: ownerId, name: 'Alex', discriminator: expect.any(String) }]);
+      const persisted = JSON.parse(await readFile(path.join(f.directory, 'state.json'), 'utf8'));
+      expect(persisted.proposals).toContainEqual(expect.objectContaining({ id: input.id, status: 'submitted', messageId: message.id, text: '' }));
       for (const event of f.events.filter(event => event.type === 'conversation.shareChanged')) expect(decodeAppBackendEvent(event)).toStrictEqual(event);
+      if (preference === 'steer') {
+        await server.close();
+        const restored = f.start();
+        try { expect((await f.request(restored, { action: 'status', target: f.target })).state.authors).toStrictEqual([{ messageId: message.id, identity: ownerId, name: 'Alex', discriminator: expect.any(String) }]); }
+        finally { await restored.close(); }
+      }
     } finally { await server.close(); }
   });
   it('serves guest navigation RPCs with no provider, team or repository and rejects unscoped guest content reads', async () => {

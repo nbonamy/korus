@@ -324,7 +324,7 @@ export class AppBackendServer {
           const result = await this.withPromptSource(agent, 'guest:approved', () => this.handleAgentDriverRequest(agent, backendMethods.driverPromptSteer, { agent, prompt: text, expectedSessionId: companionSessionId(agent), plainText: true })) as BackendSendResult;
           this.clearTurnSuggestionsForNewPrompt(agent);
           await this.persistSnapshotOnly();
-          return result;
+          return { turnId: result.turnId, messageId: result.messageId };
         }
         const result = await this.agentPrompts.sendWithReceipt(agent, text, undefined, companionSessionId(agent), 'guest:approved');
         this.clearTurnSuggestionsForNewPrompt(agent);

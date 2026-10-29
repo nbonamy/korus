@@ -525,9 +525,12 @@ export class CodexSurfaceAgentAdapter {
 
   async steerPrompt(agent: Agent, prompt: string, options?: SendPromptOptions) {
     const session = await this.ensureSession(agent);
-    const beforeTurnIds = session.handle.getSnapshot().turnIds;
+    const before = session.handle.getSnapshot();
+    const knownMessages = new Set(before.messages.map(message => message.id));
     const snapshot = await session.handle.steerMessage(promptWithSelectedReferences(prompt, options?.content, true), surfacePromptOptions(options));
-    return { threadId: session.handle.id, turnId: resultTurnId(snapshot, beforeTurnIds) };
+    const turnId = resultTurnId(snapshot, before.turnIds);
+    const messages = snapshot.messages.filter(message => message.role === 'user' && message.turnId === turnId && !knownMessages.has(message.id));
+    return { threadId: session.handle.id, turnId, ...(messages.length === 1 ? { messageId: messages[0]!.id } : {}) };
   }
 
   async interruptTurn(agent: Agent, expectedTurnId?: string) {

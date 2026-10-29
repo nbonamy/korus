@@ -330,18 +330,20 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     if (!turn) return this.sendPrompt(agent, prompt, options);
     if (!turn.sessionId) throw new Error('Claude has not initialized its session yet.');
     if (!turn.handle.steer) throw new Error('This Claude transport does not support steering.');
-    const messageId = options.content === undefined ? undefined : randomUUID();
-    if (messageId) await savePromptContent(this.promptContentHome(), turn.sessionId, messageId, options.content!);
+    const messageId = randomUUID();
+    if (options.content !== undefined) await savePromptContent(this.promptContentHome(), turn.sessionId, messageId, options.content);
     if (!await turn.handle.steer(promptWithSelectedReferences(prompt, options.content), options.attachments, messageId)) return this.sendPrompt(agent, prompt, options);
+    // Match the native history adapter's identity so guest authorship survives reload.
+    const canonicalMessageId = `user-${turn.sessionId}-${messageId}`;
     if (options.recordUserMessage !== false) {
       const createdAt = new Date().toISOString();
       this.emitConversation({
         type: 'message.userSubmitted', agentId: agent.id, backend: 'claude',
         backendSessionId: turn.sessionId ?? undefined, turnId: turn.turnId, occurredAt: createdAt,
-        payload: { message: createUserMessage(agent.id, prompt, createdAt, `steer-${randomUUID()}`, turn.turnId, options.attachments, options.content) },
+        payload: { message: { ...createUserMessage(agent.id, prompt, createdAt, `steer-${messageId}`, turn.turnId, options.attachments, options.content), id: canonicalMessageId } },
       });
     }
-    return { backendSession: claudeBackendSession(turn.sessionId, turn.model, turn.reasoningEffort, turn.transcriptFolder), turnId: turn.turnId };
+    return { backendSession: claudeBackendSession(turn.sessionId, turn.model, turn.reasoningEffort, turn.transcriptFolder), turnId: turn.turnId, ...(options.recordUserMessage !== false ? { messageId: canonicalMessageId } : {}) };
   }
 
   private async sendPromptWithConfiguration(
