@@ -10,7 +10,7 @@
       <slot name="layout-control" />
     </div>
     <slot name="conversation" :plan="currentTurnPlan" :plan-visible="executionPlanVisible" :close-plan="closeExecutionPlan" :header-bindings-for="headerBindingsFor">
-    <SharedConversationPane v-if="currentAgent?.sharedConversation && guestView?.id === currentAgent.sharedConversation.joinId && guestControl" :view="guestView" :busy="guestBusy ?? false" :control="guestControl" />
+    <SharedConversationPane v-if="currentAgent?.sharedConversation && guestView?.id === currentAgent.sharedConversation.joinId && guestControl" :view="guestView" :follow-up-behavior="snapshot.general.followUpBehavior" :busy="guestBusy ?? false" :control="guestControl" />
     <ConversationPane
       v-else-if="!currentAgent?.sharedConversation"
       ref="conversationPane"

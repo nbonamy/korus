@@ -44,12 +44,17 @@ function expectGuestAuthor(value: unknown, path: string): void {
 const payloadValidators = {
   'conversation.shareChanged': (value: unknown, path: string) => {
     expectRecord(value, path);
-    if (Object.keys(value).some(key => !['active', 'handle', 'connectedGuests', 'availability', 'proposals', 'authors'].includes(key))) failEventValidation(path, 'unexpected share state field');
+    if (Object.keys(value).some(key => !['active', 'handle', 'connectedGuests', 'availability', 'proposals', 'authors', 'guests'].includes(key))) failEventValidation(path, 'unexpected share state field');
     if (typeof value.active !== 'boolean' || (value.handle !== null && (typeof value.handle !== 'string' || !/^[A-Za-z0-9_-]{32}$/.test(value.handle)))
       || (value.connectedGuests !== null && (typeof value.connectedGuests !== 'number' || !Number.isSafeInteger(value.connectedGuests) || value.connectedGuests < 0))) failEventValidation(path, 'invalid share state');
     expectLiteral(value.availability, ['transportPending', 'notConfigured', 'ready', 'unavailable', 'capacity', 'rateLimited', 'upgradeRequired'], `${path}.availability`);
     expectOptional(value, 'proposals', path, (items, itemsPath) => expectArray(items, itemsPath, expectGuestProposal));
     expectOptional(value, 'authors', path, (items, itemsPath) => expectArray(items, itemsPath, expectGuestAuthor));
+    expectOptional(value, 'guests', path, (items, itemsPath) => expectArray(items, itemsPath, (guest, guestPath) => {
+      expectRecord(guest, guestPath);
+      for (const key of ['identity', 'name', 'discriminator']) expectString(guest[key], `${guestPath}.${key}`);
+      if (typeof guest.writeAccess !== 'boolean') failEventValidation(guestPath, 'invalid guest access');
+    }));
   },
   ...runtimePayloadValidators,
   ...agentPayloadValidators,

@@ -66,6 +66,42 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       expect(stopped.state.authors).toContainEqual(expect.objectContaining({ messageId: 'native-message' }));
     } finally { await server.close(); }
   });
+  it.each(['queue', 'steer'] as const)('uses the sending guest’s %s choice despite the owner preferences', async preference => {
+    const f = await fixture();
+    f.snapshot.clientPreferences = { controller: { general: { followUpBehavior: preference === 'queue' ? 'steer' : 'queue' } }, desktop: { general: { followUpBehavior: preference === 'queue' ? 'steer' : 'queue' } } };
+    const sendPrompt = vi.fn(async () => ({ backendSession: { kind: 'codex' as const, threadId: 'original' }, turnId: 'turn', messageId: 'message' }));
+    const steerPrompt = vi.fn(async () => ({ backendSession: { kind: 'codex' as const, threadId: 'original' }, turnId: 'turn', messageId: 'steered-message' }));
+    const commands = vi.fn();
+    const driver: AgentBackendDriver = {
+      backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }), getCapabilities: () => codexBackendCapabilities,
+      sendPrompt, steerPrompt, tryHandlePromptCommand: commands,
+      interrupt: async () => ({ backendSession: { kind: 'codex', threadId: 'original' } }), respondToAgentRequest: async () => undefined, close: async () => undefined, onEvent: () => () => {},
+    };
+    const server = f.start(new BackendDriverRpc(new Map([['codex', driver]])));
+    try {
+      const share = await f.request(server, { action: 'create', target: f.target });
+      server.conversationGuestCount(share.state.handle!, 1, [{ identity: ownerId, name: 'Alex', discriminator: '1234abcd' }]);
+      const access = await server.handleMessage({ jsonrpc: '2.0', id: 'access', method: 'conversation/share/control', params: { _clientId: 'controller', input: { action: 'access', target: f.target, handle: share.state.handle, identity: ownerId, writeAccess: true } } });
+      expect(access).not.toHaveProperty('error');
+      f.snapshot.agents[0]!.status = { type: 'working' };
+      const input = { id: randomUUID(), text: '/mission plain guest prompt', followUpBehavior: preference };
+      await server.proposeConversationGuest(share.state.handle!, ownerId, 'Alex', input);
+      if (preference === 'steer') {
+        await vi.waitFor(() => expect(steerPrompt).toHaveBeenCalledTimes(1));
+        expect(steerPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: f.target.agentId, backendSession: { kind: 'codex', threadId: 'original' } }), input.text);
+        expect(sendPrompt).not.toHaveBeenCalled();
+      } else {
+        await new Promise(resolve => setTimeout(resolve, 30));
+        expect(sendPrompt).not.toHaveBeenCalled(); expect(steerPrompt).not.toHaveBeenCalled();
+        f.snapshot.agents[0]!.status = { type: 'idle' };
+        await f.request(server, { action: 'status', target: f.target });
+        await server.proposeConversationGuest(share.state.handle!, ownerId, 'Alex', input);
+        await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledTimes(1));
+      }
+      expect(commands).not.toHaveBeenCalled();
+      for (const event of f.events.filter(event => event.type === 'conversation.shareChanged')) expect(decodeAppBackendEvent(event)).toStrictEqual(event);
+    } finally { await server.close(); }
+  });
   it('serves guest navigation RPCs with no provider, team or repository and rejects unscoped guest content reads', async () => {
     const f = await fixture();
     const joins = new GuestJoins({ directory: path.join(f.root, 'guest'), relay });
