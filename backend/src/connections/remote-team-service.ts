@@ -37,6 +37,7 @@ export class RemoteTeamService {
   /** Hosts whose snapshot comes from the cache and has not been confirmed by the host yet. */
   private readonly stale = new Set<string>();
   private readonly refreshing = new Set<string>();
+  private readonly creatingTeams = new Map<string, Promise<RemoteTeamPointer>>();
 
   constructor(private readonly options: RemoteTeamServiceOptions) {
     for (const [connectionId, snapshot] of options.cache?.load() ?? []) {
@@ -72,9 +73,15 @@ export class RemoteTeamService {
     this.validateConnection(connectionId);
     const existing = this.pointerForTeamConnection(team, connectionId);
     if (existing) return existing;
-    const remoteTeam = await this.createRemoteTeam(connectionId, team);
-    team.remoteLinks = [...(team.remoteLinks ?? []), { connectionId, remoteTeamId: remoteTeam.id }];
-    return { connectionId, localTeamId: team.id, remoteTeamId: remoteTeam.id };
+    const key = JSON.stringify([team.id, connectionId]);
+    const pending = this.creatingTeams.get(key);
+    if (pending) return pending;
+    const creation = this.createRemoteTeam(connectionId, team).then(remoteTeam => {
+      team.remoteLinks = [...(team.remoteLinks ?? []), { connectionId, remoteTeamId: remoteTeam.id }];
+      return { connectionId, localTeamId: team.id, remoteTeamId: remoteTeam.id };
+    }).finally(() => this.creatingTeams.delete(key));
+    this.creatingTeams.set(key, creation);
+    return creation;
   }
 
   knownSnapshot(connectionId: string): AppSnapshot | undefined {

@@ -67,6 +67,41 @@ async function host(snapshot: AppSnapshot, label: string, remoteClients?: unknow
 }
 
 describe('collaboration across daemon ownership boundaries', () => {
+  it('gives a UI-created remote chat its controlling roster, messaging and delegation', async () => {
+    const local = createInitialSnapshot();
+    local.providerConnections = [{ backend: 'codex', connected: true, installed: true, checking: false }];
+    local.remoteConnections.connections = [readyRemoteConnection()];
+    const parent = local.agents[0]!;
+    parent.backendSession = { kind: 'codex', threadId: 'local-parent' };
+    const remote = createInitialSnapshot();
+    remote.providerConnections = local.providerConnections;
+    remote.agents = [];
+    remote.teams.forEach(team => { team.agentIds = []; });
+    let owner!: Awaited<ReturnType<typeof host>>;
+    const workerHost = await host(remote, 'remote', undefined, input => owner.server.handleRemoteCollaborationCall('connection-devbox', input));
+    const clients = { close: vi.fn(), request: vi.fn(async (_connection, method, params, onEvent) => {
+      workerHost.events.clear();
+      if (onEvent) workerHost.events.add(onEvent);
+      const response = await workerHost.server.handleMessage({ jsonrpc: '2.0', id: 'ssh', method, params });
+      if (!response || 'error' in response) throw new Error(response && 'error' in response ? response.error.message : 'No response');
+      return response.result;
+    }) };
+    owner = await host(local, 'local', clients);
+    const created = await owner.server.handleMessage({ jsonrpc: '2.0', id: 'ui', method: backendMethods.agentQuickChatCreate,
+      params: { input: { teamId: local.teams[0]!.id, remoteConnectionId: 'connection-devbox', selection: { backend: 'codex' } }, entityResult: true } });
+    if (!created || 'error' in created) throw new Error('UI chat creation failed');
+    const workerId = (created.result as { agentId: string }).agentId;
+    const roster = await workerHost.mcp.callTool(workerId, 'list-agents', {});
+    expect(roster.structuredContent?.agents).toEqual(expect.arrayContaining([expect.objectContaining({ id: parent.id }), expect.objectContaining({ id: workerId })]));
+    expect((await workerHost.mcp.callTool(workerId, 'send-message', { to: parent.id, content: 'Question from UI-created remote chat' })).isError).toBe(false);
+    await vi.waitFor(() => expect(owner.provider.conversation('local-parent').handle.sendMessage).toHaveBeenCalledOnce());
+    const child = await workerHost.mcp.callTool(workerId, 'create-agent', { remoteConnectionId: 'local', repoPath: '/local/repo' });
+    expect(child.isError).toBe(false);
+    expect(local.agents.find(agent => agent.id === child.structuredContent?.agentId)).toMatchObject({ teamId: local.teams[0]!.id, delegatedByAgentId: workerId });
+    const ownerId = local.teams[0]!.remoteLinks![0]!.collaborationOwnerId;
+    expect(remote.teams.find(team => team.id === local.teams[0]!.remoteLinks![0]!.remoteTeamId)?.collaborationOwnerId).toBe(ownerId);
+  });
+
   it.each(['completion', 'cancellation', 'controller outage'] as const)('creates once on the selected host, exchanges messages, and persists remote %s', async lifecycle => {
     const local = createInitialSnapshot();
     const parent = local.agents[0]!;

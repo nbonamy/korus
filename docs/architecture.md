@@ -351,12 +351,12 @@ Rules:
 - Bump the version only for breaking changes, with a typed step in
   `backend/src/persistence/migrations.ts`. Additive optional fields and
   backward-compatible defaults need no migration even if an older build drops them.
-- Roster schema 2 protects prompt-target automations and calendar recurrences from
-  repository-loop readers. Loading a schema-1 roster takes a verified backup and
-  upgrades its envelope before normal saves; valid prompt schedules are preserved,
-  while obsolete repository loops are not converted. Other files retain their own
-  schema versions. Older builds refuse the roster instead of silently deleting
-  schedules they cannot interpret.
+- Roster schema 4 protects prompt-target automations, nested execution selections
+  and mixed-host team links from incompatible readers. Older rosters receive a
+  verified backup before migration; remote pointers retain their foreign team IDs
+  as links. Obsolete repository-loop automations are not converted. Other files
+  retain their own schema versions. Older builds refuse the roster instead of
+  silently deleting configuration they cannot interpret.
 - Writes are serialized, same-directory temp file plus atomic rename, with no
   fsync and therefore no power-loss guarantee. A slow older write never overwrites
   a newer one.

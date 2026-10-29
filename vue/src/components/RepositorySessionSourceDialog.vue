@@ -73,6 +73,7 @@
           :branch-name="assignmentBranchName"
           :existing-worktree-path="assignmentExistingWorktreePath"
           :model-agent-id="modelAgentId"
+          :remote-connection-id="hostId"
           :sessions="sessions"
           @custom="customWorkItem"
           @submit="startWorkItem"
@@ -160,9 +161,7 @@ import HostSelector from './HostSelector.vue';
 import type { RemoteCheckout } from './use-remote-target';
 import WorkItemAssignmentPicker from './WorkItemAssignmentPicker.vue';
 import { useBackendChoices, useNewAgentBackend } from './backend-selection';
-const backendChoices = useBackendChoices();
 const backend = defineModel<import('@workspace/core/contracts').AgentBackend>('backend');
-useNewAgentBackend(backend, backendChoices);
 import type { WorkItemAssignmentSelection, WorkItemAssignmentSession } from './WorkItemAssignmentPicker.vue';
 
 type SourceTab = 'branches' | 'pullRequests' | 'issues';
@@ -210,6 +209,8 @@ const emit = defineEmits<{
   'select-work-item': [item: WorkItem];
   'start-work-item': [selection: WorkItemAssignmentSelection];
 }>();
+
+useNewAgentBackend(backend, useBackendChoices(() => props.hostId));
 
 const { t } = useI18n();
 const backlog = useWorkSourceBacklog({

@@ -697,7 +697,7 @@ export class CompanionGateway {
   private repository(workspace: CompanionWorkspace, input: { teamId: string; repositoryId: string }) {
     const team = workspace.teams.find((candidate) => candidate.id === input.teamId);
     if (!team) throw new Error('Team not found.');
-    const owner = workspace.agents.find((agent) => agent.teamId === team.id && agent.sessionKind !== 'quickChat' && agent.workspace?.kind === 'git' && opaquePath(agent.workspace.primaryWorktreeRoot) === input.repositoryId);
+    const owner = workspace.agents.find((agent) => agent.teamId === team.id && agent.sessionKind !== 'quickChat' && agent.workspace?.kind === 'git' && opaquePath(agent.workspace.primaryWorktreeRoot, agent.remoteConnectionId) === input.repositoryId);
     const repository = owner?.workspace?.kind === 'git' ? owner.workspace : undefined;
     if (!owner || !repository) throw new Error('Repository not found.');
     return { team, repository, remoteConnectionId: owner.remoteConnectionId };

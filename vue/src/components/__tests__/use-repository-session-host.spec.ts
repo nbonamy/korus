@@ -90,6 +90,18 @@ describe('repository session host choice', () => {
     expect(createAgent).toHaveBeenCalledWith(expect.objectContaining({ folder: '/home/me/src/korus', remoteConnectionId: 'devbox', repositorySession: { existingBranch: 'feature' } }));
   });
 
+  it.each(['catalog', 'checkout'] as const)('finds and clones a repository opened from its %s without an explicit origin', async entry => {
+    const { session, cloneRepository, createAgent } = setup([]);
+    await session.open({ repositoryName: source.repositoryName, repositoryRoot: source.repositoryRoot,
+      ...(entry === 'catalog' ? { workSource: { provider: 'github' as const, id: 'nbonamy/korus', name: 'korus', fullName: 'nbonamy/korus', url: 'https://github.com/nbonamy/korus' } } : {}),
+    });
+    await session.changeHost('devbox');
+    expect(session.hostCheckout.value?.state).toBe('missing');
+    await session.createForSourceBranch({ name: 'feature', isDefault: false });
+    expect(cloneRepository).toHaveBeenCalledExactlyOnceWith({ url: entry === 'catalog' ? 'https://github.com/nbonamy/korus' : 'https://github.com/nbonamy/korus.git', remoteConnectionId: 'devbox', reuseExisting: true });
+    expect(createAgent).toHaveBeenCalledWith(expect.objectContaining({ folder: '/home/me/src/korus', remoteConnectionId: 'devbox' }));
+  });
+
   it('stops with the clone error and starts nothing when the clone fails', async () => {
     const { session, createAgent } = setup([], async () => { throw new Error('Could not access korus on github.com.'); });
     await session.open(source);

@@ -72,7 +72,7 @@ import { BackendDriverRpc } from './driver-rpc';
 import { ClientPreferencesService } from './client-preferences-service';
 import { projectClientSnapshot, splitSettingsInput } from '@workspace/core/client-preferences';
 import { RemoteDaemonClientManager } from './connections/remote-daemon-client';
-import { RemoteTeamService, type RemoteSnapshotCache } from './connections/remote-team-service';
+import { RemoteTeamService, type RemoteSnapshotCache, type RemoteTeamPointer } from './connections/remote-team-service';
 import { SshConnectionService } from './connections/ssh-connections';
 import type { AutomationRunner } from './automations/runner';
 import type { WorkIntegrationManager } from './work-integrations/manager';
@@ -233,16 +233,27 @@ export class AppBackendServer {
     return this.remoteTeams.request(agent.remoteConnectionId, backendMethods.collaborationPromptSend, { agentId: agent.id, prompt, message: true });
   }
 
-  async provisionRemoteWorker(caller: Agent, input: CreateCoAgentInput & { teamId?: string }, intendedId?: string, assignmentPrompt?: string, userInstructions?: Agent['delegationUserInstructions']): Promise<Agent> {
+  private async remoteAgentPointer(input: { teamId?: string; remoteConnectionId?: string }): Promise<RemoteTeamPointer | null> {
     const pointer = await this.remoteTeams.pointerForAgentInput(input);
-    if (!pointer) throw new Error('A remote host is required.');
+    if (!pointer) return null;
     const team = this.snapshot.teams.find(team => team.id === pointer.localTeamId)!;
     const link = team.remoteLinks!.find(link => link.connectionId === pointer.connectionId)!;
     link.collaborationOwnerId ??= randomUUID();
-    // Retain the authority before contacting the host; an uncertain creation is never replayed automatically.
+    // Persist the authority before the host accepts it, including for existing unbound links.
     await this.persistSnapshotOnly();
+    const remoteSnapshot = await this.remoteTeams.request<AppSnapshot>(pointer.connectionId, backendMethods.collaborationTeamBind, {
+      teamId: pointer.remoteTeamId, ownerId: link.collaborationOwnerId,
+    });
+    this.remoteTeams.rememberSnapshot(pointer.connectionId, remoteSnapshot);
+    return pointer;
+  }
+
+  async provisionRemoteWorker(caller: Agent, input: CreateCoAgentInput & { teamId?: string }, intendedId?: string, assignmentPrompt?: string, userInstructions?: Agent['delegationUserInstructions']): Promise<Agent> {
+    const pointer = await this.remoteAgentPointer(input);
+    if (!pointer) throw new Error('A remote host is required.');
+    const link = this.snapshot.teams.find(team => team.id === pointer.localTeamId)!.remoteLinks!.find(link => link.connectionId === pointer.connectionId)!;
     const result = await this.remoteTeams.request<RemoteWorkerResult>(pointer.connectionId, backendMethods.collaborationWorkerCreate, {
-      ownerId: link.collaborationOwnerId, teamId: pointer.remoteTeamId, agentId: intendedId ?? `agent-${randomUUID()}`,
+      ownerId: link.collaborationOwnerId!, teamId: pointer.remoteTeamId, agentId: intendedId ?? `agent-${randomUUID()}`,
       caller: { ...caller, backendSession: undefined }, input: { ...input, remoteConnectionId: undefined, task: undefined }, assignmentPrompt, userInstructions,
     } satisfies RemoteWorkerRequest);
     this.remoteTeams.adoptCreatedAgentSnapshot(pointer, result.snapshot);
@@ -1228,6 +1239,15 @@ export class AppBackendServer {
     }
 
     switch (message.method) {
+      case backendMethods.collaborationTeamBind: {
+        const params = requireRecord(message.params);
+        const teamId = requireString(params.teamId, 'teamId');
+        const ownerId = requireString(params.ownerId, 'ownerId');
+        const team = this.snapshot.teams.find(team => team.id === teamId);
+        if (!team || (team.collaborationOwnerId && team.collaborationOwnerId !== ownerId)) throw new Error('The remote team belongs to a different collaboration controller.');
+        team.collaborationOwnerId = ownerId;
+        return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
+      }
       case backendMethods.collaborationWorkerCreate: {
         if (!this.options.collaborationTools) throw new Error('Remote collaboration requires an updated daemon on this host.');
         const params = requireRecord(message.params);
@@ -1601,7 +1621,7 @@ export class AppBackendServer {
       }
       case backendMethods.agentCreate: {
         const input = requireAgentCreateInput(message.params);
-        const remoteTeamPointer = await this.remoteTeams.pointerForAgentInput(input);
+        const remoteTeamPointer = await this.remoteAgentPointer(input);
         delete input.remoteConnectionId;
         if (input.repositorySession !== undefined) {
           const location = this.locationFromRemoteConnectionId(remoteTeamPointer?.connectionId);
@@ -1637,7 +1657,7 @@ export class AppBackendServer {
       }
       case backendMethods.projectCreate: {
         const input = requireProjectCreateInput(message.params);
-        const remoteTeamPointer = await this.remoteTeams.pointerForAgentInput(input);
+        const remoteTeamPointer = await this.remoteAgentPointer(input);
         if (remoteTeamPointer) {
           const { remoteConnectionId: _remote, ...remoteInput } = input;
           const remoteSnapshot = await this.remoteTeams.request<AppSnapshot>(remoteTeamPointer.connectionId, backendMethods.projectCreate, {
@@ -1689,7 +1709,7 @@ export class AppBackendServer {
       }
       case backendMethods.agentQuickChatCreate: {
         const input = requireQuickChatCreateInput(message.params);
-        const remoteTeamPointer = await this.remoteTeams.pointerForAgentInput(input);
+        const remoteTeamPointer = await this.remoteAgentPointer(input);
         if (remoteTeamPointer) {
           const { remoteConnectionId: _remote, ...remoteInput } = input;
           const remoteSnapshot = await this.remoteTeams.request<AppSnapshot>(remoteTeamPointer.connectionId, backendMethods.agentQuickChatCreate, {

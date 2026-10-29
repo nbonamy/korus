@@ -103,6 +103,8 @@ export function useRepositorySession(options: {
   });
 
   async function open(nextSource: RepositorySessionSource): Promise<void> {
+    const originUrl = nextSource.originUrl ?? nextSource.workSource?.url;
+    if (originUrl) nextSource = { ...nextSource, originUrl };
     backend.value = preferredBackendChoices(options.getSnapshot(), context(nextSource).remoteConnectionId)[0];
     const requestId = ++sourceRequestId;
     ++hostRequestId;
@@ -142,12 +144,19 @@ export function useRepositorySession(options: {
         const checkout = checkouts.find(repository => repository.path === nextSource.repositoryRoot
           || repository.worktrees.some(worktree => worktree.path === nextSource.repositoryRoot));
         const owningAgent = options.getSnapshot().agents.find(agent => (!nextSource.agentId || agent.id === nextSource.agentId)
-          && agent.teamId === teamId && agent.workspace?.kind === 'git'
+          && agent.teamId === teamId && agent.remoteConnectionId === remoteConnectionId && agent.workspace?.kind === 'git'
           && (agent.workspace.primaryWorktreeRoot === nextSource.repositoryRoot || agent.workspace.repositoryRoot === nextSource.repositoryRoot));
-        const identity = checkout ? checkout.remoteIdentity : owningAgent
-          ? canonicalGitRemoteIdentity(await options.getAgentGitRemote?.(owningAgent.id) ?? '') : undefined;
-        if (identity) knownIdentity = identity;
+        const agentOrigin = owningAgent?.workspace?.kind === 'git' ? owningAgent.workspace.originUrl : undefined;
+        const freshOrigin = !checkout && owningAgent ? await options.getAgentGitRemote?.(owningAgent.id) : undefined;
         if (requestId !== sourceRequestId) return;
+        // The owning host's discovery wins over persisted metadata for repository matching.
+        const identity = checkout ? checkout.remoteIdentity : canonicalGitRemoteIdentity(freshOrigin ?? nextSource.originUrl ?? agentOrigin ?? '');
+        const matchingOrigin = [freshOrigin, nextSource.originUrl, agentOrigin].find(origin => origin && canonicalGitRemoteIdentity(origin) === identity);
+        const originUrl = matchingOrigin ?? (identity ? `https://${identity}.git` : undefined);
+        if (identity) {
+          knownIdentity = identity;
+          if (originUrl && source.value) source.value = { ...source.value, originUrl };
+        }
         const provider = identity?.startsWith('github.com/') ? 'github' : identity?.startsWith('gitlab.com/') ? 'gitlab' : undefined;
         if (!provider) return;
         const repositories = await options.loadWorkRepositories(location, provider);
@@ -235,7 +244,7 @@ export function useRepositorySession(options: {
     const current = source.value;
     const checkout = hostCheckout.value;
     if (!current || !checkout || checkout.state === 'cloned') return true;
-    if (checkout.state !== 'missing' || !options.cloneRepository) {
+    if (checkout.state !== 'missing' || !options.cloneRepository || !current.originUrl) {
       error.value = checkout.state === 'unreachable' ? checkout.message : translate('remoteTarget.noOrigin');
       return false;
     }
@@ -243,7 +252,7 @@ export function useRepositorySession(options: {
     error.value = null;
     try {
       const cloned = await options.cloneRepository({
-        url: cloneUrlForRemote(current.originUrl ?? '') ?? current.originUrl ?? '',
+        url: cloneUrlForRemote(current.originUrl) ?? current.originUrl,
         ...(hostId.value ? { remoteConnectionId: hostId.value } : {}),
         reuseExisting: true,
       });

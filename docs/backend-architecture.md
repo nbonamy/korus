@@ -376,8 +376,10 @@ Project acquisition uses the owning team's desktop operations for new repositori
 local repository selection, GitHub and GitLab discovery, and URL cloning. The phone
 sends names, catalog IDs or network Git URLs rather than filesystem paths. The local catalog
 contains repository roots, with linked worktrees nested beneath them; only roots
-become selectable opaque IDs. Provider catalog selections are bound to the daemon
-lifetime, provider, owning host location and current catalog identity; branch reads
+become selectable opaque IDs. Repository targets include the owning host in their
+opaque path identity, so equal checkout paths on different machines cannot select
+each other's work. Provider catalog selections are bound to the daemon lifetime,
+provider, owning host location and current catalog identity; branch reads
 and creation revalidate them. Legacy GitHub operations retain their existing IDs
 for compatible native clients. Integration credentials and checkout paths stay on
 the owning host; each write rechecks the grant, team location and available engine.
@@ -690,9 +692,11 @@ Version discovery accepts the previous daemon CLI name for hosts not yet upgrade
 An SSH daemon owns its host's home exclusively. Each connection launches its own
 stdio daemon with its own in-memory state, so two live daemons on one home overwrite
 each other's saves and agents or teams vanish and reappear. The launch sets
-`APP_EXCLUSIVE_HOME=1`, which takes a `daemon.lock` in the home: a stale lock (dead
-owner) is taken over, a live owner is waited for briefly while it shuts down, and
-otherwise the new daemon exits with a message naming the duplicate session. Two saved
+`APP_EXCLUSIVE_HOME=1`, which holds a SQLite exclusive transaction in
+`daemon-lock.sqlite` for the daemon's lifetime. The OS releases it on process exit;
+the lock database is never removed for stale-owner recovery. `daemon.lock` contains
+diagnostic owner metadata only. A live owner is waited for briefly while it shuts
+down; otherwise the new daemon exits with a message naming the duplicate session. Two saved
 connections to the same machine therefore cannot both be active. Local and
 `serve` daemons do not take the lock.
 

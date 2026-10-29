@@ -38,6 +38,7 @@ const requestTimeoutByMethod = {
   [backendMethods.agentDocumentWrite]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.agentTasksList]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.clientCollaborationCall]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
+  [backendMethods.collaborationTeamBind]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.collaborationWorkerCreate]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.collaborationPromptSend]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.agentTaskCancel]: LONG_RUNNING_REQUEST_TIMEOUT_MS,

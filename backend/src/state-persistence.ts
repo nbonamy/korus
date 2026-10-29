@@ -1119,6 +1119,7 @@ function sanitizeTeam(value: unknown, agents: Agent[], remoteConnectionIds: Set<
     name: value.name,
     avatar: typeof value.avatar === 'string' ? value.avatar : undefined,
     color: typeof value.color === 'string' ? value.color : defaultTeamColor,
+    ...(optionalTrimmedString(value.collaborationOwnerId) ? { collaborationOwnerId: optionalTrimmedString(value.collaborationOwnerId)! } : {}),
     ...(remoteLinks.length ? { remoteLinks } : {}),
     agentIds,
     activeAgentId: typeof value.activeAgentId === 'string' && agentIds.includes(value.activeAgentId)
@@ -1129,11 +1130,17 @@ function sanitizeTeam(value: unknown, agents: Agent[], remoteConnectionIds: Set<
 
 function sanitizeRemoteLinks(value: Record<string, unknown>, remoteConnectionIds: Set<string>): RemoteTeamLink[] {
   const links = new Map<string, RemoteTeamLink>();
-  for (const candidate of Array.isArray(value.remoteLinks) ? value.remoteLinks : []) {
+  // Unversioned legacy state also passes through this sanitizer before the store upgrades it.
+  const candidates = Array.isArray(value.remoteLinks) ? value.remoteLinks
+    : [{ connectionId: value.remoteConnectionId, remoteTeamId: value.remoteTeamId }];
+  for (const candidate of candidates) {
     if (!isRecord(candidate) || typeof candidate.connectionId !== 'string' || typeof candidate.remoteTeamId !== 'string') continue;
     const connectionId = candidate.connectionId.trim();
     const remoteTeamId = candidate.remoteTeamId.trim();
-    if (connectionId && remoteTeamId && remoteConnectionIds.has(connectionId) && !links.has(connectionId)) links.set(connectionId, { connectionId, remoteTeamId });
+    if (connectionId && remoteTeamId && remoteConnectionIds.has(connectionId) && !links.has(connectionId)) {
+      const collaborationOwnerId = optionalTrimmedString(candidate.collaborationOwnerId);
+      links.set(connectionId, { connectionId, remoteTeamId, ...(collaborationOwnerId ? { collaborationOwnerId } : {}) });
+    }
   }
   return [...links.values()];
 }

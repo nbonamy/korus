@@ -177,6 +177,10 @@ export type AppBackendRequestMap = {
     params: { agentId: string };
     result: import('../delegated-task').DelegatedTask[];
   };
+  [backendMethods.collaborationTeamBind]: {
+    params: { teamId: string; ownerId: string };
+    result: AppSnapshot;
+  };
   [backendMethods.collaborationWorkerCreate]: {
     params: import('../remote-collaboration').RemoteWorkerRequest;
     result: import('../remote-collaboration').RemoteWorkerResult;

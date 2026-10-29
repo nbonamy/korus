@@ -613,7 +613,7 @@ describe('AppBackendServer', () => {
           lastEventSeq: 0,
           clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false },
         };
-        if (method === 'agent/quickChat/create') return remoteSnapshot;
+        if (method === 'collaboration/team/bind' || method === 'agent/quickChat/create') return remoteSnapshot;
         throw new Error(`Unexpected remote method: ${method}`);
       }),
     };
@@ -632,7 +632,7 @@ describe('AppBackendServer', () => {
     });
 
     expect(sshConnections.ensureRemoteClaudeInstalled).not.toHaveBeenCalled();
-    expect(order.slice(-2)).toStrictEqual(['snapshot/get', 'agent/quickChat/create']);
+    expect(order).toStrictEqual(['snapshot/get', 'collaboration/team/bind', 'agent/quickChat/create']);
     expect(response).toMatchObject({ result: { agents: [expect.objectContaining({ backend: 'claude' })] } });
   });
 

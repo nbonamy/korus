@@ -10,6 +10,7 @@ export type Migration<From = unknown, To = unknown> = {
 export const rosterMigrations: readonly Migration[] = [
   { from: 1, to: 2, up: (value: unknown) => value },
   { from: 2, to: 3, up: migrateExecutionSelections },
+  { from: 3, to: 4, up: migrateRemoteTeamLinks },
 ];
 
 /**
@@ -32,6 +33,17 @@ export function migrateData(file: string, data: unknown, version: number, target
 
 // Frozen schema-2 input: keep unknown entities and provider blocks untouched.
 const record = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
+
+// Frozen schema-3 teams: a remote pointer becomes one link to the same foreign team.
+function migrateRemoteTeamLinks(value: unknown): unknown {
+  if (!record(value) || !Array.isArray(value.teams)) return value;
+  return { ...value, teams: value.teams.map(team => {
+    if (!record(team)) return team;
+    const { remoteConnectionId, remoteTeamId, ...rest } = team;
+    if (Array.isArray(rest.remoteLinks) || typeof remoteConnectionId !== 'string' || typeof remoteTeamId !== 'string') return rest;
+    return { ...rest, remoteLinks: [{ connectionId: remoteConnectionId, remoteTeamId }] };
+  }) };
+}
 function migrateExecutionSelections(value: unknown): unknown {
   if (!record(value)) return value;
   const rows = (items: unknown, map: (row: Record<string, unknown>) => unknown) => Array.isArray(items) ? items.map(row => record(row) ? map(row) : row) : items;

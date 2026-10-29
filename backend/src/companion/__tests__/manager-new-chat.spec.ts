@@ -6,7 +6,7 @@ import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { duplicateAgentInSnapshot, updateAgentFromInput } from '@workspace/core/agent-manager';
 import { opaquePath } from '@workspace/core/companion-projection';
 import type { AppSnapshot, SourceBranch, SourceRepository } from '@workspace/core/contracts';
-import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
+import { createTestSnapshot, readyRemoteConnection } from '../../__tests__/server-test-fixtures';
 import { CompanionManager } from '../manager';
 import type { CompanionGateway } from '../gateway';
 
@@ -372,15 +372,29 @@ describe('mobile chat creation', () => {
       ? [{ state: 'success', agentId: 'new-chat' }, { state: 'success', agentId: 'new-chat-2' }]
       : [{ state: 'success', agentId: 'quick-chat' }, { state: 'success', agentId: 'quick-chat-2' }]);
   });
-  it('lists the desktop branch catalog without exposing checkout paths, routed to the host running the repository', async () => {
+  it('routes same-path repositories to their selected host for branches and new worktrees', async () => {
     const f = await fixture();
-    f.snapshot.agents[0]!.remoteConnectionId = 'ssh-host';
-    expect(await f.gateway.request('phone', 'repository.branches', { teamId: 'team-test', repositoryId: opaquePath('/code/repo') })).toStrictEqual([
+    for (const id of ['host-a', 'host-b']) {
+      f.snapshot.remoteConnections.connections.push({ ...readyRemoteConnection(), id, providerConnections: f.snapshot.providerConnections });
+      f.snapshot.agents.push({ ...f.snapshot.agents[0]!, id, remoteConnectionId: id });
+      f.snapshot.teams[0]!.agentIds.push(id);
+    }
+    const projected = await f.gateway.request('phone', 'snapshot.get', {}) as import('@workspace/core/companion-protocol').CompanionWorkspace;
+    const ids = projected.agents.map(agent => agent.workspace?.kind === 'git' ? agent.workspace.primaryWorktreeRoot : '');
+    expect(new Set(ids).size).toBe(3);
+    expect(JSON.stringify(projected)).not.toContain('/code/repo');
+    const repositoryId = ids[2]!;
+    expect(await f.gateway.request('phone', 'repository.branches', { teamId: 'team-test', repositoryId })).toStrictEqual([
       { name: 'main', isDefault: true, isCheckedOut: true },
       { name: 'feature/checked-out', isDefault: false, isCheckedOut: true },
       { name: 'feature/available', isDefault: false, isCheckedOut: false },
     ]);
-    expect(f.calls.find((call) => call.method === backendMethods.sourceBranchesList)?.params).toStrictEqual({ repoPath: '/code/repo', remoteConnectionId: 'ssh-host', _clientId: 'companion-read' });
+    expect(f.calls.find((call) => call.method === backendMethods.sourceBranchesList)?.params).toStrictEqual({ repoPath: '/code/repo', remoteConnectionId: 'host-b', _clientId: 'companion-read' });
+    expect(await f.create({ repositoryId, worktree: { branchName: 'feature/new' } })).toStrictEqual({ state: 'success', agentId: 'new-chat' });
+    expect(f.calls.find(call => call.method === backendMethods.sourceWorktreeCreate)?.params).toMatchObject({ input: { repoPath: '/code/repo', remoteConnectionId: 'host-b' } });
+    expect(f.calls.find(call => call.method === backendMethods.agentCreate)?.params).toMatchObject({ input: { folder: '/code/repo-feature', remoteConnectionId: 'host-b' } });
+    f.snapshot.agents = f.snapshot.agents.filter(agent => agent.remoteConnectionId !== 'host-b');
+    await expect(f.gateway.request('phone', 'repository.branches', { teamId: 'team-test', repositoryId })).rejects.toThrow('Repository not found');
   });
   it.each([
     ['stranger', 'team-test', opaquePath('/code/repo')],

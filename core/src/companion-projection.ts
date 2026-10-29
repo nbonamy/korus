@@ -10,10 +10,11 @@ import { missionLeadAgentId } from './mission-attention';
 import { missionImplementationBusy } from './mission-execution';
 
 const encoder = new TextEncoder();
-/** Stable per path, reveals no directory names, and ends with the folder name so label fallbacks keep working. */
-export function opaquePath(value: string): string {
+/** Stable per host and path, with only the folder name retained for label fallbacks. */
+export function opaquePath(value: string, remoteConnectionId?: string): string {
   const name = value.replace(/\\/gu, '/').split('/').filter(Boolean).at(-1) ?? '';
-  return `/${bytesToHex(sha256(encoder.encode(value))).slice(0, 16)}/${name}`;
+  const identity = remoteConnectionId ? JSON.stringify([remoteConnectionId, value]) : value;
+  return `/${bytesToHex(sha256(encoder.encode(identity))).slice(0, 16)}/${name}`;
 }
 
 /** The composer's last model and permission choice; never sandbox paths or approval policies. */
@@ -27,11 +28,11 @@ function projectDefaults(defaults: BackendDefaults): BackendDefaults {
     ...(permissionMode === undefined ? {} : { permissionMode }) } as BackendDefaults;
 }
 
-function projectWorkspace(workspace: AgentWorkspaceIdentity): AgentWorkspaceIdentity {
-  if (workspace.kind === 'folder') return { kind: 'folder', folder: opaquePath(workspace.folder), label: workspace.label, updatedAt: workspace.updatedAt };
+function projectWorkspace(workspace: AgentWorkspaceIdentity, remoteConnectionId?: string): AgentWorkspaceIdentity {
+  if (workspace.kind === 'folder') return { kind: 'folder', folder: opaquePath(workspace.folder, remoteConnectionId), label: workspace.label, updatedAt: workspace.updatedAt };
   const { repositoryName, branch, defaultBranch, isLinkedWorktree, updatedAt } = workspace;
-  return { kind: 'git', folder: opaquePath(workspace.folder), repositoryName, repositoryRoot: opaquePath(workspace.repositoryRoot),
-    primaryWorktreeRoot: opaquePath(workspace.primaryWorktreeRoot), branch, ...(defaultBranch === undefined ? {} : { defaultBranch }), isLinkedWorktree, updatedAt };
+  return { kind: 'git', folder: opaquePath(workspace.folder, remoteConnectionId), repositoryName, repositoryRoot: opaquePath(workspace.repositoryRoot, remoteConnectionId),
+    primaryWorktreeRoot: opaquePath(workspace.primaryWorktreeRoot, remoteConnectionId), branch, ...(defaultBranch === undefined ? {} : { defaultBranch }), isLinkedWorktree, updatedAt };
 }
 
 /**
@@ -42,7 +43,7 @@ export function projectCompanionWorkspace(source: CompanionWorkspace & { reposit
   const teams = source.teams.map(({ id, name, avatar, agentIds }): Team => ({ id, name, avatar, agentIds }));
   const repositoryIcons: Record<string, string> = {};
   const projectAgent = (agent: Agent): Agent => {
-    const workspace = agent.workspace ? projectWorkspace(agent.workspace) : undefined;
+    const workspace = agent.workspace ? projectWorkspace(agent.workspace, agent.remoteConnectionId) : undefined;
     const icon = agent.sessionKind === 'quickChat' ? undefined : repositoryIconForAgent(agent, source.repositoryIcons ?? {});
     if (icon && workspace?.kind === 'git') repositoryIcons[workspace.primaryWorktreeRoot] = icon;
     const { id, teamId, remoteConnectionId, name, avatar, backend, backendSession, status, statusText, createdAt, updatedAt, lastActivityAt, sessionKind, conversationTitle, backendDefaults, hasSubmittedPrompt } = agent;
@@ -52,7 +53,7 @@ export function projectCompanionWorkspace(source: CompanionWorkspace & { reposit
       ...(agent.goal ? { goal: agent.goal } : {}),
       ...(agent.readState ? { readState: agent.readState } : {}),
       ...(lastActivityAt === undefined ? {} : { lastActivityAt }),
-      status, statusText, createdAt, updatedAt, sessionKind, conversationTitle, ...(hasSubmittedPrompt === undefined ? {} : { hasSubmittedPrompt }), workspace, folder: agent.folder ? opaquePath(agent.folder) : null,
+      status, statusText, createdAt, updatedAt, sessionKind, conversationTitle, ...(hasSubmittedPrompt === undefined ? {} : { hasSubmittedPrompt }), workspace, folder: agent.folder ? opaquePath(agent.folder, remoteConnectionId) : null,
       ...(backendDefaults ? { backendDefaults: projectDefaults(backendDefaults) } : {}) };
   };
   const inTeams = (agent: Agent) => teams.some((team) => team.id === agent.teamId);

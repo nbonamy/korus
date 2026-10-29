@@ -104,14 +104,30 @@ describe('RemoteTeamService', () => {
     const request = vi.fn(async () => structuredClone(remote));
     const service = new RemoteTeamService({ clients: { request } as never, getSnapshot: () => snapshot, onForwardedEvent: vi.fn(), onProjectedSnapshotChanged: vi.fn() });
 
-    const first = await service.pointerForAgentInput({ teamId: 'team-test', remoteConnectionId: 'connection-devbox' });
-    const second = await service.pointerForAgentInput({ teamId: 'team-test', remoteConnectionId: 'connection-devbox' });
+    const [first, second] = await Promise.all([
+      service.pointerForAgentInput({ teamId: 'team-test', remoteConnectionId: 'connection-devbox' }),
+      service.pointerForAgentInput({ teamId: 'team-test', remoteConnectionId: 'connection-devbox' }),
+    ]);
+    expect(await service.pointerForAgentInput({ teamId: 'team-test', remoteConnectionId: 'connection-devbox' })).toStrictEqual(first);
 
     expect(first).toStrictEqual({ connectionId: 'connection-devbox', localTeamId: 'team-test', remoteTeamId: remote.activeTeamId });
     expect(second).toStrictEqual(first);
     expect(snapshot.teams[0]!.remoteLinks).toStrictEqual([{ connectionId: 'connection-devbox', remoteTeamId: remote.activeTeamId }]);
     expect(request).toHaveBeenCalledOnce();
     await expect(service.pointerForAgentInput({ teamId: 'team-test', remoteConnectionId: 'unknown' })).rejects.toThrow('Remote connection not found');
+  });
+
+  it('allows an explicit retry after a shared first-use creation fails', async () => {
+    const snapshot = createTestSnapshot();
+    snapshot.remoteConnections.connections = [readyRemoteConnection()];
+    const request = vi.fn().mockRejectedValueOnce(new Error('Host unavailable')).mockResolvedValue(createRemoteTeamSnapshot([]));
+    const service = new RemoteTeamService({ clients: { request } as never, getSnapshot: () => snapshot, onForwardedEvent: vi.fn(), onProjectedSnapshotChanged: vi.fn() });
+    const input = { teamId: 'team-test', remoteConnectionId: 'connection-devbox' };
+    const attempts = await Promise.allSettled([service.pointerForAgentInput(input), service.pointerForAgentInput(input)]);
+    expect(attempts.map(attempt => attempt.status)).toStrictEqual(['rejected', 'rejected']);
+    expect(snapshot.teams[0]!.remoteLinks).toBeUndefined();
+    await expect(service.pointerForAgentInput(input)).resolves.toMatchObject({ remoteTeamId: 'team-remote' });
+    expect(request).toHaveBeenCalledTimes(2);
   });
 
   it('projects remote agents next to local ones in the same team and tags their host', () => {
