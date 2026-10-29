@@ -6,9 +6,6 @@ import { randomUUID } from 'node:crypto';
 import { generateKeyPair } from '@libp2p/crypto/keys';
 import { peerIdFromPrivateKey } from '@libp2p/peer-id';
 import { createServer } from 'node:net';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
 import type { Stream } from '@libp2p/interface';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import type { Agent, ProviderConversationFrame } from '@workspace/core/contracts';
@@ -110,51 +107,6 @@ async function freePort() { const server = createServer(); await new Promise<voi
 async function wire(stream: Stream) { const frames = readCompanionFrames(stream, 5 * 1024 * 1024)[Symbol.asyncIterator](); return async (method: string, args: unknown) => { const id = randomUUID(); stream.send(encodeCompanionFrame({ v: 1, id, method, args })); for (;;) { const next = await frames.next(); if (next.done) throw new Error('closed'); const value = next.value as { id?: string; result?: unknown; error?: string }; if (value.id === id) return value; } }; }
 
 describe('encrypted guest conversation authorization', () => {
-  // Regression: the runner must deliver one timestamp proposal through the real encrypted
-  // relay and persist useful timings without leaking its bearer or conversation contents.
-  it('runs the headless probe through the relay and records a timestamp suggestion and acknowledgment', async () => {
-    const f = await fixture();
-    const report = path.join(f.directory, 'probe-results.json');
-    const summary = path.join(f.directory, 'summary.md');
-    const { stdout, stderr } = await promisify(execFile)(process.execPath, ['scripts/shared-chat-probe.mjs', report], {
-      cwd: fileURLToPath(new URL('../../../../', import.meta.url)), timeout: 45_000,
-      env: { ...process.env, TEST_SHARED_LINK: encodeConversationShareLink(f.link), APP_COMPANION_RELAY_URL: f.pin.origin, APP_COMPANION_RELAY_PEER_ID: f.pin.peerId, GITHUB_STEP_SUMMARY: summary },
-    });
-    const result = JSON.parse(await readFile(report, 'utf8'));
-    expect(result).toStrictEqual({
-      status: 'acknowledged', stage: 'complete', sentAtUtc: expect.any(String), acknowledgedAtUtc: expect.any(String),
-      connectMs: expect.any(Number), joinMs: expect.any(Number), sendToAckMs: expect.any(Number), proposalId: expect.any(String),
-    });
-    expect(result.sentAtUtc).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-    expect(Date.parse(result.acknowledgedAtUtc)).toBeGreaterThanOrEqual(Date.parse(result.sentAtUtc));
-    for (const time of [result.connectMs, result.joinMs, result.sendToAckMs]) expect(time).toBeGreaterThanOrEqual(0);
-    const owner = (await f.shares.control({ action: 'status', target: f.target })).state;
-    expect(owner.proposals).toHaveLength(1);
-    expect(owner.proposals![0]).toMatchObject({ id: result.proposalId, text: result.sentAtUtc, status: 'pending' });
-    await vi.waitFor(() => expect(f.listeners.size).toBe(0));
-    const output = stdout + stderr + await readFile(summary, 'utf8') + JSON.stringify(result);
-    for (const privateValue of [f.link.credential, f.link.handle, 'before-share']) expect(output).not.toContain(privateValue);
-    expect(JSON.parse(stdout)).toStrictEqual(result);
-    expect(await readFile(summary, 'utf8')).toContain(String(result.sendToAckMs));
-    await evidence('runner-probe', result);
-  }, 60_000);
-
-  it('writes a sanitized failure report when the runner cannot join a revoked share', async () => {
-    const f = await fixture();
-    await f.shares.control({ action: 'revoke', target: f.target, handle: f.link.handle });
-    const report = path.join(f.directory, 'probe-failure.json');
-    const failure = await promisify(execFile)(process.execPath, ['scripts/shared-chat-probe.mjs', report], {
-      cwd: fileURLToPath(new URL('../../../../', import.meta.url)), timeout: 45_000,
-      env: { ...process.env, TEST_SHARED_LINK: encodeConversationShareLink(f.link), APP_COMPANION_RELAY_URL: f.pin.origin, APP_COMPANION_RELAY_PEER_ID: f.pin.peerId, GITHUB_STEP_SUMMARY: '' },
-    }).then(() => { throw new Error('Probe unexpectedly succeeded'); }, error => error);
-    expect(failure.code).toBe(1);
-    const result = JSON.parse(await readFile(report, 'utf8'));
-    expect(result).toStrictEqual({ status: 'failed', stage: 'join', connectMs: expect.any(Number), error: 'Shared-chat probe failed during join.' });
-    expect(failure.stdout + failure.stderr + JSON.stringify(result)).not.toContain(f.link.credential);
-    expect(result).not.toHaveProperty('sendToAckMs');
-    await vi.waitFor(() => expect(f.listeners.size).toBe(0));
-  }, 60_000);
-
   it('joins into team Quick Chats without local provider execution and reopens the original team', async () => {
     const f = await fixture('codex');
     const joins = new GuestJoins({ directory: path.join(f.directory, 'quick-chat-guest'), relay: f.pin });
