@@ -38,7 +38,7 @@
         >
           <span class="settings-connections-panel__indicator">
             <span v-if="connectionBusy(connection) || engineActivity[connection.id]" class="app-spinner" role="status" :aria-label="$t('auth.checking')" />
-            <span v-else class="settings-connections-panel__dot" :class="`settings-connections-panel__dot--${connectionDisplayStatus(connection)}`" aria-hidden="true" />
+            <span v-else class="settings-connections-panel__dot" :class="`settings-connections-panel__dot--${connection.status}`" aria-hidden="true" />
           </span>
           <span class="settings-connections-panel__summary">
             <strong>{{ connection.name }}</strong>
@@ -332,11 +332,6 @@ function connectionBusy(connection: RemoteConnection): boolean {
   return connection.status === 'checking' || checkingConnectionId.value === connection.id;
 }
 
-function connectionDisplayStatus(connection: RemoteConnection): RemoteConnection['status'] {
-  if (connection.status === 'ready' && !connection.providerConnections?.some(engine => engine.connected)) return 'error';
-  return connection.status;
-}
-
 function connectionActionLabel(connection: RemoteConnection): string {
   if (connectionBusy(connection)) {
     return connection.status === 'checking' && connection.detail
@@ -573,7 +568,7 @@ function connectionLabel(connection: RemoteConnection): string {
     user: connection.user,
     port: connection.port,
   });
-  const status = connectionBusy(connection) ? '' : statusLabel(connectionDisplayStatus(connection));
+  const status = connectionBusy(connection) ? '' : statusLabel(connection.status);
   return status ? `${target} · ${status}` : target;
 }
 
