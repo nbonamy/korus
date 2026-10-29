@@ -190,6 +190,8 @@ existing shell handlers. Their action icons share renderer presentation metadata
 Git actions retain the icons supplied by their workflow control.
 Quick-open rows support sibling actions that appear on hover or keyboard focus,
 keeping secondary actions separate from the primary row target.
+Agent Quick Open lists each Mission once, routes it to the Mission workspace, and
+restores its client-local conversation selection; Mission workers are not separate results.
 Palette entries declare their sections explicitly and preserve owning-menu order.
 Settings destinations share their icons, labels and host/provider availability in
 `components/settings-tabs.ts`, consumed by both the sidebar and command search.
