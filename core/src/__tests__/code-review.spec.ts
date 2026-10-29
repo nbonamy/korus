@@ -104,6 +104,11 @@ describe('code review ledger', () => {
     expect(isCodeReviewStartInput({ scope: { type: 'uncommitted' }, threadMode: 'independent' })).toBe(true);
     expect(isCodeReviewStartInput({ scope: { type: 'branch', baseRef: 'origin/main' }, threadMode: 'current' })).toBe(true);
     expect(isCodeReviewStartInput({ scope: { type: 'branch', baseRef: '' }, threadMode: 'current' })).toBe(false);
+    expect(isCodeReviewStartInput({ scope: { type: 'commit', sha: 'a'.repeat(40) }, threadMode: 'independent' })).toBe(true);
+    expect(isCodeReviewSession({ ...session(), scope: { type: 'commit', sha: 'a'.repeat(40) } })).toBe(true);
+    for (const sha of ['', '--all', 'HEAD', null]) {
+      expect(isCodeReviewStartInput({ scope: { type: 'commit', sha }, threadMode: 'independent' })).toBe(false);
+    }
     expect(isCodeReviewStartInput({ scope: { type: 'uncommitted' }, threadMode: 'anchored' })).toBe(false);
     const automatic = { scope: { type: 'uncommitted' }, threadMode: 'independent', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3 }, selection: { model: 'review-model', reasoningEffort: 'high' } };
     expect(isCodeReviewStartInput(automatic)).toBe(true);

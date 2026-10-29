@@ -46,6 +46,7 @@ export type AgentGitDiffCatalog = {
   unstaged: AgentGitDiffSummary;
   staged: AgentGitDiffSummary;
   commits: AgentGitCommitSummary[];
+  lastCommit?: AgentGitCommitSummary;
 };
 
 export type AgentGitDiffScope = 'staged' | 'unstaged' | 'untracked';

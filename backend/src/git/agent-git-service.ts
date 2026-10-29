@@ -238,6 +238,8 @@ export class AgentGitService {
   ): Promise<AgentGitDiffCatalog> {
     let branch: (AgentGitDiffSummary & { baseRef: string }) | undefined;
     let commits: AgentGitCommitSummary[] = [];
+    const lastCommit = await this.runGit(folder, ['log', '-1', '--format=%x1e%H%x1f%h%x1f%s', '--numstat', '--root', 'HEAD', '--'])
+      .then(result => parseCommitSummaries(result.stdout)[0], () => undefined);
     if (input.branch) {
       try {
         const baseRef = await this.resolveBaseRef(folder, input.branch, input.remote);
@@ -259,6 +261,7 @@ export class AgentGitService {
       unstaged: input.unstaged,
       staged: input.staged,
       commits,
+      ...(lastCommit ? { lastCommit } : {}),
     };
   }
 
