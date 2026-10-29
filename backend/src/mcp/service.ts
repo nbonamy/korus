@@ -16,7 +16,6 @@ import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities
 import type {
   Agent,
   AnnouncementPhase,
-  AgentCreationProgress,
   AgentWorkspaceIdentity,
   AppSnapshot, CelebrationKind,
   CreateAgentInput,
@@ -35,7 +34,8 @@ import { updateAgentWorkspace, updateWorkItemAssignmentInSnapshot } from '@works
 import { providerConversationEventView } from '@workspace/core/provider-conversation-event';
 import { listSourceWorktrees } from '../git-worktrees';
 import { scanSourceRepositories } from '../source-repositories';
-import { WorktreeManager, type WorktreeInitializationProgress } from '../worktrees/worktree-manager';
+import { WorktreeManager } from '../worktrees/worktree-manager';
+import { createWorktreeInitializationToolModuleProvider } from './worktree-initialization-tools';
 import type { BackendDriverRpc } from '../driver-rpc';
 import { AppMcpAgentCoordinator, McpToolError, type AnnouncementResponse, type CelebrationResponse, type DisplayMarkdownInput, type DisplayMarkdownResponse, type McpCreateAgentInput, type McpCreateAgentResponse, type MissionToolPort, type UpdateWorkItemResponse } from './agent-coordinator';
 import { agentMessagesPrompt, type MessageInfo } from './agent-prompts';
@@ -112,7 +112,7 @@ export class AppMcpService {
     this.resolveWorkspaceIdentity = options.resolveWorkspaceIdentity;
     this.queueSpokenAnnouncement = options.queueSpokenAnnouncement;
     this.worktreeManager = options.worktreeManager ?? new WorktreeManager();
-    this.agentCreation = options.agentCreation ?? new AgentCreationService(this.snapshot);
+    this.agentCreation = options.agentCreation ?? new AgentCreationService(this.snapshot, folder => this.worktreeManager.getInitializationState(folder));
     this.eventSink = options.onEvent ?? null;
     this.coordinator = new AppMcpAgentCoordinator({
       missionTools: options.missionTools,
@@ -151,6 +151,7 @@ export class AppMcpService {
       hostedMcpGateway: options.hostedMcpGateway,
       reviewTools: this.reviewTools,
       toolModuleProviders: [
+        createWorktreeInitializationToolModuleProvider(this.snapshot, this.worktreeManager),
         ...(options.persistSnapshot ? [createAutomationToolModuleProvider({ snapshot: this.snapshot, persist: options.persistSnapshot,
           notify: () => this.emit({ type: 'snapshot.updated', payload: this.snapshot }) })] : []),
         ...(options.startAutomaticReview ? [createAutomaticReviewToolModuleProvider({ snapshot: this.snapshot, start: options.startAutomaticReview })] : []),
@@ -432,9 +433,8 @@ export class AppMcpService {
 
   private async createSourceWorktree(
     input: CreateSourceWorktreeInput,
-    onInitializationProgress?: (progress: WorktreeInitializationProgress) => void,
   ): Promise<SourceWorktree> {
-    return (await this.worktreeManager.create(input, { onInitializationProgress })).worktree;
+    return (await this.worktreeManager.create(input, { backgroundInitialization: true })).worktree;
   }
 
   private async createAgentFromMcp(
@@ -523,11 +523,7 @@ export class AppMcpService {
           repoPath,
           branchName: branchName!,
           ...(input.destinationPath?.trim() ? { destinationPath: input.destinationPath.trim() } : {}),
-        }, (initialization) => this.emitAgentCreationInitializationProgress(
-          caller.id,
-          progress,
-          initialization,
-        ))).path;
+        })).path;
       }
 
       if (input.createWorktree) {
@@ -619,28 +615,6 @@ export class AppMcpService {
     if (session.kind !== worker.backend || sameConversation || result.activeTurnId) throw new Error('Native delegation did not create an independent idle worker conversation.');
     worker.backendSession = session;
     return { requested, effective: 'conversation' };
-  }
-
-  private emitAgentCreationInitializationProgress(
-    callerAgentId: string,
-    progress: Omit<AgentCreationProgress, 'state'>,
-    initialization: WorktreeInitializationProgress,
-  ): void {
-    const initializationDetail = initialization.phase === 'running'
-      ? initialization.command
-      : initialization.phase === 'complete' && initialization.commands.length > 0
-        ? initialization.commands.join(' · ')
-        : undefined;
-    this.emit({
-      agentId: callerAgentId,
-      type: 'agentCreation.progress',
-      payload: {
-        ...progress,
-        state: 'running',
-        phase: 'initializingWorktree',
-        ...(initializationDetail ? { initializationDetail } : {}),
-      },
-    });
   }
 
   private startAgentWithPrompt(agent: Agent, prompt: string, goal?: boolean): Promise<BackendSendResult> {

@@ -786,6 +786,11 @@ export const messages = {
       instructionsPlaceholder: 'e.g. Run focused tests before handing work back',
       agentUnavailable: 'The source agent is unavailable. Reopen the conversation to delegate.',
     },
+    worktreeInitialization: {
+      running: 'Initializing worktree',
+      failed: 'Worktree initialization failed',
+      preparing: 'Preparing setup…',
+    },
     agentCreationProgress: {
       eyebrow: 'Delegating work',
       buildingIsolatedHome: 'Building an isolated home in {repository}…',

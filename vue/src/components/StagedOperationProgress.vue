@@ -94,6 +94,7 @@ onBeforeUnmount(clearTimers);
 function finish(): void {
   if (completionScheduled) return;
   completionScheduled = true;
+  clearTimers();
   const minimumDuration = props.minimumDurationMs
     ?? 3_800 + (Math.max(0, props.steps.length - 3) * 1_700);
   timers.push(globalThis.setTimeout(() => {

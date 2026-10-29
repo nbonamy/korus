@@ -9,6 +9,7 @@ import { isWorkProviderKind } from './work-providers';
 import { isMission } from './missions';
 import { sanitizeWorkItemAssignmentSource } from './work-assignments';
 import { isAgentHandoff } from './agent-handoff';
+import { isWorktreeInitializationState } from './worktree-initialization';
 import { isProviderConnection } from './contracts/provider-setup';
 import { isThreadFlags } from './thread-flags';
 import { isAppTextDescriptor } from './app-text';
@@ -125,6 +126,7 @@ function isAgent(value: unknown): boolean {
     optional(value, 'avatar', isString) &&
     isNullableString(value.folder) &&
     optional(value, 'workspace', isAgentWorkspaceIdentity) &&
+    optional(value, 'worktreeInitialization', isWorktreeInitializationState) &&
     isAgentBackend(value.backend) &&
     optional(value, 'backendSession', isBackendSession) &&
     optional(value, 'backendDefaults', isBackendDefaults) &&

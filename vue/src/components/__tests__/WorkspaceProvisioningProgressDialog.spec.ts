@@ -6,6 +6,23 @@ import WorkspaceProvisioningProgressDialog from '../WorkspaceProvisioningProgres
 describe('WorkspaceProvisioningProgressDialog', () => {
   afterEach(() => vi.useRealTimers());
 
+  it('closes a quick timer-driven creation after two seconds without advancing after success', async () => {
+    vi.useFakeTimers();
+    const progress = { id: 'quick', state: 'running' as const, backend: 'codex' as const, repositoryName: 'korus', createWorktree: true, hasPrompt: false };
+    const wrapper = mount(WorkspaceProvisioningProgressDialog, { props: { operation: { mode: 'single', progress } } });
+    try {
+      await wrapper.setProps({ operation: { mode: 'single', progress: { ...progress, state: 'success' } } });
+      await vi.advanceTimersByTimeAsync(1_400);
+      expect(wrapper.findAll('.staged-operation-progress li').every(step => step.classes().includes('is-complete'))).toBe(true);
+      await vi.advanceTimersByTimeAsync(599);
+      expect(wrapper.emitted('close')).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(wrapper.emitted('close')).toStrictEqual([['quick']]);
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(wrapper.findAll('.staged-operation-progress li').every(step => step.classes().includes('is-complete'))).toBe(true);
+    } finally { wrapper.unmount(); }
+  });
+
   it('shows branch-move stages without setup scripts or a task handoff', async () => {
     const progress = { id: 'move', agentId: 'parent', branchName: 'feature/work', state: 'running' as const, phase: 'movingChanges' as const };
     const wrapper = mount(WorkspaceProvisioningProgressDialog, { props: { operation: { mode: 'branchMove', progress } } });

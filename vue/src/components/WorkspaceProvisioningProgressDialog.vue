@@ -15,6 +15,7 @@
       :key="operationId"
       :state="operationState"
       :active-step="activeStep"
+      :minimum-duration-ms="1_400"
       :eyebrow="eyebrow"
       :title="title"
       :complete-title="completeTitle"
