@@ -645,6 +645,15 @@ publishes only after saving.
   run writes. Only the user accepts Requirements, Tickets and Review.
   Reusing a lead waits for its active provider turn to finish before refreshing
   stage instructions and sending the next kickoff.
+- The lead can reopen an earlier reached stage through its identity-bound tool.
+  Backtracking retires the lead's pending proposal and waits for repository workers
+  to stop; viewing an earlier artifact has no lifecycle effect. Tickets, completed
+  implementation and run history survive stage changes. Tickets drafts extend the
+  existing backlog using stable IDs. An authored ticket change resets only that
+  ticket and increments its content revision; unchanged submissions preserve completion.
+  Implementation runs bind that revision, and revised tickets use fresh conversations
+  so late results cannot complete newer work. Re-entering Implementation skips completed
+  tickets, respects dependencies, and retains explicit retry for failed or stopped work.
 - Canonical artifacts are Markdown under `$APP_HOME/missions/<id>/artifacts`.
   Workers reach them through identity-bound MCP tools with optimistic revisions;
   the renderer and providers get metadata, never file access. Stage skills are

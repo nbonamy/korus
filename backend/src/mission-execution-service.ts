@@ -10,7 +10,7 @@ import { missionWorkflow } from '@workspace/core/mission-workflows';
 import { missionLeadAgentId } from '@workspace/core/mission-attention';
 import { missionImplementationBusy, missionRunAssignment, missionRunTicketIndex, pendingMissionRun, type MissionArtifactReadResult, type MissionArtifactWriteInput, type MissionExecutionInput, type MissionImplementationStartProgress, type MissionResultInput, type MissionReviewFindingInput, type MissionReviewFindingUpdateInput, type MissionRun, type MissionTicketDraftInput, type MissionTicketDraftResult, type MissionToolContext } from '@workspace/core/mission-execution';
 import type { MissionService } from './mission-service';
-import { MissionAgentTools } from './mission-agent-tools';
+import { MissionAgentTools, missionTicketsMarkdown } from './mission-agent-tools';
 import { missionAgent, missionTeamRepositories, sameSkills, stageKickoffPrompt } from './mission-execution-policy';
 import { MissionWorkspaceService } from './mission-workspace-service';
 
@@ -60,7 +60,7 @@ export class MissionExecutionService {
     this.workspaces = new MissionWorkspaceService(ports);
   }
 
-  async execute(input: MissionExecutionInput): Promise<void> {
+  async execute(input: MissionExecutionInput, leadAgentId?: string): Promise<void> {
     if (!input || typeof input.id !== 'string' || !Number.isInteger(input.revision)) throw new Error('Invalid mission command.');
     const mission = this.requireMission(input.id);
     if (mission.revision !== input.revision) throw new Error('This mission changed. Reload before continuing.');
@@ -361,20 +361,33 @@ export class MissionExecutionService {
       return;
     }
     if (input.action === 'reopen') {
+      let runId: string | undefined;
       await this.change(input, current => {
         const workflow = missionWorkflow(current.workflow.type);
-        this.requireNoActiveRun(current);
-        if (!workflow.stages.includes(input.stage) || workflow.stages.indexOf(input.stage) > workflow.stages.indexOf(current.stage)) throw new Error('Only reached stages can be reopened.');
+        if (!workflow.stages.includes(input.stage) || workflow.stages.indexOf(input.stage) > workflow.stages.indexOf(current.stage)) throw new Error('Only earlier reached stages can be reopened.');
+        if (leadAgentId) {
+          if (missionLeadAgentId(current) !== leadAgentId) throw new Error('Only the Mission lead can reopen a stage.');
+          if (workflow.stages.indexOf(input.stage) >= workflow.stages.indexOf(current.stage)) throw new Error('Choose an earlier Mission stage.');
+          // The lead may be making this call from its own active turn. Keep its
+          // proposal/history, but retire the assignment before queuing its replacement.
+          for (const run of current.execution?.runs ?? []) {
+            if (run.workerId === leadAgentId && run.stage !== 'implementation' && ['preparing', 'running', 'awaitingReview'].includes(run.status)) {
+              run.status = 'cancelled'; run.finishedAt = new Date().toISOString();
+            }
+          }
+        }
+        this.requireNoActiveRun(current, leadAgentId);
         current.stage = input.stage;
         current.status = 'active';
-        // Changes to upstream decisions invalidate downstream completion claims.
-        if (input.stage === 'requirements' || input.stage === 'tickets') {
-          current.artifacts.tickets = current.artifacts.tickets.map(ticket => ({ ...ticket, done: false }));
-          current.artifacts.implementation = { changes: '', tests: '' };
-        }
+        // Stage navigation preserves accepted tickets and implementation evidence.
+        // Only an authored ticket revision invalidates that ticket's completion.
         if (input.stage !== 'review') current.artifacts.review = { summary: '', pullRequestUrl: '' };
         if (input.stage !== 'ship') delete current.execution!.deliveries;
+        if (leadAgentId && (input.stage === 'requirements' || input.stage === 'tickets' || input.stage === 'review')) {
+          runId = this.enqueueRun(current, {});
+        }
       }, true);
+      if (runId) this.dispatchRuns(input.id, [runId]);
       return;
     }
     if (input.action !== 'run') throw new Error('Unknown mission command.');
@@ -452,7 +465,8 @@ export class MissionExecutionService {
         .filter(run => run.status === 'preparing' || (run.status === 'running' && !this.agent(run.workerId)?.backendSession))
         .map(run => ({ missionId: mission.id, runId: run.id })) ?? []
     ));
-    await Promise.all(interrupted.map(({ missionId, runId }) => this.startLaunch(missionId, runId)));
+    for (const { missionId, runId } of interrupted) this.dispatchRuns(missionId, [runId]);
+    await this.waitForLaunches();
   }
 
   async refreshOwnedSkills(): Promise<void> {
@@ -505,6 +519,10 @@ export class MissionExecutionService {
       const workflow = missionWorkflow(mission.workflow.type);
       const run = mission.execution?.runs.find(run => run.id === context.runId);
       if (!run || !this.agentTools.ownsWritableRun(mission, run.id, agentId)) throw new Error('This agent does not own an active run for this mission stage.');
+      if (run.stage === 'tickets' && !mission.artifactFiles?.tickets && run.draftTickets?.length) {
+        const stored = await this.ports.writeArtifact(mission.id, 'tickets', missionTicketsMarkdown(run.draftTickets));
+        (mission.artifactFiles ??= {}).tickets = { revision: 1, size: stored.size, updatedAt: new Date().toISOString() };
+      }
       if (run.stage !== 'implementation' && !mission.artifactFiles?.[run.stage]) throw new Error('Write the stage artifact before submitting it for review.');
       const proposal = structuredClone(mission.artifacts);
       if (run.stage === 'implementation') {
@@ -536,7 +554,7 @@ export class MissionExecutionService {
         if (run.stage === 'requirements') proposal.requirements = structuredClone(input.artifacts.requirements);
         if (run.stage === 'tickets') {
           if (!run.draftTickets?.length) throw new Error('Create Mission ticket drafts before submitting the Tickets stage.');
-          proposal.tickets = run.draftTickets.map(ticket => ({ ...structuredClone(ticket), done: false }));
+          proposal.tickets = structuredClone(run.draftTickets);
         }
         if (run.stage === 'review') proposal.review = { ...structuredClone(input.artifacts.review), findings: structuredClone(mission.artifacts.review.findings ?? []) };
         if (run.stage === 'review' && !proposal.review.summary.trim()) throw new Error('The stage result is incomplete.');
@@ -562,6 +580,14 @@ export class MissionExecutionService {
     this.dispatchRuns(context.missionId, nextRunIds, agentId);
     if (implementationCompleted) await this.notifyImplementationComplete(this.requireMission(context.missionId));
     return { success: true, status };
+  }
+
+  async reopenStage(agentId: string, stage: MissionStage): Promise<{ success: true; stage: MissionStage }> {
+    const context = this.contextForAgent(agentId);
+    if (!context) throw new Error('Only the Mission lead can reopen a stage.');
+    const mission = this.requireMission(context.missionId);
+    await this.execute({ id: mission.id, revision: mission.revision, action: 'reopen', stage }, agentId);
+    return { success: true, stage };
   }
 
   contextForAgent(agentId: string): MissionToolContext | undefined { return this.agentTools.contextForAgent(agentId); }
@@ -824,7 +850,8 @@ export class MissionExecutionService {
       await this.ports.refreshConversationContext(worker);
       if (!await canLaunch()) return;
     }
-    if (await canLaunch() && run.stage !== 'requirements') await this.ports.continueStage(worker.id, stageKickoffPrompt(mission, run));
+    const returningLead = mission.execution!.runs.some(candidate => candidate.id !== run.id && candidate.workerId === worker.id);
+    if (await canLaunch() && (run.stage !== 'requirements' || returningLead)) await this.ports.continueStage(worker.id, stageKickoffPrompt(mission, run));
   }
 
   private async validateImplementationModel(mission: Mission, selection: ExecutionSelection): Promise<ExecutionSelection> {
@@ -867,8 +894,7 @@ export class MissionExecutionService {
     const candidates = input.ticketIndex === undefined
       ? mission.artifacts.tickets.map((_, index) => index)
       : [input.ticketIndex];
-    const backlogRun = execution.runs.slice().reverse().find(run => run.stage === 'tickets' && run.status === 'accepted');
-    const attempts = backlogRun ? execution.runs.slice(execution.runs.indexOf(backlogRun) + 1) : execution.runs;
+    const attempts = execution.runs;
     const runIds: string[] = [];
     for (const ticketIndex of candidates) {
       const ticket = mission.artifacts.tickets[ticketIndex];
@@ -888,15 +914,26 @@ export class MissionExecutionService {
   private enqueueRun(mission: Mission, input: { memberId?: string; ticketIndex?: number; feedback?: string }): string {
     const execution = mission.execution;
     if (!execution) throw new Error('Configure the Mission team first.');
-    const previousOrchestratorRun = mission.stage === 'tickets' || mission.stage === 'review'
-      ? execution.runs.slice().reverse().find(run => (run.stage === 'requirements' || run.stage === 'tickets') && run.workerId)
-      : undefined;
+    const previousOrchestratorRun = execution.runs.slice().reverse().find(run => (run.stage === 'requirements' || run.stage === 'tickets') && run.workerId);
     const memberId = input.memberId ?? previousOrchestratorRun?.memberId ?? execution.memberIds[0]!;
     const member = this.agent(memberId);
     if (!execution.memberIds.includes(memberId) || !member || member.teamId !== execution.teamId) throw new Error('The selected team member is unavailable.');
     if (input.feedback !== undefined && (typeof input.feedback !== 'string' || input.feedback.length > 20_000)) throw new Error('Invalid revision feedback.');
     const runId = createEntityId('mission-run');
-    execution.runs.push({ id: runId, stage: mission.stage, memberId, ...(previousOrchestratorRun?.workerId ? { workerId: previousOrchestratorRun.workerId } : {}), status: 'preparing', skills: [], feedback: input.feedback?.trim() ?? '', startedAt: new Date().toISOString() });
+    const previousDraft = execution.runs.slice().reverse().find(run => run.stage === 'tickets' && run.draftTickets);
+    const draftTickets = mission.stage === 'tickets'
+      ? structuredClone(previousDraft && previousDraft.status !== 'accepted' ? previousDraft.draftTickets! : mission.artifacts.tickets)
+      : undefined;
+    if (draftTickets) {
+      for (const [index, ticket] of draftTickets.entries()) {
+        ticket.id ??= mission.artifacts.tickets[index]?.id ?? createEntityId('mission-ticket');
+        // Completion is daemon-owned and may have changed since the last Tickets run.
+        const accepted = mission.artifacts.tickets.find(candidate => candidate.id === ticket.id)
+          ?? (!mission.artifacts.tickets[index]?.id ? mission.artifacts.tickets[index] : undefined);
+        if (accepted && (accepted.revision ?? 0) === (ticket.revision ?? 0)) ticket.done = accepted.done;
+      }
+    }
+    execution.runs.push({ id: runId, stage: mission.stage, memberId, ...(draftTickets ? { draftTickets } : {}), ...(previousOrchestratorRun?.workerId ? { workerId: previousOrchestratorRun.workerId } : {}), status: 'preparing', skills: [], feedback: input.feedback?.trim() ?? '', startedAt: new Date().toISOString() });
     return runId;
   }
 
@@ -921,9 +958,10 @@ export class MissionExecutionService {
       memberId,
       // Parallel assignments get their own conversation, including retries. No busy
       // or accepted-but-still-finishing repository worker can be reassigned.
-      ...(!execution.parallelImplementation && repositoryWorker?.workerId ? { workerId: repositoryWorker.workerId } : {}),
+      ...(!execution.parallelImplementation && !(mission.artifacts.tickets[ticketIndex]!.revision ?? 0) && repositoryWorker?.workerId ? { workerId: repositoryWorker.workerId } : {}),
       ticketIndex,
       ticketId: (mission.artifacts.tickets[ticketIndex]!.id ??= createEntityId('mission-ticket')),
+      ...(mission.artifacts.tickets[ticketIndex]!.revision !== undefined ? { ticketRevision: mission.artifacts.tickets[ticketIndex]!.revision } : {}),
       repositoryPath,
       status: 'preparing',
       skills: [],
@@ -994,9 +1032,14 @@ export class MissionExecutionService {
       }
     }
   }
-  private requireNoActiveRun(mission: Mission): void {
+  private requireNoActiveRun(mission: Mission, exemptAgentId?: string): void {
+    if (mission.artifacts.review.findings?.some(finding => finding.remediation.state === 'fixing')
+      || [...this.remediationTurns.values()].some(turn => turn.missionId === mission.id)
+      || mission.execution?.runs.some(run => run.workerId && this.remediationDispatches.has(run.workerId))) {
+      throw new Error('Wait for Review finding remediation to stop before changing stages.');
+    }
     if (pendingMissionRun(mission)) throw new Error('Review or stop the existing run first.');
-    if (mission.execution?.runs.some(run => { const worker = this.agent(run.workerId); return worker && ['working', 'awaitingInput'].includes(worker.status.type); })) throw new Error('A mission worker is still active. Stop it before starting another run.');
+    if (mission.execution?.runs.some(run => { const worker = this.agent(run.workerId); return worker && worker.id !== exemptAgentId && ['working', 'awaitingInput'].includes(worker.status.type); })) throw new Error('A mission worker is still active. Stop it before starting another run.');
   }
   private async change(input: { id: string; revision: number }, mutate: (mission: Mission) => void, allowCompleted = false): Promise<void> {
     await this.ports.missions.change(input.id, mission => {

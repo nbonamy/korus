@@ -5,6 +5,8 @@ export type MissionReviewDebugState = 'identified' | 'remediated';
 
 export type MissionTicket = {
   id?: string;
+  /** Content generation; absent on legacy tickets means zero. */
+  revision?: number;
   title: string;
   body?: string;
   repositoryPath?: string;
@@ -51,6 +53,7 @@ export type MissionRun = {
   workerId?: string;
   ticketIndex?: number;
   ticketId?: string;
+  ticketRevision?: number;
   repositoryPath?: string;
   status: 'preparing' | 'running' | 'awaitingReview' | 'accepted' | 'cancelled' | 'failed';
   // Paths are retained only when reading older saved runs; skills load by name over MCP.
@@ -148,5 +151,5 @@ export type MissionReviewFindingUpdateInput = {
 export type MissionToolContext = { missionId: string; runId: string; stage: MissionStage; assignment?: MissionTicketAssignment };
 export type MissionArtifactWriteInput = { stage: MissionStage; content: string; expectedRevision?: number };
 export type MissionArtifactReadResult = { stage: MissionStage; content: string; revision: number; updatedAt: string };
-export type MissionTicketDraftInput = { ticketId?: string; title: string; body: string; repositoryPath: string; reference?: string; blockedByTicketIds?: string[] };
+export type MissionTicketDraftInput = { expectedRevision?: number; ticketId?: string; title: string; body: string; repositoryPath: string; reference?: string; blockedByTicketIds?: string[] };
 export type MissionTicketDraftResult = { success: true; ticketId: string; index: number; artifactRevision: number };

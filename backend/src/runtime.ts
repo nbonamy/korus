@@ -160,6 +160,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
       contextForAgent: agentId => server.missionContext(agentId),
       submitResult: (agentId, input) => server.submitMissionResult(agentId, input),
       upsertTicket: (agentId, input) => server.upsertMissionTicket(agentId, input),
+      reopenStage: (agentId, stage) => server.reopenMissionStage(agentId, stage),
       setTitle: (agentId, title) => server.setMissionTitle(agentId, title),
       attachRepository: (agentId, repoPath) => server.attachMissionRepository(agentId, repoPath),
       listArtifacts: agentId => server.listMissionArtifacts(agentId),
