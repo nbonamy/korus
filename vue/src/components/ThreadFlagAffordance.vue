@@ -42,18 +42,19 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { ThreadFlagId, ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { IconChecklist } from '@tabler/icons-vue';
-import { CheckIcon, GitBranchIcon, TargetArrowIcon, X } from '../shared/icons/app-icons';
+import { CheckIcon, GitBranchIcon, PlayerPlayIcon, TargetArrowIcon, X } from '../shared/icons/app-icons';
 
 const props = defineProps<{ id: ThreadFlagId; busy?: boolean }>();
 const emit = defineEmits<{ respond: [response: ThreadFlagResponse] }>();
 const { t } = useI18n();
 const isProposal = computed(() => props.id !== 'ready_for_review');
 const proposalChoices = [
+  { action: 'implement', key: 'implement', icon: PlayerPlayIcon },
   { action: 'delegate', key: 'delegate', icon: GitBranchIcon },
   { action: 'create_mission', key: 'createMission', icon: TargetArrowIcon },
 ] as const;
 
-function copyKey(kind: 'prompt' | 'accept' | 'dismiss' | 'delegate' | 'createMission'): string {
+function copyKey(kind: 'prompt' | 'accept' | 'dismiss' | 'implement' | 'delegate' | 'createMission'): string {
   return `chat.threadFlags.${isProposal.value ? 'workProposed' : 'readyForReview'}.${kind}`;
 }
 </script>

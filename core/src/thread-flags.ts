@@ -6,7 +6,7 @@ export type CanonicalThreadFlagId = Exclude<ThreadFlagId, 'delegate_to_worktree'
 /** Durable, predefined thread state authored by an agent and interpreted by App. */
 export type ThreadFlags = Partial<Record<ThreadFlagId, true>>;
 
-export type ProposedWorkAction = 'delegate' | 'create_mission' | 'dismiss';
+export type ProposedWorkAction = 'implement' | 'delegate' | 'create_mission' | 'dismiss';
 export type ThreadFlagResponse =
   | { id: 'work_proposed'; action: ProposedWorkAction }
   | { id: 'delegate_to_worktree'; action: ProposedWorkAction | 'execute' }

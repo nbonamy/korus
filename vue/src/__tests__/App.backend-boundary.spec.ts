@@ -322,7 +322,7 @@ describe('Unified backend → mounted application', () => {
     expect(api.startCodeReview).toHaveBeenCalledExactlyOnceWith(agent.id, { automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false }, scope: { type: 'uncommitted' }, threadMode: 'independent', ...(instructions ? { instructions } : {}), selection: { backend: 'codex', serviceTier: null, model: null, reasoningEffort: null } });
   });
 
-  it.each([['Delegate', 'delegate'], ['Mission', 'create_mission']] as const)('handles %s, retries, discard and review routing through the client seam', async (label, action) => {
+  it.each([['Implement', 'implement'], ['Delegate', 'delegate'], ['Mission', 'create_mission']] as const)('handles %s, retries, discard and review routing through the client seam', async (label, action) => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
     agent.threadFlags = { delegate_to_worktree: true };

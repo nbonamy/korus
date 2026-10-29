@@ -16,7 +16,7 @@ export class AgentThreadFlagService {
       throw new Error('This thread flag is no longer active.');
     }
     const allowedActions = id === 'work_proposed'
-      ? ['delegate', 'create_mission', 'dismiss', ...(response.id === 'delegate_to_worktree' ? ['execute'] : [])]
+      ? ['implement', 'delegate', 'create_mission', 'dismiss', ...(response.id === 'delegate_to_worktree' ? ['execute'] : [])]
       : ['execute', 'dismiss'];
     if (!allowedActions.includes(response.action)) {
       throw new Error('Invalid thread flag action.');
@@ -26,6 +26,9 @@ export class AgentThreadFlagService {
 
     this.inFlight.add(key);
     try {
+      if (id === 'work_proposed' && response.action === 'implement') {
+        await this.options.submit(agent, 'Implement the proposed work in this conversation using the current agent and workspace.');
+      }
       if (id === 'work_proposed' && (response.action === 'delegate' || response.action === 'execute')) {
         await this.options.submit(agent, PROPOSED_WORK_DELEGATION_PROMPT);
       }
