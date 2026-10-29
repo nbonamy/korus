@@ -1,5 +1,5 @@
 import { product } from '@workspace/core/product';
-import { flushPromises, mount } from '@vue/test-utils';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ElPopover } from 'element-plus';
 import { computed, ref } from 'vue';
 import { backendChoicesKey } from '../backend-selection';
@@ -8,6 +8,10 @@ import AgentSidebar from '../AgentSidebar.vue';
 import type { Agent, AgentBackend } from '@workspace/core/contracts';
 
 import { agents } from './agent-sidebar-test-harness';
+
+function tooltipContents(wrapper: VueWrapper): string[] {
+  return wrapper.findAllComponents({ name: 'ElTooltip' }).map(tooltip => String(tooltip.props('content')));
+}
 
 describe('AgentSidebar sessions', () => {
   it('does not stack an extra header background over the sidebar tint', () => {
@@ -435,6 +439,7 @@ describe('AgentSidebar sessions', () => {
     expect(wrapper.findAll('.agent-sidebar__session-glyph')).toHaveLength(1);
     expect(wrapper.get('.agent-sidebar__session-glyph').attributes('aria-label')).toBe('Devbox');
     expect(wrapper.find('.agent-sidebar__session-badge').exists()).toBe(true);
+    expect(tooltipContents(wrapper)).toContain('Devbox');
     await wrapper.get('[aria-label="Create agent from branch, pull request, or issue"]').trigger('click');
     expect(wrapper.emitted('create-agent-from-repository')).toStrictEqual([[{ agentId: 'local', repositoryName: 'id8', repositoryRoot: '~/src/id8', originUrl: origin }]]);
 
@@ -446,6 +451,7 @@ describe('AgentSidebar sessions', () => {
     expect(wrapper.get('.agent-sidebar__session-glyph').attributes('aria-label')).toBe('Devbox is not connected');
     expect(wrapper.find('.agent-sidebar__session-badge').exists()).toBe(false);
     expect(wrapper.find('.agent-sidebar__session-icon--offline').exists()).toBe(true);
+    expect(tooltipContents(wrapper)).toContain('Devbox is not connected');
     await wrapper.get('[aria-label="Create agent from branch, pull request, or issue"]').trigger('click');
     expect(wrapper.emitted('create-agent-from-repository')![1]).toStrictEqual([{ agentId: 'remote', repositoryName: 'id8', repositoryRoot: '/srv/id8', remoteConnectionId: 'devbox', originUrl: origin }]);
   });
@@ -458,6 +464,7 @@ describe('AgentSidebar sessions', () => {
     const wrapper = mount(AgentSidebar, { props: { agents: [remote], activeAgentId: 'remote', teamName: 'Team', remoteConnections: connection('ready') } });
     const host = wrapper.get('.agent-sidebar__host');
     expect(host.attributes('aria-label')).toBe('Devbox');
+    expect(tooltipContents(wrapper)).toContain('Devbox');
     expect(host.classes()).not.toContain('agent-sidebar__host--offline');
 
     await wrapper.setProps({ remoteConnections: connection('error') });
