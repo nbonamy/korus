@@ -12,12 +12,20 @@ import { createClientApiMock } from '../../test/client-api-mock';
 // stale async results and accidental credential display. Provider UI is a boundary fake.
 afterEach(() => { document.body.innerHTML = ''; vi.restoreAllMocks(); });
 
-/** The header exposes active sharing directly; inactive sharing lives in agent actions. */
+/** Active shares have a header button; inactive shares use the agent actions menu. */
 async function openShareDialog(wrapper: { element: Element }) {
-  const item = wrapper.element.querySelector<HTMLElement>('.agent-header__activity button[aria-label="Share"]')
-    ?? Array.from(wrapper.element.querySelectorAll<HTMLElement>('.agent-header__activity [role="menuitem"]')).find(candidate => candidate.textContent?.trim() === 'Share');
-  expect(item).toBeDefined();
-  item!.click();
+  const share = wrapper.element.querySelector<HTMLElement>('.agent-header__activity button[aria-label="Share"]');
+  if (share) {
+    share.click();
+  } else {
+    const more = wrapper.element.querySelector<HTMLElement>('.agent-header__activity button[aria-label="Agent actions"]');
+    expect(more).not.toBeNull();
+    more!.click();
+    await flushPromises();
+    const item = Array.from(wrapper.element.querySelectorAll<HTMLElement>('.agent-header__activity [role="menuitem"]')).find(candidate => candidate.textContent?.trim() === 'Share');
+    expect(item).toBeDefined();
+    item!.click();
+  }
   await flushPromises();
 }
 describe('owner Share workflow', () => {

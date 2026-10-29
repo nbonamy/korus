@@ -1,3 +1,4 @@
+import { RunProfileService } from './run-profile-service';
 import { applyExecutionSelection, defaultExecutionSelection, executionSelectionForAgent, resolveExecutionSelection } from '@workspace/core/execution-selection';
 import type { ExecutionSelection, ExecutionSelectionOverrides } from '@workspace/core/contracts/execution';
 import { executionSelectionSchema, executionSelectionOverridesSchema } from './execution-selection-schema';
@@ -112,6 +113,7 @@ import { VisualizeService, directVisualizationPrompt, generateVisualizationSugge
 import { visualizeDebugScenarios, type VisualizeDebugScenario } from '@workspace/core/visualize';
 
 export type AppBackendServerOptions = {
+  runProfiles?: RunProfileService;
   browserExtensionPackages?: BrowserExtensionPackages;
   requirements?: Requirements;
   usage?:UsageService;
@@ -270,6 +272,7 @@ export class AppBackendServer {
   private readonly inspectPluginStatus: () => Promise<AppPluginStatus>;
   private readonly agentRequests: AgentRequestRegistry;
   private readonly remoteTeams: RemoteTeamService;
+  private readonly runProfiles: RunProfileService;
   private readonly documents: DocumentWorkspaceService;
   private unsubscribeUsage?:()=>void;
   private unsubscribeRequestUsage?: () => void;
@@ -545,6 +548,7 @@ export class AppBackendServer {
       onForwardedEvent: (connectionId, event) => this.forwardRemoteBackendEvent(connectionId, event),
       onProjectedSnapshotChanged: () => { void this.emitProjectedSnapshot(); },
     });
+    this.runProfiles = options.runProfiles ?? new RunProfileService(path.join(backendHomeDir(), "run-profiles.json"), this.agentGitService, (id, folder) => this.snapshot.agents.some(agent => agent.id === id && agent.folder === folder));
     this.documents = options.documents ?? new DocumentWorkspaceService(path.join(backendHomeDir(), "document-workspaces.json"));
     this.clientPreferences = new ClientPreferencesService({
       snapshot: () => this.remoteTeams.clientSnapshot(),
@@ -1440,6 +1444,7 @@ export class AppBackendServer {
       }
       case backendMethods.connectionsDelete: {
         const connectionId = requireConnectionId(message.params);
+        for (const team of this.snapshot.teams.filter(team => team.remoteConnectionId === connectionId)) await this.stopRemoteTeamProfiles(team);
         await this.remoteClients.closeConnection(connectionId);
         this.deleteTeamsForRemoteConnection(connectionId);
         this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.filter((candidate) => candidate.id !== connectionId);
@@ -1783,6 +1788,7 @@ export class AppBackendServer {
                 ...(finishedPullRequest ? [finishedPullRequest] : []),
               );
             }
+            await this.runProfiles.stopAgent(agentId);
             if (existingAgent.backendSession) {
               await this.retireConversation(existingAgent);
               await this.driverRpc?.handle(backendMethods.driverConversationRelease, {
@@ -1826,6 +1832,7 @@ export class AppBackendServer {
             this.codeReviews?.closeForAgentRemoval(existingAgent);
             const agent = closeAgentInSnapshot(this.snapshot, agentId);
             this.agentRequests.clearAgent(agentId);
+            await this.runProfiles.releaseAgent(agentId);
             if (!agent) {
               throw new Error(`Agent not found: ${agentId}`);
             }
@@ -1839,6 +1846,27 @@ export class AppBackendServer {
         const params = requireRecord(message.params);
         const agentId = requireString(params.agentId, 'agentId');
         return this.routeAgentResultRequest(message.id, agentId, message.method, params, agent => saveMarkdownFile(agentFolder(agent), requireString(params.filePath, 'filePath'), requireString(params.content, 'content'), params.overwrite === true, backendHomeDir()));
+      }
+      case backendMethods.agentRunProfilesGet:
+      case backendMethods.agentRunProfileActionsGet:
+      case backendMethods.agentRunProfileSave:
+      case backendMethods.agentRunProfileDelete:
+      case backendMethods.agentRunProfileStart:
+      case backendMethods.agentProfileRunStop:
+      case backendMethods.agentProfileRunsStop: {
+        const params = requireRecord(message.params);
+        const agentId = requireString(params.agentId, 'agentId');
+        return this.routeAgentResultRequest(message.id, agentId, message.method, params, async agent => {
+          const folder = requireAgentFolder(agent);
+          if (message.method === backendMethods.agentRunProfilesGet) return this.runProfiles.get(agentId, folder);
+          if (message.method === backendMethods.agentRunProfileActionsGet) return this.runProfiles.discover(folder, requireString(params.directory, 'directory'));
+          if (message.method === backendMethods.agentRunProfileSave) return this.runProfiles.save(agentId, folder, requireRecord(params.input) as import('@workspace/core/run-profiles').RunProfileInput);
+          if (message.method === backendMethods.agentRunProfileDelete) return this.runProfiles.delete(agentId, folder, requireString(params.profileId, 'profileId'));
+          if (message.method === backendMethods.agentProfileRunStop) return this.runProfiles.stop(agentId, requireString(params.runId, 'runId'));
+          if (message.method === backendMethods.agentProfileRunsStop) return this.runProfiles.stopAgent(agentId);
+          const input = requireRecord(params.input);
+          return this.runProfiles.start(agentId, folder, { profileId: requireString(input.profileId, 'profileId'), command: requireString(input.command, 'command'), cwd: requireString(input.cwd, 'cwd') });
+        });
       }
       case backendMethods.agentFilesList: {
         const agentId = requireAgentId(message.params);
@@ -2703,6 +2731,10 @@ export class AppBackendServer {
             throw new Error(`Team deletion stopped after removing ${deletedMissions} of ${missions.length} Missions. The team remains; retry deletion to finish cleanup. ${reason}`, { cause: error });
           }
         }
+        for (const agentId of pointer ? [] : existingTeam?.agentIds ?? []) {
+          const response = await this.routeAgentResultRequest(message.id, agentId, backendMethods.agentProfileRunsStop, { agentId }, () => this.runProfiles.releaseAgent(agentId));
+          if ('error' in response) return response;
+        }
         const team = closeTeamInSnapshot(this.snapshot, teamId);
         if (!team) {
           return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Team not found: ${teamId}`);
@@ -2715,6 +2747,11 @@ export class AppBackendServer {
         const existingTeam = this.snapshot.teams.find((candidate) => candidate.id === teamId) ?? null;
         if (this.remoteTeams.pointerForTeam(existingTeam)) {
           this.ensureLocalFallbackBeforeRemovingTeam(teamId);
+        }
+        if (existingTeam) await this.stopRemoteTeamProfiles(existingTeam);
+        for (const agentId of this.remoteTeams.pointerForTeam(existingTeam) ? [] : existingTeam?.agentIds ?? []) {
+          const response = await this.routeAgentResultRequest(message.id, agentId, backendMethods.agentProfileRunsStop, { agentId }, () => this.runProfiles.stopAgent(agentId));
+          if ('error' in response) return response;
         }
         const team = closeTeamInSnapshot(this.snapshot, teamId);
         if (!team) {
@@ -3327,6 +3364,17 @@ export class AppBackendServer {
     }
   }
 
+  private async stopRemoteTeamProfiles(team: Team): Promise<void> {
+    const pointer = this.remoteTeams.pointerForTeam(team);
+    if (!pointer) return;
+    // Profile execution hydrates the owner snapshot. Never invent local remote agents.
+    const known = this.remoteTeams.knownSnapshot(pointer.connectionId);
+    const owner = known?.teams.find(candidate => candidate.id === pointer.remoteTeamId);
+    for (const agentId of owner?.agentIds ?? []) {
+      await this.remoteTeams.request(pointer.connectionId, backendMethods.agentProfileRunsStop, { agentId });
+    }
+  }
+
   async close(): Promise<void> {
     this.closing = true;
     this.conversationShares?.close();
@@ -3334,6 +3382,7 @@ export class AppBackendServer {
     this.autoResume.close();
     this.unsubscribeUsage?.();
     this.unsubscribeRequestUsage?.();
+    await this.runProfiles.close();
     await this.options.providerUpdates?.close();
     this.providerConnections?.close();
     this.agentWorkspaces.close();
@@ -3584,6 +3633,8 @@ export class AppBackendServer {
 
   private async persistAndEmitSnapshot(): Promise<AppSnapshot> {
     this.reconcileShares();
+    // Background worktree cleanup can temporarily hide an agent, then restore it on failure.
+    if (this.runProfiles.hasRuns) await this.runProfiles.retainAgents(new Set([...this.snapshot.agents.map(agent => agent.id), ...this.agentClosuresInFlight]));
     await this.saveSnapshot?.(this.snapshot);
     const snapshot = await this.remoteTeams.clientSnapshot();
     this.emitSnapshotUpdated(snapshot);
@@ -3592,6 +3643,7 @@ export class AppBackendServer {
 
   private async persistSnapshotOnly(): Promise<AppSnapshot> {
     this.reconcileShares();
+    if (this.runProfiles.hasRuns) await this.runProfiles.retainAgents(new Set([...this.snapshot.agents.map(agent => agent.id), ...this.agentClosuresInFlight]));
     await this.saveSnapshot?.(this.snapshot);
     return this.snapshot;
   }

@@ -3,6 +3,31 @@ import { surfaceMessages } from './surface-messages';
 
 export const messages = {
   en: {
+    runProfiles: {
+      pinNamed: 'Pin {name}', pinnedHeading: 'Pinned', stopBeforeRemoving: 'Stop this command before removing it.',
+      chooseCommandsMenu: 'Choose commands…', nothingPinnedShort: 'No pinned commands', readyToRun: 'Review the command and working directory, then run when ready.', preview: 'Preview',
+      chooseCommands: 'Choose commands', pinnedCommands: 'Pinned commands',
+      searchCommands: 'Search commands', searchCommandsPlaceholder: 'Search commands…', sourceFiles: 'Source files', allFiles: 'All files',
+      availableCommands: 'Available commands', noMatches: 'No matching commands.', noAvailableCommands: 'No unpinned commands in this file.',
+      removeNamed: 'Remove {name}', nothingPinned: 'Keep your everyday commands here',
+      pinHelp: 'Click a command on the left to pin it here.',
+      customCommand: 'Custom command', done: 'Done',
+
+      configure: 'Configure…', noActions: 'No actions configured', outputNamed: 'Output: {name}', stopNamed: 'Stop: {name}',
+      importActions: 'Import actions…', importHelp: 'Choose actions from package.json, Makefiles, or justfiles. Importing saves profiles without running them.',
+      scan: 'Find commands', scanning: 'Finding actions…', noImports: 'No scripts or targets found in this directory.', importCandidates: 'Actions to import',
+      alreadyImported: 'Already imported', importSelected: 'Import {count} actions',
+      title: 'Run profiles', run: 'Run', loading: 'Loading profiles…', name: 'Name', command: 'Command',
+      credentialsHelp: 'Use credentials configured privately on this host. Keep secret values out of commands.',
+      commandExample: 'npm run dev', directory: 'Working directory', directoryHelp: 'Relative to the selected worktree.',
+      previewUrl: 'Preview URL (optional)', previewExample: 'http://localhost:5173', confirm: 'Run {name} on {host}?',
+      empty: 'Create a profile to reuse a repository command across worktrees.',
+      runNamed: 'Run {name}', editNamed: 'Edit {name}', deleteNamed: 'Delete {name}', previewNamed: 'Preview {name}',
+      previewUnavailable: 'Preview requires a browser on the owning host.', runs: 'Profile runs', exit: 'exit {code}',
+      states: { running: 'running', completed: 'completed', failed: 'failed', stopped: 'stopped' },
+      openOutput: 'Open output', stop: 'Stop', truncated: 'Earlier output was discarded.', output: 'Command output',
+      noOutput: 'No output yet.', save: 'Save profile', runCommand: 'Run command', new: 'New profile', localHost: 'Local host',
+    },
     guest: {
       joinWithInvite: 'Join with invite…', invitation: 'Invitation or share link', shared: 'Shared conversation', propose: 'Propose message', placeholder: 'Propose a message…', send: 'Send', dismiss: 'Dismiss', pending: 'Waiting for owner approval', queued: 'Approved · queued', submitted: 'Sent to agent', dismissed: 'Dismissed', rejected: 'Access ended', unresolved: 'Delivery unresolved · not resent', dispatching: 'Sending…', proposalFailed: 'Could not confirm this proposal. Retry to check its existing delivery.',
 

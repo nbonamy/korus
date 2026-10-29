@@ -73,6 +73,13 @@ export type AppSnapshotGetResult = {
 };
 
 export type AppBackendRequestMap = {
+  [backendMethods.agentRunProfilesGet]: { params: { agentId: string }; result: import('../run-profiles').RunProfileCatalog };
+  [backendMethods.agentRunProfileActionsGet]: { params: { agentId: string; directory: string }; result: import('../run-profiles').RunProfileDiscovery };
+  [backendMethods.agentRunProfileSave]: { params: { agentId: string; input: import('../run-profiles').RunProfileInput }; result: import('../run-profiles').RunProfileCatalog };
+  [backendMethods.agentRunProfileDelete]: { params: { agentId: string; profileId: string }; result: import('../run-profiles').RunProfileCatalog };
+  [backendMethods.agentRunProfileStart]: { params: { agentId: string; input: import('../run-profiles').RunProfileStartInput }; result: import('../run-profiles').ProfileRun };
+  [backendMethods.agentProfileRunStop]: { params: { agentId: string; runId: string }; result: import('../run-profiles').ProfileRun };
+  [backendMethods.agentProfileRunsStop]: { params: { agentId: string }; result: void };
   [backendMethods.guestConversationControl]: { params: { input: import('../guest-navigation').GuestJoinControl }; result: import('../guest-navigation').GuestJoinState };
   [backendMethods.guestConversationImage]: { params: { id: string; path: string }; result: { dataUrl: string } };
   [backendMethods.guestConversationContent]: { params: { id: string; input: import('../contracts/conversation').ConversationContentInput }; result: import('../contracts/conversation').ConversationContentChunk };

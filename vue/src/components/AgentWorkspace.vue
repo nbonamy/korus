@@ -64,7 +64,7 @@
       :image-panels="rightWorkspaceFor(agent.id).imagePanels"
       :diff-panels="rightWorkspaceFor(agent.id).diffPanels"
       :tabs="rightWorkspaceFor(agent.id).tabs"
-      :visible="!emptySplitPane && isRightWorkspaceVisible(agent.id) && !isModalDialogVisible"
+      :visible="!emptySplitPane && isRightWorkspaceVisible(agent.id) && !isModalDialogVisible && !runProfileDialogs.size"
       :browser-id="rightWorkspaceFor(agent.id).browserId"
       :browser-initial-url="rightWorkspaceFor(agent.id).browserInitialUrl"
       :browser-open-request-id="rightWorkspaceFor(agent.id).browserOpenRequestId"
@@ -469,6 +469,8 @@ async function closeWorkspaceTab(agent: Agent, tab: RightWorkspaceTab): Promise<
   props.closeRightWorkspaceTab(agent.id, tab);
 }
 
+const runProfileDialogs = reactive(new Set<string>());
+
 function headerBindingsFor(agentId: string | null, topRight: boolean, topLeft: boolean) {
   const agent = props.snapshot.agents.find(candidate => candidate.id === agentId) ?? null;
   const focused = Boolean(agentId && agentId === props.currentAgent?.id && !props.emptySplitPane);
@@ -503,6 +505,10 @@ function headerBindingsFor(agentId: string | null, topRight: boolean, topLeft: b
     updateStatus: topRight && appHostCapabilities.appUpdates ? props.updateStatus : undefined,
     executionPlanAvailable: focused && Boolean(currentTurnPlan.value),
     executionPlanOpen: focused && executionPlanVisible.value,
+    runHostLabel: props.snapshot.remoteConnections.connections.find(connection => connection.id === props.snapshot.teams.find(team => team.id === agent?.teamId)?.remoteConnectionId)?.name ?? translate('runProfiles.localHost'),
+    runPreviewAvailable: Boolean(agent && isLocalAgent(agent) && appHostCapabilities.embeddedBrowser),
+    onRunProfilesVisible: (visible: boolean) => { if (agentId) { if (visible) runProfileDialogs.add(agentId); else runProfileDialogs.delete(agentId); } },
+    onRunPreview: (url: string) => agentId && openRequestedBrowser(agentId, { type: 'open-browser', url }),
     shareAvailable: Boolean(agent && supportsConversationSharing(agent) && isLocalAgent(agent)),
     shareStatusOnMount: props.splitHeaders,
     onShare: () => agentId && emit('share-agent', agentId),
