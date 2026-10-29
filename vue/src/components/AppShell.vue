@@ -590,7 +590,7 @@
     />
     <AgentQuickOpen
       v-if="agentQuickOpenVisible"
-      :agents="snapshot.agents"
+      :agents="snapshot.agents.filter(agent => !missionOwnedAgentIds.has(agent.id))"
       :repository-icons="snapshot.general.repositoryIcons"
       :teams="snapshot.teams"
       :unread-agent-ids="unreadAgentIds ?? []"

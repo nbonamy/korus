@@ -10,6 +10,7 @@ import type {
 import { nextTick, reactive } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
+import { createMission } from '@workspace/core/missions';
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import type { AppCommand, AppApi, Team } from '@workspace/core/contracts';
 import { useConfetti } from '../../shared/confetti/use-confetti';
@@ -606,6 +607,28 @@ describe('AppShell dialogs and commands', () => {
     expect(wrapper.emitted('select-team')).toStrictEqual([['team-skwad']]);
     expect(wrapper.emitted('select-agent')).toStrictEqual([['agent-other']]);
     expect(wrapper.findComponent({ name: 'AgentQuickOpen' }).exists()).toBe(false);
+  });
+
+  it('excludes Mission agents from Command-K while keeping ordinary conversations searchable', async () => {
+    const snapshot = createInitialSnapshot();
+    const regular = snapshot.agents[0]!;
+    const lead = { ...regular, id: 'mission-lead', name: 'Mission lead' };
+    const worker = { ...regular, id: 'mission-worker', name: 'Mission worker' };
+    snapshot.agents.push(lead, worker);
+    snapshot.teams[0]!.agentIds.push(lead.id, worker.id);
+    const mission = createMission(snapshot, { outcome: 'Deliver', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: regular.id });
+    mission.stageAgentIds.requirements = lead.id;
+    mission.execution!.runs.push({ id: 'run', stage: 'implementation', memberId: regular.id, workerId: worker.id, status: 'running', skills: [], feedback: '', startedAt: '' });
+    const wrapper = mountShell({ snapshot });
+    try {
+      await wrapper.get('[aria-label="Cockpit"]').trigger('click');
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, cancelable: true }));
+      await nextTick();
+      const palette = wrapper.getComponent({ name: 'AgentQuickOpen' });
+      expect(palette.text()).toContain(regular.name);
+      await palette.get('input').setValue('Mission');
+      expect(palette.findAll('.quick-open-dialog__item')).toHaveLength(0);
+    } finally { wrapper.unmount(); }
   });
 
   it('toggles spoken acknowledgment mute with Shift-Command-M', async () => {
