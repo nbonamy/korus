@@ -421,7 +421,7 @@ describe('AgentSidebar sessions', () => {
     });
   });
 
-  it('marks every remote row next to the engine icon and carries the host on section actions', async () => {
+  it('badges every remote row with its host and carries the host on section actions', async () => {
     const git = agents[0]!;
     if (git.workspace?.kind !== 'git') throw new Error('Expected Git fixture');
     const origin = 'git@github.com:org/id8.git';
@@ -432,14 +432,20 @@ describe('AgentSidebar sessions', () => {
       props: { agents: [local, remote], activeAgentId: 'local', teamName: 'Team', remoteConnections },
       global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
     });
-    expect(wrapper.findAll('.agent-sidebar__remote-marker')).toHaveLength(1);
-    expect(wrapper.get('.agent-sidebar__remote-marker').attributes('aria-label')).toBe('Devbox');
+    expect(wrapper.findAll('.agent-sidebar__session-glyph')).toHaveLength(1);
+    expect(wrapper.get('.agent-sidebar__session-glyph').attributes('aria-label')).toBe('Devbox');
+    expect(wrapper.find('.agent-sidebar__session-badge').exists()).toBe(true);
     await wrapper.get('[aria-label="Create agent from branch, pull request, or issue"]').trigger('click');
     expect(wrapper.emitted('create-agent-from-repository')).toStrictEqual([[{ agentId: 'local', repositoryName: 'id8', repositoryRoot: '~/src/id8', originUrl: origin }]]);
 
     await wrapper.setProps({ agents: [remote] });
-    expect(wrapper.findAll('.agent-sidebar__remote-marker')).toHaveLength(1);
+    expect(wrapper.findAll('.agent-sidebar__session-glyph')).toHaveLength(1);
     expect(wrapper.findAll('.agent-sidebar__engine')).toHaveLength(1);
+
+    await wrapper.setProps({ remoteConnections: [{ ...remoteConnections[0]!, status: 'error' as const }] });
+    expect(wrapper.get('.agent-sidebar__session-glyph').attributes('aria-label')).toBe('Devbox is not connected');
+    expect(wrapper.find('.agent-sidebar__session-badge').exists()).toBe(false);
+    expect(wrapper.find('.agent-sidebar__session-icon--offline').exists()).toBe(true);
     await wrapper.get('[aria-label="Create agent from branch, pull request, or issue"]').trigger('click');
     expect(wrapper.emitted('create-agent-from-repository')![1]).toStrictEqual([{ agentId: 'remote', repositoryName: 'id8', repositoryRoot: '/srv/id8', remoteConnectionId: 'devbox', originUrl: origin }]);
   });

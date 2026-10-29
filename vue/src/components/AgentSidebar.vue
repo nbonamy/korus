@@ -263,7 +263,7 @@
               :is="group.activity ? ActivityAgentRow : RepositoryAgentRow"
               v-bind="{ ...clientAgentOrderUpdate.dragItemAttributes(session.agentId), ...(group.activity
                 ? { session, context: activityContext.get(session.agentId), repository: activityRepository.has(session.agentId), repositoryIcon: activityRepository.get(session.agentId), quickChat: agentsById.get(session.agentId)?.sessionKind === 'quickChat', cleanup: isPullRequestFinished(session) && !showQuickSwitchShortcut(session, group.activity), shortcutVisible: showQuickSwitchShortcut(session, group.activity), unreadLabel: t('sidebar.unread'), ...activityIndicator(session, group.activity) }
-                : { session, groupKind: group.kind }) }"
+                : { session, groupKind: group.kind, host: rowHost(session) }) }"
               v-show="!isWorkspaceCollapsed(group)"
               class="agent-sidebar__agent"
               :class="[
@@ -283,29 +283,8 @@
               @drop="clientAgentOrderUpdate.onDrop(session.agentId, $event)"
               @dragend="clientAgentOrderUpdate.onDragEnd"
             >
-              <span v-if="session.remoteConnectionId" class="agent-sidebar__badges">
-                <el-tooltip :content="remoteHostLabel(session.remoteConnectionId)" placement="top" :show-after="300">
-                  <span
-                    class="agent-sidebar__remote-marker"
-                    :class="{ 'agent-sidebar__host--offline': !remoteReady(session.remoteConnectionId) }"
-                    role="img"
-                    :aria-label="remoteHostLabel(session.remoteConnectionId)"
-                  >
-                    <NetworkIcon aria-hidden="true" />
-                  </span>
-                </el-tooltip>
-                <span
-                  v-if="showEngine(session, group.activity)"
-                  class="agent-sidebar__engine"
-                  role="img"
-                  :aria-label="backendDisplayName(agentsById.get(session.agentId)!.backend)"
-                  :title="backendDisplayName(agentsById.get(session.agentId)!.backend)"
-                >
-                  <BackendIcon :backend="agentsById.get(session.agentId)!.backend" monochrome />
-                </span>
-              </span>
               <span
-                v-else-if="showEngine(session, group.activity)"
+                v-if="showEngine(session, group.activity)"
                 class="agent-sidebar__engine"
                 role="img"
                 :aria-label="backendDisplayName(agentsById.get(session.agentId)!.backend)"
@@ -835,6 +814,11 @@ function remoteHostName(connectionId: string | undefined): string {
 function showEngine(session: WorkspaceSidebarSession, activity: SidebarActivity | undefined): boolean {
   return !session.shared && backendChoices.value.length > 1 && agentsById.value.has(session.agentId)
     && !(activity && showQuickSwitchShortcut(session, activity));
+}
+
+function rowHost(session: WorkspaceSidebarSession): { label: string; offline: boolean } | undefined {
+  const id = session.remoteConnectionId;
+  return id ? { label: remoteHostLabel(id), offline: !remoteReady(id) } : undefined;
 }
 
 function remoteReady(connectionId: string | undefined): boolean {
@@ -1692,14 +1676,6 @@ function onResizePointerEnd(event: PointerEvent): void {
   margin-right: calc(var(--agent-sidebar-status-column-width) + var(--space-4));
 }
 
-.agent-sidebar__badges {
-  grid-column: 3;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--agent-sidebar-workspace-column-gap);
-}
-
 .agent-sidebar__engine {
   grid-column: 3;
   display: none;
@@ -1709,12 +1685,6 @@ function onResizePointerEnd(event: PointerEvent): void {
 
 .agent-sidebar__agent-row:hover .agent-sidebar__engine {
   display: grid;
-}
-
-.agent-sidebar__remote-marker {
-  display: grid;
-  place-items: center;
-  color: var(--color-text-muted);
 }
 
 .agent-sidebar__host {
@@ -1732,19 +1702,6 @@ function onResizePointerEnd(event: PointerEvent): void {
 
 .agent-sidebar__host--offline {
   color: var(--color-error);
-}
-
-.agent-sidebar__remote-marker svg {
-  width: 18px;
-  height: 18px;
-}
-
-.agent-sidebar__agent:has(.agent-sidebar__remote-marker) {
-  --agent-sidebar-engine-track: 18px;
-}
-
-.agent-sidebar__agent-row:hover .agent-sidebar__agent:has(.agent-sidebar__remote-marker):has(.agent-sidebar__engine) {
-  --agent-sidebar-engine-track: 40px;
 }
 
 .agent-sidebar__status[data-status="working"],

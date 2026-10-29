@@ -24,6 +24,28 @@
   color: var(--color-text-muted);
 }
 
+.agent-sidebar__session-glyph {
+  position: relative;
+  display: grid;
+  justify-self: center;
+}
+
+.agent-sidebar__session-badge {
+  position: absolute;
+  right: -5px;
+  bottom: -4px;
+  width: 11px;
+  height: 11px;
+  padding: 1px;
+  border-radius: var(--radius-full);
+  color: var(--color-text);
+  background: var(--color-surface-base);
+}
+
+.agent-sidebar__agent[data-session-kind] .agent-sidebar__session-icon--offline {
+  color: var(--color-error);
+}
+
 .agent-sidebar__meta {
   grid-column: 2;
   min-width: 0;
