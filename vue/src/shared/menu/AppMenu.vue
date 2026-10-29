@@ -124,6 +124,10 @@
             <span class="app-menu__label">{{ item.label }}</span>
           </span>
         </button>
+        <span
+          class="app-menu__row-divider"
+          aria-hidden="true"
+        />
         <button
           class="app-menu__secondary"
           type="button"
@@ -302,6 +306,14 @@ function showsCheck(item: Exclude<AppMenuItem, { type: 'separator' | 'submenu' }
 .app-menu__row .app-menu__item {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+.app-menu__row-divider {
+  flex: 0 0 auto;
+  align-self: stretch;
+  width: 1px;
+  margin-block: var(--space-2);
+  background: var(--color-border);
 }
 
 .app-menu__secondary {
