@@ -3116,15 +3116,14 @@ async function updatePlanReview(agentId: string, response: import('@workspace/co
 
 const threadFlagBusy = ref(false);
 async function respondToThreadFlag(response: ThreadFlagResponse): Promise<void> {
-  if (response.id === 'delegate_to_worktree' && response.action === 'execute' && currentAgent.value) {
-    return runConversationMenuCommand(currentAgent.value.id, 'delegate');
-  }
   if (!props.respondToThreadFlagAction || threadFlagBusy.value) return;
   threadFlagBusy.value = true;
   try {
-    await props.respondToThreadFlagAction(response);
+    const agentId = currentAgent.value?.id;
+    if (agentId && props.agentConversationActions) await props.agentConversationActions.threadFlag(agentId, response);
+    else await props.respondToThreadFlagAction(response);
     if (response.id === 'ready_for_review' && response.action === 'execute') {
-      openRightWorkspaceTab('codeReview');
+      openRightWorkspaceTab('codeReview', agentId);
     }
   } catch (error) {
     ElMessage.error(localizedErrorMessage(error, t));

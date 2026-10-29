@@ -5,13 +5,73 @@ import type { AgentBackendDriver } from '@workspace/core/backend-driver';
 import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { AppBackendServer } from '../server';
 import { BackendDriverRpc } from '../driver-rpc';
-import { WORKTREE_DELEGATION_PROMPT } from '../agents/worktree-delegation';
+import { MISSION_COMMAND_PROMPT } from '../agents/mission-command';
+import { PROPOSED_WORK_DELEGATION_PROMPT, WORKTREE_DELEGATION_PROMPT } from '../agents/worktree-delegation';
 import {
   createTestSnapshot,
   flushMicrotasks,
 } from './server-test-fixtures';
 
 describe('AppBackendServer', () => {
+
+  it.each([
+    { action: 'delegate', prompt: PROPOSED_WORK_DELEGATION_PROMPT },
+    { action: 'create_mission', prompt: MISSION_COMMAND_PROMPT },
+  ] as const)('routes proposal $action to its source and persists only after provider acceptance', async ({ action, prompt }) => {
+    const snapshot = createTestSnapshot();
+    const source = {
+      id: 'proposal-source', teamId: snapshot.teams[0]!.id, name: 'Source', folder: '/workspace/source', backend: 'codex' as const,
+      backendSession: { kind: 'codex' as const, threadId: 'source-thread' }, status: { type: 'idle' as const },
+      threadFlags: { work_proposed: true as const, delegate_to_worktree: true as const, ready_for_review: true as const },
+      createdAt: '2026-06-13T00:00:00.000Z', updatedAt: '2026-06-13T00:00:00.000Z',
+    };
+    const other = { ...source, id: 'other-agent', threadFlags: { work_proposed: true as const } };
+    snapshot.agents = [other, source];
+    snapshot.teams[0]!.agentIds = [other.id, source.id];
+    snapshot.activeAgentId = other.id;
+    let rejectPrompt!: (error: Error) => void;
+    let acceptPrompt!: (result: { backendSession: { kind: 'codex'; threadId: string }; turnId: string }) => void;
+    const sendPrompt = vi.fn()
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectPrompt = reject; }))
+      .mockImplementationOnce(() => new Promise(resolve => { acceptPrompt = resolve; }));
+    const driver: AgentBackendDriver = {
+      backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
+      getCapabilities: () => codexBackendCapabilities, sendPrompt,
+      interrupt: async () => ({ backendSession: { kind: 'codex', threadId: 'source-thread' } }),
+      respondToAgentRequest: async () => undefined, onEvent: () => () => undefined, close: async () => undefined,
+    };
+    const persisted: AppSnapshot[] = [];
+    const server = new AppBackendServer({
+      version: 'test-version', snapshot, driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
+      saveSnapshot: async value => { persisted.push(structuredClone(value)); },
+    });
+    const respond = (id = 'work_proposed', choice: string = action) => server.handleMessage({
+      jsonrpc: '2.0', id: 'respond', method: 'agent/threadFlag/respond',
+      params: { agentId: source.id, response: { id, action: choice } },
+    });
+    try {
+      const failed = respond();
+      await flushMicrotasks();
+      expect(source.threadFlags.work_proposed).toBe(true);
+      expect(sendPrompt).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: source.id }), prompt, undefined);
+      await expect(respond('delegate_to_worktree', 'dismiss')).rejects.toThrow('already being handled');
+      const rejection = expect(failed).rejects.toThrow('provider unavailable');
+      rejectPrompt(new Error('provider unavailable'));
+      await rejection;
+      expect(source.threadFlags.work_proposed).toBe(true);
+      const retry = respond();
+      await flushMicrotasks();
+      expect(sendPrompt).toHaveBeenCalledTimes(2);
+      expect(source.threadFlags.work_proposed).toBe(true);
+      acceptPrompt({ backendSession: { kind: 'codex', threadId: 'source-thread' }, turnId: 'accepted' });
+      expect(await retry).toMatchObject({ result: { agents: [
+        { id: other.id, threadFlags: { work_proposed: true } },
+        { id: source.id, threadFlags: { ready_for_review: true } },
+      ] } });
+      expect(persisted.at(-1)!.agents.find(agent => agent.id === source.id)!.threadFlags).toStrictEqual({ ready_for_review: true });
+      await expect(respond()).rejects.toThrow('no longer active');
+    } finally { await server.close(); }
+  });
 
   it.each([true, false])('clears prompt hints when admitting a user prompt (review readiness: %s) and assigns the conversation title', async (reviewReady) => {
     vi.useFakeTimers();
