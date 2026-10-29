@@ -1,17 +1,19 @@
 <template>
   <div class="visualize-editor" :class="{ 'visualize-editor--annotating': annotating }">
-    <div class="visualize-editor__compact-zoom">
-      <button type="button" class="visualize-editor__zoom-action" :disabled="zoomPercent <= 10" :aria-label="translate('visualize.zoomOut')" :title="translate('visualize.zoomOut')" @click="changeZoom(-0.1)">
-        <MinusIcon :stroke-width="1" aria-hidden="true" />
-      </button>
-      <span class="visualize-editor__zoom-level" aria-live="polite">{{ zoomPercent }}%</span>
-      <button type="button" class="visualize-editor__zoom-action" :disabled="zoomPercent >= 3000" :aria-label="translate('visualize.zoomIn')" :title="translate('visualize.zoomIn')" @click="changeZoom(0.1)">
-        <PlusIcon :stroke-width="1" aria-hidden="true" />
+    <div class="visualize-editor__navigation">
+      <div class="visualize-editor__compact-zoom">
+        <button type="button" class="visualize-editor__zoom-action" :disabled="zoomPercent <= 10" :aria-label="translate('visualize.zoomOut')" :title="translate('visualize.zoomOut')" @click="changeZoom(-0.1)">
+          <MinusIcon :stroke-width="1" aria-hidden="true" />
+        </button>
+        <span class="visualize-editor__zoom-level" aria-live="polite">{{ zoomPercent }}%</span>
+        <button type="button" class="visualize-editor__zoom-action" :disabled="zoomPercent >= 3000" :aria-label="translate('visualize.zoomIn')" :title="translate('visualize.zoomIn')" @click="changeZoom(0.1)">
+          <PlusIcon :stroke-width="1" aria-hidden="true" />
+        </button>
+      </div>
+      <button type="button" class="app-button app-button--tertiary visualize-editor__action visualize-editor__fit" :disabled="!ready" :aria-label="translate('visualize.fitCanvas')" :title="translate('visualize.fitCanvas')" @click="editor?.fit()">
+        <ArrowsMinimizeIcon :stroke-width="1" aria-hidden="true" />
       </button>
     </div>
-    <button type="button" class="app-button app-button--tertiary visualize-editor__action visualize-editor__fit" :disabled="!ready" :aria-label="translate('visualize.fitCanvas')" :title="translate('visualize.fitCanvas')" @click="editor?.fit()">
-      <ArrowsMinimizeIcon :stroke-width="1" aria-hidden="true" />
-    </button>
     <div class="visualize-editor__toolbar">
       <button type="button" class="app-button app-button--tertiary visualize-editor__action" :disabled="!ready" :aria-pressed="annotating" :aria-label="translate(annotating ? 'visualize.stopAnnotating' : 'visualize.annotateCanvas')" :title="translate(annotating ? 'visualize.stopAnnotating' : 'visualize.annotateCanvas')" @click="toggleAnnotation">
         <X v-if="annotating" :stroke-width="1" aria-hidden="true" />
@@ -287,8 +289,6 @@ onBeforeUnmount(() => {
 </script>
 <style scoped>
 .visualize-editor {
-  --visualize-fit-left: 148px;
-
   position: relative;
   display: flex;
   flex-direction: column;
@@ -296,11 +296,16 @@ onBeforeUnmount(() => {
   min-height: 0;
   overflow: hidden;
 }
-.visualize-editor__compact-zoom {
+.visualize-editor__navigation {
   position: absolute;
   left: 16px;
   bottom: 16px;
   z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.visualize-editor__compact-zoom {
   display: flex;
   height: var(--visualize-control-size, 36px);
   align-items: center;
@@ -355,10 +360,6 @@ onBeforeUnmount(() => {
   font-size: var(--font-size-12);
 }
 .visualize-editor__fit {
-  position: absolute;
-  left: var(--visualize-fit-left, 132px);
-  bottom: 16px;
-  z-index: 3;
   border: 0;
   border-radius: var(--visualize-control-radius, var(--radius-md));
   background: var(--visualize-control-background, var(--color-surface-low));
@@ -414,7 +415,8 @@ onBeforeUnmount(() => {
 .visualize-editor__host :deep(.sidebar-trigger__label-element:has(.default-sidebar-trigger)) {
   display: none;
 }
-.visualize-editor__host :deep(.App-bottom-bar) {
+.visualize-editor .visualize-editor__host :deep(.layer-ui__wrapper__footer),
+.visualize-editor .visualize-editor__host :deep(.App-bottom-bar) {
   display: none;
 }
 .visualize-editor__status {
