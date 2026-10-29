@@ -369,7 +369,7 @@
           <SplitLayoutControl :model-value="split.layout.value" @update:model-value="split.setLayout" />
         </template>
         <template v-if="activeSurface === 'mission' && selectedMission" #conversation>
-          <MissionWorkspace :conversation-only="rightWorkspaceVisible" :workspace-toggle-available="Boolean(currentAgent && !currentAgent.sharedConversation)" :key="selectedMission.id" :agents="snapshot.agents" :unread-agent-ids="unreadAgentIds" :sidebar-collapsed="agentSidebarCollapsed || compactViewport" @expand-sidebar="expandSidebar" @toggle-workspace="toggleRightWorkspace" :mission="selectedMission" :implementation-start-progress="missionImplementationStartProgress" :read-mission-artifact="readMissionArtifact" :execute-mission="executeMission" :send-mission-prompt="forwardPrompt" :open-in-available="missionOpenInAvailable" :open-in-applications="openInApplications" @chat-about-review-finding="prepareMissionReviewDiscussion" @open-conversation="emit('select-agent', $event)" @open-worktree="openMissionWorktree">
+          <MissionWorkspace v-model:viewed-stage="missionViewedStage" :conversation-only="rightWorkspaceVisible" :workspace-toggle-available="Boolean(currentAgent && !currentAgent.sharedConversation)" :key="selectedMission.id" :agents="snapshot.agents" :unread-agent-ids="unreadAgentIds" :sidebar-collapsed="agentSidebarCollapsed || compactViewport" @expand-sidebar="expandSidebar" @toggle-workspace="toggleRightWorkspace" :mission="selectedMission" :implementation-start-progress="missionImplementationStartProgress" :read-mission-artifact="readMissionArtifact" :execute-mission="executeMission" :send-mission-prompt="forwardPrompt" :open-in-available="missionOpenInAvailable" :open-in-applications="openInApplications" @chat-about-review-finding="prepareMissionReviewDiscussion" @open-conversation="emit('select-agent', $event)" @open-worktree="openMissionWorktree">
             <template #code-review="{ agentId, reviewSummary, chatAboutFinding }">
               <MissionCodeReview v-if="snapshot.agents.find(agent => agent.id === agentId) && props.getAgentGitDiff" :agent="snapshot.agents.find(agent => agent.id === agentId)!" :agents="snapshot.agents" :git-statuses="snapshot.agentGitStatuses" :get-diff="props.getAgentGitDiff" :mission="selectedMission" :review-summary="reviewSummary" :execute-mission="executeMission" :open-in-available="missionOpenInAvailable" :open-in-applications="openInApplications" @chat-about-finding="chatAboutFinding" @open-worktree="openMissionWorktree" />
             </template>
@@ -699,7 +699,7 @@ import type { DeleteRepositoryInput } from '@workspace/core/contracts/workspace'
 import type { MissionWorkspaceOpenRequest } from './MissionWorkspaceOpenIn.vue';
 import ConversationPane from './ConversationPane.vue';
 import AppMenu from '../shared/menu/AppMenu.vue';
-import type { Mission, CreateMissionInput, DeleteMissionInput } from '@workspace/core/missions';
+import type { Mission, MissionStage, CreateMissionInput, DeleteMissionInput } from '@workspace/core/missions';
 import { missionCreatedWorkspaces, type MissionImplementationStartProgress } from '@workspace/core/mission-execution';
 import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
 import SettingsView from './SettingsView.vue';
@@ -1160,6 +1160,8 @@ function rememberMissionId(id: string | null): void {
 }
 let pendingMissionRestoreId = rememberedMissionId();
 const activeSurface = ref<AppSurface>('agent');
+const settingsReturnMissionId = ref<string | null>(null);
+const missionViewedStage = ref<MissionStage>();
 const missionCreationError = ref('');
 const missionCreationPending = ref(false);
 const missionDeleteTargetId = ref<string | null>(null);
@@ -1167,6 +1169,9 @@ const missionDeletePending = ref(false);
 const missionDeleteError = ref('');
 const selectedMissionId = ref<string | null>(null);
 const selectedMission = computed(() => props.snapshot.missions?.find(m => m.id === selectedMissionId.value) ?? null);
+watch(() => selectedMission.value?.stage, (stage, previousStage) => {
+  if (stage && previousStage && stage !== previousStage) missionViewedStage.value = stage;
+});
 const missionIssuePickerVisible = ref(false);
 const missionIssueLoading = ref(false);
 const missionIssueError = ref<string | null>(null);
@@ -1251,6 +1256,7 @@ function openMissionWorktree(request: MissionWorkspaceOpenRequest): void {
 }
 const missionDeleteTarget = computed(() => props.snapshot.missions?.find(m => m.id === missionDeleteTargetId.value) ?? null);
 function selectMissionSurface(id: string): void {
+  if (selectedMissionId.value !== id) missionViewedStage.value = undefined;
   selectedMissionId.value = id;
   activeSurface.value = 'mission';
 }
@@ -2997,6 +3003,9 @@ function openAutomations(): void {
 }
 
 function openSettings(tab?: SettingsTab): void {
+  if (activeSurface.value !== 'settings') {
+    settingsReturnMissionId.value = activeSurface.value === 'mission' ? selectedMissionId.value : null;
+  }
   if (tab) settingsActiveTab.value = tab;
   activeSurface.value = 'settings';
 }
@@ -3053,7 +3062,12 @@ async function resumeAgentConversation(agentId: string, target: ConversationResu
 }
 
 function selectTeamFromRail(teamId: string): void {
-  activeSurface.value = 'agent';
+  if (activeSurface.value === 'settings' && settingsReturnMissionId.value === selectedMission.value?.id
+    && selectedMission.value.teamId === teamId) {
+    selectMissionSurface(selectedMission.value.id);
+  } else {
+    activeSurface.value = 'agent';
+  }
   emit('select-team', teamId);
 }
 
