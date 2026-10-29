@@ -256,6 +256,7 @@ describe('AppBackendServer', () => {
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
+    snapshot.clientPreferences = { desktop: { agentOrderByTeam: { 'team-test': ['agent-dina', 'agent-jesse'] } } };
     const forkConversation = vi.fn().mockResolvedValue({
       backendSession: { kind: 'codex', threadId: 'thread-forked' },
       activeTurnId: 'turn-forked',
@@ -303,6 +304,7 @@ describe('AppBackendServer', () => {
     });
 
     const forkedAgentId = snapshot.agents[1]?.id;
+    expect(snapshot.clientPreferences.desktop?.agentOrderByTeam?.['team-test']).toStrictEqual(['agent-dina', forkedAgentId, 'agent-jesse']);
     expect(forkConversation).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'agent-dina' }),
       expect.objectContaining({ name: 'Dina (fork)' }),

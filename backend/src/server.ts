@@ -1087,9 +1087,11 @@ export class AppBackendServer {
             { agentId: created.id, application: source.openInApplication });
         }
         const shouldSelect = !isRecord(params?.options) || params.options.select !== false;
-        if (created && shouldSelect) return { ...response, result: commandResult(await preferences.update(clientId,
+        const afterAgentId = (message.method === backendMethods.agentDuplicate || message.method === backendMethods.agentFork)
+          && typeof params?.agentId === 'string' ? params.agentId : undefined;
+        if (created && (shouldSelect || afterAgentId)) return { ...response, result: commandResult(await preferences.update(clientId,
           createsAgent ? backendMethods.clientNavigationSelectAgent : backendMethods.clientNavigationSelectTeam,
-          createsAgent ? { agentId: created.id } : { teamId: created.id })) };
+          createsAgent ? { agentId: created.id } : { teamId: created.id }, { afterAgentId, select: shouldSelect })) };
       }
       if (isAppSnapshot(response.result) && reviewTargetAgentId && response.result.agents.some((agent) => agent.id === reviewTargetAgentId)) {
         return { ...response, result: await preferences.update(clientId, backendMethods.clientNavigationSelectAgent, { agentId: reviewTargetAgentId }) };

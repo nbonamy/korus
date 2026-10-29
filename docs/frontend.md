@@ -140,6 +140,8 @@ runs independently of loaded tree nodes, so an unopened directory remains search
 - Team-rail dot: red for unread, orange for working, unread wins, never on the
   selected team. Agent activity is stored apart from metadata so startup hydration
   does not make idle agents look active.
+- Duplicate and fork creation insert the new agent immediately after its source
+  in the creating client's saved order. Background copies keep the current selection.
 - Mission navigation reuses the workspace group, session row and status-dot
   primitives of Quick Chats. Mission surfaces show artifacts for review with comments
   flowing through the conversation; they have no setup or artifact-editing forms.
