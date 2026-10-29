@@ -1,7 +1,7 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import App from '../App.vue';
-import { createInitialSnapshot } from '@workspace/core/snapshot';
+import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
 import { installBackendFixture } from '../test/backend-fixture';
 import { codexConversationSnapshot } from '../test/codex-conversation-fixtures';
 import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
@@ -18,6 +18,172 @@ function planAction(wrapper: VueWrapper, label: 'Approve' | 'Cancel') {
 }
 
 describe('Unified backend → mounted application', () => {
+  it.each(['', '/code'])('creates a new team project after saving its source folder (configured: %s)', async sourceFolder => {
+    const snapshot = createEmptySnapshot();
+    snapshot.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
+    snapshot.general.claudeCodeEnabled = true;
+    snapshot.sourceFolder = { path: sourceFolder, initialized: true, recentRepoNames: [] };
+    const { api } = installBackendFixture(snapshot);
+    api.chooseSourceFolder.mockResolvedValue('/code');
+    let finishSaving!: () => void;
+    api.updateSettings.mockImplementation(() => new Promise(resolve => {
+      finishSaving = () => {
+        snapshot.sourceFolder.path = '/code';
+        resolve(structuredClone(snapshot));
+      };
+    }));
+    api.createProject.mockImplementation(async () => {
+      if (!snapshot.sourceFolder.path) throw new Error('Choose a source folder before creating a project.');
+      return structuredClone(snapshot);
+    });
+    const wrapper = mount(App);
+    try {
+      await flushPromises();
+      const teamId = snapshot.activeTeamId;
+      await wrapper.get('.agent-empty-state').findAll('[role="menuitem"]').find(item => item.text() === 'New project…')!.trigger('click');
+      await flushPromises();
+      const dialog = wrapper.getComponent({ name: 'NewProjectDialog' });
+      await dialog.get('#new-project-name').setValue('korus');
+      await dialog.get('.app-button--primary').trigger('click');
+      await flushPromises();
+      if (!sourceFolder) {
+        expect(api.chooseSourceFolder).toHaveBeenCalledOnce();
+        expect(api.updateSettings).toHaveBeenCalledExactlyOnceWith({ sourceFolder: { path: '/code' } });
+        expect(api.createProject).not.toHaveBeenCalled();
+        expect(dialog.get('.app-button--primary').attributes('disabled')).toBeDefined();
+        finishSaving();
+        await flushPromises();
+      } else {
+        expect(api.chooseSourceFolder).not.toHaveBeenCalled();
+        expect(api.updateSettings).not.toHaveBeenCalled();
+      }
+      expect(api.createProject).toHaveBeenCalledExactlyOnceWith({ name: 'korus', teamId, selection: { backend: 'claude' } });
+      expect(dialog.props('visible')).toBe(false);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it('preserves a new project draft when source-folder selection is canceled or saving fails, then allows retry', async () => {
+    const snapshot = createEmptySnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const { api } = installBackendFixture(snapshot);
+    api.chooseSourceFolder.mockResolvedValueOnce(null).mockResolvedValue('/code');
+    api.updateSettings.mockRejectedValueOnce(new Error('Cannot save settings')).mockImplementation(async () => {
+      snapshot.sourceFolder = { path: '/code', initialized: true, recentRepoNames: [] };
+      return structuredClone(snapshot);
+    });
+    api.createProject.mockResolvedValue(snapshot);
+    const wrapper = mount(App);
+    try {
+      await flushPromises();
+      await wrapper.get('.agent-empty-state').findAll('[role="menuitem"]').find(item => item.text() === 'New project…')!.trigger('click');
+      await flushPromises();
+      const dialog = wrapper.getComponent({ name: 'NewProjectDialog' });
+      await dialog.get('#new-project-name').setValue('korus');
+      await dialog.get('.app-button--primary').trigger('click');
+      await flushPromises();
+      expect(api.chooseSourceFolder).toHaveBeenCalledOnce();
+      expect(api.updateSettings).not.toHaveBeenCalled();
+      expect(api.createProject).not.toHaveBeenCalled();
+      expect(dialog.props('visible')).toBe(true);
+      expect(dialog.props('error')).toBeNull();
+      expect(dialog.get('.app-button--primary').attributes('disabled')).toBeUndefined();
+      await dialog.get('.app-button--primary').trigger('click');
+      await flushPromises();
+      expect(api.createProject).not.toHaveBeenCalled();
+      expect(dialog.text()).toContain('Cannot save settings');
+      expect((dialog.get('#new-project-name').element as HTMLInputElement).value).toBe('korus');
+      await dialog.get('.app-button--primary').trigger('click');
+      await flushPromises();
+      expect(api.createProject).toHaveBeenCalledExactlyOnceWith({ name: 'korus', teamId: snapshot.activeTeamId, selection: { backend: 'codex' } });
+      expect(dialog.props('visible')).toBe(false);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it.each(['github', 'gitlab', 'url'] as const)('chooses and saves a missing source folder before acquiring a %s repository for a new team', async mode => {
+    const snapshot = createEmptySnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected' }, { provider: 'gitlab', status: 'connected' }];
+    const project = { provider: mode === 'gitlab' ? 'gitlab' as const : 'github' as const, id: 'owner/project', name: 'project', fullName: 'owner/project', url: `https://${mode === 'gitlab' ? 'gitlab' : 'github'}.com/owner/project` };
+    const { api } = installBackendFixture(snapshot);
+    api.listWorkSources.mockResolvedValue([project]);
+    api.chooseSourceFolder.mockResolvedValue('/code');
+    let finishSaving!: () => void;
+    api.updateSettings.mockImplementation(() => new Promise(resolve => {
+      finishSaving = () => {
+        snapshot.sourceFolder = { path: '/code', initialized: true, recentRepoNames: [] };
+        resolve(structuredClone(snapshot));
+      };
+    }));
+    api.cloneSourceRepository.mockImplementation(async () => {
+      if (!snapshot.sourceFolder.path) throw new Error('Choose a source folder before cloning a repository.');
+      return { name: 'project', path: '/code/project', worktrees: [] };
+    });
+    const wrapper = mount(App);
+    try {
+      await flushPromises();
+      const label = mode === 'url' ? 'Repository URL…' : `${mode === 'github' ? 'GitHub' : 'GitLab'} repository…`;
+      const action = wrapper.get('.agent-empty-state').findAll('[role="menuitem"]').find(item => item.text() === label)!;
+      await action.trigger('click');
+      await flushPromises();
+      expect(api.chooseSourceFolder).not.toHaveBeenCalled();
+      expect(api.cloneSourceRepository).not.toHaveBeenCalled();
+      const acquire = wrapper.getComponent({ name: 'RepositoryAcquireDialog' });
+      if (mode === 'url') {
+        await acquire.get('input').setValue(project.url);
+        await acquire.get('.app-button--primary').trigger('click');
+      } else {
+        await acquire.get('.repository-acquire-dialog__row').trigger('click');
+      }
+      await flushPromises();
+      expect(api.chooseSourceFolder).toHaveBeenCalledOnce();
+      expect(api.updateSettings).toHaveBeenCalledExactlyOnceWith({ sourceFolder: { path: '/code' } });
+      expect(api.cloneSourceRepository).not.toHaveBeenCalled();
+      finishSaving();
+      await flushPromises();
+      expect(api.cloneSourceRepository).toHaveBeenCalledExactlyOnceWith({ url: project.url, ...(mode !== 'url' ? { reuseExisting: true } : {}) });
+      expect(wrapper.getComponent({ name: 'RepositorySessionSourceDialog' }).props('repositoryName')).toBe('project');
+      expect(acquire.props('visible')).toBe(false);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it('keeps the GitHub picker usable after canceling source-folder selection or failing to save it', async () => {
+    const snapshot = createEmptySnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected' }];
+    const project = { provider: 'github' as const, id: 'owner/project', name: 'project', fullName: 'owner/project', url: 'https://github.com/owner/project' };
+    const { api } = installBackendFixture(snapshot);
+    api.listWorkSources.mockResolvedValue([project]);
+    api.chooseSourceFolder.mockResolvedValueOnce(null).mockResolvedValue('/code');
+    api.updateSettings.mockRejectedValueOnce(new Error('Cannot save settings'));
+    const wrapper = mount(App);
+    try {
+      await flushPromises();
+      await wrapper.get('.agent-empty-state').findAll('[role="menuitem"]').find(item => item.text() === 'GitHub repository…')!.trigger('click');
+      await flushPromises();
+      const acquire = wrapper.getComponent({ name: 'RepositoryAcquireDialog' });
+      await acquire.get('.repository-acquire-dialog__row').trigger('click');
+      await flushPromises();
+      expect(api.chooseSourceFolder).toHaveBeenCalledOnce();
+      expect(api.updateSettings).not.toHaveBeenCalled();
+      expect(api.cloneSourceRepository).not.toHaveBeenCalled();
+      expect(acquire.props('visible')).toBe(true);
+      expect(acquire.props('error')).toBeNull();
+      expect(acquire.get('.repository-acquire-dialog__row').attributes('disabled')).toBeUndefined();
+      await acquire.get('.repository-acquire-dialog__row').trigger('click');
+      await flushPromises();
+      expect(api.cloneSourceRepository).not.toHaveBeenCalled();
+      expect(acquire.text()).toContain('Cannot save settings');
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   it.each([
     '../research/quality%20findings.md',
     '/repo/research/quality%20findings.md',
@@ -156,7 +322,7 @@ describe('Unified backend → mounted application', () => {
     expect(api.startCodeReview).toHaveBeenCalledExactlyOnceWith(agent.id, { automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false }, scope: { type: 'uncommitted' }, threadMode: 'independent', ...(instructions ? { instructions } : {}), selection: { backend: 'codex', serviceTier: null, model: null, reasoningEffort: null } });
   });
 
-  it('handles app-owned thread flag execution, dismissal, and review routing through the client seam', async () => {
+  it.each([['Delegate', 'delegate'], ['Mission', 'create_mission']] as const)('handles %s, retries, discard and review routing through the client seam', async (label, action) => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
     agent.threadFlags = { delegate_to_worktree: true };
@@ -165,13 +331,13 @@ describe('Unified backend → mounted application', () => {
     await flushPromises();
 
     let rejectSend!: (error: Error) => void;
-    api.sendPrompt.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectSend = reject; }));
-    await wrapper.get('.thread-flag-affordance__action').trigger('click');
+    api.respondToThreadFlag.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectSend = reject; }));
+    await wrapper.get(`button[aria-label="${label}"]`).trigger('click');
     await flushPromises();
-    await wrapper.get('.thread-flag-affordance__action').trigger('click');
+    await wrapper.get(`button[aria-label="${label}"]`).trigger('click');
     await flushPromises();
-    expect(api.respondToThreadFlag).not.toHaveBeenCalled();
-    expect(api.sendPrompt).toHaveBeenCalledExactlyOnceWith(agent.id, '/delegate');
+    expect(api.respondToThreadFlag).toHaveBeenCalledExactlyOnceWith(agent.id, { id: 'work_proposed', action });
+    expect(api.sendPrompt).not.toHaveBeenCalled();
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
     rejectSend(new Error('backend unavailable'));
     await flushPromises();
@@ -180,10 +346,10 @@ describe('Unified backend → mounted application', () => {
 
     const cleared = structuredClone(snapshot);
     delete cleared.agents[0]!.threadFlags;
-    api.sendPrompt.mockResolvedValueOnce(cleared);
-    await wrapper.get('.thread-flag-affordance__action').trigger('click');
+    api.respondToThreadFlag.mockResolvedValueOnce(cleared);
+    await wrapper.get(`button[aria-label="${label}"]`).trigger('click');
     await flushPromises();
-    expect(api.sendPrompt).toHaveBeenLastCalledWith(agent.id, '/delegate');
+    expect(api.respondToThreadFlag).toHaveBeenLastCalledWith(agent.id, { id: 'work_proposed', action });
     emit({ type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, threadFlags: {} } });
     await flushPromises();
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
@@ -192,19 +358,19 @@ describe('Unified backend → mounted application', () => {
     emit({ type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, threadFlags: { delegate_to_worktree: true } } });
     await flushPromises();
     api.respondToThreadFlag.mockResolvedValueOnce(cleared);
-    await wrapper.get('.thread-flag-affordance__dismiss').trigger('click');
+    await wrapper.get('button[aria-label="Discard"]').trigger('click');
     await flushPromises();
-    expect(api.respondToThreadFlag).toHaveBeenNthCalledWith(1, agent.id, {
-      id: 'delegate_to_worktree', action: 'dismiss',
+    expect(api.respondToThreadFlag).toHaveBeenNthCalledWith(3, agent.id, {
+      id: 'work_proposed', action: 'dismiss',
     });
-    expect(api.sendPrompt).toHaveBeenCalledTimes(2);
+    expect(api.sendPrompt).not.toHaveBeenCalled();
 
     emit({ type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, threadFlags: { ready_for_review: true } } });
     await flushPromises();
     api.respondToThreadFlag.mockResolvedValueOnce(cleared);
     await wrapper.get('[aria-label="Open code review"]').trigger('click');
     await flushPromises();
-    expect(api.respondToThreadFlag).toHaveBeenNthCalledWith(2, agent.id, {
+    expect(api.respondToThreadFlag).toHaveBeenNthCalledWith(4, agent.id, {
       id: 'ready_for_review', action: 'execute',
     });
     expect(wrapper.get('[aria-label="Code review"]').isVisible()).toBe(true);

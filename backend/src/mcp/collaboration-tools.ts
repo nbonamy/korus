@@ -86,7 +86,7 @@ function registerCollaborationTools(
     } : {}),
   }, () => coordinator.setStatus(callerAgentId, status, announcement)));
 
-  const finishTurnDescription = 'Required once as the last tool action before the final response. Clears status and requests optional completion effects. Propose delegation instead of implementing here, or review for complete validated uncommitted work; proposals do not authorize actions.';
+  const finishTurnDescription = 'Required once as the last tool action before the final response. Clears status and requests optional completion effects. Offer work_proposed after a feature/design discussion identifies concrete separate work, even without implementation approval; the user chooses Delegate, Create Mission or Discard. A proposal does not authorize agents, Missions or implementation and must not replace work the user already requested here. Use ready_for_review for complete validated uncommitted work.';
   const finishTurnEffectsSchema = {
     suggestedPrompt: z.string().trim().min(1).max(240).optional().describe('Useful next request in the user’s voice; placeholder only, never submitted. Omission clears the previous hint.'),
     announcement: z.object({
@@ -98,7 +98,7 @@ function registerCollaborationTools(
     server.registerTool('finish_turn', {
       description: finishTurnDescription,
       inputSchema: {
-        flag: z.enum(threadFlagIds).optional().describe('Optional single proposed action to show after this turn. Omit to leave any existing proposal unchanged.'),
+        flag: z.enum(threadFlagIds).optional().describe('Optional thread flag. work_proposed offers separate work; delegate_to_worktree is its legacy alias. ready_for_review is separate review readiness. Omit to preserve the existing flag.'),
         ...finishTurnEffectsSchema,
       },
     }, input => loggedToolResult('finish_turn', {

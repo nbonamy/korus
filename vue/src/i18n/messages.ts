@@ -949,10 +949,11 @@ export const messages = {
         invalid: 'A draft must contain text and be at most 128 KiB.',
       },
       threadFlags: {
-        delegateToWorktree: {
-          prompt: 'Start implementation in a worktree?',
-          accept: 'Start implementation in a worktree',
-          dismiss: 'Dismiss worktree delegation',
+        workProposed: {
+          prompt: 'Turn this into work?',
+          delegate: 'Delegate',
+          createMission: 'Mission',
+          dismiss: 'Discard',
         },
         readyForReview: {
           prompt: 'Ready to review these changes?',

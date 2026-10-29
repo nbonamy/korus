@@ -125,6 +125,14 @@ describe('AgentConversationPanel', () => {
     expect(wrapper.emitted('composer-command')).toStrictEqual([
       [agent.id, 'visualize'], [agent.id, 'delegate'], [agent.id, 'review'], [agent.id, 'mission'],
     ]);
+    view.agent = { ...agent, threadFlags: { delegate_to_worktree: true } };
+    await flushPromises();
+    for (const [label, action] of [['Delegate', 'delegate'], ['Mission', 'create_mission'], ['Discard', 'dismiss']] as const) {
+      await wrapper.get(`button[aria-label="${label}"]`).trigger('click');
+      await flushPromises();
+      expect(actions.threadFlag).toHaveBeenLastCalledWith(agent.id, { id: 'work_proposed', action });
+    }
+    expect(wrapper.emitted('composer-command')).toHaveLength(4);
     expect(selectModelMenuItem).not.toHaveBeenCalled();
     expect(actions.send).not.toHaveBeenCalled();
     expect(actions.updateComposerState).not.toHaveBeenCalled();

@@ -69,7 +69,7 @@ export function appDeveloperInstructions(
       : `Your ${product.name} agent ID is ${agent.id}. Your agent name is ${agentDisplayName(agent)}. No project folder is configured.`;
   const delegationSuggestionInstruction = agent.delegatedByAgentId
     ? 'This agent is already a delegated co-agent. Carry out its assigned work in the current folder; reserve further co-agent delegation for an explicit user request.'
-    : 'Select the delegate_to_worktree flag in finish_turn only when the next step should be delegated to a dedicated worktree/co-agent instead of being implemented in the current turn. Never select it and then continue implementing the work yourself.';
+    : 'After a feature or design discussion identifies concrete work worth pursuing separately, offer work_proposed in finish_turn so the user can choose Delegate, Create Mission or Discard. Offering this proposal is permitted without implementation approval. Setting it does not authorize creating agents, starting a Mission or doing the proposed work, and must not replace implementation the user already requested in this conversation.';
   const instructions = [
     `You are part of a team of agents collaborating in ${product.name}.`,
     workspaceIdentity,

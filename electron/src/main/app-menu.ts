@@ -171,11 +171,11 @@ function buildDebugMenu(callbacks: AppMenuCallbacks): MenuItemConstructorOptions
         label: 'Thread Flags',
         submenu: [
           {
-            label: 'Delegate to Worktree',
+            label: 'Work Proposed',
             type: 'checkbox',
-            checked: callbacks.isDebugThreadFlagSet?.('delegate_to_worktree') ?? false,
+            checked: callbacks.isDebugThreadFlagSet?.('work_proposed') ?? false,
             enabled: Boolean(callbacks.setDebugThreadFlag),
-            click: (item) => callbacks.setDebugThreadFlag?.('delegate_to_worktree', item.checked),
+            click: (item) => callbacks.setDebugThreadFlag?.('work_proposed', item.checked),
           },
           {
             label: 'Ready for Review',
