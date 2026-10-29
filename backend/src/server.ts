@@ -1,3 +1,6 @@
+import { resolveHandoffAgentId } from './agents/delegation-lineage';
+import type { DelegatedTask, WaitTasksInput, WaitTasksResult } from '@workspace/core/delegated-task';
+import { RunProfileService } from './run-profile-service';
 import { applyExecutionSelection, defaultExecutionSelection, executionSelectionForAgent, resolveExecutionSelection } from '@workspace/core/execution-selection';
 import type { ExecutionSelection, ExecutionSelectionOverrides } from '@workspace/core/contracts/execution';
 import { executionSelectionSchema, executionSelectionOverridesSchema } from './execution-selection-schema';
@@ -72,7 +75,7 @@ import { BackendDriverRpc } from './driver-rpc';
 import { ClientPreferencesService } from './client-preferences-service';
 import { projectClientSnapshot, splitSettingsInput } from '@workspace/core/client-preferences';
 import { RemoteDaemonClientManager } from './connections/remote-daemon-client';
-import { RemoteTeamService } from './connections/remote-team-service';
+import { RemoteTeamService, type RemoteSnapshotCache, type RemoteTeamPointer } from './connections/remote-team-service';
 import { SshConnectionService } from './connections/ssh-connections';
 import type { AutomationRunner } from './automations/runner';
 import type { WorkIntegrationManager } from './work-integrations/manager';
@@ -110,8 +113,16 @@ import { readAgentClosePreview } from './agents/agent-close-preview';
 import { canChangeAgentConversation } from '@workspace/core/agent-manager';
 import { VisualizeService, directVisualizationPrompt, generateVisualizationSuggestionPrompt, initialVisualizePrompt } from './visualize-service';
 import { visualizeDebugScenarios, type VisualizeDebugScenario } from '@workspace/core/visualize';
+import { remoteCollaborationTools, type CreateCoAgentInput, type RemoteCollaborationCall, type RemoteWorkerRequest, type RemoteWorkerResult } from '@workspace/core/remote-collaboration';
+import { CallToolResultSchema, type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 export type AppBackendServerOptions = {
+  collaborationTools?: {
+    provisionWorker(input: RemoteWorkerRequest): Promise<Agent>;
+    callTool(agentId: string, name: string, args: Record<string, unknown>): Promise<CallToolResult>;
+  };
+  requestCollaborationController?: (input: RemoteCollaborationCall) => Promise<unknown>;
+  runProfiles?: RunProfileService;
   browserExtensionPackages?: BrowserExtensionPackages;
   requirements?: Requirements;
   usage?:UsageService;
@@ -135,6 +146,7 @@ export type AppBackendServerOptions = {
   systemPermissions?: SystemPermissionsPort;
   sshConnections?: SshConnectionService;
   remoteClients?: RemoteDaemonClientManager;
+  remoteSnapshotCache?: RemoteSnapshotCache;
   sendAgentMessage?: (fromAgentId: string, toAgentId: string, content: string) => void;
   configureCodexResourceSharing?: (input: SetCodexResourceSharingInput) => Promise<void>;
   inspectCodexResourceSharing?: (enabled: boolean) => Promise<CodexResourceSharingStatus>;
@@ -148,6 +160,7 @@ export type AppBackendServerOptions = {
   codeReviewTools?: CodeReviewToolPort;
   saveCodeReviewReport?: (agent: Agent, session: CodeReviewSession) => Promise<string>;
   agentCreation?: AgentCreationService;
+  worktreeInitializationForFolder?: (folder: string) => Agent['worktreeInitialization'];
   visualizeService?: VisualizeService;
 };
 
@@ -194,12 +207,303 @@ export class AppBackendServer {
   private readonly tasks?: DurableTaskService;
 
   async sendTaskPrompt(agent: Agent, prompt: string, goal?: boolean): Promise<BackendSendResult> {
+    if (agent.remoteConnectionId) {
+      if (this.tasks?.mayStartAutomatedPrompt(agent.id) === false) throw new Error('Agent is stopped.');
+      return this.remoteTeams.request<BackendSendResult>(agent.remoteConnectionId, backendMethods.collaborationPromptSend, { agentId: agent.id, prompt, goal });
+    }
+    agent = this.snapshot.agents.find(candidate => candidate.id === agent.id) ?? agent;
     await this.requireConnectedEngine(agent.backend);
     if (!this.snapshot.agents.includes(agent)) throw new Error('Agent was removed before task prompt admission.');
     if (this.tasks?.mayStartAutomatedPrompt(agent.id) === false || agent.planReview?.status === 'pending') throw new Error('Agent is stopped or waiting for a review decision.');
     const receipt = await this.agentPrompts.sendWithReceipt(agent, prompt, undefined, undefined, undefined, goal);
     await this.persistSnapshotOnly();
     return receipt;
+  }
+
+  collaborationAgents(): Agent[] {
+    const local = this.snapshot.agents.map(agent => {
+      const parent = agent.delegatedByAgentId && this.resolveTaskAgentId(agent.delegatedByAgentId);
+      return parent && parent !== agent.delegatedByAgentId ? { ...agent, delegatedByAgentId: parent } : agent;
+    });
+    return [...local, ...this.remoteTeams.clientSnapshotFromKnownRemotes().agents.filter(agent => agent.remoteConnectionId)];
+  }
+
+  resolveTaskAgentId(id: string): string { return resolveHandoffAgentId(this.snapshot.teams, id); }
+
+  private async prepareDelegationHandoff(agent: Agent, operationId: string): Promise<void> {
+    const team = this.snapshot.teams.find(team => team.id === agent.teamId);
+    if (!team) throw new Error('The handoff team is unavailable.');
+    const previous = team.delegationHandoffs?.[agent.id];
+    if (previous?.targetAgentId && previous.operationId !== operationId) throw new Error('The source agent was already replaced.');
+    if (previous?.operationId === operationId) return;
+    if (previous && !previous.targetAgentId && !(agent.handoff?.phase === 'failed' && agent.handoff.operationId === previous.operationId)) throw new Error('A pending handoff must be retried with its original operation ID.');
+    team.delegationHandoffs = { ...team.delegationHandoffs, [agent.id]: { operationId, ...(agent.remoteConnectionId ? { remoteConnectionId: agent.remoteConnectionId } : {}) } };
+    await this.persistSnapshotOnly();
+  }
+
+  private recordDelegationHandoff(teamId: string, target: Agent, connectionId?: string): boolean {
+    const team = this.snapshot.teams.find(team => team.id === teamId);
+    const handoff = target.handoff;
+    const intent = handoff && team?.delegationHandoffs?.[handoff.sourceAgentId];
+    if (!team || !handoff || !intent || intent.operationId !== handoff.operationId || intent.remoteConnectionId !== connectionId || handoff.targetAgentId !== target.id) return false;
+    if (intent.targetAgentId) {
+      if (intent.targetAgentId !== target.id) throw new Error('Conflicting handoff replacement identity.');
+      return false;
+    }
+    intent.targetAgentId = target.id;
+    for (const child of this.snapshot.agents) if (child.teamId === team.id && child.delegatedByAgentId === handoff.sourceAgentId) child.delegatedByAgentId = target.id;
+    return true;
+  }
+
+  private async checkDelegationHandoff(agent: Agent, operationId: string): Promise<void> {
+    if (this.tasks?.list(agent.id).some(task => !['completed', 'cancelled', 'failed'].includes(task.state))) throw new Error('Resolve or cancel durable tasks before handing off this agent.');
+    const team = this.snapshot.teams.find(team => team.id === agent.teamId);
+    if (team?.collaborationOwnerId) {
+      if (!this.options.requestCollaborationController) throw new Error('The collaboration controller is unavailable.');
+      await this.options.requestCollaborationController({ ownerId: team.collaborationOwnerId, agentId: agent.id, name: 'handoff-check', arguments: { operationId } });
+    }
+    await this.remoteTeams.refreshTeam(agent.teamId!);
+    const agents = this.collaborationAgents();
+    const descendsFrom = (child: Agent) => {
+      const seen = new Set<string>();
+      let parentId = child.delegatedByAgentId;
+      while (parentId && !seen.has(parentId)) {
+        if (parentId === agent.id) return true;
+        seen.add(parentId);
+        parentId = agents.find(candidate => candidate.id === parentId)?.delegatedByAgentId;
+      }
+      return false;
+    };
+    if (agents.some(child => descendsFrom(child) && ['working', 'awaitingInput'].includes(child.status.type))) throw new Error('Wait for delegated agents to finish before handing off.');
+    if ((await this.listCollaborationTasks(agent.id)).some(task => !['completed', 'cancelled', 'failed'].includes(task.state))) throw new Error('Resolve or cancel durable tasks before handing off this agent.');
+  }
+
+  async interruptTaskWorker(agent: Agent, expectedTurnId: string): Promise<unknown> {
+    await this.tasks?.blockParent(agent.id);
+    if (agent.remoteConnectionId) {
+      const owner = await this.legacyTaskOwner(agent.id);
+      if (owner) await this.remoteTeams.request(owner.connectionId, backendMethods.collaborationTaskAccess, { ...owner, action: 'block' });
+    } else {
+      const ownerId = this.snapshot.teams.find(team => team.id === agent.teamId)?.collaborationOwnerId;
+      if (ownerId) {
+        if (!this.options.requestCollaborationController) throw new Error('The collaboration controller is unavailable.');
+        await this.options.requestCollaborationController({ ownerId, agentId: agent.id, name: 'task-block-parent', arguments: {} });
+      }
+    }
+    return this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent, expectedTurnId });
+  }
+
+  async readTaskHistory(agent: Agent): Promise<RendererMessage[]> {
+    const ref = conversationRefFromAgent(agent);
+    return ref ? this.handleAgentDriverRequest(agent, backendMethods.driverConversationMessagesGet, { ref, agentId: agent.id }) as Promise<RendererMessage[]> : [];
+  }
+
+  async deliverRemoteMessage(agent: Agent, prompt: string, messageId: string): Promise<{ accepted: true }> {
+    if (!agent.remoteConnectionId) throw new Error('Expected a remote recipient.');
+    return this.remoteTeams.request(agent.remoteConnectionId, backendMethods.collaborationMessageSend, { agentId: agent.id, prompt, messageId });
+  }
+
+  // The controller sends one message at a time per agent, retaining its ID until admission is acknowledged.
+  // Keep the last admission through a lost SSH reply, without retaining an unbounded message history.
+  private readonly remoteMessageAdmissions = new Map<string, { id: string; prompt: string; result: Promise<{ accepted: true }> }>();
+
+  private admitRemoteMessage(agent: Agent, messageId: string, prompt: string): Promise<{ accepted: true }> {
+    const previous = this.remoteMessageAdmissions.get(agent.id);
+    if (previous?.id === messageId) {
+      if (previous.prompt !== prompt) throw new Error('Message ID already belongs to different content.');
+      return previous.result;
+    }
+    const result = (previous?.result ?? Promise.resolve()).catch(() => undefined).then(async (): Promise<{ accepted: true }> => {
+      if (!this.snapshot.agents.includes(agent)) throw new Error('Remote recipient was removed before admission.');
+      if (agent.status.type === 'working' && this.requireDriverRpc().getCapabilities(agent).steerPrompt) {
+        try {
+          await this.handleAgentDriverRequest(agent, backendMethods.driverPromptSteer, { agent, prompt });
+          return { accepted: true };
+        } catch {
+          // A changing turn or failed steer still admits the message to the host's ordinary queue.
+        }
+      }
+      this.handleBackendEvent({ agentId: agent.id, type: 'agent.promptQueued', payload: { id: messageId, text: prompt } });
+      return { accepted: true };
+    });
+    this.remoteMessageAdmissions.set(agent.id, { id: messageId, prompt, result });
+    void result.catch(() => {
+      if (this.remoteMessageAdmissions.get(agent.id)?.result === result) this.remoteMessageAdmissions.delete(agent.id);
+    });
+    return result;
+  }
+
+  private readonly deletingTeams = new Set<string>();
+  private readonly deletingConnections = new Set<string>();
+  private readonly remoteCreations = new Map<string, number>();
+
+  private reserveRemoteCreation(input: { teamId?: string; remoteConnectionId?: string }): () => void {
+    if (!input.remoteConnectionId) return () => undefined;
+    if ((input.teamId && this.deletingTeams.has(input.teamId)) || this.deletingConnections.has(input.remoteConnectionId)) throw new Error('Team or connection deletion in progress. Retry creation after it finishes.');
+    const key = JSON.stringify([input.teamId, input.remoteConnectionId]);
+    this.remoteCreations.set(key, (this.remoteCreations.get(key) ?? 0) + 1);
+    return () => {
+      const remaining = (this.remoteCreations.get(key) ?? 1) - 1;
+      if (remaining) this.remoteCreations.set(key, remaining);
+      else this.remoteCreations.delete(key);
+    };
+  }
+
+  private requireNoRemoteCreation(teamId?: string, connectionId?: string): void {
+    for (const key of this.remoteCreations.keys()) {
+      const [team, connection] = JSON.parse(key) as [string, string];
+      if ((teamId && team === teamId) || (connectionId && connection === connectionId)) {
+        throw new Error('Remote agent creation in progress. Wait for setup to finish and retry deletion.');
+      }
+    }
+  }
+
+  private async remoteAgentPointer(input: { teamId?: string; remoteConnectionId?: string }): Promise<RemoteTeamPointer | null> {
+    const pointer = await this.remoteTeams.pointerForAgentInput(input);
+    if (!pointer) return null;
+    await this.remoteTeams.activatePointer(pointer);
+
+    return pointer;
+  }
+
+  private async bindRemoteLink(pointer: RemoteTeamPointer): Promise<AppSnapshot> {
+    const release = this.reserveRemoteCreation({ teamId: pointer.localTeamId, remoteConnectionId: pointer.connectionId });
+    try {
+      const team = this.snapshot.teams.find(team => team.id === pointer.localTeamId);
+      const link = team?.remoteLinks?.find(link => link.connectionId === pointer.connectionId && link.remoteTeamId === pointer.remoteTeamId);
+      if (!link) throw new Error('The remote link was removed before activation.');
+      link.collaborationOwnerId ??= randomUUID();
+      await this.persistSnapshotOnly();
+      const result = await this.remoteTeams.request<AppSnapshot>(pointer.connectionId, backendMethods.collaborationTeamBind, { teamId: pointer.remoteTeamId, ownerId: link.collaborationOwnerId });
+      if (!isAppSnapshot(result)) throw new Error('The remote collaboration binding returned an invalid snapshot.');
+      return result;
+    } finally { release(); }
+  }
+
+  private async legacyTaskOwner(agentId: string) {
+    const agent = this.collaborationAgents().find(agent => agent.id === agentId);
+    if (!agent?.remoteConnectionId) return;
+    const link = this.snapshot.teams.find(team => team.id === agent.teamId)?.remoteLinks?.find(link => link.connectionId === agent.remoteConnectionId);
+    if (!link) return;
+    if (!link.collaborationOwnerId) await this.remoteTeams.activatePointer({ connectionId: link.connectionId, localTeamId: agent.teamId!, remoteTeamId: link.remoteTeamId });
+    return { connectionId: link.connectionId, teamId: link.remoteTeamId, ownerId: link.collaborationOwnerId, agentId };
+  }
+
+  async listCollaborationTasks(agentId: string): Promise<DelegatedTask[]> {
+    const local = this.tasks?.list(agentId) ?? [];
+    const owner = await this.legacyTaskOwner(agentId);
+    if (!owner) return local;
+    const legacy = await this.remoteTeams.request<DelegatedTask[]>(owner.connectionId, backendMethods.collaborationTaskAccess, { ...owner, action: 'list' });
+    if (!Array.isArray(legacy)) throw new Error('The remote task ownership response is invalid.');
+    return [...local, ...legacy.filter(task => !local.some(candidate => candidate.id === task.id))];
+  }
+
+  async waitCollaborationTasks(agentId: string, input: WaitTasksInput = {}): Promise<WaitTasksResult> {
+    const duration = Math.min(30000, Math.max(0, input.timeoutMs ?? 0));
+    const deadline = Date.now() + duration;
+    let previous: DelegatedTask[] | undefined;
+    for (;;) {
+      if (previous && (this.closing || Date.now() >= deadline)) return { tasks: previous, timedOut: true };
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let visible: DelegatedTask[];
+      try {
+        const read = this.listCollaborationTasks(agentId);
+        visible = duration ? await Promise.race([read, new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => reject(new Error('Task ownership is unconfirmed: the wait deadline expired.')), Math.max(0, deadline - Date.now()));
+        })]) : await read;
+      } finally { clearTimeout(timer); }
+      if (input.taskIds?.some(id => !visible.some(task => task.id === id))) throw new Error('Task not found or not owned by this agent.');
+      const tasks = input.taskIds ? visible.filter(task => input.taskIds!.includes(task.id)) : visible;
+      const actionable = (task: DelegatedTask) => ['completed', 'cancelled', 'failed', 'needs-input', 'interrupted'].includes(task.state);
+      if (!tasks.length || (input.mode === 'all' ? tasks.every(actionable) : tasks.some(actionable))) return { tasks, timedOut: false };
+      if (!duration) return { tasks, timedOut: false };
+      previous = tasks;
+      if (Date.now() >= deadline) return { tasks, timedOut: true };
+      await new Promise(resolve => setTimeout(resolve, Math.min(250, deadline - Date.now())));
+    }
+  }
+
+  async cancelCollaborationTask(agentId: string, taskId: string): Promise<DelegatedTask> {
+    if (this.tasks?.list(agentId).some(task => task.id === taskId)) return this.tasks.cancel(agentId, taskId);
+    const owner = await this.legacyTaskOwner(agentId);
+    if (!owner) throw new Error('Task not found or not owned by this agent.');
+    return this.remoteTeams.request<DelegatedTask>(owner.connectionId, backendMethods.collaborationTaskAccess, { ...owner, action: 'cancel', taskId });
+  }
+
+  async provisionRemoteWorker(caller: Agent, input: CreateCoAgentInput & { teamId?: string }, intendedId?: string, assignmentPrompt?: string, userInstructions?: Agent['delegationUserInstructions']): Promise<Agent> {
+    const release = this.reserveRemoteCreation(input);
+    try { return await this.provisionRemoteWorkerNow(caller, input, intendedId, assignmentPrompt, userInstructions); }
+    finally { release(); }
+  }
+
+  private async provisionRemoteWorkerNow(caller: Agent, input: CreateCoAgentInput & { teamId?: string }, intendedId?: string, assignmentPrompt?: string, userInstructions?: Agent['delegationUserInstructions']): Promise<Agent> {
+    const pointer = await this.remoteAgentPointer(input);
+    if (!pointer) throw new Error('A remote host is required.');
+    const link = this.snapshot.teams.find(team => team.id === pointer.localTeamId)!.remoteLinks!.find(link => link.connectionId === pointer.connectionId)!;
+    const result = await this.remoteTeams.request<RemoteWorkerResult>(pointer.connectionId, backendMethods.collaborationWorkerCreate, {
+      ownerId: link.collaborationOwnerId!, teamId: pointer.remoteTeamId, agentId: intendedId ?? `agent-${randomUUID()}`,
+      ...(caller.remoteConnectionId === pointer.connectionId && caller.teamId === pointer.localTeamId ? { localCallerId: caller.id } : {}),
+      caller: { ...caller, backendSession: undefined }, input: { ...input, remoteConnectionId: undefined, task: undefined }, assignmentPrompt, userInstructions,
+    } satisfies RemoteWorkerRequest);
+    this.remoteTeams.adoptCreatedAgentSnapshot(pointer, result.snapshot);
+    await this.persistAndEmitSnapshot();
+    const agent = this.collaborationAgents().find(agent => agent.id === result.agent.id && agent.remoteConnectionId === pointer.connectionId);
+    if (!agent) throw new Error('The remote host did not return the created worker.');
+    return agent;
+  }
+
+  async forwardCollaborationCall(agentId: string, name: string, args: Record<string, unknown>): Promise<CallToolResult | undefined> {
+    if (!remoteCollaborationTools.has(name)) return;
+    const agent = this.snapshot.agents.find(agent => agent.id === agentId);
+    const ownerId = this.snapshot.teams.find(team => team.id === agent?.teamId)?.collaborationOwnerId;
+    if (!ownerId) return;
+    const owned = this.tasks?.list(agentId) ?? [];
+    // Existing assignments keep their original execution, result and request-id authority.
+    if (name === 'complete-task' && owned.some(task => task.workerAgentId === agentId && !['completed', 'cancelled', 'failed'].includes(task.state))) return;
+    if (name === 'create-agent' && args.task && owned.some(task => this.resolveTaskAgentId(task.parentAgentId) === agentId && task.requestId === args.requestId)) return;
+    if (!this.options.requestCollaborationController) throw new Error('The collaboration controller is unavailable.');
+    return CallToolResultSchema.parse(await this.options.requestCollaborationController({ ownerId, agentId, name, arguments: args }));
+  }
+
+  async handleRemoteCollaborationCall(connectionId: string, params: unknown): Promise<CallToolResult> {
+    const input = requireRecord(params);
+    const agentId = requireString(input.agentId, 'agentId');
+    const name = requireString(input.name, 'name');
+    const ownerId = requireString(input.ownerId, 'ownerId');
+    const team = this.snapshot.teams.find(team => team.remoteLinks?.some(link => link.connectionId === connectionId && link.collaborationOwnerId === ownerId));
+    if (!team) throw new Error('This daemon does not own the collaboration request.');
+    let agent = this.collaborationAgents().find(agent => agent.id === agentId && agent.teamId === team.id && agent.remoteConnectionId === connectionId);
+    if (!agent) {
+      await this.remoteTeams.snapshot(connectionId);
+      agent = this.collaborationAgents().find(agent => agent.id === agentId && agent.teamId === team.id && agent.remoteConnectionId === connectionId);
+    }
+    if (!agent) throw new Error('The caller is not a member of this collaboration team.');
+    if (name === 'handoff-check') {
+      const operationId = requireString(requireRecord(input.arguments).operationId, 'operationId');
+      await this.prepareDelegationHandoff(agent, operationId);
+      await this.checkDelegationHandoff(agent, operationId);
+      return { content: [], structuredContent: { success: true } };
+    }
+    if (name === 'handoff-replaced') {
+      const handoff = agent.handoff;
+      const intent = handoff && team.delegationHandoffs?.[handoff.sourceAgentId];
+      if (!handoff || !intent || intent.operationId !== handoff.operationId || intent.remoteConnectionId !== connectionId || handoff.targetAgentId !== agent.id) throw new Error('Invalid handoff replacement authority.');
+      this.recordDelegationHandoff(team.id, agent, connectionId);
+      await this.persistSnapshotOnly();
+      return { content: [], structuredContent: { success: true } };
+    }
+    if (name === 'task-block-parent') { await this.tasks?.blockParent(agentId); return { content: [], structuredContent: { success: true } }; }
+    if (!remoteCollaborationTools.has(name) || !this.options.collaborationTools) throw new Error('Collaboration operation is unavailable.');
+    const args = { ...requireRecord(input.arguments) };
+    if (['create-agent', 'list-repos', 'list-worktrees', 'create-worktree'].includes(name)) {
+      if (args.remoteConnectionId === 'local') delete args.remoteConnectionId;
+      else args.remoteConnectionId ??= connectionId;
+    }
+    const result = await this.options.collaborationTools.callTool(agentId, name, args);
+    if (name === 'list-hosts' && result.structuredContent) {
+      result.structuredContent.hosts = [{ id: 'local', name: 'Controller computer', status: 'ready' }, ...(result.structuredContent.hosts as unknown[])];
+    }
+    return result;
   }
   private readonly version: string;
   private readonly pid: number;
@@ -214,8 +518,8 @@ export class AppBackendServer {
     if (!this.conversationShares) return Promise.reject(new Error('denied'));
     return this.conversationShares.authorize(handle, credential);
   }
-  conversationGuestCount(handle: string, count: number) { this.conversationShares?.connected(handle, count); }
-  proposeConversationGuest(handle: string, identity: string, name: string, input: { id: string; text: string }) {
+  conversationGuestCount(handle: string, count: number, guests?: import('@workspace/core/guest-conversation').GuestParticipant[]) { this.conversationShares?.connected(handle, count, guests); }
+  proposeConversationGuest(handle: string, identity: string, name: string, input: import('@workspace/core/conversation-sharing').GuestPromptInput) {
     if (!this.conversationShares) return Promise.reject(new Error('denied'));
     return this.conversationShares.propose(handle, identity, name, input);
   }
@@ -238,7 +542,7 @@ export class AppBackendServer {
     }
     for (const entry of state.entries) {
       const team = this.snapshot.teams.find(team => team.id === entry.teamId) ?? this.snapshot.teams.find(team => team.id === this.snapshot.activeTeamId) ?? this.snapshot.teams[0];
-      if (!team || team.remoteConnectionId) continue;
+      if (!team) continue;
       let agent = this.snapshot.agents.find(agent => agent.sharedConversation?.joinId === entry.id);
       if (!agent) {
         const now = new Date().toISOString();
@@ -269,6 +573,7 @@ export class AppBackendServer {
   private readonly inspectPluginStatus: () => Promise<AppPluginStatus>;
   private readonly agentRequests: AgentRequestRegistry;
   private readonly remoteTeams: RemoteTeamService;
+  private readonly runProfiles: RunProfileService;
   private readonly documents: DocumentWorkspaceService;
   private unsubscribeUsage?:()=>void;
   private unsubscribeRequestUsage?: () => void;
@@ -306,14 +611,25 @@ export class AppBackendServer {
 
   constructor(private readonly options: AppBackendServerOptions) {
     if (options.conversationSharing) this.conversationShares = new ConversationShares({ ...options.conversationSharing,
-      canSubmit: target => {
+      canSubmit: (target, context) => {
         const agent = this.snapshot.agents.find(agent => agent.id === target.agentId);
-        return Boolean(agent && this.agentPrompts?.canStart(agent) && !(this.snapshot.queuedPrompts ?? []).some(prompt => prompt.agentId === agent.id));
+        const steer = context.followUpBehavior === 'steer';
+        if (!agent || handoffInProgress(agent)) return false;
+        if (steer && agent.status.type === 'working' && this.backendDriverForAgent(agent).getCapabilities(agent).steerPrompt) return true;
+        return Boolean(this.agentPrompts?.canStart(agent) && !(this.snapshot.queuedPrompts ?? []).some(prompt => prompt.agentId === agent.id));
       },
-      submit: options.conversationSharing.submit ?? (async (target, text) => {
+      submit: options.conversationSharing.submit ?? (async (target, text, context) => {
         const agent = this.snapshot.agents.find(agent => agent.id === target.agentId);
         if (!agent || agent.sharedConversation) throw new Error('Conversation unavailable.');
-        return this.agentPrompts.sendWithReceipt(agent, text, undefined, companionSessionId(agent), 'guest:approved');
+        if (context.followUpBehavior === 'steer' && !this.agentPrompts.canStart(agent)) {
+          const result = await this.withPromptSource(agent, 'guest:approved', () => this.handleAgentDriverRequest(agent, backendMethods.driverPromptSteer, { agent, prompt: text, expectedSessionId: companionSessionId(agent), plainText: true })) as BackendSendResult;
+          this.clearTurnSuggestionsForNewPrompt(agent);
+          await this.persistSnapshotOnly();
+          return { turnId: result.turnId, messageId: result.messageId };
+        }
+        const result = await this.agentPrompts.sendWithReceipt(agent, text, undefined, companionSessionId(agent), 'guest:approved');
+        this.clearTurnSuggestionsForNewPrompt(agent);
+        return result;
       }),
     }, () => this.snapshot, (agentId, state) => {
       this.onEvent?.({ seq: this.nextEventSeq(), type: 'conversation.shareChanged', agentId, payload: state, occurredAt: new Date().toISOString() });
@@ -453,7 +769,14 @@ export class AppBackendServer {
       },
       createWorktree: input => this.requireDriverRpc().handle(backendMethods.sourceWorktreeCreate, { input }) as Promise<SourceWorktree>,
       ensureStageSkills: async (_missionId, stage) => missionStageSkills(stage),
-      refreshWorkspace: async agentId => { await this.agentWorkspaces.refreshIdentity(agentId); },
+      refreshWorkspace: async agentId => {
+        const agent = this.snapshot.agents.find(candidate => candidate.id === agentId);
+        if (agent?.folder) {
+          const initialization = options.worktreeInitializationForFolder?.(agent.folder);
+          if (initialization) agent.worktreeInitialization = initialization;
+        }
+        await this.agentWorkspaces.refreshIdentity(agentId);
+      },
       refreshConversationContext: async agent => {
         await this.requireDriverRpc().refreshConversationContext(agent);
       },
@@ -497,7 +820,20 @@ export class AppBackendServer {
     });
     this.agentHandoffs = new AgentHandoffService({
       snapshot: this.snapshot,
-      assertReady: async agent => { await this.requireDriverRpc().handle(backendMethods.driverHandoffCheck, { agent }); },
+      assertReady: async agent => {
+        await this.checkDelegationHandoff(agent, agent.handoff!.operationId);
+        await this.requireDriverRpc().handle(backendMethods.driverHandoffCheck, { agent });
+      },
+      checkDelegates: agent => this.checkDelegationHandoff(agent, agent.handoff!.operationId),
+      replaced: async (source, target) => {
+        this.recordDelegationHandoff(source.teamId!, target);
+        await this.persistSnapshotOnly();
+        const ownerId = this.snapshot.teams.find(team => team.id === source.teamId)?.collaborationOwnerId;
+        if (ownerId) {
+          if (!this.options.requestCollaborationController) throw new Error('The collaboration controller is unavailable.');
+          await this.options.requestCollaborationController({ ownerId, agentId: target.id, name: 'handoff-replaced', arguments: {} });
+        }
+      },
       create: input => this.agentCreation.create(input, { select: false }),
       persist: () => this.persistAndEmitSnapshot(),
       requestNote: (agent, prompt) => requestHandoffNote(agent, prompt, {
@@ -524,19 +860,26 @@ export class AppBackendServer {
     });
     this.agentRequests = new AgentRequestRegistry({
       getSnapshot: () => this.snapshot,
-      remoteConnectionIdForAgent: (agent) => {
-        const team = agent.teamId
-          ? this.snapshot.teams.find((candidate) => candidate.id === agent.teamId)
-          : null;
-        return team?.remoteConnectionId?.trim() || null;
-      },
+      remoteConnectionIdForAgent: (agent) => agent.remoteConnectionId?.trim() || null,
     });
     this.remoteTeams = new RemoteTeamService({
       clients: this.remoteClients,
       getSnapshot: () => this.snapshot,
+      cache: options.remoteSnapshotCache,
+      activateLink: pointer => this.bindRemoteLink(pointer),
+      onHandoffObserved: (pointer, agent) => {
+        if (this.recordDelegationHandoff(pointer.localTeamId, agent, pointer.connectionId)) void this.persistSnapshotOnly().catch(error => warnMain('handoff', 'Could not persist parent lineage', { message: String(error) }));
+      },
+      onConnectionFailed: (connectionId, error) => {
+        this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map(connection => connection.id === connectionId
+          ? { ...connection, status: 'error', detail: error.message, transport: undefined }
+          : connection);
+        void this.persistAndEmitSnapshot().catch(failure => warnMain('remote-connection', 'Could not save connection failure', { message: String(failure) }));
+      },
       onForwardedEvent: (connectionId, event) => this.forwardRemoteBackendEvent(connectionId, event),
       onProjectedSnapshotChanged: () => { void this.emitProjectedSnapshot(); },
     });
+    this.runProfiles = options.runProfiles ?? new RunProfileService(path.join(backendHomeDir(), "run-profiles.json"), this.agentGitService, (id, folder) => this.snapshot.agents.some(agent => agent.id === id && agent.folder === folder));
     this.documents = options.documents ?? new DocumentWorkspaceService(path.join(backendHomeDir(), "document-workspaces.json"));
     this.clientPreferences = new ClientPreferencesService({
       snapshot: () => this.remoteTeams.clientSnapshot(),
@@ -619,18 +962,33 @@ export class AppBackendServer {
   acquireMissionCommitLock(agentId: string, signal?: AbortSignal) { return this.missionExecution.acquireCommitLock(agentId, signal); }
   releaseMissionCommitLock(agentId: string) { return this.missionExecution.releaseCommitLock(agentId); }
 
+  async listRemoteRepositories(connectionId: string): Promise<SourceRepository[]> {
+    return this.remoteTeams.request<SourceRepository[]>(connectionId, backendMethods.sourceRepositoriesList);
+  }
+
+  async listRemoteWorktrees(connectionId: string, repoPath: string): Promise<SourceWorktree[]> {
+    return this.remoteTeams.request<SourceWorktree[]>(connectionId, backendMethods.sourceWorktreesList, { repoPath });
+  }
+
+  async createRemoteWorktree(input: CreateSourceWorktreeInput): Promise<SourceWorktree> {
+    if (!input.remoteConnectionId) throw new Error('A remote host is required.');
+    return this.remoteTeams.request<SourceWorktree>(input.remoteConnectionId, backendMethods.sourceWorktreeCreate, { input: sourceWorktreeInputWithoutRemoteConnection(input) });
+  }
+
   async closeAgentFromMcp(callerAgentId: string, agentId: string): Promise<void> {
-    const caller = this.snapshot.agents.find(agent => agent.id === callerAgentId);
-    const agent = this.snapshot.agents.find(agent => agent.id === agentId);
-    if (!caller || !agent || agent.id === caller.id || agent.delegatedByAgentId !== caller.id) {
+    const agents = this.collaborationAgents();
+    const caller = agents.find(agent => agent.id === callerAgentId);
+    const agent = agents.find(agent => agent.id === agentId);
+    if (!caller || !agent || agent.id === caller.id || (!agent.delegatedByAgentId || this.resolveTaskAgentId(agent.delegatedByAgentId) !== caller.id)) {
       throw new Error('Only the creator of an agent can close it.');
     }
+    const owningSnapshot = agent.remoteConnectionId ? this.remoteTeams.knownSnapshot(agent.remoteConnectionId) : this.snapshot;
     if (agent.status.type !== 'idle' || handoffInProgress(agent)
-      || this.snapshot.queuedPrompts?.some(prompt => prompt.agentId === agentId)
-      || this.snapshot.agentRequests?.[agentId]?.length) {
+      || owningSnapshot?.queuedPrompts?.some(prompt => prompt.agentId === agentId)
+      || owningSnapshot?.agentRequests?.[agentId]?.length) {
       throw new Error('Wait for the agent to become idle and resolve pending prompts or requests before closing it.');
     }
-    if (this.tasks?.list(agentId).some(task => !['completed', 'cancelled', 'failed'].includes(task.state))) {
+    if ((await this.listCollaborationTasks(agentId)).some(task => !['completed', 'cancelled', 'failed'].includes(task.state))) {
       throw new Error('Complete or cancel unfinished tasks before closing this agent.');
     }
     const response = await this.handleMessage({ jsonrpc: '2.0', id: randomUUID(), method: backendMethods.agentDelete, params: { agentId } });
@@ -702,8 +1060,8 @@ export class AppBackendServer {
   /** `create-mission` from an agent: start the Mission, hand its lead the brief and ask the renderer to open it. */
   async startMissionFromAgent(agentId: string, input: { outcome: string; prompt: string; selection?: ExecutionSelectionOverrides }): Promise<{ missionId: string; outcome: string }> {
     const caller = this.snapshot.agents.find(agent => agent.id === agentId);
-    const team = this.snapshot.teams.find(candidate => candidate.id === caller?.teamId && !candidate.remoteConnectionId);
-    if (!caller || !team) throw new Error('create-mission needs an agent on a local team.');
+    const team = this.snapshot.teams.find(candidate => candidate.id === caller?.teamId);
+    if (!caller || !team) throw new Error('create-mission needs a local agent.');
     // Checked before anything exists, so a bad model leaves no half-started Mission behind.
     const leadSettings = await this.resolveMissionLeadSettings(caller, input);
     const mission = await this.createMissionAndRun({
@@ -769,6 +1127,10 @@ export class AppBackendServer {
 
   missionDeveloperInstructions(agentId: string) {
     return this.missionExecution.developerInstructionsForAgent(agentId);
+  }
+
+  async reopenMissionStage(agentId: string, stage: import('@workspace/core/missions').MissionStage) {
+    return this.missionExecution.reopenStage(agentId, stage);
   }
 
   async setMissionTitle(agentId: string, title: string) {
@@ -850,6 +1212,7 @@ export class AppBackendServer {
   }
 
   async initialize(): Promise<void> {
+    await this.remoteTeams.activateConnections();
     await this.agentHandoffs.recover();
     await this.providerConnections?.refresh();
     await this.initializeSourceFolderIfNeeded();
@@ -941,7 +1304,7 @@ export class AppBackendServer {
         const params = requireRecord(message.params);
         if (message.method === backendMethods.guestConversationControl) {
           const input = params.input as import('@workspace/core/guest-navigation').GuestJoinControl;
-          if (input?.action === 'prepare' && input.teamId && !this.snapshot.teams.some(team => team.id === input.teamId && !team.remoteConnectionId)) throw new Error('Join requires a local team.');
+          if (input?.action === 'prepare' && input.teamId && !this.snapshot.teams.some(team => team.id === input.teamId)) throw new Error('Join requires a team.');
         }
         const result = message.method === backendMethods.guestConversationControl
           ? await joins.control(params.input as import('@workspace/core/guest-navigation').GuestJoinControl, this.snapshot.activeTeamId ?? this.snapshot.teams[0]?.id)
@@ -955,7 +1318,8 @@ export class AppBackendServer {
     if (message.method === backendMethods.conversationShareControl) {
       try {
         if (!this.conversationShares) throw new Error('Conversation sharing is unavailable.');
-        return createAppRpcResult(message.id, await this.conversationShares.control(requireRecord(message.params).input as import('@workspace/core/conversation-sharing').ConversationShareControl));
+        const params = requireRecord(message.params);
+        return createAppRpcResult(message.id, await this.conversationShares.control(params.input as import('@workspace/core/conversation-sharing').ConversationShareControl));
       } catch (error) { return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, error instanceof Error ? error.message : 'Share operation failed.'); }
     }
     const sharedParams = message.params && typeof message.params === 'object' ? message.params as { agentId?: unknown; sourceAgentId?: unknown; input?: { id?: unknown; agentId?: unknown } } : undefined;
@@ -1025,7 +1389,7 @@ export class AppBackendServer {
       || message.method === backendMethods.agentCodeReviewDiscard;
     const createsAgent = startsIndependentReview
       || [backendMethods.agentCreate, backendMethods.projectCreate, backendMethods.agentQuickChatCreate, backendMethods.agentDuplicate, backendMethods.agentFork].some((method) => method === message.method);
-    const createsTeam = message.method === backendMethods.teamCreate || message.method === backendMethods.teamConnect;
+    const createsTeam = message.method === backendMethods.teamCreate;
     const before = createsAgent || createsTeam || completesReview ? await this.remoteTeams.clientSnapshot() : undefined;
     const reviewTargetAgentId = completesReview && before && typeof params?.agentId === 'string'
       ? projectClientSnapshot(before, clientId).agents.find((agent) => agent.id === params.agentId)?.codeReview?.targetAgentId
@@ -1045,8 +1409,7 @@ export class AppBackendServer {
       const effectiveParams = isRecord(request.params) ? request.params : {};
       const input = isRecord(effectiveParams.input) ? effectiveParams.input : {};
       const agent = (before ?? this.remoteTeams.clientSnapshotFromKnownRemotes()).agents.find(candidate => candidate.id === (params?.agentId ?? input.id));
-      const teamId = typeof input.teamId === 'string' ? input.teamId : agent?.teamId;
-      const remote = params?.remoteConnectionId || input.remoteConnectionId || this.snapshot.teams.find(team => team.id === teamId)?.remoteConnectionId;
+      const remote = params?.remoteConnectionId || input.remoteConnectionId || agent?.remoteConnectionId;
       const requestedSelection = isRecord(input.selection) ? input.selection : {};
       if (!remote && (message.method !== backendMethods.agentUpdate || requestedSelection.backend !== undefined)) {
         try {
@@ -1062,13 +1425,23 @@ export class AppBackendServer {
     const sourceAgentId=[backendMethods.agentPromptSend,backendMethods.agentTurnRetry,backendMethods.agentTurnContinueInterrupted].some(method=>method===message.method) && typeof params?.agentId==='string' ? params.agentId : null;
     const source=sourceAgentId ? this.options.usage?.beginPrompt(sourceAgentId) : null;
     let response:AppRpcResponse|undefined;
+    const creationInput = createsAgent && isRecord(request.params) && isRecord(request.params.input) ? request.params.input : {};
+    const releaseCreation = this.reserveRemoteCreation({ teamId: typeof creationInput.teamId === 'string' ? creationInput.teamId : undefined, remoteConnectionId: typeof creationInput.remoteConnectionId === 'string' ? creationInput.remoteConnectionId : undefined });
+    const deletionParams = isRecord(request.params) ? request.params : {};
+    const deletingTeam = message.method === backendMethods.teamDelete && typeof deletionParams.teamId === 'string' ? deletionParams.teamId : undefined;
+    const deletingConnection = message.method === backendMethods.connectionsDelete && typeof deletionParams.connectionId === 'string' ? deletionParams.connectionId : undefined;
+    if ((deletingTeam && this.deletingTeams.has(deletingTeam)) || (deletingConnection && this.deletingConnections.has(deletingConnection))) throw new Error('Deletion is already in progress.');
+    if (deletingTeam) this.deletingTeams.add(deletingTeam);
+    if (deletingConnection) this.deletingConnections.add(deletingConnection);
     try { response = await this.dispatchMessage(request, (id) => { creation.id = id; }, clientId); }
     catch(error) {
       if(sourceAgentId)this.options.usage?.cancelPrompt(sourceAgentId,source);
       throw error;
-    }
+    } finally { releaseCreation(); if (deletingTeam) this.deletingTeams.delete(deletingTeam); if (deletingConnection) this.deletingConnections.delete(deletingConnection); }
     if(sourceAgentId && response && 'error' in response)this.options.usage?.cancelPrompt(sourceAgentId,source);
     if (response && 'result' in response) {
+      // Handlers that answer with the local snapshot would otherwise erase the remote agents from the client.
+      if (response.result === this.snapshot) response = { ...response, result: this.remoteTeams.clientSnapshotFromKnownRemotes() };
       const commandResult = (snapshot: AppSnapshot) => params?.entityResult === true && creation.id && (createsAgent || message.method === backendMethods.agentCodeReviewStart)
         ? { agentId: creation.id, snapshot } : snapshot;
       if (isAppSnapshot(response.result) && (createsAgent || createsTeam)) {
@@ -1079,9 +1452,11 @@ export class AppBackendServer {
             { agentId: created.id, application: source.openInApplication });
         }
         const shouldSelect = !isRecord(params?.options) || params.options.select !== false;
-        if (created && shouldSelect) return { ...response, result: commandResult(await preferences.update(clientId,
+        const afterAgentId = (message.method === backendMethods.agentDuplicate || message.method === backendMethods.agentFork)
+          && typeof params?.agentId === 'string' ? params.agentId : undefined;
+        if (created && (shouldSelect || afterAgentId)) return { ...response, result: commandResult(await preferences.update(clientId,
           createsAgent ? backendMethods.clientNavigationSelectAgent : backendMethods.clientNavigationSelectTeam,
-          createsAgent ? { agentId: created.id } : { teamId: created.id })) };
+          createsAgent ? { agentId: created.id } : { teamId: created.id }, { afterAgentId, select: shouldSelect })) };
       }
       if (isAppSnapshot(response.result) && reviewTargetAgentId && response.result.agents.some((agent) => agent.id === reviewTargetAgentId)) {
         return { ...response, result: await preferences.update(clientId, backendMethods.clientNavigationSelectAgent, { agentId: reviewTargetAgentId }) };
@@ -1118,6 +1493,61 @@ export class AppBackendServer {
     }
 
     switch (message.method) {
+      case backendMethods.collaborationTaskAccess: {
+        const params = requireRecord(message.params);
+        const team = this.snapshot.teams.find(team => team.id === params.teamId && team.collaborationOwnerId === params.ownerId);
+        const agentId = requireString(params.agentId, 'agentId');
+        if (!team || !this.snapshot.agents.some(agent => agent.id === agentId && agent.teamId === team.id)) throw new Error('Invalid task owner or caller.');
+        if (!this.tasks) return createAppRpcResult(message.id, params.action === 'list' ? [] : null);
+        if (params.action === 'list') return createAppRpcResult(message.id, this.tasks.list(agentId));
+        if (params.action === 'cancel') return createAppRpcResult(message.id, await this.tasks.cancel(agentId, requireString(params.taskId, 'taskId')));
+        if (params.action === 'block') { await this.tasks.blockParent(agentId); return createAppRpcResult(message.id, null); }
+        throw new Error('Unknown task ownership operation.');
+      }
+      case backendMethods.collaborationTeamBind: {
+        const params = requireRecord(message.params);
+        const teamId = requireString(params.teamId, 'teamId');
+        const ownerId = requireString(params.ownerId, 'ownerId');
+        const team = this.snapshot.teams.find(team => team.id === teamId);
+        if (!team || (team.collaborationOwnerId && team.collaborationOwnerId !== ownerId)) throw new Error('The remote team belongs to a different collaboration controller.');
+        team.collaborationOwnerId = ownerId;
+        return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
+      }
+      case backendMethods.collaborationWorkerCreate: {
+        if (!this.options.collaborationTools) throw new Error('Remote collaboration requires an updated daemon on this host.');
+        const params = requireRecord(message.params);
+        const teamId = requireString(params.teamId, 'teamId');
+        const ownerId = requireString(params.ownerId, 'ownerId');
+        const team = this.snapshot.teams.find(team => team.id === teamId);
+        if (!team || (team.collaborationOwnerId && team.collaborationOwnerId !== ownerId)) throw new Error('The remote team belongs to a different collaboration controller.');
+        const input = requireRecord(params.input);
+        requireString(input.repoPath, 'repoPath');
+        const caller = requireRecord(params.caller);
+        requireString(caller.id, 'caller.id');
+        requireAgentBackend(caller.backend);
+        team.collaborationOwnerId = ownerId;
+        await this.persistSnapshotOnly();
+        const agent = await this.options.collaborationTools.provisionWorker({
+          ...params, ownerId, teamId, agentId: requireString(params.agentId, 'agentId'),
+          ...(params.localCallerId === undefined ? {} : { localCallerId: requireString(params.localCallerId, 'localCallerId') }),
+          caller: caller as Agent, input: input as CreateCoAgentInput,
+        } as RemoteWorkerRequest);
+        return createAppRpcResult(message.id, { agent, snapshot: await this.persistAndEmitSnapshot() } satisfies RemoteWorkerResult);
+      }
+      case backendMethods.collaborationPromptSend: {
+        const params = requireRecord(message.params);
+        const agent = this.snapshot.agents.find(agent => agent.id === requireString(params.agentId, 'agentId'));
+        if (!agent) throw new Error('Remote worker not found.');
+        const prompt = requireString(params.prompt, 'prompt');
+        return createAppRpcResult(message.id, await this.sendTaskPrompt(agent, prompt, params.goal === true));
+      }
+      case backendMethods.collaborationMessageSend: {
+        const params = requireRecord(message.params);
+        const agent = this.snapshot.agents.find(agent => agent.id === requireString(params.agentId, 'agentId'));
+        if (!agent) throw new Error('Remote recipient not found.');
+        return createAppRpcResult(message.id, await this.admitRemoteMessage(agent,
+          requireString(params.messageId, 'messageId'), requireString(params.prompt, 'prompt')));
+      }
       case backendMethods.agentMarkRead: {
         const params = requireRecord(message.params);
         const agentId = requireString(params.agentId, 'agentId');
@@ -1430,8 +1860,10 @@ export class AppBackendServer {
       }
       case backendMethods.connectionsDelete: {
         const connectionId = requireConnectionId(message.params);
+        this.requireNoRemoteCreation(undefined, connectionId);
+        for (const team of this.snapshot.teams) await this.stopRemoteTeamProfiles(team, connectionId);
         await this.remoteClients.closeConnection(connectionId);
-        this.deleteTeamsForRemoteConnection(connectionId);
+        this.remoteTeams.forgetConnection(connectionId);
         this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.filter((candidate) => candidate.id !== connectionId);
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
@@ -1461,7 +1893,8 @@ export class AppBackendServer {
       }
       case backendMethods.agentCreate: {
         const input = requireAgentCreateInput(message.params);
-        const remoteTeamPointer = this.remoteTeams.pointerForAgentInput(input);
+        const remoteTeamPointer = await this.remoteAgentPointer(input);
+        delete input.remoteConnectionId;
         if (input.repositorySession !== undefined) {
           const location = this.locationFromRemoteConnectionId(remoteTeamPointer?.connectionId);
           const root = input.folder;
@@ -1496,10 +1929,11 @@ export class AppBackendServer {
       }
       case backendMethods.projectCreate: {
         const input = requireProjectCreateInput(message.params);
-        const remoteTeamPointer = this.remoteTeams.pointerForAgentInput(input);
+        const remoteTeamPointer = await this.remoteAgentPointer(input);
         if (remoteTeamPointer) {
+          const { remoteConnectionId: _remote, ...remoteInput } = input;
           const remoteSnapshot = await this.remoteTeams.request<AppSnapshot>(remoteTeamPointer.connectionId, backendMethods.projectCreate, {
-            input: { ...input, teamId: remoteTeamPointer.remoteTeamId },
+            input: { ...remoteInput, teamId: remoteTeamPointer.remoteTeamId },
           });
           this.remoteTeams.adoptCreatedAgentSnapshot(remoteTeamPointer, remoteSnapshot);
           if (remoteSnapshot.activeAgentId) onCreated(remoteSnapshot.activeAgentId);
@@ -1547,10 +1981,11 @@ export class AppBackendServer {
       }
       case backendMethods.agentQuickChatCreate: {
         const input = requireQuickChatCreateInput(message.params);
-        const remoteTeamPointer = this.remoteTeams.pointerForAgentInput(input);
+        const remoteTeamPointer = await this.remoteAgentPointer(input);
         if (remoteTeamPointer) {
+          const { remoteConnectionId: _remote, ...remoteInput } = input;
           const remoteSnapshot = await this.remoteTeams.request<AppSnapshot>(remoteTeamPointer.connectionId, backendMethods.agentQuickChatCreate, {
-            input: { ...input, teamId: remoteTeamPointer.remoteTeamId },
+            input: { ...remoteInput, teamId: remoteTeamPointer.remoteTeamId },
           });
           this.remoteTeams.adoptCreatedAgentSnapshot(remoteTeamPointer, remoteSnapshot);
           if (remoteSnapshot.activeAgentId) onCreated(remoteSnapshot.activeAgentId);
@@ -1654,14 +2089,20 @@ export class AppBackendServer {
           return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
         }
         if (!this.localAgentForId(agentId)) {
+          // A successful handoff may have lost both its reply and replacement
+          // event. Refresh the execution owner before resolving this retry.
+          const location = await this.locationForAgentId(agentId);
+          if (location?.kind === 'remote') await this.remoteTeams.snapshot(location.connectionId);
           const projected = await this.remoteTeams.clientSnapshot();
           const remoteTarget = projected.agents.find(agent => agent.handoff?.sourceAgentId === agentId && agent.handoff.operationId === operationId);
           if (remoteTarget) return this.routeAgentSnapshotRequest(message.id, remoteTarget.id, message.method, { agentId, input }, async () => { throw new Error('Remote handoff owner is unavailable.'); });
         }
+        await this.remoteTeams.clientSnapshot();
+        const source = this.collaborationAgents().find(agent => agent.id === agentId);
+        if (!source) throw new Error('Source agent is no longer available.');
+        await this.checkDelegationHandoff(source, operationId);
+        await this.prepareDelegationHandoff(source, operationId);
         return this.routeAgentSnapshotRequest(message.id, agentId, message.method, { agentId, input }, async () => {
-          if (this.tasks?.list(agentId).some(task => !['completed', 'cancelled', 'failed'].includes(task.state))) {
-            throw new Error('Resolve or cancel durable tasks before handing off this agent.');
-          }
           await this.agentHandoffs.run(agentId, input);
           return this.persistAndEmitSnapshot();
         });
@@ -1678,9 +2119,6 @@ export class AppBackendServer {
           return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Agent or team not found: ${input.agentId} -> ${input.teamId}`);
         }
         if (handoffInProgress(movingAgent)) throw new Error('Wait for the handoff to finish.');
-        if (this.remoteTeams.pointerForTeam(targetTeam)) {
-          return createAppRpcError(message.id, appRpcErrorCodes.internalError, 'Agents cannot be moved between backend locations.');
-        }
         const agent = moveAgentToTeamInSnapshot(this.snapshot, input.agentId, input.teamId);
         if (!agent) {
           return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Agent or team not found: ${input.agentId} -> ${input.teamId}`);
@@ -1773,6 +2211,7 @@ export class AppBackendServer {
                 ...(finishedPullRequest ? [finishedPullRequest] : []),
               );
             }
+            await this.runProfiles.stopAgent(agentId);
             if (existingAgent.backendSession) {
               await this.retireConversation(existingAgent);
               await this.driverRpc?.handle(backendMethods.driverConversationRelease, {
@@ -1816,6 +2255,7 @@ export class AppBackendServer {
             this.codeReviews?.closeForAgentRemoval(existingAgent);
             const agent = closeAgentInSnapshot(this.snapshot, agentId);
             this.agentRequests.clearAgent(agentId);
+            await this.runProfiles.releaseAgent(agentId);
             if (!agent) {
               throw new Error(`Agent not found: ${agentId}`);
             }
@@ -1829,6 +2269,27 @@ export class AppBackendServer {
         const params = requireRecord(message.params);
         const agentId = requireString(params.agentId, 'agentId');
         return this.routeAgentResultRequest(message.id, agentId, message.method, params, agent => saveMarkdownFile(agentFolder(agent), requireString(params.filePath, 'filePath'), requireString(params.content, 'content'), params.overwrite === true, backendHomeDir()));
+      }
+      case backendMethods.agentRunProfilesGet:
+      case backendMethods.agentRunProfileActionsGet:
+      case backendMethods.agentRunProfileSave:
+      case backendMethods.agentRunProfileDelete:
+      case backendMethods.agentRunProfileStart:
+      case backendMethods.agentProfileRunStop:
+      case backendMethods.agentProfileRunsStop: {
+        const params = requireRecord(message.params);
+        const agentId = requireString(params.agentId, 'agentId');
+        return this.routeAgentResultRequest(message.id, agentId, message.method, params, async agent => {
+          const folder = requireAgentFolder(agent);
+          if (message.method === backendMethods.agentRunProfilesGet) return this.runProfiles.get(agentId, folder);
+          if (message.method === backendMethods.agentRunProfileActionsGet) return this.runProfiles.discover(folder, requireString(params.directory, 'directory'));
+          if (message.method === backendMethods.agentRunProfileSave) return this.runProfiles.save(agentId, folder, requireRecord(params.input) as import('@workspace/core/run-profiles').RunProfileInput);
+          if (message.method === backendMethods.agentRunProfileDelete) return this.runProfiles.delete(agentId, folder, requireString(params.profileId, 'profileId'));
+          if (message.method === backendMethods.agentProfileRunStop) return this.runProfiles.stop(agentId, requireString(params.runId, 'runId'));
+          if (message.method === backendMethods.agentProfileRunsStop) return this.runProfiles.stopAgent(agentId);
+          const input = requireRecord(params.input);
+          return this.runProfiles.start(agentId, folder, { profileId: requireString(input.profileId, 'profileId'), command: requireString(input.command, 'command'), cwd: requireString(input.cwd, 'cwd') });
+        });
       }
       case backendMethods.agentFilesList: {
         const agentId = requireAgentId(message.params);
@@ -1942,9 +2403,19 @@ export class AppBackendServer {
         }, () => this.visualize.readAsset(agentId, visualizationId));
       }
       case backendMethods.agentModelsList: {
-        const agentId = requireAgentId(message.params);
-        const backend = requireRecord(message.params).backend;
+        const params = requireRecord(message.params);
+        const backend = params.backend;
         if (backend !== undefined && !isAgentBackend(backend)) throw new Error('Invalid model provider.');
+        if (params.agentId === undefined) {
+          // A host catalog needs no agent: a machine without agents yet can still offer its models.
+          if (!isAgentBackend(backend)) throw new Error('A model provider is required without an agent.');
+          const connectionId = optionalTrimmedString(params.remoteConnectionId);
+          if (connectionId) return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, backendMethods.agentModelsList, { backend }));
+          const now = new Date().toISOString();
+          const catalogAgent: Agent = { id: 'host-model-catalog', name: null, folder: null, backend: resolveAgentBackend(this.snapshot, backend), status: { type: 'idle' }, createdAt: now, updatedAt: now };
+          return createAppRpcResult(message.id, await this.handleAgentDriverRequest(catalogAgent, backendMethods.driverModelsList, { agent: catalogAgent }));
+        }
+        const agentId = requireAgentId(message.params);
         return this.routeAgentResultRequest(message.id, agentId, backendMethods.agentModelsList, { agentId, ...(backend ? { backend } : {}) }, (agent) => {
           const modelAgent = backend ? { ...agent, backend: resolveAgentBackend(this.snapshot, backend), backendSession: undefined, backendDefaults: undefined } : agent;
           return this.handleAgentDriverRequest(modelAgent, backendMethods.driverModelsList, { agent: modelAgent });
@@ -2484,6 +2955,9 @@ export class AppBackendServer {
       }
       case backendMethods.agentInterrupt: {
         const agentId = requireAgentId(message.params);
+        const location = await this.locationForAgentId(agentId);
+        // Remote parents' durable tasks belong to this controller, before the host sees Stop.
+        if (location?.kind === 'remote') await this.tasks?.blockParent(agentId);
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentInterrupt, { agentId }, async (agent) => {
           this.stoppingAgents.add(agent.id);
           try {
@@ -2515,16 +2989,11 @@ export class AppBackendServer {
       }
       case backendMethods.agentTasksList: {
         const agentId = requireAgentId(message.params);
-        return this.routeAgentResultRequest(message.id, agentId, message.method, { agentId }, () => this.tasks?.list(agentId) ?? []);
+        return createAppRpcResult(message.id, await this.listCollaborationTasks(agentId));
       }
       case backendMethods.agentTaskCancel: {
         const params = requireRecord(message.params);
-        const agentId = requireString(params.agentId, 'agentId');
-        const taskId = requireString(params.taskId, 'taskId');
-        return this.routeAgentResultRequest(message.id, agentId, message.method, { agentId, taskId }, () => {
-          if (!this.tasks) throw new Error('Durable tasks are unavailable.');
-          return this.tasks.cancel(agentId, taskId);
-        });
+        return createAppRpcResult(message.id, await this.cancelCollaborationTask(requireString(params.agentId, 'agentId'), requireString(params.taskId, 'taskId')));
       }
       case backendMethods.agentTurnDelete: {
         const params = requireRecord(message.params);
@@ -2572,101 +3041,41 @@ export class AppBackendServer {
           return snapshot;
         });
       }
-      case backendMethods.teamConnect:
       case backendMethods.teamCreate: {
         const input = requireTeamCreateInput(message.params);
-        if (message.method === backendMethods.teamConnect
-          ? !input.remoteConnectionId || !input.remoteTeamId
-          : Boolean(input.remoteTeamId)) {
-          return createAppRpcError(message.id, appRpcErrorCodes.invalidParams,
-            'Use team/connect with a connection and existing team ID, or team/create without an existing team ID.');
-        }
         validateTeamInput(input);
-        this.remoteTeams.validateConnection(input.remoteConnectionId);
-        const remoteConnectionId = input.remoteConnectionId?.trim() ?? '';
-        if (remoteConnectionId) {
-          let remoteTeam: Team;
-          try {
-            remoteTeam = await this.remoteTeams.resolveTeamForPointerInput(input);
-          } catch (error) {
-            return createAppRpcError(message.id, appRpcErrorCodes.internalError, error instanceof Error ? error.message : String(error));
-          }
-          const team = createTeamInSnapshot(this.snapshot, {
-            name: remoteTeam.name,
-            color: remoteTeam.color ?? input.color,
-            remoteConnectionId,
-            remoteTeamId: remoteTeam.id,
-          }, undefined, { select: false });
-          onCreated(team.id);
-        } else {
-          onCreated(createTeamInSnapshot(this.snapshot, input, undefined, { select: false }).id);
-        }
+        onCreated(createTeamInSnapshot(this.snapshot, input, undefined, { select: false }).id);
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
       case backendMethods.teamUpdate: {
         const input = requireTeamUpdateInput(message.params);
         validateTeamInput(input);
-        this.remoteTeams.validateConnection(input.remoteConnectionId);
         const existingTeam = this.snapshot.teams.find((candidate) => candidate.id === input.id) ?? null;
         if (!existingTeam) {
           return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Team not found: ${input.id}`);
         }
-        const existingConnectionId = existingTeam.remoteConnectionId?.trim() ?? '';
-        const nextConnectionId = input.remoteConnectionId?.trim() ?? '';
-        const connectionChanged = existingConnectionId !== nextConnectionId;
-        if (connectionChanged && await this.remoteTeams.teamHasAgents(existingTeam)) {
-          return createAppRpcError(message.id, appRpcErrorCodes.internalError, 'Team connection cannot be changed while it has agents.');
-        }
-
-        const pointer = this.remoteTeams.pointerForTeam(existingTeam);
-        let updateInput = input;
-        if (connectionChanged && nextConnectionId) {
-          let remoteTeam: Team;
-          try {
-            remoteTeam = await this.remoteTeams.resolveTeamForPointerInput(input);
-          } catch (error) {
-            return createAppRpcError(message.id, appRpcErrorCodes.internalError, error instanceof Error ? error.message : String(error));
-          }
-          updateInput = {
-            ...input,
-            remoteConnectionId: nextConnectionId,
-            remoteTeamId: remoteTeam.id,
-          };
-        } else if (pointer && !connectionChanged) {
-          const remoteSnapshot = await this.remoteTeams.request<AppSnapshot>(pointer.connectionId, backendMethods.teamUpdate, {
-            input: {
-              id: pointer.remoteTeamId,
-              name: input.name,
-              color: input.color,
-            },
+        for (const link of this.remoteTeams.linksForTeam(existingTeam)) {
+          const remoteSnapshot = await this.remoteTeams.request<AppSnapshot>(link.connectionId, backendMethods.teamUpdate, {
+            input: { id: link.remoteTeamId, name: input.name, color: input.color },
           });
-          this.remoteTeams.rememberSnapshot(pointer.connectionId, remoteSnapshot);
-          updateInput = {
-            ...input,
-            remoteConnectionId: pointer.connectionId,
-            remoteTeamId: pointer.remoteTeamId,
-          };
+          this.remoteTeams.rememberSnapshot(link.connectionId, remoteSnapshot);
         }
-        try {
-          updateTeamInSnapshot(this.snapshot, updateInput);
-        } catch (error) {
-          return createAppRpcError(message.id, appRpcErrorCodes.internalError, error instanceof Error ? error.message : String(error));
-        }
+        updateTeamInSnapshot(this.snapshot, input);
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
 
       case backendMethods.teamDelete: {
         const teamId = requireTeamId(message.params);
+        this.requireNoRemoteCreation(teamId);
         const existingTeam = this.snapshot.teams.find((candidate) => candidate.id === teamId) ?? null;
-        const pointer = this.remoteTeams.pointerForTeam(existingTeam);
-        if (pointer) {
-          const remoteSnapshot = await this.remoteTeams.request<AppSnapshot>(pointer.connectionId, backendMethods.teamDelete, {
-            teamId: pointer.remoteTeamId,
-          });
-          this.remoteTeams.rememberSnapshot(pointer.connectionId, remoteSnapshot);
-          this.ensureLocalFallbackBeforeRemovingTeam(teamId);
-        } else if (existingTeam) {
+        // Linked-team cleanup can be retried after the owning host deleted it but its reply was lost.
+        if (!existingTeam && requireRecord(message.params).missingOk === true) {
+          return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
+        }
+        if (existingTeam) {
           if (this.snapshot.teams.length <= 1) throw new Error('At least one team must remain open.');
+          await this.remoteTeams.deleteRemoteTeams(existingTeam, () => this.persistSnapshotOnly());
+
           const missions = this.snapshot.missions?.filter(candidate => candidate.teamId === teamId) ?? [];
           let deletedMissions = 0;
           try {
@@ -2693,6 +3102,10 @@ export class AppBackendServer {
             throw new Error(`Team deletion stopped after removing ${deletedMissions} of ${missions.length} Missions. The team remains; retry deletion to finish cleanup. ${reason}`, { cause: error });
           }
         }
+        for (const agentId of existingTeam?.agentIds ?? []) {
+          const response = await this.routeAgentResultRequest(message.id, agentId, backendMethods.agentProfileRunsStop, { agentId }, () => this.runProfiles.releaseAgent(agentId));
+          if ('error' in response) return response;
+        }
         const team = closeTeamInSnapshot(this.snapshot, teamId);
         if (!team) {
           return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Team not found: ${teamId}`);
@@ -2700,19 +3113,6 @@ export class AppBackendServer {
         for (const agentId of team.agentIds) this.agentRequests.clearAgent(agentId);
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
-      case backendMethods.teamDisconnect: {
-        const teamId = requireTeamId(message.params);
-        const existingTeam = this.snapshot.teams.find((candidate) => candidate.id === teamId) ?? null;
-        if (this.remoteTeams.pointerForTeam(existingTeam)) {
-          this.ensureLocalFallbackBeforeRemovingTeam(teamId);
-        }
-        const team = closeTeamInSnapshot(this.snapshot, teamId);
-        if (!team) {
-          return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Team not found: ${teamId}`);
-        }
-        return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
-      }
-
       case backendMethods.settingsUpdate: {
         const { policy, preferences } = splitSettingsInput(requireSettingsUpdateInput(message.params));
         if (policy.general && 'providerHomes' in policy.general) throw new Error('Provider homes must be changed through provider setup.');
@@ -3317,13 +3717,25 @@ export class AppBackendServer {
     }
   }
 
+  private async stopRemoteTeamProfiles(team: Team, connectionId: string): Promise<void> {
+    for (const link of this.remoteTeams.linksForTeam(team).filter(link => link.connectionId === connectionId)) {
+      // Profile execution hydrates the owner snapshot. Never invent local remote agents.
+      const known = this.remoteTeams.knownSnapshot(link.connectionId);
+      const owner = known?.teams.find(candidate => candidate.id === link.remoteTeamId);
+      for (const agentId of owner?.agentIds ?? []) {
+        await this.remoteTeams.request(link.connectionId, backendMethods.agentProfileRunsStop, { agentId });
+      }
+    }
+  }
+
   async close(): Promise<void> {
     this.closing = true;
-    this.conversationShares?.close();
+    await this.conversationShares?.close();
     await this.options.guestJoins?.close();
     this.autoResume.close();
     this.unsubscribeUsage?.();
     this.unsubscribeRequestUsage?.();
+    await this.runProfiles.close();
     await this.options.providerUpdates?.close();
     this.providerConnections?.close();
     this.agentWorkspaces.close();
@@ -3332,6 +3744,7 @@ export class AppBackendServer {
     this.unsubscribeDriverEvents?.();
     await this.driverRpc?.close();
     await this.remoteClients.close();
+    await this.options.remoteSnapshotCache?.flush?.();
     await this.options.usage?.close();
   }
 
@@ -3515,9 +3928,8 @@ export class AppBackendServer {
     // before crossing the client boundary, which otherwise treats them as local.
     if (!event.agentId && (event.type === 'models.changed' || event.type === 'skills.changed')) {
       const projected = this.remoteTeams.clientSnapshotFromKnownRemotes();
-      const teamIds = new Set(projected.teams.filter((team) => team.remoteConnectionId === connectionId).map((team) => team.id));
       for (const agent of projected.agents) {
-        if (agent.teamId && teamIds.has(agent.teamId) && agent.backend === event.backend) {
+        if (agent.remoteConnectionId === connectionId && agent.backend === event.backend) {
           if (event.type === 'skills.changed' && event.payload.cwd && event.payload.cwd !== agent.folder) continue;
           this.forwardRemoteBackendEvent(connectionId, { ...event, agentId: agent.id });
         }
@@ -3542,38 +3954,10 @@ export class AppBackendServer {
     this.emitRemoteBackendEvent(fullEvent);
   }
 
-  private deleteTeamsForRemoteConnection(connectionId: string): void {
-    const teamIds = this.snapshot.teams
-      .filter((team) => team.remoteConnectionId === connectionId)
-      .map((team) => team.id);
-    if (teamIds.length === 0) {
-      return;
-    }
-
-    if (teamIds.length === this.snapshot.teams.length) {
-      createTeamInSnapshot(this.snapshot, {
-        name: 'Local',
-        color: teamColors[0] ?? '#1B4FB2',
-      }, new Date().toISOString(), { select: false });
-    }
-
-    for (const teamId of teamIds) {
-      closeTeamInSnapshot(this.snapshot, teamId);
-    }
-  }
-
-  private ensureLocalFallbackBeforeRemovingTeam(teamId: string): void {
-    if (this.snapshot.teams.length !== 1 || this.snapshot.teams[0]?.id !== teamId) {
-      return;
-    }
-    createTeamInSnapshot(this.snapshot, {
-      name: 'Local',
-      color: teamColors[0] ?? '#1B4FB2',
-    }, new Date().toISOString(), { select: false });
-  }
-
   private async persistAndEmitSnapshot(): Promise<AppSnapshot> {
     this.reconcileShares();
+    // Background worktree cleanup can temporarily hide an agent, then restore it on failure.
+    if (this.runProfiles.hasRuns) await this.runProfiles.retainAgents(new Set([...this.snapshot.agents.map(agent => agent.id), ...this.agentClosuresInFlight]));
     await this.saveSnapshot?.(this.snapshot);
     const snapshot = await this.remoteTeams.clientSnapshot();
     this.emitSnapshotUpdated(snapshot);
@@ -3582,6 +3966,7 @@ export class AppBackendServer {
 
   private async persistSnapshotOnly(): Promise<AppSnapshot> {
     this.reconcileShares();
+    if (this.runProfiles.hasRuns) await this.runProfiles.retainAgents(new Set([...this.snapshot.agents.map(agent => agent.id), ...this.agentClosuresInFlight]));
     await this.saveSnapshot?.(this.snapshot);
     return this.snapshot;
   }
@@ -3851,6 +4236,7 @@ export class AppBackendServer {
     try {
       const remoteSnapshot = await this.remoteTeams.request<AppSnapshot>(connection.id, backendMethods.workProviderConnectionsReload);
       this.remoteTeams.rememberSnapshot(connection.id, remoteSnapshot);
+      await this.remoteTeams.activateLinkedTeams(connection.id, true);
     } catch (error) {
       await this.remoteClients.closeConnection(connection.id);
       this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map(candidate => candidate === connection
@@ -3898,6 +4284,7 @@ export class AppBackendServer {
   }
 
   private emitRemoteBackendEvent(event: BackendPublishedEvent): void {
+    this.onBackendEventApplied?.(event);
     const snapshot = this.remoteTeams.clientSnapshotFromKnownRemotes();
     this.onEvent?.({
       ...event,
@@ -4057,6 +4444,7 @@ function requireProjectCreateInput(params: unknown): CreateProjectInput & { team
   return {
     name: requireString(input.name, 'project name'),
     teamId: requireString(input.teamId, 'team id'),
+    ...(input.remoteConnectionId === undefined ? {} : { remoteConnectionId: requireString(input.remoteConnectionId, 'remote connection id') }),
     ...(requireExecutionSelection(input) === undefined ? {} : { selection: requireExecutionSelection(input) }),
   };
 }
@@ -4066,6 +4454,7 @@ function requireQuickChatCreateInput(params: unknown): CreateQuickChatInput {
   const input = requireRecord(record.input);
   return {
     ...(input.teamId === undefined ? {} : { teamId: requireString(input.teamId, 'team id') }),
+    ...(input.remoteConnectionId === undefined ? {} : { remoteConnectionId: requireString(input.remoteConnectionId, 'remote connection id') }),
     ...(requireExecutionSelection(input) === undefined ? {} : { selection: requireExecutionSelection(input) }),
   };
 }

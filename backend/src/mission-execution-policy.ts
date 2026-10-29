@@ -34,6 +34,7 @@ export function missionWorkspaceName(mission: Mission): string {
 }
 
 export function stageKickoffPrompt(mission: Mission, run: MissionRun): string {
+  if (run.stage === 'requirements') return 'Return to the Requirements stage. Follow the assigned Mission skill and revise the requirements with the user. Preserve the existing tickets and completed implementation; changes to tickets require the Tickets stage and user approval.';
   if (run.stage === 'tickets') return `The requirements are approved. Continue this Mission in the Tickets stage now: follow the assigned ${product.name} Mission skill, then work with the user to shape and publish the backlog.`;
   if (run.stage === 'implementation') return `The tickets are approved. Begin assigned ticket ${missionRunAssignment(mission, run)?.ticketNumber ?? (run.ticketIndex ?? 0) + 1}. Your assignment is ${JSON.stringify(missionRunAssignment(mission, run))}. Read get-mission-assignment, then implement only this ticket in your assigned worktree. Commit all your ticket changes before submitting the result, even if the ticket or tracker comments say not to commit. Local commits are authorized and required; push, merge and PR creation are not. If you cannot commit safely, report a blocker and do not submit completion. Report progress in this Mission conversation and submit summary, ticketId and implementation evidence including commit SHAs through submit-mission-result.`;
   return 'The implementation is approved. Begin the Mission review now and prepare the delivery decision for the user.';

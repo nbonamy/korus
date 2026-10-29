@@ -30,6 +30,11 @@ function registerMissionTools(
     description: 'Release the cooperative Mission commit lock you own after completing or abandoning the staging and commit sequence. No parameters.',
     inputSchema: {},
   }, () => loggedToolResult('release-mission-commit-lock', { callerAgentId }, () => coordinator.releaseMissionCommitLock(callerAgentId)));
+  server.registerTool('reopen-mission-stage', {
+    description: 'Mission lead only: return to an earlier reached stage to revise requirements or add/revise tickets. Preserves existing tickets, completed work and execution history. Stop active repository workers first. This changes the authoritative stage; user approval is still required to advance Requirements, Tickets and Review.',
+    inputSchema: { stage: z.enum(['requirements', 'tickets', 'implementation', 'review']) },
+  }, ({ stage }) => loggedToolResult('reopen-mission-stage', { callerAgentId, stage }, () => coordinator.reopenMissionStage(callerAgentId, stage)));
+
   server.registerTool('set-mission-title', {
     description: 'Rename the active Mission once its intended outcome is clear. Use a concise outcome-oriented title. The active Mission and run are inferred from your authenticated agent identity.',
     inputSchema: {
@@ -66,8 +71,9 @@ function registerMissionTools(
   }, input => loggedToolResult('write-mission-artifact', { callerAgentId, stage: input.stage }, () => coordinator.writeMissionArtifact(callerAgentId, input)));
 
   server.registerTool('upsert-mission-ticket', {
-    description: 'Create or revise one Mission ticket assigned to exactly one represented repository. Require verified local commits before ticket completion; never instruct the worker to skip or defer commits. Omit ticketId to create; use the returned ID to revise. Read mission-to-tickets for the stage procedure.',
+    description: 'Preserve existing tickets when revising the backlog. An unchanged ticket keeps its completion state; changing its work resets implementation. Create or revise one Mission ticket assigned to exactly one represented repository. Require verified local commits before ticket completion; never instruct the worker to skip or defer commits. Omit ticketId to create; use the returned ID to revise. Read mission-to-tickets for the stage procedure.',
     inputSchema: {
+      expectedRevision: z.number().int().nonnegative().optional(),
       ticketId: z.string().regex(/^mission-ticket-[a-zA-Z0-9-]+$/).optional(),
       title: z.string().trim().min(1).max(500),
       body: z.string().trim().min(1).max(100000),

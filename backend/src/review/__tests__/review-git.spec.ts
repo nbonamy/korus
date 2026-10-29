@@ -25,6 +25,18 @@ async function repository() {
 }
 
 describe('automatic review git boundary', () => {
+  it('freezes a commit baseline at its first parent, including an initial commit', async () => {
+    const { folder, git, service } = await repository();
+    const initial = await git('rev-parse', 'HEAD');
+    const root = await service.prepare(folder, { type: 'commit', sha: initial });
+    expect(await git('diff', root.baseRef, initial, '--', 'app.txt')).toContain('+base');
+    await writeFile(path.join(folder, 'app.txt'), 'latest\n');
+    await git('commit', '-am', 'latest');
+    const latest = await git('rev-parse', 'HEAD');
+    expect((await service.prepare(folder, { type: 'commit', sha: latest })).baseRef).toBe(initial);
+    expect(await service.hasChanges(folder)).toBe(false);
+  });
+
   it('freezes the branch baseline and commits reviewed tracked and untracked changes without pushing', async () => {
     const { folder, git, service } = await repository();
     const base = await git('rev-parse', 'HEAD');

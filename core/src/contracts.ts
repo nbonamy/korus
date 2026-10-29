@@ -310,10 +310,21 @@ export type Team = {
   name: string;
   avatar?: string;
   color?: string;
-  remoteConnectionId?: string;
-  remoteTeamId?: string;
+  /** Hidden per-host teams on remote daemons that hold this team's remote agents. */
+  remoteLinks?: RemoteTeamLink[];
+  /** Durable handoff intent and parent lineage, scoped to this controlled team. */
+  delegationHandoffs?: Record<string, { operationId: string; targetAgentId?: string; remoteConnectionId?: string }>;
+  /** Collaboration authority for a team controlled by another daemon. */
+  collaborationOwnerId?: string;
   agentIds: string[];
   activeAgentId?: string;
+};
+
+/** Foreign state: `remoteTeamId` belongs to the remote daemon and may collide with local ids. */
+export type RemoteTeamLink = {
+  collaborationOwnerId?: string;
+  connectionId: string;
+  remoteTeamId: string;
 };
 
 export type BackendApprovalDecision = 'approve' | 'deny';
@@ -367,9 +378,12 @@ export type OpenInApplicationCatalog = {
 };
 
 export type Agent = {
+  worktreeInitialization?: import('./worktree-initialization').WorktreeInitializationState;
   handoff?: import('./agent-handoff').AgentHandoff;
   id: string;
   teamId?: string;
+  /** Host that runs this agent; set when projecting remote daemon agents, absent for local agents. */
+  remoteConnectionId?: string;
   delegatedByAgentId?: string;
   delegationContext?: import('./delegation-context').DelegationContext;
   /** User-entered controls for the current delegation turn; never supplied by create-agent. */
@@ -488,8 +502,6 @@ export type SavedPromptDraft = {
   createdAt: number;
 };
 
-export type CockpitAgentViewMode = 'teams' | 'recent';
-
 export type AppGeneralSettings = {
   git?: import('./git-preferences').GitSettings;
   commitMessageInstructions: string;
@@ -519,7 +531,6 @@ export type AppGeneralSettings = {
   /** Last explicitly selected approval mode; seeds new chats without changing existing ones. */
   providerApprovalDefaults?: { codex?: ApprovalPreset; claude?: string; antigravity?: string };
   agentListCompact: boolean;
-  cockpitAgentViewMode: CockpitAgentViewMode;
   collapsedRepositoryKeys: string[];
   modelFavorites: ModelFavorite[];
   backlogRepositoryFavorites: Partial<Record<WorkProviderKind, string[]>>;
@@ -745,7 +756,7 @@ export type AppCommand =
   | { type: 'debug-missing-engines'; enabled: boolean }
   | { type: 'debug-provider-upgrades'; enabled: boolean }
   | { type: 'debug-review-uncommitted'; enabled: boolean }
-  | { type: 'debug-operation-progress'; kind: 'worktreeInitialization' | 'pullRequest' | 'merge' }
+  | { type: 'debug-operation-progress'; kind: 'worktreeInitialization' | 'worktreeIndicator' | 'pullRequest' | 'merge' }
   | { type: 'edit-active-agent' }
   | { type: 'new-team' }
   | { type: 'open-agent-composer'; agentId?: string; prompt?: string; submit?: boolean }
@@ -783,10 +794,13 @@ export type CreateAgentInput = {
   delegatedByAgentId?: string;
   sourceRepositoryName?: string;
   teamId?: string;
+  /** Run on this machine instead of locally; `folder` is then a path on that machine. */
+  remoteConnectionId?: string;
 };
 
 export type CreateQuickChatInput = {
   teamId?: string;
+  remoteConnectionId?: string;
   selection?: ExecutionSelectionOverrides;
 };
 
@@ -796,16 +810,12 @@ export type CreatedAgentResult = { agentId: string; snapshot: AppSnapshot };
 export type CreateTeamInput = {
   name: string;
   color: string;
-  remoteConnectionId?: string;
-  remoteTeamId?: string;
 };
 
 export type UpdateTeamInput = {
   id: string;
   name: string;
   color: string;
-  remoteConnectionId?: string;
-  remoteTeamId?: string;
 };
 
 export type ReorderTeamsInput = {
@@ -839,8 +849,9 @@ export type ReorderAgentsInput = {
 
 export type ReorderRepositoriesInput = {
   teamId: string;
-  repositoryRoot: string;
-  beforeRepositoryRoot: string | null;
+  /** `WorkspaceSidebarGroup.repositoryKey` of the section being moved. */
+  repositoryKey: string;
+  beforeRepositoryKey: string | null;
 };
 
 export type DesktopUpdateState =
@@ -907,10 +918,18 @@ export type AppApi = {
   listGlobalWorkItems(provider: WorkProviderKind, location?: AutomationLocation, query?: GlobalWorkItemQuery): Promise<WorkItemPage>;
   listAssignedWorkItems?(provider: WorkProviderKind, location?: AutomationLocation): Promise<WorkItem[]>;
   listWorkItems(provider: WorkProviderKind, repositoryId: string, location?: AutomationLocation, query?: WorkItemQuery): Promise<WorkItem[]>;
-  listBackendModels(agentId: string, backend?: AgentBackend): Promise<BackendModelOption[]>;
+  /** Without an agent, lists a provider's catalog on one host (local when no connection is given). */
+  listBackendModels(agentId: string | null, backend?: AgentBackend, remoteConnectionId?: string): Promise<BackendModelOption[]>;
   listBackendPlugins(agentId: string): Promise<BackendPluginSummary[]>;
   listBackendSkills(agentId: string): Promise<BackendSkillSummary[]>;
   listAgentFiles(agentId: string): Promise<AgentFileSearchItem[]>;
+  getRunProfiles(agentId: string): Promise<import('./run-profiles').RunProfileCatalog>;
+  getRunProfileActions(agentId: string, directory: string): Promise<import('./run-profiles').RunProfileDiscovery>;
+  saveRunProfile(agentId: string, input: import('./run-profiles').RunProfileInput): Promise<import('./run-profiles').RunProfileCatalog>;
+  deleteRunProfile(agentId: string, profileId: string): Promise<import('./run-profiles').RunProfileCatalog>;
+  startRunProfile(agentId: string, input: import('./run-profiles').RunProfileStartInput): Promise<import('./run-profiles').ProfileRun>;
+  stopProfileRun(agentId: string, runId: string): Promise<import('./run-profiles').ProfileRun>;
+  stopAgentProfileRuns(agentId: string): Promise<void>;
   listAgentDirectory(agentId: string, input?: import('./contracts/workspace').AgentDirectoryInput): Promise<import('./contracts/workspace').AgentDirectoryPage>;
   getDocumentWorkspaces(): Promise<import('./document-workspace').DocumentWorkspaces>;
   updateDocumentWorkspace(agentId: string, change: import('./document-workspace').DocumentWorkspaceChange): Promise<import('./document-workspace').DocumentWorkspace>;
@@ -961,7 +980,6 @@ export type AppApi = {
   updateTeam(input: UpdateTeamInput): Promise<AppSnapshot>;
   reorderTeams(input: ReorderTeamsInput): Promise<AppSnapshot>;
   closeTeam(teamId: string): Promise<AppSnapshot>;
-  disconnectTeam(teamId: string): Promise<AppSnapshot>;
   selectTeam(teamId: string): Promise<AppSnapshot>;
   getAutomationSnapshot(location?: AutomationLocation): Promise<AppSnapshot>;
   createAutomation(input: CreateAutomationInput, location?: AutomationLocation): Promise<AppSnapshot>;

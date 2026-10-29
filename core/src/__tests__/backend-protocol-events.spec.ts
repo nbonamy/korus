@@ -106,7 +106,11 @@ function createFixtures(): EventFixtures {
   const turn = { ...codexThread, turnId: 'turn-1' };
 
   return {
-    'conversation.shareChanged': { ...base, type: 'conversation.shareChanged', agentId: 'agent-1', payload: { active: true, handle: 'a'.repeat(32), connectedGuests: null, availability: 'transportPending' } },
+    'conversation.shareChanged': { ...base, type: 'conversation.shareChanged', agentId: 'agent-1', payload: {
+      active: true, handle: 'a'.repeat(32), connectedGuests: null, availability: 'ready',
+      proposals: [{ id: 'proposal-1', handle: 'a'.repeat(32), identity: 'guest-1', name: 'Guest', discriminator: '1234abcd', text: '2026-10-29T13:19:32.126Z', status: 'pending', createdAt: occurredAt, messageId: 'message-1', turnId: 'turn-1' }],
+      authors: [{ messageId: 'message-1', identity: 'guest-1', name: 'Guest', discriminator: '1234abcd' }],
+    } },
     'antigravity.conversationSnapshotChanged': {
       ...base, type: 'antigravity.conversationSnapshotChanged', agentId: 'agent-1', backend: 'antigravity', backendSessionId: 'session-1',
       payload: { revision: 1, snapshot: emptyAntigravitySnapshot('agent-1', 'session-1') },
@@ -759,6 +763,18 @@ describe(`${product.name} backend event decoder`, () => {
       expect(() => decodeAppBackendEvent(value)).toThrow(diagnostic);
     },
   );
+
+  it.each([
+    [{ proposals: {} }, '$.payload.proposals'],
+    [{ proposals: [{ id: 42 }] }, '$.payload.proposals[0].id'],
+    [{ authors: [{ messageId: 'message-1', identity: 'guest', name: null }] }, '$.payload.authors[0].name'],
+    [{ credential: 'PRIVATE_SHARE_CANARY' }, '$.payload'],
+  ])('rejects malformed sharing updates without exposing values', (override, diagnostic) => {
+    const event = createFixtures()['conversation.shareChanged'];
+    const malformed = { ...event, payload: { ...event.payload, ...override } };
+    expect(() => decodeAppBackendEvent(malformed)).toThrow(diagnostic);
+    try { decodeAppBackendEvent(malformed); } catch (error) { expect(String(error)).not.toContain('PRIVATE_SHARE_CANARY'); }
+  });
 
   it('reports a precise nested payload path', () => {
     const event = createFixtures()['models.changed'];

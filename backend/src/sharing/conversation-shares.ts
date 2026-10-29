@@ -3,6 +3,7 @@ import { chmod, lstat, mkdir, open, readFile, rename, unlink } from 'node:fs/pro
 import path from 'node:path';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
+import type { GuestParticipant } from '@workspace/core/guest-conversation';
 import type { AppSnapshot } from '@workspace/core/contracts';
 import { conversationShareTarget, decodeConversationInvitation, encodeConversationInvitation, encodeConversationShareLink } from '@workspace/core/conversation-sharing';
 import type { ConversationShareControl, ConversationShareRoute, ConversationShareLink, ConversationShareResult, ConversationShareState, ConversationShareTarget, ShareRelay } from '@workspace/core/conversation-sharing';
@@ -18,25 +19,28 @@ const targetSchema = z.object({ agentId: bounded, backend: z.enum(['codex', 'cla
 const handleSchema = z.string().regex(/^[A-Za-z0-9_-]{32}$/);
 const recordSchema = z.object({ v: z.literal(2), relay: z.object({ origin: bounded, peerId: bounded }).strict(), ownerId: bounded,
   handle: handleSchema, credential: z.string().regex(shareInvitationPattern), target: targetSchema, createdAt: z.string(), revokedAt: z.string().optional() }).strict();
-const proposalSchema = z.object({ id: z.string().uuid(), handle: handleSchema, identity: bounded, name: z.string().min(1).max(80), discriminator: z.string().length(8), text: z.string().max(100_000), fingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(), status: z.enum(['pending', 'queued', 'dispatching', 'dismissed', 'submitted', 'rejected', 'unresolved']), createdAt: z.string(), messageId: bounded.optional(), turnId: bounded.optional() }).strict();
+const proposalSchema = z.object({ id: z.string().uuid(), handle: handleSchema, identity: bounded, name: z.string().min(1).max(80), discriminator: z.string().length(8), text: z.string().max(100_000), followUpBehavior: z.enum(['queue', 'steer']).optional(), accessId: z.string().uuid().optional(), fingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(), status: z.enum(['pending', 'queued', 'dispatching', 'dismissed', 'submitted', 'rejected', 'unresolved']), createdAt: z.string(), messageId: bounded.optional(), turnId: bounded.optional() }).strict();
 const storeSchema = z.object({ v: z.literal(2), links: z.array(recordSchema), proposals: z.array(proposalSchema).optional() }).strict();
 const controlSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('status'), target: targetSchema }).strict(),
   z.object({ action: z.literal('create'), target: targetSchema }).strict(),
   z.object({ action: z.literal('copy'), target: targetSchema }).strict(),
   z.object({ action: z.literal('revoke'), target: targetSchema, handle: handleSchema }).strict(),
+  z.object({ action: z.literal('access'), target: targetSchema, handle: handleSchema, identity: bounded, writeAccess: z.boolean() }).strict(),
   z.object({ action: z.enum(['send', 'dismiss']), target: targetSchema, handle: handleSchema, proposalId: z.string().uuid() }).strict(),
 ]);
 type ShareRecord = ConversationShareLink & { ownerId: string; target: ConversationShareTarget; createdAt: string; revokedAt?: string };
 export type GuestConversationGrant = { target: ConversationShareTarget; title: string; valid(): boolean; onRevoke(listener: () => void): () => void };
-type StoredProposal = GuestProposal & { fingerprint?: string };
+type StoredProposal = GuestProposal & { fingerprint?: string; followUpBehavior?: 'queue' | 'steer'; accessId?: string };
+type SubmissionContext = { followUpBehavior?: 'queue' | 'steer' };
 type Store = { v: 2; links: ShareRecord[]; proposals?: StoredProposal[] };
 const fingerprint = (text: string) => createHash('sha256').update(text).digest('hex');
+const publicProposal = ({ followUpBehavior: _behavior, accessId: _access, fingerprint: _fingerprint, ...proposal }: StoredProposal): GuestProposal => proposal;
 const pendingStatuses = ['pending', 'queued', 'dispatching'];
 const compactProposal = (record: StoredProposal): StoredProposal => ['dismissed', 'submitted', 'rejected'].includes(record.status) ? { ...record, fingerprint: record.fingerprint ?? fingerprint(record.text), text: '' } : record;
 export type ConversationSharingOptions = { directory: string; endpoint(): Promise<{ ownerId: string; relay: ShareRelay } | null>;
-  canSubmit?(target: ConversationShareTarget): boolean;
-  submit?(target: ConversationShareTarget, text: string): Promise<{ turnId?: string; messageId?: string }>;
+  canSubmit?(target: ConversationShareTarget, context: SubmissionContext): boolean;
+  submit?(target: ConversationShareTarget, text: string, context: SubmissionContext): Promise<{ turnId?: string; messageId?: string }>;
   routing?: {
     update(routes: ConversationShareRoute[]): Promise<ShareRoutingStatus>;
     subscribe(listener: (status: ShareRoutingStatus) => void): () => void;
@@ -53,6 +57,8 @@ export class ConversationShares {
   private dispatching = false;
   private closed = false;
   private readonly invalidated = new Set<string>();
+  private readonly guests = new Map<string, GuestParticipant[]>();
+  private readonly writeAccess = new Map<string, Map<string, { id: string }>>();
   private readonly guestCounts = new Map<string, number>();
   private readonly revocations = new Map<string, Set<() => void>>();
   private pendingRecord?: ShareRecord;
@@ -63,10 +69,10 @@ export class ConversationShares {
     private readonly changed: (agentId: string, state: ConversationShareState) => void) {
     this.unsubscribeRouting = options.routing?.subscribe(status => this.setRoutingStatus(status));
   }
-  close() { this.closed = true; this.unsubscribeRouting?.(); for (const handle of this.revocations.keys()) this.invalidate(handle); }
-  propose(handle: string, identity: string, name: string, input: { id: string; text: string }): Promise<GuestProposal> {
+  async close() { this.closed = true; this.unsubscribeRouting?.(); for (const handle of this.revocations.keys()) this.invalidate(handle); await this.operations; }
+  propose(handle: string, identity: string, name: string, input: import('@workspace/core/conversation-sharing').GuestPromptInput): Promise<GuestProposal> {
     return this.serial(async () => {
-      const value = z.object({ id: z.string().uuid(), text: z.string().min(1).max(100_000).refine(text => Boolean(text.trim())) }).strict().parse(input);
+      const value = z.object({ id: z.string().uuid(), text: z.string().min(1).max(100_000).refine(text => Boolean(text.trim())), followUpBehavior: z.enum(['queue', 'steer']).optional() }).strict().parse(input);
       await this.load();
       const link = this.saved!.links.find(link => link.handle === handle && !link.revokedAt);
       if (this.closed || !link || this.invalidated.has(handle) || !this.currentTarget(link.target)) throw new Error('denied');
@@ -74,21 +80,26 @@ export class ConversationShares {
       const known = records.find(record => record.handle === handle && record.id === value.id);
       if (known) {
         if (known.identity !== identity || (known.fingerprint ?? fingerprint(known.text)) !== fingerprint(value.text)) throw new Error('denied');
-        return structuredClone(known);
+        if (known.accessId && (known.followUpBehavior ?? 'queue') !== (value.followUpBehavior ?? 'queue')) throw new Error('denied');
+        queueMicrotask(() => { void this.dispatchQueued().catch(() => {}); });
+        return structuredClone(publicProposal(known));
       }
       const pending = records.filter(record => record.handle === handle && pendingStatuses.includes(record.status));
       if (pending.length >= 40 || pending.filter(record => record.identity === identity).length >= 5 || records.filter(record => record.handle === handle).length >= 10_000 || records.filter(record => record.handle === handle).reduce((total, record) => total + Buffer.byteLength(record.text), Buffer.byteLength(value.text)) > 2 * 1024 * 1024) throw new Error('busy');
-      const proposal: StoredProposal = { ...value, fingerprint: fingerprint(value.text), handle, identity, name, discriminator: createHash('sha256').update(identity).digest('hex').slice(0, 8), status: 'pending', createdAt: new Date().toISOString() };
+      const proposal: StoredProposal = { id: value.id, text: value.text, fingerprint: fingerprint(value.text), handle, identity, name, discriminator: createHash('sha256').update(identity).digest('hex').slice(0, 8), status: 'pending', createdAt: new Date().toISOString() };
+      const access = this.writeAccess.get(handle)?.get(identity);
+      if (access) { proposal.status = 'queued'; proposal.followUpBehavior = value.followUpBehavior ?? 'queue'; proposal.accessId = access.id; }
       await this.write({ ...this.saved!, proposals: [...records, proposal] });
       this.changed(link.target.agentId, this.state(link, true));
-      return structuredClone(proposal);
+      queueMicrotask(() => { void this.dispatchQueued().catch(() => {}); });
+      return structuredClone(publicProposal(proposal));
     });
   }
   guestState(handle: string, identity: string): Promise<GuestProposalState> {
     return this.serial(async () => {
       await this.load();
       const records = (this.saved!.proposals ?? []).filter(record => record.handle === handle);
-      return structuredClone({ proposals: records.filter(record => record.identity === identity), authors: this.authors(this.saved!.links.find(link => link.handle === handle)?.target) });
+      return structuredClone({ writeAccess: Boolean(this.writeAccess.get(handle)?.has(identity)), proposals: records.filter(record => record.identity === identity).map(publicProposal), authors: this.authors(this.saved!.links.find(link => link.handle === handle)?.target) });
     });
   }
   withdraw(handle: string, identity: string, proposalId: string): Promise<void> {
@@ -112,7 +123,7 @@ export class ConversationShares {
       while (!this.closed) {
         const next = await this.serial(async () => {
           await this.load();
-          const proposal = this.saved!.proposals?.find(record => record.status === 'queued' && this.saved!.links.some(link => link.handle === record.handle && !link.revokedAt && this.currentTarget(link.target) && (this.options.canSubmit?.(link.target) ?? true)));
+          const proposal = this.saved!.proposals?.find(record => record.status === 'queued' && this.saved!.links.some(link => link.handle === record.handle && !link.revokedAt && this.currentTarget(link.target) && this.authorizedProposal(record) && (this.options.canSubmit?.(link.target, record) ?? true)));
           if (!proposal) return null;
           const link = this.saved!.links.find(link => link.handle === proposal.handle)!;
           await this.write({ ...this.saved!, proposals: this.saved!.proposals!.map(record => record === proposal ? { ...record, status: 'dispatching' } : record) });
@@ -120,8 +131,8 @@ export class ConversationShares {
         });
         if (!next) return;
         let result: { turnId?: string; messageId?: string } = {};
-        const authorized = !this.closed && !this.invalidated.has(next.proposal.handle) && this.saved?.links.some(link => link.handle === next.proposal.handle && !link.revokedAt) && this.currentTarget(next.target);
-        try { if (authorized) result = await this.options.submit(next.target, next.proposal.text); } catch { /* Possible delivery is never retried automatically. */ }
+        const authorized = !this.closed && !this.invalidated.has(next.proposal.handle) && this.saved?.links.some(link => link.handle === next.proposal.handle && !link.revokedAt) && this.currentTarget(next.target) && this.authorizedProposal(next.proposal);
+        try { if (authorized) result = await this.options.submit(next.target, next.proposal.text, { followUpBehavior: next.proposal.followUpBehavior }); } catch { /* Possible delivery is never retried automatically. */ }
         await this.serial(async () => {
           if (this.closed) return;
           await this.load();
@@ -151,15 +162,31 @@ export class ConversationShares {
       } };
     });
   }
-  connected(handle: string, count: number) {
+  connected(handle: string, count: number, guests: GuestParticipant[] = []) {
+    this.guests.set(handle, [...new Map(guests.map(guest => [guest.identity, guest])).values()]);
+    const rights = this.writeAccess.get(handle);
+    for (const identity of rights?.keys() ?? []) if (!guests.some(guest => guest.identity === identity)) rights!.delete(identity);
+    // Disconnect invalidates authority immediately, before any queued disk operation.
+    void this.serial(async () => {
+      if (this.closed) return;
+      await this.load();
+      const proposals = this.saved!.proposals ?? [];
+      if (!proposals.some(record => record.handle === handle && record.status === 'queued' && record.accessId && !this.authorizedProposal(record))) return;
+      await this.write({ ...this.saved!, proposals: proposals.map(record => record.handle === handle && record.status === 'queued' && record.accessId && !this.authorizedProposal(record) ? { ...record, status: 'pending', followUpBehavior: undefined, accessId: undefined } : record) });
+      const link = this.saved!.links.find(link => link.handle === handle && !link.revokedAt);
+      if (link) this.changed(link.target.agentId, this.state(link, true));
+    }).catch(() => {});
     if (count) this.guestCounts.set(handle, count); else this.guestCounts.delete(handle);
     const link = this.saved?.links.find(link => link.handle === handle && !link.revokedAt);
     if (link) this.changed(link.target.agentId, this.state(link, true));
   }
+  private authorizedProposal(record: StoredProposal): boolean {
+    return record.accessId === undefined || Boolean(record.accessId && this.writeAccess.get(record.handle)?.get(record.identity)?.id === record.accessId);
+  }
   private invalidate(handle: string) {
     this.invalidated.add(handle);
     for (const listener of [...this.revocations.get(handle) ?? []]) listener();
-    this.revocations.delete(handle); this.guestCounts.delete(handle);
+    this.revocations.delete(handle); this.guestCounts.delete(handle); this.guests.delete(handle); this.writeAccess.delete(handle);
   }
   private setRoutingStatus(status: ShareRoutingStatus) {
     if (this.routingStatus === status) return;
@@ -187,12 +214,24 @@ export class ConversationShares {
       await this.reconcileSaved();
       if (!this.currentTarget(action.target)) throw new Error('Conversation is unavailable for sharing.');
       let active = this.saved!.links.find(link => !link.revokedAt && conversationKey(link.target) === conversationKey(action.target));
+      if (action.action === 'access') {
+        if (!active || active.handle !== action.handle || !this.guests.get(active.handle)?.some(guest => guest.identity === action.identity)) throw new Error('Guest is no longer connected.');
+        const rights = this.writeAccess.get(active.handle) ?? new Map<string, { id: string }>();
+        this.writeAccess.set(active.handle, rights);
+        if (action.writeAccess) {
+          if (!rights.has(action.identity)) rights.set(action.identity, { id: randomUUID() });
+        } else rights.delete(action.identity);
+        // Existing read-only suggestions are never promoted when access is enabled.
+        if (!action.writeAccess) await this.write({ ...this.saved!, proposals: this.saved!.proposals?.map(record => record.handle === active!.handle && record.identity === action.identity && record.accessId && record.status === 'queued' ? { ...record, status: 'pending', followUpBehavior: undefined, accessId: undefined } : record) });
+        this.changed(active.target.agentId, this.state(active, true));
+        return { state: this.state(active, true) };
+      }
       if (action.action === 'send' || action.action === 'dismiss') {
         if (!active || active.handle !== action.handle) throw new Error('Share link has changed.');
         const proposal = this.saved!.proposals?.find(record => record.handle === active!.handle && record.id === action.proposalId);
         if (!proposal) throw new Error('Proposal unavailable.');
         if (proposal.status === 'pending') {
-          await this.write({ ...this.saved!, proposals: this.saved!.proposals!.map(record => record === proposal ? compactProposal({ ...record, status: action.action === 'send' ? 'queued' : 'dismissed' }) : record) });
+          await this.write({ ...this.saved!, proposals: this.saved!.proposals!.map(record => record === proposal ? compactProposal({ ...record, followUpBehavior: undefined, accessId: undefined, status: action.action === 'send' ? 'queued' : 'dismissed' }) : record) });
           this.changed(action.target.agentId, this.state(active, true));
           queueMicrotask(() => { void this.dispatchQueued().catch(() => {}); });
         }
@@ -252,7 +291,7 @@ export class ConversationShares {
     return snapshot.agents.flatMap(agent => {
       const team = snapshot.teams.find(team => team.id === agent.teamId);
       const target = conversationShareTarget(agent);
-      return team && !team.remoteConnectionId && target ? [target] : [];
+      return team && !agent.remoteConnectionId && target ? [target] : [];
     });
   }
   private currentTarget(target: ConversationShareTarget): boolean {
@@ -260,12 +299,12 @@ export class ConversationShares {
     const agent = snapshot.agents.find(agent => agent.id === target.agentId);
     const team = snapshot.teams.find(team => team.id === agent?.teamId);
     const current = agent && conversationShareTarget(agent);
-    return Boolean(team && !team.remoteConnectionId && current && sameTarget(current, target));
+    return Boolean(team && !agent?.remoteConnectionId && current && sameTarget(current, target));
   }
   private state(active: ShareRecord | undefined, configured: boolean, target = active?.target): ConversationShareState {
     const records = active ? (this.saved?.proposals ?? []).filter(record => record.handle === active.handle) : [];
     const authors = this.authors(target);
-    return { active: Boolean(active), handle: active?.handle ?? null, connectedGuests: active ? this.guestCounts.get(active.handle) ?? 0 : 0, availability: configured ? this.routingStatus : 'notConfigured', ...(records.length || authors.length ? { proposals: structuredClone(records), authors } : {}) };
+    return { active: Boolean(active), handle: active?.handle ?? null, connectedGuests: active ? this.guestCounts.get(active.handle) ?? 0 : 0, availability: configured ? this.routingStatus : 'notConfigured', ...(active ? { guests: (this.guests.get(active.handle) ?? []).map(guest => ({ ...guest, writeAccess: Boolean(this.writeAccess.get(active.handle)?.has(guest.identity)) })) } : {}), ...(records.length || authors.length ? { proposals: structuredClone(records.map(publicProposal)), authors } : {}) };
   }
   private authors(target: ConversationShareTarget | undefined): GuestProposalState['authors'] {
     const handles = new Set((this.saved?.links ?? []).filter(link => target && conversationKey(link.target) === conversationKey(target)).map(link => link.handle));
@@ -304,7 +343,7 @@ export class ConversationShares {
           if (!link.revokedAt) active.add(key);
         }
         this.saved = saved;
-        if (saved.proposals?.some(record => record.status === 'dispatching')) await this.write({ ...saved, proposals: saved.proposals.map(record => record.status === 'dispatching' ? { ...record, status: 'unresolved' } : record) });
+        if (saved.proposals?.some(record => record.status === 'dispatching' || (record.status === 'queued' && record.accessId))) await this.write({ ...saved, proposals: saved.proposals.map(record => record.status === 'dispatching' ? { ...record, status: 'unresolved' } : record.status === 'queued' && record.accessId ? { ...record, status: 'pending', followUpBehavior: undefined, accessId: undefined } : record) });
       } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; this.saved = { v: 2, links: [] }; }
     } catch { throw new Error('Share storage is unavailable. Check local storage and try again.'); }
   }

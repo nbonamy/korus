@@ -1,5 +1,6 @@
 <template>
   <div class="conversation-pane" :data-conversation-agent-id="agent?.id" @keydown.capture="handleDraftShortcut" @focusin.capture="handleDraftFocusIn">
+    <WorktreeInitializationIndicator :agent="agent" />
     <div v-if="agent?.handoff?.phase === 'failed'" class="conversation-pane__handoff" role="status">
       <p>{{ agent.handoff.error }}</p>
       <details v-if="agent.handoff.note">
@@ -88,7 +89,7 @@
           v-if="showBackendSelector && agent && backendSwitch"
           class="conversation-pane__backend-selector"
           :model-value="agent.backend"
-          :team-id="agent.teamId"
+          :remote-connection-id="agent.remoteConnectionId"
           size="small"
           :disabled="disabled || backendSwitch.busy.value"
           @update:model-value="$event && selectBackend($event)"
@@ -175,6 +176,7 @@ import { agentDisplayName } from '@workspace/core/agent-display';
 import ConversationPlanPanel from './ConversationPlanPanel.vue';
 import RateLimitResumeNotice from './RateLimitResumeNotice.vue';
 import ConversationLoadError from './ConversationLoadError.vue';
+import WorktreeInitializationIndicator from './WorktreeInitializationIndicator.vue';
 import DeferredConversationContent from './DeferredConversationContent.vue';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import AgentMention from './AgentMention.vue';
@@ -199,7 +201,7 @@ import { withInferredWorkPhases } from '../shared/inferred-work-phases';
 import { isAppToolVisible, provideAppToolPresentation } from '../tool-presentation';
 import { provideConversationImagePreviews } from './conversation-image-previews';
 const backendSwitch = useBackendSwitch();
-const backendChoices = useBackendChoices(() => props.agent?.teamId);
+const backendChoices = useBackendChoices(() => props.agent?.remoteConnectionId);
 const connectEngine = useConnectEngine();
 async function selectBackend(backend: Agent['backend']): Promise<void> {
   if (!props.agent || !backendSwitch) return;

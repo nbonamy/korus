@@ -41,11 +41,11 @@ const controlSchema = z.discriminatedUnion('action', [z.object({ action: z.liter
   z.object({ action: z.literal('decide'), pendingId: z.string().uuid(), approve: z.boolean() }).strict(),
   z.object({ action: z.literal('revoke'), peerId: z.string().min(1).max(128) }).strict()]);
 export type CompanionBackendPort = {
-  proposeGuest?(handle: string, identity: string, name: string, input: { id: string; text: string }): Promise<import('@workspace/core/conversation-sharing').GuestProposal>;
+  proposeGuest?(handle: string, identity: string, name: string, input: import('@workspace/core/conversation-sharing').GuestPromptInput): Promise<import('@workspace/core/conversation-sharing').GuestProposal>;
   guestProposals?(handle: string, identity: string): Promise<import('@workspace/core/conversation-sharing').GuestProposalState>;
   withdrawGuest?(handle: string, identity: string, proposalId: string): Promise<void>;
   authorizeGuest?(handle: string, credential: string): Promise<GuestConversationGrant>;
-  guestCount?(handle: string, count: number): void;
+  guestCount?(handle: string, count: number, guests?: import('@workspace/core/guest-conversation').GuestParticipant[]): void;
   desktopFocused?(): Promise<boolean>;
   request<Result>(method: string, params?: unknown): Promise<Result>;
   onAccessChanged?: (enabled: boolean) => void;
@@ -318,7 +318,7 @@ export class CompanionManager {
           branches: () => this.backend.request(backendMethods.sourceBranchesList, { repoPath: chat.repositoryRoot, ...remote, _clientId: 'companion-read' }),
           createWorktree: input => this.backend.request(backendMethods.sourceWorktreeCreate, { input: { ...input, ...remote }, _clientId: 'companion-write' }),
         });
-        const result = await this.backend.request<CreatedAgentResult>(backendMethods.agentCreate, { input: { name: null, folder, selection: { ...chat.selection }, sourceRepositoryName: chat.repositoryName, teamId: chat.teamId }, entityResult: true, _clientId: 'companion-write' });
+        const result = await this.backend.request<CreatedAgentResult>(backendMethods.agentCreate, { input: { name: null, folder, selection: { ...chat.selection }, sourceRepositoryName: chat.repositoryName, teamId: chat.teamId, ...remote }, entityResult: true, _clientId: 'companion-write' });
         return result.agentId;
       },
       createQuickChat: async ({ teamId, backend }) => (await this.backend.request<CreatedAgentResult>(backendMethods.agentQuickChatCreate, { input: { teamId, selection: { backend } }, entityResult: true, _clientId: 'companion-write' })).agentId,
@@ -340,7 +340,7 @@ export class CompanionManager {
       ...(this.backend.guestProposals ? { proposals: (handle, identity) => this.backend.guestProposals!(handle, identity) } : {}),
       ...(this.backend.withdrawGuest ? { withdraw: (handle, identity, proposalId) => this.backend.withdrawGuest!(handle, identity, proposalId) } : {}),
       authorize: (handle, credential) => this.backend.authorizeGuest!(handle, credential),
-      connected: (handle, count) => this.backend.guestCount?.(handle, count),
+      connected: (handle, count, guests) => this.backend.guestCount?.(handle, count, guests),
       onEvent: listener => { this.eventListeners.add(listener); return () => { this.eventListeners.delete(listener); }; },
       synchronize: (agentId, checkpoint) => this.conversations.synchronize(agentId, checkpoint),
       conversation: agentId => this.conversations.read(agentId),

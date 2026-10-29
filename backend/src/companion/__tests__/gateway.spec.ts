@@ -6,9 +6,9 @@ import type { BackendSkillSummary } from '@workspace/core/contracts';
 import { opaquePath } from '@workspace/core/companion-projection';
 import { normalizePairingCode } from '@workspace/core/companion-pairing';
 const workspace: CompanionWorkspace = {
-  teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }, { id: 'remote-team', name: 'Remote', agentIds: ['remote-agent'], remoteConnectionId: 'ssh-host' }],
+  teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }, { id: 'remote-team', name: 'Remote', agentIds: ['remote-agent'] }],
   agents: [{ id: 'agent', name: 'Agent', teamId: 'team', folder: '/private', backend: 'codex', status: { type: 'idle' }, createdAt: '', updatedAt: '', mcpSessionId: 'private-session' },
-    { id: 'remote-agent', name: 'Remote', teamId: 'remote-team', folder: '/private', backend: 'claude', status: { type: 'idle' }, createdAt: '', updatedAt: '' }],
+    { id: 'remote-agent', name: 'Remote', teamId: 'remote-team', remoteConnectionId: 'ssh-host', folder: '/private', backend: 'claude', status: { type: 'idle' }, createdAt: '', updatedAt: '' }],
 };
 const target = { hostId: 'host', locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: null };
 function claim(gateway: CompanionGateway, peerId: string, shown: string, name = 'Phone') {
@@ -872,7 +872,7 @@ describe('companion authorization gateway', () => {
     const repositoryId = opaquePath('/code/repo');
     async function ready() {
       const f = fixture(); await f.pair();
-      f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex', 'claude'], 'remote-team': ['claude'] },
+      f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex', 'claude'], 'remote-team': ['claude'], 'ssh-host': ['claude'] },
         agents: [{ ...workspace.agents[0]!, workspace: repository }, { ...workspace.agents[1]!, workspace: { ...repository, repositoryRoot: '/srv/remote', primaryWorktreeRoot: '/srv/remote', repositoryName: 'remote-repo' } }] });
       return f;
     }
@@ -888,14 +888,14 @@ describe('companion authorization gateway', () => {
     });
     it('places a chat of a remote team on its own laptop', async () => {
       const f = await ready();
-      await f.gateway.request('phone', 'agent.create', { teamId: 'remote-team', repositoryId: opaquePath('/srv/remote'), selection: { backend: 'claude' } });
+      await f.gateway.request('phone', 'agent.create', { teamId: 'remote-team', repositoryId: opaquePath('/srv/remote', 'ssh-host'), selection: { backend: 'claude' } });
       expect(f.port.createChat).toHaveBeenCalledWith(expect.objectContaining({ remoteConnectionId: 'ssh-host', repositoryRoot: '/srv/remote' }));
     });
     it.each([
       ['an unknown repository', { repositoryId: 'nope' }],
       ['a repository of another team', { teamId: 'remote-team' }],
       ['an unknown team', { teamId: 'ghost' }],
-      ['an engine the team cannot use', { teamId: 'remote-team', repositoryId: opaquePath('/srv/remote'), selection: { backend: 'codex' } }],
+      ['an engine the team cannot use', { teamId: 'remote-team', repositoryId: opaquePath('/srv/remote', 'ssh-host'), selection: { backend: 'codex' } }],
       ['an unsupported engine', { backend: 'other' }],
       ...['', '-rf', '../x', 'a..b', 'a b', 'a/', 'x.lock', 'a//b', '/abs'].map((branchName): [string, object] => [`the branch ${JSON.stringify(branchName)}`, { worktree: { branchName } }]),
       ['an extra field', { folder: '/etc' }],
@@ -949,10 +949,24 @@ describe('companion authorization gateway', () => {
       await expect(f.gateway.request('stranger', 'agent.backend.set', { target, backend: 'claude' })).rejects.toThrow('authorized');
     });
   });
+  it('authorizes remote engine switches and duplicates against their owning host', async () => {
+    const f = fixture(); await f.pair();
+    f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex'], 'remote-team': ['codex'], 'ssh-host': ['claude'] } });
+    const remote = { ...target, locationId: 'ssh-host', teamId: 'remote-team', agentId: 'remote-agent' };
+    await f.gateway.request('phone', 'agent.backend.set', { target: remote, backend: 'claude' });
+    await f.gateway.request('phone', 'agent.duplicate', { target: remote, backend: 'claude' });
+    expect(f.port.setBackend).toHaveBeenCalledExactlyOnceWith('remote-agent', 'claude');
+    expect(f.port.duplicateAgent).toHaveBeenCalledExactlyOnceWith('remote-agent', 'claude');
+    for (const method of ['agent.backend.set', 'agent.duplicate']) {
+      await expect(f.gateway.request('phone', method, { target: remote, backend: 'codex' })).rejects.toThrow('not available');
+    }
+    expect(f.port.setBackend).toHaveBeenCalledOnce();
+    expect(f.port.duplicateAgent).toHaveBeenCalledOnce();
+  });
   describe('starting a quick chat', () => {
     async function ready() {
       const f = fixture(); await f.pair();
-      f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex', 'claude'], 'remote-team': ['claude'] } });
+      f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex', 'claude'], 'remote-team': ['claude'], 'ssh-host': ['claude'] } });
       return f;
     }
     it('creates one for a team and reports it like any other new chat', async () => {

@@ -12,8 +12,7 @@ const MAX_TOTAL_BYTES = 20 * 1024 * 1024;
 
 export function imageGenerationSkill(snapshot: AppSnapshot, agentId: string): BackendSkillSummary | undefined {
   const agent = snapshot.agents.find(candidate => candidate.id === agentId);
-  if (!agent || agent.backend === 'codex' || snapshot.general.providerEnabled?.codex === false
-    || snapshot.teams.some(team => team.id === agent.teamId && team.remoteConnectionId)) return;
+  if (!agent || agent.backend === 'codex' || snapshot.general.providerEnabled?.codex === false || agent.remoteConnectionId) return;
   const { description } = readBundledSkill('korus-imagegen', { toolModules: ['image-generation'] });
   return { name: 'imagegen', displayName: 'Image Gen', description,
     shortDescription: 'Generate or edit images for websites, games, and more',

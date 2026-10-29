@@ -3,7 +3,7 @@ import { expect, it } from 'vitest';
 
 import { createInitialSnapshot } from '../snapshot-construction';
 import { createMission, isMission, isMissionArtifacts, missionTicketReady, updateMission } from '../missions';
-import { missionDeveloperInstructions, pendingMissionRun, type MissionRun } from '../mission-execution';
+import { missionDeveloperInstructions, missionRunAssignment, pendingMissionRun, type MissionRun } from '../mission-execution';
 import { missionWorkflow } from '../mission-workflows';
 
 it('carries the assigned stage, accepted artifacts, workspace, skills and revision feedback into the provider handoff', () => {
@@ -28,6 +28,9 @@ it('carries the assigned stage, accepted artifacts, workspace, skills and revisi
     expect(prompt).toContain('Only owners');
     expect(prompt).toContain(`${product.mcpServerName}.submit-mission-result`);
     expect(prompt).toContain(`${product.mcpServerName}.read-mission-artifact`);
+    if (stage === 'requirements') {
+      expect(prompt).toContain('Do not call display-markdown for requirements');
+    }
     if (stage === 'tickets') {
       expect(prompt).toContain('Continue as the same Mission orchestrator');
       expect(prompt).toContain('Never instruct implementation workers to skip or defer commits');
@@ -71,6 +74,10 @@ it('preserves accepted criteria and ticket indices when saved artifact metadata 
   expect(prompt).toContain('get-mission-assignment');
   expect(prompt).toContain('ticketId');
   expect(prompt).toContain('Implement ONLY ticket 2 in /repo');
+  mission.artifacts.tickets[1]!.revision = 1;
+  expect(missionRunAssignment(mission, run)).toBeUndefined();
+  run.ticketRevision = 1;
+  expect(missionRunAssignment(mission, run)).toMatchObject({ ticketId: 'mission-ticket-2', title: 'Assigned ticket' });
 });
 
 it('allows Review approval independently of optional finding remediation', () => {
@@ -104,6 +111,9 @@ it('validates persisted execution records and dependency graphs before admitting
   const run: MissionRun = { id: 'run', stage: 'requirements', memberId: 'member', workerId: 'worker', status: 'running', skills: [{ name: 'grilling', path: '/skill' }], feedback: '', startedAt: 'now', finishedAt: 'later', summary: 'Ready', error: 'old error', proposal: structuredClone(mission.artifacts), ticketIndex: 0 };
   mission.execution = { teamId: 'team', memberIds: ['member'], workspaceName: 'billing-work', workspaces: [{ repositoryPath: '/repo', path: '/isolated', branch: 'mission/billing-work', baseSha: 'a'.repeat(40) }], runs: [run] };
   expect(isMission(mission)).toBe(true);
+  expect(isMission({ ...mission, execution: { ...mission.execution!, runs: [{ ...run, ticketRevision: 2 }] } })).toBe(true);
+  expect(isMission({ ...mission, execution: { ...mission.execution!, runs: [{ ...run, draftTicketsBaseHash: 'a'.repeat(64) }] } })).toBe(true);
+  expect(isMission({ ...mission, execution: { ...mission.execution!, runs: [{ ...run, draftTicketsBaseHash: 'invalid' }] } })).toBe(false);
   for (const parallelImplementation of [true, false]) {
     expect(isMission({ ...mission, execution: { ...mission.execution, parallelImplementation } })).toBe(true);
   }
@@ -115,7 +125,7 @@ it('validates persisted execution records and dependency graphs before admitting
   expect(pendingMissionRun(mission)).toBe(run);
   expect(() => updateMission(snapshot, { id: mission.id, revision: 0, artifacts: mission.artifacts, stageAgentIds: {}, action: 'save' })).toThrow('current mission run');
   expect(isMission({ ...mission, execution: { ...mission.execution, runs: [{ ...run, skills: [{ name: 'mission-shape-requirements' }] }] } })).toBe(true);
-  for (const change of [{ status: 'unknown' }, { stage: 'unknown' }, { memberId: null }, { workerId: false }, { ticketIndex: -1 }, { ticketId: 42 }, { skills: [{ name: 'x', path: 42 }] }, { feedback: null }, { startedAt: null }, { finishedAt: false }, { summary: false }, { error: false }, { proposal: {} }]) {
+  for (const change of [{ status: 'unknown' }, { stage: 'unknown' }, { memberId: null }, { workerId: false }, { ticketIndex: -1 }, { ticketId: 42 }, { ticketRevision: -1 }, { ticketRevision: 0.5 }, { skills: [{ name: 'x', path: 42 }] }, { feedback: null }, { startedAt: null }, { finishedAt: false }, { summary: false }, { error: false }, { proposal: {} }]) {
     expect(isMission({ ...mission, execution: { ...mission.execution, runs: [{ ...run, ...change }] } })).toBe(false);
   }
   expect(isMission({ ...mission, execution: { ...mission.execution, workspace: { path: '/repo', branch: 'x', baseSha: 'bad' } } })).toBe(false);

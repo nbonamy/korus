@@ -124,15 +124,24 @@ runs independently of loaded tree nodes, so an unopened directory remains search
 
 ### Surfaces
 
-- **Backlog** (work-provider inbox) and **Cockpit** (all-agent overview) are
-  distinct global surfaces. Opening Cockpit must not load Backlog data. Projection
-  and sorting live in a focused view model, not `AppShell`.
+- **Backlog** (work-provider inbox) and **Cockpit** (all-teams activity workspace) are
+  distinct global surfaces. Opening Cockpit must not load Backlog data. Cockpit
+  reuses `AgentSidebarActivity` with fixed activity ordering and no creation controls;
+  selecting agents or Missions keeps the global scope until a team is selected.
+  Projection and sorting live in a focused view model, not `AppShell`.
+- `AgentSidebar` routes the saved team organization choice to `AgentSidebarRepo`
+  or `AgentSidebarActivity`. Repository layout and styles remain independent of
+  activity sections. Both use common base styles and the shared sidebar controller
+  for navigation, menus, resizing, and client-local preferences. Cockpit always
+  routes to the activity view.
 - Activity sidebar grouping and recency belong to `core/src/workspace-sidebar.ts`;
   desktop and mobile own their local view preference, clock and transitions. Native
   activity rows share one identity space across groups so regrouping preserves rows.
 - Team-rail dot: red for unread, orange for working, unread wins, never on the
   selected team. Agent activity is stored apart from metadata so startup hydration
   does not make idle agents look active.
+- Duplicate and fork creation insert the new agent immediately after its source
+  in the creating client's saved order. Background copies keep the current selection.
 - Mission navigation reuses the workspace group, session row and status-dot
   primitives of Quick Chats. Mission surfaces show artifacts for review with comments
   flowing through the conversation; they have no setup or artifact-editing forms.
@@ -153,6 +162,9 @@ Search by behavior first.
 | Pointer-positioned context menu | `AppContextMenu` | `vue/src/shared/menu/` |
 | Application launcher and icons | `OpenInControl` | `vue/src/shared/` |
 | Product glyphs (incl. GitHub) | app icon catalog | `vue/src/shared/icons/app-icons.ts` |
+| Remote host status, standalone globe or branch badge, with a host tooltip | `RemoteHostIndicator` | `vue/src/components/` |
+| Local or remote host selection | `HostSelector` | `vue/src/components/` |
+| Repository image or emoji mark | `RepositoryIcon` (square, borderless avatar presentation) | `vue/src/components/` |
 | Reopen collapsed sidebar | `SidebarExpandButton` | `vue/src/shared/` |
 | Workspace header / body containment | `WorkspaceHeader`, `.workspace-header__title`, `.workspace-body` | `vue/src/shared/`, `styles/base.css` |
 | Dialog chrome and footer actions | `.app-dialog`, `.app-button` | `vue/src/styles/base.css` |
@@ -169,6 +181,9 @@ Search by behavior first.
 | Operation feedback | `GitOperationFeedback` | `vue/src/components/` |
 | Worktree provisioning progress | `WorkspaceProvisioningProgressDialog` | `vue/src/components/` |
 
+Use the globe to identify a remote host and the network icon for actions that
+connect to one.
+
 App-owned keyboard shortcuts live in `core/src/keyboard-shortcuts.ts`. Native menus,
 native input routing, shell matching and the shortcut reference share these
 binding declarations. Availability reflects the host and current surface; provider
@@ -180,6 +195,8 @@ existing shell handlers. Their action icons share renderer presentation metadata
 Git actions retain the icons supplied by their workflow control.
 Quick-open rows support sibling actions that appear on hover or keyboard focus,
 keeping secondary actions separate from the primary row target.
+Agent Quick Open lists each Mission once, routes it to the Mission workspace, and
+restores its client-local conversation selection; Mission workers are not separate results.
 Palette entries declare their sections explicitly and preserve owning-menu order.
 Settings destinations share their icons, labels and host/provider availability in
 `components/settings-tabs.ts`, consumed by both the sidebar and command search.

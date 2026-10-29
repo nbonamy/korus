@@ -299,7 +299,6 @@ describe('agent-manager lifecycle', () => {
   it('creates agents without storing execution connection on the agent', () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
-    snapshot.teams[0].remoteConnectionId = 'connection-devbox';
 
     createAgentInSnapshot(snapshot, {
       name: 'Remote Dina',

@@ -5,11 +5,37 @@ import { createEmptySnapshot } from '@workspace/core/snapshot';
 import { backendSnapshotKey } from '../backend-selection';
 import { backendModelCatalogKey } from '../backend-model-catalog';
 import { describe, expect, it, vi } from 'vitest';
-import type { Agent, WorkBacklogAssignment, WorkItem } from '@workspace/core/contracts';
+import type { Agent, RemoteConnection, WorkBacklogAssignment, WorkItem } from '@workspace/core/contracts';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
 import CockpitWorkInbox from '../CockpitWorkInbox.vue';
 
 describe('CockpitWorkInbox', () => {
+  it('offers ready hosts between team and model and starts work with the selected host model', async () => {
+    const selected = item(21, 'Remote work', 'repo-one');
+    const start = vi.fn().mockResolvedValue(undefined);
+    const connection: RemoteConnection = { id: 'remote-inbox', kind: 'ssh', name: 'Devbox', host: 'devbox', status: 'ready',
+      providerConnections: [{ backend: 'claude', installed: true, connected: true, checking: false }], createdAt: '', updatedAt: '' };
+    const wrapper = mountInbox([selected], {}, {}, start, undefined, [connection]);
+    await wrapper.get('[aria-label="Start work on #21"]').trigger('click');
+    await flushPromises();
+    const fields = wrapper.findAll('.cockpit-inbox__start-body > label');
+    expect(fields.map(field => field.element.firstChild?.textContent?.trim())).toEqual(['Team', 'Host', 'Agent']);
+    const options = wrapper.get('[aria-label="Host"]').findAll('option');
+    expect(options[0]!.find('.tabler-icon-device-imac').exists()).toBe(true);
+    expect(options[1]!.find('.tabler-icon-world').exists()).toBe(true);
+    await wrapper.get('[aria-label="Host"] select').setValue(connection.id);
+    await flushPromises();
+    await wrapper.get('.app-dialog__footer .app-button--primary').trigger('click');
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({ remoteConnectionId: connection.id, selection: expect.objectContaining({ backend: 'claude' }) }));
+  });
+
+  it('hides host selection when no remote connection is ready', async () => {
+    const wrapper = mountInbox([item(21, 'Local work', 'repo-one')]);
+    await wrapper.setProps({ remoteConnections: [{ id: 'unavailable', kind: 'ssh', name: 'Devbox', host: 'devbox', status: 'error', createdAt: '', updatedAt: '' }] });
+    await wrapper.get('[aria-label="Start work on #21"]').trigger('click');
+    expect(wrapper.find('[aria-label="Host"]').exists()).toBe(false);
+  });
+
   it('launches just the clicked ticket with the chosen model without changing the batch selection', async () => {
     const first = item(21, 'First work', 'repo-one');
     const second = item(22, 'Second work', 'repo-two');
@@ -60,11 +86,11 @@ describe('CockpitWorkInbox', () => {
     const listSourceRepositories = vi.fn().mockResolvedValue([repository]);
     const wrapper = mountInbox([selected], {}, {}, startWorkAction);
     await wrapper.setProps({ connection: { provider: 'linear', status: 'connected' }, listSourceRepositories,
-      teams: [{ id: 'team-one', name: 'Remote', agentIds: [], remoteConnectionId: 'remote-one' }] });
+      teams: [{ id: 'team-one', name: 'Remote', agentIds: [] }] });
     await wrapper.get('.cockpit-inbox__selection input').setValue(true);
     await wrapper.get('.cockpit-inbox__start-work').trigger('click');
     await flushPromises();
-    expect(listSourceRepositories).toHaveBeenCalledWith('remote-one');
+    expect(listSourceRepositories).toHaveBeenCalledWith();
     const fix = wrapper.findAll('.app-dialog__footer button').find(button => button.text() === 'Fix')!;
     await fix.trigger('click');
     expect(startWorkAction).not.toHaveBeenCalled();
@@ -173,17 +199,20 @@ describe('CockpitWorkInbox', () => {
     const rows = wrapper.findAll('.cockpit-inbox__row');
     const open = vi.spyOn(window, 'open').mockImplementation(() => null);
 
-    expect(rows[0]?.get('.cockpit-inbox__row-action').attributes('aria-label')).toBe('View agent for #21');
+    expect(rows[0]?.get('.cockpit-inbox__row-action').attributes('aria-label')).toBe('View #21');
+    expect(rows[0]?.get('.cockpit-inbox__row-action').find('.tabler-icon-file-text').exists()).toBe(true);
     expect(rows[1]?.get('.cockpit-inbox__row-action').attributes('aria-label')).toBe('View #22');
     expect(wrapper.find('details').exists()).toBe(false);
 
     await rows[0]?.get('.cockpit-inbox__row-action').trigger('click');
+    expect(wrapper.get('.work-item-detail').text()).toContain('Assigned work');
+    expect(wrapper.emitted('select-assigned-agent')).toBeUndefined();
     await rows[1]?.get('.cockpit-inbox__row-action').trigger('click');
     await rows[0]?.get('[aria-label="More actions for #21"]').trigger('click');
     document.body.querySelector<HTMLButtonElement>('.app-menu__item')!.click();
     await flushPromises();
 
-    expect(wrapper.emitted('select-assigned-agent')).toStrictEqual([['agent-one']]);
+    expect(wrapper.emitted('select-assigned-agent')).toBeUndefined();
     expect(wrapper.get('.work-item-detail').text()).toContain('Ready work');
     expect(open).toHaveBeenCalledWith(assigned.url, '_blank', 'noreferrer');
     open.mockRestore();
@@ -384,12 +413,14 @@ function mountInbox(
   filters: { activeView?: 'all' | 'backlog' | 'wip' | 'focus'; globalScope?: 'assignedToMe' | 'all' | null; page?: number; hasNextPage?: boolean; pageLoading?: boolean; pageSize?: number; statusFilter?: 'inProgress' | 'blocked' | 'readyForReview' | null; totalItems?: number } = {},
   startWorkAction = vi.fn().mockResolvedValue(undefined),
   models: BackendModelOption[] = [{ id: 'fast', model: 'gpt-fast', displayName: 'GPT Fast' }],
+  remoteConnections: RemoteConnection[] = [],
 ) {
   return mount(CockpitWorkInbox, {
     global: { provide: {
       [backendSnapshotKey as symbol]: () => ({
         ...createEmptySnapshot(),
         providerConnections: (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false })),
+        remoteConnections: { connections: remoteConnections },
         teams: [{ id: 'team-one', name: 'Team One', agentIds: ['agent-one'] }],
         agents: [agent('agent-one', 'Dina')],
       }),
@@ -410,6 +441,7 @@ function mountInbox(
       ],
       defaultTeamId: 'team-one',
       startWorkAction,
+      remoteConnections,
       ...filters,
     },
   });

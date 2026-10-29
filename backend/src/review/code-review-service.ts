@@ -924,7 +924,7 @@ export class CodeReviewService {
       reviewerAgentId: reviewer.id,
       scope: input.scope.type === 'branch'
         ? { type: 'branch', baseRef: input.scope.baseRef.trim() }
-        : { type: 'uncommitted' },
+        : { ...input.scope },
       threadMode: input.threadMode,
       status: 'reviewing',
       ...(input.instructions?.trim() ? { instructions: input.instructions.trim() } : {}),
@@ -1058,9 +1058,13 @@ function reviewPrompt(session: CodeReviewSession): string {
     ? `all changes against the fixed baseline ${session.automation.baseRef}, including subsequent review commits and working changes (use git diff ${session.automation.baseRef} and inspect untracked files). Do not recalculate the baseline or review only the latest commit`
     : session.scope.type === 'branch'
     ? `the current branch against ${session.scope.baseRef}, including uncommitted changes`
+    : session.scope.type === 'commit'
+    ? `the changes introduced by commit ${session.scope.sha} (use git show ${session.scope.sha}), including subsequent review fixes. Exclude unrelated working changes`
     : 'only the current uncommitted changes (staged, unstaged, and untracked)';
   const visibleScope = session.scope.type === 'branch'
     ? `the current branch against ${session.scope.baseRef}`
+    : session.scope.type === 'commit'
+    ? `commit ${session.scope.sha}`
     : 'the current uncommitted changes';
   return `<context>
 ${reviewToolDiscoveryInstructions()}

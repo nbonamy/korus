@@ -197,7 +197,7 @@ export class AgentGitWorkflowService {
 
   private pruneOwners(): { folder: string; name: string }[] {
     const snapshot = this.options.getSnapshot();
-    return snapshot.agents.filter(agent => agent.folder && !snapshot.teams.find(team => team.id === agent.teamId)?.remoteConnectionId)
+    return snapshot.agents.filter(agent => agent.folder && !agent.remoteConnectionId)
       .map(agent => ({ folder: agent.folder!, name: agent.name ?? agent.id }));
   }
 
@@ -373,8 +373,7 @@ export class AgentGitWorkflowService {
     if (input.reportBack === true && input.reportBackAgentId !== undefined) {
       reportBackAgentId = requireString(input.reportBackAgentId, 'reportBackAgentId');
       const recipient = this.options.getSnapshot().agents.find(candidate => candidate.id === reportBackAgentId);
-      if (!recipient || recipient.id === agent.id
-        || this.options.getSnapshot().teams.some(team => team.id === recipient.teamId && team.remoteConnectionId)) {
+      if (!recipient || recipient.id === agent.id || recipient.remoteConnectionId) {
         throw new Error('Choose another agent in the same repository for the merge report.');
       }
       await Promise.all([this.options.refreshWorkspaceIdentity(agentId), this.options.refreshWorkspaceIdentity(recipient.id)]);
@@ -397,8 +396,7 @@ export class AgentGitWorkflowService {
     if (input.reportBack === true) this.emitOperationProgress(agentId, 'merge', 'delivery');
     // Resolve ownership before Git removes the paths, including symlink aliases.
     const root = deleteWorktree ? await realpath(worktreeRoot).catch(() => resolve(worktreeRoot)) : '';
-    const candidates = deleteWorktree ? this.options.getSnapshot().agents.filter(candidate => candidate.folder
-      && !this.options.getSnapshot().teams.some(team => team.id === candidate.teamId && team.remoteConnectionId)) : [];
+    const candidates = deleteWorktree ? this.options.getSnapshot().agents.filter(candidate => candidate.folder && !candidate.remoteConnectionId) : [];
     const folders = await Promise.all(candidates.map(candidate => realpath(candidate.folder!).catch(() => resolve(candidate.folder!))));
     const owners = candidates.filter((_candidate, index) => {
       const path = relative(root, folders[index]!);

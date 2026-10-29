@@ -15,6 +15,7 @@ import {
 describe('AppBackendServer', () => {
 
   it.each([
+    { action: 'implement', prompt: 'Implement the proposed work in this conversation using the current agent and workspace.' },
     { action: 'delegate', prompt: PROPOSED_WORK_DELEGATION_PROMPT },
     { action: 'create_mission', prompt: MISSION_COMMAND_PROMPT },
   ] as const)('routes proposal $action to its source and persists only after provider acceptance', async ({ action, prompt }) => {

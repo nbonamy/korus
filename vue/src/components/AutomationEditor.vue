@@ -39,7 +39,7 @@
       </FormSection>
       <AutomationScheduleEditor v-model="schedule" :automation="automation" />
       <FormSection v-if="form.kind === 'newQuickChat'" class="automation-editor__model" density="compact" :title="$t('promptAutomation.model')" title-id="automation-model">
-        <BackendModelSelector v-model:selection="selection" :team-id="form.teamId" :agent-id="catalogAgentId"
+        <BackendModelSelector v-model:selection="selection" :agent-id="catalogAgentId"
           :disabled="saving" @loading="modelsLoading = $event" @error="modelsError = true" />
         <p v-if="modelsError" class="automation-editor__notice" role="status">{{ $t('promptAutomation.modelsUnavailable') }}</p>
       </FormSection>
@@ -71,7 +71,7 @@ import { useBackendChoices } from './backend-selection';
 const props = withDefaults(defineProps<{
   automation?: Automation | null; mode: 'create' | 'edit'; agents: Agent[]; teams: Team[];
   error?: string | null; saving?: boolean;
-  listModels?: (agentId: string, backend: AgentBackend) => Promise<BackendModelOption[]>;
+  listModels?: (agentId: string | null, backend: AgentBackend) => Promise<BackendModelOption[]>;
 }>(), { automation: null, error: null, saving: false });
 const emit = defineEmits<{ cancel: []; submit: [input: CreateAutomationInput] }>();
 const target = props.automation?.target;
@@ -94,7 +94,7 @@ const targetRemoved = computed(() => Boolean(target && target.kind !== 'newQuick
 const promptBusy = ref(false);
 const modelsLoading = ref(false);
 const modelsError = ref(false);
-const engineChoices = useBackendChoices(() => form.teamId);
+const engineChoices = useBackendChoices();
 const teamAgents = computed(() => props.agents.filter(agent => agent.teamId === form.teamId));
 const quickChats = computed(() => teamAgents.value.filter(agent => agent.sessionKind === 'quickChat'));
 const agentChats = computed(() => teamAgents.value.filter(agent => agent.sessionKind !== 'quickChat'));

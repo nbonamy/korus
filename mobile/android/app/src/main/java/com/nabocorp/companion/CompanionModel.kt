@@ -106,9 +106,14 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     internal val duplicatingAgent get() = duplicateTarget != null
     internal var duplicateFailed by mutableStateOf(false)
     internal var agentRename by mutableStateOf<AgentRename?>(null)
-    internal val newBackend get() = preferredNewBackend.takeIf { state.strings("backends").contains(it) } ?: state.strings("backends").firstOrNull().orEmpty()
-    internal val canStartCreation get() = state.connection.isConnected && state.string("laptopId", state.obj("composerTarget").string("hostId")).isNotBlank() && state.string("teamId").isNotBlank() && newBackend.isNotBlank()
+    private fun preferredBackend(choices: List<String>) = preferredNewBackend.takeIf { choices.contains(it) } ?: choices.firstOrNull().orEmpty()
+    internal val newBackend get() = preferredBackend(creation?.backends(state) ?: state.creationBackends())
+    private val creationReady get() = state.connection.isConnected && state.string("laptopId", state.obj("composerTarget").string("hostId")).isNotBlank() && state.string("teamId").isNotBlank()
         && state.string("chatCreation") != "creating" && creation?.submitted != true && !duplicatingAgent
+    internal val canStartCreation get() = canStartCreationFor()
+    internal fun canStartCreationFor(repositoryId: String? = null) = creationReady && state.creationBackends(repositoryId).isNotEmpty()
+    private val conversationBackends get() = if (state.has("conversationBackends")) state.strings("conversationBackends") else state.strings("backends")
+    internal val canDuplicateAgent get() = canManageSession && creationReady && conversationBackends.isNotEmpty()
     val canManageSession get() = composerDrafts.target != null && state.connection.isConnected && state.string("sessionAction").isBlank()
     val composerDrafts = ComposerDrafts()
     val composerPreferences = ComposerPreferences(application.getSharedPreferences("preferences", 0))
@@ -440,7 +445,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         dictation.cancel(); command("closeSession"); sheet = null
     }
     internal fun chooseCreationBackend(backend: String) {
-        if (!state.strings("backends").contains(backend) || creation?.submitted == true) return
+        if (!(creation?.backends(state) ?: state.creationBackends()).contains(backend) || creation?.submitted == true) return
         preferredNewBackend = backend; preferences.edit().putString("newChat.backend", backend).apply()
     }
     internal fun openAgentRename() {
@@ -456,9 +461,9 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         command("renameAgent", "target" to target.toJson(), "name" to name)
     }
     internal fun duplicateAgent() {
-        if (!canManageSession || !canStartCreation) return
+        if (!canDuplicateAgent) return
         val target = ConversationTarget.parse(state.obj("composerTarget")) ?: return
-        val backend = state.string("backend").takeIf { state.strings("backends").contains(it) } ?: newBackend
+        val backend = state.string("backend").takeIf { conversationBackends.contains(it) } ?: preferredBackend(conversationBackends)
         if (state.string("chatCreation") == "failed") command("dismissNewChat")
         dictation.cancel(); sheet = null
         duplicateFailed = false; duplicateTarget = target
@@ -471,7 +476,8 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         command(type, *fields.toTypedArray())
     }
     internal fun openCreation(kind: CreationKind, repositoryId: String? = null, repositoryName: String = "") {
-        if (!canStartCreation || kind in listOf(CreationKind.EXISTING, CreationKind.WORKTREE, CreationKind.DEFAULT) && repositoryId.isNullOrBlank()) return
+        val repositoryTarget = kind in listOf(CreationKind.EXISTING, CreationKind.WORKTREE, CreationKind.DEFAULT)
+        if (!canStartCreationFor(repositoryId.takeIf { repositoryTarget }) || repositoryTarget && repositoryId.isNullOrBlank()) return
         if (state.string("chatCreation") == "failed") command("dismissNewChat")
         creation = CreationFlow(state.string("laptopId", state.obj("composerTarget").string("hostId")), state.string("teamId"), kind, repositoryId, repositoryName)
         dictation.cancel(); sheet = null; reviewOpen = false; drawerVisible = false; acknowledge()

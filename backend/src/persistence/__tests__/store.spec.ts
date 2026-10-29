@@ -7,8 +7,9 @@ import type { AppSnapshot } from '@workspace/core/contracts';
 import type { Visualization } from '@workspace/core/visualize';
 import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../../state-persistence';
 import { AppStateStore } from '../store';
-import { StoreFormatError, parseStoreFile } from '../store-format';
+import { StoreFormatError, parseStoreFile, rosterSchemaVersion } from '../store-format';
 import { projectClientSnapshot } from '@workspace/core/client-preferences';
+import { readyRemoteConnection } from '../../__tests__/server-test-fixtures';
 
 const visualization = (id: string): Visualization => ({ id, title: id, content: { kind: 'mermaid', source: 'flowchart LR; A --> B' }, createdAt: '2026-09-21T12:00:00.000Z', updatedAt: '2026-09-21T12:00:00.000Z' });
 
@@ -36,6 +37,67 @@ function snapshotWithCalendar(): AppSnapshot {
 }
 
 describe('AppStateStore', () => {
+  it('retains both sides of collaboration authority across disk restarts', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.remoteConnections.connections = [readyRemoteConnection()];
+    snapshot.teams[0]!.collaborationOwnerId = 'upstream-controller';
+    snapshot.teams[0]!.remoteLinks = [{ connectionId: 'connection-devbox', remoteTeamId: 'hidden-team', collaborationOwnerId: 'downstream-controller' }];
+    await new AppStateStore(home).save(snapshot);
+    const restored = await new AppStateStore(home).load();
+    expect(restored.teams[0]!.collaborationOwnerId).toBe('upstream-controller');
+    expect(restored.teams[0]!.remoteLinks).toStrictEqual(snapshot.teams[0]!.remoteLinks);
+    await new AppStateStore(home).save(restored);
+    expect((await new AppStateStore(home).load()).teams[0]).toStrictEqual(restored.teams[0]);
+  });
+
+  it('upgrades a schema-3 remote pointer without losing its foreign team or local navigation', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.remoteConnections.connections = [readyRemoteConnection()];
+    snapshot.teams.push({ id: 'remote-pointer', name: 'Remote', agentIds: [] });
+    snapshot.activeTeamId = 'remote-pointer';
+    snapshot.activeAgentId = null;
+    await new AppStateStore(home).save(snapshot);
+    const roster = await readJson('roster.json');
+    roster.schemaVersion = 3;
+    const pointer = (roster.data.teams as Record<string, unknown>[]).find(team => team.id === 'remote-pointer')!;
+    pointer.remoteConnectionId = 'connection-devbox';
+    pointer.remoteTeamId = 'team-app'; // Foreign ids can collide with local ids.
+    await writeFile(file('roster.json'), JSON.stringify(roster));
+    const restored = await new AppStateStore(home).load();
+    expect(restored.teams.find(team => team.id === 'remote-pointer')?.remoteLinks).toStrictEqual([{ connectionId: 'connection-devbox', remoteTeamId: 'team-app' }]);
+    expect(restored.agents.map(agent => agent.id)).toStrictEqual(snapshot.agents.map(agent => agent.id));
+    expect(restored.activeTeamId).toBe('remote-pointer');
+    expect((await readJson('roster.json')).schemaVersion).toBe(4);
+    expect((await readdir(file('backups'))).some(name => name.includes('roster-v3'))).toBe(true);
+    await new AppStateStore(home).save(restored);
+    expect((await new AppStateStore(home).load()).teams).toStrictEqual(restored.teams);
+  });
+  it.each(['roster', 'legacy'] as const)('removes stale pointer-owned rows before %s import and later saves', async format => {
+    const snapshot = createInitialSnapshot();
+    snapshot.remoteConnections.connections = [readyRemoteConnection()];
+    const foreign = { ...snapshot.agents[0]!, id: 'foreign', teamId: 'remote-pointer', folder: '/srv/foreign', backendSession: { kind: 'codex' as const, threadId: 'foreign-session' } };
+    const pointer = { id: 'remote-pointer', name: 'Remote', agentIds: [foreign.id, 'foreign-unknown'], activeAgentId: foreign.id, remoteConnectionId: 'connection-devbox', remoteTeamId: snapshot.teams[0]!.id };
+    if (format === 'legacy') {
+      await writeFile(file('state.json'), JSON.stringify({ ...persistedStateFromSnapshot(snapshot), teams: [...snapshot.teams, pointer], agents: [...snapshot.agents, foreign] }));
+    } else {
+      await new AppStateStore(home).save(snapshot);
+      const roster = await readJson('roster.json');
+      roster.schemaVersion = 3;
+      (roster.data.teams as unknown[]).push(pointer);
+      (roster.data.agents as unknown[]).push({ ...foreign, engine: { kind: 'codex', session: { threadId: 'foreign-session' } } }, { id: 'foreign-unknown', folder: '/srv/unknown', engine: { kind: 'future-provider' } });
+      (roster.data.workAssignments as Record<string, unknown>).foreign = { agentId: foreign.id };
+      await writeFile(file('roster.json'), JSON.stringify(roster));
+    }
+    const store = new AppStateStore(home);
+    const restored = await store.load();
+    expect(restored.agents.map(agent => agent.id)).toStrictEqual(snapshot.agents.map(agent => agent.id));
+    expect(restored.teams.find(team => team.id === pointer.id)?.agentIds).toStrictEqual([]);
+    expect(restored.teams.find(team => team.id === pointer.id)?.remoteLinks).toStrictEqual([{ connectionId: 'connection-devbox', remoteTeamId: snapshot.teams[0]!.id }]);
+    await store.save(restored);
+    const saved = await readJson('roster.json');
+    expect((saved.data.agents as { id: string }[]).some(agent => agent.id.startsWith('foreign'))).toBe(false);
+    expect((saved.data.workAssignments as Record<string, unknown>).foreign).toBeUndefined();
+  });
   it('persists bookmarks by owning client through restart, agent deletion and removal', async () => {
     const snapshot = createInitialSnapshot();
     const desktopBookmarks = [{ title: 'Desktop preview', url: 'http://localhost:5173/' }];
@@ -98,7 +160,7 @@ describe('AppStateStore', () => {
     expect(restarted.repositoryVisualizations).toStrictEqual(expected.repositoryVisualizations);
   });
 
-  it.each([1, 2, 3])('loads supported agents and preserves unknown providers across schema-%i saves and restarts', async (schemaVersion) => {
+  it.each([1, 2, 3, 4])('loads supported agents and preserves unknown providers across schema-%i saves and restarts', async (schemaVersion) => {
     const snapshot = createInitialSnapshot();
     await new AppStateStore(home).save(snapshot);
     const roster = await readJson('roster.json');
@@ -128,7 +190,7 @@ describe('AppStateStore', () => {
     expect(restored.subagentTrees[unknown.id]).toBeUndefined();
     expect(restored.workBacklog.assignments.future).toBeUndefined();
     expect(logs.join('\n')).toContain(unknown.id);
-    if (schemaVersion === 3) expect(await readFile(file('roster.json'), 'utf8')).toBe(original);
+    if (schemaVersion === rosterSchemaVersion) expect(await readFile(file('roster.json'), 'utf8')).toBe(original);
     restored.agents[0]!.name = 'Changed while future provider is unavailable';
     await store.save(restored);
 
@@ -258,7 +320,7 @@ describe('AppStateStore', () => {
     await store.save(snapshotWithVisualizations());
 
     expect((await readdir(home)).sort()).toStrictEqual(['roster.json', 'settings.json', 'visualizations']);
-    expect((await readJson('roster.json')).schemaVersion).toBe(3);
+    expect((await readJson('roster.json')).schemaVersion).toBe(rosterSchemaVersion);
     expect((await readJson('settings.json')).schemaVersion).toBe(1);
     const [directory] = await readdir(file('visualizations'));
     expect(directory).toMatch(/^app-[0-9a-f]{8}$/);
@@ -274,7 +336,7 @@ describe('AppStateStore', () => {
     await new AppStateStore(home).save(snapshot);
 
     const restored = await new AppStateStore(home).load();
-    expect((await readJson('roster.json')).schemaVersion).toBe(3);
+    expect((await readJson('roster.json')).schemaVersion).toBe(rosterSchemaVersion);
     expect(restored.agents[0]!.autoResumePending).toBe(true);
     expect(restored.general.autoResumeOnStartup).toBe(false);
 
@@ -333,7 +395,7 @@ describe('AppStateStore', () => {
 
   it('refuses a roster written by a newer build and leaves it untouched', async () => {
     await new AppStateStore(home).save(createInitialSnapshot());
-    const newer = JSON.stringify({ schemaVersion: 4, writtenBy: 'daemon 9.9.9', data: {} });
+    const newer = JSON.stringify({ schemaVersion: rosterSchemaVersion + 1, writtenBy: 'daemon 9.9.9', data: {} });
     await writeFile(file('roster.json'), newer);
 
     await expect(new AppStateStore(home).load()).rejects.toThrowError(/daemon 9\.9\.9/);

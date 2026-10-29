@@ -78,6 +78,25 @@ desktop preference cannot enable a tool the host does not provide.
 Cross-package imports use package names, never deep relative paths. `core` stays
 runtime-thin so every client shares one contract without inheriting file authority.
 
+Repository run profiles are user-authored definitions in the owning daemon's private
+`run-profiles.json` store, shared by worktrees through their primary repository
+identity. Explicit imports read script and target names from confined package,
+Make and Just files without evaluating recipes or copying their bodies. Discovery
+does not save or execute actions. The daemon admits
+only a saved profile whose command and resolved directory match the user's reviewed
+target; directory containment includes real paths and symlinks. Profiles have no
+environment field and never copy environment files. Output and run history are
+bounded and volatile; inherited credential values are redacted from output returned
+to clients. Restart restores definitions, never processes.
+
+The run-profile service owns each command process group through completion, stop,
+agent/team removal, explicit remote connection removal, and daemon shutdown. Switching or
+closing a client view retains the daemon owner. Losing transport to a persistent
+remote daemon does not transfer ownership to the client. Remote profile operations
+use the existing agent-location routing; local loopback previews use the existing
+Browser pane. Remote loopback previews require an owning-host browser and are not
+opened against the desktop's localhost.
+
 The mobile companion engine is a narrow workspace/read/send port over the companion
 protocol. SwiftUI and Jetpack Compose own native navigation and the composer. On iOS,
 app-lock protection uses a separate scene window above native sheets and full-screen
@@ -251,7 +270,7 @@ start a review, and automatic fixes and local commits require explicit selection
 The companion engine validates the target before submission and reports admission
 back to the native draft; only accepted sends clear their captured text and attachments.
 The laptop stores uploads privately and passes ordinary provider attachment paths
-through its existing prompt route. Nested remote teams remain text-only until their
+through its existing prompt route. Remote agents remain text-only until their
 owning host supports trusted file transfer. Reconnect reconciles available command receipts without replaying prompts
 and retains the last loaded snapshot while rehydrating the same provider session.
 
@@ -338,8 +357,8 @@ target, archive the displaced conversation, then persist the new reference.
 
 Rules:
 
-- Every file is `{ schemaVersion, writtenBy, data }`. A build refuses to read or
-  rewrite a newer `schemaVersion`; a file that fails to parse stops startup rather
+- Durable state files use `{ schemaVersion, writtenBy, data }`. A build refuses to
+  read or rewrite a newer `schemaVersion`; a file that fails to parse stops startup rather
   than becoming empty (except an unreadable visualization, which is skipped).
 - Within a supported schema version, additive fields do not block loading agents,
   settings, tasks, document workspaces or visualizations. Known field types and task
@@ -351,12 +370,12 @@ Rules:
 - Bump the version only for breaking changes, with a typed step in
   `backend/src/persistence/migrations.ts`. Additive optional fields and
   backward-compatible defaults need no migration even if an older build drops them.
-- Roster schema 2 protects prompt-target automations and calendar recurrences from
-  repository-loop readers. Loading a schema-1 roster takes a verified backup and
-  upgrades its envelope before normal saves; valid prompt schedules are preserved,
-  while obsolete repository loops are not converted. Other files retain their own
-  schema versions. Older builds refuse the roster instead of silently deleting
-  schedules they cannot interpret.
+- Roster schema 4 protects prompt-target automations, nested execution selections
+  and mixed-host team links from incompatible readers. Older rosters receive a
+  verified backup before migration; remote pointers retain their foreign team IDs
+  as links. Obsolete repository-loop automations are not converted. Other files
+  retain their own schema versions. Older builds refuse the roster instead of
+  silently deleting configuration they cannot interpret.
 - Writes are serialized, same-directory temp file plus atomic rename, with no
   fsync and therefore no power-loss guarantee. A slow older write never overwrites
   a newer one.
@@ -365,7 +384,7 @@ Rules:
   work at startup when the setting is enabled. Remote agents are recovered by
   their owning daemon.
 - Navigation, ordering and presentation settings are per-client preference
-  profiles; backend policy is shared. A client selecting a remote team never
+  profiles; backend policy is shared. A client selecting a remote agent never
   changes the remote desktop's navigation.
 - Document tabs own transient Markdown lifetime. Display persists the bytes and
   open references before emitting a client effect. If retention fails, display
@@ -425,27 +444,76 @@ mutations, and restores the old home and roster on failure. Provider
 conversation files stay in the old home, and switching back does not recreate the
 removed agents. Remote agents and other providers are untouched.
 
-## Location Routing And Remote Teams
+## Location Routing And Remote Agents
 
-A local `daemon` is the control plane. A remote team is a local pointer
-(`Team.remoteConnectionId` + `Team.remoteTeamId`); the remote `daemon` owns its
-agents, sessions, files, git, worktrees and prompts. Agents never move between
-backend locations.
+A local `daemon` is the control plane. Where an agent runs is a property of the
+agent (`Agent.remoteConnectionId`, absent for local agents), never of a team, so one
+team and one sidebar section can hold local and remote agents side by side. The
+remote `daemon` owns its agents, sessions, files, git, worktrees and prompts.
+Agents never move between backend locations.
 
-- `Team.id` is the local pointer ID. `remoteTeamId` is foreign state: never use it
-  for local membership, active-agent repair, assignment cleanup or migration, and
-  expect it to collide with local IDs.
+- A local team keeps one hidden team per host on the remote `daemon`
+  (`Team.remoteLinks`), created with the first remote agent for that host. The
+  remote team id is foreign state: never use it for local membership,
+  active-agent repair or assignment cleanup, and expect it to collide with local
+  IDs. The link is bookkeeping; the UI never exposes remote teams. Linked-team
+  activation is coalesced per link on startup and transport reconnect. Its stable
+  controller authority is saved before the owning host binds it; conflicting
+  authority fails explicitly without replacing the remote team.
+- Remote agents are projected into the client snapshot with the local team id and
+  their host. The local roster never owns them. A private, replaceable
+  `remote-snapshots.json` cache retains linked teams and agent metadata so remote
+  projects remain visible across offline restarts. Restored agents do not claim
+  active work until refreshed by their host; pending requests and provider
+  conversations are not restored from this cache. A failed refresh marks the connection unavailable
+  without removing its agents. Forgetting a connection removes its cached state.
 - Location-scoped and agent-scoped requests resolve a `BackendLocation` /
   `AgentLocation`, then run on a handle: local handles use local drivers, remote
   handles forward the same app-owned method. Remote events fan out locally only
-  for agents of a connected pointer. Remote snapshots are returned to the UI, never
+  for agents of a linked hidden team. Remote snapshots are returned to the UI, never
   adopted as local product state.
-- Closing a remote team is destructive (forwarded to the remote); disconnecting
-  removes only the pointer. Deleting a connection removes its pointers and leaves
-  the remote running; an empty local fallback team is created if none remains.
+- Creating an agent on a remote host takes `remoteConnectionId` next to `teamId`
+  and a path on that host. Section actions carry host plus path.
+- Deleting a team removes its hidden teams (and their agents) on every host;
+  successful host cleanup is persisted before continuing. Linked-team deletion
+  accepts an already absent team, so a lost reply or controller restart can be
+  retried without removing unrelated teams. Deleting a connection drops the links
+  and leaves the remote running.
+- Sidebar sections are keyed by the repository's origin identity, falling back to
+  the path on the agent's own host. Missions and sharing stay on the local host.
+- The controlling daemon owns collaboration and durable tasks for a mixed-host
+  team. Hidden remote teams retain their controller identity; roster, messaging,
+  delegation and task tools call that controller over the existing SSH channel.
+  Callbacks validate the connection, team and caller before executing. Execution,
+  native tool access and files remain owned by the worker's daemon. Cross-host
+  conversation continuation uses a handoff rather than a foreign provider session.
+  Same-host remote delegation resolves the parent from the destination's controlled
+  team; native forks use that daemon's own session rather than a transported session.
+- Teammate messages are admitted separately from task startup. The worker daemon
+  steers or queues admitted messages and drains its own queue. The controller
+  serializes delivery per recipient and retries unconfirmed admissions with the
+  same message ID; the worker retains the last admission per recipient for lost
+  replies. Inbox, admission receipts and prompt queues are process-local.
+- Remote task receipts and results are saved by the controller. Provider events
+  from the owning host settle the submitting turn before result delivery. A lost
+  controller makes collaboration calls fail explicitly; missing outcomes remain
+  unconfirmed and work is never automatically replayed. Host identity is retained
+  with the task workspace for recovery and cancellation. Assignments already owned
+  by a worker daemon retain that authority when its team is bound: execution,
+  request deduplication, result settlement and delivery remain there. Authorized
+  task reads and cancellation include both original and controller-owned records;
+  waiting uses one deadline and cannot treat an unavailable owner as empty.
+- Handoff admission checks the controlled delegation graph and unfinished tasks
+  across their owning hosts. The controller persists the operation and execution
+  host before replacement; a callback must match that intent before starting the
+  replacement. Persisted lineage retains creator authority through chained
+  handoffs and lost replies. Child admission resolves that lineage after async
+  provisioning, and historical task visibility follows it without rewriting
+  execution sessions, attempts or delivery receipts.
 - Each remote `daemon` owns its own engine availability; local enable flags are not
-  mirrored. Automations are managed per location, selected independently of the
-  active team.
+  mirrored. Companion engine choices follow the operation's conversation or
+  repository host; local Quick Chat and project creation use local availability.
+  Automations are managed per location, selected independently of the active team.
 
 ## Source Repositories And Worktrees
 
@@ -479,6 +547,13 @@ clears or changes it, Korus never re-detects.
   else. Otherwise the user's setting may copy `.env*` files (never templates,
   generated folders, nested checkouts, or over existing files) and restore
   dependencies. Existing worktrees are never re-initialized.
+  Agent creation returns after Git creates the worktree; initialization continues
+  in the owning daemon. Agents carry setup state and the current command across
+  desktop, split panes and remote projections. Their conversations can start during
+  setup; an identity-scoped wait operation gates dependency-dependent checks,
+  competing installs and commits. Failures remain visible, and saved running setup
+  becomes an interrupted error after a daemon restart. Setup processes are cancelled
+  during daemon shutdown.
 - Git history is a read-only owning-host query through the agent Git protocol.
   Pages are anchored to the worktree's HEAD and literal message search; stale
   cursors require refresh. Commit details must belong to that history, and file
@@ -619,6 +694,17 @@ publishes only after saving.
   run writes. Only the user accepts Requirements, Tickets and Review.
   Reusing a lead waits for its active provider turn to finish before refreshing
   stage instructions and sending the next kickoff.
+- The lead can reopen an earlier reached stage through its identity-bound tool.
+  Backtracking retires the lead's pending proposal and waits for repository workers
+  to stop; viewing an earlier artifact has no lifecycle effect. Tickets, completed
+  implementation and run history survive stage changes. Tickets drafts extend the
+  existing backlog using stable IDs. An authored ticket change resets only that
+  ticket and increments its content revision; unchanged submissions preserve completion.
+  Draft recovery checks its canonical backlog fingerprint; newer canonical edits
+  supersede obsolete drafts while completion updates preserve recoverable work.
+  Implementation runs bind that revision, and revised tickets use fresh conversations
+  so late results cannot complete newer work. Re-entering Implementation skips completed
+  tickets, respects dependencies, and retains explicit retry for failed or stopped work.
 - Canonical artifacts are Markdown under `$APP_HOME/missions/<id>/artifacts`.
   Workers reach them through identity-bound MCP tools with optimistic revisions;
   the renderer and providers get metadata, never file access. Stage skills are
@@ -690,6 +776,10 @@ target and reviewer agents) plus an opaque reviewer session reference.
 - The default is an independent visible reviewer agent starting without the source
   history; reviewing the current thread is the alternative and its user-owned
   conversation is never disposed.
+- New independent reviewers follow their source agent in each client's saved order;
+  an explicit user reorder takes precedence.
+- Codex review rounds wait for their matching terminal turn event without a fixed
+  duration limit; elapsed time alone does not fail an active review.
 - Independent reviews reset the reviewer's conversation between rounds to reduce
   anchoring; every round receives the cumulative ledger (all prior skips, fixes
   and decisions) in a `<context>` block.
@@ -697,6 +787,9 @@ target and reviewer agents) plus an opaque reviewer session reference.
   tier across rounds and retries. Review preferences keep these choices per provider;
   an explicit Standard tier clears inherited Fast mode. Current-thread reviews use
   the thread's existing settings.
+- Commit reviews retain the selected SHA across rounds and retries. Automatic
+  remediation fixes its baseline at that commit's first parent, or the empty tree
+  for an initial commit, so subsequent review commits stay within the same scope.
 - Per-review instructions belong to the review session, survive retries
   and fresh rounds, and never become saved reviewer defaults. Unsubmitted drafts
   stay local to the agent's review tab and are discarded when that tab closes.

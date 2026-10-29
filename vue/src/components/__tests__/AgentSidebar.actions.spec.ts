@@ -164,10 +164,10 @@ describe('AgentSidebar actions', () => {
         components: { ElPopover },
       },
     });
-    const groups = wrapper.findAll('.agent-sidebar__workspace-group');
+    const groups = wrapper.findAll('[data-group-kind="repository"]');
     const id8Group = groups[0];
     const multiLlmGroup = groups[1];
-    const headers = wrapper.findAll('.agent-sidebar__workspace-header');
+    const headers = wrapper.findAll('[data-group-kind="repository"] .agent-sidebar__workspace-header');
     expect(headers[0].attributes('draggable')).toBe('true');
     expect(headers[1].attributes('draggable')).toBe('true');
     mockRect(id8Group.element, { top: 100, height: 96 });
@@ -184,8 +184,8 @@ describe('AgentSidebar actions', () => {
     expect(wrapper.emitted('reorder-repositories')).toStrictEqual([[
       {
         teamId: 'team-app',
-        repositoryRoot: '~/src/multi-llm-ts',
-        beforeRepositoryRoot: '~/src/id8',
+        repositoryKey: '~/src/multi-llm-ts',
+        beforeRepositoryKey: 'remote:github.com/nbonamy/id8',
       },
     ]]);
   });
@@ -286,10 +286,10 @@ describe('AgentSidebar actions', () => {
 
     expect(wrapper.findAll('.agent-sidebar__workspace-header').map((header) => header.text()))
       .toStrictEqual(['Chats', 'id8', 'notes']);
-    const chatsGroup = wrapper.findAll('.agent-sidebar__workspace-group')[0]!;
+    const chatsGroup = wrapper.get('[data-group-kind="quickChats"]');
     expect(chatsGroup.get('.agent-sidebar__workspace-header').find('[data-icon="message"]').exists()).toBe(true);
     expect(chatsGroup.get('.agent-sidebar__agent').find('.agent-sidebar__session-icon').exists()).toBe(false);
-    const folderGroup = wrapper.findAll('.agent-sidebar__workspace-group')[2]!;
+    const folderGroup = wrapper.get('[data-group-kind="folder"]');
     expect(folderGroup.attributes('data-group-kind')).toBe('folder');
     expect(folderGroup.get('.agent-sidebar__workspace-header').find('[data-icon="folder"]').exists()).toBe(true);
     expect(folderGroup.get('.agent-sidebar__agent').find('.agent-sidebar__session-icon').exists()).toBe(false);

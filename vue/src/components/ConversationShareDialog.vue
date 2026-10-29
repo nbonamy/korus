@@ -7,6 +7,15 @@
       <p v-else-if="state?.active" class="app-form-dialog__help" role="status">
         {{ state.connectedGuests === null ? t('sharing.active') : t('sharing.guests', { count: state.connectedGuests }) }}
       </p>
+      <FormSection v-if="state?.guests?.length" class="conversation-share-guests">
+        <FormRow v-for="guest in state.guests" :key="guest.identity" class="conversation-share-guest" :title="guest.name">
+          <template #copy><span v-if="state.guests.filter(other => other.name === guest.name).length > 1">{{ guest.discriminator }}</span></template>
+          <template #control>
+            <span>{{ t('sharing.writeAccess') }}</span>
+            <el-switch :model-value="guest.writeAccess" :aria-label="t('sharing.writeAccessFor', { name: guest.name, discriminator: guest.discriminator })" :disabled="busy || loading" @update:model-value="access(guest.identity, Boolean($event))" />
+          </template>
+        </FormRow>
+      </FormSection>
       <el-alert v-if="(state?.active && state.availability !== 'ready') || state?.availability === 'notConfigured'" :title="t('sharing.temporarilyUnavailable')" type="warning" :closable="false" show-icon />
       <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
     </div>
@@ -27,6 +36,8 @@ import { useI18n } from 'vue-i18n';
 import type { ConversationShareControl, ConversationShareResult, ConversationShareState, ConversationShareTarget } from '@workspace/core/conversation-sharing';
 import { ElMessage } from 'element-plus';
 import { appApi } from '../platform-api';
+import FormSection from '../shared/form/FormSection.vue';
+import FormRow from '../shared/form/FormRow.vue';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import { conversationShareActiveByAgentIdKey } from './conversation-share-state';
 
@@ -90,6 +101,16 @@ async function run(action: 'create' | 'copy' | 'revoke') {
   } catch (cause) { if (!disposed) error.value = shareError(cause); }
   finally { if (!disposed) busy.value = false; }
 }
+async function access(identity: string, writeAccess: boolean) {
+  if (busy.value || loading.value || !state.value?.handle) return;
+  busy.value = true; error.value = '';
+  const expected = revision;
+  try {
+    const result = await props.control({ action: 'access', target: props.target, handle: state.value.handle, identity, writeAccess });
+    if (!disposed && expected === revision) { revision++; state.value = result.state; }
+  } catch (cause) { if (!disposed) error.value = shareError(cause); }
+  finally { if (!disposed) busy.value = false; }
+}
 onMounted(() => {
   unsubscribe = appApi?.onEvent(event => {
     if (event.type !== 'conversation.shareChanged' || event.agentId !== props.target.agentId) return;
@@ -100,3 +121,17 @@ onMounted(() => {
 });
 onBeforeUnmount(() => { disposed = true; unsubscribe?.(); });
 </script>
+
+<style scoped>
+.conversation-share-guests {
+  max-height: 40vh;
+  overflow: auto;
+}
+.conversation-share-guests .conversation-share-guest {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-8);
+}
+.conversation-share-guest :deep(.form-row__copy) {
+  overflow-wrap: anywhere;
+}
+</style>

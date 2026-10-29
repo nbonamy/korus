@@ -18,7 +18,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { Team } from '@workspace/core/contracts';
 import AppMenu from '../shared/menu/AppMenu.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
-import { ExternalLinkIcon, PencilIcon, Trash2Icon, X } from '../shared/icons/app-icons';
+import { PencilIcon, X } from '../shared/icons/app-icons';
 
 const props = defineProps<{
   canClose: boolean;
@@ -31,7 +31,6 @@ const emit = defineEmits<{
   close: [];
   'edit-team': [teamId: string];
   'request-close-team': [teamId: string];
-  'request-disconnect-team': [teamId: string];
 }>();
 
 const menuRoot = ref<HTMLElement | null>(null);
@@ -46,19 +45,12 @@ const menuItems = computed<AppMenuItem[]>(() => [
     label: translate('surface.teamContextMenu.editTeam'),
     icon: PencilIcon,
   },
-  ...(props.team.remoteConnectionId ? [{
-    id: 'disconnect-team',
-    type: 'action' as const,
-    label: translate('surface.teamContextMenu.disconnect'),
-    icon: ExternalLinkIcon,
-    disabled: !props.canClose,
-  }] : []),
   { id: 'group-danger', type: 'separator' },
   {
     id: 'close-team',
     type: 'action',
-    label: props.team.remoteConnectionId ? translate('surface.teamContextMenu.deleteTeam') : translate('surface.teamContextMenu.closeTeam'),
-    icon: props.team.remoteConnectionId ? Trash2Icon : X,
+    label: translate('surface.teamContextMenu.closeTeam'),
+    icon: X,
     danger: true,
     disabled: !props.canClose,
   },
@@ -77,8 +69,6 @@ onBeforeUnmount(() => {
 function selectMenuItem(itemId: string): void {
   if (itemId === 'edit-team') {
     emit('edit-team', props.team.id);
-  } else if (itemId === 'disconnect-team' && props.canClose) {
-    emit('request-disconnect-team', props.team.id);
   } else if (itemId === 'close-team' && props.canClose) {
     emit('request-close-team', props.team.id);
   }

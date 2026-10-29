@@ -73,6 +73,7 @@
       >
         <ShareIcon aria-hidden="true" />
       </button>
+      <RunProfilesControl v-if="agent?.folder" :agent="agent" :host-label="runHostLabel ?? $t('runProfiles.localHost')" :preview-available="runPreviewAvailable ?? false" @preview="emit('run-preview', $event)" @visibility="emit('run-profiles-visible', $event)" />
       <GitDiffControl
         v-if="gitReviewAvailable && agent && gitStatus"
         class="agent-header__git-status"
@@ -189,11 +190,14 @@ import OpenInControl from '../shared/OpenInControl.vue';
 import SubagentControl from './SubagentControl.vue';
 import GitWorkflowControl from './GitWorkflowControl.vue';
 import GitDiffControl from './GitDiffControl.vue';
+import RunProfilesControl from './RunProfilesControl.vue';
 import { effectiveOpenInApplication } from '../shared/open-in';
 import { appApi } from '../platform-api';
 import { conversationShareActiveByAgentIdKey } from './conversation-share-state';
 
 const props = withDefaults(defineProps<{
+  runHostLabel?: string;
+  runPreviewAvailable?: boolean;
   agent: Agent | null;
   guestStatus?: GuestJoinStatus | null;
   guestBusy?: boolean;
@@ -264,6 +268,8 @@ onMounted(() => {
 onBeforeUnmount(() => { shareStatusGeneration++; unsubscribeShareState?.(); });
 
 const emit = defineEmits<{
+  'run-preview': [url: string];
+  'run-profiles-visible': [visible: boolean];
   'expand-sidebar': [];
   'share': [];
   'leave-shared-conversation': [];

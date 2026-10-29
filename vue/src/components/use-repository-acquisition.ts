@@ -1,7 +1,6 @@
 import type {
   CloneSourceRepositoryInput,
   SourceRepository,
-  Team,
   WorkIntegrationConnection,
   WorkSource,
   AutomationLocation,
@@ -12,7 +11,6 @@ export type RepositoryProvider = 'github' | 'gitlab';
 export type RepositoryAcquisitionMode = RepositoryProvider | 'url';
 
 export type RepositoryAcquisitionOptions = {
-  activeTeam: () => Team | null;
   activeTeamId: () => string | undefined;
   catalog: (provider: RepositoryProvider) => WorkSource[] | undefined;
   chooseLocalFolder: () => Promise<string | null>;
@@ -22,8 +20,7 @@ export type RepositoryAcquisitionOptions = {
   errorMessage: (error: unknown) => string;
   connection: (provider: RepositoryProvider) => WorkIntegrationConnection;
   connectionError: (provider: RepositoryProvider) => string | null;
-  listSourceRepositories: (remoteConnectionId?: string) => Promise<SourceRepository[]>;
-  loadRepositories: (provider: RepositoryProvider, location?: AutomationLocation) => Promise<WorkSource[] | void>;
+  loadRepositories: (provider: RepositoryProvider) => Promise<WorkSource[] | void>;
   openFolder: (folder: string, teamId?: string) => Promise<void>;
   openAuthorization: (provider: RepositoryProvider) => Promise<void>;
   openRepository: (repository: SourceRepository, teamId?: string, source?: WorkSource) => Promise<void>;
@@ -41,15 +38,12 @@ export function useRepositoryAcquisition(options: RepositoryAcquisitionOptions) 
   const loading = ref(false);
   const busy = ref(false);
   const error = ref<string | null>(null);
-  const remoteFolderPickerVisible = ref(false);
 
   let revision = 0;
   const awaitingCatalog = ref(false);
   const provider = computed<RepositoryProvider>(() => mode.value === 'gitlab' ? 'gitlab' : 'github');
-  const connection = computed<WorkIntegrationConnection>(() => options.activeTeam()?.remoteConnectionId
-    ? { provider: provider.value, status: 'connected' }
-    : options.connection(provider.value));
-  const displayError = computed(() => error.value ?? (mode.value !== 'url' && !options.activeTeam()?.remoteConnectionId ? options.connectionError(provider.value) : null));
+  const connection = computed<WorkIntegrationConnection>(() => options.connection(provider.value));
+  const displayError = computed(() => error.value ?? (mode.value !== 'url' ? options.connectionError(provider.value) : null));
   const catalogLoading = computed(() => loading.value || (awaitingCatalog.value && !error.value && options.catalog(provider.value) === undefined));
 
   async function open(nextMode: RepositoryAcquisitionMode): Promise<void> {
@@ -63,8 +57,7 @@ export function useRepositoryAcquisition(options: RepositoryAcquisitionOptions) 
     sourceRepositories.value = [];
     loading.value = nextMode !== 'url';
     if (nextMode !== 'url') {
-      await loadSourceRepositories(mine);
-      if (mine !== revision) return;
+      loadSourceRepositories(mine);
       if (connection.value.status === 'connected') await loadCatalog(mine);
       else loading.value = false;
     }
@@ -96,9 +89,8 @@ export function useRepositoryAcquisition(options: RepositoryAcquisitionOptions) 
   async function loadCatalog(mine = revision): Promise<void> {
     loading.value = true;
     const selectedProvider = provider.value;
-    const remoteConnectionId = options.activeTeam()?.remoteConnectionId;
     try {
-      const items = await options.loadRepositories(selectedProvider, remoteConnectionId ? { kind: 'remote', remoteConnectionId } : undefined);
+      const items = await options.loadRepositories(selectedProvider);
       if (mine === revision) awaitingCatalog.value = items === undefined;
       if (mine === revision) repositories.value = (items ?? options.catalog(selectedProvider) ?? []).filter(item => item.provider === selectedProvider);
     } catch (cause) {
@@ -115,8 +107,7 @@ export function useRepositoryAcquisition(options: RepositoryAcquisitionOptions) 
   async function cloneAndOpen(url: string, reuseExisting = false, source?: WorkSource): Promise<void> {
     const mine = revision;
     await runBusy(async () => {
-      const team = options.activeTeam();
-      if (!team?.remoteConnectionId && !options.sourceFolder().trim()) {
+      if (!options.sourceFolder().trim()) {
         const folder = await options.chooseSourceFolder();
         if (!folder || mine !== revision) return;
         await options.saveSourceFolder(folder);
@@ -125,49 +116,20 @@ export function useRepositoryAcquisition(options: RepositoryAcquisitionOptions) 
       const repository = await options.cloneRepository({
         url,
         ...(reuseExisting ? { reuseExisting: true } : {}),
-        ...(team?.remoteConnectionId ? { remoteConnectionId: team.remoteConnectionId } : {}),
       });
       if (mine !== revision) return;
       close();
-      await options.openRepository(repository, team?.id ?? options.activeTeamId(), source);
+      await options.openRepository(repository, options.activeTeamId(), source);
     });
   }
 
   async function openExistingFolder(): Promise<void> {
-    const team = options.activeTeam();
-    if (team?.remoteConnectionId) {
-      remoteFolderPickerVisible.value = true;
-      return;
-    }
-
     const folder = await options.chooseLocalFolder();
-    if (folder) await openExistingFolderPath(folder);
+    if (folder) await options.openFolder(folder, options.activeTeamId());
   }
 
-  function closeRemoteFolderPicker(): void {
-    remoteFolderPickerVisible.value = false;
-  }
-
-  async function selectRemoteFolder(folder: string): Promise<void> {
-    closeRemoteFolderPicker();
-    await openExistingFolderPath(folder);
-  }
-
-  async function openExistingFolderPath(folder: string): Promise<void> {
-    const team = options.activeTeam();
-    await options.openFolder(folder, team?.id ?? options.activeTeamId());
-  }
-
-  async function loadSourceRepositories(mine: number): Promise<void> {
-    const remoteConnectionId = options.activeTeam()?.remoteConnectionId?.trim() || undefined;
-    try {
-      const items = remoteConnectionId
-        ? await options.listSourceRepositories(remoteConnectionId)
-        : options.sourceRepositories();
-      if (mine === revision) sourceRepositories.value = items;
-    } catch (cause) {
-      if (mine === revision) error.value = options.errorMessage(cause);
-    }
+  function loadSourceRepositories(mine: number): void {
+    if (mine === revision) sourceRepositories.value = options.sourceRepositories();
   }
 
   async function runBusy(action: () => Promise<void>): Promise<void> {
@@ -185,10 +147,10 @@ export function useRepositoryAcquisition(options: RepositoryAcquisitionOptions) 
   }
 
   watch(options.sourceRepositories, next => {
-    if (visible.value && !options.activeTeam()?.remoteConnectionId) sourceRepositories.value = next;
+    if (visible.value) sourceRepositories.value = next;
   });
   watch(() => options.catalog(provider.value), next => {
-    if (visible.value && mode.value !== 'url' && connection.value.status === 'connected' && next && !options.activeTeam()?.remoteConnectionId) {
+    if (visible.value && mode.value !== 'url' && connection.value.status === 'connected' && next) {
       repositories.value = next.filter(item => item.provider === provider.value);
     }
   });
@@ -197,7 +159,7 @@ export function useRepositoryAcquisition(options: RepositoryAcquisitionOptions) 
     if (status === 'connected' && previous !== 'connected') void loadCatalog();
     else if (status !== 'connected' && previous === 'connected') { ++revision; repositories.value = []; loading.value = false; busy.value = false; }
   });
-  watch([() => options.activeTeam()?.id, () => options.activeTeam()?.remoteConnectionId], () => {
+  watch(() => options.activeTeamId(), () => {
     if (visible.value) void open(mode.value);
   });
 
@@ -205,7 +167,6 @@ export function useRepositoryAcquisition(options: RepositoryAcquisitionOptions) 
     busy,
     connection,
     catalogLoading,
-    closeRemoteFolderPicker,
     displayError,
     error,
     mode,
@@ -217,9 +178,7 @@ export function useRepositoryAcquisition(options: RepositoryAcquisitionOptions) 
     open,
     openAuthorization,
     openExistingFolder,
-    remoteFolderPickerVisible,
     select,
-    selectRemoteFolder,
     sourceRepositories,
   };
 }

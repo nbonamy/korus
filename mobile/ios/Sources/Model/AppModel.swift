@@ -109,6 +109,8 @@ final class AppModel {
     var chatCreation: EngineState.ChatCreation = .idle
     var teamCreation: EngineState.ChatCreation = .idle
     var backends: [String] = []
+    var conversationBackends: [String] = []
+    var repositoryBackends: [String: [String]] = [:]
     var backend: String?
     private var duplicateTarget: ComposerTarget?
     var duplicatingAgent: Bool { duplicateTarget != nil }
@@ -131,7 +133,9 @@ final class AppModel {
     var preferredBackend = UserDefaults.standard.string(forKey: "newChat.backend") ?? "" {
         didSet { UserDefaults.standard.set(preferredBackend, forKey: "newChat.backend") }
     }
-    var newChatBackend: String? { backends.contains(preferredBackend) ? preferredBackend : backends.first }
+    private func creationBackend(from choices: [String]) -> String? { choices.contains(preferredBackend) ? preferredBackend : choices.first }
+    var newChatBackend: String? { creationBackend(from: backends) }
+    private func backends(in group: SidebarGroup) -> [String] { group.repositoryId.flatMap { repositoryBackends[$0] } ?? backends }
     var isWorking: Bool { header?.status == .working || header?.status == .awaitingInput }
     var canManageSession: Bool { activeAgentID != nil && connection == .connected && sessionAction == nil }
     let composerDrafts = ComposerDrafts()
@@ -308,6 +312,8 @@ final class AppModel {
         set(\.teamCreation, state.teamCreation ?? .idle)
         if state.chatCreation != .creating { set(\.creatingChatGroupID, nil) }
         set(\.backends, state.backends)
+        set(\.conversationBackends, state.conversationBackends ?? state.backends)
+        set(\.repositoryBackends, state.repositoryBackends ?? [:])
         set(\.backend, state.backend)
         if let source = duplicateTarget {
             if source != state.composerTarget || created { duplicateTarget = nil }
@@ -495,7 +501,7 @@ final class AppModel {
         command("backend", ["backend": backend])
     }
     func startChat(in group: SidebarGroup, branchName: String? = nil, existingBranch: String? = nil) {
-        guard canStartChat, let repositoryId = group.repositoryId, let backend = newChatBackend, chatCreation != .creating else { return }
+        guard canStartChat(in: group), let repositoryId = group.repositoryId, let backend = creationBackend(from: backends(in: group)), chatCreation != .creating else { return }
         creatingChatGroupID = group.id
         var fields: [String: Any] = ["repositoryId": repositoryId, "backend": backend]
         if let existingBranch { fields["existingBranch"] = existingBranch }
@@ -504,20 +510,23 @@ final class AppModel {
     }
     /// A conversation with no repository: one tap, the engine chosen in the empty chat.
     static let quickChatID = "quick-chat"
-    var canStartChat: Bool { connection == .connected && !backends.isEmpty && !teamID.isEmpty && !duplicatingAgent }
+    private var creationReady: Bool { connection == .connected && !teamID.isEmpty && !duplicatingAgent }
+    var canStartChat: Bool { creationReady && !backends.isEmpty }
+    func canStartChat(in group: SidebarGroup) -> Bool { creationReady && !backends(in: group).isEmpty }
+    var canDuplicateAgent: Bool { canManageSession && creationReady && !conversationBackends.isEmpty && chatCreation != .creating }
     func startQuickChat() {
         guard let backend = newChatBackend, chatCreation != .creating else { return }
         creatingChatGroupID = Self.quickChatID
         command("newQuickChat", ["backend": backend])
     }
     func duplicateAgent() {
-        guard canManageSession, canStartChat, chatCreation != .creating, let target = composerDrafts.target, let fallback = newChatBackend,
+        guard canDuplicateAgent, let target = composerDrafts.target, let fallback = creationBackend(from: conversationBackends),
               let data = try? JSONEncoder().encode(target), let fields = try? JSONSerialization.jsonObject(with: data) else { return }
         dismissChatFailure()
         dictation.cancel()
         duplicateFailed = false
         duplicateTarget = target
-        let initialBackend = backend.flatMap { backends.contains($0) ? $0 : nil } ?? fallback
+        let initialBackend = backend.flatMap { conversationBackends.contains($0) ? $0 : nil } ?? fallback
         command("duplicateAgent", ["target": fields, "backend": initialBackend])
     }
     func openAgentRename() {

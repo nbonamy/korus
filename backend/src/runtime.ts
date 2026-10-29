@@ -22,6 +22,7 @@ import { resolveCodexExecutable } from './codex/codex-command';
 import { localProviderAgents } from './provider-roster-reset';
 import { handoffInProgress } from '@workspace/core/agent-handoff';
 import { RemoteDaemonClientManager } from './connections/remote-daemon-client';
+import { createFileRemoteSnapshotCache } from './connections/remote-snapshot-cache';
 import { SshConnectionService } from './connections/ssh-connections';
 import { AutomationRunner } from './automations/runner';
 import { RuntimeScheduler } from './scheduling/runtime-scheduler';
@@ -49,11 +50,11 @@ import { VisualizeService } from './visualize-service';
 import { createVisualizeToolModuleProvider } from './mcp/visualize-tools';
 import { DurableTaskService } from './agents/durable-task-service';
 import { createTaskToolModuleProvider } from './mcp/task-tools';
+import { isRemoteCollaborationReply } from '@workspace/core/remote-collaboration';
 import { createImageGenerationToolModuleProvider } from './mcp/image-generation-tools';
 import { ImageGenerationService } from './image-generation-service';
 import { loadBackendTasks, saveBackendTasks } from './state';
 import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
-import type { RendererMessage } from '@workspace/core/contracts';
 
 type DaemonClientRequest = <Result>(method: string, params?: unknown) => Promise<Result>;
 
@@ -93,15 +94,25 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     computerUseEnabled: computerUseAvailable && snapshot.general.plugins?.computerUseEnabled === true,
     chromeEnabled: pluginStatus.chromeEnabled,
   });
+  let server!: AppBackendServer;
   const worktreeManager = new WorktreeManager({
     getInitializationMode: () => snapshot.general.worktreeInitializationMode,
+    onInitializationChanged: (folder, state) => {
+      // Remote agents never live in this snapshot: their own daemon tracks and reports their setup.
+      const agents = snapshot.agents.filter(agent => agent.folder && path.resolve(agent.folder) === folder);
+      for (const agent of agents) {
+        agent.worktreeInitialization = { ...state };
+        server?.emitEvent({ agentId: agent.id, type: 'agent.updated', payload: { id: agent.id, worktreeInitialization: { ...state } } });
+      }
+      if (agents.length) void saveBackendSnapshot(snapshot).catch(error => warnMain('worktree-initialization', 'Could not save setup status', { message: String(error) }));
+    },
   });
   const agentGitService = new AgentGitService(
     undefined,
     undefined,
     async (input) => (await worktreeManager.create(input)).worktree,
   );
-  const agentCreation = new AgentCreationService(snapshot);
+  const agentCreation = new AgentCreationService(snapshot, folder => worktreeManager.getInitializationState(folder));
   const workIntegrations = new WorkIntegrationManager({
     drivers: [
       new GitHubWorkProviderDriver(() => runtimeGitHubOAuthClientId(snapshot.workBacklog.providerSettings.github)),
@@ -116,17 +127,14 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   });
   await workIntegrations.hydrateConnections();
   const hostedMcpGateway = new HostedMcpGateway({ credentials: workIntegrations });
-  let server!: AppBackendServer;
   const tasks: DurableTaskService = new DurableTaskService({
     tasks: savedTasks,
+    resolveAgentId: id => server.resolveTaskAgentId(id),
     save: saveBackendTasks,
-    agent: id => snapshot.agents.find(agent => agent.id === id),
+    agent: id => server.collaborationAgents().find(agent => agent.id === id),
     send: (agent, prompt, goal) => server.sendTaskPrompt(agent, prompt, goal),
-    interrupt: (agent, expectedTurnId) => driverRpc.handle(backendMethods.driverInterrupt, { agent, expectedTurnId }),
-    readHistory: agent => {
-      const ref = conversationRefFromAgent(agent);
-      return ref ? driverRpc.handle(backendMethods.driverConversationMessagesGet, { ref, agentId: agent.id }) as Promise<RendererMessage[]> : Promise.resolve([]);
-    },
+    interrupt: (agent, expectedTurnId) => server.interruptTaskWorker(agent, expectedTurnId),
+    readHistory: agent => server.readTaskHistory(agent),
     onError: error => warnMain('tasks', 'transition failed', { message: String(error) }),
   });
   const visualizeService = new VisualizeService({
@@ -142,6 +150,12 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   // Turns saved before the repository was recorded carry a worktree folder; file them under their repository, once.
   void usage.migrateRepositories();
   const mcpService: AppMcpService = new AppMcpService({
+    getCollaborationAgents: () => server.collaborationAgents(),
+    createRemoteWorker: (...args) => server.provisionRemoteWorker(...args),
+    sendRemotePrompt: (agent, prompt, goal) => server.sendTaskPrompt(agent, prompt, goal),
+    sendRemoteMessage: (agent, prompt, messageId) => server.deliverRemoteMessage(agent, prompt, messageId),
+    resolveDelegationParent: id => server.resolveTaskAgentId(id),
+    forwardCollaboration: (agentId, name, args) => server.forwardCollaborationCall(agentId, name, args),
     retainDocument: (agentId, request) => documents.display(agentId, request),
     tasks,
     persistSnapshot: () => saveBackendSnapshot(snapshot),
@@ -151,6 +165,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
       contextForAgent: agentId => server.missionContext(agentId),
       submitResult: (agentId, input) => server.submitMissionResult(agentId, input),
       upsertTicket: (agentId, input) => server.upsertMissionTicket(agentId, input),
+      reopenStage: (agentId, stage) => server.reopenMissionStage(agentId, stage),
       setTitle: (agentId, title) => server.setMissionTitle(agentId, title),
       attachRepository: (agentId, repoPath) => server.attachMissionRepository(agentId, repoPath),
       listArtifacts: agentId => server.listMissionArtifacts(agentId),
@@ -181,6 +196,9 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     gitDiff: (folder, target) => agentGitService.diff(folder, target as Exclude<typeof target, { type: 'turn' }>),
     startAutomaticReview: (agentId, input) => server.startAutomaticReview(agentId, input),
     closeAgent: (callerAgentId, agentId) => server.closeAgentFromMcp(callerAgentId, agentId),
+    listRemoteRepositories: connectionId => server.listRemoteRepositories(connectionId),
+    listRemoteWorktrees: (connectionId, repoPath) => server.listRemoteWorktrees(connectionId, repoPath),
+    createRemoteWorktree: input => server.createRemoteWorktree(input),
     toolModuleProviders: [
       createImageGenerationToolModuleProvider(new ImageGenerationService({
         snapshot, generatedImagesRoot: path.join(backendCodexHomeDir(), 'generated_images'), defaultCwd: backendHomeDir(),
@@ -190,7 +208,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
         ? (agentId, input) => options.requestClient(backendMethods.clientMobileSimulatorExecute, { agentId, input })
         : undefined),
       createVisualizeToolModuleProvider(visualizeService),
-      createTaskToolModuleProvider(tasks),
+      createTaskToolModuleProvider(tasks, id => Boolean(snapshot.teams.find(team => team.id === snapshot.agents.find(agent => agent.id === id)?.teamId)?.collaborationOwnerId), { wait: (id, input) => server.waitCollaborationTasks(id, input), cancel: (id, task) => server.cancelCollaborationTask(id, task) }),
     ],
   });
   const mcpServerUrl = await mcpService.start();
@@ -203,6 +221,8 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     additionalDeveloperInstructions: (agent) => [
       tasks.instructions(agent.id),
       server?.missionDeveloperInstructions(agent.id),
+      agent.worktreeInitialization?.state === 'running'
+        ? '<context>Worktree initialization is running in the background. Begin independent inspection and editing. Before dependency-dependent checks, changing package manifests, lockfiles or setup inputs, running installation commands, or committing, call wait-for-worktree-initialization. Do not run competing setup commands. If setup fails, report the failure rather than claiming checks passed.</context>' : undefined,
       visualizeService.developerInstructions(),
     ].filter(Boolean).join('\n\n') || undefined,
   };
@@ -298,7 +318,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     proposeGuest: (handle, identity, name, input) => server.proposeConversationGuest(handle, identity, name, input),
     guestProposals: (handle, identity) => server.conversationGuestProposals(handle, identity),
     withdrawGuest: (handle, identity, proposalId) => server.withdrawConversationGuest(handle, identity, proposalId),
-    guestCount: (handle, count) => server.conversationGuestCount(handle, count),
+    guestCount: (handle, count, guests) => server.conversationGuestCount(handle, count, guests),
     desktopFocused: async () => (await options.requestClient<{ focused: boolean }>(backendMethods.clientFocusGet, {})).focused === true,
     onAccessChanged: (enabled) => server.setCompanionAccessEnabled(enabled),
     async request<Result>(method: string, params?: unknown): Promise<Result> {
@@ -309,6 +329,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     },
   });
   server = new AppBackendServer({
+    worktreeInitializationForFolder: folder => worktreeManager.getInitializationState(folder),
     requirements,
     usage,
     guestJoins: new GuestJoins({ directory: path.join(backendHomeDir(), 'guest-joins'), relay: relayFromEnvironment(process.env).relay ?? undefined }),
@@ -320,6 +341,12 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     providerUpdates,
     version: options.version,
     snapshot,
+    collaborationTools: { provisionWorker: input => mcpService.provisionRemoteWorker(input), callTool: (...args) => mcpService.callTool(...args) },
+    requestCollaborationController: async input => {
+      const reply = await options.requestClient(backendMethods.clientCollaborationCall, input);
+      if (!isRemoteCollaborationReply(reply, input.ownerId)) throw new Error('The collaboration controller returned an invalid response.');
+      return reply.result;
+    },
     agentGitService,
     agentCreation,
     visualizeService,
@@ -327,6 +354,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     onEvent: (event) => { companion.event(event); options.emitEvent(event); },
     onBackendEventApplied: (event) => { mcpService.handleBackendEvent(event); tasks.handleEvent(event); automationRunner.handleEvent(event); },
     saveSnapshot: (nextSnapshot) => saveBackendSnapshot(nextSnapshot),
+    remoteSnapshotCache: createFileRemoteSnapshotCache(path.join(backendHomeDir(), 'remote-snapshots.json')),
     ensureMissionHome: ensureBackendMissionHome,
     deleteMissionHome: deleteBackendMissionHome,
     inspectPluginStatus: async () => {
@@ -343,6 +371,10 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     automationRunner,
     remoteClients: new RemoteDaemonClientManager({
       requestHandlers: {
+        [backendMethods.clientCollaborationCall]: async (params, connectionId) => ({
+          ownerId: (params as { ownerId: string }).ownerId,
+          result: await server.handleRemoteCollaborationCall(connectionId, params),
+        }),
         [backendMethods.clientExternalOpen]: (params) => options.requestClient(backendMethods.clientExternalOpen, params),
         [backendMethods.clientSpokenAnnouncementQueue]: (params) => options.requestClient(backendMethods.clientSpokenAnnouncementQueue, params),
         [backendMethods.clientBrowserOpen]: (params) => options.requestClient(backendMethods.clientBrowserOpen, params),
@@ -376,12 +408,14 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   return {
     server,
     async stop() {
+      await worktreeManager.close();
       await companion.stop();
       tasks.close();
       scheduler.stop();
       await server.close();
       workIntegrations.close();
       await mcpService.stop();
+      await tasks.flush();
     },
   };
 }

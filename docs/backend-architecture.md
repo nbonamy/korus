@@ -247,6 +247,19 @@ invitation discards its temporary session without changing saved joins.
 
 Sharing is a Korus workflow, independent of provider capabilities. A local agent
 with a bound conversation can share it; shared guest entries cannot reshare it.
+Guest write access is off by default and belongs to an authenticated peer on one
+active share, never to its display name or invitation. The owner grants it only
+while that peer is connected. Disconnecting the last session for a peer, share
+revocation, target invalidation and daemon restart clear that authority. Automatic
+admission waits in the existing sharing coordination queue and rechecks the exact
+access grant before dispatch. Revocation returns waiting automatic prompts to
+pending review; enabling access never promotes existing suggestions. An authorized
+guest chooses queue or steer when sending a prompt. That choice is captured with
+the prompt and deduplicated with its identity: queue waits for normal admission,
+while steer uses the normal owner steering operation. Read-only suggestions discard
+the guest's choice; the owner decides how to send them through the composer.
+Both retain the immutable conversation binding and plain-text guest policy;
+write access grants no workspace or other conversation actions.
 Moving a suggestion into the owner's draft dismisses it for the collaborator and
 carries no execution authority. The owner edits and sends that draft through the
 ordinary composer; this handoff requires no provider message identity. Pending proposals and decisions are private to the
@@ -376,8 +389,10 @@ Project acquisition uses the owning team's desktop operations for new repositori
 local repository selection, GitHub and GitLab discovery, and URL cloning. The phone
 sends names, catalog IDs or network Git URLs rather than filesystem paths. The local catalog
 contains repository roots, with linked worktrees nested beneath them; only roots
-become selectable opaque IDs. Provider catalog selections are bound to the daemon
-lifetime, provider, owning host location and current catalog identity; branch reads
+become selectable opaque IDs. Repository targets include the owning host in their
+opaque path identity, so equal checkout paths on different machines cannot select
+each other's work. Provider catalog selections are bound to the daemon lifetime,
+provider, owning host location and current catalog identity; branch reads
 and creation revalidate them. Legacy GitHub operations retain their existing IDs
 for compatible native clients. Integration credentials and checkout paths stay on
 the owning host; each write rechecks the grant, team location and available engine.
@@ -686,6 +701,25 @@ sign-in and provider upgrades belong to that host, independently of Korus update
 User-local Codex upgrades verify package ownership and retain the `~/.local` npm
 prefix even when the Node runtime has a different default global directory.
 Version discovery accepts the previous daemon CLI name for hosts not yet upgraded.
+
+An SSH daemon owns its host's home exclusively. Each connection launches its own
+stdio daemon with its own in-memory state, so two live daemons on one home overwrite
+each other's saves and agents or teams vanish and reappear. The launch sets
+`APP_EXCLUSIVE_HOME=1`, which holds a SQLite exclusive transaction in
+`daemon-lock.sqlite` for the daemon's lifetime. The OS releases it on process exit;
+the lock database is never removed for stale-owner recovery. `daemon.lock` contains
+diagnostic owner metadata only. A live owner is waited for briefly while it shuts
+down; otherwise the new daemon exits with a message naming the duplicate session. Two saved
+connections to the same machine therefore cannot both be active. Local and
+`serve` daemons do not take the lock.
+
+Every connect, install and reconnect (the read-only inspection) links the host's `codex` and `claude` into the
+private `bin` directory, which the SSH launch puts first on PATH, and drops the link
+of an engine that is gone. The daemon resolves a linked engine with one file check
+and starts no login shell, which otherwise costs seconds per probe on slow hosts.
+Unlinked tools and dangling links fall back to full discovery, so a failed link
+only makes startup slower. A link is a cache: an engine moved by a version manager
+is picked up at the next reconnect.
 
 ## Development
 

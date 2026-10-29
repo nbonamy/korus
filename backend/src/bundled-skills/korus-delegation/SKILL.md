@@ -10,6 +10,7 @@ Native subagents stay inside this provider session; Korus co-agents are separate
 ## Co-agent
 
 - Resolve task/repository: your folder or list-repos. Repository work: one create-agent call with createWorktree=true and branchName.
+- For another host, use list-hosts for current connection IDs/status, then list-repos with remoteConnectionId. Use the same host ID in create-agent; paths belong to that host. Omission keeps your current host. Cross-host conversation context uses a fresh handoff. Teammates share messaging and durable results through the controlling computer; reconnect it before retrying failed collaboration calls.
 - Same-provider model/effort inherit; other providers use their defaults. Override only on request.
 - Worktree starting context follows the saved preference: native conversation when supported, or fresh handoff. Pass startingContext only for a requested per-task override. Inspect delegationContext in the result; handoff fallback is visible and never a transcript replay. Keep independent reviewers fresh.
 - prompt: concise visible task. instructions: missing decisions, acceptance criteria, references and delivery constraints. Link accessible canonical issues/specs; supply inaccessible context. Skip copied repository rules/checklists/conversation. No secrets: instructions remain in the transcript.

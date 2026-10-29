@@ -412,6 +412,13 @@ describe('app menu', () => {
     expect(sendDebugAgentMessage).toHaveBeenCalledOnce();
   });
 
+  it('dispatches the background worktree indicator preview', () => {
+    const actions = callbacks();
+    const menu = buildAppMenuTemplate(actions, { debugMode: true }, 'darwin');
+    clickNestedItem(menu, 'Debug', 'UI Previews', 'Worktree Initialization Indicator');
+    expect(actions.sendAppCommand).toHaveBeenCalledWith({ type: 'debug-operation-progress', kind: 'worktreeIndicator' });
+  });
+
   it('dispatches the multi-question fixture from the debug agent menu', () => {
     const debugCallbacks = callbacks();
     const menu = buildAppMenuTemplate(debugCallbacks, { debugMode: true }, 'darwin');
@@ -504,6 +511,7 @@ describe('app menu', () => {
       'Markdown',
       'Image Annotation',
       'Worktree Initialization',
+      'Worktree Initialization Indicator',
       'Pull Request Progress',
       'Merge Progress',
     ]);
@@ -528,6 +536,7 @@ describe('app menu', () => {
       'Image Annotation',
       'separator',
       'Worktree Initialization',
+      'Worktree Initialization Indicator',
       'Pull Request Progress',
       'Merge Progress',
     ]);

@@ -55,6 +55,7 @@ const AgentSidebarStub = defineComponent({
     'create-agent-from-repository',
     'create-agent-on-branch',
     'create-agent-worktree-in-repository',
+    'open-on-remote',
     'create-quick-chat',
     'create-mission',
     'delete-mission',
