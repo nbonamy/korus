@@ -35,18 +35,39 @@
       <header class="agent-sidebar__workspace-header">
         <PlusIcon class="agent-sidebar__workspace-icon" aria-hidden="true" />
         <strong class="agent-sidebar__activity-heading">{{ t('sidebar.create') }}</strong>
+        <span class="agent-sidebar__workspace-actions agent-sidebar__workspace-actions--persistent">
+          <StartWorkMenu @select="emit('start-work', $event)">
+            <template #trigger="{ attrs }">
+              <el-tooltip :content="t('startWork.addProject')" placement="top" :show-after="300">
+                <button v-bind="attrs" type="button" :aria-label="t('startWork.addProject')">
+                  <FoldersIcon data-icon="folders" aria-hidden="true" />
+                </button>
+              </el-tooltip>
+            </template>
+          </StartWorkMenu>
+          <el-tooltip :content="t('sidebar.quickChat')" placement="top" :show-after="300">
+            <button type="button" :aria-label="t('sidebar.quickChat')" @click="emit('create-quick-chat')">
+              <MessageIcon data-icon="message" aria-hidden="true" />
+            </button>
+          </el-tooltip>
+          <el-tooltip v-if="!phoneScope && !missions?.length" :content="t('missions.new')" placement="top" :show-after="300">
+            <button
+              type="button"
+              :aria-label="t('missions.new')"
+              :disabled="missionCreationPending"
+              :aria-busy="missionCreationPending"
+              @click="emit('create-mission')"
+            >
+              <TargetArrowIcon aria-hidden="true" />
+            </button>
+          </el-tooltip>
+        </span>
       </header>
-      <div class="agent-sidebar__start-work">
-        <StartWorkMenu @select="emit('start-work', $event)" />
-        <button class="agent-sidebar__quick-chat-action" type="button" @click="emit('create-quick-chat')">
-          <MessageIcon data-icon="message" aria-hidden="true" />
-          <span>{{ t('sidebar.quickChat') }}</span>
-        </button>
-      </div>
+      <p v-if="!missions?.length && missionCreationError" class="agent-sidebar__mission-error" role="alert">{{ missionCreationError }}</p>
     </section>
 
     <nav ref="sessionList" class="agent-sidebar__list" :class="{ 'agent-sidebar__list--activity': organizationMode === 'activity' }" :aria-label="t('sidebar.workspaceSessions')">
-      <section v-if="!phoneScope && (missions?.length || !allTeams)" class="agent-sidebar__workspace-group agent-sidebar__section" data-group-kind="missions">
+      <section v-if="!phoneScope && missions?.length" class="agent-sidebar__workspace-group agent-sidebar__section" data-group-kind="missions">
         <header class="agent-sidebar__workspace-header">
           <TargetArrowIcon class="agent-sidebar__workspace-icon" data-icon="target-arrow" aria-hidden="true" />
           <button
@@ -82,11 +103,13 @@
               @click="emit('select-mission', mission.id)"
               @contextmenu.prevent="openMissionMenu(mission.id, $event)"
             >
+              <MissionProgressIcon :mission="mission" class="agent-sidebar__mission-icon" />
               <span class="agent-sidebar__meta">
                 <strong
                   class="agent-sidebar__session-title"
                   :class="{ 'agent-sidebar__session-title--active': activeMissionId === mission.id }"
                 >{{ mission.outcome }}</strong>
+                <span class="agent-sidebar__mission-stage">{{ t(mission.status === 'completed' ? 'missions.completed' : `missions.${mission.stage}`) }}</span>
               </span>
               <span
                 v-if="attentionOf(mission) === 'needsInput'"
@@ -244,8 +267,9 @@
 <script setup lang="ts">
 import { toRefs } from 'vue';
 import AgentSidebarMenus from './AgentSidebarMenus.vue';
+import MissionProgressIcon from './MissionProgressIcon.vue';
 import type { AgentSidebarModel } from './use-agent-sidebar';
-import { AlertTriangleIcon, ArrowsSortIcon, CarouselVerticalIcon, MessageIcon, PanelLeftCloseIcon, PlusIcon, TargetArrowIcon } from '../shared/icons/app-icons';
+import { AlertTriangleIcon, ArrowsSortIcon, CarouselVerticalIcon, FoldersIcon, MessageIcon, PanelLeftCloseIcon, PlusIcon, TargetArrowIcon } from '../shared/icons/app-icons';
 import BackendIcon from './BackendIcon.vue';
 import StartWorkMenu from './StartWorkMenu.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
@@ -332,92 +356,23 @@ const {
   flex: 0 0 auto;
 }
 
-.agent-sidebar__start-work {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-2) 0;
-}
-
-.agent-sidebar__start-work > :deep(.app-menu-button),
-.agent-sidebar__start-work > button {
-  flex: 1 1 0;
-  min-width: 0;
-}
-
-.agent-sidebar__start-work :deep(.start-work-menu__trigger),
-.agent-sidebar__start-work > button {
-  justify-content: flex-start;
-  gap: var(--space-4);
-  padding: 0 var(--space-8);
-  font-size: var(--font-size-13);
-  white-space: nowrap;
-}
-
-.agent-sidebar__start-work :deep(svg) {
-  flex-shrink: 0;
-  width: var(--icon-sm);
-  height: var(--icon-sm);
-}
-
-.agent-sidebar__quick-chat-action {
-  min-height: 32px;
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-md);
-  color: var(--color-text-muted);
-  background: transparent;
-  font: inherit;
-  font-size: var(--font-size-14);
-  font-weight: var(--font-weight-medium);
-  text-align: left;
-  cursor: pointer;
-}
-
-.agent-sidebar__quick-chat-action:hover,
-.agent-sidebar__quick-chat-action:focus-visible {
-  color: var(--color-text);
-  outline: 0;
-}
-
-.agent-sidebar__quick-chat-action svg {
-  width: var(--icon-md);
-  height: var(--icon-md);
-}
-
-/* Sections have no frame: a colored rail plus the tinted header band mark where each one starts and ends. */
+/* Compact header bands separate the activity sections. */
 .agent-sidebar__workspace-group.agent-sidebar__section {
   display: flex;
   flex-direction: column;
   min-height: var(--section-floor, 0);
-  margin-left: var(--space-2);
-  padding-left: var(--space-6);
 }
 
 .agent-sidebar__workspace-group.agent-sidebar__creation-section {
   flex: 0 0 auto;
-  margin: var(--space-6) var(--space-4) 0 calc(var(--space-4) + var(--space-2));
+  margin: var(--space-6) var(--space-4) 0;
 }
 
-/* Activity rows and sections never reorder. Their drop indicators would stick out 2px past each row, which counts as scroll overflow, so the rail reuses the section's ::before instead. */
+/* Activity rows and sections cannot be reordered. */
+.agent-sidebar__workspace-group.agent-sidebar__section::before,
 .agent-sidebar__workspace-group[data-activity-group] .agent-sidebar__agent::before,
 .agent-sidebar__workspace-group[data-activity-group] .agent-sidebar__agent::after {
   display: none;
-}
-
-.agent-sidebar__workspace-group.agent-sidebar__section::before {
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 3px;
-  height: auto;
-  background: color-mix(in srgb, var(--activity-color) 80%, transparent);
-  box-shadow: none;
-  opacity: 1;
-  transform: none;
 }
 
 .agent-sidebar__workspace-group.agent-sidebar__section + .agent-sidebar__workspace-group.agent-sidebar__section {
@@ -425,7 +380,7 @@ const {
 }
 
 .agent-sidebar__workspace-group {
-  --activity-color: var(--color-outline);
+  --activity-color: var(--color-text-muted);
 
   position: relative;
 }
@@ -468,7 +423,7 @@ const {
 .agent-sidebar__activity-heading {
   flex: 1;
   transform: translateY(-1px);
-  color: var(--color-text-muted);
+  color: var(--activity-color);
   font-size: var(--font-size-13);
   font-weight: var(--font-weight-bold);
 }
@@ -476,16 +431,40 @@ const {
 .agent-sidebar__workspace-group.agent-sidebar__section .agent-sidebar__workspace-header {
   display: flex;
   gap: var(--space-4);
+  min-height: calc(var(--agent-sidebar-row-min-height) + var(--space-2));
   margin: 0 0 var(--space-2);
-  padding: calc(var(--space-4) + var(--space-2)) calc(var(--space-6) + var(--space-2));
+  padding: var(--space-2) calc(var(--space-6) + var(--space-2));
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--color-border) 35%, transparent);
+  background: color-mix(in srgb, var(--activity-color) 6%, transparent);
 }
 
 .agent-sidebar__workspace-group[data-group-kind="missions"] {
   --activity-color: var(--color-primary);
 
   flex-shrink: 0;
+}
+
+.agent-sidebar__workspace-group[data-group-kind="missions"] .agent-sidebar__agent {
+  grid-template-columns: var(--agent-sidebar-repository-icon-column-width) minmax(0, 1fr)
+    var(--agent-sidebar-trailing-column-width, var(--agent-sidebar-status-column-width));
+  min-height: 48px;
+  padding-block: var(--space-4);
+  padding-left: var(--space-6);
+}
+
+.agent-sidebar__workspace-group[data-group-kind="missions"] .agent-sidebar__meta {
+  grid-column: 2;
+}
+
+.agent-sidebar__mission-icon {
+  align-self: start;
+  margin-top: var(--space-1);
+}
+
+.agent-sidebar__mission-stage {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-12);
+  line-height: var(--line-height-16);
 }
 
 .agent-sidebar__workspace-group[data-group-kind="quickChats"] {
@@ -495,6 +474,7 @@ const {
 .agent-sidebar__section > .agent-sidebar__workspace-header > .agent-sidebar__workspace-icon,
 .agent-sidebar__section > .agent-sidebar__workspace-header > .agent-sidebar__activity-icon {
   flex: 0 0 var(--agent-sidebar-repository-icon-column-width);
+  color: var(--activity-color);
 }
 
 .agent-sidebar__section > .agent-sidebar__workspace-header > .agent-sidebar__workspace-label {
@@ -502,8 +482,14 @@ const {
   min-height: var(--line-height-18);
 }
 
-.agent-sidebar__section .agent-sidebar__workspace-label strong {
+.agent-sidebar__section .agent-sidebar__workspace-header strong {
+  color: var(--activity-color);
   font-size: var(--font-size-13);
+}
+
+.agent-sidebar__section .agent-sidebar__workspace-header .agent-sidebar__workspace-actions button,
+.agent-sidebar__section .agent-sidebar__workspace-header .agent-sidebar__activity-more {
+  color: var(--activity-color);
 }
 
 .agent-sidebar__workspace-group[data-activity-group="attention"] {
@@ -513,19 +499,19 @@ const {
 }
 
 .agent-sidebar__workspace-group[data-activity-group="working"] {
-  --activity-color: var(--color-warning);
+  --activity-color: var(--color-on-warning-container);
 
   flex-shrink: 1000000;
 }
 
 .agent-sidebar__workspace-group[data-activity-group="recent"] {
-  --activity-color: var(--color-success);
+  --activity-color: var(--color-on-success-container);
 
   flex-shrink: 1000;
 }
 
 .agent-sidebar__workspace-group[data-activity-group="idle"] {
-  --activity-color: var(--color-outline);
+  --activity-color: var(--color-activity-idle);
 
   flex-shrink: 1000000000;
 }
@@ -544,7 +530,7 @@ const {
   }
 
   [data-activity-group="working"] .agent-sidebar__activity-icon {
-    animation: activity-working-spin 1.2s linear infinite;
+    animation: activity-working-spin 6s linear infinite;
   }
 }
 
@@ -557,9 +543,8 @@ const {
 }
 
 @keyframes activity-working-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .agent-sidebar__activity-moving {
@@ -645,19 +630,6 @@ const {
     left: calc(50% + 10px);
     bottom: var(--space-4);
     border: 1px solid var(--color-surface-low);
-  }
-
-  .agent-sidebar__start-work {
-    padding-inline: var(--space-4);
-  }
-
-  .agent-sidebar__start-work :deep(.start-work-menu__trigger) {
-    justify-content: center;
-    padding-inline: 0;
-  }
-
-  .agent-sidebar__start-work :deep(.start-work-menu__trigger span) {
-    display: none;
   }
 }
 </style>

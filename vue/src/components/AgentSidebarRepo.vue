@@ -92,6 +92,7 @@
               @click="emit('select-mission', mission.id)"
               @contextmenu.prevent="openMissionMenu(mission.id, $event)"
             >
+              <MissionProgressIcon :mission="mission" />
               <span class="agent-sidebar__meta">
                 <strong
                   class="agent-sidebar__session-title"
@@ -305,6 +306,7 @@
 <script setup lang="ts">
 import { toRefs } from 'vue';
 import AgentSidebarMenus from './AgentSidebarMenus.vue';
+import MissionProgressIcon from './MissionProgressIcon.vue';
 import type { AgentSidebarModel } from './use-agent-sidebar';
 import { AlertTriangleIcon, ArrowsSortIcon, FolderIcon, GitForkIcon, MessageIcon, PanelLeftCloseIcon, PlusIcon, TargetArrowIcon } from '../shared/icons/app-icons';
 import BackendIcon from './BackendIcon.vue';
@@ -427,6 +429,12 @@ const {
 
 .agent-sidebar__workspace-group {
   position: relative;
+}
+
+.agent-sidebar__workspace-group[data-group-kind="missions"] .agent-sidebar__agent {
+  --agent-sidebar-quick-chat-icon-track: var(--agent-sidebar-repository-icon-column-width);
+
+  padding-left: calc(var(--agent-sidebar-workspace-inline-padding) + var(--space-6));
 }
 
 .agent-sidebar__input-needed {

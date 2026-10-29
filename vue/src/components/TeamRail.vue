@@ -18,7 +18,7 @@
         :aria-pressed="backlogActive"
         @click="emit('select-backlog')"
       >
-        <BacklogIcon aria-hidden="true" />
+        <GitPullRequestIcon aria-hidden="true" />
       </button>
 
       <button
@@ -29,7 +29,7 @@
         :aria-pressed="cockpitActive"
         @click="emit('select-cockpit')"
       >
-        <AiAgentsIcon aria-hidden="true" />
+        <CockpitIcon aria-hidden="true" />
       </button>
 
       <button
@@ -153,7 +153,7 @@ import type { AccountRateLimits, AgentBackend, AppSnapshot, CodexAccount, Remote
 import { defaultTeamColor } from '@workspace/core/team-colors';
 import { product } from '@workspace/core/product';
 import { teamInitials } from '@workspace/core/team-manager';
-import { ClockHour8Icon, BacklogIcon, AiAgentsIcon, PlusIcon, ProductMarkIcon, VolumeIcon, VolumeOffIcon } from '../shared/icons/app-icons';
+import { ClockHour8Icon, GitPullRequestIcon, CockpitIcon, PlusIcon, ProductMarkIcon, VolumeIcon, VolumeOffIcon } from '../shared/icons/app-icons';
 import { useListReorderDrag } from '../shared/use-list-reorder-drag';
 import SettingsMenu from './SettingsMenu.vue';
 import TeamContextMenu from './TeamContextMenu.vue';
@@ -475,11 +475,17 @@ function closeFloatingUiOnEscape(event: KeyboardEvent): void {
 .team-rail__cockpit:focus-visible {
   border: 0;
   border-radius: var(--radius-sm);
-  color: var(--team-text-color);
-  background: var(--color-cockpit-background);
+}
+
+.team-rail__cockpit:not(.team-rail__cockpit--active) {
+  color: var(--color-text-muted);
+  background: transparent;
+  opacity: 1;
 }
 
 .team-rail__cockpit.team-rail__cockpit--active {
+  color: var(--team-text-color);
+  background: var(--color-cockpit-background);
   outline: 1px solid var(--color-cockpit-background);
   outline-offset: 2px;
 }
