@@ -23,7 +23,7 @@ describe('RemoteTargetDialog', () => {
     const wrapper = mountDialog({ 'wall-e': { state: 'checking' }, devbox: { state: 'checking' } });
     expect(wrapper.get('.git-operation-feedback').text()).toContain('Looking for korus');
     expect(wrapper.text()).toContain('On wall-e, devbox');
-    expect(wrapper.find('input[type="radio"]').exists()).toBe(false);
+    expect(wrapper.find('.el-select').exists()).toBe(false);
     expect(wrapper.find('.remote-target-dialog--progress').exists()).toBe(true);
   });
 
@@ -31,7 +31,8 @@ describe('RemoteTargetDialog', () => {
     const wrapper = mountDialog({ 'wall-e': { state: 'missing', cloneTo: '/home/me/src' }, devbox: { state: 'checking' } }, { canConfirm: true });
     expect(wrapper.find('.git-operation-feedback').exists()).toBe(false);
     expect(wrapper.find('.remote-target-dialog--progress').exists()).toBe(false);
-    expect(wrapper.findAll('input[type="radio"]')).toHaveLength(2);
+    expect(wrapper.find('.el-select').exists()).toBe(true);
+    expect(wrapper.findAll('input[type="radio"]')).toHaveLength(0);
     expect(wrapper.text()).toContain('Will be cloned from its origin first, into /home/me/src');
     expect(wrapper.text()).toContain('Clone and open');
   });

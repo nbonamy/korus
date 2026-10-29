@@ -15,27 +15,24 @@
       <template #icon><NetworkIcon /></template>
     </GitOperationFeedback>
     <form v-else class="app-form-dialog" @submit.prevent="$emit('confirm')">
-      <div class="remote-target-dialog__options" role="radiogroup" :aria-label="title">
-        <label
-          v-for="connection in connections"
-          :key="connection.id"
-          class="remote-target-dialog__option"
-          :class="{ 'remote-target-dialog__option--disabled': !isSelectable(connection.id) }"
-        >
-          <input
-            v-model="selectedId"
-            type="radio"
-            name="remote-target"
+      <div class="remote-target-dialog__machine">
+        <el-select v-model="selectedId" :aria-label="t('remoteTarget.machine')" :disabled="busy">
+          <el-option
+            v-for="connection in connections"
+            :key="connection.id"
             :value="connection.id"
-            :disabled="!isSelectable(connection.id) || busy"
-          />
-          <span class="remote-target-dialog__copy">
-            <span class="remote-target-dialog__name">{{ connection.name }}</span>
-            <span class="remote-target-dialog__status" :class="{ 'remote-target-dialog__status--warning': checkouts[connection.id]?.state === 'missing' }">
-              {{ statusText(connection.id) }}
+            :label="connection.name"
+            :disabled="!isSelectable(connection.id)"
+          >
+            <span class="remote-target-dialog__option">
+              <span>{{ connection.name }}</span>
+              <span class="remote-target-dialog__option-status">{{ statusText(connection.id) }}</span>
             </span>
-          </span>
-        </label>
+          </el-option>
+        </el-select>
+        <p class="remote-target-dialog__status" :class="{ 'remote-target-dialog__status--warning': checkouts[selectedId]?.state === 'missing' }">
+          {{ statusText(selectedId) }}
+        </p>
       </div>
 
       <div v-if="showEngine && modelsLoading" class="remote-target-dialog__loading" role="status" aria-busy="true">
@@ -164,7 +161,7 @@ function statusText(connectionId: string): string {
   font-size: var(--font-size-13-5);
 }
 
-.remote-target-dialog__options {
+.remote-target-dialog__machine {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -172,30 +169,16 @@ function statusText(connectionId: string): string {
 
 .remote-target-dialog__option {
   display: flex;
-  align-items: flex-start;
-  gap: var(--space-4);
-  padding: var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  cursor: pointer;
+  justify-content: space-between;
+  gap: var(--space-6);
 }
 
-.remote-target-dialog__option:has(input:checked) {
-  border-color: var(--color-primary);
-}
-
-.remote-target-dialog__option--disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.remote-target-dialog__copy {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
+.remote-target-dialog__option-status {
+  color: var(--color-text-muted);
 }
 
 .remote-target-dialog__status {
+  margin: 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-12);
   overflow-wrap: anywhere;

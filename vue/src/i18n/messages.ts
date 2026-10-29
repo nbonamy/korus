@@ -474,6 +474,7 @@ export const messages = {
       noEngine: 'Connect a coding engine on that machine first.',
       modelsUnavailable: 'Couldn’t load models: {detail}',
       loadingModels: 'Loading models…',
+      machine: 'Machine',
       checkingTitle: 'Looking for {repository}',
       cloningTitle: 'Cloning {repository}',
       onHost: 'On {host}',
