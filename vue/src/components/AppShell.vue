@@ -484,6 +484,8 @@
     />
     <RemoteTargetDialog
       v-model:selected-id="remoteTarget.selectedId.value"
+      v-model:selection="remoteTarget.selection.value"
+      :show-engine="remoteTarget.request.value?.action === 'main'"
       :visible="remoteTarget.visible.value"
       :connections="remoteTarget.readyConnections.value"
       :checkouts="remoteTarget.checkouts.value"
@@ -1612,14 +1614,14 @@ const remoteTarget = useRemoteTarget({
   listSourceRepositories: (remoteConnectionId) => props.listSourceRepositories(remoteConnectionId),
   cloneRepository: (input) => props.cloneSourceRepository(input),
   errorMessage: (error) => localizedErrorMessage(error, t),
-  openMain: async (path, remoteConnectionId, request) => {
-    const backend = preferredBackendChoices(props.snapshot, remoteConnectionId)[0];
+  openMain: async (path, remoteConnectionId, request, selection) => {
+    const backend = selection?.backend ?? preferredBackendChoices(props.snapshot, remoteConnectionId)[0];
     try {
       if (!backend) throw new Error(t('remoteTarget.noEngine'));
       await props.createAgent({
         name: null,
         folder: path,
-        selection: { backend },
+        selection: selection ?? { backend },
         sourceRepositoryName: request.repositoryName,
         remoteConnectionId,
         ...(activeTeam.value ? { teamId: activeTeam.value.id } : {}),

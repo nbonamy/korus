@@ -61,9 +61,19 @@ describe('remote target', () => {
     await target.open(request);
     await target.confirm();
     expect(cloneRepository).not.toHaveBeenCalled();
-    expect(openMain).toHaveBeenCalledExactlyOnceWith('/srv/korus', 'devbox', request);
+    expect(openMain).toHaveBeenCalledExactlyOnceWith('/srv/korus', 'devbox', request, undefined);
     expect(store.get('remoteTarget:lastHost:remote:github.com/nbonamy/korus')).toBe('devbox');
     expect(target.visible.value).toBe(false);
+  });
+
+  it('hands the chosen engine and model to the conversation it opens, not to a worktree', async () => {
+    const { target, openMain } = setup({ devbox: [checkout('/srv/korus')] });
+    await target.open(request);
+    target.selection.value = { backend: 'claude', model: 'sonnet', reasoningEffort: 'high', serviceTier: null };
+    await target.confirm();
+    expect(openMain).toHaveBeenCalledExactlyOnceWith('/srv/korus', 'devbox', request, { backend: 'claude', model: 'sonnet', reasoningEffort: 'high', serviceTier: null });
+    await target.open(request);
+    expect(target.selection.value).toBeUndefined();
   });
 
   it('clones from the origin first, then continues in the new checkout', async () => {

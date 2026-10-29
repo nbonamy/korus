@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue';
 import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
-import type { CloneSourceRepositoryInput, RemoteConnection, SourceRepository } from '@workspace/core/contracts';
+import type { CloneSourceRepositoryInput, ExecutionSelection, RemoteConnection, SourceRepository } from '@workspace/core/contracts';
 
 export type RemoteTargetRequest = {
   action: 'main' | 'new-worktree';
@@ -24,7 +24,7 @@ export function useRemoteTarget(options: {
   connections: () => RemoteConnection[];
   listSourceRepositories: (remoteConnectionId: string) => Promise<SourceRepository[]>;
   cloneRepository: (input: CloneSourceRepositoryInput) => Promise<SourceRepository>;
-  openMain: (path: string, remoteConnectionId: string, request: RemoteTargetRequest) => Promise<void>;
+  openMain: (path: string, remoteConnectionId: string, request: RemoteTargetRequest, selection?: ExecutionSelection) => Promise<void>;
   openWorktree: (path: string, remoteConnectionId: string, request: RemoteTargetRequest) => Promise<void>;
   errorMessage?: (error: unknown) => string;
   storage?: Pick<Storage, 'getItem' | 'setItem'>;
@@ -33,6 +33,7 @@ export function useRemoteTarget(options: {
   const request = ref<RemoteTargetRequest | null>(null);
   const checkouts = ref<Record<string, RemoteCheckout>>({});
   const selectedId = ref('');
+  const selection = ref<ExecutionSelection>();
   const busy = ref(false);
   const error = ref<string | null>(null);
   let epoch = 0;
@@ -49,6 +50,7 @@ export function useRemoteTarget(options: {
   async function open(next: RemoteTargetRequest): Promise<void> {
     const mine = ++epoch;
     request.value = next;
+    selection.value = undefined;
     visible.value = true;
     busy.value = false;
     error.value = null;
@@ -97,7 +99,8 @@ export function useRemoteTarget(options: {
       if (mine !== epoch) return;
       storage()?.setItem(lastHostKey(current.repositoryKey), connectionId);
       close();
-      await (current.action === 'main' ? options.openMain : options.openWorktree)(path, connectionId, current);
+      if (current.action === 'main') await options.openMain(path, connectionId, current, selection.value ? { ...selection.value } : undefined);
+      else await options.openWorktree(path, connectionId, current);
     } catch (cause) {
       if (mine === epoch) error.value = message(cause);
     } finally {
@@ -105,5 +108,5 @@ export function useRemoteTarget(options: {
     }
   }
 
-  return { busy, canConfirm, checkouts, close, confirm, error, open, readyConnections, request, selectedId, visible };
+  return { busy, canConfirm, checkouts, close, confirm, error, open, readyConnections, request, selectedId, selection, visible };
 }

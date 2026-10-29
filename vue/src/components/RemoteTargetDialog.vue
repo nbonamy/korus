@@ -29,6 +29,13 @@
         </label>
       </div>
 
+      <BackendModelSelector
+        v-if="showEngine && selectedId"
+        v-model:selection="selection"
+        :remote-connection-id="selectedId"
+        :disabled="busy"
+      />
+
       <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
     </form>
 
@@ -51,7 +58,9 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { RemoteConnection } from '@workspace/core/contracts';
+import type { ExecutionSelection } from '@workspace/core/contracts';
 import FormDialog from '../shared/dialog/FormDialog.vue';
+import BackendModelSelector from './BackendModelSelector.vue';
 import type { RemoteCheckout } from './use-remote-target';
 
 const props = defineProps<{
@@ -61,6 +70,8 @@ const props = defineProps<{
   canConfirm: boolean;
   busy: boolean;
   error: string | null;
+  /** Opening a conversation on the machine also needs the engine and model to run it. */
+  showEngine?: boolean;
 }>();
 
 defineEmits<{
@@ -69,6 +80,7 @@ defineEmits<{
 }>();
 
 const selectedId = defineModel<string>('selectedId', { default: '' });
+const selection = defineModel<ExecutionSelection | undefined>('selection');
 const { t } = useI18n();
 
 const confirmLabel = computed(() => t(props.checkouts[selectedId.value]?.state === 'missing' ? 'remoteTarget.cloneAndOpen' : 'remoteTarget.open'));
