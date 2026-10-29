@@ -39,17 +39,6 @@ export function stageKickoffPrompt(mission: Mission, run: MissionRun): string {
   return 'The implementation is approved. Begin the Mission review now and prepare the delivery decision for the user.';
 }
 
-export function shouldCompactBeforeRun(mission: Mission, run: MissionRun, workerId: string): boolean {
-  return run.stage === 'implementation' && mission.execution!.runs.some(previous => (
-    previous.id !== run.id
-    && previous.stage === 'implementation'
-    && previous.workerId === workerId
-    && previous.repositoryPath === run.repositoryPath
-    && previous.ticketIndex !== run.ticketIndex
-    && previous.status === 'accepted'
-  ));
-}
-
 export function sameSkills(left: MissionRun['skills'], right: MissionRun['skills']): boolean {
   return left.length === right.length && left.every((skill, index) => skill.name === right[index]?.name && skill.path === right[index]?.path);
 }
