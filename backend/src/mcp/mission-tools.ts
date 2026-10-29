@@ -66,7 +66,7 @@ function registerMissionTools(
   }, input => loggedToolResult('write-mission-artifact', { callerAgentId, stage: input.stage }, () => coordinator.writeMissionArtifact(callerAgentId, input)));
 
   server.registerTool('upsert-mission-ticket', {
-    description: 'Create or revise one Mission ticket assigned to exactly one represented repository. Omit ticketId to create; use the returned ID to revise. Read mission-to-tickets for the stage procedure.',
+    description: 'Create or revise one Mission ticket assigned to exactly one represented repository. Require verified local commits before ticket completion; never instruct the worker to skip or defer commits. Omit ticketId to create; use the returned ID to revise. Read mission-to-tickets for the stage procedure.',
     inputSchema: {
       ticketId: z.string().regex(/^mission-ticket-[a-zA-Z0-9-]+$/).optional(),
       title: z.string().trim().min(1).max(500),
@@ -78,7 +78,7 @@ function registerMissionTools(
   }, input => loggedToolResult('upsert-mission-ticket', { callerAgentId, ticketId: input.ticketId }, () => coordinator.upsertMissionTicket(callerAgentId, input)));
 
   server.registerTool('submit-mission-result', {
-    description: 'Submit the structured result of your active Mission stage. The Mission and run are inferred from your authenticated agent identity. This never approves a user-reviewed stage or completes a mission. For Implementation, send only summary, ticketId and implementation { changes, tests }, using get-mission-assignment. Example: {"summary":"Done","ticketId":"mission-ticket-abc","implementation":{"changes":"Commit abc123: callback fixed","tests":"npm test: 12 passed"}}. Other stages require complete artifacts. Legacy full-artifacts implementation calls remain supported; never combine both forms.',
+    description: 'Submit the structured result of your active Mission stage. The Mission and run are inferred from your authenticated agent identity. This never approves a user-reviewed stage or completes a mission. For Implementation, commit all your ticket changes locally before submission, even if the ticket says not to commit; include commit SHAs in changes. If committing is blocked, report the blocker instead of submitting completion. Send only summary, ticketId and implementation { changes, tests }, using get-mission-assignment. Example: {"summary":"Done","ticketId":"mission-ticket-abc","implementation":{"changes":"Commit abc123: callback fixed","tests":"npm test: 12 passed"}}. Other stages require complete artifacts. Legacy full-artifacts implementation calls remain supported; never combine both forms.',
     inputSchema: {
       summary: z.string().min(1).max(20000),
       ticketId: z.string().regex(/^mission-ticket-[a-zA-Z0-9-]+$/).optional(),
