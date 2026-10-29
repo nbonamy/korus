@@ -87,7 +87,7 @@ const AgentWorkspaceStub = defineComponent({
       showDebugGitOperationProgress: vi.fn(),
     });
   },
-  template: '<section class="agent-workspace"><ConversationPane v-if="currentAgent" :agent="currentAgent" :agents="[currentAgent]" :controller="conversationPaneController" :has-visible-messages="false" /></section>',
+  template: '<section class="agent-workspace"><slot name="conversation"><ConversationPane v-if="currentAgent" :agent="currentAgent" :agents="[currentAgent]" :controller="conversationPaneController" :has-visible-messages="false" /></slot></section>',
 });
 
 const TeamRailStub = defineComponent({

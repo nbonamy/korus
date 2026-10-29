@@ -57,6 +57,16 @@
     );
 }
 
+.mission-workspace__body--conversation-only {
+  display: flex;
+  flex-direction: column;
+}
+
+.mission-workspace__body--conversation-only :deep(.mission-conversation-rail) {
+  display: flex;
+  flex: 1;
+}
+
 .mission-workspace__workbench {
   display: flex;
   min-width: 0;
