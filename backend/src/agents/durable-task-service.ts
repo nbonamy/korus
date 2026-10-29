@@ -12,6 +12,7 @@ type TaskPorts = {
   tasks: DelegatedTask[];
   save(tasks: DelegatedTask[]): Promise<void>;
   agent(id: string): Agent | undefined;
+  resolveAgentId?(id: string): string;
   send(agent: Agent, prompt: string, goal?: boolean): Promise<TaskAcceptance>;
   interrupt(agent: Agent, expectedTurnId: string): Promise<unknown>;
   readHistory?(agent: Agent): Promise<RendererMessage[]>;
@@ -38,14 +39,17 @@ export class DurableTaskService {
 
   constructor(private readonly ports: TaskPorts) { this.tasks = structuredClone(ports.tasks); }
 
+  private identity(id: string): string { return this.ports.resolveAgentId?.(id) ?? id; }
+  private agent(id: string): Agent | undefined { return this.ports.agent(this.identity(id)); }
+
   list(caller: string, ids?: string[]): DelegatedTask[] {
-    const visible = this.tasks.filter(task => task.parentAgentId === caller || task.workerAgentId === caller);
+    const visible = this.tasks.filter(task => this.identity(task.parentAgentId) === this.identity(caller) || this.identity(task.workerAgentId) === this.identity(caller));
     if (ids?.some(id => !visible.some(task => task.id === id))) throw new Error('Task not found or not owned by this agent.');
     return structuredClone(ids ? visible.filter(task => ids.includes(task.id)) : visible);
   }
 
   mayStartAutomatedPrompt(agentId: string): boolean {
-    return !this.closed && !this.stoppedParents.has(agentId);
+    return !this.closed && !this.stoppedParents.has(this.identity(agentId));
   }
 
   instructions(worker: string): string | undefined {
@@ -71,7 +75,7 @@ export class DurableTaskService {
     const fingerprint = createHash('sha256').update(JSON.stringify(input.specification)).digest('hex');
     let created = false;
     const task = await this.change(tasks => {
-      const existing = tasks.find(task => task.parentAgentId === parent.id && task.requestId === requestId);
+      const existing = tasks.find(task => this.identity(task.parentAgentId) === parent.id && task.requestId === requestId);
       if (existing) {
         if (existing.requestFingerprint !== fingerprint) throw new Error('requestId already belongs to a different assignment.');
         return existing;
@@ -125,7 +129,7 @@ export class DurableTaskService {
 
   async complete(workerId: string, input: TaskResultInput): Promise<DelegatedTask> {
     const result = taskResultSchema.parse(input);
-    const worker = this.ports.agent(workerId);
+    const worker = this.agent(workerId);
     const turnId = this.turns.get(workerId);
     if (!worker?.backendSession || !turnId || worker.status.type !== 'working') throw new Error('Result submission requires an identified active worker turn.');
     const backendSession = structuredClone(worker.backendSession);
@@ -159,7 +163,7 @@ export class DurableTaskService {
       return task;
     });
     if (task.state === 'cancelled') {
-      const worker = this.ports.agent(task.workerAgentId);
+      const worker = this.agent(task.workerAgentId);
       const turnId = task.executionTurnId ?? task.acceptance?.turnId;
       if (worker && turnId && (!task.acceptance || sessionKey(worker.backendSession) === sessionKey(task.acceptance.backendSession))) {
         try { await this.ports.interrupt(worker, turnId); }
@@ -193,10 +197,11 @@ export class DurableTaskService {
   /** A stop is durable before invoking the provider so a racing result cannot revive the parent. */
   async blockParent(parentId: string): Promise<void> {
     this.stopAutomaticPrompts(parentId);
-    await this.change(tasks => { for (const task of tasks) if (task.parentAgentId === parentId) { task.parentWakeBlocked = true; task.parentStopRequested = true; } });
+    await this.change(tasks => { for (const task of tasks) if (this.identity(task.parentAgentId) === this.identity(parentId)) { task.parentWakeBlocked = true; task.parentStopRequested = true; } });
   }
 
   private stopAutomaticPrompts(agentId: string): void {
+    agentId = this.identity(agentId);
     this.stoppedParents.add(agentId);
     const admission = this.parentAdmissions.get(agentId);
     if (admission) admission.stopRequested = true;
@@ -208,7 +213,7 @@ export class DurableTaskService {
         // Startup is not user consent to continue an idle/stopped conversation.
         task.parentWakeBlocked = true;
         task.parentStopRequested = true;
-        this.stoppedParents.add(task.parentAgentId);
+        this.stoppedParents.add(this.identity(task.parentAgentId));
         if (task.delivery?.state === 'sending') task.delivery.state = 'uncertain';
         if (!terminal(task)) {
           task.state = 'interrupted';
@@ -220,7 +225,7 @@ export class DurableTaskService {
     // A missing marker (including truncated/unavailable history) remains uncertain.
     const history = new Map<string, RendererMessage[]>();
     const findAcceptance = async (agentId: string, marker: string): Promise<TaskAcceptance | undefined> => {
-      const agent = this.ports.agent(agentId);
+      const agent = this.agent(agentId);
       if (!agent?.backendSession || !this.ports.readHistory) return;
       if (!history.has(agentId)) history.set(agentId, await this.ports.readHistory(agent));
       const message = history.get(agentId)!.find(message => message.role === 'user' && message.parts.some(part => part.type === 'text' && (part.text.startsWith(marker) || part.text.startsWith(`<context>\n${marker}\n</context>\n`))));
@@ -244,7 +249,7 @@ export class DurableTaskService {
   handleEvent(event: BackendPublishedEvent): void {
     if (event.type === 'snapshot.updated') {
       void this.change(tasks => {
-        for (const task of tasks) if (!terminal(task) && task.state !== 'preparing' && !this.ports.agent(task.workerAgentId)) {
+        for (const task of tasks) if (!terminal(task) && task.state !== 'preparing' && !this.agent(task.workerAgentId)) {
           task.state = 'interrupted';
           task.detail = 'Worker was removed. Assignment and any provisional result are retained.';
         }
@@ -275,7 +280,7 @@ export class DurableTaskService {
       const payload = view.payload as { status?: string; turn?: { status?: string }; type?: string };
       const outcome = payload.status ?? payload.turn?.status;
       for (const task of tasks) {
-        if (task.parentAgentId === agentId && !olderCompletion) {
+        if (this.identity(task.parentAgentId) === agentId && !olderCompletion) {
           if (view.type === 'turn.started' && !preserveStop) { task.parentWakeBlocked = false; task.parentStopRequested = false; }
           if (view.type === 'turn.completed' && outcome === 'completed' && !task.parentStopRequested) task.parentWakeBlocked = false;
           if (view.type === 'turn.completed' && outcome !== 'completed') task.parentWakeBlocked = true;
@@ -292,7 +297,7 @@ export class DurableTaskService {
         }
         if (view.type === 'turn.started') { task.state = 'running'; task.executionTurnId = view.turnId; }
         if (view.type === 'turn.completed') {
-          const worker = this.ports.agent(agentId);
+          const worker = this.agent(agentId);
           const result = task.submission;
           if (result && result.turnId === view.turnId && result.attemptId === task.attemptId && sessionKey(result.backendSession) === sessionKey(worker?.backendSession)) {
             if (outcome === 'completed') {
@@ -324,7 +329,7 @@ export class DurableTaskService {
     if (this.closed || this.timer) return;
     this.timer = setTimeout(() => {
       this.timer = undefined;
-      for (const parent of new Set(this.tasks.filter(task => task.delivery?.state === 'pending').map(task => task.parentAgentId))) {
+      for (const parent of new Set(this.tasks.filter(task => task.delivery?.state === 'pending').map(task => this.identity(task.parentAgentId)))) {
         void this.dispatch(parent).catch(this.ports.onError);
       }
     }, 25);
@@ -332,20 +337,21 @@ export class DurableTaskService {
   }
 
   private async dispatch(parentId: string): Promise<void> {
+    parentId = this.identity(parentId);
     if (this.dispatching.has(parentId) || !this.mayStartAutomatedPrompt(parentId)) return;
-    const parent = this.ports.agent(parentId);
+    const parent = this.agent(parentId);
     if (!parent || parent.status.type !== 'idle' || handoffInProgress(parent) || parent.planReview?.status === 'pending') return;
     this.dispatching.add(parentId);
     try {
       const batch = await this.change(tasks => {
-        const pending = tasks.filter(task => task.parentAgentId === parentId && !task.parentWakeBlocked && task.delivery?.state === 'pending').slice(0, 20);
+        const pending = tasks.filter(task => this.identity(task.parentAgentId) === parentId && !task.parentWakeBlocked && task.delivery?.state === 'pending').slice(0, 20);
         const deliveryId = `delivery-${randomUUID()}`;
         for (const task of pending) task.delivery = { id: deliveryId, state: 'sending' };
         return pending;
       });
       if (!batch.length) return;
       // Recheck after disk I/O; a user prompt or approval may have arrived meanwhile.
-      const currentParent = this.ports.agent(parentId);
+      const currentParent = this.agent(parentId);
       if (!currentParent || !this.mayStartAutomatedPrompt(parentId) || currentParent.status.type !== 'idle' || handoffInProgress(currentParent) || currentParent.planReview?.status === 'pending' || batch.some(task => this.tasks.find(item => item.id === task.id)?.parentWakeBlocked)) {
         await this.change(tasks => { for (const task of tasks) if (batch.some(item => item.id === task.id)) task.delivery!.state = 'pending'; });
         return;

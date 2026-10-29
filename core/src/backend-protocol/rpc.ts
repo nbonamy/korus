@@ -177,6 +177,10 @@ export type AppBackendRequestMap = {
     params: { agentId: string };
     result: import('../delegated-task').DelegatedTask[];
   };
+  [backendMethods.collaborationTaskAccess]: {
+    params: { teamId: string; ownerId: string; agentId: string; action: 'list' | 'cancel' | 'block'; taskId?: string };
+    result: import('../delegated-task').DelegatedTask[] | import('../delegated-task').DelegatedTask | null;
+  };
   [backendMethods.collaborationTeamBind]: {
     params: { teamId: string; ownerId: string };
     result: AppSnapshot;

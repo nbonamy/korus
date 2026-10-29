@@ -9,7 +9,7 @@ const result = { summary: 'Implemented', evidence: ['Focused tests passed'], art
 const services: DurableTaskService[] = [];
 afterEach(() => { for (const service of services.splice(0)) service.close(); });
 
-function fixture(saved: DelegatedTask[] = [], readHistory?: (agent: Agent) => Promise<RendererMessage[]>) {
+function fixture(saved: DelegatedTask[] = [], readHistory?: (agent: Agent) => Promise<RendererMessage[]>, resolveAgentId?: (id: string) => string) {
   const parent = createAgentFromInput({ folder: '/repo', name: 'parent', selection: { backend: 'codex' } });
   if (saved[0]) parent.id = saved[0].parentAgentId;
   const agents: Agent[] = [parent];
@@ -24,7 +24,7 @@ function fixture(saved: DelegatedTask[] = [], readHistory?: (agent: Agent) => Pr
   });
   const interrupt = vi.fn(async () => undefined);
   const onError = vi.fn();
-  const service = new DurableTaskService({ tasks: saved, save, send, interrupt, onError, readHistory, agent: id => agents.find(agent => agent.id === id) });
+  const service = new DurableTaskService({ tasks: saved, save, send, interrupt, onError, readHistory, resolveAgentId, agent: id => agents.find(agent => agent.id === id) });
   services.push(service);
   function event(agentId: string, type: string, turnId?: string, payload: unknown = {}) {
     service.handleEvent({ agentId, type, turnId, payload } as BackendPublishedEvent);
@@ -44,6 +44,28 @@ function fixture(saved: DelegatedTask[] = [], readHistory?: (agent: Agent) => Pr
 }
 
 describe('durable assignment lifecycle', () => {
+  it('retains original task identity and results through authorized parent handoff lineage', async () => {
+    const aliases: Record<string, string> = {};
+    const f = fixture([], undefined, id => aliases[id] ?? id);
+    const task = await f.create();
+    await f.service.blockParent(f.parent.id);
+    await f.service.complete(task.workerAgentId, result);
+    f.finish(task);
+    await f.service.flush();
+    const oldId = f.parent.id;
+    const replacement = { ...f.parent, id: 'replacement', status: { type: 'idle' as const } };
+    f.agents.splice(0, 1, replacement);
+    aliases[oldId] = replacement.id;
+    expect(f.service.list(replacement.id, [task.id])[0]!.parentAgentId).toBe(oldId);
+    expect(() => f.service.list('unrelated', [task.id])).toThrow('not owned');
+    const retried = await f.service.create(replacement, { requestId: 'request-1', task: task.assignment, prompt: 'Fix the bug', backend: 'codex', specification: { prompt: 'Fix the bug', requestId: 'request-1' } }, f.provision);
+    expect(retried.id).toBe(task.id);
+    expect(f.provision).toHaveBeenCalledOnce();
+    f.event(replacement.id, 'turn.started', 'user-turn');
+    f.event(replacement.id, 'turn.completed', 'user-turn', { status: 'completed' });
+    await vi.waitFor(() => expect(f.disk()[0]!.delivery?.state).toBe('accepted'));
+    expect(f.send.mock.calls.at(-1)![0].id).toBe(replacement.id);
+  });
   it('reserves task and worker identity before provisioning and deduplicates concurrent retries', async () => {
     const f = fixture();
     const [first, retry] = await Promise.all([f.create(), f.create()]);

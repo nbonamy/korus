@@ -133,6 +133,7 @@
     </form>
 
     <NewSourceWorktreeDialog
+      :remote-connection-id="selectedRemoteConnectionId"
       v-model:backend="backend"
       :choose-destination="chooseSourceWorktreeDestination"
       :create-worktree="createSourceWorktree"
@@ -263,7 +264,7 @@ const showTeamSelector = computed(() => props.showTeamField && !isEditing.value)
 const selectedTeam = computed(() => teams.value.find((team) => team.id === clientNavigationSelectTeamion.value) ?? null);
 const selectedRemoteConnectionId = computed(() => props.remoteConnectionId?.trim() ?? '');
 const backendChoices = useBackendChoices(() => selectedRemoteConnectionId.value);
-useNewAgentBackend(backend, backendChoices);
+useNewAgentBackend(backend, backendChoices, () => props.visible);
 const sourceRepositories = computed(() => {
   if (!selectedRemoteConnectionId.value) {
     return props.sourceRepositories ?? [];

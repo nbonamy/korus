@@ -65,6 +65,7 @@ export type AppMcpServiceOptions = {
   createRemoteWorker?: (caller: Agent, input: McpCreateAgentInput & { teamId?: string }, intendedId?: string, assignmentPrompt?: string, userInstructions?: Agent['delegationUserInstructions']) => Promise<Agent>;
   sendRemotePrompt?: (agent: Agent, prompt: string, goal?: boolean) => Promise<BackendSendResult>;
   sendRemoteMessage?: (agent: Agent, prompt: string, messageId: string) => Promise<{ accepted: true }>;
+  resolveDelegationParent?: (id: string) => string;
   forwardCollaboration?: (agentId: string, name: string, args: Record<string, unknown>) => Promise<CallToolResult | undefined>;
   retainDocument?: (agentId: string, request: import('@workspace/core/contracts').SidePanelMarkdownRequest) => Promise<import('@workspace/core/contracts').SidePanelMarkdownRequest>;
   tasks?: DurableTaskService;
@@ -634,7 +635,7 @@ export class AppMcpService {
         });
       }
 
-      const createInput: CreateAgentInput = { name: input.name?.trim() || null, folder, delegatedByAgentId: caller.id, teamId: input.teamId ?? caller.teamId, selection: { backend: progress.backend } };
+      const createInput: CreateAgentInput = { name: input.name?.trim() || null, folder, delegatedByAgentId: this.options.resolveDelegationParent?.(caller.id) ?? caller.id, teamId: input.teamId ?? caller.teamId, selection: { backend: progress.backend } };
       const createdAgent = this.agentCreation.create(createInput, { select: false, ...(intendedId ? { id: intendedId } : {}) });
       if (userInstructions && (prompt || assignmentPrompt)) createdAgent.delegationUserInstructions = { ...userInstructions };
       // Creation applies the target provider's saved model and approval policy first.

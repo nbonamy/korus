@@ -17,6 +17,7 @@ const REMOTE_SETUP_REQUEST_TIMEOUT_MS = 15 * 60_000;
  * and EXTENDED only for operations designed to run for several minutes.
  */
 const requestTimeoutByMethod = {
+  [backendMethods.collaborationTaskAccess]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.repositoryDeletePreview]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.repositoryDelete]: EXTENDED_REQUEST_TIMEOUT_MS,
   [backendMethods.browserExtensionPackages]: EXTENDED_REQUEST_TIMEOUT_MS,

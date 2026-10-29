@@ -35,9 +35,23 @@ export function migrateData(file: string, data: unknown, version: number, target
 const record = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
 
 // Frozen schema-3 teams: a remote pointer becomes one link to the same foreign team.
-function migrateRemoteTeamLinks(value: unknown): unknown {
+export function migrateRemoteTeamLinks(value: unknown): unknown {
   if (!record(value) || !Array.isArray(value.teams)) return value;
-  return { ...value, teams: value.teams.map(team => {
+  const pointerTeams = new Set(value.teams.filter(team => record(team) && typeof team.remoteConnectionId === 'string' && typeof team.remoteTeamId === 'string').map(team => (team as Record<string, unknown>).id));
+  const foreignIds = new Set<unknown>();
+  for (const team of value.teams) if (record(team) && pointerTeams.has(team.id) && Array.isArray(team.agentIds)) for (const id of team.agentIds) foreignIds.add(id);
+  if (Array.isArray(value.agents)) for (const agent of value.agents) if (record(agent) && pointerTeams.has(agent.teamId)) foreignIds.add(agent.id);
+  const retain = (items: unknown) => record(items) ? Object.fromEntries(Object.entries(items).filter(([id]) => !foreignIds.has(id))) : items;
+  const assignments = (items: unknown) => record(items) ? Object.fromEntries(Object.entries(items).filter(([, row]) => !record(row) || !foreignIds.has(row.agentId))) : items;
+  return { ...value,
+    ...(Array.isArray(value.agents) ? { agents: value.agents.filter(agent => !record(agent) || !foreignIds.has(agent.id)) } : {}),
+    ...(value.workAssignments ? { workAssignments: assignments(value.workAssignments) } : {}),
+    ...(record(value.workBacklog) ? { workBacklog: { ...value.workBacklog, assignments: assignments(value.workBacklog.assignments) } } : {}),
+    ...(value.subagents ? { subagents: retain(value.subagents) } : {}),
+    ...(value.subagentTrees ? { subagentTrees: retain(value.subagentTrees) } : {}),
+    ...(foreignIds.has(value.activeAgentId) ? { activeAgentId: null } : {}),
+    teams: value.teams.map(raw => {
+    const team = record(raw) ? { ...raw, ...(Array.isArray(raw.agentIds) ? { agentIds: raw.agentIds.filter(id => !foreignIds.has(id)) } : {}), ...(foreignIds.has(raw.activeAgentId) ? { activeAgentId: undefined } : {}) } : raw;
     if (!record(team)) return team;
     const { remoteConnectionId, remoteTeamId, ...rest } = team;
     if (Array.isArray(rest.remoteLinks) || typeof remoteConnectionId !== 'string' || typeof remoteTeamId !== 'string') return rest;

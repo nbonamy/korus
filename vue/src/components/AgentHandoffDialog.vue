@@ -41,6 +41,7 @@ import AutomationExecutionConversationOverlay from './AutomationExecutionConvers
 
 const props = defineProps<{
   agent: Agent;
+  pendingOperationId?: string;
   blocker?: string | null;
   submit: (agentId: string, input: AgentHandoffInput) => Promise<void>;
   listModels: (agentId: string, backend: AgentBackend) => Promise<BackendModelOption[]>;
@@ -48,6 +49,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ close: [] }>();
 const { t } = useI18n();
+const operationId = props.pendingOperationId ?? crypto.randomUUID();
 const choices = useBackendChoices(() => props.agent.remoteConnectionId);
 const initialBackend = choices.value.find(choice => choice !== props.agent.backend) ?? choices.value[0];
 const selection = ref<ExecutionSelection | undefined>(initialBackend ? defaultExecutionSelection(initialBackend) : undefined);
@@ -56,7 +58,7 @@ const instructions = ref('');
 const busy = ref(false);
 const error = ref('');
 const loadingModels = ref(false);
-const operationId = crypto.randomUUID();
+
 const sourceVisible = ref(false);
 const sourceLoading = ref(false);
 const sourceError = ref('');

@@ -35,6 +35,9 @@ type PendingRequest = {
 
 export class RemoteDaemonClientManager {
   private readonly clients = new Map<string, RemoteDaemonClient>();
+  private readonly generations = new Map<string, number>();
+
+  generation(connectionId: string): number { return this.generations.get(connectionId) ?? 0; }
 
   constructor(private readonly options: RemoteDaemonClientOptions = {}) {}
 
@@ -90,6 +93,7 @@ export class RemoteDaemonClientManager {
       }
     });
     this.clients.set(connection.id, client);
+    this.generations.set(connection.id, this.generation(connection.id) + 1);
     try { await client.start(); }
     catch (error) {
       if (this.clients.get(connection.id) === client) this.clients.delete(connection.id);

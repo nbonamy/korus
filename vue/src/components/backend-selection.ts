@@ -50,8 +50,9 @@ export function useConnectEngine(): () => void {
   return inject(connectEngineKey, () => undefined);
 }
 
-export function useNewAgentBackend(backend: Ref<AgentBackend | undefined>, choices: ComputedRef<AgentBackend[]>) {
-  watch(choices, enabled => {
+export function useNewAgentBackend(backend: Ref<AgentBackend | undefined>, choices: ComputedRef<AgentBackend[]>, active: () => boolean = () => true) {
+  watch([choices, active], ([enabled, visible]) => {
+    if (!visible) return;
     if (!backend.value || !enabled.includes(backend.value)) backend.value = enabled[0];
   }, { immediate: true });
 }

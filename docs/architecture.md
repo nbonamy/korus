@@ -437,7 +437,10 @@ Agents never move between backend locations.
   (`Team.remoteLinks`), created with the first remote agent for that host. The
   remote team id is foreign state: never use it for local membership,
   active-agent repair or assignment cleanup, and expect it to collide with local
-  IDs. The link is bookkeeping; the UI never exposes remote teams.
+  IDs. The link is bookkeeping; the UI never exposes remote teams. Linked-team
+  activation is coalesced per link on startup and transport reconnect. Its stable
+  controller authority is saved before the owning host binds it; conflicting
+  authority fails explicitly without replacing the remote team.
 - Remote agents are projected into the client snapshot with the local team id and
   their host. The local roster never owns them. A private, replaceable
   `remote-snapshots.json` cache retains linked teams and agent metadata so remote
@@ -476,7 +479,18 @@ Agents never move between backend locations.
   from the owning host settle the submitting turn before result delivery. A lost
   controller makes collaboration calls fail explicitly; missing outcomes remain
   unconfirmed and work is never automatically replayed. Host identity is retained
-  with the task workspace for recovery and cancellation.
+  with the task workspace for recovery and cancellation. Assignments already owned
+  by a worker daemon retain that authority when its team is bound: execution,
+  request deduplication, result settlement and delivery remain there. Authorized
+  task reads and cancellation include both original and controller-owned records;
+  waiting uses one deadline and cannot treat an unavailable owner as empty.
+- Handoff admission checks the controlled delegation graph and unfinished tasks
+  across their owning hosts. The controller persists the operation and execution
+  host before replacement; a callback must match that intent before starting the
+  replacement. Persisted lineage retains creator authority through chained
+  handoffs and lost replies. Child admission resolves that lineage after async
+  provisioning, and historical task visibility follows it without rewriting
+  execution sessions, attempts or delivery receipts.
 - Each remote `daemon` owns its own engine availability; local enable flags are not
   mirrored. Companion engine choices follow the operation's conversation or
   repository host; local Quick Chat and project creation use local availability.

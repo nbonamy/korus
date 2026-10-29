@@ -303,6 +303,7 @@ export function useRepositorySession(options: {
 
   async function openWorktree(nextSource: RepositorySessionSource): Promise<void> {
     const requestId = ++worktreeRequestId;
+    backend.value = preferredBackendChoices(options.getSnapshot(), context(nextSource).remoteConnectionId)[0];
     worktreeSource.value = nextSource;
     worktreeBranches.value = [];
     worktreeBranchesLoading.value = true;
@@ -511,5 +512,6 @@ export function useRepositorySession(options: {
     worktreeBranchesLoading,
     worktreeRepository,
     worktreeSource,
+    worktreeRemoteConnectionId: computed(() => context(worktreeSource.value).remoteConnectionId),
   };
 }

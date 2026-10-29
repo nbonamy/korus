@@ -16,6 +16,15 @@ import {
   createWorkItem,
 } from './server-test-fixtures';
 
+function snapshotReply(snapshot: AppSnapshot, method: string) {
+  return method === 'snapshot/get' ? { snapshot, lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } } : snapshot;
+}
+
+// Binding is covered by the multi-daemon authority workflows; preserve exact ordering/payloads of execution operations here.
+function expectOperation(request: { mock: { calls: unknown[][] } }, index: number, ...args: unknown[]) {
+  expect(request.mock.calls.filter(call => call[1] !== 'collaboration/team/bind')[index - 1]).toStrictEqual(args);
+}
+
 describe('AppBackendServer', () => {
 
   it('keeps remote projects across an offline restart, reports the failure, and refreshes them on reconnect', async () => {
@@ -28,7 +37,7 @@ describe('AppBackendServer', () => {
     const agent = { ...createRemoteAgent(), status: { type: 'working' as const } };
     const remote = createRemoteTeamSnapshot([agent]);
     const remoteClients = {
-      request: vi.fn().mockResolvedValue({ snapshot: remote, lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } }),
+      request: vi.fn(async (_connection, method: string) => snapshotReply(remote, method)),
       close: vi.fn(), closeConnection: vi.fn(),
     };
     const events: import('@workspace/core/backend-protocol/rpc').AppBackendEvent[] = [];
@@ -707,6 +716,7 @@ describe('AppBackendServer', () => {
             shouldPreventDisplaySleep: false,
           },
         })
+        .mockResolvedValueOnce(remoteSnapshot)
         .mockResolvedValueOnce(remoteSnapshotAfterPrompt),
       close: vi.fn().mockResolvedValue(undefined),
     };
@@ -738,14 +748,14 @@ describe('AppBackendServer', () => {
     });
     expect((response as { result: Record<string, unknown> }).result).not.toHaveProperty('messages');
 
-    expect(remoteClients.request).toHaveBeenNthCalledWith(
+    expectOperation(remoteClients.request,
       1,
       snapshot.remoteConnections.connections[0],
       'snapshot/get',
       { _clientId: 'remote-controller' },
       expect.any(Function),
     );
-    expect(remoteClients.request).toHaveBeenNthCalledWith(
+    expectOperation(remoteClients.request,
       2,
       snapshot.remoteConnections.connections[0],
       method,
@@ -771,12 +781,12 @@ describe('AppBackendServer', () => {
     snapshot.teams = [{ id: 'team-pointer', name: 'Remote', remoteLinks: [{ connectionId: connection.id, remoteTeamId: 'team-remote' }], agentIds: [] }];
     const agent = createRemoteAgent();
     const remote = createRemoteTeamSnapshot([agent]);
-    const remoteClients = { close: vi.fn(async () => {}), request: vi.fn().mockResolvedValueOnce({ snapshot: remote, lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } }).mockResolvedValueOnce(remote) };
+    const remoteClients = { close: vi.fn(async () => {}), request: vi.fn().mockResolvedValueOnce({ snapshot: remote, lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } }).mockResolvedValueOnce(remote).mockResolvedValueOnce(remote) };
     const server = new AppBackendServer({ version: 'test', snapshot, remoteClients: remoteClients as never });
     try {
       const params = { agentId: agent.id, promptId: 'queued-on-host', expectedSessionId: 'captured-session' };
       await server.handleMessage({ jsonrpc: '2.0', id: 'queue', method, params });
-      expect(remoteClients.request).toHaveBeenNthCalledWith(2, connection, method, { ...params, _clientId: 'remote-controller' }, expect.any(Function));
+      expectOperation(remoteClients.request,2, connection, method, { ...params, _clientId: 'remote-controller' }, expect.any(Function));
     } finally { await server.close(); }
   });
 
@@ -975,21 +985,21 @@ describe('AppBackendServer', () => {
       },
     });
 
-    expect(remoteClients.request).toHaveBeenNthCalledWith(
+    expectOperation(remoteClients.request,
       1,
       snapshot.remoteConnections.connections[0],
       'snapshot/get',
       { _clientId: 'remote-controller' },
       expect.any(Function),
     );
-    expect(remoteClients.request).toHaveBeenNthCalledWith(
+    expectOperation(remoteClients.request,
       2,
       snapshot.remoteConnections.connections[0],
       'agent/workItem/assign',
       { ...{ agentId: remoteAgent.id, item: sanitizedItem }, _clientId: 'remote-controller' },
       expect.any(Function),
     );
-    expect(remoteClients.request).toHaveBeenNthCalledWith(
+    expectOperation(remoteClients.request,
       3,
       snapshot.remoteConnections.connections[0],
       'agent/workItem/assignment/delete',
@@ -1058,28 +1068,28 @@ describe('AppBackendServer', () => {
       params: { agentId: 'agent-remote', turnId: 'turn-1' },
     });
 
-    expect(remoteClients.request).toHaveBeenNthCalledWith(
+    expectOperation(remoteClients.request,
       1,
       snapshot.remoteConnections.connections[0],
       'snapshot/get',
       { _clientId: 'remote-controller' },
       expect.any(Function),
     );
-    expect(remoteClients.request).toHaveBeenNthCalledWith(
+    expectOperation(remoteClients.request,
       2,
       snapshot.remoteConnections.connections[0],
       'agent/turn/delete',
       { ...{ agentId: 'agent-remote', turnId: 'turn-1' }, _clientId: 'remote-controller' },
       expect.any(Function),
     );
-    expect(remoteClients.request).toHaveBeenNthCalledWith(
+    expectOperation(remoteClients.request,
       3,
       snapshot.remoteConnections.connections[0],
       'agent/turn/edit',
       { ...{ agentId: 'agent-remote', turnId: 'turn-1', content: 'edited prompt' }, _clientId: 'remote-controller' },
       expect.any(Function),
     );
-    expect(remoteClients.request).toHaveBeenNthCalledWith(
+    expectOperation(remoteClients.request,
       4,
       snapshot.remoteConnections.connections[0],
       'agent/turn/retry',
@@ -1209,14 +1219,7 @@ describe('AppBackendServer', () => {
       },
     };
     const remoteClients = {
-      request: vi.fn().mockResolvedValue({
-        snapshot: remoteSnapshot,
-        lastEventSeq: 0,
-        clientState: {
-          sourceFolderPath: '',
-          shouldPreventDisplaySleep: false,
-        },
-      }),
+      request: vi.fn(async (_connection, method: string) => snapshotReply(remoteSnapshot, method)),
       close: vi.fn().mockResolvedValue(undefined),
     };
     const server = new AppBackendServer({
@@ -1331,6 +1334,7 @@ describe('AppBackendServer', () => {
     const events: unknown[] = [];
     const remoteClients = {
       request: vi.fn(async (_connection, _method: string, _params, onEvent?: (event: unknown) => void) => {
+        if (_method === 'collaboration/team/bind') return remoteSnapshot;
         onEvent?.({
           seq: 1,
           type: 'agent.statusChanged',

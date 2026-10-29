@@ -72,6 +72,32 @@ describe('AppStateStore', () => {
     await new AppStateStore(home).save(restored);
     expect((await new AppStateStore(home).load()).teams).toStrictEqual(restored.teams);
   });
+  it.each(['roster', 'legacy'] as const)('removes stale pointer-owned rows before %s import and later saves', async format => {
+    const snapshot = createInitialSnapshot();
+    snapshot.remoteConnections.connections = [readyRemoteConnection()];
+    const foreign = { ...snapshot.agents[0]!, id: 'foreign', teamId: 'remote-pointer', folder: '/srv/foreign', backendSession: { kind: 'codex' as const, threadId: 'foreign-session' } };
+    const pointer = { id: 'remote-pointer', name: 'Remote', agentIds: [foreign.id, 'foreign-unknown'], activeAgentId: foreign.id, remoteConnectionId: 'connection-devbox', remoteTeamId: snapshot.teams[0]!.id };
+    if (format === 'legacy') {
+      await writeFile(file('state.json'), JSON.stringify({ ...persistedStateFromSnapshot(snapshot), teams: [...snapshot.teams, pointer], agents: [...snapshot.agents, foreign] }));
+    } else {
+      await new AppStateStore(home).save(snapshot);
+      const roster = await readJson('roster.json');
+      roster.schemaVersion = 3;
+      (roster.data.teams as unknown[]).push(pointer);
+      (roster.data.agents as unknown[]).push({ ...foreign, engine: { kind: 'codex', session: { threadId: 'foreign-session' } } }, { id: 'foreign-unknown', folder: '/srv/unknown', engine: { kind: 'future-provider' } });
+      (roster.data.workAssignments as Record<string, unknown>).foreign = { agentId: foreign.id };
+      await writeFile(file('roster.json'), JSON.stringify(roster));
+    }
+    const store = new AppStateStore(home);
+    const restored = await store.load();
+    expect(restored.agents.map(agent => agent.id)).toStrictEqual(snapshot.agents.map(agent => agent.id));
+    expect(restored.teams.find(team => team.id === pointer.id)?.agentIds).toStrictEqual([]);
+    expect(restored.teams.find(team => team.id === pointer.id)?.remoteLinks).toStrictEqual([{ connectionId: 'connection-devbox', remoteTeamId: snapshot.teams[0]!.id }]);
+    await store.save(restored);
+    const saved = await readJson('roster.json');
+    expect((saved.data.agents as { id: string }[]).some(agent => agent.id.startsWith('foreign'))).toBe(false);
+    expect((saved.data.workAssignments as Record<string, unknown>).foreign).toBeUndefined();
+  });
   it('persists bookmarks by owning client through restart, agent deletion and removal', async () => {
     const snapshot = createInitialSnapshot();
     const desktopBookmarks = [{ title: 'Desktop preview', url: 'http://localhost:5173/' }];

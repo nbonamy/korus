@@ -129,6 +129,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   const hostedMcpGateway = new HostedMcpGateway({ credentials: workIntegrations });
   const tasks: DurableTaskService = new DurableTaskService({
     tasks: savedTasks,
+    resolveAgentId: id => server.resolveTaskAgentId(id),
     save: saveBackendTasks,
     agent: id => server.collaborationAgents().find(agent => agent.id === id),
     send: (agent, prompt, goal) => server.sendTaskPrompt(agent, prompt, goal),
@@ -153,6 +154,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     createRemoteWorker: (...args) => server.provisionRemoteWorker(...args),
     sendRemotePrompt: (agent, prompt, goal) => server.sendTaskPrompt(agent, prompt, goal),
     sendRemoteMessage: (agent, prompt, messageId) => server.deliverRemoteMessage(agent, prompt, messageId),
+    resolveDelegationParent: id => server.resolveTaskAgentId(id),
     forwardCollaboration: (agentId, name, args) => server.forwardCollaborationCall(agentId, name, args),
     retainDocument: (agentId, request) => documents.display(agentId, request),
     tasks,
@@ -205,7 +207,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
         ? (agentId, input) => options.requestClient(backendMethods.clientMobileSimulatorExecute, { agentId, input })
         : undefined),
       createVisualizeToolModuleProvider(visualizeService),
-      createTaskToolModuleProvider(tasks, id => Boolean(snapshot.teams.find(team => team.id === snapshot.agents.find(agent => agent.id === id)?.teamId)?.collaborationOwnerId)),
+      createTaskToolModuleProvider(tasks, id => Boolean(snapshot.teams.find(team => team.id === snapshot.agents.find(agent => agent.id === id)?.teamId)?.collaborationOwnerId), { wait: (id, input) => server.waitCollaborationTasks(id, input), cancel: (id, task) => server.cancelCollaborationTask(id, task) }),
     ],
   });
   const mcpServerUrl = await mcpService.start();

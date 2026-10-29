@@ -111,7 +111,7 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
   const contextMenuRepositoryAgentId = ref<string | null>(null);
   const repositoryMenuItems = computed<AppMenuItem[]>(() => [{ id: 'delete', type: 'action', label: t('repositoryDeletion.action'), icon: Trash2Icon, danger: true }]);
   const hasReadyRemote = computed(() => (props.remoteConnections ?? []).some(connection => connection.status === 'ready'));
-  const repositorySessionMenu = markRaw(useRepositorySessionMenu(() => props.listRepositoryBranches, t));
+  const repositorySessionMenu = markRaw(useRepositorySessionMenu(() => props.listRepositoryBranches, t, () => repositoryGroups.value));
   const repositorySessionMenuId = repositorySessionMenu.visibleGroupId;
   const collapsedRepositoryKeys = computed(() => new Set(props.collapsedRepositoryKeys ?? []));
   const contextMenuPosition = ref({ x: 0, y: 0 });

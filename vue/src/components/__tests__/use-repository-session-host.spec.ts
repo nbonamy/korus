@@ -1,3 +1,7 @@
+import { mount, flushPromises } from '@vue/test-utils';
+import { defineComponent, h } from 'vue';
+import NewSourceWorktreeDialog from '../NewSourceWorktreeDialog.vue';
+import { provideBackendChoices } from '../backend-selection';
 import { describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import type { RemoteConnection, SourceBranch, SourceRepository, WorkItem } from '@workspace/core/contracts';
@@ -29,6 +33,37 @@ function setup(remoteRepositories: SourceRepository[], clone?: (input: unknown) 
 }
 
 describe('repository session host choice', () => {
+  it.each([true, false])('uses the remote engine through worktree reuse with local engine available=%s', async localAvailable => {
+    const { session, snapshot, createAgent } = setup([]);
+    snapshot.providerConnections = localAvailable ? [{ backend: 'codex', installed: true, connected: true, checking: false }] : [];
+    snapshot.remoteConnections.connections[0]!.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
+    await session.openWorktree({ repositoryName: 'korus', repositoryRoot: '/remote/repo', remoteConnectionId: 'devbox' });
+    const wrapper = mount(defineComponent({ setup() {
+      provideBackendChoices(() => snapshot, () => undefined);
+      return () => h('div', [
+        h(NewSourceWorktreeDialog, { visible: true, repo: { name: 'korus', path: '/remote/repo', worktrees: [] }, remoteConnectionId: 'devbox',
+          backend: session.backend.value, 'onUpdate:backend': value => { session.backend.value = value; },
+          branches: [{ name: 'existing', isDefault: true, worktreePath: '/remote/existing' }],
+          chooseDestination: async () => null, suggestDestination: async () => '/remote/existing',
+          createWorktree: async () => ({ name: 'existing', path: '/remote/existing' }), onCreated: session.createFromWorktree }),
+        h(NewSourceWorktreeDialog, { visible: false, repo: null, backend: session.backend.value,
+          'onUpdate:backend': value => { session.backend.value = value; }, chooseDestination: async () => null,
+          suggestDestination: async () => '', createWorktree: async () => ({ name: '', path: '' }) }),
+      ]);
+    } }));
+    try {
+      await wrapper.get('.new-source-worktree-dialog__branch-input').setValue('existing');
+      await flushPromises();
+      const create = () => wrapper.get('.new-source-worktree-dialog .app-button--primary');
+      expect(create().attributes('disabled')).toBeUndefined();
+      await create().trigger('click');
+      await create().trigger('click');
+      await flushPromises();
+      expect(createAgent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ folder: '/remote/existing', remoteConnectionId: 'devbox', selection: { backend: 'claude' } }));
+      await session.openWorktree(source);
+      expect(session.backend.value).toBe(localAvailable ? 'codex' : undefined);
+    } finally { wrapper.unmount(); }
+  });
   it('removes original-host sessions and catalog identity before looking up a missing checkout, and rejects stale submissions', async () => {
     const { session, snapshot, listSourceRepositories, startWorkItemInExistingSession, prefillWorkItemForAgent } = setup([]);
     const agent = snapshot.agents[0]!;

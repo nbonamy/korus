@@ -312,6 +312,8 @@ export type Team = {
   color?: string;
   /** Hidden per-host teams on remote daemons that hold this team's remote agents. */
   remoteLinks?: RemoteTeamLink[];
+  /** Durable handoff intent and parent lineage, scoped to this controlled team. */
+  delegationHandoffs?: Record<string, { operationId: string; targetAgentId?: string; remoteConnectionId?: string }>;
   /** Collaboration authority for a team controlled by another daemon. */
   collaborationOwnerId?: string;
   agentIds: string[];

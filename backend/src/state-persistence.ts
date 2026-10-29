@@ -1,3 +1,4 @@
+import { migrateRemoteTeamLinks } from './persistence/migrations';
 import { readPersistedExecutionSelection } from '@workspace/core/execution-selection';
 import { isRateLimitPause } from '@workspace/core/auto-resume';
 import { isAgentReadState } from '@workspace/core/agent-read-state';
@@ -179,6 +180,8 @@ export function snapshotFromPersistedState(value: unknown): AppSnapshot {
     return seed;
   }
 
+  value = migrateRemoteTeamLinks(value);
+  if (!isRecord(value)) return seed;
   const accountRateLimits = sanitizeAccountRateLimits(value.accountRateLimits);
   const workBacklog = sanitizeWorkBacklogState(value.workBacklog, seed.workBacklog);
   const remoteConnections = sanitizeRemoteConnectionsState(value.remoteConnections, seed.remoteConnections);
@@ -1121,6 +1124,7 @@ function sanitizeTeam(value: unknown, agents: Agent[], remoteConnectionIds: Set<
     color: typeof value.color === 'string' ? value.color : defaultTeamColor,
     ...(optionalTrimmedString(value.collaborationOwnerId) ? { collaborationOwnerId: optionalTrimmedString(value.collaborationOwnerId)! } : {}),
     ...(remoteLinks.length ? { remoteLinks } : {}),
+    ...(isRecord(value.delegationHandoffs) ? { delegationHandoffs: Object.fromEntries(Object.entries(value.delegationHandoffs).flatMap(([id, entry]) => isRecord(entry) && optionalTrimmedString(entry.operationId) ? [[id, { operationId: optionalTrimmedString(entry.operationId)!, ...(optionalTrimmedString(entry.targetAgentId) ? { targetAgentId: optionalTrimmedString(entry.targetAgentId)! } : {}), ...(optionalTrimmedString(entry.remoteConnectionId) ? { remoteConnectionId: optionalTrimmedString(entry.remoteConnectionId)! } : {}) }]] : [])) } : {}),
     agentIds,
     activeAgentId: typeof value.activeAgentId === 'string' && agentIds.includes(value.activeAgentId)
       ? value.activeAgentId

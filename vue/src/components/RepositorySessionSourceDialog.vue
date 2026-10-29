@@ -210,7 +210,7 @@ const emit = defineEmits<{
   'start-work-item': [selection: WorkItemAssignmentSelection];
 }>();
 
-useNewAgentBackend(backend, useBackendChoices(() => props.hostId));
+useNewAgentBackend(backend, useBackendChoices(() => props.hostId), () => props.visible);
 
 const { t } = useI18n();
 const backlog = useWorkSourceBacklog({

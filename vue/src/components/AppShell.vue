@@ -442,6 +442,7 @@
       @select-work-item="chooseMissionIssue"
     />
     <NewSourceWorktreeDialog
+      :remote-connection-id="repositorySession.worktreeRemoteConnectionId.value"
       v-model:backend="repositorySession.backend.value"
       :allow-destination-override="false"
       :branches="repositorySessionWorktreeBranches"
@@ -504,6 +505,7 @@
     <AgentHandoffDialog
       v-if="handoffAgent"
       :agent="handoffAgent"
+      :pending-operation-id="pendingHandoffOperationId"
       :blocker="agentHandoffBlocker(snapshot, handoffAgent)"
       :submit="handoffAgentAction"
       :list-models="listHandoffModels"
@@ -1381,6 +1383,12 @@ const shareControl = (input: import('@workspace/core/conversation-sharing').Conv
 };
 const handoffAgentId = ref<string | null>(null);
 const handoffAgent = computed(() => props.snapshot.agents.find(agent => agent.id === handoffAgentId.value) ?? null);
+const pendingHandoffOperationId = computed(() => {
+  const agent = handoffAgent.value;
+  if (!agent || agent.handoff?.phase === 'failed') return undefined;
+  const intent = props.snapshot.teams.find(team => team.id === agent.teamId)?.delegationHandoffs?.[agent.id];
+  return intent && !intent.targetAgentId ? intent.operationId : undefined;
+});
 function openHandoff(agentId: string) { handoffAgentId.value = agentId; }
 async function listHandoffModels(agentId: string | null, backend: AgentBackend) {
   return await appApi?.listBackendModels(agentId, backend) ?? [];

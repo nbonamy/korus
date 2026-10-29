@@ -12,7 +12,7 @@ describe('AgentHandoffDialog', () => {
   it('hands off with the shared picker model, effort, tier and optional instructions', async () => {
     const submit = vi.fn().mockResolvedValue(undefined);
     const wrapper = mount(AgentHandoffDialog, {
-      props: { agent, submit, listModels: vi.fn().mockResolvedValue([{
+      props: { agent, submit, pendingOperationId: 'persisted-operation', listModels: vi.fn().mockResolvedValue([{
         id: 'sonnet', model: 'sonnet', displayName: 'Sonnet',
         supportedReasoningEfforts: [{ reasoningEffort: 'low', description: '' }, { reasoningEffort: 'high', description: '' }],
         serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }],
@@ -34,7 +34,7 @@ describe('AgentHandoffDialog', () => {
     await wrapper.get('textarea').setValue('Explain the flaky test.');
     await wrapper.get('form').trigger('submit');
     await flushPromises();
-    expect(submit).toHaveBeenCalledWith('source', expect.objectContaining({ operationId: expect.any(String), instructions: 'Explain the flaky test.', selection: { backend: 'claude', model: 'sonnet', reasoningEffort: 'high', serviceTier: 'fast' } }));
+    expect(submit).toHaveBeenCalledWith('source', expect.objectContaining({ operationId: 'persisted-operation', instructions: 'Explain the flaky test.', selection: { backend: 'claude', model: 'sonnet', reasoningEffort: 'high', serviceTier: 'fast' } }));
     expect(wrapper.emitted('close')).toHaveLength(1);
     wrapper.unmount();
   });
