@@ -431,7 +431,6 @@
     <RepositorySessionSourceDialog
       v-model:backend="repositorySession.backend.value"
       :visible="repositorySessionSourceVisible"
-      :location="resolveRepositorySessionContext(snapshot, repositorySessionSource).location"
       :repository-name="repositorySessionSource?.repositoryName ?? ''"
       :branches="repositorySessionSourceBranches"
       :work-items="repositorySessionSourceWorkItems"

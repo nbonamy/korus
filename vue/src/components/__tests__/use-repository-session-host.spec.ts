@@ -51,6 +51,27 @@ describe('repository session host choice', () => {
     expect(session.branches.value).toStrictEqual(localBranches);
   });
 
+  it('keeps pull requests and issues when the machine changes and always reads them from the repository', async () => {
+    const { session, listSourceBranches } = setup([checkout('/home/me/src/korus')]);
+    const loadWorkItems = vi.fn(async () => [{ id: 'issue-1' }] as never);
+    const loadWorkRepositories = vi.fn(async () => []);
+    const withItems = useRepositorySession({
+      activeTeamId: () => undefined, getSnapshot: () => createInitialSnapshot(), getWorkRepositories: () => [],
+      assignWorkItem: vi.fn(), createAgent: vi.fn(), createIsolatedWorkItemAgent: vi.fn() as never, createSourceWorktree: vi.fn() as never,
+      remoteConnections: () => [connection('devbox')],
+      listSourceRepositories: async (host) => host ? [checkout('/home/me/src/korus')] : [checkout('/Users/me/src/korus')],
+      listSourceBranches, loadWorkItems, loadWorkRepositories,
+      notifyError: vi.fn(), prefillWorkItemForAgent: vi.fn(), startWorkItemInExistingSession: vi.fn(), suggestSourceWorktreePath: async () => '',
+    });
+    expect(session).toBeDefined();
+    await withItems.open({ ...source, workSource: { provider: 'github', id: 'nbonamy/korus', name: 'korus', fullName: 'nbonamy/korus', url: 'https://github.com/nbonamy/korus' } });
+    expect(loadWorkItems).toHaveBeenCalledExactlyOnceWith('nbonamy/korus', undefined, 'github');
+    await withItems.changeHost('devbox');
+    expect(loadWorkItems).toHaveBeenCalledOnce();
+    expect(withItems.workItems.value).toHaveLength(1);
+    expect(withItems.workSourceId.value).toBe('nbonamy/korus');
+  });
+
   it('flags a machine without the repository and shows nothing as checked out there', async () => {
     const { session } = setup([]);
     await session.open(source);

@@ -71,8 +71,9 @@ describe('AppShell work routing', () => {
     wrapper.getComponent({ name: 'AgentSidebar' }).vm.$emit('create-agent-from-repository', { teamId: team.id, repositoryName: 'repo', repositoryRoot: '/code/selected', ...(remoteConnectionId ? { remoteConnectionId } : {}) });
     await flushPromises();
     expect(listSourceRepositories).toHaveBeenCalledExactlyOnceWith(remoteConnectionId);
-    expect(loadWorkRepositories).toHaveBeenCalledExactlyOnceWith(provider, remoteConnectionId ? { kind: 'remote', remoteConnectionId } : undefined);
-    expect(loadWorkItems).toHaveBeenCalledExactlyOnceWith(provider, selected.id, remoteConnectionId ? { kind: 'remote', remoteConnectionId } : undefined, { kind: 'all', state: 'open' });
+    // Pull requests and issues come from the repository, whichever machine it is looked at on.
+    expect(loadWorkRepositories).toHaveBeenCalledExactlyOnceWith(provider, undefined);
+    expect(loadWorkItems).toHaveBeenCalledExactlyOnceWith(provider, selected.id, undefined, { kind: 'all', state: 'open' });
     const dialog = wrapper.getComponent({ name: 'RepositorySessionSourceDialog' });
     expect(dialog.props('selectedRepositoryId')).toBe(selected.id);
     expect(dialog.props('workItems')).toStrictEqual([request]);

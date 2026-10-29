@@ -123,7 +123,9 @@ export function useRepositorySession(options: {
   }
 
   async function load(nextSource: RepositorySessionSource, requestId: number): Promise<void> {
-    const { teamId, remoteConnectionId, location } = context(nextSource);
+    const { teamId, remoteConnectionId } = context(nextSource);
+    // Pull requests and issues belong to the repository, not to the machine it is looked at on.
+    const location = undefined;
     try {
       const loadedBranches = await options.listSourceBranches(nextSource.repositoryRoot, remoteConnectionId || undefined);
       if (requestId !== sourceRequestId) return;
@@ -211,16 +213,21 @@ export function useRepositorySession(options: {
     }
   }
 
+  /** Only what lives on the machine changes: its branches and what is checked out there. */
   async function adoptHost(current: RepositorySessionSource, host: string | undefined, root: string, request: number): Promise<void> {
-    const nextSource = sourceOn(current, host, root);
     const requestId = ++sourceRequestId;
-    source.value = nextSource;
+    source.value = sourceOn(current, host, root);
     branches.value = [];
-    workItems.value = [];
-    workSourceId.value = null;
     loading.value = true;
     backend.value = preferredBackendChoices(options.getSnapshot(), host)[0];
-    if (request === hostRequestId) await load(nextSource, requestId);
+    try {
+      const loaded = await options.listSourceBranches(root, host);
+      if (requestId === sourceRequestId && request === hostRequestId) branches.value = loaded;
+    } catch (caught) {
+      if (requestId === sourceRequestId) error.value = caught instanceof Error ? caught.message : String(caught);
+    } finally {
+      if (requestId === sourceRequestId) loading.value = false;
+    }
   }
 
   /** A machine without the repository gets it cloned from its origin before any work starts there. */
