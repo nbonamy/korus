@@ -1,8 +1,12 @@
 import { product } from '@workspace/core/product';
 import { describe, expect, it, vi } from 'vitest';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import type { AgentBackend, RemoteConnection, AppSnapshot } from '@workspace/core/contracts';
 import { AppBackendServer } from '../server';
 import { BackendDriverRpc } from '../driver-rpc';
+import { createFileRemoteSnapshotCache } from '../connections/remote-snapshot-cache';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
 import {
   createTestSnapshot,
@@ -13,6 +17,60 @@ import {
 } from './server-test-fixtures';
 
 describe('AppBackendServer', () => {
+
+  it('keeps remote projects across an offline restart, reports the failure, and refreshes them on reconnect', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'offline-remote-project-'));
+    const file = path.join(directory, 'remote-snapshots.json');
+    const snapshot = createTestSnapshot();
+    const connection = readyRemoteConnection();
+    snapshot.remoteConnections.connections = [connection];
+    snapshot.teams[0]!.remoteLinks = [{ connectionId: connection.id, remoteTeamId: 'team-remote' }];
+    const agent = { ...createRemoteAgent(), status: { type: 'working' as const } };
+    const remote = createRemoteTeamSnapshot([agent]);
+    const remoteClients = {
+      request: vi.fn().mockResolvedValue({ snapshot: remote, lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } }),
+      close: vi.fn(), closeConnection: vi.fn(),
+    };
+    const events: import('@workspace/core/backend-protocol/rpc').AppBackendEvent[] = [];
+    const saveSnapshot = vi.fn().mockResolvedValue(undefined);
+    let server = new AppBackendServer({ version: 'test', snapshot, remoteClients: remoteClients as never,
+      remoteSnapshotCache: createFileRemoteSnapshotCache(file) });
+    const read = () => server.handleMessage({ jsonrpc: '2.0', id: 'snapshot', method: 'snapshot/get' });
+    try {
+      expect(await read()).toMatchObject({ result: { snapshot: { agents: [expect.objectContaining({ id: agent.id })] } } });
+      await server.close();
+      // close flushes the cache even if the debounce has not elapsed.
+      expect(JSON.parse(await readFile(file, 'utf8')).snapshots[connection.id].agents[0].id).toBe(agent.id);
+      remoteClients.request.mockRejectedValue(new Error('Cannot find module daemon.mjs'));
+      server = new AppBackendServer({ version: 'test', snapshot, remoteClients: remoteClients as never,
+        remoteSnapshotCache: createFileRemoteSnapshotCache(file), onEvent: event => events.push(event), saveSnapshot,
+        sshConnections: { checkConnection: vi.fn().mockResolvedValue(connection) } as never });
+
+      expect(await read()).toMatchObject({ result: { snapshot: { agents: [expect.objectContaining({
+        id: agent.id, teamId: 'team-test', remoteConnectionId: connection.id, folder: agent.folder, status: { type: 'idle' },
+      })] } } });
+      await vi.waitFor(() => expect(events).toContainEqual(expect.objectContaining({ type: 'snapshot.updated', payload: expect.objectContaining({
+        remoteConnections: { connections: [expect.objectContaining({ status: 'error', detail: expect.stringContaining('daemon.mjs') })] },
+        agents: [expect.objectContaining({ id: agent.id })],
+      }) })));
+      expect(saveSnapshot).toHaveBeenCalled();
+      expect(snapshot.agents).toStrictEqual([]);
+      const requestsAfterFailure = remoteClients.request.mock.calls.length;
+      await read();
+      expect(remoteClients.request).toHaveBeenCalledTimes(requestsAfterFailure);
+
+      remoteClients.request.mockResolvedValue(createRemoteTeamSnapshot([{ ...agent, name: 'Reconnected', status: { type: 'idle' } }]));
+      expect(await server.handleMessage({ jsonrpc: '2.0', id: 'reconnect', method: 'connections/runtime/sync', params: { connectionId: connection.id } }))
+        .toMatchObject({ result: { agents: [expect.objectContaining({ id: agent.id, name: 'Reconnected' })],
+          remoteConnections: { connections: [expect.objectContaining({ status: 'ready' })] } } });
+      await server.handleMessage({ jsonrpc: '2.0', id: 'forget', method: 'connections/delete', params: { connectionId: connection.id } });
+      await server.close();
+      expect(createFileRemoteSnapshotCache(file).load().size).toBe(0);
+    } finally {
+      await server.close();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 
   it.each(['codex', 'claude'] as const)('installs %s over SSH and rechecks the owning host', async (backend) => {
     const snapshot = createTestSnapshot();

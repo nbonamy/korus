@@ -72,7 +72,7 @@ import { BackendDriverRpc } from './driver-rpc';
 import { ClientPreferencesService } from './client-preferences-service';
 import { projectClientSnapshot, splitSettingsInput } from '@workspace/core/client-preferences';
 import { RemoteDaemonClientManager } from './connections/remote-daemon-client';
-import { RemoteTeamService } from './connections/remote-team-service';
+import { RemoteTeamService, type RemoteSnapshotCache } from './connections/remote-team-service';
 import { SshConnectionService } from './connections/ssh-connections';
 import type { AutomationRunner } from './automations/runner';
 import type { WorkIntegrationManager } from './work-integrations/manager';
@@ -135,6 +135,7 @@ export type AppBackendServerOptions = {
   systemPermissions?: SystemPermissionsPort;
   sshConnections?: SshConnectionService;
   remoteClients?: RemoteDaemonClientManager;
+  remoteSnapshotCache?: RemoteSnapshotCache;
   sendAgentMessage?: (fromAgentId: string, toAgentId: string, content: string) => void;
   configureCodexResourceSharing?: (input: SetCodexResourceSharingInput) => Promise<void>;
   inspectCodexResourceSharing?: (enabled: boolean) => Promise<CodexResourceSharingStatus>;
@@ -537,6 +538,13 @@ export class AppBackendServer {
     this.remoteTeams = new RemoteTeamService({
       clients: this.remoteClients,
       getSnapshot: () => this.snapshot,
+      cache: options.remoteSnapshotCache,
+      onConnectionFailed: (connectionId, error) => {
+        this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map(connection => connection.id === connectionId
+          ? { ...connection, status: 'error', detail: error.message, transport: undefined }
+          : connection);
+        void this.persistAndEmitSnapshot().catch(failure => warnMain('remote-connection', 'Could not save connection failure', { message: String(failure) }));
+      },
       onForwardedEvent: (connectionId, event) => this.forwardRemoteBackendEvent(connectionId, event),
       onProjectedSnapshotChanged: () => { void this.emitProjectedSnapshot(); },
     });
@@ -3268,6 +3276,7 @@ export class AppBackendServer {
     this.unsubscribeDriverEvents?.();
     await this.driverRpc?.close();
     await this.remoteClients.close();
+    await this.options.remoteSnapshotCache?.flush?.();
     await this.options.usage?.close();
   }
 

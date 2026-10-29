@@ -338,8 +338,8 @@ target, archive the displaced conversation, then persist the new reference.
 
 Rules:
 
-- Every file is `{ schemaVersion, writtenBy, data }`. A build refuses to read or
-  rewrite a newer `schemaVersion`; a file that fails to parse stops startup rather
+- Durable state files use `{ schemaVersion, writtenBy, data }`. A build refuses to
+  read or rewrite a newer `schemaVersion`; a file that fails to parse stops startup rather
   than becoming empty (except an unreadable visualization, which is skipped).
 - Within a supported schema version, additive fields do not block loading agents,
   settings, tasks, document workspaces or visualizations. Known field types and task
@@ -439,7 +439,12 @@ Agents never move between backend locations.
   active-agent repair or assignment cleanup, and expect it to collide with local
   IDs. The link is bookkeeping; the UI never exposes remote teams.
 - Remote agents are projected into the client snapshot with the local team id and
-  their host. Local state never stores them.
+  their host. The local roster never owns them. A private, replaceable
+  `remote-snapshots.json` cache retains linked teams and agent metadata so remote
+  projects remain visible across offline restarts. Restored agents do not claim
+  active work until refreshed by their host; pending requests and provider
+  conversations are not restored from this cache. A failed refresh marks the connection unavailable
+  without removing its agents. Forgetting a connection removes its cached state.
 - Location-scoped and agent-scoped requests resolve a `BackendLocation` /
   `AgentLocation`, then run on a handle: local handles use local drivers, remote
   handles forward the same app-owned method. Remote events fan out locally only

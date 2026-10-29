@@ -1,6 +1,7 @@
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { isAppSnapshotGetResult, type AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { applyMainEventToSnapshot } from '@workspace/core/snapshot';
+import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { decodeAppSnapshot } from '@workspace/core/snapshot-guards';
 import type { Agent, AppSnapshot, RemoteConnection, RemoteTeamLink, Team } from '@workspace/core/contracts';
 import { workItemAssignmentKey, type WorkItemAssignmentSource } from '@workspace/core/work-assignments';
@@ -14,9 +15,18 @@ export type RemoteTeamPointer = {
 
 export type RemoteAgentOwner = RemoteTeamPointer & { agent: Agent };
 
+/** Keeps the last known remote agents across restarts so their projects stay listed while a host is down. */
+export type RemoteSnapshotCache = {
+  load: () => Map<string, AppSnapshot>;
+  save: (connectionId: string, snapshot: AppSnapshot | null) => void;
+  flush?: () => Promise<void>;
+};
+
 export type RemoteTeamServiceOptions = {
   clients: RemoteDaemonClientManager;
   getSnapshot: () => AppSnapshot;
+  cache?: RemoteSnapshotCache;
+  onConnectionFailed?: (connectionId: string, error: Error) => void;
   onForwardedEvent: (connectionId: string, event: AppBackendEvent) => void;
   onProjectedSnapshotChanged: () => void;
 };
@@ -24,8 +34,16 @@ export type RemoteTeamServiceOptions = {
 /** Owns remote daemon snapshot caching, team projection, and remote ownership lookup. */
 export class RemoteTeamService {
   private readonly snapshots = new Map<string, AppSnapshot>();
+  /** Hosts whose snapshot comes from the cache and has not been confirmed by the host yet. */
+  private readonly stale = new Set<string>();
+  private readonly refreshing = new Set<string>();
 
-  constructor(private readonly options: RemoteTeamServiceOptions) {}
+  constructor(private readonly options: RemoteTeamServiceOptions) {
+    for (const [connectionId, snapshot] of options.cache?.load() ?? []) {
+      this.snapshots.set(connectionId, withoutRunningWork(snapshot));
+      this.stale.add(connectionId);
+    }
+  }
 
   connectionIdForAgent(agent: Pick<Agent, 'remoteConnectionId'>): string | null {
     return agent.remoteConnectionId?.trim() || null;
@@ -65,6 +83,8 @@ export class RemoteTeamService {
 
   rememberSnapshot(connectionId: string, snapshot: AppSnapshot): void {
     this.snapshots.set(connectionId, snapshot);
+    this.stale.delete(connectionId);
+    this.options.cache?.save(connectionId, this.cacheable(connectionId, snapshot));
     const connection = this.options.getSnapshot().remoteConnections.connections.find(item => item.id === connectionId);
     if (connection) connection.providerConnections = snapshot.providerConnections;
   }
@@ -118,6 +138,8 @@ export class RemoteTeamService {
       }
     }
     this.snapshots.delete(connectionId);
+    this.stale.delete(connectionId);
+    this.options.cache?.save(connectionId, null);
   }
 
   async agentOwner(agentId: string): Promise<RemoteAgentOwner | null> {
@@ -161,6 +183,10 @@ export class RemoteTeamService {
 
   async clientSnapshot(): Promise<AppSnapshot> {
     for (const pointer of this.pointers()) {
+      if (this.stale.has(pointer.connectionId)) {
+        this.refreshInBackground(pointer.connectionId);
+        continue;
+      }
       if (this.snapshots.has(pointer.connectionId)) continue;
       try {
         await this.snapshot(pointer.connectionId);
@@ -169,6 +195,38 @@ export class RemoteTeamService {
       }
     }
     return this.clientSnapshotFromKnownRemotes();
+  }
+
+  /** Serves the cached agents right away and learns in the background whether the host answers. */
+  private refreshInBackground(connectionId: string): void {
+    if (this.refreshing.has(connectionId)) return;
+    if (!this.options.getSnapshot().remoteConnections.connections.some(connection => connection.id === connectionId && connection.status === 'ready')) return;
+    this.refreshing.add(connectionId);
+    void this.snapshot(connectionId)
+      .then(() => this.options.onProjectedSnapshotChanged())
+      .catch((error: unknown) => {
+        this.reportConnectionFailure(connectionId, error);
+      })
+      .finally(() => this.refreshing.delete(connectionId));
+  }
+
+  private reportConnectionFailure(connectionId: string, error: unknown): void {
+    if (this.options.getSnapshot().remoteConnections.connections.some(connection => connection.id === connectionId && connection.status === 'ready')) {
+      this.options.onConnectionFailed?.(connectionId, error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+
+  /** Only the linked remote teams are kept: the cache serves the projection, not the whole host. */
+  private cacheable(connectionId: string, snapshot: AppSnapshot): AppSnapshot {
+    const teamIds = new Set(this.pointers().filter(pointer => pointer.connectionId === connectionId).map(pointer => pointer.remoteTeamId));
+    const teams = snapshot.teams.filter(team => teamIds.has(team.id));
+    const agentIds = new Set(teams.flatMap(team => team.agentIds));
+    return {
+      ...createEmptySnapshot(),
+      teams,
+      agents: snapshot.agents.filter(agent => agentIds.has(agent.id)),
+      providerConnections: snapshot.providerConnections,
+    };
   }
 
   clientSnapshotFromKnownRemotes(): AppSnapshot {
@@ -220,6 +278,13 @@ export class RemoteTeamService {
   private hasTeamPointer(connectionId: string): boolean {
     return this.pointers().some((pointer) => pointer.connectionId === connectionId);
   }
+}
+
+function withoutRunningWork(snapshot: AppSnapshot): AppSnapshot {
+  return {
+    ...snapshot,
+    agents: snapshot.agents.map(agent => agent.status.type === 'working' || agent.status.type === 'awaitingInput' ? { ...agent, status: { type: 'idle' } } : agent),
+  };
 }
 
 function decodeSnapshotFromRemoteEvent(event: AppBackendEvent) {

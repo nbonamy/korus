@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { AppSnapshot } from '@workspace/core/contracts';
 import { RemoteTeamService } from '../connections/remote-team-service';
 import {
   createRemoteAgent,
@@ -26,6 +27,67 @@ describe('RemoteTeamService', () => {
     expect(projected.remoteConnections.connections[0]?.providerConnections).toEqual(remote.providerConnections);
     expect(projected.agents).toEqual(expect.arrayContaining([expect.objectContaining({ id: remote.agents[0]!.id })]));
     expect(projected.providerConnections).toEqual(snapshot.providerConnections);
+  });
+
+  describe('when the host is unreachable', () => {
+    function offlineSetup() {
+      const snapshot = createTestSnapshot();
+      snapshot.remoteConnections.connections = [readyRemoteConnection()];
+      snapshot.teams = [{ id: 'pointer', name: 'Remote', remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }], agentIds: [] }];
+      const remoteAgent = { ...createRemoteAgent(), status: { type: 'working' as const } };
+      const cache = { load: () => new Map([['connection-devbox', createRemoteTeamSnapshot([remoteAgent])]]), save: vi.fn() };
+      const request = vi.fn().mockRejectedValue(new Error('Cannot find module daemon.mjs'));
+      const onConnectionFailed = vi.fn();
+      const service = new RemoteTeamService({
+        clients: { request } as never, getSnapshot: () => snapshot, cache, onConnectionFailed,
+        onForwardedEvent: vi.fn(), onProjectedSnapshotChanged: vi.fn(),
+      });
+      return { snapshot, remoteAgent, service, request, onConnectionFailed, cache };
+    }
+
+    it('keeps the last known remote agents, idle, and reports the failed connection', async () => {
+      const { service, remoteAgent, onConnectionFailed } = offlineSetup();
+
+      const projected = await service.clientSnapshot();
+
+      expect(projected.agents.find(agent => agent.id === remoteAgent.id)).toMatchObject({ remoteConnectionId: 'connection-devbox', status: { type: 'idle' } });
+      await vi.waitFor(() => expect(onConnectionFailed).toHaveBeenCalledWith('connection-devbox', expect.objectContaining({ message: 'Cannot find module daemon.mjs' })));
+    });
+
+    it('does not report a connection that was already marked unavailable', async () => {
+      const { service, snapshot, onConnectionFailed } = offlineSetup();
+      snapshot.remoteConnections.connections[0]!.status = 'error';
+
+      await service.clientSnapshot();
+      await Promise.resolve();
+
+      expect(onConnectionFailed).not.toHaveBeenCalled();
+    });
+
+    it('refreshes a cached host in the background and replaces the cached agents', async () => {
+      const { service, remoteAgent, request } = offlineSetup();
+      request.mockResolvedValue({ snapshot: createRemoteTeamSnapshot([{ ...remoteAgent, name: 'Fresh' }]), lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } });
+
+      await service.clientSnapshot();
+
+      await vi.waitFor(() => expect(service.clientSnapshotFromKnownRemotes().agents.find(agent => agent.id === remoteAgent.id)).toMatchObject({ name: 'Fresh' }));
+    });
+
+    it('stores only the linked remote team and forgets the cache with the connection', () => {
+      const { service, snapshot, cache, remoteAgent } = offlineSetup();
+      const remote = createRemoteTeamSnapshot([remoteAgent]);
+      remote.teams.push({ id: 'team-other', name: 'Other', agentIds: ['agent-other'] });
+      remote.agents.push({ ...createRemoteAgent(), id: 'agent-other', teamId: 'team-other' });
+
+      service.rememberSnapshot('connection-devbox', remote);
+
+      const saved = cache.save.mock.calls.at(-1)![1] as AppSnapshot;
+      expect(saved.agents.map(agent => agent.id)).toStrictEqual([remoteAgent.id]);
+      expect(saved.teams.map(team => team.id)).toStrictEqual(['team-remote']);
+      service.forgetConnection('connection-devbox');
+      expect(cache.save).toHaveBeenLastCalledWith('connection-devbox', null);
+      expect(snapshot.teams[0]!.remoteLinks).toBeUndefined();
+    });
   });
 
   it('requires an explicit valid team instead of consulting shared navigation', async () => {

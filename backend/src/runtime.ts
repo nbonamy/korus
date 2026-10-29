@@ -22,6 +22,7 @@ import { resolveCodexExecutable } from './codex/codex-command';
 import { localProviderAgents } from './provider-roster-reset';
 import { handoffInProgress } from '@workspace/core/agent-handoff';
 import { RemoteDaemonClientManager } from './connections/remote-daemon-client';
+import { createFileRemoteSnapshotCache } from './connections/remote-snapshot-cache';
 import { SshConnectionService } from './connections/ssh-connections';
 import { AutomationRunner } from './automations/runner';
 import { RuntimeScheduler } from './scheduling/runtime-scheduler';
@@ -339,6 +340,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     onEvent: (event) => { companion.event(event); options.emitEvent(event); },
     onBackendEventApplied: (event) => { mcpService.handleBackendEvent(event); tasks.handleEvent(event); automationRunner.handleEvent(event); },
     saveSnapshot: (nextSnapshot) => saveBackendSnapshot(nextSnapshot),
+    remoteSnapshotCache: createFileRemoteSnapshotCache(path.join(backendHomeDir(), 'remote-snapshots.json')),
     ensureMissionHome: ensureBackendMissionHome,
     deleteMissionHome: deleteBackendMissionHome,
     inspectPluginStatus: async () => {
