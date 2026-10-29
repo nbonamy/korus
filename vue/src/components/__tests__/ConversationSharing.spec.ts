@@ -10,9 +10,10 @@ import type { GuestJoinView } from '@workspace/core/guest-navigation';
 // stale async results and accidental credential display. Provider UI is a boundary fake.
 afterEach(() => { document.body.innerHTML = ''; vi.restoreAllMocks(); });
 
-/** Share lives in the header's agent actions menu next to the agent's cost; the harness renders popover content inline. */
+/** Active shares use the header button; inactive shares use its inline-rendered actions menu. */
 async function openShareDialog(wrapper: { element: Element }) {
-  const item = Array.from(wrapper.element.querySelectorAll<HTMLElement>('.agent-header__activity [role="menuitem"]')).find(candidate => candidate.textContent?.trim() === 'Share');
+  const item = wrapper.element.querySelector<HTMLElement>('.agent-header__share')
+    ?? Array.from(wrapper.element.querySelectorAll<HTMLElement>('.agent-header__activity [role="menuitem"]')).find(candidate => candidate.textContent?.trim() === 'Share');
   expect(item).toBeDefined();
   item!.click();
   await flushPromises();

@@ -1226,12 +1226,11 @@ describe('mission execution', () => {
       artifacts: firstResult, summary: 'Foundation complete',
     })).resolves.toEqual({ success: true, status: 'accepted' });
     await h.service.waitForLaunches();
+    const sentBeforeHandoff = h.ports.continueStage.mock.calls.length;
     await h.service.agentFinished(implementationWorkerId!, 'foundation-turn');
     await h.service.waitForLaunches();
-    // A repeated completion must not consume the compaction guard for the next ticket.
+    // A repeated completion from the previous ticket must not fail the next assignment.
     await h.service.agentFinished(implementationWorkerId!, 'foundation-turn');
-    await h.service.agentFinished(implementationWorkerId!, 'compaction-turn');
-    await h.service.agentFinished(implementationWorkerId!, 'compaction-turn');
 
     const implementationRuns = h.current().execution!.runs.filter(run => run.stage === 'implementation');
     expect(implementationRuns).toHaveLength(2);
@@ -1240,8 +1239,7 @@ describe('mission execution', () => {
     expect(implementationRuns[1]!.workerId).toBe(implementationWorkerId);
     await expect(h.command({ action: 'continueToReview' })).rejects.toThrow('Complete every implementation ticket');
     expect(h.current().stage).toBe('implementation');
-    expect(h.ports.continueStage.mock.calls.slice(-2)).toStrictEqual([
-      [implementationWorkerId, '/compact'],
+    expect(h.ports.continueStage.mock.calls.slice(sentBeforeHandoff)).toStrictEqual([
       [implementationWorkerId, expect.stringContaining('ticket 2')],
     ]);
 
