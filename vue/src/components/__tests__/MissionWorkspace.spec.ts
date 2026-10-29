@@ -1,4 +1,4 @@
-import { flushPromises, mount } from '@vue/test-utils';
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { mountProvisioningHost } from './provisioning-host';
 import { computed } from 'vue';
 import { ElDialog, ElPopover, ElTabs, ElTabPane } from 'element-plus';
@@ -70,6 +70,11 @@ function mountWorkspace(mission: Mission, options: {
     },
   });
 }
+
+/** The ticket dialog is mounted on the page itself, above the whole window, not inside the workspace. */
+const openTicketDialog = () => [...document.querySelectorAll<HTMLElement>('.mission-ticket-dialog')].at(-1) ?? null;
+const ticketDialogText = () => openTicketDialog()?.textContent ?? '';
+const inTicketDialog = (selector: string) => openTicketDialog()?.querySelector<HTMLElement>(selector) ?? null;
 
 describe('MissionWorkspace', () => {
   it('remembers each mission conversation after reopening and falls back to the lead when its worker disappears', async () => {
@@ -590,7 +595,7 @@ describe('MissionWorkspace', () => {
     await flushPromises();
 
     expect(wrapper.findComponent({ name: 'ElDialog' }).props('modelValue')).toBe(true);
-    expect(wrapper.findComponent({ name: 'ElDialog' }).text()).toContain('Let an owner buy seats.');
+    expect(ticketDialogText()).toContain('Let an owner buy seats.');
     expect(wrapper.text()).not.toContain('to-tickets');
     expect(wrapper.find('[aria-label="Artifact ready for review"]').exists()).toBe(false);
     expect(wrapper.find('[aria-label="Mission conversations"]').exists()).toBe(false);
@@ -711,12 +716,11 @@ describe('MissionWorkspace', () => {
     await board.findAll('.mission-implementation__ticket-details')[0]!.trigger('click');
     await flushPromises();
 
-    const ticketDialog = wrapper.findComponent({ name: 'ElDialog' });
-    expect(ticketDialog.props('modelValue')).toBe(true);
-    expect(ticketDialog.text()).toContain('Implement checkout end to end.');
-    expect(ticketDialog.text()).toContain('checkout integration test passes');
+    expect(wrapper.findComponent({ name: 'ElDialog' }).props('modelValue')).toBe(true);
+    expect(ticketDialogText()).toContain('Implement checkout end to end.');
+    expect(ticketDialogText()).toContain('checkout integration test passes');
 
-    expect(wrapper.find('.mission-implementation__dialog-footer .app-button').exists()).toBe(false);
+    expect(inTicketDialog('.mission-implementation__dialog-footer .app-button')).toBeNull();
   });
 
   it('keeps failed and running implementation tickets recoverable from their repository lane', async () => {
@@ -734,7 +738,7 @@ describe('MissionWorkspace', () => {
     await wrapper.get('.mission-implementation__ticket-details').trigger('click');
     await flushPromises();
     expect(wrapper.get('.mission-implementation__ticket').text()).toContain('Failed');
-    await wrapper.get('.mission-implementation__dialog-footer .app-button').trigger('click');
+    await new DOMWrapper(inTicketDialog('.mission-implementation__dialog-footer .app-button')!).trigger('click');
     expect(executeMission).toHaveBeenLastCalledWith({
       id: mission.id, revision: mission.revision, action: 'run', ticketIndex: 0,
     });
@@ -746,7 +750,7 @@ describe('MissionWorkspace', () => {
     expect(wrapper.get('.mission-implementation__ticket-details').attributes('aria-expanded')).toBe('true');
     expect(wrapper.get('.mission-workspace__run-status').text()).toBe('Building tickets');
     expect(wrapper.find('.mission-workspace__run-status button').exists()).toBe(false);
-    await wrapper.get('.mission-implementation__dialog-footer .app-button').trigger('click');
+    await new DOMWrapper(inTicketDialog('.mission-implementation__dialog-footer .app-button')!).trigger('click');
     expect(executeMission).toHaveBeenLastCalledWith({
       id: mission.id, revision: mission.revision, action: 'cancel', runId: 'run-checkout',
     });
@@ -768,8 +772,8 @@ describe('MissionWorkspace', () => {
     await wrapper.get('.mission-implementation__ticket-details').trigger('click');
     await flushPromises();
 
-    expect(wrapper.findComponent({ name: 'ElDialog' }).text()).toContain('Rendered the execution board.');
-    expect(wrapper.find('.mission-implementation__dialog-footer .app-button').exists()).toBe(false);
+    expect(ticketDialogText()).toContain('Rendered the execution board.');
+    expect(inTicketDialog('.mission-implementation__dialog-footer .app-button')).toBeNull();
     expect(wrapper.find('.code-review-slot').exists()).toBe(false);
   });
 
@@ -818,16 +822,16 @@ describe('MissionWorkspace', () => {
     const acceptedTickets = wrapper.get('[aria-label="Accepted artifact"]');
     expect(acceptedTickets.findAll('.mission-ticket-board__card')).toHaveLength(2);
     await acceptedTickets.findAll('.mission-ticket-board__card')[0]!.trigger('click');
-    expect(acceptedTickets.get('[aria-label="Ticket details"]').text()).toContain('Open canonical ticket');
+    expect(inTicketDialog('[aria-label="Ticket details"]')?.textContent).toContain('Open canonical ticket');
     await acceptedTickets.findAll('.mission-ticket-board__card')[1]!.trigger('click');
-    expect(acceptedTickets.get('[aria-label="Ticket details"]').text()).toContain('Blocked by tickets: 01');
+    expect(inTicketDialog('[aria-label="Ticket details"]')?.textContent).toContain('Blocked by tickets: 01');
 
     mission.stage = 'implementation';
     await wrapper.setProps({ mission: structuredClone(mission) });
     expect(wrapper.find('[aria-label="Accepted artifact"]').exists()).toBe(false);
     await wrapper.get('[aria-label="View evidence for Create billing foundation"]').trigger('click');
     await flushPromises();
-    expect(wrapper.findAllComponents({ name: 'ElDialog' })[0]!.text()).toContain('billing integration passes');
+    expect(ticketDialogText()).toContain('billing integration passes');
     expect(wrapper.find('.code-review-slot').exists()).toBe(false);
 
     mission.stage = 'review';
