@@ -65,6 +65,7 @@ export type VisualizeSession = {
 
 export type StartVisualizeInput = {
   prompt?: string;
+  choose?: boolean;
 };
 
 export type GenerateVisualizationSuggestionInput = {

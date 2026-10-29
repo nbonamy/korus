@@ -1868,7 +1868,7 @@ const splitActions = computed<AgentConversationActions | undefined>(() => props.
     await backendSwitch.settled();
     const visualize = prompt.match(/^\/visualize(?:\s+([\s\S]*))?$/u);
     if (visualize && !options?.attachments?.length) {
-      return startVisualizeForAgent(agentId, visualize[1]?.trim() ? { prompt: visualize[1].trim() } : undefined);
+      return startVisualizeForAgent(agentId, visualize[1]?.trim() ? { prompt: visualize[1].trim() } : { choose: true });
     }
     const review = prompt.trim().match(/^\/review(?:\s+([\s\S]*))?$/u);
     if (review && !options?.attachments?.length) return openCodeReviewForAgent(agentId, review[1]?.trim());
@@ -2440,7 +2440,7 @@ async function sendModelCommand(agentId: string, command: '/delegate' | '/missio
 async function runConversationMenuCommand(agentId: string, command: ConversationMenuCommand): Promise<void> {
   try {
     if (command === 'review') return await openCodeReviewForAgent(agentId);
-    if (command === 'visualize') return await startVisualizeForAgent(agentId);
+    if (command === 'visualize') return await startVisualizeForAgent(agentId, { choose: true });
     await sendModelCommand(agentId, command === 'mission' ? '/mission' : '/delegate');
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error));
@@ -3231,7 +3231,7 @@ function forwardPrompt(prompt: string, options?: RendererSendPromptOptions): voi
   const visualizeCommand = prompt.match(/^\/visualize(?:\s+([\s\S]*))?$/u);
   if (visualizeCommand && !options?.attachments?.length && currentAgent.value) {
     const direction = visualizeCommand[1]?.trim();
-    return startVisualizeForAgent(currentAgent.value.id, direction ? { prompt: direction } : undefined);
+    return startVisualizeForAgent(currentAgent.value.id, direction ? { prompt: direction } : { choose: true });
   }
   const reviewCommand = prompt.trim().match(/^\/review(?:\s+([\s\S]*))?$/u);
   if (reviewCommand && !options?.attachments?.length && currentAgent.value) {
