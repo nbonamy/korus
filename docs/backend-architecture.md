@@ -687,7 +687,7 @@ User-local Codex upgrades verify package ownership and retain the `~/.local` npm
 prefix even when the Node runtime has a different default global directory.
 Version discovery accepts the previous daemon CLI name for hosts not yet upgraded.
 
-Every connect, install and reconnect links the host's `codex` and `claude` into the
+Every connect, install and reconnect (the read-only inspection) links the host's `codex` and `claude` into the
 private `bin` directory, which the SSH launch puts first on PATH, and drops the link
 of an engine that is gone. The daemon resolves a linked engine with one file check
 and starts no login shell, which otherwise costs seconds per probe on slow hosts.

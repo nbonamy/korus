@@ -122,6 +122,8 @@ export class SshConnectionService {
       this.remoteCodexVersion(connection.host).catch(() => undefined),
       this.remoteClaudeVersion(connection.host).catch(() => undefined),
     ]);
+    // Reconnect is an inspection: it keeps the engine links current without installing anything.
+    if (daemonVersion) await this.linkRemoteEngines(connection.host);
     const versions = [daemonVersion ? `${product.daemonName} ${daemonVersion}` : '',
       codexVersion ? `Codex ${codexVersion}` : '', claudeVersion ? `Claude ${claudeVersion}` : ''].filter(Boolean);
     return { ...connection, daemonVersion, codexVersion, claudeVersion,
