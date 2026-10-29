@@ -603,6 +603,7 @@ export class AppBackendServer {
   private readonly skills: SkillManager;
   private readonly autoResume: AutoResumeService;
   private readonly recoveryTurns = new Map<string, string>();
+  private readonly flagResetTurns = new WeakMap<Agent, Set<string>>();
   private readonly stoppingAgents = new Set<string>();
   private closing = false;
   private readonly providerConnections?: ProviderConnections;
@@ -623,12 +624,11 @@ export class AppBackendServer {
         if (!agent || agent.sharedConversation) throw new Error('Conversation unavailable.');
         if (context.followUpBehavior === 'steer' && !this.agentPrompts.canStart(agent)) {
           const result = await this.withPromptSource(agent, 'guest:approved', () => this.handleAgentDriverRequest(agent, backendMethods.driverPromptSteer, { agent, prompt: text, expectedSessionId: companionSessionId(agent), plainText: true })) as BackendSendResult;
-          this.clearTurnSuggestionsForNewPrompt(agent);
+          this.clearTurnHints(agent);
           await this.persistSnapshotOnly();
           return { turnId: result.turnId, messageId: result.messageId };
         }
         const result = await this.agentPrompts.sendWithReceipt(agent, text, undefined, companionSessionId(agent), 'guest:approved');
-        this.clearTurnSuggestionsForNewPrompt(agent);
         return result;
       }),
     }, () => this.snapshot, (agentId, state) => {
@@ -2839,7 +2839,6 @@ export class AppBackendServer {
               await this.agentPrompts.sendAndWaitForAcceptance(agent, prompt, options, expectedSessionId, clientId);
               result = this.snapshot;
             } else result = this.agentPrompts.send(agentId, prompt, options, clientId);
-            if (prompt.trim() || options?.attachments?.length) this.clearTurnSuggestionsForNewPrompt(agent);
             await this.persistSnapshotOnly();
             return result;
           },
@@ -2866,7 +2865,6 @@ export class AppBackendServer {
           // Receipt-based admission starts immediately or rejects; it cannot enqueue.
           if (startIfIdle && this.agentPrompts.canStart(agent)) {
             await this.agentPrompts.sendAndWaitForAcceptance(agent, prompt, options, expectedSessionId, clientId);
-            this.clearTurnSuggestionsForNewPrompt(agent);
             await this.persistSnapshotOnly();
             return this.snapshot;
           }
@@ -2884,7 +2882,7 @@ export class AppBackendServer {
             throw error;
           }
           agent.backendSession = result.backendSession;
-          this.clearTurnSuggestionsForNewPrompt(agent);
+          this.clearTurnHints(agent);
           await this.persistSnapshotOnly();
           return this.snapshot;
         }).catch(error => {
@@ -4109,6 +4107,7 @@ export class AppBackendServer {
     for (const listener of this.handoffListeners) listener(fullEvent);
     this.agentRequests.record(fullEvent);
     this.emitBackendEvent(fullEvent);
+    this.clearTurnSuggestionsOnStart(fullEvent);
     this.emitDerivedDomainEvents(fullEvent);
     if (fullEvent.type !== 'agent.updated') this.autoResume?.observe(fullEvent);
     this.onBackendEventApplied?.(fullEvent);
@@ -4131,20 +4130,34 @@ export class AppBackendServer {
     this.reconcileShares();
   }
 
-  private clearTurnSuggestionsForNewPrompt(agent: Agent): void {
-    if (agent.threadFlags?.ready_for_review !== true && agent.suggestedPrompt === undefined) return;
-    const threadFlags = { ...agent.threadFlags };
-    delete threadFlags.ready_for_review;
-    this.applyAndEmitBackendEvent({
+  private clearTurnHints(agent: Agent): void {
+    if (!agent.threadFlags && agent.suggestedPrompt === undefined) return;
+    this.handleBackendEvent({
       agentId: agent.id,
       type: 'agent.updated',
       payload: {
         id: agent.id,
-        threadFlags: Object.keys(threadFlags).length > 0 ? threadFlags : null,
+        threadFlags: null,
         suggestedPrompt: null,
         updatedAt: new Date().toISOString(),
       },
     });
+  }
+
+  private clearTurnSuggestionsOnStart(event: BackendPublishedEvent): void {
+    const view = providerConversationEventView(event);
+    if (view.type !== 'turn.started' || !event.agentId || !view.turnId) return;
+    const agent = this.snapshot.agents.find(candidate => candidate.id === event.agentId);
+    if (!agent) return;
+    const sessionId = agentConversationId(agent);
+    if (sessionId && view.conversationId && sessionId !== view.conversationId) return;
+    const key = JSON.stringify([view.conversationId ?? sessionId, view.turnId]);
+    const seen = this.flagResetTurns.get(agent) ?? new Set<string>();
+    if (seen.has(key)) return;
+    seen.add(key);
+    if (seen.size > 64) seen.delete(seen.values().next().value!);
+    this.flagResetTurns.set(agent, seen);
+    this.clearTurnHints(agent);
   }
 
   private handleBackendEvent(event: BackendEvent, options: { persist?: boolean } = {}): void {
@@ -4175,6 +4188,7 @@ export class AppBackendServer {
     }
     this.agentRequests.record(fullEvent);
     this.emitBackendEvent(fullEvent);
+    this.clearTurnSuggestionsOnStart(fullEvent);
     this.emitDerivedDomainEvents(fullEvent);
     if (fullEvent.type !== 'agent.updated') this.autoResume?.observe(fullEvent);
     this.onBackendEventApplied?.(fullEvent);

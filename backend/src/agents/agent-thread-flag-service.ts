@@ -23,6 +23,7 @@ export class AgentThreadFlagService {
     }
     const key = `${agent.id}:${id}`;
     if (this.inFlight.has(key)) throw new Error('This thread flag is already being handled.');
+    const originalFlags = agent.threadFlags;
 
     this.inFlight.add(key);
     try {
@@ -35,9 +36,8 @@ export class AgentThreadFlagService {
       if (id === 'work_proposed' && response.action === 'create_mission') {
         await this.options.submit(agent, MISSION_COMMAND_PROMPT);
       }
-      if (!agent.threadFlags || normalizeThreadFlags(agent.threadFlags)[id] !== true) {
-        throw new Error('The thread flag changed while the action was being submitted.');
-      }
+      // Turn startup may consume the old flag or publish a new one before admission replies.
+      if (agent.threadFlags !== originalFlags) return;
       const threadFlags = normalizeThreadFlags(agent.threadFlags);
       delete threadFlags[id];
       agent.threadFlags = Object.keys(threadFlags).length > 0 ? threadFlags : undefined;
