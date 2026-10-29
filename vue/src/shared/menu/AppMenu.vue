@@ -311,7 +311,7 @@ function showsCheck(item: Exclude<AppMenuItem, { type: 'separator' | 'submenu' }
   width: 28px;
   height: 28px;
   padding: 0;
-  border: 1px solid var(--color-border);
+  border: 0;
   border-radius: var(--radius-lg);
   color: var(--color-text);
   background: transparent;
