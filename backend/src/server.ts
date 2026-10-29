@@ -794,6 +794,10 @@ export class AppBackendServer {
     return this.missionExecution.developerInstructionsForAgent(agentId);
   }
 
+  async reopenMissionStage(agentId: string, stage: import('@workspace/core/missions').MissionStage) {
+    return this.missionExecution.reopenStage(agentId, stage);
+  }
+
   async setMissionTitle(agentId: string, title: string) {
     return this.missionExecution.setTitle(agentId, title);
   }

@@ -149,7 +149,7 @@ function appToolIcon(tool: string): ToolIcon | undefined {
   if (TASK_TOOLS.has(tool)) return icons.workItem;
   if (WORKSPACE_TOOLS.has(tool)) return icons.workspace;
   if (tool === 'read-skill' || tool === 'display-markdown' || tool === 'list-mission-artifacts' || tool === 'read-mission-artifact') return icons.markdown;
-  if (tool === 'set-mission-title') return icons.mission;
+  if (tool === 'set-mission-title' || tool === 'reopen-mission-stage') return icons.mission;
   if (tool === 'get-mission-assignment' || tool === 'update-work-item' || tool === 'write-mission-artifact' || tool === 'submit-mission-result' || tool === 'upsert-mission-ticket') return icons.workItem;
   return undefined;
 }

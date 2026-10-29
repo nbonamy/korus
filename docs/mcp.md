@@ -239,6 +239,10 @@ Registered per authenticated request by independent modules
   inferred from identity, never model input. Implementation workers read their
   explicit ticket assignment through `get-mission-assignment` and submit evidence
   against its stable ticket ID; the daemon owns backlog updates and aggregation.
+  The lead alone can reopen earlier reached stages; repository workers cannot change
+  the lifecycle. Ticket upserts preserve the backlog and completion for unchanged
+  work; content revisions reset only the edited ticket. An expected artifact revision
+  rejects stale edits, and identical creations reuse the existing ticket.
   Existing full-artifact submissions remain compatible, with assignment errors
   identifying the expected ticket and recovery call. Other stages still submit
   complete artifacts. Mission workers get no generic
