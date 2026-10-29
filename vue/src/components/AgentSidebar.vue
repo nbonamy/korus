@@ -196,6 +196,16 @@
             @click="toggleWorkspace(group)"
           >
             <strong>{{ group.label }}</strong>
+            <span
+              v-if="group.kind === 'repository' && group.remoteConnectionId"
+              class="agent-sidebar__host"
+              :class="{ 'agent-sidebar__host--offline': !remoteReady(group.remoteConnectionId) }"
+              role="img"
+              :aria-label="remoteHostLabel(group.remoteConnectionId)"
+              :title="remoteHostLabel(group.remoteConnectionId)"
+            >
+              <NetworkIcon aria-hidden="true" />
+            </span>
           </button>
           <span
             v-if="group.kind === 'quickChats'"
@@ -285,6 +295,7 @@
               <span
                 v-else-if="group.spansHosts && session.remoteConnectionId"
                 class="agent-sidebar__remote-marker"
+                :class="{ 'agent-sidebar__host--offline': !remoteReady(session.remoteConnectionId) }"
                 role="img"
                 :aria-label="remoteHostName(session.remoteConnectionId)"
                 :title="remoteHostName(session.remoteConnectionId)"
@@ -808,6 +819,15 @@ function sectionTarget(group: WorkspaceSidebarGroup): SectionTarget {
 
 function remoteHostName(connectionId: string | undefined): string {
   return props.remoteConnections?.find((connection) => connection.id === connectionId)?.name ?? '';
+}
+
+function remoteReady(connectionId: string | undefined): boolean {
+  return props.remoteConnections?.find((connection) => connection.id === connectionId)?.status === 'ready';
+}
+
+function remoteHostLabel(connectionId: string | undefined): string {
+  const host = remoteHostName(connectionId);
+  return remoteReady(connectionId) ? host : t('sidebar.remoteUnavailable', { host });
 }
 
 function selectRepositorySessionMenuItem(
@@ -1672,6 +1692,23 @@ function onResizePointerEnd(event: PointerEvent): void {
   display: grid;
   place-items: center;
   color: var(--color-text-muted);
+}
+
+.agent-sidebar__host {
+  flex: none;
+  display: grid;
+  margin-left: 6px;
+  place-items: center;
+  color: var(--color-text-muted);
+}
+
+.agent-sidebar__host svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.agent-sidebar__host--offline {
+  color: var(--color-error);
 }
 
 .agent-sidebar__remote-marker svg {

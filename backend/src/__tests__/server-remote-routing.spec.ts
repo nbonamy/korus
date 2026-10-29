@@ -1197,6 +1197,55 @@ describe('AppBackendServer', () => {
     expect(projectedSnapshot.turnGitDiffs['turn-other']).toBeUndefined();
   });
 
+  it('keeps remote agents in results that return the local snapshot', async () => {
+    const snapshot = createTestSnapshot();
+    snapshot.remoteConnections.connections = [readyRemoteConnection()];
+    snapshot.teams = [{
+      id: 'team-local',
+      name: 'Local',
+      remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }],
+      agentIds: ['agent-local'],
+    }];
+    snapshot.activeTeamId = 'team-local';
+    snapshot.activeAgentId = 'agent-local';
+    snapshot.agents = [{
+      id: 'agent-local',
+      teamId: 'team-local',
+      name: 'Dina',
+      folder: '/Users/nbonamy/src/agent-workspace',
+      backend: 'codex',
+      status: { type: 'idle' },
+      createdAt: '2026-06-14T10:00:00.000Z',
+      updatedAt: '2026-06-14T10:00:00.000Z',
+    }];
+    const remoteAgent = createRemoteAgent();
+    const remoteClients = {
+      request: vi.fn().mockResolvedValue({
+        snapshot: createRemoteTeamSnapshot([remoteAgent]),
+        lastEventSeq: 0,
+        clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false },
+      }),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+    const server = new AppBackendServer({
+      version: 'test-version',
+      pid: 123,
+      snapshot,
+      remoteClients: remoteClients as never,
+    });
+    await server.handleMessage({ jsonrpc: '2.0', id: 'snapshot', method: 'snapshot/get' });
+
+    const response = await server.handleMessage({
+      jsonrpc: '2.0',
+      id: 'load',
+      method: 'agent/conversation/load',
+      params: { agentId: 'agent-local' },
+    });
+
+    expect((response as { result: AppSnapshot }).result.agents.map((agent) => agent.id)).toContain(remoteAgent.id);
+    expect(snapshot.agents.map((agent) => agent.id)).not.toContain(remoteAgent.id);
+  });
+
   it('forwards remote events only for agents in connected remote team pointers', async () => {
     const snapshot = createTestSnapshot();
     snapshot.remoteConnections.connections = [readyRemoteConnection()];

@@ -499,6 +499,7 @@ export const messages = {
       newSessionIn: 'New session in {repository}',
       newWorktree: 'New worktree…',
       onRemoteMachine: 'On a remote machine',
+      remoteUnavailable: '{host} is not connected',
       noAgents: 'No agents',
       mergeRequestMergedCleanup: 'Merge request !{number} was merged. Clean up this agent.',
       mergeRequestClosedCleanup: 'Merge request !{number} was closed. Review this agent.',

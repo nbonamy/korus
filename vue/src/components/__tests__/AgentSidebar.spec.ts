@@ -440,6 +440,24 @@ describe('AgentSidebar sessions', () => {
     expect(wrapper.emitted('create-agent-from-repository')![1]).toStrictEqual([{ agentId: 'remote', repositoryName: 'id8', repositoryRoot: '/srv/id8', remoteConnectionId: 'devbox', originUrl: origin }]);
   });
 
+  it('shows the host icon on remote-only sections and flags a host that is not connected', async () => {
+    const git = agents[0]!;
+    if (git.workspace?.kind !== 'git') throw new Error('Expected Git fixture');
+    const remote = { ...git, id: 'remote', remoteConnectionId: 'devbox', workspace: { ...git.workspace, primaryWorktreeRoot: '/srv/id8' } };
+    const connection = (status: 'ready' | 'error') => [{ id: 'devbox', kind: 'ssh' as const, name: 'Devbox', host: 'devbox', status, createdAt: '', updatedAt: '' }];
+    const wrapper = mount(AgentSidebar, { props: { agents: [remote], activeAgentId: 'remote', teamName: 'Team', remoteConnections: connection('ready') } });
+    const host = wrapper.get('.agent-sidebar__host');
+    expect(host.attributes('title')).toBe('Devbox');
+    expect(host.classes()).not.toContain('agent-sidebar__host--offline');
+
+    await wrapper.setProps({ remoteConnections: connection('error') });
+    expect(wrapper.get('.agent-sidebar__host').classes()).toContain('agent-sidebar__host--offline');
+    expect(wrapper.get('.agent-sidebar__host').attributes('title')).toBe('Devbox is not connected');
+
+    await wrapper.setProps({ agents: [{ ...remote, remoteConnectionId: undefined }] });
+    expect(wrapper.find('.agent-sidebar__host').exists()).toBe(false);
+  });
+
   it('shows repository branch loading failures in the session menu', async () => {
     const wrapper = mount(AgentSidebar, {
       props: {

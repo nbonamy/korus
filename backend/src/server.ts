@@ -1071,6 +1071,8 @@ export class AppBackendServer {
     }
     if(sourceAgentId && response && 'error' in response)this.options.usage?.cancelPrompt(sourceAgentId,source);
     if (response && 'result' in response) {
+      // Handlers that answer with the local snapshot would otherwise erase the remote agents from the client.
+      if (response.result === this.snapshot) response = { ...response, result: this.remoteTeams.clientSnapshotFromKnownRemotes() };
       const commandResult = (snapshot: AppSnapshot) => params?.entityResult === true && creation.id && (createsAgent || message.method === backendMethods.agentCodeReviewStart)
         ? { agentId: creation.id, snapshot } : snapshot;
       if (isAppSnapshot(response.result) && (createsAgent || createsTeam)) {
