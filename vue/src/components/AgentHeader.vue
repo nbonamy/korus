@@ -63,7 +63,6 @@
         :share-available="shareAvailable && !shareActive"
         @share="emit('share')"
       />
-      <RunProfilesControl v-if="agent?.folder" :agent="agent" :host-label="runHostLabel ?? $t('runProfiles.localHost')" :preview-available="runPreviewAvailable ?? false" @preview="emit('run-preview', $event)" @visibility="emit('run-profiles-visible', $event)" />
       <button
         v-if="agent && !agent.sharedConversation && shareAvailable && shareActive"
         class="app-button app-button--neutral agent-header__share"
@@ -74,6 +73,7 @@
       >
         <ShareIcon aria-hidden="true" />
       </button>
+      <RunProfilesControl v-if="agent?.folder" :agent="agent" :host-label="runHostLabel ?? $t('runProfiles.localHost')" :preview-available="runPreviewAvailable ?? false" @preview="emit('run-preview', $event)" @visibility="emit('run-profiles-visible', $event)" />
       <GitDiffControl
         v-if="gitReviewAvailable && agent && gitStatus"
         class="agent-header__git-status"

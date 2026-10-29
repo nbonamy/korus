@@ -52,6 +52,7 @@ describe('AgentHeader', () => {
     await flushPromises();
     const share = wrapper.get('[aria-label="Share"]');
     expect(wrapper.get('[aria-label="Agent actions"]').element.compareDocumentPosition(share.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(share.element.compareDocumentPosition(wrapper.get('[aria-label="Run profiles"]').element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await share.trigger('click');
     expect(wrapper.emitted('share')).toStrictEqual([[]]);
     await wrapper.get('[aria-label="Agent actions"]').trigger('click');

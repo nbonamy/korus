@@ -1,7 +1,7 @@
 <template>
   <div class="run-profiles-control">
     <AppMenuButton v-model:open="menuOpen" :ariaLabel="$t('runProfiles.title')" :items="menuItems" :width="300" max-height="60vh" @select="selectAction">
-      <template #trigger="{ attrs }"><button v-bind="attrs" class="run-profiles-control__trigger" type="button" :aria-label="$t('runProfiles.title')" :title="$t('runProfiles.title')"><PlayerPlayIcon aria-hidden="true" /><ChevronDown aria-hidden="true" /></button></template>
+      <template #trigger="{ attrs }"><button v-bind="attrs" class="run-profiles-control__trigger" type="button" :aria-label="$t('runProfiles.title')" :title="$t('runProfiles.title')"><PlayerPlayIcon aria-hidden="true" /></button></template>
     </AppMenuButton>
   </div>
   <RunProfileImport v-if="managing" :agent-id="agent.id" :profiles="catalog?.profiles ?? []" :running-profile-ids="catalog?.runs.filter(run => run.state === 'running').map(run => run.profileId) ?? []" @change="adopt" @done="closeManager" />
@@ -34,7 +34,7 @@ import { appApi } from '../platform-api';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
-import { ChevronDown, PlayerPlayIcon, SettingsIcon } from '../shared/icons/app-icons';
+import { PlayerPlayIcon, SettingsIcon } from '../shared/icons/app-icons';
 import { translate } from '../i18n';
 import RunProfileImport from './RunProfileImport.vue';
 
