@@ -1581,6 +1581,7 @@ export const messages = {
               failed: 'Failed listing worktrees for {target}',
               running: 'Listing worktrees for {target}',
             },
+            reopenMissionStage: { running: 'Reopening mission stage', completed: 'Reopened mission stage', failed: 'Could not reopen mission stage' },
             setMissionTitle: { running: 'Naming mission', completed: 'Named mission', failed: 'Could not name mission' },
             suggestVisualizations: { running: 'Suggesting diagrams', completed: 'Suggested diagrams', failed: 'Could not suggest diagrams' },
             addVisualization: { running: 'Creating diagram', completed: 'Created diagram', failed: 'Could not create diagram' },

@@ -1,8 +1,8 @@
 import { createEntityId } from '@workspace/core/ids';
 import type { AppSnapshot } from '@workspace/core/contracts';
-import { isMissionArtifacts, type Mission, type MissionReviewFinding, type MissionStage, type MissionTicket } from '@workspace/core/missions';
+import { isMissionArtifacts, sameMissionTicketWork, type Mission, type MissionReviewFinding, type MissionStage, type MissionTicket } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
-import { missionRunAssignment, missionDeveloperInstructions, type MissionArtifactReadResult, type MissionArtifactWriteInput, type MissionExecutionInput, type MissionReviewFindingInput, type MissionReviewFindingUpdateInput, type MissionTicketDraftInput, type MissionTicketDraftResult, type MissionToolContext } from '@workspace/core/mission-execution';
+import { missionRunTicketIndex, missionRunAssignment, missionDeveloperInstructions, type MissionArtifactReadResult, type MissionArtifactWriteInput, type MissionExecutionInput, type MissionReviewFindingInput, type MissionReviewFindingUpdateInput, type MissionTicketDraftInput, type MissionTicketDraftResult, type MissionToolContext } from '@workspace/core/mission-execution';
 import type { MissionService } from './mission-service';
 import { missionTeamRepositories } from './mission-execution-policy';
 
@@ -51,6 +51,7 @@ export class MissionAgentTools {
     const run = runs[index];
     if (!run || run.workerId !== agentId || mission.status === 'completed' || run.stage !== mission.stage
       || !['running', 'awaitingReview', 'failed'].includes(run.status)) return false;
+    if (run.stage === 'implementation' && missionRunTicketIndex(mission, run) === undefined) return false;
     // A failed assignment can recover, but cannot supersede a replacement or a newer ticket for this worker.
     return !runs.slice(index + 1).some(candidate => candidate.stage === run.stage
       && (run.stage !== 'implementation' || candidate.ticketIndex === run.ticketIndex || candidate.workerId === agentId));
@@ -115,6 +116,7 @@ export class MissionAgentTools {
     const context = this.requireContext(agentId);
     if (context.stage !== 'tickets' || !input || typeof input.title !== 'string' || typeof input.body !== 'string'
       || typeof input.repositoryPath !== 'string'
+      || (input.expectedRevision !== undefined && (!Number.isInteger(input.expectedRevision) || input.expectedRevision < 0))
       || (input.ticketId !== undefined && typeof input.ticketId !== 'string')
       || (input.reference !== undefined && typeof input.reference !== 'string')
       || (input.blockedByTicketIds !== undefined && (!Array.isArray(input.blockedByTicketIds) || input.blockedByTicketIds.some(id => typeof id !== 'string')))) {
@@ -135,6 +137,8 @@ export class MissionAgentTools {
       if (!run || !this.ownsWritableRun(mission, run.id, agentId) || run.stage !== 'tickets') {
         throw new Error('This agent is not working on the active Tickets stage.');
       }
+      const currentRevision = mission.artifactFiles?.tickets?.revision ?? 0;
+      if (input.expectedRevision !== undefined && input.expectedRevision !== currentRevision) throw new Error('This mission artifact changed. Read it again before writing.');
       const drafts = structuredClone(run.draftTickets ?? []);
       const index = input.ticketId === undefined ? drafts.length : drafts.findIndex(ticket => ticket.id === input.ticketId);
       if (input.ticketId !== undefined && index < 0) throw new Error('Mission ticket draft not found.');
@@ -155,6 +159,16 @@ export class MissionAgentTools {
         ...(reference ? { reference } : {}),
         ...(dependsOn.length ? { dependsOn } : {}),
       };
+      if (input.ticketId === undefined) {
+        const duplicateIndex = drafts.findIndex(existing => sameMissionTicketWork(existing, ticket));
+        const duplicate = drafts[duplicateIndex];
+        if (duplicate?.id) return { success: true as const, ticketId: duplicate.id, index: duplicateIndex, artifactRevision: currentRevision };
+      }
+      const previous = drafts[index];
+      if (previous && sameMissionTicketWork(previous, ticket)) {
+        return { success: true as const, ticketId, index, artifactRevision: currentRevision };
+      }
+      if (previous) ticket.revision = (previous.revision ?? 0) + 1;
       if (index === drafts.length) drafts.push(ticket);
       else drafts[index] = ticket;
       if (!isMissionArtifacts({ ...mission.artifacts, tickets: drafts })) throw new Error('Mission ticket dependencies must be acyclic and reference existing tickets.');
@@ -164,6 +178,10 @@ export class MissionAgentTools {
       const artifactRevision = (mission.artifactFiles?.tickets?.revision ?? 0) + 1;
       (mission.artifactFiles ??= {}).tickets = { revision: artifactRevision, size: stored.size, updatedAt };
       run.draftTickets = drafts;
+      // A changed draft must be resubmitted before the user can approve it.
+      delete run.proposal;
+      delete run.finishedAt;
+      run.status = 'running';
       return { success: true as const, ticketId, index, artifactRevision };
     });
     await this.ports.publish();
@@ -298,13 +316,14 @@ export class MissionAgentTools {
   }
 }
 
-function missionTicketsMarkdown(tickets: MissionTicket[]): string {
+export function missionTicketsMarkdown(tickets: MissionTicket[]): string {
   return tickets.map((ticket, index) => [
     `# ${String(index + 1).padStart(2, '0')}: ${ticket.title}`,
+    `**Ticket ID:** ${ticket.id}`,
     ticket.body,
     `**Repository:** ${ticket.repositoryPath ?? 'Not assigned'}`,
     `**Blocked by:** ${ticket.dependsOn?.length ? ticket.dependsOn.map(blocker => `${String(blocker + 1).padStart(2, '0')}: ${tickets[blocker]?.title ?? 'Unknown ticket'}`).join(', ') : 'None (can start immediately)'}`,
-    '**Status:** ready-for-agent',
+    `**Status:** ${ticket.done ? 'completed' : 'ready-for-agent'}`,
     ticket.reference ? `**External reference:** ${ticket.reference}` : '',
   ].filter(Boolean).join('\n\n')).join('\n\n---\n\n');
 }

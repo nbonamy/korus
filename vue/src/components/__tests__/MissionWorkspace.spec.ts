@@ -723,6 +723,21 @@ describe('MissionWorkspace', () => {
     expect(inTicketDialog('.mission-implementation__dialog-footer .app-button')).toBeNull();
   });
 
+  it('shows revised completed tickets as queued without presenting old evidence as current', async () => {
+    const mission = missionWithRun('accepted', true);
+    mission.stage = 'implementation';
+    mission.artifacts.tickets = [{ id: 'mission-ticket-checkout', revision: 1, title: 'Checkout refunds', repositoryPath: '/src/billing-service', done: false }];
+    mission.execution!.runs = [{ id: 'old-checkout', stage: 'implementation', memberId: 'agent-dina', workerId: 'agent-dina', ticketId: 'mission-ticket-checkout', ticketIndex: 0,
+      repositoryPath: '/src/billing-service', status: 'accepted', skills: [], feedback: '', startedAt: 'now', implementationResult: { changes: 'Old checkout', tests: 'Old checks' } }];
+    const wrapper = mountWorkspace(mission);
+    const board = wrapper.get('[aria-label="Implementation by repository"]');
+    expect(board.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('0');
+    expect(board.text()).toContain('Ready');
+    expect(board.text()).not.toContain('Done');
+    await board.get('.mission-implementation__ticket-details').trigger('click'); await flushPromises();
+    expect(ticketDialogText()).not.toContain('Old checks');
+  });
+
   it('keeps failed and running implementation tickets recoverable from their repository lane', async () => {
     const mission = missionWithRun('accepted', true);
     mission.stage = 'implementation';
