@@ -18,6 +18,91 @@ function planAction(wrapper: VueWrapper, label: 'Approve' | 'Cancel') {
 }
 
 describe('Unified backend → mounted application', () => {
+  it.each(['', '/code'])('creates a new team project after saving its source folder (configured: %s)', async sourceFolder => {
+    const snapshot = createEmptySnapshot();
+    snapshot.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
+    snapshot.general.claudeCodeEnabled = true;
+    snapshot.sourceFolder = { path: sourceFolder, initialized: true, recentRepoNames: [] };
+    const { api } = installBackendFixture(snapshot);
+    api.chooseSourceFolder.mockResolvedValue('/code');
+    let finishSaving!: () => void;
+    api.updateSettings.mockImplementation(() => new Promise(resolve => {
+      finishSaving = () => {
+        snapshot.sourceFolder.path = '/code';
+        resolve(structuredClone(snapshot));
+      };
+    }));
+    api.createProject.mockImplementation(async () => {
+      if (!snapshot.sourceFolder.path) throw new Error('Choose a source folder before creating a project.');
+      return structuredClone(snapshot);
+    });
+    const wrapper = mount(App);
+    try {
+      await flushPromises();
+      const teamId = snapshot.activeTeamId;
+      await wrapper.get('.agent-empty-state').findAll('[role="menuitem"]').find(item => item.text() === 'New project…')!.trigger('click');
+      await flushPromises();
+      const dialog = wrapper.getComponent({ name: 'NewProjectDialog' });
+      await dialog.get('#new-project-name').setValue('korus');
+      await dialog.get('.app-button--primary').trigger('click');
+      await flushPromises();
+      if (!sourceFolder) {
+        expect(api.chooseSourceFolder).toHaveBeenCalledOnce();
+        expect(api.updateSettings).toHaveBeenCalledExactlyOnceWith({ sourceFolder: { path: '/code' } });
+        expect(api.createProject).not.toHaveBeenCalled();
+        expect(dialog.get('.app-button--primary').attributes('disabled')).toBeDefined();
+        finishSaving();
+        await flushPromises();
+      } else {
+        expect(api.chooseSourceFolder).not.toHaveBeenCalled();
+        expect(api.updateSettings).not.toHaveBeenCalled();
+      }
+      expect(api.createProject).toHaveBeenCalledExactlyOnceWith({ name: 'korus', teamId, selection: { backend: 'claude' } });
+      expect(dialog.props('visible')).toBe(false);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it('preserves a new project draft when source-folder selection is canceled or saving fails, then allows retry', async () => {
+    const snapshot = createEmptySnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const { api } = installBackendFixture(snapshot);
+    api.chooseSourceFolder.mockResolvedValueOnce(null).mockResolvedValue('/code');
+    api.updateSettings.mockRejectedValueOnce(new Error('Cannot save settings')).mockImplementation(async () => {
+      snapshot.sourceFolder = { path: '/code', initialized: true, recentRepoNames: [] };
+      return structuredClone(snapshot);
+    });
+    api.createProject.mockResolvedValue(snapshot);
+    const wrapper = mount(App);
+    try {
+      await flushPromises();
+      await wrapper.get('.agent-empty-state').findAll('[role="menuitem"]').find(item => item.text() === 'New project…')!.trigger('click');
+      await flushPromises();
+      const dialog = wrapper.getComponent({ name: 'NewProjectDialog' });
+      await dialog.get('#new-project-name').setValue('korus');
+      await dialog.get('.app-button--primary').trigger('click');
+      await flushPromises();
+      expect(api.chooseSourceFolder).toHaveBeenCalledOnce();
+      expect(api.updateSettings).not.toHaveBeenCalled();
+      expect(api.createProject).not.toHaveBeenCalled();
+      expect(dialog.props('visible')).toBe(true);
+      expect(dialog.props('error')).toBeNull();
+      expect(dialog.get('.app-button--primary').attributes('disabled')).toBeUndefined();
+      await dialog.get('.app-button--primary').trigger('click');
+      await flushPromises();
+      expect(api.createProject).not.toHaveBeenCalled();
+      expect(dialog.text()).toContain('Cannot save settings');
+      expect((dialog.get('#new-project-name').element as HTMLInputElement).value).toBe('korus');
+      await dialog.get('.app-button--primary').trigger('click');
+      await flushPromises();
+      expect(api.createProject).toHaveBeenCalledExactlyOnceWith({ name: 'korus', teamId: snapshot.activeTeamId, selection: { backend: 'codex' } });
+      expect(dialog.props('visible')).toBe(false);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   it.each(['github', 'gitlab', 'url'] as const)('chooses and saves a missing source folder before acquiring a %s repository for a new team', async mode => {
     const snapshot = createEmptySnapshot();
     snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];

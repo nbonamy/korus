@@ -360,6 +360,7 @@ describe('AppShell work routing', () => {
 
   it('creates a new Git project and opens an agent in it', async () => {
     const snapshot = createInitialSnapshot();
+    snapshot.sourceFolder = { path: '/src', initialized: true, recentRepoNames: [] };
     const createProject = vi.fn().mockResolvedValue(undefined);
     const wrapper = mountRealShell({ snapshot, createProject });
 
@@ -377,8 +378,11 @@ describe('AppShell work routing', () => {
 
   it('creates new Git projects on the active remote team devbox', async () => {
     const snapshot = remoteEmptyTeamSnapshot();
+    snapshot.sourceFolder.path = '';
+    const chooseSourceFolder = vi.fn();
+    const updateSettings = vi.fn();
     const createProject = vi.fn().mockResolvedValue(undefined);
-    const wrapper = mountRealShell({ snapshot, createProject });
+    const wrapper = mountRealShell({ snapshot, createProject, chooseSourceFolder, updateSettings });
 
     wrapper.getComponent({ name: 'AgentEmptyState' }).vm.$emit('start-work', 'new');
     await flushPromises();
@@ -388,6 +392,8 @@ describe('AppShell work routing', () => {
     await flushPromises();
 
     expect(createProject).toHaveBeenCalledWith({ name: 'fresh-project', teamId: 'team-remote', selection: { ...{ backend: 'codex' } } });
+    expect(chooseSourceFolder).not.toHaveBeenCalled();
+    expect(updateSettings).not.toHaveBeenCalled();
   });
 
   it.each([
