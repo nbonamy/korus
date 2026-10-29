@@ -421,7 +421,7 @@ describe('AgentSidebar sessions', () => {
     });
   });
 
-  it('marks remote rows only in a section that spans hosts and carries the host on section actions', async () => {
+  it('marks every remote row next to the engine icon and carries the host on section actions', async () => {
     const git = agents[0]!;
     if (git.workspace?.kind !== 'git') throw new Error('Expected Git fixture');
     const origin = 'git@github.com:org/id8.git';
@@ -438,7 +438,8 @@ describe('AgentSidebar sessions', () => {
     expect(wrapper.emitted('create-agent-from-repository')).toStrictEqual([[{ agentId: 'local', repositoryName: 'id8', repositoryRoot: '~/src/id8', originUrl: origin }]]);
 
     await wrapper.setProps({ agents: [remote] });
-    expect(wrapper.find('.agent-sidebar__remote-marker').exists()).toBe(false);
+    expect(wrapper.findAll('.agent-sidebar__remote-marker')).toHaveLength(1);
+    expect(wrapper.findAll('.agent-sidebar__engine')).toHaveLength(1);
     await wrapper.get('[aria-label="Create agent from branch, pull request, or issue"]').trigger('click');
     expect(wrapper.emitted('create-agent-from-repository')![1]).toStrictEqual([{ agentId: 'remote', repositoryName: 'id8', repositoryRoot: '/srv/id8', remoteConnectionId: 'devbox', originUrl: origin }]);
   });

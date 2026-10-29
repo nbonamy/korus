@@ -283,18 +283,28 @@
               @drop="clientAgentOrderUpdate.onDrop(session.agentId, $event)"
               @dragend="clientAgentOrderUpdate.onDragEnd"
             >
-              <span
-                v-if="(group.spansHosts || group.activity) && session.remoteConnectionId"
-                class="agent-sidebar__remote-marker"
-                :class="{ 'agent-sidebar__host--offline': !remoteReady(session.remoteConnectionId) }"
-                role="img"
-                :aria-label="remoteHostLabel(session.remoteConnectionId)"
-                :title="remoteHostLabel(session.remoteConnectionId)"
-              >
-                <NetworkIcon aria-hidden="true" />
+              <span v-if="session.remoteConnectionId" class="agent-sidebar__badges">
+                <span
+                  class="agent-sidebar__remote-marker"
+                  :class="{ 'agent-sidebar__host--offline': !remoteReady(session.remoteConnectionId) }"
+                  role="img"
+                  :aria-label="remoteHostLabel(session.remoteConnectionId)"
+                  :title="remoteHostLabel(session.remoteConnectionId)"
+                >
+                  <NetworkIcon aria-hidden="true" />
+                </span>
+                <span
+                  v-if="showEngine(session, group.activity)"
+                  class="agent-sidebar__engine"
+                  role="img"
+                  :aria-label="backendDisplayName(agentsById.get(session.agentId)!.backend)"
+                  :title="backendDisplayName(agentsById.get(session.agentId)!.backend)"
+                >
+                  <BackendIcon :backend="agentsById.get(session.agentId)!.backend" monochrome />
+                </span>
               </span>
               <span
-                v-else-if="!session.shared && backendChoices.length > 1 && agentsById.get(session.agentId) && !(group.activity && showQuickSwitchShortcut(session, group.activity))"
+                v-else-if="showEngine(session, group.activity)"
                 class="agent-sidebar__engine"
                 role="img"
                 :aria-label="backendDisplayName(agentsById.get(session.agentId)!.backend)"
@@ -819,6 +829,11 @@ function sectionTarget(group: WorkspaceSidebarGroup): SectionTarget {
 
 function remoteHostName(connectionId: string | undefined): string {
   return props.remoteConnections?.find((connection) => connection.id === connectionId)?.name ?? '';
+}
+
+function showEngine(session: WorkspaceSidebarSession, activity: SidebarActivity | undefined): boolean {
+  return !session.shared && backendChoices.value.length > 1 && agentsById.value.has(session.agentId)
+    && !(activity && showQuickSwitchShortcut(session, activity));
 }
 
 function remoteReady(connectionId: string | undefined): boolean {
@@ -1676,6 +1691,14 @@ function onResizePointerEnd(event: PointerEvent): void {
   margin-right: calc(var(--agent-sidebar-status-column-width) + var(--space-4));
 }
 
+.agent-sidebar__badges {
+  grid-column: 3;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-4);
+}
+
 .agent-sidebar__engine {
   grid-column: 3;
   display: none;
@@ -1688,7 +1711,6 @@ function onResizePointerEnd(event: PointerEvent): void {
 }
 
 .agent-sidebar__remote-marker {
-  grid-column: 3;
   display: grid;
   place-items: center;
   color: var(--color-text-muted);
@@ -1703,8 +1725,8 @@ function onResizePointerEnd(event: PointerEvent): void {
 }
 
 .agent-sidebar__host svg {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
+  width: var(--icon-md);
+  height: var(--icon-md);
 }
 
 .agent-sidebar__host--offline {
@@ -1712,12 +1734,16 @@ function onResizePointerEnd(event: PointerEvent): void {
 }
 
 .agent-sidebar__remote-marker svg {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
+  width: var(--icon-md);
+  height: var(--icon-md);
 }
 
 .agent-sidebar__agent:has(.agent-sidebar__remote-marker) {
-  --agent-sidebar-engine-track: 18px;
+  --agent-sidebar-engine-track: 20px;
+}
+
+.agent-sidebar__agent-row:hover .agent-sidebar__agent:has(.agent-sidebar__remote-marker):has(.agent-sidebar__engine) {
+  --agent-sidebar-engine-track: 44px;
 }
 
 .agent-sidebar__status[data-status="working"],
