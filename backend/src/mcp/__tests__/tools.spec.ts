@@ -46,6 +46,7 @@ describe(`${product.name} MCP tool registration`, () => {
   const handlers = new Map<string, ToolHandler>();
   const coordinator = {
     missionContext: vi.fn(),
+    listHosts: vi.fn(),
     listAgents: vi.fn(),
     sendMessage: vi.fn(),
     checkMessages: vi.fn(),
@@ -89,6 +90,7 @@ describe(`${product.name} MCP tool registration`, () => {
     const server = createServer(computerUse, browser);
 
     expect([...handlers.keys()]).toStrictEqual([
+      'list-hosts',
       'list-agents',
       'send-message',
       'check-messages',
@@ -125,6 +127,7 @@ describe(`${product.name} MCP tool registration`, () => {
       'task',
       'name',
       'selection',
+      'remoteConnectionId',
       'repoPath',
       'createWorktree',
       'branchName',

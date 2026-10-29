@@ -23,7 +23,7 @@ import { warnMain } from '../log';
 import { sshStdioTransport } from './ssh-connections';
 
 export type RemoteDaemonClientOptions = {
-  requestHandlers?: Record<string, (params: unknown) => unknown | Promise<unknown>>;
+  requestHandlers?: Record<string, (params: unknown, connectionId: string) => unknown | Promise<unknown>>;
   spawnProcess?: typeof spawn;
 };
 
@@ -297,7 +297,7 @@ class RemoteDaemonClient {
     }
 
     try {
-      this.writeResponse(createAppRpcResult(message.id, await handler(message.params)));
+      this.writeResponse(createAppRpcResult(message.id, await handler(message.params, this.connection.id)));
     } catch (error) {
       this.writeResponse(createAppRpcError(message.id, appRpcErrorCodes.internalError, error instanceof Error ? error.message : String(error)));
     }

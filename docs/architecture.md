@@ -455,8 +455,18 @@ Agents never move between backend locations.
 - Deleting a team removes its hidden teams (and their agents) on every host;
   deleting a connection drops the links and leaves the remote running.
 - Sidebar sections are keyed by the repository's origin identity, falling back to
-  the path on the agent's own host. Missions, automations, sharing and delegation
-  stay on the local host.
+  the path on the agent's own host. Missions and sharing stay on the local host.
+- The controlling daemon owns collaboration and durable tasks for a mixed-host
+  team. Hidden remote teams retain their controller identity; roster, messaging,
+  delegation and task tools call that controller over the existing SSH channel.
+  Callbacks validate the connection, team and caller before executing. Execution,
+  native tool access and files remain owned by the worker's daemon. Cross-host
+  conversation continuation uses a handoff rather than a foreign provider session.
+- Remote task receipts and results are saved by the controller. Provider events
+  from the owning host settle the submitting turn before result delivery. A lost
+  controller makes collaboration calls fail explicitly; missing outcomes remain
+  unconfirmed and work is never automatically replayed. Host identity is retained
+  with the task workspace for recovery and cancellation.
 - Each remote `daemon` owns its own engine availability; local enable flags are not
   mirrored. Automations are managed per location, selected independently of the
   active team.

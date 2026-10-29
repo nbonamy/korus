@@ -1,4 +1,7 @@
 export const backendMethods = {
+  clientCollaborationCall: 'client/collaboration/call',
+  collaborationWorkerCreate: 'collaboration/worker/create',
+  collaborationPromptSend: 'collaboration/prompt/send',
   guestConversationControl: 'client/guest/conversation/control',
   guestConversationImage: 'client/guest/conversation/image',
   guestConversationContent: 'client/guest/conversation/content',

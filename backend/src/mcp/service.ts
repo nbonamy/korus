@@ -55,10 +55,17 @@ import { createGitDiffStatsToolModuleProvider } from './git-diff-stats-tools';
 import type { CreatedProject } from '../projects/project-creation-service';
 import { warnMain } from '../log';
 import type { DurableTaskService } from '../agents/durable-task-service';
+import type { RemoteWorkerRequest } from '@workspace/core/remote-collaboration';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 const maxMarkdownBytes = 2 * 1024 * 1024;
 
 export type AppMcpServiceOptions = {
+  getCollaborationAgents?: () => Agent[];
+  createRemoteWorker?: (caller: Agent, input: McpCreateAgentInput & { teamId?: string }, intendedId?: string, assignmentPrompt?: string, userInstructions?: Agent['delegationUserInstructions']) => Promise<Agent>;
+  sendRemotePrompt?: (agent: Agent, prompt: string, goal?: boolean) => Promise<BackendSendResult>;
+  sendRemoteMessage?: (agent: Agent, prompt: string) => Promise<unknown>;
+  forwardCollaboration?: (agentId: string, name: string, args: Record<string, unknown>) => Promise<CallToolResult | undefined>;
   retainDocument?: (agentId: string, request: import('@workspace/core/contracts').SidePanelMarkdownRequest) => Promise<import('@workspace/core/contracts').SidePanelMarkdownRequest>;
   tasks?: DurableTaskService;
   persistSnapshot?: () => Promise<void>;
@@ -79,10 +86,14 @@ export type AppMcpServiceOptions = {
   gitDiff?: (folder: string, target: import('@workspace/core/contracts').AgentGitDiffTarget) => Promise<import('@workspace/core/contracts').AgentGitDiff>;
   startAutomaticReview?: StartAutomaticReview;
   closeAgent?: (callerAgentId: string, agentId: string) => Promise<void>;
+  listRemoteRepositories?: (remoteConnectionId: string) => Promise<SourceRepository[]>;
+  listRemoteWorktrees?: (remoteConnectionId: string, repoPath: string) => Promise<SourceWorktree[]>;
+  createRemoteWorktree?: (input: CreateSourceWorktreeInput) => Promise<SourceWorktree>;
   toolModuleProviders?: readonly AppMcpToolModuleProvider[];
 };
 
 export class AppMcpService {
+  private readonly getCollaborationAgents: () => Agent[];
   private readonly retainDocument?: AppMcpServiceOptions['retainDocument'];
   private readonly tasks?: DurableTaskService;
   private readonly persistSnapshot?: () => Promise<void>;
@@ -102,11 +113,12 @@ export class AppMcpService {
   private readonly agentCreation: AgentCreationService;
   private lastCelebrationKind?: CelebrationKind;
 
-  constructor(options: AppMcpServiceOptions) {
+  constructor(private readonly options: AppMcpServiceOptions) {
     this.retainDocument = options.retainDocument;
     this.tasks = options.tasks;
     this.persistSnapshot = options.persistSnapshot;
     this.snapshot = options.snapshot;
+    this.getCollaborationAgents = options.getCollaborationAgents ?? (() => this.snapshot.agents);
     this.now = options.now ?? (() => new Date());
     this.computerUseEnabled = options.computerUseEnabled ?? (() => true);
     this.resolveWorkspaceIdentity = options.resolveWorkspaceIdentity;
@@ -116,7 +128,8 @@ export class AppMcpService {
     this.eventSink = options.onEvent ?? null;
     this.coordinator = new AppMcpAgentCoordinator({
       missionTools: options.missionTools,
-      getAgents: () => this.snapshot.agents,
+      getAgents: this.getCollaborationAgents,
+      getHosts: () => this.snapshot.remoteConnections.connections.map(({ id, name, status }) => ({ id, name, status })),
       now: this.now,
       onAgentUpdated: (agent) => this.emit({
         agentId: agent.id,
@@ -137,13 +150,14 @@ export class AppMcpService {
       onCelebrate: (agent) => this.celebrateForAgent(agent),
       onAnnounce: (agent, phase, text) => this.announceForAgent(agent, phase, text),
       onUpdateWorkItem: (agent, workItemId, status, note) => this.updateWorkItemForAgent(agent, workItemId, status, note),
-      onListSourceRepositories: () => this.listSourceRepositories(),
-      onListSourceWorktrees: (repoPath) => this.listSourceWorktrees(repoPath),
+      onListSourceRepositories: (connectionId) => this.listSourceRepositories(connectionId),
+      onListSourceWorktrees: (repoPath, connectionId) => this.listSourceWorktrees(repoPath, connectionId),
       onCreateSourceWorktree: (input) => this.createSourceWorktree(input),
       onCreateAgent: (agent, input) => this.createAgentFromMcp(agent, input),
       onCloseAgent: options.closeAgent,
     });
     this.server = new AppMcpHttpServer({
+      forwardCollaboration: options.forwardCollaboration,
       coordinator: this.coordinator,
       computerUse: options.computerUse,
       computerUseEnabled: this.computerUseEnabled,
@@ -192,6 +206,21 @@ export class AppMcpService {
     return this.server.start();
   }
 
+  callTool(agentId: string, name: string, args: Record<string, unknown>): Promise<CallToolResult> {
+    return this.server.callTool(agentId, name, args);
+  }
+
+  async provisionRemoteWorker(request: RemoteWorkerRequest): Promise<Agent> {
+    // Provider sessions belong to their host. Cross-host delegation always starts with a handoff.
+    const caller = { ...request.caller, backendSession: undefined };
+    const response = await this.createAgentFromMcp(caller, {
+      ...request.input, remoteConnectionId: undefined, task: undefined, prompt: undefined, instructions: undefined, teamId: request.teamId,
+    }, request.agentId, request.assignmentPrompt, request.userInstructions);
+    if (!response.success) throw new McpToolError(response.message);
+    await this.persistSnapshot?.();
+    return this.snapshot.agents.find(agent => agent.id === request.agentId)!;
+  }
+
   stop(): Promise<void> {
     return this.server.stop();
   }
@@ -218,13 +247,25 @@ export class AppMcpService {
   }
 
   private async deliverUnreadAgentMessages(agentId: string): Promise<void> {
-    const agent = this.snapshot.agents.find((candidate) => candidate.id === agentId);
+    const agent = this.getCollaborationAgents().find((candidate) => candidate.id === agentId);
     if (!agent || !this.driverRpc) {
       return;
     }
 
     const messages = this.coordinator.peekUnreadMessages(agentId);
     if (messages.length === 0) {
+      return;
+    }
+
+    if (agent.remoteConnectionId) {
+      try {
+        if (!this.options.sendRemoteMessage) throw new Error('Remote message delivery is unavailable.');
+        await this.options.sendRemoteMessage(agent, agentMessagesPrompt(messages));
+        this.coordinator.markMessagesRead(messages.map(message => message.id));
+        this.emitDequeuedMessages(agentId, messages.map(message => message.id));
+      } catch {
+        this.emitQueuedMessages(agentId, messages);
+      }
       return;
     }
 
@@ -422,18 +463,30 @@ export class AppMcpService {
     };
   }
 
-  private async listSourceRepositories(): Promise<SourceRepository[]> {
+  private async listSourceRepositories(connectionId?: string): Promise<SourceRepository[]> {
+    if (connectionId) {
+      if (!this.options.listRemoteRepositories) throw new McpToolError('Remote repository listing is unavailable.');
+      return this.options.listRemoteRepositories(connectionId);
+    }
     const sourceFolder = this.snapshot.sourceFolder.path.trim();
     return sourceFolder ? scanSourceRepositories(sourceFolder) : [];
   }
 
-  private async listSourceWorktrees(repoPath: string): Promise<SourceWorktree[]> {
+  private async listSourceWorktrees(repoPath: string, connectionId?: string): Promise<SourceWorktree[]> {
+    if (connectionId) {
+      if (!this.options.listRemoteWorktrees) throw new McpToolError('Remote worktree listing is unavailable.');
+      return this.options.listRemoteWorktrees(connectionId, repoPath);
+    }
     return listSourceWorktrees(repoPath);
   }
 
   private async createSourceWorktree(
     input: CreateSourceWorktreeInput,
   ): Promise<SourceWorktree> {
+    if (input.remoteConnectionId) {
+      if (!this.options.createRemoteWorktree) throw new McpToolError('Remote worktree creation is unavailable.');
+      return this.options.createRemoteWorktree(input);
+    }
     return (await this.worktreeManager.create(input, { backgroundInitialization: true })).worktree;
   }
 
@@ -446,7 +499,7 @@ export class AppMcpService {
   ): Promise<McpCreateAgentResponse> {
     const prompt = input.prompt?.trim() ?? '';
     if (input.goal && !prompt && !assignmentPrompt) return { success: false, message: 'prompt is required when goal is true' };
-    if (input.goal) {
+    if (input.goal && !input.remoteConnectionId) {
       const backend = resolveAgentBackend(this.snapshot, input.selection?.backend ?? caller.backend);
       const target = { ...caller, id: intendedId ?? '', backend, backendSession: undefined, backendDefaults: delegatedBackendDefaults(caller, input) };
       if (!this.requireDriverRpc().getCapabilities(target).goals) return { success: false, message: 'This backend does not support goals.' };
@@ -475,6 +528,7 @@ export class AppMcpService {
         ...(userInstructions ? { delegationUserInstructions: userInstructions } : {}),
         backend: input.selection?.backend ?? caller.backend, specification: input,
         workspace: {
+          ...(input.remoteConnectionId ? { remoteConnectionId: input.remoteConnectionId } : {}),
           repositoryPath: input.repoPath,
           ...(input.createWorktree && input.branchName ? { branchName: input.branchName } : {}),
           ...(input.destinationPath ? { destinationPath: input.destinationPath } : {}),
@@ -483,9 +537,9 @@ export class AppMcpService {
         const response = await this.createAgentFromMcp(caller, { ...input, startingContext, task: undefined, prompt: undefined, instructions: undefined }, task.workerAgentId, task.prompt, task.delegationUserInstructions);
         if (!response.success) throw new Error(response.message);
         await this.persistSnapshot?.();
-        return this.snapshot.agents.find(agent => agent.id === task.workerAgentId)!;
+        return this.getCollaborationAgents().find(agent => agent.id === task.workerAgentId)!;
       });
-      const worker = this.snapshot.agents.find(agent => agent.id === task.workerAgentId);
+      const worker = this.getCollaborationAgents().find(agent => agent.id === task.workerAgentId);
       return { success: true, taskId: task.id, task, agentId: task.workerAgentId, folder: task.folder, promptSubmitted: Boolean(task.acceptance), ...(worker?.delegationContext ? { delegationContext: worker.delegationContext } : {}), message: `Task ${task.id}: ${task.state}. Use wait-tasks to inspect the durable outcome.` };
     }
     const repoPath = input.repoPath.trim();
@@ -495,6 +549,16 @@ export class AppMcpService {
     const branchName = input.branchName?.trim();
     if (input.createWorktree && !branchName) {
       return { success: false, message: 'branchName is required when createWorktree is true' };
+    }
+
+    if (input.remoteConnectionId) {
+      if (!this.options.createRemoteWorker) throw new McpToolError('Remote agent creation is unavailable.');
+      const worker = await this.options.createRemoteWorker(caller, { ...input, startingContext }, intendedId, assignmentPrompt ?? (prompt ? fullPrompt : undefined), userInstructions);
+      if (prompt) await this.startAgentWithPrompt(worker, delegatedAssignmentPrompt(worker, fullPrompt), input.goal);
+      return { success: true, agentId: worker.id, agentName: agentDisplayName(worker), folder: worker.folder ?? undefined,
+        ...(branchName ? { branchName } : {}), promptSubmitted: Boolean(prompt),
+        ...(worker.delegationContext ? { delegationContext: worker.delegationContext } : {}),
+        message: `Created agent ${agentDisplayName(worker)} on the selected host${prompt ? ' and started its initial prompt' : ''}.` };
     }
 
     const progressId = `agent-creation-${randomUUID()}`;
@@ -596,6 +660,7 @@ export class AppMcpService {
     const requested = input.startingContext ?? this.snapshot.general.worktreeDelegationStartingContext ?? 'handoff';
     if (requested === 'handoff') return { requested, effective: 'handoff' };
     if (caller.backend !== worker.backend) return { requested, effective: 'handoff', reason: 'cross-provider' };
+    if (caller.remoteConnectionId !== worker.remoteConnectionId) return { requested, effective: 'handoff', reason: 'unavailable' };
     const driver = this.backendDriverForAgent(worker);
     if (!driver.forkWorktreeConversation) return { requested, effective: 'handoff', reason: 'unsupported' };
     if (!caller.backendSession) return { requested, effective: 'handoff', reason: 'unavailable' };
@@ -618,6 +683,10 @@ export class AppMcpService {
   }
 
   private startAgentWithPrompt(agent: Agent, prompt: string, goal?: boolean): Promise<BackendSendResult> {
+    if (agent.remoteConnectionId) {
+      if (!this.options.sendRemotePrompt) return Promise.reject(new McpToolError('Remote prompt submission is unavailable.'));
+      return this.options.sendRemotePrompt(agent, prompt, goal);
+    }
     return new Promise((resolve, reject) => {
       this.recordPromptInputMethod(agent.id, 'typed');
       sendAgentPrompt(

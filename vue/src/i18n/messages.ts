@@ -1573,6 +1573,11 @@ export const messages = {
               failed: 'Failed listing agents',
               running: 'Listing agents',
             },
+            listHosts: {
+              completed: 'Listed hosts',
+              failed: 'Failed listing hosts',
+              running: 'Listing hosts',
+            },
             listRepos: {
               completed: 'Listed repositories',
               failed: 'Failed listing repositories',

@@ -108,6 +108,11 @@ by mutating user-global tool config.
 
 ### Delegation
 
+- Host discovery is an on-demand query rather than cached tool-description state.
+  Repository paths and worktrees belong to the selected host. Cross-host workers
+  retain the caller's team and collaborate through its controlling daemon; that
+  daemon owns durable task records and validates remote callback identity. Native
+  execution and filesystem tools remain on the worker's host.
 - `create-agent` creates a Korus co-agent in the caller's team without selecting it,
   optionally with an isolated worktree, and stays pending until the new agent
   accepts its initial prompt. `prompt` is the concise visible request;

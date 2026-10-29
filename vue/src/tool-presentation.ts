@@ -19,6 +19,7 @@ import {
   IconSitemap as SitemapIcon,
   IconUsers as UsersIcon,
   IconPhoto as PhotoIcon,
+  IconWorld as WorldIcon,
 } from '@tabler/icons-vue';
 import { presentClaudeToolTitle } from './claude-tool-titles';
 import { appMcpToolName, appToolName, presentAppToolTitle } from './tool-title-presenter';
@@ -31,6 +32,7 @@ type AgentNameResolver = (identifier: string) => string | undefined;
 // typechecking, while Vite dedupes them at runtime. Keep that cast at this one
 // host boundary instead of leaking it through the resolver.
 const icons = {
+  hosts: WorldIcon as unknown as ToolIcon,
   agents: UsersIcon as unknown as ToolIcon,
   image: PhotoIcon as unknown as ToolIcon,
   simulator: MobileIcon as unknown as ToolIcon,
@@ -138,6 +140,7 @@ export function provideAppToolPresentation(translate: Translate, resolveAgentNam
 }
 
 function appToolIcon(tool: string): ToolIcon | undefined {
+  if (tool === 'list-hosts') return icons.hosts;
   if (tool === 'generate-image') return icons.image;
   if (tool === 'simulator') return icons.simulator;
   if (BROWSER_TOOLS.has(tool)) return icons.browser;

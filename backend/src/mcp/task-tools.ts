@@ -4,7 +4,7 @@ import type { DurableTaskService } from '../agents/durable-task-service';
 import { taskResultSchema } from '../persistence/task-schema';
 import { loggedToolResult, type AppMcpToolModuleProvider } from './tool-modules';
 
-export function createTaskToolModuleProvider(tasks: DurableTaskService): AppMcpToolModuleProvider {
+export function createTaskToolModuleProvider(tasks: DurableTaskService, externalWorker: (agentId: string) => boolean = () => false): AppMcpToolModuleProvider {
   return {
     id: 'tasks',
     resolve: ({ agentId }) => ({
@@ -22,7 +22,7 @@ export function createTaskToolModuleProvider(tasks: DurableTaskService): AppMcpT
           description: 'Cancel a task you assigned or are executing. Persists cancellation before interrupting; preserves the worker, workspace, conversation and results.',
           inputSchema: { taskId: z.string().min(1) },
         }, ({ taskId }) => loggedToolResult('cancel-task', { agentId, taskId }, () => tasks.cancel(agentId, taskId)));
-        if (tasks.instructions(agentId)) server.registerTool('complete-task', {
+        if (tasks.instructions(agentId) || externalWorker(agentId)) server.registerTool('complete-task', {
           description: `Save your assigned task result before finish_turn. Finish all foreground tools and background work first. ${product.name} finalizes only after this exact provider turn succeeds, then delivers the result to the parent. Do not also send a completion message. This does not authorize merging or publication.`,
           inputSchema: taskResultSchema.shape,
         }, input => loggedToolResult('complete-task', { agentId }, () => tasks.complete(agentId, input)));

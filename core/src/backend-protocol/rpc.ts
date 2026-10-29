@@ -177,6 +177,18 @@ export type AppBackendRequestMap = {
     params: { agentId: string };
     result: import('../delegated-task').DelegatedTask[];
   };
+  [backendMethods.collaborationWorkerCreate]: {
+    params: import('../remote-collaboration').RemoteWorkerRequest;
+    result: import('../remote-collaboration').RemoteWorkerResult;
+  };
+  [backendMethods.collaborationPromptSend]: {
+    params: { agentId: string; prompt: string; goal?: boolean; message?: boolean };
+    result: import('../backend-driver').BackendSendResult;
+  };
+  [backendMethods.clientCollaborationCall]: {
+    params: import('../remote-collaboration').RemoteCollaborationCall;
+    result: import('../remote-collaboration').RemoteCollaborationReply;
+  };
   [backendMethods.agentTaskCancel]: {
     params: { agentId: string; taskId: string };
     result: import('../delegated-task').DelegatedTask;

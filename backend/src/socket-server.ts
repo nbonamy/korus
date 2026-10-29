@@ -4,6 +4,7 @@ import net, { type Server, type Socket } from 'node:net';
 import path from 'node:path';
 import type { AppBackendEvent, AppRpcMessage, AppRpcResponse } from '@workspace/core/backend-protocol/rpc';
 import { StdioRpcPeer } from './stdio';
+import { isRemoteCollaborationReply } from '@workspace/core/remote-collaboration';
 
 export type LocalSocketRpcServerOptions = {
   onMessage(message: AppRpcMessage): AppRpcResponse | undefined | Promise<AppRpcResponse | undefined>;
@@ -64,6 +65,20 @@ export class LocalSocketRpcServer {
       throw new Error(`No connected client can handle '${method}'.`);
     }
     return peer.request<Result>(method, params);
+  }
+
+  async requestCollaborationController<Result>(params: unknown): Promise<Result> {
+    // Only the owning controller accepts the team identity; desktops and unrelated controllers reject it.
+    try {
+      const ownerId = params && typeof params === 'object' && 'ownerId' in params ? params.ownerId : undefined;
+      return await Promise.any([...this.peers].map(async peer => {
+        const reply = await peer.request<Result>(backendMethods.clientCollaborationCall, params);
+        if (!isRemoteCollaborationReply(reply, ownerId)) throw new Error('This client is not the collaboration controller.');
+        return reply;
+      }));
+    } catch {
+      throw new Error('The collaboration controller is not connected. Reconnect the controlling computer and retry.');
+    }
   }
 
   private handleConnection(socket: Socket): void {

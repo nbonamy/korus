@@ -318,6 +318,8 @@ export class DurableTaskService {
     for (const listener of this.listeners) listener();
   }
 
+  async flush(): Promise<void> { await this.writes; }
+
   private scheduleDispatch(): void {
     if (this.closed || this.timer) return;
     this.timer = setTimeout(() => {

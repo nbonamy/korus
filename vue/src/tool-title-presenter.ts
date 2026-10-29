@@ -69,6 +69,7 @@ const TOOL_KEYS: Record<string, string> = {
   'delete-visualization': 'deleteVisualization',
   'replace-visualization': 'replaceVisualization',
   'list-agents': 'listAgents',
+  'list-hosts': 'listHosts',
   'list-repos': 'listRepos',
   'list-worktrees': 'listWorktrees',
   'set-mission-title': 'setMissionTitle',

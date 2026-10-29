@@ -312,12 +312,15 @@ export type Team = {
   color?: string;
   /** Hidden per-host teams on remote daemons that hold this team's remote agents. */
   remoteLinks?: RemoteTeamLink[];
+  /** Collaboration authority for a team controlled by another daemon. */
+  collaborationOwnerId?: string;
   agentIds: string[];
   activeAgentId?: string;
 };
 
 /** Foreign state: `remoteTeamId` belongs to the remote daemon and may collide with local ids. */
 export type RemoteTeamLink = {
+  collaborationOwnerId?: string;
   connectionId: string;
   remoteTeamId: string;
 };

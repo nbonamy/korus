@@ -223,6 +223,7 @@ async function serve(): Promise<void> {
       if (!socketServer) {
         throw new Error(`No connected client can handle '${method}'.`);
       }
+      if (method === backendMethods.clientCollaborationCall) return socketServer.requestCollaborationController(params);
       return socketServer.requestFirstClient(method, params);
     },
     emitEvent: (event) => {

@@ -104,7 +104,8 @@ function isTeam(value: unknown): boolean {
     typeof value.name === 'string' &&
     optional(value, 'avatar', isString) &&
     optional(value, 'color', isString) &&
-    optional(value, 'remoteLinks', (links) => isArrayOf(links, (link) => isRecord(link) && isString(link.connectionId) && isString(link.remoteTeamId))) &&
+    optional(value, 'collaborationOwnerId', isString) &&
+    optional(value, 'remoteLinks', (links) => isArrayOf(links, (link) => isRecord(link) && isString(link.connectionId) && isString(link.remoteTeamId) && optional(link, 'collaborationOwnerId', isString))) &&
     isArrayOf(value.agentIds, isString) &&
     optional(value, 'activeAgentId', isString);
 }
