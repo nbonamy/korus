@@ -949,6 +949,20 @@ describe('companion authorization gateway', () => {
       await expect(f.gateway.request('stranger', 'agent.backend.set', { target, backend: 'claude' })).rejects.toThrow('authorized');
     });
   });
+  it('authorizes remote engine switches and duplicates against their owning host', async () => {
+    const f = fixture(); await f.pair();
+    f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex'], 'remote-team': ['codex'], 'ssh-host': ['claude'] } });
+    const remote = { ...target, locationId: 'ssh-host', teamId: 'remote-team', agentId: 'remote-agent' };
+    await f.gateway.request('phone', 'agent.backend.set', { target: remote, backend: 'claude' });
+    await f.gateway.request('phone', 'agent.duplicate', { target: remote, backend: 'claude' });
+    expect(f.port.setBackend).toHaveBeenCalledExactlyOnceWith('remote-agent', 'claude');
+    expect(f.port.duplicateAgent).toHaveBeenCalledExactlyOnceWith('remote-agent', 'claude');
+    for (const method of ['agent.backend.set', 'agent.duplicate']) {
+      await expect(f.gateway.request('phone', method, { target: remote, backend: 'codex' })).rejects.toThrow('not available');
+    }
+    expect(f.port.setBackend).toHaveBeenCalledOnce();
+    expect(f.port.duplicateAgent).toHaveBeenCalledOnce();
+  });
   describe('starting a quick chat', () => {
     async function ready() {
       const f = fixture(); await f.pair();

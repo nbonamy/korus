@@ -284,7 +284,7 @@ const agentOperations = {
   'agent.backend.set': agentOperation(withTarget(z.object({ backend: z.enum(['codex', 'claude', 'antigravity']) }).strict()))({
     check: (agent, { backend }, { backends }) => {
       if (!canSelectAgentBackend(agent)) throw new Error('The engine can only change before the first prompt.');
-      if (backends && !backends[agent.teamId ?? '']?.includes(backend)) throw new Error('That engine is not available.');
+      if (backends && !backends[agent.remoteConnectionId ?? agent.teamId ?? '']?.includes(backend)) throw new Error('That engine is not available.');
     },
     act: async (port, agent, { backend }) => { await port.setBackend(agent.id, backend); return {}; },
   }),
@@ -296,7 +296,7 @@ const agentOperations = {
   }),
   'agent.duplicate': agentOperation(withTarget(z.object({ backend: z.enum(['codex', 'claude', 'antigravity']) }).strict()))({
     check: (agent, { backend }, { backends }) => {
-      if (!backends?.[agent.teamId ?? '']?.includes(backend)) throw new Error('That engine is not available.');
+      if (!backends?.[agent.remoteConnectionId ?? agent.teamId ?? '']?.includes(backend)) throw new Error('That engine is not available.');
     },
     act: async (port, agent, { backend }) => {
       if (!port.duplicateAgent) throw new Error('Agent duplication is unavailable.');

@@ -82,13 +82,14 @@ export function useRepositorySession(options: {
 
   const assignmentSessions = computed<WorkItemAssignmentSession[]>(() => {
     const current = source.value;
-    if (!current) return [];
-    const { teamId, remoteConnectionId } = context(current);
+    const checkout = hostCheckout.value;
+    if (!current || checkout?.state !== 'cloned') return [];
+    const { teamId } = context(current);
     return options.getSnapshot().agents
       .filter((agent) => (!teamId || agent.teamId === teamId)
-        && agent.remoteConnectionId === remoteConnectionId
+        && agent.remoteConnectionId === hostId.value
         && agent.workspace?.kind === 'git'
-        && agent.workspace.primaryWorktreeRoot === current.repositoryRoot)
+        && agent.workspace.primaryWorktreeRoot === checkout.path)
       .map((agent) => ({
         agentId: agent.id,
         branch: agent.workspace?.kind === 'git' ? agent.workspace.branch ?? '' : '',
@@ -97,6 +98,7 @@ export function useRepositorySession(options: {
           : agentDisplayName(agent),
       }));
   });
+  const modelAgentId = computed(() => assignmentSessions.value.find(session => session.agentId === source.value?.agentId)?.agentId);
   const worktreeRepository = computed<SourceRepository | null>(() => {
     const current = worktreeSource.value;
     return current ? { name: current.repositoryName, path: current.repositoryRoot, worktrees: [] } : null;
@@ -190,7 +192,11 @@ export function useRepositorySession(options: {
     const current = source.value;
     if (!current || next === hostId.value) return;
     const request = ++hostRequestId;
+    ++sourceRequestId;
     hostId.value = next;
+    loading.value = false;
+    hostBusy.value = false;
+    backend.value = preferredBackendChoices(options.getSnapshot(), next)[0];
     error.value = null;
     const known = locations.get(hostKey(next));
     if (known) {
@@ -377,6 +383,10 @@ export function useRepositorySession(options: {
     const current = source.value;
     if (!current) return;
     if (selection.isCurrent && !selection.isCurrent()) return;
+    if (selection.destination === 'existing' && !assignmentSessions.value.some(session => session.agentId === selection.agentId)) {
+      error.value = translate('surface.appShell.theSelectedAgentIsUnavailable');
+      return;
+    }
     const { teamId, remoteConnectionId } = context(current);
     close();
     if (selection.destination === 'existing') {
@@ -488,6 +498,7 @@ export function useRepositorySession(options: {
     hosts,
     listBranches,
     loading,
+    modelAgentId,
     open,
     openWorktree,
     source,

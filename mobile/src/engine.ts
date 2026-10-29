@@ -74,6 +74,9 @@ export type EngineState = {
   missionAction: 'idle' | 'working' | 'failed';
   /** The engines the open team's laptop can start a chat with. */
   backends: string[];
+  /** Engines on the selected conversation's host and on each sidebar repository's host. */
+  conversationBackends: string[];
+  repositoryBackends: Record<string, string[]>;
   branches: { repositoryId: string | null; status: 'idle' | 'loading' | 'loaded' | 'failed'; items: CompanionBranch[] };
   /** The engine of the open chat, and whether it may still be changed: only before the first prompt. */
   backend: string | null;
@@ -333,7 +336,12 @@ export function createEngine(port: EnginePort) {
       ] },
       skills: { status: state.skills.value.status, items: state.skills.value.items.map((skill) => ({ id: skill.path, name: skillDisplayName(skill), insertText: skillInsertText(skill), value: skill.name, description: skillDescription(skill) })) },
       sessionAction: state.sessionAction.value, sessionActionFailed: state.sessionActionFailed.value,
-      closePreview: state.closePreview.value, chatCreation: state.chatCreation.value, teamCreation: state.teamCreation.value, missionAction: state.missionAction.value, backends: backendChoices(), branches: state.branches.value,
+      closePreview: state.closePreview.value, chatCreation: state.chatCreation.value, teamCreation: state.teamCreation.value, missionAction: state.missionAction.value, backends: backendChoices(),
+      conversationBackends: backendChoices(agent?.remoteConnectionId ?? state.teamId.value),
+      repositoryBackends: Object.fromEntries(sidebarGroups.value.flatMap(group => {
+        if (!group.repositoryRoot) return [];
+        return [[group.repositoryRoot, backendChoices(group.remoteConnectionId ?? repositoryTeam(group.repositoryRoot))]];
+      })), branches: state.branches.value,
       backend: agent?.backend ?? null,
       canSelectBackend: engines() !== null,
       models: state.models.value.map((model) => ({ id: model.id, name: model.displayName, efforts: effortsOf(model), tiers: (model.serviceTiers ?? []).map(({ id, name }) => ({ id, name })) })),

@@ -468,8 +468,9 @@ Agents never move between backend locations.
   unconfirmed and work is never automatically replayed. Host identity is retained
   with the task workspace for recovery and cancellation.
 - Each remote `daemon` owns its own engine availability; local enable flags are not
-  mirrored. Automations are managed per location, selected independently of the
-  active team.
+  mirrored. Companion engine choices follow the operation's conversation or
+  repository host; local Quick Chat and project creation use local availability.
+  Automations are managed per location, selected independently of the active team.
 
 ## Source Repositories And Worktrees
 

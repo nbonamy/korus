@@ -419,7 +419,7 @@
       :selected-repository-id="repositorySession.workSourceId.value"
       :loading="repositorySessionSourceLoading"
       :error="repositorySessionSourceError"
-      :model-agent-id="repositorySessionSource?.agentId"
+      :model-agent-id="repositorySession.modelAgentId.value"
       :sessions="repositorySessionAssignmentSessions"
       :hosts="repositorySession.hosts.value"
       :host-id="repositorySession.hostId.value"

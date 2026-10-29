@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
-import type { RemoteConnection, SourceBranch, SourceRepository } from '@workspace/core/contracts';
+import type { RemoteConnection, SourceBranch, SourceRepository, WorkItem } from '@workspace/core/contracts';
 import { useRepositorySession } from '../use-repository-session';
 
 const connection = (id: string): RemoteConnection => ({ id, kind: 'ssh', name: id, host: id, status: 'ready', sourceFolderPath: '/home/me/src', createdAt: '', updatedAt: '' });
@@ -16,17 +16,45 @@ function setup(remoteRepositories: SourceRepository[], clone?: (input: unknown) 
   const listSourceRepositories = vi.fn(async (host?: string) => host ? remoteRepositories : [checkout('/Users/me/src/korus')]);
   const cloneRepository = vi.fn(clone ?? (async () => checkout('/home/me/src/korus')));
   const createAgent = vi.fn(async () => undefined);
+  const startWorkItemInExistingSession = vi.fn();
+  const prefillWorkItemForAgent = vi.fn();
   const session = useRepositorySession({
     activeTeamId: () => snapshot.activeTeamId ?? undefined, getSnapshot: () => snapshot, getWorkRepositories: () => [],
     assignWorkItem: vi.fn(), createAgent, createIsolatedWorkItemAgent: vi.fn() as never, createSourceWorktree: vi.fn() as never,
     cloneRepository, remoteConnections: () => snapshot.remoteConnections.connections,
     listSourceRepositories, listSourceBranches, loadWorkItems: async () => [], loadWorkRepositories: async () => [],
-    notifyError: vi.fn(), prefillWorkItemForAgent: vi.fn(), startWorkItemInExistingSession: vi.fn(), suggestSourceWorktreePath: async () => '',
+    notifyError: vi.fn(), prefillWorkItemForAgent, startWorkItemInExistingSession, suggestSourceWorktreePath: async () => '',
   });
-  return { session, listSourceBranches, listSourceRepositories, cloneRepository, createAgent };
+  return { session, snapshot, startWorkItemInExistingSession, prefillWorkItemForAgent, listSourceBranches, listSourceRepositories, cloneRepository, createAgent };
 }
 
 describe('repository session host choice', () => {
+  it('removes original-host sessions and catalog identity before looking up a missing checkout, and rejects stale submissions', async () => {
+    const { session, snapshot, listSourceRepositories, startWorkItemInExistingSession, prefillWorkItemForAgent } = setup([]);
+    const agent = snapshot.agents[0]!;
+    agent.workspace = { kind: 'git', folder: source.repositoryRoot, repositoryRoot: source.repositoryRoot, primaryWorktreeRoot: source.repositoryRoot,
+      repositoryName: 'korus', branch: 'main', isLinkedWorktree: false, updatedAt: '' };
+    await session.open({ ...source, agentId: agent.id });
+    expect(session.assignmentSessions.value.map(session => session.agentId)).toStrictEqual([agent.id]);
+    let resolve!: (repositories: SourceRepository[]) => void;
+    listSourceRepositories.mockImplementationOnce(() => new Promise(accept => { resolve = accept; }));
+    const changing = session.changeHost('devbox');
+    expect(session.assignmentSessions.value).toStrictEqual([]);
+    expect(session.modelAgentId.value).toBeUndefined();
+    resolve([]); await changing;
+    expect(session.assignmentSessions.value).toStrictEqual([]);
+    const item: WorkItem = { provider: 'github', id: 'issue', sourceId: 'nbonamy/korus', sourceName: 'korus', kind: 'issue', number: 1,
+      title: 'Fix', url: '', state: 'open', labels: [], assignees: [], createdAt: '', updatedAt: '' };
+    await session.startWork({ destination: 'existing', agentId: agent.id, item, action: 'fix' });
+    await session.customizeWork({ destination: 'existing', agentId: agent.id, item });
+    expect(startWorkItemInExistingSession).not.toHaveBeenCalled();
+    expect(prefillWorkItemForAgent).not.toHaveBeenCalled();
+    expect(session.visible.value).toBe(true);
+    await session.changeHost(undefined);
+    expect(session.assignmentSessions.value.map(session => session.agentId)).toStrictEqual([agent.id]);
+    await session.startWork({ destination: 'existing', agentId: agent.id, item, action: 'fix' });
+    expect(startWorkItemInExistingSession).toHaveBeenCalledExactlyOnceWith(agent.id, item, 'fix');
+  });
   it('lists the ready machines and starts on the machine the section was opened for', async () => {
     const { session } = setup([]);
     await session.open(source);
