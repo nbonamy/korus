@@ -6,6 +6,8 @@
     COLOR SYSTEM
   ======================================== */
 
+  --color-cockpit-background: #000000;
+
   /* Primary */
   --color-primary: #1B4FB2;
   --color-on-primary: #FFFFFF;

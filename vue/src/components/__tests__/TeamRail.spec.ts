@@ -187,6 +187,7 @@ describe('TeamRail', () => {
 
     await wrapper.get('[aria-label="Cockpit"]').trigger('click');
 
+    expect(wrapper.get('[aria-label="Cockpit"]').find('svg.tabler-icon-ai-agents').exists()).toBe(true);
     expect(wrapper.get('[aria-label="Cockpit"]').attributes('aria-pressed')).toBe('true');
     expect(wrapper.get('[aria-label="Cockpit"]').classes()).toContain('team-rail__cockpit--active');
     expect(wrapper.get('[aria-label="Skwad"]').attributes('aria-pressed')).toBe('false');
@@ -217,7 +218,7 @@ describe('TeamRail', () => {
     expect(cockpit.get('svg').attributes('stroke')).toBe('currentColor');
     expect(wrapper.find('[role="separator"]').exists()).toBe(false);
     const navigation = [
-      ['cockpitActive', 'Cockpit'], ['backlogActive', 'Backlog'],
+      ['backlogActive', 'Backlog'],
       ['automationsActive', 'Automations'], ['settingsActive', 'Settings menu'],
     ] as const;
     for (const [, label] of navigation) {

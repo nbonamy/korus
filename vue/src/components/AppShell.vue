@@ -220,29 +220,6 @@
         :teams="snapshot.teams"
         :update-automation="updateAutomation"
       />
-      <CockpitView
-        v-else-if="cockpitVisible"
-        :agents="snapshot.agents"
-        :remote-connections="snapshot.remoteConnections.connections"
-        :forkable-agent-ids="forkableAgentIds"
-        :repository-icons="snapshot.general.repositoryIcons"
-        :teams="snapshot.teams"
-        :view-mode="snapshot.general.cockpitAgentViewMode"
-        :response-previews="cockpitResponsePreviews"
-        @add-agent="openNewAgent"
-        @close-agent="$emit('close-agent', $event)"
-        @duplicate-agent="$emit('duplicate-agent', $event)"
-        @fork-agent="$emit('fork-agent', $event)"
-        @share-agent="openShare"
-        @handoff-agent="openHandoff"
-        @edit-agent="openEditAgent"
-        @move-agent-to-team="$emit('move-agent-to-team', $event)"
-        @prompt-agent="$emit('send-agent-prompt', $event)"
-        @restart-agent="$emit('restart-agent', $event)"
-        @select-agent="selectAgentFromCockpit"
-        @select-team="selectTeamFromRail"
-        @update-view-mode="updateCockpitAgentViewMode"
-      />
       <BacklogView
         v-else-if="backlogVisible"
         :agents="snapshot.agents"
@@ -266,7 +243,7 @@
         :work-provider="cockpitBacklogState.provider.value"
         :work-providers="cockpitBacklogState.providers.value"
         @select-work-provider="cockpitBacklogState.selectProvider"
-        @select-agent="selectAgentFromCockpit"
+        @select-agent="selectAgentFromBacklog"
       />
       <AgentWorkspace
         v-else
@@ -304,7 +281,7 @@
         :generate-agent-git-message="props.generateAgentGitMessage"
         :get-agent-git-workflow="props.getAgentGitWorkflow"
         :handle-start-work-action="handleStartWorkAction"
-        :is-agent-empty="activeSurface !== 'mission' && isAgentEmpty"
+        :is-agent-empty="activeSurface !== 'mission' && !cockpitVisible && isAgentEmpty"
         :is-conversation-loading="isConversationLoading"
         :history-load-failed="isConversationLoadFailed"
         :is-loading="isLoading"
@@ -402,6 +379,9 @@
               </ConversationPane>
             </template>
           </MissionWorkspace>
+        </template>
+        <template v-else-if="cockpitVisible && !currentAgent" #conversation>
+          <p class="app-shell__empty-cockpit">{{ t('sidebar.noConversations') }}</p>
         </template>
         <template v-else-if="splitLayout !== 'single' && props.agentConversationFor && splitActions" #conversation="{ plan, planVisible, closePlan, headerBindingsFor }">
           <AgentSplitGrid :layout="splitLayout" :panes="split.panes.value" :focused-pane-id="split.focusedPaneId.value" :ratios="split.ratios.value" @resize="split.resize" @focus="focusSplitPane">
@@ -618,7 +598,7 @@
     />
     <AgentQuickOpen
       v-if="agentQuickOpenVisible"
-      :agents="snapshot.agents"
+      :agents="snapshot.agents.filter(agent => !missionOwnedAgentIds.has(agent.id))"
       :repository-icons="snapshot.general.repositoryIcons"
       :teams="snapshot.teams"
       :unread-agent-ids="unreadAgentIds ?? []"
@@ -646,7 +626,7 @@ import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import { useCompactViewport } from '../shared/use-compact-viewport';
 import debugAnnotationScreenshotUrl from '../../assets/debug-annotation.png?url';
 import type { AgentBackend, AgentFileActivity } from '@workspace/core/contracts';
-import type { AddSshConnectionInput, Agent, AgentCreationProgress, AgentFilePreviewResult, AgentFileSearchItem, AgentGitStatus, AppCommand, ApprovalPreset, AppSnapshot, BackendApprovalDecision, BackendApprovalRequest, BackendApprovalScope, BackendCapabilities, BackendCommandSummary, BackendConnectionState, BackendConversationRef, BackendPermissionModeOption, BackendModelOption, BackendPluginSummary, BackendRuntimeStatus, BackendSkillSummary, ClaudeConversationSnapshot, DaemonStatus, ClientRequestResponse, CloneSourceRepositoryInput, CockpitAgentViewMode, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DesktopUpdateStatus, DevicePairingSession, DevicePairingStatus, GlobalWorkItemQuery, AutomationLocation, ModelFavorite, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, PairedDevice, ReasoningEffort, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceBranch, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, SshHostCandidate, Team, ThreadGoal, ThreadPlan, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
+import type { AddSshConnectionInput, Agent, AgentCreationProgress, AgentFilePreviewResult, AgentFileSearchItem, AgentGitStatus, AppCommand, ApprovalPreset, AppSnapshot, BackendApprovalDecision, BackendApprovalRequest, BackendApprovalScope, BackendCapabilities, BackendCommandSummary, BackendConnectionState, BackendConversationRef, BackendPermissionModeOption, BackendModelOption, BackendPluginSummary, BackendRuntimeStatus, BackendSkillSummary, ClaudeConversationSnapshot, DaemonStatus, ClientRequestResponse, CloneSourceRepositoryInput, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DesktopUpdateStatus, DevicePairingSession, DevicePairingStatus, GlobalWorkItemQuery, AutomationLocation, ModelFavorite, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, PairedDevice, ReasoningEffort, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceBranch, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, SshHostCandidate, Team, ThreadGoal, ThreadPlan, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
@@ -667,8 +647,6 @@ import RemoteTargetDialog from './RemoteTargetDialog.vue';
 import { useRemoteTarget, type RemoteTargetRequest } from './use-remote-target';
 import NewProjectDialog from './NewProjectDialog.vue';
 import { preferredBackendChoices, provideBackendChoices, provideBackendSwitch } from './backend-selection';
-import CockpitView from './CockpitView.vue';
-import { cockpitResponsePreview } from './cockpit-response-preview';
 import BacklogView from './BacklogView.vue';
 import ConversationHistoryDialog from './ConversationHistoryDialog.vue';
 import AgentHandoffDialog from './AgentHandoffDialog.vue';
@@ -711,6 +689,7 @@ import type { MissionWorkspaceOpenRequest } from './MissionWorkspaceOpenIn.vue';
 import ConversationPane from './ConversationPane.vue';
 import { useDebugWorktreeInitialization } from './debug-worktree-initialization';
 import AppMenu from '../shared/menu/AppMenu.vue';
+import { missionAgentIds } from '@workspace/core/mission-attention';
 import type { Mission, MissionStage, CreateMissionInput, DeleteMissionInput } from '@workspace/core/missions';
 import { missionCreatedWorkspaces, type MissionImplementationStartProgress } from '@workspace/core/mission-execution';
 import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
@@ -1119,7 +1098,7 @@ type PendingMissionReviewDiscussion = {
   finding: import('@workspace/core/missions').MissionReviewFinding;
 };
 
-type AppSurface = 'mission' | 'agent' | 'cockpit' | 'backlog' | 'automations' | 'settings';
+type AppSurface = 'mission' | 'agent' | 'backlog' | 'automations' | 'settings';
 provideBackendChoices(() => props.snapshot, openSettings);
 const reviewSettings = useCodeReviewSettings();
 provide(codeReviewSettingsKey, { ...reviewSettings, preferences: () => props.snapshot.general.codeReviewDefaults });
@@ -1171,6 +1150,7 @@ function rememberMissionId(id: string | null): void {
 }
 let pendingMissionRestoreId = rememberedMissionId();
 const activeSurface = ref<AppSurface>('agent');
+const cockpitScope = ref(false);
 const settingsReturnMissionId = ref<string | null>(null);
 const missionViewedStage = ref<MissionStage>();
 const missionCreationError = ref('');
@@ -1279,7 +1259,9 @@ function missionTeamContext(): { team: Team; orchestrator: Agent } {
   return { team, orchestrator };
 }
 async function selectMission(id: string): Promise<void> {
-  if (!props.snapshot.missions?.some(mission => mission.id === id && mission.teamId === activeTeam.value?.id)) return;
+  const mission = props.snapshot.missions?.find(mission => mission.id === id);
+  if (!mission || (!cockpitScope.value && mission.teamId !== activeTeam.value?.id)) return;
+  if (mission.teamId !== activeTeam.value?.id) emit('select-team', mission.teamId);
   selectMissionSurface(id);
 }
 async function createNewMission() {
@@ -1484,7 +1466,7 @@ const activeTeam = computed<Team | null>(() => {
   return props.snapshot.teams[0] ?? null;
 });
 watch([selectedMission, activeTeam], ([mission, team], [previousMission]) => {
-  if (activeSurface.value === 'mission' && ((previousMission && !mission) || (mission && mission.teamId !== team?.id))) {
+  if (activeSurface.value === 'mission' && ((previousMission && !mission) || (!cockpitScope.value && mission && mission.teamId !== team?.id))) {
     selectedMissionId.value = null;
     activeSurface.value = 'agent';
   }
@@ -1723,6 +1705,9 @@ const activeTeamAgents = computed(() => {
     .map((agentId) => props.snapshot.agents.find((agent) => agent.id === agentId))
     .filter((agent): agent is Agent => Boolean(agent));
 });
+const missionOwnedAgentIds = computed(() => new Set((props.snapshot.missions ?? []).flatMap(missionAgentIds)));
+const workspaceAgents = computed(() => (cockpitScope.value ? props.snapshot.agents : activeTeamAgents.value)
+  .filter(agent => !missionOwnedAgentIds.value.has(agent.id)));
 const agentMentionGroups = computed<readonly CodexComposerMentionGroup[]>(() => {
   if (activeTeamAgents.value.length === 0) return [];
   return [{
@@ -1741,7 +1726,7 @@ const unreadTeamIds = computed(() => {
   const unreadAgentIdSet = new Set(props.unreadAgentIds);
   return props.snapshot.teams
     .filter((team) => (
-      (activeSurface.value !== 'agent' || team.id !== activeTeam.value?.id)
+      (activeSurface.value !== 'agent' || cockpitScope.value || team.id !== activeTeam.value?.id)
       && team.agentIds.some((agentId) => unreadAgentIdSet.has(agentId))
     ))
     .map((team) => team.id);
@@ -1772,6 +1757,10 @@ const currentAgent = computed(() => {
     return null;
   }
 
+  if (activeSurface.value !== 'mission' && cockpitScope.value) {
+    return workspaceAgents.value.find(agent => agent.id === props.activeAgent?.id) ?? workspaceAgents.value[0] ?? null;
+  }
+
   if (props.activeAgent && team.agentIds.includes(props.activeAgent.id)) {
     return props.activeAgent;
   }
@@ -1781,7 +1770,7 @@ const currentAgent = computed(() => {
 watch(
   [compactViewport, activeSurface],
   ([compact, surface]) => {
-    if (compact && surface !== 'agent' && surface !== 'cockpit') activeSurface.value = 'agent';
+    if (compact && surface !== 'agent') activeSurface.value = 'agent';
   },
   { immediate: true },
 );
@@ -1796,9 +1785,9 @@ watch(() => currentAgent.value?.id, (agentId) => {
   }
 });
 const split = useSplitWorkspace({
-  agentIds: () => activeTeamAgents.value.map(agent => agent.id),
-  currentAgentId: () => currentAgent.value?.id,
-  teamId: () => activeTeam.value?.id,
+  agentIds: () => (cockpitScope.value ? workspaceAgents.value : activeTeamAgents.value).map(agent => agent.id),
+  currentAgentId: () => cockpitScope.value && activeSurface.value === 'mission' ? undefined : currentAgent.value?.id,
+  teamId: () => cockpitScope.value ? 'surface:cockpit' : activeTeam.value?.id,
   selectAgent: id => emit('select-agent', id),
 });
 // Compact screens display one conversation without changing the saved team layout.
@@ -2553,10 +2542,7 @@ const pendingNewAgentWorktreeBranchName = computed(() => (
   pendingNewAgentWorkItem.value ? pendingWorkItemBranchName.value : agentDialogSourceBranchName.value
 ));
 const isAgentEmpty = computed(() => activeTeamAgents.value.length === 0);
-const cockpitVisible = computed(() => activeSurface.value === 'cockpit');
-const cockpitResponsePreviews = computed(() => Object.fromEntries(
-  props.snapshot.agents.map(agent => [agent.id, cockpitResponsePreview(props.agentConversationFor?.(agent.id))]),
-));
+const cockpitVisible = computed(() => cockpitScope.value && (activeSurface.value === 'agent' || activeSurface.value === 'mission'));
 const backlogVisible = computed(() => activeSurface.value === 'backlog');
 const automationsVisible = computed(() => activeSurface.value === 'automations');
 const settingsVisible = computed(() => activeSurface.value === 'settings');
@@ -3017,7 +3003,9 @@ async function resolveSelectedTeam(teamId: string | null | undefined, newTeamNam
 }
 
 function openCockpit(): void {
-  activeSurface.value = 'cockpit';
+  cockpitScope.value = true;
+  activeSurface.value = 'agent';
+  if (currentAgent.value && currentAgent.value.id !== props.activeAgent?.id) emit('select-agent', currentAgent.value.id);
 }
 
 async function openBacklog(): Promise<void> {
@@ -3091,6 +3079,7 @@ async function resumeAgentConversation(agentId: string, target: ConversationResu
 }
 
 function selectTeamFromRail(teamId: string): void {
+  cockpitScope.value = false;
   if (activeSurface.value === 'settings' && settingsReturnMissionId.value === selectedMission.value?.id
     && selectedMission.value.teamId === teamId) {
     selectMissionSurface(selectedMission.value.id);
@@ -3101,13 +3090,17 @@ function selectTeamFromRail(teamId: string): void {
 }
 
 function selectAgentFromShell(agentId: string): void {
+  const agent = props.snapshot.agents.find(candidate => candidate.id === agentId);
+  if (cockpitScope.value && missionOwnedAgentIds.value.has(agentId)) return;
+  if (cockpitScope.value && agent?.teamId && agent.teamId !== activeTeam.value?.id) emit('select-team', agent.teamId);
   activeSurface.value = 'agent';
   pendingComposerFocusAgentId.value = agentId;
   split.select(agentId);
   emit('select-agent', agentId);
 }
 
-function selectAgentFromCockpit(payload: { agentId: string; teamId: string }): void {
+function selectAgentFromBacklog(payload: { agentId: string; teamId: string }): void {
+  cockpitScope.value = false;
   activeSurface.value = 'agent';
   pendingComposerFocusAgentId.value = payload.agentId;
   emit('select-team', payload.teamId);
@@ -3394,10 +3387,6 @@ async function updateBacklogRepositoryFavorites(repositoryIds: string[]): Promis
   await updateSettings({ general: { backlogRepositoryFavorites } });
 }
 
-function updateCockpitAgentViewMode(cockpitAgentViewMode: CockpitAgentViewMode): void {
-  void updateSettings({ general: { cockpitAgentViewMode } });
-}
-
 async function setCodexResourceSharing(input: SetCodexResourceSharingInput): Promise<void> {
   await props.setCodexResourceSharing(input);
 }
@@ -3487,6 +3476,12 @@ watch(() => props.fileActivity, (activity) => {
 </script>
 
 <style scoped>
+.app-shell__empty-cockpit {
+  margin: auto;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-14);
+}
+
 .app-shell {
   display: flex;
   height: 100vh;

@@ -24,9 +24,13 @@ export class ReviewGit implements ReviewGitPort {
       throw new Error('Automatic review requires the repository root as the agent folder.');
     }
     const snapshot = await this.inspect(folder);
-    const baseRef = scope.type === 'branch'
+    let baseRef = scope.type === 'branch'
       ? (await git(folder, ['merge-base', 'HEAD', '--', scope.baseRef])).trim()
       : snapshot.head;
+    if (scope.type === 'commit') {
+      const [, parent] = (await git(folder, ['rev-list', '--parents', '-n', '1', scope.sha, '--'])).trim().split(/\s+/);
+      baseRef = parent ?? (await git(folder, ['hash-object', '-w', '-t', 'tree', process.platform === 'win32' ? 'NUL' : '/dev/null'])).trim();
+    }
     return { ...snapshot, baseRef };
   }
 

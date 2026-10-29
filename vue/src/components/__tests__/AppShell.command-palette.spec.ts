@@ -33,7 +33,7 @@ describe('AppShell command palette', () => {
   });
   it('navigates to existing global surfaces from the palette', async () => {
     const wrapper = mountShell({ stubAgentWorkspace: true });
-    for (const [query, surface] of [['cockpit', 'CockpitView'], ['backlog', 'BacklogView'], ['automations', 'AutomationsView']]) {
+    for (const [query, surface] of [['cockpit', 'AgentWorkspace'], ['backlog', 'BacklogView'], ['automations', 'AutomationsView']]) {
       await openPalette();
       await wrapper.get('.quick-open-dialog input').setValue(query);
       await wrapper.get('.quick-open-dialog input').trigger('keydown.enter');

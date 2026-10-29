@@ -1398,7 +1398,6 @@ describe('state persistence', () => {
       codexBinaryPath: '/opt/homebrew/bin/codex',
       claudeCodeEnabled: true,
       agentListCompact: true,
-      cockpitAgentViewMode: 'recent',
       collapsedRepositoryKeys: ['remote:github.com/nbonamy/agent-workspace'],
       modelFavorites: [{
         backend: 'codex',

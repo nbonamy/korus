@@ -500,8 +500,6 @@ export type SavedPromptDraft = {
   createdAt: number;
 };
 
-export type CockpitAgentViewMode = 'teams' | 'recent';
-
 export type AppGeneralSettings = {
   git?: import('./git-preferences').GitSettings;
   commitMessageInstructions: string;
@@ -531,7 +529,6 @@ export type AppGeneralSettings = {
   /** Last explicitly selected approval mode; seeds new chats without changing existing ones. */
   providerApprovalDefaults?: { codex?: ApprovalPreset; claude?: string; antigravity?: string };
   agentListCompact: boolean;
-  cockpitAgentViewMode: CockpitAgentViewMode;
   collapsedRepositoryKeys: string[];
   modelFavorites: ModelFavorite[];
   backlogRepositoryFavorites: Partial<Record<WorkProviderKind, string[]>>;

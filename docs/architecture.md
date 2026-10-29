@@ -728,6 +728,9 @@ target and reviewer agents) plus an opaque reviewer session reference.
   tier across rounds and retries. Review preferences keep these choices per provider;
   an explicit Standard tier clears inherited Fast mode. Current-thread reviews use
   the thread's existing settings.
+- Commit reviews retain the selected SHA across rounds and retries. Automatic
+  remediation fixes its baseline at that commit's first parent, or the empty tree
+  for an initial commit, so subsequent review commits stay within the same scope.
 - Per-review instructions belong to the review session, survive retries
   and fresh rounds, and never become saved reviewer defaults. Unsubmitted drafts
   stay local to the agent's review tab and are discarded when that tab closes.

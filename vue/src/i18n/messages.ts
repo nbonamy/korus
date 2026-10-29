@@ -484,6 +484,9 @@ export const messages = {
       onHost: 'On {host}',
     },
     sidebar: {
+      create: 'Create',
+      allTeams: 'All teams',
+      noConversations: 'No conversations yet',
       agents: 'Agents',
       collapseRepository: 'Collapse {repository} sessions',
       collapseFolder: 'Collapse {folder} sessions',
@@ -617,12 +620,6 @@ export const messages = {
       currentTurn: 'Current turn',
       gitDiff: 'Git Diff',
       plan: 'Plan',
-    },
-    cockpit: {
-      prompt: 'Prompt {agent}',
-      sendPrompt: 'Send prompt to {agent}',
-      sendPromptPlaceholder: 'Send prompt…',
-      workingPlaceholder: 'Working…',
     },
     backlogShortcuts: {
       label: 'Backlog shortcuts',

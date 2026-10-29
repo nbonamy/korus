@@ -369,15 +369,17 @@ describe('CodeReviewPanel', () => {
     };
     const { wrapper, actions } = mountPanel(undefined, gitStatus);
 
-    const uncommitted = wrapper.findAll('[role="radio"]').find((radio) => radio.text().includes('Uncommitted changes'))!;
     await flushPromises();
-    expect(uncommitted.attributes('disabled')).toBeDefined();
-    expect(uncommitted.text()).toContain('No uncommitted changes');
+    const lastCommit = wrapper.findAll('[role="radio"]').find((radio) => radio.text().includes('Last commit'))!;
+    expect(lastCommit.attributes('disabled')).toBeUndefined();
     const branch = wrapper.findAll('[role="radio"]').find((radio) => radio.text().includes('Current branch'))!;
     expect(branch.attributes('aria-checked')).toBe('true');
     await wrapper.findAll('button').find((button) => button.text().includes('Start review'))!.trigger('click');
 
     expect(actions.startReview).toHaveBeenCalledWith('owner', { scope: { type: 'branch', baseRef: 'origin/main' }, threadMode: 'independent', automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false }, selection: { backend: 'codex', model: 'codex-model', reasoningEffort: 'high', serviceTier: null } });
+    await lastCommit.trigger('click');
+    await wrapper.get('.code-review-panel__start').trigger('click');
+    expect(actions.startReview.mock.calls.at(-1)![1]).toMatchObject({ scope: { type: 'commit', sha: 'abcdef123456' } });
   });
 
   it('keeps unavailable branch and current-thread choices visible but disabled', () => {
@@ -404,7 +406,7 @@ describe('CodeReviewPanel', () => {
     expect(current.text()).toContain('Start a conversation first');
   });
 
-  it('shows nothing to review when the working tree and branch are clean', () => {
+  it('defaults to the last commit when the working tree and branch are clean', async () => {
     const gitStatus: AgentGitStatus = {
       folder: '/repo', repository: 'app', branch: 'main',
       ahead: 0, behind: 0, changedFiles: 0, addedLines: 0, removedLines: 0,
@@ -416,14 +418,21 @@ describe('CodeReviewPanel', () => {
         unstaged: { addedLines: 0, removedLines: 0, changedFiles: 0 },
         staged: { addedLines: 0, removedLines: 0, changedFiles: 0 },
         commits: [],
+        lastCommit: { sha: 'a'.repeat(40), shortSha: 'aaaaaaa', subject: 'latest change', addedLines: 2, removedLines: 0, changedFiles: 1 },
       },
     };
     const { wrapper, actions } = mountPanel(undefined, gitStatus);
 
+    await flushPromises();
+    const lastCommit = wrapper.findAll('[role="radio"]').find((radio) => radio.text().includes('Last commit'))!;
+    expect(lastCommit.attributes('aria-checked')).toBe('true');
+    expect(lastCommit.text()).toContain('aaaaaaa');
+    await wrapper.get('.code-review-panel__start').trigger('click');
+    expect(actions.startReview.mock.calls[0]![1]).toMatchObject({ scope: { type: 'commit', sha: 'a'.repeat(40) } });
+    // A repository without a commit still has nothing to review.
+    await wrapper.setProps({ gitStatus: { ...gitStatus, diffCatalog: { ...gitStatus.diffCatalog!, lastCommit: undefined } } });
     expect(wrapper.text()).toContain('Nothing to review');
-    expect(wrapper.text()).not.toContain('Start review');
-    expect(wrapper.find('.code-review-panel__setup').exists()).toBe(false);
-    expect(actions.startReview).not.toHaveBeenCalled();
+    expect(wrapper.find('.code-review-panel__start').exists()).toBe(false);
   });
 
   it('shows findings as they arrive while describing the active review scope', async () => {

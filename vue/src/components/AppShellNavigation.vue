@@ -35,6 +35,7 @@
       ref="agentSidebar"
       v-if="showAgentSidebar"
       :agents="sidebarAgents"
+      :all-teams="cockpitVisible"
       :mission-agents="snapshot.agents"
       :forkable-agent-ids="forkableAgentIds"
       :summary-replacement-agent-ids="summaryReplacementAgentIds"
@@ -51,7 +52,7 @@
       @select-mission="$emit('select-mission', $event)"
       :unread-agent-ids="unreadAgentIds"
       :teams="snapshot.teams"
-      :team-id="activeTeam?.id ?? null"
+      :team-id="cockpitVisible ? null : activeTeam?.id ?? null"
       :team-name="activeTeamName"
       :compact="agentListCompact"
       :collapsed-repository-keys="snapshot.general.collapsedRepositoryKeys"
@@ -94,6 +95,7 @@
 </template>
 
 <script setup lang="ts">
+import { missionAgentIds } from '@workspace/core/mission-attention';
 import { enabledAgentBackends } from '@workspace/core/agent-backends';
 import type {
   Agent,
@@ -202,16 +204,12 @@ const emit = defineEmits<{
   ];
 }>();
 
-const missionAgentIds = computed(() => new Set(
-  (props.snapshot.missions ?? []).flatMap(mission => (
-    mission.execution?.runs.flatMap(run => run.workerId ? [run.workerId] : []) ?? []
-  )),
-));
-const sidebarAgents = computed(() => props.activeTeamAgents.filter(agent => !missionAgentIds.value.has(agent.id)));
+const missionOwnedAgentIds = computed(() => new Set((props.snapshot.missions ?? []).flatMap(missionAgentIds)));
+const sidebarAgents = computed(() => (props.cockpitVisible ? props.snapshot.agents : props.activeTeamAgents).filter(agent => !missionOwnedAgentIds.value.has(agent.id)));
 const agentSidebar = ref<InstanceType<typeof AgentSidebar> | null>(null);
 const quickSwitchAgentIds = computed(() => agentSidebar.value?.quickSwitchAgentIds ?? sidebarAgents.value.map(agent => agent.id));
 defineExpose({ quickSwitchAgentIds });
-const teamMissions = computed(() => (props.snapshot.missions ?? []).filter(mission => mission.teamId === props.activeTeam?.id));
+const teamMissions = computed(() => (props.snapshot.missions ?? []).filter(mission => props.cockpitVisible || mission.teamId === props.activeTeam?.id));
 
 const agentSidebarMinWidth = 200;
 const agentSidebarMaxWidth = 420;
