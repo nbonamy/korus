@@ -15,7 +15,6 @@
         <p v-if="latestRun.outputTruncated" class="command-runner__notice">{{ $t('runProfiles.truncated') }}</p>
         <pre class="command-runner__output" :aria-label="$t('runProfiles.output')">{{ latestRun.output || $t('runProfiles.noOutput') }}</pre>
       </template>
-      <p v-else class="command-runner__notice">{{ $t('runProfiles.readyToRun') }}</p>
     </div>
     <template #footer>
       <button class="app-button app-button--tertiary" @click="closeRunner">{{ $t('common.close') }}</button>
@@ -70,7 +69,12 @@ function selectAction(id: string) {
   menuOpen.value = false;
   if (id === 'configure') { clearTimeout(timer); managing.value = true; return; }
   const profile = catalog.value?.profiles.find(profile => `run:${profile.id}` === id);
-  if (profile) { error.value = ''; selection.value = { profile: { ...profile }, cwd: catalog.value?.targets[profile.id]?.cwd }; void refresh(); }
+  if (profile) {
+    error.value = '';
+    selection.value = { profile: { ...profile }, cwd: catalog.value?.targets[profile.id]?.cwd };
+    if (latestRun.value?.state === 'running') void refresh();
+    else void start();
+  }
 }
 function api() { if (!appApi) throw new Error('Connection unavailable. Reconnect to the owning host.'); return appApi; }
 function adopt(value: RunProfileCatalog) { requestId++; catalog.value = value; }
@@ -100,7 +104,7 @@ async function act(action: (agentId: string) => Promise<unknown>) {
 }
 async function start() {
   const reviewed = selection.value;
-  if (!reviewed?.cwd) return;
+  if (!reviewed?.cwd || targetError.value) return;
   await act(id => api().startRunProfile(id, { profileId: reviewed.profile.id, command: reviewed.profile.command, cwd: reviewed.cwd! }));
 }
 async function stop(runId: string) { await act(id => api().stopProfileRun(id, runId)); }

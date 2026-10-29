@@ -5,7 +5,7 @@ export const messages = {
   en: {
     runProfiles: {
       pinNamed: 'Pin {name}', pinnedHeading: 'Pinned', stopBeforeRemoving: 'Stop this command before removing it.',
-      chooseCommandsMenu: 'Choose commands…', nothingPinnedShort: 'No pinned commands', readyToRun: 'Review the command and working directory, then run when ready.', preview: 'Preview',
+      chooseCommandsMenu: 'Choose commands…', nothingPinnedShort: 'No pinned commands', preview: 'Preview',
       chooseCommands: 'Choose commands', pinnedCommands: 'Pinned commands',
       searchCommands: 'Search commands', searchCommandsPlaceholder: 'Search commands…', sourceFiles: 'Source files', allFiles: 'All files',
       availableCommands: 'Available commands', noMatches: 'No matching commands.', noAvailableCommands: 'No unpinned commands in this file.',

@@ -28,6 +28,8 @@ describe('RunProfilesControl', () => {
     const menu = new DOMWrapper(document.body).get('[role="menu"]');
     expect(menu.findAll('[role="menuitem"]').map(item => item.get('.app-menu__label').text())).toStrictEqual(['Dev', 'Choose commands…']);
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+    await menuAction(wrapper, 'Dev').trigger('click'); await flushPromises();
+    expect(wrapper.get('[aria-label="Command output"]').text()).toBe('ready');
     expect(api.startRunProfile).not.toHaveBeenCalled();
   });
 
@@ -43,15 +45,13 @@ describe('RunProfilesControl', () => {
     expect(api.startRunProfile).not.toHaveBeenCalled(); expect(api.saveRunProfile).not.toHaveBeenCalled();
   });
 
-  it('reviews the exact command and target, then keeps run output and Stop together', async () => {
+  it('starts the selected command directly and keeps run output and Stop together', async () => {
     const { wrapper, api } = await setup();
-    await menuAction(wrapper, 'Dev').trigger('click');
+    api.getRunProfiles.mockResolvedValue({ ...catalog, runs: [run] });
+    await menuAction(wrapper, 'Dev').trigger('click'); await flushPromises();
     expect(wrapper.get('[role="dialog"]').text()).toContain('npm run dev');
     expect(wrapper.get('[role="dialog"]').text()).toContain('/repo/tree');
     expect(wrapper.get('[role="dialog"]').text()).toContain('Local host');
-    expect(api.startRunProfile).not.toHaveBeenCalled();
-    api.getRunProfiles.mockResolvedValue({ ...catalog, runs: [run] });
-    await button(wrapper, 'Run command').trigger('click'); await flushPromises();
     expect(api.startRunProfile).toHaveBeenCalledExactlyOnceWith('one', { profileId: 'dev', command: 'npm run dev', cwd: '/repo/tree' });
     expect(wrapper.get('[aria-label="Command output"]').text()).toBe('ready');
     api.getRunProfiles.mockResolvedValue({ ...catalog, runs: [{ ...run, state: 'stopped' }] });
@@ -81,8 +81,7 @@ describe('RunProfilesControl', () => {
 
   it('shows admission errors and discards late responses after switching agents without stopping owned runs', async () => {
     const { wrapper, api } = await setup({ startRunProfile: vi.fn().mockRejectedValue(new Error('Command or target changed. Review it again.')) });
-    await menuAction(wrapper, 'Dev').trigger('click');
-    await button(wrapper, 'Run command').trigger('click'); await flushPromises();
+    await menuAction(wrapper, 'Dev').trigger('click'); await flushPromises();
     expect(wrapper.get('[role="alert"]').text()).toContain('Command or target changed');
     await button(wrapper, 'Close').trigger('click'); wrapper.unmount();
     let resolve!: (value: RunProfileCatalog) => void;
