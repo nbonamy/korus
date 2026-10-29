@@ -104,6 +104,27 @@ describe('AppShell missions', () => {
     } finally { wrapper.unmount(); }
   });
 
+  it('shows the current stage when a Mission advances while Settings is open', async () => {
+    const snapshot = createInitialSnapshot();
+    const team = snapshot.teams[0]!;
+    const mission = createMission(snapshot, { outcome: 'Advance while away', workflowType: 'shapeAndShipFeature', teamId: team.id, orchestratorMemberId: snapshot.agents[0]!.id });
+    prepareMissionLead(mission, snapshot.agents[0]!.id);
+    mission.stage = 'tickets';
+    const wrapper = mountShell({ snapshot, realAgentSidebar: true });
+    try {
+      await wrapper.get('[data-group-kind="missions"] .agent-sidebar__agent').trigger('click');
+      await flushPromises();
+      await wrapper.get('.mission-stage-rail__stages button').trigger('click');
+      await wrapper.get('.settings-menu').findAll('[role="menuitem"]').find(item => item.text().startsWith('Settings'))!.trigger('click');
+      await flushPromises();
+      await wrapper.setProps({ snapshot: { ...snapshot, missions: [{ ...mission, stage: 'implementation' }] } });
+      await wrapper.get(`.team-rail [aria-label="${team.name}"]`).trigger('click');
+      await flushPromises();
+      const currentStage = wrapper.get('.mission-stage-rail__stages button[aria-current="step"]');
+      expect(currentStage.classes()).toContain('mission-stage-rail__stage--viewed');
+    } finally { wrapper.unmount(); }
+  });
+
   it.each(['another team', 'deleted Mission', 'explicit agent selection'] as const)('does not restore a Mission after Settings when navigating to %s', async destination => {
     const snapshot = createInitialSnapshot();
     const team = snapshot.teams[0]!;

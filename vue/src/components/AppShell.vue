@@ -1166,6 +1166,9 @@ const missionDeletePending = ref(false);
 const missionDeleteError = ref('');
 const selectedMissionId = ref<string | null>(null);
 const selectedMission = computed(() => props.snapshot.missions?.find(m => m.id === selectedMissionId.value) ?? null);
+watch(() => selectedMission.value?.stage, (stage, previousStage) => {
+  if (stage && previousStage && stage !== previousStage) missionViewedStage.value = stage;
+});
 const missionIssuePickerVisible = ref(false);
 const missionIssueLoading = ref(false);
 const missionIssueError = ref<string | null>(null);
