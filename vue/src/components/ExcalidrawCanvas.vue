@@ -50,7 +50,7 @@
     />
     <div v-if="error || !ready" class="visualize-editor__status">
       <span role="status">{{ error || translate('common.loading') }}</span>
-      <button v-if="error" type="button" class="app-button app-button--secondary" @click="retry">{{ translate('visualize.retrySave') }}</button>
+      <button v-if="error" type="button" class="app-button app-button--secondary" @click="retry">{{ translate(ready ? 'visualize.retrySave' : 'visualize.retryLoad') }}</button>
     </div>
   </div>
 </template>
@@ -96,6 +96,7 @@ let incoming: CanvasDocument | undefined;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let pending: Promise<void> | undefined;
 let disposed = false;
+let initializing = false;
 const key = (scene: CanvasScene) => JSON.stringify([scene.elements, scene.files, scene.selectedElementIds]);
 function changed(scene: CanvasScene) {
   local.value = scene;
@@ -250,13 +251,15 @@ async function savePng(): Promise<void> {
 function retry() {
   // Keep local work on failure. A stale revision requires an explicit reload rather than a blind overwrite.
   error.value = '';
-  void flush();
+  if (ready.value) void flush();
+  else void initialize();
 }
 function beforeUnload(event: BeforeUnloadEvent) {
   if (dirty.value || saving.value) { event.preventDefault(); event.returnValue = ''; }
 }
-onMounted(async () => {
-  window.addEventListener('beforeunload', beforeUnload);
+async function initialize() {
+  if (disposed || initializing) return;
+  initializing = true;
   try {
     const module = await import('./excalidraw-editor');
     const scene = await module.importVisualization(toRaw(props.visualization), props.imageSource ?? '');
@@ -267,7 +270,12 @@ onMounted(async () => {
     ready.value = true;
     refreshCanvasUi();
     if (!props.visualization.canvas) changed(scene);
-  } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); }
+  } catch (cause) { if (!disposed) error.value = cause instanceof Error ? cause.message : String(cause); }
+  finally { initializing = false; }
+}
+onMounted(() => {
+  window.addEventListener('beforeunload', beforeUnload);
+  void initialize();
 });
 onBeforeUnmount(() => {
   disposed = true;

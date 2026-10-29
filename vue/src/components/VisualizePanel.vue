@@ -210,7 +210,7 @@ async function confirmDelete(visualization: Visualization): Promise<void> {
   display: flex;
   flex-direction: column;
   padding: var(--space-12);
-  padding-bottom: 108px;
+  padding-bottom: var(--space-4);
 }
 
 .visualize-panel__heading {
@@ -322,9 +322,9 @@ async function confirmDelete(visualization: Visualization): Promise<void> {
 }
 
 .visualize-panel__strip {
-  position: absolute;
-  left: var(--space-12);
-  bottom: var(--space-12);
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin: 0 var(--space-12) var(--space-12);
   max-width: calc(100% - 2 * var(--space-12));
   display: flex;
   gap: var(--space-6);

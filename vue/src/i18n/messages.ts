@@ -357,6 +357,7 @@ export const messages = {
       fitCanvas: 'Fit canvas',
       saving: 'Saving…',
       retrySave: 'Retry save',
+      retryLoad: 'Retry loading',
       canvasConflict: 'The canvas changed while you were editing. Your local edits are preserved; reload to use the saved version.',
       visualizations: 'Visualizations',
       mode: 'Visualize',

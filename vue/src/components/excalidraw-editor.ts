@@ -20,12 +20,14 @@ export async function importVisualization(visualization: Visualization, imageSou
       throw new Error('Canvas import does not allow Mermaid directives, links, or external assets.');
     }
     const { parseMermaidToExcalidraw } = await import('@excalidraw/mermaid-to-excalidraw');
-    const result = await parseMermaidToExcalidraw(visualization.content.source);
+    // Plain SVG text keeps the converter's image fallback valid XML and preserves labels during sanitization.
+    const config = { htmlLabels: false, flowchart: { curve: 'linear' as const, htmlLabels: false } };
+    const result = await parseMermaidToExcalidraw(visualization.content.source, config);
     const files: BinaryFiles = {};
     for (const [id, file] of Object.entries(result.files ?? {})) {
       files[id] = file.mimeType === 'image/svg+xml'
-        ? { ...file, mimeType: 'image/png', dataURL: (await rasterize(file.dataURL)).dataURL as typeof file.dataURL }
-        : file;
+        ? { ...file, created: Date.now(), mimeType: 'image/png', dataURL: (await rasterize(file.dataURL)).dataURL as typeof file.dataURL }
+        : { ...file, created: Date.now() };
     }
     return { elements: convertToExcalidrawElements(result.elements, { regenerateIds: false }) as unknown as CanvasElement[], files, selectedElementIds: [], preview: '' };
   }
@@ -46,8 +48,15 @@ async function rasterize(source: string): Promise<{ dataURL: string; width: numb
   // SVG is always decoded, sanitized and re-encoded before the browser sees it.
   if (source.startsWith('data:image/svg+xml')) {
     const comma = source.indexOf(',');
-    const svg = source.slice(0, comma).includes(';base64') ? atob(source.slice(comma + 1)) : decodeURIComponent(source.slice(comma + 1));
-    source = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(sanitizeSvg(svg))}`;
+    const svg = source.slice(0, comma).includes(';base64') ? new TextDecoder().decode(Uint8Array.from(atob(source.slice(comma + 1)), character => character.charCodeAt(0))) : decodeURIComponent(source.slice(comma + 1));
+    const document = new DOMParser().parseFromString(sanitizeSvg(svg), 'image/svg+xml');
+    const root = document.documentElement;
+    const viewBox = root.getAttribute('viewBox')?.trim().split(/[\s,]+/u).map(Number);
+    if (viewBox?.length === 4 && viewBox.every(Number.isFinite) && viewBox[2] > 0 && viewBox[3] > 0) {
+      root.setAttribute('width', String(viewBox[2]));
+      root.setAttribute('height', String(viewBox[3]));
+    }
+    source = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(root))}`;
   }
   const image = new Image();
   image.src = source;
