@@ -136,6 +136,6 @@ it.each([
     expect(restored.missions![0]!.execution!.parallelImplementation).toBe(parallel);
     expect(restored.missions![0]!.artifacts.tickets[1]!.reference).toBe('https://example.com/issues/2');
     expect(restored.missions![0]!.execution!.runs.every(run => run.status === 'accepted')).toBe(true);
-    expect(prompts.includes('/compact')).toBe(backend === 'codex' && !parallel);
+    expect(prompts.includes('/compact')).toBe(false);
   } finally { await rm(folder, { recursive: true, force: true }); }
 });
