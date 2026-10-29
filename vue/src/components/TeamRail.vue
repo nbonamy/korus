@@ -477,12 +477,6 @@ function closeFloatingUiOnEscape(event: KeyboardEvent): void {
   border-radius: var(--radius-sm);
 }
 
-.team-rail__cockpit:not(.team-rail__cockpit--active) {
-  color: var(--color-text-muted);
-  background: transparent;
-  opacity: 1;
-}
-
 .team-rail__cockpit.team-rail__cockpit--active {
   color: var(--team-text-color);
   background: var(--color-cockpit-background);

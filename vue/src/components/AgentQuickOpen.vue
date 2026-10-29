@@ -148,6 +148,7 @@ function select(agentId: string): void {
 .agent-quick-open__identity strong {
   flex: 0 1 auto;
   min-width: 0;
+  font-weight: var(--font-weight-medium);
 }
 
 .agent-quick-open__repository,
@@ -158,6 +159,8 @@ function select(agentId: string): void {
 .agent-quick-open__repository {
   flex: 1 1 auto;
   min-width: 0;
+  color: color-mix(in srgb, var(--color-text-muted) 80%, transparent);
+  font-weight: 250;
 }
 
 .agent-quick-open__team {

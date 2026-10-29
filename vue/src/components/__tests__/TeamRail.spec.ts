@@ -225,7 +225,7 @@ describe('TeamRail', () => {
     const cockpit = wrapper.get('[aria-label="Cockpit"]');
     const add = wrapper.get('[aria-label="Create team"]');
     expect(getComputedStyle(cockpit.element).background).toBe('rgba(0, 0, 0, 0)');
-    expect(getComputedStyle(cockpit.element).opacity).toBe('1');
+    expect(getComputedStyle(cockpit.element).opacity).toBe('0.6');
     expect(wrapper.find('[role="separator"]').exists()).toBe(false);
     const navigation = [
       ['backlogActive', 'Backlog'],
