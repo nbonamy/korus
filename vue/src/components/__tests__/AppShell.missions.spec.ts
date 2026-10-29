@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMission } from '@workspace/core/missions';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot-construction';
 import type { AgentGitWorkflow } from '@workspace/core/contracts';
+import { codexConversationSnapshot, codexTextMessage } from '../../test/codex-conversation-fixtures';
 import { conversationControllerActions, conversationControllerState, mountShell, workItem } from './app-shell-test-harness';
 
 const missionStorageKey = 'app.activeMissionId';
@@ -23,6 +24,49 @@ function representGitHubRepository(agent: ReturnType<typeof createInitialSnapsho
 }
 
 describe('AppShell missions', () => {
+  it.each(['README.md', '/workspace/mission/README.md'])('opens a rendered Mission file link beside its conversation (%s)', async target => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    agent.folder = '/workspace/mission';
+    const mission = createMission(snapshot, { outcome: 'Follow conversation links', workflowType: 'shapeAndShipFeature', teamId: agent.teamId, orchestratorMemberId: agent.id });
+    prepareMissionLead(mission, agent.id);
+    const previewAgentFile = vi.fn().mockResolvedValue({ kind: 'text', path: 'README.md', content: '# Mission document', size: 18 });
+    const wrapper = mountShell({ snapshot, realConversationPane: true, previewAgentFile,
+      codexConversationSnapshot: codexConversationSnapshot([codexTextMessage('links', 'assistant', `[Readme](<${target}>)`)]),
+    });
+    try {
+      wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', mission.id);
+      await flushPromises();
+      await wrapper.get('.mission-conversation-rail a').trigger('click');
+      await flushPromises();
+      expect(previewAgentFile).toHaveBeenCalledExactlyOnceWith(agent.id, 'README.md');
+      expect(wrapper.get('[role="tab"][aria-label="README.md"]').attributes('aria-selected')).toBe('true');
+      expect(wrapper.get('.markdown-panel').text()).toContain('Mission document');
+      expect(wrapper.get('.mission-conversation-rail a').isVisible()).toBe(true);
+      await wrapper.get('[aria-label="Close README.md tab"]').trigger('click');
+      expect(wrapper.find('.markdown-panel').exists()).toBe(false);
+      expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(true);
+    } finally { wrapper.unmount(); }
+  });
+
+  it('opens a rendered Mission HTTPS link through the host browser route', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    const mission = createMission(snapshot, { outcome: 'Follow a web link', workflowType: 'shapeAndShipFeature', teamId: agent.teamId, orchestratorMemberId: agent.id });
+    prepareMissionLead(mission, agent.id);
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const wrapper = mountShell({ snapshot, realConversationPane: true,
+      codexConversationSnapshot: codexConversationSnapshot([codexTextMessage('links', 'assistant', '[Example](https://example.com)')]),
+    });
+    try {
+      wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', mission.id);
+      await flushPromises();
+      await wrapper.get('.mission-conversation-rail a').trigger('click');
+      expect(open).toHaveBeenCalledExactlyOnceWith('https://example.com', '_blank', 'noopener,noreferrer');
+      expect(wrapper.get('.mission-conversation-rail a').isVisible()).toBe(true);
+    } finally { wrapper.unmount(); open.mockRestore(); }
+  });
+
   it('creates a named team agent in the selected existing Mission worktree from its context menu', async () => {
     const snapshot = createInitialSnapshot();
     const mission = createMission(snapshot, { outcome: 'Add team billing', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
@@ -304,7 +348,7 @@ describe('AppShell missions', () => {
     expect(navigation.props('missionCreationError')).toBe('');
   });
 
-  it('replaces the agent workspace with a mission and returns to normal agent navigation', async () => {
+  it('shows a mission and returns to normal agent navigation', async () => {
     const snapshot = createInitialSnapshot();
     const mission = createMission(snapshot, { outcome: 'Add billing', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
     const selectMission = vi.fn().mockResolvedValue(undefined);
@@ -312,12 +356,12 @@ describe('AppShell missions', () => {
     await wrapper.findComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', mission.id);
     await flushPromises();
     expect(wrapper.find('.mission-workspace').exists()).toBe(true);
-    expect(wrapper.findComponent({ name: 'AgentWorkspace' }).exists()).toBe(false);
+    expect(wrapper.find('.agent-header').exists()).toBe(false);
     expect(selectMission).toHaveBeenLastCalledWith(mission.id);
     await wrapper.findComponent({ name: 'AppShellNavigation' }).vm.$emit('select-agent', snapshot.agents[0]!.id);
     await flushPromises();
     expect(wrapper.find('.mission-workspace').exists()).toBe(false);
-    expect(wrapper.findComponent({ name: 'AgentWorkspace' }).exists()).toBe(true);
+    expect(wrapper.find('.agent-header').exists()).toBe(true);
     expect(selectMission).toHaveBeenLastCalledWith(null);
   });
 

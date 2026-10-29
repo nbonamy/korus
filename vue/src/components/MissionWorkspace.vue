@@ -9,10 +9,10 @@
       <MissionCostMenu :mission="mission" />
     </WorkspaceHeader>
 
-    <div class="mission-workspace__body workspace-body">
-      <MissionStageRail :mission="mission" :viewed-stage="viewedStage" @view-stage="viewedStage = $event" />
+    <div class="mission-workspace__body workspace-body" :class="{ 'mission-workspace__body--conversation-only': conversationOnly }">
+      <MissionStageRail v-show="!conversationOnly" :mission="mission" :viewed-stage="viewedStage" @view-stage="viewedStage = $event" />
 
-      <main class="mission-workspace__workbench">
+      <main v-show="!conversationOnly" class="mission-workspace__workbench">
         <header class="mission-workspace__stage-header">
           <div class="mission-workspace__stage-heading">
             <h2>{{ stageHeadingTitle }}</h2>
@@ -213,6 +213,7 @@ const props = withDefaults(defineProps<{
   agents?: Agent[];
   unreadAgentIds?: string[];
   sidebarCollapsed?: boolean;
+  conversationOnly?: boolean;
   executeMission?: (input: MissionExecutionInput) => Promise<void>;
   implementationStartProgress?: MissionImplementationStartProgress | null;
   mission: Mission;
