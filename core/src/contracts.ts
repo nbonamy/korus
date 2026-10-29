@@ -914,7 +914,8 @@ export type AppApi = {
   listGlobalWorkItems(provider: WorkProviderKind, location?: AutomationLocation, query?: GlobalWorkItemQuery): Promise<WorkItemPage>;
   listAssignedWorkItems?(provider: WorkProviderKind, location?: AutomationLocation): Promise<WorkItem[]>;
   listWorkItems(provider: WorkProviderKind, repositoryId: string, location?: AutomationLocation, query?: WorkItemQuery): Promise<WorkItem[]>;
-  listBackendModels(agentId: string, backend?: AgentBackend): Promise<BackendModelOption[]>;
+  /** Without an agent, lists a provider's catalog on one host (local when no connection is given). */
+  listBackendModels(agentId: string | null, backend?: AgentBackend, remoteConnectionId?: string): Promise<BackendModelOption[]>;
   listBackendPlugins(agentId: string): Promise<BackendPluginSummary[]>;
   listBackendSkills(agentId: string): Promise<BackendSkillSummary[]>;
   listAgentFiles(agentId: string): Promise<AgentFileSearchItem[]>;

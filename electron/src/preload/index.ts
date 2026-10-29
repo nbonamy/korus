@@ -52,7 +52,7 @@ const api: AppApi = {
   listGlobalWorkItems: (provider: WorkProviderKind, location?: AutomationLocation, query?: GlobalWorkItemQuery) => ipc.invoke(ipcChannels.listGlobalWorkItems, provider, location, query),
   listAssignedWorkItems: (provider: WorkProviderKind, location?: AutomationLocation) => ipc.invoke(ipcChannels.listAssignedWorkItems, provider, location),
   listWorkItems: (provider: WorkProviderKind, repositoryId: string, location?: AutomationLocation, query?: WorkItemQuery) => ipc.invoke(ipcChannels.listWorkItems, provider, repositoryId, location, query),
-  listBackendModels: (agentId, backend) => backend === undefined ? ipc.invoke(ipcChannels.listBackendModels, agentId) : ipc.invoke(ipcChannels.listBackendModels, agentId, backend),
+  listBackendModels: (agentId, backend, remoteConnectionId) => ipc.invoke(ipcChannels.listBackendModels, agentId, backend, remoteConnectionId),
   listBackendPlugins: (agentId: string) => ipc.invoke(ipcChannels.listBackendPlugins, agentId),
   listBackendSkills: (agentId: string) => ipc.invoke(ipcChannels.listBackendSkills, agentId),
   listAgentFiles: (agentId: string) => ipc.invoke(ipcChannels.listAgentFiles, agentId),

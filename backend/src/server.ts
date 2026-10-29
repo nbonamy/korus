@@ -1936,9 +1936,19 @@ export class AppBackendServer {
         }, () => this.visualize.readAsset(agentId, visualizationId));
       }
       case backendMethods.agentModelsList: {
-        const agentId = requireAgentId(message.params);
-        const backend = requireRecord(message.params).backend;
+        const params = requireRecord(message.params);
+        const backend = params.backend;
         if (backend !== undefined && !isAgentBackend(backend)) throw new Error('Invalid model provider.');
+        if (params.agentId === undefined) {
+          // A host catalog needs no agent: a machine without agents yet can still offer its models.
+          if (!isAgentBackend(backend)) throw new Error('A model provider is required without an agent.');
+          const connectionId = optionalTrimmedString(params.remoteConnectionId);
+          if (connectionId) return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, backendMethods.agentModelsList, { backend }));
+          const now = new Date().toISOString();
+          const catalogAgent: Agent = { id: 'host-model-catalog', name: null, folder: null, backend: resolveAgentBackend(this.snapshot, backend), status: { type: 'idle' }, createdAt: now, updatedAt: now };
+          return createAppRpcResult(message.id, await this.handleAgentDriverRequest(catalogAgent, backendMethods.driverModelsList, { agent: catalogAgent }));
+        }
+        const agentId = requireAgentId(message.params);
         return this.routeAgentResultRequest(message.id, agentId, backendMethods.agentModelsList, { agentId, ...(backend ? { backend } : {}) }, (agent) => {
           const modelAgent = backend ? { ...agent, backend: resolveAgentBackend(this.snapshot, backend), backendSession: undefined, backendDefaults: undefined } : agent;
           return this.handleAgentDriverRequest(modelAgent, backendMethods.driverModelsList, { agent: modelAgent });

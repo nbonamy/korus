@@ -77,6 +77,21 @@ describe('BackendModelSelector', () => {
     expect(listModels).toHaveBeenLastCalledWith('remote-agent', 'codex');
   });
 
+  it('reads the catalog of a host that has no agent yet from the host itself', async () => {
+    const snapshot = createEmptySnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.remoteConnections.connections = [{ id: 'box', kind: 'ssh', host: 'box', name: 'Box', status: 'ready', createdAt: '', updatedAt: '', providerConnections: structuredClone(snapshot.providerConnections) }] as never;
+    const listModels = vi.fn().mockResolvedValue([]);
+    mount(defineComponent({
+      setup() {
+        provideBackendChoices(() => snapshot);
+        return () => h(BackendModelSelector, { remoteConnectionId: 'box', selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } });
+      },
+    }), { global: { provide: { [backendModelCatalogKey as symbol]: { listModels } } } });
+    await flushPromises();
+    expect(listModels).toHaveBeenLastCalledWith(null, 'codex', 'box');
+  });
+
   it('picks model and reasoning effort together from a cascading menu', async () => {
     const wrapper = mount(BackendModelSelector, {
       props: { agentId: 'agent', selection: { backend: 'codex' as const, model: '', reasoningEffort: '', serviceTier: null }, 'onUpdate:selection': (selection: ExecutionSelection | undefined) => wrapper.setProps({ selection }) },

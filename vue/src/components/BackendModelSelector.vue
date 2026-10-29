@@ -55,7 +55,9 @@ const remember = useRememberBackend(() => props.remoteConnectionId);
 watch(() => props.remoteConnectionId, () => { if (!props.disabled) backend.value = choices.value[0]; });
 const { listModels } = useBackendModelCatalog();
 const catalogAgentId = useCatalogAgentId(() => props.remoteConnectionId, () => props.agentId);
-const catalogHost = useAgentHost(() => catalogAgentId.value);
+const agentHost = useAgentHost(() => catalogAgentId.value);
+// A host without agents is still read through its own catalog.
+const catalogHost = computed(() => catalogAgentId.value ? agentHost.value : props.remoteConnectionId || 'local');
 const { t } = useI18n();
 const open = ref(false);
 const loading = ref(false);
@@ -103,7 +105,7 @@ const modelItems = computed<AppMenuItem[]>(() => [
 watch([backend, catalogAgentId, () => props.remoteConnectionId], async ([nextBackend, agentId], previous, cleanup) => {
   let current = true;
   cleanup(() => { current = false; });
-  const cached = nextBackend && agentId ? cachedModels(catalogHost.value, nextBackend) : undefined;
+  const cached = nextBackend ? cachedModels(catalogHost.value, nextBackend) : undefined;
   showCatalog(cached ?? []);
   if (previous?.length) {
     model.value = '';
@@ -113,10 +115,10 @@ watch([backend, catalogAgentId, () => props.remoteConnectionId], async ([nextBac
   selectDefaultModel();
   loading.value = false;
   if (previous?.[0] !== undefined && previous[0] !== nextBackend && nextBackend) remember(nextBackend);
-  if (!nextBackend || !agentId) return;
+  if (!nextBackend) return;
   loading.value = !cached;
   try {
-    const catalog = await listModels(agentId, nextBackend);
+    const catalog = agentId ? await listModels(agentId, nextBackend) : await listModels(null, nextBackend, props.remoteConnectionId || undefined);
     if (!current) return;
     showCatalog(catalog);
     selectDefaultModel();

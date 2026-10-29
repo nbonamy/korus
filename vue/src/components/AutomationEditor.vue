@@ -71,7 +71,7 @@ import { useBackendChoices } from './backend-selection';
 const props = withDefaults(defineProps<{
   automation?: Automation | null; mode: 'create' | 'edit'; agents: Agent[]; teams: Team[];
   error?: string | null; saving?: boolean;
-  listModels?: (agentId: string, backend: AgentBackend) => Promise<BackendModelOption[]>;
+  listModels?: (agentId: string | null, backend: AgentBackend) => Promise<BackendModelOption[]>;
 }>(), { automation: null, error: null, saving: false });
 const emit = defineEmits<{ cancel: []; submit: [input: CreateAutomationInput] }>();
 const target = props.automation?.target;

@@ -57,7 +57,7 @@ const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?
   configureWorkBacklog: [backendMethods.workProviderBacklogConfigure, namedOptional('input', 'location')],
   listGlobalWorkItems: [backendMethods.workProviderGlobalItemsList, namedOptional('provider', 'location', 'query')],
   listWorkItems: [backendMethods.workProviderItemsList, namedOptional('provider', 'sourceId', 'location', 'query')],
-  listBackendModels: [backendMethods.agentModelsList, namedOptional('agentId', 'backend')],
+  listBackendModels: [backendMethods.agentModelsList, namedOptional('agentId', 'backend', 'remoteConnectionId')],
   listBackendPlugins: [backendMethods.agentPluginsList, named('agentId')],
   listBackendSkills: [backendMethods.agentSkillsList, named('agentId')],
   listAgentFiles: [backendMethods.agentFilesList, named('agentId')],

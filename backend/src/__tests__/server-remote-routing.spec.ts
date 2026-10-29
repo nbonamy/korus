@@ -89,6 +89,26 @@ describe('AppBackendServer', () => {
     expect(remoteClients.request).toHaveBeenCalledExactlyOnceWith(connection, 'workProvider/branches/list', { ...params, _clientId: 'remote-controller' }, expect.any(Function));
   });
 
+  it('lists a host model catalog without an agent by asking that host', async () => {
+    const snapshot = createTestSnapshot();
+    const connection = readyRemoteConnection(); snapshot.remoteConnections.connections = [connection];
+    const models = [{ id: 'gpt-test', model: 'gpt-test', displayName: 'GPT Test' }];
+    const remoteClients = { request: vi.fn().mockResolvedValue(models) };
+    const server = new AppBackendServer({ version: 'test', snapshot, remoteClients: remoteClients as never });
+    expect(await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'agent/models/list', params: { backend: 'codex', remoteConnectionId: connection.id } })).toMatchObject({ result: models });
+    expect(remoteClients.request).toHaveBeenCalledExactlyOnceWith(connection, 'agent/models/list', { backend: 'codex', _clientId: 'remote-controller' }, expect.any(Function));
+  });
+
+  it('lists the local model catalog of a provider without an agent', async () => {
+    const snapshot = createTestSnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const listModels = vi.fn().mockResolvedValue([{ id: 'gpt-test', model: 'gpt-test', displayName: 'GPT Test' }]);
+    const driver = { backend: 'codex', listModels, onEvent: () => () => undefined, close: async () => undefined } as unknown as ConstructorParameters<typeof BackendDriverRpc>[0] extends Map<string, infer D> ? D : never;
+    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new BackendDriverRpc(new Map([['codex', driver]])) });
+    expect(await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'agent/models/list', params: { backend: 'codex' } })).toMatchObject({ result: [{ id: 'gpt-test' }] });
+    expect(listModels).toHaveBeenCalledOnce();
+  });
+
   it('rechecks provider installation on the owning remote host without running a local installer', async () => {
     const snapshot = createTestSnapshot();
     const connection = readyRemoteConnection();

@@ -170,7 +170,7 @@ const props = withDefaults(
     automations: Automation[];
     agents: Agent[];
     missions?: AppSnapshot['missions'];
-    listModels?: (agentId: string, backend: AgentBackend) => Promise<BackendModelOption[]>;
+    listModels?: (agentId: string | null, backend: AgentBackend) => Promise<BackendModelOption[]>;
     remoteConnections?: RemoteConnection[];
     runAutomation?: (automationId: string, location?: AutomationLocation) => Promise<AppSnapshot | void>;
     readConversationMessages?: (ref: BackendConversationRef, agentId: string, location?: AutomationLocation) => Promise<RendererMessage[]>;

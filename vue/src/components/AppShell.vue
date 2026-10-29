@@ -1391,7 +1391,7 @@ const shareControl = (input: import('@workspace/core/conversation-sharing').Conv
 const handoffAgentId = ref<string | null>(null);
 const handoffAgent = computed(() => props.snapshot.agents.find(agent => agent.id === handoffAgentId.value) ?? null);
 function openHandoff(agentId: string) { handoffAgentId.value = agentId; }
-async function listHandoffModels(agentId: string, backend: AgentBackend) {
+async function listHandoffModels(agentId: string | null, backend: AgentBackend) {
   return await appApi?.listBackendModels(agentId, backend) ?? [];
 }
 const agentDialogMode = ref<'create' | 'edit'>('create');
