@@ -216,8 +216,8 @@ describe('controller desktop lifecycle', () => {
   it('limits the simulator to local agents through IPC and revokes control on disconnect', async () => {
     const { controller, state, window, disconnect } = setup();
     const agentId = state.snapshot.agents[0]!.id;
-    state.snapshot.agents.push({ ...state.snapshot.agents[0]!, id: 'remote-agent', teamId: 'remote-team' });
-    state.snapshot.teams.push({ id: 'remote-team', name: 'Remote', agentIds: ['remote-agent'], remoteConnectionId: 'remote' });
+    state.snapshot.agents.push({ ...state.snapshot.agents[0]!, id: 'remote-agent', teamId: 'remote-team', remoteConnectionId: 'remote' });
+    state.snapshot.teams.push({ id: 'remote-team', name: 'Remote', agentIds: ['remote-agent'] });
     await controller.initialize(); controller.createWindow();
     await expect(invoke(ipcChannels.mobileSimulator, 'missing', { action: 'list' })).rejects.toThrow('Agent not found');
     await expect(invoke(ipcChannels.mobileSimulator, 'remote-agent', { action: 'list' })).rejects.toThrow('local agents');

@@ -413,7 +413,7 @@ describe('AgentDialog', () => {
     expect(wrapper.get<HTMLInputElement>('[aria-label="Agent name"]').element.value).toBe('');
   });
 
-  it('creates agents using the target team SSH connection for repositories and worktrees', async () => {
+  it('creates agents on the requested SSH connection for repositories and worktrees', async () => {
     const createAgent = vi.fn().mockResolvedValue(undefined);
     const listSourceRepositories = vi.fn().mockResolvedValue([{
       name: 'agent-workspace',
@@ -441,7 +441,7 @@ describe('AgentDialog', () => {
     await nextTick();
     await saveButton(wrapper).trigger('click');
 
-    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/home/nicolas/src/agent-workspace-ssh-agent', sourceRepositoryName: 'agent-workspace', selection: { ...{ backend: 'codex' } } });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/home/nicolas/src/agent-workspace-ssh-agent', sourceRepositoryName: 'agent-workspace', selection: { backend: 'codex' }, remoteConnectionId: 'connection-devbox' });
   });
 
   it('picks a custom folder through the selected SSH connection', async () => {
@@ -487,7 +487,7 @@ describe('AgentDialog', () => {
     expect(listSourceFolders).toHaveBeenCalledWith({ remoteConnectionId: 'connection-devbox' });
     expect(listSourceFolders).toHaveBeenCalledWith({ remoteConnectionId: 'connection-devbox', path: '/home/nicolas/src' });
     expect(listSourceFolders).toHaveBeenCalledWith({ remoteConnectionId: 'connection-devbox', path: '/home/nicolas/src/witsy' });
-    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/home/nicolas/src/witsy', selection: { ...{ backend: 'codex' } } });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/home/nicolas/src/witsy', selection: { backend: 'codex' }, remoteConnectionId: 'connection-devbox' });
   });
 
   it('loads selected repository worktrees through the backend list action', async () => {

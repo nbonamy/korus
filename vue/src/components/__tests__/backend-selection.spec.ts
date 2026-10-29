@@ -12,22 +12,21 @@ describe('host-scoped manual engine selection', () => {
   it.each(['claude', 'antigravity'] as const)('remembers explicit %s choices per host, but not temporary availability fallback', async backend => {
     const snapshot = reactive(createEmptySnapshot());
     snapshot.providerConnections = (['codex', backend] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
-    snapshot.teams.push({ id: 'remote-team', name: 'Remote', agentIds: [], remoteConnectionId: 'remote' });
     snapshot.remoteConnections.connections = [{ id: 'remote', kind: 'ssh', host: 'box', name: 'Box', status: 'ready', createdAt: '', updatedAt: '', providerConnections: structuredClone(snapshot.providerConnections.map(engine => ({ ...engine }))) }];
-    const team = ref(snapshot.activeTeamId);
+    const host = ref<string>();
     const model = ref<AgentBackend>();
     const wrapper = mount(defineComponent({
       setup() {
         provideBackendChoices(() => snapshot);
-        return () => h(BackendSelector, { teamId: team.value, modelValue: model.value, 'onUpdate:modelValue': value => { model.value = value; } });
+        return () => h(BackendSelector, { remoteConnectionId: host.value, modelValue: model.value, 'onUpdate:modelValue': value => { model.value = value; } });
       },
     }));
     await wrapper.get('select').setValue(backend);
     expect(model.value).toBe(backend);
-    team.value = 'remote-team';
+    host.value = 'remote';
     await wrapper.vm.$nextTick();
     expect(model.value).toBe('codex');
-    team.value = snapshot.activeTeamId;
+    host.value = undefined;
     await wrapper.vm.$nextTick();
     expect(model.value).toBe(backend);
     snapshot.providerConnections[1]!.connected = false;

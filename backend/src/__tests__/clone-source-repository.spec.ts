@@ -105,6 +105,17 @@ describe('cloneSourceRepository', () => {
       expect(run.mock.calls.map(call => call[1][0] === 'clone' ? call[1][2] : call[1][0]).filter(value => value !== 'remote')).toStrictEqual(['git@gitlab.com:group/project.git', 'https://gitlab.com/group/project']);
     });
 
+    it('recognises an authentication failure from the whole git message, not only its last lines', async () => {
+      const root = await mkdtemp(path.join(os.tmpdir(), 'app-clone-auth-full-'));
+      const run = vi.fn(async (_command: string, args: string[]) => {
+        if (args[0] !== 'clone') return { stdout: '' };
+        throw failure('fatal: Could not read from remote repository.\n\nPlease make sure you have the correct access rights\nand the repository exists.');
+      });
+      await expect(cloneSourceRepository(root, 'git@gitea.example.com:team/app.git', { run })).rejects.toMatchObject({
+        descriptor: { code: 'clone.authenticationFailed', params: { repository: 'app', host: 'gitea.example.com' } },
+      });
+    });
+
     it('reports the git error for other failures', async () => {
       const root = await mkdtemp(path.join(os.tmpdir(), 'app-clone-failed-'));
       const run = vi.fn(async (_command: string, args: string[]) => { if (args[0] === 'clone') throw failure('fatal: repository not found'); return { stdout: '' }; });

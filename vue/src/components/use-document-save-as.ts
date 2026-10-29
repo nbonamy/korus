@@ -15,7 +15,7 @@ export function useDocumentSaveAs(options: {
     if (!agent || !panel?.documentId) return;
     const filename = `${panel.title.replace(/[<>:"/\\|?*\x00-\x1f]/gu, '-').replace(/\.(md|markdown)$/iu, '').trim().slice(0, 120) || 'document'}.md`;
     const defaultPath = agent.folder ? `${agent.folder.replace(/[\\/]$/u, '')}/${filename}` : filename;
-    const remote = options.snapshot().teams.find(team => team.id === agent.teamId)?.remoteConnectionId;
+    const remote = agent.remoteConnectionId;
     let destination: string | null;
     let overwrite = false;
     if (appHostCapabilities.nativeFileDialogs && !remote) {

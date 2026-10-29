@@ -7,56 +7,6 @@
   >
     <form class="app-form-dialog" @submit.prevent="submit">
       <FormField
-        :label="$t('surface.teamDialog.connection')"
-        label-for="team-dialog-connection"
-      >
-        <div class="app-form-dialog__control">
-          <el-select
-            id="team-dialog-connection"
-            v-model="connectionSelection"
-            :disabled="connectionLocked"
-          >
-            <el-option
-              :label="$t('surface.teamDialog.local')"
-              :value="localConnectionValue"
-            />
-            <el-option
-              v-for="connection in readyRemoteConnections"
-              :key="connection.id"
-              :label="connection.name"
-              :value="connection.id"
-            />
-          </el-select>
-        </div>
-      </FormField>
-
-      <FormField
-        v-if="showRemoteTeamSelection"
-        :label="$t('surface.teamDialog.remoteTeam')"
-        label-for="team-dialog-remote-team"
-      >
-        <div class="app-form-dialog__control">
-          <el-select
-            id="team-dialog-remote-team"
-            v-model="remoteTeamSelection"
-            :loading="remoteTeamsLoading"
-          >
-            <el-option
-              :label="$t('surface.teamDialog.createNewRemoteTeam')"
-              :value="newRemoteTeamValue"
-            />
-            <el-option
-              v-for="teamOption in remoteTeamOptions"
-              :key="teamOption.id"
-              :label="teamOption.name"
-              :value="teamOption.id"
-            />
-          </el-select>
-        </div>
-      </FormField>
-
-      <FormField
-        v-if="showTeamNameInput"
         :label="$t('surface.teamDialog.name')"
         label-for="team-dialog-name"
       >
@@ -125,7 +75,7 @@
 <script setup lang="ts">
 import { translate } from '../i18n';
 import { computed, ref, watch } from 'vue';
-import type { CreateTeamInput, RemoteConnection, Team, UpdateTeamInput } from '@workspace/core/contracts';
+import type { CreateTeamInput, Team, UpdateTeamInput } from '@workspace/core/contracts';
 import { defaultTeamColor, teamColors } from '@workspace/core/team-colors';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
@@ -133,15 +83,12 @@ import { CheckIcon } from '../shared/icons/app-icons';
 
 const props = withDefaults(defineProps<{
   createTeam: (input: CreateTeamInput) => Promise<Team | null | void>;
-  loadRemoteTeams?: (connectionId: string) => Promise<Team[]>;
   mode?: 'create' | 'edit';
-  remoteConnections?: RemoteConnection[];
   team?: Team | null;
   updateTeam?: (input: UpdateTeamInput) => Promise<void>;
   visible: boolean;
 }>(), {
   mode: 'create',
-  remoteConnections: () => [],
   team: null,
   updateTeam: async () => undefined,
 });
@@ -152,48 +99,18 @@ const emit = defineEmits<{
 
 const name = ref('');
 const selectedColor = ref<string>(defaultTeamColor);
-const localConnectionValue = '__local__';
-const newRemoteTeamValue = '__new_remote_team__';
-const connectionSelection = ref(localConnectionValue);
-const remoteTeamSelection = ref(newRemoteTeamValue);
-const remoteTeamOptions = ref<Team[]>([]);
-const remoteTeamsLoading = ref(false);
 const errorMessage = ref<string | null>(null);
 const submitting = ref(false);
 
-const selectedExistingRemoteTeam = computed(() => remoteTeamOptions.value.find((team) => team.id === remoteTeamSelection.value) ?? null);
-const showRemoteTeamSelection = computed(() => shouldLoadRemoteTeamOptions(selectedRemoteConnectionId.value));
-const showTeamNameInput = computed(() => props.mode === 'edit' || connectionSelection.value === localConnectionValue || remoteTeamSelection.value === newRemoteTeamValue);
-const canSave = computed(() => (name.value.trim().length > 0 || Boolean(selectedExistingRemoteTeam.value)) && !submitting.value);
-const readyRemoteConnections = computed(() => props.remoteConnections.filter((connection) => connection.status === 'ready'));
-const selectedRemoteConnectionId = computed(() => (
-  connectionLocked.value && props.team?.remoteConnectionId
-    ? props.team.remoteConnectionId
-    : connectionSelection.value === localConnectionValue ? '' : connectionSelection.value
-));
-const connectionLocked = computed(() => props.mode === 'edit' && (props.team?.agentIds.length ?? 0) > 0);
+const canSave = computed(() => name.value.trim().length > 0 && !submitting.value);
 const dialogTitle = computed(() => props.mode === 'edit' ? translate('surface.teamDialog.editTeam') : translate('surface.teamDialog.createTeam'));
-const submitLabel = computed(() => props.mode === 'edit'
-  ? translate('surface.teamDialog.save')
-  : translate(selectedExistingRemoteTeam.value ? 'surface.teamDialog.connect' : 'surface.teamDialog.createTeam'));
+const submitLabel = computed(() => props.mode === 'edit' ? translate('surface.teamDialog.save') : translate('surface.teamDialog.createTeam'));
 
 watch(() => props.visible, (visible) => {
   if (visible) {
     resetForm();
   }
 }, { immediate: true });
-
-watch(selectedRemoteConnectionId, (connectionId) => {
-  void loadRemoteTeamOptions(connectionId);
-});
-
-watch(selectedExistingRemoteTeam, (team) => {
-  if (!team) {
-    return;
-  }
-  name.value = team.name;
-  selectedColor.value = team.color ?? selectedColor.value;
-});
 
 async function submit(): Promise<void> {
   if (!canSave.value) {
@@ -204,22 +121,9 @@ async function submit(): Promise<void> {
   errorMessage.value = null;
   try {
     if (props.mode === 'edit' && props.team) {
-      const existingRemoteTeam = selectedExistingRemoteTeam.value;
-      await props.updateTeam({
-        id: props.team.id,
-        name: existingRemoteTeam?.name ?? name.value,
-        color: existingRemoteTeam?.color ?? selectedColor.value,
-        ...(selectedRemoteConnectionId.value ? { remoteConnectionId: selectedRemoteConnectionId.value } : {}),
-        ...(existingRemoteTeam ? { remoteTeamId: existingRemoteTeam.id } : {}),
-      });
+      await props.updateTeam({ id: props.team.id, name: name.value, color: selectedColor.value });
     } else {
-      const existingRemoteTeam = selectedExistingRemoteTeam.value;
-      await props.createTeam({
-        name: existingRemoteTeam?.name ?? name.value,
-        color: existingRemoteTeam?.color ?? selectedColor.value,
-        ...(selectedRemoteConnectionId.value ? { remoteConnectionId: selectedRemoteConnectionId.value } : {}),
-        ...(existingRemoteTeam ? { remoteTeamId: existingRemoteTeam.id } : {}),
-      });
+      await props.createTeam({ name: name.value, color: selectedColor.value });
     }
     close();
   } catch (error) {
@@ -243,49 +147,8 @@ function close(): void {
 function resetForm(): void {
   name.value = props.mode === 'edit' ? props.team?.name ?? '' : '';
   selectedColor.value = props.mode === 'edit' ? props.team?.color ?? defaultTeamColor : defaultTeamColor;
-  connectionSelection.value = connectionValueForTeam();
-  remoteTeamSelection.value = newRemoteTeamValue;
-  remoteTeamOptions.value = [];
   errorMessage.value = null;
   submitting.value = false;
-  void loadRemoteTeamOptions(selectedRemoteConnectionId.value);
-}
-
-function connectionValueForTeam(): string {
-  if (props.mode !== 'edit') {
-    return localConnectionValue;
-  }
-  const teamConnectionId = props.team?.remoteConnectionId;
-  return teamConnectionId && readyRemoteConnections.value.some((connection) => connection.id === teamConnectionId)
-    ? teamConnectionId
-    : localConnectionValue;
-}
-
-async function loadRemoteTeamOptions(connectionId: string): Promise<void> {
-  remoteTeamOptions.value = [];
-  remoteTeamSelection.value = newRemoteTeamValue;
-  if (!shouldLoadRemoteTeamOptions(connectionId) || !props.loadRemoteTeams) {
-    return;
-  }
-
-  remoteTeamsLoading.value = true;
-  try {
-    remoteTeamOptions.value = await props.loadRemoteTeams(connectionId);
-  } catch {
-    remoteTeamOptions.value = [];
-  } finally {
-    remoteTeamsLoading.value = false;
-  }
-}
-
-function shouldLoadRemoteTeamOptions(connectionId: string): boolean {
-  if (!connectionId || connectionLocked.value) {
-    return false;
-  }
-  if (props.mode === 'create') {
-    return true;
-  }
-  return connectionId !== (props.team?.remoteConnectionId?.trim() ?? '');
 }
 </script>
 

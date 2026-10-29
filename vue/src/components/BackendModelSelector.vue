@@ -37,7 +37,7 @@ import { useAgentHost, useBackendChoices, useCatalogAgentId, useNewAgentBackend,
 import { cacheModels, cachedModels, defaultReasoningEffort, presentCatalog, useBackendModelCatalog } from './backend-model-catalog';
 
 const props = defineProps<{
-  agentId?: string; teamId?: string | null; disabled?: boolean; allowedBackends?: AgentBackend[];
+  agentId?: string; remoteConnectionId?: string | null; disabled?: boolean; allowedBackends?: AgentBackend[];
   selections?: Partial<Record<AgentBackend, ExecutionSelection>>;
 }>();
 const emit = defineEmits<{ loading: [loading: boolean]; error: [error: unknown] }>();
@@ -46,16 +46,18 @@ const selection = ref(selectionBinding.value);
 watch(selectionBinding, value => { selection.value = value; }, { flush: 'sync' });
 watch(selection, value => { selectionBinding.value = value; }, { flush: 'sync' });
 const { backend, model, reasoningEffort, serviceTier } = executionSelectionControls(selection);
-const hostChoices = useBackendChoices(() => props.teamId);
+const hostChoices = useBackendChoices(() => props.remoteConnectionId);
 const choices = computed(() => hostChoices.value.filter(choice => !props.allowedBackends || props.allowedBackends.includes(choice)));
 // Remembering a choice reorders `choices`; the tabs keep a fixed order so they never jump under the pointer.
 const tabs = computed(() => agentBackends.filter(choice => choices.value.includes(choice)));
 useNewAgentBackend(backend, choices);
-const remember = useRememberBackend(() => props.teamId);
-watch(() => props.teamId, () => { if (!props.disabled) backend.value = choices.value[0]; });
+const remember = useRememberBackend(() => props.remoteConnectionId);
+watch(() => props.remoteConnectionId, () => { if (!props.disabled) backend.value = choices.value[0]; });
 const { listModels } = useBackendModelCatalog();
-const catalogAgentId = useCatalogAgentId(() => props.teamId, () => props.agentId);
-const catalogHost = useAgentHost(() => catalogAgentId.value);
+const catalogAgentId = useCatalogAgentId(() => props.remoteConnectionId, () => props.agentId);
+const agentHost = useAgentHost(() => catalogAgentId.value);
+// A host without agents is still read through its own catalog.
+const catalogHost = computed(() => catalogAgentId.value ? agentHost.value : props.remoteConnectionId || 'local');
 const { t } = useI18n();
 const open = ref(false);
 const loading = ref(false);
@@ -100,10 +102,10 @@ const modelItems = computed<AppMenuItem[]>(() => [
     };
   }),
 ]);
-watch([backend, catalogAgentId, () => props.teamId], async ([nextBackend, agentId], previous, cleanup) => {
+watch([backend, catalogAgentId, () => props.remoteConnectionId], async ([nextBackend, agentId], previous, cleanup) => {
   let current = true;
   cleanup(() => { current = false; });
-  const cached = nextBackend && agentId ? cachedModels(catalogHost.value, nextBackend) : undefined;
+  const cached = nextBackend ? cachedModels(catalogHost.value, nextBackend) : undefined;
   showCatalog(cached ?? []);
   if (previous?.length) {
     model.value = '';
@@ -113,10 +115,10 @@ watch([backend, catalogAgentId, () => props.teamId], async ([nextBackend, agentI
   selectDefaultModel();
   loading.value = false;
   if (previous?.[0] !== undefined && previous[0] !== nextBackend && nextBackend) remember(nextBackend);
-  if (!nextBackend || !agentId) return;
+  if (!nextBackend) return;
   loading.value = !cached;
   try {
-    const catalog = await listModels(agentId, nextBackend);
+    const catalog = agentId ? await listModels(agentId, nextBackend) : await listModels(null, nextBackend, props.remoteConnectionId || undefined);
     if (!current) return;
     showCatalog(catalog);
     selectDefaultModel();

@@ -206,6 +206,12 @@
               @click="selectAgent(session.agentId)"
               @contextmenu.prevent="openAgentMenu(session.agentId, $event)"
             >
+              <RemoteHostIndicator
+                v-if="!session.shared && session.remoteConnectionId"
+                class="agent-sidebar__remote-host"
+                :connection-id="session.remoteConnectionId"
+                :connection="rowHost(session)"
+              />
               <span
                 v-if="!session.shared && backendChoices.length > 1 && agentsById.get(session.agentId) && !(group.activity && showQuickSwitchShortcut(session, group.activity))"
                 class="agent-sidebar__engine"
@@ -275,6 +281,7 @@ import StartWorkMenu from './StartWorkMenu.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import ActivityAgentRow from './ActivityAgentRow.vue';
 import ScrollHintRows from './ScrollHintRows.vue';
+import RemoteHostIndicator from './RemoteHostIndicator.vue';
 
 const props = defineProps<{ model: AgentSidebarModel }>();
 const {
@@ -314,6 +321,7 @@ const {
   selectAgent,
   openAgentMenu,
   backendChoices,
+  rowHost,
   backendDisplayName,
   pullRequestAttentionLabel,
   minWidth,
@@ -331,6 +339,10 @@ const {
 <style scoped src="./agent-row.css"></style>
 <style scoped src="./agent-sidebar-common.css"></style>
 <style scoped>
+.agent-sidebar__remote-host {
+  align-self: center;
+  margin-left: var(--space-4);
+}
 
 /*
  * Activity sections take their natural height. When the list is too short they shrink, each down

@@ -140,7 +140,6 @@
       :y="contextMenuPosition.y"
       @edit-team="selectEditTeam"
       @request-close-team="requestCloseTeam"
-      @request-disconnect-team="requestDisconnectTeam"
       @close="contextMenuTeamId = null"
     />
   </aside>
@@ -149,7 +148,7 @@
 <script setup lang="ts">
 import { translate } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
-import type { AccountRateLimits, AgentBackend, AppSnapshot, CodexAccount, RemoteConnection, ReorderTeamsInput, Team } from '@workspace/core/contracts';
+import type { AccountRateLimits, AgentBackend, AppSnapshot, CodexAccount, ReorderTeamsInput, Team } from '@workspace/core/contracts';
 import { defaultTeamColor } from '@workspace/core/team-colors';
 import { product } from '@workspace/core/product';
 import { teamInitials } from '@workspace/core/team-manager';
@@ -161,8 +160,6 @@ import { confirmCloseTeam } from './team-close-confirmation';
 
 const props = defineProps<{
   teams: Team[];
-  remoteConnections?: RemoteConnection[];
-  loadRemoteTeams?: (connectionId: string) => Promise<Team[]>;
   activeTeamId: string | null;
   backlogActive?: boolean;
   cockpitActive?: boolean;
@@ -183,7 +180,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'close-team': [teamId: string];
-  'disconnect-team': [teamId: string];
   'edit-team': [teamId: string];
   'new-team': [];
   'open-settings': [];
@@ -203,7 +199,7 @@ const contextMenuPosition = ref({ x: 0, y: 0 });
 const contextMenuTeam = computed(() => (
   contextMenuTeamId.value ? props.teams.find((team) => team.id === contextMenuTeamId.value) ?? null : null
 ));
-const canCloseContextTeam = computed(() => Boolean(contextMenuTeam.value && (contextMenuTeam.value.remoteConnectionId || props.teams.length > 1)));
+const canCloseContextTeam = computed(() => Boolean(contextMenuTeam.value && props.teams.length > 1));
 const unreadTeamIdSet = computed(() => new Set(props.unreadTeamIds ?? []));
 const workingTeamIdSet = computed(() => new Set(props.workingTeamIds ?? []));
 const spokenAnnouncementsToggleLabel = computed(() => (
@@ -260,34 +256,16 @@ function teamAriaLabel(team: Team): string {
 
 async function requestCloseTeam(teamId: string): Promise<void> {
   const team = props.teams.find((candidate) => candidate.id === teamId);
-  if (!team || (!team.remoteConnectionId && props.teams.length <= 1)) {
+  if (!team || props.teams.length <= 1) {
     return;
   }
 
   contextMenuTeamId.value = null;
   await nextTick();
 
-  const action = await confirmCloseTeam(team, team.remoteConnectionId && props.loadRemoteTeams
-    ? {
-        loadTeams: props.loadRemoteTeams,
-        hostName: props.remoteConnections?.find(connection => connection.id === team.remoteConnectionId)?.name ?? team.remoteConnectionId,
-      }
-    : undefined);
-  if (action === 'close') {
+  if (await confirmCloseTeam(team) === 'close') {
     emit('close-team', team.id);
-  } else if (action === 'disconnect') {
-    emit('disconnect-team', team.id);
   }
-}
-
-function requestDisconnectTeam(teamId: string): void {
-  const team = props.teams.find((candidate) => candidate.id === teamId);
-  if (!team?.remoteConnectionId) {
-    return;
-  }
-
-  contextMenuTeamId.value = null;
-  emit('disconnect-team', team.id);
 }
 
 function openTeamMenu(teamId: string, event: MouseEvent): void {

@@ -20,7 +20,7 @@ import { agentDisplayName } from './agent-display';
 import { canSelectAgentBackend, resolveAgentBackend } from './agent-backends';
 import { seedTeamId } from './seed-ids';
 import { approvalBackendDefaultsWithPreset } from './approval-presets';
-import { workspaceSidebarGroupIdForAgent, workspaceSidebarRepositoryRootForAgent } from './workspace-sidebar';
+import { workspaceSidebarGroupIdForAgent, workspaceSidebarRepositoryKeyForAgent } from './workspace-sidebar';
 
 export function createAgentFromInput(input: CreateAgentInput, createdAt = new Date().toISOString(), teamId = seedTeamId, id = createEntityId('agent')): Agent {
   const name = normalizedOptionalString(input.name) ?? null;
@@ -499,47 +499,47 @@ export function reorderAgentInTeam(snapshot: AppSnapshot, teamId: string, agentI
 export function reorderRepositoryInTeam(
   snapshot: AppSnapshot,
   teamId: string,
-  repositoryRoot: string,
-  beforeRepositoryRoot: string | null,
+  repositoryKey: string,
+  beforeRepositoryKey: string | null,
 ): Agent[] | null {
   const team = snapshot.teams.find((candidate) => candidate.id === teamId);
   if (!team) return null;
 
   const agentsById = new Map(snapshot.agents.map((agent) => [agent.id, agent]));
-  const groups = new Map<string, { agentIds: string[]; repositoryRoot: string | null }>();
+  const groups = new Map<string, { agentIds: string[]; repositoryKey: string | null }>();
   for (const agentId of team.agentIds) {
     const agent = agentsById.get(agentId);
     const groupId = agent ? workspaceSidebarGroupIdForAgent(agent) : `missing:${agentId}`;
     const group = groups.get(groupId) ?? {
       agentIds: [],
-      repositoryRoot: agent ? workspaceSidebarRepositoryRootForAgent(agent) : null,
+      repositoryKey: agent ? workspaceSidebarRepositoryKeyForAgent(agent) : null,
     };
     group.agentIds.push(agentId);
     groups.set(groupId, group);
   }
 
   const orderedGroups = [...groups.values()];
-  const repositoryGroups = orderedGroups.filter((group) => group.repositoryRoot !== null);
-  const sourceGroup = repositoryGroups.find((group) => group.repositoryRoot === repositoryRoot);
+  const repositoryGroups = orderedGroups.filter((group) => group.repositoryKey !== null);
+  const sourceGroup = repositoryGroups.find((group) => group.repositoryKey === repositoryKey);
   const sourceAgents = sourceGroup?.agentIds
     .map((agentId) => agentsById.get(agentId))
     .filter((agent): agent is Agent => Boolean(agent)) ?? [];
   if (sourceAgents.length === 0) return null;
-  if (beforeRepositoryRoot === repositoryRoot) return sourceAgents;
-  if (beforeRepositoryRoot !== null && !repositoryGroups.some((group) => group.repositoryRoot === beforeRepositoryRoot)) {
+  if (beforeRepositoryKey === repositoryKey) return sourceAgents;
+  if (beforeRepositoryKey !== null && !repositoryGroups.some((group) => group.repositoryKey === beforeRepositoryKey)) {
     return null;
   }
 
-  const reorderedRoots = reorderIdsByBeforeId(
-    repositoryGroups.map((group) => group.repositoryRoot!),
-    repositoryRoot,
-    beforeRepositoryRoot,
+  const reorderedKeys = reorderIdsByBeforeId(
+    repositoryGroups.map((group) => group.repositoryKey!),
+    repositoryKey,
+    beforeRepositoryKey,
   );
-  const repositoryGroupsByRoot = new Map(repositoryGroups.map((group) => [group.repositoryRoot!, group]));
+  const repositoryGroupsByKey = new Map(repositoryGroups.map((group) => [group.repositoryKey!, group]));
   let repositoryIndex = 0;
   team.agentIds = orderedGroups.flatMap((group) => {
-    if (group.repositoryRoot === null) return group.agentIds;
-    return repositoryGroupsByRoot.get(reorderedRoots[repositoryIndex++]!)!.agentIds;
+    if (group.repositoryKey === null) return group.agentIds;
+    return repositoryGroupsByKey.get(reorderedKeys[repositoryIndex++]!)!.agentIds;
   });
   return sourceAgents;
 }
@@ -628,9 +628,9 @@ function agentAfterRosterRemoval(snapshot: AppSnapshot, removed: Agent, order: s
   const candidates = [...new Set([...order, ...(team?.agentIds ?? [])])]
     .filter(id => team?.agentIds.includes(id))
     .flatMap(id => snapshot.agents.find(candidate => candidate.id === id) ?? []);
-  const repository = workspaceSidebarRepositoryRootForAgent(removed);
+  const repository = workspaceSidebarRepositoryKeyForAgent(removed);
   return candidates.find(candidate => repository
-    ? workspaceSidebarRepositoryRootForAgent(candidate) === repository
+    ? workspaceSidebarRepositoryKeyForAgent(candidate) === repository
     : removed.folder && candidate.folder === removed.folder) ?? candidates[0];
 }
 

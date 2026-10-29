@@ -1,5 +1,5 @@
 import { product } from '@workspace/core/product';
-import { flushPromises, mount } from '@vue/test-utils';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ElPopover } from 'element-plus';
 import { computed, ref } from 'vue';
 import { backendChoicesKey } from '../backend-selection';
@@ -9,7 +9,38 @@ import type { Agent, AgentBackend } from '@workspace/core/contracts';
 
 import { agents } from './agent-sidebar-test-harness';
 
+function tooltipContents(wrapper: VueWrapper): string[] {
+  return wrapper.findAllComponents({ name: 'ElTooltip' }).map(tooltip => String(tooltip.props('content')));
+}
+
 describe('AgentSidebar sessions', () => {
+  it('keeps remote host status before the engine icon in global activity, with live tooltip and connection health', async () => {
+    const connection = { id: 'devbox', name: 'Devbox', host: 'devbox', kind: 'ssh' as const, status: 'ready' as const, createdAt: '', updatedAt: '' };
+    const local = { ...agents[0]!, id: 'local', name: 'Local' };
+    const remote = { ...agents[0]!, id: 'remote', name: 'Remote', remoteConnectionId: connection.id };
+    const wrapper = mount(AgentSidebar, {
+      props: { agents: [local, remote], activeAgentId: remote.id, teamName: 'All teams', allTeams: true, remoteConnections: [connection] },
+      global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
+    });
+    try {
+      const row = () => wrapper.get('[data-reorder-id="remote"]');
+      const marker = row().get('[role="img"][aria-label="Devbox"]');
+      expect(marker.find('.tabler-icon-world').exists()).toBe(true);
+      expect(marker.element.nextElementSibling?.getAttribute('aria-label')).toBe('Codex');
+      expect(tooltipContents(wrapper)).toContain('Devbox');
+      expect(wrapper.get('[data-reorder-id="local"]').find('.remote-host-indicator').exists()).toBe(false);
+      await wrapper.setProps({ remoteConnections: [{ ...connection, status: 'error' }] });
+      expect(row().get('[aria-label="Devbox is not connected"]').classes()).toContain('remote-host-indicator--offline');
+      expect(tooltipContents(wrapper)).toContain('Devbox is not connected');
+      await wrapper.setProps({ allTeams: false, teamId: remote.teamId, quickSwitchShortcutsVisible: true });
+      await wrapper.get('button[aria-label="Agent view"]').trigger('click');
+      const activity = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(button => button.textContent?.trim() === 'Activity')!;
+      activity.click();
+      await flushPromises();
+      expect(row().find('.remote-host-indicator--offline').exists()).toBe(true);
+      expect(row().find('.agent-sidebar__quick-switch-shortcut').exists()).toBe(true);
+    } finally { wrapper.unmount(); }
+  });
   it('does not stack an extra header background over the sidebar tint', () => {
     const wrapper = mount(AgentSidebar, {
       attachTo: document.body,
@@ -378,13 +409,104 @@ describe('AgentSidebar sessions', () => {
       agentId: 'agent-dina',
       repositoryName: 'id8',
       repositoryRoot: '~/src/id8',
+      originUrl: 'git@github.com:nbonamy/id8.git',
       branch: { name: 'main', isDefault: true, worktreePath: '~/src/id8' },
     }]]);
     expect(wrapper.emitted('create-agent-from-repository')).toStrictEqual([[{
       agentId: 'agent-dina',
       repositoryName: 'id8',
       repositoryRoot: '~/src/id8',
+      originUrl: 'git@github.com:nbonamy/id8.git',
     }]]);
+  });
+
+  describe('remote actions on the repository menu', () => {
+    const connection = (status: 'ready' | 'error') => ({ id: 'devbox', kind: 'ssh' as const, name: 'Devbox', host: 'devbox', status, createdAt: '', updatedAt: '' });
+    async function openMenu(props: Record<string, unknown>) {
+      const git = agents[0]!;
+      if (git.workspace?.kind !== 'git') throw new Error('Expected Git fixture');
+      const wrapper = mount(AgentSidebar, {
+        props: {
+          agents: [{ ...git, workspace: { ...git.workspace, originUrl: 'git@github.com:org/id8.git' } }],
+          activeAgentId: 'agent-dina',
+          listRepositoryBranches: vi.fn().mockResolvedValue([{ name: 'main', isDefault: true, worktreePath: '~/src/id8' }]),
+          teamName: 'Team',
+          ...props,
+        },
+        global: { components: { ElPopover } },
+      });
+      const sessionMenu = wrapper.findAllComponents({ name: 'AppMenuButton' }).find((button) => button.props('ariaLabel').startsWith('New session in'));
+      await sessionMenu?.vm.$emit('update:open', true);
+      await flushPromises();
+      return wrapper;
+    }
+    const remoteButtons = () => [...document.body.querySelectorAll<HTMLButtonElement>('button[aria-label="On a remote machine"]')];
+
+    it('offers a remote icon on each row only while a machine is ready', async () => {
+      await openMenu({ remoteConnections: [connection('error')] });
+      expect(remoteButtons()).toHaveLength(0);
+      document.body.innerHTML = '';
+      await openMenu({ remoteConnections: [connection('ready')] });
+      expect(remoteButtons()).toHaveLength(2);
+    });
+
+    it('keeps the row label local and sends the remote icon to the where dialog with the origin', async () => {
+      const wrapper = await openMenu({ remoteConnections: [connection('ready')] });
+      remoteButtons()[1]!.click();
+      await flushPromises();
+      expect(wrapper.emitted('open-on-remote')).toStrictEqual([[{ action: 'new-worktree', repositoryName: 'id8', repositoryKey: 'remote:github.com/org/id8', originUrl: 'git@github.com:org/id8.git' }]]);
+      expect(wrapper.emitted('create-agent-worktree-in-repository')).toBeUndefined();
+    });
+  });
+
+  it('badges every remote row with its host and carries the host on section actions', async () => {
+    const git = agents[0]!;
+    if (git.workspace?.kind !== 'git') throw new Error('Expected Git fixture');
+    const origin = 'git@github.com:org/id8.git';
+    const local = { ...git, id: 'local', workspace: { ...git.workspace, originUrl: origin } };
+    const remote = { ...git, id: 'remote', remoteConnectionId: 'devbox', workspace: { ...git.workspace, originUrl: origin, primaryWorktreeRoot: '/srv/id8' } };
+    const remoteConnections = [{ id: 'devbox', kind: 'ssh' as const, name: 'Devbox', host: 'devbox', status: 'ready' as const, createdAt: '', updatedAt: '' }];
+    const wrapper = mount(AgentSidebar, {
+      props: { agents: [local, remote], activeAgentId: 'local', teamName: 'Team', remoteConnections },
+      global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
+    });
+    expect(wrapper.findAll('.agent-sidebar__repository-agent .remote-host-indicator')).toHaveLength(1);
+    expect(wrapper.get('.remote-host-indicator').attributes('aria-label')).toBe('Devbox');
+    expect(wrapper.find('.remote-host-indicator__badge').exists()).toBe(true);
+    expect(tooltipContents(wrapper)).toContain('Devbox');
+    await wrapper.get('[aria-label="Create agent from branch, pull request, or issue"]').trigger('click');
+    expect(wrapper.emitted('create-agent-from-repository')).toStrictEqual([[{ agentId: 'local', repositoryName: 'id8', repositoryRoot: '~/src/id8', originUrl: origin }]]);
+
+    await wrapper.setProps({ agents: [remote] });
+    expect(wrapper.findAll('.agent-sidebar__repository-agent .remote-host-indicator')).toHaveLength(1);
+    expect(wrapper.findAll('.agent-sidebar__engine')).toHaveLength(1);
+
+    await wrapper.setProps({ remoteConnections: [{ ...remoteConnections[0]!, status: 'error' as const }] });
+    expect(wrapper.get('.remote-host-indicator').attributes('aria-label')).toBe('Devbox is not connected');
+    expect(wrapper.find('.remote-host-indicator__badge').exists()).toBe(false);
+    expect(wrapper.find('.remote-host-indicator--offline').exists()).toBe(true);
+    expect(tooltipContents(wrapper)).toContain('Devbox is not connected');
+    await wrapper.get('[aria-label="Create agent from branch, pull request, or issue"]').trigger('click');
+    expect(wrapper.emitted('create-agent-from-repository')![1]).toStrictEqual([{ agentId: 'remote', repositoryName: 'id8', repositoryRoot: '/srv/id8', remoteConnectionId: 'devbox', originUrl: origin }]);
+  });
+
+  it('shows the host icon on remote-only sections and flags a host that is not connected', async () => {
+    const git = agents[0]!;
+    if (git.workspace?.kind !== 'git') throw new Error('Expected Git fixture');
+    const remote = { ...git, id: 'remote', remoteConnectionId: 'devbox', workspace: { ...git.workspace, primaryWorktreeRoot: '/srv/id8' } };
+    const connection = (status: 'ready' | 'error') => [{ id: 'devbox', kind: 'ssh' as const, name: 'Devbox', host: 'devbox', status, createdAt: '', updatedAt: '' }];
+    const wrapper = mount(AgentSidebar, { props: { agents: [remote], activeAgentId: 'remote', teamName: 'Team', remoteConnections: connection('ready') } });
+    const host = wrapper.get('.agent-sidebar__host');
+    expect(host.attributes('aria-label')).toBe('Devbox');
+    expect(tooltipContents(wrapper)).toContain('Devbox');
+    expect(host.classes()).not.toContain('remote-host-indicator--offline');
+
+    await wrapper.setProps({ remoteConnections: connection('error') });
+    expect(wrapper.get('.agent-sidebar__host').classes()).toContain('remote-host-indicator--offline');
+    expect(wrapper.get('.agent-sidebar__host').attributes('aria-label')).toBe('Devbox is not connected');
+
+    await wrapper.setProps({ agents: [{ ...remote, remoteConnectionId: undefined }] });
+    expect(wrapper.find('.agent-sidebar__host').exists()).toBe(false);
   });
 
   it('shows repository branch loading failures in the session menu', async () => {

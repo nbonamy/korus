@@ -4,6 +4,9 @@ import org.json.JSONObject
 
 internal enum class CreationKind { PROJECT, LOCAL, URL, GITHUB, GITLAB, EXISTING, WORKTREE, QUICK, DEFAULT }
 
+internal fun JSONObject.creationBackends(repositoryId: String? = null): List<String> =
+    repositoryId?.let { obj("repositoryBackends").optJSONArray(it) }?.let { choices -> (0 until choices.length()).map { choices.getString(it) } } ?: strings("backends")
+
 /** Native form state only; catalogs, workspace mutation and resulting agent selection stay in the engine. */
 internal data class CreationFlow(
     val hostId: String, val teamId: String, val kind: CreationKind,
@@ -12,6 +15,7 @@ internal data class CreationFlow(
     val newBranch: Boolean = false, val branchName: String = "", val baseBranch: String = "", val selectedBranch: String? = null,
     val submitted: Boolean = false, val observedCreating: Boolean = false,
 ) {
+    fun backends(state: JSONObject): List<String> = state.creationBackends(repositoryId.takeIf { kind in listOf(CreationKind.EXISTING, CreationKind.WORKTREE, CreationKind.DEFAULT) })
     val projectCatalog get() = kind in listOf(CreationKind.GITHUB, CreationKind.GITLAB, CreationKind.LOCAL)
     val projectSource get() = when (kind) {
         CreationKind.LOCAL -> "local"
@@ -44,7 +48,7 @@ internal data class CreationFlow(
     fun command(state: JSONObject, backend: String): JSONObject? {
         if (submitted || !state.connection.isConnected || state.string("chatCreation") == "creating" ||
             state.string("laptopId", state.obj("composerTarget").string("hostId")) != hostId || state.string("teamId") != teamId ||
-            !state.strings("backends").contains(backend)) return null
+            !backends(state).contains(backend)) return null
         val input = value.trim()
         return when (kind) {
             CreationKind.PROJECT, CreationKind.URL -> {

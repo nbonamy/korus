@@ -1,8 +1,12 @@
 import { product } from '@workspace/core/product';
 import { describe, expect, it, vi } from 'vitest';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import type { AgentBackend, RemoteConnection, AppSnapshot } from '@workspace/core/contracts';
 import { AppBackendServer } from '../server';
 import { BackendDriverRpc } from '../driver-rpc';
+import { createFileRemoteSnapshotCache } from '../connections/remote-snapshot-cache';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
 import {
   createTestSnapshot,
@@ -12,7 +16,70 @@ import {
   createWorkItem,
 } from './server-test-fixtures';
 
+function snapshotReply(snapshot: AppSnapshot, method: string) {
+  return method === 'snapshot/get' ? { snapshot, lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } } : snapshot;
+}
+
+// Binding is covered by the multi-daemon authority workflows; preserve exact ordering/payloads of execution operations here.
+function expectOperation(request: { mock: { calls: unknown[][] } }, index: number, ...args: unknown[]) {
+  expect(request.mock.calls.filter(call => call[1] !== 'collaboration/team/bind')[index - 1]).toStrictEqual(args);
+}
+
 describe('AppBackendServer', () => {
+
+  it('keeps remote projects across an offline restart, reports the failure, and refreshes them on reconnect', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'offline-remote-project-'));
+    const file = path.join(directory, 'remote-snapshots.json');
+    const snapshot = createTestSnapshot();
+    const connection = readyRemoteConnection();
+    snapshot.remoteConnections.connections = [connection];
+    snapshot.teams[0]!.remoteLinks = [{ connectionId: connection.id, remoteTeamId: 'team-remote' }];
+    const agent = { ...createRemoteAgent(), status: { type: 'working' as const } };
+    const remote = createRemoteTeamSnapshot([agent]);
+    const remoteClients = {
+      request: vi.fn(async (_connection, method: string) => snapshotReply(remote, method)),
+      close: vi.fn(), closeConnection: vi.fn(),
+    };
+    const events: import('@workspace/core/backend-protocol/rpc').AppBackendEvent[] = [];
+    const saveSnapshot = vi.fn().mockResolvedValue(undefined);
+    let server = new AppBackendServer({ version: 'test', snapshot, remoteClients: remoteClients as never,
+      remoteSnapshotCache: createFileRemoteSnapshotCache(file) });
+    const read = () => server.handleMessage({ jsonrpc: '2.0', id: 'snapshot', method: 'snapshot/get' });
+    try {
+      expect(await read()).toMatchObject({ result: { snapshot: { agents: [expect.objectContaining({ id: agent.id })] } } });
+      await server.close();
+      // close flushes the cache even if the debounce has not elapsed.
+      expect(JSON.parse(await readFile(file, 'utf8')).snapshots[connection.id].agents[0].id).toBe(agent.id);
+      remoteClients.request.mockRejectedValue(new Error('Cannot find module daemon.mjs'));
+      server = new AppBackendServer({ version: 'test', snapshot, remoteClients: remoteClients as never,
+        remoteSnapshotCache: createFileRemoteSnapshotCache(file), onEvent: event => events.push(event), saveSnapshot,
+        sshConnections: { checkConnection: vi.fn().mockResolvedValue(connection) } as never });
+
+      expect(await read()).toMatchObject({ result: { snapshot: { agents: [expect.objectContaining({
+        id: agent.id, teamId: 'team-test', remoteConnectionId: connection.id, folder: agent.folder, status: { type: 'idle' },
+      })] } } });
+      await vi.waitFor(() => expect(events).toContainEqual(expect.objectContaining({ type: 'snapshot.updated', payload: expect.objectContaining({
+        remoteConnections: { connections: [expect.objectContaining({ status: 'error', detail: expect.stringContaining('daemon.mjs') })] },
+        agents: [expect.objectContaining({ id: agent.id })],
+      }) })));
+      expect(saveSnapshot).toHaveBeenCalled();
+      expect(snapshot.agents).toStrictEqual([]);
+      const requestsAfterFailure = remoteClients.request.mock.calls.length;
+      await read();
+      expect(remoteClients.request).toHaveBeenCalledTimes(requestsAfterFailure);
+
+      remoteClients.request.mockResolvedValue(createRemoteTeamSnapshot([{ ...agent, name: 'Reconnected', status: { type: 'idle' } }]));
+      expect(await server.handleMessage({ jsonrpc: '2.0', id: 'reconnect', method: 'connections/runtime/sync', params: { connectionId: connection.id } }))
+        .toMatchObject({ result: { agents: [expect.objectContaining({ id: agent.id, name: 'Reconnected' })],
+          remoteConnections: { connections: [expect.objectContaining({ status: 'ready' })] } } });
+      await server.handleMessage({ jsonrpc: '2.0', id: 'forget', method: 'connections/delete', params: { connectionId: connection.id } });
+      await server.close();
+      expect(createFileRemoteSnapshotCache(file).load().size).toBe(0);
+    } finally {
+      await server.close();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 
   it.each(['codex', 'claude'] as const)('installs %s over SSH and rechecks the owning host', async (backend) => {
     const snapshot = createTestSnapshot();
@@ -57,7 +124,7 @@ describe('AppBackendServer', () => {
   it.each(['current', 'independent'] as const)('returns the explicit reviewer identity for a remote %s review', async (threadMode) => {
     const snapshot = createTestSnapshot();
     const connection = readyRemoteConnection(); snapshot.remoteConnections.connections = [connection];
-    snapshot.teams.push({ id: 'pointer', name: 'Remote', agentIds: [], remoteConnectionId: connection.id, remoteTeamId: 'team-remote' });
+    snapshot.teams.push({ id: 'pointer', name: 'Remote', agentIds: [], remoteLinks: [{ connectionId: connection.id, remoteTeamId: 'team-remote' }] });
     const target = createRemoteAgent();
     const reviewer = { ...target, id: 'reviewer' };
     const remoteSnapshot = createRemoteTeamSnapshot([target, reviewer]);
@@ -87,6 +154,26 @@ describe('AppBackendServer', () => {
     expect(await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'workProvider/branches/list', params: { ...params, location: { kind: 'remote', remoteConnectionId: connection.id } } })).toMatchObject({ result: branches });
     expect(listBranches).toHaveBeenCalledOnce();
     expect(remoteClients.request).toHaveBeenCalledExactlyOnceWith(connection, 'workProvider/branches/list', { ...params, _clientId: 'remote-controller' }, expect.any(Function));
+  });
+
+  it('lists a host model catalog without an agent by asking that host', async () => {
+    const snapshot = createTestSnapshot();
+    const connection = readyRemoteConnection(); snapshot.remoteConnections.connections = [connection];
+    const models = [{ id: 'gpt-test', model: 'gpt-test', displayName: 'GPT Test' }];
+    const remoteClients = { request: vi.fn().mockResolvedValue(models) };
+    const server = new AppBackendServer({ version: 'test', snapshot, remoteClients: remoteClients as never });
+    expect(await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'agent/models/list', params: { backend: 'codex', remoteConnectionId: connection.id } })).toMatchObject({ result: models });
+    expect(remoteClients.request).toHaveBeenCalledExactlyOnceWith(connection, 'agent/models/list', { backend: 'codex', _clientId: 'remote-controller' }, expect.any(Function));
+  });
+
+  it('lists the local model catalog of a provider without an agent', async () => {
+    const snapshot = createTestSnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const listModels = vi.fn().mockResolvedValue([{ id: 'gpt-test', model: 'gpt-test', displayName: 'GPT Test' }]);
+    const driver = { backend: 'codex', listModels, onEvent: () => () => undefined, close: async () => undefined } as unknown as ConstructorParameters<typeof BackendDriverRpc>[0] extends Map<string, infer D> ? D : never;
+    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new BackendDriverRpc(new Map([['codex', driver]])) });
+    expect(await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'agent/models/list', params: { backend: 'codex' } })).toMatchObject({ result: [{ id: 'gpt-test' }] });
+    expect(listModels).toHaveBeenCalledOnce();
   });
 
   it('rechecks provider installation on the owning remote host without running a local installer', async () => {
@@ -308,18 +395,7 @@ describe('AppBackendServer', () => {
       expect.any(Function),
     );
 
-    snapshot.teams[0].remoteConnectionId = 'connection-devbox';
-    snapshot.teams[0].agentIds = ['agent-dina'];
-    snapshot.agents = [{
-      id: 'agent-dina',
-      teamId: 'team-test',
-      name: 'Dina',
-      folder: '/Users/nbonamy/src/agent-workspace',
-      backend: 'codex',
-      status: { type: 'idle' },
-      createdAt: '2026-06-05T00:00:00.000Z',
-      updatedAt: '2026-06-05T00:00:00.000Z',
-    }];
+    snapshot.teams[0].remoteLinks = [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }];
     remoteClients.closeConnection.mockClear();
 
     await expect(server.handleMessage({
@@ -333,12 +409,13 @@ describe('AppBackendServer', () => {
           connections: [],
         },
         teams: [{
-          name: 'Local',
+          name: 'Test Team',
           agentIds: [],
         }],
         agents: [],
       },
     });
+    expect(snapshot.teams[0]).not.toHaveProperty('remoteLinks');
     expect(remoteClients.closeConnection).toHaveBeenCalledWith('connection-devbox');
   });
 
@@ -394,62 +471,60 @@ describe('AppBackendServer', () => {
     expect(saveSnapshot).toHaveBeenCalledWith(snapshot);
   });
 
-  it('creates remote teams as local pointers only', async () => {
+  it('creates ordinary teams without contacting any host', async () => {
     const snapshot = createTestSnapshot();
     snapshot.remoteConnections.connections = [readyRemoteConnection()];
-    const remoteSnapshot = createRemoteTeamSnapshot();
-    const saveSnapshot = vi.fn().mockResolvedValue(undefined);
-    const remoteClients = {
-      request: vi.fn().mockResolvedValue(remoteSnapshot),
-      close: vi.fn().mockResolvedValue(undefined),
-    };
-    const server = new AppBackendServer({
-      version: 'test-version',
-      pid: 123,
-      snapshot,
-      saveSnapshot,
-      remoteClients: remoteClients as never,
-    });
+    const remoteClients = { request: vi.fn(), close: vi.fn().mockResolvedValue(undefined) };
+    const server = new AppBackendServer({ version: 'test-version', pid: 123, snapshot, remoteClients: remoteClients as never });
 
     await expect(server.handleMessage({
       jsonrpc: '2.0',
-      id: 'create-remote-team',
+      id: 'create-team',
       method: 'team/create',
-      params: {
-        input: {
-          name: 'Remote Core',
-          color: '#46A857',
-          remoteConnectionId: 'connection-devbox',
-        },
-      },
-    })).resolves.toMatchObject({
-      result: {
-        teams: expect.arrayContaining([expect.objectContaining({
-          remoteConnectionId: 'connection-devbox',
-          remoteTeamId: 'team-remote',
-          agentIds: [],
-        })]),
-        agents: [],
-      },
+      params: { input: { name: 'Remote Core', color: '#46A857' } },
+    })).resolves.toMatchObject({ result: { teams: expect.arrayContaining([expect.objectContaining({ name: 'Remote Core', agentIds: [] })]) } });
+
+    expect(remoteClients.request).not.toHaveBeenCalled();
+    expect(snapshot.teams[1]).not.toHaveProperty('remoteLinks');
+  });
+
+  it('puts a remote agent in a local team through a hidden team on that host', async () => {
+    const snapshot = createTestSnapshot();
+    snapshot.remoteConnections.connections = [readyRemoteConnection()];
+    snapshot.teams[0]!.agentIds = ['agent-local'];
+    snapshot.agents = [{ ...createRemoteAgent(), id: 'agent-local', teamId: 'team-test', name: 'Local', folder: '/Users/nbonamy/src/korus' }];
+    const remoteSnapshot = createRemoteTeamSnapshot([createRemoteAgent()]);
+    const saveSnapshot = vi.fn().mockResolvedValue(undefined);
+    const remoteClients = {
+      request: vi.fn(async (_connection, method: string) => method === 'snapshot/get'
+        ? { snapshot: remoteSnapshot, lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } }
+        : remoteSnapshot),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+    const server = new AppBackendServer({ version: 'test-version', pid: 123, snapshot, saveSnapshot, remoteClients: remoteClients as never });
+
+    const response = await server.handleMessage({
+      jsonrpc: '2.0',
+      id: 'create-remote-agent',
+      method: 'agent/create',
+      params: { input: { name: 'Dina', folder: '/home/mnmt/src/korus', teamId: 'team-test', remoteConnectionId: 'connection-devbox' } },
     });
 
+    expect(remoteClients.request.mock.calls.map((call) => call[1])).toContain('team/create');
     expect(remoteClients.request).toHaveBeenCalledWith(
-      snapshot.remoteConnections.connections[0],
-      'team/create',
-      { ...{
-        input: {
-          name: 'Remote Core',
-          color: '#46A857',
-        },
-      }, _clientId: 'remote-controller' },
+      snapshot.remoteConnections.connections[0], 'agent/create',
+      { input: { name: 'Dina', folder: '/home/mnmt/src/korus', teamId: 'team-remote' }, _clientId: 'remote-controller' },
       expect.any(Function),
     );
-    expect(snapshot.teams[1]).toMatchObject({
-      remoteConnectionId: 'connection-devbox',
-      remoteTeamId: 'team-remote',
-      agentIds: [],
-    });
-    expect(snapshot.agents).toStrictEqual([]);
+    expect(response).toMatchObject({ result: {
+      teams: [{ id: 'team-test', agentIds: ['agent-local', 'agent-remote'] }],
+      agents: expect.arrayContaining([
+        expect.objectContaining({ id: 'agent-local', teamId: 'team-test' }),
+        expect.objectContaining({ id: 'agent-remote', teamId: 'team-test', remoteConnectionId: 'connection-devbox' }),
+      ]),
+    } });
+    expect(snapshot.agents.map((agent) => agent.id)).toStrictEqual(['agent-local']);
+    expect(snapshot.teams[0]).toMatchObject({ remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }], agentIds: ['agent-local'] });
     expect(saveSnapshot).toHaveBeenCalledWith(snapshot);
   });
 
@@ -460,8 +535,7 @@ describe('AppBackendServer', () => {
       id: 'team-pointer',
       name: 'Remote Core',
       color: '#46A857',
-      remoteConnectionId: 'connection-devbox',
-      remoteTeamId: 'team-remote',
+      remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }],
       agentIds: [],
     }];
     snapshot.activeTeamId = 'team-pointer';
@@ -488,6 +562,7 @@ describe('AppBackendServer', () => {
           name: 'Dina',
           folder: '/home/mnmt/src/agent-workspace',
           teamId: 'team-pointer',
+          remoteConnectionId: 'connection-devbox',
         },
       },
     })).resolves.toMatchObject({
@@ -529,8 +604,7 @@ describe('AppBackendServer', () => {
     snapshot.teams = [{
       id: 'team-pointer',
       name: 'Remote Core',
-      remoteConnectionId: 'connection-devbox',
-      remoteTeamId: 'team-remote',
+      remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }],
       agentIds: [],
     }];
     const remoteAgent = { ...createRemoteAgent(), backend: 'claude' as const, folder: null, sessionKind: 'quickChat' as const };
@@ -548,7 +622,7 @@ describe('AppBackendServer', () => {
           lastEventSeq: 0,
           clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false },
         };
-        if (method === 'agent/quickChat/create') return remoteSnapshot;
+        if (method === 'collaboration/team/bind' || method === 'agent/quickChat/create') return remoteSnapshot;
         throw new Error(`Unexpected remote method: ${method}`);
       }),
     };
@@ -563,11 +637,11 @@ describe('AppBackendServer', () => {
       jsonrpc: '2.0',
       id: 'create-remote-claude-chat',
       method: 'agent/quickChat/create',
-      params: { input: { teamId: 'team-pointer', selection: { ...{ backend: 'claude' } } } },
+      params: { input: { teamId: 'team-pointer', selection: { backend: 'claude' }, remoteConnectionId: 'connection-devbox' } },
     });
 
     expect(sshConnections.ensureRemoteClaudeInstalled).not.toHaveBeenCalled();
-    expect(order.slice(-2)).toStrictEqual(['snapshot/get', 'agent/quickChat/create']);
+    expect(order).toStrictEqual(['snapshot/get', 'collaboration/team/bind', 'agent/quickChat/create']);
     expect(response).toMatchObject({ result: { agents: [expect.objectContaining({ backend: 'claude' })] } });
   });
 
@@ -621,8 +695,7 @@ describe('AppBackendServer', () => {
     snapshot.teams = [{
       id: 'team-pointer',
       name: 'Remote Core',
-      remoteConnectionId: 'connection-devbox',
-      remoteTeamId: 'team-remote',
+      remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }],
       agentIds: [],
     }];
     snapshot.activeTeamId = 'team-pointer';
@@ -643,6 +716,7 @@ describe('AppBackendServer', () => {
             shouldPreventDisplaySleep: false,
           },
         })
+        .mockResolvedValueOnce(remoteSnapshot)
         .mockResolvedValueOnce(remoteSnapshotAfterPrompt),
       close: vi.fn().mockResolvedValue(undefined),
     };
@@ -674,14 +748,14 @@ describe('AppBackendServer', () => {
     });
     expect((response as { result: Record<string, unknown> }).result).not.toHaveProperty('messages');
 
-    expect(remoteClients.request).toHaveBeenNthCalledWith(
+    expectOperation(remoteClients.request,
       1,
       snapshot.remoteConnections.connections[0],
       'snapshot/get',
       { _clientId: 'remote-controller' },
       expect.any(Function),
     );
-    expect(remoteClients.request).toHaveBeenNthCalledWith(
+    expectOperation(remoteClients.request,
       2,
       snapshot.remoteConnections.connections[0],
       method,
@@ -704,15 +778,15 @@ describe('AppBackendServer', () => {
   it.each(['agent/queuedPrompt/steer', 'agent/queuedPrompt/delete'])('preserves the captured queue session when routing %s remotely', async method => {
     const snapshot = createTestSnapshot();
     const connection = readyRemoteConnection(); snapshot.remoteConnections.connections = [connection];
-    snapshot.teams = [{ id: 'team-pointer', name: 'Remote', remoteConnectionId: connection.id, remoteTeamId: 'team-remote', agentIds: [] }];
+    snapshot.teams = [{ id: 'team-pointer', name: 'Remote', remoteLinks: [{ connectionId: connection.id, remoteTeamId: 'team-remote' }], agentIds: [] }];
     const agent = createRemoteAgent();
     const remote = createRemoteTeamSnapshot([agent]);
-    const remoteClients = { close: vi.fn(async () => {}), request: vi.fn().mockResolvedValueOnce({ snapshot: remote, lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } }).mockResolvedValueOnce(remote) };
+    const remoteClients = { close: vi.fn(async () => {}), request: vi.fn().mockResolvedValueOnce({ snapshot: remote, lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } }).mockResolvedValueOnce(remote).mockResolvedValueOnce(remote) };
     const server = new AppBackendServer({ version: 'test', snapshot, remoteClients: remoteClients as never });
     try {
       const params = { agentId: agent.id, promptId: 'queued-on-host', expectedSessionId: 'captured-session' };
       await server.handleMessage({ jsonrpc: '2.0', id: 'queue', method, params });
-      expect(remoteClients.request).toHaveBeenNthCalledWith(2, connection, method, { ...params, _clientId: 'remote-controller' }, expect.any(Function));
+      expectOperation(remoteClients.request,2, connection, method, { ...params, _clientId: 'remote-controller' }, expect.any(Function));
     } finally { await server.close(); }
   });
 
@@ -722,8 +796,7 @@ describe('AppBackendServer', () => {
     snapshot.teams = [{
       id: 'team-pointer',
       name: 'Remote Core',
-      remoteConnectionId: 'connection-devbox',
-      remoteTeamId: 'team-remote',
+      remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }],
       agentIds: [],
     }];
     snapshot.activeTeamId = 'team-pointer';
@@ -813,8 +886,7 @@ describe('AppBackendServer', () => {
     snapshot.teams = [{
       id: 'team-pointer',
       name: 'Remote Core',
-      remoteConnectionId: 'connection-devbox',
-      remoteTeamId: 'team-remote',
+      remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }],
       agentIds: [],
     }];
     snapshot.activeTeamId = 'team-pointer';
@@ -913,21 +985,21 @@ describe('AppBackendServer', () => {
       },
     });
 
-    expect(remoteClients.request).toHaveBeenNthCalledWith(
+    expectOperation(remoteClients.request,
       1,
       snapshot.remoteConnections.connections[0],
       'snapshot/get',
       { _clientId: 'remote-controller' },
       expect.any(Function),
     );
-    expect(remoteClients.request).toHaveBeenNthCalledWith(
+    expectOperation(remoteClients.request,
       2,
       snapshot.remoteConnections.connections[0],
       'agent/workItem/assign',
       { ...{ agentId: remoteAgent.id, item: sanitizedItem }, _clientId: 'remote-controller' },
       expect.any(Function),
     );
-    expect(remoteClients.request).toHaveBeenNthCalledWith(
+    expectOperation(remoteClients.request,
       3,
       snapshot.remoteConnections.connections[0],
       'agent/workItem/assignment/delete',
@@ -943,8 +1015,7 @@ describe('AppBackendServer', () => {
     snapshot.teams = [{
       id: 'team-pointer',
       name: 'Remote Core',
-      remoteConnectionId: 'connection-devbox',
-      remoteTeamId: 'team-remote',
+      remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }],
       agentIds: [],
     }];
     snapshot.activeTeamId = 'team-pointer';
@@ -997,28 +1068,28 @@ describe('AppBackendServer', () => {
       params: { agentId: 'agent-remote', turnId: 'turn-1' },
     });
 
-    expect(remoteClients.request).toHaveBeenNthCalledWith(
+    expectOperation(remoteClients.request,
       1,
       snapshot.remoteConnections.connections[0],
       'snapshot/get',
       { _clientId: 'remote-controller' },
       expect.any(Function),
     );
-    expect(remoteClients.request).toHaveBeenNthCalledWith(
+    expectOperation(remoteClients.request,
       2,
       snapshot.remoteConnections.connections[0],
       'agent/turn/delete',
       { ...{ agentId: 'agent-remote', turnId: 'turn-1' }, _clientId: 'remote-controller' },
       expect.any(Function),
     );
-    expect(remoteClients.request).toHaveBeenNthCalledWith(
+    expectOperation(remoteClients.request,
       3,
       snapshot.remoteConnections.connections[0],
       'agent/turn/edit',
       { ...{ agentId: 'agent-remote', turnId: 'turn-1', content: 'edited prompt' }, _clientId: 'remote-controller' },
       expect.any(Function),
     );
-    expect(remoteClients.request).toHaveBeenNthCalledWith(
+    expectOperation(remoteClients.request,
       4,
       snapshot.remoteConnections.connections[0],
       'agent/turn/retry',
@@ -1027,7 +1098,7 @@ describe('AppBackendServer', () => {
     );
   });
 
-  it('rejects moving a local agent into a remote team pointer', async () => {
+  it('moves a local agent into a team that also holds remote agents', async () => {
     const snapshot = createTestSnapshot();
     snapshot.remoteConnections.connections = [readyRemoteConnection()];
     snapshot.teams = [
@@ -1039,8 +1110,7 @@ describe('AppBackendServer', () => {
       {
         id: 'team-pointer',
         name: 'Remote Core',
-        remoteConnectionId: 'connection-devbox',
-        remoteTeamId: 'team-remote',
+        remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }],
         agentIds: [],
       },
     ];
@@ -1072,17 +1142,11 @@ describe('AppBackendServer', () => {
       id: 'move-local-to-remote',
       method: 'agent/team/move',
       params: { input: { agentId: 'agent-local', teamId: 'team-pointer' } },
-    })).resolves.toMatchObject({
-      error: {
-        code: -32603,
-        message: 'Agents cannot be moved between backend locations.',
-      },
-    });
+    })).resolves.toMatchObject({ result: { agents: [expect.objectContaining({ id: 'agent-local', teamId: 'team-pointer' })] } });
 
-    expect(snapshot.agents[0]).toMatchObject({ id: 'agent-local', teamId: 'team-local' });
-    expect(snapshot.teams.find((team) => team.id === 'team-local')?.agentIds).toStrictEqual(['agent-local']);
-    expect(snapshot.teams.find((team) => team.id === 'team-pointer')?.agentIds).toStrictEqual([]);
-    expect(remoteClients.request).not.toHaveBeenCalled();
+    expect(snapshot.agents[0]).toMatchObject({ id: 'agent-local', teamId: 'team-pointer' });
+    expect(snapshot.teams.find((team) => team.id === 'team-pointer')?.agentIds).toStrictEqual(['agent-local']);
+    expect(remoteClients.request.mock.calls.map((call) => call[1])).not.toContain('agent/team/move');
   });
 
   it('projects only the selected remote team state into local snapshots', async () => {
@@ -1091,8 +1155,7 @@ describe('AppBackendServer', () => {
     snapshot.teams = [{
       id: 'team-pointer',
       name: 'Remote Core',
-      remoteConnectionId: 'connection-devbox',
-      remoteTeamId: 'team-remote',
+      remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }],
       agentIds: [],
     }];
     snapshot.activeTeamId = 'team-pointer';
@@ -1156,14 +1219,7 @@ describe('AppBackendServer', () => {
       },
     };
     const remoteClients = {
-      request: vi.fn().mockResolvedValue({
-        snapshot: remoteSnapshot,
-        lastEventSeq: 0,
-        clientState: {
-          sourceFolderPath: '',
-          shouldPreventDisplaySleep: false,
-        },
-      }),
+      request: vi.fn(async (_connection, method: string) => snapshotReply(remoteSnapshot, method)),
       close: vi.fn().mockResolvedValue(undefined),
     };
     const server = new AppBackendServer({
@@ -1202,14 +1258,62 @@ describe('AppBackendServer', () => {
     expect(projectedSnapshot.turnGitDiffs['turn-other']).toBeUndefined();
   });
 
+  it('keeps remote agents in results that return the local snapshot', async () => {
+    const snapshot = createTestSnapshot();
+    snapshot.remoteConnections.connections = [readyRemoteConnection()];
+    snapshot.teams = [{
+      id: 'team-local',
+      name: 'Local',
+      remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }],
+      agentIds: ['agent-local'],
+    }];
+    snapshot.activeTeamId = 'team-local';
+    snapshot.activeAgentId = 'agent-local';
+    snapshot.agents = [{
+      id: 'agent-local',
+      teamId: 'team-local',
+      name: 'Dina',
+      folder: '/Users/nbonamy/src/agent-workspace',
+      backend: 'codex',
+      status: { type: 'idle' },
+      createdAt: '2026-06-14T10:00:00.000Z',
+      updatedAt: '2026-06-14T10:00:00.000Z',
+    }];
+    const remoteAgent = createRemoteAgent();
+    const remoteClients = {
+      request: vi.fn().mockResolvedValue({
+        snapshot: createRemoteTeamSnapshot([remoteAgent]),
+        lastEventSeq: 0,
+        clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false },
+      }),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+    const server = new AppBackendServer({
+      version: 'test-version',
+      pid: 123,
+      snapshot,
+      remoteClients: remoteClients as never,
+    });
+    await server.handleMessage({ jsonrpc: '2.0', id: 'snapshot', method: 'snapshot/get' });
+
+    const response = await server.handleMessage({
+      jsonrpc: '2.0',
+      id: 'load',
+      method: 'agent/conversation/load',
+      params: { agentId: 'agent-local' },
+    });
+
+    expect((response as { result: AppSnapshot }).result.agents.map((agent) => agent.id)).toContain(remoteAgent.id);
+    expect(snapshot.agents.map((agent) => agent.id)).not.toContain(remoteAgent.id);
+  });
+
   it('forwards remote events only for agents in connected remote team pointers', async () => {
     const snapshot = createTestSnapshot();
     snapshot.remoteConnections.connections = [readyRemoteConnection()];
     snapshot.teams = [{
       id: 'team-pointer',
       name: 'Remote Core',
-      remoteConnectionId: 'connection-devbox',
-      remoteTeamId: 'team-remote',
+      remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }],
       agentIds: [],
     }];
     const remoteAgent = createRemoteAgent();
@@ -1230,6 +1334,7 @@ describe('AppBackendServer', () => {
     const events: unknown[] = [];
     const remoteClients = {
       request: vi.fn(async (_connection, _method: string, _params, onEvent?: (event: unknown) => void) => {
+        if (_method === 'collaboration/team/bind') return remoteSnapshot;
         onEvent?.({
           seq: 1,
           type: 'agent.statusChanged',

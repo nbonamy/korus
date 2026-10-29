@@ -318,7 +318,7 @@ export class CompanionManager {
           branches: () => this.backend.request(backendMethods.sourceBranchesList, { repoPath: chat.repositoryRoot, ...remote, _clientId: 'companion-read' }),
           createWorktree: input => this.backend.request(backendMethods.sourceWorktreeCreate, { input: { ...input, ...remote }, _clientId: 'companion-write' }),
         });
-        const result = await this.backend.request<CreatedAgentResult>(backendMethods.agentCreate, { input: { name: null, folder, selection: { ...chat.selection }, sourceRepositoryName: chat.repositoryName, teamId: chat.teamId }, entityResult: true, _clientId: 'companion-write' });
+        const result = await this.backend.request<CreatedAgentResult>(backendMethods.agentCreate, { input: { name: null, folder, selection: { ...chat.selection }, sourceRepositoryName: chat.repositoryName, teamId: chat.teamId, ...remote }, entityResult: true, _clientId: 'companion-write' });
         return result.agentId;
       },
       createQuickChat: async ({ teamId, backend }) => (await this.backend.request<CreatedAgentResult>(backendMethods.agentQuickChatCreate, { input: { teamId, selection: { backend } }, entityResult: true, _clientId: 'companion-write' })).agentId,

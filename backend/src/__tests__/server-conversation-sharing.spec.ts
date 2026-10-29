@@ -229,9 +229,9 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       expect((await f.request(server, { action: 'status', target: nextTarget })).state.active).toBe(false);
       f.snapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'original' };
       expect((await f.request(server, { action: 'status', target: f.target })).state.active).toBe(false);
-      f.snapshot.teams[0]!.remoteConnectionId = 'remote-host';
+      f.snapshot.agents[0]!.remoteConnectionId = 'remote-host';
       await expect(f.request(server, { action: 'create', target: f.target })).rejects.toThrow();
-      delete f.snapshot.teams[0]!.remoteConnectionId;
+      delete f.snapshot.agents[0]!.remoteConnectionId;
       f.snapshot.agents = [];
       await expect(f.request(server, { action: 'create', target: f.target })).rejects.toThrow();
     } finally { await server.close(); }

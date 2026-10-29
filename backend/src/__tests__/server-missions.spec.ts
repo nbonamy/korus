@@ -264,7 +264,7 @@ describe('mission backend boundary', () => {
       await vi.waitFor(() => expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ id: lead }), 'Follow-up', undefined));
       await send(caller.id, 'Ordinary conversation');
       await vi.waitFor(() => expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ id: caller.id }), 'Ordinary conversation', undefined));
-      await expect(server.startMissionFromAgent('missing-agent', { outcome: 'x', prompt: 'y' })).rejects.toThrow('local team');
+      await expect(server.startMissionFromAgent('missing-agent', { outcome: 'x', prompt: 'y' })).rejects.toThrow('local agent');
     } finally { await server.close(); }
   });
 

@@ -3,8 +3,7 @@ import { closeAgentInSnapshot } from '@workspace/core/agent-manager';
 import { AppError } from '@workspace/core/app-error';
 
 export function localProviderAgents(snapshot: AppSnapshot, backend: AgentBackend) {
-  const remoteTeams = new Set(snapshot.teams.filter(team => team.remoteConnectionId).map(team => team.id));
-  return snapshot.agents.filter(agent => agent.backend === backend && !remoteTeams.has(agent.teamId ?? ''));
+  return snapshot.agents.filter(agent => agent.backend === backend && !agent.remoteConnectionId);
 }
 
 export function validateProviderReset(snapshot: AppSnapshot, backend: AgentBackend, confirmedIds: string[] | undefined): string[] {

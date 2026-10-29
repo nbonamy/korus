@@ -31,6 +31,11 @@ function registerCollaborationTools(
   callerAgentId: string,
   allowProposedActions: boolean,
 ): void {
+  server.registerTool('list-hosts', {
+    description: 'List configured remote hosts and their current connection status.',
+    inputSchema: {},
+  }, () => loggedToolResult('list-hosts', { callerAgentId }, () => coordinator.listHosts(callerAgentId)));
+
   server.registerTool('list-agents', {
     description: 'List all visible agents with their ID, status, name, and folder.',
     inputSchema: {},
@@ -132,42 +137,45 @@ function registerCollaborationTools(
   }, () => coordinator.updateWorkItem(callerAgentId, workItemId, status, note)));
 
   server.registerTool('list-repos', {
-    description: 'List all git repositories in the configured source folder.',
-    inputSchema: {},
-  }, () => loggedToolResult('list-repos', {
+    description: 'List git repositories in the configured source folder on this computer or the selected remote host.',
+    inputSchema: { remoteConnectionId: z.string().trim().min(1).optional().describe('Remote host ID from list-hosts; omit for this computer.') },
+  }, ({ remoteConnectionId }) => loggedToolResult('list-repos', {
     agentId: callerAgentId,
-  }, () => coordinator.listSourceRepositories(callerAgentId)));
+  }, () => remoteConnectionId ? coordinator.listSourceRepositories(callerAgentId, remoteConnectionId) : coordinator.listSourceRepositories(callerAgentId)));
 
   server.registerTool('list-worktrees', {
     description: 'List all discovered worktrees for a source repository.',
     inputSchema: {
       repoPath: z.string().describe('Path to the source repository.'),
+      remoteConnectionId: z.string().trim().min(1).optional().describe('Host ID from list-hosts; omit for your current host.'),
     },
-  }, ({ repoPath }) => loggedToolResult('list-worktrees', {
+  }, ({ repoPath, remoteConnectionId }) => loggedToolResult('list-worktrees', {
     agentId: callerAgentId,
     repoPath,
-  }, () => coordinator.listSourceWorktrees(callerAgentId, repoPath)));
+  }, () => remoteConnectionId ? coordinator.listSourceWorktrees(callerAgentId, repoPath, remoteConnectionId) : coordinator.listSourceWorktrees(callerAgentId, repoPath)));
 
   server.registerTool('create-worktree', {
     description: 'Create a new git worktree from a source repository and return the created folder.',
     inputSchema: {
       repoPath: z.string().describe('Path to the source repository.'),
+      remoteConnectionId: z.string().trim().min(1).optional().describe('Host ID from list-hosts; omit for your current host.'),
       branchName: z.string().describe('Branch name for the new worktree.'),
       destinationPath: z.string().optional().describe('Optional destination path. Defaults to a sibling folder named <repo>-<branch>.'),
     },
-  }, ({ repoPath, branchName, destinationPath }) => loggedToolResult('create-worktree', {
+  }, ({ repoPath, branchName, destinationPath, remoteConnectionId }) => loggedToolResult('create-worktree', {
     agentId: callerAgentId,
     repoPath,
     branchName,
-  }, () => coordinator.createSourceWorktree(callerAgentId, { repoPath, branchName, destinationPath })));
+  }, () => coordinator.createSourceWorktree(callerAgentId, { repoPath, branchName, destinationPath, ...(remoteConnectionId ? { remoteConnectionId } : {}) })));
 
   server.registerTool('create-agent', {
-    description: `Create a ${product.name} co-agent in your team, optionally in an isolated worktree. Read korus-delegation before delegating. With a prompt, returns after startup acceptance, not task completion.`,
+    description: `Create a ${product.name} co-agent in your team, optionally on another host or in an isolated worktree. Use list-hosts to discover current host IDs and status. Read korus-delegation before delegating. With a prompt, returns after startup acceptance, not task completion.`,
     inputSchema: z.strictObject({
       requestId: z.string().trim().min(1).max(200).optional().describe('Required in task mode. Reuse the same stable ID when retrying this creation call.'),
       task: taskContractSchema.optional().describe('Saved assignment contract. Requires prompt and requestId; returns taskId for wait-tasks.'),
       name: z.string().optional().describe('Optional custom name. When omitted, the agent displays its branch or folder name.'),
       selection: executionSelectionOverridesSchema.optional().describe('Execution overrides. Same-provider work inherits the caller; a different provider uses its own defaults. Null selects the provider default, including Standard tier.'),
+      remoteConnectionId: z.string().trim().min(1).optional().describe('Host ID from list-hosts. Omit to create on your current host. Repository paths refer to the selected host.'),
       repoPath: z.string().describe('Repository or worktree folder path.'),
       createWorktree: z.boolean().optional().describe('If true, create a new worktree from repoPath before creating the agent.'),
       branchName: z.string().optional().describe('Branch name for the new worktree. Required when createWorktree is true.'),
@@ -177,13 +185,14 @@ function registerCollaborationTools(
       startingContext: z.enum(['conversation', 'handoff']).optional().describe('Worktree delegation override: continue the native conversation or start fresh with a handoff. Defaults to saved preferences; unsupported/cross-provider continuation falls back visibly.'),
       instructions: z.string().optional().describe(`Assignment guidance and missing context; requires prompt. Applied to forks and handoffs. Saved user instructions take priority; ${product.name} supplies explicit per-task user overrides separately. No secrets.`),
     }),
-  }, ({ name, selection, repoPath, createWorktree, branchName, destinationPath, prompt, goal, instructions, task, requestId, startingContext }) => loggedToolResult('create-agent', {
+  }, ({ name, selection, remoteConnectionId, repoPath, createWorktree, branchName, destinationPath, prompt, goal, instructions, task, requestId, startingContext }) => loggedToolResult('create-agent', {
     agentId: callerAgentId,
     repoPath,
     createWorktree: createWorktree === true,
   }, () => coordinator.createAgent(callerAgentId, {
     name,
     selection,
+    remoteConnectionId,
     repoPath,
     createWorktree,
     branchName,
