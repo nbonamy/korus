@@ -237,7 +237,7 @@ describe('Unified backend → mounted application', () => {
     expect(api.startCodeReview).toHaveBeenCalledExactlyOnceWith(agent.id, { automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false }, scope: { type: 'uncommitted' }, threadMode: 'independent', ...(instructions ? { instructions } : {}), selection: { backend: 'codex', serviceTier: null, model: null, reasoningEffort: null } });
   });
 
-  it('handles app-owned thread flag execution, dismissal, and review routing through the client seam', async () => {
+  it.each([['Delegate', 'delegate'], ['Create Mission', 'create_mission']] as const)('handles %s, retries, discard and review routing through the client seam', async (label, action) => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
     agent.threadFlags = { delegate_to_worktree: true };
@@ -246,13 +246,13 @@ describe('Unified backend → mounted application', () => {
     await flushPromises();
 
     let rejectSend!: (error: Error) => void;
-    api.sendPrompt.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectSend = reject; }));
-    await wrapper.get('.thread-flag-affordance__action').trigger('click');
+    api.respondToThreadFlag.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectSend = reject; }));
+    await wrapper.get(`button[aria-label="${label}"]`).trigger('click');
     await flushPromises();
-    await wrapper.get('.thread-flag-affordance__action').trigger('click');
+    await wrapper.get(`button[aria-label="${label}"]`).trigger('click');
     await flushPromises();
-    expect(api.respondToThreadFlag).not.toHaveBeenCalled();
-    expect(api.sendPrompt).toHaveBeenCalledExactlyOnceWith(agent.id, '/delegate');
+    expect(api.respondToThreadFlag).toHaveBeenCalledExactlyOnceWith(agent.id, { id: 'work_proposed', action });
+    expect(api.sendPrompt).not.toHaveBeenCalled();
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
     rejectSend(new Error('backend unavailable'));
     await flushPromises();
@@ -261,10 +261,10 @@ describe('Unified backend → mounted application', () => {
 
     const cleared = structuredClone(snapshot);
     delete cleared.agents[0]!.threadFlags;
-    api.sendPrompt.mockResolvedValueOnce(cleared);
-    await wrapper.get('.thread-flag-affordance__action').trigger('click');
+    api.respondToThreadFlag.mockResolvedValueOnce(cleared);
+    await wrapper.get(`button[aria-label="${label}"]`).trigger('click');
     await flushPromises();
-    expect(api.sendPrompt).toHaveBeenLastCalledWith(agent.id, '/delegate');
+    expect(api.respondToThreadFlag).toHaveBeenLastCalledWith(agent.id, { id: 'work_proposed', action });
     emit({ type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, threadFlags: {} } });
     await flushPromises();
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
@@ -273,19 +273,19 @@ describe('Unified backend → mounted application', () => {
     emit({ type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, threadFlags: { delegate_to_worktree: true } } });
     await flushPromises();
     api.respondToThreadFlag.mockResolvedValueOnce(cleared);
-    await wrapper.get('.thread-flag-affordance__dismiss').trigger('click');
+    await wrapper.get('button[aria-label="Discard"]').trigger('click');
     await flushPromises();
-    expect(api.respondToThreadFlag).toHaveBeenNthCalledWith(1, agent.id, {
-      id: 'delegate_to_worktree', action: 'dismiss',
+    expect(api.respondToThreadFlag).toHaveBeenNthCalledWith(3, agent.id, {
+      id: 'work_proposed', action: 'dismiss',
     });
-    expect(api.sendPrompt).toHaveBeenCalledTimes(2);
+    expect(api.sendPrompt).not.toHaveBeenCalled();
 
     emit({ type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, threadFlags: { ready_for_review: true } } });
     await flushPromises();
     api.respondToThreadFlag.mockResolvedValueOnce(cleared);
     await wrapper.get('[aria-label="Open code review"]').trigger('click');
     await flushPromises();
-    expect(api.respondToThreadFlag).toHaveBeenNthCalledWith(2, agent.id, {
+    expect(api.respondToThreadFlag).toHaveBeenNthCalledWith(4, agent.id, {
       id: 'ready_for_review', action: 'execute',
     });
     expect(wrapper.get('[aria-label="Code review"]').isVisible()).toBe(true);

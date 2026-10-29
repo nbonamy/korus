@@ -104,7 +104,7 @@ describe('AppMcpAgentCoordinator', () => {
     })).resolves.toStrictEqual({
       success: true,
       status: null,
-      flag: 'delegate_to_worktree',
+      flag: 'work_proposed',
       announcement: { success: true, phase: 'finish' },
       celebration: {
         success: true,
@@ -116,7 +116,7 @@ describe('AppMcpAgentCoordinator', () => {
     expect(onAnnounce).toHaveBeenCalledWith(agents[0], 'finish', 'Ready to hand off.');
     expect(onCelebrate).toHaveBeenCalledWith(agents[0]);
     expect(agents[0]!.statusText).toBeUndefined();
-    expect(agents[0]!.threadFlags).toStrictEqual({ delegate_to_worktree: true });
+    expect(agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
     await expect(coordinator.finishTurn('agent-dina', { flag: 'ready_for_review' }))
       .resolves.toStrictEqual({ success: true, status: null, flag: 'ready_for_review' });
     expect(agents[0]!.threadFlags).toStrictEqual({ ready_for_review: true });
@@ -126,11 +126,11 @@ describe('AppMcpAgentCoordinator', () => {
     expect(onAgentUpdated).toHaveBeenCalledTimes(4);
   });
 
-  it('rejects recursive worktree delegation suggestions from delegated co-agents', async () => {
+  it.each(['work_proposed', 'delegate_to_worktree'] as const)('rejects recursive %s suggestions from delegated co-agents', async (flag) => {
     const { agents, coordinator, onAgentUpdated } = fixture();
     agents[0]!.delegatedByAgentId = 'agent-parent';
 
-    await expect(coordinator.finishTurn('agent-dina', { flag: 'delegate_to_worktree' }))
+    await expect(coordinator.finishTurn('agent-dina', { flag }))
       .rejects.toThrow('already a delegated co-agent');
     expect(agents[0]!.threadFlags).toBeUndefined();
     expect(onAgentUpdated).not.toHaveBeenCalled();

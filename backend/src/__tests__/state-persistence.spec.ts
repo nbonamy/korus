@@ -477,7 +477,7 @@ describe('state persistence', () => {
     };
 
     expect(snapshotFromPersistedState(persisted).agents[0].threadFlags)
-      .toStrictEqual({ delegate_to_worktree: true, ready_for_review: true });
+      .toStrictEqual({ work_proposed: true, ready_for_review: true });
     expect(snapshotFromPersistedState(persisted).agents[0].suggestedPrompt).toBe('Review the changes');
     persisted.agents[0].suggestedPrompt = 123;
     expect(snapshotFromPersistedState(persisted).agents[0].suggestedPrompt).toBeUndefined();

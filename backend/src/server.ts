@@ -89,7 +89,7 @@ import { sendAgentPrompt } from '@workspace/core/agent-chat-service';
 import { AgentPlanReviewService } from './agents/agent-plan-review-service';
 import { AgentThreadFlagService } from './agents/agent-thread-flag-service';
 import type { PlanReviewResponse } from '@workspace/core/plan-review';
-import type { ThreadFlagId, ThreadFlagResponse } from '@workspace/core/thread-flags';
+import { normalizeThreadFlagId, normalizeThreadFlags, type ThreadFlagId, type ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { agentConversationId, planReviewFromEvent } from '@workspace/core/plan-review';
 import { isAgentRequestResponse, type AgentRequestResponse } from '@workspace/core/agent-request';
 import { AgentWorkspaceService } from './agents/agent-workspace-service';
@@ -1328,7 +1328,7 @@ export class AppBackendServer {
         if (!agent) {
           return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Agent not found: ${agentId}`);
         }
-        const threadFlags = { ...agent.threadFlags };
+        const threadFlags = normalizeThreadFlags(agent.threadFlags ?? {});
         if (value) threadFlags[id] = true;
         else delete threadFlags[id];
         agent.threadFlags = Object.keys(threadFlags).length > 0 ? threadFlags : undefined;
@@ -2333,10 +2333,10 @@ export class AppBackendServer {
         const params = requireRecord(message.params);
         const agentId = requireString(params.agentId, 'agentId');
         const input = requireRecord(params.response);
-        const response: ThreadFlagResponse = {
+        const response = {
           id: requireString(input.id, 'id') as ThreadFlagResponse['id'],
-          action: requireString(input.action, 'action') as ThreadFlagResponse['action'],
-        };
+          action: requireString(input.action, 'action'),
+        } as ThreadFlagResponse;
         return this.routeAgentSnapshotRequest(message.id, agentId, message.method, { agentId, response }, async (agent) => {
           await this.threadFlags.respond(agent, response);
           return this.persistAndEmitSnapshot();
@@ -4387,8 +4387,8 @@ function debugCodeReviewScenario(value: unknown): DebugCodeReviewScenario {
   throw new Error('Invalid code review debug scenario.');
 }
 
-function debugThreadFlagId(value: unknown): ThreadFlagId {
-  if (value === 'delegate_to_worktree' || value === 'ready_for_review') return value;
+function debugThreadFlagId(value: unknown): Exclude<ThreadFlagId, 'delegate_to_worktree'> {
+  if (value === 'work_proposed' || value === 'delegate_to_worktree' || value === 'ready_for_review') return normalizeThreadFlagId(value);
   throw new Error('Invalid thread flag id.');
 }
 

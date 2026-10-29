@@ -1,50 +1,61 @@
 <template>
   <div class="thread-flag-affordance" role="status">
-    <GitBranchIcon
-      v-if="id === 'delegate_to_worktree'"
-      class="thread-flag-affordance__icon"
-      aria-hidden="true"
-    />
-    <IconChecklist
-      v-else
-      class="thread-flag-affordance__icon"
-      aria-hidden="true"
-    />
+    <GitBranchIcon v-if="isProposal" class="thread-flag-affordance__icon" aria-hidden="true" />
+    <IconChecklist v-else class="thread-flag-affordance__icon" aria-hidden="true" />
     <span class="thread-flag-affordance__prompt">{{ t(copyKey('prompt')) }}</span>
     <div class="thread-flag-affordance__actions">
-      <button
-        class="thread-flag-affordance__action"
-        type="button"
-        :aria-label="t(copyKey('accept'))"
-        :title="t(copyKey('accept'))"
-        :disabled="busy"
-        @click="emit('execute')"
-      ><CheckIcon aria-hidden="true" /></button>
-      <button
-        class="thread-flag-affordance__dismiss"
-        type="button"
-        :aria-label="t(copyKey('dismiss'))"
-        :title="t(copyKey('dismiss'))"
-        :disabled="busy"
-        @click="emit('dismiss')"
-      ><X aria-hidden="true" /></button>
+      <template v-if="isProposal">
+        <button
+          v-for="choice in proposalChoices"
+          :key="choice.action"
+          class="thread-flag-affordance__choice"
+          type="button"
+          :aria-label="t(copyKey(choice.key))"
+          :disabled="busy"
+          @click="emit('respond', { id: 'work_proposed', action: choice.action })"
+        >{{ t(copyKey(choice.key)) }}</button>
+      </template>
+      <template v-else>
+        <button
+          class="thread-flag-affordance__action"
+          type="button"
+          :aria-label="t(copyKey('accept'))"
+          :title="t(copyKey('accept'))"
+          :disabled="busy"
+          @click="emit('respond', { id: 'ready_for_review', action: 'execute' })"
+        ><CheckIcon aria-hidden="true" /></button>
+        <button
+          class="thread-flag-affordance__dismiss"
+          type="button"
+          :aria-label="t(copyKey('dismiss'))"
+          :title="t(copyKey('dismiss'))"
+          :disabled="busy"
+          @click="emit('respond', { id: 'ready_for_review', action: 'dismiss' })"
+        ><X aria-hidden="true" /></button>
+      </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { ThreadFlagId } from '@workspace/core/thread-flags';
+import type { ThreadFlagId, ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { IconChecklist } from '@tabler/icons-vue';
 import { CheckIcon, GitBranchIcon, X } from '../shared/icons/app-icons';
 
 const props = defineProps<{ id: ThreadFlagId; busy?: boolean }>();
-const emit = defineEmits<{ execute: []; dismiss: [] }>();
+const emit = defineEmits<{ respond: [response: ThreadFlagResponse] }>();
 const { t } = useI18n();
+const isProposal = computed(() => props.id !== 'ready_for_review');
+const proposalChoices = [
+  { action: 'delegate', key: 'delegate' },
+  { action: 'create_mission', key: 'createMission' },
+  { action: 'dismiss', key: 'dismiss' },
+] as const;
 
-function copyKey(kind: 'prompt' | 'accept' | 'dismiss'): string {
-  const flag = props.id === 'ready_for_review' ? 'readyForReview' : 'delegateToWorktree';
-  return `chat.threadFlags.${flag}.${kind}`;
+function copyKey(kind: 'prompt' | 'accept' | 'dismiss' | 'delegate' | 'createMission'): string {
+  return `chat.threadFlags.${isProposal.value ? 'workProposed' : 'readyForReview'}.${kind}`;
 }
 </script>
 
@@ -53,6 +64,7 @@ function copyKey(kind: 'prompt' | 'accept' | 'dismiss'): string {
   width: 100%;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-4);
   color: var(--color-text-muted);
 }
@@ -66,7 +78,7 @@ function copyKey(kind: 'prompt' | 'accept' | 'dismiss'): string {
 
 .thread-flag-affordance__prompt {
   min-width: 0;
-  flex: 1;
+  flex: 1 1 auto;
   overflow: hidden;
   color: var(--color-text);
   font-size: var(--font-size-14);
@@ -83,7 +95,8 @@ function copyKey(kind: 'prompt' | 'accept' | 'dismiss'): string {
 }
 
 .thread-flag-affordance__action,
-.thread-flag-affordance__dismiss {
+.thread-flag-affordance__dismiss,
+.thread-flag-affordance__choice {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -94,6 +107,12 @@ function copyKey(kind: 'prompt' | 'accept' | 'dismiss'): string {
   font-size: var(--font-size-12);
   line-height: var(--line-height-18);
   cursor: pointer;
+}
+
+.thread-flag-affordance__choice {
+  min-height: var(--space-12);
+  padding: var(--space-2) var(--space-4);
+  white-space: nowrap;
 }
 
 .thread-flag-affordance__action {

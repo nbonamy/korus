@@ -336,7 +336,7 @@ describe('AppMcpService', () => {
     expect(parent.userDelegationOverrides).toBeUndefined();
   });
 
-  it('finishes turns by clearing status and replacing the proposed action in one update', async () => {
+  it.each(['work_proposed', 'delegate_to_worktree'])('finishes turns with %s by clearing status and replacing the proposal in one update', async (flag) => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
     const events: any[] = [];
@@ -345,35 +345,35 @@ describe('AppMcpService', () => {
 
     await callTool(url, 'agent-dina', 'set-status', { status: 'Considering delegation' });
     const delegated = await callTool(url, 'agent-dina', 'finish_turn', {
-      flag: 'delegate_to_worktree',
+      flag,
     });
     expect(delegated.result.structuredContent).toStrictEqual({
-      success: true, status: null, flag: 'delegate_to_worktree',
+      success: true, status: null, flag: 'work_proposed',
     });
     expect(snapshot.agents[0]!.statusText).toBeUndefined();
-    expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ delegate_to_worktree: true });
+    expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
     expect(events.at(-1)).toEqual(expect.objectContaining({
       type: 'agent.updated',
       payload: expect.objectContaining({
         statusText: null,
-        threadFlags: { delegate_to_worktree: true },
+        threadFlags: { work_proposed: true },
       }),
     }));
 
     await callTool(url, 'agent-dina', 'set-status', { status: 'Implementing here' });
-    expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ delegate_to_worktree: true });
+    expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
 
     const plain = await callTool(url, 'agent-dina', 'finish_turn', {});
     expect(plain.result.structuredContent).toStrictEqual({
       success: true, status: null,
     });
     expect(snapshot.agents[0]!.statusText).toBeUndefined();
-    expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ delegate_to_worktree: true });
+    expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
     expect(events.at(-1)).toEqual(expect.objectContaining({
       type: 'agent.updated',
       payload: expect.objectContaining({
         statusText: null,
-        threadFlags: { delegate_to_worktree: true },
+        threadFlags: { work_proposed: true },
       }),
     }));
   });
