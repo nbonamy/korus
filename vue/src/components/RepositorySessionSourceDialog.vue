@@ -410,8 +410,6 @@ function customWorkItem(selection: Omit<WorkItemAssignmentSelection, 'action'>):
   display: flex;
   align-items: center;
   gap: var(--space-6);
-  padding: var(--space-4) var(--space-8);
-  border-top: 1px solid var(--color-border);
 }
 
 .repository-session-source-dialog__host {
