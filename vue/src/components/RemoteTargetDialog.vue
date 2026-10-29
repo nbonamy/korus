@@ -23,12 +23,7 @@
             :value="connection.id"
             :label="connection.name"
             :disabled="!isSelectable(connection.id)"
-          >
-            <span class="remote-target-dialog__option">
-              <span>{{ connection.name }}</span>
-              <span class="remote-target-dialog__option-status">{{ statusText(connection.id) }}</span>
-            </span>
-          </el-option>
+          />
         </el-select>
         <p class="remote-target-dialog__status" :class="{ 'remote-target-dialog__status--warning': checkouts[selectedId]?.state === 'missing' }">
           {{ statusText(selectedId) }}
@@ -167,16 +162,6 @@ function statusText(connectionId: string): string {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-}
-
-.remote-target-dialog__option {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-6);
-}
-
-.remote-target-dialog__option-status {
-  color: var(--color-text-muted);
 }
 
 .remote-target-dialog__status {
