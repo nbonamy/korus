@@ -136,6 +136,31 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     expect(restored?.type === 'claude.conversationSnapshotChanged' && restored.payload.snapshot.messages[0]?.parts).toStrictEqual([{ type: 'text', text: '$cp vs Commit and push' }]);
   });
 
+  it('returns a steering message receipt that identifies the live message and native history', async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), 'claude-steer-receipt-')); homes.push(home);
+    const { sdk, driver, snapshot, events } = setup(false, undefined, [], home);
+    const owner = snapshot.agents[0]!;
+    const sending = driver.sendPrompt(owner, 'Identical prompt');
+    await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
+    const sessionId = randomUUID(); sdk.emit({ type: 'system', subtype: 'init', session_id: sessionId });
+    owner.backendSession = (await sending).backendSession;
+    const receipts = [await driver.steerPrompt(owner, 'Identical prompt'), await driver.steerPrompt(owner, 'Identical prompt')];
+    await vi.waitFor(() => expect(sdk.inputs).toHaveLength(3));
+    const expectedIds = sdk.inputs.slice(1).map(input => `user-${sessionId}-${input.uuid}`);
+    expect(receipts.map(receipt => receipt.messageId)).toStrictEqual(expectedIds);
+    expect(new Set(expectedIds).size).toBe(2);
+    for (const id of expectedIds) expect(events).toContainEqual(expect.objectContaining({ type: 'claude.conversationEventReceived', payload: expect.objectContaining({ event: expect.objectContaining({ type: 'message.userSubmitted', payload: { message: expect.objectContaining({ id, kind: 'steer' }) } }) }) }));
+    for (const input of sdk.inputs.slice(1)) sdk.emit({ type: 'user', uuid: input.uuid, session_id: sessionId, message: input.message });
+    sdk.emit({ type: 'result', subtype: 'success', session_id: sessionId, is_error: false });
+    await vi.waitFor(() => expect(events.some(event => event.type === 'claude.conversationEventReceived' && event.payload.event.type === 'turn.completed')).toBe(true));
+    await driver.releaseConversation(owner.id);
+    const project = path.join(home, '.claude', 'projects', '-tmp-project'); await mkdir(project, { recursive: true });
+    await writeFile(path.join(project, `${sessionId}.jsonl`), sdk.inputs.map(input => JSON.stringify({ type: 'user', uuid: input.uuid, message: input.message })).join('\n'));
+    events.splice(0); await driver.loadConversation(owner);
+    const restored = events.find(event => event.type === 'claude.conversationSnapshotChanged');
+    expect(restored?.type === 'claude.conversationSnapshotChanged' && restored.payload.snapshot.messages.slice(1).map(message => message.id)).toStrictEqual(expectedIds);
+  });
+
   it('restores turn timing from native history and preserves a running turn when reloaded', async () => {
     const home = await mkdtemp(path.join(os.tmpdir(), 'korus-claude-timing-'));
     homes.push(home);

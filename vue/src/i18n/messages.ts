@@ -29,7 +29,7 @@ export const messages = {
       noOutput: 'No output yet.', save: 'Save profile', runCommand: 'Run command', new: 'New profile', localHost: 'Local host',
     },
     guest: {
-      joinWithInvite: 'Join with invite…', invitation: 'Invitation or share link', shared: 'Shared conversation', propose: 'Propose message', placeholder: 'Propose a message…', send: 'Send', dismiss: 'Dismiss', pending: 'Waiting for owner approval', queued: 'Approved · queued', submitted: 'Sent to agent', dismissed: 'Dismissed', rejected: 'Access ended', unresolved: 'Delivery unresolved · not resent', dispatching: 'Sending…', proposalFailed: 'Could not confirm this proposal. Retry to check its existing delivery.',
+      joinWithInvite: 'Join with invite…', invitation: 'Invitation or share link', shared: 'Shared conversation', propose: 'Propose message', placeholder: 'Propose a message…', writePlaceholder: 'Send a message…', writeAccess: 'Write access enabled', readOnly: 'Read-only · Prompts need owner approval', send: 'Send', dismiss: 'Dismiss', pending: 'Waiting for owner approval', queued: 'Approved · queued', submitted: 'Sent to agent', dismissed: 'Dismissed', rejected: 'Access ended', unresolved: 'Delivery unresolved · not resent', dispatching: 'Sending…', proposalFailed: 'Could not confirm this proposal. Retry to check its existing delivery.',
 
       open: 'Open shared conversation', join: 'Join conversation', displayName: 'Display name',
       noLongerAccessible: 'This conversation is no longer accessible.',
@@ -43,7 +43,8 @@ export const messages = {
       guestProposals: 'Guest proposals',
       title: 'Share with guests', share: 'Share', close: 'Close',
       disclosure: 'Anyone with this link can read the full available history and future updates, including tool output.',
-      approval: 'Collaborators can suggest prompts for you to review, edit, and send.',
+      approval: 'Guests suggest prompts for you to review. Enable write access to let a connected guest send directly.',
+      writeAccess: 'Write access', writeAccessFor: 'Write access for {name} ({discriminator})',
       active: 'This conversation has an active share link.', guests: '{count} guests connected',
       temporarilyUnavailable: 'Sharing is temporarily unavailable. Please try again shortly.',
       copy: 'Copy link', stop: 'Stop sharing', inviteLinkCopied: 'Invite link copied to clipboard',

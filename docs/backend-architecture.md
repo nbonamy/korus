@@ -247,6 +247,19 @@ invitation discards its temporary session without changing saved joins.
 
 Sharing is a Korus workflow, independent of provider capabilities. A local agent
 with a bound conversation can share it; shared guest entries cannot reshare it.
+Guest write access is off by default and belongs to an authenticated peer on one
+active share, never to its display name or invitation. The owner grants it only
+while that peer is connected. Disconnecting the last session for a peer, share
+revocation, target invalidation and daemon restart clear that authority. Automatic
+admission waits in the existing sharing coordination queue and rechecks the exact
+access grant before dispatch. Revocation returns waiting automatic prompts to
+pending review; enabling access never promotes existing suggestions. An authorized
+guest chooses queue or steer when sending a prompt. That choice is captured with
+the prompt and deduplicated with its identity: queue waits for normal admission,
+while steer uses the normal owner steering operation. Read-only suggestions discard
+the guest's choice; the owner decides how to send them through the composer.
+Both retain the immutable conversation binding and plain-text guest policy;
+write access grants no workspace or other conversation actions.
 Moving a suggestion into the owner's draft dismisses it for the collaborator and
 carries no execution authority. The owner edits and sends that draft through the
 ordinary composer; this handoff requires no provider message identity. Pending proposals and decisions are private to the

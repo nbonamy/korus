@@ -18,12 +18,15 @@ export type ConversationShareLink = { v: 2; relay: ShareRelay; ownerId?: string;
 /** Both execution identity and history identity are immutable grant bindings. */
 export type ConversationShareTarget = { agentId: string; backend: Agent['backend']; sessionId: string; conversation: BackendConversationRef };
 export type GuestAuthor = { messageId: string; identity: string; name: string; discriminator: string };
+export type GuestPromptInput = { id: string; text: string; followUpBehavior?: 'queue' | 'steer' };
 export type GuestProposal = { id: string; handle: string; identity: string; name: string; discriminator: string; text: string; status: 'pending' | 'queued' | 'dispatching' | 'dismissed' | 'submitted' | 'rejected' | 'unresolved'; createdAt: string; messageId?: string; turnId?: string };
-export type GuestProposalState = { proposals: GuestProposal[]; authors: GuestAuthor[] };
-export type ConversationShareState = { active: boolean; handle: string | null; connectedGuests: number | null; availability: ShareRoutingStatus | 'transportPending' | 'notConfigured'; proposals?: GuestProposal[]; authors?: GuestAuthor[] };
+export type ConnectedConversationGuest = { identity: string; name: string; discriminator: string; writeAccess: boolean };
+export type GuestProposalState = { proposals: GuestProposal[]; authors: GuestAuthor[]; writeAccess?: boolean };
+export type ConversationShareState = { active: boolean; handle: string | null; connectedGuests: number | null; availability: ShareRoutingStatus | 'transportPending' | 'notConfigured'; proposals?: GuestProposal[]; authors?: GuestAuthor[]; guests?: ConnectedConversationGuest[] };
 export type ConversationShareControl = { target: ConversationShareTarget } & (
   | { action: 'status' | 'create' | 'copy' }
   | { action: 'revoke'; handle: string }
+  | { action: 'access'; handle: string; identity: string; writeAccess: boolean }
   | { action: 'send' | 'dismiss'; handle: string; proposalId: string }
 );
 /** Only explicit create/copy responses contain bearer material. Never persist in renderer state. */

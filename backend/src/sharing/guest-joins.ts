@@ -18,7 +18,7 @@ const controlSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('state') }).strict(), z.object({ action: z.literal('prepare'), link: z.string().max(2048), teamId: z.string().min(1).max(200).optional() }).strict(),
   ...(['open', 'leave', 'history', 'cancel'] as const).map(action => z.object({ action: z.literal(action), id: idSchema }).strict()),
   z.object({ action: z.literal('join'), id: idSchema, name: z.string().max(200) }).strict(),
-  z.object({ action: z.literal('propose'), id: idSchema, proposalId: z.string().uuid(), text: z.string().min(1).max(100_000) }).strict(),
+  z.object({ action: z.literal('propose'), id: idSchema, proposalId: z.string().uuid(), text: z.string().min(1).max(100_000), followUpBehavior: z.enum(['queue', 'steer']).optional() }).strict(),
   z.object({ action: z.literal('withdraw'), id: idSchema, proposalId: z.string().uuid() }).strict(),
 ]);
 const titleSchema = z.string().min(1).max(200).refine(value => !/[\p{Cc}\p{Cf}]/u.test(value));
@@ -49,7 +49,7 @@ export class GuestJoins {
     const action = parsed.data;
     if (action.action === 'propose' || action.action === 'withdraw') {
       const session = this.ready(action.id); const generation = session.generation;
-      if (action.action === 'propose') await session.client!.propose({ id: action.proposalId, text: action.text });
+      if (action.action === 'propose') await session.client!.propose({ id: action.proposalId, text: action.text, ...(action.followUpBehavior ? { followUpBehavior: action.followUpBehavior } : {}) });
       else await session.client!.withdraw(action.proposalId);
       const proposalState = await session.client!.proposals();
       if (generation !== session.generation) throw new Error('Guest conversation unavailable.');

@@ -217,8 +217,8 @@ export class AppBackendServer {
     if (!this.conversationShares) return Promise.reject(new Error('denied'));
     return this.conversationShares.authorize(handle, credential);
   }
-  conversationGuestCount(handle: string, count: number) { this.conversationShares?.connected(handle, count); }
-  proposeConversationGuest(handle: string, identity: string, name: string, input: { id: string; text: string }) {
+  conversationGuestCount(handle: string, count: number, guests?: import('@workspace/core/guest-conversation').GuestParticipant[]) { this.conversationShares?.connected(handle, count, guests); }
+  proposeConversationGuest(handle: string, identity: string, name: string, input: import('@workspace/core/conversation-sharing').GuestPromptInput) {
     if (!this.conversationShares) return Promise.reject(new Error('denied'));
     return this.conversationShares.propose(handle, identity, name, input);
   }
@@ -310,14 +310,25 @@ export class AppBackendServer {
 
   constructor(private readonly options: AppBackendServerOptions) {
     if (options.conversationSharing) this.conversationShares = new ConversationShares({ ...options.conversationSharing,
-      canSubmit: target => {
+      canSubmit: (target, context) => {
         const agent = this.snapshot.agents.find(agent => agent.id === target.agentId);
-        return Boolean(agent && this.agentPrompts?.canStart(agent) && !(this.snapshot.queuedPrompts ?? []).some(prompt => prompt.agentId === agent.id));
+        const steer = context.followUpBehavior === 'steer';
+        if (!agent || handoffInProgress(agent)) return false;
+        if (steer && agent.status.type === 'working' && this.backendDriverForAgent(agent).getCapabilities(agent).steerPrompt) return true;
+        return Boolean(this.agentPrompts?.canStart(agent) && !(this.snapshot.queuedPrompts ?? []).some(prompt => prompt.agentId === agent.id));
       },
-      submit: options.conversationSharing.submit ?? (async (target, text) => {
+      submit: options.conversationSharing.submit ?? (async (target, text, context) => {
         const agent = this.snapshot.agents.find(agent => agent.id === target.agentId);
         if (!agent || agent.sharedConversation) throw new Error('Conversation unavailable.');
-        return this.agentPrompts.sendWithReceipt(agent, text, undefined, companionSessionId(agent), 'guest:approved');
+        if (context.followUpBehavior === 'steer' && !this.agentPrompts.canStart(agent)) {
+          const result = await this.withPromptSource(agent, 'guest:approved', () => this.handleAgentDriverRequest(agent, backendMethods.driverPromptSteer, { agent, prompt: text, expectedSessionId: companionSessionId(agent), plainText: true })) as BackendSendResult;
+          this.clearTurnSuggestionsForNewPrompt(agent);
+          await this.persistSnapshotOnly();
+          return { turnId: result.turnId, messageId: result.messageId };
+        }
+        const result = await this.agentPrompts.sendWithReceipt(agent, text, undefined, companionSessionId(agent), 'guest:approved');
+        this.clearTurnSuggestionsForNewPrompt(agent);
+        return result;
       }),
     }, () => this.snapshot, (agentId, state) => {
       this.onEvent?.({ seq: this.nextEventSeq(), type: 'conversation.shareChanged', agentId, payload: state, occurredAt: new Date().toISOString() });
@@ -966,7 +977,8 @@ export class AppBackendServer {
     if (message.method === backendMethods.conversationShareControl) {
       try {
         if (!this.conversationShares) throw new Error('Conversation sharing is unavailable.');
-        return createAppRpcResult(message.id, await this.conversationShares.control(requireRecord(message.params).input as import('@workspace/core/conversation-sharing').ConversationShareControl));
+        const params = requireRecord(message.params);
+        return createAppRpcResult(message.id, await this.conversationShares.control(params.input as import('@workspace/core/conversation-sharing').ConversationShareControl));
       } catch (error) { return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, error instanceof Error ? error.message : 'Share operation failed.'); }
     }
     const sharedParams = message.params && typeof message.params === 'object' ? message.params as { agentId?: unknown; sourceAgentId?: unknown; input?: { id?: unknown; agentId?: unknown } } : undefined;
@@ -3381,7 +3393,7 @@ export class AppBackendServer {
 
   async close(): Promise<void> {
     this.closing = true;
-    this.conversationShares?.close();
+    await this.conversationShares?.close();
     await this.options.guestJoins?.close();
     this.autoResume.close();
     this.unsubscribeUsage?.();
