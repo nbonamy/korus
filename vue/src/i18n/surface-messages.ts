@@ -413,36 +413,15 @@ export const surfaceMessages = {
     "stateFixing": "Fixing",
     "stateFixed": "Fixed"
   },
-  "cockpitAddAgentTile": {
-    "assignToNewAgent": "Assign to New Agent",
-    "addAgent": "Add Agent"
-  },
-  "cockpitAgentsView": {
-    "addAgent": "Add agent",
-    "noAgents": "No agents",
-    "layout": "Agent layout",
-    "teams": "Teams",
-    "recent": "Recent",
-    "lastActive": "Active {time}",
-    "awaitingInput": "Awaiting input",
-    "error": "Error",
-    "errors": "Errors"
-  },
   "cockpitView": {
-    "cockpit": "Cockpit",
     "backlogNavigation": "Backlog navigation",
     "backlog": "Backlog",
-    "agents": "Agents",
     "repositories": "Repositories",
     "recentActivity": "Recent activity",
     "alphabetical": "Alphabetical",
     "filterRepositories": "Filter repositories",
     "noRepositoriesFound": "No repositories found.",
-    "workSummaryFilters": "Work summary filters",
     "connectAWorkProviderToBuildYourOperatorInbox": "Connect a work provider to build your operator inbox.",
-    "working": "working",
-    "blocked": "blocked",
-    "readyForReview": "ready for review",
     "recent": "Recent"
   },
   "cockpitWorkInbox": {

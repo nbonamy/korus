@@ -29,7 +29,7 @@
         :aria-pressed="cockpitActive"
         @click="emit('select-cockpit')"
       >
-        <DashboardIcon aria-hidden="true" />
+        <AiAgentsIcon aria-hidden="true" />
       </button>
 
       <button
@@ -153,7 +153,7 @@ import type { AccountRateLimits, AgentBackend, AppSnapshot, CodexAccount, Remote
 import { defaultTeamColor } from '@workspace/core/team-colors';
 import { product } from '@workspace/core/product';
 import { teamInitials } from '@workspace/core/team-manager';
-import { ClockHour8Icon, BacklogIcon, DashboardIcon, PlusIcon, ProductMarkIcon, VolumeIcon, VolumeOffIcon } from '../shared/icons/app-icons';
+import { ClockHour8Icon, BacklogIcon, AiAgentsIcon, PlusIcon, ProductMarkIcon, VolumeIcon, VolumeOffIcon } from '../shared/icons/app-icons';
 import { useListReorderDrag } from '../shared/use-list-reorder-drag';
 import SettingsMenu from './SettingsMenu.vue';
 import TeamContextMenu from './TeamContextMenu.vue';
@@ -460,10 +460,6 @@ function closeFloatingUiOnEscape(event: KeyboardEvent): void {
   padding: 0;
 }
 
-.team-rail__cockpit {
-  margin-top: calc(var(--space-4) * -1);
-}
-
 .team-rail__backlog--active,
 .team-rail__cockpit--active,
 .team-rail__automations--active {
@@ -472,6 +468,20 @@ function closeFloatingUiOnEscape(event: KeyboardEvent): void {
   color: var(--color-text-muted);
   background: var(--color-surface-low);
   opacity: 1;
+}
+
+.team-rail__cockpit,
+.team-rail__cockpit:hover,
+.team-rail__cockpit:focus-visible {
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--team-text-color);
+  background: var(--color-cockpit-background);
+}
+
+.team-rail__cockpit.team-rail__cockpit--active {
+  outline: 1px solid var(--color-cockpit-background);
+  outline-offset: 2px;
 }
 
 .team-rail__new svg {

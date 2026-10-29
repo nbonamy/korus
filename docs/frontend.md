@@ -124,9 +124,16 @@ runs independently of loaded tree nodes, so an unopened directory remains search
 
 ### Surfaces
 
-- **Backlog** (work-provider inbox) and **Cockpit** (all-agent overview) are
-  distinct global surfaces. Opening Cockpit must not load Backlog data. Projection
-  and sorting live in a focused view model, not `AppShell`.
+- **Backlog** (work-provider inbox) and **Cockpit** (all-teams activity workspace) are
+  distinct global surfaces. Opening Cockpit must not load Backlog data. Cockpit
+  reuses `AgentSidebarActivity` with fixed activity ordering and no creation controls;
+  selecting agents or Missions keeps the global scope until a team is selected.
+  Projection and sorting live in a focused view model, not `AppShell`.
+- `AgentSidebar` routes the saved team organization choice to `AgentSidebarRepo`
+  or `AgentSidebarActivity`. Repository layout and styles remain independent of
+  activity sections. Both use common base styles and the shared sidebar controller
+  for navigation, menus, resizing, and client-local preferences. Cockpit always
+  routes to the activity view.
 - Activity sidebar grouping and recency belong to `core/src/workspace-sidebar.ts`;
   desktop and mobile own their local view preference, clock and transitions. Native
   activity rows share one identity space across groups so regrouping preserves rows.

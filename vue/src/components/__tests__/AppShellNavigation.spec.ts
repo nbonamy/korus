@@ -9,7 +9,7 @@ import AppShellNavigation from '../AppShellNavigation.vue';
 function mountNavigation(snapshot = createInitialSnapshot(), renderSidebar = false) {
   const activeTeam = snapshot.teams[0] ?? null;
   return shallowMount(AppShellNavigation, {
-    global: { stubs: { AgentSidebar: !renderSidebar } },
+    global: { stubs: { AgentSidebar: !renderSidebar, AgentSidebarRepo: !renderSidebar, AgentSidebarActivity: !renderSidebar } },
     props: {
       activeTeam,
       activeTeamAgents: snapshot.agents,

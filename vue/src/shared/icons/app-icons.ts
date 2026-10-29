@@ -35,7 +35,7 @@ export {
   IconCircleX as CircleXIcon,
   IconSquareX as SquareXIcon,
   IconCode as CodeIcon,
-  IconLayoutDashboard as DashboardIcon,
+  IconAiAgents as AiAgentsIcon,
   IconCopy as CopyIcon,
   IconShare as ShareIcon,
   IconDotsVertical as DotsVerticalIcon,

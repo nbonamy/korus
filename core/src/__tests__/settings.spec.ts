@@ -91,7 +91,6 @@ describe('settings contracts', () => {
       preventSleepWhenAgentsRun: false,
       preventSleepWhenRemoteAccessEnabled: true,
       agentListCompact: true,
-      cockpitAgentViewMode: 'recent',
       useInteractivePlans: true,
       worktreeInitializationMode: 'automatic',
       worktreeDelegationStartingContext: 'handoff',
@@ -116,7 +115,6 @@ describe('settings contracts', () => {
       .toBe('af_heart');
     expect(normalizeGeneralSettings({ sessionCompressionWarningEnabled: false }).sessionCompressionWarningEnabled)
       .toBe(false);
-    expect(normalizeGeneralSettings({ cockpitAgentViewMode: 'invalid' }).cockpitAgentViewMode).toBe('teams');
     expect(normalizeGeneralSettings({ savedPromptDrafts: [
       { id: 'draft-1', agentId: 'agent-1', text: 'Come back later', content: [{ type: 'mention', kind: 'file', id: 'docs/later.md', value: 'docs/later.md', label: 'Come back later' }], createdAt: 1000, unexpected: 'discard' },
       { id: 'draft-2', agentId: 'agent-1', text: '', createdAt: 1001 },
@@ -202,7 +200,6 @@ describe('settings contracts', () => {
       preventSleepWhenAgentsRun: false,
       preventSleepWhenRemoteAccessEnabled: true,
       agentListCompact: false,
-      cockpitAgentViewMode: 'teams',
       autoResumeAfterLimit: true,
       autoResumeOnStartup: true,
       sessionCompressionWarningEnabled: true,

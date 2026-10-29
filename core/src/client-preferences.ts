@@ -2,7 +2,7 @@ import type { AppGeneralSettings,AppSnapshot,AppThemeSettings,OpenInApplication,
 import { normalizeGeneralSettings,normalizeThemeSettings } from './settings';
 
 export const clientGeneralSettingKeys = [
-  'agentListCompact', 'cockpitAgentViewMode', 'collapsedRepositoryKeys', 'modelFavorites',
+  'agentListCompact', 'collapsedRepositoryKeys', 'modelFavorites',
   'backlogRepositoryFavorites', 'repositoryIcons', 'sessionCompressionWarningEnabled', 'spokenAnnouncementsMuted',
   'savedPromptDrafts', 'followUpBehavior', 'browserBookmarks',
   'spokenAnnouncementsOnlyWhenFocused', 'spokenAnnouncementScope', 'spokenAnnouncementVoice',
