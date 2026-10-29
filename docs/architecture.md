@@ -697,6 +697,8 @@ target and reviewer agents) plus an opaque reviewer session reference.
 - The default is an independent visible reviewer agent starting without the source
   history; reviewing the current thread is the alternative and its user-owned
   conversation is never disposed.
+- New independent reviewers follow their source agent in each client's saved order;
+  an explicit user reorder takes precedence.
 - Independent reviews reset the reviewer's conversation between rounds to reduce
   anchoring; every round receives the cumulative ledger (all prior skips, fixes
   and decisions) in a `<context>` block.

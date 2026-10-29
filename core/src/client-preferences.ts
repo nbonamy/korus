@@ -41,7 +41,15 @@ export function projectClientSnapshot(snapshot: AppSnapshot, clientId: string): 
   const order = preferences.teamOrder ?? [];
   projected.teams.sort((left, right) => rank(order, left.id) - rank(order, right.id));
   for (const team of projected.teams) {
-    const agentOrder = preferences.agentOrderByTeam?.[team.id] ?? [];
+    const agentOrder = [...preferences.agentOrderByTeam?.[team.id] ?? []];
+    // New reviewers follow their source until this client explicitly orders them.
+    for (const id of [...team.agentIds].reverse()) {
+      if (agentOrder.includes(id)) continue;
+      const review = projected.agents.find(agent => agent.id === id)?.codeReview;
+      if (review?.threadMode !== 'independent' || review.reviewerAgentId !== id) continue;
+      const sourceIndex = agentOrder.indexOf(review.targetAgentId);
+      if (sourceIndex >= 0 && team.agentIds.includes(review.targetAgentId)) agentOrder.splice(sourceIndex + 1, 0, id);
+    }
     team.agentIds.sort((left, right) => rank(agentOrder, left) - rank(agentOrder, right));
     const selected = preferences.activeAgentByTeam?.[team.id];
     if (selected && team.agentIds.includes(selected)) team.activeAgentId = selected;
