@@ -20,7 +20,9 @@ const handleSchema = z.string().regex(/^[A-Za-z0-9_-]{32}$/);
 const recordSchema = z.object({ v: z.literal(2), relay: z.object({ origin: bounded, peerId: bounded }).strict(), ownerId: bounded,
   handle: handleSchema, credential: z.string().regex(shareInvitationPattern), target: targetSchema, createdAt: z.string(), revokedAt: z.string().optional() }).strict();
 const proposalSchema = z.object({ id: z.string().uuid(), handle: handleSchema, identity: bounded, name: z.string().min(1).max(80), discriminator: z.string().length(8), text: z.string().max(100_000), followUpBehavior: z.enum(['queue', 'steer']).optional(), accessId: z.string().uuid().optional(), fingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(), status: z.enum(['pending', 'queued', 'dispatching', 'dismissed', 'submitted', 'rejected', 'unresolved']), createdAt: z.string(), messageId: bounded.optional(), turnId: bounded.optional() }).strict();
-const storeSchema = z.object({ v: z.literal(2), links: z.array(recordSchema), proposals: z.array(proposalSchema).optional() }).strict();
+// Accept only the known historical receipt leak; all other unknown fields stay invalid.
+const storedProposalSchema = proposalSchema.extend({ backendSession: z.unknown().optional() });
+const storeSchema = z.object({ v: z.literal(2), links: z.array(recordSchema), proposals: z.array(storedProposalSchema).optional() }).strict();
 const controlSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('status'), target: targetSchema }).strict(),
   z.object({ action: z.literal('create'), target: targetSchema }).strict(),
@@ -136,7 +138,7 @@ export class ConversationShares {
         await this.serial(async () => {
           if (this.closed) return;
           await this.load();
-          await this.write({ ...this.saved!, proposals: (this.saved!.proposals ?? []).map(record => record.id === next.proposal.id && record.handle === next.proposal.handle ? compactProposal({ ...record, ...result, status: !authorized ? 'rejected' : result.messageId ? 'submitted' : 'unresolved' }) : record) });
+          await this.write({ ...this.saved!, proposals: (this.saved!.proposals ?? []).map(record => record.id === next.proposal.id && record.handle === next.proposal.handle ? compactProposal({ ...record, turnId: result.turnId, messageId: result.messageId, status: !authorized ? 'rejected' : result.messageId ? 'submitted' : 'unresolved' }) : record) });
           const link = this.saved!.links.find(link => link.handle === next.proposal.handle);
           if (link && !link.revokedAt) this.changed(link.target.agentId, this.state(link, true));
         });
@@ -333,7 +335,9 @@ export class ConversationShares {
         const raw: unknown = JSON.parse(await readFile(file, 'utf8'));
         // Big-bang switch: withdraw all legacy grants rather than accepting old invitations.
         if (raw && typeof raw === 'object' && 'v' in raw && raw.v === 1) { await this.write({ v: 2, links: [] }); return; }
-        const saved = storeSchema.parse(raw);
+        const decoded = storeSchema.parse(raw);
+        const needsRepair = decoded.proposals?.some(record => Object.hasOwn(record, 'backendSession'));
+        const saved: Store = { ...decoded, proposals: decoded.proposals?.map(({ backendSession: _legacySession, ...record }) => record) };
         const handles = new Set<string>(); const active = new Set<string>();
         for (const link of saved.links) {
           encodeConversationShareLink(link);
@@ -343,7 +347,7 @@ export class ConversationShares {
           if (!link.revokedAt) active.add(key);
         }
         this.saved = saved;
-        if (saved.proposals?.some(record => record.status === 'dispatching' || (record.status === 'queued' && record.accessId))) await this.write({ ...saved, proposals: saved.proposals.map(record => record.status === 'dispatching' ? { ...record, status: 'unresolved' } : record.status === 'queued' && record.accessId ? { ...record, status: 'pending', followUpBehavior: undefined, accessId: undefined } : record) });
+        if (needsRepair || saved.proposals?.some(record => record.status === 'dispatching' || (record.status === 'queued' && record.accessId))) await this.write({ ...saved, proposals: saved.proposals?.map(record => record.status === 'dispatching' ? { ...record, status: 'unresolved' } : record.status === 'queued' && record.accessId ? { ...record, status: 'pending', followUpBehavior: undefined, accessId: undefined } : record) });
       } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; this.saved = { v: 2, links: [] }; }
     } catch { throw new Error('Share storage is unavailable. Check local storage and try again.'); }
   }

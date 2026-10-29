@@ -48,7 +48,7 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       sendPrompt, tryHandlePromptCommand: commands, interrupt: async () => ({ backendSession: { kind: 'codex', threadId: 'original' } }),
       respondToAgentRequest: async () => undefined, close: async () => undefined, onEvent: () => () => {},
     };
-    const server = f.start(new BackendDriverRpc(new Map([['codex', driver]])));
+    let server = f.start(new BackendDriverRpc(new Map([['codex', driver]])));
     try {
       const share = await f.request(server, { action: 'create', target: f.target });
       const id = randomUUID(); const text = '  /mission exact guest text  ';
@@ -63,6 +63,18 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       await vi.waitFor(() => expect(sendPrompt.mock.calls.length, JSON.stringify(f.snapshot.agents[0]?.status)).toBe(1));
       await vi.waitFor(async () => expect((await f.request(server, { action: 'status', target: f.target })).state.authors).toContainEqual(expect.objectContaining({ messageId: 'native-message', name: 'Guest' })));
       expect(sendPrompt).toHaveBeenCalledTimes(1); expect(sendPrompt.mock.calls[0]?.[1]).toBe(text); expect(commands).not.toHaveBeenCalled();
+      const stateFile = path.join(f.directory, 'state.json');
+      const saved = JSON.parse(await readFile(stateFile, 'utf8'));
+      expect(saved.proposals[0]).not.toHaveProperty('backendSession');
+      await server.close();
+      // Recover the exact historical leak without changing invitations or delivery receipts.
+      await writeFile(stateFile, JSON.stringify({ ...saved, proposals: saved.proposals.map((proposal: object) => ({ ...proposal, backendSession: { kind: 'codex', threadId: 'original' } })) }));
+      server = f.start(new BackendDriverRpc(new Map([['codex', driver]])));
+      const recovered = await f.request(server, { action: 'copy', target: f.target });
+      expect(recovered.link).toBe(share.link);
+      expect(recovered.state.authors).toContainEqual(expect.objectContaining({ messageId: 'native-message', name: 'Guest' }));
+      expect(JSON.parse(await readFile(stateFile, 'utf8'))).toStrictEqual(saved);
+      expect(sendPrompt).toHaveBeenCalledTimes(1);
       const stopped = await f.request(server, { action: 'revoke', target: f.target, handle: share.state.handle! });
       expect(stopped.state.authors).toContainEqual(expect.objectContaining({ messageId: 'native-message' }));
     } finally { await server.close(); }
