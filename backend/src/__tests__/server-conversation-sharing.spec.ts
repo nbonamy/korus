@@ -139,6 +139,67 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       expect((await joins.control({ action: 'state' })).entries).toHaveLength(0);
     } finally { await server.close(); }
   });
+  it.each([
+    ['sidebar', undefined], ['sidebar', 'second-desktop'],
+    ['header', undefined], ['header', 'second-desktop'],
+  ] as const)('preserves client presentation through %s Leave and shared history responses (%s)', async (leaveControl, clientId) => {
+    const f = await fixture();
+    const snapshot = f.snapshot;
+    const localAgent = snapshot.agents[0]!;
+    const joinId = 'a'.repeat(64);
+    const sharedId = `shared-${joinId}`;
+    snapshot.agents.push({ ...localAgent, id: sharedId, folder: null, sessionKind: 'quickChat', sharedConversation: { joinId } });
+    snapshot.teams[0]!.agentIds.push(sharedId);
+    snapshot.teams[0]!.activeAgentId = localAgent.id;
+    const joins = new GuestJoins({ directory: path.join(f.root, 'guest'), relay });
+    let releaseLoad: (() => void) | undefined;
+    const control = vi.spyOn(joins, 'control').mockImplementation(async input => {
+      if (input.action === 'open') await new Promise<void>(resolve => { releaseLoad = resolve; });
+      return { entries: [], view: null };
+    });
+    const server = new AppBackendServer({ version: 'test', snapshot, guestJoins: joins });
+    const call = (method: string, params: Record<string, unknown> = {}) => server.handleMessage({
+      jsonrpc: '2.0', id: 'guest', method, params: { ...params, ...(clientId ? { _clientId: clientId } : {}) },
+    });
+    const read = async (id: string | undefined = clientId) => {
+      const response = await server.handleMessage({ jsonrpc: '2.0', id: 'read', method: 'snapshot/get', params: { _clientId: id ?? 'desktop' } });
+      if (!response || !('result' in response)) throw new Error(JSON.stringify(response));
+      return (response.result as { snapshot: import('@workspace/core/contracts').AppSnapshot }).snapshot;
+    };
+    try {
+      await call('client/preferences/update', { input: {
+        theme: { mode: 'dark', id: 'cappuccin-mocha' }, general: { agentListCompact: true, followUpBehavior: 'steer' },
+      } });
+      await call('client/navigation/selectAgent', { agentId: sharedId });
+      const before = await read();
+      const preferences = structuredClone(snapshot.clientPreferences);
+      // A history request can finish after Leave and its snapshot event.
+      const loading = call('agent/conversation/load', { agentId: sharedId });
+      await vi.waitFor(() => expect(releaseLoad).toBeTypeOf('function'));
+      const left = leaveControl === 'sidebar'
+        ? await call('agent/delete', { agentId: sharedId })
+        : await call('client/guest/conversation/control', { input: { action: 'leave', id: joinId } });
+      const assertPresentation = (result: typeof before) => {
+        expect(result.theme).toStrictEqual(before.theme);
+        expect(result.general).toStrictEqual(before.general);
+        expect(result.activeAgentId).toBe(localAgent.id);
+        expect(result.agents.map(agent => agent.id)).toStrictEqual([localAgent.id]);
+      };
+      if (!left || !('result' in left)) throw new Error(JSON.stringify(left));
+      if (leaveControl === 'sidebar') assertPresentation(left.result as typeof before);
+      else expect(left.result).toStrictEqual({ entries: [], view: null });
+      releaseLoad!();
+      const loaded = await loading;
+      if (!loaded || !('result' in loaded)) throw new Error(JSON.stringify(loaded));
+      assertPresentation(loaded.result as typeof before);
+      assertPresentation(await read());
+      expect(snapshot.clientPreferences).toStrictEqual(preferences);
+      const other = await read('other-client');
+      expect(other.theme).toStrictEqual(snapshot.theme);
+      expect(other.general).toStrictEqual(snapshot.general);
+      expect(control).toHaveBeenCalledWith({ action: 'open', id: joinId });
+    } finally { releaseLoad?.(); await server.close(); }
+  });
   it.each(['create', 'copy'] as const)('refuses %s when the bound session changes during route publication', async action => {
     const f = await fixture(); let blocked = false;
     let started!: () => void; const publishing = new Promise<void>(resolve => { started = resolve; });
