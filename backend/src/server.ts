@@ -1293,6 +1293,11 @@ export class AppBackendServer {
 
   async handleMessage(message: AppRpcMessage): Promise<AppRpcResponse | undefined> {
     if (!isAppRpcRequest(message)) return this.dispatchMessage(message);
+    const params = isRecord(message.params) ? { ...message.params } : undefined;
+    const clientId = typeof params?._clientId === 'string' ? params._clientId : 'desktop';
+    if (!clientId.trim() || clientId.length > 200) return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'Invalid client identity.');
+    if (params) delete params._clientId;
+    const request = { ...message, params: params && Object.keys(params).length ? params : undefined };
     if ([backendMethods.guestConversationControl, backendMethods.guestConversationImage, backendMethods.guestConversationContent].some(method => method === message.method)) {
       try {
         const joins = this.options.guestJoins; if (!joins) throw new Error('Unavailable');
@@ -1323,11 +1328,11 @@ export class AppBackendServer {
     if (sharedAgent && message.method === backendMethods.agentDelete && this.options.guestJoins) {
       const state = await this.options.guestJoins.control({ action: 'leave', id: sharedAgent.sharedConversation!.joinId });
       await this.syncSharedQuickChats(state, 'leave');
-      return createAppRpcResult(message.id, this.snapshot);
+      return createAppRpcResult(message.id, projectClientSnapshot(this.snapshot, clientId));
     }
     if (sharedAgent && message.method === backendMethods.agentConversationLoad && this.options.guestJoins) {
       await this.options.guestJoins.control({ action: 'open', id: sharedAgent.sharedConversation!.joinId });
-      return createAppRpcResult(message.id, this.snapshot);
+      return createAppRpcResult(message.id, projectClientSnapshot(this.snapshot, clientId));
     }
     if (sharedAgent && ![backendMethods.clientNavigationSelectAgent, backendMethods.agentMarkRead].some(method => method === message.method)) {
       return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'Use the shared conversation controls; local execution is unavailable.');
@@ -1341,11 +1346,6 @@ export class AppBackendServer {
     if (this.providerSetup?.isChanging() && ![backendMethods.snapshotGet, backendMethods.providerSetupGet].some(method => method === message.method)) {
       return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'Engine setup is changing. Try again when it finishes.');
     }
-    const params = isRecord(message.params) ? { ...message.params } : undefined;
-    const clientId = typeof params?._clientId === 'string' ? params._clientId : 'desktop';
-    if (!clientId.trim() || clientId.length > 200) return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'Invalid client identity.');
-    if (params) delete params._clientId;
-    const request = { ...message, params: params && Object.keys(params).length ? params : undefined };
     if (message.method === backendMethods.browserExtensionPackages) {
       try {
         return createAppRpcResult(message.id, await this.browserExtensionPackages.manage(clientId, requireRecord(params?.input) as import('@workspace/core/browser-extensions').BrowserExtensionPackageRequest));

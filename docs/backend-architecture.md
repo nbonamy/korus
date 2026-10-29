@@ -266,9 +266,12 @@ ordinary composer; this handoff requires no provider message identity. Pending p
 owner and proposer. Persisted dispatch intent is never replayed after uncertain
 submission; restart exposes delivery unresolved. Dismiss never submits. Guests
 can withdraw only their own pending proposals; withdrawal and owner decisions
-share the serialized authority boundary. Terminal
-receipts retain a text fingerprint for deduplication instead of discarded text;
-active proposal text has a two-MiB budget per link, alongside count limits.
+share the serialized authority boundary. Provider receipts contribute only message
+and turn identifiers to share records. Terminal proposals retain a text fingerprint
+for deduplication instead of discarded text. The loader removes the known legacy
+provider-session field while preserving invitations and receipts, and rejects other
+unexpected fields. Active proposal text has a two-MiB budget per link, alongside
+count limits.
 
 Guest rendezvous uses its own versioned protocols and an in-memory handle directory.
 Only a Noise-authenticated owner registers its routing hashes; active hashes cannot

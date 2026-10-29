@@ -257,7 +257,7 @@ describe('SettingsConnectionsPanel', () => {
     expect(wrapper.find('.settings-connections-panel__upgrade').exists()).toBe(false);
   });
 
-  it('shows one host activity indicator and requires a connected coding agent for a green host', async () => {
+  it('shows one activity indicator and keeps host health independent of coding-engine connections', async () => {
     const { api } = createClientApiMock();
     api.getProviderConnections.mockResolvedValue([{ backend: 'claude', installed: true, connected: true, checking: false }]);
     let finishVersionCheck!: (value: import('@workspace/core/contracts/provider-updates').ProviderUpdateStatus) => void;
@@ -286,10 +286,16 @@ describe('SettingsConnectionsPanel', () => {
     finishVersionCheck({ backend: 'claude', installedVersion: '2.1.283', status: 'current', method: 'native', canUpgrade: false, busy: false });
     await flushPromises();
     expect(wrapper.get('.remote-engine-connections').text()).toContain('2.1.283');
-    expect(wrapper.find('.settings-connections-panel__dot--error').exists()).toBe(true);
+    expect(wrapper.get('.settings-connections-panel__identity').text()).toContain('Connected');
+    expect(wrapper.get('.settings-connections-panel__identity').text()).not.toContain('Needs attention');
     const ready = wrapper.props('connections')![0]!;
     await wrapper.setProps({ connections: [{ ...ready, providerConnections: [{ backend: 'claude', installed: true, connected: true, checking: false }] }] });
     expect(wrapper.find('.settings-connections-panel__dot--ready').exists()).toBe(true);
+    await wrapper.setProps({ connections: [{ ...ready, providerConnections: undefined }] });
+    expect(wrapper.get('.settings-connections-panel__identity').text()).toContain('Connected');
+    await wrapper.setProps({ connections: [{ ...ready, status: 'error', detail: 'SSH connection lost.' }] });
+    expect(wrapper.get('.settings-connections-panel__identity').text()).toContain('Needs attention');
+    expect(wrapper.find('.settings-connections-panel__dot--error').exists()).toBe(true);
     wrapper.unmount();
   });
 
