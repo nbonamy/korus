@@ -19,8 +19,11 @@ describe('CockpitWorkInbox', () => {
     await wrapper.get('[aria-label="Start work on #21"]').trigger('click');
     await flushPromises();
     const fields = wrapper.findAll('.cockpit-inbox__start-body > label');
-    expect(fields.map(field => field.element.firstChild?.textContent?.trim())).toEqual(['Team', 'Machine', 'Agent']);
-    await wrapper.get('[aria-label="Machine"] select').setValue(connection.id);
+    expect(fields.map(field => field.element.firstChild?.textContent?.trim())).toEqual(['Team', 'Host', 'Agent']);
+    const options = wrapper.get('[aria-label="Host"]').findAll('option');
+    expect(options[0]!.find('.tabler-icon-device-imac').exists()).toBe(true);
+    expect(options[1]!.find('.tabler-icon-world').exists()).toBe(true);
+    await wrapper.get('[aria-label="Host"] select').setValue(connection.id);
     await flushPromises();
     await wrapper.get('.app-dialog__footer .app-button--primary').trigger('click');
     expect(start).toHaveBeenCalledWith(expect.objectContaining({ remoteConnectionId: connection.id, selection: expect.objectContaining({ backend: 'claude' }) }));
@@ -30,7 +33,7 @@ describe('CockpitWorkInbox', () => {
     const wrapper = mountInbox([item(21, 'Local work', 'repo-one')]);
     await wrapper.setProps({ remoteConnections: [{ id: 'unavailable', kind: 'ssh', name: 'Devbox', host: 'devbox', status: 'error', createdAt: '', updatedAt: '' }] });
     await wrapper.get('[aria-label="Start work on #21"]').trigger('click');
-    expect(wrapper.find('[aria-label="Machine"]').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="Host"]').exists()).toBe(false);
   });
 
   it('launches just the clicked ticket with the chosen model without changing the batch selection', async () => {

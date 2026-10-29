@@ -16,15 +16,7 @@
     </GitOperationFeedback>
     <form v-else class="app-form-dialog" @submit.prevent="$emit('confirm')">
       <div class="remote-target-dialog__machine">
-        <el-select v-model="selectedId" :aria-label="t('remoteTarget.machine')" :disabled="busy">
-          <el-option
-            v-for="connection in connections"
-            :key="connection.id"
-            :value="connection.id"
-            :label="connection.name"
-            :disabled="!isSelectable(connection.id)"
-          />
-        </el-select>
+        <HostSelector v-model="selectedId" :hosts="connections" :show-this-computer="false" :disabled-host-ids="disabledHostIds" :disabled="busy" />
         <p class="remote-target-dialog__status" :class="{ 'remote-target-dialog__status--warning': checkouts[selectedId]?.state === 'missing' }">
           {{ statusText(selectedId) }}
         </p>
@@ -77,6 +69,7 @@ import type { ExecutionSelection } from '@workspace/core/contracts';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import { NetworkIcon } from '../shared/icons/app-icons';
 import BackendModelSelector from './BackendModelSelector.vue';
+import HostSelector from './HostSelector.vue';
 import GitOperationFeedback from './GitOperationFeedback.vue';
 import type { RemoteCheckout } from './use-remote-target';
 
@@ -135,6 +128,7 @@ function isSelectable(connectionId: string): boolean {
   const state = props.checkouts[connectionId]?.state;
   return state === undefined || state === 'checking' || state === 'cloned' || state === 'missing';
 }
+const disabledHostIds = computed(() => props.connections.filter(connection => !isSelectable(connection.id)).map(connection => connection.id));
 
 function statusText(connectionId: string): string {
   const checkout = props.checkouts[connectionId];

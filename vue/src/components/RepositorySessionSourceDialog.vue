@@ -122,24 +122,14 @@
 
     <template v-if="showHostFooter" #footer>
       <div class="repository-session-source-dialog__footer">
-        <el-select
+        <HostSelector
           class="repository-session-source-dialog__host"
           size="small"
-          :model-value="hostId ?? localHostValue"
-          :aria-label="t('remoteTarget.machine')"
+          :model-value="hostId ?? 'local'"
+          :hosts="hosts"
           :disabled="hostBusy"
-          @update:model-value="emit('change-host', $event === localHostValue ? undefined : $event)"
-        >
-          <template #prefix>
-            <component :is="hostId ? NetworkIcon : DeviceImacIcon" class="repository-session-source-dialog__host-icon" aria-hidden="true" />
-          </template>
-          <el-option :value="localHostValue" :label="t('remoteTarget.thisComputer')">
-            <span class="repository-session-source-dialog__host-option"><DeviceImacIcon aria-hidden="true" />{{ t('remoteTarget.thisComputer') }}</span>
-          </el-option>
-          <el-option v-for="host in hosts" :key="host.id" :value="host.id" :label="host.name">
-            <span class="repository-session-source-dialog__host-option"><NetworkIcon aria-hidden="true" />{{ host.name }}</span>
-          </el-option>
-        </el-select>
+          @update:model-value="emit('change-host', $event === 'local' ? undefined : $event)"
+        />
         <span
           v-if="hostHint"
           class="repository-session-source-dialog__host-hint"
@@ -165,7 +155,8 @@ import type { RemoteConnection, SourceBranch, WorkItem, WorkSource } from '@work
 import BacklogSourceSelector from './BacklogSourceSelector.vue';
 import WorkItemDetail from './WorkItemDetail.vue';
 import { useWorkSourceBacklog } from './use-work-source-backlog';
-import { ArrowRightIcon, DeviceImacIcon, GitBranchIcon, GitForkIcon as RepositoryIcon, NetworkIcon } from '../shared/icons/app-icons';
+import { ArrowRightIcon, GitBranchIcon, GitForkIcon as RepositoryIcon } from '../shared/icons/app-icons';
+import HostSelector from './HostSelector.vue';
 import type { RemoteCheckout } from './use-remote-target';
 import WorkItemAssignmentPicker from './WorkItemAssignmentPicker.vue';
 import { useBackendChoices, useNewAgentBackend } from './backend-selection';
@@ -256,8 +247,6 @@ const tabs = computed<ReadonlyArray<{ id: SourceTab; label: string }>>(() => [
 const searchPlaceholder = computed(() => tab.value === 'branches'
   ? t('repositories.sessionSource.searchBranch')
   : t('repositories.sessionSource.searchWork'));
-// An empty option value reads as "nothing selected", so this computer needs a real one.
-const localHostValue = 'local';
 const showHostFooter = computed(() => props.purpose === 'session' && !selectedWorkItem.value && props.hosts.length > 0);
 const hostHint = computed(() => {
   if (props.hostBusy) return t('remoteTarget.cloning');
@@ -414,19 +403,6 @@ function customWorkItem(selection: Omit<WorkItemAssignmentSelection, 'action'>):
 
 .repository-session-source-dialog__host {
   width: 180px;
-}
-
-.repository-session-source-dialog__host-icon,
-.repository-session-source-dialog__host-option svg {
-  width: var(--icon-md);
-  height: var(--icon-md);
-  flex: 0 0 auto;
-}
-
-.repository-session-source-dialog__host-option {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
 }
 
 .repository-session-source-dialog__host-hint {

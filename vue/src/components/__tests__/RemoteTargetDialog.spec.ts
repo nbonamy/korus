@@ -46,9 +46,18 @@ describe('RemoteTargetDialog', () => {
     expect(wrapper.find('.git-operation-feedback').exists()).toBe(false);
     expect(wrapper.find('.remote-target-dialog--progress').exists()).toBe(false);
     expect(wrapper.find('.el-select').exists()).toBe(true);
+    expect(wrapper.findAll('.el-select .tabler-icon-world')).toHaveLength(2);
     expect(wrapper.findAll('input[type="radio"]')).toHaveLength(0);
     expect(wrapper.text()).toContain('Will be cloned from its origin first, into /home/me/src');
     expect(wrapper.text()).toContain('Clone and open');
+  });
+
+  it('disables hosts that cannot supply the repository', () => {
+    const wrapper = mountDialog({ 'wall-e': { state: 'cloned', path: '/x' }, devbox: { state: 'noOrigin' } });
+    const options = wrapper.findAll('option');
+    expect(options.map(option => option.text())).toStrictEqual(['wall-e', 'devbox']);
+    expect(options[0]!.attributes('disabled')).toBeUndefined();
+    expect(options[1]!.attributes('disabled')).toBeDefined();
   });
 
   it('shows the clone as progress on the chosen machine', () => {

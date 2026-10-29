@@ -478,7 +478,7 @@ export const messages = {
       loadingModels: 'Loading models…',
       thisComputer: 'This computer',
       cloning: 'Cloning…',
-      machine: 'Machine',
+      machine: 'Host',
       checkingTitle: 'Looking for {repository}',
       cloningTitle: 'Cloning {repository}',
       onHost: 'On {host}',

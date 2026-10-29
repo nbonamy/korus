@@ -154,6 +154,7 @@ Search by behavior first.
 | Application launcher and icons | `OpenInControl` | `vue/src/shared/` |
 | Product glyphs (incl. GitHub) | app icon catalog | `vue/src/shared/icons/app-icons.ts` |
 | Remote host status, standalone globe or branch badge, with a host tooltip | `RemoteHostIndicator` | `vue/src/components/` |
+| Local or remote host selection | `HostSelector` | `vue/src/components/` |
 | Reopen collapsed sidebar | `SidebarExpandButton` | `vue/src/shared/` |
 | Workspace header / body containment | `WorkspaceHeader`, `.workspace-header__title`, `.workspace-body` | `vue/src/shared/`, `styles/base.css` |
 | Dialog chrome and footer actions | `.app-dialog`, `.app-button` | `vue/src/styles/base.css` |
@@ -169,6 +170,9 @@ Search by behavior first.
 | Dense structured data | `AppDataList` | `vue/src/components/` |
 | Operation feedback | `GitOperationFeedback` | `vue/src/components/` |
 | Worktree provisioning progress | `WorkspaceProvisioningProgressDialog` | `vue/src/components/` |
+
+Use the globe to identify a remote host and the network icon for actions that
+connect to one.
 
 App-owned keyboard shortcuts live in `core/src/keyboard-shortcuts.ts`. Native menus,
 native input routing, shell matching and the shortcut reference share these

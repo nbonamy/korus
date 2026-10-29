@@ -248,11 +248,7 @@
           </el-select>
         </label>
         <label v-if="readyHosts.length">{{ $t('remoteTarget.machine') }}
-          <el-select v-model="selectedHost" :disabled="startingWork" :aria-label="$t('remoteTarget.machine')">
-            <template #prefix><component :is="remoteConnectionId ? NetworkIcon : DeviceImacIcon" class="cockpit-inbox__host-icon" aria-hidden="true" /></template>
-            <el-option value="local" :label="$t('remoteTarget.thisComputer')" />
-            <el-option v-for="host in readyHosts" :key="host.id" :value="host.id" :label="host.name" />
-          </el-select>
+          <HostSelector v-model="selectedHost" :hosts="readyHosts" :disabled="startingWork" />
         </label>
         <p v-if="startWorkError" class="cockpit-inbox__start-error" role="alert">{{ startWorkError }}</p>
         <label v-if="!workProviderDefinition(connection.provider).repositoryBacked">
@@ -290,12 +286,13 @@ import type { Agent, RemoteConnection, Team, WorkBacklogAssignment, WorkIntegrat
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
 import { repositoryIconForAgent } from '@workspace/core/workspace-sidebar';
-import { DeviceImacIcon, NetworkIcon, DotsVerticalIcon, ExternalLinkIcon, EyeIcon, GitBranchIcon, PlayerPlayIcon, PlusCircleIcon, RefreshIcon } from '../shared/icons/app-icons';
+import { DotsVerticalIcon, ExternalLinkIcon, EyeIcon, GitBranchIcon, PlayerPlayIcon, PlusCircleIcon, RefreshIcon } from '../shared/icons/app-icons';
 import WorkItemDetail from './WorkItemDetail.vue';
 import AgentAvatar from './AgentAvatar.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import BackendModelSelector from './BackendModelSelector.vue';
+import HostSelector from './HostSelector.vue';
 import type { StartWorkItemsInput } from './use-work-item-routing';
 
 type InboxView = 'all' | 'backlog' | 'wip' | 'focus';
@@ -1232,11 +1229,6 @@ function selectAssignee(value: unknown): void {
 
 .cockpit-inbox__start-error {
   color: var(--color-error) !important;
-}
-
-.cockpit-inbox__host-icon {
-  width: 16px;
-  height: 16px;
 }
 
 @container (max-width: 1250px) {

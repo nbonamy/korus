@@ -9,20 +9,13 @@
         <section aria-labelledby="automations-title">
           <div v-if="!editorVisible && !logAutomation" class="automations-view__list-header">
             <div class="automations-view__location-heading">
-              <el-select
+              <HostSelector
                 v-model="selectedLocationValue"
                 class="automations-view__location-select"
                 :aria-label="$t('surface.automationsView.automationLocation')"
+                :hosts="readyRemoteConnections"
                 size="small"
-              >
-                <el-option :label="$t('surface.automationsView.local')" value="local" />
-                <el-option
-                  v-for="connection in readyRemoteConnections"
-                  :key="connection.id"
-                  :label="connection.name"
-                  :value="remoteLocationValue(connection.id)"
-                />
-              </el-select>
+              />
             </div>
             <el-button v-if="locationAutomations.length > 0" type="primary" @click="openCreate">
               {{ $t('surface.automationsView.newAutomation') }}
@@ -154,6 +147,7 @@ import type { AppDataListColumn, AppDataListRow } from './app-data-list';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import AutomationEditor from './AutomationEditor.vue';
+import HostSelector from './HostSelector.vue';
 import { provideBackendHost } from './backend-selection';
 import AutomationExecutionLog from './AutomationExecutionLog.vue';
 import AutomationWelcome from './AutomationWelcome.vue';
@@ -213,7 +207,7 @@ const readyRemoteConnections = computed(() =>
   props.remoteConnections.filter((connection) => connection.status === 'ready' && Boolean(connection.transport)),
 );
 const selectedRemoteConnectionId = computed(() =>
-  selectedLocationValue.value.startsWith('remote:') ? selectedLocationValue.value.slice('remote:'.length) : null,
+  selectedLocationValue.value === 'local' ? null : selectedLocationValue.value,
 );
 const selectedLocation = computed<AutomationLocation>(() =>
   selectedRemoteConnectionId.value ? { kind: 'remote', remoteConnectionId: selectedRemoteConnectionId.value } : { kind: 'local' },
@@ -287,7 +281,7 @@ watch(readyRemoteConnections, (connections) => {
   if (selectedLocationValue.value === 'local') {
     return;
   }
-  if (!connections.some((connection) => remoteLocationValue(connection.id) === selectedLocationValue.value)) {
+  if (!connections.some((connection) => connection.id === selectedLocationValue.value)) {
     selectedLocationValue.value = 'local';
   }
 });
@@ -475,10 +469,6 @@ function refreshLocationFromSnapshot(snapshot: AppSnapshot | void): void {
   if (isRemoteLocation.value && snapshot) {
     remoteSnapshot.value = snapshot;
   }
-}
-
-function remoteLocationValue(connectionId: string): string {
-  return `remote:${connectionId}`;
 }
 
 function createLocationAutomation(input: CreateAutomationInput): Promise<AppSnapshot | void> {
