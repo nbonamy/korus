@@ -1182,7 +1182,9 @@ export class CodexSurfaceAgentAdapter {
       this.emitThread(session, { type: 'agentRequest.created', payload: { request: requestFromClientRequest(request, { conversationId: session.handle.id }) } });
     }
     for (const approval of snapshot.approvals) {
-      this.approvalOwners.set(JSON.stringify([session.agent.id, approval.id]), session);
+      const key = JSON.stringify([session.agent.id, approval.id]);
+      if (this.approvalOwners.get(key) === session) continue;
+      this.approvalOwners.set(key, session);
       this.emitThread(session, { type: 'agentRequest.created', payload: { request: approvalAgentRequest(approval) } });
     }
   }

@@ -69,9 +69,10 @@ Preserve the product and process boundaries:
 - Theme support must use semantic tokens and CSS variables. Do not hard-code
   product colors inside components.
 
-In development mode, Korus links directly to the `codex-app-sdk` local source code
-so there is no need to rebuild, release or reinstall the SDK. This is only needed
-when building a production version of Korus.
+Development uses installed `codex-app-sdk` packages by default. Set
+`CODEX_APP_SDK_SOURCE=1` to link the sibling `../codex-app-sdk` source instead;
+set `CODEX_APP_SDK_SOURCE_ROOT` to use another checkout. Source linking does not
+require rebuilding, releasing or reinstalling the SDK during development.
 
 ## Documentation Map
 

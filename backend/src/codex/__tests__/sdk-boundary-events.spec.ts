@@ -108,6 +108,32 @@ describe(`Codex SDK → ${product.name} backend event contract`, () => {
     expect(surface.respondToClientRequest).not.toHaveBeenCalled();
   });
 
+  it('does not mark a read approval unread again when loading the conversation', async () => {
+    const { driver, conversation } = setup();
+    const snapshot = createTestSnapshot();
+    const agent = sdkAgent();
+    snapshot.agents = [agent];
+    const server = new AppBackendServer({ version: 'test', pid: 1, snapshot,
+      driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
+    });
+    const approval = { id: 'approval-1', conversationId: 'conversation-a', itemId: 'item', kind: 'command' as const, title: 'Run', canDeny: true, allowedScopes: ['once' as const] };
+    try {
+      conversation('conversation-a').setSnapshot({ approvals: [approval] });
+      await driver.loadConversation(agent);
+      const revision = snapshot.agents[0]!.readState!.revision;
+      await server.handleMessage({ jsonrpc: '2.0', id: 'read', method: 'agent/read', params: { agentId: agent.id, revision } });
+      await driver.loadConversation(agent);
+      await driver.loadConversation(agent);
+      expect(snapshot.agents[0]!.readState).toStrictEqual({ revision, readRevision: revision });
+      expect(snapshot.agentRequests?.[agent.id]?.map(request => request.id)).toStrictEqual(['approval-1']);
+
+      conversation('conversation-a').setSnapshot({ approvals: [approval, { ...approval, id: 'approval-2' }] });
+      await driver.loadConversation(agent);
+      expect(snapshot.agents[0]!.readState).toStrictEqual({ revision: revision + 1, readRevision: revision });
+      expect(snapshot.agentRequests?.[agent.id]?.map(request => request.id)).toStrictEqual(['approval-1', 'approval-2']);
+    } finally { await server.close(); }
+  });
+
   it('reconciles SDK question snapshots and responses without retaining lifecycle metadata', async () => {
     const { driver, conversation } = setup();
     const snapshot = createTestSnapshot();
