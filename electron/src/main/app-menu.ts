@@ -345,6 +345,10 @@ function buildDebugUiPreviews(callbacks: AppMenuCallbacks): MenuItemConstructorO
       }),
     },
     {
+      label: 'Worktree Initialization Indicator',
+      click: () => callbacks.sendAppCommand({ type: 'debug-operation-progress', kind: 'worktreeIndicator' }),
+    },
+    {
       label: 'Pull Request Progress',
       click: () => callbacks.sendAppCommand({
         type: 'debug-operation-progress',

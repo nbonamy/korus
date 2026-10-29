@@ -809,6 +809,7 @@ export const messages = {
     },
     worktreeInitialization: {
       running: 'Initializing worktree',
+      complete: 'Worktree initialized',
       failed: 'Worktree initialization failed',
       preparing: 'Preparing setup…',
     },

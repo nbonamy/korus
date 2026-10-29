@@ -703,6 +703,7 @@ import RepositoryDeleteDialog from './RepositoryDeleteDialog.vue';
 import type { DeleteRepositoryInput } from '@workspace/core/contracts/workspace';
 import type { MissionWorkspaceOpenRequest } from './MissionWorkspaceOpenIn.vue';
 import ConversationPane from './ConversationPane.vue';
+import { useDebugWorktreeInitialization } from './debug-worktree-initialization';
 import AppMenu from '../shared/menu/AppMenu.vue';
 import type { Mission, MissionStage, CreateMissionInput, DeleteMissionInput } from '@workspace/core/missions';
 import { missionCreatedWorkspaces, type MissionImplementationStartProgress } from '@workspace/core/mission-execution';
@@ -2770,9 +2771,15 @@ function showDebugUserQuestions(agentId: string): void {
   };
 }
 
+const previewWorktreeInitialization = useDebugWorktreeInitialization();
+
 function openDebugOperationProgress(
   kind: Extract<AppCommand, { type: 'debug-operation-progress' }>['kind'],
 ): void {
+  if (kind === 'worktreeIndicator') {
+    previewWorktreeInitialization(currentAgent.value);
+    return;
+  }
   if (kind === 'worktreeInitialization') {
     startDebugAgentCreationProgress();
     return;

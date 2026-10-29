@@ -15,7 +15,7 @@
       :key="operationId"
       :state="operationState"
       :active-step="activeStep"
-      :minimum-duration-ms="1_400"
+      :minimum-duration-ms="0"
       :eyebrow="eyebrow"
       :title="title"
       :complete-title="completeTitle"
@@ -24,12 +24,12 @@
       :steps="steps"
       @complete="close"
     />
-    <template v-if="operationState === 'error' || canRunInBackground" #footer>
+    <template v-if="operation" #footer>
       <div class="app-dialog__footer">
         <button v-if="operationState === 'error'" class="app-button app-button--tertiary" type="button" @click="close">
           {{ t('common.close') }}
         </button>
-        <button v-else class="app-button app-button--secondary" type="button" @click="runInBackground">
+        <button v-else class="app-button app-button--secondary" type="button" :disabled="operationState !== 'running'" @click="runInBackground">
           {{ t('common.runInBackground') }}
         </button>
       </div>
@@ -208,8 +208,6 @@ const steps = computed<StagedOperationStep[]>(() => {
     },
   ];
 });
-
-const canRunInBackground = computed(() => props.operation !== null && operationState.value === 'running');
 
 function runInBackground(): void {
   for (const id of operationIds.value) emit('background', id);

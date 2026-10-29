@@ -1000,6 +1000,32 @@ describe('AppShell dialogs and commands', () => {
     expect(wrapper.emitted('debug-mark-unread')).toStrictEqual([[]]);
   });
 
+  it('previews background worktree initialization without changing the agent or running setup', async () => {
+    vi.useFakeTimers();
+    let listener!: (command: AppCommand) => void;
+    window.app = {
+      onAppCommand: vi.fn(next => { listener = next; return () => {}; }),
+      onEvent: vi.fn(() => vi.fn()),
+    } as Partial<AppApi> as AppApi;
+    const snapshot = createInitialSnapshot();
+    const wrapper = mountShell({ snapshot, stubAgentWorkspace: false, realConversationPane: true });
+    try {
+      await nextTick();
+      listener({ type: 'debug-operation-progress', kind: 'worktreeIndicator' });
+      await nextTick();
+      const indicator = () => wrapper.find('.conversation-pane__initialization');
+      expect(indicator().text()).toContain('Initializing worktree');
+      expect(indicator().text()).toContain('npm ci');
+      expect(indicator().find('.app-spinner').exists()).toBe(true);
+      expect(snapshot.agents[0]!.worktreeInitialization).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(8_000);
+      expect(indicator().text()).toContain('Worktree initialized');
+      expect(indicator().find('.app-spinner').exists()).toBe(false);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(indicator().exists()).toBe(false);
+    } finally { wrapper.unmount(); vi.useRealTimers(); }
+  });
+
   it('hides agent creation progress when it is sent to the background', async () => {
     let listener: (command: AppCommand) => void = () => undefined;
     window.app = {
