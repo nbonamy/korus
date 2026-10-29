@@ -5,6 +5,28 @@ import { describe, expect, it, vi } from 'vitest';
 import { useWorkItemRouting } from '../use-work-item-routing';
 
 describe('useWorkItemRouting', () => {
+  it('resolves remote batch checkouts on the selected host without using local paths', async () => {
+    const harness = createHarness();
+    harness.listSourceRepositories.mockResolvedValue([{ name: 'remote-code', path: '/srv/code', remoteIdentity: 'github.com/nbonamy/agent-workspace', worktrees: [] }]);
+    await harness.routing.startMany({ action: 'fix', items: [harness.item], teamId: harness.teamId, remoteConnectionId: 'devbox' });
+    expect(harness.listSourceRepositories).toHaveBeenCalledWith('devbox');
+    expect(harness.createWorktree).toHaveBeenCalledExactlyOnceWith({ repoPath: '/srv/code', branchName: 'fix/gh-12', remoteConnectionId: 'devbox' });
+    expect(harness.createAgent).toHaveBeenCalledWith(expect.objectContaining({ remoteConnectionId: 'devbox', sourceRepositoryName: 'remote-code' }));
+  });
+
+  it('clones a missing remote checkout once for a batch and stops if cloning fails', async () => {
+    const harness = createHarness();
+    harness.listSourceRepositories.mockResolvedValue([]);
+    harness.cloneRepository.mockRejectedValueOnce(new Error('Could not authenticate'));
+    const input = { action: 'fix' as const, items: [harness.item], teamId: harness.teamId, remoteConnectionId: 'devbox' };
+    await expect(harness.routing.startMany(input)).rejects.toThrow('Could not authenticate');
+    expect(harness.createWorktree).not.toHaveBeenCalled();
+    harness.cloneRepository.mockResolvedValue({ name: 'code', path: '/srv/code', worktrees: [] });
+    await harness.routing.startMany({ ...input, items: [harness.item, { ...harness.item, id: 'another', number: 13 }] });
+    expect(harness.cloneRepository).toHaveBeenCalledTimes(2);
+    expect(harness.cloneRepository).toHaveBeenLastCalledWith({ url: 'https://github.com/nbonamy/agent-workspace.git', remoteConnectionId: 'devbox', reuseExisting: true });
+    expect(harness.createWorktree).toHaveBeenCalledTimes(2);
+  });
   it('starts GitHub cockpit work only in the checkout with its full host and namespace identity', async () => {
     const repositories: SourceRepository[] = [
       { name: 'agent-workspace', path: '/workspace/gitlab', remoteIdentity: 'gitlab.com/group/agent-workspace', worktrees: [] },
@@ -255,6 +277,8 @@ function createHarness(input: {
     path: '/workspace/agent-workspace-feature',
   }));
   const duplicateAgent = vi.fn(async () => createdAgent);
+  const listSourceRepositories = vi.fn<(...args: unknown[]) => Promise<SourceRepository[]>>(async () => []);
+  const cloneRepository = vi.fn<(...args: unknown[]) => Promise<SourceRepository>>(async () => ({ name: 'code', path: '/srv/code', worktrees: [] }));
   const loadItems = vi.fn(async () => input.loadItemsResult);
   const confirmReassignment = vi.fn(async () => input.confirmReassignment ?? true);
   const notifyError = vi.fn();
@@ -270,6 +294,8 @@ function createHarness(input: {
       createAgent,
       createBranch,
       createWorktree,
+      listSourceRepositories,
+      cloneRepository,
       listBranches: vi.fn().mockResolvedValue([]),
       duplicateAgent,
       loadItems,
@@ -301,6 +327,8 @@ function createHarness(input: {
     createBranch,
     createdAgent,
     createWorktree,
+    listSourceRepositories,
+    cloneRepository,
     focusComposer,
     duplicateAgent,
     item: listedItem,

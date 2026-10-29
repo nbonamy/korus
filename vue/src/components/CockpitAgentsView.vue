@@ -47,6 +47,7 @@
           v-for="agent in section.agents"
           :key="agent.id"
           :agent="agent"
+          :remote-connections="remoteConnections"
           :repository-icon="repositoryIconForAgent(agent, repositoryIcons)"
           :dragged-work-item="null"
           :drop-target="false"
@@ -112,6 +113,7 @@ const DEFAULT_GRID_COLUMNS = 3;
 
 const props = withDefaults(defineProps<{
   agents: Agent[];
+  remoteConnections?: import('@workspace/core/contracts').RemoteConnection[];
   forkableAgentIds?: string[];
   mode?: CockpitAgentViewMode;
   repositoryIcons?: Record<string, string>;

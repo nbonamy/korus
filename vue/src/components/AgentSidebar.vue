@@ -196,16 +196,7 @@
             @click="toggleWorkspace(group)"
           >
             <strong>{{ group.label }}</strong>
-            <el-tooltip v-if="group.kind === 'repository' && group.remoteConnectionId" :content="remoteHostLabel(group.remoteConnectionId)" placement="top" :show-after="300">
-              <span
-                class="agent-sidebar__host"
-                :class="{ 'agent-sidebar__host--offline': !remoteReady(group.remoteConnectionId) }"
-                role="img"
-                :aria-label="remoteHostLabel(group.remoteConnectionId)"
-              >
-                <NetworkIcon aria-hidden="true" />
-              </span>
-            </el-tooltip>
+            <RemoteHostIndicator v-if="group.kind === 'repository' && group.remoteConnectionId" class="agent-sidebar__host" :connection-id="group.remoteConnectionId" :connection="remoteConnection(group.remoteConnectionId)" />
           </button>
           <span
             v-if="group.kind === 'quickChats'"
@@ -441,6 +432,7 @@ import { useAgentSidebarMotion } from './use-agent-sidebar-motion';
 import ActivityAgentRow from './ActivityAgentRow.vue';
 import ScrollHintRows from './ScrollHintRows.vue';
 import RepositoryAgentRow from './RepositoryAgentRow.vue';
+import RemoteHostIndicator from './RemoteHostIndicator.vue';
 
 const props = defineProps<{
   agents: Agent[];
@@ -807,8 +799,8 @@ function sectionTarget(group: WorkspaceSidebarGroup): SectionTarget {
   };
 }
 
-function remoteHostName(connectionId: string | undefined): string {
-  return props.remoteConnections?.find((connection) => connection.id === connectionId)?.name ?? '';
+function remoteConnection(connectionId: string | undefined): RemoteConnection | undefined {
+  return props.remoteConnections?.find((connection) => connection.id === connectionId);
 }
 
 function showEngine(session: WorkspaceSidebarSession, activity: SidebarActivity | undefined): boolean {
@@ -816,18 +808,8 @@ function showEngine(session: WorkspaceSidebarSession, activity: SidebarActivity 
     && !(activity && showQuickSwitchShortcut(session, activity));
 }
 
-function rowHost(session: WorkspaceSidebarSession): { label: string; offline: boolean } | undefined {
-  const id = session.remoteConnectionId;
-  return id ? { label: remoteHostLabel(id), offline: !remoteReady(id) } : undefined;
-}
-
-function remoteReady(connectionId: string | undefined): boolean {
-  return props.remoteConnections?.find((connection) => connection.id === connectionId)?.status === 'ready';
-}
-
-function remoteHostLabel(connectionId: string | undefined): string {
-  const host = remoteHostName(connectionId);
-  return remoteReady(connectionId) ? host : t('sidebar.remoteUnavailable', { host });
+function rowHost(session: WorkspaceSidebarSession): RemoteConnection | undefined {
+  return remoteConnection(session.remoteConnectionId);
 }
 
 function selectRepositorySessionMenuItem(
@@ -1688,20 +1670,7 @@ function onResizePointerEnd(event: PointerEvent): void {
 }
 
 .agent-sidebar__host {
-  flex: none;
-  display: grid;
   margin-left: 6px;
-  place-items: center;
-  color: var(--color-text-muted);
-}
-
-.agent-sidebar__host svg {
-  width: var(--icon-md);
-  height: var(--icon-md);
-}
-
-.agent-sidebar__host--offline {
-  color: var(--color-error);
 }
 
 .agent-sidebar__status[data-status="working"],

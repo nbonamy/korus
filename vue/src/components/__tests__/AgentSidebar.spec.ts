@@ -436,21 +436,21 @@ describe('AgentSidebar sessions', () => {
       props: { agents: [local, remote], activeAgentId: 'local', teamName: 'Team', remoteConnections },
       global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
     });
-    expect(wrapper.findAll('.agent-sidebar__session-glyph')).toHaveLength(1);
-    expect(wrapper.get('.agent-sidebar__session-glyph').attributes('aria-label')).toBe('Devbox');
-    expect(wrapper.find('.agent-sidebar__session-badge').exists()).toBe(true);
+    expect(wrapper.findAll('.agent-sidebar__repository-agent .remote-host-indicator')).toHaveLength(1);
+    expect(wrapper.get('.remote-host-indicator').attributes('aria-label')).toBe('Devbox');
+    expect(wrapper.find('.remote-host-indicator__badge').exists()).toBe(true);
     expect(tooltipContents(wrapper)).toContain('Devbox');
     await wrapper.get('[aria-label="Create agent from branch, pull request, or issue"]').trigger('click');
     expect(wrapper.emitted('create-agent-from-repository')).toStrictEqual([[{ agentId: 'local', repositoryName: 'id8', repositoryRoot: '~/src/id8', originUrl: origin }]]);
 
     await wrapper.setProps({ agents: [remote] });
-    expect(wrapper.findAll('.agent-sidebar__session-glyph')).toHaveLength(1);
+    expect(wrapper.findAll('.agent-sidebar__repository-agent .remote-host-indicator')).toHaveLength(1);
     expect(wrapper.findAll('.agent-sidebar__engine')).toHaveLength(1);
 
     await wrapper.setProps({ remoteConnections: [{ ...remoteConnections[0]!, status: 'error' as const }] });
-    expect(wrapper.get('.agent-sidebar__session-glyph').attributes('aria-label')).toBe('Devbox is not connected');
-    expect(wrapper.find('.agent-sidebar__session-badge').exists()).toBe(false);
-    expect(wrapper.find('.agent-sidebar__session-icon--offline').exists()).toBe(true);
+    expect(wrapper.get('.remote-host-indicator').attributes('aria-label')).toBe('Devbox is not connected');
+    expect(wrapper.find('.remote-host-indicator__badge').exists()).toBe(false);
+    expect(wrapper.find('.remote-host-indicator--offline').exists()).toBe(true);
     expect(tooltipContents(wrapper)).toContain('Devbox is not connected');
     await wrapper.get('[aria-label="Create agent from branch, pull request, or issue"]').trigger('click');
     expect(wrapper.emitted('create-agent-from-repository')![1]).toStrictEqual([{ agentId: 'remote', repositoryName: 'id8', repositoryRoot: '/srv/id8', remoteConnectionId: 'devbox', originUrl: origin }]);
@@ -465,10 +465,10 @@ describe('AgentSidebar sessions', () => {
     const host = wrapper.get('.agent-sidebar__host');
     expect(host.attributes('aria-label')).toBe('Devbox');
     expect(tooltipContents(wrapper)).toContain('Devbox');
-    expect(host.classes()).not.toContain('agent-sidebar__host--offline');
+    expect(host.classes()).not.toContain('remote-host-indicator--offline');
 
     await wrapper.setProps({ remoteConnections: connection('error') });
-    expect(wrapper.get('.agent-sidebar__host').classes()).toContain('agent-sidebar__host--offline');
+    expect(wrapper.get('.agent-sidebar__host').classes()).toContain('remote-host-indicator--offline');
     expect(wrapper.get('.agent-sidebar__host').attributes('aria-label')).toBe('Devbox is not connected');
 
     await wrapper.setProps({ agents: [{ ...remote, remoteConnectionId: undefined }] });

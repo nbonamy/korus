@@ -153,6 +153,7 @@ Search by behavior first.
 | Pointer-positioned context menu | `AppContextMenu` | `vue/src/shared/menu/` |
 | Application launcher and icons | `OpenInControl` | `vue/src/shared/` |
 | Product glyphs (incl. GitHub) | app icon catalog | `vue/src/shared/icons/app-icons.ts` |
+| Remote host status, standalone globe or branch badge, with a host tooltip | `RemoteHostIndicator` | `vue/src/components/` |
 | Reopen collapsed sidebar | `SidebarExpandButton` | `vue/src/shared/` |
 | Workspace header / body containment | `WorkspaceHeader`, `.workspace-header__title`, `.workspace-body` | `vue/src/shared/`, `styles/base.css` |
 | Dialog chrome and footer actions | `.app-dialog`, `.app-button` | `vue/src/styles/base.css` |

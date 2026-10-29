@@ -10,6 +10,7 @@
 
     <CockpitAgentsView
       :agents="agents"
+      :remote-connections="remoteConnections"
       :forkable-agent-ids="forkableAgentIds"
       :mode="viewMode"
       :repository-icons="repositoryIcons"
@@ -41,6 +42,7 @@ import CockpitAgentsView from './CockpitAgentsView.vue';
 
 const props = defineProps<{
   agents: Agent[];
+  remoteConnections?: import('@workspace/core/contracts').RemoteConnection[];
   forkableAgentIds?: string[];
   repositoryIcons?: Record<string, string>;
   responsePreviews?: Record<string, string>;

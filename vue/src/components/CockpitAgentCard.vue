@@ -30,15 +30,18 @@
         <span v-if="agent.folder">{{ folderBasename(agent.folder) }}</span>
       </div>
       <div class="cockpit-view__agent-meta">
-        <span
-          v-if="backendChoices.length > 1"
-          class="cockpit-view__agent-backend"
-          role="img"
-          :aria-label="backendDisplayName(agent.backend)"
-          :title="backendDisplayName(agent.backend)"
-        >
-          <BackendIcon :backend="agent.backend" />
-        </span>
+        <div class="cockpit-view__agent-icons">
+          <RemoteHostIndicator v-if="agent.remoteConnectionId" :connection-id="agent.remoteConnectionId" :connection="remoteConnections?.find(connection => connection.id === agent.remoteConnectionId)" />
+          <span
+            v-if="backendChoices.length > 1"
+            class="cockpit-view__agent-backend"
+            role="img"
+            :aria-label="backendDisplayName(agent.backend)"
+            :title="backendDisplayName(agent.backend)"
+          >
+            <BackendIcon :backend="agent.backend" />
+          </span>
+        </div>
         <span
           class="cockpit-view__agent-state"
           :data-status="agent.status.type"
@@ -78,18 +81,20 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { Agent, WorkItem } from '@workspace/core/contracts';
+import type { Agent, RemoteConnection, WorkItem } from '@workspace/core/contracts';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { backendDisplayName } from '@workspace/core/backend-driver';
 import { agentCanReceivePrompt, agentStatusLabel, agentStatusText, folderBasename } from '../shared/agent-display';
 import { FolderRootIcon, SendIcon } from '../shared/icons/app-icons';
 import AgentAvatar from './AgentAvatar.vue';
 import BackendIcon from './BackendIcon.vue';
+import RemoteHostIndicator from './RemoteHostIndicator.vue';
 import { useBackendChoices } from './backend-selection';
 import { relativeSessionDate } from './use-session-history';
 
 const props = defineProps<{
   agent: Agent;
+  remoteConnections?: RemoteConnection[];
   repositoryIcon?: string;
   draggedWorkItem: WorkItem | null;
   dropTarget: boolean;
@@ -314,6 +319,12 @@ function dropWorkItem(event: DragEvent): void {
 
 .cockpit-view__agent-backend {
   display: flex;
+}
+
+.cockpit-view__agent-icons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
 }
 
 .cockpit-view__agent-state {

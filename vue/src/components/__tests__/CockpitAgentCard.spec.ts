@@ -15,6 +15,23 @@ type CockpitAgentCardProps = {
 };
 
 describe('CockpitAgentCard', () => {
+  it('keeps the remote globe left of the backend icon, with its host tooltip and red offline state', async () => {
+    const connection = { id: 'devbox', name: 'Devbox', host: 'devbox', kind: 'ssh' as const, status: 'ready' as const, createdAt: '', updatedAt: '' };
+    const wrapper = mount(CockpitAgentCard, {
+      props: { agent: { ...idleAgent(), remoteConnectionId: connection.id }, remoteConnections: [connection], draggedWorkItem: null, dropTarget: false },
+      global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
+    });
+    const marker = wrapper.get('[role="img"][aria-label="Devbox"]');
+    expect(marker.find('.tabler-icon-world').exists()).toBe(true);
+    expect(marker.element.nextElementSibling?.getAttribute('aria-label')).toBe('Codex');
+    expect(wrapper.findAllComponents({ name: 'ElTooltip' }).some(tooltip => tooltip.props('content') === 'Devbox')).toBe(true);
+    await wrapper.setProps({ remoteConnections: [{ ...connection, status: 'error' }] });
+    expect(wrapper.get('[aria-label="Devbox is not connected"]').classes()).toContain('remote-host-indicator--offline');
+    expect(wrapper.findAllComponents({ name: 'ElTooltip' }).some(tooltip => tooltip.props('content') === 'Devbox is not connected')).toBe(true);
+    await wrapper.setProps({ agent: idleAgent() });
+    expect(wrapper.find('.remote-host-indicator').exists()).toBe(false);
+    wrapper.unmount();
+  });
   it.each([
     ['codex', 'Codex', '.backend-icon--monochrome'],
     ['claude', 'Claude Code', 'img.backend-icon'],
@@ -31,7 +48,7 @@ describe('CockpitAgentCard', () => {
     const backendIcon = wrapper.get(`[role="img"][aria-label="${label}"]`);
     expect(backendIcon.attributes('title')).toBe(label);
     expect(backendIcon.find(iconSelector).exists()).toBe(true);
-    expect(backendIcon.element.nextElementSibling?.textContent?.trim()).toBe('Idle');
+    expect(backendIcon.element.parentElement?.nextElementSibling?.textContent?.trim()).toBe('Idle');
 
     enabled.value = [backend];
     await nextTick();

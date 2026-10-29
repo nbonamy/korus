@@ -223,6 +223,7 @@
       <CockpitView
         v-else-if="cockpitVisible"
         :agents="snapshot.agents"
+        :remote-connections="snapshot.remoteConnections.connections"
         :forkable-agent-ids="forkableAgentIds"
         :repository-icons="snapshot.general.repositoryIcons"
         :teams="snapshot.teams"
@@ -245,6 +246,7 @@
       <BacklogView
         v-else-if="backlogVisible"
         :agents="snapshot.agents"
+        :remote-connections="snapshot.remoteConnections.connections"
         :default-team-id="snapshot.activeTeamId"
         :repository-icons="snapshot.general.repositoryIcons"
         :start-work-items-action="startCockpitWorkItems"
@@ -1513,6 +1515,8 @@ const workItemRouting = useWorkItemRouting({
     createBranch: (agentId, input) => props.createAgentGitBranch(agentId, input),
     createWorktree: (input) => props.createSourceWorktree(input),
     listBranches: (repoPath, remoteConnectionId) => props.listSourceBranches(repoPath, remoteConnectionId),
+    listSourceRepositories: (remoteConnectionId) => props.listSourceRepositories(remoteConnectionId),
+    cloneRepository: (input) => props.cloneSourceRepository(input),
     duplicateAgent: (agentId, options) => props.duplicateAgentAction(agentId, options),
     loadItems: (provider, repositoryId, query) => props.loadWorkItems(provider, repositoryId, undefined, query),
   },

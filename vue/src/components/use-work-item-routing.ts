@@ -6,6 +6,7 @@ import type {
   AppSnapshot,
   CreateAgentInput,
   CreateSourceWorktreeInput,
+  CloneSourceRepositoryInput,
   DuplicateAgentOptions,
   SourceRepository,
   SourceWorktree,
@@ -56,6 +57,8 @@ type WorkItemRoutingActions = {
   createBranch: (agentId: string, input: AgentGitBranchInput) => Promise<unknown>;
   createWorktree: (input: CreateSourceWorktreeInput) => Promise<SourceWorktree>;
   listBranches: (repoPath: string, remoteConnectionId?: string) => Promise<unknown>;
+  listSourceRepositories?: (remoteConnectionId: string) => Promise<SourceRepository[]>;
+  cloneRepository?: (input: CloneSourceRepositoryInput) => Promise<SourceRepository>;
   duplicateAgent: (agentId: string, options: DuplicateAgentOptions) => Promise<Agent | null>;
   loadItems: (
     provider: WorkItem['provider'],
@@ -191,10 +194,31 @@ export function useWorkItemRouting(options: {
     const backgrounded = new Promise<'background'>((resolve) => backgroundSignals.set(id, () => resolve('background')));
     let prepared = 0;
     let created = 0;
+    let remoteCatalog: Promise<SourceRepository[]> | undefined;
+    const remoteRepositories = new Map<string, Promise<SourceRepository>>();
+    async function repositoryFor(item: WorkItem): Promise<SourceRepository | undefined> {
+      if (input.repository || !input.remoteConnectionId) return input.repository;
+      const identity = workItemRepositoryIdentity(item);
+      if (!identity) throw new Error(`${item.sourceName} is not available in the source folder.`);
+      let pending = remoteRepositories.get(identity);
+      if (!pending) {
+        pending = (async () => {
+          remoteCatalog ??= options.actions.listSourceRepositories?.(input.remoteConnectionId!) ?? Promise.resolve([]);
+          const repositories = await remoteCatalog;
+          ensureCurrent(input.isCurrent);
+          const repository = repositories.find(candidate => candidate.remoteIdentity === identity);
+          if (repository) return repository;
+          if (!options.actions.cloneRepository) throw new Error(`${item.sourceName} is not available in the source folder.`);
+          return options.actions.cloneRepository({ url: `https://${identity}.git`, remoteConnectionId: input.remoteConnectionId, reuseExisting: true });
+        })();
+        remoteRepositories.set(identity, pending);
+      }
+      return pending;
+    }
     const settled = Promise.allSettled(input.items.map(async listedItem => {
       const { agent, item } = await createIsolatedAgent(listedItem, input.teamId, {
         selection: input.selection,
-        repository: input.repository, remoteConnectionId: input.remoteConnectionId, isCurrent: input.isCurrent,
+        repository: await repositoryFor(listedItem), remoteConnectionId: input.remoteConnectionId, isCurrent: input.isCurrent,
         onPhase: () => {
           if (++prepared !== input.items.length) return;
           const current = creationProgress.value;
@@ -250,8 +274,7 @@ export function useWorkItemRouting(options: {
 
     const item = await resolvePullRequestBranch(listedItem);
     ensureCurrent(creationOptions.isCurrent);
-    const repositoryIdentity = item.provider === 'github' ? `github.com/${item.sourceId}`
-      : item.provider === 'gitlab' && item.sourceId.startsWith('gitlab.com/') ? item.sourceId : undefined;
+    const repositoryIdentity = workItemRepositoryIdentity(item);
     const repository = creationOptions.repository ?? (workProviderDefinition(item.provider).repositoryBacked
       ? options.model.sourceRepositories().find((candidate) => repositoryIdentity && candidate.remoteIdentity === repositoryIdentity) : undefined);
     if (!repository) throw new Error(`${item.sourceName} is not available in the source folder.`);
@@ -373,6 +396,11 @@ export function useWorkItemRouting(options: {
 function workItemRepositoryName(item: WorkItem): string {
   if (!workProviderDefinition(item.provider).repositoryBacked) return '';
   return item.sourceName.split('/').filter(Boolean).at(-1) ?? item.sourceName;
+}
+
+function workItemRepositoryIdentity(item: WorkItem): string | undefined {
+  return item.provider === 'github' ? `github.com/${item.sourceId}`
+    : item.provider === 'gitlab' && item.sourceId.startsWith('gitlab.com/') ? item.sourceId : undefined;
 }
 
 function workItemTeamName(item: WorkItem): string {
