@@ -95,6 +95,13 @@ describe('remote target', () => {
     expect(openWorktree).toHaveBeenCalledExactlyOnceWith('/home/me/src/korus', 'devbox', { ...request, action: 'new-worktree' });
   });
 
+  it('clones the stored origin with its git user restored, since persistence strips it', async () => {
+    const { target, cloneRepository } = setup({ devbox: [] });
+    await target.open({ ...request, originUrl: 'github.com:nbonamy/korus.git' });
+    await target.confirm();
+    expect(cloneRepository).toHaveBeenCalledExactlyOnceWith({ url: 'git@github.com:nbonamy/korus.git', remoteConnectionId: 'devbox', reuseExisting: true });
+  });
+
   it('stops with the clone error and does not continue when the clone cannot authenticate', async () => {
     const clone = async (): Promise<SourceRepository> => { throw new Error('Could not access korus on github.com.'); };
     const { target, openMain, store } = setup({ devbox: [] }, { clone });

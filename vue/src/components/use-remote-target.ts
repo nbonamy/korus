@@ -1,5 +1,5 @@
 import { computed, ref, watch } from 'vue';
-import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
+import { canonicalGitRemoteIdentity, cloneUrlForRemote } from '@workspace/core/git-remote';
 import type { CloneSourceRepositoryInput, ExecutionSelection, RemoteConnection, SourceRepository } from '@workspace/core/contracts';
 
 export type RemoteTargetRequest = {
@@ -102,7 +102,7 @@ export function useRemoteTarget(options: {
     try {
       let path = checkout.state === 'cloned' ? checkout.path : '';
       if (checkout.state === 'missing') {
-        const cloned = await options.cloneRepository({ url: current.originUrl!, remoteConnectionId: connectionId, reuseExisting: true });
+        const cloned = await options.cloneRepository({ url: cloneUrlForRemote(current.originUrl!) ?? current.originUrl!, remoteConnectionId: connectionId, reuseExisting: true });
         path = cloned.path;
       }
       if (mine !== epoch) return;
