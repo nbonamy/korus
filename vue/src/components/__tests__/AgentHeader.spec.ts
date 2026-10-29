@@ -739,8 +739,8 @@ describe('AgentHeader', () => {
 
     const activity = wrapper.get('.agent-header__activity');
     expect([...activity.element.children].map((child) => child.className)).toStrictEqual([
-      'run-profiles-control',
       'app-menu-button',
+      'run-profiles-control',
       'git-diff-control agent-header__git-status',
       'git-workflow-control agent-header__git-actions',
       'open-in-control agent-header__open-in',

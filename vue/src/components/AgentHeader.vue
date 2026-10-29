@@ -57,13 +57,13 @@
     </div>
 
     <div class="agent-header__activity">
-      <RunProfilesControl v-if="agent?.folder" :agent="agent" :host-label="runHostLabel ?? $t('runProfiles.localHost')" :preview-available="runPreviewAvailable ?? false" @preview="emit('run-preview', $event)" @visibility="emit('run-profiles-visible', $event)" />
       <AgentMoreMenu
         v-if="agent && !agent.sharedConversation"
         :agent-id="agent.id"
         :share-available="shareAvailable && !shareActive"
         @share="emit('share')"
       />
+      <RunProfilesControl v-if="agent?.folder" :agent="agent" :host-label="runHostLabel ?? $t('runProfiles.localHost')" :preview-available="runPreviewAvailable ?? false" @preview="emit('run-preview', $event)" @visibility="emit('run-profiles-visible', $event)" />
       <button
         v-if="agent && !agent.sharedConversation && shareAvailable && shareActive"
         class="app-button app-button--neutral agent-header__share"
