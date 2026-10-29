@@ -1827,7 +1827,7 @@ export class AppController {
   }
 
   private debugMenuState(snapshot = this.snapshot): string {
-    return `${this.isDebugThreadFlagSet('delegate_to_worktree', snapshot)}:${this.isDebugThreadFlagSet('ready_for_review', snapshot)}:${this.hasDebugExecutionPlan(snapshot)}`;
+    return `${this.isDebugThreadFlagSet('work_proposed', snapshot)}:${this.isDebugThreadFlagSet('ready_for_review', snapshot)}:${this.hasDebugExecutionPlan(snapshot)}`;
   }
 
   private refreshDebugMenuIfChanged(previousValue: string): void {

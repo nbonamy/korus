@@ -137,8 +137,7 @@ const conversation = useAgentConversation({
   notifyError: (message) => ElMessage.error(message),
 });
 function respondToThreadFlag(response: import('@workspace/core/thread-flags').ThreadFlagResponse): void {
-  if (response.id === 'delegate_to_worktree' && response.action === 'execute') emit('composer-command', props.view.agent.id, 'delegate');
-  else void conversation.respondToThreadFlag(response);
+  void conversation.respondToThreadFlag(response);
 }
 
 async function prepare(): Promise<void> {

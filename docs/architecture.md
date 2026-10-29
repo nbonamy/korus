@@ -655,7 +655,11 @@ publishes only after saving.
   Each worktree records a baseline commit for whole-Mission diff
   review. Failed or cancelled attempts keep their workspace and conversation.
   Implementation assignments bind a stable ticket ID to the run and repository;
-  one-based ticket numbers are display context. Workers receive the full assigned
+  one-based ticket numbers are display context. Ticket authoring must require local
+  commits; implementation assignments authorize and require committed ticket changes
+  before submission, overriding contrary ticket or tracker instructions. Evidence
+  includes commit SHAs; inability to commit safely is a blocker, not completion.
+  This grants no push, merge or PR authority. Workers receive the full assigned
   ticket and accepted requirements rather than reconstructing assignments from a
   backlog. Identity-bound submission updates only that ticket and serially merges
   its evidence with other repositories' results. Legacy runs retain index fallback.

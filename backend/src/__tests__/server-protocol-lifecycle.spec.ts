@@ -396,18 +396,18 @@ describe('AppBackendServer', () => {
       params: { agentId: 'agent-dina', id: 'delegate_to_worktree', value: true },
     });
     expect((set as { result: AppSnapshot }).result.agents[0]?.threadFlags)
-      .toStrictEqual({ delegate_to_worktree: true });
+      .toStrictEqual({ work_proposed: true });
 
     const ready = await server.handleMessage({
       jsonrpc: '2.0', id: 'debug-ready-flag-set', method: backendMethods.debugThreadFlagSet,
       params: { agentId: 'agent-dina', id: 'ready_for_review', value: true },
     });
     expect((ready as { result: AppSnapshot }).result.agents[0]?.threadFlags)
-      .toStrictEqual({ delegate_to_worktree: true, ready_for_review: true });
+      .toStrictEqual({ work_proposed: true, ready_for_review: true });
 
     const cleared = await server.handleMessage({
       jsonrpc: '2.0', id: 'debug-thread-flag-clear', method: backendMethods.debugThreadFlagSet,
-      params: { agentId: 'agent-dina', id: 'delegate_to_worktree', value: false },
+      params: { agentId: 'agent-dina', id: 'work_proposed', value: false },
     });
     expect((cleared as { result: AppSnapshot }).result.agents[0]?.threadFlags)
       .toStrictEqual({ ready_for_review: true });

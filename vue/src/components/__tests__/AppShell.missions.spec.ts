@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMission } from '@workspace/core/missions';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot-construction';
 import type { AgentGitWorkflow } from '@workspace/core/contracts';
+import { codexConversationSnapshot, codexTextMessage } from '../../test/codex-conversation-fixtures';
 import { conversationControllerActions, conversationControllerState, mountShell, workItem } from './app-shell-test-harness';
 
 const missionStorageKey = 'app.activeMissionId';
@@ -23,6 +24,75 @@ function representGitHubRepository(agent: ReturnType<typeof createInitialSnapsho
 }
 
 describe('AppShell missions', () => {
+  it.each(['README.md', '/workspace/mission/README.md'])('opens a rendered Mission file link beside its conversation (%s)', async target => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    agent.folder = '/workspace/mission';
+    const mission = createMission(snapshot, { outcome: 'Follow conversation links', workflowType: 'shapeAndShipFeature', teamId: agent.teamId, orchestratorMemberId: agent.id });
+    prepareMissionLead(mission, agent.id);
+    const previewAgentFile = vi.fn().mockResolvedValue({ kind: 'text', path: 'README.md', content: '# Mission document', size: 18 });
+    const wrapper = mountShell({ snapshot, realConversationPane: true, previewAgentFile,
+      codexConversationSnapshot: codexConversationSnapshot([codexTextMessage('links', 'assistant', `[Readme](<${target}>)`)]),
+    });
+    try {
+      wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', mission.id);
+      await flushPromises();
+      await wrapper.get('.mission-conversation-rail a').trigger('click');
+      await flushPromises();
+      expect(previewAgentFile).toHaveBeenCalledExactlyOnceWith(agent.id, 'README.md');
+      expect(wrapper.get('[role="tab"][aria-label="README.md"]').attributes('aria-selected')).toBe('true');
+      expect(wrapper.get('.markdown-panel').text()).toContain('Mission document');
+      expect(wrapper.get('.mission-conversation-rail a').isVisible()).toBe(true);
+      const toggle = wrapper.get('[aria-label="Toggle right workspace"]');
+      await toggle.trigger('click');
+      await flushPromises();
+      expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(true);
+      expect(wrapper.get('.markdown-panel').isVisible()).toBe(false);
+      await toggle.trigger('click');
+      await flushPromises();
+      expect(wrapper.get('.right-workspace-panel').attributes('style')).not.toContain('display: none');
+      expect(wrapper.get('.markdown-panel').text()).toContain('Mission document');
+      await wrapper.get('[aria-label="Close README.md tab"]').trigger('click');
+      expect(wrapper.find('.markdown-panel').exists()).toBe(false);
+      expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(true);
+    } finally { wrapper.unmount(); }
+  });
+
+  it('can hide an empty right workspace inherited from the agent surface', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    const mission = createMission(snapshot, { outcome: 'Keep the workbench accessible', workflowType: 'shapeAndShipFeature', teamId: agent.teamId, orchestratorMemberId: agent.id });
+    prepareMissionLead(mission, agent.id);
+    const wrapper = mountShell({ snapshot });
+    try {
+      await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+      wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', mission.id);
+      await flushPromises();
+      expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(false);
+      await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+      await flushPromises();
+      expect(wrapper.get('.mission-workspace__workbench').attributes('style')).not.toContain('display: none');
+    } finally { wrapper.unmount(); }
+  });
+
+  it('opens a rendered Mission HTTPS link through the host browser route', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    const mission = createMission(snapshot, { outcome: 'Follow a web link', workflowType: 'shapeAndShipFeature', teamId: agent.teamId, orchestratorMemberId: agent.id });
+    prepareMissionLead(mission, agent.id);
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const wrapper = mountShell({ snapshot, realConversationPane: true,
+      codexConversationSnapshot: codexConversationSnapshot([codexTextMessage('links', 'assistant', '[Example](https://example.com)')]),
+    });
+    try {
+      wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', mission.id);
+      await flushPromises();
+      await wrapper.get('.mission-conversation-rail a').trigger('click');
+      expect(open).toHaveBeenCalledExactlyOnceWith('https://example.com', '_blank', 'noopener,noreferrer');
+      expect(wrapper.get('.mission-conversation-rail a').isVisible()).toBe(true);
+    } finally { wrapper.unmount(); open.mockRestore(); }
+  });
+
   it('creates a named team agent in the selected existing Mission worktree from its context menu', async () => {
     const snapshot = createInitialSnapshot();
     const mission = createMission(snapshot, { outcome: 'Add team billing', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
@@ -74,6 +144,84 @@ describe('AppShell missions', () => {
     expect(sendPromptAction).toHaveBeenCalledOnce();
   });
   afterEach(() => window.localStorage.removeItem(missionStorageKey));
+
+  it('restores the Mission and viewed stage when returning from Settings through the team rail', async () => {
+    const snapshot = createInitialSnapshot();
+    const team = snapshot.teams[0]!;
+    const mission = createMission(snapshot, { outcome: 'Restore Mission context', workflowType: 'shapeAndShipFeature', teamId: team.id, orchestratorMemberId: snapshot.agents[0]!.id });
+    prepareMissionLead(mission, snapshot.agents[0]!.id);
+    mission.stage = 'implementation';
+    const wrapper = mountShell({ snapshot, realAgentSidebar: true });
+    try {
+      await wrapper.get('[data-group-kind="missions"] .agent-sidebar__agent').trigger('click');
+      await flushPromises();
+      const requirementsStage = () => wrapper.get('.mission-stage-rail__stages button');
+      await requirementsStage().trigger('click');
+      expect(requirementsStage().classes()).toContain('mission-stage-rail__stage--viewed');
+
+      await wrapper.get('.settings-menu').findAll('[role="menuitem"]').find(item => item.text().startsWith('Settings'))!.trigger('click');
+      await flushPromises();
+      expect(wrapper.find('.settings-view').exists()).toBe(true);
+      expect(wrapper.find('.mission-workspace').exists()).toBe(false);
+
+      await wrapper.get(`.team-rail [aria-label="${team.name}"]`).trigger('click');
+      await flushPromises();
+      expect(wrapper.find('.settings-view').exists()).toBe(false);
+      expect(wrapper.get('.mission-workspace h1').text()).toBe(mission.outcome);
+      expect(requirementsStage().classes()).toContain('mission-stage-rail__stage--viewed');
+      expect(wrapper.get('[data-group-kind="missions"] .agent-sidebar__agent').classes()).toContain('agent-sidebar__agent--active');
+      expect(wrapper.emitted('select-team')?.at(-1)).toStrictEqual([team.id]);
+    } finally { wrapper.unmount(); }
+  });
+
+  it('shows the current stage when a Mission advances while Settings is open', async () => {
+    const snapshot = createInitialSnapshot();
+    const team = snapshot.teams[0]!;
+    const mission = createMission(snapshot, { outcome: 'Advance while away', workflowType: 'shapeAndShipFeature', teamId: team.id, orchestratorMemberId: snapshot.agents[0]!.id });
+    prepareMissionLead(mission, snapshot.agents[0]!.id);
+    mission.stage = 'tickets';
+    const wrapper = mountShell({ snapshot, realAgentSidebar: true });
+    try {
+      await wrapper.get('[data-group-kind="missions"] .agent-sidebar__agent').trigger('click');
+      await flushPromises();
+      await wrapper.get('.mission-stage-rail__stages button').trigger('click');
+      await wrapper.get('.settings-menu').findAll('[role="menuitem"]').find(item => item.text().startsWith('Settings'))!.trigger('click');
+      await flushPromises();
+      await wrapper.setProps({ snapshot: { ...snapshot, missions: [{ ...mission, stage: 'implementation' }] } });
+      await wrapper.get(`.team-rail [aria-label="${team.name}"]`).trigger('click');
+      await flushPromises();
+      const currentStage = wrapper.get('.mission-stage-rail__stages button[aria-current="step"]');
+      expect(currentStage.classes()).toContain('mission-stage-rail__stage--viewed');
+    } finally { wrapper.unmount(); }
+  });
+
+  it.each(['another team', 'deleted Mission', 'explicit agent selection'] as const)('does not restore a Mission after Settings when navigating to %s', async destination => {
+    const snapshot = createInitialSnapshot();
+    const team = snapshot.teams[0]!;
+    const otherTeam = { id: 'other-team', name: 'Other team', agentIds: [] };
+    snapshot.teams.push(otherTeam);
+    const mission = createMission(snapshot, { outcome: 'Scoped Mission', workflowType: 'shapeAndShipFeature', teamId: team.id, orchestratorMemberId: snapshot.agents[0]!.id });
+    prepareMissionLead(mission, snapshot.agents[0]!.id);
+    const wrapper = mountShell({ snapshot, stubAgentWorkspace: true });
+    try {
+      wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', mission.id);
+      await flushPromises();
+      if (destination === 'explicit agent selection') {
+        wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('select-agent', snapshot.agents[0]!.id);
+        await flushPromises();
+      }
+      await wrapper.get('.settings-menu').findAll('[role="menuitem"]').find(item => item.text().startsWith('Settings'))!.trigger('click');
+      await flushPromises();
+      if (destination === 'deleted Mission') await wrapper.setProps({ snapshot: { ...snapshot, missions: [] } });
+      const targetTeam = destination === 'another team' ? otherTeam : team;
+      await wrapper.get(`.team-rail [aria-label="${targetTeam.name}"]`).trigger('click');
+      await wrapper.setProps({ snapshot: { ...snapshot, missions: destination === 'deleted Mission' ? [] : snapshot.missions, activeTeamId: targetTeam.id } });
+      await flushPromises();
+      expect(wrapper.find('.settings-view').exists()).toBe(false);
+      expect(wrapper.find('.mission-workspace').exists()).toBe(false);
+      expect(wrapper.find('.agent-workspace').exists()).toBe(true);
+    } finally { wrapper.unmount(); }
+  });
 
   it('opens the mission an agent asked to focus, even when the snapshot arrives first or later', async () => {
     const snapshot = createInitialSnapshot();
@@ -304,7 +452,7 @@ describe('AppShell missions', () => {
     expect(navigation.props('missionCreationError')).toBe('');
   });
 
-  it('replaces the agent workspace with a mission and returns to normal agent navigation', async () => {
+  it('shows a mission and returns to normal agent navigation', async () => {
     const snapshot = createInitialSnapshot();
     const mission = createMission(snapshot, { outcome: 'Add billing', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
     const selectMission = vi.fn().mockResolvedValue(undefined);
@@ -312,12 +460,12 @@ describe('AppShell missions', () => {
     await wrapper.findComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', mission.id);
     await flushPromises();
     expect(wrapper.find('.mission-workspace').exists()).toBe(true);
-    expect(wrapper.findComponent({ name: 'AgentWorkspace' }).exists()).toBe(false);
+    expect(wrapper.find('.agent-header').exists()).toBe(false);
     expect(selectMission).toHaveBeenLastCalledWith(mission.id);
     await wrapper.findComponent({ name: 'AppShellNavigation' }).vm.$emit('select-agent', snapshot.agents[0]!.id);
     await flushPromises();
     expect(wrapper.find('.mission-workspace').exists()).toBe(false);
-    expect(wrapper.findComponent({ name: 'AgentWorkspace' }).exists()).toBe(true);
+    expect(wrapper.find('.agent-header').exists()).toBe(true);
     expect(selectMission).toHaveBeenLastCalledWith(null);
   });
 

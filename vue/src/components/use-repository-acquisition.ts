@@ -14,6 +14,7 @@ export type RepositoryAcquisitionOptions = {
   activeTeamId: () => string | undefined;
   catalog: (provider: RepositoryProvider) => WorkSource[] | undefined;
   chooseLocalFolder: () => Promise<string | null>;
+  chooseSourceFolder: () => Promise<string | null>;
   cloneRepository: (input: CloneSourceRepositoryInput) => Promise<SourceRepository>;
   connectProvider: (provider: RepositoryProvider) => Promise<void>;
   errorMessage: (error: unknown) => string;
@@ -24,6 +25,8 @@ export type RepositoryAcquisitionOptions = {
   openAuthorization: (provider: RepositoryProvider) => Promise<void>;
   openRepository: (repository: SourceRepository, teamId?: string, source?: WorkSource) => Promise<void>;
   sourceRepositories: () => SourceRepository[];
+  sourceFolder: () => string;
+  saveSourceFolder: (path: string) => Promise<void>;
 };
 
 /** Owns provider-specific and URL repository acquisition dialog workflow. */
@@ -104,6 +107,12 @@ export function useRepositoryAcquisition(options: RepositoryAcquisitionOptions) 
   async function cloneAndOpen(url: string, reuseExisting = false, source?: WorkSource): Promise<void> {
     const mine = revision;
     await runBusy(async () => {
+      if (!options.sourceFolder().trim()) {
+        const folder = await options.chooseSourceFolder();
+        if (!folder || mine !== revision) return;
+        await options.saveSourceFolder(folder);
+        if (mine !== revision) return;
+      }
       const repository = await options.cloneRepository({
         url,
         ...(reuseExisting ? { reuseExisting: true } : {}),

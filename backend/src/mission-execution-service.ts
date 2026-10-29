@@ -5,14 +5,13 @@ import { createAgentInSnapshot } from '@workspace/core/agent-manager';
 import { resolveAgentBackend } from '@workspace/core/agent-backends';
 import { createEntityId } from '@workspace/core/ids';
 import { isAbsolute, relative, sep } from 'node:path';
-import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import { isMissionArtifacts, missionTicketReady, type Mission, type MissionArtifacts, type MissionReviewFinding, type MissionStage } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
 import { missionLeadAgentId } from '@workspace/core/mission-attention';
 import { missionImplementationBusy, missionRunAssignment, missionRunTicketIndex, pendingMissionRun, type MissionArtifactReadResult, type MissionArtifactWriteInput, type MissionExecutionInput, type MissionImplementationStartProgress, type MissionResultInput, type MissionReviewFindingInput, type MissionReviewFindingUpdateInput, type MissionRun, type MissionTicketDraftInput, type MissionTicketDraftResult, type MissionToolContext } from '@workspace/core/mission-execution';
 import type { MissionService } from './mission-service';
 import { MissionAgentTools } from './mission-agent-tools';
-import { missionAgent, missionTeamRepositories, sameSkills, shouldCompactBeforeRun, stageKickoffPrompt } from './mission-execution-policy';
+import { missionAgent, missionTeamRepositories, sameSkills, stageKickoffPrompt } from './mission-execution-policy';
 import { MissionWorkspaceService } from './mission-workspace-service';
 
 export type MissionExecutionPorts = {
@@ -43,7 +42,6 @@ export class MissionExecutionService {
   private readonly postTurnLaunches = new Map<string, { missionId: string; runIds: string[] }>();
   private readonly remediationDispatches = new Set<string>();
   private readonly remediationTurns = new Map<string, { missionId: string; leadId: string; findingIds: string[]; frozenFindingIds: string[] }>();
-  private readonly nonResultTurns = new Set<string>();
   private readonly completedTurns = new Map<string, Set<string>>();
   private readonly activeTurns = new Map<string, string>();
   private readonly cancellingRuns = new Map<string, Promise<void>>();
@@ -751,7 +749,6 @@ export class MissionExecutionService {
       for (const runId of postTurnLaunch.runIds) void this.startLaunch(postTurnLaunch.missionId, runId);
       return;
     }
-    if (this.nonResultTurns.delete(agentId)) return;
     // A completed maintenance/compaction turn is not the end of the assignment
     // when the prompt manager still has work to deliver, including after resume.
     if (this.ports.snapshot.queuedPrompts?.some(prompt => prompt.agentId === agentId)) return;
@@ -826,15 +823,6 @@ export class MissionExecutionService {
     if (reusedWorker && worker.backendSession) {
       await this.ports.refreshConversationContext(worker);
       if (!await canLaunch()) return;
-      if (defaultBackendCommands(worker.backend).some(command => command.name === 'compact') && shouldCompactBeforeRun(mission, run, worker.id)) {
-        this.nonResultTurns.add(worker.id);
-        try {
-          await this.ports.continueStage(worker.id, '/compact');
-        } catch (error) {
-          this.nonResultTurns.delete(worker.id);
-          throw error;
-        }
-      }
     }
     if (await canLaunch() && run.stage !== 'requirements') await this.ports.continueStage(worker.id, stageKickoffPrompt(mission, run));
   }

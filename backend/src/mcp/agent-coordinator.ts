@@ -5,7 +5,7 @@ import type { MissionArtifactFile, MissionStage } from '@workspace/core/missions
 import { randomUUID } from 'node:crypto';
 import type { Agent, AgentBackend, AgentStatus, AnnouncementPhase, CelebrationKind, CreateSourceWorktreeInput, SourceRepository, SourceWorktree, WorkBacklogAssignmentStatus } from '@workspace/core/contracts';
 import { agentDisplayName } from '@workspace/core/agent-display';
-import type { ThreadFlagId } from '@workspace/core/thread-flags';
+import { normalizeThreadFlagId, type ThreadFlagId } from '@workspace/core/thread-flags';
 import type { DelegatedTask, TaskContract } from '@workspace/core/delegated-task';
 
 export type McpAgentInfo = {
@@ -321,8 +321,9 @@ export class AppMcpAgentCoordinator {
 
   async finishTurn(agentId: string, input: FinishTurnInput = {}): Promise<FinishTurnResponse> {
     const agent = this.requireAgent(agentId);
-    if (input.flag === 'delegate_to_worktree' && agent.delegatedByAgentId) {
-      throw new McpToolError('delegate_to_worktree is unavailable because this agent is already a delegated co-agent.');
+    const flag = input.flag ? normalizeThreadFlagId(input.flag) : undefined;
+    if (flag === 'work_proposed' && agent.delegatedByAgentId) {
+      throw new McpToolError('work_proposed is unavailable because this agent is already a delegated co-agent.');
     }
     const normalizedAnnouncement = input.announcement
       ? this.normalizedAnnouncement({ phase: 'finish', text: input.announcement.text })
@@ -331,7 +332,7 @@ export class AppMcpAgentCoordinator {
       throw new McpToolError('Celebrations are not available.');
     }
     delete agent.statusText;
-    if (input.flag) agent.threadFlags = { [input.flag]: true };
+    if (flag) agent.threadFlags = { [flag]: true };
     const suggestedPrompt = input.suggestedPrompt?.trim();
     if (suggestedPrompt) agent.suggestedPrompt = suggestedPrompt;
     else delete agent.suggestedPrompt;
@@ -348,7 +349,7 @@ export class AppMcpAgentCoordinator {
     return {
       success: true,
       status: null,
-      ...(input.flag ? { flag: input.flag } : {}),
+      ...(flag ? { flag } : {}),
       ...(announcement ? { announcement } : {}),
       ...(celebration ? { celebration } : {}),
     };

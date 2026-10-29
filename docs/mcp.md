@@ -86,15 +86,21 @@ by mutating user-global tool config.
 - `set-status` stores a short `statusText` (cleared when the provider turn
   completes), emits `agent.updated`, and may carry the start `announcement`. Stable
   instructions make it the first action of a task.
-- `finish_turn` is the last tool action of a substantive turn. It always clears
-  status; optionally sets one flag (`delegate_to_worktree`, `ready_for_review`),
-  a finish announcement and a celebration. A flag replaces the current proposal;
-  omitting it leaves it. A new user prompt clears `ready_for_review` only. A failed
-  flag action stays available for retry. Instructions forbid choosing
-  `delegate_to_worktree` and then continuing the work, and require assessing review
-  readiness at every handoff (omit it when review is deferred or the user asked for
-  immediate commit/push). Flags are persisted app state cleared with the
-  conversation runtime.
+- `finish_turn` is the last tool action of a substantive turn. It clears status
+  and may replace the thread flag; omission preserves it. `work_proposed` offers
+  concrete separate work identified in discussion without granting execution
+  authority; it cannot replace implementation already requested in the conversation.
+  `delegate_to_worktree` is accepted as a legacy alias and normalized on restore
+  and tool calls. Workflow-managed agents retain their own proposal lifecycle;
+  delegated co-agents cannot offer recursive work proposals.
+- Proposal responses use the agent-scoped flag service for delegation, Mission
+  creation and dismissal. Execution submits to the source conversation through the
+  existing creation procedures, with explicit scope and publication constraints.
+  One in-flight response covers both proposal aliases. Acceptance clears the
+  proposal; submission failure preserves it for retry. Review readiness is separate:
+  new user prompts clear `ready_for_review`, and handoffs assess it unless review
+  is deferred or the user requests immediate commit/push. Flags are persisted app
+  state cleared with the conversation runtime.
 - Prompt suggestions are agent-scoped Korus metadata, not provider conversation
   state or draft text. The renderer uses the SDK's placeholder contract; a
   suggestion never authorizes or submits work. Suggestions reuse the active

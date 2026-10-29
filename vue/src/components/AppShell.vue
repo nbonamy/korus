@@ -266,42 +266,11 @@
         @select-work-provider="cockpitBacklogState.selectProvider"
         @select-agent="selectAgentFromCockpit"
       />
-      <MissionWorkspace v-else-if="activeSurface === 'mission' && selectedMission" :key="selectedMission.id" :agents="snapshot.agents" :unread-agent-ids="unreadAgentIds" :sidebar-collapsed="agentSidebarCollapsed || compactViewport" @expand-sidebar="expandSidebar" :mission="selectedMission" :implementation-start-progress="missionImplementationStartProgress" :read-mission-artifact="readMissionArtifact" :execute-mission="executeMission" :send-mission-prompt="forwardPrompt" :open-in-available="missionOpenInAvailable" :open-in-applications="openInApplications" @chat-about-review-finding="prepareMissionReviewDiscussion" @open-conversation="emit('select-agent', $event)" @open-worktree="openMissionWorktree">
-        <template #code-review="{ agentId, reviewSummary, chatAboutFinding }">
-          <MissionCodeReview v-if="snapshot.agents.find(agent => agent.id === agentId) && props.getAgentGitDiff" :agent="snapshot.agents.find(agent => agent.id === agentId)!" :agents="snapshot.agents" :git-statuses="snapshot.agentGitStatuses" :get-diff="props.getAgentGitDiff" :mission="selectedMission" :review-summary="reviewSummary" :execute-mission="executeMission" :open-in-available="missionOpenInAvailable" :open-in-applications="openInApplications" @chat-about-finding="chatAboutFinding" @open-worktree="openMissionWorktree" />
-        </template>
-        <template #ship="{ openConversation }">
-          <MissionShipBoard
-            :agents="snapshot.agents"
-            :teams="snapshot.teams"
-            :mission="selectedMission"
-            :execute-mission="executeMission"
-            :git-statuses="snapshot.agentGitStatuses"
-            :get-workflow="props.getAgentGitWorkflow"
-            :generate-message="props.generateAgentGitMessage"
-            :commit-changes="props.commitAgentGitChanges"
-            :push-branch="props.pushAgentGitBranch"
-            :create-pull-request="props.createAgentGitPullRequest"
-            :merge-branch="props.mergeAgentGitBranch"
-            :update-from-base="props.updateAgentGitBranchFromBase"
-            :open-in-available="missionOpenInAvailable"
-            :open-in-applications="openInApplications"
-            @open-conversation="openConversation"
-            @open-worktree="openMissionWorktree"
-          />
-        </template>
-        <template #conversation="{ agentId }">
-          <ConversationPane v-if="currentAgent?.id === agentId" ref="missionConversationPane" :controller="conversationPaneController" :agent="currentAgent" :agents="snapshot.agents" :saved-prompt-drafts="snapshot.general.savedPromptDrafts" :save-prompt-draft="savePromptDraft" :remove-prompt-draft="removePromptDraft" :history-load-failed="props.isConversationLoadFailed" :history-loading="isConversationLoading" :has-visible-messages="conversationMessages.length > 0" :empty-headline="selectedMission.stage === 'requirements' ? t('missions.whatDoYouWantToBuild') : undefined" :empty-subhead="selectedMission.stage === 'requirements' ? '' : undefined" @retry-history="props.retryAgentHistory">
-            <template v-if="selectedMission.stage === 'requirements' && conversationMessages.length === 0" #empty-actions>
-              <AppMenu class="app-menu--embedded" :ariaLabel="t('missions.chooseIssue')" :items="missionSourceMenuItems" @select="openMissionIssuePicker" />
-            </template>
-          </ConversationPane>
-        </template>
-      </MissionWorkspace>
       <AgentWorkspace
         v-else
         :guest-view="guestState?.view" :guest-busy="guestBusy" :guest-control="guestControl"
         ref="agentWorkspace"
+        :show-header="activeSurface !== 'mission'"
         :active-attachment-annotation-counts="activeAttachmentAnnotationCounts"
         :add-chat-text-annotation="addChatTextAnnotation"
         :add-visualization-annotation="addFocusedVisualizationAnnotation"
@@ -324,8 +293,8 @@
         :review-finding-attachment="activeReviewFindingAttachment"
         :create-agent-git-pull-request="props.createAgentGitPullRequest"
         :current-agent="currentAgent"
-        :empty-split-pane="!hasFocusedConversation"
-        :split-headers="splitLayout !== 'single'"
+        :empty-split-pane="activeSurface !== 'mission' && !hasFocusedConversation"
+        :split-headers="activeSurface !== 'mission' && splitLayout !== 'single'"
         :latest-turn-id-for-agent="latestTurnIdForAgent"
         :current-agent-git-status="currentAgentGitStatus"
         :current-backend-runtime="currentBackendRuntime"
@@ -333,7 +302,7 @@
         :generate-agent-git-message="props.generateAgentGitMessage"
         :get-agent-git-workflow="props.getAgentGitWorkflow"
         :handle-start-work-action="handleStartWorkAction"
-        :is-agent-empty="isAgentEmpty"
+        :is-agent-empty="activeSurface !== 'mission' && isAgentEmpty"
         :is-conversation-loading="isConversationLoading"
         :history-load-failed="isConversationLoadFailed"
         :is-loading="isLoading"
@@ -353,7 +322,7 @@
         :remove-chat-text-annotation="removeChatTextAnnotation"
         :remove-visualization-annotation="removeVisualizationAnnotation"
         :remove-code-annotation="removeCodeAnnotation"
-        :open-file-preview="openFilePreview"
+        :open-conversation-link="openConversationLink"
         :open-file-preview-for-agent="openFilePreviewForAgent"
         :open-in-applications="openInApplications"
         :open-right-workspace-tab="openRightWorkspaceTab"
@@ -395,10 +364,44 @@
         @open-browser-settings="openSettings('browser')"
         @update:plan-mode="emit('update:planMode', $event)"
       >
-        <template v-if="!compactViewport && props.agentConversationFor && props.agentConversationActions" #layout-control>
+        <template v-if="activeSurface !== 'mission' && !compactViewport && props.agentConversationFor && props.agentConversationActions" #layout-control>
           <SplitLayoutControl :model-value="split.layout.value" @update:model-value="split.setLayout" />
         </template>
-        <template v-if="splitLayout !== 'single' && props.agentConversationFor && splitActions" #conversation="{ plan, planVisible, closePlan, headerBindingsFor }">
+        <template v-if="activeSurface === 'mission' && selectedMission" #conversation>
+          <MissionWorkspace v-model:viewed-stage="missionViewedStage" :conversation-only="rightWorkspaceVisible" :workspace-toggle-available="Boolean(currentAgent && !currentAgent.sharedConversation)" :key="selectedMission.id" :agents="snapshot.agents" :unread-agent-ids="unreadAgentIds" :sidebar-collapsed="agentSidebarCollapsed || compactViewport" @expand-sidebar="expandSidebar" @toggle-workspace="toggleRightWorkspace" :mission="selectedMission" :implementation-start-progress="missionImplementationStartProgress" :read-mission-artifact="readMissionArtifact" :execute-mission="executeMission" :send-mission-prompt="forwardPrompt" :open-in-available="missionOpenInAvailable" :open-in-applications="openInApplications" @chat-about-review-finding="prepareMissionReviewDiscussion" @open-conversation="emit('select-agent', $event)" @open-worktree="openMissionWorktree">
+            <template #code-review="{ agentId, reviewSummary, chatAboutFinding }">
+              <MissionCodeReview v-if="snapshot.agents.find(agent => agent.id === agentId) && props.getAgentGitDiff" :agent="snapshot.agents.find(agent => agent.id === agentId)!" :agents="snapshot.agents" :git-statuses="snapshot.agentGitStatuses" :get-diff="props.getAgentGitDiff" :mission="selectedMission" :review-summary="reviewSummary" :execute-mission="executeMission" :open-in-available="missionOpenInAvailable" :open-in-applications="openInApplications" @chat-about-finding="chatAboutFinding" @open-worktree="openMissionWorktree" />
+            </template>
+            <template #ship="{ openConversation }">
+              <MissionShipBoard
+                :agents="snapshot.agents"
+                :teams="snapshot.teams"
+                :mission="selectedMission"
+                :execute-mission="executeMission"
+                :git-statuses="snapshot.agentGitStatuses"
+                :get-workflow="props.getAgentGitWorkflow"
+                :generate-message="props.generateAgentGitMessage"
+                :commit-changes="props.commitAgentGitChanges"
+                :push-branch="props.pushAgentGitBranch"
+                :create-pull-request="props.createAgentGitPullRequest"
+                :merge-branch="props.mergeAgentGitBranch"
+                :update-from-base="props.updateAgentGitBranchFromBase"
+                :open-in-available="missionOpenInAvailable"
+                :open-in-applications="openInApplications"
+                @open-conversation="openConversation"
+                @open-worktree="openMissionWorktree"
+              />
+            </template>
+            <template #conversation="{ agentId }">
+              <ConversationPane v-if="currentAgent?.id === agentId" ref="missionConversationPane" :controller="conversationPaneController" :agent="currentAgent" :agents="snapshot.agents" :saved-prompt-drafts="snapshot.general.savedPromptDrafts" :save-prompt-draft="savePromptDraft" :remove-prompt-draft="removePromptDraft" :history-load-failed="props.isConversationLoadFailed" :history-loading="isConversationLoading" :has-visible-messages="conversationMessages.length > 0" :empty-headline="selectedMission.stage === 'requirements' ? t('missions.whatDoYouWantToBuild') : undefined" :empty-subhead="selectedMission.stage === 'requirements' ? '' : undefined" @retry-history="props.retryAgentHistory">
+                <template v-if="selectedMission.stage === 'requirements' && conversationMessages.length === 0" #empty-actions>
+                  <AppMenu class="app-menu--embedded" :ariaLabel="t('missions.chooseIssue')" :items="missionSourceMenuItems" @select="openMissionIssuePicker" />
+                </template>
+              </ConversationPane>
+            </template>
+          </MissionWorkspace>
+        </template>
+        <template v-else-if="splitLayout !== 'single' && props.agentConversationFor && splitActions" #conversation="{ plan, planVisible, closePlan, headerBindingsFor }">
           <AgentSplitGrid :layout="splitLayout" :panes="split.panes.value" :focused-pane-id="split.focusedPaneId.value" :ratios="split.ratios.value" @resize="split.resize" @focus="focusSplitPane">
             <template #header="{ agentId, topRight, topLeft }">
               <AgentHeader v-bind="headerBindingsFor(agentId, topRight, topLeft)" />
@@ -414,7 +417,7 @@
                 :saved-prompt-drafts="snapshot.general.savedPromptDrafts" :save-prompt-draft="savePromptDraft" :remove-prompt-draft="removePromptDraft"
                 :follow-up-behavior="snapshot.general.followUpBehavior"
                 :review-finding="pendingReviewClarification?.agentId === agentId ? pendingReviewClarification.finding : null"
-                :open-link="link => openSplitConversationLink(agentId, link)"
+                :open-link="link => openConversationLink(agentId, link)"
                 :open-image="(image, context) => agentWorkspace?.openConversationImage(image, context, agentId) ?? false"
                 :open-visualization="visualization => agentWorkspace?.openConversationVisualization(visualization, agentId)"
                 @open-review="openRightWorkspaceTab('codeReview', $event)"
@@ -641,7 +644,7 @@ import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { defaultTeamColor } from '@workspace/core/team-colors';
 import { projectAgentMentionLabels } from '@workspace/core/workspace-sidebar';
-import { appApi, appHostCapabilities, appClientPlatform } from '../platform-api';
+import { appApi, appHostCapabilities, appClientPlatform, appPlatformActions } from '../platform-api';
 import { codeReviewSettingsKey, useCodeReviewSettings } from './code-review-settings';
 import AgentDialog from './AgentDialog.vue';
 import ProvisioningOperationHost from './ProvisioningOperationHost.vue';
@@ -699,7 +702,7 @@ import type { DeleteRepositoryInput } from '@workspace/core/contracts/workspace'
 import type { MissionWorkspaceOpenRequest } from './MissionWorkspaceOpenIn.vue';
 import ConversationPane from './ConversationPane.vue';
 import AppMenu from '../shared/menu/AppMenu.vue';
-import type { Mission, CreateMissionInput, DeleteMissionInput } from '@workspace/core/missions';
+import type { Mission, MissionStage, CreateMissionInput, DeleteMissionInput } from '@workspace/core/missions';
 import { missionCreatedWorkspaces, type MissionImplementationStartProgress } from '@workspace/core/mission-execution';
 import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
 import SettingsView from './SettingsView.vue';
@@ -1159,6 +1162,8 @@ function rememberMissionId(id: string | null): void {
 }
 let pendingMissionRestoreId = rememberedMissionId();
 const activeSurface = ref<AppSurface>('agent');
+const settingsReturnMissionId = ref<string | null>(null);
+const missionViewedStage = ref<MissionStage>();
 const missionCreationError = ref('');
 const missionCreationPending = ref(false);
 const missionDeleteTargetId = ref<string | null>(null);
@@ -1166,6 +1171,9 @@ const missionDeletePending = ref(false);
 const missionDeleteError = ref('');
 const selectedMissionId = ref<string | null>(null);
 const selectedMission = computed(() => props.snapshot.missions?.find(m => m.id === selectedMissionId.value) ?? null);
+watch(() => selectedMission.value?.stage, (stage, previousStage) => {
+  if (stage && previousStage && stage !== previousStage) missionViewedStage.value = stage;
+});
 const missionIssuePickerVisible = ref(false);
 const missionIssueLoading = ref(false);
 const missionIssueError = ref<string | null>(null);
@@ -1244,6 +1252,7 @@ function openMissionWorktree(request: MissionWorkspaceOpenRequest): void {
 }
 const missionDeleteTarget = computed(() => props.snapshot.missions?.find(m => m.id === missionDeleteTargetId.value) ?? null);
 function selectMissionSurface(id: string): void {
+  if (selectedMissionId.value !== id) missionViewedStage.value = undefined;
   selectedMissionId.value = id;
   activeSurface.value = 'mission';
 }
@@ -1347,7 +1356,6 @@ const agentWorkspace = ref<{
   openSavedDraftPicker(): void;
   saveCurrentDraft(): void;
   handleBrowserOpenCommand(command: Extract<AppCommand, { type: 'open-browser' }>): void;
-  openConversationLink(link: CodexConversationLink): void | Promise<void>;
   openConversationImage(image: CodexMessageImage, context?: CodexMessageImageContext, agentId?: string): boolean;
   openConversationVisualization(visualization: CodexConversationVisualization, agentId?: string): void;
   showDebugGitOperationProgress(operation: 'pullRequest' | 'merge'): void | Promise<void>;
@@ -1644,6 +1652,9 @@ const repositoryAcquisition = useRepositoryAcquisition({
   activeTeamId: () => props.snapshot.activeTeamId ?? undefined,
   catalog: provider => props.workRepositoriesByProvider[provider],
   chooseLocalFolder: () => props.chooseAgentFolder(),
+  chooseSourceFolder: () => props.chooseSourceFolder(),
+  sourceFolder: () => props.snapshot.sourceFolder.path,
+  saveSourceFolder: path => props.updateSettings({ sourceFolder: { path } }),
   cloneRepository: (input) => props.cloneSourceRepository(input),
   connectProvider: provider => props.connectWorkProvider(provider),
   errorMessage: (error) => localizedErrorMessage(error, t),
@@ -1857,8 +1868,8 @@ const splitActions = computed<AgentConversationActions | undefined>(() => props.
     return props.agentConversationActions?.send(agentId, prompt, options);
   },
 } : undefined);
-function openSplitConversationLink(agentId: string, link: CodexConversationLink): void | Promise<void> {
-  if (link.kind === 'external') { window.open(link.href, '_blank', 'noopener,noreferrer'); return; }
+function openConversationLink(agentId: string, link: CodexConversationLink): void | Promise<void> {
+  if (link.kind === 'external') return appPlatformActions.openExternal?.(link.href);
   return workspacePreviews.openConversationFile({ ...link, kind: 'file' }, agentId);
 }
 const {
@@ -1946,7 +1957,6 @@ const workspacePreviews = useWorkspacePreviews({
 const {
   handleFileActivity,
   openAgentGitDiff: openAgentGitDiffForAgent,
-  openConversationFile: openFilePreview,
   openFile: openFilePreviewForAgent,
   openMarkdown: openMarkdownRequest,
   openSidePanel: openSidePanelRequest,
@@ -2374,7 +2384,7 @@ const conversationPaneActions: CodexConversationPaneActions = {
     const command = permissionModeCommand(item.payload);
     if (command) emit('select-permission-mode', command.mode);
   },
-  openLink: (link) => agentWorkspace.value?.openConversationLink(link),
+  openLink: (link) => currentAgent.value ? openConversationLink(currentAgent.value.id, link) : undefined,
   openImage: (image, context) => agentWorkspace.value?.openConversationImage(image, context) ?? false,
   openVisualization: (visualization) => agentWorkspace.value?.openConversationVisualization(visualization),
   resolveApproval: forwardApprovalResolution,
@@ -2912,10 +2922,16 @@ function closeNewProjectDialog(): void {
 }
 
 async function createNewProject(name: string, backend: Agent['backend']): Promise<void> {
+  if (newProjectBusy.value) return;
   const { teamId } = repositorySessionContext(null);
   newProjectBusy.value = true;
   newProjectError.value = null;
   try {
+    if (!props.snapshot.sourceFolder.path.trim()) {
+      const folder = await props.chooseSourceFolder();
+      if (!folder) return;
+      await props.updateSettings({ sourceFolder: { path: folder } });
+    }
     await props.createProject({
       name,
       selection: { backend },
@@ -2997,6 +3013,9 @@ function openAutomations(): void {
 }
 
 function openSettings(tab?: SettingsTab): void {
+  if (activeSurface.value !== 'settings') {
+    settingsReturnMissionId.value = activeSurface.value === 'mission' ? selectedMissionId.value : null;
+  }
   if (tab) settingsActiveTab.value = tab;
   activeSurface.value = 'settings';
 }
@@ -3053,7 +3072,12 @@ async function resumeAgentConversation(agentId: string, target: ConversationResu
 }
 
 function selectTeamFromRail(teamId: string): void {
-  activeSurface.value = 'agent';
+  if (activeSurface.value === 'settings' && settingsReturnMissionId.value === selectedMission.value?.id
+    && selectedMission.value.teamId === teamId) {
+    selectMissionSurface(selectedMission.value.id);
+  } else {
+    activeSurface.value = 'agent';
+  }
   emit('select-team', teamId);
 }
 
@@ -3095,15 +3119,14 @@ async function updatePlanReview(agentId: string, response: import('@workspace/co
 
 const threadFlagBusy = ref(false);
 async function respondToThreadFlag(response: ThreadFlagResponse): Promise<void> {
-  if (response.id === 'delegate_to_worktree' && response.action === 'execute' && currentAgent.value) {
-    return runConversationMenuCommand(currentAgent.value.id, 'delegate');
-  }
   if (!props.respondToThreadFlagAction || threadFlagBusy.value) return;
   threadFlagBusy.value = true;
   try {
-    await props.respondToThreadFlagAction(response);
+    const agentId = currentAgent.value?.id;
+    if (agentId && props.agentConversationActions) await props.agentConversationActions.threadFlag(agentId, response);
+    else await props.respondToThreadFlagAction(response);
     if (response.id === 'ready_for_review' && response.action === 'execute') {
-      openRightWorkspaceTab('codeReview');
+      openRightWorkspaceTab('codeReview', agentId);
     }
   } catch (error) {
     ElMessage.error(localizedErrorMessage(error, t));

@@ -5,7 +5,7 @@ import { isDelegationContext, isTurnDelegationOverrides, isDelegationUserInstruc
 import { isWorkProviderKind, workProviderKinds } from '@workspace/core/work-providers';
 import { readPersistedAgentHandoff } from '@workspace/core/agent-handoff';
 import { isMission } from '@workspace/core/missions';
-import { isThreadFlags } from '@workspace/core/thread-flags';
+import { isThreadFlags, normalizeThreadFlags } from '@workspace/core/thread-flags';
 import { backendCodexHomeDir } from './state';
 import { restorePlanReview } from './persistence/legacy-plan-review';
 import { sanitizeClientPreferences } from '@workspace/core/client-preferences';
@@ -412,7 +412,7 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
     ...(gitDiffTarget ? { gitDiffTarget } : {}),
     ...(contextUsage ? { contextUsage } : {}),
     ...(plan ? { plan } : {}),
-    ...(isThreadFlags(value.threadFlags) ? { threadFlags: structuredClone(value.threadFlags) } : {}),
+    ...(isThreadFlags(value.threadFlags) ? { threadFlags: normalizeThreadFlags(value.threadFlags) } : {}),
     ...(isRateLimitPause(value.rateLimitPause) ? { rateLimitPause: { ...value.rateLimitPause } } : {}),
     ...(value.autoResumePending === true ? { autoResumePending: true } : {}),
     ...(typeof value.suggestedPrompt === 'string' && value.suggestedPrompt.trim() ? { suggestedPrompt: value.suggestedPrompt.trim() } : {}),
