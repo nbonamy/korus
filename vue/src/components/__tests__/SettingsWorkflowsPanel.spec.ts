@@ -5,12 +5,12 @@ import { defaultGeneralSettings } from '@workspace/core/settings';
 import SettingsWorkflowsPanel from '../SettingsWorkflowsPanel.vue';
 
 afterEach(() => vi.useRealTimers());
-it('orders workflow sections and saves plan and review preferences independently', async () => {
+it('orders workflow sections and saves plan, review and Mission preferences independently', async () => {
   vi.useFakeTimers();
   const updateSettings = vi.fn().mockResolvedValue(undefined);
   const wrapper = mount(SettingsWorkflowsPanel, { props: { settings: defaultGeneralSettings, updateSettings }, global: { components: { ElInput, ElSwitch } } });
   try {
-    expect(wrapper.findAll('h3').map(heading => heading.text())).toStrictEqual(['Collaboration', 'Plan mode', 'Delegation', 'Code review']);
+    expect(wrapper.findAll('h3').map(heading => heading.text())).toStrictEqual(['Collaboration', 'Plan mode', 'Delegation', 'Code review', 'Missions']);
     const toggle = wrapper.get('[role="switch"][aria-label="Use interactive plans"]');
     expect(toggle.attributes('aria-checked')).toBe('true');
     await toggle.trigger('click');
@@ -30,5 +30,16 @@ it('orders workflow sections and saves plan and review preferences independently
     await vi.advanceTimersByTimeAsync(600);
     await flushPromises();
     expect(updateSettings).toHaveBeenLastCalledWith({ general: { codeReviewInstructions: '' } });
+    const mission = wrapper.get('textarea[aria-label="Mission instructions"]');
+    await mission.setValue('Keep tickets small.\nInclude acceptance criteria.');
+    await vi.advanceTimersByTimeAsync(600);
+    await flushPromises();
+    expect(updateSettings).toHaveBeenLastCalledWith({ general: { missionInstructions: 'Keep tickets small.\nInclude acceptance criteria.' } });
+    await wrapper.setProps({ settings: { ...defaultGeneralSettings, missionInstructions: 'Keep tickets small.\nInclude acceptance criteria.' } });
+    expect((mission.element as HTMLTextAreaElement).value).toBe('Keep tickets small.\nInclude acceptance criteria.');
+    await mission.setValue('');
+    await vi.advanceTimersByTimeAsync(600);
+    await flushPromises();
+    expect(updateSettings).toHaveBeenLastCalledWith({ general: { missionInstructions: '' } });
   } finally { wrapper.unmount(); }
 });

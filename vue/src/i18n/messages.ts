@@ -768,6 +768,12 @@ export const messages = {
       description: 'Applied to every review agent, in addition to instructions for an individual review.',
       placeholder: 'e.g. Focus on security and backward compatibility',
     },
+    missionSettings: {
+      title: 'Missions',
+      instructions: 'Mission instructions',
+      description: 'Included in the Mission lead’s first prompt for every new Mission.',
+      placeholder: 'e.g. Keep tickets small and define clear acceptance criteria',
+    },
     delegation: {
       title: 'Delegation',
       startingContext: 'Starting context',

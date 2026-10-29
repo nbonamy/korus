@@ -514,6 +514,7 @@ export type AppGeneralSettings = {
   /** Last model selection made in a chat, per provider; seeds new agents. */
   providerModelDefaults?: Partial<Record<AgentBackend, ExecutionSelection>>;
   codeReviewInstructions?: string;
+  missionInstructions?: string;
   codeReviewDefaults?: import('./code-review').CodeReviewPreferences;
   /** Last explicitly selected approval mode; seeds new chats without changing existing ones. */
   providerApprovalDefaults?: { codex?: ApprovalPreset; claude?: string; antigravity?: string };
