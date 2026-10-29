@@ -23,6 +23,7 @@
       v-else
       class="app-menu--embedded app-menu-button__menu"
       :class="{ 'app-menu-button__menu--submenus-left': placement.endsWith('-end') }"
+      :style="maxHeight ? { maxHeight, overflowY: 'auto' } : undefined"
       :ariaLabel="ariaLabel"
       :items="items"
       @select="select"
@@ -47,12 +48,14 @@ withDefaults(defineProps<{
   heading?: string;
   placement?: 'bottom-start' | 'bottom-end' | 'top-start' | 'top-end' | 'right-start' | 'right-end';
   width?: number;
+  /** Bound long menus while keeping every action reachable by scrolling. */
+  maxHeight?: string;
   /** Let the trigger fill its container instead of sizing to its content. */
   block?: boolean;
   /** Shown instead of the items while they load or when loading failed. */
   message?: string;
   messageTone?: 'default' | 'error';
-}>(), { heading: undefined, placement: 'bottom-end', width: 220, block: false, message: undefined, messageTone: 'default' });
+}>(), { heading: undefined, placement: 'bottom-end', width: 220, maxHeight: undefined, block: false, message: undefined, messageTone: 'default' });
 
 const emit = defineEmits<{ select: [itemId: string] }>();
 const open = defineModel<boolean>('open', { default: false });

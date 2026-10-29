@@ -56,12 +56,10 @@ describe('AgentSidebar interactions', () => {
     }]]);
   });
 
-  it('hides cross-location move targets from the context menu submenu', async () => {
+  it('offers every other team as a move target for a local agent', async () => {
     const remoteTeam: Team = {
       id: 'team-remote',
       name: 'Remote Core',
-      remoteConnectionId: 'connection-devbox',
-      remoteTeamId: 'team-remote-upstream',
       agentIds: [],
     };
     const wrapper = mount(AgentSidebar, {
@@ -82,7 +80,7 @@ describe('AgentSidebar interactions', () => {
     });
 
     expect(portaledMenuItems().some((item) => item.textContent?.trim() === 'Skwad')).toBe(true);
-    expect(portaledMenuItems().some((item) => item.textContent?.trim() === 'Remote Core')).toBe(false);
+    expect(portaledMenuItems().some((item) => item.textContent?.trim() === 'Remote Core')).toBe(true);
   });
 
   it('hides all move targets for remote agents', async () => {
@@ -90,6 +88,7 @@ describe('AgentSidebar interactions', () => {
       ...agents[0],
       id: 'agent-remote',
       teamId: 'team-remote',
+      remoteConnectionId: 'connection-devbox',
     };
     const wrapper = mount(AgentSidebar, {
       props: {
@@ -100,8 +99,6 @@ describe('AgentSidebar interactions', () => {
           {
             id: 'team-remote',
             name: 'Remote Core',
-            remoteConnectionId: 'connection-devbox',
-            remoteTeamId: 'team-remote-upstream',
             agentIds: ['agent-remote'],
           },
         ],

@@ -52,6 +52,7 @@ describe('AgentHeader', () => {
     await flushPromises();
     const share = wrapper.get('[aria-label="Share"]');
     expect(wrapper.get('[aria-label="Agent actions"]').element.compareDocumentPosition(share.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(share.element.compareDocumentPosition(wrapper.get('[aria-label="Run profiles"]').element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await share.trigger('click');
     expect(wrapper.emitted('share')).toStrictEqual([[]]);
     await wrapper.get('[aria-label="Agent actions"]').trigger('click');
@@ -740,6 +741,7 @@ describe('AgentHeader', () => {
     const activity = wrapper.get('.agent-header__activity');
     expect([...activity.element.children].map((child) => child.className)).toStrictEqual([
       'app-menu-button',
+      'run-profiles-control',
       'git-diff-control agent-header__git-status',
       'git-workflow-control agent-header__git-actions',
       'open-in-control agent-header__open-in',

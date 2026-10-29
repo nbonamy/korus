@@ -12,9 +12,9 @@ function mergeReportFixture(provider: 'github' | 'gitlab' = 'github') {
   const source: Agent = { ...snapshot.agents[0]!, id: 'source', folder: '/repo-feature', status: { type: 'idle' },
     workspace: { kind: 'git', folder: '/repo-feature', repositoryName: 'repo', repositoryRoot: '/repo-feature',
       primaryWorktreeRoot: '/repo', branch: 'feature', isLinkedWorktree: true, updatedAt: '' } };
-  snapshot.teams.push({ id: 'remote-team', name: 'Remote', agentIds: ['remote'], remoteConnectionId: 'ssh' });
+  snapshot.teams.push({ id: 'remote-team', name: 'Remote', agentIds: ['remote'] });
   snapshot.agents = [source, { ...source, id: 'recipient', folder: '/repo' }, { ...source, id: 'moved' },
-    { ...source, id: 'remote', teamId: 'remote-team' },
+    { ...source, id: 'remote', teamId: 'remote-team', remoteConnectionId: 'ssh' },
     { ...source, id: 'other-repo', workspace: { ...source.workspace!, primaryWorktreeRoot: '/other' } } as Agent];
   const sendPrompt = vi.fn();
   const sendMessage = vi.fn();
@@ -322,10 +322,10 @@ describe('AgentGitWorkflowService', () => {
     const child = { ...source, id: 'child', folder: `${root}/packages/core` };
     const other = { ...source, id: 'other', folder: '/repo-feature-other' };
     const main = { ...source, id: 'main', folder: '/repo' };
-    const remote = { ...peer, id: 'remote', teamId: 'remote-team' };
+    const remote = { ...peer, id: 'remote', teamId: 'remote-team', remoteConnectionId: 'ssh' };
     snapshot.agents = [source, peer, child, other, main, remote];
     snapshot.teams[0]!.agentIds = snapshot.agents.filter(a => a !== remote).map(a => a.id);
-    snapshot.teams.push({ id: 'remote-team', name: 'Remote', agentIds: [remote.id], remoteConnectionId: 'ssh' });
+    snapshot.teams.push({ id: 'remote-team', name: 'Remote', agentIds: [remote.id] });
     let finish!: () => void;
     const cleanup = new Promise<void>(resolve => { finish = resolve; });
     const releaseConversation = vi.fn(async (_agent: Agent) => { await cleanup; if (providerFailure) throw Error('Provider unavailable'); });

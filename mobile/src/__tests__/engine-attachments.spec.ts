@@ -11,7 +11,7 @@ function fixture(remote = false) {
     const session = await connect(id);
     return { ...session, sendPrompt, commandStatus, getWorkspace: async () => {
       const workspace = await session.getWorkspace();
-      return remote ? { ...workspace, teams: workspace.teams.map((team) => ({ ...team, remoteConnectionId: 'nested-host' })) } : workspace;
+      return remote ? { ...workspace, agents: workspace.agents.map((agent) => ({ ...agent, remoteConnectionId: 'nested-host' })) } : workspace;
     } };
   };
   const engine = createEngine({ connector, post: (event) => events.push(event) });
@@ -87,7 +87,7 @@ describe('native attachment submission', () => {
     } finally { f.engine.dispose(); }
   });
 
-  it('keeps nested remote teams text-only until their host supports trusted file transfer', async () => {
+  it('keeps remote agents text-only until their host supports trusted file transfer', async () => {
     const f = fixture(true);
     try {
       await f.open();

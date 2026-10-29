@@ -90,7 +90,7 @@ export function commandPaletteActions(context: Context, actions: Actions): Comma
   );
   addShortcut('newTeam', 'team', !context.connected ? translate('commands.disconnected') : undefined);
   if (context.team) result.push({ id: 'newAgent', section: 'agent', label: translate('commands.newAgent'), aliases: 'create teammate', scope: context.team.id, disabledReason: disconnected ?? (!context.canCreateAgent ? translate('commands.engineUnavailable') : undefined), run: actions.newAgent });
-  if (context.shortcuts.workspace && context.team && (context.shortcuts.teamCount > 1 || context.team.remoteConnectionId)) addShortcut('closeTeam', 'team', disconnected, context.team.id);
+  if (context.shortcuts.workspace && context.team && context.shortcuts.teamCount > 1) addShortcut('closeTeam', 'team', disconnected, context.team.id);
   if (!context.shortcuts.workspace || !context.agent) return groupedActions(result);
   // Keep the existing agent-menu sequence.
   for (const id of ['edit', 'duplicate']) addShortcut(id, 'agent', disconnected, agentScope);

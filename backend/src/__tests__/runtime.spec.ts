@@ -69,6 +69,7 @@ const mocks = vi.hoisted(() => ({
   uploadOpen: vi.fn(), uploadStart: vi.fn(), uploadClose: vi.fn(), uploadActivity: vi.fn(),
   uploadConsentChanged: vi.fn(), uploadSealedReport: vi.fn(),
   telemetryWriteFailure: false,
+  remoteCollaborationCall: vi.fn(),
   missionDeveloperInstructions: vi.fn(),
   createDefaultBackendDrivers: vi.fn(),
   createBackendDriver: vi.fn(),
@@ -201,6 +202,7 @@ vi.mock('../server', () => ({
     emitEvent = mocks.serverEmitEvent;
     close = mocks.serverClose;
     missionDeveloperInstructions = mocks.missionDeveloperInstructions;
+    handleRemoteCollaborationCall = mocks.remoteCollaborationCall;
   },
 }));
 
@@ -280,7 +282,7 @@ type WorkIntegrationOptions = {
 };
 
 type RemoteOptions = {
-  requestHandlers: Record<string, (params: unknown) => Promise<unknown>>;
+  requestHandlers: Record<string, (params: unknown, connectionId: string) => Promise<unknown>>;
 };
 
 describe('daemon runtime', () => {
@@ -507,7 +509,14 @@ describe('daemon runtime', () => {
 
     const remote = mocks.remoteOptions[0] as RemoteOptions;
     for (const [method, handler] of Object.entries(remote.requestHandlers)) {
-      await handler({ request: method });
+      if (method === backendMethods.clientCollaborationCall) {
+        mocks.remoteCollaborationCall.mockResolvedValue({ content: [] });
+        const input = { ownerId: 'controller', agentId: 'worker', name: 'list-agents', arguments: {} };
+        expect(await handler(input, 'host-one')).toStrictEqual({ ownerId: 'controller', result: { content: [] } });
+        expect(mocks.remoteCollaborationCall).toHaveBeenCalledExactlyOnceWith('host-one', input);
+        continue;
+      }
+      await handler({ request: method }, 'host-one');
       expect(requestClient).toHaveBeenCalledWith(method, { request: method });
     }
 

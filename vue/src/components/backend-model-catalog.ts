@@ -3,7 +3,8 @@ import type { AgentBackend, BackendModelOption } from '@workspace/core/contracts
 import { appApi } from '../platform-api';
 
 type BackendModelCatalog = {
-  listModels: (agentId: string, backend: AgentBackend) => Promise<BackendModelOption[]>;
+  /** Without an agent id the catalog is the host's own: the local one, or that remote connection's. */
+  listModels: (agentId: string | null, backend: AgentBackend, remoteConnectionId?: string) => Promise<BackendModelOption[]>;
 };
 
 export const backendModelCatalogKey: InjectionKey<BackendModelCatalog> = Symbol('backendModelCatalog');
@@ -11,7 +12,7 @@ export const backendModelCatalogKey: InjectionKey<BackendModelCatalog> = Symbol(
 /** Model catalogs are read through an agent because its host decides which models exist. */
 export function useBackendModelCatalog(): BackendModelCatalog {
   return inject(backendModelCatalogKey, {
-    listModels: async (agentId, backend) => await appApi?.listBackendModels(agentId, backend) ?? [],
+    listModels: async (agentId, backend, remoteConnectionId) => await appApi?.listBackendModels(agentId, backend, remoteConnectionId) ?? [],
   });
 }
 

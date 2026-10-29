@@ -78,7 +78,7 @@ describe('AppController', () => {
     const options = (controller as unknown as {
       debugMenuOptions(): {
         injectDebugCodeReview(scenario: 'reviewing' | 'ready' | 'fixing'): void;
-        setDebugThreadFlag(id: 'delegate_to_worktree' | 'ready_for_review', value: boolean): void;
+        setDebugThreadFlag(id: 'work_proposed' | 'ready_for_review', value: boolean): void;
       };
     }).debugMenuOptions();
 

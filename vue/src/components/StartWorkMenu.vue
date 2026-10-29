@@ -1,6 +1,6 @@
 <template>
   <AppMenuButton
-    block
+    :block="!$slots.trigger"
     placement="bottom-start"
     :width="240"
     :heading="t('startWork.addProjectFrom')"
@@ -9,15 +9,17 @@
     @select="select"
   >
     <template #trigger="{ attrs }">
-      <button
-        v-bind="attrs"
-        class="start-work-menu__trigger"
-        type="button"
-        :aria-label="t('startWork.addProject')"
-      >
-        <FoldersIcon data-icon="folders" aria-hidden="true" />
-        <span>{{ t('startWork.addProject') }}</span>
-      </button>
+      <slot name="trigger" :attrs="attrs">
+        <button
+          v-bind="attrs"
+          class="start-work-menu__trigger"
+          type="button"
+          :aria-label="t('startWork.addProject')"
+        >
+          <FoldersIcon data-icon="folders" aria-hidden="true" />
+          <span>{{ t('startWork.addProject') }}</span>
+        </button>
+      </slot>
     </template>
   </AppMenuButton>
 </template>

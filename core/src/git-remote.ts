@@ -30,6 +30,24 @@ export function sanitizeGitRemoteUrl(value: string): string | undefined {
   }
 }
 
+/**
+ * A URL that can be cloned from a persisted remote. Persistence strips the user of SSH addresses, but Git
+ * hosts expect the conventional `git` user, so `github.com:org/repo.git` cannot be cloned as stored.
+ */
+export function cloneUrlForRemote(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed || !canonicalGitRemoteIdentity(trimmed)) return undefined;
+  if (/^[^/:\s]+@[^/:\s]+:/u.test(trimmed) && !trimmed.includes('://')) return trimmed;
+  if (!trimmed.includes('://')) return `git@${trimmed}`;
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol === 'ssh:' && !url.username) url.username = 'git';
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
 export function canonicalGitRemoteIdentity(value: string): string | undefined {
   const trimmed = value.trim();
   if (!trimmed) return undefined;

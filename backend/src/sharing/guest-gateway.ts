@@ -19,11 +19,11 @@ import { sendWithBackpressure } from '../companion/stream-io';
 import { UpdateStreamWriter } from '../companion/update-writer';
 
 export type GuestConversationPort = {
-  propose?(handle: string, identity: string, name: string, input: { id: string; text: string }): Promise<import('@workspace/core/conversation-sharing').GuestProposal>;
+  propose?(handle: string, identity: string, name: string, input: import('@workspace/core/conversation-sharing').GuestPromptInput): Promise<import('@workspace/core/conversation-sharing').GuestProposal>;
   proposals?(handle: string, identity: string): Promise<import('@workspace/core/conversation-sharing').GuestProposalState>;
   withdraw?(handle: string, identity: string, proposalId: string): Promise<void>;
   authorize(handle: string, credential: string): Promise<GuestConversationGrant>;
-  connected(handle: string, count: number): void;
+  connected(handle: string, count: number, guests?: import('@workspace/core/guest-conversation').GuestParticipant[]): void;
   onEvent(listener: (event: AppBackendEvent) => void): () => void;
   synchronize(agentId: string, checkpoint: CompanionCheckpoint | null): Promise<CompanionSync>;
   conversation(agentId: string): Promise<CompanionReset>;
@@ -55,7 +55,7 @@ function bound(frame: ProviderConversationFrame, target: ConversationShareTarget
 /** One encrypted stream, one bearer grant, one immutable target. No generic RPC or phone grant. */
 export class GuestConversationGateway {
   private readonly streams = new Set<Stream>();
-  private readonly sessions = new Map<Stream, { handle: string; close(): void }>();
+  private readonly sessions = new Map<Stream, { handle: string; identity: string; name: string; discriminator: string; close(): void }>();
   private readonly requests = new WindowBudget(120, 60_000, 1024);
   private readonly admissions = new WindowBudget(20, 60_000, 1024);
   constructor(private readonly port: GuestConversationPort) {}
@@ -115,7 +115,7 @@ export class GuestConversationGateway {
             if (closed || !candidate.valid()) throw new Error('denied');
             const count = [...this.sessions.values()].filter(session => session.handle === input.handle).length;
             if (count >= guestConversationLimit || this.sessions.size >= guestOwnerLimit) { await reply({ v: 1, id: request.id, error: 'busy' }); continue; }
-            grant = candidate; handle = input.handle; guestName = input.name; this.sessions.set(stream, { handle, close }); this.count(handle);
+            grant = candidate; handle = input.handle; guestName = input.name; this.sessions.set(stream, { handle, identity: peer, name: guestName, discriminator: createHash('sha256').update(peer).digest('hex').slice(0, 8), close }); this.count(handle);
             unRevoke = grant.onRevoke(() => {
               // Clear authorization and queued provider work before sending the terminal notice.
               close(false);
@@ -142,7 +142,7 @@ export class GuestConversationGateway {
             assert(); const target = grant!.target;
             switch (request.method) {
               case 'guest.propose': {
-                const input = z.object({ id: z.string().uuid(), text: z.string().min(1).max(100_000) }).strict().parse(request.args);
+                const input = z.object({ id: z.string().uuid(), text: z.string().min(1).max(100_000), followUpBehavior: z.enum(['queue', 'steer']).optional() }).strict().parse(request.args);
                 if (!this.port.propose) throw new Error('denied');
                 result = await this.port.propose(handle, peer, guestName, input); break;
               }
@@ -203,5 +203,9 @@ export class GuestConversationGateway {
     } catch { /* Never log request values, credentials, links or provider failures. */ }
     finally { close(); stream.removeEventListener('close', ended); }
   }
-  private count(handle: string) { this.port.connected(handle, [...this.sessions.values()].filter(session => session.handle === handle).length); }
+  private count(handle: string) {
+    const sessions = [...this.sessions.values()].filter(session => session.handle === handle);
+    const guests = [...new Map(sessions.map(({ identity, name, discriminator }) => [identity, { identity, name, discriminator }])).values()];
+    this.port.connected(handle, guests.length, guests);
+  }
 }

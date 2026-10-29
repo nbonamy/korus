@@ -274,3 +274,24 @@ it("reads a day's stacked contributions and total from the tooltip on keyboard f
   expect(wrapper.find(".chart-tooltip").exists()).toBe(false);
   wrapper.unmount();
 });
+
+it("keeps cost areas continuous through inactive model days without inventing unavailable costs", async () => {
+  const cost = (usd: number | null) => ({ usd, coverage: usd === null ? "unavailable" as const : "complete" as const, requests: 1, unknownRequestExecutions: 0, pricedRequests: usd === null ? 0 : 1, unpricedRequests: usd === null ? 1 : 0, reasons: [] });
+  const group = (label: string, usd: number | null) => ({ label, started: 1, measuredTurns: 0, tokens: null, cost: cost(usd) });
+  const days = ["2026-10-27", "2026-10-28", "2026-10-29"];
+  const daily = days.map((day, index) => ({ day, started: 1, measuredTurns: 0, tokens: null, cost: cost(index === 1 ? 12 : 5), groups: [group("steady", index === 1 ? 10 : 5), ...(index === 1 ? [group("occasional", 2), group("unknown", null)] : [])] }));
+  const wrapper = mount(UsageTrend, { props: {
+    from: days[0]!, to: days[2]!, measure: "cost",
+    series: ["steady", "occasional", "unknown"].map((key, index) => ({ key, label: key, color: ["blue", "orange", "gray"][index]!, value: index === 2 ? null : 20, turns: 1, tokens: null })),
+    daily,
+  } });
+  try {
+    // The occasional model is a continuous band, including zero-cost inactive days.
+    for (const day of [days[0], days[2]]) {
+      expect(wrapper.find(`[aria-label="${day} · occasional: $0.00"]`).exists()).toBe(true);
+    }
+    expect(wrapper.find(`[aria-label="${days[1]} · unknown: $0.00"]`).exists()).toBe(false);
+    await wrapper.setProps({ daily: daily.map(row => ({ ...row, cost: cost(null) })) });
+    expect(wrapper.find(`[aria-label="${days[0]} · occasional: $0.00"]`).exists()).toBe(false);
+  } finally { wrapper.unmount(); }
+});

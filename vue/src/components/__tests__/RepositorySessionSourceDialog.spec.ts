@@ -8,6 +8,7 @@ import '../../styles/base.css';
 import RepositorySessionSourceDialog from '../RepositorySessionSourceDialog.vue';
 import { createClientApiMock } from '../../test/client-api-mock';
 import { appApi, configureAppClient } from '../../platform-api';
+import { backendSnapshotKey } from '../backend-selection';
 
 const branches: SourceBranch[] = [
   { name: 'main', isDefault: true, worktreePath: '/repos/project' },
@@ -31,6 +32,33 @@ const issue: WorkItem = {
 };
 
 describe('RepositorySessionSourceDialog', () => {
+  // Host changes must govern both provider choices and catalog identity, even
+  // before the chosen machine has an agent that could supply a catalog.
+  it('starts repository work with the selected remote provider and host catalog', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const remote = { id: 'claude-box', kind: 'ssh' as const, host: 'box', name: 'Box', status: 'ready' as const, createdAt: '', updatedAt: '',
+      providerConnections: [{ backend: 'claude' as const, installed: true, connected: true, checking: false }] };
+    snapshot.remoteConnections.connections = [remote];
+    const { api } = createClientApiMock();
+    api.listBackendModels.mockResolvedValue([{ id: 'remote-sonnet', model: 'sonnet', displayName: 'Remote Sonnet', isDefault: true }]);
+    configureAppClient({ platform: 'desktop', api });
+    const wrapper = mount(RepositorySessionSourceDialog, {
+      props: { visible: true, repositoryName: 'repo', selectedRepositoryId: issue.sourceId, branches, workItems: [issue], backend: 'claude', hosts: [remote], hostId: remote.id },
+      global: { provide: { [backendSnapshotKey as symbol]: () => snapshot } },
+    });
+    await flushPromises();
+    await wrapper.findAll('[role="tab"]')[1]!.trigger('click');
+    // Exercise the shared assignment UI with a PR so it needs no backlog fetch.
+    await wrapper.setProps({ workItems: [{ ...issue, kind: 'pullRequest', branchName: 'feature' }] });
+    await wrapper.get('.repository-session-source-dialog__result').trigger('click');
+    await flushPromises();
+    expect(api.listBackendModels).toHaveBeenLastCalledWith(null, 'claude', remote.id);
+    expect(wrapper.text()).toContain('Remote Sonnet');
+    await wrapper.get('.work-item-assignment-picker .app-button--primary').trigger('click');
+    expect(wrapper.emitted('start-work-item')?.[0]?.[0]).toMatchObject({ selection: { backend: 'claude', model: 'sonnet' } });
+    wrapper.unmount();
+  });
   beforeEach(() => {
     const { api } = createClientApiMock();
     api.listWorkSources.mockResolvedValue([{ provider: 'github', id: issue.sourceId, name: 'agent-workspace', fullName: issue.sourceName, url: 'https://github.com/nbonamy/agent-workspace' }]);

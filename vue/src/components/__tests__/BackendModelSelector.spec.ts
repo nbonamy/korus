@@ -54,32 +54,42 @@ describe('BackendModelSelector', () => {
     expect(wrapper.props('selection')?.reasoningEffort).toBe('high');
   });
 
-  it('can be dropped in with only a team: it finds an agent on the team host to read the catalog from', async () => {
+  it('can be dropped in with only a host: it finds an agent on that host to read the catalog from', async () => {
     const snapshot = createEmptySnapshot();
     snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
-    snapshot.teams.push(
-      { id: 'local-team', name: 'Local', agentIds: [] },
-      { id: 'remote-team', name: 'Remote', agentIds: [], remoteConnectionId: 'box' },
-      { id: 'remote-empty', name: 'Remote empty', agentIds: [], remoteConnectionId: 'box' },
-    );
     snapshot.remoteConnections.connections = [{ id: 'box', kind: 'ssh', host: 'box', name: 'Box', status: 'ready', createdAt: '', updatedAt: '', providerConnections: structuredClone(snapshot.providerConnections) }] as never;
     snapshot.agents.push(...[
-      { id: 'local-agent', teamId: 'local-team' },
-      { id: 'remote-agent', teamId: 'remote-team' },
+      { id: 'local-agent' },
+      { id: 'remote-agent', remoteConnectionId: 'box' },
     ] as never[]);
     const listModels = vi.fn().mockResolvedValue([]);
-    const mountFor = (teamId: string) => mount(defineComponent({
+    const mountFor = (remoteConnectionId?: string) => mount(defineComponent({
       setup() {
         provideBackendChoices(() => snapshot);
-        return () => h(BackendModelSelector, { teamId, selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } });
+        return () => h(BackendModelSelector, { remoteConnectionId, selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } });
       },
     }), { global: { provide: { [backendModelCatalogKey as symbol]: { listModels } } } });
-    mountFor('local-team');
+    mountFor();
     await flushPromises();
     expect(listModels).toHaveBeenLastCalledWith('local-agent', 'codex');
-    mountFor('remote-empty');
+    mountFor('box');
     await flushPromises();
     expect(listModels).toHaveBeenLastCalledWith('remote-agent', 'codex');
+  });
+
+  it('reads the catalog of a host that has no agent yet from the host itself', async () => {
+    const snapshot = createEmptySnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.remoteConnections.connections = [{ id: 'box', kind: 'ssh', host: 'box', name: 'Box', status: 'ready', createdAt: '', updatedAt: '', providerConnections: structuredClone(snapshot.providerConnections) }] as never;
+    const listModels = vi.fn().mockResolvedValue([]);
+    mount(defineComponent({
+      setup() {
+        provideBackendChoices(() => snapshot);
+        return () => h(BackendModelSelector, { remoteConnectionId: 'box', selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } });
+      },
+    }), { global: { provide: { [backendModelCatalogKey as symbol]: { listModels } } } });
+    await flushPromises();
+    expect(listModels).toHaveBeenLastCalledWith(null, 'codex', 'box');
   });
 
   it('picks model and reasoning effort together from a cascading menu', async () => {

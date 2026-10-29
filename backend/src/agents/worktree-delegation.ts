@@ -9,6 +9,13 @@ const delegationInstructions = [
 
 export const WORKTREE_DELEGATION_PROMPT = `Delegate this task to a new agent in a dedicated worktree.\n\n<context>\n${delegationInstructions}\n</context>`;
 
+/** Explicit acceptance of the composer proposal; generic /delegate retains its original scope. */
+export const PROPOSED_WORK_DELEGATION_PROMPT = `${WORKTREE_DELEGATION_PROMPT}
+
+<context>
+The user accepts the proposed work discussed in this conversation and requests its implementation by a new agent in a dedicated worktree. Give the worker a self-contained brief with the goal, decisions, constraints and success criteria. Preserve explicit user scope and publication boundaries. Keep commits local; no push or merge is authorized.
+</context>`;
+
 export function expandWorktreeDelegationCommand(prompt: string, overrides?: DelegationOverrides): string | null {
   const match = /^\/(?:delegate|worktree)(?:\s+([\s\S]*))?$/.exec(prompt.trim());
   if (!match) return null;

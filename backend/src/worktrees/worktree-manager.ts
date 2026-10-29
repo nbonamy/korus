@@ -4,6 +4,7 @@ import { access, copyFile, mkdir, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { SourceWorktree, WorktreeInitializationMode } from '@workspace/core/contracts';
+import type { WorktreeInitializationState } from '@workspace/core/worktree-initialization';
 import {
   createGitWorktree,
   type GitWorktreeCreateInput,
@@ -33,7 +34,7 @@ export type WorktreeInitializationProgress =
 export type PreparedWorktree = {
   worktree: SourceWorktree;
   created: boolean;
-  initialization: {
+  initialization?: {
     source: WorktreeInitializationSource;
     commands: string[];
     copiedFiles: string[];
@@ -41,6 +42,7 @@ export type PreparedWorktree = {
 };
 
 export type WorktreeManagerOptions = {
+  onInitializationChanged?: (folder: string, state: WorktreeInitializationState) => void;
   createGitWorktree?: typeof createGitWorktree;
   getInitializationMode?: () => WorktreeInitializationMode;
   listSourceBranches?: typeof listSourceBranches;
@@ -49,6 +51,7 @@ export type WorktreeManagerOptions = {
 };
 
 export type WorktreeCreateOptions = {
+  backgroundInitialization?: boolean;
   /** Transfers must never copy environment files or run repository setup implicitly. */
   skipInitialization?: boolean;
   onInitializationProgress?: (progress: WorktreeInitializationProgress) => void;
@@ -68,7 +71,7 @@ type WorktreeInitializationPlan = {
 type WorktreeCommandRunner = (
   command: string,
   args: string[],
-  options: { cwd: string; env: NodeJS.ProcessEnv },
+  options: { cwd: string; env: NodeJS.ProcessEnv; signal?: AbortSignal },
 ) => Promise<{ stdout?: string; stderr?: string }>;
 
 const defaultCommandRunner: WorktreeCommandRunner = (command, args, options) => execFileAsync(command, args, {
@@ -83,6 +86,9 @@ export class WorktreeManager {
   private readonly listSourceBranches: typeof listSourceBranches;
   private readonly platform: NodeJS.Platform;
   private readonly runCommand: WorktreeCommandRunner;
+  private readonly onInitializationChanged?: WorktreeManagerOptions['onInitializationChanged'];
+  private readonly initializationStates = new Map<string, WorktreeInitializationState>();
+  private readonly initializationJobs = new Map<string, { controller: AbortController; completion: Promise<void> }>();
 
   constructor(options: WorktreeManagerOptions = {}) {
     this.createGitWorktree = options.createGitWorktree ?? createGitWorktree;
@@ -90,6 +96,7 @@ export class WorktreeManager {
     this.listSourceBranches = options.listSourceBranches ?? listSourceBranches;
     this.platform = options.platform ?? process.platform;
     this.runCommand = options.runCommand ?? defaultCommandRunner;
+    this.onInitializationChanged = options.onInitializationChanged;
   }
 
   async create(input: GitWorktreeCreateInput, options: WorktreeCreateOptions = {}): Promise<PreparedWorktree> {
@@ -101,6 +108,24 @@ export class WorktreeManager {
       };
     }
 
+    if (options.backgroundInitialization) {
+      const folder = path.resolve(created.worktree.path);
+      const controller = new AbortController();
+      this.updateInitialization(folder, { state: 'running' });
+      const completion = this.initialize(input.repoPath, created.worktree.path, progress => {
+        options.onInitializationProgress?.(progress);
+        this.updateInitialization(folder, progress.phase === 'complete' ? { state: 'complete' }
+          : { state: 'running', ...(progress.phase === 'running' ? { command: progress.command } : {}) });
+      }, controller.signal).then(() => undefined, error => {
+        this.updateInitialization(folder, {
+          state: 'error',
+          ...(this.initializationStates.get(folder)?.command ? { command: this.initializationStates.get(folder)!.command } : {}),
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }).finally(() => { this.initializationJobs.delete(folder); });
+      this.initializationJobs.set(folder, { controller, completion });
+      return created;
+    }
     const initialization = await this.initialize(
       input.repoPath,
       created.worktree.path,
@@ -109,10 +134,43 @@ export class WorktreeManager {
     return { ...created, initialization };
   }
 
+  getInitializationState(folder: string): WorktreeInitializationState | undefined {
+    const state = this.initializationStates.get(path.resolve(folder));
+    return state ? { ...state } : undefined;
+  }
+
+  async waitForInitialization(folder: string, signal?: AbortSignal): Promise<WorktreeInitializationState | undefined> {
+    const key = path.resolve(folder);
+    const completion = this.initializationJobs.get(key)?.completion;
+    if (completion) {
+      await new Promise<void>((resolve, reject) => {
+        const abort = () => reject(new Error('Waiting for worktree initialization was cancelled.'));
+        if (signal?.aborted) return abort();
+        signal?.addEventListener('abort', abort, { once: true });
+        void completion.then(resolve, reject).finally(() => signal?.removeEventListener('abort', abort));
+      });
+    }
+    const state = this.getInitializationState(key);
+    if (state?.state === 'error') throw new Error(state.error ?? 'Worktree initialization failed.');
+    return state;
+  }
+
+  async close(): Promise<void> {
+    const jobs = [...this.initializationJobs.values()];
+    for (const job of jobs) job.controller.abort();
+    await Promise.allSettled(jobs.map(job => job.completion));
+  }
+
+  private updateInitialization(folder: string, state: WorktreeInitializationState): void {
+    this.initializationStates.set(folder, state);
+    this.onInitializationChanged?.(folder, { ...state });
+  }
+
   private async initialize(
     repositoryPath: string,
     worktreePath: string,
     onProgress?: (progress: WorktreeInitializationProgress) => void,
+    signal?: AbortSignal,
   ): Promise<PreparedWorktree['initialization']> {
     const mode = this.getInitializationMode();
     if (mode === 'off') {
@@ -124,7 +182,7 @@ export class WorktreeManager {
     onProgress?.({ phase: 'detecting' });
     const repositoryPlan = await this.repositoryPlan(worktreePath);
     if (repositoryPlan) {
-      return this.runPlan(repositoryPlan, repositoryPath, worktreePath, [], onProgress);
+      return this.runPlan(repositoryPlan, repositoryPath, worktreePath, [], onProgress, signal);
     }
 
     if (mode !== 'automatic') {
@@ -145,7 +203,7 @@ export class WorktreeManager {
       return initialization;
     }
 
-    return this.runPlan(plan, repositoryPath, worktreePath, copiedFiles, onProgress);
+    return this.runPlan(plan, repositoryPath, worktreePath, copiedFiles, onProgress, signal);
   }
 
   private async runPlan(
@@ -154,6 +212,7 @@ export class WorktreeManager {
     worktreePath: string,
     copiedFiles: string[],
     onProgress?: (progress: WorktreeInitializationProgress) => void,
+    signal?: AbortSignal,
   ): Promise<PreparedWorktree['initialization']> {
     const commands = plan.commands.map((command) => command.display);
     const environment = {
@@ -170,7 +229,8 @@ export class WorktreeManager {
         commandIndex: index,
         commandCount: plan.commands.length,
       });
-      await this.runCommand(command.command, command.args, { cwd: worktreePath, env: environment });
+      signal?.throwIfAborted();
+      await this.runCommand(command.command, command.args, { cwd: worktreePath, env: environment, ...(signal ? { signal } : {}) });
     }
 
     const initialization = { source: plan.source, commands, copiedFiles };

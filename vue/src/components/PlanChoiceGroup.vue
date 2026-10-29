@@ -23,17 +23,17 @@
         @update:model-value="confirm($event === true)"
       />
     </div>
-    <button
-      v-if="answer"
-      type="button"
-      class="plan-choice-reset"
-      :aria-label="t('planFeedback.clear')"
-      :title="t('planFeedback.clear')"
-      :disabled="disabled"
-      @click="emit('change', null)"
-    >
-      <ArrowBackUpIcon aria-hidden="true" />
-    </button>
+    <el-tooltip v-if="answer" :content="t('planFeedback.clear')" placement="top" :show-after="300">
+      <button
+        type="button"
+        class="plan-choice-reset"
+        :aria-label="t('planFeedback.clear')"
+        :disabled="disabled"
+        @click="emit('change', null)"
+      >
+        <ArrowBackUpIcon aria-hidden="true" />
+      </button>
+    </el-tooltip>
   </div>
 </template>
 <script setup lang="ts">

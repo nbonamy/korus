@@ -323,7 +323,7 @@ describe('RemoteDaemonClientManager', () => {
     })}\n`);
     await vi.waitFor(() => expect(child.stdinLines()).toHaveLength(2));
 
-    expect(openExternal).toHaveBeenCalledWith({ url: 'https://github.com/login/device?user_code=ABCD-1234' });
+    expect(openExternal).toHaveBeenCalledWith({ url: 'https://github.com/login/device?user_code=ABCD-1234' }, 'connection-devbox');
     expect(JSON.parse(child.stdinLines()[1]!)).toStrictEqual({
       jsonrpc: '2.0',
       id: 'client-1',

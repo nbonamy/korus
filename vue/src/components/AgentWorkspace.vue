@@ -1,6 +1,6 @@
 <template>
   <AgentHeader
-    v-if="(!splitHeaders || rightWorkspaceExpanded) && !isAgentEmpty && currentAgent"
+    v-if="showHeader && (!splitHeaders || rightWorkspaceExpanded) && !isAgentEmpty && currentAgent"
     v-bind="headerBindingsFor(emptySplitPane ? null : currentAgent.id, true, true)"
   />
   <div ref="workspaceBody" class="app-shell__body workspace-body" @dragstart.capture="linkDrag.start">
@@ -10,7 +10,7 @@
       <slot name="layout-control" />
     </div>
     <slot name="conversation" :plan="currentTurnPlan" :plan-visible="executionPlanVisible" :close-plan="closeExecutionPlan" :header-bindings-for="headerBindingsFor">
-    <SharedConversationPane v-if="currentAgent?.sharedConversation && guestView?.id === currentAgent.sharedConversation.joinId && guestControl" :view="guestView" :busy="guestBusy ?? false" :control="guestControl" />
+    <SharedConversationPane v-if="currentAgent?.sharedConversation && guestView?.id === currentAgent.sharedConversation.joinId && guestControl" :view="guestView" :follow-up-behavior="snapshot.general.followUpBehavior" :busy="guestBusy ?? false" :control="guestControl" />
     <ConversationPane
       v-else-if="!currentAgent?.sharedConversation"
       ref="conversationPane"
@@ -64,7 +64,7 @@
       :image-panels="rightWorkspaceFor(agent.id).imagePanels"
       :diff-panels="rightWorkspaceFor(agent.id).diffPanels"
       :tabs="rightWorkspaceFor(agent.id).tabs"
-      :visible="!emptySplitPane && isRightWorkspaceVisible(agent.id) && !isModalDialogVisible"
+      :visible="!emptySplitPane && isRightWorkspaceVisible(agent.id) && !isModalDialogVisible && !runProfileDialogs.size"
       :browser-id="rightWorkspaceFor(agent.id).browserId"
       :browser-initial-url="rightWorkspaceFor(agent.id).browserInitialUrl"
       :browser-open-request-id="rightWorkspaceFor(agent.id).browserOpenRequestId"
@@ -76,7 +76,7 @@
       :open-in-catalog="openInApplications"
       :subagent-tree="subagentTreeFor(agent.id)"
       :load-subagent-messages="(conversationId) => loadSubagentMessages(agent.id, conversationId)"
-      :backlog-location="snapshot.teams.find(team => team.id === agent.teamId)?.remoteConnectionId ? { kind: 'remote', remoteConnectionId: snapshot.teams.find(team => team.id === agent.teamId)!.remoteConnectionId! } : undefined"
+      :backlog-location="agent.remoteConnectionId ? { kind: 'remote', remoteConnectionId: agent.remoteConnectionId } : undefined"
       :github-repository="snapshot.agentGitStatuses[agent.id]?.githubRepository ?? null"
       :work-assignments="snapshot.workBacklog.assignments"
       :clear-repository-work-assignment="(item) => $emit('remove-work-item-assignment', item)"
@@ -102,7 +102,7 @@
       @preview-file="openFilePreviewForAgent(agent.id, $event)"
       @toggle-files-pane="toggleFileExplorer(agent.id)"
       @resize-files-pane="rightWorkspaceFor(agent.id).filesPaneWidth = $event"
-      @open-link="openConversationLink"
+      @open-link="link => props.openConversationLink(agent.id, link)"
       @refresh-git-diff="openAgentGitDiffPreview(agent.id, $event)"
       @clarify-finding="emit('clarifyCodeReviewFinding', { agentId: agent.id, ...$event })"
       @select-tab="selectRightWorkspaceTab(agent.id, $event)"
@@ -149,7 +149,6 @@ import type {
   AutomationLocation,
   BackendConversationRef,
   BackendRuntimeStatus,
-  ConversationFileLink,
   DesktopUpdateStatus,
   OpenInApplication,
   OpenInApplicationCatalog,
@@ -201,7 +200,8 @@ import {
   type RightWorkspaceBrowserTab,
 } from './right-workspace';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
+  showHeader?: boolean;
   guestView?: import('@workspace/core/guest-navigation').GuestJoinView | null;
   guestBusy?: boolean;
   guestControl?: (input: import('@workspace/core/guest-navigation').GuestJoinControl) => Promise<boolean>;
@@ -257,7 +257,7 @@ const props = defineProps<{
   removeChatTextAnnotation: (annotationId: string) => void;
   removeVisualizationAnnotation: (annotationId: string) => void;
   removeCodeAnnotation: (annotationId: string) => void;
-  openFilePreview: (link: ConversationFileLink) => Promise<void>;
+  openConversationLink: (agentId: string, link: CodexConversationLink) => void | Promise<void>;
   openFilePreviewForAgent: (agentId: string, filePath: string) => Promise<void>;
   openInApplications: OpenInApplicationCatalog;
   openRightWorkspaceTab: (tab: RightWorkspaceTab, agentId?: string) => void;
@@ -294,7 +294,7 @@ const props = defineProps<{
   selectVisualization: (agentId: string, input: import('@workspace/core/visualize').SelectVisualizationInput) => Promise<AppSnapshot>;
   deleteVisualization: (agentId: string, input: import('@workspace/core/visualize').DeleteVisualizationInput) => Promise<AppSnapshot>;
   readVisualizationAsset: (agentId: string, visualizationId: string) => Promise<import('@workspace/core/visualize').VisualizationAsset>;
-}>();
+}>(), { showHeader: true });
 
 const agentHeaders = new Map<string, InstanceType<typeof AgentHeader>>();
 
@@ -359,7 +359,7 @@ const {
 const workspaceBody = ref<HTMLElement | null>(null);
 const workspaceBodyWidth = ref<number | null>(null);
 const rightWorkspaceExpanded = computed(() => Boolean(
-  !props.emptySplitPane && props.rightWorkspaceVisible && props.currentAgent && !props.currentAgent.sharedConversation
+  props.showHeader && !props.emptySplitPane && props.rightWorkspaceVisible && props.currentAgent && !props.currentAgent.sharedConversation
   && props.rightWorkspaceFor(props.currentAgent.id).expanded,
 ));
 watch(workspaceBody, (body, _previous, onCleanup) => {
@@ -469,6 +469,8 @@ async function closeWorkspaceTab(agent: Agent, tab: RightWorkspaceTab): Promise<
   props.closeRightWorkspaceTab(agent.id, tab);
 }
 
+const runProfileDialogs = reactive(new Set<string>());
+
 function headerBindingsFor(agentId: string | null, topRight: boolean, topLeft: boolean) {
   const agent = props.snapshot.agents.find(candidate => candidate.id === agentId) ?? null;
   const focused = Boolean(agentId && agentId === props.currentAgent?.id && !props.emptySplitPane);
@@ -503,6 +505,10 @@ function headerBindingsFor(agentId: string | null, topRight: boolean, topLeft: b
     updateStatus: topRight && appHostCapabilities.appUpdates ? props.updateStatus : undefined,
     executionPlanAvailable: focused && Boolean(currentTurnPlan.value),
     executionPlanOpen: focused && executionPlanVisible.value,
+    runHostLabel: props.snapshot.remoteConnections.connections.find(connection => connection.id === agent?.remoteConnectionId)?.name ?? translate('runProfiles.localHost'),
+    runPreviewAvailable: Boolean(agent && isLocalAgent(agent) && appHostCapabilities.embeddedBrowser),
+    onRunProfilesVisible: (visible: boolean) => { if (agentId) { if (visible) runProfileDialogs.add(agentId); else runProfileDialogs.delete(agentId); } },
+    onRunPreview: (url: string) => agentId && openRequestedBrowser(agentId, { type: 'open-browser', url }),
     shareAvailable: Boolean(agent && supportsConversationSharing(agent) && isLocalAgent(agent)),
     shareStatusOnMount: props.splitHeaders,
     onShare: () => agentId && emit('share-agent', agentId),
@@ -555,10 +561,6 @@ function openRightWorkspaceTab(tab: RightWorkspaceTab, agentId?: string): void {
 
 function readConversationMessages(ref: BackendConversationRef, agentId: string): Promise<RendererMessage[]> {
   return props.readConversationMessages(ref, agentId);
-}
-
-function openFilePreview(link: ConversationFileLink): Promise<void> {
-  return props.openFilePreview(link);
 }
 
 function updateBrowserUrl(agentId: string, tab: 'browser' | RightWorkspaceBrowserTab, url: string): void {
@@ -624,27 +626,6 @@ function openConversationImage(image: CodexMessageImage, context?: CodexMessageI
   };
   openRightWorkspaceTab(tab, agent.id);
   return true;
-}
-
-function openConversationLink(link: CodexConversationLink): void | Promise<void> {
-  if (link.kind === 'external') {
-    window.open(link.href, '_blank', 'noopener,noreferrer');
-    return;
-  }
-  const context = link as CodexConversationLink &
-    Partial<Pick<ConversationFileLink, 'turnId' | 'messageId' | 'itemId'>>;
-  return openFilePreview({
-    kind: 'file',
-    href: link.href,
-    path: link.path,
-    ...(link.filepath ? { filepath: link.filepath } : {}),
-    ...(link.action ? { action: link.action } : {}),
-    ...(link.line === undefined ? {} : { line: link.line }),
-    ...(link.column === undefined ? {} : { column: link.column }),
-    ...(context.turnId ? { turnId: context.turnId } : {}),
-    ...(context.messageId ? { messageId: context.messageId } : {}),
-    ...(context.itemId ? { itemId: context.itemId } : {}),
-  });
 }
 
 const linkDrag = useWorkspaceLinkDrag({
@@ -762,8 +743,7 @@ function openRepositoryBacklog(agentId: string): void {
 }
 
 function isLocalAgent(agent: Agent): boolean {
-  const team = props.snapshot.teams.find((candidate) => candidate.id === agent.teamId);
-  return !team?.remoteConnectionId;
+  return !agent.remoteConnectionId;
 }
 
 function attachVisualizationAnnotation(annotation: VisualizationAnnotationInput): void {
@@ -798,7 +778,6 @@ defineExpose({
   openSavedDraftPicker,
   saveCurrentDraft,
   handleBrowserOpenCommand,
-  openConversationLink,
   openConversationImage,
   openConversationVisualization,
   showDebugGitOperationProgress,

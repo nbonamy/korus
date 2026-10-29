@@ -15,17 +15,17 @@
             <div class="code-review-panel__choices" role="radiogroup">
               <button
                 class="code-review-panel__choice"
-                :class="{ 'is-selected': scope === 'uncommitted' }"
+                :class="{ 'is-selected': scope === workingScope }"
                 type="button"
                 role="radio"
-                :aria-checked="scope === 'uncommitted'"
-                :disabled="!hasUncommittedChanges"
-                @click="scope = 'uncommitted'"
+                :aria-checked="scope === workingScope"
+                :disabled="!hasUncommittedChanges && !lastCommit"
+                @click="scope = workingScope"
               >
                 <span class="code-review-panel__choice-content">
                   <FileDiffIcon class="code-review-panel__choice-icon" aria-hidden="true" />
                   <span class="code-review-panel__choice-copy">
-                    <strong>{{ $t('surface.codeReviewPanel.uncommittedChanges') }}</strong>
+                    <strong>{{ $t(hasUncommittedChanges ? 'surface.codeReviewPanel.uncommittedChanges' : 'surface.codeReviewPanel.lastCommit') }}</strong>
                     <small>{{ uncommittedDescription }}</small>
                   </span>
                 </span>
@@ -94,7 +94,7 @@
               :key="`${agent.id}:${modelReload}`"
               v-model:selection="reviewSelection"
               :agent-id="agent.id"
-              :team-id="agent.teamId"
+              :remote-connection-id="agent.remoteConnectionId"
               :selections="selections"
               :disabled="busy || threadMode === 'current'"
               @loading="modelsLoading = $event"
@@ -380,7 +380,7 @@ const threadMode = ref<CodeReviewThreadMode>("independent");
 const reviewSettings = useCodeReviewSettings();
 provide(backendModelCatalogKey, { listModels: reviewSettings.listModels });
 const remembered = reviewSettings.preferences();
-const connectedBackends = useBackendChoices(() => props.agent.teamId);
+const connectedBackends = useBackendChoices(() => props.agent.remoteConnectionId);
 const { selection: reviewSelection, backend: reviewBackend, model: reviewModel, reasoningEffort: reviewEffort, serviceTier: reviewTier } = useExecutionSelection();
 const initialBackend = preferredReviewBackend(props.agent.backend, connectedBackends.value, remembered?.backend);
 if (initialBackend) reviewBackend.value = initialBackend;
@@ -422,12 +422,17 @@ const scopeCatalogReady = computed(() => Boolean(props.gitStatus?.diffCatalog) &
 const availability = computed(() => codeReviewAvailability(props.agent, props.gitStatus));
 const hasUncommittedChanges = computed(() => availability.value.uncommitted);
 const hasBranchChanges = computed(() => availability.value.branchChanges);
+const lastCommit = computed(() => props.gitStatus?.diffCatalog?.lastCommit ?? props.gitStatus?.diffCatalog?.commits[0]);
+const workingScope = computed(() => !hasUncommittedChanges.value && lastCommit.value ? 'commit' : 'uncommitted');
 const nothingToReview = computed(() => scopeCatalogReady.value
   && !hasUncommittedChanges.value
-  && !hasBranchChanges.value);
+  && !hasBranchChanges.value
+  && !lastCommit.value);
 const currentThreadAvailable = computed(() => availability.value.currentThread);
 const uncommittedDescription = computed(() => hasUncommittedChanges.value
   ? t("surface.codeReviewPanel.uncommittedDescription")
+  : lastCommit.value
+  ? `${lastCommit.value.shortSha} · ${lastCommit.value.subject}`
   : t("surface.codeReviewPanel.uncommittedUnavailable"));
 const branchDescription = computed(() => hasBranchChanges.value && branchScope.value
   ? t("surface.codeReviewPanel.branchDescription", {
@@ -524,6 +529,7 @@ const reviewingScope = computed(() => {
       base: reviewScope.baseRef,
     });
   }
+  if (reviewScope?.type === 'commit') return t('surface.codeReviewPanel.inspectingCommit', { sha: reviewScope.sha.slice(0, 7) });
   return t("surface.codeReviewPanel.inspectingUncommitted");
 });
 const footerMessage = computed(() =>
@@ -542,10 +548,12 @@ watch(
 );
 
 watch(
-  [hasUncommittedChanges, hasBranchChanges],
+  [hasUncommittedChanges, hasBranchChanges, lastCommit],
   ([uncommitted, branch]) => {
-    if (scope.value === "uncommitted" && !uncommitted && branch) scope.value = "branch";
-    if (scope.value === "branch" && !branch && uncommitted) scope.value = "uncommitted";
+    if (scope.value === 'uncommitted' && uncommitted
+      || scope.value === 'branch' && branch
+      || scope.value === 'commit' && !uncommitted && lastCommit.value) return;
+    scope.value = uncommitted ? 'uncommitted' : branch ? 'branch' : lastCommit.value ? 'commit' : 'uncommitted';
   },
   { immediate: true },
 );
@@ -620,6 +628,8 @@ function startSelectedReview(): void {
   }
   const reviewScope: CodeReviewStartInput["scope"] = scope.value === "branch" && branchScope.value
     ? { type: "branch", baseRef: branchScope.value.baseRef }
+    : scope.value === 'commit' && lastCommit.value
+    ? { type: 'commit', sha: lastCommit.value.sha }
     : { type: "uncommitted" };
   void run(() => props.startReview(props.agent.id, {
     scope: reviewScope, threadMode: threadMode.value,
@@ -632,9 +642,7 @@ function startSelectedReview(): void {
 function retryReview(): void {
   const review = session.value;
   if (!review) return;
-  const reviewScope: CodeReviewStartInput["scope"] = review.scope.type === "branch"
-    ? { type: "branch", baseRef: review.scope.baseRef }
-    : { type: "uncommitted" };
+  const reviewScope: CodeReviewStartInput["scope"] = { ...review.scope };
   const { automation } = review;
   // The failed reviewer keeps its backend and model; only the automatic setup must be carried over.
   void run(() => props.startReview(props.agent.id, {

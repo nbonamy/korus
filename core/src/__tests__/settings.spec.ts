@@ -24,14 +24,14 @@ describe('settings contracts', () => {
     expect(normalizeGeneralSettings({ worktreeDelegationStartingContext: 'unsupported', worktreeDelegationInstructions: 10 }).worktreeDelegationInstructions).toBe('');
     expect(normalizeGeneralSettings({ worktreeDelegationStartingContext: 'unsupported' }).worktreeDelegationStartingContext).toBe('handoff');
   });
-  it('normalizes, updates and clears saved review instructions', () => {
+  it.each(['codeReviewInstructions', 'missionInstructions'] as const)('normalizes, updates and clears saved %s', field => {
     const snapshot = createEmptySnapshot();
-    expect(snapshot.general.codeReviewInstructions).toBe('');
-    updateSettingsInSnapshot(snapshot, { general: { codeReviewInstructions: '  Check authorization.\nKeep findings actionable.  ' } });
-    expect(snapshot.general.codeReviewInstructions).toBe('Check authorization.\nKeep findings actionable.');
-    expect(normalizeGeneralSettings({ codeReviewInstructions: 42 }).codeReviewInstructions).toBe('');
-    updateSettingsInSnapshot(snapshot, { general: { codeReviewInstructions: '' } });
-    expect(snapshot.general.codeReviewInstructions).toBe('');
+    expect(snapshot.general[field]).toBe('');
+    updateSettingsInSnapshot(snapshot, { general: { [field]: '  Check authorization.\nKeep findings actionable.  ' } });
+    expect(snapshot.general[field]).toBe('Check authorization.\nKeep findings actionable.');
+    expect(normalizeGeneralSettings({ [field]: 42 })[field]).toBe('');
+    updateSettingsInSnapshot(snapshot, { general: { [field]: '' } });
+    expect(snapshot.general[field]).toBe('');
   });
   it('keeps ordered backlog favorite identities and discards invalid persisted entries', () => {
     expect(normalizeGeneralSettings({}).backlogRepositoryFavorites).toStrictEqual({});
@@ -73,6 +73,7 @@ describe('settings contracts', () => {
       commitMessageInstructions: '',
       pullRequestInstructions: '',
       codeReviewInstructions: '',
+      missionInstructions: '',
       codexBinaryPath: '/opt/homebrew/bin/codex',
       claudeCodeEnabled: true,
       celebrationsEnabled: false,
@@ -90,7 +91,6 @@ describe('settings contracts', () => {
       preventSleepWhenAgentsRun: false,
       preventSleepWhenRemoteAccessEnabled: true,
       agentListCompact: true,
-      cockpitAgentViewMode: 'recent',
       useInteractivePlans: true,
       worktreeInitializationMode: 'automatic',
       worktreeDelegationStartingContext: 'handoff',
@@ -115,7 +115,6 @@ describe('settings contracts', () => {
       .toBe('af_heart');
     expect(normalizeGeneralSettings({ sessionCompressionWarningEnabled: false }).sessionCompressionWarningEnabled)
       .toBe(false);
-    expect(normalizeGeneralSettings({ cockpitAgentViewMode: 'invalid' }).cockpitAgentViewMode).toBe('teams');
     expect(normalizeGeneralSettings({ savedPromptDrafts: [
       { id: 'draft-1', agentId: 'agent-1', text: 'Come back later', content: [{ type: 'mention', kind: 'file', id: 'docs/later.md', value: 'docs/later.md', label: 'Come back later' }], createdAt: 1000, unexpected: 'discard' },
       { id: 'draft-2', agentId: 'agent-1', text: '', createdAt: 1001 },
@@ -183,6 +182,7 @@ describe('settings contracts', () => {
       commitMessageInstructions: '',
       pullRequestInstructions: '',
       codeReviewInstructions: '',
+      missionInstructions: '',
       codexBinaryPath: '',
       claudeCodeEnabled: false,
       celebrationsEnabled: true,
@@ -200,7 +200,6 @@ describe('settings contracts', () => {
       preventSleepWhenAgentsRun: false,
       preventSleepWhenRemoteAccessEnabled: true,
       agentListCompact: false,
-      cockpitAgentViewMode: 'teams',
       autoResumeAfterLimit: true,
       autoResumeOnStartup: true,
       sessionCompressionWarningEnabled: true,

@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { DocumentWorkspaceService } from '../../document-workspace-service';
@@ -31,6 +31,74 @@ describe('AppMcpService', () => {
     await service?.stop();
     service = null;
     vi.restoreAllMocks();
+  });
+
+  it('reports current remote hosts without exposing their SSH configuration', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.remoteConnections.connections = [{
+      id: 'host-one', kind: 'ssh', name: 'Wall-e', host: 'private-host', status: 'ready',
+      transport: { type: 'ssh-stdio', command: 'ssh', args: ['private-host'] },
+      createdAt: '2026-01-01', updatedAt: '2026-01-01',
+    }];
+    service = new AppMcpService({ snapshot });
+    const url = await service.start();
+    const list = async () => (await callTool(url, 'agent-dina', 'list-hosts', {})).result.structuredContent;
+    expect(await list()).toStrictEqual({ hosts: [{ id: 'host-one', name: 'Wall-e', status: 'ready' }] });
+    snapshot.remoteConnections.connections[0]!.status = 'error';
+    expect(await list()).toStrictEqual({ hosts: [{ id: 'host-one', name: 'Wall-e', status: 'error' }] });
+  });
+
+  it('lists repositories on the requested host through MCP', async () => {
+    const snapshot = createInitialSnapshot();
+    const listRemoteRepositories = vi.fn().mockResolvedValue([{ path: '/remote/project', name: 'project', worktrees: [] }]);
+    const listRemoteWorktrees = vi.fn().mockResolvedValue([{ path: '/remote/feature', name: 'feature' }]);
+    const createRemoteWorktree = vi.fn().mockResolvedValue({ path: '/remote/new-feature', name: 'new-feature' });
+    service = new AppMcpService({ snapshot, listRemoteRepositories, listRemoteWorktrees, createRemoteWorktree });
+    const url = await service.start();
+    const result = await callTool(url, 'agent-dina', 'list-repos', { remoteConnectionId: 'host-one' });
+    expect(result.result.structuredContent).toStrictEqual({ repos: [{ path: '/remote/project', name: 'project', worktrees: [] }] });
+    expect(listRemoteRepositories).toHaveBeenCalledExactlyOnceWith('host-one');
+    const worktrees = await callTool(url, 'agent-dina', 'list-worktrees', { remoteConnectionId: 'host-one', repoPath: '/remote/project' });
+    expect(worktrees.result.structuredContent).toStrictEqual({ repoPath: '/remote/project', worktrees: [{ path: '/remote/feature', name: 'feature' }] });
+    expect(listRemoteWorktrees).toHaveBeenCalledExactlyOnceWith('host-one', '/remote/project');
+    const created = await callTool(url, 'agent-dina', 'create-worktree', { remoteConnectionId: 'host-one', repoPath: '/remote/project', branchName: 'new-feature' });
+    expect(created.result.structuredContent).toStrictEqual({ path: '/remote/new-feature', name: 'new-feature' });
+    expect(createRemoteWorktree).toHaveBeenCalledExactlyOnceWith({ remoteConnectionId: 'host-one', repoPath: '/remote/project', branchName: 'new-feature' });
+  });
+
+  it('starts a delegated agent before setup finishes and scopes waiting to that worker’s worktree', async () => {
+    const folder = await mkdtemp(path.join(os.tmpdir(), 'background-worktree-'));
+    await writeFile(path.join(folder, 'package.json'), '{}');
+    await writeFile(path.join(folder, 'package-lock.json'), '{}');
+    let release!: () => void;
+    const runner = vi.fn(async () => { await new Promise<void>(resolve => { release = resolve; }); return {}; });
+    const manager = new WorktreeManager({
+      createGitWorktree: vi.fn().mockResolvedValue({ created: true, worktree: { path: folder, name: 'feature/setup' } }),
+      getInitializationMode: () => 'automatic', runCommand: runner,
+    });
+    const snapshot = createInitialSnapshot();
+    const sendPrompt = vi.fn().mockResolvedValue({ backendSession: { kind: 'codex', threadId: 'worker' }, turnId: 'turn' });
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    service = new AppMcpService({ snapshot, worktreeManager: manager });
+    service.setDriverRpc(new BackendDriverRpc(new Map([['codex', createDriver({ sendPrompt })]])));
+    try {
+      const url = await service.start();
+      const result = await callTool(url, 'agent-dina', 'create-agent', { repoPath: '/source', branchName: 'feature/setup', createWorktree: true, prompt: 'Implement the feature.' });
+      const workerId = result.result.structuredContent.agentId;
+      expect(sendPrompt).toHaveBeenCalledOnce();
+      expect(snapshot.agents.find(agent => agent.id === workerId)?.worktreeInitialization?.state).toBe('running');
+      await vi.waitFor(() => expect(runner).toHaveBeenCalledOnce());
+      const foreign = await callTool(url, 'agent-dina', 'wait-for-worktree-initialization', {});
+      expect(foreign.result.isError).toBe(true);
+      const waiting = vi.spyOn(manager, 'waitForInitialization');
+      let accepted = false;
+      const wait = callTool(url, workerId, 'wait-for-worktree-initialization', {}).then(response => { accepted = true; return response; });
+      await vi.waitFor(() => expect(waiting).toHaveBeenCalled());
+      expect(accepted).toBe(false);
+      release();
+      expect((await wait).result.structuredContent).toMatchObject({ success: true, state: 'complete' });
+      expect(runner).toHaveBeenCalledOnce();
+    } finally { release?.(); await manager.close(); await rm(folder, { recursive: true, force: true }); }
   });
 
   it('chooses celebration effects itself without consecutive repeats and accepts only a boolean request', async () => {
@@ -336,7 +404,7 @@ describe('AppMcpService', () => {
     expect(parent.userDelegationOverrides).toBeUndefined();
   });
 
-  it('finishes turns by clearing status and replacing the proposed action in one update', async () => {
+  it.each(['work_proposed', 'delegate_to_worktree'])('finishes turns with %s by clearing status and replacing the proposal in one update', async (flag) => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
     const events: any[] = [];
@@ -345,35 +413,35 @@ describe('AppMcpService', () => {
 
     await callTool(url, 'agent-dina', 'set-status', { status: 'Considering delegation' });
     const delegated = await callTool(url, 'agent-dina', 'finish_turn', {
-      flag: 'delegate_to_worktree',
+      flag,
     });
     expect(delegated.result.structuredContent).toStrictEqual({
-      success: true, status: null, flag: 'delegate_to_worktree',
+      success: true, status: null, flag: 'work_proposed',
     });
     expect(snapshot.agents[0]!.statusText).toBeUndefined();
-    expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ delegate_to_worktree: true });
+    expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
     expect(events.at(-1)).toEqual(expect.objectContaining({
       type: 'agent.updated',
       payload: expect.objectContaining({
         statusText: null,
-        threadFlags: { delegate_to_worktree: true },
+        threadFlags: { work_proposed: true },
       }),
     }));
 
     await callTool(url, 'agent-dina', 'set-status', { status: 'Implementing here' });
-    expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ delegate_to_worktree: true });
+    expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
 
     const plain = await callTool(url, 'agent-dina', 'finish_turn', {});
     expect(plain.result.structuredContent).toStrictEqual({
       success: true, status: null,
     });
     expect(snapshot.agents[0]!.statusText).toBeUndefined();
-    expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ delegate_to_worktree: true });
+    expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
     expect(events.at(-1)).toEqual(expect.objectContaining({
       type: 'agent.updated',
       payload: expect.objectContaining({
         statusText: null,
-        threadFlags: { delegate_to_worktree: true },
+        threadFlags: { work_proposed: true },
       }),
     }));
   });
@@ -1252,8 +1320,6 @@ describe('AppMcpService', () => {
     const creationProgress = events.filter((event) => event.type === 'agentCreation.progress');
     expect(creationProgress.map((event) => event.payload.phase ?? event.payload.state)).toStrictEqual([
       'creatingWorktree',
-      'initializingWorktree',
-      'initializingWorktree',
       'creatingAgent',
       'startingPrompt',
       'success',

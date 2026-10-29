@@ -464,10 +464,8 @@ it("keeps TTFT available and shows N/A when speed is unavailable", async () => {
 });
 
 it("ignores stale filter responses and clears previous statistics when a new query fails", async () => {
-  const pending: Array<(value: unknown) => void> = [];
-  const getUsage = vi
-    .fn()
-    .mockImplementation(() => new Promise((resolve) => pending.push(resolve)));
+  const pending: Array<{ filter: { provider?: string; group?: string }; resolve: (value: unknown) => void }> = [];
+  const getUsage = vi.fn().mockImplementation((filter) => new Promise(resolve => pending.push({ filter, resolve })));
   setElectronTestClient({ getUsage });
   const wrapper = mount(UsagePanel);
   await chooseProvider(wrapper, "claude");
@@ -487,15 +485,11 @@ it("ignores stale filter responses and clears previous statistics when a new que
       },
     ],
   });
-  pending[4]!(summary("claude"));
-  pending[5]!(summary("sonnet"));
-  pending[6]!(summary("claude"));
-  pending[7]!(summary("claude"));
+  pending.filter(request => request.filter.provider === "claude").forEach(request =>
+    request.resolve(summary(request.filter.group === "model" ? "sonnet" : "claude")));
   await flushPromises();
-  pending[0]!(summary("codex"));
-  pending[1]!(summary("Unknown"));
-  pending[2]!(summary("codex"));
-  pending[3]!(summary("codex"));
+  pending.filter(request => !request.filter.provider).forEach(request =>
+    request.resolve(summary(request.filter.group === "model" ? "Unknown" : "codex")));
   await flushPromises();
   expect(wrapper.get('[aria-label="Usage breakdown"]').text()).toContain(
     "sonnet",
@@ -621,21 +615,38 @@ it("compares the selection with the previous period and still renders when that 
   wrapper.unmount();
 });
 
-it("keeps the activity grid outside the provider and date filters", async () => {
-  const empty = { recordedSince: 1, retainedSince: 1, rows: [] };
-  const getUsage = vi.fn(async (_filter: Record<string, unknown>) => empty);
+it("keeps the activity grid mounted and cached across date/provider loads and failures", async () => {
+  const summary = { recordedSince: 1, retainedSince: 1, rows: [], daily: [] };
+  const window = activityWindow();
+  let delay = false;
+  const pending: Array<{ resolve: (value: typeof summary) => void; reject: (error: Error) => void }> = [];
+  const getUsage = vi.fn((filter: Record<string, unknown>) => {
+    if (!delay || filter.from === window.from) return Promise.resolve(summary);
+    return new Promise<typeof summary>((resolve, reject) => pending.push({ resolve, reject }));
+  });
   setElectronTestClient({ getUsage });
   const wrapper = mount(UsagePanel);
-  await flushPromises();
-  await chooseProvider(wrapper, "claude");
-  await flushPromises();
-  const window = activityWindow();
-  const activityCalls = getUsage.mock.calls.filter(
-    ([filter]) => filter.from === window.from,
-  );
-  expect(activityCalls.length).toBeGreaterThan(1);
-  expect(activityCalls.every(([filter]) => !("provider" in filter))).toBe(true);
-  wrapper.unmount();
+  try {
+    await flushPromises();
+    const activity = wrapper.get(".usage-activity").element;
+    const activityCalls = () => getUsage.mock.calls.filter(([filter]) => filter.from === window.from);
+    delay = true;
+    await choose(wrapper, '.usage-filters [role="radiogroup"]', "30 days");
+    expect(wrapper.get(".usage-activity").element).toBe(activity);
+    await chooseProvider(wrapper, "claude");
+    expect(wrapper.get(".usage-activity").element).toBe(activity);
+    expect(activityCalls()).toHaveLength(1);
+    pending.splice(0).forEach(request => request.reject(Error("offline")));
+    await flushPromises();
+    expect(wrapper.get(".usage-activity").element).toBe(activity);
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+    delay = false;
+    await wrapper.get('[aria-label="Refresh"]').trigger("click");
+    await flushPromises();
+    expect(activityCalls()).toHaveLength(2);
+    expect(activityCalls().every(([filter]) => !("provider" in filter))).toBe(true);
+    expect(wrapper.get(".usage-activity").element).toBe(activity);
+  } finally { wrapper.unmount(); }
 });
 
 // These client-boundary scenarios protect currency precision, request attribution,

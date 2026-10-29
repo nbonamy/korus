@@ -1,6 +1,7 @@
 import { product } from '@workspace/core/product';
 import { describe, expect, it, vi } from 'vitest';
 import { SshConnectionService, parseSshConfig, sshStdioTransport } from '../ssh-connections';
+import { remoteEngineLinkCommand } from '../remote-engine-links';
 import { remoteEnvironmentCommand } from '../remote-node';
 import { remoteCodexVersionCommand } from '../remote-codex-command';
 import { remoteClaudeVersionCommand } from '../remote-claude-install';
@@ -175,6 +176,31 @@ Host bad;alias
     ]), { timeoutMs: 360_000 });
   });
 
+  it('refreshes the engine links when a host is inspected, but only once it has a daemon', async () => {
+    const commands: string[] = [];
+    const run = vi.fn(async (_command: string, args: string[]) => {
+      const remoteCommand = args.at(-1) ?? '';
+      commands.push(remoteCommand);
+      return { stdout: remoteCommand.includes('daemon.mjs --version') ? `${product.daemonName} 0.21.1\n` : '', stderr: '' };
+    });
+    const service = new SshConnectionService({ accessFile: vi.fn().mockResolvedValue(undefined), run });
+    const connection = await service.createConnection({ host: 'devbox' });
+
+    await expect(service.inspectVersions(connection)).resolves.toMatchObject({ status: 'ready' });
+    expect(commands.filter((command) => command.includes('ln -sfn'))).toHaveLength(1);
+
+    commands.length = 0;
+    run.mockImplementation(async (_command: string, args: string[]) => { commands.push(args.at(-1) ?? ''); return { stdout: '', stderr: '' }; });
+    await expect(service.inspectVersions(connection)).resolves.toMatchObject({ status: 'saved' });
+    expect(commands.some((command) => command.includes('ln -sfn'))).toBe(false);
+  });
+
+  it('launches the SSH daemon as the exclusive owner of the host home', () => {
+    const command = sshStdioTransport('devbox')!.args.at(-1)!;
+    expect(command).toContain('exec env APP_EXCLUSIVE_HOME=1 node');
+    expect(command).toContain('--stdio');
+  });
+
   it('keeps a Claude-only host ready without installing Codex', async () => {
     const run = vi.fn(async (command: string, args: string[]) => {
       const remoteCommand = args.at(-1) ?? '';
@@ -228,7 +254,7 @@ Host bad;alias
         '-T', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3',
         '-o', 'StrictHostKeyChecking=accept-new',
         'devbox',
-        remoteEnvironmentCommand(`node ~/${product.homeDirectory}/daemon.mjs connect || { code=$?; [ "$code" -eq 1 ] || exit "$code"; exec node ~/${product.homeDirectory}/daemon.mjs --stdio; }`),
+        remoteEnvironmentCommand(`node ~/${product.homeDirectory}/daemon.mjs connect || { code=$?; [ "$code" -eq 1 ] || exit "$code"; exec env APP_EXCLUSIVE_HOME=1 node ~/${product.homeDirectory}/daemon.mjs --stdio; }`),
       ],
     });
   });
@@ -261,7 +287,7 @@ Host bad;alias
       status: 'ready',
     });
 
-    expect(run.mock.calls.some(([, args]) => args.at(-1)?.includes('rm -f'))).toBe(false);
+    expect(run.mock.calls.some(([, args]) => args.at(-1)?.includes('rm -f') && !args.at(-1)?.includes('ln -sfn'))).toBe(false);
   });
 
   it('records connection errors without throwing', async () => {
@@ -291,6 +317,8 @@ Host bad;alias
       ['ssh', remoteEnvironmentCommand(`node ~/${product.homeDirectory}/daemon.mjs --version 2>/dev/null || true`)],
       ['ssh', remoteCodexVersionCommand()],
       ['ssh', remoteClaudeVersionCommand()],
+      // Linking engines into the private bin is the only change inspection makes.
+      ['ssh', remoteEnvironmentCommand(remoteEngineLinkCommand())],
     ]);
   });
 

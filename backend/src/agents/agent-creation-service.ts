@@ -10,7 +10,7 @@ export type AgentCreationOptions = {
 };
 
 export class AgentCreationService {
-  constructor(private readonly snapshot: AppSnapshot) {}
+  constructor(private readonly snapshot: AppSnapshot, private readonly initializationForFolder?: (folder: string) => Agent['worktreeInitialization']) {}
 
   create(input: CreateAgentInput, options: AgentCreationOptions = {}): Agent {
     const backend = resolveAgentBackend(this.snapshot, input.selection?.backend);
@@ -19,6 +19,10 @@ export class AgentCreationService {
     createAgentInSnapshot(this.snapshot, { ...input, selection: { ...input.selection, backend } }, undefined, id, options);
     const agent = this.snapshot.agents.find((candidate) => candidate.id === id);
     if (!agent) throw new Error('Agent could not be created.');
+    if (agent.folder) {
+      const initialization = this.initializationForFolder?.(agent.folder);
+      if (initialization) agent.worktreeInitialization = initialization;
+    }
     return agent;
   }
 }

@@ -3470,6 +3470,14 @@
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "2bda6440f01a972eb809131ee4ff5998bace57bd"
           }
+        },
+        {
+          "date": "2026-10-29T11:35:28.990Z",
+          "availability": "removed",
+          "source": {
+            "revision": "8d435b84e5ce5fd85262e344f5cc0d65661f7fb0",
+            "collectedAt": "2026-10-29T11:35:28.990Z"
+          }
         }
       ]
     },
@@ -6831,6 +6839,14 @@
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "d757f1a490066c364df0462fb8cd7e6f7030b77f"
           }
+        },
+        {
+          "date": "2026-10-29T11:35:28.990Z",
+          "availability": "removed",
+          "source": {
+            "revision": "8d435b84e5ce5fd85262e344f5cc0d65661f7fb0",
+            "collectedAt": "2026-10-29T11:35:28.990Z"
+          }
         }
       ]
     },
@@ -6919,6 +6935,14 @@
             "revision": "47e3a36b1fe10442597bb90adb7cfa007c3e7348",
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "1480b561a328e793a1168a4206417db3c5d87468"
+          }
+        },
+        {
+          "date": "2026-10-29T11:35:28.990Z",
+          "availability": "removed",
+          "source": {
+            "revision": "8d435b84e5ce5fd85262e344f5cc0d65661f7fb0",
+            "collectedAt": "2026-10-29T11:35:28.990Z"
           }
         }
       ]

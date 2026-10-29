@@ -9,6 +9,7 @@ import { isWorkProviderKind } from './work-providers';
 import { isMission } from './missions';
 import { sanitizeWorkItemAssignmentSource } from './work-assignments';
 import { isAgentHandoff } from './agent-handoff';
+import { isWorktreeInitializationState } from './worktree-initialization';
 import { isProviderConnection } from './contracts/provider-setup';
 import { isThreadFlags } from './thread-flags';
 import { isAppTextDescriptor } from './app-text';
@@ -103,8 +104,9 @@ function isTeam(value: unknown): boolean {
     typeof value.name === 'string' &&
     optional(value, 'avatar', isString) &&
     optional(value, 'color', isString) &&
-    optional(value, 'remoteConnectionId', isString) &&
-    optional(value, 'remoteTeamId', isString) &&
+    optional(value, 'collaborationOwnerId', isString) &&
+    optional(value, 'delegationHandoffs', entries => isRecordMapOf(entries, entry => isRecord(entry) && isString(entry.operationId) && optional(entry, 'targetAgentId', isString) && optional(entry, 'remoteConnectionId', isString))) &&
+    optional(value, 'remoteLinks', (links) => isArrayOf(links, (link) => isRecord(link) && isString(link.connectionId) && isString(link.remoteTeamId) && optional(link, 'collaborationOwnerId', isString))) &&
     isArrayOf(value.agentIds, isString) &&
     optional(value, 'activeAgentId', isString);
 }
@@ -113,6 +115,7 @@ function isAgent(value: unknown): boolean {
   return isRecord(value) &&
     typeof value.id === 'string' &&
     optional(value, 'teamId', isString) &&
+    optional(value, 'remoteConnectionId', isString) &&
     optional(value, 'delegatedByAgentId', isString) &&
     optional(value, 'delegationContext', isDelegationContext) &&
     optional(value, 'userDelegationOverrides', isTurnDelegationOverrides) &&
@@ -125,6 +128,7 @@ function isAgent(value: unknown): boolean {
     optional(value, 'avatar', isString) &&
     isNullableString(value.folder) &&
     optional(value, 'workspace', isAgentWorkspaceIdentity) &&
+    optional(value, 'worktreeInitialization', isWorktreeInitializationState) &&
     isAgentBackend(value.backend) &&
     optional(value, 'backendSession', isBackendSession) &&
     optional(value, 'backendDefaults', isBackendDefaults) &&
@@ -555,6 +559,7 @@ function isGeneralSettings(value: unknown): boolean {
     (value.providerOnboardingComplete === undefined || typeof value.providerOnboardingComplete === 'boolean') &&
     optional(value, 'providerEnabled', candidate => isRecord(candidate) && Object.entries(candidate).every(([backend, enabled]) => (backend === 'codex' || backend === 'claude' || backend === 'antigravity') && isBoolean(enabled))) &&
     optional(value, 'codeReviewInstructions', isString) &&
+    optional(value, 'missionInstructions', isString) &&
     optional(value, 'codeReviewDefaults', isCodeReviewPreferences) &&
     optional(value, 'providerApprovalDefaults', candidate => isRecord(candidate)
       && optional(candidate, 'codex', isApprovalPreset) && optional(candidate, 'claude', isString) && optional(candidate, 'antigravity', isString)) &&
@@ -563,7 +568,6 @@ function isGeneralSettings(value: unknown): boolean {
     optional(value, 'providerHomes', candidate => isRecord(candidate) && Object.entries(candidate).every(([backend, home]) =>
       (backend === 'codex' || backend === 'claude' || backend === 'antigravity') && isRecord(home) && isString(home.homePath) && isBoolean(home.isolated) && isBoolean(home.shareSkills))) &&
     typeof value.agentListCompact === 'boolean' &&
-    includes(['teams', 'recent'], value.cockpitAgentViewMode) &&
     isArrayOf(value.collapsedRepositoryKeys, isString) &&
     isArrayOf(value.savedPromptDrafts, (draft) => isRecord(draft)
       && isString(draft.id) && isString(draft.agentId) && isString(draft.text) && optional(draft, 'content', isPromptContent) && isNumber(draft.createdAt)) &&

@@ -259,6 +259,7 @@ const values = computed(() => {
       segments,
       total: props.measure === "cost" ? (row?.cost?.usd ?? null) : top,
       cost: row?.cost,
+      groups: row?.groups,
     });
   }
   return rows;
@@ -324,11 +325,14 @@ const layers = computed(() => {
         ]
       : ys.map((y, index) => ({ x: xOf(index), y }));
   return props.series.flatMap((series) => {
-    const vals = values.value.map(
-      (row) =>
-        row.segments.find((segment) => segment.key === series.key)?.value ??
-        (["cost", "ratio"].includes(props.measure) ? null : 0),
-    );
+    const vals = values.value.map((row) => {
+      const observed = row.segments.find((segment) => segment.key === series.key)?.value;
+      if (observed !== undefined) return observed;
+      // No activity in a priced day is zero; an explicitly unpriced group stays unknown.
+      if (props.measure === "cost")
+        return series.value !== null && row.cost?.usd != null && !row.groups?.some(group => group.label === series.key) ? 0 : null;
+      return props.measure === "ratio" ? null : 0;
+    });
     if (
       !vals.some(
         (value) => value !== null && (["cost", "ratio"].includes(props.measure) || value > 0),

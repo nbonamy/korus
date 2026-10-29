@@ -1,23 +1,37 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { codexSdkFixture, sdkAgent, sdkSnapshot } from './sdk-surface-fixture';
 
+afterEach(() => vi.useRealTimers());
+
 describe('Codex code review boundary', () => {
-  it('uses the agent conversation for current-thread review turns and restores its normal tools afterward', async () => {
+  it('waits for a long current-thread review to finish before restoring its normal tools', async () => {
+    vi.useFakeTimers();
     const { driver, conversation, surface } = codexSdkFixture();
     const agent = sdkAgent();
     const current = conversation('conversation-a');
     current.setSnapshot({ turnIds: [], messages: [] });
     current.handle.sendMessage.mockResolvedValue(sdkSnapshot('conversation-a', {
       turnIds: ['turn-review'],
-      turns: [{ id: 'turn-review', status: 'completed' } as never],
+      turns: [{ id: 'turn-review', status: 'inProgress' } as never],
     }));
 
-    await driver.runCodeReview(agent, {
+    const result = driver.runCodeReview(agent, {
       cwd: '/repo',
       prompt: 'Review in this conversation.',
       reviewMcpServerUrl: 'http://127.0.0.1:4321/mcp?reviewContextId=current',
       reviewerSession: agent.backendSession,
     });
+    let outcome: unknown = 'pending';
+    void result.then(value => { outcome = value; }, error => { outcome = error; });
+    await vi.advanceTimersByTimeAsync(31 * 60 * 1_000);
+    expect(outcome).toBe('pending');
+    expect(current.handle.load).toHaveBeenCalledTimes(2);
+    const completion = { status: 'completed' as const, error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null };
+    current.emit({ type: 'turn.completed', conversationId: current.handle.id, turnId: 'other-turn', seq: 1, origin: 'notification', occurredAt: '', payload: completion });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(outcome).toBe('pending');
+    current.emit({ type: 'turn.completed', conversationId: current.handle.id, turnId: 'turn-review', seq: 2, origin: 'notification', occurredAt: '', payload: completion });
+    await expect(result).resolves.toEqual({ text: '', reviewerSession: agent.backendSession });
 
     expect(current.handle.load.mock.calls).toStrictEqual([
       [{ cwd: '/repo', extensionContext: agent }],

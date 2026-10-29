@@ -8,6 +8,7 @@ describe('stdio JSON-RPC transport', () => {
     ['client/computerUse/execute', undefined, 35000],
     ['client/browser/open', undefined, 35000],
     ['client/mobileSimulator/execute', undefined, 240000],
+    ['client/collaboration/call', undefined, 120000],
     ['client/computerUse/execute', 100, 100],
   ] as const)('keeps a bounded deadline for %s (%s)', async (method, requestTimeoutMs, deadline) => {
     vi.useFakeTimers();
@@ -21,7 +22,7 @@ describe('stdio JSON-RPC transport', () => {
     } finally { peer.stop(); vi.useRealTimers(); }
   });
 
-  it.each(['client/computerUse/execute', 'client/browser/open'])('allows %s to finish beyond five seconds', async (method) => {
+  it.each(['client/computerUse/execute', 'client/browser/open', 'client/collaboration/call'])('allows %s to finish beyond five seconds', async (method) => {
     vi.useFakeTimers();
     const input = new PassThrough();
     const output = new PassThrough();

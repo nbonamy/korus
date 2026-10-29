@@ -10,6 +10,21 @@
     {
       "files": ["**/*.vue"],
       "customSyntax": "postcss-html"
+    },
+    {
+      "files": ["**/AgentSidebarRepo.vue", "**/AgentSidebarActivity.vue"],
+      "rules": {
+        "lyliya/value-no-unknown-custom-properties": [
+          true,
+          {
+            "importFrom": [
+              "src/styles/variables.css",
+              "src/styles/theme.css",
+              "src/components/agent-sidebar-common.css"
+            ]
+          }
+        ]
+      }
     }
   ],
   "rules": {

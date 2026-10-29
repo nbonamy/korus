@@ -245,7 +245,7 @@ describe('native relay host adapter', () => {
   it('reads an image through the paired host and complete owning conversation target', async () => {
     const connector = connect(); await pairWith(connector);
     const image = { dataUrl: 'data:image/png;base64,cG5n' };
-    transport.response = method => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'], remoteConnectionId: 'remote' }], agents: [agent] } : image;
+    transport.response = method => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ ...agent, remoteConnectionId: 'remote' }] } : image;
     try {
       const session = await connector.connect(host.hostId); await session.getWorkspace();
       expect(await session.readImage!('agent', '/tmp/shot.png')).toStrictEqual(image);
@@ -258,7 +258,7 @@ describe('native relay host adapter', () => {
     const connector = connect(); await pairWith(connector);
     const page = { frame: { type: 'codex.conversationSnapshotChanged', backend: 'codex', threadId: 'thread', agentId: 'agent', seq: 1, occurredAt: '', payload: { revision: 1, snapshot: { messages: [{ text: 'x'.repeat(companionFrameLimit) }] } } }, hasOlder: false };
     transport.response = (method) => method === 'snapshot.get'
-      ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'], remoteConnectionId: 'remote' }], agents: [agent] } : page;
+      ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ ...agent, remoteConnectionId: 'remote' }] } : page;
     try {
       const session = await connector.connect(host.hostId); await session.getWorkspace();
       expect(await session.loadOlderHistory!('agent')).toStrictEqual(page);
@@ -485,7 +485,7 @@ describe('native relay host adapter', () => {
   it('uses location/session-scoped app operations, reconciles delivery and removes native pairing on forget', async () => {
     const storage = vault(); const connector = connect(storage);
     await pairWith(connector);
-    transport.response = (method) => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'], remoteConnectionId: 'remote-host' }], agents: [agent] }
+    transport.response = (method) => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ ...agent, remoteConnectionId: 'remote-host' }] }
       : method === 'conversation.subscribe' ? { type: 'codex.conversationSnapshotChanged', agentId: 'agent', backend: 'codex', threadId: 'thread', seq: 1, occurredAt: '2026-10-14T00:00:00Z', payload: { revision: 1, snapshot: codexConversationSnapshot([], { activeConversationId: 'thread', historyState: { loadingStrategy: 'lazy', fullyLoaded: true, hasOlder: false, loadingOlder: false } }) } }
       : method === 'prompt.submit' || method === 'command.status' ? { state: 'accepted' } : {};
     const session = await connector.connect(host.hostId); await session.getWorkspace();

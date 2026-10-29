@@ -248,7 +248,7 @@ describe('AppShell workspace and plans', () => {
     const save = vi.fn().mockRejectedValue(new Error('File already exists. Confirm replacement to save.'));
     setElectronTestClient({ getDocumentWorkspaces: vi.fn().mockResolvedValue({ 'agent-dina': saved }), readWorkspaceDocument: vi.fn().mockResolvedValue({ content: '# Remote content' }), updateDocumentWorkspace: vi.fn().mockResolvedValue(saved), chooseDocumentSavePath: nativeDialog, saveWorkspaceDocument: save });
     const snapshot = createInitialSnapshot();
-    snapshot.teams[0]!.remoteConnectionId = 'remote-test'; snapshot.agents[0]!.folder = '/remote/worktree';
+    snapshot.agents[0]!.remoteConnectionId = 'remote-test'; snapshot.agents[0]!.folder = '/remote/worktree';
     const wrapper = mountShell({ snapshot }); await flushPromises();
     await wrapper.get('button[aria-label^="Save "][aria-label$=" as…"]').trigger('click'); await flushPromises();
     const box = new DOMWrapper(document.querySelector('.el-message-box')!);

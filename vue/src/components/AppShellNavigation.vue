@@ -1,8 +1,6 @@
 <template>
   <TeamRail
     :teams="snapshot.teams"
-    :remote-connections="snapshot.remoteConnections.connections"
-    :load-remote-teams="loadRemoteTeams"
     :unread-team-ids="unreadTeamIds"
     :working-team-ids="workingTeamIds"
     :active-team-id="backlogVisible || cockpitVisible || automationsVisible || settingsVisible ? null : (activeTeam?.id ?? null)"
@@ -20,7 +18,6 @@
     :phone-scope="phoneScope"
     class="app-shell__team-rail"
     @close-team="$emit('close-team', $event)"
-    @disconnect-team="$emit('disconnect-team', $event)"
     @edit-team="openEditTeam"
     @new-team="openNewTeam"
     @open-settings="openSettings"
@@ -38,6 +35,7 @@
       ref="agentSidebar"
       v-if="showAgentSidebar"
       :agents="sidebarAgents"
+      :all-teams="cockpitVisible"
       :mission-agents="snapshot.agents"
       :forkable-agent-ids="forkableAgentIds"
       :summary-replacement-agent-ids="summaryReplacementAgentIds"
@@ -54,7 +52,7 @@
       @select-mission="$emit('select-mission', $event)"
       :unread-agent-ids="unreadAgentIds"
       :teams="snapshot.teams"
-      :team-id="activeTeam?.id ?? null"
+      :team-id="cockpitVisible ? null : activeTeam?.id ?? null"
       :team-name="activeTeamName"
       :compact="agentListCompact"
       :collapsed-repository-keys="snapshot.general.collapsedRepositoryKeys"
@@ -72,6 +70,8 @@
       @create-agent-from-repository="openRepositorySessionSource"
       @create-agent-on-branch="createRepositorySessionOnBranch"
       @create-agent-worktree-in-repository="openRepositorySessionWorktree"
+      @open-on-remote="$emit('open-on-remote', $event)"
+      :remote-connections="snapshot.remoteConnections.connections"
       :list-repository-branches="listRepositorySessionBranches"
       @duplicate-agent="$emit('duplicate-agent', $event)"
       @fork-agent="$emit('fork-agent', $event)"
@@ -95,6 +95,7 @@
 </template>
 
 <script setup lang="ts">
+import { missionAgentIds } from '@workspace/core/mission-attention';
 import { enabledAgentBackends } from '@workspace/core/agent-backends';
 import type {
   Agent,
@@ -117,7 +118,11 @@ type RepositorySessionPayload = {
   agentId: string;
   repositoryName: string;
   repositoryRoot: string;
+  remoteConnectionId?: string;
+  originUrl?: string;
 };
+
+type OpenOnRemotePayload = { action: 'main' | 'new-worktree'; repositoryName: string; repositoryKey: string; originUrl?: string };
 
 const props = defineProps<{
   activeMissionId?: string | null;
@@ -136,8 +141,7 @@ const props = defineProps<{
   currentAgent: Agent | null;
   forkableAgentIds: string[];
   summaryReplacementAgentIds?: string[];
-  listRepositorySessionBranches: (input: { agentId: string; repositoryRoot: string }) => Promise<SourceBranch[]>;
-  loadRemoteTeams: (connectionId: string) => Promise<Team[]>;
+  listRepositorySessionBranches: (input: { agentId: string; repositoryRoot: string; remoteConnectionId?: string }) => Promise<SourceBranch[]>;
   openInApplications: OpenInApplicationCatalog;
   quickAgentShortcutsVisible: boolean;
   settingsVisible: boolean;
@@ -158,13 +162,13 @@ const emit = defineEmits<{
   'create-agent-from-repository': [payload: RepositorySessionPayload];
   'create-agent-on-branch': [payload: RepositorySessionPayload & { branch: SourceBranch }];
   'create-agent-worktree-in-repository': [payload: RepositorySessionPayload];
+  'open-on-remote': [payload: OpenOnRemotePayload];
   'create-quick-chat': [];
   'create-mission': [];
   'delete-mission': [id: string];
   'create-agent-in-mission-worktree': [payload: { missionId: string; worktreePath: string }];
   'delete-repository': [agentId: string];
   'select-mission': [id: string];
-  'disconnect-team': [teamId: string];
   'duplicate-agent': [agentId: string];
   'edit-agent': [agentId: string];
   'edit-team': [teamId: string];
@@ -200,16 +204,12 @@ const emit = defineEmits<{
   ];
 }>();
 
-const missionAgentIds = computed(() => new Set(
-  (props.snapshot.missions ?? []).flatMap(mission => (
-    mission.execution?.runs.flatMap(run => run.workerId ? [run.workerId] : []) ?? []
-  )),
-));
-const sidebarAgents = computed(() => props.activeTeamAgents.filter(agent => !missionAgentIds.value.has(agent.id)));
+const missionOwnedAgentIds = computed(() => new Set((props.snapshot.missions ?? []).flatMap(missionAgentIds)));
+const sidebarAgents = computed(() => (props.cockpitVisible ? props.snapshot.agents : props.activeTeamAgents).filter(agent => !missionOwnedAgentIds.value.has(agent.id)));
 const agentSidebar = ref<InstanceType<typeof AgentSidebar> | null>(null);
 const quickSwitchAgentIds = computed(() => agentSidebar.value?.quickSwitchAgentIds ?? sidebarAgents.value.map(agent => agent.id));
 defineExpose({ quickSwitchAgentIds });
-const teamMissions = computed(() => (props.snapshot.missions ?? []).filter(mission => mission.teamId === props.activeTeam?.id));
+const teamMissions = computed(() => (props.snapshot.missions ?? []).filter(mission => props.cockpitVisible || mission.teamId === props.activeTeam?.id));
 
 const agentSidebarMinWidth = 200;
 const agentSidebarMaxWidth = 420;
@@ -227,7 +227,6 @@ const {
   forkableAgentIds,
   summaryReplacementAgentIds,
   listRepositorySessionBranches,
-  loadRemoteTeams,
   openInApplications,
   quickAgentShortcutsVisible,
   settingsVisible,

@@ -212,6 +212,34 @@ class ProjectWorkflowTest {
         }
     }
 
+    @Test fun repositoryCreationUsesItsHostWhileQuickChatKeepsTheLocalEngine() {
+        NativeEngineFixture(app.activityRule.scenario).use { engine ->
+            app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }
+            fun mixed() = state().put("backends", JSONArray(listOf("codex")))
+                .put("repositoryBackends", json("repo-key" to JSONArray(listOf("claude"))))
+            engine.state(mixed()); mount(engine)
+            repository("Default Branch")
+            assertCommand(engine, json("type" to "newChat", "repositoryId" to "repo-key", "backend" to "claude"))
+            screenshot("remote-repository-creation")
+            engine.state(mixed().put("chatCreation", "creating"))
+            app.waitUntil(5_000) { engine.model.state.string("chatCreation") == "creating" }
+            engine.state(mixed())
+            app.waitUntil(5_000) { engine.model.creation == null }
+            newAgent("Quick Chat")
+            assertCommand(engine, json("type" to "newQuickChat", "backend" to "codex"))
+        }
+    }
+    @Test fun remoteDuplicationUsesTheSourceHostEngineEvenWithoutLocalEngines() {
+        NativeEngineFixture(app.activityRule.scenario).use { engine ->
+            app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }
+            val target = ConversationTarget("host", "box", "team", "agent", "session")
+            engine.state(state().put("backends", JSONArray()).put("conversationBackends", JSONArray(listOf("claude")))
+                .put("backend", "claude").put("composerTarget", target.toJson())); mount(engine)
+            app.onNodeWithContentDescription("Conversation actions").performClick()
+            app.onNodeWithText("Duplicate Agent").performClick()
+            assertCommand(engine, json("type" to "duplicateAgent", "target" to target.toJson(), "backend" to "claude"))
+        }
+    }
     @Test fun duplicateAgentStartsImmediatelyWithoutAFormAndReportsFailureForAnExplicitRetry() {
         NativeEngineFixture(app.activityRule.scenario).use { engine ->
             app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }

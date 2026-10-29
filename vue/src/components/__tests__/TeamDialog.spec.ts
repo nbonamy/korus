@@ -3,7 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import TeamDialog from '../TeamDialog.vue';
 import { teamColors } from '@workspace/core/team-colors';
-import type { CreateTeamInput, RemoteConnection, Team, UpdateTeamInput } from '@workspace/core/contracts';
+import type { CreateTeamInput, Team, UpdateTeamInput } from '@workspace/core/contracts';
 
 describe('TeamDialog', () => {
   it('renders the Skwad-style create team layout and disables save until named', () => {
@@ -11,14 +11,13 @@ describe('TeamDialog', () => {
 
     expect(wrapper.get('.app-dialog__title').text()).toBe('Create Team');
     expect(wrapper.find('.app-dialog__subtitle').exists()).toBe(false);
-    expect(wrapper.findAll('.app-form-dialog__field')).toHaveLength(3);
+    expect(wrapper.findAll('.app-form-dialog__field')).toHaveLength(2);
     expect(wrapper.text()).toContain('Name');
-    expect(wrapper.text()).toContain('Connection');
+    expect(wrapper.text()).not.toContain('Connection');
     expect(wrapper.text()).toContain('Color');
     expect(wrapper.text()).not.toContain("Choose where this team's agents run.");
     expect(wrapper.text()).not.toContain('Give this team a name for the sidebar.');
     expect(wrapper.findAll('.app-form-dialog__label').map((label) => label.text())).toStrictEqual([
-      'Connection',
       'Name',
       'Color',
     ]);
@@ -45,53 +44,6 @@ describe('TeamDialog', () => {
       color: '#46A857',
     });
     expect(wrapper.emitted('close')).toStrictEqual([[]]);
-  });
-
-  it('creates a team with a ready SSH connection', async () => {
-    const createTeam = vi.fn().mockResolvedValue(undefined);
-    const wrapper = mountDialog({
-      createTeam,
-      remoteConnections: [readyConnection()],
-    });
-
-    await wrapper.get('#team-dialog-name').setValue('Remote Team');
-    await wrapper.getComponent({ name: 'ElSelect' }).vm.$emit('update:modelValue', 'connection-devbox');
-    await saveButton(wrapper).trigger('click');
-
-    expect(createTeam).toHaveBeenCalledWith({
-      name: 'Remote Team',
-      color: '#1B4FB2',
-      remoteConnectionId: 'connection-devbox',
-    });
-  });
-
-  it('connects to an existing remote team from a ready SSH connection', async () => {
-    const createTeam = vi.fn().mockResolvedValue(undefined);
-    const loadRemoteTeams = vi.fn().mockResolvedValue([{
-      id: 'team-remote',
-      name: 'Remote Core',
-      color: '#46A857',
-      agentIds: ['agent-remote'],
-    }]);
-    const wrapper = mountDialog({
-      createTeam,
-      loadRemoteTeams,
-      remoteConnections: [readyConnection()],
-    });
-
-    await wrapper.getComponent({ name: 'ElSelect' }).vm.$emit('update:modelValue', 'connection-devbox');
-    await flushPromises();
-    await wrapper.findAllComponents({ name: 'ElSelect' })[1]?.vm.$emit('update:modelValue', 'team-remote');
-    await flushPromises();
-    await saveButton(wrapper, 'Connect').trigger('click');
-
-    expect(loadRemoteTeams).toHaveBeenCalledWith('connection-devbox');
-    expect(createTeam).toHaveBeenCalledWith({
-      name: 'Remote Core',
-      color: '#46A857',
-      remoteConnectionId: 'connection-devbox',
-      remoteTeamId: 'team-remote',
-    });
   });
 
   it('edits an existing team with prefilled values', async () => {
@@ -123,62 +75,6 @@ describe('TeamDialog', () => {
     expect(wrapper.emitted('close')).toStrictEqual([[]]);
   });
 
-  it('connects an empty existing team to an existing remote team', async () => {
-    const updateTeam = vi.fn().mockResolvedValue(undefined);
-    const loadRemoteTeams = vi.fn().mockResolvedValue([{
-      id: 'team-remote',
-      name: 'Remote Core',
-      color: '#46A857',
-      agentIds: ['agent-remote'],
-    }]);
-    const wrapper = mountDialog({
-      mode: 'edit',
-      remoteConnections: [readyConnection()],
-      team: {
-        id: 'team-app',
-        name: 'Local Empty',
-        avatar: 'LE',
-        color: '#1B4FB2',
-        agentIds: [],
-      },
-      loadRemoteTeams,
-      updateTeam,
-    });
-
-    await wrapper.getComponent({ name: 'ElSelect' }).vm.$emit('update:modelValue', 'connection-devbox');
-    await flushPromises();
-    await wrapper.findAllComponents({ name: 'ElSelect' })[1]?.vm.$emit('update:modelValue', 'team-remote');
-    await flushPromises();
-    await saveButton(wrapper, 'Save').trigger('click');
-
-    expect(loadRemoteTeams).toHaveBeenCalledWith('connection-devbox');
-    expect(updateTeam).toHaveBeenCalledWith({
-      id: 'team-app',
-      name: 'Remote Core',
-      color: '#46A857',
-      remoteConnectionId: 'connection-devbox',
-      remoteTeamId: 'team-remote',
-    });
-    expect(wrapper.emitted('close')).toStrictEqual([[]]);
-  });
-
-  it('disables connection edits once a team has agents', () => {
-    const wrapper = mountDialog({
-      mode: 'edit',
-      remoteConnections: [readyConnection()],
-      team: {
-        id: 'team-app',
-        name: `${product.name}`,
-        avatar: 'CC',
-        color: '#1B4FB2',
-        remoteConnectionId: 'connection-devbox',
-        agentIds: ['agent-dina'],
-      },
-    });
-
-    expect(wrapper.getComponent({ name: 'ElSelect' }).props('disabled')).toBe(true);
-  });
-
   it('keeps the dialog open and shows create errors', async () => {
     const createTeam = vi.fn().mockRejectedValue(new Error('Team color is invalid.'));
     const wrapper = mountDialog({ createTeam });
@@ -193,11 +89,9 @@ describe('TeamDialog', () => {
 
 function mountDialog(overrides: Partial<{
   createTeam: (input: CreateTeamInput) => Promise<Team | null | void>;
-  loadRemoteTeams: (connectionId: string) => Promise<Team[]>;
   mode: 'create' | 'edit';
   team: Team | null;
   updateTeam: (input: UpdateTeamInput) => Promise<void>;
-  remoteConnections: RemoteConnection[];
 }> = {}) {
   return mount(TeamDialog, {
     props: {
@@ -220,23 +114,6 @@ function mountDialog(overrides: Partial<{
       },
     },
   });
-}
-
-function readyConnection(): RemoteConnection {
-  return {
-    id: 'connection-devbox',
-    kind: 'ssh',
-    name: 'devbox',
-    host: 'devbox',
-    status: 'ready',
-    transport: {
-      type: 'ssh-stdio',
-      command: 'ssh',
-      args: ['devbox', 'node ~/.agent-workspace/daemon.mjs --stdio'],
-    },
-    createdAt: '2026-06-14T10:00:00.000Z',
-    updatedAt: '2026-06-14T10:00:00.000Z',
-  };
 }
 
 function saveButton(wrapper: ReturnType<typeof mountDialog>, label = 'Create Team') {

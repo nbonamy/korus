@@ -6,6 +6,9 @@ import { randomUUID } from 'node:crypto';
 import { generateKeyPair } from '@libp2p/crypto/keys';
 import { peerIdFromPrivateKey } from '@libp2p/peer-id';
 import { createServer } from 'node:net';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 import type { Stream } from '@libp2p/interface';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import type { Agent, ProviderConversationFrame } from '@workspace/core/contracts';
@@ -68,7 +71,7 @@ async function fixture(backend: Agent['backend'] = 'claude', submit?: (target: i
     proposals: (handle: string, peer: string) => shares.guestState(handle, peer),
     withdraw: (handle: string, peer: string, proposalId: string) => shares.withdraw(handle, peer, proposalId),
     authorize: (handle: string, credential: string) => shares.authorize(handle, credential),
-    connected: (handle: string, count: number) => shares.connected(handle, count),
+    connected: (handle: string, count: number, guests?: import('@workspace/core/guest-conversation').GuestParticipant[]) => shares.connected(handle, count, guests),
     onEvent: (listener: (event: AppBackendEvent) => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     synchronize: (id: string, checkpoint: Parameters<ConversationSource['synchronize']>[1]) => source.synchronize(id, checkpoint),
     conversation: (id: string) => source.read(id),
@@ -107,8 +110,64 @@ async function freePort() { const server = createServer(); await new Promise<voi
 async function wire(stream: Stream) { const frames = readCompanionFrames(stream, 5 * 1024 * 1024)[Symbol.asyncIterator](); return async (method: string, args: unknown) => { const id = randomUUID(); stream.send(encodeCompanionFrame({ v: 1, id, method, args })); for (;;) { const next = await frames.next(); if (next.done) throw new Error('closed'); const value = next.value as { id?: string; result?: unknown; error?: string }; if (value.id === id) return value; } }; }
 
 describe('encrypted guest conversation authorization', () => {
+  // Regression: the runner must deliver one timestamp proposal through the real encrypted
+  // relay and persist useful timings without leaking its bearer or conversation contents.
+  it('runs the headless probe through the relay and records a timestamp suggestion and acknowledgment', async () => {
+    const f = await fixture();
+    const propose = f.port.propose;
+    f.port.propose = async (...args) => {
+      // Owner processing is part of send-to-ack, not just the socket write.
+      await new Promise(resolve => setTimeout(resolve, 100));
+      return propose(...args);
+    };
+    const report = path.join(f.directory, 'probe-results.json');
+    const summary = path.join(f.directory, 'summary.md');
+    const startedAt = Date.now();
+    const { stdout, stderr } = await promisify(execFile)(process.execPath, ['scripts/shared-chat-probe.mjs', report], {
+      cwd: fileURLToPath(new URL('../../../../', import.meta.url)), timeout: 45_000,
+      env: { ...process.env, TEST_SHARED_LINK: encodeConversationShareLink(f.link), APP_COMPANION_RELAY_URL: f.pin.origin, APP_COMPANION_RELAY_PEER_ID: f.pin.peerId, GITHUB_STEP_SUMMARY: summary },
+    });
+    const result = JSON.parse(await readFile(report, 'utf8'));
+    expect(result).toStrictEqual({
+      status: 'acknowledged', stage: 'complete', sentAtUtc: expect.any(String), acknowledgedAtUtc: expect.any(String),
+      connectMs: expect.any(Number), joinMs: expect.any(Number), sendToAckMs: expect.any(Number), proposalId: expect.any(String),
+    });
+    expect(result.sentAtUtc).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    expect(Date.parse(result.sentAtUtc)).toBeGreaterThanOrEqual(startedAt);
+    expect(Date.parse(result.acknowledgedAtUtc)).toBeLessThanOrEqual(Date.now());
+    expect(Date.parse(result.acknowledgedAtUtc)).toBeGreaterThanOrEqual(Date.parse(result.sentAtUtc));
+    for (const time of [result.connectMs, result.joinMs, result.sendToAckMs]) expect(time).toBeGreaterThanOrEqual(0);
+    expect(result.sendToAckMs).toBeGreaterThanOrEqual(95);
+    const owner = (await f.shares.control({ action: 'status', target: f.target })).state;
+    expect(owner.proposals).toHaveLength(1);
+    expect(owner.proposals![0]).toMatchObject({ id: result.proposalId, text: result.sentAtUtc, status: 'pending' });
+    await vi.waitFor(() => expect(f.listeners.size).toBe(0));
+    const output = stdout + stderr + await readFile(summary, 'utf8') + JSON.stringify(result);
+    for (const privateValue of [f.link.credential, f.link.handle, 'before-share']) expect(output).not.toContain(privateValue);
+    expect(JSON.parse(stdout)).toStrictEqual(result);
+    expect(await readFile(summary, 'utf8')).toContain(String(result.sendToAckMs));
+    await evidence('runner-probe', result);
+  }, 60_000);
+
+  it('writes a sanitized failure report when the runner cannot join a revoked share', async () => {
+    const f = await fixture();
+    await f.shares.control({ action: 'revoke', target: f.target, handle: f.link.handle });
+    const report = path.join(f.directory, 'probe-failure.json');
+    const failure = await promisify(execFile)(process.execPath, ['scripts/shared-chat-probe.mjs', report], {
+      cwd: fileURLToPath(new URL('../../../../', import.meta.url)), timeout: 45_000,
+      env: { ...process.env, TEST_SHARED_LINK: encodeConversationShareLink(f.link), APP_COMPANION_RELAY_URL: f.pin.origin, APP_COMPANION_RELAY_PEER_ID: f.pin.peerId, GITHUB_STEP_SUMMARY: '' },
+    }).then(() => { throw new Error('Probe unexpectedly succeeded'); }, error => error);
+    expect(failure.code).toBe(1);
+    const result = JSON.parse(await readFile(report, 'utf8'));
+    expect(result).toStrictEqual({ status: 'failed', stage: 'join', connectMs: expect.any(Number), error: 'Shared-chat probe failed during join.' });
+    expect(failure.stdout + failure.stderr + JSON.stringify(result)).not.toContain(f.link.credential);
+    expect(result).not.toHaveProperty('sendToAckMs');
+    await vi.waitFor(() => expect(f.listeners.size).toBe(0));
+  }, 60_000);
+
   it('joins into team Quick Chats without local provider execution and reopens the original team', async () => {
-    const f = await fixture('codex');
+    const submit = vi.fn(async () => ({ turnId: 'guest-choice-turn', messageId: 'guest-choice-message' }));
+    const f = await fixture('codex', submit);
     const joins = new GuestJoins({ directory: path.join(f.directory, 'quick-chat-guest'), relay: f.pin });
     const snapshot = createTestSnapshot(); snapshot.agents = []; snapshot.teams[0]!.agentIds = [];
     snapshot.teams.push({ ...snapshot.teams[0]!, id: 'another-team', name: 'Another team', agentIds: [] });
@@ -136,9 +195,13 @@ describe('encrypted guest conversation authorization', () => {
     expect(snapshot.agents[0]).toMatchObject({ teamId: 'team-test', sessionKind: 'quickChat', sharedConversation: { joinId: prepared.view!.id } });
     expect(snapshot.agents[0]!.backendSession).toBeUndefined();
     const suggestion = { id: randomUUID(), text: 'A suggestion to withdraw' };
-    await call({ action: 'propose', id: prepared.view!.id, proposalId: suggestion.id, text: suggestion.text });
+    await call({ action: 'propose', id: prepared.view!.id, proposalId: suggestion.id, text: suggestion.text, followUpBehavior: 'steer' });
     const withdrawn = await call({ action: 'withdraw', id: prepared.view!.id, proposalId: suggestion.id });
     expect(withdrawn.view?.proposalState?.proposals).toContainEqual(expect.objectContaining({ id: suggestion.id, status: 'dismissed', text: '' }));
+    expect(submit).not.toHaveBeenCalled();
+    await f.shares.control({ action: 'access', target: f.target, handle: f.link.handle, identity: withdrawn.view!.participant!.identity, writeAccess: true });
+    await call({ action: 'propose', id: prepared.view!.id, proposalId: randomUUID(), text: 'A guest-controlled follow-up', followUpBehavior: 'steer' });
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledWith(f.target, 'A guest-controlled follow-up', { followUpBehavior: 'steer' }));
     for (const method of [backendMethods.agentPromptSend, backendMethods.clientWorkspaceApply, backendMethods.clientDocumentRead]) {
       const denied = await server.handleMessage({ jsonrpc: '2.0', id: 'denied', method, params: { agentId: snapshot.agents[0]!.id, prompt: 'Must not execute locally', change: { upsert: [] }, tabId: 'private-file' } });
       expect(denied).toHaveProperty('error');
@@ -161,6 +224,66 @@ describe('encrypted guest conversation authorization', () => {
   }, 30_000);
   // Moderation failures: pending text leaks to other guests, Dismiss dispatches,
   // retry/late owner decisions duplicate execution, or saved identity bindings disappear.
+  it('grants connected identities individual write access and cancels automatic admission on revoke or reconnect', async () => {
+    const submit = vi.fn(async () => ({ turnId: 'direct-turn', messageId: 'direct-message' }));
+    const f = await fixture('codex', submit);
+    const one = await f.client('Alex', f.link, 1); const two = await f.client('Alex');
+    const identity = one.joined.participant.identity;
+    const status = async () => (await f.shares.control({ action: 'status', target: f.target })).state;
+    expect((await status()).guests).toEqual(expect.arrayContaining([
+      { ...one.joined.participant, writeAccess: false }, { ...two.joined.participant, writeAccess: false },
+    ]));
+    const readonly = { id: randomUUID(), text: 'Review me', followUpBehavior: 'steer' as const };
+    await one.client.propose(readonly); expect(submit).not.toHaveBeenCalled();
+    await f.shares.control({ action: 'access', target: f.target, handle: f.link.handle, identity, writeAccess: true });
+    await vi.waitFor(() => expect(one.client.proposalState?.writeAccess).toBe(true));
+    expect((await two.client.proposals()).writeAccess).toBe(false);
+    const direct = { id: randomUUID(), text: 'Submit once', followUpBehavior: 'steer' as const };
+    await Promise.all([one.client.propose(direct), one.client.propose(direct)]);
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(submit.mock.calls[0]).toEqual([f.target, direct.text, { followUpBehavior: 'steer' }]);
+    expect((await one.client.proposals()).proposals).toContainEqual(expect.objectContaining({ id: readonly.id, status: 'pending' }));
+    await expect(one.client.propose({ ...direct, followUpBehavior: 'queue' })).rejects.toThrow();
+    const storedReadOnly = JSON.parse(await readFile(path.join(f.directory, 'shares/state.json'), 'utf8')).proposals.find((record: { id: string }) => record.id === readonly.id);
+    expect(storedReadOnly).not.toHaveProperty('followUpBehavior');
+    await one.client.propose({ ...readonly, followUpBehavior: 'queue' });
+    f.snapshot.agents[0]!.status = { type: 'working' };
+    const queued = { id: randomUUID(), text: 'Cancel my automatic delivery' };
+    await one.client.propose(queued); await f.shares.dispatchQueued();
+    await f.shares.control({ action: 'access', target: f.target, handle: f.link.handle, identity, writeAccess: false });
+    await one.client.propose(queued);
+    f.snapshot.agents[0]!.status = { type: 'idle' }; await f.shares.dispatchQueued();
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect((await one.client.proposals()).proposals).toContainEqual(expect.objectContaining({ id: queued.id, status: 'pending' }));
+    await f.shares.control({ action: 'access', target: f.target, handle: f.link.handle, identity, writeAccess: true });
+    const samePeer = await f.client('Alex', f.link, 1);
+    expect((await status()).connectedGuests).toBe(2);
+    one.client.close();
+    expect((await samePeer.client.proposals()).writeAccess).toBe(true);
+    samePeer.client.close();
+    await vi.waitFor(async () => expect((await status()).guests).toHaveLength(1));
+    const rejoined = await f.client('Alex', f.link, 1);
+    expect(rejoined.joined.participant.identity).toBe(identity);
+    expect((await rejoined.client.proposals()).writeAccess).toBe(false);
+    await rejoined.client.propose({ id: randomUUID(), text: 'Review again after reconnect' });
+    expect(submit).toHaveBeenCalledTimes(1);
+    await expect(f.shares.control({ action: 'access', target: f.target, handle: f.link.handle, identity: 'absent', writeAccess: true })).rejects.toThrow();
+    // A daemon restart cannot restore connection-scoped authority or automatically
+    // dispatch a prompt accepted while the owner was busy.
+    await f.shares.control({ action: 'access', target: f.target, handle: f.link.handle, identity, writeAccess: true });
+    f.snapshot.agents[0]!.status = { type: 'working' };
+    const beforeRestart = { id: randomUUID(), text: 'Review after owner restart' };
+    await rejoined.client.propose(beforeRestart); await f.shares.dispatchQueued();
+    f.shares.close();
+    const restored = new ConversationShares({ directory: path.join(f.directory, 'shares'), endpoint: async () => ({ ownerId: f.ownerId, relay: f.pin }), submit }, () => f.snapshot, () => {});
+    cleanup.push(() => restored.close());
+    f.snapshot.agents[0]!.status = { type: 'idle' };
+    await restored.dispatchQueued();
+    expect((await restored.guestState(f.link.handle, identity)).writeAccess).toBe(false);
+    expect((await restored.guestState(f.link.handle, identity)).proposals).toContainEqual(expect.objectContaining({ id: beforeRestart.id, status: 'pending' }));
+    expect(submit).toHaveBeenCalledTimes(1);
+    await evidence('individual-write-access', { defaultReadOnly: true, submittedOnce: true, revokedQueueCancelled: true, reconnectReadOnly: true });
+  }, 30_000);
   it('moderates private proposals once and restores canonical authorship after owner-state reload', async () => {
     const submit = vi.fn(async () => ({ turnId: 'native-turn', messageId: 'native-user-id' }));
     const f = await fixture('codex', submit);
@@ -183,10 +306,11 @@ describe('encrypted guest conversation authorization', () => {
     expect(submit).not.toHaveBeenCalled();
     expect(await readFile(path.join(f.directory, 'shares/state.json'), 'utf8')).not.toContain(dismissed.text);
     expect((await one.client.proposals()).proposals).toEqual([expect.objectContaining({ id: withdrawn.id, status: 'dismissed' }), expect.objectContaining({ id: dismissed.id, status: 'dismissed' })]);
-    const accepted = { id: randomUUID(), text: 'Identical prompt' };
+    const accepted = { id: randomUUID(), text: 'Identical prompt', followUpBehavior: 'steer' as const };
     await Promise.all([one.client.propose(accepted), one.client.propose(accepted)]);
     await Promise.all([f.shares.control({ action: 'send', target: f.target, handle: f.link.handle, proposalId: accepted.id }), f.shares.control({ action: 'send', target: f.target, handle: f.link.handle, proposalId: accepted.id })]);
     await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(submit.mock.calls[0]).toEqual([f.target, accepted.text, { followUpBehavior: undefined }]);
     await vi.waitFor(async () => expect((await one.client.proposals()).proposals).toContainEqual(expect.objectContaining({ id: accepted.id, status: 'submitted', messageId: 'native-user-id' })));
     const other = await two.client.proposals();
     expect(other.proposals).toStrictEqual([]);
@@ -492,14 +616,17 @@ describe('encrypted guest conversation authorization', () => {
     const invalid = await request('guest.join', { handle: f.link.handle, credential: 'b'.repeat(43), name: 'Alex' }); expect(invalid.error).toBe('denied');
     expect((await request('guest.join', { ...f.link, name: 'Alex' })).error).toBe('denied');
     for (const name of ['', '  ', 'A\nB', 'A\u202eB', 'a'.repeat(81)]) expect((await request('guest.join', { handle: f.link.handle, credential: f.link.credential, name })).error).toBe('denied');
-    expect((await request('guest.join', { handle: f.link.handle, credential: f.link.credential, name: 'Alex' })).result).toBeDefined();
+    const joined = (await request('guest.join', { handle: f.link.handle, credential: f.link.credential, name: 'Alex' })).result as import('@workspace/core/guest-conversation').GuestConversationJoined;
+    expect(joined).toBeDefined();
     const denied = ['snapshot.get', 'pair.claim', 'agent.prompt', 'prompt.send', 'prompt.submit', 'agent/prompt/send', 'conversation/read', 'skills.list', 'agent.git.diff', 'team.create', 'agent.backend.set', 'agent.approvalPreset.set', 'agent.interrupt', 'agent.request.respond', 'agent.model.select', 'agent.permissionMode.set', 'rpc', 'conversation.subscribe'];
+    for (const method of denied) expect((await request(method, {})).error).toBe('denied');
+    await f.shares.control({ action: 'access', target: f.target, handle: f.link.handle, identity: joined.participant.identity, writeAccess: true });
     for (const method of denied) expect((await request(method, {})).error).toBe('denied');
     expect((await request('conversation.synchronize', { checkpoint: null, target: { agentId: 'other' } })).error).toBe('denied');
     expect((await request('conversation.image.read', { path: '/private/secret.png' })).error).toBe('denied');
     expect((await request('conversation.content.read', { input: { sessionId: 'bound', contentId: 'b'.repeat(64), offset: 0 } })).error).toBe('denied');
     expect(f.port.readImage).not.toHaveBeenCalled(); expect(f.port.readConversationContent).not.toHaveBeenCalled();
-    await evidence('denied', { methods: denied, targetSubstitution: 'denied', arbitraryPaths: 'denied', missingContentReference: 'denied' });
+    await evidence('denied', { methods: denied, checkedAccess: ['readOnly', 'write'], targetSubstitution: 'denied', arbitraryPaths: 'denied', missingContentReference: 'denied' });
   }, 30_000);
   it('keeps content ownership from older delivered history when the provider reloads its recent window', async () => {
     const f = await fixture(); f.addMedia(); const { client } = await f.client(); await client.synchronize(); await client.loadOlder();

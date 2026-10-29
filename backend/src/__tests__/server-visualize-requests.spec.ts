@@ -21,14 +21,14 @@ describe('AppBackendServer Visualize workflow', () => {
     } finally { await server.close(); }
   });
 
-  it('starts /visualize with one tool-first suggestion prompt and does not restart it on reentry', async () => {
+  it('requests one synchronous visualization choice on first entry and only opens the pane on reentry', async () => {
     const { agentId, sendPrompt, server, snapshot } = setup();
 
     await request(server, { agentId });
     await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledTimes(1));
     const startPrompt = sendPrompt.mock.calls[0][1];
-    expect(startPrompt.slice(0, startPrompt.indexOf('<context>')).trim()).toBe('Suggest useful visualizations for this conversation.');
-    expect(startPrompt).toContain('suggest-visualizations exactly once');
+    expect(startPrompt).toMatch(/one synchronous, single-select question with exactly three/u);
+    expect(startPrompt).toContain('existing Other');
     expect(startPrompt).toMatch(/Do not browse,[\s\S]*background research/u);
     expect(startPrompt).toMatch(/<context>[\s\S]*<\/context>$/u);
     expect(snapshot.agents.at(-1)?.visualize).toMatchObject({
@@ -54,7 +54,31 @@ describe('AppBackendServer Visualize workflow', () => {
     await server.close();
   });
 
-  it('runs suggestions again when /visualize reopens a closed session with no visualizations', async () => {
+  it.each([false, true])('requests a fresh choice with an existing library (pane open: %s) without changing its canvas', async isOpen => {
+    const { agentId, sendPrompt, server, snapshot } = setup();
+    const visualization = {
+      id: 'existing-map', title: 'User-edited map', content: { kind: 'mermaid' as const, source: 'flowchart LR; A --> B' },
+      canvas: { revision: 2, elements: [], files: {}, selectedElementIds: [], preview: '' },
+      createdAt: '', updatedAt: '',
+    };
+    snapshot.agents.at(-1)!.visualize = {
+      id: 'visualize-library', conversationRef: null, isOpen, suggestions: [],
+      visualizations: [structuredClone(visualization)], selectedVisualizationId: visualization.id,
+      createdAt: '', updatedAt: '',
+    };
+    try {
+      await request(server, { agentId, input: { choose: true } });
+      await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledTimes(1));
+      expect(sendPrompt.mock.calls[0][1]).toMatch(/one synchronous, single-select question with exactly three/u);
+      expect(snapshot.agents.at(-1)?.visualize).toMatchObject({
+        isOpen: true, visualizations: [visualization], selectedVisualizationId: visualization.id,
+      });
+      await request(server, { agentId });
+      expect(sendPrompt).toHaveBeenCalledTimes(1);
+    } finally { await server.close(); }
+  });
+
+  it('requests a choice when reopening a closed empty pane and clears stale cards', async () => {
     const { agentId, sendPrompt, server, snapshot } = setup();
     snapshot.agents.at(-1)!.visualize = {
       id: 'visualize-closed',
@@ -70,7 +94,7 @@ describe('AppBackendServer Visualize workflow', () => {
     await request(server, { agentId });
     await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledTimes(1));
 
-    expect(sendPrompt.mock.calls[0][1]).toContain('suggest-visualizations exactly once');
+    expect(sendPrompt.mock.calls[0][1]).toMatch(/one synchronous, single-select question with exactly three/u);
     expect(snapshot.agents.at(-1)?.visualize).toMatchObject({ isOpen: true, suggestions: [] });
     await server.close();
   });

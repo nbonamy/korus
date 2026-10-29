@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
+import { ElTooltip } from 'element-plus';
 import type { PlanReview, PlanReviewResponse } from '@workspace/core/plan-review';
 import PlanReviewPanel from '../PlanReviewPanel.vue';
 
@@ -288,13 +289,18 @@ describe('Markdown plan review', () => {
   it('restores feedback and lets users reset a choice to the unanswered proposal', async () => {
     const current: PlanReview = { ...review(), draftVersion: 3, draft: { comments: [{ id: 's1', sectionId: 's1', quote: 'Platforms', body: 'Keep all platforms.' }], choices: [{ id: 's2-g1', quote: 'Storage', selected: ['Project'] }] } };
     const respond = vi.fn(async r => result(current, r));
-    const wrapper = mount(PlanReviewPanel, { props: { review: current, respond } });
+    const wrapper = mount(PlanReviewPanel, { props: { review: current, respond }, attachTo: document.body, global: { components: { ElTooltip } } });
     try {
       expect(wrapper.get('.comment-preview').text()).toBe('Keep all platforms.');
       expect((wrapper.findAll('input[type="radio"]')[0]!.element as HTMLInputElement).checked).toBe(true);
       const reset = wrapper.get('button[aria-label="Clear choice"]');
       expect(reset.text()).toBe('');
-      expect(reset.attributes('title')).toBe('Clear choice');
+      await reset.trigger('mouseenter');
+      await vi.waitFor(() => {
+        const tooltip = document.querySelector<HTMLElement>('[role="tooltip"]');
+        expect(tooltip?.textContent).toBe('Clear choice');
+        expect(tooltip && getComputedStyle(tooltip).display).not.toBe('none');
+      });
       expect(reset.get('svg').attributes('aria-hidden')).toBe('true');
       await reset.trigger('click');
       await save();

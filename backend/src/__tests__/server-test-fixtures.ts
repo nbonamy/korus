@@ -49,7 +49,6 @@ export function createTestSnapshot(): AppSnapshot {
       codexBinaryPath: '',
       claudeCodeEnabled: false,
       agentListCompact: false,
-      cockpitAgentViewMode: 'teams',
       collapsedRepositoryKeys: [],
       modelFavorites: [],
       backlogRepositoryFavorites: {},

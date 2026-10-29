@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchingBranchUpstream, canonicalGitRemoteIdentity, repositoryIconKeyForRemote, sanitizeGitRemoteUrl } from '../git-remote';
+import { cloneUrlForRemote, matchingBranchUpstream, canonicalGitRemoteIdentity, repositoryIconKeyForRemote, sanitizeGitRemoteUrl } from '../git-remote';
 
 describe('git remote identity', () => {
   it('removes credentials and non-identity URL parts before persistence', () => {
@@ -21,6 +21,22 @@ describe('git remote identity', () => {
   });
 });
 
+
+describe('clone URL for a persisted remote', () => {
+  it('restores the conventional git user that persistence strips from SSH addresses', () => {
+    expect(cloneUrlForRemote(sanitizeGitRemoteUrl('git@github.com:openai/codex.git')!)).toBe('git@github.com:openai/codex.git');
+    expect(cloneUrlForRemote(sanitizeGitRemoteUrl('ssh://git@gitea.example.com:2222/team/app.git')!)).toBe('ssh://git@gitea.example.com:2222/team/app.git');
+  });
+
+  it('leaves HTTPS remotes and addresses that already name a user alone', () => {
+    expect(cloneUrlForRemote('https://github.com/openai/codex.git')).toBe('https://github.com/openai/codex.git');
+    expect(cloneUrlForRemote('deploy@host.example.com:team/app.git')).toBe('deploy@host.example.com:team/app.git');
+  });
+
+  it('has nothing to clone for local paths', () => {
+    expect(cloneUrlForRemote('/src/codex')).toBeUndefined();
+  });
+});
 
 describe('worktree remote deletion choices', () => {
   it.each([

@@ -1,5 +1,5 @@
 import { isExecutionSelection } from './execution-selection';
-import { pendingMissionRun } from './mission-execution';
+import { missionImplementationBusy, pendingMissionRun } from './mission-execution';
 import type { AppSnapshot } from './contracts';
 import { createEntityId } from './ids';
 import type { Mission, MissionArtifacts, MissionExecution, MissionReviewFinding, MissionStage, MissionTicket } from './mission-types';
@@ -12,7 +12,7 @@ const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v ===
 const text = (v: unknown): v is string => typeof v === 'string' && v.length <= 100_000;
 export function isMissionArtifacts(v: unknown): v is MissionArtifacts {
   return record(v) && record(v.requirements) && text(v.requirements.problem) && text(v.requirements.acceptance)
-    && Array.isArray(v.tickets) && v.tickets.length <= 200 && v.tickets.every(t => record(t) && (t.id === undefined || (text(t.id) && /^mission-ticket-[a-zA-Z0-9-]+$/.test(t.id))) && text(t.title) && (t.body === undefined || text(t.body)) && (t.repositoryPath === undefined || (text(t.repositoryPath) && !!t.repositoryPath.trim())) && typeof t.done === 'boolean' && (t.reference === undefined || (text(t.reference) && !!t.reference.trim())) && (t.dependsOn === undefined || (Array.isArray(t.dependsOn) && t.dependsOn.every(n => Number.isInteger(n) && n >= 0)))) && validTicketDependencies(v.tickets as MissionTicket[])
+    && Array.isArray(v.tickets) && v.tickets.length <= 200 && v.tickets.every(t => record(t) && (t.id === undefined || (text(t.id) && /^mission-ticket-[a-zA-Z0-9-]+$/.test(t.id))) && (t.revision === undefined || (Number.isInteger(t.revision) && (t.revision as number) >= 0)) && text(t.title) && (t.body === undefined || text(t.body)) && (t.repositoryPath === undefined || (text(t.repositoryPath) && !!t.repositoryPath.trim())) && typeof t.done === 'boolean' && (t.reference === undefined || (text(t.reference) && !!t.reference.trim())) && (t.dependsOn === undefined || (Array.isArray(t.dependsOn) && t.dependsOn.every(n => Number.isInteger(n) && n >= 0)))) && validTicketDependencies(v.tickets as MissionTicket[])
     && record(v.implementation) && text(v.implementation.changes) && text(v.implementation.tests)
     && record(v.review) && text(v.review.summary) && text(v.review.pullRequestUrl)
     && (v.review.findings === undefined || (Array.isArray(v.review.findings) && v.review.findings.length <= 500 && v.review.findings.every(isMissionReviewFinding)))
@@ -50,6 +50,13 @@ export function missionTicketReady(tickets: MissionTicket[], index: number): boo
   const ticket = tickets[index];
   return !!ticket && !ticket.done && (ticket.dependsOn ?? []).every(blocker => tickets[blocker]?.done);
 }
+/** Compare authored work, independently of completion and execution history. */
+export function sameMissionTicketWork(a: MissionTicket, b: MissionTicket): boolean {
+  return a.title === b.title && (a.body ?? '') === (b.body ?? '')
+    && a.repositoryPath === b.repositoryPath && (a.reference ?? '') === (b.reference ?? '')
+    && JSON.stringify([...(a.dependsOn ?? [])].sort((x, y) => x - y)) === JSON.stringify([...(b.dependsOn ?? [])].sort((x, y) => x - y));
+}
+
 function isStageAgents(v: unknown): v is Mission['stageAgentIds'] {
   return record(v) && Object.entries(v).every(([k, id]) => featureStages.includes(k as MissionStage) && typeof id === 'string');
 }
@@ -75,8 +82,8 @@ export function missionStageReady(stage: MissionStage, a: MissionArtifacts): boo
 export function createMission(snapshot: AppSnapshot, input: unknown): Mission {
   if (!record(input) || typeof input.outcome !== 'string' || !input.outcome.trim() || input.outcome.trim().length > 200 || !findMissionWorkflow(input.workflowType)
     || typeof input.teamId !== 'string' || typeof input.orchestratorMemberId !== 'string') throw new Error('Invalid mission outcome or workflow.');
-  const team = snapshot.teams.find(team => team.id === input.teamId && !team.remoteConnectionId);
-  const orchestrator = snapshot.agents.find(agent => agent.id === input.orchestratorMemberId && agent.teamId === team?.id);
+  const team = snapshot.teams.find(team => team.id === input.teamId);
+  const orchestrator = snapshot.agents.find(agent => agent.id === input.orchestratorMemberId && agent.teamId === team?.id && !agent.remoteConnectionId);
   if (!team || !orchestrator) throw new Error('Choose a local team and one of its agents to orchestrate the mission.');
   const now = new Date().toISOString();
   const workflow = findMissionWorkflow(input.workflowType)!;
@@ -107,14 +114,24 @@ export function updateMission(snapshot: AppSnapshot, input: unknown): Mission {
   if (mission.revision !== input.revision) throw new Error('This mission changed. Reopen it before saving.');
   if (mission.status === 'completed') throw new Error('This mission is completed.');
   if (pendingMissionRun(mission)) throw new Error('Review or stop the current mission run before editing artifacts or advancing.');
+  if (missionImplementationBusy(mission, snapshot.agents)) throw new Error('Wait for the implementation worker to stop before editing artifacts or advancing.');
   if (Object.values(input.stageAgentIds).some(id => !snapshot.agents.some(a => a.id === id))) throw new Error('Supporting agent not found.');
   if (input.action === 'advance' && mission.stage === 'ship') throw new Error('Complete delivery from the Ship stage.');
+  const artifacts = structuredClone(input.artifacts);
+  artifacts.tickets = artifacts.tickets.map((ticket, index) => {
+    const previous = ticket.id ? mission.artifacts.tickets.find(candidate => candidate.id === ticket.id)
+      : mission.artifacts.tickets[index];
+    if (!previous) return ticket;
+    if (!sameMissionTicketWork(previous, ticket)) return { ...ticket, done: false, revision: (previous.revision ?? 0) + 1 };
+    // A stale artifact form cannot restore completion for a revised ticket.
+    return previous.revision === undefined ? ticket : { ...ticket, done: previous.done, revision: previous.revision };
+  });
   // Earlier gates remain true even when revising their artifacts in later stages.
   const workflow = missionWorkflow(mission.workflow.type);
   const stageIndex = workflow.stages.indexOf(mission.stage);
   const requiredStages = workflow.stages.slice(0, stageIndex + (input.action === 'advance' ? 1 : 0));
-  if (requiredStages.some(stage => !workflow.stageReady(stage, input.artifacts as MissionArtifacts))) throw new Error('Complete the required stage artifacts before continuing.');
-  const updated = { ...mission, artifacts: structuredClone(input.artifacts), stageAgentIds: { ...input.stageAgentIds }, revision: mission.revision + 1, updatedAt: new Date().toISOString() };
+  if (requiredStages.some(stage => !workflow.stageReady(stage, artifacts))) throw new Error('Complete the required stage artifacts before continuing.');
+  const updated = { ...mission, artifacts, stageAgentIds: { ...input.stageAgentIds }, revision: mission.revision + 1, updatedAt: new Date().toISOString() };
   if (input.action === 'advance') {
     updated.stage = workflow.stages[stageIndex + 1]!;
   }
@@ -143,6 +160,7 @@ function isMissionExecution(v: unknown): v is MissionExecution {
       && (run.workerId === undefined || text(run.workerId))
       && (run.ticketId === undefined || (text(run.ticketId) && /^mission-ticket-[a-zA-Z0-9-]+$/.test(run.ticketId)))
       && (run.ticketIndex === undefined || (Number.isInteger(run.ticketIndex) && (run.ticketIndex as number) >= 0))
+      && (run.ticketRevision === undefined || (Number.isInteger(run.ticketRevision) && (run.ticketRevision as number) >= 0))
       && (run.repositoryPath === undefined || (text(run.repositoryPath) && !!run.repositoryPath.trim()))
       && (run.implementationResult === undefined || (record(run.implementationResult) && text(run.implementationResult.changes) && text(run.implementationResult.tests)))
       && Array.isArray(run.skills) && run.skills.every(skill => record(skill) && text(skill.name) && (skill.path === undefined || text(skill.path)))
@@ -150,6 +168,7 @@ function isMissionExecution(v: unknown): v is MissionExecution {
       && (run.finishedAt === undefined || text(run.finishedAt))
       && (run.summary === undefined || text(run.summary)) && (run.error === undefined || text(run.error))
       && (run.proposal === undefined || isMissionArtifacts(run.proposal))
+      && (run.draftTicketsBaseHash === undefined || (typeof run.draftTicketsBaseHash === 'string' && /^[a-f0-9]{64}$/.test(run.draftTicketsBaseHash)))
       && (run.draftTickets === undefined || isMissionArtifacts({ requirements: { problem: '', acceptance: '' }, tickets: run.draftTickets, implementation: { changes: '', tests: '' }, review: { summary: '', pullRequestUrl: '' } })));
 }
 

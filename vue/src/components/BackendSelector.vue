@@ -35,22 +35,22 @@ import { backendDisplayName } from '@workspace/core/backend-driver';
 import BackendIcon from './BackendIcon.vue';
 
 const props = withDefaults(defineProps<{
-  teamId?: string | null;
+  remoteConnectionId?: string | null;
   size?: 'small' | 'default' | 'large';
   disabled?: boolean;
   preserveSelection?: boolean;
   showSingleChoice?: boolean;
 }>(), { size: 'default', disabled: false });
 const backend = defineModel<AgentBackend>();
-const choices = useBackendChoices(() => props.teamId);
-const rememberBackend = useRememberBackend(() => props.teamId);
+const choices = useBackendChoices(() => props.remoteConnectionId);
+const rememberBackend = useRememberBackend(() => props.remoteConnectionId);
 const connectEngine = useConnectEngine();
 const { t } = useI18n();
 watch(choices, (enabled) => {
   if (props.disabled || (props.preserveSelection && backend.value)) return;
   if (!backend.value || !enabled.includes(backend.value)) backend.value = enabled[0];
 }, { immediate: true });
-watch(() => props.teamId, () => {
+watch(() => props.remoteConnectionId, () => {
   if (!props.disabled && !props.preserveSelection) backend.value = choices.value[0];
 });
 </script>

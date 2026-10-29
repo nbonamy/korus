@@ -5,6 +5,7 @@
     :show-close="false"
     :close-on-click-modal="false"
     :close-on-press-escape="!activeTarget"
+    append-to-body
     destroy-on-close
     width="min(720px, calc(100vw - 48px))"
     @update:model-value="onDialogVisibilityChanged"
@@ -289,7 +290,11 @@ function oneLine(value: string): string {
 <style scoped>
 :global(.mission-ticket-dialog.el-dialog) {
   display: grid;
-  max-height: min(82vh, 780px);
+  /* A ticket is a document: give it most of the window, with a margin all around. The default top
+     margin (15vh) would push a tall dialog off the bottom, so it is set explicitly. */
+  height: calc(100vh - 96px);
+  max-height: 1100px;
+  margin: 48px auto;
   grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
 }

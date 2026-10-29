@@ -140,7 +140,7 @@ const backendChoices = useBackendChoices();
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
 const backend = defineModel<import('@workspace/core/contracts').AgentBackend>('backend');
-useNewAgentBackend(backend, backendChoices);
+
 
 const props = withDefaults(defineProps<{
   busy?: boolean;
@@ -162,6 +162,7 @@ const props = withDefaults(defineProps<{
   repositories: () => [],
 });
 
+useNewAgentBackend(backend, backendChoices, () => props.visible);
 const emit = defineEmits<{
   close: [];
   'clone-url': [url: string];

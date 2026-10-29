@@ -2,6 +2,7 @@ import { execFileSync as nodeExecFileSync } from 'node:child_process';
 import { existsSync as nodeExistsSync, readFileSync as nodeReadFileSync, readdirSync as nodeReaddirSync } from 'node:fs';
 import { homedir as nodeHomedir } from 'node:os';
 import path from 'node:path';
+import { product } from './product';
 
 type ExecFileSync = (
   file: string,
@@ -20,6 +21,26 @@ export type RuntimeDiscoveryDependencies = {
   readdirSync?: (dirPath: string) => string[];
   shell?: string;
 };
+
+/**
+ * Engines a host links into the private bin (see the remote engine links). A linked engine is found with
+ * one file check; every other tool, and any engine without a working link, goes through full discovery.
+ */
+export const privateBinEngines = ['codex', 'claude'] as const;
+
+function privateBinDirectory(dependencies: RuntimeDiscoveryDependencies): string {
+  return path.join(homeDir(dependencies), product.homeDirectory, 'bin');
+}
+
+function linkedEngine(executable: string, dependencies: RuntimeDiscoveryDependencies): string | null {
+  if ((dependencies.platform ?? process.platform) === 'win32') return null;
+  const bin = privateBinDirectory(dependencies);
+  // Detection hands launches the absolute path it already resolved, so that form counts as linked too.
+  const name = path.isAbsolute(executable) && path.dirname(executable) === bin ? path.basename(executable) : executable.trim();
+  if (!(privateBinEngines as readonly string[]).includes(name)) return null;
+  const linked = path.join(bin, name);
+  return executableExists(linked, dependencies) ? linked : null;
+}
 
 export function discoveredRuntimePath(dependencies: RuntimeDiscoveryDependencies = {}): string {
   return discoveredRuntimePathEntries(dependencies).join(pathDelimiter(dependencies));
@@ -62,7 +83,8 @@ export function resolveRuntimeExecutable(
   executable: string,
   dependencies: RuntimeDiscoveryDependencies = {},
 ): string | null {
-  return executableFromPath(executable, () => discoveredRuntimePathEntries(dependencies), dependencies);
+  return linkedEngine(executable, dependencies)
+    ?? executableFromPath(executable, () => discoveredRuntimePathEntries(dependencies), dependencies);
 }
 
 /** Resolve a provider and its child-process environment from one PATH snapshot. */
@@ -71,8 +93,16 @@ export function resolveRuntimeLaunch(
   overrides?: NodeJS.ProcessEnv,
   dependencies: RuntimeDiscoveryDependencies = {},
 ): { command: string; env: NodeJS.ProcessEnv } {
-  const env = withDiscoveredRuntimePath(overrides, dependencies);
   const executable = command.trim();
+  const linked = linkedEngine(executable, dependencies);
+  if (linked) {
+    // The inherited PATH is already explicit where engines are linked, so no login shell is consulted.
+    const merged = { ...process.env, ...overrides };
+    const delimiter = pathDelimiter(dependencies);
+    const inherited = (dependencies.env ?? merged).PATH ?? merged.PATH;
+    return { command: linked, env: { ...merged, PATH: unique([privateBinDirectory(dependencies), ...pathEntries(inherited, delimiter)]).join(delimiter) } };
+  }
+  const env = withDiscoveredRuntimePath(overrides, dependencies);
   return {
     command: executableFromPath(executable, () => pathEntries(env.PATH, pathDelimiter(dependencies)), { ...dependencies, env }) ?? executable,
     env,

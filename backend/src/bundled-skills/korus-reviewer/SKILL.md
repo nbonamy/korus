@@ -18,6 +18,7 @@ If tools are deferred or lack input schemas, load them with ToolSearch or your p
 ## Inspect
 
 - Use provider repository tools. Review the fixed baseline plus subsequent review commits/working changes.
+- If the branch is behind main, mention it only in your final summary. Do not report findings for features or changes present only on main and absent from this branch; findings must identify defects introduced by the reviewed changes.
 - Ledger is cumulative: respect exclusions unless materially new evidence; discussion records expected behavior.
 - Register every actionable P0–P3 issue with {{mcpServerName}}.report_finding: evidence, imperative title ≤80 characters, one Markdown paragraph explaining impact. Native findings do not enter this ledger.
 - update_finding corrects; delete_finding retracts. Regressions of fixed findings use priorFindingId only when currently actionable.

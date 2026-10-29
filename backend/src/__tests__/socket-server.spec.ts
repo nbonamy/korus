@@ -92,6 +92,28 @@ describe('LocalSocketRpcServer', () => {
     expect(requestId).toMatch(/^backend-/);
     socket.destroy();
   });
+
+  it('finds the collaboration controller when another client connected first and reports its absence', async () => {
+    const socketPath = await tempSocketPath();
+    server = new LocalSocketRpcServer({ socketPath, onMessage: () => undefined });
+    await server.start();
+    const desktop = await connect(socketPath);
+    const controller = await connect(socketPath);
+    const respond = (socket: net.Socket, result: boolean) => socket.on('data', chunk => {
+      for (const line of chunk.toString().trim().split('\n')) {
+        const message = JSON.parse(line);
+        socket.write(`${JSON.stringify({ jsonrpc: '2.0', id: message.id, result: result ? { ownerId: 'owner', result: { content: [] } } : null })}\n`);
+      }
+    });
+    respond(desktop, false);
+    respond(controller, true);
+    try {
+      await expect(server.requestCollaborationController({ ownerId: 'owner' })).resolves.toStrictEqual({ ownerId: 'owner', result: { content: [] } });
+      controller.destroy();
+      await waitFor(() => controller.closed);
+      await expect(server.requestCollaborationController({ ownerId: 'owner' })).rejects.toThrow('controller');
+    } finally { desktop.destroy(); controller.destroy(); }
+  });
 });
 
 async function tempSocketPath(): Promise<string> {

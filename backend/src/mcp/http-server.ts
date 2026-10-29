@@ -20,10 +20,13 @@ import {
   createReviewToolModuleProvider,
 } from './adapter-tool-modules';
 import { resolveAppMcpToolModules, type AppMcpToolModuleProvider } from './tool-modules';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { errorToolResult } from './tool-result';
 
 const maxBodyBytes = 1024 * 1024;
 
 export type AppMcpHttpServerOptions = {
+  forwardCollaboration?: (agentId: string, name: string, args: Record<string, unknown>) => Promise<CallToolResult | undefined>;
   coordinator: AppMcpAgentCoordinator;
   computerUse?: ComputerUseClient;
   computerUseEnabled?: () => boolean;
@@ -45,6 +48,7 @@ export class AppMcpHttpServer {
   private url: string | null = null;
 
   constructor(options: AppMcpHttpServerOptions) {
+    this.forwardCollaboration = options.forwardCollaboration;
     this.coordinator = options.coordinator;
     this.hostedMcpGateway = options.hostedMcpGateway;
     const computerUseEnabled = options.computerUseEnabled ?? (() => true);
@@ -64,6 +68,21 @@ export class AppMcpHttpServer {
     ];
     this.host = options.host ?? '127.0.0.1';
     this.port = options.port ?? 0;
+  }
+
+  private readonly forwardCollaboration?: AppMcpHttpServerOptions['forwardCollaboration'];
+
+  async callTool(agentId: string, name: string, args: Record<string, unknown>): Promise<CallToolResult> {
+    if (!this.url) throw new Error('MCP server has not started.');
+    const url = new URL(this.url);
+    url.searchParams.set('agentId', agentId);
+    const response = await fetch(url, {
+      method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 'collaboration', method: 'tools/call', params: { name, arguments: args } }),
+    });
+    const message = await response.json() as { result?: CallToolResult; error?: { message: string } };
+    if (!response.ok || !message.result) throw new Error(message.error?.message ?? 'Collaboration request failed.');
+    return message.result;
   }
 
   async start(): Promise<string> {
@@ -185,6 +204,19 @@ export class AppMcpHttpServer {
     }
 
     this.coordinator.connectAgent(agentId);
+    const call = body as { id?: unknown; method?: unknown; params?: { name?: unknown; arguments?: unknown } };
+    if (call.method === 'tools/call' && typeof call.params?.name === 'string' && this.forwardCollaboration) {
+      try {
+        const result = await this.forwardCollaboration(agentId, call.params.name, (call.params.arguments ?? {}) as Record<string, unknown>);
+        if (result) {
+          writeJson(response, 200, { jsonrpc: '2.0', id: call.id, result });
+          return;
+        }
+      } catch (error) {
+        writeJson(response, 200, { jsonrpc: '2.0', id: call.id, result: errorToolResult(error instanceof Error ? error.message : String(error)) });
+        return;
+      }
+    }
     const mcpServer = createAppMcpServer({ agentId, url }, this.toolModuleProviders);
     const transport = new StreamableHTTPServerTransport({
       enableJsonResponse: true,

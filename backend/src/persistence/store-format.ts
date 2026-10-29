@@ -2,8 +2,8 @@ import { product } from '@workspace/core/product';
 import backendPackage from '../../package.json';
 
 export const storeSchemaVersion = 1;
-// Shared execution selections require a reader that understands the nested request shape.
-export const rosterSchemaVersion = 3;
+// Mixed-host teams require a reader that retains remote links and collaboration authority.
+export const rosterSchemaVersion = 4;
 const storeWrittenBy = `daemon ${backendPackage.version}`;
 
 export class StoreFormatError extends Error {

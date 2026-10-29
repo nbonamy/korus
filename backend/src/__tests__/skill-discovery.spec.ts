@@ -38,4 +38,3 @@ it('treats skills the Claude app syncs in as built-in and other synced skills as
     notes: { builtIn: false, origin: undefined },
   });
 });
-

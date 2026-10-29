@@ -1,5 +1,5 @@
 import { product } from '@workspace/core/product';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { codexSdkFixture, sdkAgent, sdkSnapshot } from './sdk-surface-fixture';
 
 describe(`Codex SDK → ${product.name} backend controls`, () => {
@@ -118,6 +118,45 @@ describe(`Codex SDK → ${product.name} backend controls`, () => {
     handle.fork.mockResolvedValue({ conversationId: 'whole-fork', conversation: surface.conversation('whole-fork'), snapshot: sdkSnapshot('whole-fork') });
     await driver.forkConversation(sdkAgent(), { ...target, id: 'whole-fork-agent' });
     expect(handle.fork).toHaveBeenCalledWith({ cwd: '/repo' }, { extensionContext: expect.objectContaining({ id: 'whole-fork-agent' }) });
+  });
+
+  // A concurrent owner steer or async answer must not erase a guest receipt or
+  // attribute the owner's message to the guest, even when their text is identical.
+  it.each(['steer', 'async answer'] as const)('preserves a guest steering receipt during an overlapping owner %s', async operation => {
+    const { driver, conversation } = setup();
+    const agent = sdkAgent(); const session = conversation('conversation-a');
+    const request = { id: 'question', conversationId: 'conversation-a', turnId: 'turn', itemId: 'question', kind: 'ask_user' as const,
+      payload: { request: { itemId: 'question', delivery: 'async' as const, blocking: false, questions: [] } } };
+    const initial = { activeTurnId: 'turn', turnIds: ['turn'], busy: true, clientRequests: [request] };
+    const guest = { id: 'guest', role: 'user' as const, kind: 'steer' as const, status: 'complete' as const, turnId: 'turn', parts: [{ type: 'text' as const, text: 'Same text' }] };
+    const owner = { ...guest, id: 'owner' };
+    session.setSnapshot(initial);
+    let release!: () => void;
+    const acceptance = new Promise<void>(resolve => { release = resolve; });
+    session.handle.steerMessage.mockImplementationOnce(async () => {
+      session.setSnapshot({ ...initial, messages: [guest] });
+      await acceptance;
+      return session.handle.getSnapshot();
+    });
+    const ownerSnapshot = async () => {
+      session.setSnapshot({ ...initial, messages: [guest, owner] });
+      return session.handle.getSnapshot();
+    };
+    session.handle.steerMessage.mockImplementationOnce(ownerSnapshot);
+    session.handle.respondToClientRequest.mockImplementationOnce(ownerSnapshot);
+    const guestSending = driver.steerPrompt(agent, 'Same text');
+    try {
+      await vi.waitFor(() => expect(session.handle.steerMessage).toHaveBeenCalledTimes(1));
+      const ownerSending = operation === 'steer' ? driver.steerPrompt(agent, 'Same text')
+        : driver.respondToAgentRequest({ agentId: agent.id, id: request.id, outcome: { kind: 'answered', answers: {} } });
+      // Let the second request reach the already-loaded adapter before acceptance.
+      await new Promise<void>(resolve => setImmediate(resolve));
+      release();
+      const [receipt, ownerReceipt] = await Promise.all([guestSending, ownerSending]);
+      expect(receipt).toStrictEqual({ backendSession: { kind: 'codex', threadId: 'conversation-a' }, turnId: 'turn', messageId: guest.id });
+      if (operation === 'steer') expect(ownerReceipt).toStrictEqual({ backendSession: { kind: 'codex', threadId: 'conversation-a' }, turnId: 'turn', messageId: owner.id });
+      else expect(session.handle.respondToClientRequest).toHaveBeenCalledExactlyOnceWith({ id: request.id, payload: { answers: {} } });
+    } finally { release(); await guestSending; }
   });
 
   it('forks a worktree assignment at the last completed native turn with the worker configuration', async () => {

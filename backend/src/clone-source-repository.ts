@@ -48,9 +48,13 @@ function remoteHost(url: string): string {
   try { return new URL(url).hostname; } catch { return url; }
 }
 
-function gitFailureDetail(error: unknown): string {
+function gitFailureText(error: unknown): string {
   const stderr = (error as { stderr?: unknown })?.stderr;
-  const text = typeof stderr === 'string' && stderr.trim() ? stderr : error instanceof Error ? error.message : String(error);
+  return typeof stderr === 'string' && stderr.trim() ? stderr : error instanceof Error ? error.message : String(error);
+}
+
+function gitFailureDetail(error: unknown): string {
+  const text = gitFailureText(error);
   return text.split(/\r?\n/u).map(line => line.trim()).filter(Boolean).slice(-2).join(' ').slice(0, 300);
 }
 
@@ -70,7 +74,8 @@ async function cloneWithFallback(runner: CommandRunner, url: string, destination
   }
   const detail = gitFailureDetail(lastError);
   const host = remoteHost(url);
-  if (authenticationFailure.test(detail)) {
+  // Git words the access hint over several lines, so the short detail alone can miss it.
+  if (authenticationFailure.test(gitFailureText(lastError))) {
     throw new AppError('clone.authenticationFailed', `Could not access ${repositoryName} on ${host}. ${detail}`, { repository: repositoryName, host });
   }
   throw new AppError('clone.failed', `Could not clone ${repositoryName}: ${detail}`, { repository: repositoryName, detail });

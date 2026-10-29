@@ -128,7 +128,7 @@
           :provider-connections="providerConnections"
           :settings="generalSettings"
           :update-settings="updateSettings"
-          :teams="teams"
+          :agents="agents"
           :list-source-folders="listSourceFolders"
           :list-ssh-hosts="listSshHosts"
           :add-ssh-connection="addSshConnection"
@@ -151,7 +151,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import type { AddSshConnectionInput, AppGeneralSettings, AppPluginStatus, AppThemeSettings, DaemonStatus, DevicePairingSession, DevicePairingStatus, PairedDevice, RemoteConnection, SourceFolderListing, SourceFolderListInput, SourceFolderState, SshHostCandidate, Team, UpdateRemoteConnectionInput, UpdateSettingsInput, WorkBacklogState, WorkIntegrationConnection, WorkProviderAuthorization, WorkProviderKind } from '@workspace/core/contracts';
+import type { AddSshConnectionInput, Agent, AppGeneralSettings, AppPluginStatus, AppThemeSettings, DaemonStatus, DevicePairingSession, DevicePairingStatus, PairedDevice, RemoteConnection, SourceFolderListing, SourceFolderListInput, SourceFolderState, SshHostCandidate, UpdateRemoteConnectionInput, UpdateSettingsInput, WorkBacklogState, WorkIntegrationConnection, WorkProviderAuthorization, WorkProviderKind } from '@workspace/core/contracts';
 import { defaultGeneralSettings, defaultSourceFolderState } from '@workspace/core/settings';
 import UsagePanel from './UsagePanel.vue';
 import SettingsBrowserPanel from './SettingsBrowserPanel.vue';
@@ -218,7 +218,7 @@ const props = withDefaults(defineProps<{
   workProviderAuthorization?: WorkProviderAuthorization | null;
   workProviderAuthorizations?: Partial<Record<WorkProviderKind, WorkProviderAuthorization>>;
   remoteConnections?: RemoteConnection[];
-  teams?: Team[];
+  agents?: Agent[];
   listSourceFolders?: (input?: SourceFolderListInput) => Promise<SourceFolderListing>;
   listSshHosts?: () => Promise<SshHostCandidate[]>;
   addSshConnection?: (input: AddSshConnectionInput) => Promise<void>;
@@ -249,7 +249,7 @@ const props = withDefaults(defineProps<{
   workProviderSettings: () => ({}),
   workProviderAuthorization: null,
   remoteConnections: () => [],
-  teams: () => [],
+  agents: () => [],
   listSourceFolders: async () => ({ path: '', parentPath: null, entries: [] }),
   listSshHosts: async () => [],
   addSshConnection: async () => undefined,

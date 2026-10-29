@@ -1,30 +1,35 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { AgentThreadFlagService } from '../agent-thread-flag-service';
-import { WORKTREE_DELEGATION_PROMPT } from '../worktree-delegation';
+import { PROPOSED_WORK_DELEGATION_PROMPT } from '../worktree-delegation';
+import { MISSION_COMMAND_PROMPT } from '../mission-command';
 
 describe('AgentThreadFlagService', () => {
-  it('submits the fixed delegation prompt and clears the flag only after acceptance', async () => {
+  it.each([
+    [{ id: 'work_proposed', action: 'delegate' }, PROPOSED_WORK_DELEGATION_PROMPT],
+    [{ id: 'work_proposed', action: 'create_mission' }, MISSION_COMMAND_PROMPT],
+    [{ id: 'delegate_to_worktree', action: 'execute' }, PROPOSED_WORK_DELEGATION_PROMPT],
+  ] as const)('accepts %j and clears only the proposal after submission', async (response, prompt) => {
     const agent = createInitialSnapshot().agents[0]!;
-    agent.threadFlags = { delegate_to_worktree: true };
+    agent.threadFlags = { [response.id]: true, ready_for_review: true };
     const submit = vi.fn().mockResolvedValue(undefined);
     const service = new AgentThreadFlagService({ submit });
 
-    await service.respond(agent, { id: 'delegate_to_worktree', action: 'execute' });
+    await service.respond(agent, response);
 
-    expect(submit).toHaveBeenCalledExactlyOnceWith(agent, WORKTREE_DELEGATION_PROMPT);
-    expect(agent.threadFlags).toBeUndefined();
+    expect(submit).toHaveBeenCalledExactlyOnceWith(agent, prompt);
+    expect(agent.threadFlags).toStrictEqual({ ready_for_review: true });
   });
 
-  it('preserves the flag when prompt submission fails so the action can be retried', async () => {
+  it.each(['delegate', 'create_mission'] as const)('preserves the proposal when %s fails and allows retry', async (action) => {
     const agent = createInitialSnapshot().agents[0]!;
-    agent.threadFlags = { delegate_to_worktree: true };
+    agent.threadFlags = { work_proposed: true };
     const submit = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue(undefined);
     const service = new AgentThreadFlagService({ submit });
 
-    await expect(service.respond(agent, { id: 'delegate_to_worktree', action: 'execute' })).rejects.toThrow('offline');
-    expect(agent.threadFlags).toStrictEqual({ delegate_to_worktree: true });
-    await service.respond(agent, { id: 'delegate_to_worktree', action: 'execute' });
+    await expect(service.respond(agent, { id: 'work_proposed', action })).rejects.toThrow('offline');
+    expect(agent.threadFlags).toStrictEqual({ work_proposed: true });
+    await service.respond(agent, { id: 'work_proposed', action });
     expect(agent.threadFlags).toBeUndefined();
   });
 
@@ -47,7 +52,7 @@ describe('AgentThreadFlagService', () => {
     const submit = vi.fn(() => new Promise<void>((resolve) => { accept = resolve; }));
     const service = new AgentThreadFlagService({ submit });
     const pending = service.respond(agent, { id: 'delegate_to_worktree', action: 'execute' });
-    await expect(service.respond(agent, { id: 'delegate_to_worktree', action: 'dismiss' })).rejects.toThrow('already being handled');
+    await expect(service.respond(agent, { id: 'work_proposed', action: 'create_mission' })).rejects.toThrow('already being handled');
     accept();
     await pending;
     await expect(service.respond(agent, { id: 'delegate_to_worktree', action: 'dismiss' })).rejects.toThrow('no longer active');
@@ -57,14 +62,13 @@ describe('AgentThreadFlagService', () => {
     expect(submit).toHaveBeenCalledTimes(1);
   });
 
-  it('rejects response actions outside the app-owned contract', async () => {
+  it.each([['work_proposed', 'invent-ui'], ['ready_for_review', 'create_mission']] as const)('rejects invalid %s / %s actions', async (id, action) => {
     const agent = createInitialSnapshot().agents[0]!;
-    agent.threadFlags = { delegate_to_worktree: true };
+    agent.threadFlags = { [id]: true };
     const service = new AgentThreadFlagService({ submit: vi.fn() });
 
     await expect(service.respond(agent, {
-      id: 'delegate_to_worktree',
-      action: 'invent-ui',
+      id, action,
     } as never)).rejects.toThrow('Invalid thread flag action');
   });
 });

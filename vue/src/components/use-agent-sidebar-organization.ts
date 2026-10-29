@@ -9,13 +9,15 @@ export function useAgentSidebarOrganization(options: {
   agents: () => Agent[];
   repositoryGroups: () => WorkspaceSidebarGroup[];
   label: (activity: SidebarActivity) => string;
+  activityOnly?: () => boolean;
 }) {
   const mode = ref<'repository' | 'activity'>('repository');
   const idleSort = ref<'activity' | 'repository'>('activity');
   const now = ref(Date.now());
   const preferenceKey = () => options.teamId() ? `app:agentOrganization:${options.teamId()}` : null;
   const idleSortKey = () => options.teamId() ? `app:idleAgentSort:${options.teamId()}` : null;
-  watch(options.teamId, () => {
+  watch([options.teamId, () => options.activityOnly?.() ?? false], () => {
+    if (options.activityOnly?.()) { mode.value = 'activity'; idleSort.value = 'activity'; return; }
     try {
       mode.value = localStorage.getItem(preferenceKey() ?? '') === 'activity' ? 'activity' : 'repository';
       idleSort.value = localStorage.getItem(idleSortKey() ?? '') === 'repository' ? 'repository' : 'activity';
@@ -29,7 +31,7 @@ export function useAgentSidebarOrganization(options: {
   }, { immediate: true });
 
   function select(value: string): void {
-    if (value !== 'repository' && value !== 'activity') return;
+    if (options.activityOnly?.() || (value !== 'repository' && value !== 'activity')) return;
     mode.value = value;
     const key = preferenceKey();
     try { if (key) localStorage.setItem(key, value); } catch { /* Keep the session choice if storage is unavailable. */ }
@@ -41,7 +43,7 @@ export function useAgentSidebarOrganization(options: {
       now: Math.max(now.value, Date.now()), label: options.label, idleSort: idleSort.value });
   });
   function selectIdleSort(value: string): void {
-    if (value !== 'repository' && value !== 'activity') return;
+    if (options.activityOnly?.() || (value !== 'repository' && value !== 'activity')) return;
     idleSort.value = value;
     const key = idleSortKey();
     try { if (key) localStorage.setItem(key, value); } catch { /* Keep the session choice if storage is unavailable. */ }

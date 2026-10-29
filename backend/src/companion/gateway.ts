@@ -284,7 +284,7 @@ const agentOperations = {
   'agent.backend.set': agentOperation(withTarget(z.object({ backend: z.enum(['codex', 'claude', 'antigravity']) }).strict()))({
     check: (agent, { backend }, { backends }) => {
       if (!canSelectAgentBackend(agent)) throw new Error('The engine can only change before the first prompt.');
-      if (backends && !backends[agent.teamId ?? '']?.includes(backend)) throw new Error('That engine is not available.');
+      if (backends && !backends[agent.remoteConnectionId ?? agent.teamId ?? '']?.includes(backend)) throw new Error('That engine is not available.');
     },
     act: async (port, agent, { backend }) => { await port.setBackend(agent.id, backend); return {}; },
   }),
@@ -296,7 +296,7 @@ const agentOperations = {
   }),
   'agent.duplicate': agentOperation(withTarget(z.object({ backend: z.enum(['codex', 'claude', 'antigravity']) }).strict()))({
     check: (agent, { backend }, { backends }) => {
-      if (!backends?.[agent.teamId ?? '']?.includes(backend)) throw new Error('That engine is not available.');
+      if (!backends?.[agent.remoteConnectionId ?? agent.teamId ?? '']?.includes(backend)) throw new Error('That engine is not available.');
     },
     act: async (port, agent, { backend }) => {
       if (!port.duplicateAgent) throw new Error('Agent duplication is unavailable.');
@@ -522,12 +522,12 @@ export class CompanionGateway {
       const authorize = async () => {
         const current = await this.port.workspace();
         this.requireGrant(peer);
-        if (!current.teams.some(candidate => candidate.id === team.id && candidate.remoteConnectionId === team.remoteConnectionId)) throw new Error('Team changed.');
+        if (!current.teams.some(candidate => candidate.id === team.id)) throw new Error('Team changed.');
         if (!current.backends?.[team.id]?.includes(input.selection.backend)) throw new Error('That engine is not available.');
       };
       await authorize();
       if (!this.port.createProject) throw new Error('Project creation is unavailable.');
-      return { creationId: this.creations.start(peer.peerId, () => this.port.createProject!(input, team.remoteConnectionId, authorize)) };
+      return { creationId: this.creations.start(peer.peerId, () => this.port.createProject!(input, undefined, authorize)) };
     },
     'usage.get': async (peer, args) => {
       z.object({}).strict().parse(args);
@@ -569,8 +569,8 @@ export class CompanionGateway {
       const input = repositorySchema.parse(args);
       const workspace = await this.port.workspace();
       this.requireGrant(peer);
-      const { team, repository } = this.repository(workspace, input);
-      const branches = await this.port.branches(repository.primaryWorktreeRoot, team.remoteConnectionId);
+      const { repository, remoteConnectionId } = this.repository(workspace, input);
+      const branches = await this.port.branches(repository.primaryWorktreeRoot, remoteConnectionId);
       this.requireGrant(peer);
       return branches.map(({ name, isDefault, worktreePath }) => ({ name, isDefault, isCheckedOut: Boolean(worktreePath) }));
     },
@@ -578,9 +578,9 @@ export class CompanionGateway {
       const input = newChatSchema.parse(args);
       const workspace = await this.port.workspace();
       this.requireGrant(peer);
-      const { team, repository } = this.repository(workspace, input);
-      if (workspace.backends && !workspace.backends[team.id]?.includes(input.selection.backend)) throw new Error('That engine is not available.');
-      const request: NewChatRequest = { teamId: team.id, ...(team.remoteConnectionId ? { remoteConnectionId: team.remoteConnectionId } : {}), selection: input.selection,
+      const { team, repository, remoteConnectionId } = this.repository(workspace, input);
+      if (workspace.backends && !workspace.backends[remoteConnectionId ?? team.id]?.includes(input.selection.backend)) throw new Error('That engine is not available.');
+      const request: NewChatRequest = { teamId: team.id, ...(remoteConnectionId ? { remoteConnectionId } : {}), selection: input.selection,
         repositoryName: repository.repositoryName, repositoryRoot: repository.primaryWorktreeRoot, ...(repository.defaultBranch ? { defaultBranch: repository.defaultBranch } : {}),
         ...(input.existingBranch ? { existingBranch: input.existingBranch } : {}), ...(input.worktree ? { worktree: input.worktree } : {}) };
       return { creationId: this.creations.start(peer.peerId, () => this.port.createChat(request)) };
@@ -697,20 +697,20 @@ export class CompanionGateway {
   private repository(workspace: CompanionWorkspace, input: { teamId: string; repositoryId: string }) {
     const team = workspace.teams.find((candidate) => candidate.id === input.teamId);
     if (!team) throw new Error('Team not found.');
-    const repository = workspace.agents.flatMap((agent) => agent.teamId === team.id && agent.sessionKind !== 'quickChat' && agent.workspace?.kind === 'git' && opaquePath(agent.workspace.primaryWorktreeRoot) === input.repositoryId ? [agent.workspace] : [])[0];
-    if (!repository) throw new Error('Repository not found.');
-    return { team, repository };
+    const owner = workspace.agents.find((agent) => agent.teamId === team.id && agent.sessionKind !== 'quickChat' && agent.workspace?.kind === 'git' && opaquePath(agent.workspace.primaryWorktreeRoot, agent.remoteConnectionId) === input.repositoryId);
+    const repository = owner?.workspace?.kind === 'git' ? owner.workspace : undefined;
+    if (!owner || !repository) throw new Error('Repository not found.');
+    return { team, repository, remoteConnectionId: owner.remoteConnectionId };
   }
   private async projectRead<Result>(peer: Peer, teamId: string, read: (remoteConnectionId?: string) => Promise<Result>): Promise<Result> {
     const workspace = await this.port.workspace();
     this.requireGrant(peer);
     const team = workspace.teams.find(team => team.id === teamId);
     if (!team) throw new Error('Team not found.');
-    const remote = team.remoteConnectionId;
-    const result = await read(remote);
+    const result = await read();
     const current = await this.port.workspace();
     this.requireGrant(peer);
-    if (!current.teams.some(candidate => candidate.id === teamId && candidate.remoteConnectionId === remote)) throw new Error('Team changed.');
+    if (!current.teams.some(candidate => candidate.id === teamId)) throw new Error('Team changed.');
     return result;
   }
   private requireGrant({ peerId, grant }: Peer) {
@@ -725,7 +725,7 @@ export class CompanionGateway {
     if (mission && !worker) throw new Error('Mission workers are read-only.');
     const agent = own ?? mission;
     if (target.hostId !== this.hostId || !team || !agent
-      || target.locationId !== (team.remoteConnectionId ?? 'local') || target.sessionId !== companionSessionId(agent)) throw new Error('Target is stale.');
+      || target.locationId !== (agent.remoteConnectionId ?? 'local') || target.sessionId !== companionSessionId(agent)) throw new Error('Target is stale.');
     return { agent, workspace };
   }
   /** Drops expired receipts and those of devices that are no longer paired. */

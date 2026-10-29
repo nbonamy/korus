@@ -106,9 +106,9 @@ import FormField from '../shared/form/FormField.vue';
 import { isProvisioningBackgrounded, publishProvisioningOperation } from './provisioning-operations';
 import WorktreeReusePrompt from './WorktreeReusePrompt.vue';
 import { useBackendChoices, useNewAgentBackend } from './backend-selection';
-const backendChoices = useBackendChoices();
+
 const backend = defineModel<import('@workspace/core/contracts').AgentBackend>('backend');
-useNewAgentBackend(backend, backendChoices);
+
 
 const props = withDefaults(defineProps<{
   allowDestinationOverride?: boolean;
@@ -119,12 +119,16 @@ const props = withDefaults(defineProps<{
   repo: SourceRepository | null;
   suggestDestination: (input: Pick<CreateSourceWorktreeInput, 'branchName' | 'repoPath'>) => Promise<string>;
   visible: boolean;
+  remoteConnectionId?: string;
 }>(), {
   allowDestinationOverride: true,
   branches: () => [],
   branchesLoading: false,
   repo: null,
 });
+
+const backendChoices = useBackendChoices(() => props.remoteConnectionId);
+useNewAgentBackend(backend, backendChoices, () => props.visible);
 
 const emit = defineEmits<{
   close: [];

@@ -197,6 +197,7 @@ export class CodexBackendDriver implements AgentBackendDriver {
     return {
       backendSession: codexBackendSession(result.threadId),
       turnId: result.turnId,
+      ...(result.messageId ? { messageId: result.messageId } : {}),
     };
   }
 

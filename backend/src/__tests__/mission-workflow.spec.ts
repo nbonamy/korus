@@ -94,6 +94,7 @@ it.each([
           if (parallel) await service.upsertTicket(run.workerId!, { title: 'Invoices', body: 'Add invoices.', repositoryPath: repo });
         } else if (stage === 'implementation') {
           expect(run.ticketIndex).toBe(parallel ? [0, 2, 1][attempt] : attempt);
+          expect(prompts.at(-1)).toContain('Commit all your ticket changes before submitting the result');
           const workspace = current().execution!.workspaces![0]!.path;
           if (parallel && attempt === 0) {
             const active = current().execution!.runs.filter(candidate => candidate.stage === 'implementation');
@@ -136,6 +137,6 @@ it.each([
     expect(restored.missions![0]!.execution!.parallelImplementation).toBe(parallel);
     expect(restored.missions![0]!.artifacts.tickets[1]!.reference).toBe('https://example.com/issues/2');
     expect(restored.missions![0]!.execution!.runs.every(run => run.status === 'accepted')).toBe(true);
-    expect(prompts.includes('/compact')).toBe(backend === 'codex' && !parallel);
+    expect(prompts.includes('/compact')).toBe(false);
   } finally { await rm(folder, { recursive: true, force: true }); }
 });

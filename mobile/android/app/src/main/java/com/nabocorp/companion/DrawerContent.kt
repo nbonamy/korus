@@ -119,7 +119,7 @@ import org.json.JSONObject
                             IconButton(onClick = { model.openCreation(CreationKind.QUICK); close() }, enabled = model.canStartCreation) { Icon(Icons.Outlined.Add, "New chat") }
                         }
                         if (!activity && group.string("kind") == "repository") Box {
-                            IconButton(onClick = { repositoryMenu = group }, enabled = model.canStartCreation && group.string("repositoryRoot").isNotBlank()) { Icon(Icons.Outlined.Add, "New agent in ${group.string("label")}") }
+                            IconButton(onClick = { repositoryMenu = group }, enabled = model.canStartCreationFor(group.string("repositoryRoot")) && group.string("repositoryRoot").isNotBlank()) { Icon(Icons.Outlined.Add, "New agent in ${group.string("label")}") }
                             DropdownMenu(expanded = repositoryMenu?.string("id") == group.string("id"), onDismissRequest = { repositoryMenu = null }) {
                                 listOf(Triple("Default Branch", CreationKind.DEFAULT, Icons.AutoMirrored.Outlined.CallMerge), Triple("Existing Branch…", CreationKind.EXISTING, Icons.Outlined.AccountTree), Triple("New Worktree…", CreationKind.WORKTREE, Icons.Outlined.AddBox)).forEach { (label, kind, icon) ->
                                     DropdownMenuItem(text = { Text(label) }, leadingIcon = { Icon(icon, null) }, onClick = { repositoryMenu = null; model.openCreation(kind, group.string("repositoryRoot"), group.string("label")); close() })

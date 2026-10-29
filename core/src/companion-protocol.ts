@@ -109,7 +109,7 @@ export function companionSessionId(agent: Agent): string | null {
   return JSON.stringify(session.kind === 'codex' ? { kind: session.kind, threadId: session.threadId } : { kind: session.kind, sessionId: session.sessionId });
 }
 export function companionTarget(hostId: string, team: Team, agent: Agent): CompanionTarget {
-  return { hostId, locationId: team.remoteConnectionId ?? 'local', teamId: team.id, agentId: agent.id, sessionId: companionSessionId(agent) };
+  return { hostId, locationId: agent.remoteConnectionId ?? 'local', teamId: team.id, agentId: agent.id, sessionId: companionSessionId(agent) };
 }
 /** App framing only. Cryptographic authentication and encryption are owned by Noise/libp2p. */
 export function encodeCompanionFrame(value: unknown, limit = companionFrameLimit): Uint8Array {

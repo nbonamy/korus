@@ -2,7 +2,7 @@ import type { AgentBackend, BackendSession } from './contracts';
 
 export type TaskState = 'preparing' | 'running' | 'needs-input' | 'interrupted' | 'failed' | 'completed' | 'cancelled';
 export type TaskContract = { title: string; doneWhen: string };
-export type TaskWorkspace = { repositoryPath: string; branchName?: string; destinationPath?: string };
+export type TaskWorkspace = { repositoryPath: string; branchName?: string; destinationPath?: string; remoteConnectionId?: string };
 export type TaskResultInput = { summary: string; evidence: string[]; artifacts: string[]; caveats: string[] };
 export type TaskAcceptance = { backendSession: BackendSession; turnId?: string };
 export type DelegatedTask = {

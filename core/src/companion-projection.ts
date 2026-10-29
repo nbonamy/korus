@@ -4,16 +4,17 @@ import type { Agent, AgentWorkspaceIdentity, AppSnapshot, BackendDefaults, Team 
 import type { CompanionGitStatus, CompanionMission, CompanionMissionReview, CompanionMissionTicketState, CompanionReviewFinding, CompanionWorkspace } from './companion-protocol';
 import type { Mission, MissionReviewFinding } from './mission-types';
 import { missionStageReady } from './missions';
-import { enabledAgentBackends, providerConnectionsForTeam } from './agent-backends';
+import { enabledAgentBackends, providerConnectionsForHost } from './agent-backends';
 import { repositoryIconForAgent } from './workspace-sidebar';
 import { missionLeadAgentId } from './mission-attention';
 import { missionImplementationBusy } from './mission-execution';
 
 const encoder = new TextEncoder();
-/** Stable per path, reveals no directory names, and ends with the folder name so label fallbacks keep working. */
-export function opaquePath(value: string): string {
+/** Stable per host and path, with only the folder name retained for label fallbacks. */
+export function opaquePath(value: string, remoteConnectionId?: string): string {
   const name = value.replace(/\\/gu, '/').split('/').filter(Boolean).at(-1) ?? '';
-  return `/${bytesToHex(sha256(encoder.encode(value))).slice(0, 16)}/${name}`;
+  const identity = remoteConnectionId ? JSON.stringify([remoteConnectionId, value]) : value;
+  return `/${bytesToHex(sha256(encoder.encode(identity))).slice(0, 16)}/${name}`;
 }
 
 /** The composer's last model and permission choice; never sandbox paths or approval policies. */
@@ -27,11 +28,11 @@ function projectDefaults(defaults: BackendDefaults): BackendDefaults {
     ...(permissionMode === undefined ? {} : { permissionMode }) } as BackendDefaults;
 }
 
-function projectWorkspace(workspace: AgentWorkspaceIdentity): AgentWorkspaceIdentity {
-  if (workspace.kind === 'folder') return { kind: 'folder', folder: opaquePath(workspace.folder), label: workspace.label, updatedAt: workspace.updatedAt };
+function projectWorkspace(workspace: AgentWorkspaceIdentity, remoteConnectionId?: string): AgentWorkspaceIdentity {
+  if (workspace.kind === 'folder') return { kind: 'folder', folder: opaquePath(workspace.folder, remoteConnectionId), label: workspace.label, updatedAt: workspace.updatedAt };
   const { repositoryName, branch, defaultBranch, isLinkedWorktree, updatedAt } = workspace;
-  return { kind: 'git', folder: opaquePath(workspace.folder), repositoryName, repositoryRoot: opaquePath(workspace.repositoryRoot),
-    primaryWorktreeRoot: opaquePath(workspace.primaryWorktreeRoot), branch, ...(defaultBranch === undefined ? {} : { defaultBranch }), isLinkedWorktree, updatedAt };
+  return { kind: 'git', folder: opaquePath(workspace.folder, remoteConnectionId), repositoryName, repositoryRoot: opaquePath(workspace.repositoryRoot, remoteConnectionId),
+    primaryWorktreeRoot: opaquePath(workspace.primaryWorktreeRoot, remoteConnectionId), branch, ...(defaultBranch === undefined ? {} : { defaultBranch }), isLinkedWorktree, updatedAt };
 }
 
 /**
@@ -39,20 +40,20 @@ function projectWorkspace(workspace: AgentWorkspaceIdentity): AgentWorkspaceIden
  * branch and conversation titles, repository icons) without paths, remotes or provider internals.
  */
 export function projectCompanionWorkspace(source: CompanionWorkspace & { repositoryIcons?: Readonly<Record<string, string>> }): Required<Omit<CompanionWorkspace, 'gitStatuses' | 'conversationSync'>> & Pick<CompanionWorkspace, 'gitStatuses' | 'conversationSync'> {
-  const teams = source.teams.map(({ id, name, avatar, agentIds, remoteConnectionId }): Team => ({ id, name, avatar, agentIds, remoteConnectionId }));
+  const teams = source.teams.map(({ id, name, avatar, agentIds }): Team => ({ id, name, avatar, agentIds }));
   const repositoryIcons: Record<string, string> = {};
   const projectAgent = (agent: Agent): Agent => {
-    const workspace = agent.workspace ? projectWorkspace(agent.workspace) : undefined;
+    const workspace = agent.workspace ? projectWorkspace(agent.workspace, agent.remoteConnectionId) : undefined;
     const icon = agent.sessionKind === 'quickChat' ? undefined : repositoryIconForAgent(agent, source.repositoryIcons ?? {});
     if (icon && workspace?.kind === 'git') repositoryIcons[workspace.primaryWorktreeRoot] = icon;
-    const { id, teamId, name, avatar, backend, backendSession, status, statusText, createdAt, updatedAt, lastActivityAt, sessionKind, conversationTitle, backendDefaults, hasSubmittedPrompt } = agent;
-    return { id, teamId, name, avatar, backend,
+    const { id, teamId, remoteConnectionId, name, avatar, backend, backendSession, status, statusText, createdAt, updatedAt, lastActivityAt, sessionKind, conversationTitle, backendDefaults, hasSubmittedPrompt } = agent;
+    return { id, teamId, ...(remoteConnectionId ? { remoteConnectionId } : {}), name, avatar, backend,
       backendSession: backendSession?.kind === 'claude' ? { kind: backendSession.kind, sessionId: backendSession.sessionId, transport: backendSession.transport } : backendSession,
       ...(agent.suggestedPrompt ? { suggestedPrompt: agent.suggestedPrompt } : {}),
       ...(agent.goal ? { goal: agent.goal } : {}),
       ...(agent.readState ? { readState: agent.readState } : {}),
       ...(lastActivityAt === undefined ? {} : { lastActivityAt }),
-      status, statusText, createdAt, updatedAt, sessionKind, conversationTitle, ...(hasSubmittedPrompt === undefined ? {} : { hasSubmittedPrompt }), workspace, folder: agent.folder ? opaquePath(agent.folder) : null,
+      status, statusText, createdAt, updatedAt, sessionKind, conversationTitle, ...(hasSubmittedPrompt === undefined ? {} : { hasSubmittedPrompt }), workspace, folder: agent.folder ? opaquePath(agent.folder, remoteConnectionId) : null,
       ...(backendDefaults ? { backendDefaults: projectDefaults(backendDefaults) } : {}) };
   };
   const inTeams = (agent: Agent) => teams.some((team) => team.id === agent.teamId);
@@ -142,7 +143,10 @@ export function companionWorkspaceOf(snapshot: Pick<AppSnapshot, 'teams' | 'agen
   }));
   const { missions, workerIds: ticketWorkerIds } = companionMissionsOf(snapshot);
   return { ...(gitStatuses ? { gitStatuses } : {}), missionProgress: missions, missionAgents: snapshot.agents.filter((agent) => ticketWorkerIds.has(agent.id)), queuedPrompts: snapshot.queuedPrompts?.map(({ id, agentId, text }) => ({ id, agentId, text })), agentRequests: snapshot.agentRequests ?? {}, teams: snapshot.teams, agents: snapshot.agents.filter((agent) => !workerIds.has(agent.id)), repositoryIcons: snapshot.general.repositoryIcons, modelFavorites: snapshot.general.modelFavorites,
-    backends: Object.fromEntries(snapshot.teams.map((team) => [team.id, enabledAgentBackends({ providerConnections: providerConnectionsForTeam({ ...snapshot, remoteConnections: snapshot.remoteConnections ?? { connections: [] } } as AppSnapshot, team.id) })])) };
+    backends: Object.fromEntries([
+      ...snapshot.teams.map((team) => [team.id, enabledAgentBackends({ providerConnections: snapshot.providerConnections ?? [] })] as const),
+      ...(snapshot.remoteConnections?.connections ?? []).map((connection) => [connection.id, enabledAgentBackends({ providerConnections: providerConnectionsForHost({ ...snapshot, remoteConnections: snapshot.remoteConnections } as AppSnapshot, connection.id) })] as const),
+    ]) };
 }
 
 /** Git presentation metadata only; patches are fetched through a separate scoped read. */

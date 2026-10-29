@@ -251,6 +251,34 @@ describe('WorktreeManager', () => {
     return { repoPath: repositoryPath, branchName: 'feature/demo' };
   }
 
+  it.each([false, true])('returns a usable worktree while background setup runs and reports its outcome (failure: %s)', async fails => {
+    await writeFile(path.join(worktreePath, 'package.json'), '{}');
+    await writeFile(path.join(worktreePath, 'package-lock.json'), '{}');
+    let release!: () => void;
+    const runCommand = vi.fn(async () => {
+      await new Promise<void>(resolve => { release = resolve; });
+      if (fails) throw new Error('npm ci failed');
+      return {};
+    });
+    const manager = createManager({ runCommand, mode: 'automatic' });
+    try {
+      const created = await manager.create(createInput(), { backgroundInitialization: true });
+      expect(created.worktree.path).toBe(worktreePath);
+      await vi.waitFor(() => expect(runCommand).toHaveBeenCalledOnce());
+      expect(manager.getInitializationState(worktreePath)).toStrictEqual({ state: 'running', command: 'npm ci' });
+      let finished = false;
+      const wait = manager.waitForInitialization(worktreePath).then(() => { finished = true; }, () => { finished = true; });
+      await Promise.resolve();
+      expect(finished).toBe(false);
+      release();
+      await wait;
+      expect(manager.getInitializationState(worktreePath)).toStrictEqual(fails
+        ? { state: 'error', command: 'npm ci', error: 'npm ci failed' }
+        : { state: 'complete' });
+      if (fails) await expect(manager.waitForInitialization(worktreePath)).rejects.toThrow('npm ci failed');
+    } finally { release?.(); await manager.close(); }
+  });
+
   function createManager(options: {
     listSourceBranches?: WorktreeManagerOptions['listSourceBranches'];
     mode?: 'automatic' | 'repository' | 'off';

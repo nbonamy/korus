@@ -1,5 +1,7 @@
 import { createAppRpcError, createAppRpcNotification, createAppRpcRequest, appRpcErrorCodes, isAppRpcNotification, isAppRpcRequest, isAppRpcResponse, parseAppRpcMessage, type AppRpcId, type AppRpcMessage, type AppRpcResponse } from '@workspace/core/backend-protocol/rpc';
 import { appErrorDescriptor } from '@workspace/core/app-error';
+import { backendMethods } from '@workspace/core/backend-protocol/methods';
+import { backendRequestTimeoutMs } from '@workspace/core/backend-protocol/request-timeout';
 import type { Readable, Writable } from 'node:stream';
 
 export type StdioRpcServerOptions = {
@@ -296,6 +298,7 @@ function lineLooksLikeJson(line: string): boolean {
 }
 
 function defaultRequestTimeoutMs(method: string): number {
+  if (method === backendMethods.clientCollaborationCall) return backendRequestTimeoutMs(method);
   // Let Electron's 30-second browser-open deadline report the navigation failure.
   if (method === 'client/browser/open') return 35_000;
   if (method.startsWith('client/computerUse/')) return 35_000;

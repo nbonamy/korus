@@ -127,6 +127,7 @@
         :selected-repository-id="workBacklog.selectedRepositoryId"
         :selected-tag-name="workBacklog.selectedTagName ?? null"
         :teams="teams"
+        :remote-connections="remoteConnections"
         :default-team-id="defaultTeamId"
         :start-work-action="startWorkItemsAction"
         :list-source-repositories="listSourceRepositories"
@@ -197,6 +198,7 @@ const props = defineProps<{
   repositoryFavorites?: readonly string[];
   saveRepositoryFavorites: (repositoryIds: string[]) => Promise<void>;
   teams: Team[];
+  remoteConnections?: import('@workspace/core/contracts').RemoteConnection[];
   defaultTeamId?: string | null;
   listSourceRepositories?: (remoteConnectionId?: string) => Promise<import('@workspace/core/contracts').SourceRepository[]>;
   startWorkItemsAction: (input: StartWorkItemsInput) => Promise<void>;

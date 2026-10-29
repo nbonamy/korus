@@ -518,7 +518,7 @@ export function createAgentComposerState(options: {
   }
 
   function connectionId(agent: Agent): string | undefined {
-    return snapshot().teams.find((team) => team.id === agent.teamId)?.remoteConnectionId;
+    return agent.remoteConnectionId;
   }
 
   function modelKey(agent: Agent): string {

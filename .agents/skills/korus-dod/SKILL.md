@@ -18,6 +18,18 @@ git diff --check
 Review the diff against the latest request. Account for every changed file and
 preserve unrelated user changes.
 
+For code changes, call Korus `get-diff-stats` when available, choosing the scope
+that covers the work being reviewed (for example, `branch` when the work spans
+commits). Compare the changed lines of code and tests. When test changes are
+disproportionately large relative to the code change (for example, one line of
+code and 100 lines of tests), scrutinize whether that amount of testing is
+justified by the behavior and risks. Inspect the tests for redundant scenarios,
+overlapping workflows, and opportunities to consolidate without losing meaningful
+regression coverage. Apply the Test Value Gate in `docs/testing.md` and make
+warranted improvements within the task's scope. Use judgment rather than a fixed
+ratio; don't weaken tests merely to reduce their size. If the tool is unavailable,
+compare the diff directly. Exclude unrelated changes from your conclusions.
+
 ## Verify
 
 Run every applicable row. For release-only metadata and dependency preparation,

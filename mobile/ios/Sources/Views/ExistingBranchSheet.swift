@@ -81,7 +81,7 @@ struct ExistingBranchSheet: View {
                         .padding(.vertical, 4)
                         .contentShape(Rectangle())
                     }
-                    .disabled(busy || !model.canStartChat)
+                    .disabled(busy || !model.canStartChat(in: group))
                 }
             }
         }

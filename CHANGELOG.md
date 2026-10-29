@@ -4,6 +4,54 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.46.0] - 2026-10-28
+
+### New features
+
+- **SSH environments:** Connect to a remote host, install Korus and selected coding
+  agents, and manage sign-in and updates from compact rows in Settings.
+- **Code annotations:** Select lines in source and diff previews to add comments
+  to your conversation.
+- **Parallel Missions:** Opt in to running independent tickets with separate
+  agents in the same repository worktree. Shared files can still cause conflicts.
+- **Mission worktree agents:** Right-click a Mission to start an agent in one of
+  its repository worktrees.
+- **Proposed work:** Turn a discussed feature into a delegated agent or Mission,
+  or discard the suggestion directly from the composer.
+- **Mission instructions:** Add your own instructions for Mission leads in
+  Settings → Workflows.
+- **Background worktree setup:** Start working while dependencies initialize,
+  with the current command and completion shown above the conversation.
+- **Resume on startup:** Automatically resume interrupted agents when Korus
+  starts, with an option to turn this off in Settings.
+- **Review and automation models:** Choose the provider, model, reasoning effort,
+  and service tier with the shared model selector.
+- **Delegated goals:** Give delegated agents a goal to track while they work.
+- **Mobile file previews:** Open files from conversations on iOS and Android,
+  with navigation between changes in diff previews.
+
+### Improvements and fixes
+
+- Remember the selected Mission agent and return to the lead if it is unavailable.
+- Restore Mission navigation after visiting Settings, open conversation links in
+  the workspace, and allow hiding the Mission workbench beside the chat.
+- Let Mission workers compact context naturally between tickets and clarify
+  that each completed ticket requires a local commit.
+- Keep Mission requirements in the Mission UI instead of opening duplicate documents.
+- Show all eligible conversations in the automation editor, including Mission
+  source conversations.
+- Ask for a source folder before creating or cloning a repository.
+- Restore older Claude conversation history and supported Claude cost estimates.
+- Keep Codex agents marked as working during retries and after intermediate answers.
+- Preserve skill, plugin, and custom mention pills after reloading conversations,
+  and keep suggestion menus open when typing resumes.
+- Restore Goal controls for Claude conversations and keep selected plugins out
+  of the attachment list.
+- Resolve unanswered asynchronous questions when a new turn starts and prevent
+  duplicate approval and question notifications after reload.
+- Keep the sharing control visible while sharing is active and restore mobile
+  send-menu interactions.
+
 ## [0.45.1] - 2026-10-27
 
 ### Improvements and fixes

@@ -5,6 +5,28 @@ import { describe, expect, it, vi } from 'vitest';
 import { useWorkItemRouting } from '../use-work-item-routing';
 
 describe('useWorkItemRouting', () => {
+  it('resolves remote batch checkouts on the selected host without using local paths', async () => {
+    const harness = createHarness();
+    harness.listSourceRepositories.mockResolvedValue([{ name: 'remote-code', path: '/srv/code', remoteIdentity: 'github.com/nbonamy/agent-workspace', worktrees: [] }]);
+    await harness.routing.startMany({ action: 'fix', items: [harness.item], teamId: harness.teamId, remoteConnectionId: 'devbox' });
+    expect(harness.listSourceRepositories).toHaveBeenCalledWith('devbox');
+    expect(harness.createWorktree).toHaveBeenCalledExactlyOnceWith({ repoPath: '/srv/code', branchName: 'fix/gh-12', remoteConnectionId: 'devbox' });
+    expect(harness.createAgent).toHaveBeenCalledWith(expect.objectContaining({ remoteConnectionId: 'devbox', sourceRepositoryName: 'remote-code' }));
+  });
+
+  it('clones a missing remote checkout once for a batch and stops if cloning fails', async () => {
+    const harness = createHarness();
+    harness.listSourceRepositories.mockResolvedValue([]);
+    harness.cloneRepository.mockRejectedValueOnce(new Error('Could not authenticate'));
+    const input = { action: 'fix' as const, items: [harness.item], teamId: harness.teamId, remoteConnectionId: 'devbox' };
+    await expect(harness.routing.startMany(input)).rejects.toThrow('Could not authenticate');
+    expect(harness.createWorktree).not.toHaveBeenCalled();
+    harness.cloneRepository.mockResolvedValue({ name: 'code', path: '/srv/code', worktrees: [] });
+    await harness.routing.startMany({ ...input, items: [harness.item, { ...harness.item, id: 'another', number: 13 }] });
+    expect(harness.cloneRepository).toHaveBeenCalledTimes(2);
+    expect(harness.cloneRepository).toHaveBeenLastCalledWith({ url: 'https://github.com/nbonamy/agent-workspace.git', remoteConnectionId: 'devbox', reuseExisting: true });
+    expect(harness.createWorktree).toHaveBeenCalledTimes(2);
+  });
   it('starts GitHub cockpit work only in the checkout with its full host and namespace identity', async () => {
     const repositories: SourceRepository[] = [
       { name: 'agent-workspace', path: '/workspace/gitlab', remoteIdentity: 'gitlab.com/group/agent-workspace', worktrees: [] },
@@ -29,7 +51,7 @@ describe('useWorkItemRouting', () => {
     await expect(harness.routing.createIsolatedAgent({ ...selected, sourceId: 'gitlab.com' }, harness.teamId)).rejects.toThrow(/not available/);
     expect(harness.createWorktree).not.toHaveBeenCalled();
     const repository = { name: 'different-code', path: '/workspace/execution', worktrees: [] };
-    await harness.routing.startMany({ action: 'fix', items: [selected], teamId: harness.teamId, repository });
+    await harness.routing.startMany({ action: 'fix', items: [selected], teamId: harness.teamId, repository, remoteConnectionId: 'gitlab-host' });
     expect(harness.createWorktree).toHaveBeenCalledWith({ repoPath: repository.path, branchName: 'fix/gl-12', remoteConnectionId: 'gitlab-host' });
     expect(harness.assign).toHaveBeenCalledWith({ agentId: harness.createdAgent.id, item: selected, prompt: expect.stringContaining('Work item ID: gitlab:gitlab.com/group/sub/agent-workspace#12') });
   });
@@ -39,10 +61,18 @@ describe('useWorkItemRouting', () => {
     await harness.routing.startRepositoryWork(harness.agent.id, { item: selected, action: 'review', target: 'duplicate', workspace: { kind: 'worktree', branchName: 'topic' } });
     expect(harness.createBranch).toHaveBeenCalledWith(harness.createdAgent.id, { name: 'topic', createWorktree: true, pullRequestNumber: 12, requestRepository: selected.sourceId, confirmed: true });
   });
-  it('honors an explicit model when launching from a repository backlog', async () => {
+  it.each([
+    { host: undefined, backend: 'claude' as const, model: 'sonnet' },
+    { host: 'remote-dev', backend: 'codex' as const, model: 'gpt-test' },
+    { host: 'remote-dev', backend: 'claude' as const, model: null },
+  ])('preserves the source host $host and selection when duplicating repository work', async ({ host, backend, model }) => {
     const harness = createHarness();
-    await harness.routing.startRepositoryWork(harness.agent.id, { item: harness.item, action: 'fix', target: 'duplicate', workspace: { kind: 'worktree', branchName: 'fix/gh-12' }, selection: { backend: 'claude', model: 'sonnet', reasoningEffort: 'high', serviceTier: 'fast' } });
-    expect(harness.createAgent).toHaveBeenCalledWith(expect.objectContaining({ selection: { model: 'sonnet', reasoningEffort: 'high', serviceTier: 'fast', backend: 'claude' } }));
+    harness.agent.remoteConnectionId = host;
+    const selection = { backend, model, reasoningEffort: 'high', serviceTier: 'fast' };
+    await harness.routing.startRepositoryWork(harness.agent.id, { item: harness.item, action: 'fix', target: 'duplicate', workspace: { kind: 'worktree', branchName: 'fix/gh-12' }, selection });
+    expect(harness.createAgent).toHaveBeenCalledExactlyOnceWith({ name: `${harness.agent.name} #12`, folder: harness.agent.folder, teamId: harness.teamId, selection, ...(host ? { remoteConnectionId: host } : {}) });
+    expect(harness.createBranch).toHaveBeenCalledExactlyOnceWith(harness.createdAgent.id, { name: 'fix/gh-12', createWorktree: true, confirmed: true });
+    expect(harness.assign).toHaveBeenCalledWith(expect.objectContaining({ agentId: harness.createdAgent.id, item: harness.item }));
   });
   it.each([1, 2])('shows provisioning until all %i work items are handed over with their selected model', async count => {
     const harness = createHarness();
@@ -119,7 +149,7 @@ describe('useWorkItemRouting', () => {
   it('starts Linear work in the explicit repository on the selected host and preserves full issue identity', async () => {
     const listedItem = item({ provider: 'linear', id: 'linear:eng-uuid', identifier: 'ENG-12', sourceName: 'Engineering', sourceId: 'linear:team' });
     const harness = createHarness({ item: listedItem, remoteConnectionId: 'remote-dev' });
-    await harness.routing.startMany({ action: 'fix', items: [listedItem], teamId: harness.teamId, repository: { name: 'agent-workspace', path: '/workspace/agent-workspace', worktrees: [] } });
+    await harness.routing.startMany({ action: 'fix', items: [listedItem], teamId: harness.teamId, remoteConnectionId: 'remote-dev', repository: { name: 'agent-workspace', path: '/workspace/agent-workspace', worktrees: [] } });
     expect(harness.createWorktree).toHaveBeenCalledWith({ repoPath: '/workspace/agent-workspace', branchName: 'fix/eng-12', remoteConnectionId: 'remote-dev' });
     expect(harness.assign).toHaveBeenCalledWith({ agentId: harness.createdAgent.id, item: listedItem, prompt: expect.stringContaining('Issue: ENG-12') });
     await expect(harness.routing.createIsolatedAgent(listedItem, harness.teamId)).rejects.toThrow();
@@ -143,7 +173,7 @@ describe('useWorkItemRouting', () => {
     const resolvedItem = { ...listedItem, branchName: 'feature/fix-routing' };
     const harness = createHarness({ item: listedItem, loadItemsResult: [resolvedItem], remoteConnectionId: 'remote-dev' });
 
-    const result = await harness.routing.createIsolatedAgent(listedItem, harness.teamId);
+    const result = await harness.routing.createIsolatedAgent(listedItem, harness.teamId, { remoteConnectionId: 'remote-dev' });
 
     expect(harness.loadItems).toHaveBeenCalledWith('github', listedItem.sourceId, {
       kind: 'pullRequest',
@@ -159,6 +189,7 @@ describe('useWorkItemRouting', () => {
       folder: '/workspace/agent-workspace-feature',
       sourceRepositoryName: 'agent-workspace',
       teamId: harness.teamId,
+      remoteConnectionId: 'remote-dev',
     });
     expect(result).toStrictEqual({ agent: harness.createdAgent, item: resolvedItem });
   });
@@ -223,7 +254,6 @@ function createHarness(input: {
   const agent = snapshot.agents[0]!;
   agent.workspace = { kind: 'git', folder: '/workspace/agent-workspace', repositoryName: 'agent-workspace', repositoryRoot: '/workspace/agent-workspace', primaryWorktreeRoot: '/workspace/agent-workspace', branch: 'main', isLinkedWorktree: false, updatedAt: 'now' };
   const listedItem = input.item ?? item();
-  if (input.remoteConnectionId) team.remoteConnectionId = input.remoteConnectionId;
   if (input.assignedToCurrentAgent) {
     snapshot.workBacklog.assignments[workItemAssignmentKey(listedItem)] = {
       provider: listedItem.provider,
@@ -255,6 +285,8 @@ function createHarness(input: {
     path: '/workspace/agent-workspace-feature',
   }));
   const duplicateAgent = vi.fn(async () => createdAgent);
+  const listSourceRepositories = vi.fn<(...args: unknown[]) => Promise<SourceRepository[]>>(async () => []);
+  const cloneRepository = vi.fn<(...args: unknown[]) => Promise<SourceRepository>>(async () => ({ name: 'code', path: '/srv/code', worktrees: [] }));
   const loadItems = vi.fn(async () => input.loadItemsResult);
   const confirmReassignment = vi.fn(async () => input.confirmReassignment ?? true);
   const notifyError = vi.fn();
@@ -270,6 +302,8 @@ function createHarness(input: {
       createAgent,
       createBranch,
       createWorktree,
+      listSourceRepositories,
+      cloneRepository,
       listBranches: vi.fn().mockResolvedValue([]),
       duplicateAgent,
       loadItems,
@@ -301,6 +335,8 @@ function createHarness(input: {
     createBranch,
     createdAgent,
     createWorktree,
+    listSourceRepositories,
+    cloneRepository,
     focusComposer,
     duplicateAgent,
     item: listedItem,

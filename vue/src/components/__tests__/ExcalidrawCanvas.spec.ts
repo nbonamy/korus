@@ -5,6 +5,7 @@ import type { Visualization } from '@workspace/core/visualize';
 import type { CanvasScene } from '../excalidraw-editor';
 import ExcalidrawCanvas from '../ExcalidrawCanvas.vue';
 const editor = vi.hoisted(() => ({
+  importScene: vi.fn(),
   setSelection: vi.fn(),
   getAnnotationTargets: vi.fn(() => [{ id: 'b', x: 190, y: 20, width: 120, height: 110 }]),
   update: vi.fn(),
@@ -16,7 +17,7 @@ const editor = vi.hoisted(() => ({
   change: (_scene: CanvasScene) => {},
 }));
 vi.mock('../excalidraw-editor', () => ({
-  importVisualization: async (visualization: Visualization) => structuredClone(visualization.canvas),
+  importVisualization: (...args: unknown[]) => editor.importScene(...args),
   mountCanvas: (_host: HTMLElement, _scene: CanvasScene, change: typeof editor.change) => { editor.change = change; return editor; },
 }));
 const canvas: CanvasDocument = {
@@ -26,20 +27,40 @@ const canvas: CanvasDocument = {
 const visualization: Visualization = { id: 'v', title: 'Map', content: { kind: 'mermaid', source: 'flowchart LR; A --> B' }, canvas, createdAt: '', updatedAt: '' };
 beforeEach(() => {
   vi.clearAllMocks();
+  editor.importScene.mockReset().mockImplementation(async (value: Visualization) => structuredClone(value.canvas));
   editor.getControlsState.mockReturnValue({ zoom: 1 });
   editor.getAnnotationTargets.mockReturnValue([{ id: 'b', x: 190, y: 20, width: 120, height: 110 }]);
   vi.useFakeTimers();
 });
 afterEach(() => { vi.useRealTimers(); });
 describe('ExcalidrawCanvas', () => {
+  it('retries failed diagram imports instead of leaving the canvas loading', async () => {
+    editor.importScene.mockRejectedValueOnce(new Error('The visualization did not produce valid SVG.'))
+      .mockRejectedValueOnce(new Error('Import still unavailable.')).mockResolvedValue(structuredClone(canvas));
+    const save = vi.fn(async () => canvas);
+    const wrapper = mount(ExcalidrawCanvas, { props: { visualization: { ...visualization, canvas: undefined }, save, sessionId: 'session' } });
+    await flushPromises();
+    expect(wrapper.get('[role="status"]').text()).toContain('valid SVG');
+    await wrapper.get('.visualize-editor__status button').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[role="status"]').text()).toBe('Import still unavailable.');
+    await wrapper.get('.visualize-editor__status button').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('.visualize-editor__status').exists()).toBe(false);
+    expect(wrapper.get('button[aria-label="Fit canvas"]').attributes('disabled')).toBeUndefined();
+    expect(editor.importScene).toHaveBeenCalledTimes(3);
+  });
   it('autosaves the selected shapes for the original agent without a second composer', async () => {
-    const save = vi.fn(async (input: SaveCanvasInput) => ({ ...input.document, revision: input.expectedRevision + 1 }));
+    const save = vi.fn(async (input: SaveCanvasInput) => ({ ...input.document, revision: input.expectedRevision + 1 })).mockRejectedValueOnce(new Error('Save unavailable.'));
     const wrapper = mount(ExcalidrawCanvas, { props: { visualization, save, sessionId: 'session' } });
     await flushPromises();
     const selected = structuredClone(canvas);
     selected.selectedElementIds = ['b'];
     editor.change(selected);
     await vi.advanceTimersByTimeAsync(200);
+    await wrapper.get('.visualize-editor__status button').trigger('click');
+    await flushPromises();
+    expect(editor.importScene).toHaveBeenCalledTimes(1);
     expect(wrapper.find('form').exists()).toBe(false);
     expect(wrapper.find('input').exists()).toBe(false);
     expect(save).toHaveBeenCalledWith({ sessionId: 'session', expectedSource: JSON.stringify(visualization.content), visualizationId: 'v', expectedRevision: 1, document: { ...selected, preview: 'data:image/png;base64,YQ==' } });

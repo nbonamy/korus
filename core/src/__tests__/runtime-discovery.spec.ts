@@ -10,6 +10,45 @@ import {
 const shellPath = (value: string) => `__APP_RUNTIME_PATH_START__${value}__APP_RUNTIME_PATH_END__`;
 
 describe('runtime discovery', () => {
+  describe('engines linked into the private bin', () => {
+    const linked = (existing: string[]) => ({
+      env: { PATH: '/usr/bin:/opt/bin', SHELL: '/bin/bash' },
+      execFileSync: vi.fn(() => { throw new Error('no shell should start'); }),
+      existsSync: (file: string) => existing.includes(file),
+      homedir: () => '/home/me', platform: 'linux' as const,
+    });
+
+    it('resolves a linked engine without starting any shell', () => {
+      const dependencies = linked(['/home/me/.korus/bin/codex']);
+      expect(resolveRuntimeExecutable('codex', dependencies)).toBe('/home/me/.korus/bin/codex');
+      const launch = resolveRuntimeLaunch('codex', { CODEX_HOME: '/h' }, dependencies);
+      expect(launch.command).toBe('/home/me/.korus/bin/codex');
+      expect(launch.env.PATH?.startsWith('/home/me/.korus/bin:/usr/bin:/opt/bin')).toBe(true);
+      expect(launch.env.CODEX_HOME).toBe('/h');
+      expect(dependencies.execFileSync).not.toHaveBeenCalled();
+    });
+
+    it('launches the absolute linked path that detection resolved without starting any shell', () => {
+      const dependencies = linked(['/home/me/.korus/bin/claude']);
+      const launch = resolveRuntimeLaunch('/home/me/.korus/bin/claude', undefined, dependencies);
+      expect(launch.command).toBe('/home/me/.korus/bin/claude');
+      expect(dependencies.execFileSync).not.toHaveBeenCalled();
+    });
+
+    it('falls back to full discovery for an engine that is not linked or whose link dangles', () => {
+      const dependencies = { ...linked(['/usr/bin/codex']), execFileSync: vi.fn(() => shellPath('/usr/bin')) };
+      expect(resolveRuntimeExecutable('codex', dependencies)).toBe('/usr/bin/codex');
+      expect(dependencies.execFileSync).toHaveBeenCalled();
+      expect(resolveRuntimeExecutable('claude', linked(['/home/me/.korus/bin/codex']))).toBeNull();
+    });
+
+    it('does not link absolute commands or tools other than engines', () => {
+      const dependencies = linked(['/home/me/.korus/bin/gh']);
+      expect(() => resolveRuntimeExecutable('gh', dependencies)).not.toThrow();
+      expect(dependencies.execFileSync).toHaveBeenCalled();
+    });
+  });
+
   it('ignores shell startup output around the requested PATH instead of skipping its first executable', () => {
     expect(resolveRuntimeExecutable('codex', {
       env: { PATH: '/old/bin', SHELL: '/bin/bash' },

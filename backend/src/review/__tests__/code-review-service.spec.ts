@@ -85,6 +85,23 @@ function reviewer(test: ReturnType<typeof harness>, session: { reviewerAgentId: 
 }
 
 describe('CodeReviewService', () => {
+  it('keeps a selected commit through review rounds and retries', async () => {
+    const sha = 'a'.repeat(40);
+    const test = harness([async () => ({ text: 'Clean.', findingCount: 0 }), async () => { throw new Error('Interrupted'); }, async () => ({ text: 'Clean again.', findingCount: 0 })]);
+    const session = test.service.start(test.owner, { scope: { type: 'commit', sha }, threadMode: 'independent' });
+    await vi.waitFor(() => expect(session.status).toBe('ready'));
+    expect(session.scope).toStrictEqual({ type: 'commit', sha });
+    expect(test.turns[0]!.prompt).toContain(`git show ${sha}`);
+    const visible = reviewer(test, session);
+    test.service.submit(visible, session.id);
+    await test.service.reviewAgain(visible, session.id);
+    await vi.waitFor(() => expect(session.status).toBe('failed'));
+    const retried = test.service.start(visible, { scope: session.scope, threadMode: 'independent' });
+    await vi.waitFor(() => expect(retried.status).toBe('ready'));
+    expect(retried.scope).toStrictEqual({ type: 'commit', sha });
+    expect(test.turns[2]!.prompt).toContain(`git show ${sha}`);
+  });
+
   it('preserves the reviewer when switching while automatic finish saves its report in the same millisecond', async () => {
     let release!: (path: string) => void;
     const test = harness([async () => ({ text: 'Clean.', findingCount: 0 })], undefined, undefined, () => new Date('2026-09-19T10:00:00.000Z'));

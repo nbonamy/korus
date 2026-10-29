@@ -5,7 +5,7 @@ import { appApi } from '../platform-api';
 
 type ReviewSettingsContext = {
   preferences: () => CodeReviewPreferences | undefined;
-  listModels: (agentId: string, backend: AgentBackend) => Promise<BackendModelOption[]>;
+  listModels: (agentId: string | null, backend: AgentBackend) => Promise<BackendModelOption[]>;
   switchToManual: (agentId: string, sessionId: string) => Promise<unknown>;
   stop: (agentId: string) => Promise<unknown>;
 };

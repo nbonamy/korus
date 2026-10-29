@@ -70,12 +70,17 @@ export class VisualizeService {
     return 'Visualize requires an open pane; load korus-visualize through read-skill before using its tools.';
   }
 
-  async enter(agentId: string): Promise<{ created: boolean; visualize: VisualizeSession }> {
+  async enter(agentId: string, choose = false): Promise<{ created: boolean; visualize: VisualizeSession }> {
     const agent = this.requireAgent(agentId);
     const existing = this.sessionForAgent(agentId);
     if (existing) {
       let changed = this.attachRepositoryVisualizations(agent, existing);
       const shouldSuggest = !existing.isOpen && existing.visualizations.length === 0;
+      if (choose && existing.suggestions.length) {
+        existing.suggestions = [];
+        existing.updatedAt = this.now().toISOString();
+        changed = true;
+      }
       if (!existing.isOpen) {
         existing.isOpen = true;
         if (shouldSuggest) existing.suggestions = [];
@@ -442,23 +447,21 @@ export class VisualizeService {
 
 export function initialVisualizePrompt(): string {
   const instructions = [
-    `Enter ${product.name} Visualize mode for this conversation.`,
-    'Review the current conversation and call workspace.suggest-visualizations exactly once with 1 to 4 visualizations that would materially help the user.',
-    `Keep every title under ${visualizationSuggestionLimits.title} characters and every description to one short sentence under ${visualizationSuggestionLimits.description} characters.`,
-    'Use only the current conversation and existing Visualize context. Do not browse, search the repository, inspect files, run commands, or do background research to choose suggestions.',
-    'Do not provide the suggestions only as prose. The Visualize pane is the source of truth.',
-    'When asked to generate a suggestion or add a visualization, use Mermaid or SVG, or use image generation and then register its saved path with workspace.add-visualization.',
-    SUPPORTED_MERMAID_GUIDANCE,
-    'For static diagrams use get-visualization before replace-visualization. Once a canvas exists, read-visualization-canvas and edit-visualization-canvas are authoritative; preserve user edits and never replace or reimport its source.',
+    'Immediately ask one synchronous, single-select question with exactly three concrete visualization proposals based on the current conversation.',
+    'Use the provider\'s native blocking question tool, not an asynchronous question. Use the existing Other free-text field; do not add an Other option.',
+    'Keep each option to a short title and one brief description. Offer useful subjects or perspectives, not just diagram formats.',
+    'Do not call suggest-visualizations, render previews, load skills, or send a separate suggestion turn before the question.',
+    'Do not browse, search the repository, inspect files, run commands, or do background research; use only the conversation and existing Visualize context.',
+    'After the answer, load korus-visualize and create the selected or custom visualization in the open pane with add-visualization without a suggestion ID. Preserve existing diagrams and canvas edits. If the question is cancelled, stop without generating anything. If the pane was closed, ask to reopen it before generating.',
   ].join(' ');
-  return injectedPrompt('Suggest useful visualizations for this conversation.', instructions);
+  return injectedPrompt('Help me choose a visualization for this conversation.', instructions);
 }
 
 export function directVisualizationPrompt(direction: string): string {
   const instructions = [
     `Create one visualization for this request: ${contextJson(direction)}.`,
     'Use the current conversation and request as the source of truth. Do not browse, search the repository, inspect files, run commands, or do background research; make the best visualization the existing context supports.',
-    'Do not suggest visualizations first and do not call workspace.suggest-visualizations.',
+    'Do not suggest visualizations first and do not call workspace.suggest-visualizations. Do not ask a choice question.',
     'Choose Mermaid, SVG, or image generation based on what communicates it best.',
     SUPPORTED_MERMAID_GUIDANCE,
     'Publish the finished result with workspace.add-visualization without a suggestion ID. Keep chat commentary brief because the Visualize pane is the primary output.',

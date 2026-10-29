@@ -16,8 +16,8 @@ export function resolveAgentBackend(snapshot: Pick<AppSnapshot, 'providerConnect
   return backend;
 }
 
-export function providerConnectionsForTeam(snapshot: AppSnapshot, teamId = snapshot.activeTeamId) {
-  const connectionId = snapshot.teams.find(team => team.id === teamId)?.remoteConnectionId;
+/** Engines available on one host: local when no connection is given. */
+export function providerConnectionsForHost(snapshot: AppSnapshot, connectionId?: string | null) {
   if (!connectionId) return snapshot.providerConnections ?? [];
   const connection = snapshot.remoteConnections.connections.find(item => item.id === connectionId);
   return connection?.status === 'ready' ? connection.providerConnections ?? [] : [];

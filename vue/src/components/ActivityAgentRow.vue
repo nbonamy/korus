@@ -2,7 +2,7 @@
   <button class="agent-sidebar__activity-agent" :class="{ 'agent-sidebar__activity-agent--cleanup': cleanup }">
     <ShareIcon v-if="session.shared" class="agent-sidebar__session-icon" role="img" :aria-label="$t('guest.shared')" />
     <span v-else-if="repositoryIcon" class="agent-sidebar__repository-mark" aria-hidden="true">
-      <AgentAvatar :avatar="repositoryIcon" :name="context ?? ''" shape="square" />
+      <RepositoryIcon :icon="repositoryIcon" :name="context ?? ''" />
     </span>
     <component :is="icon" v-else class="agent-sidebar__session-icon" aria-hidden="true" />
     <span class="agent-sidebar__meta">
@@ -21,7 +21,7 @@
 import { IconShare as ShareIcon } from '@tabler/icons-vue';
 import { computed } from 'vue';
 import type { WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar';
-import AgentAvatar from './AgentAvatar.vue';
+import RepositoryIcon from './RepositoryIcon.vue';
 import { FolderIcon, FolderRootIcon, GitBranchIcon, GitForkIcon, MessageIcon } from '../shared/icons/app-icons';
 
 const props = defineProps<{ session: WorkspaceSidebarSession; context?: string; repository?: boolean; repositoryIcon?: string; age?: string; quickChat?: boolean; cleanup: boolean; unread?: boolean; unreadLabel?: string; shortcutVisible?: boolean }>();

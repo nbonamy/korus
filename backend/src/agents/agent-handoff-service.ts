@@ -12,6 +12,8 @@ type Options = {
   persist(): Promise<unknown>;
   requestNote(agent: Agent, prompt: string): Promise<string>;
   assertReady(agent: Agent): Promise<void>;
+  checkDelegates?(agent: Agent): Promise<void>;
+  replaced?(source: Agent, target: Agent): Promise<void>;
   retire(agent: Agent): Promise<void>;
   start(agent: Agent, prompt: string): Promise<void>;
 };
@@ -70,8 +72,10 @@ export class AgentHandoffService {
       handoff.note = note;
       handoff.phase = 'closing';
       await this.options.persist();
+      await this.options.checkDelegates?.(source);
       await this.options.retire(source);
       this.assertSourceAvailable(source);
+      await this.options.checkDelegates?.(source);
       const target = this.options.create({ name: source.name ?? '', folder: source.folder!, teamId: source.teamId, avatar: source.avatar, ...(source.delegatedByAgentId ? { delegatedByAgentId: source.delegatedByAgentId } : {}), selection: input.selection });
       target.workspace = source.workspace;
       target.pullRequest = source.pullRequest;
@@ -90,6 +94,7 @@ export class AgentHandoffService {
       const team = snapshot.teams.find(team => team.id === target.teamId);
       if (wasSelected && team) team.activeAgentId = target.id;
       await this.options.persist();
+      await this.options.replaced?.(source, target);
       await this.options.start(target, `Continue the work from ${handoff.sourceTitle}. The previous agent wrote this handoff note. You share its workspace; inspect the current files and follow the repository instructions.\n\n${note}`);
       handoff.phase = 'complete';
       await this.options.persist();

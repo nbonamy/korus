@@ -47,6 +47,7 @@
         "src/daemon.ts",
         "src/collector/main.ts",
         "src/companion/relay-main.ts",
+        "src/sharing/guest-probe.ts",
         "src/companion/__tests__/live-harness.ts",
         "src/companion/__tests__/desktop-guest-owner.ts",
         "src/telemetry/__tests__/desktop-stack-workflow.ts",

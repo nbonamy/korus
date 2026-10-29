@@ -288,9 +288,15 @@ describe('companion engine', () => {
       const optional = latest().requests.find(entry => entry.request.kind === 'question')!;
       respondRequest.mockRejectedValueOnce(new Error('Cancellation could not be confirmed'));
       await engine.dispatch({ type: 'respondRequest', reply: { target: optional.target, id: optional.request.id, conversationId: optional.request.conversationId, outcome: { kind: 'cancelled' } } });
+      expect(latest().requests.map(entry => entry.request.kind)).toEqual(['question', 'approval']);
+      expect(latest().failedRequest).toBe(optional.key);
+      await engine.dispatch({ type: 'disconnect' }); await engine.dispatch({ type: 'reconnect' });
+      expect(latest().requests.map(entry => entry.request.kind)).toEqual(['question', 'approval']);
+      await engine.dispatch({ type: 'respondRequest', reply: { target: optional.target, id: optional.request.id, conversationId: optional.request.conversationId, outcome: { kind: 'cancelled' } } });
       expect(latest().requests.map(entry => entry.request.kind)).toEqual(['approval']);
       expect(latest().failedRequest).toBeNull();
-      expect(respondRequest).toHaveBeenCalledExactlyOnceWith({ target: optional.target, id: optional.request.id, conversationId: optional.request.conversationId, outcome: { kind: 'cancelled' } });
+      expect(respondRequest).toHaveBeenCalledTimes(2);
+      expect(respondRequest).toHaveBeenLastCalledWith({ target: optional.target, id: optional.request.id, conversationId: optional.request.conversationId, outcome: { kind: 'cancelled' } });
     } finally { engine.dispose(); }
   });
 
@@ -921,6 +927,29 @@ describe('companion engine', () => {
     });
   });
   describe('starting a chat in a repository', () => {
+    it('projects engine choices for the conversation and each repository without changing local creation choices', async () => {
+      const connector = createDemoConnector(); const original = connector.connect;
+      connector.connect = async id => {
+        const session = await original(id);
+        return { ...session, getWorkspace: async () => {
+          const workspace = await session.getWorkspace();
+          const agent = workspace.agents.find(agent => agent.id === 'demo-agent')!;
+          return { ...workspace, backends: { 'demo-team': ['codex' as const], box: ['claude' as const] }, agents: [
+            ...workspace.agents,
+            { ...agent, id: 'remote-agent', remoteConnectionId: 'box', folder: '/remote/repo',
+              workspace: { kind: 'git' as const, folder: '/remote/repo', repositoryRoot: '/remote/repo', primaryWorktreeRoot: '/remote/repo', repositoryName: 'remote', branch: 'main', isLinkedWorktree: false, updatedAt: '' } },
+          ] };
+        } };
+      };
+      const { engine, latest } = open(connector);
+      try {
+        await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+        await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+        expect(latest()).toMatchObject({ backends: ['codex'], conversationBackends: ['codex'], repositoryBackends: { '/remote/repo': ['claude'] } });
+        await engine.dispatch({ type: 'selectAgent', id: 'remote-agent' });
+        expect(latest()).toMatchObject({ backends: ['codex'], conversationBackends: ['claude'], repositoryBackends: { '/remote/repo': ['claude'] } });
+      } finally { engine.dispose(); }
+    });
     function withCreation(createChat: NonNullable<Awaited<ReturnType<ReturnType<typeof createDemoConnector>['connect']>>['createChat']>) {
       const connector = createDemoConnector(); const original = connector.connect;
       connector.connect = async (id) => {

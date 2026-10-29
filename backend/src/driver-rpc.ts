@@ -646,7 +646,7 @@ export class BackendDriverRpc {
       }
       case backendMethods.sourceWorktreeCreate: {
         const record = requireRecord(params);
-        return (await this.worktreeManager.create(record.input as CreateSourceWorktreeInput)).worktree;
+        return (await this.worktreeManager.create(record.input as CreateSourceWorktreeInput, { backgroundInitialization: true })).worktree;
       }
       default:
         return undefined;

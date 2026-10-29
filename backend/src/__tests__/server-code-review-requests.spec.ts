@@ -240,8 +240,13 @@ describe('AppBackendServer code review workflow', () => {
       createdAt: '2026-09-19T10:00:00.000Z',
       updatedAt: '2026-09-19T10:00:00.000Z',
     };
-    snapshot.agents.push(owner);
-    snapshot.teams[0]!.agentIds.push(owner.id);
+    const neighbor: Agent = { ...owner, id: 'neighbor', name: 'Neighbor' };
+    const leading: Agent = { ...owner, id: 'leading', name: 'Leading' };
+    snapshot.agents.push(owner, neighbor, leading);
+    snapshot.teams[0]!.agentIds.push(owner.id, neighbor.id, leading.id);
+    snapshot.clientPreferences = { desktop: {
+      agentOrderByTeam: { [owner.teamId!]: [leading.id, owner.id, neighbor.id] },
+    } };
     let activeHandlers: ReviewToolHandlers | null = null;
     let findingId = '';
     let reviewRun = 0;
@@ -314,7 +319,7 @@ describe('AppBackendServer code review workflow', () => {
       agentId: owner.id,
       input: { scope: { type: 'uncommitted' }, threadMode: 'independent', selection: { backend, model: 'review-model', reasoningEffort: 'low' }, instructions: 'Focus on permission boundaries.' },
     });
-    const reviewer = snapshot.agents.find((candidate) => candidate.id !== owner.id)!;
+    const reviewer = snapshot.agents.find((candidate) => candidate.codeReview?.targetAgentId === owner.id)!;
     await vi.waitFor(() => expect(reviewer.codeReview?.status).toBe('ready'));
     const session = reviewer.codeReview!;
     expect(forkWorktreeConversation).not.toHaveBeenCalled();
@@ -322,6 +327,12 @@ describe('AppBackendServer code review workflow', () => {
     expect(runCodeReview.mock.calls[0]?.[1].reviewerSession).toBeUndefined();
     expect(runCodeReview.mock.calls[0]?.[1].prompt).not.toContain(snapshot.general.worktreeDelegationInstructions);
     expect(started.activeAgentId).toBe(reviewer.id);
+    expect(started.teams[0]!.agentIds).toStrictEqual([leading.id, owner.id, reviewer.id, neighbor.id]);
+    expect(snapshot.teams[0]!.agentIds).toStrictEqual([owner.id, reviewer.id, neighbor.id, leading.id]);
+    const reordered = await request(server, backendMethods.clientAgentOrderUpdate, {
+      input: { teamId: owner.teamId, agentId: reviewer.id, beforeAgentId: owner.id },
+    });
+    expect(reordered.teams[0]!.agentIds).toStrictEqual([leading.id, reviewer.id, owner.id, neighbor.id]);
     expect(session).toMatchObject({ targetAgentId: owner.id, reviewerAgentId: reviewer.id, threadMode: 'independent' });
     expect(reviewer).toMatchObject({
       name: '👀 Owner',
@@ -364,7 +375,7 @@ describe('AppBackendServer code review workflow', () => {
     expect(runCodeReview.mock.calls[2]?.[1]).not.toHaveProperty('reviewerSession');
     await request(server, backendMethods.agentCodeReviewRoundSubmit, { agentId: reviewer.id, sessionId: session.id });
     const finished = await request(server, backendMethods.agentCodeReviewFinish, { agentId: reviewer.id, sessionId: session.id });
-    expect(snapshot.agents).toStrictEqual([owner]);
+    expect(snapshot.agents).toStrictEqual([owner, neighbor, leading]);
     expect(snapshot.agentGitStatuses[reviewer.id]).toBeUndefined();
     expect(disposeCodeReview).not.toHaveBeenCalled();
     expect(archiveAgentConversation).toHaveBeenCalledTimes(backend === 'codex' ? 2 : 0);

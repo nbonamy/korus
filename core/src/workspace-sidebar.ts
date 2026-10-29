@@ -16,6 +16,8 @@ export type WorkspaceSidebarSession = {
   isUnread: boolean;
   status: AgentStatus;
   pullRequest?: AgentPullRequestTracking;
+  /** Host running the agent; absent for local agents. */
+  remoteConnectionId?: string;
   quickSwitchIndex: number;
 };
 
@@ -23,8 +25,15 @@ export type WorkspaceSidebarGroup = {
   id: string;
   kind: 'repository' | 'folder' | 'quickChats';
   label: string;
+  /** Primary checkout of the section on `remoteConnectionId` (local when absent): the local one when the section has it. */
   repositoryRoot?: string;
   repositoryKey?: string;
+  /** An agent on the primary checkout, which section actions resolve their location through. */
+  repositoryAgentId?: string;
+  remoteConnectionId?: string;
+  originUrl?: string;
+  /** Agents of this section run on more than one host. */
+  spansHosts?: true;
   sessions: WorkspaceSidebarSession[];
 };
 
@@ -33,18 +42,21 @@ export type AgentMentionProjection = {
   label: string;
 };
 
-export function workspaceSidebarRepositoryRootForAgent(agent: Agent): string | null {
+/** Sections are one repository wherever it runs: the origin identity, else the path on its own host. */
+export function workspaceSidebarRepositoryKeyForAgent(agent: Agent): string | null {
   const workspace = agent.workspace;
-  return agent.sessionKind !== 'quickChat' && workspace?.kind === 'git'
-    ? workspace.primaryWorktreeRoot
-    : null;
+  if (agent.sessionKind === 'quickChat' || workspace?.kind !== 'git') return null;
+  const origin = workspace.originUrl ? repositoryIconKeyForRemote(workspace.originUrl) : undefined;
+  if (origin) return origin;
+  return agent.remoteConnectionId ? `${agent.remoteConnectionId}:${workspace.primaryWorktreeRoot}` : workspace.primaryWorktreeRoot;
 }
 
 export function workspaceSidebarGroupIdForAgent(agent: Agent): string {
   if (agent.sessionKind === 'quickChat') return 'quick-chats';
-  const repositoryRoot = workspaceSidebarRepositoryRootForAgent(agent);
-  if (repositoryRoot) return `git:${repositoryRoot}`;
-  return agent.folder ? `folder:${agent.folder}` : `agent:${agent.id}`;
+  const repositoryKey = workspaceSidebarRepositoryKeyForAgent(agent);
+  if (repositoryKey) return `git:${repositoryKey}`;
+  const host = agent.remoteConnectionId ? `${agent.remoteConnectionId}:` : '';
+  return agent.folder ? `folder:${host}${agent.folder}` : `agent:${agent.id}`;
 }
 
 export function repositoryIconForAgent(
@@ -89,8 +101,9 @@ export function projectWorkspaceSidebar(input: {
             kind: 'repository',
             label: workspace.repositoryName,
             repositoryRoot: workspace.primaryWorktreeRoot,
-            repositoryKey: (workspace.originUrl ? repositoryIconKeyForRemote(workspace.originUrl) : undefined)
-              ?? workspace.primaryWorktreeRoot,
+            repositoryKey: workspaceSidebarRepositoryKeyForAgent(agent)!,
+            repositoryAgentId: agent.id,
+            ...(agent.remoteConnectionId ? { remoteConnectionId: agent.remoteConnectionId } : {}),
             sessions: [],
           }
         : isQuickChat ? {
@@ -107,6 +120,19 @@ export function projectWorkspaceSidebar(input: {
             sessions: [],
           };
       groups.set(id, group);
+    }
+
+    if (isGit) {
+      if (!group.originUrl && workspace.originUrl) group.originUrl = workspace.originUrl;
+      if (group.remoteConnectionId !== agent.remoteConnectionId) {
+        group.spansHosts = true;
+        if (group.remoteConnectionId && !agent.remoteConnectionId) {
+          // The local checkout is the section's own; remote ones are reached through the remote action.
+          group.repositoryRoot = workspace.primaryWorktreeRoot;
+          group.repositoryAgentId = agent.id;
+          delete group.remoteConnectionId;
+        }
+      }
     }
 
     const customName = agent.name?.trim() || null;
@@ -128,6 +154,7 @@ export function projectWorkspaceSidebar(input: {
       isUnread: unreadIds.has(agent.id),
       status: { ...agent.status },
       ...(agent.pullRequest ? { pullRequest: { ...agent.pullRequest } } : {}),
+      ...(agent.remoteConnectionId ? { remoteConnectionId: agent.remoteConnectionId } : {}),
       quickSwitchIndex,
     });
   });

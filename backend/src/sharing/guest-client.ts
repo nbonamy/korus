@@ -51,7 +51,7 @@ export class GuestConversationClient {
   }
   readContent(input: ConversationContentInput): Promise<ConversationContentChunk> { return this.request('conversation.content.read', { input }) as Promise<ConversationContentChunk>; }
   readImage(path: string): Promise<{ dataUrl: string }> { return this.request('conversation.image.read', { path }) as Promise<{ dataUrl: string }>; }
-  propose(input: { id: string; text: string }): Promise<import('@workspace/core/conversation-sharing').GuestProposal> { return this.request('guest.propose', input) as Promise<import('@workspace/core/conversation-sharing').GuestProposal>; }
+  propose(input: import('@workspace/core/conversation-sharing').GuestPromptInput): Promise<import('@workspace/core/conversation-sharing').GuestProposal> { return this.request('guest.propose', input) as Promise<import('@workspace/core/conversation-sharing').GuestProposal>; }
   async withdraw(id: string): Promise<void> { await this.request('guest.withdraw', { id }); }
   async proposals(): Promise<import('@workspace/core/conversation-sharing').GuestProposalState> { const state = await this.request('guest.proposals', {}) as import('@workspace/core/conversation-sharing').GuestProposalState; this.proposalState = state; this.changed(); return state; }
   private async request(method: string, args: unknown): Promise<unknown> {

@@ -1,0 +1,40 @@
+name: Shared chat relay probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shared-chat-relay-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 26.12.1
+          cache: npm
+      - run: npm install --global npm@10.9.4
+      - run: npm ci --no-audit --no-fund
+      - name: Join shared chat and send UTC timestamp suggestion
+        env:
+          TEST_SHARED_LINK: ${{ secrets.TEST_SHARED_LINK }}
+        run: node scripts/shared-chat-probe.mjs "$RUNNER_TEMP/shared-chat-probe/results.json"
+      - name: Retain probe results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: shared-chat-probe-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/shared-chat-probe/results.json
+          retention-days: 7
+          if-no-files-found: warn

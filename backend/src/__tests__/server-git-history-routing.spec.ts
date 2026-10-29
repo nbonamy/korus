@@ -17,7 +17,7 @@ it.each([
   const snapshot = createTestSnapshot();
   const connection = readyRemoteConnection();
   snapshot.remoteConnections.connections = [connection];
-  snapshot.teams.push({ id: 'pointer', name: 'Remote', agentIds: [], remoteConnectionId: connection.id, remoteTeamId: 'team-remote' });
+  snapshot.teams.push({ id: 'pointer', name: 'Remote', agentIds: [], remoteLinks: [{ connectionId: connection.id, remoteTeamId: 'team-remote' }] });
   const request = vi.fn(async (_connection: unknown, method: string, params: unknown) => {
     const response = await daemon.handleMessage({ jsonrpc: '2.0', id: 'remote', method, params } as AppRpcRequest);
     if (response && 'result' in response) return response.result;

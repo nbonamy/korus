@@ -120,7 +120,7 @@ describe('AutomationsView', () => {
     let resolve!: (snapshot: ReturnType<typeof createInitialSnapshot>) => void;
     const wrapper = view({ remoteConnections: [remote], getAutomationSnapshot: () => new Promise(done => { resolve = done; }) });
     await choose(wrapper, 'Automation location', 'devbox');
-    await choose(wrapper, 'Automation location', 'Local');
+    await choose(wrapper, 'Automation location', 'This computer');
     const response = createInitialSnapshot();
     response.automations = [automation({ name: 'Remote only' })]; resolve(response); await flushPromises();
     expect(wrapper.text()).not.toContain('Remote only');
