@@ -1,8 +1,9 @@
 <template>
   <FormDialog
     class="remote-target-dialog"
+    :class="{ 'remote-target-dialog--progress': progress }"
     :model-value="visible"
-    :title="t('remoteTarget.title')"
+    :title="title"
     @update:model-value="!$event && $emit('close')"
   >
     <GitOperationFeedback
@@ -14,7 +15,7 @@
       <template #icon><NetworkIcon /></template>
     </GitOperationFeedback>
     <form v-else class="app-form-dialog" @submit.prevent="$emit('confirm')">
-      <div class="remote-target-dialog__options" role="radiogroup" :aria-label="t('remoteTarget.title')">
+      <div class="remote-target-dialog__options" role="radiogroup" :aria-label="title">
         <label
           v-for="connection in connections"
           :key="connection.id"
@@ -60,7 +61,8 @@
       <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
     </form>
 
-    <template v-if="!progress" #footer>
+    <!-- The footer slot must always exist: FormDialog reads it once, so a late slot never renders. -->
+    <template #footer>
       <button class="app-button app-button--tertiary" type="button" @click="$emit('close')">{{ $t('common.cancel') }}</button>
       <button
         class="app-button app-button--primary"
@@ -89,6 +91,7 @@ import type { RemoteCheckout } from './use-remote-target';
 const props = defineProps<{
   visible: boolean;
   repositoryName: string;
+  action: 'main' | 'new-worktree';
   connections: RemoteConnection[];
   checkouts: Record<string, RemoteCheckout>;
   canConfirm: boolean;
@@ -106,6 +109,7 @@ defineEmits<{
 const selectedId = defineModel<string>('selectedId', { default: '' });
 const selection = defineModel<ExecutionSelection | undefined>('selection');
 const { t } = useI18n();
+const title = computed(() => t(props.action === 'main' ? 'remoteTarget.openTitle' : 'remoteTarget.worktreeTitle', { repository: props.repositoryName }));
 const modelsError = ref<string | null>(null);
 const modelsLoading = ref(false);
 
@@ -145,6 +149,10 @@ function statusText(connectionId: string): string {
 </script>
 
 <style scoped>
+:global(.remote-target-dialog--progress .el-dialog__footer) {
+  display: none;
+}
+
 .remote-target-dialog__loading {
   display: flex;
   align-items: center;

@@ -462,7 +462,8 @@ export const messages = {
       progressDetail: 'Extracting key decisions, completed work, and next steps for the new session.',
     },
     remoteTarget: {
-      title: 'Where?',
+      openTitle: 'Open {repository} on a remote machine',
+      worktreeTitle: 'New {repository} worktree on a remote machine',
       checking: 'Checking…',
       cloned: 'Already cloned · {path}',
       willClone: 'Will be cloned from its origin first',
