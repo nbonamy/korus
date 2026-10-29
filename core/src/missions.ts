@@ -168,6 +168,7 @@ function isMissionExecution(v: unknown): v is MissionExecution {
       && (run.finishedAt === undefined || text(run.finishedAt))
       && (run.summary === undefined || text(run.summary)) && (run.error === undefined || text(run.error))
       && (run.proposal === undefined || isMissionArtifacts(run.proposal))
+      && (run.draftTicketsBaseHash === undefined || (typeof run.draftTicketsBaseHash === 'string' && /^[a-f0-9]{64}$/.test(run.draftTicketsBaseHash)))
       && (run.draftTickets === undefined || isMissionArtifacts({ requirements: { problem: '', acceptance: '' }, tickets: run.draftTickets, implementation: { changes: '', tests: '' }, review: { summary: '', pullRequestUrl: '' } })));
 }
 

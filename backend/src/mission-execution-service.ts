@@ -5,6 +5,7 @@ import { createAgentInSnapshot } from '@workspace/core/agent-manager';
 import { resolveAgentBackend } from '@workspace/core/agent-backends';
 import { createEntityId } from '@workspace/core/ids';
 import { isAbsolute, relative, sep } from 'node:path';
+import { createHash } from 'node:crypto';
 import { isMissionArtifacts, missionTicketReady, type Mission, type MissionArtifacts, type MissionReviewFinding, type MissionStage } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
 import { missionLeadAgentId } from '@workspace/core/mission-attention';
@@ -519,9 +520,13 @@ export class MissionExecutionService {
       const workflow = missionWorkflow(mission.workflow.type);
       const run = mission.execution?.runs.find(run => run.id === context.runId);
       if (!run || !this.agentTools.ownsWritableRun(mission, run.id, agentId)) throw new Error('This agent does not own an active run for this mission stage.');
-      if (run.stage === 'tickets' && !mission.artifactFiles?.tickets && run.draftTickets?.length) {
-        const stored = await this.ports.writeArtifact(mission.id, 'tickets', missionTicketsMarkdown(run.draftTickets));
-        (mission.artifactFiles ??= {}).tickets = { revision: 1, size: stored.size, updatedAt: new Date().toISOString() };
+      if (run.stage === 'tickets' && run.draftTickets?.length) {
+        const content = missionTicketsMarkdown(run.draftTickets);
+        const file = mission.artifactFiles?.tickets;
+        if (!file || content !== await this.ports.readArtifact(mission.id, 'tickets')) {
+          const stored = await this.ports.writeArtifact(mission.id, 'tickets', content);
+          (mission.artifactFiles ??= {}).tickets = { revision: (file?.revision ?? 0) + 1, size: stored.size, updatedAt: new Date().toISOString() };
+        }
       }
       if (run.stage !== 'implementation' && !mission.artifactFiles?.[run.stage]) throw new Error('Write the stage artifact before submitting it for review.');
       const proposal = structuredClone(mission.artifacts);
@@ -921,8 +926,13 @@ export class MissionExecutionService {
     if (input.feedback !== undefined && (typeof input.feedback !== 'string' || input.feedback.length > 20_000)) throw new Error('Invalid revision feedback.');
     const runId = createEntityId('mission-run');
     const previousDraft = execution.runs.slice().reverse().find(run => run.stage === 'tickets' && run.draftTickets);
+    const draftTicketsBaseHash = missionTicketsHash(mission.artifacts.tickets);
+    const recoverDraft = previousDraft && previousDraft.status !== 'accepted'
+      && (previousDraft.draftTicketsBaseHash !== undefined
+        ? previousDraft.draftTicketsBaseHash === draftTicketsBaseHash
+        : mission.artifacts.tickets.length === 0);
     const draftTickets = mission.stage === 'tickets'
-      ? structuredClone(previousDraft && previousDraft.status !== 'accepted' ? previousDraft.draftTickets! : mission.artifacts.tickets)
+      ? structuredClone(recoverDraft ? previousDraft.draftTickets! : mission.artifacts.tickets)
       : undefined;
     if (draftTickets) {
       for (const [index, ticket] of draftTickets.entries()) {
@@ -933,7 +943,7 @@ export class MissionExecutionService {
         if (accepted && (accepted.revision ?? 0) === (ticket.revision ?? 0)) ticket.done = accepted.done;
       }
     }
-    execution.runs.push({ id: runId, stage: mission.stage, memberId, ...(draftTickets ? { draftTickets } : {}), ...(previousOrchestratorRun?.workerId ? { workerId: previousOrchestratorRun.workerId } : {}), status: 'preparing', skills: [], feedback: input.feedback?.trim() ?? '', startedAt: new Date().toISOString() });
+    execution.runs.push({ id: runId, stage: mission.stage, memberId, ...(draftTickets ? { draftTickets, draftTicketsBaseHash } : {}), ...(previousOrchestratorRun?.workerId ? { workerId: previousOrchestratorRun.workerId } : {}), status: 'preparing', skills: [], feedback: input.feedback?.trim() ?? '', startedAt: new Date().toISOString() });
     return runId;
   }
 
@@ -1058,6 +1068,13 @@ export class MissionExecutionService {
     });
     await this.ports.publish();
   }
+}
+
+function missionTicketsHash(tickets: Mission['artifacts']['tickets']): string {
+  return createHash('sha256').update(JSON.stringify(tickets.map(ticket => [
+    ticket.id, ticket.revision ?? 0, ticket.title, ticket.body ?? '', ticket.repositoryPath,
+    ticket.reference ?? '', [...(ticket.dependsOn ?? [])].sort((a, b) => a - b),
+  ]))).digest('hex');
 }
 
 function missionFindingFixPrompt(mission: Mission, findings: MissionReviewFinding[]): string {

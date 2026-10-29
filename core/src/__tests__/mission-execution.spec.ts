@@ -112,6 +112,8 @@ it('validates persisted execution records and dependency graphs before admitting
   mission.execution = { teamId: 'team', memberIds: ['member'], workspaceName: 'billing-work', workspaces: [{ repositoryPath: '/repo', path: '/isolated', branch: 'mission/billing-work', baseSha: 'a'.repeat(40) }], runs: [run] };
   expect(isMission(mission)).toBe(true);
   expect(isMission({ ...mission, execution: { ...mission.execution!, runs: [{ ...run, ticketRevision: 2 }] } })).toBe(true);
+  expect(isMission({ ...mission, execution: { ...mission.execution!, runs: [{ ...run, draftTicketsBaseHash: 'a'.repeat(64) }] } })).toBe(true);
+  expect(isMission({ ...mission, execution: { ...mission.execution!, runs: [{ ...run, draftTicketsBaseHash: 'invalid' }] } })).toBe(false);
   for (const parallelImplementation of [true, false]) {
     expect(isMission({ ...mission, execution: { ...mission.execution, parallelImplementation } })).toBe(true);
   }

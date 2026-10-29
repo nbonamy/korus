@@ -1120,7 +1120,7 @@ describe('mission execution', () => {
     expect(h.ports.createWorktree).toHaveBeenCalledTimes(1);
   });
 
-  it('plans from canonical ticket edits instead of reviving an accepted draft, including legacy artifacts', async () => {
+  it.each(['accepted', 'cancelled', 'failed'] as const)('plans from canonical ticket edits instead of reviving a %s legacy draft', async status => {
     const h = setup();
     const leadId = h.originalAgents[0]!.id;
     await h.store.change(h.current().id, mission => {
@@ -1129,7 +1129,7 @@ describe('mission execution', () => {
       mission.artifacts.requirements = { problem: 'Billing', acceptance: 'Owner pays' };
       mission.artifacts.tickets = [{ id: 'mission-ticket-account', title: 'Account', body: 'Implement account.', repositoryPath: h.originalAgents[0]!.folder!, done: true }];
       mission.artifacts.implementation = { changes: 'Account committed', tests: 'Checks pass' };
-      mission.execution!.runs = [{ id: 'accepted-tickets', stage: 'tickets', workerId: leadId, memberId: leadId, status: 'accepted', skills: [], feedback: '', startedAt: 'before', draftTickets: structuredClone(mission.artifacts.tickets) }];
+      mission.execution!.runs = [{ id: 'earlier-tickets', stage: 'tickets', workerId: leadId, memberId: leadId, status, skills: [], feedback: '', startedAt: 'before', draftTickets: structuredClone(mission.artifacts.tickets) }];
     });
     const artifacts = structuredClone(h.current().artifacts);
     artifacts.tickets[0]!.body = 'Implement account permissions.';
@@ -1139,6 +1139,40 @@ describe('mission execution', () => {
     await h.service.submit(leadId, { summary: 'Revised account', artifacts: h.current().artifacts });
     expect(h.current().execution!.runs.at(-1)!.proposal?.tickets).toStrictEqual(h.current().artifacts.tickets);
     expect(await h.service.readArtifact(leadId, 'tickets')).toMatchObject({ content: expect.stringContaining('Implement account permissions.'), revision: 1 });
+  });
+
+  it('preserves newer canonical work and additions when restarting cancelled Tickets after persistence', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'tickets';
+      mission.artifacts.requirements = { problem: 'Billing', acceptance: 'Owner pays' };
+      mission.artifacts.tickets = [{ id: 'mission-ticket-account', title: 'Account', body: 'Original work', repositoryPath, done: true }];
+      mission.artifacts.implementation = { changes: 'Account committed', tests: 'Checks pass' };
+    });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const cancelled = h.current().execution!.runs.at(-1)!;
+    await h.service.upsertTicket(cancelled.workerId!, { ticketId: 'mission-ticket-account', title: 'Account', body: 'Cancelled draft work', repositoryPath });
+    const artifactRevision = h.current().artifactFiles!.tickets!.revision;
+    await h.command({ action: 'cancel', runId: cancelled.id });
+    const artifacts = structuredClone(h.current().artifacts);
+    artifacts.tickets[0]!.body = 'New canonical work';
+    artifacts.tickets.push({ id: 'mission-ticket-receipt', title: 'Receipt', body: 'Issue receipts', repositoryPath, done: false });
+    await h.store.mutate('update', { id: h.current().id, revision: h.current().revision, action: 'save', artifacts, stageAgentIds: h.current().stageAgentIds });
+    const canonical = structuredClone(h.current().artifacts.tickets);
+    expect(canonical[0]).toMatchObject({ revision: 1, done: false });
+    const disk = h.persisted.mock.calls.at(-1)![0];
+    h.snapshot.missions = snapshotFromPersistedState(persistedStateFromSnapshot(disk)).missions;
+    expect(h.snapshot.missions).toStrictEqual(disk.missions);
+    const restarted = new MissionExecutionService(h.ports);
+    await restarted.execute({ id: h.current().id, revision: h.current().revision, action: 'run' }); await restarted.waitForLaunches();
+    const run = h.current().execution!.runs.at(-1)!;
+    await restarted.submit(run.workerId!, { summary: 'Current backlog', artifacts: h.current().artifacts });
+    expect(h.current().execution!.runs.at(-1)!.proposal!.tickets).toStrictEqual(canonical);
+    expect(await restarted.readArtifact(run.workerId!, 'tickets')).toMatchObject({ content: expect.stringContaining('New canonical work') });
+    expect(h.current().artifactFiles!.tickets!.revision).toBeGreaterThan(artifactRevision);
+    await restarted.execute({ id: h.current().id, revision: h.current().revision, action: 'accept', runId: run.id }); await restarted.waitForLaunches();
+    expect(h.current().artifacts.tickets).toStrictEqual(canonical);
   });
 
   it('rejects backtracking around active repository workers and recovers cancelled ticket drafts', async () => {

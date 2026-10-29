@@ -65,6 +65,8 @@ export type MissionRun = {
   error?: string;
   proposal?: MissionArtifacts;
   draftTickets?: MissionTicket[];
+  /** Canonical ticket content when the draft started; completion is excluded. */
+  draftTicketsBaseHash?: string;
   implementationResult?: { changes: string; tests: string };
 };
 export type MissionWorkspace = { repositoryPath: string; path: string; branch: string; baseSha?: string; deleted?: true; commitLock?: { agentId: string; runId: string; turnId: string } };

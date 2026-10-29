@@ -651,6 +651,8 @@ publishes only after saving.
   implementation and run history survive stage changes. Tickets drafts extend the
   existing backlog using stable IDs. An authored ticket change resets only that
   ticket and increments its content revision; unchanged submissions preserve completion.
+  Draft recovery checks its canonical backlog fingerprint; newer canonical edits
+  supersede obsolete drafts while completion updates preserve recoverable work.
   Implementation runs bind that revision, and revised tickets use fresh conversations
   so late results cannot complete newer work. Re-entering Implementation skips completed
   tickets, respects dependencies, and retains explicit retry for failed or stopped work.
