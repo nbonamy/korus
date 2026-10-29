@@ -192,7 +192,7 @@ export const messages = {
     },
     handoff: {
       action: 'Hand off…', submit: 'Hand off', cancel: 'Cancel', hide: 'Hide',
-      engine: 'Coding agent', model: 'Model', defaultModel: 'Provider default',
+      model: 'Model',
       instructions: 'Additional handoff instructions', optional: 'Optional — what should the current agent emphasize in its note?',
       permissions: 'The new agent uses the selected provider’s default permissions.',
       preparing: 'Preparing the note and replacement. You can hide this dialog; the handoff will continue.',
