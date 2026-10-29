@@ -373,6 +373,7 @@ export type OpenInApplicationCatalog = {
 };
 
 export type Agent = {
+  worktreeInitialization?: import('./worktree-initialization').WorktreeInitializationState;
   handoff?: import('./agent-handoff').AgentHandoff;
   id: string;
   teamId?: string;

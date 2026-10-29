@@ -77,6 +77,19 @@ describe('state persistence', () => {
     expect(restored.agents[1]!.backendSession).toStrictEqual(snapshot.agents[1]!.backendSession);
     expect(isAppSnapshot(restored)).toBe(true);
   });
+  it('restores failed setup and reports interrupted background worktree initialization after restart', async () => {
+    const home = await tempHome();
+    const snapshot = createInitialSnapshot();
+    snapshot.agents[0]!.worktreeInitialization = { state: 'running', command: 'npm ci' };
+    snapshot.agents[1]!.worktreeInitialization = { state: 'error', command: 'uv sync', error: 'Setup failed' };
+    await new AppStateStore(home).save(snapshot);
+    const restored = await new AppStateStore(home).load();
+    expect(restored.agents[0]!.worktreeInitialization).toMatchObject({ state: 'error', command: 'npm ci' });
+    expect(restored.agents[0]!.worktreeInitialization!.error).toContain('interrupted');
+    expect(restored.agents[1]!.worktreeInitialization).toStrictEqual(snapshot.agents[1]!.worktreeInitialization);
+    expect(isAppSnapshot(restored)).toBe(true);
+  });
+
   it('restores ordered backlog favorites after client preference updates and a fresh store restart', async () => {
     const home = await tempHome();
     const store = new AppStateStore(home);

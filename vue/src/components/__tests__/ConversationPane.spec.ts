@@ -255,6 +255,24 @@ describe('ConversationPane', () => {
     expect(getComputedStyle(pane.element).overflow).toBe('hidden');
   });
 
+  it('shows background worktree setup beside the live conversation until it finishes, and retains failures', async () => {
+    vi.useFakeTimers();
+    const wrapper = mountPane({ controller: controllerFor(messages), agent: { ...agent, worktreeInitialization: { state: 'running', command: 'npm ci' } } });
+    try {
+      const status = () => wrapper.find('.conversation-pane__initialization');
+      expect(status().get('strong').text()).toBe('Initializing worktree');
+      expect(status().get('small').text()).toBe('npm ci');
+      expect(status().find('.app-spinner').exists()).toBe(true);
+      await vi.advanceTimersByTimeAsync(75_000);
+      expect(status().find('.app-spinner').exists()).toBe(true);
+      await wrapper.setProps({ agent: { ...agent, worktreeInitialization: { state: 'complete' } } });
+      expect(status().exists()).toBe(false);
+      await wrapper.setProps({ agent: { ...agent, worktreeInitialization: { state: 'error', command: 'npm ci', error: 'Installation failed' } } });
+      expect(status().text()).toContain('Installation failed');
+      expect(status().find('.app-spinner').exists()).toBe(false);
+    } finally { wrapper.unmount(); vi.useRealTimers(); }
+  });
+
   it('keeps an interrupted handoff and its saved note visible after restoring the agent', () => {
     const wrapper = mountPane({ controller: controllerFor([]), agent: { ...agent, handoff: { operationId: 'once', sourceAgentId: 'old', sourceTitle: 'Original', sourceRef: { backend: 'claude', sessionId: 'old-session', folder: '/repo' }, phase: 'failed', error: 'Check the target conversation before resending.', note: 'The next action is to review the diff.', selection: {model: null, reasoningEffort: null, serviceTier: null,  backend: 'codex' } } } });
     expect(wrapper.get('[role="status"]').text()).toContain('Check the target conversation before resending.');

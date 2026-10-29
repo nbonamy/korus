@@ -1,4 +1,5 @@
 import { isRateLimitPause } from '../auto-resume';
+import { isWorktreeInitializationState } from '../worktree-initialization';
 import { isAgentReadState } from '../agent-read-state';
 import { isDelegationContext } from '../delegation-context';
 import { product } from '../product';
@@ -238,6 +239,9 @@ function expectAgentUpdate(value: unknown, path: string): void {
     expectLiteral(candidate, ['quickChat'], candidatePath),
   );
   expectOptional(value, 'workspace', path, expectWorkspace);
+  expectOptional(value, 'worktreeInitialization', path, (candidate, candidatePath) => {
+    if (!isWorktreeInitializationState(candidate)) throw new Error(`${candidatePath}: invalid worktree initialization state`);
+  });
   expectOptional(value, 'backend', path, (candidate, candidatePath) =>
     expectLiteral(candidate, ['codex', 'claude', 'antigravity'], candidatePath),
   );

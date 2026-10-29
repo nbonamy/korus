@@ -28,6 +28,9 @@ it('carries the assigned stage, accepted artifacts, workspace, skills and revisi
     expect(prompt).toContain('Only owners');
     expect(prompt).toContain(`${product.mcpServerName}.submit-mission-result`);
     expect(prompt).toContain(`${product.mcpServerName}.read-mission-artifact`);
+    if (stage === 'requirements') {
+      expect(prompt).toContain('Do not call display-markdown for requirements');
+    }
     if (stage === 'tickets') {
       expect(prompt).toContain('Continue as the same Mission orchestrator');
       expect(prompt).toContain('Never instruct implementation workers to skip or defer commits');

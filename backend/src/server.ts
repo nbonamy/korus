@@ -148,6 +148,7 @@ export type AppBackendServerOptions = {
   codeReviewTools?: CodeReviewToolPort;
   saveCodeReviewReport?: (agent: Agent, session: CodeReviewSession) => Promise<string>;
   agentCreation?: AgentCreationService;
+  worktreeInitializationForFolder?: (folder: string) => Agent['worktreeInitialization'];
   visualizeService?: VisualizeService;
 };
 
@@ -453,7 +454,14 @@ export class AppBackendServer {
       },
       createWorktree: input => this.requireDriverRpc().handle(backendMethods.sourceWorktreeCreate, { input }) as Promise<SourceWorktree>,
       ensureStageSkills: async (_missionId, stage) => missionStageSkills(stage),
-      refreshWorkspace: async agentId => { await this.agentWorkspaces.refreshIdentity(agentId); },
+      refreshWorkspace: async agentId => {
+        const agent = this.snapshot.agents.find(candidate => candidate.id === agentId);
+        if (agent?.folder) {
+          const initialization = options.worktreeInitializationForFolder?.(agent.folder);
+          if (initialization) agent.worktreeInitialization = initialization;
+        }
+        await this.agentWorkspaces.refreshIdentity(agentId);
+      },
       refreshConversationContext: async agent => {
         await this.requireDriverRpc().refreshConversationContext(agent);
       },

@@ -93,15 +93,25 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     computerUseEnabled: computerUseAvailable && snapshot.general.plugins?.computerUseEnabled === true,
     chromeEnabled: pluginStatus.chromeEnabled,
   });
+  let server!: AppBackendServer;
   const worktreeManager = new WorktreeManager({
     getInitializationMode: () => snapshot.general.worktreeInitializationMode,
+    onInitializationChanged: (folder, state) => {
+      const agents = snapshot.agents.filter(agent => agent.folder && path.resolve(agent.folder) === folder
+        && !snapshot.teams.find(team => team.id === agent.teamId)?.remoteConnectionId);
+      for (const agent of agents) {
+        agent.worktreeInitialization = { ...state };
+        server?.emitEvent({ agentId: agent.id, type: 'agent.updated', payload: { id: agent.id, worktreeInitialization: { ...state } } });
+      }
+      if (agents.length) void saveBackendSnapshot(snapshot).catch(error => warnMain('worktree-initialization', 'Could not save setup status', { message: String(error) }));
+    },
   });
   const agentGitService = new AgentGitService(
     undefined,
     undefined,
     async (input) => (await worktreeManager.create(input)).worktree,
   );
-  const agentCreation = new AgentCreationService(snapshot);
+  const agentCreation = new AgentCreationService(snapshot, folder => worktreeManager.getInitializationState(folder));
   const workIntegrations = new WorkIntegrationManager({
     drivers: [
       new GitHubWorkProviderDriver(() => runtimeGitHubOAuthClientId(snapshot.workBacklog.providerSettings.github)),
@@ -116,7 +126,6 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   });
   await workIntegrations.hydrateConnections();
   const hostedMcpGateway = new HostedMcpGateway({ credentials: workIntegrations });
-  let server!: AppBackendServer;
   const tasks: DurableTaskService = new DurableTaskService({
     tasks: savedTasks,
     save: saveBackendTasks,
@@ -203,6 +212,8 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     additionalDeveloperInstructions: (agent) => [
       tasks.instructions(agent.id),
       server?.missionDeveloperInstructions(agent.id),
+      agent.worktreeInitialization?.state === 'running'
+        ? '<context>Worktree initialization is running in the background. Begin independent inspection and editing. Before dependency-dependent checks, changing package manifests, lockfiles or setup inputs, running installation commands, or committing, call wait-for-worktree-initialization. Do not run competing setup commands. If setup fails, report the failure rather than claiming checks passed.</context>' : undefined,
       visualizeService.developerInstructions(),
     ].filter(Boolean).join('\n\n') || undefined,
   };
@@ -309,6 +320,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     },
   });
   server = new AppBackendServer({
+    worktreeInitializationForFolder: folder => worktreeManager.getInitializationState(folder),
     requirements,
     usage,
     guestJoins: new GuestJoins({ directory: path.join(backendHomeDir(), 'guest-joins'), relay: relayFromEnvironment(process.env).relay ?? undefined }),
@@ -376,6 +388,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   return {
     server,
     async stop() {
+      await worktreeManager.close();
       await companion.stop();
       tasks.close();
       scheduler.stop();

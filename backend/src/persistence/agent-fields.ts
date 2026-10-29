@@ -24,6 +24,7 @@ const agentFieldPolicy = {
   avatar: 'persisted',
   folder: 'persisted',
   workspace: 'persisted',
+  worktreeInitialization: 'persisted',
   backend: 'persisted',
   backendSession: 'persisted',
   hasSubmittedPrompt: 'persisted',

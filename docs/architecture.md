@@ -488,6 +488,13 @@ clears or changes it, Korus never re-detects.
   else. Otherwise the user's setting may copy `.env*` files (never templates,
   generated folders, nested checkouts, or over existing files) and restore
   dependencies. Existing worktrees are never re-initialized.
+  Agent creation returns after Git creates the worktree; initialization continues
+  in the owning daemon. Agents carry setup state and the current command across
+  desktop, split panes and remote projections. Their conversations can start during
+  setup; an identity-scoped wait operation gates dependency-dependent checks,
+  competing installs and commits. Failures remain visible, and saved running setup
+  becomes an interrupted error after a daemon restart. Setup processes are cancelled
+  during daemon shutdown.
 - Git history is a read-only owning-host query through the agent Git protocol.
   Pages are anchored to the worktree's HEAD and literal message search; stale
   cursors require refresh. Commit details must belong to that history, and file
