@@ -3508,9 +3508,15 @@ export class AppBackendServer {
         this.remoteTeams.connectionIdForAgent(currentAgent) ? null : this.requireDriverRpc().tryHandlePromptCommand(currentAgent, prompt)
       ),
       preparePromptOptions: (_currentAgent, options) => options,
-      sendPrompt: async (currentAgent, prompt, options) => (
-        await this.handleAgentDriverRequest(currentAgent, backendMethods.driverPromptSend, { agent: currentAgent, prompt, options, ...(plainText ? { plainText: true } : {}), ...(expectedSessionId === undefined ? {} : { expectedSessionId }) }) as BackendSendResult
-      ),
+      sendPrompt: async (currentAgent, prompt, options) => {
+        const instructions = !plainText && !currentAgent.backendSession && this.missionExecution.contextForAgent(currentAgent.id)?.stage === 'requirements'
+          ? this.snapshot.general.missionInstructions?.trim() : undefined;
+        if (instructions) {
+          const context = instructions.replace(/<\/?context>/giu, tag => tag.replace('<', '&lt;'));
+          prompt += `\n\n<context>\nUser's custom Mission instructions:\n${context}\n</context>`;
+        }
+        return await this.handleAgentDriverRequest(currentAgent, backendMethods.driverPromptSend, { agent: currentAgent, prompt, options, ...(plainText ? { plainText: true } : {}), ...(expectedSessionId === undefined ? {} : { expectedSessionId }) }) as BackendSendResult;
+      },
       interrupt: async (currentAgent) => (
         await this.handleAgentDriverRequest(currentAgent, backendMethods.driverInterrupt, { agent: currentAgent }) as BackendSendResult
       ),

@@ -69,6 +69,11 @@ Preserve the product and process boundaries:
 - Theme support must use semantic tokens and CSS variables. Do not hard-code
   product colors inside components.
 
+Development uses installed `codex-app-sdk` packages by default. Set
+`CODEX_APP_SDK_SOURCE=1` to link the sibling `../codex-app-sdk` source instead;
+set `CODEX_APP_SDK_SOURCE_ROOT` to use another checkout. Source linking does not
+require rebuilding, releasing or reinstalling the SDK during development.
+
 ## Documentation Map
 
 Keep `AGENTS.md` high-level. Before changing a feature area, read the relevant

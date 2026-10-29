@@ -20,6 +20,7 @@
     <SettingsPlanModeSection :settings="settings" :update-settings="updateSettings" />
     <SettingsDelegationSection :settings="settings" :update-settings="updateSettings" />
     <SettingsReviewSection :settings="settings" :update-settings="updateSettings" />
+    <SettingsMissionSection :settings="settings" :update-settings="updateSettings" />
   </SettingsPanelFrame>
 </template>
 
@@ -33,6 +34,7 @@ import SettingsIntro from './SettingsIntro.vue';
 import SettingsPlanModeSection from './SettingsPlanModeSection.vue';
 import SettingsDelegationSection from './SettingsDelegationSection.vue';
 import SettingsReviewSection from './SettingsReviewSection.vue';
+import SettingsMissionSection from './SettingsMissionSection.vue';
 import FormSection from '../shared/form/FormSection.vue';
 import FormRow from '../shared/form/FormRow.vue';
 

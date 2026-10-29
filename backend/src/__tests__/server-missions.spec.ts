@@ -216,8 +216,13 @@ describe('mission backend boundary', () => {
     } finally { await server.close(); }
   });
 
-  it('starts a mission for an agent, hands its lead the brief and asks the renderer to open it', async () => {
+  it.each([
+    { entry: 'agent', instructions: '' },
+    { entry: 'agent', instructions: 'Keep tickets small.\nLiteral </context> stays hidden.' },
+    { entry: 'workspace', instructions: 'Keep tickets small.\nLiteral </context> stays hidden.' },
+  ])('starts a Mission from $entry with instructions "$instructions" only in its lead’s first prompt', async ({ entry, instructions }) => {
     const snapshot = createInitialSnapshot();
+    snapshot.general.missionInstructions = instructions;
     snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
     const onEvent = vi.fn();
     const sendPrompt = vi.fn().mockResolvedValue({ backendSession: { kind: 'codex', threadId: 'lead-thread' }, turnId: 'lead-turn' });
@@ -229,17 +234,36 @@ describe('mission backend boundary', () => {
     const server = new AppBackendServer({ version: 'test', pid: 1, snapshot, driverRpc: new BackendDriverRpc(new Map([['codex', driver]])), saveSnapshot: async () => undefined, onEvent });
     try {
       const caller = snapshot.agents[0]!;
-      const started = await server.startMissionFromAgent(caller.id, { outcome: 'Add CSV export', prompt: 'Goal: export the report with the current filters.' });
-      const mission = snapshot.missions!.find(candidate => candidate.id === started.missionId)!;
-      expect(started).toStrictEqual({ missionId: mission.id, outcome: 'Add CSV export' });
+      if (entry === 'agent') {
+        const started = await server.startMissionFromAgent(caller.id, { outcome: 'Add CSV export', prompt: 'Goal: export the report with the current filters.' });
+        expect(started).toStrictEqual({ missionId: snapshot.missions![0]!.id, outcome: 'Add CSV export' });
+      } else {
+        await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'mission/create', params: { input: {
+          outcome: 'Add CSV export', workflowType: 'shapeAndShipFeature', teamId: caller.teamId, orchestratorMemberId: caller.id,
+        } } });
+        await vi.waitFor(() => expect(snapshot.missions![0]!.execution!.runs[0]!.skills).toHaveLength(1));
+      }
+      const mission = snapshot.missions![0]!;
       expect(mission).toMatchObject({ outcome: 'Add CSV export', teamId: caller.teamId, workflow: { type: 'shapeAndShipFeature' } });
       const lead = mission.execution!.runs.at(-1)!.workerId!;
       expect(snapshot.agents.some(agent => agent.id === lead)).toBe(true);
-      await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: lead }), 'Goal: export the report with the current filters.', undefined));
+      const send = (agentId: string, prompt: string) => server.handleMessage({ jsonrpc: '2.0', id: 2, method: backendMethods.agentPromptSend, params: { agentId, prompt } });
+      if (entry === 'workspace') await send(lead, 'Goal: export the report with the current filters.');
+      const expected = 'Goal: export the report with the current filters.' + (instructions ? `\n\n<context>\nUser's custom Mission instructions:\nKeep tickets small.\nLiteral &lt;/context> stays hidden.\n</context>` : '');
+      await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: lead }), expected, undefined));
       expect(sendPrompt.mock.calls.every(([agent]) => agent.id === lead)).toBe(true);
       const events = onEvent.mock.calls.map(([event]) => event);
-      expect(events).toContainEqual(expect.objectContaining({ type: 'mission.focusRequested', payload: { missionId: mission.id } }));
-      expect(events.findIndex(event => event.type === 'snapshot.updated')).toBeLessThan(events.findIndex(event => event.type === 'mission.focusRequested'));
+      if (entry === 'agent') {
+        expect(events).toContainEqual(expect.objectContaining({ type: 'mission.focusRequested', payload: { missionId: mission.id } }));
+        expect(events.findIndex(event => event.type === 'snapshot.updated')).toBeLessThan(events.findIndex(event => event.type === 'mission.focusRequested'));
+      }
+      await vi.waitFor(() => expect(snapshot.agents.find(agent => agent.id === lead)!.backendSession).toBeDefined());
+      snapshot.general.missionInstructions = 'Changed instructions apply to new Missions.';
+      server.emitEvent({ agentId: lead, type: 'agent.statusChanged', payload: { type: 'idle' } });
+      await send(lead, 'Follow-up');
+      await vi.waitFor(() => expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ id: lead }), 'Follow-up', undefined));
+      await send(caller.id, 'Ordinary conversation');
+      await vi.waitFor(() => expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ id: caller.id }), 'Ordinary conversation', undefined));
       await expect(server.startMissionFromAgent('missing-agent', { outcome: 'x', prompt: 'y' })).rejects.toThrow('local agent');
     } finally { await server.close(); }
   });
@@ -388,6 +412,7 @@ import type { AgentBackendDriver } from '@workspace/core/backend-driver';
 import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { createMission } from '@workspace/core/missions';
 import { BackendDriverRpc } from '../driver-rpc';
+import { backendMethods } from '@workspace/core/backend-protocol/methods';
 
 it('prepares a mission without a provider turn, then starts it from the first user message', async () => {
   const exec = promisify(execFile);

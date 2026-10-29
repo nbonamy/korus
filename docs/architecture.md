@@ -620,6 +620,9 @@ publishes only after saving.
 - Execution runs on hidden worker agents with ordinary provider conversations.
   The Mission contract is appended to developer instructions inside a hidden
   `<context>` block, never as a user message.
+  Saved workflow instructions are added as hidden `<context>` in the lead's first
+  prompt, for both chat-created and workspace-created Missions. They are not
+  repeated on follow-ups or injected into repository workers.
 - Stage approval is one revision-checked `daemon` command (accept, advance and
   queue the next run in one transaction). Renderers never chain accept, advance and
   run writes. Only the user accepts Requirements, Tickets and Review.

@@ -288,9 +288,15 @@ describe('companion engine', () => {
       const optional = latest().requests.find(entry => entry.request.kind === 'question')!;
       respondRequest.mockRejectedValueOnce(new Error('Cancellation could not be confirmed'));
       await engine.dispatch({ type: 'respondRequest', reply: { target: optional.target, id: optional.request.id, conversationId: optional.request.conversationId, outcome: { kind: 'cancelled' } } });
+      expect(latest().requests.map(entry => entry.request.kind)).toEqual(['question', 'approval']);
+      expect(latest().failedRequest).toBe(optional.key);
+      await engine.dispatch({ type: 'disconnect' }); await engine.dispatch({ type: 'reconnect' });
+      expect(latest().requests.map(entry => entry.request.kind)).toEqual(['question', 'approval']);
+      await engine.dispatch({ type: 'respondRequest', reply: { target: optional.target, id: optional.request.id, conversationId: optional.request.conversationId, outcome: { kind: 'cancelled' } } });
       expect(latest().requests.map(entry => entry.request.kind)).toEqual(['approval']);
       expect(latest().failedRequest).toBeNull();
-      expect(respondRequest).toHaveBeenCalledExactlyOnceWith({ target: optional.target, id: optional.request.id, conversationId: optional.request.conversationId, outcome: { kind: 'cancelled' } });
+      expect(respondRequest).toHaveBeenCalledTimes(2);
+      expect(respondRequest).toHaveBeenLastCalledWith({ target: optional.target, id: optional.request.id, conversationId: optional.request.conversationId, outcome: { kind: 'cancelled' } });
     } finally { engine.dispose(); }
   });
 

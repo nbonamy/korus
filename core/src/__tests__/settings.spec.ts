@@ -24,14 +24,14 @@ describe('settings contracts', () => {
     expect(normalizeGeneralSettings({ worktreeDelegationStartingContext: 'unsupported', worktreeDelegationInstructions: 10 }).worktreeDelegationInstructions).toBe('');
     expect(normalizeGeneralSettings({ worktreeDelegationStartingContext: 'unsupported' }).worktreeDelegationStartingContext).toBe('handoff');
   });
-  it('normalizes, updates and clears saved review instructions', () => {
+  it.each(['codeReviewInstructions', 'missionInstructions'] as const)('normalizes, updates and clears saved %s', field => {
     const snapshot = createEmptySnapshot();
-    expect(snapshot.general.codeReviewInstructions).toBe('');
-    updateSettingsInSnapshot(snapshot, { general: { codeReviewInstructions: '  Check authorization.\nKeep findings actionable.  ' } });
-    expect(snapshot.general.codeReviewInstructions).toBe('Check authorization.\nKeep findings actionable.');
-    expect(normalizeGeneralSettings({ codeReviewInstructions: 42 }).codeReviewInstructions).toBe('');
-    updateSettingsInSnapshot(snapshot, { general: { codeReviewInstructions: '' } });
-    expect(snapshot.general.codeReviewInstructions).toBe('');
+    expect(snapshot.general[field]).toBe('');
+    updateSettingsInSnapshot(snapshot, { general: { [field]: '  Check authorization.\nKeep findings actionable.  ' } });
+    expect(snapshot.general[field]).toBe('Check authorization.\nKeep findings actionable.');
+    expect(normalizeGeneralSettings({ [field]: 42 })[field]).toBe('');
+    updateSettingsInSnapshot(snapshot, { general: { [field]: '' } });
+    expect(snapshot.general[field]).toBe('');
   });
   it('keeps ordered backlog favorite identities and discards invalid persisted entries', () => {
     expect(normalizeGeneralSettings({}).backlogRepositoryFavorites).toStrictEqual({});
@@ -73,6 +73,7 @@ describe('settings contracts', () => {
       commitMessageInstructions: '',
       pullRequestInstructions: '',
       codeReviewInstructions: '',
+      missionInstructions: '',
       codexBinaryPath: '/opt/homebrew/bin/codex',
       claudeCodeEnabled: true,
       celebrationsEnabled: false,
@@ -183,6 +184,7 @@ describe('settings contracts', () => {
       commitMessageInstructions: '',
       pullRequestInstructions: '',
       codeReviewInstructions: '',
+      missionInstructions: '',
       codexBinaryPath: '',
       claudeCodeEnabled: false,
       celebrationsEnabled: true,
