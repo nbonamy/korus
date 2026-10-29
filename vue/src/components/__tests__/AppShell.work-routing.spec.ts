@@ -95,6 +95,7 @@ describe('AppShell work routing', () => {
 
   it('resolves a URL checkout from the owning daemon without consulting a same-named GitHub catalog', async () => {
     const snapshot = createInitialSnapshot();
+    snapshot.sourceFolder = { path: '/src', initialized: true, recentRepoNames: [] };
     snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected' }, { provider: 'gitlab', status: 'connected' }];
     const source: WorkSource = { provider: 'gitlab', id: 'gitlab.com/group/sub/repo', name: 'repo', fullName: 'group/sub/repo', url: 'https://gitlab.com/group/sub/repo' };
     const checkout = { name: 'repo', path: '/code/url-repo', remoteIdentity: source.id, worktrees: [] };
@@ -450,6 +451,7 @@ describe('AppShell work routing', () => {
 
   it('acquires a nested GitLab project and opens its branch', async () => {
     const snapshot = createEmptySnapshot();
+    snapshot.sourceFolder = { path: '/src', initialized: true, recentRepoNames: [] };
     snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected', accountLabel: 'github-user' }, { provider: 'gitlab', status: 'connected', accountLabel: 'gitlab-user' }];
     snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
     const project: WorkSource = { provider: 'gitlab', id: '42', fullName: 'group/subgroup/repo', name: 'repo', url: 'https://gitlab.com/group/subgroup/repo', isPrivate: true };
@@ -492,7 +494,9 @@ describe('AppShell work routing', () => {
   });
 
   it('keeps a GitLab clone attached to its team across unrelated workspace updates', async () => {
-    const snapshot = createInitialSnapshot(); snapshot.workBacklog.connections = [{ provider: 'gitlab', status: 'connected' }];
+    const snapshot = createInitialSnapshot();
+    snapshot.sourceFolder = { path: '/src', initialized: true, recentRepoNames: [] };
+    snapshot.workBacklog.connections = [{ provider: 'gitlab', status: 'connected' }];
     const project: WorkSource = { provider: 'gitlab', id: '42', name: 'repo', fullName: 'group/subgroup/repo', url: 'https://gitlab.com/group/subgroup/repo' };
     let release!: (repository: SourceRepository) => void;
     const cloneSourceRepository = vi.fn(() => new Promise<SourceRepository>(resolve => { release = resolve; }));
@@ -529,6 +533,7 @@ describe('AppShell work routing', () => {
 
   it('shows catalog and Git transport failures independently and ignores dismissed provider results', async () => {
     const snapshot = createInitialSnapshot();
+    snapshot.sourceFolder = { path: '/src', initialized: true, recentRepoNames: [] };
     snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected' }, { provider: 'gitlab', status: 'connected' }];
     let release!: (items: WorkSource[]) => void;
     const project: WorkSource = { provider: 'gitlab', id: '42', name: 'repo', fullName: 'group/subgroup/repo', url: 'https://gitlab.com/group/subgroup/repo' };
@@ -553,6 +558,7 @@ describe('AppShell work routing', () => {
 
   it('clones a GitHub repository before opening its contextual session picker', async () => {
     const snapshot = createInitialSnapshot();
+    snapshot.sourceFolder = { path: '/src', initialized: true, recentRepoNames: [] };
     snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected', accountLabel: 'nbonamy' }];
     const githubRepository: WorkSource = {
       provider: 'github',
@@ -563,6 +569,7 @@ describe('AppShell work routing', () => {
       url: 'https://github.com/nbonamy/new-project',
       isPrivate: true,
     };
+    const chooseSourceFolder = vi.fn().mockResolvedValue(null);
     const cloneSourceRepository = vi.fn().mockResolvedValue({
       name: 'new-project',
       path: '/Users/nbonamy/src/new-project',
@@ -584,6 +591,7 @@ describe('AppShell work routing', () => {
       loadWorkRepositories: vi.fn().mockResolvedValue([githubRepository]),
     });
 
+    await wrapper.setProps({ chooseSourceFolder });
     wrapper.getComponent({ name: 'AgentSidebar' }).vm.$emit('start-work', 'github');
     await flushPromises();
     const acquire = wrapper.getComponent({ name: 'RepositoryAcquireDialog' });
@@ -592,6 +600,7 @@ describe('AppShell work routing', () => {
     acquire.vm.$emit('select-repository', githubRepository);
     await flushPromises();
 
+    expect(chooseSourceFolder).not.toHaveBeenCalled();
     expect(cloneSourceRepository).toHaveBeenCalledWith({ url: githubRepository.url, reuseExisting: true });
     expect(listSourceBranches).toHaveBeenCalledWith('/Users/nbonamy/src/new-project', undefined);
     expect(wrapper.getComponent({ name: 'RepositorySessionSourceDialog' }).props('repositoryName')).toBe('new-project');
@@ -611,6 +620,7 @@ describe('AppShell work routing', () => {
     };
     const loadWorkRepositories = vi.fn().mockResolvedValue([githubRepository]);
     const listSourceRepositories = vi.fn().mockResolvedValue([]);
+    const chooseSourceFolder = vi.fn().mockResolvedValue(null);
     const cloneSourceRepository = vi.fn().mockResolvedValue({
       name: 'new-project',
       path: '/home/nicolas/src/new-project',
@@ -633,6 +643,7 @@ describe('AppShell work routing', () => {
       loadWorkRepositories,
     });
 
+    await wrapper.setProps({ chooseSourceFolder });
     wrapper.getComponent({ name: 'AgentEmptyState' }).vm.$emit('start-work', 'github');
     await flushPromises();
 
@@ -642,6 +653,7 @@ describe('AppShell work routing', () => {
     wrapper.getComponent({ name: 'RepositoryAcquireDialog' }).vm.$emit('select-repository', githubRepository);
     await flushPromises();
 
+    expect(chooseSourceFolder).not.toHaveBeenCalled();
     expect(cloneSourceRepository).toHaveBeenCalledWith({
       url: githubRepository.url,
       reuseExisting: true,
@@ -655,6 +667,7 @@ describe('AppShell work routing', () => {
 
   it('opens the existing checkout returned by daemon acquisition', async () => {
     const snapshot = createInitialSnapshot();
+    snapshot.sourceFolder = { path: '/src', initialized: true, recentRepoNames: [] };
     snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected', accountLabel: 'nbonamy' }];
     const githubRepository: WorkSource = {
       provider: 'github',

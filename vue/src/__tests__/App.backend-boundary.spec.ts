@@ -1,7 +1,7 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import App from '../App.vue';
-import { createInitialSnapshot } from '@workspace/core/snapshot';
+import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
 import { installBackendFixture } from '../test/backend-fixture';
 import { codexConversationSnapshot } from '../test/codex-conversation-fixtures';
 import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
@@ -18,6 +18,87 @@ function planAction(wrapper: VueWrapper, label: 'Approve' | 'Cancel') {
 }
 
 describe('Unified backend → mounted application', () => {
+  it.each(['github', 'gitlab', 'url'] as const)('chooses and saves a missing source folder before acquiring a %s repository for a new team', async mode => {
+    const snapshot = createEmptySnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected' }, { provider: 'gitlab', status: 'connected' }];
+    const project = { provider: mode === 'gitlab' ? 'gitlab' as const : 'github' as const, id: 'owner/project', name: 'project', fullName: 'owner/project', url: `https://${mode === 'gitlab' ? 'gitlab' : 'github'}.com/owner/project` };
+    const { api } = installBackendFixture(snapshot);
+    api.listWorkSources.mockResolvedValue([project]);
+    api.chooseSourceFolder.mockResolvedValue('/code');
+    let finishSaving!: () => void;
+    api.updateSettings.mockImplementation(() => new Promise(resolve => {
+      finishSaving = () => {
+        snapshot.sourceFolder = { path: '/code', initialized: true, recentRepoNames: [] };
+        resolve(structuredClone(snapshot));
+      };
+    }));
+    api.cloneSourceRepository.mockImplementation(async () => {
+      if (!snapshot.sourceFolder.path) throw new Error('Choose a source folder before cloning a repository.');
+      return { name: 'project', path: '/code/project', worktrees: [] };
+    });
+    const wrapper = mount(App);
+    try {
+      await flushPromises();
+      const label = mode === 'url' ? 'Repository URL…' : `${mode === 'github' ? 'GitHub' : 'GitLab'} repository…`;
+      const action = wrapper.get('.agent-empty-state').findAll('[role="menuitem"]').find(item => item.text() === label)!;
+      await action.trigger('click');
+      await flushPromises();
+      expect(api.chooseSourceFolder).not.toHaveBeenCalled();
+      expect(api.cloneSourceRepository).not.toHaveBeenCalled();
+      const acquire = wrapper.getComponent({ name: 'RepositoryAcquireDialog' });
+      if (mode === 'url') {
+        await acquire.get('input').setValue(project.url);
+        await acquire.get('.app-button--primary').trigger('click');
+      } else {
+        await acquire.get('.repository-acquire-dialog__row').trigger('click');
+      }
+      await flushPromises();
+      expect(api.chooseSourceFolder).toHaveBeenCalledOnce();
+      expect(api.updateSettings).toHaveBeenCalledExactlyOnceWith({ sourceFolder: { path: '/code' } });
+      expect(api.cloneSourceRepository).not.toHaveBeenCalled();
+      finishSaving();
+      await flushPromises();
+      expect(api.cloneSourceRepository).toHaveBeenCalledExactlyOnceWith({ url: project.url, ...(mode !== 'url' ? { reuseExisting: true } : {}) });
+      expect(wrapper.getComponent({ name: 'RepositorySessionSourceDialog' }).props('repositoryName')).toBe('project');
+      expect(acquire.props('visible')).toBe(false);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it('keeps the GitHub picker usable after canceling source-folder selection or failing to save it', async () => {
+    const snapshot = createEmptySnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected' }];
+    const project = { provider: 'github' as const, id: 'owner/project', name: 'project', fullName: 'owner/project', url: 'https://github.com/owner/project' };
+    const { api } = installBackendFixture(snapshot);
+    api.listWorkSources.mockResolvedValue([project]);
+    api.chooseSourceFolder.mockResolvedValueOnce(null).mockResolvedValue('/code');
+    api.updateSettings.mockRejectedValueOnce(new Error('Cannot save settings'));
+    const wrapper = mount(App);
+    try {
+      await flushPromises();
+      await wrapper.get('.agent-empty-state').findAll('[role="menuitem"]').find(item => item.text() === 'GitHub repository…')!.trigger('click');
+      await flushPromises();
+      const acquire = wrapper.getComponent({ name: 'RepositoryAcquireDialog' });
+      await acquire.get('.repository-acquire-dialog__row').trigger('click');
+      await flushPromises();
+      expect(api.chooseSourceFolder).toHaveBeenCalledOnce();
+      expect(api.updateSettings).not.toHaveBeenCalled();
+      expect(api.cloneSourceRepository).not.toHaveBeenCalled();
+      expect(acquire.props('visible')).toBe(true);
+      expect(acquire.props('error')).toBeNull();
+      expect(acquire.get('.repository-acquire-dialog__row').attributes('disabled')).toBeUndefined();
+      await acquire.get('.repository-acquire-dialog__row').trigger('click');
+      await flushPromises();
+      expect(api.cloneSourceRepository).not.toHaveBeenCalled();
+      expect(acquire.text()).toContain('Cannot save settings');
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   it.each([
     '../research/quality%20findings.md',
     '/repo/research/quality%20findings.md',
