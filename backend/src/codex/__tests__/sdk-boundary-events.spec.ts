@@ -108,6 +108,64 @@ describe(`Codex SDK → ${product.name} backend event contract`, () => {
     expect(surface.respondToClientRequest).not.toHaveBeenCalled();
   });
 
+  it('reconciles SDK question snapshots and responses without retaining lifecycle metadata', async () => {
+    const { driver, conversation } = setup();
+    const snapshot = createTestSnapshot();
+    const agents = [sdkAgent(), sdkAgent('agent-b', 'conversation-b')];
+    snapshot.agents = agents;
+    const server = new AppBackendServer({ version: 'test', pid: 1, snapshot,
+      driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
+    });
+    const request = {
+      id: 'async-question:shared-id', conversationId: 'conversation-a', turnId: 'turn-a',
+      itemId: 'shared-id', kind: 'ask_user' as const,
+      payload: { request: { itemId: 'shared-id', delivery: 'async' as const, blocking: false, questions: [] } },
+    };
+    const pendingAgents = () => Object.entries(snapshot.agentRequests ?? {}).filter(([, requests]) => requests.length > 0).map(([id]) => id);
+    try {
+      for (const agent of agents) {
+        const id = agent.backendSession!.kind === 'codex' ? agent.backendSession!.threadId : '';
+        conversation(id).setSnapshot({ clientRequests: [{ ...request, conversationId: id }] });
+        await driver.loadConversation(agent);
+      }
+      expect(pendingAgents()).toStrictEqual(['agent-a', 'agent-b']);
+      // The authoritative snapshot has dropped the question, but its resolution event was missed.
+      conversation('conversation-a').setSnapshot({ clientRequests: [] });
+      await driver.loadConversation(agents[0]!);
+      expect(pendingAgents()).toStrictEqual(['agent-b']);
+      await expect(server.handleMessage({ jsonrpc: '2.0', id: 'stale', method: 'agent/request/respond',
+        params: { response: { agentId: 'agent-a', id: request.id, outcome: { kind: 'cancelled' } } },
+      })).rejects.toThrow('no longer pending');
+      expect(conversation('conversation-a').handle.respondToClientRequest).not.toHaveBeenCalled();
+
+      // Snapshot-only discovery must also expose new requests when their creation event was missed.
+      conversation('conversation-a').setSnapshot({ clientRequests: [request] });
+      await driver.loadConversation(agents[0]!);
+      expect(pendingAgents()).toStrictEqual(['agent-a', 'agent-b']);
+      conversation('conversation-a').handle.respondToClientRequest.mockImplementation(async () => {
+        conversation('conversation-a').setSnapshot({ clientRequests: [], answeredClientRequestIds: [request.id] });
+        return conversation('conversation-a').handle.getSnapshot();
+      });
+      const skipped = await server.handleMessage({ jsonrpc: '2.0', id: 'skip', method: 'agent/request/respond',
+        params: { response: { agentId: 'agent-a', id: request.id, outcome: { kind: 'cancelled' } } },
+      });
+      expect(skipped).not.toHaveProperty('error');
+      expect(pendingAgents()).toStrictEqual(['agent-b']);
+      await driver.loadConversation(agents[0]!);
+      expect(pendingAgents()).toStrictEqual(['agent-b']);
+      conversation('conversation-a').setSnapshot({ clientRequests: [request] });
+      await driver.loadConversation(agents[0]!);
+      conversation('conversation-a').handle.respondToClientRequest.mockImplementation(async () => {
+        conversation('conversation-a').setSnapshot({ clientRequests: [], answeredClientRequestIds: [request.id] });
+        throw new Error('Unknown client request');
+      });
+      await expect(server.handleMessage({ jsonrpc: '2.0', id: 'resolved-elsewhere', method: 'agent/request/respond',
+        params: { response: { agentId: 'agent-a', id: request.id, outcome: { kind: 'answered', answers: {} } } },
+      })).rejects.toThrow('Unknown client request');
+      expect(pendingAgents()).toStrictEqual(['agent-b']);
+    } finally { await server.close(); }
+  });
+
   it('routes a projected async question when its request event was missed', async () => {
     const { driver, conversation, surface } = setup();
     await driver.loadConversation(sdkAgent());
