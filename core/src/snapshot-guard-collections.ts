@@ -161,12 +161,15 @@ function isAgentGitDiffCatalog(value: unknown): boolean {
     isAgentGitDiffSummary(value.uncommitted) &&
     isAgentGitDiffSummary(value.unstaged) &&
     isAgentGitDiffSummary(value.staged) &&
-    Array.isArray(value.commits) && value.commits.every((commit) => (
-      isAgentGitDiffSummary(commit) &&
-      typeof commit.sha === 'string' &&
-      typeof commit.shortSha === 'string' &&
-      typeof commit.subject === 'string'
-    ));
+    optional(value, 'lastCommit', isAgentGitCommitSummary) &&
+    Array.isArray(value.commits) && value.commits.every(isAgentGitCommitSummary);
+}
+
+function isAgentGitCommitSummary(commit: unknown): boolean {
+  return isRecord(commit) && isAgentGitDiffSummary(commit) &&
+    typeof commit.sha === 'string' &&
+    typeof commit.shortSha === 'string' &&
+    typeof commit.subject === 'string';
 }
 
 export function isAgentGitDiffTarget(value: unknown): value is AgentGitDiffTarget {

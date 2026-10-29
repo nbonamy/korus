@@ -367,6 +367,7 @@ export type OpenInApplicationCatalog = {
 };
 
 export type Agent = {
+  worktreeInitialization?: import('./worktree-initialization').WorktreeInitializationState;
   handoff?: import('./agent-handoff').AgentHandoff;
   id: string;
   teamId?: string;
@@ -488,8 +489,6 @@ export type SavedPromptDraft = {
   createdAt: number;
 };
 
-export type CockpitAgentViewMode = 'teams' | 'recent';
-
 export type AppGeneralSettings = {
   git?: import('./git-preferences').GitSettings;
   commitMessageInstructions: string;
@@ -514,11 +513,11 @@ export type AppGeneralSettings = {
   /** Last model selection made in a chat, per provider; seeds new agents. */
   providerModelDefaults?: Partial<Record<AgentBackend, ExecutionSelection>>;
   codeReviewInstructions?: string;
+  missionInstructions?: string;
   codeReviewDefaults?: import('./code-review').CodeReviewPreferences;
   /** Last explicitly selected approval mode; seeds new chats without changing existing ones. */
   providerApprovalDefaults?: { codex?: ApprovalPreset; claude?: string; antigravity?: string };
   agentListCompact: boolean;
-  cockpitAgentViewMode: CockpitAgentViewMode;
   collapsedRepositoryKeys: string[];
   modelFavorites: ModelFavorite[];
   backlogRepositoryFavorites: Partial<Record<WorkProviderKind, string[]>>;
@@ -744,7 +743,7 @@ export type AppCommand =
   | { type: 'debug-missing-engines'; enabled: boolean }
   | { type: 'debug-provider-upgrades'; enabled: boolean }
   | { type: 'debug-review-uncommitted'; enabled: boolean }
-  | { type: 'debug-operation-progress'; kind: 'worktreeInitialization' | 'pullRequest' | 'merge' }
+  | { type: 'debug-operation-progress'; kind: 'worktreeInitialization' | 'worktreeIndicator' | 'pullRequest' | 'merge' }
   | { type: 'edit-active-agent' }
   | { type: 'new-team' }
   | { type: 'open-agent-composer'; agentId?: string; prompt?: string; submit?: boolean }

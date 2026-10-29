@@ -1,5 +1,6 @@
 <template>
   <div class="conversation-pane" :data-conversation-agent-id="agent?.id" @keydown.capture="handleDraftShortcut" @focusin.capture="handleDraftFocusIn">
+    <WorktreeInitializationIndicator :agent="agent" />
     <div v-if="agent?.handoff?.phase === 'failed'" class="conversation-pane__handoff" role="status">
       <p>{{ agent.handoff.error }}</p>
       <details v-if="agent.handoff.note">
@@ -100,8 +101,7 @@
             :id="flag"
             :key="flag"
             :busy="threadFlagBusy || disabled"
-            @execute="emit('thread-flag', { id: flag, action: 'execute' })"
-            @dismiss="emit('thread-flag', { id: flag, action: 'dismiss' })"
+            @respond="emit('thread-flag', $event)"
           />
         </div>
       </template>
@@ -171,11 +171,12 @@ import type {
   SavedPromptDraft,
   ThreadPlan,
 } from '@workspace/core/contracts';
-import type { ThreadFlagId, ThreadFlagResponse } from '@workspace/core/thread-flags';
+import { normalizeThreadFlags, type ThreadFlagId, type ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import ConversationPlanPanel from './ConversationPlanPanel.vue';
 import RateLimitResumeNotice from './RateLimitResumeNotice.vue';
 import ConversationLoadError from './ConversationLoadError.vue';
+import WorktreeInitializationIndicator from './WorktreeInitializationIndicator.vue';
 import DeferredConversationContent from './DeferredConversationContent.vue';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import AgentMention from './AgentMention.vue';
@@ -447,8 +448,8 @@ const showBackendSelector = computed(() => Boolean(
   && canSelectAgentBackend(props.agent) && !props.historyLoading && !props.hasVisibleMessages,
 ));
 const activeThreadFlags = computed<ThreadFlagId[]>(() => (
-  (['ready_for_review', 'delegate_to_worktree'] as const)
-    .filter((id) => props.agent?.threadFlags?.[id] === true)
+  (['ready_for_review', 'work_proposed'] as const)
+    .filter((id) => normalizeThreadFlags(props.agent?.threadFlags ?? {})[id] === true)
 ));
 const messageTextSelection = ref<CodexMessageTextSelection | null>(null);
 const collaborationMessagePresentations = new Map<string, CollaborationMessagePresentation>();

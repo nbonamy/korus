@@ -412,6 +412,13 @@ describe('app menu', () => {
     expect(sendDebugAgentMessage).toHaveBeenCalledOnce();
   });
 
+  it('dispatches the background worktree indicator preview', () => {
+    const actions = callbacks();
+    const menu = buildAppMenuTemplate(actions, { debugMode: true }, 'darwin');
+    clickNestedItem(menu, 'Debug', 'UI Previews', 'Worktree Initialization Indicator');
+    expect(actions.sendAppCommand).toHaveBeenCalledWith({ type: 'debug-operation-progress', kind: 'worktreeIndicator' });
+  });
+
   it('dispatches the multi-question fixture from the debug agent menu', () => {
     const debugCallbacks = callbacks();
     const menu = buildAppMenuTemplate(debugCallbacks, { debugMode: true }, 'darwin');
@@ -479,7 +486,7 @@ describe('app menu', () => {
       checked: true,
       enabled: true,
     });
-    expect(nestedMenuItem(debugMenu, 'Debug', 'Thread Flags', 'Delegate to Worktree')).toMatchObject({
+    expect(nestedMenuItem(debugMenu, 'Debug', 'Thread Flags', 'Work Proposed')).toMatchObject({
       type: 'checkbox',
       checked: false,
     });
@@ -493,7 +500,7 @@ describe('app menu', () => {
       'Ready to Finish (No Findings)',
     ]);
     expect(submenuLabels(debugMenu, 'Debug', 'Thread Flags')).toStrictEqual([
-      'Delegate to Worktree',
+      'Work Proposed',
       'Ready for Review',
     ]);
     expect(submenuLabels(debugMenu, 'Debug', 'Backends')).toStrictEqual([
@@ -504,6 +511,7 @@ describe('app menu', () => {
       'Markdown',
       'Image Annotation',
       'Worktree Initialization',
+      'Worktree Initialization Indicator',
       'Pull Request Progress',
       'Merge Progress',
     ]);
@@ -528,6 +536,7 @@ describe('app menu', () => {
       'Image Annotation',
       'separator',
       'Worktree Initialization',
+      'Worktree Initialization Indicator',
       'Pull Request Progress',
       'Merge Progress',
     ]);
@@ -559,8 +568,8 @@ describe('app menu', () => {
     clickNestedItem(debugMenu, 'Debug', 'Review', 'Remediation in Progress');
     clickNestedItem(debugMenu, 'Debug', 'Review', 'Ready to Finish (No Findings)');
     clickNestedItem(debugMenu, 'Debug', 'Review', 'Automatic Review in Progress');
-    clickThreadFlagItem(debugMenu, 'Delegate to Worktree', true);
-    clickThreadFlagItem(debugMenu, 'Delegate to Worktree', false);
+    clickThreadFlagItem(debugMenu, 'Work Proposed', true);
+    clickThreadFlagItem(debugMenu, 'Work Proposed', false);
     clickThreadFlagItem(debugMenu, 'Ready for Review', true);
     clickThreadFlagItem(debugMenu, 'Ready for Review', false);
     clickNestedItem(debugMenu, 'Debug', 'UI Previews', 'Markdown');
@@ -640,20 +649,20 @@ describe('app menu', () => {
     expect(debugCallbacks.injectDebugCodeReview).toHaveBeenNthCalledWith(3, 'fixing');
     expect(debugCallbacks.injectDebugCodeReview).toHaveBeenNthCalledWith(4, 'readyToFinish');
     expect(debugCallbacks.injectDebugCodeReview).toHaveBeenNthCalledWith(5, 'automaticReviewing');
-    expect(debugCallbacks.setDebugThreadFlag).toHaveBeenNthCalledWith(1, 'delegate_to_worktree', true);
-    expect(debugCallbacks.setDebugThreadFlag).toHaveBeenNthCalledWith(2, 'delegate_to_worktree', false);
+    expect(debugCallbacks.setDebugThreadFlag).toHaveBeenNthCalledWith(1, 'work_proposed', true);
+    expect(debugCallbacks.setDebugThreadFlag).toHaveBeenNthCalledWith(2, 'work_proposed', false);
     expect(debugCallbacks.setDebugThreadFlag).toHaveBeenNthCalledWith(3, 'ready_for_review', true);
     expect(debugCallbacks.setDebugThreadFlag).toHaveBeenNthCalledWith(4, 'ready_for_review', false);
     expect(JSON.stringify(releaseMenu)).not.toMatch(/reload|forceReload|developer tools|toggleDevTools/i);
   });
 
-  it('reflects an active worktree delegation flag in the native checkbox', () => {
+  it('reflects an active work proposal in the native checkbox', () => {
     const nextCallbacks = callbacks();
-    nextCallbacks.isDebugThreadFlagSet = vi.fn((id) => id === 'delegate_to_worktree');
+    nextCallbacks.isDebugThreadFlagSet = vi.fn((id) => id === 'work_proposed');
 
     const menu = buildAppMenuTemplate(nextCallbacks, { debugMode: true }, 'darwin');
 
-    expect(nestedMenuItem(menu, 'Debug', 'Thread Flags', 'Delegate to Worktree')).toMatchObject({
+    expect(nestedMenuItem(menu, 'Debug', 'Thread Flags', 'Work Proposed')).toMatchObject({
       type: 'checkbox',
       checked: true,
     });

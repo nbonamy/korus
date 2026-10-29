@@ -6,6 +6,8 @@
     COLOR SYSTEM
   ======================================== */
 
+  --color-cockpit-background: #000000;
+
   /* Primary */
   --color-primary: #1B4FB2;
   --color-on-primary: #FFFFFF;
@@ -20,6 +22,7 @@
 
   /* Semantic */
   --color-attention: #8054D9;
+  --color-activity-idle: #BEAA00;
   --color-bookmark-saved: #EAB308;
   --color-error: #D5351F;
   --color-on-error: #FFFFFF;
@@ -209,6 +212,7 @@ html.dark {
   --shell-glass-opacity: 88%;
   --color-shell-collapsed-header: var(--color-shell-main);
   /* Semantic */
+  --color-activity-idle: #E7CC64;
   --color-bookmark-saved: #FACC15;
   --color-error: #FF8A78;
   --color-on-error: #3D0B05;

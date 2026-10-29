@@ -21,6 +21,55 @@ async function chooseLayout(wrapper: ReturnType<typeof mount>, label: string) {
 }
 
 describe('split-screen conversations', () => {
+  it.each(['Single Pane', 'Vertical Split'])('opens message links for the sending agent in %s', async layout => {
+    const snapshot = createInitialSnapshot();
+    const [first, second] = snapshot.agents;
+    for (const agent of [first!, second!]) {
+      agent.folder = `/workspace/${agent.id}`;
+      agent.backendSession = { kind: 'codex', threadId: `thread-${agent.id}` };
+    }
+    const { api, emit } = installBackendFixture(snapshot);
+    api.selectAgent.mockImplementation(async id => ({
+      ...snapshot, activeAgentId: id,
+      teams: snapshot.teams.map(team => ({ ...team, activeAgentId: id })),
+    }));
+    let finishPreview!: (result: { kind: 'text'; path: string; content: string; size: number }) => void;
+    api.previewAgentFile.mockImplementation(() => new Promise(resolve => { finishPreview = resolve; }));
+    api.loadConversationHistory.mockImplementation(async id => {
+      emit({ type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: id, threadId: `thread-${id}`,
+        payload: { revision: 1, snapshot: codexConversationSnapshot([
+          codexTextMessage(`links-${id}`, 'assistant', `[Readme](</workspace/${id}/README.md>) [Example](https://example.com)`),
+        ], { activeConversationId: `thread-${id}` }) },
+      });
+      return snapshot;
+    });
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const wrapper = mount(App, { attachTo: document.body });
+    try {
+      await flushPromises();
+      if (layout !== 'Single Pane') await chooseLayout(wrapper, layout);
+      const conversation = layout === 'Single Pane' ? wrapper : wrapper.findAll('.agent-split-grid__pane')[0]!;
+      await conversation.get('a[href="https://example.com"]').trigger('click');
+      expect(open).toHaveBeenCalledExactlyOnceWith('https://example.com', '_blank', 'noopener,noreferrer');
+      await conversation.get('a').trigger('click');
+      expect(api.previewAgentFile).toHaveBeenCalledExactlyOnceWith(first!.id, 'README.md');
+      // Completing a read after navigation must keep the document with its source agent.
+      await wrapper.findAll('.agent-sidebar__agent').find(row => row.text().includes(second!.name!))!.trigger('click');
+      await flushPromises();
+      finishPreview({ kind: 'text', path: 'README.md', content: '# First agent document', size: 22 });
+      await flushPromises();
+      const firstWorkspace = wrapper.findAllComponents({ name: 'RightWorkspacePanel' }).find(panel => panel.props('agent').id === first!.id)!;
+      expect(firstWorkspace.get('.markdown-panel').text()).toContain('First agent document');
+      expect(firstWorkspace.isVisible()).toBe(false);
+      await wrapper.findAll('.agent-sidebar__agent').find(row => row.text().includes(first!.name!))!.trigger('click');
+      await flushPromises();
+      // Split panes share sidebar visibility; reopen it if the other pane left it closed.
+      if (!firstWorkspace.isVisible()) await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+      expect(firstWorkspace.isVisible()).toBe(true);
+      expect(wrapper.get('a[href="https://example.com"]').isVisible()).toBe(true);
+    } finally { wrapper.unmount(); open.mockRestore(); }
+  });
+
   it('resizes both dividers without replacing composers and restores each team workspace after a restart', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];

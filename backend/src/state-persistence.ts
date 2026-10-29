@@ -4,8 +4,9 @@ import { isAgentReadState } from '@workspace/core/agent-read-state';
 import { isDelegationContext, isTurnDelegationOverrides, isDelegationUserInstructions } from '@workspace/core/delegation-context';
 import { isWorkProviderKind, workProviderKinds } from '@workspace/core/work-providers';
 import { readPersistedAgentHandoff } from '@workspace/core/agent-handoff';
+import { isWorktreeInitializationState } from '@workspace/core/worktree-initialization';
 import { isMission } from '@workspace/core/missions';
-import { isThreadFlags } from '@workspace/core/thread-flags';
+import { isThreadFlags, normalizeThreadFlags } from '@workspace/core/thread-flags';
 import { backendCodexHomeDir } from './state';
 import { restorePlanReview } from './persistence/legacy-plan-review';
 import { sanitizeClientPreferences } from '@workspace/core/client-preferences';
@@ -53,6 +54,7 @@ export type FullPersistedState = PersistedState & {
 };
 
 export type PersistedAgent = Pick<Agent, 'id' | 'name' | 'folder' | 'createdAt' | 'updatedAt'> & {
+  worktreeInitialization?: Agent['worktreeInitialization'];
   handoff?: Agent['handoff'];
   delegatedByAgentId?: string;
   delegationContext?: Agent['delegationContext'];
@@ -133,6 +135,7 @@ function persistedAgentFromSnapshot(agent: Agent, libraries?: RepositoryVisualiz
   return {
     id: agent.id,
     ...(agent.handoff ? { handoff: structuredClone(agent.handoff) } : {}),
+    ...(agent.worktreeInitialization ? { worktreeInitialization: { ...agent.worktreeInitialization } } : {}),
     teamId: agent.teamId,
     ...(agent.delegationContext ? { delegationContext: { ...agent.delegationContext } } : {}),
     ...(agent.userDelegationOverrides ? { userDelegationOverrides: { ...agent.userDelegationOverrides } } : {}),
@@ -387,6 +390,9 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
   return {
     id: value.id,
     ...(readPersistedAgentHandoff(value.handoff) ? { handoff: readPersistedAgentHandoff(value.handoff) } : {}),
+    ...(isWorktreeInitializationState(value.worktreeInitialization) ? { worktreeInitialization: value.worktreeInitialization.state === 'running'
+      ? { ...value.worktreeInitialization, state: 'error' as const, error: 'Worktree initialization was interrupted. Check setup before continuing.' }
+      : { ...value.worktreeInitialization } } : {}),
     teamId: typeof value.teamId === 'string' ? value.teamId : undefined,
     ...(isDelegationContext(value.delegationContext) ? { delegationContext: { ...value.delegationContext } } : {}),
     ...(isTurnDelegationOverrides(value.userDelegationOverrides) ? { userDelegationOverrides: structuredClone(value.userDelegationOverrides) } : {}),
@@ -413,7 +419,7 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
     ...(gitDiffTarget ? { gitDiffTarget } : {}),
     ...(contextUsage ? { contextUsage } : {}),
     ...(plan ? { plan } : {}),
-    ...(isThreadFlags(value.threadFlags) ? { threadFlags: structuredClone(value.threadFlags) } : {}),
+    ...(isThreadFlags(value.threadFlags) ? { threadFlags: normalizeThreadFlags(value.threadFlags) } : {}),
     ...(isRateLimitPause(value.rateLimitPause) ? { rateLimitPause: { ...value.rateLimitPause } } : {}),
     ...(value.autoResumePending === true ? { autoResumePending: true } : {}),
     ...(typeof value.suggestedPrompt === 'string' && value.suggestedPrompt.trim() ? { suggestedPrompt: value.suggestedPrompt.trim() } : {}),

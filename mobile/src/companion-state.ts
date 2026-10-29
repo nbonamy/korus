@@ -226,9 +226,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
         try { reconciled = await refreshWorkspace(active); } catch { /* Keep the request and draft available for an explicit retry. */ }
         if (session !== active || epoch !== connectionEpoch) return;
         const stillPending = workspace.value.agentRequests?.[reply.target.agentId]?.some(request => request.id === reply.id && request.conversationId === reply.conversationId);
-        // Skipping a nonblocking question is also a local dismissal; cancelling it on the laptop is best effort.
-        const optionalSkip = reply.outcome.kind === 'cancelled' && pending.request.kind === 'question' && pending.request.question.blocking === false;
-        if ((reconciled && !stillPending) || optionalSkip) hideRequest(pending);
+        if (reconciled && !stillPending) hideRequest(pending);
         else failedRequest.value = pending.key;
       }
     } finally { if (respondingRequest.value === pending.key) respondingRequest.value = null; }

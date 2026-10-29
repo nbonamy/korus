@@ -498,6 +498,13 @@ clears or changes it, Korus never re-detects.
   else. Otherwise the user's setting may copy `.env*` files (never templates,
   generated folders, nested checkouts, or over existing files) and restore
   dependencies. Existing worktrees are never re-initialized.
+  Agent creation returns after Git creates the worktree; initialization continues
+  in the owning daemon. Agents carry setup state and the current command across
+  desktop, split panes and remote projections. Their conversations can start during
+  setup; an identity-scoped wait operation gates dependency-dependent checks,
+  competing installs and commits. Failures remain visible, and saved running setup
+  becomes an interrupted error after a daemon restart. Setup processes are cancelled
+  during daemon shutdown.
 - Git history is a read-only owning-host query through the agent Git protocol.
   Pages are anchored to the worktree's HEAD and literal message search; stale
   cursors require refresh. Commit details must belong to that history, and file
@@ -630,6 +637,9 @@ publishes only after saving.
 - Execution runs on hidden worker agents with ordinary provider conversations.
   The Mission contract is appended to developer instructions inside a hidden
   `<context>` block, never as a user message.
+  Saved workflow instructions are added as hidden `<context>` in the lead's first
+  prompt, for both chat-created and workspace-created Missions. They are not
+  repeated on follow-ups or injected into repository workers.
 - Stage approval is one revision-checked `daemon` command (accept, advance and
   queue the next run in one transaction). Renderers never chain accept, advance and
   run writes. Only the user accepts Requirements, Tickets and Review.
@@ -665,7 +675,11 @@ publishes only after saving.
   Each worktree records a baseline commit for whole-Mission diff
   review. Failed or cancelled attempts keep their workspace and conversation.
   Implementation assignments bind a stable ticket ID to the run and repository;
-  one-based ticket numbers are display context. Workers receive the full assigned
+  one-based ticket numbers are display context. Ticket authoring must require local
+  commits; implementation assignments authorize and require committed ticket changes
+  before submission, overriding contrary ticket or tracker instructions. Evidence
+  includes commit SHAs; inability to commit safely is a blocker, not completion.
+  This grants no push, merge or PR authority. Workers receive the full assigned
   ticket and accepted requirements rather than reconstructing assignments from a
   backlog. Identity-bound submission updates only that ticket and serially merges
   its evidence with other repositories' results. Legacy runs retain index fallback.
@@ -702,6 +716,8 @@ target and reviewer agents) plus an opaque reviewer session reference.
 - The default is an independent visible reviewer agent starting without the source
   history; reviewing the current thread is the alternative and its user-owned
   conversation is never disposed.
+- New independent reviewers follow their source agent in each client's saved order;
+  an explicit user reorder takes precedence.
 - Independent reviews reset the reviewer's conversation between rounds to reduce
   anchoring; every round receives the cumulative ledger (all prior skips, fixes
   and decisions) in a `<context>` block.
@@ -709,6 +725,9 @@ target and reviewer agents) plus an opaque reviewer session reference.
   tier across rounds and retries. Review preferences keep these choices per provider;
   an explicit Standard tier clears inherited Fast mode. Current-thread reviews use
   the thread's existing settings.
+- Commit reviews retain the selected SHA across rounds and retries. Automatic
+  remediation fixes its baseline at that commit's first parent, or the empty tree
+  for an initial commit, so subsequent review commits stay within the same scope.
 - Per-review instructions belong to the review session, survive retries
   and fresh rounds, and never become saved reviewer defaults. Unsubmitted drafts
   stay local to the agent's review tab and are discarded when that tab closes.

@@ -28,6 +28,7 @@ export type CodeReviewPriority = 'p0' | 'p1' | 'p2' | 'p3';
 
 export type CodeReviewScope =
   | { type: 'uncommitted' }
+  | { type: 'commit'; sha: string }
   | { type: 'branch'; baseRef: string };
 
 export type CodeReviewThreadMode = 'current' | 'independent';
@@ -315,6 +316,7 @@ export function isCodeReviewSession(value: unknown): value is CodeReviewSession 
 function isCodeReviewScope(value: unknown): value is CodeReviewScope {
   if (!isRecord(value)) return false;
   if (value.type === 'uncommitted') return true;
+  if (value.type === 'commit') return typeof value.sha === 'string' && /^[a-f\d]{7,64}$/i.test(value.sha);
   return value.type === 'branch' && typeof value.baseRef === 'string' && value.baseRef.trim().length > 0;
 }
 

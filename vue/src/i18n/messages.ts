@@ -217,7 +217,7 @@ export const messages = {
     },
     handoff: {
       action: 'Hand off…', submit: 'Hand off', cancel: 'Cancel', hide: 'Hide',
-      engine: 'Coding agent', model: 'Model', defaultModel: 'Provider default',
+      model: 'Model',
       instructions: 'Additional handoff instructions', optional: 'Optional — what should the current agent emphasize in its note?',
       permissions: 'The new agent uses the selected provider’s default permissions.',
       preparing: 'Preparing the note and replacement. You can hide this dialog; the handoff will continue.',
@@ -487,6 +487,9 @@ export const messages = {
       progressDetail: 'Extracting key decisions, completed work, and next steps for the new session.',
     },
     sidebar: {
+      create: 'Create',
+      allTeams: 'All teams',
+      noConversations: 'No conversations yet',
       agents: 'Agents',
       collapseRepository: 'Collapse {repository} sessions',
       collapseFolder: 'Collapse {folder} sessions',
@@ -618,12 +621,6 @@ export const messages = {
       currentTurn: 'Current turn',
       gitDiff: 'Git Diff',
       plan: 'Plan',
-    },
-    cockpit: {
-      prompt: 'Prompt {agent}',
-      sendPrompt: 'Send prompt to {agent}',
-      sendPromptPlaceholder: 'Send prompt…',
-      workingPlaceholder: 'Working…',
     },
     backlogShortcuts: {
       label: 'Backlog shortcuts',
@@ -793,6 +790,12 @@ export const messages = {
       description: 'Applied to every review agent, in addition to instructions for an individual review.',
       placeholder: 'e.g. Focus on security and backward compatibility',
     },
+    missionSettings: {
+      title: 'Missions',
+      instructions: 'Mission instructions',
+      description: 'Included in the Mission lead’s first prompt for every new Mission.',
+      placeholder: 'e.g. Keep tickets small and define clear acceptance criteria',
+    },
     delegation: {
       title: 'Delegation',
       startingContext: 'Starting context',
@@ -804,6 +807,12 @@ export const messages = {
       instructionsDescription: 'Used for worktree assignments. Your per-task instructions take priority.',
       instructionsPlaceholder: 'e.g. Run focused tests before handing work back',
       agentUnavailable: 'The source agent is unavailable. Reopen the conversation to delegate.',
+    },
+    worktreeInitialization: {
+      running: 'Initializing worktree',
+      complete: 'Worktree initialized',
+      failed: 'Worktree initialization failed',
+      preparing: 'Preparing setup…',
     },
     agentCreationProgress: {
       eyebrow: 'Delegating work',
@@ -974,10 +983,11 @@ export const messages = {
         invalid: 'A draft must contain text and be at most 128 KiB.',
       },
       threadFlags: {
-        delegateToWorktree: {
-          prompt: 'Start implementation in a worktree?',
-          accept: 'Start implementation in a worktree',
-          dismiss: 'Dismiss worktree delegation',
+        workProposed: {
+          prompt: 'Turn this into work?',
+          delegate: 'Delegate',
+          createMission: 'Mission',
+          dismiss: 'Discard',
         },
         readyForReview: {
           prompt: 'Ready to review these changes?',

@@ -85,6 +85,8 @@ framing keeps each transport's own error and reconnect policy.
   responses route by agent and request ID, guard concurrent submissions, allow retry
   after transport failure, and are invalidated by release or resolution. An
   untargeted response is accepted only when its request ID is unambiguous.
+  Codex snapshots reconcile pending client requests, including missed resolutions;
+  question lifecycle decisions remain in the provider runtime and are not persisted by Korus.
   Antigravity native questions/approvals use app-owned answered/decision/cancelled
   outcomes; clients never interpret ACP frames.
 - **Plan review** persists proposal identity, content and decision status

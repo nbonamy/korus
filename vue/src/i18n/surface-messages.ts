@@ -356,6 +356,7 @@ export const surfaceMessages = {
     "nothingToReviewDescription": "No uncommitted or branch changes.",
     "scope": "Scope",
     "uncommittedChanges": "Uncommitted changes",
+    "lastCommit": "Last commit",
     "uncommittedDescription": "Working tree only",
     "uncommittedUnavailable": "No uncommitted changes",
     "currentBranch": "Current branch",
@@ -382,6 +383,7 @@ export const surfaceMessages = {
     "stateRejected": "Rejected:",
     "reviewInProgress": "Review in progress",
     "inspectingUncommitted": "Inspecting uncommitted changes.",
+    "inspectingCommit": "Inspecting commit {sha}.",
     "inspectingBranch": "Inspecting {branch} against {base}.",
     "findingsFound": "{count} found",
     "reviewRoundFailed": "The review round failed.",
@@ -413,36 +415,15 @@ export const surfaceMessages = {
     "stateFixing": "Fixing",
     "stateFixed": "Fixed"
   },
-  "cockpitAddAgentTile": {
-    "assignToNewAgent": "Assign to New Agent",
-    "addAgent": "Add Agent"
-  },
-  "cockpitAgentsView": {
-    "addAgent": "Add agent",
-    "noAgents": "No agents",
-    "layout": "Agent layout",
-    "teams": "Teams",
-    "recent": "Recent",
-    "lastActive": "Active {time}",
-    "awaitingInput": "Awaiting input",
-    "error": "Error",
-    "errors": "Errors"
-  },
   "cockpitView": {
-    "cockpit": "Cockpit",
     "backlogNavigation": "Backlog navigation",
     "backlog": "Backlog",
-    "agents": "Agents",
     "repositories": "Repositories",
     "recentActivity": "Recent activity",
     "alphabetical": "Alphabetical",
     "filterRepositories": "Filter repositories",
     "noRepositoriesFound": "No repositories found.",
-    "workSummaryFilters": "Work summary filters",
     "connectAWorkProviderToBuildYourOperatorInbox": "Connect a work provider to build your operator inbox.",
-    "working": "working",
-    "blocked": "blocked",
-    "readyForReview": "ready for review",
     "recent": "Recent"
   },
   "cockpitWorkInbox": {

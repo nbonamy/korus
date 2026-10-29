@@ -10,6 +10,7 @@ import type {
 import { nextTick, reactive } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
+import { createMission } from '@workspace/core/missions';
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import type { AppCommand, AppApi, Team } from '@workspace/core/contracts';
 import { useConfetti } from '../../shared/confetti/use-confetti';
@@ -608,6 +609,28 @@ describe('AppShell dialogs and commands', () => {
     expect(wrapper.findComponent({ name: 'AgentQuickOpen' }).exists()).toBe(false);
   });
 
+  it('excludes Mission agents from Command-K while keeping ordinary conversations searchable', async () => {
+    const snapshot = createInitialSnapshot();
+    const regular = snapshot.agents[0]!;
+    const lead = { ...regular, id: 'mission-lead', name: 'Mission lead' };
+    const worker = { ...regular, id: 'mission-worker', name: 'Mission worker' };
+    snapshot.agents.push(lead, worker);
+    snapshot.teams[0]!.agentIds.push(lead.id, worker.id);
+    const mission = createMission(snapshot, { outcome: 'Deliver', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: regular.id });
+    mission.stageAgentIds.requirements = lead.id;
+    mission.execution!.runs.push({ id: 'run', stage: 'implementation', memberId: regular.id, workerId: worker.id, status: 'running', skills: [], feedback: '', startedAt: '' });
+    const wrapper = mountShell({ snapshot });
+    try {
+      await wrapper.get('[aria-label="Cockpit"]').trigger('click');
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, cancelable: true }));
+      await nextTick();
+      const palette = wrapper.getComponent({ name: 'AgentQuickOpen' });
+      expect(palette.text()).toContain(regular.name);
+      await palette.get('input').setValue('Mission');
+      expect(palette.findAll('.quick-open-dialog__item')).toHaveLength(0);
+    } finally { wrapper.unmount(); }
+  });
+
   it('toggles spoken acknowledgment mute with Shift-Command-M', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.general.spokenAnnouncementsEnabled = true;
@@ -1075,6 +1098,32 @@ describe('AppShell dialogs and commands', () => {
     listener({ type: 'debug-mark-unread' });
     await nextTick();
     expect(wrapper.emitted('debug-mark-unread')).toStrictEqual([[]]);
+  });
+
+  it('previews background worktree initialization without changing the agent or running setup', async () => {
+    vi.useFakeTimers();
+    let listener!: (command: AppCommand) => void;
+    window.app = {
+      onAppCommand: vi.fn(next => { listener = next; return () => {}; }),
+      onEvent: vi.fn(() => vi.fn()),
+    } as Partial<AppApi> as AppApi;
+    const snapshot = createInitialSnapshot();
+    const wrapper = mountShell({ snapshot, stubAgentWorkspace: false, realConversationPane: true });
+    try {
+      await nextTick();
+      listener({ type: 'debug-operation-progress', kind: 'worktreeIndicator' });
+      await nextTick();
+      const indicator = () => wrapper.find('.conversation-pane__initialization');
+      expect(indicator().text()).toContain('Initializing worktree');
+      expect(indicator().text()).toContain('npm ci');
+      expect(indicator().find('.app-spinner').exists()).toBe(true);
+      expect(snapshot.agents[0]!.worktreeInitialization).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(8_000);
+      expect(indicator().text()).toContain('Worktree initialized');
+      expect(indicator().find('.app-spinner').exists()).toBe(false);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(indicator().exists()).toBe(false);
+    } finally { wrapper.unmount(); vi.useRealTimers(); }
   });
 
   it('hides agent creation progress when it is sent to the background', async () => {

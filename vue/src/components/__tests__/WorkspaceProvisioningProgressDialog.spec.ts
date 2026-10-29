@@ -6,6 +6,23 @@ import WorkspaceProvisioningProgressDialog from '../WorkspaceProvisioningProgres
 describe('WorkspaceProvisioningProgressDialog', () => {
   afterEach(() => vi.useRealTimers());
 
+  it('closes after a brief success pause without an artificial minimum duration or stale progress', async () => {
+    vi.useFakeTimers();
+    const progress = { id: 'quick', state: 'running' as const, backend: 'codex' as const, repositoryName: 'korus', createWorktree: true, hasPrompt: false };
+    const wrapper = mount(WorkspaceProvisioningProgressDialog, { props: { operation: { mode: 'single', progress } } });
+    try {
+      await wrapper.setProps({ operation: { mode: 'single', progress: { ...progress, state: 'success' } } });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(wrapper.findAll('.staged-operation-progress li').every(step => step.classes().includes('is-complete'))).toBe(true);
+      await vi.advanceTimersByTimeAsync(199);
+      expect(wrapper.emitted('close')).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(wrapper.emitted('close')).toStrictEqual([['quick']]);
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(wrapper.findAll('.staged-operation-progress li').every(step => step.classes().includes('is-complete'))).toBe(true);
+    } finally { wrapper.unmount(); }
+  });
+
   it('shows branch-move stages without setup scripts or a task handoff', async () => {
     const progress = { id: 'move', agentId: 'parent', branchName: 'feature/work', state: 'running' as const, phase: 'movingChanges' as const };
     const wrapper = mount(WorkspaceProvisioningProgressDialog, { props: { operation: { mode: 'branchMove', progress } } });
@@ -47,7 +64,7 @@ describe('WorkspaceProvisioningProgressDialog', () => {
     expect(wrapper.emitted('close')).toStrictEqual([['project-1']]);
   });
 
-  it('offers to run in the background only while the operation is running', async () => {
+  it('keeps the background button in place through success and replaces it with Close on failure', async () => {
     const progress = {
       id: 'agent-creation-1', state: 'running' as const, backend: 'codex' as const,
       repositoryName: 'codex-app-sdk', createWorktree: true, hasPrompt: true, phase: 'creatingWorktree' as const,
@@ -56,6 +73,9 @@ describe('WorkspaceProvisioningProgressDialog', () => {
     const background = () => wrapper.findAll('.app-dialog__footer button').find((button) => button.text() === 'Run in background');
     await background()!.trigger('click');
     expect(wrapper.emitted('background')).toStrictEqual([['agent-creation-1']]);
+    await wrapper.setProps({ operation: { mode: 'single', progress: { ...progress, state: 'success' } } });
+    expect(background()).toBeDefined();
+    expect(background()!.attributes('disabled')).toBeDefined();
     await wrapper.setProps({ operation: { mode: 'single', progress: { ...progress, state: 'error', error: 'Nope' } } });
     expect(background()).toBeUndefined();
     wrapper.unmount();

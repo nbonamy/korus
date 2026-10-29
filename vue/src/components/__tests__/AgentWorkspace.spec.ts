@@ -92,7 +92,7 @@ function mountWorkspace(configureSnapshot?: (snapshot: ReturnType<typeof createI
       removeChatTextAnnotation: vi.fn(),
       removeVisualizationAnnotation: vi.fn(),
       removeCodeAnnotation: vi.fn(),
-      openFilePreview: vi.fn(),
+      openConversationLink: vi.fn(),
       openFilePreviewForAgent: vi.fn(),
       openInApplications: { defaultApplication: 'finder', applications: [] },
       openRightWorkspaceTab,

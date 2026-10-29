@@ -231,6 +231,10 @@ describe('agent git service parsers', () => {
       await run(['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk']);
       const service = new AgentGitService();
       await expect(service.identity(repo)).resolves.toMatchObject({ branch: 'trunk', defaultBranch: 'trunk', isLinkedWorktree: false });
+      const sha = (await run(['rev-parse', 'HEAD'])).stdout.trim();
+      expect((await service.status(repo)).diffCatalog).toMatchObject({
+        commits: [], lastCommit: { sha, subject: 'fixture' },
+      });
       await run(['checkout', '-b', 'main']);
       await expect(service.identity(repo)).resolves.toMatchObject({ branch: 'main', defaultBranch: 'trunk', isLinkedWorktree: false });
       await run(['worktree', 'add', worktree, 'trunk']);

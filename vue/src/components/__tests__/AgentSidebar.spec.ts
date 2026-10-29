@@ -42,7 +42,7 @@ describe('AgentSidebar sessions', () => {
       attachTo: document.body,
       props: { agents: [{ ...source, workspace: { ...source.workspace!, repositoryName: name } }], activeAgentId: source.id, teamName: 'Team' },
     });
-    const label = wrapper.get('.agent-sidebar__workspace-label');
+    const label = wrapper.get('[data-group-kind="repository"] .agent-sidebar__workspace-label');
     const text = label.get('strong');
     expect(text.text()).toBe(name);
     expect(getComputedStyle(label.element).overflow).toBe('hidden');
@@ -50,6 +50,9 @@ describe('AgentSidebar sessions', () => {
     expect(getComputedStyle(text.element).whiteSpace).toBe('nowrap');
     expect(getComputedStyle(text.element).maxWidth).toBe('100%');
     const header = label.element.parentElement!;
+    expect(getComputedStyle(header).display).toBe('grid');
+    expect(getComputedStyle(header).backgroundColor).toBe('rgba(0, 0, 0, 0)');
+    expect(getComputedStyle(header).minHeight).toBe('30px');
     expect(header.querySelector('.repository-icon-picker')).not.toBeNull();
     expect(header.querySelector('.agent-sidebar__workspace-actions')).not.toBeNull();
     expect(label.find('.repository-icon-picker').exists()).toBe(false);
@@ -134,7 +137,7 @@ describe('AgentSidebar sessions', () => {
     });
 
     expect(wrapper.get('.agent-sidebar__header strong').text()).toBe(product.name);
-    const view = wrapper.get('button[aria-label="Agent view"]');
+    let view = wrapper.get('button[aria-label="Agent view"]');
     expect(view.find('svg').exists()).toBe(true);
     expect(view.text()).toBe('');
     await view.trigger('click');
@@ -150,6 +153,7 @@ describe('AgentSidebar sessions', () => {
     expect(options[1]!.firstElementChild?.classList.contains('tabler-icon-bell')).toBe(true);
     options[1]!.click();
     await flushPromises();
+    view = wrapper.get('button[aria-label="Agent view"]');
     expect(view.attributes('aria-expanded')).toBe('false');
     await view.trigger('click');
     await flushPromises();
@@ -207,6 +211,7 @@ describe('AgentSidebar sessions', () => {
     };
     try {
       await choose('Activity');
+      expect(wrapper.get('[data-group-kind="create"] header').text()).toBe('Create');
       const sections = () => wrapper.findAll('[data-activity-group]');
       const ids = (group: string) => wrapper.get(`[data-activity-group="${group}"]`).findAll('[data-reorder-id]').map(row => row.attributes('data-reorder-id'));
       expect(sections().map(section => section.get('header').text())).toStrictEqual(['Needs input', 'Done', 'Working', 'Idle']);
@@ -248,6 +253,8 @@ describe('AgentSidebar sessions', () => {
       expect(ids('idle').slice(0, 4)).toStrictEqual(['working', 'new', 'recent', 'idle']);
       await wrapper.setProps({ teamId: 'two', teamName: 'Two' });
       expect(sections()).toHaveLength(0);
+      expect(wrapper.find('[data-group-kind="create"]').exists()).toBe(false);
+      expect(wrapper.find('.agent-sidebar__mission-action').exists()).toBe(true);
       await wrapper.setProps({ teamId: 'one', teamName: 'One' });
       expect(sections().length).toBeGreaterThan(0);
       wrapper.unmount();
@@ -314,7 +321,7 @@ describe('AgentSidebar sessions', () => {
       global: { components: { ElPopover } },
     });
 
-    let repositoryTitle = wrapper.findAll('.agent-sidebar__workspace-label')[0]!;
+    let repositoryTitle = wrapper.get('[data-group-kind="repository"] .agent-sidebar__workspace-label');
     let firstSession = wrapper.findAll('.agent-sidebar__agent')[0]!;
     expect(firstSession.attributes('style') ?? '').not.toContain('display: none');
 
@@ -323,7 +330,7 @@ describe('AgentSidebar sessions', () => {
       ['remote:github.com/nbonamy/id8'],
     ]);
     await wrapper.setProps({ collapsedRepositoryKeys: ['remote:github.com/nbonamy/id8'] });
-    repositoryTitle = wrapper.findAll('.agent-sidebar__workspace-label')[0]!;
+    repositoryTitle = wrapper.get('[data-group-kind="repository"] .agent-sidebar__workspace-label');
     firstSession = wrapper.findAll('.agent-sidebar__agent')[0]!;
     expect(firstSession.attributes('style') ?? '').toContain('display: none');
     expect(repositoryTitle.attributes('aria-expanded')).toBe('false');
@@ -331,7 +338,7 @@ describe('AgentSidebar sessions', () => {
     await repositoryTitle.trigger('click');
     expect(wrapper.emitted('update-collapsed-repositories')?.[1]).toStrictEqual([[]]);
     await wrapper.setProps({ collapsedRepositoryKeys: [] });
-    repositoryTitle = wrapper.findAll('.agent-sidebar__workspace-label')[0]!;
+    repositoryTitle = wrapper.get('[data-group-kind="repository"] .agent-sidebar__workspace-label');
     firstSession = wrapper.findAll('.agent-sidebar__agent')[0]!;
     expect(repositoryTitle.attributes('aria-expanded')).toBe('true');
     expect(firstSession.attributes('style') ?? '').not.toContain('display: none');
@@ -439,7 +446,7 @@ describe('AgentSidebar sessions', () => {
     });
 
     expect(wrapper.classes()).toContain('agent-sidebar--compact');
-    expect(wrapper.findAll('.agent-sidebar__workspace-header').map((header) => header.text())).toStrictEqual(['id8', 'multi-llm-ts']);
+    expect(wrapper.findAll('[data-group-kind="repository"] .agent-sidebar__workspace-header').map((header) => header.text())).toStrictEqual(['id8', 'multi-llm-ts']);
     expect(wrapper.findAll('.agent-sidebar__meta strong').map((name) => name.text())).toStrictEqual(['Dina', 'Jesse']);
     expect(wrapper.findAll('.agent-sidebar__status')).toHaveLength(2);
     expect(wrapper.find('.agent-sidebar__branch').exists()).toBe(false);
@@ -611,7 +618,8 @@ describe('mission navigation', () => {
       .map(button => button.text())
       .filter(label => ['Add project', 'Quick chat', 'New mission'].includes(label)))
       .toStrictEqual(['Add project', 'Quick chat', 'New mission']);
-    expect(wrapper.find('.agent-sidebar__mission-action [data-icon="target-arrow"]').exists()).toBe(true);
+    expect(wrapper.find('[data-group-kind="create"]').exists()).toBe(false);
+    expect(wrapper.find('[data-group-kind="missions"]').exists()).toBe(false);
     await wrapper.get('.agent-sidebar__mission-action').trigger('click');
     expect(wrapper.emitted('create-mission')).toStrictEqual([[]]);
 
@@ -695,7 +703,7 @@ describe('mission navigation', () => {
 it('offers repository deletion from the repository header context menu', async () => {
   const wrapper = mount(AgentSidebar, { attachTo: document.body, props: { agents: [agents[0]!], activeAgentId: agents[0]!.id, teamName: 'Team' } });
   try {
-    await wrapper.get('.agent-sidebar__workspace-header').trigger('contextmenu', { clientX: 80, clientY: 120 });
+    await wrapper.get('[data-group-kind="repository"] .agent-sidebar__workspace-header').trigger('contextmenu', { clientX: 80, clientY: 120 });
     const action = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(button => button.textContent?.trim() === 'Delete repository');
     expect(action).toBeDefined(); action!.click(); await flushPromises();
     expect(wrapper.emitted('delete-repository')).toStrictEqual([[agents[0]!.id]]);

@@ -255,6 +255,33 @@ describe('ConversationPane', () => {
     expect(getComputedStyle(pane.element).overflow).toBe('hidden');
   });
 
+  it('shows background worktree setup beside the live conversation until it finishes, and retains failures', async () => {
+    vi.useFakeTimers();
+    const wrapper = mountPane({ controller: controllerFor(messages), agent: { ...agent, worktreeInitialization: { state: 'running', command: 'npm ci' } } });
+    try {
+      const status = () => wrapper.find('.conversation-pane__initialization');
+      expect(status().get('strong').text()).toBe('Initializing worktree');
+      expect(status().get('small').text()).toBe('npm ci');
+      expect(status().find('.app-spinner').exists()).toBe(true);
+      await vi.advanceTimersByTimeAsync(75_000);
+      expect(status().find('.app-spinner').exists()).toBe(true);
+      await wrapper.setProps({ agent: { ...agent, worktreeInitialization: { state: 'complete' } } });
+      expect(status().get('strong').text()).toBe('Worktree initialized');
+      expect(status().get('small').text()).toBe('npm ci');
+      expect(status().find('.conversation-pane__initialization-check svg').exists()).toBe(true);
+      expect(status().find('.app-spinner').exists()).toBe(false);
+      await vi.advanceTimersByTimeAsync(999);
+      expect(status().exists()).toBe(true);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(status().exists()).toBe(false);
+      await wrapper.setProps({ agent: { ...agent, id: 'other-agent', worktreeInitialization: { state: 'complete' } } });
+      expect(status().exists()).toBe(false);
+      await wrapper.setProps({ agent: { ...agent, worktreeInitialization: { state: 'error', command: 'npm ci', error: 'Installation failed' } } });
+      expect(status().text()).toContain('Installation failed');
+      expect(status().find('.app-spinner').exists()).toBe(false);
+    } finally { wrapper.unmount(); vi.useRealTimers(); }
+  });
+
   it('keeps an interrupted handoff and its saved note visible after restoring the agent', () => {
     const wrapper = mountPane({ controller: controllerFor([]), agent: { ...agent, handoff: { operationId: 'once', sourceAgentId: 'old', sourceTitle: 'Original', sourceRef: { backend: 'claude', sessionId: 'old-session', folder: '/repo' }, phase: 'failed', error: 'Check the target conversation before resending.', note: 'The next action is to review the diff.', selection: {model: null, reasoningEffort: null, serviceTier: null,  backend: 'codex' } } } });
     expect(wrapper.get('[role="status"]').text()).toContain('Check the target conversation before resending.');
@@ -510,32 +537,29 @@ describe('ConversationPane', () => {
     expect(wrapper.emitted('remove-review-finding')).toStrictEqual([[]]);
   });
 
-  it('renders delegate_to_worktree in the composer shelf and emits its actions', async () => {
-    const wrapper = mountPane({
-      controller: controllerFor(messages),
-      agent,
-    });
-    expect(wrapper.find('.chat-composer-shelf').exists()).toBe(false);
-
-    await wrapper.setProps({ agent: { ...agent, threadFlags: { delegate_to_worktree: true } } });
-    const sdkPane = wrapper.getComponent({ name: 'CodexConversationPane' });
-
-    expect(sdkPane.props('hasComposerContext')).toBe(false);
-    expect(wrapper.get('.codex-conversation-pane__composer-shelf .thread-flag-affordance').text())
-      .toContain('Start implementation in a worktree?');
-    expect(wrapper.get('.thread-flag-affordance__action').attributes('aria-label'))
-      .toBe('Start implementation in a worktree');
-    await wrapper.get('.thread-flag-affordance__action').trigger('click');
-    await wrapper.get('.thread-flag-affordance__dismiss').trigger('click');
+  it.each(['work_proposed', 'delegate_to_worktree'] as const)('renders %s as one proposal with three composer actions', async (id) => {
+    const wrapper = mountPane({ controller: controllerFor(messages), agent });
+    await wrapper.setProps({ agent: { ...agent, threadFlags: { [id]: true, work_proposed: true } } });
+    expect(wrapper.findAll('.thread-flag-affordance')).toHaveLength(1);
+    expect(wrapper.get('.codex-conversation-pane__composer-shelf .thread-flag-affordance').text()).toContain('Turn this into work?');
+    for (const label of ['Delegate', 'Mission']) {
+      const button = wrapper.get(`button[aria-label="${label}"]`);
+      expect(button.text()).toBe(label);
+      expect(button.element.firstElementChild?.tagName.toLowerCase()).toBe('svg');
+    }
+    const discard = wrapper.get('button[aria-label="Discard"]');
+    expect(discard.text()).toBe('');
+    expect(discard.find('svg').exists()).toBe(true);
+    for (const label of ['Delegate', 'Mission', 'Discard']) {
+      await wrapper.get(`button[aria-label="${label}"]`).trigger('click');
+    }
     expect(wrapper.emitted('thread-flag')).toStrictEqual([
-      [{ id: 'delegate_to_worktree', action: 'execute' }],
-      [{ id: 'delegate_to_worktree', action: 'dismiss' }],
+      [{ id: 'work_proposed', action: 'delegate' }],
+      [{ id: 'work_proposed', action: 'create_mission' }],
+      [{ id: 'work_proposed', action: 'dismiss' }],
     ]);
-
     await wrapper.setProps({ threadFlagBusy: true });
-    expect(wrapper.get('.thread-flag-affordance__action').attributes('disabled')).toBeDefined();
-    expect(wrapper.get('.thread-flag-affordance__dismiss').attributes('aria-label'))
-      .toBe('Dismiss worktree delegation');
+    for (const button of wrapper.findAll('.thread-flag-affordance button')) expect(button.attributes('disabled')).toBeDefined();
   });
 
   it('renders review readiness through the same composer-shelf flag contract', async () => {

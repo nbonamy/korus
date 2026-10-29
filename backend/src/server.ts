@@ -90,7 +90,7 @@ import { sendAgentPrompt } from '@workspace/core/agent-chat-service';
 import { AgentPlanReviewService } from './agents/agent-plan-review-service';
 import { AgentThreadFlagService } from './agents/agent-thread-flag-service';
 import type { PlanReviewResponse } from '@workspace/core/plan-review';
-import type { ThreadFlagId, ThreadFlagResponse } from '@workspace/core/thread-flags';
+import { normalizeThreadFlagId, normalizeThreadFlags, type ThreadFlagId, type ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { agentConversationId, planReviewFromEvent } from '@workspace/core/plan-review';
 import { isAgentRequestResponse, type AgentRequestResponse } from '@workspace/core/agent-request';
 import { AgentWorkspaceService } from './agents/agent-workspace-service';
@@ -150,6 +150,7 @@ export type AppBackendServerOptions = {
   codeReviewTools?: CodeReviewToolPort;
   saveCodeReviewReport?: (agent: Agent, session: CodeReviewSession) => Promise<string>;
   agentCreation?: AgentCreationService;
+  worktreeInitializationForFolder?: (folder: string) => Agent['worktreeInitialization'];
   visualizeService?: VisualizeService;
 };
 
@@ -456,7 +457,14 @@ export class AppBackendServer {
       },
       createWorktree: input => this.requireDriverRpc().handle(backendMethods.sourceWorktreeCreate, { input }) as Promise<SourceWorktree>,
       ensureStageSkills: async (_missionId, stage) => missionStageSkills(stage),
-      refreshWorkspace: async agentId => { await this.agentWorkspaces.refreshIdentity(agentId); },
+      refreshWorkspace: async agentId => {
+        const agent = this.snapshot.agents.find(candidate => candidate.id === agentId);
+        if (agent?.folder) {
+          const initialization = options.worktreeInitializationForFolder?.(agent.folder);
+          if (initialization) agent.worktreeInitialization = initialization;
+        }
+        await this.agentWorkspaces.refreshIdentity(agentId);
+      },
       refreshConversationContext: async agent => {
         await this.requireDriverRpc().refreshConversationContext(agent);
       },
@@ -1083,9 +1091,11 @@ export class AppBackendServer {
             { agentId: created.id, application: source.openInApplication });
         }
         const shouldSelect = !isRecord(params?.options) || params.options.select !== false;
-        if (created && shouldSelect) return { ...response, result: commandResult(await preferences.update(clientId,
+        const afterAgentId = (message.method === backendMethods.agentDuplicate || message.method === backendMethods.agentFork)
+          && typeof params?.agentId === 'string' ? params.agentId : undefined;
+        if (created && (shouldSelect || afterAgentId)) return { ...response, result: commandResult(await preferences.update(clientId,
           createsAgent ? backendMethods.clientNavigationSelectAgent : backendMethods.clientNavigationSelectTeam,
-          createsAgent ? { agentId: created.id } : { teamId: created.id })) };
+          createsAgent ? { agentId: created.id } : { teamId: created.id }, { afterAgentId, select: shouldSelect })) };
       }
       if (isAppSnapshot(response.result) && reviewTargetAgentId && response.result.agents.some((agent) => agent.id === reviewTargetAgentId)) {
         return { ...response, result: await preferences.update(clientId, backendMethods.clientNavigationSelectAgent, { agentId: reviewTargetAgentId }) };
@@ -1332,7 +1342,7 @@ export class AppBackendServer {
         if (!agent) {
           return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Agent not found: ${agentId}`);
         }
-        const threadFlags = { ...agent.threadFlags };
+        const threadFlags = normalizeThreadFlags(agent.threadFlags ?? {});
         if (value) threadFlags[id] = true;
         else delete threadFlags[id];
         agent.threadFlags = Object.keys(threadFlags).length > 0 ? threadFlags : undefined;
@@ -2361,10 +2371,10 @@ export class AppBackendServer {
         const params = requireRecord(message.params);
         const agentId = requireString(params.agentId, 'agentId');
         const input = requireRecord(params.response);
-        const response: ThreadFlagResponse = {
+        const response = {
           id: requireString(input.id, 'id') as ThreadFlagResponse['id'],
-          action: requireString(input.action, 'action') as ThreadFlagResponse['action'],
-        };
+          action: requireString(input.action, 'action'),
+        } as ThreadFlagResponse;
         return this.routeAgentSnapshotRequest(message.id, agentId, message.method, { agentId, response }, async (agent) => {
           await this.threadFlags.respond(agent, response);
           return this.persistAndEmitSnapshot();
@@ -3665,9 +3675,15 @@ export class AppBackendServer {
         this.remoteTeams.connectionIdForAgent(currentAgent) ? null : this.requireDriverRpc().tryHandlePromptCommand(currentAgent, prompt)
       ),
       preparePromptOptions: (_currentAgent, options) => options,
-      sendPrompt: async (currentAgent, prompt, options) => (
-        await this.handleAgentDriverRequest(currentAgent, backendMethods.driverPromptSend, { agent: currentAgent, prompt, options, ...(plainText ? { plainText: true } : {}), ...(expectedSessionId === undefined ? {} : { expectedSessionId }) }) as BackendSendResult
-      ),
+      sendPrompt: async (currentAgent, prompt, options) => {
+        const instructions = !plainText && !currentAgent.backendSession && this.missionExecution.contextForAgent(currentAgent.id)?.stage === 'requirements'
+          ? this.snapshot.general.missionInstructions?.trim() : undefined;
+        if (instructions) {
+          const context = instructions.replace(/<\/?context>/giu, tag => tag.replace('<', '&lt;'));
+          prompt += `\n\n<context>\nUser's custom Mission instructions:\n${context}\n</context>`;
+        }
+        return await this.handleAgentDriverRequest(currentAgent, backendMethods.driverPromptSend, { agent: currentAgent, prompt, options, ...(plainText ? { plainText: true } : {}), ...(expectedSessionId === undefined ? {} : { expectedSessionId }) }) as BackendSendResult;
+      },
       interrupt: async (currentAgent) => (
         await this.handleAgentDriverRequest(currentAgent, backendMethods.driverInterrupt, { agent: currentAgent }) as BackendSendResult
       ),
@@ -4439,8 +4455,8 @@ function debugCodeReviewScenario(value: unknown): DebugCodeReviewScenario {
   throw new Error('Invalid code review debug scenario.');
 }
 
-function debugThreadFlagId(value: unknown): ThreadFlagId {
-  if (value === 'delegate_to_worktree' || value === 'ready_for_review') return value;
+function debugThreadFlagId(value: unknown): Exclude<ThreadFlagId, 'delegate_to_worktree'> {
+  if (value === 'work_proposed' || value === 'delegate_to_worktree' || value === 'ready_for_review') return normalizeThreadFlagId(value);
   throw new Error('Invalid thread flag id.');
 }
 

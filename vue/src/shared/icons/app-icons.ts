@@ -2,6 +2,7 @@ export { default as GitLabIcon } from './GitLabIcon.vue';
 export { default as GitHubIcon } from './GitHubIcon.vue';
 export { default as LinearIcon } from './LinearIcon.vue';
 export { default as BacklogIcon } from './BacklogIcon.vue';
+export { default as CockpitIcon } from './CockpitIcon.vue';
 export { default as FolderSparkleIcon } from './FolderSparkleIcon.vue';
 export { default as ProductMarkIcon } from './ProductMarkIcon.vue';
 export { default as DuoPoseIcon } from './DuoPoseIcon.vue';
@@ -29,13 +30,19 @@ export {
   IconCircleCheck as CircleCheckIcon,
   IconLoader2 as LoaderIcon,
   IconMoon as MoonIcon,
+  IconPercentage0 as Percentage0Icon,
+  IconPercentage20 as Percentage20Icon,
+  IconPercentage40 as Percentage40Icon,
+  IconPercentage60 as Percentage60Icon,
+  IconPercentage80 as Percentage80Icon,
+  IconPercentage100 as Percentage100Icon,
   IconCheck as CheckIcon,
   IconChevronDown as ChevronDown,
   IconChevronRight as ChevronRightIcon,
   IconCircleX as CircleXIcon,
   IconSquareX as SquareXIcon,
   IconCode as CodeIcon,
-  IconLayoutDashboard as DashboardIcon,
+  IconAiAgents as AiAgentsIcon,
   IconCopy as CopyIcon,
   IconShare as ShareIcon,
   IconDotsVertical as DotsVerticalIcon,
@@ -51,6 +58,7 @@ export {
   IconFolderRoot as FolderRootIcon,
   IconFolders as FoldersIcon,
   IconGitFork as GitForkIcon,
+  IconGitPullRequest as GitPullRequestIcon,
   IconGitBranch as GitBranchIcon,
   IconGitCommit as GitCommitIcon,
   IconGitMerge as GitMergeIcon,
