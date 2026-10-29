@@ -99,7 +99,7 @@ function finish(): void {
     ?? 3_800 + (Math.max(0, props.steps.length - 3) * 1_700);
   timers.push(globalThis.setTimeout(() => {
     displayStep.value = props.steps.length;
-    timers.push(globalThis.setTimeout(() => emit('complete'), 600));
+    timers.push(globalThis.setTimeout(() => emit('complete'), 200));
   }, props.activeStep === undefined ? Math.max(0, minimumDuration - (Date.now() - startedAt)) : 0));
 }
 

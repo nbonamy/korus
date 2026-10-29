@@ -1,12 +1,6 @@
 <template>
   <div class="conversation-pane" :data-conversation-agent-id="agent?.id" @keydown.capture="handleDraftShortcut" @focusin.capture="handleDraftFocusIn">
-    <div v-if="agent?.worktreeInitialization && agent.worktreeInitialization.state !== 'complete'" class="conversation-pane__initialization" role="status" aria-live="polite">
-      <span v-if="agent.worktreeInitialization.state === 'running'" class="app-spinner app-spinner--sm" aria-hidden="true" />
-      <div>
-        <strong>{{ t(agent.worktreeInitialization.state === 'running' ? 'worktreeInitialization.running' : 'worktreeInitialization.failed') }}</strong>
-        <small :title="agent.worktreeInitialization.error ?? agent.worktreeInitialization.command">{{ agent.worktreeInitialization.error ?? agent.worktreeInitialization.command ?? t('worktreeInitialization.preparing') }}</small>
-      </div>
-    </div>
+    <WorktreeInitializationIndicator :agent="agent" />
     <div v-if="agent?.handoff?.phase === 'failed'" class="conversation-pane__handoff" role="status">
       <p>{{ agent.handoff.error }}</p>
       <details v-if="agent.handoff.note">
@@ -182,6 +176,7 @@ import { agentDisplayName } from '@workspace/core/agent-display';
 import ConversationPlanPanel from './ConversationPlanPanel.vue';
 import RateLimitResumeNotice from './RateLimitResumeNotice.vue';
 import ConversationLoadError from './ConversationLoadError.vue';
+import WorktreeInitializationIndicator from './WorktreeInitializationIndicator.vue';
 import DeferredConversationContent from './DeferredConversationContent.vue';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import AgentMention from './AgentMention.vue';
@@ -562,48 +557,6 @@ defineExpose({ focusComposer, openSavedDraftPicker, saveCurrentDraft });
   min-height: 0;
   overflow: hidden;
   background: var(--color-shell-main);
-}
-
-.conversation-pane__initialization {
-  position: absolute;
-  top: var(--space-8);
-  left: 50%;
-  z-index: 2;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  max-width: calc(100% - var(--space-16));
-  padding: var(--space-4) var(--space-8);
-  background: var(--color-shell-main);
-  color: var(--color-text);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-}
-
-.conversation-pane__initialization > div {
-  display: grid;
-  gap: var(--space-1);
-  min-width: 0;
-}
-
-.conversation-pane__initialization > .app-spinner {
-  flex-shrink: 0;
-}
-
-.conversation-pane__initialization strong {
-  font-size: var(--font-size-13);
-  font-weight: var(--font-weight-bold);
-}
-
-.conversation-pane__initialization small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--font-size-12);
-  font-weight: var(--font-weight-regular);
-  color: var(--color-text-muted);
 }
 
 .conversation-pane__handoff {

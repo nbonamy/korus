@@ -746,7 +746,7 @@ export type AppCommand =
   | { type: 'debug-missing-engines'; enabled: boolean }
   | { type: 'debug-provider-upgrades'; enabled: boolean }
   | { type: 'debug-review-uncommitted'; enabled: boolean }
-  | { type: 'debug-operation-progress'; kind: 'worktreeInitialization' | 'pullRequest' | 'merge' }
+  | { type: 'debug-operation-progress'; kind: 'worktreeInitialization' | 'worktreeIndicator' | 'pullRequest' | 'merge' }
   | { type: 'edit-active-agent' }
   | { type: 'new-team' }
   | { type: 'open-agent-composer'; agentId?: string; prompt?: string; submit?: boolean }

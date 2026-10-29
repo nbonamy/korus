@@ -266,6 +266,15 @@ describe('ConversationPane', () => {
       await vi.advanceTimersByTimeAsync(75_000);
       expect(status().find('.app-spinner').exists()).toBe(true);
       await wrapper.setProps({ agent: { ...agent, worktreeInitialization: { state: 'complete' } } });
+      expect(status().get('strong').text()).toBe('Worktree initialized');
+      expect(status().get('small').text()).toBe('npm ci');
+      expect(status().find('.conversation-pane__initialization-check svg').exists()).toBe(true);
+      expect(status().find('.app-spinner').exists()).toBe(false);
+      await vi.advanceTimersByTimeAsync(999);
+      expect(status().exists()).toBe(true);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(status().exists()).toBe(false);
+      await wrapper.setProps({ agent: { ...agent, id: 'other-agent', worktreeInitialization: { state: 'complete' } } });
       expect(status().exists()).toBe(false);
       await wrapper.setProps({ agent: { ...agent, worktreeInitialization: { state: 'error', command: 'npm ci', error: 'Installation failed' } } });
       expect(status().text()).toContain('Installation failed');
