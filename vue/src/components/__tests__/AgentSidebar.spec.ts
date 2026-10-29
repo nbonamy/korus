@@ -428,7 +428,10 @@ describe('AgentSidebar sessions', () => {
     const local = { ...git, id: 'local', workspace: { ...git.workspace, originUrl: origin } };
     const remote = { ...git, id: 'remote', remoteConnectionId: 'devbox', workspace: { ...git.workspace, originUrl: origin, primaryWorktreeRoot: '/srv/id8' } };
     const remoteConnections = [{ id: 'devbox', kind: 'ssh' as const, name: 'Devbox', host: 'devbox', status: 'ready' as const, createdAt: '', updatedAt: '' }];
-    const wrapper = mount(AgentSidebar, { props: { agents: [local, remote], activeAgentId: 'local', teamName: 'Team', remoteConnections } });
+    const wrapper = mount(AgentSidebar, {
+      props: { agents: [local, remote], activeAgentId: 'local', teamName: 'Team', remoteConnections },
+      global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
+    });
     expect(wrapper.findAll('.agent-sidebar__remote-marker')).toHaveLength(1);
     expect(wrapper.get('.agent-sidebar__remote-marker').attributes('title')).toBe('Devbox');
     await wrapper.get('[aria-label="Create agent from branch, pull request, or issue"]').trigger('click');

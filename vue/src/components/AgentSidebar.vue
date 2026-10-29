@@ -284,23 +284,23 @@
               @dragend="clientAgentOrderUpdate.onDragEnd"
             >
               <span
-                v-if="!session.shared && backendChoices.length > 1 && agentsById.get(session.agentId) && !(group.activity && showQuickSwitchShortcut(session, group.activity))"
+                v-if="(group.spansHosts || group.activity) && session.remoteConnectionId"
+                class="agent-sidebar__remote-marker"
+                :class="{ 'agent-sidebar__host--offline': !remoteReady(session.remoteConnectionId) }"
+                role="img"
+                :aria-label="remoteHostLabel(session.remoteConnectionId)"
+                :title="remoteHostLabel(session.remoteConnectionId)"
+              >
+                <NetworkIcon aria-hidden="true" />
+              </span>
+              <span
+                v-else-if="!session.shared && backendChoices.length > 1 && agentsById.get(session.agentId) && !(group.activity && showQuickSwitchShortcut(session, group.activity))"
                 class="agent-sidebar__engine"
                 role="img"
                 :aria-label="backendDisplayName(agentsById.get(session.agentId)!.backend)"
                 :title="backendDisplayName(agentsById.get(session.agentId)!.backend)"
               >
                 <BackendIcon :backend="agentsById.get(session.agentId)!.backend" monochrome />
-              </span>
-              <span
-                v-else-if="group.spansHosts && session.remoteConnectionId"
-                class="agent-sidebar__remote-marker"
-                :class="{ 'agent-sidebar__host--offline': !remoteReady(session.remoteConnectionId) }"
-                role="img"
-                :aria-label="remoteHostName(session.remoteConnectionId)"
-                :title="remoteHostName(session.remoteConnectionId)"
-              >
-                <NetworkIcon aria-hidden="true" />
               </span>
               <span
                 v-if="!group.activity && session.status.type === 'awaitingInput'"
