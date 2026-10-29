@@ -69,6 +69,10 @@ Preserve the product and process boundaries:
 - Theme support must use semantic tokens and CSS variables. Do not hard-code
   product colors inside components.
 
+In development mode, Korus links directly to the `codex-app-sdk` local source code
+so there is no need to rebuild, release or reinstall the SDK. This is only needed
+when building a production version of Korus.
+
 ## Documentation Map
 
 Keep `AGENTS.md` high-level. Before changing a feature area, read the relevant
