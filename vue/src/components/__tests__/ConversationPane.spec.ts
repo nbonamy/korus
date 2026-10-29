@@ -515,7 +515,15 @@ describe('ConversationPane', () => {
     await wrapper.setProps({ agent: { ...agent, threadFlags: { [id]: true, work_proposed: true } } });
     expect(wrapper.findAll('.thread-flag-affordance')).toHaveLength(1);
     expect(wrapper.get('.codex-conversation-pane__composer-shelf .thread-flag-affordance').text()).toContain('Turn this into work?');
-    for (const label of ['Delegate', 'Create Mission', 'Discard']) {
+    for (const label of ['Delegate', 'Mission']) {
+      const button = wrapper.get(`button[aria-label="${label}"]`);
+      expect(button.text()).toBe(label);
+      expect(button.element.firstElementChild?.tagName.toLowerCase()).toBe('svg');
+    }
+    const discard = wrapper.get('button[aria-label="Discard"]');
+    expect(discard.text()).toBe('');
+    expect(discard.find('svg').exists()).toBe(true);
+    for (const label of ['Delegate', 'Mission', 'Discard']) {
       await wrapper.get(`button[aria-label="${label}"]`).trigger('click');
     }
     expect(wrapper.emitted('thread-flag')).toStrictEqual([

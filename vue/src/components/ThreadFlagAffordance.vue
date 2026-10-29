@@ -13,7 +13,7 @@
           :aria-label="t(copyKey(choice.key))"
           :disabled="busy"
           @click="emit('respond', { id: 'work_proposed', action: choice.action })"
-        >{{ t(copyKey(choice.key)) }}</button>
+        ><component :is="choice.icon" aria-hidden="true" />{{ t(copyKey(choice.key)) }}</button>
       </template>
       <template v-else>
         <button
@@ -24,15 +24,15 @@
           :disabled="busy"
           @click="emit('respond', { id: 'ready_for_review', action: 'execute' })"
         ><CheckIcon aria-hidden="true" /></button>
-        <button
-          class="thread-flag-affordance__dismiss"
-          type="button"
-          :aria-label="t(copyKey('dismiss'))"
-          :title="t(copyKey('dismiss'))"
-          :disabled="busy"
-          @click="emit('respond', { id: 'ready_for_review', action: 'dismiss' })"
-        ><X aria-hidden="true" /></button>
       </template>
+      <button
+        class="thread-flag-affordance__dismiss"
+        type="button"
+        :aria-label="t(copyKey('dismiss'))"
+        :title="t(copyKey('dismiss'))"
+        :disabled="busy"
+        @click="emit('respond', isProposal ? { id: 'work_proposed', action: 'dismiss' } : { id: 'ready_for_review', action: 'dismiss' })"
+      ><X aria-hidden="true" /></button>
     </div>
   </div>
 </template>
@@ -42,16 +42,15 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { ThreadFlagId, ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { IconChecklist } from '@tabler/icons-vue';
-import { CheckIcon, GitBranchIcon, X } from '../shared/icons/app-icons';
+import { CheckIcon, GitBranchIcon, TargetArrowIcon, X } from '../shared/icons/app-icons';
 
 const props = defineProps<{ id: ThreadFlagId; busy?: boolean }>();
 const emit = defineEmits<{ respond: [response: ThreadFlagResponse] }>();
 const { t } = useI18n();
 const isProposal = computed(() => props.id !== 'ready_for_review');
 const proposalChoices = [
-  { action: 'delegate', key: 'delegate' },
-  { action: 'create_mission', key: 'createMission' },
-  { action: 'dismiss', key: 'dismiss' },
+  { action: 'delegate', key: 'delegate', icon: GitBranchIcon },
+  { action: 'create_mission', key: 'createMission', icon: TargetArrowIcon },
 ] as const;
 
 function copyKey(kind: 'prompt' | 'accept' | 'dismiss' | 'delegate' | 'createMission'): string {
@@ -64,7 +63,6 @@ function copyKey(kind: 'prompt' | 'accept' | 'dismiss' | 'delegate' | 'createMis
   width: 100%;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: var(--space-4);
   color: var(--color-text-muted);
 }
@@ -78,7 +76,7 @@ function copyKey(kind: 'prompt' | 'accept' | 'dismiss' | 'delegate' | 'createMis
 
 .thread-flag-affordance__prompt {
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 1;
   overflow: hidden;
   color: var(--color-text);
   font-size: var(--font-size-14);
@@ -111,6 +109,8 @@ function copyKey(kind: 'prompt' | 'accept' | 'dismiss' | 'delegate' | 'createMis
 
 .thread-flag-affordance__choice {
   min-height: var(--space-12);
+  gap: var(--space-2);
+  color: var(--color-text-muted);
   padding: var(--space-2) var(--space-4);
   white-space: nowrap;
 }
@@ -130,7 +130,8 @@ function copyKey(kind: 'prompt' | 'accept' | 'dismiss' | 'delegate' | 'createMis
 }
 
 .thread-flag-affordance__action svg,
-.thread-flag-affordance__dismiss svg {
+.thread-flag-affordance__dismiss svg,
+.thread-flag-affordance__choice svg {
   width: var(--icon-sm);
   height: var(--icon-sm);
 }

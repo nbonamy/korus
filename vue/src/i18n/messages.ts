@@ -952,7 +952,7 @@ export const messages = {
         workProposed: {
           prompt: 'Turn this into work?',
           delegate: 'Delegate',
-          createMission: 'Create Mission',
+          createMission: 'Mission',
           dismiss: 'Discard',
         },
         readyForReview: {
