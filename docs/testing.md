@@ -190,6 +190,25 @@ isolation tests assert no implicit runtime loading and that snapshot queries do 
 maintenance. Use captured long-conversation fixtures for deterministic performance
 regressions; do not reintroduce a transcript reducer to benchmark provider traffic.
 
+## Shared-chat relay probe
+
+The manual **Shared chat relay probe** Actions workflow runs a headless guest
+against the product relay. The repository secret `TEST_SHARED_LINK` supplies its
+invitation; the owner desktop must remain online with that share active. Each run
+joins once and leaves one pending suggestion containing its UTC send timestamp.
+It does not send the suggestion to the provider or retry uncertain delivery.
+
+The job summary and retained JSON artifact report connection, join and monotonic
+send-to-ack timing. The acknowledgment includes owner processing and persistence;
+it does not measure rendering or one-way latency. Comparing the suggestion timestamp
+with desktop receipt time requires synchronized clocks. Results exclude invitations,
+peer identities and transcript contents; failures retain a sanitized stage and error.
+
+Run the same probe locally with `node scripts/shared-chat-probe.mjs [results.json]`
+and `TEST_SHARED_LINK` in the environment. A relay override requires both
+`APP_COMPANION_RELAY_URL` and `APP_COMPANION_RELAY_PEER_ID`; invitations cannot
+override the relay. Without an output argument, results go under `.app-dev/`.
+
 ## Gates
 
 Run local checks with the Node 26 reference toolchain pinned in `.nvmrc` and

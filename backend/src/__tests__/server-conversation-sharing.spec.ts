@@ -13,6 +13,7 @@ import { createTestSnapshot } from './server-test-fixtures';
 import { conversationShareTarget, decodeConversationShareLink } from '@workspace/core/conversation-sharing';
 import type { ConversationShareResult } from '@workspace/core/conversation-sharing';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
+import { decodeAppBackendEvent } from '@workspace/core/backend-protocol/events';
 import { product } from '@workspace/core/product';
 
 // Failure modes: duplicate/racing creates, failed writes, restart, stale session,
@@ -52,6 +53,11 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       const id = randomUUID(); const text = '  /mission exact guest text  ';
       await server.proposeConversationGuest(share.state.handle!, ownerId, 'Guest', { id, text });
       expect(sendPrompt).not.toHaveBeenCalled();
+      // A selected chat depends on this pushed event; reopening it would mask a
+      // rejected notification by loading the proposal through a status request.
+      const pushed = f.events.filter(event => event.type === 'conversation.shareChanged');
+      expect(pushed.at(-1)).toMatchObject({ agentId: f.target.agentId, payload: { proposals: [expect.objectContaining({ id, text, status: 'pending' })] } });
+      for (const event of pushed) expect(decodeAppBackendEvent(event)).toStrictEqual(event);
       await f.request(server, { action: 'send', target: f.target, handle: share.state.handle!, proposalId: id });
       await vi.waitFor(() => expect(sendPrompt.mock.calls.length, JSON.stringify(f.snapshot.agents[0]?.status)).toBe(1));
       await vi.waitFor(async () => expect((await f.request(server, { action: 'status', target: f.target })).state.authors).toContainEqual(expect.objectContaining({ messageId: 'native-message', name: 'Guest' })));

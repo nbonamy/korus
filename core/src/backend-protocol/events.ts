@@ -6,6 +6,7 @@ import { conversationPayloadValidators } from './event-conversation-payloads';
 import { runtimePayloadValidators } from './event-runtime-payloads';
 import {
   expectKnownShape,
+  expectArray,
   expectLiteral,
   expectOptional,
   expectRecord,
@@ -23,13 +24,32 @@ export type AppBackendEvent = AppBackendEventFrom<BackendPublishedEvent>;
 
 type AppBackendEventType = AppBackendEvent['type'];
 
+function expectGuestProposal(value: unknown, path: string): void {
+  expectRecord(value, path);
+  for (const key of ['id', 'handle', 'identity', 'name', 'discriminator', 'text', 'createdAt']) {
+    expectString(value[key], `${path}.${key}`);
+  }
+  expectLiteral(value.status, ['pending', 'queued', 'dispatching', 'dismissed', 'submitted', 'rejected', 'unresolved'], `${path}.status`);
+  expectOptional(value, 'messageId', path, expectString);
+  expectOptional(value, 'turnId', path, expectString);
+}
+
+function expectGuestAuthor(value: unknown, path: string): void {
+  expectRecord(value, path);
+  for (const key of ['messageId', 'identity', 'name', 'discriminator']) {
+    expectString(value[key], `${path}.${key}`);
+  }
+}
+
 const payloadValidators = {
   'conversation.shareChanged': (value: unknown, path: string) => {
     expectRecord(value, path);
-    if (Object.keys(value).some(key => !['active', 'handle', 'connectedGuests', 'availability'].includes(key))) failEventValidation(path, 'unexpected share state field');
+    if (Object.keys(value).some(key => !['active', 'handle', 'connectedGuests', 'availability', 'proposals', 'authors'].includes(key))) failEventValidation(path, 'unexpected share state field');
     if (typeof value.active !== 'boolean' || (value.handle !== null && (typeof value.handle !== 'string' || !/^[A-Za-z0-9_-]{32}$/.test(value.handle)))
       || (value.connectedGuests !== null && (typeof value.connectedGuests !== 'number' || !Number.isSafeInteger(value.connectedGuests) || value.connectedGuests < 0))) failEventValidation(path, 'invalid share state');
     expectLiteral(value.availability, ['transportPending', 'notConfigured', 'ready', 'unavailable', 'capacity', 'rateLimited', 'upgradeRequired'], `${path}.availability`);
+    expectOptional(value, 'proposals', path, (items, itemsPath) => expectArray(items, itemsPath, expectGuestProposal));
+    expectOptional(value, 'authors', path, (items, itemsPath) => expectArray(items, itemsPath, expectGuestAuthor));
   },
   ...runtimePayloadValidators,
   ...agentPayloadValidators,

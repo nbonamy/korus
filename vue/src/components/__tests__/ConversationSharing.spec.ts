@@ -5,6 +5,8 @@ import type { ConversationShareControl } from '@workspace/core/conversation-shar
 import { setElectronTestClient } from '../../test/client';
 import { mountShell, clickPortaledMenuItem } from './app-shell-test-harness';
 import type { GuestJoinView } from '@workspace/core/guest-navigation';
+import { decodeAppBackendEvent } from '@workspace/core/backend-protocol/events';
+import { createClientApiMock } from '../../test/client-api-mock';
 
 // Mounted shell catches entry-point routing, duplicate grants, missing disclosure,
 // stale async results and accidental credential display. Provider UI is a boundary fake.
@@ -19,21 +21,28 @@ async function openShareDialog(wrapper: { element: Element }) {
   await flushPromises();
 }
 describe('owner Share workflow', () => {
-  it('moves a named suggestion from the composer drawer into the owner draft and deletes another without submitting', async () => {
+  it('renders pushed suggestions without reloading and moves or deletes them without submitting', async () => {
     const snapshot = createInitialSnapshot(); const agent = snapshot.agents[0]!;
     agent.backend = 'claude'; agent.backendSession = { kind: 'claude', sessionId: 'owner', transport: 'stdio' };
     snapshot.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
     const proposal = { id: '11111111-1111-4111-8111-111111111111', handle: 'a'.repeat(32), identity: 'guest-identity', name: 'Alex', discriminator: '1234abcd', text: 'Please inspect the retry path', status: 'pending' as const, createdAt: 'now' };
     const second = { ...proposal, id: '22222222-2222-4222-8222-222222222222', text: 'Another suggestion' };
-    let proposals = [proposal, second];
+    let proposals: typeof proposal[] = [];
     const control = vi.fn(async (input: ConversationShareControl) => {
       if (input.action === 'dismiss') proposals = proposals.filter(proposal => proposal.id !== input.proposalId);
       return { state: { active: true, handle: proposal.handle, connectedGuests: 1, availability: 'ready' as const, proposals } };
     });
-    setElectronTestClient({ conversationShareControl: control });
+    const client = createClientApiMock();
+    setElectronTestClient({ conversationShareControl: control, onEvent: client.api.onEvent });
     const wrapper = mountShell({ snapshot, composerState: { text: 'Existing draft', selectionStart: 14, selectionEnd: 14 }, realConversationPane: true, stubRightWorkspacePanel: true, stubTeamRail: true });
     try {
       await flushPromises();
+      expect(wrapper.find('[aria-label="Suggestions"]').exists()).toBe(false);
+      const readsBeforeUpdate = control.mock.calls.length;
+      proposals = [proposal, second];
+      client.emit(decodeAppBackendEvent({ seq: 1, occurredAt: '2026-10-29T13:19:32.126Z', type: 'conversation.shareChanged', agentId: agent.id, payload: { active: true, handle: proposal.handle, connectedGuests: 1, availability: 'ready', proposals, authors: [] } }));
+      await flushPromises();
+      expect(control.mock.calls).toHaveLength(readsBeforeUpdate);
       const drawer = wrapper.get('.chat-composer-shelf [aria-label="Suggestions"]');
       expect(drawer.text()).toContain(proposal.text); expect(drawer.text()).toContain('Alex');
       expect(drawer.findAll('svg.tabler-icon-share')).toHaveLength(2);
