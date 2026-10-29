@@ -264,6 +264,27 @@ describe('RemoteTeamService', () => {
     expect(coldForward).not.toHaveBeenCalled();
   });
 
+  it('forwards and projects a remote agent\'s background worktree initialization', () => {
+    const snapshot = createTestSnapshot();
+    snapshot.remoteConnections.connections = [readyRemoteConnection()];
+    snapshot.teams = [{ id: 'team-pointer', name: 'Mixed', remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }], agentIds: [] }];
+    const remoteAgent = { ...createRemoteAgent(), worktreeInitialization: { state: 'running' as const, command: 'npm ci' } };
+    const remoteSnapshot = createRemoteTeamSnapshot([remoteAgent]);
+    const onForwardedEvent = vi.fn();
+    const clients = { request: vi.fn(async (_connection, _method, _params, onEvent?: (event: unknown) => void) => {
+      onEvent?.({ seq: 1, occurredAt: '2026-06-13T00:00:01.000Z', agentId: remoteAgent.id, type: 'agent.updated', payload: { id: remoteAgent.id, worktreeInitialization: { state: 'complete' } } });
+      return null;
+    }) };
+    const service = new RemoteTeamService({ clients: clients as never, getSnapshot: () => snapshot, onForwardedEvent, onProjectedSnapshotChanged: vi.fn() });
+    service.rememberSnapshot('connection-devbox', remoteSnapshot);
+    expect(service.clientSnapshotFromKnownRemotes().agents.find((agent) => agent.id === remoteAgent.id)?.worktreeInitialization).toStrictEqual({ state: 'running', command: 'npm ci' });
+
+    return service.request('connection-devbox', 'agent/prompt/send').then(() => {
+      expect(onForwardedEvent).toHaveBeenCalledWith('connection-devbox', expect.objectContaining({ type: 'agent.updated', agentId: remoteAgent.id }));
+      expect(service.clientSnapshotFromKnownRemotes().agents.find((agent) => agent.id === remoteAgent.id)?.worktreeInitialization).toStrictEqual({ state: 'complete' });
+    });
+  });
+
   it('retains client navigation when adopting remote operation snapshots', () => {
     const snapshot = createTestSnapshot();
     snapshot.teams = [{

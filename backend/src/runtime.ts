@@ -97,8 +97,8 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   const worktreeManager = new WorktreeManager({
     getInitializationMode: () => snapshot.general.worktreeInitializationMode,
     onInitializationChanged: (folder, state) => {
-      const agents = snapshot.agents.filter(agent => agent.folder && path.resolve(agent.folder) === folder
-        && !snapshot.teams.find(team => team.id === agent.teamId)?.remoteConnectionId);
+      // Remote agents never live in this snapshot: their own daemon tracks and reports their setup.
+      const agents = snapshot.agents.filter(agent => agent.folder && path.resolve(agent.folder) === folder);
       for (const agent of agents) {
         agent.worktreeInitialization = { ...state };
         server?.emitEvent({ agentId: agent.id, type: 'agent.updated', payload: { id: agent.id, worktreeInitialization: { ...state } } });
