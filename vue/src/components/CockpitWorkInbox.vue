@@ -719,7 +719,9 @@ function selectAssignee(value: unknown): void {
 
 .cockpit-inbox {
   position: relative;
+  min-width: 0;
   min-height: 0;
+  container-type: inline-size;
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -1012,8 +1014,8 @@ function selectAssignee(value: unknown): void {
   min-height: 42px;
   display: grid;
   grid-template-columns:
-    28px minmax(180px, 1.1fr) 64px minmax(260px, 2fr) minmax(160px, 1fr)
-    minmax(150px, 1fr) minmax(100px, 0.65fr) 54px max-content;
+    28px minmax(0, 1.1fr) 64px minmax(0, 2fr) minmax(0, 1fr)
+    minmax(0, 1fr) minmax(0, 0.65fr) 54px max-content;
   gap: var(--space-6);
   align-items: center;
   padding: 0 var(--space-8);
@@ -1237,10 +1239,10 @@ function selectAssignee(value: unknown): void {
   height: 16px;
 }
 
-@media (max-width: 1250px) {
+@container (max-width: 1250px) {
   .cockpit-inbox__row {
     grid-template-columns:
-      28px minmax(150px, 1fr) 58px minmax(200px, 1.5fr) minmax(130px, 1fr)
+      28px minmax(0, 1fr) 58px minmax(0, 1.5fr) minmax(0, 1fr)
       90px max-content;
   }
   .cockpit-inbox__branch,
@@ -1249,7 +1251,7 @@ function selectAssignee(value: unknown): void {
   }
 }
 
-@media (max-width: 780px) {
+@container (max-width: 780px) {
   .cockpit-inbox__toolbar {
     height: auto;
     flex-basis: auto;
@@ -1259,13 +1261,14 @@ function selectAssignee(value: unknown): void {
   }
   .cockpit-inbox__actions {
     width: 100%;
+    flex-wrap: wrap;
   }
   .cockpit-inbox__actions .el-button {
     margin-left: auto;
   }
   .cockpit-inbox__row {
     grid-template-columns:
-      28px minmax(120px, 1fr) 50px minmax(160px, 1.5fr)
+      28px minmax(0, 1fr) 50px minmax(0, 2fr)
       max-content;
   }
   .cockpit-inbox__context,
