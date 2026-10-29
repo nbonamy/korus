@@ -851,9 +851,13 @@ export class CodexSurfaceAgentAdapter {
     ) ? projectedOwner : undefined;
     const owner = requestOwner ?? pendingQuestionOwner;
     if (owner) {
-      await invokeCodexConversationBridgeOperation(
-        this.surface, owner.handle.id, 'respondToClientRequest', [nativeResponse],
-      );
+      try {
+        await invokeCodexConversationBridgeOperation(
+          this.surface, owner.handle.id, 'respondToClientRequest', [nativeResponse],
+        );
+      } finally {
+        this.publishConversationSnapshot(owner, owner.handle.getSnapshot());
+      }
       return;
     }
     if (agentId) throw new Error(`Agent request '${response.id}' is no longer pending for '${agentId}'.`);
@@ -1136,8 +1140,8 @@ export class CodexSurfaceAgentAdapter {
     }
     if (snapshot.turnGitDiff) this.emitDiff(session, snapshot.turnGitDiff);
     if (options.publishStatus !== false) this.emitStatus(session, statusFromSnapshot(snapshot));
-    this.rememberPending(session, snapshot);
     if (options.publishProviderSnapshot !== false) this.publishConversationSnapshot(session, snapshot);
+    else this.reconcilePending(session, snapshot);
   }
 
   private publishConversationSnapshot(
@@ -1145,6 +1149,7 @@ export class CodexSurfaceAgentAdapter {
     snapshot: CodexConversationSnapshot,
   ): void {
     if (this.sessionsByAgentId.get(session.agent.id) !== session) return;
+    this.reconcilePending(session, snapshot);
     const revision = (this.conversationRevisionsByAgentId.get(session.agent.id) ?? 0) + 1;
     this.conversationRevisionsByAgentId.set(session.agent.id, revision);
     this.emitThread(session, {
@@ -1156,16 +1161,30 @@ export class CodexSurfaceAgentAdapter {
     });
   }
 
-  private rememberPending(
+  private reconcilePending(
     session: AgentConversation,
     snapshot: CodexConversationSnapshot,
   ): void {
+    const pendingIds = new Set(snapshot.clientRequests.map(request => request.id));
+    for (const [key, owner] of this.clientRequestOwners) {
+      if (owner !== session) continue;
+      const [, id] = JSON.parse(key) as [string, string];
+      if (pendingIds.has(id)) continue;
+      this.clientRequestOwners.delete(key);
+      this.emitThread(session, { type: 'agentRequest.resolved', payload: {
+        id, outcome: { kind: 'cancelled', reason: 'provider_snapshot' },
+      } });
+    }
     for (const request of snapshot.clientRequests) {
-      this.clientRequestOwners.set(JSON.stringify([session.agent.id, request.id]), session);
+      const key = JSON.stringify([session.agent.id, request.id]);
+      if (this.clientRequestOwners.get(key) === session) continue;
+      this.clientRequestOwners.set(key, session);
       this.emitThread(session, { type: 'agentRequest.created', payload: { request: requestFromClientRequest(request, { conversationId: session.handle.id }) } });
     }
     for (const approval of snapshot.approvals) {
-      this.approvalOwners.set(JSON.stringify([session.agent.id, approval.id]), session);
+      const key = JSON.stringify([session.agent.id, approval.id]);
+      if (this.approvalOwners.get(key) === session) continue;
+      this.approvalOwners.set(key, session);
       this.emitThread(session, { type: 'agentRequest.created', payload: { request: approvalAgentRequest(approval) } });
     }
   }
