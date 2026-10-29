@@ -22,6 +22,7 @@ describe('codex-config', () => {
       'features.memories=true',
       'plugins."github@openai-curated-remote".enabled=false',
       'plugins."linear@openai-curated-remote".enabled=false',
+      'plugins."computer-use@openai-bundled".enabled=false',
       'plugins."unified-computer-use@openai-bundled".enabled=false',
     ]);
   });
