@@ -28,8 +28,8 @@
     <div v-else class="visualize-panel__suggestions">
       <div class="visualize-panel__intro">
         <span class="visualize-panel__eyebrow">{{ translate('visualize.mode') }}</span>
-        <h2>{{ translate(visualize.suggestions.length ? 'visualize.chooseDiagram' : 'visualize.findingDiagrams') }}</h2>
-        <p>{{ translate(visualize.suggestions.length ? 'visualize.suggestedFromConversation' : 'visualize.suggestionsWillAppear') }}</p>
+        <h2>{{ translate(visualize.suggestions.length ? 'visualize.chooseDiagram' : 'visualize.chooseInConversation') }}</h2>
+        <p>{{ translate(visualize.suggestions.length ? 'visualize.suggestedFromConversation' : 'visualize.conversationChoice') }}</p>
       </div>
       <div v-if="visualize.suggestions.length" class="visualize-panel__suggestion-grid">
         <button

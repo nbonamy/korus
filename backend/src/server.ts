@@ -1918,13 +1918,14 @@ export class AppBackendServer {
         const params = requireRecord(message.params);
         const input = isRecord(params.input) ? params.input : undefined;
         const prompt = typeof input?.prompt === 'string' ? input.prompt.trim() : '';
+        const choose = input?.choose === true;
         return this.routeAgentSnapshotRequest(message.id, agentId, message.method, {
           agentId,
-          ...(input ? { input: { ...(prompt ? { prompt } : {}) } } : {}),
+          ...(input ? { input: { ...(prompt ? { prompt } : {}), ...(choose ? { choose } : {}) } } : {}),
         }, async () => {
-          const result = await this.visualize.enter(agentId);
+          const result = await this.visualize.enter(agentId, choose);
           if (prompt) this.agentPrompts.send(agentId, directVisualizationPrompt(prompt));
-          else if (result.created) this.agentPrompts.send(agentId, initialVisualizePrompt());
+          else if (choose || result.created) this.agentPrompts.send(agentId, initialVisualizePrompt());
           return this.persistAndEmitSnapshot();
         });
       }

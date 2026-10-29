@@ -24,6 +24,14 @@ function visualizeSession(): VisualizeSession {
 }
 
 describe('VisualizePanel', () => {
+  it('directs an empty pane to the conversation choice without promising suggestion cards', () => {
+    const visualize = visualizeSession();
+    visualize.suggestions = [];
+    const wrapper = mount(VisualizePanel, { props: { visualize, readAsset: vi.fn(), saveCanvas: vi.fn() } });
+    expect(wrapper.get('.visualize-panel__intro').text()).toContain('Choose in the conversation');
+    expect(wrapper.findAll('.visualize-panel__suggestion')).toHaveLength(0);
+  });
+
   it('opens the canvas immediately without a separate Mermaid view', async () => {
     const visualize = visualizeSession();
     visualize.visualizations = [{ id: 'map', title: 'Map', content: { kind: 'mermaid', source: 'flowchart LR; A --> B' }, createdAt: '', updatedAt: '' }];

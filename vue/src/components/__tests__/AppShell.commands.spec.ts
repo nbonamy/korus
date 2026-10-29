@@ -301,7 +301,10 @@ describe('AppShell dialogs and commands', () => {
     wrapper.unmount();
   });
 
-  it('routes /visualize into the dedicated workspace without sending prose to chat', async () => {
+  it.each([
+    ['/visualize', { choose: true }],
+    ['/visualize focus on the deployment flow', { prompt: 'focus on the deployment flow' }],
+  ])('routes %s into the dedicated workspace without sending prose to chat', async (command, input) => {
     const snapshot = createInitialSnapshot();
     const next = structuredClone(snapshot);
     next.agents[0].visualize = {
@@ -319,10 +322,10 @@ describe('AppShell dialogs and commands', () => {
     const wrapper = mountShell({ snapshot, startVisualize, sendPromptAction, stubAgentWorkspace: false });
 
     const forwardPrompt = wrapper.getComponent({ name: 'AgentWorkspace' }).props('forwardPrompt') as (prompt: string) => Promise<void>;
-    await forwardPrompt('/visualize focus on the deployment flow');
+    await forwardPrompt(command);
     await flushPromises();
 
-    expect(startVisualize).toHaveBeenCalledExactlyOnceWith('agent-dina', { prompt: 'focus on the deployment flow' });
+    expect(startVisualize).toHaveBeenCalledExactlyOnceWith('agent-dina', input);
     expect(sendPromptAction).not.toHaveBeenCalled();
     expect(wrapper.findAll('[role="tab"]').map(tab => tab.text())).toContain('Visualize');
     wrapper.unmount();
