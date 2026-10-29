@@ -490,6 +490,7 @@
       v-model:selection="remoteTarget.selection.value"
       :show-engine="remoteTarget.request.value?.action === 'main'"
       :visible="remoteTarget.visible.value"
+      :repository-name="remoteTarget.request.value?.repositoryName ?? ''"
       :connections="remoteTarget.readyConnections.value"
       :checkouts="remoteTarget.checkouts.value"
       :can-confirm="remoteTarget.canConfirm.value"

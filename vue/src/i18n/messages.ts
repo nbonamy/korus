@@ -472,6 +472,10 @@ export const messages = {
       cloneAndOpen: 'Clone and open',
       noEngine: 'Connect a coding engine on that machine first.',
       modelsUnavailable: 'Couldn’t load models: {detail}',
+      loadingModels: 'Loading models…',
+      checkingTitle: 'Looking for {repository}',
+      cloningTitle: 'Cloning {repository}',
+      onHost: 'On {host}',
     },
     sidebar: {
       agents: 'Agents',

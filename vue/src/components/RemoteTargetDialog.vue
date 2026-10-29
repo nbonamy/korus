@@ -5,7 +5,15 @@
     :title="t('remoteTarget.title')"
     @update:model-value="!$event && $emit('close')"
   >
-    <form class="app-form-dialog" @submit.prevent="$emit('confirm')">
+    <GitOperationFeedback
+      v-if="progress"
+      status="running"
+      :title="progress.title"
+      :detail="progress.detail"
+    >
+      <template #icon><NetworkIcon /></template>
+    </GitOperationFeedback>
+    <form v-else class="app-form-dialog" @submit.prevent="$emit('confirm')">
       <div class="remote-target-dialog__options" role="radiogroup" :aria-label="t('remoteTarget.title')">
         <label
           v-for="connection in connections"
@@ -29,12 +37,16 @@
         </label>
       </div>
 
+      <div v-if="showEngine && modelsLoading" class="remote-target-dialog__loading" role="status" aria-busy="true">
+        {{ t('remoteTarget.loadingModels') }}
+      </div>
       <BackendModelSelector
         v-if="showEngine && selectedId"
+        v-show="!modelsLoading"
         v-model:selection="selection"
         :remote-connection-id="selectedId"
         :disabled="busy"
-        @loading="$event && (modelsError = null)"
+        @loading="modelsLoading = $event; if ($event) modelsError = null"
         @error="modelsError = $event instanceof Error ? $event.message : String($event)"
       />
       <el-alert
@@ -48,7 +60,7 @@
       <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
     </form>
 
-    <template #footer>
+    <template v-if="!progress" #footer>
       <button class="app-button app-button--tertiary" type="button" @click="$emit('close')">{{ $t('common.cancel') }}</button>
       <button
         class="app-button app-button--primary"
@@ -69,11 +81,14 @@ import { useI18n } from 'vue-i18n';
 import type { RemoteConnection } from '@workspace/core/contracts';
 import type { ExecutionSelection } from '@workspace/core/contracts';
 import FormDialog from '../shared/dialog/FormDialog.vue';
+import { NetworkIcon } from '../shared/icons/app-icons';
 import BackendModelSelector from './BackendModelSelector.vue';
+import GitOperationFeedback from './GitOperationFeedback.vue';
 import type { RemoteCheckout } from './use-remote-target';
 
 const props = defineProps<{
   visible: boolean;
+  repositoryName: string;
   connections: RemoteConnection[];
   checkouts: Record<string, RemoteCheckout>;
   canConfirm: boolean;
@@ -92,6 +107,25 @@ const selectedId = defineModel<string>('selectedId', { default: '' });
 const selection = defineModel<ExecutionSelection | undefined>('selection');
 const { t } = useI18n();
 const modelsError = ref<string | null>(null);
+const modelsLoading = ref(false);
+
+/** Looking up machines and cloning are waits, not choices: they get their own screen. */
+const progress = computed(() => {
+  const states = props.connections.map((connection) => props.checkouts[connection.id]?.state ?? 'checking');
+  if (props.busy && props.checkouts[selectedId.value]?.state === 'missing') {
+    return {
+      title: t('remoteTarget.cloningTitle', { repository: props.repositoryName }),
+      detail: t('remoteTarget.onHost', { host: props.connections.find((connection) => connection.id === selectedId.value)?.name ?? '' }),
+    };
+  }
+  if (states.length && states.every((state) => state === 'checking')) {
+    return {
+      title: t('remoteTarget.checkingTitle', { repository: props.repositoryName }),
+      detail: t('remoteTarget.onHost', { host: props.connections.map((connection) => connection.name).join(', ') }),
+    };
+  }
+  return null;
+});
 
 const confirmLabel = computed(() => t(props.checkouts[selectedId.value]?.state === 'missing' ? 'remoteTarget.cloneAndOpen' : 'remoteTarget.open'));
 
@@ -111,6 +145,17 @@ function statusText(connectionId: string): string {
 </script>
 
 <style scoped>
+.remote-target-dialog__loading {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  padding-inline: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-13-5);
+}
+
 .remote-target-dialog__options {
   display: flex;
   flex-direction: column;
