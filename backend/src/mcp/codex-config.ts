@@ -15,6 +15,7 @@ export function buildAppMcpConfigOverrides(pluginSettings: AppPluginSettings = d
       const plugin = workProviderDefinition(provider).hostedMcp?.plugin;
       return plugin ? [configOverride(`plugins."${plugin}".enabled`, false)] : [];
     }),
+    configOverride('plugins."computer-use@openai-bundled".enabled', false),
     configOverride('plugins."unified-computer-use@openai-bundled".enabled', false),
     ...(pluginSettings.chromeEnabled
       ? [configOverride('mcp_servers.node_repl.enabled', true)]
