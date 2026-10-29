@@ -1830,14 +1830,10 @@ function surfacePromptOptions(options: SendPromptOptions = {}): SendCodexMessage
   return {
     ...(options.content === undefined ? {} : { content: options.content }),
     ...(options.attachments?.length ? { attachments: options.attachments } : {}),
-    ...(options.model ? { model: options.model } : {}),
+    ...(options.selection?.model ? { model: options.selection?.model } : {}),
     ...(typeof options.planMode === 'boolean' ? { planMode: options.planMode } : {}),
-    ...(options.reasoningEffort || backendOptions?.reasoningEffort
-      ? { reasoningEffort: options.reasoningEffort ?? backendOptions?.reasoningEffort ?? undefined }
-      : {}),
-    ...(options.serviceTier !== undefined || backendOptions?.serviceTier !== undefined
-      ? { serviceTier: options.serviceTier !== undefined ? options.serviceTier : backendOptions?.serviceTier }
-      : {}),
+    ...(options.selection?.reasoningEffort ? { reasoningEffort: options.selection.reasoningEffort } : {}),
+    ...(options.selection?.serviceTier !== undefined ? { serviceTier: options.selection.serviceTier } : {}),
     ...((options.skills?.length ?? 0) > 0 || (backendOptions?.skills?.length ?? 0) > 0
       ? { skills: options.skills?.length ? options.skills : backendOptions?.skills }
       : {}),

@@ -19,7 +19,7 @@ describe('AppBackendServer', () => {
       enabled: true,
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
-      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-test', backend: 'codex' as const },
+      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-test', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
       schedule: { intervalMinutes: 60 },
       executionLog: [{
@@ -79,7 +79,7 @@ describe('AppBackendServer', () => {
       id: 'automation-remote',
       name: 'Remote bugs',
       enabled: true,
-      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-remote', backend: 'codex' as const },
+      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-remote', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
       schedule: { intervalMinutes: 60 },
       executionLog: [],
@@ -119,7 +119,7 @@ describe('AppBackendServer', () => {
     });
     const location = { kind: 'remote' as const, remoteConnectionId: 'connection-devbox' };
     const createInput = {
-      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-remote', backend: 'codex' as const },
+      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-remote', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
       schedule: { intervalMinutes: 60 },
     };
@@ -270,7 +270,7 @@ describe('AppBackendServer', () => {
     const input = {
       name: 'GitHub bugs',
       enabled: true,
-      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-test', backend: 'codex' as const },
+      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-test', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
       schedule: { intervalMinutes: 60 },
     };

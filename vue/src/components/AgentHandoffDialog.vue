@@ -37,6 +37,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue';
+import { defaultExecutionSelection } from '@workspace/core/execution-selection';
 import { useI18n } from 'vue-i18n';
 import type { Agent, AgentBackend, BackendConversationRef, BackendModelOption, RendererMessage } from '@workspace/core/contracts';
 import type { AgentHandoffInput } from '@workspace/core/agent-handoff';
@@ -86,7 +87,7 @@ async function submitHandoff() {
   busy.value = true;
   error.value = '';
   try {
-    await props.submit(props.agent.id, { operationId, backend: backend.value, ...(model.value !== defaultModel ? { model: model.value } : {}), ...(instructions.value.trim() ? { instructions: instructions.value.trim() } : {}) });
+    await props.submit(props.agent.id, { operationId, selection: { ...defaultExecutionSelection(backend.value), model: model.value !== defaultModel ? model.value : null }, ...(instructions.value.trim() ? { instructions: instructions.value.trim() } : {}) });
     emit('close');
   } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); }
   finally { busy.value = false; }

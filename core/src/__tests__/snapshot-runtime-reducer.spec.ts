@@ -396,7 +396,7 @@ describe('snapshot runtime reducer', () => {
       id: 'automation-bugs',
       name: 'GitHub bugs',
       enabled: true,
-      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-app', backend: 'codex' as const },
+      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-app', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
       schedule: { intervalMinutes: 60 },
       executionLog: [],

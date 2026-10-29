@@ -72,6 +72,43 @@ function mountWorkspace(mission: Mission, options: {
 }
 
 describe('MissionWorkspace', () => {
+  it('remembers each mission conversation after reopening and falls back to the lead when its worker disappears', async () => {
+    const snapshot = createInitialSnapshot();
+    const leadId = snapshot.agents[0]!.id;
+    const workerId = snapshot.agents[1]!.id;
+    const mission = missionWithRun('accepted');
+    mission.stage = 'implementation';
+    mission.execution!.runs.push({ id: 'implementation', stage: 'implementation', memberId: workerId, workerId,
+      repositoryPath: '/src/billing-service', status: 'running', skills: [], feedback: '', startedAt: '' });
+    let wrapper = mountWorkspace(mission, { agents: snapshot.agents });
+    await flushPromises();
+    expect(wrapper.get('.conversation-slot').text()).toContain(leadId);
+    await wrapper.get('[aria-label="Mission conversations"]').findAll('[role="tab"]')[1]!.trigger('click');
+    expect(wrapper.get('.conversation-slot').text()).toContain(workerId);
+    const otherWorker = { ...snapshot.agents[1]!, id: 'other-worker' };
+    snapshot.agents.push(otherWorker);
+    mission.execution!.runs.push({ id: 'other-implementation', stage: 'implementation', memberId: workerId, workerId: otherWorker.id,
+      repositoryPath: '/src/other-service', status: 'running', skills: [], feedback: '', startedAt: '' });
+    await wrapper.setProps({ mission: structuredClone(mission), agents: snapshot.agents });
+    expect(wrapper.get('.conversation-slot').text()).toContain(workerId);
+    wrapper.unmount();
+    const otherMission = mountWorkspace(missionWithRun('accepted'));
+    await flushPromises();
+    expect(otherMission.get('.conversation-slot').text()).toContain(leadId);
+    otherMission.unmount();
+    wrapper = mountWorkspace(mission, { agents: snapshot.agents });
+    await flushPromises();
+    expect(wrapper.get('.conversation-slot').text()).toContain(workerId);
+    await wrapper.setProps({ agents: snapshot.agents.filter(agent => agent.id !== workerId) });
+    expect(wrapper.get('.conversation-slot').text()).toContain(leadId);
+    expect(wrapper.get('[aria-label="Mission conversations"]').text()).not.toContain('billing-service');
+    wrapper.unmount();
+    wrapper = mountWorkspace(mission, { agents: snapshot.agents });
+    await flushPromises();
+    expect(wrapper.get('.conversation-slot').text()).toContain(leadId);
+    wrapper.unmount();
+  });
+
   it('selects the implementation model in a cancellable approval dialog without changing the lead', async () => {
     const mission = missionWithRun('awaitingReview', true);
     mission.stage = 'tickets';
@@ -92,6 +129,7 @@ describe('MissionWorkspace', () => {
     await approve.trigger('click'); await flushPromises();
     expect(executeMission).not.toHaveBeenCalled();
     expect(wrapper.get('[role="dialog"][aria-label="Start implementation"]').text()).toContain('1 ticket');
+    expect(wrapper.get('[role="switch"][aria-label="Allow parallel agents in the same repository"]').attributes('aria-checked')).toBe('false');
     const picker = wrapper.get('[aria-label="Coding agent and model"]');
     expect(picker.text()).toContain('Planner');
     await picker.trigger('click'); await flushPromises();
@@ -101,11 +139,13 @@ describe('MissionWorkspace', () => {
     expect(low).toBeDefined();
     low!.click(); await flushPromises();
     expect(picker.text()).toContain('Luna');
+    await wrapper.get('[role="switch"][aria-label="Allow parallel agents in the same repository"]').setValue(true);
     await wrapper.get('[role="dialog"] .app-button--tertiary').trigger('click'); await flushPromises();
     expect(executeMission).not.toHaveBeenCalled();
     expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(false);
     await approve.trigger('click'); await flushPromises();
     const reopenedPicker = wrapper.get('[aria-label="Coding agent and model"]');
+    expect(wrapper.get('[role="switch"][aria-label="Allow parallel agents in the same repository"]').attributes('aria-checked')).toBe('false');
     expect(reopenedPicker.text()).toContain('Planner');
     await reopenedPicker.trigger('click'); await flushPromises();
     document.querySelector('[role="tab"] [aria-label="Claude Code"]')!.closest<HTMLElement>('[role="tab"]')!.click();
@@ -113,12 +153,16 @@ describe('MissionWorkspace', () => {
     [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent?.trim() === 'low')!.click();
     await flushPromises();
     const confirm = wrapper.get('[role="dialog"] .app-button--primary');
+    await wrapper.get('[role="switch"][aria-label="Allow parallel agents in the same repository"]').setValue(true);
+    expect(wrapper.get('.mission-workspace__parallel-warning').text()).toContain('Agents share files and Git state');
     expect(confirm.text()).toBe('Start');
     await confirm.trigger('click'); await flushPromises();
     expect(executeMission).toHaveBeenCalledExactlyOnceWith({
       id: mission.id, revision: mission.revision, action: 'accept', runId: mission.execution!.runs[0]!.id,
-      implementationModel: { backend: 'claude', model: 'sonnet', reasoningEffort: 'low' },
+      implementationModel: { backend: 'claude', model: 'sonnet', reasoningEffort: 'low', serviceTier: null },
+      parallelImplementation: true,
     });
+    expect(() => structuredClone(executeMission.mock.calls[0]![0])).not.toThrow();
     expect(wrapper.props('agents')![0]!.backendDefaults).toMatchObject({ model: 'planner', reasoningEffort: 'high' });
     expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(false);
     await wrapper.setProps({ mission: { ...mission, stage: 'review' } });
@@ -128,6 +172,7 @@ describe('MissionWorkspace', () => {
 
   it('starts implementation on the chosen service tier, prefilled from the lead while the model still offers it', async () => {
     const mission = missionWithRun('awaitingReview', true);
+    mission.execution!.parallelImplementation = true;
     mission.stage = 'tickets';
     mission.execution!.runs[0]!.stage = 'tickets';
     mission.execution!.runs[0]!.proposal!.tickets = [{ title: 'Checkout', repositoryPath: '/repo', done: false }];
@@ -142,6 +187,9 @@ describe('MissionWorkspace', () => {
     await flushPromises();
     await wrapper.setProps({ agents }); await flushPromises();
     await wrapper.get('.mission-workspace__stage-header .app-button--primary').trigger('click'); await flushPromises();
+    const parallel = wrapper.get('[role="switch"][aria-label="Allow parallel agents in the same repository"]');
+    expect(parallel.attributes('aria-checked')).toBe('true');
+    await parallel.setValue(false);
     const picker = wrapper.get('[aria-label="Coding agent and model"]');
     expect(picker.text()).toContain('fast');
     await picker.trigger('click'); await flushPromises();
@@ -151,6 +199,7 @@ describe('MissionWorkspace', () => {
     expect(executeMission).toHaveBeenCalledExactlyOnceWith({
       id: mission.id, revision: mission.revision, action: 'accept', runId: mission.execution!.runs[0]!.id,
       implementationModel: { backend: 'codex', model: 'planner', reasoningEffort: 'high', serviceTier: 'ultrafast' },
+      parallelImplementation: false,
     });
     wrapper.unmount();
   });
@@ -169,8 +218,14 @@ describe('MissionWorkspace', () => {
 
     const continueButton = wrapper.get('.mission-workspace__stage-header .app-button');
     expect(continueButton.text()).toContain('Continue to Review');
+    const agents = createInitialSnapshot().agents;
+    agents.find(agent => agent.id === 'agent-dina')!.status = { type: 'working' };
+    await wrapper.setProps({ agents });
+    expect(wrapper.find('.mission-workspace__stage-header .app-button').exists()).toBe(false);
+    agents.find(agent => agent.id === 'agent-dina')!.status = { type: 'idle' };
+    await wrapper.setProps({ agents: structuredClone(agents) });
     expect(executeMission).not.toHaveBeenCalled();
-    await continueButton.trigger('click');
+    await wrapper.get('.mission-workspace__stage-header .app-button').trigger('click');
     await flushPromises();
     expect(executeMission).toHaveBeenCalledExactlyOnceWith({
       id: mission.id, revision: mission.revision, action: 'continueToReview',
@@ -471,6 +526,8 @@ describe('MissionWorkspace', () => {
     expect(tabs).toHaveLength(2);
     expect(tabs.map(tab => tab.attributes('aria-label'))).toStrictEqual(['Mission lead', 'billing-service']);
     expect(tabs.map(tab => tab.text())).toStrictEqual(['Mission lead', 'billing-service']);
+    expect(tabs[0]!.attributes('aria-selected')).toBe('true');
+    await tabs[1]!.trigger('click');
     expect(tabs[1]!.attributes('aria-selected')).toBe('true');
     expect(wrapper.get('[aria-label="Stage conversation"]').get('header').text()).toContain('billing-serviceBuilderOAuth connection');
     expect(wrapper.get('.conversation-slot').text()).toContain(snapshot.agents[1]!.id);

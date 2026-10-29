@@ -60,10 +60,19 @@
       <AgentMoreMenu
         v-if="agent && !agent.sharedConversation"
         :agent-id="agent.id"
-        :share-available="shareAvailable"
-        :share-active="shareActive"
+        :share-available="shareAvailable && !shareActive"
         @share="emit('share')"
       />
+      <button
+        v-if="agent && !agent.sharedConversation && shareAvailable && shareActive"
+        class="app-button app-button--neutral agent-header__share"
+        type="button"
+        :aria-label="$t('sharing.share')"
+        :title="$t('sharing.share')"
+        @click="emit('share')"
+      >
+        <ShareIcon aria-hidden="true" />
+      </button>
       <GitDiffControl
         v-if="gitReviewAvailable && agent && gitStatus"
         class="agent-header__git-status"
@@ -169,7 +178,7 @@ import type { Agent, AgentGitDiffTarget, AgentGitStatus, AgentSubagentTree, Back
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { conversationShareTarget } from '@workspace/core/conversation-sharing';
 import type { GuestJoinStatus } from '@workspace/core/guest-navigation';
-import { ArrowsDiagonalIcon, ArrowsDiagonalMinimize2Icon, ListIcon } from '../shared/icons/app-icons';
+import { ArrowsDiagonalIcon, ArrowsDiagonalMinimize2Icon, ListIcon, ShareIcon } from '../shared/icons/app-icons';
 import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import WorkspaceHeader from '../shared/WorkspaceHeader.vue';
 import { IconLayoutSidebarRight } from '@tabler/icons-vue';
@@ -430,6 +439,19 @@ const gitReviewAvailable = computed(() => {
 .agent-header__leave {
   white-space: nowrap;
   -webkit-app-region: no-drag;
+}
+
+.agent-header__share {
+  -webkit-app-region: no-drag;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: var(--color-primary);
+}
+
+.agent-header__share :deep(svg) {
+  width: var(--icon-md);
+  height: var(--icon-md);
 }
 
 .agent-header__workspace {

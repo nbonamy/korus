@@ -19,6 +19,26 @@ function transcript(turns: number, output: string) {
 }
 
 describe('Claude history paging', () => {
+  it('retains older history when an interrupted session continues before its conversation is opened', async () => {
+    const messages = claudeTranscriptToRendererMessages(transcript(80, 'past output'), agent.id, session.sessionId);
+    const driver = new ClaudeBackendDriver({ startTurn: () => ({ done: new Promise(() => {}), interrupt: async () => {} }), close: async () => {} },
+      async () => ({ backendSession: session, messages }));
+    let replica!: ClaudeConversationReplica;
+    driver.onEvent(frame => {
+      if (frame.type === 'claude.conversationSnapshotChanged') replica = createClaudeConversationReplica(frame.payload.snapshot);
+      if (frame.type === 'claude.conversationEventReceived') replica.apply(frame.payload.event);
+    });
+    try {
+      const resumed = await driver.continueInterruptedTurn(agent);
+      await driver.loadConversation(agent);
+      expect(replica.getSnapshot()).toMatchObject({ activeTurnId: resumed.activeTurnId, busy: true, historyState: { hasOlder: true } });
+      const visible = replica.getSnapshot().messages;
+      await driver.loadOlderHistory(agent);
+      expect(replica.getSnapshot().messages.length).toBeGreaterThan(visible.length);
+      expect(replica.getSnapshot().messages.slice(-visible.length)).toStrictEqual(visible);
+    } finally { await driver.close(); }
+  });
+
   it('prepends bounded pages without gaps or duplicate identities and exhausts idempotently', async () => {
     const messages: RendererMessage[] = Array.from({ length: 150 }, (_, i) => ({ id: `message-${i}`, agentId: agent.id, turnId: `turn-${i}`, role: 'user', status: 'complete', createdAt: '2026-01-01T00:00:00Z', parts: [{ type: 'text', text: 'x'.repeat(40_000) }] }));
     const driver = new ClaudeBackendDriver({ startTurn: vi.fn(), close: async () => {} }, async () => ({ backendSession: session, messages }));

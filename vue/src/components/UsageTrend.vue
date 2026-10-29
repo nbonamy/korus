@@ -90,7 +90,7 @@
               class="marker"
               :class="{
                 visible:
-                  isRate || measure === 'cost' || active === point.index,
+                  isRate || active === point.index,
               }"
               :cx="point.x"
               :cy="yOf(layer.upper[point.index]!)"

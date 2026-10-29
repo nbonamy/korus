@@ -26,8 +26,8 @@ describe('composer catalog locations', () => {
     composer.selectReasoningEffortForAgent(guestId, 'high');
 
     expect(composer.selectedModelId.value).toBe(originalHostModel);
-    expect(composer.resolvePromptOptions(guestId, 'review this')).toMatchObject({ model: 'guest-high', reasoningEffort: 'high' });
-    expect(composer.resolvePromptOptions(hostId, 'continue')).toMatchObject({ model: 'shared-default' });
+    expect(composer.resolvePromptOptions(guestId, 'review this')).toMatchObject({ selection: { model: 'guest-high', reasoningEffort: 'high' } });
+    expect(composer.resolvePromptOptions(hostId, 'continue')).toMatchObject({ selection: { model: 'shared-default' } });
   });
 
   it('keeps a fresh backend switch isolated from an outstanding old-provider catalog', async () => {
@@ -50,7 +50,7 @@ describe('composer catalog locations', () => {
     finishCodex([model('codex-model')]);
     await oldLoad;
     expect(composer.backendModels.value.map(item => item.id)).toStrictEqual(['sonnet']);
-    expect(composer.resolvePromptOptions(agent.id, 'hello')?.model).toBe('sonnet');
+    expect(composer.resolvePromptOptions(agent.id, 'hello')?.selection?.model).toBe('sonnet');
   });
   it('keeps local and SSH models separate, including pushed catalog updates', async () => {
     const snapshot = createInitialSnapshot();
@@ -69,7 +69,7 @@ describe('composer catalog locations', () => {
     composer.restore(remote.id);
     await composer.loadModels(remote.id);
     expect(listBackendModels).toHaveBeenCalledTimes(2);
-    expect(composer.resolvePromptOptions(remote.id, 'hello')?.model).toBe('remote-model');
+    expect(composer.resolvePromptOptions(remote.id, 'hello')?.selection?.model).toBe('remote-model');
 
     composer.handleMainEvent({ type: 'models.changed', backend: 'codex', seq: 1, occurredAt: '', payload: { models: [model('local-updated')] } });
     expect(composer.selectedModelId.value).toBe('remote-model');

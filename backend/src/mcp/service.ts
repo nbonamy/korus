@@ -1,3 +1,5 @@
+import type { ExecutionSelectionOverrides } from '@workspace/core/contracts/execution';
+import { applyExecutionSelection, defaultExecutionSelection, executionSelectionForAgent, resolveExecutionSelection } from '@workspace/core/execution-selection';
 import { delegatedAssignmentPrompt } from '../agents/worktree-delegation';
 import { completeUserDelegationTurn, type DelegationContext } from '@workspace/core/delegation-context';
 import { randomUUID } from 'node:crypto';
@@ -72,7 +74,7 @@ export type AppMcpServiceOptions = {
   resolveWorkspaceIdentity?: (folder: string) => Promise<AgentWorkspaceIdentity>;
   worktreeManager?: WorktreeManager;
   agentCreation?: AgentCreationService;
-  createProject?: (agentId: string, name: string, prompt: string, backend?: 'codex' | 'claude' | 'antigravity') => Promise<CreatedProject>;
+  createProject?: (agentId: string, name: string, prompt: string, selection?: ExecutionSelectionOverrides) => Promise<CreatedProject>;
   startMission?: (agentId: string, input: MissionStartInput) => Promise<StartedMission>;
   gitDiff?: (folder: string, target: import('@workspace/core/contracts').AgentGitDiffTarget) => Promise<import('@workspace/core/contracts').AgentGitDiff>;
   startAutomaticReview?: StartAutomaticReview;
@@ -445,7 +447,7 @@ export class AppMcpService {
     const prompt = input.prompt?.trim() ?? '';
     if (input.goal && !prompt && !assignmentPrompt) return { success: false, message: 'prompt is required when goal is true' };
     if (input.goal) {
-      const backend = resolveAgentBackend(this.snapshot, input.backend ?? caller.backend);
+      const backend = resolveAgentBackend(this.snapshot, input.selection?.backend ?? caller.backend);
       const target = { ...caller, id: intendedId ?? '', backend, backendSession: undefined, backendDefaults: delegatedBackendDefaults(caller, input) };
       if (!this.requireDriverRpc().getCapabilities(target).goals) return { success: false, message: 'This backend does not support goals.' };
     }
@@ -471,7 +473,7 @@ export class AppMcpService {
         requestId: input.requestId ?? '', task: input.task, prompt: fullPrompt,
         ...(input.goal ? { goal: true } : {}),
         ...(userInstructions ? { delegationUserInstructions: userInstructions } : {}),
-        backend: input.backend ?? caller.backend, specification: input,
+        backend: input.selection?.backend ?? caller.backend, specification: input,
         workspace: {
           repositoryPath: input.repoPath,
           ...(input.createWorktree && input.branchName ? { branchName: input.branchName } : {}),
@@ -498,7 +500,7 @@ export class AppMcpService {
     const progressId = `agent-creation-${randomUUID()}`;
     const progress = {
       id: progressId,
-      backend: resolveAgentBackend(this.snapshot, input.backend ?? caller.backend),
+      backend: resolveAgentBackend(this.snapshot, input.selection?.backend ?? caller.backend),
       repositoryName: fileBasename(repoPath),
       createWorktree: input.createWorktree === true,
       ...(branchName ? { branchName } : {}),
@@ -536,13 +538,7 @@ export class AppMcpService {
         });
       }
 
-      const createInput: CreateAgentInput = {
-        name: input.name?.trim() || null,
-        folder,
-        backend: progress.backend,
-        delegatedByAgentId: caller.id,
-        teamId: input.teamId ?? caller.teamId,
-      };
+      const createInput: CreateAgentInput = { name: input.name?.trim() || null, folder, delegatedByAgentId: caller.id, teamId: input.teamId ?? caller.teamId, selection: { backend: progress.backend } };
       const createdAgent = this.agentCreation.create(createInput, { select: false, ...(intendedId ? { id: intendedId } : {}) });
       if (userInstructions && (prompt || assignmentPrompt)) createdAgent.delegationUserInstructions = { ...userInstructions };
       // Creation applies the target provider's saved model and approval policy first.
@@ -682,22 +678,11 @@ export class AppMcpService {
 }
 
 function delegatedBackendDefaults(caller: Agent, input: McpCreateAgentInput): BackendDefaults {
-  const backend = input.backend ?? caller.backend;
-  const callerDefaults = caller.backend === backend && caller.backendDefaults?.kind === backend
-    ? caller.backendDefaults
-    : undefined;
-  const model = input.model?.trim() || callerDefaults?.model;
-  const reasoningEffort = input.reasoningEffort?.trim() || callerDefaults?.reasoningEffort;
-  const serviceTier = backend === 'antigravity'
-    ? undefined
-    : input.serviceTier?.trim() || (callerDefaults && callerDefaults.kind !== 'antigravity' ? callerDefaults.serviceTier : undefined);
-
-  const settings = {
-    ...(model ? { model, userSelectedModel: true } : {}),
-    ...(reasoningEffort ? { reasoningEffort } : {}),
-    ...(serviceTier !== undefined ? { serviceTier } : {}),
-  };
-  return { kind: backend, ...settings };
+  const backend = input.selection?.backend ?? caller.backend;
+  const target = { backend, backendDefaults: undefined as BackendDefaults | undefined };
+  const base = caller.backend === backend ? executionSelectionForAgent(caller) : defaultExecutionSelection(backend);
+  applyExecutionSelection(target, resolveExecutionSelection(base, input.selection));
+  return target.backendDefaults!;
 }
 
 async function readAgentMarkdownFile(filePath: string): Promise<string> {

@@ -105,6 +105,10 @@ describe('companion workspace projection', () => {
       const artifacts = (patch: Record<string, unknown> = {}) => ({ tickets: [ticket('A', { done: true })], requirements: { problem: 'p', acceptance: 'a' }, implementation: { changes: 'c', tests: 't' }, review: { summary: '', pullRequestUrl: '' }, ...patch });
       const next = (patch: Record<string, unknown>) => projectCompanionWorkspace(source([mission('m', patch)])).missionProgress[0]!.next;
       expect(next({ stage: 'implementation', artifacts: artifacts() })).toBe('review');
+      const active = projectCompanionWorkspace(source([mission('m', {
+        artifacts: artifacts(), execution: { runs: [run(0, 'accepted', 'w1')] },
+      })], [agent('w1', { status: { type: 'working' } })]));
+      expect(active.missionProgress[0]!.next).toBeUndefined();
       // Tickets done but the implementation record missing, or a ticket still open, is not ready.
       expect(next({ stage: 'implementation', artifacts: artifacts({ implementation: { changes: '', tests: '' } }) })).toBeUndefined();
       expect(next({ stage: 'implementation', artifacts: artifacts({ tickets: [ticket('A')] }) })).toBeUndefined();

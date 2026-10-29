@@ -23,12 +23,15 @@ describe(`Codex SDK → ${product.name} backend lifecycle`, () => {
     surface.createConversation.mockResolvedValue(sdkSnapshot());
     conversation('conversation-a').handle.sendMessage.mockResolvedValue(sdkSnapshot('conversation-a', { turnIds: ['accepted'], activeTurnId: 'accepted' }));
     const delegation = { startingContext: 'handoff' as const, instructions: 'Task-specific direction' };
-    const options = driver.preparePromptOptions(agent, { model: 'model', reasoningEffort: 'high', serviceTier: 'fast', planMode: true, delegation });
+    const options = driver.preparePromptOptions(agent, { planMode: true, delegation, selection: { model: 'model', reasoningEffort: 'high', serviceTier: 'fast' } });
     expect(options?.delegation).toStrictEqual(delegation);
     await expect(driver.sendPrompt(agent, 'Implement', options)).resolves.toStrictEqual({ backendSession: { kind: 'codex', threadId: 'conversation-a' }, turnId: 'accepted' });
     expect(surface.createConversation).toHaveBeenCalledWith({ cwd: '/repo', threadSource: 'user' }, { extensionContext: agent });
     expect(conversation('conversation-a').handle.sendMessage).toHaveBeenCalledWith('Implement', { model: 'model', reasoningEffort: 'high', serviceTier: 'fast', planMode: true });
     expect(conversation('conversation-a').handle.rename).toHaveBeenCalledWith('agent-a');
+    const skills = [{ name: 'check', path: '/repo/check/SKILL.md' }];
+    await driver.sendPrompt(agent, 'Check', driver.preparePromptOptions(agent, { skills }));
+    expect(conversation('conversation-a').handle.sendMessage).toHaveBeenLastCalledWith('Check', { skills });
   });
 
   it('propagates SDK rejection without fabricating a successful turn and permits retry', async () => {

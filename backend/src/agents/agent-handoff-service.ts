@@ -27,7 +27,7 @@ export class AgentHandoffService {
     const previous = this.running.get(key);
     const existing = this.options.snapshot.agents.find(agent => agent.handoff?.sourceAgentId === sourceId && agent.handoff.operationId === input.operationId)?.handoff;
     if (existing) {
-      if (existing.backend !== input.backend || existing.model !== input.model || existing.instructions !== input.instructions) return Promise.reject(new Error('Handoff request changed. Open Hand off again.'));
+      if (JSON.stringify(existing.selection) !== JSON.stringify(input.selection) || existing.instructions !== input.instructions) return Promise.reject(new Error('Handoff request changed. Open Hand off again.'));
       if (previous) return previous;
       return existing.phase === 'complete' ? Promise.resolve() : Promise.reject(new Error(existing.error ?? 'Handoff already in progress.'));
     }
@@ -54,7 +54,7 @@ export class AgentHandoffService {
     if (!source) throw new Error('Source agent is no longer available.');
     const blocker = agentHandoffBlocker(snapshot, source);
     if (blocker) throw new Error(blocker);
-    resolveAgentBackend(snapshot, input.backend);
+    resolveAgentBackend(snapshot, input.selection.backend);
     const sourceRef = conversationRefFromAgent(source);
     if (!sourceRef) throw new Error('Source conversation is unavailable.');
     const handoff: AgentHandoff = { ...input, sourceAgentId: sourceId, sourceTitle: source.conversationTitle ?? source.name ?? 'Agent', sourceRef, phase: 'preparing' };
@@ -72,12 +72,7 @@ export class AgentHandoffService {
       await this.options.persist();
       await this.options.retire(source);
       this.assertSourceAvailable(source);
-      const target = this.options.create({
-        name: source.name ?? '', folder: source.folder!, teamId: source.teamId, avatar: source.avatar,
-        backend: input.backend,
-        ...(source.delegatedByAgentId ? { delegatedByAgentId: source.delegatedByAgentId } : {}),
-      });
-      if (input.model) target.backendDefaults = { ...target.backendDefaults, kind: input.backend, model: input.model, userSelectedModel: true };
+      const target = this.options.create({ name: source.name ?? '', folder: source.folder!, teamId: source.teamId, avatar: source.avatar, ...(source.delegatedByAgentId ? { delegatedByAgentId: source.delegatedByAgentId } : {}), selection: input.selection });
       target.workspace = source.workspace;
       target.pullRequest = source.pullRequest;
       target.handoff = handoff;
@@ -115,7 +110,7 @@ export class AgentHandoffService {
 
 function notePrompt(input: AgentHandoffInput): string {
   return [
-    `The user is handing this work to a new ${backendDisplayName(input.backend)} agent in the same workspace.`,
+    `The user is handing this work to a new ${backendDisplayName(input.selection.backend)} agent in the same workspace.`,
     'Write a self-contained handoff note as your final response, under 32,000 characters.',
     'Include the objective, user constraints and decisions, completed changes, verification evidence, relevant files, unfinished work, and the next action.',
     'Distinguish observed results from assumptions. Do not include secrets.',

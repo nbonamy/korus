@@ -271,7 +271,7 @@ describe('Antigravity native session', () => {
       // Catalog names intentionally span model families; none identifies a served API model.
       for (const model of usageFixture.configuration.models.availableModels) {
         const before = events.filter(e => e.type === 'antigravity.conversationEventReceived' && e.payload.event.type === 'context.updated').length;
-        expect(await call('agent/prompt/send', { agentId: agent.id, prompt: 'usage-fixture:normal', options: { model: model.modelId } })).not.toHaveProperty('error');
+        expect(await call('agent/prompt/send', { agentId: agent.id, prompt: 'usage-fixture:normal', options: { selection: { model: model.modelId } } })).not.toHaveProperty('error');
         await vi.waitFor(() => expect(agent.status.type).toBe('idle'));
         await vi.waitFor(() => expect(events.filter(e => e.type === 'antigravity.conversationEventReceived' && e.payload.event.type === 'context.updated')).toHaveLength(before + 4));
       }
@@ -589,6 +589,25 @@ describe('Antigravity native session', () => {
       { type: 'text', text: 'Denied.' },
     ]);
     expect(session.snapshot).toMatchObject({ busy: false, activeTurnId: null, clientRequests: [] });
+  });
+
+  it('continues interrupted work in the saved Antigravity session', async () => {
+    const host = new AntigravityHost();
+    const events: BackendEvent[] = [];
+    host.onEvent(event => events.push(event));
+    const agent: Agent = { id: 'resume', name: 'Resume', folder: root, backend: 'antigravity', createdAt: '', updatedAt: '', status: { type: 'idle' } };
+    try {
+      const first = await host.sendPrompt(agent, 'hello');
+      agent.backendSession = first.backendSession;
+      await vi.waitFor(() => expect(events.some(event => event.type === 'antigravity.conversationEventReceived' && event.payload.event.type === 'turn.completed')).toBe(true));
+      await host.releaseConversation(agent.id);
+      const resumed = await host.continueInterruptedTurn(agent);
+      expect(resumed.backendSession).toStrictEqual(first.backendSession);
+      expect(resumed.activeTurnId).toBeTypeOf('string');
+      await vi.waitFor(() => expect(events.filter(event => event.type === 'antigravity.conversationEventReceived' && event.payload.event.type === 'turn.completed')).toHaveLength(2));
+      const submitted = events.filter(event => event.type === 'antigravity.conversationEventReceived' && event.payload.event.type === 'message.upsert' && event.payload.event.payload.message.role === 'user');
+      expect(submitted.at(-1)).toMatchObject({ payload: { event: { payload: { message: { parts: [{ type: 'text', text: 'continue' }] } } } } });
+    } finally { await host.close(); }
   });
 
   it('validates folder-scoped history and coordinates model reads with completed or cancelled resume', async () => {

@@ -362,12 +362,7 @@ describe('AppController', () => {
     };
     const request = vi.fn().mockResolvedValue(backendSnapshot);
     const controller = new AppController(snapshot, createBackendClient({ request }));
-    const createInput: CreateAgentInput = {
-      name: 'Backend Dina',
-      folder: '/Users/nbonamy/src/agent-workspace',
-      backend: 'codex',
-      teamId: 'team-app',
-    };
+    const createInput: CreateAgentInput = { name: 'Backend Dina', folder: '/Users/nbonamy/src/agent-workspace', teamId: 'team-app', selection: { backend: 'codex' } };
     const updateInput: UpdateAgentInput = {
       id: 'agent-dina',
       name: 'Backend Dina',
@@ -566,7 +561,7 @@ describe('AppController', () => {
     const createInput: CreateAutomationInput = {
       name: 'GitHub bugs',
       enabled: true,
-      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-app', backend: 'codex' as const },
+      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-app', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
       schedule: { intervalMinutes: 60 },
     };
@@ -605,7 +600,7 @@ describe('AppController', () => {
     const createInput: CreateAutomationInput = {
       name: 'Remote bugs',
       enabled: true,
-      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-remote', backend: 'codex' as const },
+      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-remote', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
       schedule: { intervalMinutes: 60 },
     };
@@ -629,7 +624,7 @@ function automationFixture(teamId = 'team-app'): Automation {
     id: 'automation-bugs',
     name: 'GitHub bugs',
     enabled: true,
-    prompt: 'Check tasks', target: { kind: 'newQuickChat', teamId, backend: 'codex' },
+    prompt: 'Check tasks', target: { kind: 'newQuickChat', teamId, selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } },
     schedule: { intervalMinutes: 60 },
     executionLog: [],
     createdAt: '2026-06-09T12:00:00.000Z',

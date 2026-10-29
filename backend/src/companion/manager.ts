@@ -318,20 +318,20 @@ export class CompanionManager {
           branches: () => this.backend.request(backendMethods.sourceBranchesList, { repoPath: chat.repositoryRoot, ...remote, _clientId: 'companion-read' }),
           createWorktree: input => this.backend.request(backendMethods.sourceWorktreeCreate, { input: { ...input, ...remote }, _clientId: 'companion-write' }),
         });
-        const result = await this.backend.request<CreatedAgentResult>(backendMethods.agentCreate, { input: { name: null, folder, backend: chat.backend, sourceRepositoryName: chat.repositoryName, teamId: chat.teamId }, entityResult: true, _clientId: 'companion-write' });
+        const result = await this.backend.request<CreatedAgentResult>(backendMethods.agentCreate, { input: { name: null, folder, selection: { ...chat.selection }, sourceRepositoryName: chat.repositoryName, teamId: chat.teamId }, entityResult: true, _clientId: 'companion-write' });
         return result.agentId;
       },
-      createQuickChat: async ({ teamId, backend }) => (await this.backend.request<CreatedAgentResult>(backendMethods.agentQuickChatCreate, { input: { teamId, backend }, entityResult: true, _clientId: 'companion-write' })).agentId,
-      duplicateAgent: async (agentId, backend) => (await this.backend.request<CreatedAgentResult>(backendMethods.agentDuplicate, { agentId, options: { backend }, entityResult: true, _clientId: 'companion-write' })).agentId,
+      createQuickChat: async ({ teamId, backend }) => (await this.backend.request<CreatedAgentResult>(backendMethods.agentQuickChatCreate, { input: { teamId, selection: { backend } }, entityResult: true, _clientId: 'companion-write' })).agentId,
+      duplicateAgent: async (agentId, backend) => (await this.backend.request<CreatedAgentResult>(backendMethods.agentDuplicate, { agentId, options: { selection: { backend } }, entityResult: true, _clientId: 'companion-write' })).agentId,
       renameAgent: async (agentId, name) => { await this.backend.request(backendMethods.agentUpdate, { input: { id: agentId, name }, _clientId: 'companion-write' }); },
-      setBackend: async (agentId, backend) => { await this.backend.request(backendMethods.agentUpdate, { input: { id: agentId, backend }, _clientId: 'companion-write' }); },
+      setBackend: async (agentId, backend) => { await this.backend.request(backendMethods.agentUpdate, { input: { id: agentId, selection: { backend } }, _clientId: 'companion-write' }); },
       closePreview: agentId => this.backend.request(backendMethods.agentClosePreview, { agentId, _clientId: 'companion-read' }),
       close: async (agentId, input) => { await this.backend.request(backendMethods.agentDelete, { agentId, ...(input ? { input } : {}), _clientId: 'companion-write' }); },
       setApprovalPreset: async (agentId, preset) => { await this.backend.request(backendMethods.agentApprovalPresetUpdate, { agentId, preset, _clientId: 'companion-write' }); },
       setPermissionMode: async (agentId, mode) => { await this.backend.request(backendMethods.agentPermissionModeUpdate, { agentId, mode, _clientId: 'companion-write' }); },
       startReview: async (agentId, input) => (await this.backend.request<CreatedAgentResult>(backendMethods.agentCodeReviewStart, { agentId, input, entityResult: true, _clientId: 'companion-write' })).agentId,
       reviewSetup: (agentId, backend) => readReviewSetup(this.backend, peerIdFromPrivateKey(this.key).toString(), agentId, backend),
-      selectModel: async (agentId, modelSelection) => { await this.backend.request(backendMethods.agentUpdate, { input: { id: agentId, modelSelection }, _clientId: 'companion-write' }); },
+      selectModel: async (agentId, selection) => { await this.backend.request(backendMethods.agentUpdate, { input: { id: agentId, selection }, _clientId: 'companion-write' }); },
       save: (gateway) => this.persist((saved) => ({ ...saved, gateway })),
       revoked: (peerId) => this.connector.revoke(peerId),
     }, Date.now, pairing?.hostId === peerIdFromPrivateKey(this.key).toString() ? pairing.code : undefined);

@@ -69,7 +69,7 @@ export function agentConversationState(view: () => AgentConversationView, extens
     history: {
       get hasOlder() { return provider()?.historyState?.hasOlder ?? view().history.hasOlder; },
       get loading() { return Boolean(view().agent.backendSession) && !(provider()?.messages.length) && (provider()?.historyLoading ?? view().history.hydrating); },
-      get loadingOlder() { return provider()?.historyState?.loadingOlder ?? view().history.loadingOlder; },
+      get loadingOlder() { return Boolean(provider()?.historyState?.loadingOlder || view().history.loadingOlder); },
     },
     thread: {
       get approvals() { return view().codexSnapshot?.approvals ?? view().approvals; },

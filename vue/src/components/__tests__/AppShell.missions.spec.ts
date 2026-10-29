@@ -42,7 +42,7 @@ describe('AppShell missions', () => {
         expect(menuItems().map(button => button.textContent?.trim())).toStrictEqual(['New agent in mission worktree', 'api', 'web', 'Delete mission']);
         menuItems().find(button => button.textContent?.trim() === repository)!.click();
         await flushPromises();
-        expect(createAgent).toHaveBeenLastCalledWith({ name: mission.outcome, folder, backend: 'codex', teamId: mission.teamId });
+        expect(createAgent).toHaveBeenLastCalledWith({ name: mission.outcome, folder, teamId: mission.teamId, selection: { ...{ backend: 'codex' } } });
         expect(wrapper.emitted('select-agent')?.at(-1)).toStrictEqual(['manual-agent']);
         expect(document.body.querySelector('[aria-label="Mission actions"]')).toBeNull();
       }

@@ -71,7 +71,7 @@ async function fixture(status: 'idle' | 'working' | 'awaitingInput', rejectSteer
   cleanup.push(() => manager.stop());
   await manager.control({ action: 'status' });
   return { gateway: transport.gateway!, snapshot, sendPrompt, steerPrompt,
-    command: { target: companionTarget(host.hostId, snapshot.teams[0]!, agent), text: 'Use the smaller change', clientCommandId: randomUUID(), options: { model: 'gpt', planMode: false } } };
+    command: { target: companionTarget(host.hostId, snapshot.teams[0]!, agent), text: 'Use the smaller change', clientCommandId: randomUUID(), options: { planMode: false, selection: { model: 'gpt' } } } };
 }
 
 describe('mobile prompt admission', () => {

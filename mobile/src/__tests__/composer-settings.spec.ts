@@ -18,25 +18,25 @@ describe('phone composer settings', () => {
     expect(resolveComposerSettings(agent({ backend: 'claude', backendDefaults: { kind: 'claude', model: 'opus', serviceTier: 'fast' } }), [{ id: 'opus', model: 'opus', displayName: 'Opus' }], undefined).serviceTier).toBe('fast');
   });
   it('switching model adopts that model\'s own effort and tier defaults', () => {
-    const next = applyComposerChoice(models, { model: 'gpt-fast', reasoningEffort: 'low', serviceTier: 'priority', planMode: true }, { modelId: 'gpt-deep' });
+    const next = applyComposerChoice('codex', models, { model: 'gpt-fast', reasoningEffort: 'low', serviceTier: 'priority', planMode: true }, { modelId: 'gpt-deep' });
     expect(next.choice).toStrictEqual({ model: 'gpt-deep-0914', reasoningEffort: 'high', serviceTier: null, planMode: true });
-    expect(next.save).toStrictEqual({ model: 'gpt-deep-0914', reasoningEffort: 'high', serviceTier: null });
+    expect(next.save).toStrictEqual({backend: 'codex',  model: 'gpt-deep-0914', reasoningEffort: 'high', serviceTier: null });
   });
   it('ignores an effort or tier the current model does not offer and keeps plan mode local', () => {
     const current = { model: 'gpt-fast', reasoningEffort: 'medium', serviceTier: null, planMode: false };
-    expect(applyComposerChoice(models, current, { reasoningEffort: 'high' }).choice).toStrictEqual(current);
-    expect(applyComposerChoice(models, current, { reasoningEffort: 'low' }).save).toStrictEqual({ model: 'gpt-fast', reasoningEffort: 'low', serviceTier: null });
-    expect(applyComposerChoice(models, current, { serviceTier: 'priority' }).choice.serviceTier).toBe('priority');
-    expect(applyComposerChoice(models, current, { serviceTier: 'bogus' }).choice).toStrictEqual(current);
-    const plan = applyComposerChoice(models, current, { planMode: true });
+    expect(applyComposerChoice('codex', models, current, { reasoningEffort: 'high' }).choice).toStrictEqual(current);
+    expect(applyComposerChoice('codex', models, current, { reasoningEffort: 'low' }).save).toStrictEqual({backend: 'codex',  model: 'gpt-fast', reasoningEffort: 'low', serviceTier: null });
+    expect(applyComposerChoice('codex', models, current, { serviceTier: 'priority' }).choice.serviceTier).toBe('priority');
+    expect(applyComposerChoice('codex', models, current, { serviceTier: 'bogus' }).choice).toStrictEqual(current);
+    const plan = applyComposerChoice('codex', models, current, { planMode: true });
     expect(plan.choice.planMode).toBe(true); expect(plan.save).toBeNull();
   });
   it('sends the same prompt options as the desktop composer', () => {
     const settings = resolveComposerSettings(agent(), models, { model: 'gpt-fast', reasoningEffort: 'low', serviceTier: 'priority', planMode: true });
     expect(promptOptionsFor(settings, { models: true, reasoningEffort: true, serviceTier: true, planMode: 'native' }))
-      .toStrictEqual({ model: 'gpt-fast', planMode: true, reasoningEffort: 'low', serviceTier: 'priority' });
-    expect(promptOptionsFor(settings, { models: true, reasoningEffort: false, serviceTier: false, planMode: 'prompted' })).toStrictEqual({ model: 'gpt-fast', planMode: true });
-    expect(promptOptionsFor(resolveComposerSettings(agent(), models, { planMode: false }), { models: true, reasoningEffort: false, serviceTier: false, planMode: 'prompted' })).toStrictEqual({ model: 'gpt-fast' });
+      .toStrictEqual({ planMode: true, selection: { model: 'gpt-fast', reasoningEffort: 'low', serviceTier: 'priority' } });
+    expect(promptOptionsFor(settings, { models: true, reasoningEffort: false, serviceTier: false, planMode: 'prompted' })).toStrictEqual({ planMode: true, selection: { model: 'gpt-fast' } });
+    expect(promptOptionsFor(resolveComposerSettings(agent(), models, { planMode: false }), { models: true, reasoningEffort: false, serviceTier: false, planMode: 'prompted' })).toStrictEqual({ selection: { model: 'gpt-fast' } });
     expect(promptOptionsFor(resolveComposerSettings(agent(), [], undefined), { models: true, reasoningEffort: true, serviceTier: true, planMode: 'unsupported' })).toBeUndefined();
   });
 });

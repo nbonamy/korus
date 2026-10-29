@@ -34,7 +34,7 @@ describe('useAppState', () => {
       getSnapshot: async () => structuredClone(remote),
       listBackendModels,
       updateAgent: async input => {
-        remote = { ...remote, agents: remote.agents.map(agent => agent.id === input.id ? { ...agent, backend: input.backend! } : agent) };
+        remote = { ...remote, agents: remote.agents.map(agent => agent.id === input.id ? { ...agent, backend: input.selection?.backend! } : agent) };
         return structuredClone(remote);
       },
     } satisfies Partial<AppApi> });
@@ -42,7 +42,7 @@ describe('useAppState', () => {
     await state.loadSnapshot();
     await state.prepareAgentConversation(guestId);
     expect(state.agentConversationFor(guestId)?.composer.models[0]?.id).toBe('codex-model');
-    await state.updateAgent({ id: guestId, backend: 'claude' });
+    await state.updateAgent({ id: guestId, selection: { backend: 'claude' } });
     expect(state.agentConversationFor(guestId)?.composer.models[0]?.id).toBe('claude-model');
     expect(state.agentConversationFor(hostId)?.composer.models[0]?.id).toBe('codex-model');
     expect(state.snapshot.value.activeAgentId).toBe(hostId);
@@ -288,7 +288,7 @@ describe('useAppState', () => {
 
     await state.sendPrompt('use my next-prompt selection');
     expect(sendPrompt).toHaveBeenCalledWith(persisted.agents[0]!.id, 'use my next-prompt selection',
-      expect.objectContaining({ model: 'sol', reasoningEffort: 'high', serviceTier: 'fast' }));
+      expect.objectContaining({ selection: { model: 'sol', reasoningEffort: 'high', serviceTier: 'fast' } }));
 
     releaseFirstSave();
     await vi.waitFor(() => expect(persisted.agents[0]!.backendDefaults).toStrictEqual({
@@ -302,7 +302,7 @@ describe('useAppState', () => {
     expect(reloaded.selectedReasoningEffort.value).toBe('high');
     expect(reloaded.selectedServiceTier.value).toBe('fast');
     expect(reloaded.resolvePromptOptions(persisted.agents[0]!.id, 'after restart')).toMatchObject({
-      model: 'sol', reasoningEffort: 'high', serviceTier: 'fast',
+      selection: { model: 'sol', reasoningEffort: 'high', serviceTier: 'fast' },
     });
   });
 
@@ -382,7 +382,7 @@ describe('useAppState', () => {
       await nextTick();
       expect(wrapper.text()).toContain('Sonnet 5.5');
       await state.sendAgentPrompt(agent.id, 'Continue');
-      expect(sendPrompt).toHaveBeenCalledWith(agent.id, 'Continue', expect.objectContaining({ model: 'sonnet' }));
+      expect(sendPrompt).toHaveBeenCalledWith(agent.id, 'Continue', expect.objectContaining({ selection: { model: 'sonnet' } }));
     } finally { wrapper.unmount(); }
   });
 
@@ -509,12 +509,7 @@ describe('useAppState', () => {
     state.selectReasoningEffort('low');
     await state.sendPrompt('use the selected model');
 
-    expect(sendPrompt).toHaveBeenCalledWith('agent-dina', 'use the selected model', {
-      model: 'gpt-5.1-codex-fast',
-      planMode: false,
-      reasoningEffort: 'low',
-      serviceTier: 'fast',
-    });
+    expect(sendPrompt).toHaveBeenCalledWith('agent-dina', 'use the selected model', { planMode: false, selection: { model: 'gpt-5.1-codex-fast', reasoningEffort: 'low', serviceTier: 'fast' } });
   });
 
   it('loads active agent skills and includes dollar-selected skills in prompt options', async () => {

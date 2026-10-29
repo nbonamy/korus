@@ -1,3 +1,4 @@
+import type { ExecutionSelectionOverrides } from '@workspace/core/contracts/execution';
 import { randomUUID } from 'node:crypto';
 import type { Agent, AgentBackend, AgentCreationProgress, BackendDefaults, SourceRepository } from '@workspace/core/contracts';
 import { requireRepositoryName } from '../create-source-repository';
@@ -5,7 +6,7 @@ import { requireRepositoryName } from '../create-source-repository';
 export type ProjectCreationInput = {
   name: string;
   teamId: string;
-  backend?: AgentBackend;
+  selection?: ExecutionSelectionOverrides;
   backendDefaults?: BackendDefaults;
   prompt?: string;
 };
@@ -22,7 +23,7 @@ export class ProjectCreationService {
     createAgent(input: {
       repository: SourceRepository;
       teamId: string;
-      backend?: AgentBackend;
+      selection?: ExecutionSelectionOverrides;
       backendDefaults?: BackendDefaults;
     }): Promise<Agent>;
     startAgent(agent: Agent, prompt: string): Promise<void>;
@@ -33,7 +34,7 @@ export class ProjectCreationService {
     const progress: AgentCreationProgress = {
       id: `project-creation-${randomUUID()}`,
       state: 'running',
-      backend: input.backend ?? 'codex',
+      backend: input.selection?.backend ?? 'codex',
       repositoryName: name,
       createWorktree: false,
       createProject: true,
@@ -64,7 +65,7 @@ export class ProjectCreationService {
       agent = await this.ports.createAgent({
         repository,
         teamId: input.teamId,
-        ...(input.backend ? { backend: input.backend } : {}),
+        ...(input.selection ? { selection: input.selection } : {}),
         ...(input.backendDefaults ? { backendDefaults: input.backendDefaults } : {}),
       });
     } catch (error) {

@@ -47,6 +47,10 @@ defineProps<{
   flex: 0 0 var(--icon-sm);
 }
 
+.agent-mention--message {
+  vertical-align: -2px;
+}
+
 .agent-mention--menu .agent-mention__icon {
   width: var(--icon-md);
   height: var(--icon-md);

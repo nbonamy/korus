@@ -50,6 +50,10 @@ describe('snapshot guards', () => {
       } },
       { name: 'agent backend session', mutate: (snapshot) => { snapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 42 as never }; } },
       { name: 'agent backend defaults', mutate: (snapshot) => { snapshot.agents[0]!.backendDefaults = { kind: 'codex', approvalPreset: 'later' as never }; } },
+      { name: 'handoff provider selection', mutate: (snapshot) => { snapshot.agents[0]!.handoff!.selection = { backend: 'other' as never, model: null, reasoningEffort: null, serviceTier: null }; } },
+      { name: 'missing handoff selection', mutate: (snapshot) => { snapshot.agents[0]!.handoff!.selection = null as never; } },
+      { name: 'handoff service tier', mutate: (snapshot) => { snapshot.agents[0]!.handoff!.selection = { backend: 'claude', model: 'opus', reasoningEffort: 'high', serviceTier: 42 as never }; } },
+      { name: 'handoff source identity', mutate: (snapshot) => { snapshot.agents[0]!.handoff!.sourceRef = { backend: 'codex', threadId: 42 as never }; } },
       { name: 'agent application', mutate: (snapshot) => { snapshot.agents[0]!.openInApplication = 'emacs' as never; } },
       { name: 'agent context', mutate: (snapshot) => { snapshot.agents[0]!.contextUsage!.inputTokens = 'many' as never; } },
       { name: 'agent plan', mutate: (snapshot) => { snapshot.agents[0]!.plan!.steps[0]!.status = 'working' as never; } },
@@ -88,7 +92,8 @@ describe('snapshot guards', () => {
       { name: 'theme', mutate: (snapshot) => { snapshot.theme.mode = 'auto' as never; } },
       { name: 'queued prompt', mutate: (snapshot) => { snapshot.queuedPrompts![0]!.attempts = 'once' as never; } },
       { name: 'prompt attachment', mutate: (snapshot) => { snapshot.queuedPrompts![0]!.options!.attachments![0]!.type = 'audio' as never; } },
-      { name: 'prompt backend options', mutate: (snapshot) => { snapshot.queuedPrompts![0]!.options!.backendOptions = { kind: 'codex', serviceTier: 42 as never }; } },
+      { name: 'prompt backend options', mutate: (snapshot) => { snapshot.queuedPrompts![0]!.options!.selection = { serviceTier: 42 as never }; } },
+      { name: 'prompt selection array', mutate: (snapshot) => { snapshot.queuedPrompts![0]!.options!.selection = [] as never; } },
       { name: 'delegation override context', mutate: (snapshot) => { snapshot.queuedPrompts![0]!.options!.delegation = { startingContext: 'replay' as never }; } },
       { name: 'delegation override instructions', mutate: (snapshot) => { snapshot.queuedPrompts![0]!.options!.delegation = { startingContext: 'handoff', instructions: 42 as never }; } },
       { name: 'agent git status', mutate: (snapshot) => { snapshot.agentGitStatuses.agent!.branch = null as never; } },
@@ -143,6 +148,12 @@ describe('snapshot guards', () => {
 function completeSnapshot(): AppSnapshot {
   const snapshot = createInitialSnapshot();
   const codexAgent = snapshot.agents[0]!;
+  codexAgent.handoff = {
+    operationId: 'handoff-1', sourceAgentId: codexAgent.id, sourceTitle: 'Implement ticket',
+    sourceRef: { backend: 'codex', threadId: 'thread-codex' }, targetAgentId: 'agent-claude', phase: 'complete',
+    selection: { backend: 'claude', model: 'opus', reasoningEffort: 'high', serviceTier: 'fast' },
+    instructions: 'Keep the existing tests', note: 'Continue from the current checkout',
+  };
   Object.assign(codexAgent, {
     delegatedByAgentId: 'agent-parent',
     pullRequest: {
@@ -253,7 +264,7 @@ function completeSnapshot(): AppSnapshot {
     id: 'automation-1',
     name: 'Backlog',
     enabled: true,
-    prompt: 'Implement it', target: { kind: 'newQuickChat' as const, teamId: snapshot.teams[0]!.id, backend: 'codex' as const },
+    prompt: 'Implement it', target: { kind: 'newQuickChat' as const, teamId: snapshot.teams[0]!.id, selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
 
 
@@ -281,20 +292,10 @@ function completeSnapshot(): AppSnapshot {
     lastError: 'Busy',
     retryAt: '2026-09-04T00:01:00.000Z',
     submitted: true,
-    options: {
-      delegation: { startingContext: 'conversation', instructions: 'Task instructions' },
-      attachments: [
+    options: { delegation: { startingContext: 'conversation', instructions: 'Task instructions' }, attachments: [
         { type: 'image', path: '/tmp/image.png', detail: 'high', name: 'image.png', mimeType: 'image/png', previewUrl: 'data:image/png;base64,AA==' },
         { type: 'file', path: '/tmp/plan.md', name: 'plan.md', mimeType: 'text/markdown' },
-      ],
-      model: null,
-      planMode: true,
-      reasoningEffort: 'high',
-      serviceTier: null,
-      skills: [{ name: 'review', path: '/skills/review' }],
-      inputMethod: 'typed',
-      backendOptions: { kind: 'codex', reasoningEffort: 'high', serviceTier: null, skills: [{ name: 'review', path: '/skills/review' }] },
-    },
+      ], planMode: true, skills: [{ name: 'review', path: '/skills/review' }], inputMethod: 'typed', backendOptions: { kind: 'codex', skills: [{ name: 'review', path: '/skills/review' }] }, selection: { model: null, reasoningEffort: 'high', serviceTier: null } },
   }, {
     id: 'prompt-2',
     agentId: claudeAgent.id,

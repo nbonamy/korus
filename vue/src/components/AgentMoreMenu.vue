@@ -4,7 +4,6 @@
       <button
         v-bind="attrs"
         class="agent-more-menu__trigger"
-        :class="{ 'agent-more-menu__trigger--shared': shareActive }"
         type="button"
         :aria-label="$t('surface.agentHeader.moreActions')"
       >
@@ -27,7 +26,6 @@ import { useUsageByAgent } from './use-usage-by-agent';
 const props = defineProps<{
   agentId: string;
   shareAvailable?: boolean;
-  shareActive?: boolean;
 }>();
 
 const emit = defineEmits<{ share: [] }>();
@@ -71,11 +69,6 @@ function onSelect(itemId: string): void {
 .agent-more-menu__trigger[aria-expanded="true"] {
   background: var(--color-surface-high);
   color: var(--color-text);
-}
-
-.agent-more-menu__trigger--shared,
-.agent-more-menu__trigger--shared:hover {
-  color: var(--color-primary);
 }
 
 .agent-more-menu__trigger :deep(svg) {

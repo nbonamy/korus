@@ -105,7 +105,7 @@ describe('code review ledger', () => {
     expect(isCodeReviewStartInput({ scope: { type: 'branch', baseRef: 'origin/main' }, threadMode: 'current' })).toBe(true);
     expect(isCodeReviewStartInput({ scope: { type: 'branch', baseRef: '' }, threadMode: 'current' })).toBe(false);
     expect(isCodeReviewStartInput({ scope: { type: 'uncommitted' }, threadMode: 'anchored' })).toBe(false);
-    const automatic = { scope: { type: 'uncommitted' }, threadMode: 'independent', model: 'review-model', reasoningEffort: 'high', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3 } };
+    const automatic = { scope: { type: 'uncommitted' }, threadMode: 'independent', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3 }, selection: { model: 'review-model', reasoningEffort: 'high' } };
     expect(isCodeReviewStartInput(automatic)).toBe(true);
     for (const autoCommit of [true, false]) expect(isCodeReviewStartInput({ ...automatic, automation: { ...automatic.automation, autoCommit } })).toBe(true);
     for (const autoCommit of ['true', 1, null]) expect(isCodeReviewStartInput({ ...automatic, automation: { ...automatic.automation, autoCommit } })).toBe(false);
@@ -114,7 +114,12 @@ describe('code review ledger', () => {
     expect(isCodeReviewStartInput({ ...automatic, model: {} })).toBe(false);
     expect(isCodeReviewStartInput({ scope: { type: 'uncommitted' }, threadMode: 'current', model: 'review-model' })).toBe(false);
     expect(isCodeReviewStartInput({ scope: { type: 'uncommitted' }, threadMode: 'current', reasoningEffort: 'high' })).toBe(false);
-    expect(isCodeReviewStartInput({ scope: { type: 'uncommitted' }, threadMode: 'independent', model: 'review-model' })).toBe(true);
+    expect(isCodeReviewStartInput({ ...automatic, selection: { ...automatic.selection, serviceTier: 'fast' } })).toBe(true);
+    expect(isCodeReviewStartInput({ ...automatic, selection: { ...automatic.selection, serviceTier: null } })).toBe(true);
+    expect(isCodeReviewStartInput({ ...automatic, selection: { ...automatic.selection, serviceTier: 1 } })).toBe(false);
+    expect(isCodeReviewStartInput({ ...automatic, selection: { ...automatic.selection, serviceTier: '' } })).toBe(false);
+    expect(isCodeReviewStartInput({ scope: { type: 'uncommitted' }, threadMode: 'current', serviceTier: null })).toBe(false);
+    expect(isCodeReviewStartInput({ scope: { type: 'uncommitted' }, threadMode: 'independent', selection: { model: 'review-model' } })).toBe(true);
   });
 
   it('carries skipped exclusions, fixed regression checks, and behavior-changing discussion', () => {

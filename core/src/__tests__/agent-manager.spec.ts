@@ -27,35 +27,35 @@ describe('agent-manager', () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = (['codex', 'claude', 'antigravity'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
     snapshot.general.providerModelDefaults = {
-      codex: { model: 'gpt-x', reasoningEffort: 'high', serviceTier: 'fast' },
-      antigravity: { model: 'gemini-3.8-flash-low', reasoningEffort: 'high', serviceTier: 'fast' },
+      codex: {backend: 'codex',  model: 'gpt-x', reasoningEffort: 'high', serviceTier: 'fast' },
+      antigravity: {backend: 'antigravity',  model: 'gemini-3.8-flash-low', reasoningEffort: 'high', serviceTier: 'fast' },
     };
     snapshot.general.providerApprovalDefaults = { antigravity: 'auto_edit' };
-    createAgentInSnapshot(snapshot, { name: 'ACP', folder: '/repo', backend: 'antigravity' }, undefined, 'acp');
+    createAgentInSnapshot(snapshot, { name: 'ACP', folder: '/repo', selection: { backend: 'antigravity' } }, undefined, 'acp');
     const agent = snapshot.agents.find(value => value.id === 'acp')!;
     expect(agent.backend).toBe('antigravity');
     expect(agent.backendDefaults).toStrictEqual({ kind: 'antigravity', model: 'gemini-3.8-flash-low', userSelectedModel: true, permissionMode: 'auto_edit' });
-    updateAgentFromInput(snapshot, { id: agent.id, backend: 'claude' });
+    updateAgentFromInput(snapshot, { id: agent.id, selection: { backend: 'claude' } });
     expect(agent.backendDefaults).toStrictEqual({ kind: 'claude' });
-    updateAgentFromInput(snapshot, { id: agent.id, backend: 'antigravity' });
+    updateAgentFromInput(snapshot, { id: agent.id, selection: { backend: 'antigravity' } });
     expect(agent.backendDefaults).toStrictEqual({ kind: 'antigravity', model: 'gemini-3.8-flash-low', userSelectedModel: true, permissionMode: 'auto_edit' });
-    updateAgentFromInput(snapshot, { id: agent.id, modelSelection: { model: 'gemini-high', reasoningEffort: 'low', serviceTier: 'fast' } });
+    updateAgentFromInput(snapshot, { id: agent.id, selection: {backend: 'antigravity',  model: 'gemini-high', reasoningEffort: 'low', serviceTier: 'fast' } });
     expect(agent.backendDefaults).toStrictEqual({ kind: 'antigravity', model: 'gemini-high', userSelectedModel: true, permissionMode: 'auto_edit' });
-    expect(snapshot.general.providerModelDefaults.antigravity).toEqual({ model: 'gemini-high', reasoningEffort: null, serviceTier: null });
+    expect(snapshot.general.providerModelDefaults.antigravity).toEqual({ backend: 'antigravity', model: 'gemini-high', reasoningEffort: null, serviceTier: null });
   });
   it('applies a chosen model to a new agent on top of the provider approval defaults without changing them', () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
     snapshot.general.providerApprovalDefaults = { claude: 'acceptEdits' };
-    snapshot.general.providerModelDefaults = { claude: { model: 'sonnet', reasoningEffort: 'low', serviceTier: null } };
+    snapshot.general.providerModelDefaults = { claude: {backend: 'claude',  model: 'sonnet', reasoningEffort: 'low', serviceTier: null } };
 
-    createAgentInSnapshot(snapshot, { name: null, folder: '/repo', backend: 'claude', modelSelection: { model: 'opus', reasoningEffort: 'high', serviceTier: 'fast' } }, undefined, 'picked');
+    createAgentInSnapshot(snapshot, { name: null, folder: '/repo', selection: { backend: 'claude', model: 'opus', reasoningEffort: 'high', serviceTier: 'fast' } }, undefined, 'picked');
 
     expect(snapshot.agents.find(agent => agent.id === 'picked')!.backendDefaults)
       .toStrictEqual({ kind: 'claude', model: 'opus', userSelectedModel: true, reasoningEffort: 'high', serviceTier: 'fast', permissionMode: 'acceptEdits' });
-    expect(snapshot.general.providerModelDefaults?.claude).toStrictEqual({ model: 'sonnet', reasoningEffort: 'low', serviceTier: null });
+    expect(snapshot.general.providerModelDefaults?.claude).toStrictEqual({backend: 'claude',  model: 'sonnet', reasoningEffort: 'low', serviceTier: null });
 
-    createAgentInSnapshot(snapshot, { name: null, folder: '/repo', backend: 'claude', modelSelection: { model: 'haiku' } }, undefined, 'model-only');
+    createAgentInSnapshot(snapshot, { name: null, folder: '/repo', selection: { backend: 'claude', reasoningEffort: null, serviceTier: null, model: 'haiku' } }, undefined, 'model-only');
     expect(snapshot.agents.find(agent => agent.id === 'model-only')!.backendDefaults)
       .toStrictEqual({ kind: 'claude', model: 'haiku', userSelectedModel: true, serviceTier: null, permissionMode: 'acceptEdits' });
   });
@@ -66,15 +66,15 @@ describe('agent-manager', () => {
     snapshot.general.providerApprovalDefaults = { codex: 'ask-for-approval', claude: 'acceptEdits' };
     const existing = structuredClone(snapshot.agents);
     for (const backend of ['codex', 'claude'] as const) {
-      createAgentInSnapshot(snapshot, { name: 'New', folder: '/repo', backend }, undefined, `agent-${backend}`);
-      createQuickChatInSnapshot(snapshot, { backend }, undefined, `quick-${backend}`);
+      createAgentInSnapshot(snapshot, { name: 'New', folder: '/repo', selection: { backend } }, undefined, `agent-${backend}`);
+      createQuickChatInSnapshot(snapshot, { selection: { backend } }, undefined, `quick-${backend}`);
       for (const id of [`agent-${backend}`, `quick-${backend}`]) {
         expect(snapshot.agents.find(agent => agent.id === id)?.backendDefaults).toMatchObject(backend === 'codex'
           ? { kind: 'codex', approvalPreset: 'ask-for-approval', approvalPolicy: 'on-request', sandboxMode: 'workspace-write' }
           : { kind: 'claude', permissionMode: 'acceptEdits' });
       }
     }
-    createAgentInSnapshot(snapshot, { name: 'Explicit', folder: '/repo', backend: 'codex', backendDefaults: { kind: 'codex', approvalPreset: 'full-access' } }, undefined, 'explicit');
+    createAgentInSnapshot(snapshot, { name: 'Explicit', folder: '/repo', backendDefaults: { kind: 'codex', approvalPreset: 'full-access' }, selection: { backend: 'codex' } }, undefined, 'explicit');
     expect(snapshot.agents.find(agent => agent.id === 'explicit')?.backendDefaults).toEqual({ kind: 'codex', approvalPreset: 'full-access' });
     expect(snapshot.agents.slice(0, existing.length)).toEqual(existing);
   });
@@ -88,21 +88,21 @@ describe('agent-manager', () => {
     agent.status = { type: 'idle' };
     agent.backendDefaults = { kind: 'codex', model: 'codex-model', approvalPreset: 'full-access', userSelectedModel: true };
     snapshot.general.providerApprovalDefaults = { claude: 'acceptEdits' };
-    updateAgentFromInput(snapshot, { id: agent.id, backend: 'claude' });
+    updateAgentFromInput(snapshot, { id: agent.id, selection: { backend: 'claude' } });
     expect(agent.backend).toBe('claude');
     expect(agent.backendDefaults).toStrictEqual({ kind: 'claude', permissionMode: 'acceptEdits' });
     agent.status = { type: 'working' };
-    expect(() => updateAgentFromInput(snapshot, { id: agent.id, backend: 'codex' })).toThrow('before the first prompt');
+    expect(() => updateAgentFromInput(snapshot, { id: agent.id, selection: { backend: 'codex' } })).toThrow('before the first prompt');
     agent.status = { type: 'idle' };
     agent.backendSession = { kind: 'claude', sessionId: 'history', transport: 'stdio' };
-    expect(() => updateAgentFromInput(snapshot, { id: agent.id, backend: 'codex' })).toThrow('before the first prompt');
+    expect(() => updateAgentFromInput(snapshot, { id: agent.id, selection: { backend: 'codex' } })).toThrow('before the first prompt');
     delete agent.backendSession;
-    updateAgentFromInput(snapshot, { id: agent.id, backend: 'codex' });
+    updateAgentFromInput(snapshot, { id: agent.id, selection: { backend: 'codex' } });
     agent.hasSubmittedPrompt = true;
-    expect(() => updateAgentFromInput(snapshot, { id: agent.id, backend: 'claude' })).toThrow('before the first prompt');
+    expect(() => updateAgentFromInput(snapshot, { id: agent.id, selection: { backend: 'claude' } })).toThrow('before the first prompt');
     delete agent.hasSubmittedPrompt;
     snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
-    expect(() => updateAgentFromInput(snapshot, { id: agent.id, backend: 'claude' })).toThrow('not connected');
+    expect(() => updateAgentFromInput(snapshot, { id: agent.id, selection: { backend: 'claude' } })).toThrow('not connected');
     expect(agent.backend).toBe('codex');
   });
   it('makes a chat model selection the provider default for new agents and quick chats only', () => {
@@ -110,23 +110,23 @@ describe('agent-manager', () => {
     snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
     snapshot.general.claudeCodeEnabled = true;
     const first = snapshot.agents[0]!;
-    updateAgentFromInput(snapshot, { id: first.id, modelSelection: { model: 'gpt-x', reasoningEffort: 'high', serviceTier: 'fast' } });
-    expect(snapshot.general.providerModelDefaults).toStrictEqual({ codex: { model: 'gpt-x', reasoningEffort: 'high', serviceTier: 'fast' } });
+    updateAgentFromInput(snapshot, { id: first.id, selection: {backend: 'codex',  model: 'gpt-x', reasoningEffort: 'high', serviceTier: 'fast' } });
+    expect(snapshot.general.providerModelDefaults).toStrictEqual({ codex: {backend: 'codex',  model: 'gpt-x', reasoningEffort: 'high', serviceTier: 'fast' } });
 
-    createAgentInSnapshot(snapshot, { name: null, folder: '/tmp/a', backend: 'codex' }, undefined, 'agent-codex');
-    createAgentInSnapshot(snapshot, { name: null, folder: '/tmp/b', backend: 'claude' }, undefined, 'agent-claude');
-    createQuickChatInSnapshot(snapshot, { backend: 'codex' }, undefined, 'quick-codex');
-    createAgentInSnapshot(snapshot, { name: null, folder: '/tmp/c', backend: 'codex', backendDefaults: { kind: 'codex', model: 'explicit' } }, undefined, 'agent-explicit');
+    createAgentInSnapshot(snapshot, { name: null, folder: '/tmp/a', selection: { backend: 'codex' } }, undefined, 'agent-codex');
+    createAgentInSnapshot(snapshot, { name: null, folder: '/tmp/b', selection: { backend: 'claude' } }, undefined, 'agent-claude');
+    createQuickChatInSnapshot(snapshot, { selection: { backend: 'codex' } }, undefined, 'quick-codex');
+    createAgentInSnapshot(snapshot, { name: null, folder: '/tmp/c', backendDefaults: { kind: 'codex', model: 'explicit' }, selection: { backend: 'codex' } }, undefined, 'agent-explicit');
     const byId = (id: string) => snapshot.agents.find(agent => agent.id === id)!;
     expect(byId('agent-codex').backendDefaults).toStrictEqual({ kind: 'codex', model: 'gpt-x', reasoningEffort: 'high', serviceTier: 'fast', userSelectedModel: true });
     expect(byId('quick-codex').backendDefaults).toStrictEqual({ kind: 'codex', model: 'gpt-x', reasoningEffort: 'high', serviceTier: 'fast', userSelectedModel: true });
     expect(byId('agent-claude').backendDefaults).toStrictEqual({ kind: 'claude' });
     expect(byId('agent-explicit').backendDefaults).toStrictEqual({ kind: 'codex', model: 'explicit' });
 
-    updateAgentFromInput(snapshot, { id: 'agent-claude', modelSelection: { model: 'opus', reasoningEffort: null, serviceTier: null } });
+    updateAgentFromInput(snapshot, { id: 'agent-claude', selection: {backend: 'claude',  model: 'opus', reasoningEffort: null, serviceTier: null } });
     expect(snapshot.general.providerModelDefaults).toStrictEqual({
-      codex: { model: 'gpt-x', reasoningEffort: 'high', serviceTier: 'fast' },
-      claude: { model: 'opus', reasoningEffort: null, serviceTier: null },
+      codex: {backend: 'codex',  model: 'gpt-x', reasoningEffort: 'high', serviceTier: 'fast' },
+      claude: {backend: 'claude',  model: 'opus', reasoningEffort: null, serviceTier: null },
     });
   });
   it('duplicates an agent in the same team and selects the copy', () => {

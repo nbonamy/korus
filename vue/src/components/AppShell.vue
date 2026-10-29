@@ -1115,7 +1115,7 @@ provideBackendChoices(() => props.snapshot, openSettings);
 const reviewSettings = useCodeReviewSettings();
 provide(codeReviewSettingsKey, { ...reviewSettings, preferences: () => props.snapshot.general.codeReviewDefaults });
 provideBacklogConnections(() => props.snapshot.workBacklog.connections);
-const backendSwitch = provideBackendSwitch((id, backend) => props.updateAgent({ id, backend }));
+const backendSwitch = provideBackendSwitch((id, backend) => props.updateAgent({ id, selection: { backend } }));
 const agentSidebarCollapsed = ref(false);
 const compactViewport = useCompactViewport();
 const compactNavOpen = ref(false);
@@ -1312,7 +1312,7 @@ async function createAgentInMissionWorktree(input: { missionId: string; worktree
   const backend = preferredBackendChoices(props.snapshot, mission.teamId)[0];
   if (!backend) { openSettings(); return; }
   try {
-    const agent = await props.createAgent({ name: mission.outcome, folder: workspace.path, backend, teamId: mission.teamId });
+    const agent = await props.createAgent({ name: mission.outcome, folder: workspace.path, selection: { backend }, teamId: mission.teamId });
     if (agent) selectAgentFromShell(agent.id);
   } catch (error) {
     ElMessage.error(localizedErrorMessage(error, t));
@@ -1643,7 +1643,7 @@ const repositoryAcquisition = useRepositoryAcquisition({
     await props.createAgent({
       name: null,
       folder,
-      backend,
+      selection: { backend },
       ...(teamId ? { teamId } : {}),
     });
   },
@@ -2265,7 +2265,7 @@ const conversationPaneState: CodexConversationPaneState = {
         && conversationMessages.value.length === 0
         && (providerConversation.value?.historyLoading ?? (props.isLoading || props.isConversationLoading));
     },
-    get loadingOlder() { return providerConversation.value?.historyState?.loadingOlder ?? props.historyLoadingOlder; },
+    get loadingOlder() { return Boolean(providerConversation.value?.historyState?.loadingOlder || props.historyLoadingOlder); },
   },
   thread: {
     get approvals() { return effectiveApprovals.value; },
@@ -2881,7 +2881,7 @@ async function createQuickChat(): Promise<void> {
   try {
     const backend = preferredBackendChoices(props.snapshot, teamId)[0];
     if (!backend) { openSettings(); return; }
-    const created = await props.createQuickChat({ backend, ...(teamId ? { teamId } : {}) });
+    const created = await props.createQuickChat({ selection: { backend }, ...(teamId ? { teamId } : {}) });
     if (created !== null) activeSurface.value = 'agent';
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error));
@@ -2915,7 +2915,7 @@ async function createNewProject(name: string, backend: Agent['backend']): Promis
   try {
     await props.createProject({
       name,
-      backend,
+      selection: { backend },
       ...(teamId ? { teamId } : {}),
     });
     newProjectDialogVisible.value = false;

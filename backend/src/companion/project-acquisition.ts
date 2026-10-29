@@ -88,12 +88,12 @@ export class CompanionProjectAcquisition {
   }
 
   async create(input: CompanionProjectInput, remoteConnectionId: string | undefined, authorize: () => Promise<void>): Promise<string> {
-    const { teamId, backend } = input;
+    const { teamId, selection } = input;
     const request = <Result>(method: string, params: unknown) => this.request<Result>(method, params, input.source === 'gitlab' ? 'gitlab' : undefined);
     let result: CreatedAgentResult;
     if (input.source === 'new') {
       await authorize();
-      result = await request<CreatedAgentResult>(backendMethods.projectCreate, { input: { name: input.value, teamId, backend }, entityResult: true, _clientId: 'companion-write' });
+      result = await request<CreatedAgentResult>(backendMethods.projectCreate, { input: { name: input.value, teamId, selection: { ...selection } }, entityResult: true, _clientId: 'companion-write' });
     } else {
       const remote = remoteConnectionId ? { remoteConnectionId } : {};
       let url = input.value;
@@ -140,7 +140,7 @@ export class CompanionProjectAcquisition {
         },
       }) : repository.path;
       await authorize();
-      result = await request<CreatedAgentResult>(backendMethods.agentCreate, { input: { name: null, folder, sourceRepositoryName: repository.name, teamId, backend }, entityResult: true, _clientId: 'companion-write' });
+      result = await request<CreatedAgentResult>(backendMethods.agentCreate, { input: { name: null, folder, sourceRepositoryName: repository.name, teamId, selection: { ...selection } }, entityResult: true, _clientId: 'companion-write' });
     }
     return result.agentId;
   }

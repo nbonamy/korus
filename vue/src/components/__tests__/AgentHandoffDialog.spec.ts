@@ -18,7 +18,7 @@ describe('AgentHandoffDialog', () => {
     await wrapper.get('textarea').setValue('Explain the flaky test.');
     await wrapper.get('form').trigger('submit');
     await flushPromises();
-    expect(submit).toHaveBeenCalledWith('source', expect.objectContaining({ operationId: expect.any(String), backend: 'claude', instructions: 'Explain the flaky test.' }));
+    expect(submit).toHaveBeenCalledWith('source', expect.objectContaining({ operationId: expect.any(String), instructions: 'Explain the flaky test.', selection: { backend: 'claude', model: null, reasoningEffort: null, serviceTier: null } }));
     expect(wrapper.emitted('close')).toHaveLength(1);
     wrapper.unmount();
   });

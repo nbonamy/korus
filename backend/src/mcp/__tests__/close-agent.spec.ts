@@ -100,7 +100,7 @@ it('rejects other callers, missing ownership, self-close, busy workers and injec
   f.snapshot.queuedPrompts = [{ id: 'queued', agentId: f.worker.id, text: 'Still pending', createdAt: 'now' }];
   await denied(f.parent.id, { agentId: f.worker.id });
   f.snapshot.queuedPrompts = [];
-  f.worker.handoff = { operationId: 'handoff', backend: 'claude', sourceAgentId: f.worker.id, sourceTitle: 'Worker', sourceRef: { backend: 'codex', threadId: 'worker-thread' }, phase: 'preparing' };
+  f.worker.handoff = { operationId: 'handoff', sourceAgentId: f.worker.id, sourceTitle: 'Worker', sourceRef: { backend: 'codex', threadId: 'worker-thread' }, phase: 'preparing', selection: {model: null, reasoningEffort: null, serviceTier: null,  backend: 'claude' } };
   await denied(f.parent.id, { agentId: f.worker.id });
   delete f.worker.handoff;
   f.codex.surface.archiveConversation.mockRejectedValueOnce(new Error('Provider unavailable'));

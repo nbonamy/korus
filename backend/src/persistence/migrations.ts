@@ -6,11 +6,10 @@ export type Migration<From = unknown, To = unknown> = {
   up(value: From): To;
 };
 
-/** Roster v2 protects prompt targets and calendar schedules from repository-loop readers.
- * The envelope upgrade preserves data; the entity loader retains the no-conversion
- * policy for obsolete loops. No other file kind changes version. */
+/** Envelope upgrades preserve data while excluding readers that cannot retain its configuration. */
 export const rosterMigrations: readonly Migration[] = [
   { from: 1, to: 2, up: (value: unknown) => value },
+  { from: 2, to: 3, up: migrateExecutionSelections },
 ];
 
 /**
@@ -29,4 +28,31 @@ export function migrateData(file: string, data: unknown, version: number, target
     at = step.to;
   }
   return current;
+}
+
+// Frozen schema-2 input: keep unknown entities and provider blocks untouched.
+const record = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
+function migrateExecutionSelections(value: unknown): unknown {
+  if (!record(value)) return value;
+  const rows = (items: unknown, map: (row: Record<string, unknown>) => unknown) => Array.isArray(items) ? items.map(row => record(row) ? map(row) : row) : items;
+  return {
+    ...value,
+    automations: rows(value.automations, row => {
+      const target = row.target;
+      if (!record(target) || target.kind !== 'newQuickChat' || target.selection !== undefined) return row;
+      const { backend, model, reasoningEffort, serviceTier, ...rest } = target;
+      return { ...row, target: { ...rest, selection: { backend,
+        ...(model === undefined ? {} : { model }), ...(reasoningEffort === undefined ? {} : { reasoningEffort }), ...(serviceTier === undefined ? {} : { serviceTier }) } } };
+    }),
+    ...(Array.isArray(value.missions) ? { missions: rows(value.missions, row => {
+      const execution = row.execution;
+      if (!record(execution) || !record(execution.implementationModel)) return row;
+      return { ...row, execution: { ...execution, implementationModel: { reasoningEffort: null, serviceTier: null, ...execution.implementationModel } } };
+    }) } : {}),
+    agents: rows(value.agents, row => {
+      if (!record(row.handoff) || row.handoff.selection !== undefined) return row;
+      const { backend, model, ...handoff } = row.handoff;
+      return { ...row, handoff: { ...handoff, selection: { backend, model: model ?? null, reasoningEffort: null, serviceTier: null } } };
+    }),
+  };
 }

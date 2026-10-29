@@ -574,7 +574,7 @@ async function submit(): Promise<void> {
       const createInput: AgentDialogCreateInput = {
         name: name.value.trim() || null,
         folder: folder.value,
-        backend: backend.value,
+        selection: { backend: backend.value },
       };
       if (showTeamSelector.value) {
         if (clientNavigationSelectTeamion.value === newTeamOptionId) {

@@ -677,7 +677,7 @@ describe('useAppState', () => {
     await state.selectTeam('team-app');
     await state.updateTeam({ id: 'team-app', name: 'Core Team', color: '#46A857' });
     await state.reorderAgents({ teamId: 'team-app', agentId: 'agent-jesse', beforeAgentId: 'agent-dina' });
-    await state.createAgent({ name: 'Jules', avatar: '🤖', folder: '/Users/nbonamy/src/jules', backend: 'claude' });
+    await state.createAgent({ name: 'Jules', avatar: '🤖', folder: '/Users/nbonamy/src/jules', selection: { backend: 'claude' } });
     await state.updateAgent({ id: 'agent-jules', name: 'Jules Prime' });
     await state.forkActiveAgentTurn('turn-4');
     await state.duplicateAgent('agent-jules');
@@ -692,7 +692,7 @@ describe('useAppState', () => {
     expect(selectTeam).toHaveBeenCalledWith('team-app');
     expect(updateTeam).toHaveBeenCalledWith({ id: 'team-app', name: 'Core Team', color: '#46A857' });
     expect(reorderAgents).toHaveBeenCalledWith({ teamId: 'team-app', agentId: 'agent-jesse', beforeAgentId: 'agent-dina' });
-    expect(createAgent).toHaveBeenCalledWith({ name: 'Jules', avatar: '🤖', folder: '/Users/nbonamy/src/jules', backend: 'claude' });
+    expect(createAgent).toHaveBeenCalledWith({ name: 'Jules', avatar: '🤖', folder: '/Users/nbonamy/src/jules', selection: { ...{ backend: 'claude' } } });
     expect(updateAgent).toHaveBeenCalledWith({ id: 'agent-jules', name: 'Jules Prime' });
     expect(duplicateAgent).toHaveBeenCalledWith('agent-jules');
     expect(forkAgent).toHaveBeenNthCalledWith(1, 'agent-jules', 'turn-4');

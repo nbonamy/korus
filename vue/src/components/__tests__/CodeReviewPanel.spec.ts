@@ -1,6 +1,6 @@
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { computed, ref } from 'vue';
-import { ElInputNumber, ElSwitch } from 'element-plus';
+import { ElInputNumber, ElSwitch, ElPopover, ElTabs, ElTabPane } from 'element-plus';
 import { backendChoicesKey } from '../backend-selection';
 import { describe, expect, it, vi } from 'vitest';
 import type { Agent, AgentGitStatus, AppSnapshot } from '@workspace/core/contracts';
@@ -65,7 +65,7 @@ function mountPanel(
     switchToManual: vi.fn().mockResolvedValue({}),
     stop: vi.fn().mockResolvedValue({}),
     listModels: vi.fn(async (_agentId: string, backend: string) => backend === 'codex'
-      ? [{ id: 'codex-model', model: 'codex-model', displayName: 'Codex model', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'High' }] }]
+      ? [{ id: 'codex-model', model: 'codex-model', displayName: 'Codex model', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'High' }], serviceTiers: [{ id: 'fast', name: 'Fast' }] }]
       : [{ id: 'claude-model', model: 'claude-model', displayName: 'Claude model', supportedReasoningEfforts: [] }]),
   };
   const owner: Agent = {
@@ -80,7 +80,7 @@ function mountPanel(
     actions,
     wrapper: mount(CodeReviewPanel, {
       props: { agent: owner, gitStatus, ...actions, ...extraProps },
-      global: { components: { ElInputNumber, ElSwitch }, provide: {
+      global: { components: { ElInputNumber, ElSwitch, ElPopover, ElTabs, ElTabPane }, provide: {
         ...extraProvide,
         [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']),
         [codeReviewSettingsKey as symbol]: { preferences: () => preferences, listModels: actions.listModels, switchToManual: actions.switchToManual, stop: actions.stop },
@@ -99,6 +99,7 @@ describe('CodeReviewPanel', () => {
     await wrapper.get('.code-review-panel__start').trigger('click');
     await flushPromises();
     const input = actions.startReview.mock.calls[0]![1] as Record<string, unknown>;
+    expect(() => structuredClone(input)).not.toThrow();
     expect(input).not.toHaveProperty('instructions');
     wrapper.unmount();
   });
@@ -174,29 +175,36 @@ describe('CodeReviewPanel', () => {
   it('restores automatic settings and provider-specific model and effort, and clears unsupported effort on backend switch', async () => {
     const { wrapper, actions } = mountPanel(undefined, undefined, true, {
       backend: 'codex', automation: { enabled: true, maxPriority: 'p1', maxRounds: 4, autoCommit: true },
-      providers: { codex: { model: 'codex-model', reasoningEffort: 'high' }, claude: { model: 'claude-model' } },
+      providers: { codex: {backend: 'codex',  model: 'codex-model', reasoningEffort: 'high', serviceTier: 'fast' }, claude: {backend: 'claude', reasoningEffort: null, serviceTier: null,  model: 'claude-model' } },
     });
     await flushPromises();
     expect(wrapper.get<HTMLInputElement>('[role="switch"]').element.checked).toBe(true);
-    expect(wrapper.get<HTMLSelectElement>('[aria-label="Review model"] select').element.value).toBe('codex-model');
-    expect(wrapper.get<HTMLSelectElement>('[aria-label="Review effort"] select').element.value).toBe('high');
+    expect(wrapper.get('.backend-model-selector').text()).toContain('Codex model');
+    expect(wrapper.get('.backend-model-selector').text()).toContain('high');
+    expect(wrapper.get('.backend-model-selector').text()).toContain('fast');
     expect(wrapper.findAll('[role="radio"]').find(radio => radio.text().includes('Current thread'))!.attributes('disabled')).toBeDefined();
     expect(wrapper.findAll('[role="radio"]').find(radio => radio.text().includes('Current thread'))!.text()).toContain('Not available for automatic reviews');
-    await wrapper.get('.backend-selector select').setValue('claude');
+    await wrapper.get('.backend-model-selector').trigger('click');
     await flushPromises();
-    expect(wrapper.get('[aria-label="Review effort"] select').attributes('disabled')).toBeDefined();
-    expect(wrapper.get<HTMLSelectElement>('[aria-label="Review model"] select').element.value).toBe('claude-model');
+    const body = new DOMWrapper(document.body);
+    await body.findAll('[role="tab"]').find(tab => tab.find('[aria-label="Claude Code"]').exists())!.trigger('click');
+    await flushPromises();
+    await body.findAll('[role="menuitemradio"]').find(item => item.text() === 'Claude model')!.trigger('click');
+    await flushPromises();
+    expect(wrapper.get('.backend-model-selector').text()).toContain('Claude model');
+    expect(wrapper.get('.backend-model-selector').text()).not.toContain('high');
     await wrapper.get('.code-review-panel__start').trigger('click');
-    expect(actions.startReview).toHaveBeenLastCalledWith('owner', {
-      scope: { type: 'uncommitted' }, threadMode: 'independent', backend: 'claude', model: 'claude-model',
-      automation: { enabled: true, maxPriority: 'p1', maxRounds: 4, autoCommit: true },
-    });
+    expect(actions.startReview).toHaveBeenLastCalledWith('owner', { scope: { type: 'uncommitted' }, threadMode: 'independent', automation: { enabled: true, maxPriority: 'p1', maxRounds: 4, autoCommit: true }, selection: { backend: 'claude', model: 'claude-model', serviceTier: null, reasoningEffort: null } });
     await flushPromises();
-    await wrapper.get('.backend-selector select').setValue('codex');
+    await wrapper.get('.backend-model-selector').trigger('click');
     await flushPromises();
-    expect(wrapper.get<HTMLSelectElement>('[aria-label="Review effort"] select').element.value).toBe('high');
+    await body.findAll('[role="tab"]').find(tab => tab.find('[aria-label="Codex"]').exists())!.trigger('click');
+    await flushPromises();
+    await body.findAll('[role="menuitemradio"]').find(item => item.text() === 'standard')!.trigger('click');
+    await flushPromises();
+    expect(wrapper.get('.backend-model-selector').text()).toContain('high');
     await wrapper.get('.code-review-panel__start').trigger('click');
-    expect(actions.startReview).toHaveBeenLastCalledWith('owner', expect.objectContaining({ backend: 'codex', model: 'codex-model', reasoningEffort: 'high' }));
+    expect(actions.startReview).toHaveBeenLastCalledWith('owner', expect.objectContaining({ selection: { backend: 'codex', model: 'codex-model', reasoningEffort: 'high', serviceTier: null } }));
     await flushPromises();
     await wrapper.get('[role="switch"]').setValue(false);
     const currentThread = wrapper.findAll('[role="radio"]').find(radio => radio.text().includes('Current thread'))!;
@@ -271,7 +279,7 @@ describe('CodeReviewPanel', () => {
   it('keeps the saved model and effort when returning from a reviewer to the original setup', async () => {
     const { wrapper } = mountPanel(undefined, undefined, true, {
       backend: 'codex', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3 },
-      providers: { codex: { model: 'codex-model', reasoningEffort: 'high' } },
+      providers: { codex: {backend: 'codex', serviceTier: null,  model: 'codex-model', reasoningEffort: 'high' } },
     });
     await flushPromises();
     const owner = wrapper.props('agent');
@@ -279,8 +287,8 @@ describe('CodeReviewPanel', () => {
     await flushPromises();
     await wrapper.setProps({ agent: owner });
     await flushPromises();
-    expect(wrapper.get<HTMLSelectElement>('[aria-label="Review model"] select').element.value).toBe('codex-model');
-    expect(wrapper.get<HTMLSelectElement>('[aria-label="Review effort"] select').element.value).toBe('high');
+    expect(wrapper.get('.backend-model-selector').text()).toContain('Codex model');
+    expect(wrapper.get('.backend-model-selector').text()).toContain('high');
   });
 
   it('starts an independent review from an artifact-first empty state', async () => {
@@ -295,21 +303,15 @@ describe('CodeReviewPanel', () => {
     const independent = wrapper.findAll('[role="radio"]').find((radio) => radio.text().includes('Independent reviewer'))!;
     expect(independent.attributes('aria-checked')).toBe('true');
     const modelGroup = wrapper.findAll('fieldset').find(fieldset => fieldset.get('legend').text() === 'Review model')!;
-    const selectors = modelGroup.findAll('select');
-    expect(selectors).toHaveLength(3);
-    expect(selectors.map(select => select.element.value)).toStrictEqual(['codex', '', '']);
-    expect(selectors[1]!.find('option').text()).toBe('Current model');
-    expect(selectors[2]!.find('option').text()).toBe('Current effort');
-    expect(getComputedStyle(modelGroup.get('.code-review-panel__model-selectors').element).flexDirection).toBe('column');
-    const selector = modelGroup.get('.code-review-panel__backend');
-    expect(getComputedStyle(selector.element).width).toBe('100%');
+    expect(modelGroup.get('button[aria-label="Coding agent and model"]').text()).toContain('Codex model');
+    await modelGroup.get('button[aria-label="Coding agent and model"]').trigger('click');
+    await flushPromises();
+    const modelMenu = new DOMWrapper(document.body);
+    expect(modelMenu.findAll('[role="menuitemradio"]').map(item => item.text())).toContain('fast');
+    await modelMenu.findAll('[role="menuitemradio"]').find(item => item.text() === 'fast')!.trigger('click');
+    await flushPromises();
     await wrapper.findAll('button').find((button) => button.text().includes('Start review'))!.trigger('click');
-    expect(actions.startReview).toHaveBeenCalledWith('owner', {
-      scope: { type: 'uncommitted' },
-      backend: 'codex',
-      threadMode: 'independent',
-      automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false },
-    });
+    expect(actions.startReview).toHaveBeenCalledWith('owner', { scope: { type: 'uncommitted' }, threadMode: 'independent', automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false }, selection: { backend: 'codex', model: 'codex-model', reasoningEffort: 'high', serviceTier: 'fast' } });
   });
 
   it('offers branch scope when available and can review it in the current thread', async () => {
@@ -335,9 +337,9 @@ describe('CodeReviewPanel', () => {
     expect(wrapper.findAll('[role="radio"]').find((radio) => radio.text().includes('Uncommitted changes'))!.attributes('aria-checked')).toBe('true');
     await wrapper.findAll('[role="radio"]').find((radio) => radio.text().includes('Current branch'))!.trigger('click');
     await wrapper.findAll('[role="radio"]').find((radio) => radio.text().includes('Current thread'))!.trigger('click');
-    expect(wrapper.get('.backend-selector select').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('.backend-model-selector').attributes('disabled')).toBeDefined();
     await wrapper.findAll('[role="radio"]').find((radio) => radio.text().includes('Independent reviewer'))!.trigger('click');
-    expect(wrapper.get('.backend-selector select').attributes('disabled')).toBeUndefined();
+    expect(wrapper.get('.backend-model-selector').attributes('disabled')).toBeUndefined();
     await wrapper.findAll('[role="radio"]').find((radio) => radio.text().includes('Current thread'))!.trigger('click');
     await wrapper.findAll('button').find((button) => button.text().includes('Start review'))!.trigger('click');
 
@@ -375,12 +377,7 @@ describe('CodeReviewPanel', () => {
     expect(branch.attributes('aria-checked')).toBe('true');
     await wrapper.findAll('button').find((button) => button.text().includes('Start review'))!.trigger('click');
 
-    expect(actions.startReview).toHaveBeenCalledWith('owner', {
-      scope: { type: 'branch', baseRef: 'origin/main' },
-      threadMode: 'independent',
-      backend: 'codex',
-      automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false },
-    });
+    expect(actions.startReview).toHaveBeenCalledWith('owner', { scope: { type: 'branch', baseRef: 'origin/main' }, threadMode: 'independent', automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false }, selection: { backend: 'codex', model: 'codex-model', reasoningEffort: 'high', serviceTier: null } });
   });
 
   it('keeps unavailable branch and current-thread choices visible but disabled', () => {
@@ -758,21 +755,20 @@ describe('CodeReviewPanel', () => {
   it('does not send or offer review model overrides for the current thread', async () => {
     const { wrapper, actions } = mountPanel(undefined, undefined, true, {
       backend: 'codex', automation: { enabled: false, maxPriority: 'p2', maxRounds: 3 },
-      providers: { codex: { model: 'codex-model', reasoningEffort: 'high' } },
+      providers: { codex: {backend: 'codex', serviceTier: null,  model: 'codex-model', reasoningEffort: 'high' } },
     });
     await flushPromises();
-    expect(wrapper.get<HTMLSelectElement>('[aria-label="Review model"] select').element.value).toBe('codex-model');
+    expect(wrapper.get('.backend-model-selector').text()).toContain('Codex model');
     await wrapper.findAll('[role="radio"]').find(radio => radio.text().includes('Current thread'))!.trigger('click');
     await flushPromises();
 
-    expect(wrapper.get('[aria-label="Review model"] select').attributes('disabled')).toBeDefined();
-    expect(wrapper.get('[aria-label="Review effort"] select').attributes('disabled')).toBeDefined();
-    expect(wrapper.get<HTMLSelectElement>('[aria-label="Review model"] select').element.value).toBe('');
+    expect(wrapper.get('.backend-model-selector').attributes('disabled')).toBeDefined();
     await wrapper.get('.code-review-panel__start').trigger('click');
     const input = actions.startReview.mock.calls.at(-1)![1] as Record<string, unknown>;
     expect(input).toMatchObject({ threadMode: 'current' });
     expect(input).not.toHaveProperty('model');
     expect(input).not.toHaveProperty('reasoningEffort');
+    expect(input).not.toHaveProperty('serviceTier');
   });
 
   it('offers retry when a review round fails', async () => {

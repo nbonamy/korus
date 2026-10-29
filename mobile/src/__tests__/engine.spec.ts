@@ -410,7 +410,7 @@ describe('companion engine', () => {
       expect(listBranches).toHaveBeenCalledExactlyOnceWith('second-team', '/second/repo');
       expect(latest()).toMatchObject({ teamId: 'demo-team', allTeams: true });
       await engine.dispatch({ type: 'newChat', repositoryId: '/second/repo', backend: 'codex', existingBranch: 'main' });
-      expect(createChat).toHaveBeenCalledExactlyOnceWith({ teamId: 'second-team', repositoryId: '/second/repo', backend: 'codex', existingBranch: 'main' });
+      expect(createChat).toHaveBeenCalledExactlyOnceWith({ teamId: 'second-team', repositoryId: '/second/repo', existingBranch: 'main', selection: { backend: 'codex' } });
       expect(latest()).toMatchObject({ teamId: 'second-team', agentId: 'demo-reviewer', allTeams: true, chatCreation: 'idle' });
     } finally { engine.dispose(); }
   });
@@ -858,9 +858,9 @@ describe('companion engine', () => {
       for (const serviceTier of ['fast', null]) {
         await engine.dispatch({ type: 'composer', change: { serviceTier } });
         expect(latest().composer.serviceTier).toBe(serviceTier);
-        expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'model', reasoningEffort: 'high', serviceTier });
+        expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'model', reasoningEffort: 'high', serviceTier, backend: 'codex' });
         await engine.dispatch({ type: 'send', text: 'Continue' });
-        expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Continue', expect.any(String), expect.objectContaining({ serviceTier }));
+        expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Continue', expect.any(String), expect.objectContaining({ selection: expect.objectContaining({ serviceTier }) }));
       }
     } finally { engine.dispose(); }
   });
@@ -939,7 +939,7 @@ describe('companion engine', () => {
       const { engine, latest } = await opened(createChat);
       expect(latest()).toMatchObject({ backends: ['codex', 'claude'], chatCreation: 'idle' });
       await engine.dispatch({ type: 'newChat', repositoryId: '/abc/repo', backend: 'claude', branchName: 'feature' });
-      expect(createChat).toHaveBeenCalledWith({ teamId: 'demo-team', repositoryId: '/abc/repo', backend: 'claude', worktree: { branchName: 'feature' } });
+      expect(createChat).toHaveBeenCalledWith({ teamId: 'demo-team', repositoryId: '/abc/repo', worktree: { branchName: 'feature' }, selection: { backend: 'claude' } });
       expect(latest()).toMatchObject({ agentId: 'demo-reviewer', chatCreation: 'idle' });
       engine.dispose();
     });
@@ -978,7 +978,7 @@ describe('companion engine', () => {
       const { engine, latest } = await opened(createChat);
       const before = latest().agentId;
       await engine.dispatch({ type: 'newChat', repositoryId: '/abc/repo', backend: 'codex' });
-      expect(createChat).toHaveBeenCalledWith({ teamId: 'demo-team', repositoryId: '/abc/repo', backend: 'codex' });
+      expect(createChat).toHaveBeenCalledWith({ teamId: 'demo-team', repositoryId: '/abc/repo', selection: { backend: 'codex' } });
       expect(latest()).toMatchObject({ chatCreation: 'failed', agentId: before });
       await engine.dispatch({ type: 'dismissNewChat' });
       expect(latest().chatCreation).toBe('idle');

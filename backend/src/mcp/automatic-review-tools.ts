@@ -1,3 +1,4 @@
+import { executionSelectionOverridesSchema } from '../execution-selection-schema';
 import * as z from 'zod/v4';
 import type { AppSnapshot } from '@workspace/core/contracts';
 import type { AutomaticReviewStartInput } from '../review/code-review-service';
@@ -29,9 +30,7 @@ export function createAutomaticReviewToolModuleProvider(options: {
                 z.strictObject({ type: z.literal('uncommitted') }),
                 z.strictObject({ type: z.literal('branch'), baseRef: z.string().trim().min(1).max(500) }),
               ]).describe('Uncommitted changes, or current branch against baseRef including working changes.'),
-              backend: z.enum(['codex', 'claude', 'antigravity']).optional().describe('Requested override; defaults to the caller.'),
-              model: z.string().trim().min(1).max(200).optional().describe('Optional requested model. Same-provider reviews inherit the caller’s model; a different provider uses its own defaults.'),
-              reasoningEffort: z.string().trim().min(1).max(200).optional().describe('Optional requested effort. With no model override, same-provider reviews inherit the caller’s effort; an explicit model without effort uses that model’s default.'),
+              selection: executionSelectionOverridesSchema.optional().describe('Execution overrides. Same-provider work inherits the caller; a different provider uses its own defaults. Null selects the provider default, including Standard tier.'),
               maxPriority: findingPrioritySchema.optional().describe('Highest numerical priority to fix; defaults to saved settings or p2 (P0–P2).'),
               maxRounds: z.number().int().min(1).max(10).optional().describe('Review round limit including final verification; defaults to saved settings or 3.'),
               autoCommit: z.boolean().optional().describe('False unless local commits are explicitly authorized, regardless of saved defaults. Includes reviewed working changes and fixes.'),

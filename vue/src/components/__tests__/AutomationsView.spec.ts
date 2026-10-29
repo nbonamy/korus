@@ -3,12 +3,13 @@ import { reactive } from 'vue';
 import { ElInput, ElSelect, ElOption, ElOptionGroup, ElSwitch, ElButton, ElPopover, ElMessageBox } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
+import { createMission } from '@workspace/core/missions';
 import type { Automation, CreateAutomationInput, RemoteConnection, UpdateAutomationInput } from '@workspace/core/contracts';
 import AutomationsView from '../AutomationsView.vue';
 
 const snapshot = createInitialSnapshot();
 function automation(overrides: Partial<Automation> = {}): Automation {
-  return { id: 'auto', name: 'Morning', enabled: true, prompt: 'Check tasks', target: { kind: 'newQuickChat', teamId: 'team-app', backend: 'codex' },
+  return { id: 'auto', name: 'Morning', enabled: true, prompt: 'Check tasks', target: { kind: 'newQuickChat', teamId: 'team-app', selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } },
     schedule: { intervalMinutes: 60 }, executionLog: [], createdAt: '', updatedAt: '', ...overrides };
 }
 const remote: RemoteConnection = { id: 'remote', kind: 'ssh', name: 'devbox', host: 'devbox', status: 'ready',
@@ -33,6 +34,28 @@ async function menu(wrapper: ReturnType<typeof view>, action: string) {
 }
 afterEach(() => { vi.restoreAllMocks(); });
 describe('AutomationsView', () => {
+  it('keeps mission source teammates selectable without offering mission workers', async () => {
+    const teamSnapshot = createInitialSnapshot();
+    const mission = createMission(teamSnapshot, { outcome: 'Ship a feature', workflowType: 'shapeAndShipFeature', teamId: 'team-app', orchestratorMemberId: 'agent-dina' });
+    teamSnapshot.agents.push(...['Mission lead', 'Repository worker'].map((name, index) => ({ ...teamSnapshot.agents[0]!, id: `worker-${index}`, name })));
+    mission.stageAgentIds.requirements = 'worker-0';
+    mission.execution!.runs.push({ id: 'run', stage: 'implementation', memberId: 'agent-dina', workerId: 'worker-1', status: 'running', skills: [], feedback: '', startedAt: '' });
+    const updateAutomation = vi.fn().mockResolvedValue(undefined);
+    const wrapper = view({ agents: teamSnapshot.agents, teams: teamSnapshot.teams, missions: teamSnapshot.missions,
+      automations: [automation({ target: { kind: 'agent', agentId: 'agent-dina' } })], updateAutomation });
+    await menu(wrapper, 'Edit');
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    const control = wrapper.get('[aria-label="Conversation"]');
+    await control.trigger('click'); await flushPromises();
+    const options = document.getElementById(control.attributes('aria-controls')!)!.textContent;
+    expect(options).toContain('Dina @ agent-workspace');
+    expect(options).toContain('Jesse');
+    expect(options).not.toContain('Mission lead');
+    expect(options).not.toContain('Repository worker');
+    await wrapper.get('form').trigger('submit'); await flushPromises();
+    expect(updateAutomation).toHaveBeenCalledWith(expect.objectContaining({ id: 'auto', target: { kind: 'agent', agentId: 'agent-dina' } }));
+  });
+
   it('creates and edits scheduled prompts through the real editor', async () => {
     const warnings = vi.spyOn(console, 'warn');
     // Electron IPC rejects reactive proxies, including nested schedule values.
@@ -50,7 +73,7 @@ describe('AutomationsView', () => {
     await wrapper.get('textarea').setValue('Check tasks');
     await flushPromises();
     await wrapper.get('form').trigger('submit'); await flushPromises();
-    expect(createAutomation).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Check tasks', target: { kind: 'newQuickChat', teamId: 'team-app', backend: 'codex' } }));
+    expect(createAutomation).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Check tasks', target: { kind: 'newQuickChat', teamId: 'team-app', selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } } }));
     expect(wrapper.findAll('[role="alert"]').map(alert => alert.text())).toStrictEqual([]);
     expect(wrapper.find('form').exists()).toBe(false);
     await wrapper.setProps({ automations: [automation()] });
@@ -66,7 +89,7 @@ describe('AutomationsView', () => {
   it('routes remote creation and runs only to the selected host without requiring a work provider', async () => {
     const remoteSnapshot = createInitialSnapshot();
     remoteSnapshot.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
-    remoteSnapshot.automations = [automation({ target: { kind: 'newQuickChat', teamId: 'team-app', backend: 'claude' } })];
+    remoteSnapshot.automations = [automation({ target: { kind: 'newQuickChat', teamId: 'team-app', selection: { backend: 'claude', model: null, reasoningEffort: null, serviceTier: null } } })];
     const createAutomation = vi.fn().mockResolvedValue(remoteSnapshot);
     const runAutomation = vi.fn().mockResolvedValue(remoteSnapshot);
     const wrapper = view({ remoteConnections: [remote], getAutomationSnapshot: async () => remoteSnapshot, createAutomation, runAutomation });
@@ -76,7 +99,7 @@ describe('AutomationsView', () => {
     await wrapper.findAll('button').find(button => button.text() === 'New Automation')!.trigger('click');
     await wrapper.get('textarea').setValue('Remote check');
     await wrapper.get('form').trigger('submit'); await flushPromises();
-    expect(createAutomation).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Remote check', target: { kind: 'newQuickChat', teamId: 'team-app', backend: 'claude' } }), { kind: 'remote', remoteConnectionId: 'remote' });
+    expect(createAutomation).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Remote check', target: { kind: 'newQuickChat', teamId: 'team-app', selection: { backend: 'claude', model: null, reasoningEffort: null, serviceTier: null } } }), { kind: 'remote', remoteConnectionId: 'remote' });
   });
 
   it('retains the editor on save failure and shows remote failures without replacing local data', async () => {
@@ -154,7 +177,7 @@ describe('AutomationsView', () => {
     await toggle.trigger('click'); await flushPromises();
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     expect(updateAutomation).toHaveBeenCalledWith({ id: 'auto', name: 'Morning', enabled: false, prompt: 'Check tasks',
-      target: { kind: 'newQuickChat', teamId: 'team-app', backend: 'codex' }, schedule: { intervalMinutes: 60 } });
+      target: { kind: 'newQuickChat', teamId: 'team-app', selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } }, schedule: { intervalMinutes: 60 } });
     await wrapper.setProps({ automations: [automation({ enabled: false })] });
     await wrapper.get('[aria-label="Enable Morning"]').trigger('click'); await flushPromises();
     expect(updateAutomation).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'auto', enabled: true }));

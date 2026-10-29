@@ -8,7 +8,7 @@ import type { StoredRosterAgent, RosterData, SettingsData, VisualizationData } f
 import type { BrowserBookmark } from '@workspace/core/browser-bookmarks';
 
 /*
- * Roster schema 2; settings and visualization schema 1. Known fields and supported engine
+ * Roster schema 3; settings and visualization schema 1. Known fields and supported engine
  * blocks are validated, but additive fields are tolerated; unknown engines stay opaque.
  * Entities that keep their long-standing shape (agents' inner fields, missions,
  * automations, settings...) are checked as objects here and repaired by the existing

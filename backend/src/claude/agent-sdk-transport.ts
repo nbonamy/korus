@@ -66,6 +66,7 @@ type ActiveTransportTurn = {
   reject: (error: Error) => void;
   settled: boolean;
   pendingInputs: Set<string>;
+  initialInputId?: string;
   steered: boolean;
   onMessage: (message: ClaudeSdkMessage) => void;
   onPermissionRequest?: (request: ClaudePermissionRequest) => void;
@@ -152,6 +153,11 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
       }
     }
     const activeTurn = createActiveTurn(onMessage, onPermissionRequest, onPermissionCancelled);
+    const initialInputId = params.waitForInputReplay ? params.messageId ?? randomUUID() : undefined;
+    if (initialInputId) {
+      activeTurn.initialInputId = initialInputId;
+      activeTurn.pendingInputs.add(initialInputId);
+    }
     activeTurn.requestUsage.emit = onRequestUsage ?? (() => undefined);
     activeTurn.requestUsage.requestedServiceTier = params.fastMode ? "fast" : null;
     const session = existingSession ?? this.createSession(params, requestedSessionId, activeTurn, configurationKey);
@@ -164,7 +170,7 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
       existingSession.onSubagentMessage = onMessage;
     }
 
-    let submission = this.submitTurn(session, params);
+    let submission = this.submitTurn(session, initialInputId ? { ...params, messageId: initialInputId } : params);
     void submission.catch((error: unknown) => {
       if (session.activeTurn !== activeTurn) return;
       this.rejectTurn(session, normalizeError(error));
@@ -452,6 +458,16 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
         const message = sdkMessage as ClaudeSdkMessage;
         this.rekeySessionFromMessage(session, message);
         const activeTurn = session.activeTurn;
+        if (activeTurn?.initialInputId) {
+          if (message.type === 'user' && message.uuid === activeTurn.initialInputId) {
+            activeTurn.initialInputId = undefined;
+          } else if (message.type === 'stream_event'
+            || message.type === 'assistant' && !message.error
+            || message.type === 'result' && !message.is_error && message.subtype === 'success') {
+            // A resumed session can finish older work before it consumes the new prompt.
+            continue;
+          }
+        }
         activeTurn?.model.observe(message);
         if (message.type === 'user' && typeof message.uuid === 'string') activeTurn?.pendingInputs.delete(message.uuid);
         if (message.type === 'result' && activeTurn) {

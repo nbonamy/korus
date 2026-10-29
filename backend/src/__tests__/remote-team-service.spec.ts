@@ -139,7 +139,7 @@ describe('RemoteTeamService', () => {
     });
 
     await expect(service.request('connection-devbox', 'agent/quickChat/create', {
-      input: { backend: 'claude', teamId: 'team-remote' },
+      input: { teamId: 'team-remote', selection: { ...{ backend: 'claude' } } },
     })).resolves.toMatchObject({ general: { claudeCodeEnabled: false } });
     expect(requests).toStrictEqual(['agent/quickChat/create']);
 

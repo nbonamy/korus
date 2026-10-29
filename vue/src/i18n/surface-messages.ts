@@ -990,6 +990,8 @@ export const surfaceMessages = {
     "steer": "Steer",
     "advanced": "Advanced",
     "preventSleepWhileAgentsRun": "Prevent sleep while agents run",
+    "resumeInterruptedWorkOnStartup": "Resume interrupted work on startup",
+    "continueAgentsWorkingWhenKorusStopped": `Continue agents that were working when ${product.name} stopped`,
     "keepThisComputerAwakeWhileAnAgentIsActive": "Keep this computer awake while an agent is active",
     "agentCelebrations": "Agent celebrations",
     "letAgentsCelebrateMeaningfulWinsWithVisualEffects": "Let agents celebrate meaningful wins with visual effects",

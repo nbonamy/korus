@@ -26,7 +26,7 @@ describe('mobile existing branch picker', () => {
       expect(f.listBranches).toHaveBeenCalledExactlyOnceWith('demo-team', 'repo');
       expect(f.engine.snapshot().branches).toStrictEqual({ repositoryId: 'repo', status: 'loaded', items: branches });
       await f.engine.dispatch({ type: 'newChat', repositoryId: 'repo', backend: 'codex', existingBranch: 'feature/login' });
-      expect(f.createChat).toHaveBeenCalledExactlyOnceWith({ teamId: 'demo-team', repositoryId: 'repo', backend: 'codex', existingBranch: 'feature/login' });
+      expect(f.createChat).toHaveBeenCalledExactlyOnceWith({ teamId: 'demo-team', repositoryId: 'repo', existingBranch: 'feature/login', selection: { backend: 'codex' } });
       expect(f.engine.snapshot().agentId).toBe('demo-reviewer');
     } finally { f.engine.dispose(); }
   });

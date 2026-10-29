@@ -51,21 +51,21 @@ async function fixture(beforeCreationReturns: (id: string) => Promise<void> = as
     if (method === backendMethods.sourceRepositoriesList) { await beforeProjectReadReturns(method); return repositories as Result; }
     if (method === backendMethods.sourceRepositoryClone) return { name: 'repo', path: '/code/repo', worktrees: [] } as Result;
     if (method === backendMethods.agentCreate || method === backendMethods.projectCreate) {
-      const { input } = params as { input: { folder: string; backend: 'codex' | 'claude'; teamId: string } };
+      const { input } = params as { input: import('@workspace/core/contracts').CreateAgentInput };
       const id = ++chatCount === 1 ? 'new-chat' : `new-chat-${chatCount}`;
-      snapshot.agents.push({ id, teamId: input.teamId, name: 'New', backend: input.backend, folder: input.folder, status: { type: 'idle' }, createdAt: '', updatedAt: '' });
+      snapshot.agents.push({ id, teamId: input.teamId!, name: 'New', backend: input.selection!.backend!, folder: input.folder, status: { type: 'idle' }, createdAt: '', updatedAt: '' });
       await beforeCreationReturns(id);
       return { agentId: id, snapshot: { ...snapshot, activeAgentId: id } } as Result;
     }
     if (method === backendMethods.agentDuplicate) {
-      const { agentId, options } = params as { agentId: string; options: { backend: 'codex' | 'claude' } };
+      const { agentId, options } = params as { agentId: string; options: import('@workspace/core/contracts').DuplicateAgentOptions };
       duplicateAgentInSnapshot(snapshot, agentId, undefined, () => 'duplicated-agent', options);
       return { agentId: 'duplicated-agent', snapshot } as Result;
     }
     if (method === backendMethods.agentQuickChatCreate) {
-      const { input } = params as { input: { teamId: string; backend: 'codex' | 'claude' } };
+      const { input } = params as { input: import('@workspace/core/contracts').CreateQuickChatInput };
       const id = ++quickCount === 1 ? 'quick-chat' : `quick-chat-${quickCount}`;
-      snapshot.agents.push({ id, teamId: input.teamId, name: null, backend: input.backend, folder: null, sessionKind: 'quickChat', status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never);
+      snapshot.agents.push({ id, teamId: input.teamId, name: null, backend: input.selection?.backend, folder: null, sessionKind: 'quickChat', status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never);
       await beforeCreationReturns(id);
       return { agentId: id, snapshot: { ...snapshot, activeAgentId: id } } as Result;
     }
@@ -87,7 +87,7 @@ async function fixture(beforeCreationReturns: (id: string) => Promise<void> = as
   await manager.control({ action: 'status' });
   const gateway = transport.gateway!;
   async function create(extra: object) {
-    const { creationId } = await gateway.request('phone', 'agent.create', { teamId: 'team-test', repositoryId: opaquePath('/code/repo'), backend: 'claude', ...extra }) as { creationId: string };
+    const { creationId } = await gateway.request('phone', 'agent.create', { teamId: 'team-test', repositoryId: opaquePath('/code/repo'), selection: { backend: 'claude' }, ...extra }) as { creationId: string };
     return vi.waitFor(async () => {
       const result = await gateway.request('phone', 'agent.create.status', { creationId }) as { state: string };
       if (result.state === 'running') throw new Error('still running');
@@ -116,10 +116,10 @@ describe('mobile chat creation', () => {
     expect(await f.gateway.request('phone', 'project.repositories.branches', { teamId: 'team-test', provider: 'gitlab', repositoryId })).toStrictEqual(f.branches.map(({ name, isDefault }) => ({ name, isDefault })));
     f.repositories.push({ name: 'different-local-name', path: '/code/repo', remoteIdentity: 'gitlab.com/org/subgroup/repo', worktrees: [] });
     const choice = newBranch ? { worktree: { branchName: 'feature/new', baseBranch: 'main' } } : { branch: 'feature/checked-out' };
-    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', backend: 'claude', source: 'gitlab', value: repositoryId, ...choice }) as { creationId: string };
+    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', source: 'gitlab', value: repositoryId, ...choice, selection: { backend: 'claude' } }) as { creationId: string };
     await vi.waitFor(async () => expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'success', agentId: 'new-chat' }));
     expect(f.calls.some(call => call.method === backendMethods.sourceRepositoryClone)).toBe(false);
-    expect(f.calls.find(call => call.method === backendMethods.agentCreate)?.params).toMatchObject({ input: { folder: newBranch ? '/code/repo-feature' : '/code/repo-existing', teamId: 'team-test', backend: 'claude' } });
+    expect(f.calls.find(call => call.method === backendMethods.agentCreate)?.params).toMatchObject({ input: { folder: newBranch ? '/code/repo-feature' : '/code/repo-existing', teamId: 'team-test', selection: { ...{ backend: 'claude' } } } });
     expect(f.calls.filter(call => call.method === backendMethods.workProviderBranchesList).every(call => JSON.stringify(call.params).includes('"provider":"gitlab"') && JSON.stringify(call.params).includes('"remoteConnectionId":"ssh-host"'))).toBe(true);
     if (newBranch) expect(f.calls.find(call => call.method === backendMethods.sourceWorktreeCreate)?.params).toMatchObject({ input: { baseBranch: 'main', requireNewBranch: true, fetchRemoteBranch: true, remoteConnectionId: 'ssh-host' } });
   });
@@ -134,7 +134,7 @@ describe('mobile chat creation', () => {
     f.snapshot.teams[0]!.remoteConnectionId = 'other-host';
     f.snapshot.remoteConnections.connections.push({ id: 'other-host', kind: 'ssh', name: 'Other', host: 'other', status: 'ready', providerConnections: f.snapshot.providerConnections, createdAt: '', updatedAt: '' });
     await expect(f.gateway.request('phone', 'project.repositories.branches', { teamId: 'team-test', provider: 'gitlab', repositoryId: id })).rejects.toThrow();
-    const stale = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', backend: 'codex', source: 'gitlab', value: id }) as { creationId: string };
+    const stale = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', source: 'gitlab', value: id, selection: { backend: 'codex' } }) as { creationId: string };
     await vi.waitFor(async () => expect(await f.gateway.request('phone', 'agent.create.status', stale)).toMatchObject({ state: 'error' }));
     delete f.snapshot.teams[0]!.remoteConnectionId;
     f.unavailableProviders.add('gitlab');
@@ -171,7 +171,7 @@ describe('mobile chat creation', () => {
     const [{ id }] = await f.gateway.request('phone', 'project.repositories.list', { teamId: 'team-test', provider: 'gitlab' }) as { id: string }[];
     f.failures.set(failedMethod, new Error('git clone /private/checkout https://secret-token@gitlab.com failed'));
     if (failedMethod === backendMethods.workProviderSourcesList) await expect(f.gateway.request('phone', 'project.repositories.list', { teamId: 'team-test', provider: 'gitlab' })).rejects.toThrow(message);
-    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', backend: 'codex', source: 'gitlab', value: id!, branch: 'feature/available' }) as { creationId: string };
+    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', source: 'gitlab', value: id!, branch: 'feature/available', selection: { backend: 'codex' } }) as { creationId: string };
     await vi.waitFor(async () => {
       const result = await f.gateway.request('phone', 'agent.create.status', { creationId });
       expect(result).toStrictEqual({ state: 'error', error: message });
@@ -183,7 +183,7 @@ describe('mobile chat creation', () => {
     const f = await fixture();
     const [{ id }] = await f.gateway.request('phone', 'project.repositories.list', { teamId: 'team-test', provider: 'gitlab' }) as { id: string }[];
     for (const branch of ['removed', 'main']) {
-      const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', backend: 'codex', source: 'gitlab', value: id!, branch }) as { creationId: string };
+      const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', source: 'gitlab', value: id!, branch, selection: { backend: 'codex' } }) as { creationId: string };
       await vi.waitFor(async () => expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toMatchObject({ state: branch === 'main' ? 'success' : 'error' }));
     }
     expect(f.calls.filter(call => call.method === backendMethods.sourceRepositoryClone)).toStrictEqual([{ method: backendMethods.sourceRepositoryClone, params: { input: { url: 'https://gitlab.com/org/subgroup/repo' }, _clientId: 'companion-write' } }]);
@@ -197,9 +197,9 @@ describe('mobile chat creation', () => {
     const branches = await f.gateway.request('phone', 'project.local.branches', { teamId: 'team-test', repositoryId: opaquePath('/code/repo') });
     expect(branches).toStrictEqual(f.branches.map(({ name, isDefault }) => ({ name, isDefault })));
     await expect(f.gateway.request('phone', 'project.local.branches', { teamId: 'team-test', repositoryId: '/code/repo' })).rejects.toThrow();
-    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', source: 'local', value: opaquePath('/code/repo'), branch: 'feature/checked-out', backend: 'claude' }) as { creationId: string };
+    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', source: 'local', value: opaquePath('/code/repo'), branch: 'feature/checked-out', selection: { backend: 'claude' } }) as { creationId: string };
     await vi.waitFor(async () => expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'success', agentId: 'new-chat' }));
-    expect(f.calls.find(call => call.method === backendMethods.agentCreate)?.params).toMatchObject({ input: { folder: '/code/repo-existing', backend: 'claude' } });
+    expect(f.calls.find(call => call.method === backendMethods.agentCreate)?.params).toMatchObject({ input: { folder: '/code/repo-existing', selection: { ...{ backend: 'claude' } } } });
     expect(f.calls.some(call => call.method === backendMethods.sourceRepositoryClone)).toBe(false);
     expect(f.calls.some(call => call.method === backendMethods.sourceWorktreeCreate)).toBe(false);
   });
@@ -219,7 +219,7 @@ describe('mobile chat creation', () => {
     const f = await fixture();
     const target = { hostId: f.gateway.hostId, locationId: 'local', teamId: 'team-test', agentId: 'existing', sessionId: null };
     expect(await f.gateway.request('phone', 'agent.duplicate', { target, backend: 'claude' })).toStrictEqual({ agentId: 'duplicated-agent' });
-    expect(f.calls.find(call => call.method === backendMethods.agentDuplicate)?.params).toStrictEqual({ agentId: 'existing', options: { backend: 'claude' }, entityResult: true, _clientId: 'companion-write' });
+    expect(f.calls.find(call => call.method === backendMethods.agentDuplicate)?.params).toStrictEqual({ agentId: 'existing', options: { selection: { backend: 'claude' } }, entityResult: true, _clientId: 'companion-write' });
     expect(f.snapshot.agents.find(agent => agent.id === 'duplicated-agent')).toMatchObject({ folder: '/code/repo', backend: 'claude', status: { type: 'idle' } });
     await expect(f.gateway.request('phone', 'agent.duplicate', { target, backend: 'antigravity' })).rejects.toThrow('not available');
     expect(f.calls.filter(call => call.method === backendMethods.agentDuplicate)).toHaveLength(1);
@@ -229,7 +229,7 @@ describe('mobile chat creation', () => {
     const f = await fixture();
     f.repositories.push({ name: 'repo', path: '/code/repo', worktrees: [] });
     const choice = newBranch ? { worktree: { branchName: 'feature/local', baseBranch: 'main' } } : { branch: 'feature/available' };
-    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', source: 'local', value: opaquePath('/code/repo'), backend: 'codex', ...choice }) as { creationId: string };
+    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', source: 'local', value: opaquePath('/code/repo'), ...choice, selection: { backend: 'codex' } }) as { creationId: string };
     await vi.waitFor(async () => expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'success', agentId: 'new-chat' }));
     expect(f.calls.find(call => call.method === backendMethods.sourceWorktreeCreate)?.params).toMatchObject({ input: {
       repoPath: '/code/repo', fetchRemoteBranch: false,
@@ -244,14 +244,14 @@ describe('mobile chat creation', () => {
     f.snapshot.teams[0]!.remoteConnectionId = 'ssh-host';
     f.snapshot.remoteConnections.connections.push({ id: 'ssh-host', kind: 'ssh', name: 'Host', host: 'host', status: 'ready', providerConnections: f.snapshot.providerConnections, createdAt: '', updatedAt: '' });
     const value = source === 'new' ? 'fresh-project' : source === 'github' ? 'org/repo' : 'https://github.com/org/repo.git';
-    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', backend: 'claude', source, value }) as { creationId: string };
+    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', source, value, selection: { backend: 'claude' } }) as { creationId: string };
     await vi.waitFor(async () => expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'success', agentId: 'new-chat' }));
     expect(f.snapshot.agents.find(agent => agent.id === 'new-chat')?.teamId).toBe('team-test');
     if (source === 'new') {
-      expect(f.calls.find(call => call.method === backendMethods.projectCreate)?.params).toStrictEqual({ input: { teamId: 'team-test', backend: 'claude', name: value }, entityResult: true, _clientId: 'companion-write' });
+      expect(f.calls.find(call => call.method === backendMethods.projectCreate)?.params).toStrictEqual({ input: { teamId: 'team-test', name: value, selection: { ...{ backend: 'claude' } } }, entityResult: true, _clientId: 'companion-write' });
     } else {
       expect(f.calls.find(call => call.method === backendMethods.sourceRepositoryClone)?.params).toStrictEqual({ input: { url: source === 'github' ? 'https://github.com/org/repo' : value, remoteConnectionId: 'ssh-host' }, _clientId: 'companion-write' });
-      expect(f.calls.find(call => call.method === backendMethods.agentCreate)?.params).toMatchObject({ input: { folder: '/code/repo', teamId: 'team-test', backend: 'claude' } });
+      expect(f.calls.find(call => call.method === backendMethods.agentCreate)?.params).toMatchObject({ input: { folder: '/code/repo', teamId: 'team-test', selection: { ...{ backend: 'claude' } } } });
     }
   });
 
@@ -270,7 +270,7 @@ describe('mobile chat creation', () => {
       { name: 'main', isDefault: true }, { name: 'feature/checked-out', isDefault: false }, { name: 'feature/available', isDefault: false },
     ]);
     expect(f.calls.some(call => call.method === backendMethods.sourceRepositoryClone)).toBe(false);
-    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', backend: 'codex', source: 'github', value: 'org/repo', branch: 'feature/checked-out' }) as { creationId: string };
+    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', source: 'github', value: 'org/repo', branch: 'feature/checked-out', selection: { backend: 'codex' } }) as { creationId: string };
     await vi.waitFor(async () => expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'success', agentId: 'new-chat' }));
     expect(f.calls.find(call => call.method === backendMethods.agentCreate)?.params).toMatchObject({ input: { folder: '/code/repo-existing' } });
     expect(f.calls.some(call => call.method === backendMethods.sourceWorktreeCreate)).toBe(false);
@@ -278,10 +278,10 @@ describe('mobile chat creation', () => {
 
   it('creates a worktree for a selected GitHub branch and never creates an agent for an unknown branch', async () => {
     const f = await fixture();
-    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', backend: 'codex', source: 'github', value: 'org/repo', branch: 'feature/available' }) as { creationId: string };
+    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', source: 'github', value: 'org/repo', branch: 'feature/available', selection: { backend: 'codex' } }) as { creationId: string };
     await vi.waitFor(async () => expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'success', agentId: 'new-chat' }));
     expect(f.calls.find(call => call.method === backendMethods.sourceWorktreeCreate)?.params).toStrictEqual({ input: { repoPath: '/code/repo', branchName: 'feature/available', reuseExisting: true, fetchRemoteBranch: true }, _clientId: 'companion-write' });
-    const other = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', backend: 'codex', source: 'github', value: 'org/repo', branch: 'unknown' }) as { creationId: string };
+    const other = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', source: 'github', value: 'org/repo', branch: 'unknown', selection: { backend: 'codex' } }) as { creationId: string };
     await vi.waitFor(async () => expect(await f.gateway.request('phone', 'agent.create.status', { creationId: other.creationId })).toMatchObject({ state: 'error' }));
     expect(f.calls.filter(call => call.method === backendMethods.agentCreate)).toHaveLength(1);
   });
@@ -289,7 +289,7 @@ describe('mobile chat creation', () => {
   it('creates a new GitHub branch from a chosen base on the owning host before opening its agent', async () => {
     const f = await fixture(); f.snapshot.teams[0]!.remoteConnectionId = 'ssh-host';
     f.snapshot.remoteConnections.connections.push({ id: 'ssh-host', kind: 'ssh', name: 'Host', host: 'host', status: 'ready', providerConnections: f.snapshot.providerConnections, createdAt: '', updatedAt: '' });
-    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', backend: 'codex', source: 'github', value: 'org/repo', worktree: { branchName: 'feature/new', baseBranch: 'feature/available' } }) as { creationId: string };
+    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', source: 'github', value: 'org/repo', worktree: { branchName: 'feature/new', baseBranch: 'feature/available' }, selection: { backend: 'codex' } }) as { creationId: string };
     await vi.waitFor(async () => expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'success', agentId: 'new-chat' }));
     expect(f.calls.find(call => call.method === backendMethods.sourceWorktreeCreate)?.params).toStrictEqual({ input: { repoPath: '/code/repo', branchName: 'feature/new', baseBranch: 'feature/available', requireNewBranch: true, fetchRemoteBranch: true, remoteConnectionId: 'ssh-host' }, _clientId: 'companion-write' });
     expect(f.snapshot.agents.find(agent => agent.id === 'new-chat')?.folder).toBe('/code/repo-feature');
@@ -300,7 +300,7 @@ describe('mobile chat creation', () => {
     { branchName: 'feature/new', baseBranch: 'removed' },
   ])('rejects a duplicate branch or missing base before cloning: $branchName $baseBranch', async worktree => {
     const f = await fixture();
-    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', backend: 'codex', source: 'github', value: 'org/repo', worktree }) as { creationId: string };
+    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', source: 'github', value: 'org/repo', worktree, selection: { backend: 'codex' } }) as { creationId: string };
     await vi.waitFor(async () => expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toMatchObject({ state: 'error' }));
     expect(f.calls.some(call => [backendMethods.sourceRepositoryClone, backendMethods.sourceWorktreeCreate, backendMethods.agentCreate].some(method => method === call.method))).toBe(false);
   });
@@ -311,7 +311,7 @@ describe('mobile chat creation', () => {
     { source: 'url', value: 'https://github.com/org/repo', worktree: { branchName: 'feature/new', baseBranch: 'main' } },
   ])('rejects malformed or conflicting project worktree input', async extra => {
     const f = await fixture();
-    await expect(f.gateway.request('phone', 'project.create', { teamId: 'team-test', backend: 'codex', source: 'github', value: 'org/repo', ...extra })).rejects.toThrow();
+    await expect(f.gateway.request('phone', 'project.create', { teamId: 'team-test', source: 'github', value: 'org/repo', ...extra, selection: { backend: 'codex' } })).rejects.toThrow();
     expect(f.calls.some(call => call.method === backendMethods.sourceRepositoryClone)).toBe(false);
   });
 
@@ -330,7 +330,7 @@ describe('mobile chat creation', () => {
   it('reuses an existing checkout instead of cloning the same GitHub repository again', async () => {
     const f = await fixture();
     f.repositories.push({ name: 'repo', path: '/code/repo', remoteIdentity: 'github.com/org/repo', worktrees: [] });
-    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', backend: 'codex', source: 'github', value: 'org/repo' }) as { creationId: string };
+    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', source: 'github', value: 'org/repo', selection: { backend: 'codex' } }) as { creationId: string };
     await vi.waitFor(async () => expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'success', agentId: 'new-chat' }));
     expect(f.calls.some(call => call.method === backendMethods.sourceRepositoryClone)).toBe(false);
     expect(f.calls.find(call => call.method === backendMethods.agentCreate)?.params).toMatchObject({ input: { folder: '/code/repo' } });
@@ -348,7 +348,7 @@ describe('mobile chat creation', () => {
   it('does not clone after a grant is replaced while repository discovery is in flight', async () => {
     let release!: () => void;
     const f = await fixture(undefined, method => method === backendMethods.sourceRepositoriesList ? new Promise(resolve => { release = resolve; }) : Promise.resolve());
-    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', backend: 'codex', source: 'url', value: 'https://github.com/org/repo' }) as { creationId: string };
+    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', source: 'url', value: 'https://github.com/org/repo', selection: { backend: 'codex' } }) as { creationId: string };
     await vi.waitFor(() => expect(release).toBeTypeOf('function'));
     await f.gateway.revoke('phone');
     const invitation = f.gateway.invite();
@@ -447,7 +447,7 @@ describe('mobile chat creation', () => {
     const f = await fixture();
     expect(await f.create({})).toStrictEqual({ state: 'success', agentId: 'new-chat' });
     expect(f.calls.map((call) => call.method)).not.toContain(backendMethods.sourceWorktreeCreate);
-    expect(f.calls.find((call) => call.method === backendMethods.agentCreate)?.params).toMatchObject({ input: { name: null, folder: '/code/repo', backend: 'claude', sourceRepositoryName: 'repo', teamId: 'team-test' } });
+    expect(f.calls.find((call) => call.method === backendMethods.agentCreate)?.params).toMatchObject({ input: { name: null, folder: '/code/repo', sourceRepositoryName: 'repo', teamId: 'team-test', selection: { ...{ backend: 'claude' } } } });
   });
   it('makes the worktree from the default branch first, then opens the chat in it', async () => {
     const f = await fixture();
@@ -457,18 +457,18 @@ describe('mobile chat creation', () => {
   });
   it('offers only the engines the laptop has connected', async () => {
     const f = await fixture();
-    expect(await f.create({ backend: 'antigravity' }).catch((error: Error) => error.message)).toMatch(/not available/);
+    expect(await f.create({ selection: { backend: 'antigravity' } }).catch((error: Error) => error.message)).toMatch(/not available/);
   });
   it('changes the engine of a chat that has not started, through the same update the desktop uses', async () => {
     const f = await fixture();
     f.snapshot.agents[0]!.status = { type: 'idle' };
     await f.gateway.request('phone', 'agent.backend.set', { target: { hostId: f.gateway.hostId, locationId: 'local', teamId: 'team-test', agentId: 'existing', sessionId: null }, backend: 'claude' });
-    expect(f.calls.find((call) => call.method === backendMethods.agentUpdate)?.params).toMatchObject({ input: { id: 'existing', backend: 'claude' } });
+    expect(f.calls.find((call) => call.method === backendMethods.agentUpdate)?.params).toMatchObject({ input: { id: 'existing', selection: { ...{ backend: 'claude' } } } });
     expect(f.snapshot.agents[0]!.backend).toBe('claude');
   });
   it('starts a quick chat in the team and finds the agent it made', async () => {
     const f = await fixture();
     expect(await f.quickChat()).toStrictEqual({ state: 'success', agentId: 'quick-chat' });
-    expect(f.calls.find((call) => call.method === backendMethods.agentQuickChatCreate)?.params).toMatchObject({ input: { teamId: 'team-test', backend: 'claude' } });
+    expect(f.calls.find((call) => call.method === backendMethods.agentQuickChatCreate)?.params).toMatchObject({ input: { teamId: 'team-test', selection: { ...{ backend: 'claude' } } } });
   });
 });

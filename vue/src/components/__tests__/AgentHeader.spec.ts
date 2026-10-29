@@ -1,6 +1,8 @@
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
+import { reactive } from 'vue';
 import AgentHeader from '../AgentHeader.vue';
+import { conversationShareActiveByAgentIdKey } from '../conversation-share-state';
 import type { Agent, AgentGitStatus, BackendRuntimeStatus } from '@workspace/core/contracts';
 import '../../styles/base.css';
 // Menus open in a popper attached to the body.
@@ -32,6 +34,39 @@ function mountHeader(backendRuntime: BackendRuntimeStatus, isLoading = false, gi
 }
 
 describe('AgentHeader', () => {
+
+  it('moves Share from the actions menu to a separate button while sharing is active', async () => {
+    const sharing = reactive<Record<string, boolean>>({ [agent.id]: false });
+    const wrapper = mount(AgentHeader, {
+      props: { agent, shareAvailable: true, backendRuntime: { backend: 'codex', status: 'running' }, isLoading: false, sidebarCollapsed: false },
+      global: { provide: { [conversationShareActiveByAgentIdKey as symbol]: sharing } },
+      attachTo: document.body,
+    });
+    await wrapper.get('[aria-label="Agent actions"]').trigger('click');
+    await flushPromises();
+    expect(bodyAll('[role="menuitem"]').some(item => item.text() === 'Share')).toBe(true);
+    expect(wrapper.find('[aria-label="Share"]').exists()).toBe(false);
+    await wrapper.get('[aria-label="Agent actions"]').trigger('click');
+
+    sharing[agent.id] = true;
+    await flushPromises();
+    const share = wrapper.get('[aria-label="Share"]');
+    expect(wrapper.get('[aria-label="Agent actions"]').element.compareDocumentPosition(share.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await share.trigger('click');
+    expect(wrapper.emitted('share')).toStrictEqual([[]]);
+    await wrapper.get('[aria-label="Agent actions"]').trigger('click');
+    await flushPromises();
+    expect(bodyAll('[role="menuitem"]').some(item => item.text() === 'Share')).toBe(false);
+    await wrapper.get('[aria-label="Agent actions"]').trigger('click');
+
+    sharing[agent.id] = false;
+    await flushPromises();
+    expect(wrapper.find('[aria-label="Share"]').exists()).toBe(false);
+    await wrapper.get('[aria-label="Agent actions"]').trigger('click');
+    await flushPromises();
+    expect(bodyAll('[role="menuitem"]').some(item => item.text() === 'Share')).toBe(true);
+    wrapper.unmount();
+  });
 
   it('opens Git log for a restored Git workspace before volatile status has loaded', async () => {
     const wrapper = mount(AgentHeader, { props: {

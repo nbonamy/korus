@@ -96,6 +96,7 @@ describe('settings contracts', () => {
       worktreeDelegationStartingContext: 'handoff',
       worktreeDelegationInstructions: '',
       autoResumeAfterLimit: true,
+      autoResumeOnStartup: true,
       sessionCompressionWarningEnabled: true,
       repositoryIcons: {},
       guestDisplayName: '',
@@ -201,6 +202,7 @@ describe('settings contracts', () => {
       agentListCompact: false,
       cockpitAgentViewMode: 'teams',
       autoResumeAfterLimit: true,
+      autoResumeOnStartup: true,
       sessionCompressionWarningEnabled: true,
       useInteractivePlans: true,
       worktreeInitializationMode: 'automatic',
@@ -372,8 +374,8 @@ describe('settings contracts', () => {
         other: { model: 'ignored' },
       },
     }).providerModelDefaults).toStrictEqual({
-      codex: { model: 'gpt-x', reasoningEffort: 'high', serviceTier: null },
-      antigravity: { model: 'gemini-low', reasoningEffort: null, serviceTier: null },
+      codex: {backend: 'codex',  model: 'gpt-x', reasoningEffort: 'high', serviceTier: null },
+      antigravity: {backend: 'antigravity',  model: 'gemini-low', reasoningEffort: null, serviceTier: null },
     });
   });
 
@@ -386,7 +388,7 @@ describe('settings contracts', () => {
   it('retains review defaults across settings normalization without retaining invalid automatic authorization', () => {
     const codeReviewDefaults = { backend: 'claude', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3 }, providers: { codex: { model: 'codex-model', reasoningEffort: 'high' }, claude: { model: 'sonnet' } } };
     const normalized = normalizeGeneralSettings({ codeReviewDefaults });
-    expect(normalizeGeneralSettings(JSON.parse(JSON.stringify(normalized))).codeReviewDefaults).toStrictEqual(codeReviewDefaults);
+    expect(normalizeGeneralSettings(JSON.parse(JSON.stringify(normalized))).codeReviewDefaults).toStrictEqual({ ...codeReviewDefaults, providers: { codex: { backend: 'codex', model: 'codex-model', reasoningEffort: 'high', serviceTier: null }, claude: { backend: 'claude', model: 'sonnet', reasoningEffort: null, serviceTier: null } } });
     expect(normalizeGeneralSettings({ codeReviewDefaults: { ...codeReviewDefaults, automation: { enabled: 'yes', maxPriority: 'p2', maxRounds: 3 } } }).codeReviewDefaults).toBeUndefined();
   });
 });

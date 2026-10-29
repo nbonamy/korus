@@ -57,7 +57,7 @@ export function createComposerState(deps: {
     const id = deps.agentId(); const active = deps.session();
     if (!id || !active || !deps.agent()) return;
     const key = currentKey();
-    const { choice, save } = applyComposerChoice(models.value, choices[key] ?? currentChoice(), change);
+    const { choice, save } = applyComposerChoice(deps.agent()!.backend, models.value, choices[key] ?? currentChoice(), change);
     choices[key] = choice;
     if (save && active.selectModel) void active.selectModel(id, save).catch(() => {});
   }

@@ -1,9 +1,10 @@
-import type { Agent, AgentBackend, AppSnapshot, BackendConversationRef } from './contracts';
+import type { ExecutionSelection } from './contracts/execution';
+import { isExecutionSelection, readPersistedExecutionSelection } from './execution-selection';
+import type { Agent, AppSnapshot, BackendConversationRef } from './contracts';
 
 export type AgentHandoffInput = {
   operationId: string;
-  backend: AgentBackend;
-  model?: string;
+  selection: ExecutionSelection;
   instructions?: string;
 };
 
@@ -43,14 +44,21 @@ export function isAgentHandoff(value: unknown): value is AgentHandoff {
   const v = value as Record<string, unknown>;
   const ref = v.sourceRef as Record<string, unknown> | undefined;
   return typeof v.operationId === 'string' && v.operationId.length > 0 && v.operationId.length <= 128
-    && (v.backend === 'codex' || v.backend === 'claude' || v.backend === 'antigravity')
+    && isExecutionSelection(v.selection)
     && typeof v.sourceAgentId === 'string' && typeof v.sourceTitle === 'string'
     && ['preparing', 'closing', 'starting', 'complete', 'failed'].includes(String(v.phase))
     && (v.targetAgentId === undefined || typeof v.targetAgentId === 'string')
-    && (v.model === undefined || typeof v.model === 'string')
     && (v.instructions === undefined || (typeof v.instructions === 'string' && v.instructions.length <= 4000))
     && (v.note === undefined || (typeof v.note === 'string' && v.note.length <= handoffNoteLimit))
     && (v.error === undefined || typeof v.error === 'string')
     && Boolean(ref && !Array.isArray(ref) && ((ref.backend === 'codex' && typeof ref.threadId === 'string')
       || ((ref.backend === 'claude' || ref.backend === 'antigravity') && typeof ref.sessionId === 'string' && (typeof ref.folder === 'string' || ref.folder === null))));
+}
+
+export function readPersistedAgentHandoff(value: unknown): AgentHandoff | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const { backend: _backend, model: _model, ...record } = value as Record<string, unknown>;
+  const selection = readPersistedExecutionSelection(record.selection ?? value);
+  const migrated = { ...record, selection };
+  return isAgentHandoff(migrated) ? migrated : undefined;
 }

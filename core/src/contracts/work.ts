@@ -151,7 +151,7 @@ export type WorkItem = {
 export type AutomationTarget =
   | { kind: 'agent'; agentId: string }
   | { kind: 'quickChat'; agentId: string }
-  | { kind: 'newQuickChat'; teamId: string; backend: import('./shared').AgentBackend; model?: string; reasoningEffort?: string };
+  | { kind: 'newQuickChat'; teamId: string; selection: import('./execution').ExecutionSelectionOverrides & Pick<import('./execution').ExecutionSelection, 'backend'> };
 
 export type AutomationSchedule = { intervalMinutes: number } | { rrule: string; timeZone: string };
 

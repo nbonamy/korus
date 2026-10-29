@@ -164,7 +164,7 @@ describe('AppBackendServer', () => {
   it('duplicates into a chosen connected backend, preserving the checkout and isolating provider defaults', async () => {
     const snapshot = createTestSnapshot();
     snapshot.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
-    snapshot.general.providerModelDefaults = { claude: { model: 'target-model', reasoningEffort: null, serviceTier: null } };
+    snapshot.general.providerModelDefaults = { claude: {backend: 'claude',  model: 'target-model', reasoningEffort: null, serviceTier: null } };
     snapshot.agents = [{ id: 'source', teamId: 'team-test', name: 'Source', folder: '/code/repo-worktree', backend: 'codex', backendDefaults: { kind: 'codex', model: 'source-model' },
       backendSession: { kind: 'codex', threadId: 'source-thread' }, status: { type: 'working' }, createdAt: '', updatedAt: '', workspace: gitWorkspace('/code/repo', 'repo', 'feature/mobile') }];
     snapshot.teams[0]!.agentIds = ['source'];
@@ -174,7 +174,7 @@ describe('AppBackendServer', () => {
       providerSetup: { isChanging: () => false, list: () => [{ backend: 'claude', installed: true, homePath: '/claude' }] } as never,
     });
     try {
-      const reply = await server.handleMessage({ jsonrpc: '2.0', id: 'duplicate', method: backendMethods.agentDuplicate, params: { agentId: 'source', options: { backend: 'claude' } } });
+      const reply = await server.handleMessage({ jsonrpc: '2.0', id: 'duplicate', method: backendMethods.agentDuplicate, params: { agentId: 'source', options: { selection: { backend: 'claude' } } } });
       expect(reply).not.toHaveProperty('error');
       expect(handle).toHaveBeenCalledExactlyOnceWith('driver/provider/authentication', { backend: 'claude', action: 'check' });
       const duplicate = snapshot.agents.find(agent => agent.id !== 'source')!;
@@ -182,7 +182,7 @@ describe('AppBackendServer', () => {
       expect(duplicate.backendSession).toBeUndefined();
       expect(snapshot.agents[0]!.backendSession).toStrictEqual({ kind: 'codex', threadId: 'source-thread' });
       const count = snapshot.agents.length;
-      await expect(server.handleMessage({ jsonrpc: '2.0', id: 'unavailable', method: backendMethods.agentDuplicate, params: { agentId: 'source', options: { backend: 'antigravity' } } })).resolves.toMatchObject({ error: { message: expect.stringContaining('not connected') } });
+      await expect(server.handleMessage({ jsonrpc: '2.0', id: 'unavailable', method: backendMethods.agentDuplicate, params: { agentId: 'source', options: { selection: { backend: 'antigravity' } } } })).resolves.toMatchObject({ error: { message: expect.stringContaining('not connected') } });
       expect(snapshot.agents).toHaveLength(count);
     } finally { await server.close(); }
   });
@@ -210,7 +210,7 @@ describe('AppBackendServer', () => {
         jsonrpc: '2.0',
         id: 'create-agent',
         method: 'agent/create',
-        params: { input: { name: 'Dina', folder: tempDir, backend: 'codex', sourceRepositoryName: 'agent-workspace', teamId: 'team-test' } },
+        params: { input: { name: 'Dina', folder: tempDir, sourceRepositoryName: 'agent-workspace', teamId: 'team-test', selection: { ...{ backend: 'codex' } } } },
       })).resolves.toMatchObject({
         result: {
           activeAgentId: expect.stringContaining('agent-'),
@@ -233,12 +233,12 @@ describe('AppBackendServer', () => {
           agents: [{ id: agentId, name: 'Dina Backend', folder: tempDir }],
         },
       });
-      const modelSelection = { model: 'sol', reasoningEffort: 'high', serviceTier: null };
+      const selection = { backend: 'codex', model: 'sol', reasoningEffort: 'high', serviceTier: null };
       await expect(server.handleMessage({
         jsonrpc: '2.0',
         id: 'update-model-selection',
         method: 'agent/update',
-        params: { input: { id: agentId, modelSelection } },
+        params: { input: { id: agentId, selection } },
       })).resolves.toMatchObject({
         result: { agents: [{ id: agentId, backendDefaults: { kind: 'codex', model: 'sol', reasoningEffort: 'high', serviceTier: null, userSelectedModel: true } }] },
       });
@@ -795,7 +795,7 @@ describe('AppBackendServer', () => {
       enabled: true,
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
-      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-test', backend: 'codex' as const },
+      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-test', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
       schedule: { intervalMinutes: 60 },
       executionLog: [{

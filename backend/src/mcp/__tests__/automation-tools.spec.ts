@@ -64,15 +64,15 @@ it('creates durable UI-visible automations from a Quick Chat and makes retried c
   expect(result.isError).toBe(false);
   expect(result.structuredContent).toMatchObject({ success: true, automationId: expect.any(String), enabled: false });
   expect((await store.load()).automations).toEqual(snapshot.automations);
-  expect(snapshot.automations[0]).toMatchObject({ prompt: input.prompt, target: { kind: 'newQuickChat', teamId: 'team-app', backend: 'codex' } });
+  expect(snapshot.automations[0]).toMatchObject({ prompt: input.prompt, target: { kind: 'newQuickChat', teamId: 'team-app', selection: { backend: 'codex' } } });
   expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'snapshot.updated' }));
   expect((await call(input)).structuredContent).toEqual(result.structuredContent);
   expect(snapshot.automations).toHaveLength(1);
   expect((await call({ ...input, prompt: 'Something different' })).isError).toBe(true);
   expect((await call({ ...input, requestId: 'current', target: { kind: 'current' } })).isError).toBe(false);
   expect(snapshot.automations[1]?.target).toEqual({ kind: 'quickChat', agentId: 'agent-dina' });
-  expect((await call({ ...input, requestId: 'custom-model', enabled: undefined, model: 'chosen', reasoningEffort: 'high' })).isError).toBe(false);
-  expect(snapshot.automations[2]).toMatchObject({ enabled: true, target: { kind: 'newQuickChat', backend: 'codex', model: 'chosen', reasoningEffort: 'high' } });
+  expect((await call({ ...input, requestId: 'custom-model', enabled: undefined, selection: { model: 'chosen', reasoningEffort: 'high' } })).isError).toBe(false);
+  expect(snapshot.automations[2]).toMatchObject({ enabled: true, target: { kind: 'newQuickChat', selection: { backend: 'codex', model: 'chosen', reasoningEffort: 'high' } } });
   expect(snapshot.general).toEqual(settings);
 });
 
@@ -86,7 +86,7 @@ it('rejects invalid schedules, foreign targets, and model overrides on existing 
     { ...input, target: { kind: 'current' }, backend: 'claude' },
     { ...input, target: { kind: 'current' }, reasoningEffort: 'high' },
   ]) expect((await call(args)).isError).toBe(true);
-  expect(JSON.stringify(await call({ ...input, target: { kind: 'current' }, model: 'override' }))).toContain('Existing conversations retain their backend, model and effort');
+  expect(JSON.stringify(await call({ ...input, target: { kind: 'current' }, selection: { model: 'override' } }))).toContain('Existing conversations retain their backend, model and effort');
   expect(snapshot.automations).toEqual([]);
 });
 

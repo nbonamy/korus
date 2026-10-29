@@ -173,7 +173,11 @@ export class ClaudeRequestUsageObserver {
       (u.iterations.length > 1 ||
         u.iterations.some((iteration) => {
           const detail = record(iteration);
-          return detail.type !== "message" || text(detail.model) !== s.model;
+          // Ordinary wire iterations can omit model; the enclosing message owns it.
+          return (
+            detail.type !== "message" ||
+            (detail.model !== undefined && text(detail.model) !== s.model)
+          );
         }))
         ? "unsupported-request-iterations"
         : !tier
