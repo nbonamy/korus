@@ -252,7 +252,11 @@ const implementationOperation = computed<WorkspaceProvisioningOperation | null>(
 } : null);
 watch(implementationOperation, (operation) => publishProvisioningOperation('mission', operation), { immediate: true });
 onBeforeUnmount(() => publishProvisioningOperation('mission', null));
-const viewedStage = ref<MissionStage>(props.mission.stage);
+const viewedStageBinding = defineModel<MissionStage>('viewedStage');
+const viewedStage = computed({
+  get: () => viewedStageBinding.value ?? props.mission.stage,
+  set: (stage: MissionStage) => { viewedStageBinding.value = stage; },
+});
 const canonicalArtifact = ref('');
 let artifactRead = 0;
 const activeRun = computed(() => pendingMissionRun(props.mission));

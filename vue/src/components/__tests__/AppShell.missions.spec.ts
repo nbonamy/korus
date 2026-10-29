@@ -75,6 +75,63 @@ describe('AppShell missions', () => {
   });
   afterEach(() => window.localStorage.removeItem(missionStorageKey));
 
+  it('restores the Mission and viewed stage when returning from Settings through the team rail', async () => {
+    const snapshot = createInitialSnapshot();
+    const team = snapshot.teams[0]!;
+    const mission = createMission(snapshot, { outcome: 'Restore Mission context', workflowType: 'shapeAndShipFeature', teamId: team.id, orchestratorMemberId: snapshot.agents[0]!.id });
+    prepareMissionLead(mission, snapshot.agents[0]!.id);
+    mission.stage = 'implementation';
+    const wrapper = mountShell({ snapshot, realAgentSidebar: true });
+    try {
+      await wrapper.get('[data-group-kind="missions"] .agent-sidebar__agent').trigger('click');
+      await flushPromises();
+      const requirementsStage = () => wrapper.get('.mission-stage-rail__stages button');
+      await requirementsStage().trigger('click');
+      expect(requirementsStage().classes()).toContain('mission-stage-rail__stage--viewed');
+
+      await wrapper.get('.settings-menu').findAll('[role="menuitem"]').find(item => item.text().startsWith('Settings'))!.trigger('click');
+      await flushPromises();
+      expect(wrapper.find('.settings-view').exists()).toBe(true);
+      expect(wrapper.find('.mission-workspace').exists()).toBe(false);
+
+      await wrapper.get(`.team-rail [aria-label="${team.name}"]`).trigger('click');
+      await flushPromises();
+      expect(wrapper.find('.settings-view').exists()).toBe(false);
+      expect(wrapper.get('.mission-workspace h1').text()).toBe(mission.outcome);
+      expect(requirementsStage().classes()).toContain('mission-stage-rail__stage--viewed');
+      expect(wrapper.get('[data-group-kind="missions"] .agent-sidebar__agent').classes()).toContain('agent-sidebar__agent--active');
+      expect(wrapper.emitted('select-team')?.at(-1)).toStrictEqual([team.id]);
+    } finally { wrapper.unmount(); }
+  });
+
+  it.each(['another team', 'deleted Mission', 'explicit agent selection'] as const)('does not restore a Mission after Settings when navigating to %s', async destination => {
+    const snapshot = createInitialSnapshot();
+    const team = snapshot.teams[0]!;
+    const otherTeam = { id: 'other-team', name: 'Other team', agentIds: [] };
+    snapshot.teams.push(otherTeam);
+    const mission = createMission(snapshot, { outcome: 'Scoped Mission', workflowType: 'shapeAndShipFeature', teamId: team.id, orchestratorMemberId: snapshot.agents[0]!.id });
+    prepareMissionLead(mission, snapshot.agents[0]!.id);
+    const wrapper = mountShell({ snapshot, stubAgentWorkspace: true });
+    try {
+      wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', mission.id);
+      await flushPromises();
+      if (destination === 'explicit agent selection') {
+        wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('select-agent', snapshot.agents[0]!.id);
+        await flushPromises();
+      }
+      await wrapper.get('.settings-menu').findAll('[role="menuitem"]').find(item => item.text().startsWith('Settings'))!.trigger('click');
+      await flushPromises();
+      if (destination === 'deleted Mission') await wrapper.setProps({ snapshot: { ...snapshot, missions: [] } });
+      const targetTeam = destination === 'another team' ? otherTeam : team;
+      await wrapper.get(`.team-rail [aria-label="${targetTeam.name}"]`).trigger('click');
+      await wrapper.setProps({ snapshot: { ...snapshot, missions: destination === 'deleted Mission' ? [] : snapshot.missions, activeTeamId: targetTeam.id } });
+      await flushPromises();
+      expect(wrapper.find('.settings-view').exists()).toBe(false);
+      expect(wrapper.find('.mission-workspace').exists()).toBe(false);
+      expect(wrapper.find('.agent-workspace').exists()).toBe(true);
+    } finally { wrapper.unmount(); }
+  });
+
   it('opens the mission an agent asked to focus, even when the snapshot arrives first or later', async () => {
     const snapshot = createInitialSnapshot();
     const mission = createMission(snapshot, { outcome: 'CSV export', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
