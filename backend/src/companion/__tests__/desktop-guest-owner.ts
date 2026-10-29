@@ -45,7 +45,7 @@ function reset(): CompanionReset { return { type: 'codex.conversationSnapshotCha
 function emit(event: AppBackendEvent) { source.observe(event); for (const listener of listeners) listener(event); }
 const source = new ConversationSource(async () => { emit(reset()); });
 shareChanged = (agentId, state) => emit({ type: 'conversation.shareChanged', agentId, payload: state, seq: revision, occurredAt: '2026-01-01T00:00:00Z' });
-const gateway = new GuestConversationGateway({ propose: (handle, peer, name, input) => shares.propose(handle, peer, name, input), proposals: (handle, peer) => shares.guestState(handle, peer), withdraw: (handle, peer, proposalId) => shares.withdraw(handle, peer, proposalId), authorize: (handle, credential) => shares.authorize(handle, credential), connected: (handle, count) => shares.connected(handle, count),
+const gateway = new GuestConversationGateway({ propose: (handle, peer, name, input) => shares.propose(handle, peer, name, input), proposals: (handle, peer) => shares.guestState(handle, peer), withdraw: (handle, peer, proposalId) => shares.withdraw(handle, peer, proposalId), authorize: (handle, credential) => shares.authorize(handle, credential), connected: (handle, count, guests) => shares.connected(handle, count, guests),
   onEvent: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; }, synchronize: (agent, checkpoint) => source.synchronize(agent, checkpoint), conversation: agent => source.read(agent),
   loadOlderHistory: async () => ({ hasOlder: false }), readConversationContent: async () => { throw new Error('denied'); }, readImage: async () => { throw new Error('denied'); },
 });

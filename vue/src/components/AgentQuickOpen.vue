@@ -11,10 +11,11 @@
     <template #item="{ item }">
       <span
         class="agent-quick-open__unread"
-        :class="{ 'agent-quick-open__unread--visible': unreadAgentIdSet.has(item.id) }"
+        :class="{ 'agent-quick-open__unread--visible': unreadItemIds.has(item.id) }"
         aria-hidden="true"
       />
-      <AgentQuickOpenIcon
+      <TargetArrowIcon v-if="missionByItemId.has(item.id)" class="agent-quick-open__mission-icon" aria-hidden="true" />
+      <AgentQuickOpenIcon v-else
         :agent="agentById.get(item.id)"
         :name="item.label"
         :repository-icons="repositoryIcons ?? {}"
@@ -37,14 +38,18 @@
 
 <script setup lang="ts">
 import type { Agent, Team } from '@workspace/core/contracts';
+import type { Mission } from '@workspace/core/missions';
+import { missionAgentIds } from '@workspace/core/mission-attention';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import QuickOpenDialog, { type QuickOpenItem } from '../shared/QuickOpenDialog.vue';
 import AgentQuickOpenIcon from './AgentQuickOpenIcon.vue';
+import { TargetArrowIcon } from '../shared/icons/app-icons';
 
 const props = defineProps<{
   agents: Agent[];
+  missions?: Mission[];
   teams: Team[];
   unreadAgentIds: string[];
   repositoryIcons?: Record<string, string>;
@@ -52,9 +57,15 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
   select: [payload: { agentId: string; teamId: string }];
+  'select-mission': [missionId: string];
 }>();
 const { t } = useI18n();
 const unreadAgentIdSet = computed(() => new Set(props.unreadAgentIds));
+const missionByItemId = computed(() => new Map((props.missions ?? []).map(mission => [`mission:${mission.id}`, mission])));
+const unreadItemIds = computed(() => new Set([
+  ...props.unreadAgentIds,
+  ...[...missionByItemId.value].filter(([, mission]) => missionAgentIds(mission).some(id => unreadAgentIdSet.value.has(id))).map(([id]) => id),
+]));
 const agentById = computed(() => new Map(props.agents.map((agent) => [agent.id, agent])));
 const repositoryByAgentId = computed(() => new Map(props.agents.flatMap((agent) => (
   agent.workspace?.kind === 'git'
@@ -68,7 +79,7 @@ const teamByAgentId = computed(() => {
   }
   return result;
 });
-const items = computed<QuickOpenItem[]>(() => props.agents
+const items = computed<QuickOpenItem[]>(() => [...props.agents
   .map((agent, index) => {
     const team = agent.teamId
       ? props.teams.find((candidate) => candidate.id === agent.teamId) ?? teamByAgentId.value.get(agent.id)
@@ -84,7 +95,19 @@ const items = computed<QuickOpenItem[]>(() => props.agents
       lastActivityAt: Date.parse(agent.lastActivityAt ?? agent.updatedAt),
       index,
     };
-  })
+  }), ...(props.missions ?? []).map((mission, index) => {
+    const teamName = props.teams.find(team => team.id === mission.teamId)?.name ?? t('surface.agentQuickOpen.noTeam');
+    const id = `mission:${mission.id}`;
+    return {
+      id,
+      label: mission.outcome,
+      detail: teamName,
+      searchText: `${mission.outcome} ${teamName} ${t('missions.title')}`,
+      unread: unreadItemIds.value.has(id),
+      lastActivityAt: Date.parse(mission.updatedAt),
+      index: props.agents.length + index,
+    };
+  })]
   .sort((left, right) => (
     Number(right.unread) - Number(left.unread)
     || (Number.isFinite(right.lastActivityAt) && Number.isFinite(left.lastActivityAt)
@@ -94,6 +117,11 @@ const items = computed<QuickOpenItem[]>(() => props.agents
   )));
 
 function select(agentId: string): void {
+  const mission = missionByItemId.value.get(agentId);
+  if (mission) {
+    emit('select-mission', mission.id);
+    return;
+  }
   const agent = agentById.value.get(agentId);
   const team = agent?.teamId
     ? props.teams.find((candidate) => candidate.id === agent.teamId) ?? teamByAgentId.value.get(agentId)
@@ -120,6 +148,12 @@ function select(agentId: string): void {
 
 .agent-quick-open__unread--visible {
   background: var(--color-primary);
+}
+
+.agent-quick-open__mission-icon {
+  width: var(--space-8);
+  height: var(--space-8);
+  color: var(--color-primary);
 }
 
 .agent-quick-open__copy {

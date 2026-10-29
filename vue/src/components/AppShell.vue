@@ -601,11 +601,13 @@
     <AgentQuickOpen
       v-if="agentQuickOpenVisible"
       :agents="snapshot.agents.filter(agent => !missionOwnedAgentIds.has(agent.id))"
+      :missions="snapshot.missions ?? []"
       :repository-icons="snapshot.general.repositoryIcons"
       :teams="snapshot.teams"
       :unread-agent-ids="unreadAgentIds ?? []"
       @close="agentQuickOpenVisible = false"
       @select="selectAgentFromPalette"
+      @select-mission="selectMissionFromPalette"
     />
     <ConversationShareDialog v-if="shareTarget" :key="JSON.stringify(shareTarget)" :target="shareTarget" :control="shareControl" @close="shareTarget = null" />
   </main>
@@ -1482,12 +1484,12 @@ watch([selectedMission, activeTeam], ([mission, team], [previousMission]) => {
 // The Mission may reach the renderer a moment after the request, so keep the request until it is known.
 const pendingMissionFocusId = ref<string | null>(null);
 watch(() => props.missionFocusRequest, request => { pendingMissionFocusId.value = request?.missionId ?? null; });
-watch([pendingMissionFocusId, () => props.snapshot.missions], () => {
+watch([pendingMissionFocusId, () => props.snapshot.missions, activeTeam], () => {
   const missionId = pendingMissionFocusId.value;
   const mission = missionId ? props.snapshot.missions?.find(candidate => candidate.id === missionId) : undefined;
-  if (!mission) return;
+  if (!mission || (!cockpitScope.value && mission.teamId !== activeTeam.value?.id)) return;
   pendingMissionFocusId.value = null;
-  if (mission.teamId === activeTeam.value?.id) selectMissionSurface(mission.id);
+  selectMissionSurface(mission.id);
 });
 watch(() => props.connectionState.status, (status) => {
   if (status !== 'connected' || !pendingMissionRestoreId) return;
@@ -3117,11 +3119,23 @@ function selectAgentFromBacklog(payload: { agentId: string; teamId: string }): v
 }
 
 function selectAgentFromPalette(payload: { agentId: string; teamId: string }): void {
+  pendingMissionFocusId.value = null;
   activeSurface.value = 'agent';
   pendingComposerFocusAgentId.value = payload.agentId;
   if (payload.teamId === activeTeam.value?.id) split.select(payload.agentId);
   if (payload.teamId !== activeTeam.value?.id) emit('select-team', payload.teamId);
   emit('select-agent', payload.agentId);
+}
+
+function selectMissionFromPalette(missionId: string): void {
+  const mission = props.snapshot.missions?.find(candidate => candidate.id === missionId);
+  if (!mission) return;
+  if (!cockpitScope.value && mission.teamId !== activeTeam.value?.id) {
+    pendingMissionFocusId.value = mission.id;
+    emit('select-team', mission.teamId);
+    return;
+  }
+  void selectMission(mission.id);
 }
 
 function openResumeSession(agentId: string): void {

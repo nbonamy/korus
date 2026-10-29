@@ -1,5 +1,6 @@
 import { resolveHandoffAgentId } from './agents/delegation-lineage';
 import type { DelegatedTask, WaitTasksInput, WaitTasksResult } from '@workspace/core/delegated-task';
+import { RunProfileService } from './run-profile-service';
 import { applyExecutionSelection, defaultExecutionSelection, executionSelectionForAgent, resolveExecutionSelection } from '@workspace/core/execution-selection';
 import type { ExecutionSelection, ExecutionSelectionOverrides } from '@workspace/core/contracts/execution';
 import { executionSelectionSchema, executionSelectionOverridesSchema } from './execution-selection-schema';
@@ -121,6 +122,7 @@ export type AppBackendServerOptions = {
     callTool(agentId: string, name: string, args: Record<string, unknown>): Promise<CallToolResult>;
   };
   requestCollaborationController?: (input: RemoteCollaborationCall) => Promise<unknown>;
+  runProfiles?: RunProfileService;
   browserExtensionPackages?: BrowserExtensionPackages;
   requirements?: Requirements;
   usage?:UsageService;
@@ -516,8 +518,8 @@ export class AppBackendServer {
     if (!this.conversationShares) return Promise.reject(new Error('denied'));
     return this.conversationShares.authorize(handle, credential);
   }
-  conversationGuestCount(handle: string, count: number) { this.conversationShares?.connected(handle, count); }
-  proposeConversationGuest(handle: string, identity: string, name: string, input: { id: string; text: string }) {
+  conversationGuestCount(handle: string, count: number, guests?: import('@workspace/core/guest-conversation').GuestParticipant[]) { this.conversationShares?.connected(handle, count, guests); }
+  proposeConversationGuest(handle: string, identity: string, name: string, input: import('@workspace/core/conversation-sharing').GuestPromptInput) {
     if (!this.conversationShares) return Promise.reject(new Error('denied'));
     return this.conversationShares.propose(handle, identity, name, input);
   }
@@ -571,6 +573,7 @@ export class AppBackendServer {
   private readonly inspectPluginStatus: () => Promise<AppPluginStatus>;
   private readonly agentRequests: AgentRequestRegistry;
   private readonly remoteTeams: RemoteTeamService;
+  private readonly runProfiles: RunProfileService;
   private readonly documents: DocumentWorkspaceService;
   private unsubscribeUsage?:()=>void;
   private unsubscribeRequestUsage?: () => void;
@@ -608,14 +611,25 @@ export class AppBackendServer {
 
   constructor(private readonly options: AppBackendServerOptions) {
     if (options.conversationSharing) this.conversationShares = new ConversationShares({ ...options.conversationSharing,
-      canSubmit: target => {
+      canSubmit: (target, context) => {
         const agent = this.snapshot.agents.find(agent => agent.id === target.agentId);
-        return Boolean(agent && this.agentPrompts?.canStart(agent) && !(this.snapshot.queuedPrompts ?? []).some(prompt => prompt.agentId === agent.id));
+        const steer = context.followUpBehavior === 'steer';
+        if (!agent || handoffInProgress(agent)) return false;
+        if (steer && agent.status.type === 'working' && this.backendDriverForAgent(agent).getCapabilities(agent).steerPrompt) return true;
+        return Boolean(this.agentPrompts?.canStart(agent) && !(this.snapshot.queuedPrompts ?? []).some(prompt => prompt.agentId === agent.id));
       },
-      submit: options.conversationSharing.submit ?? (async (target, text) => {
+      submit: options.conversationSharing.submit ?? (async (target, text, context) => {
         const agent = this.snapshot.agents.find(agent => agent.id === target.agentId);
         if (!agent || agent.sharedConversation) throw new Error('Conversation unavailable.');
-        return this.agentPrompts.sendWithReceipt(agent, text, undefined, companionSessionId(agent), 'guest:approved');
+        if (context.followUpBehavior === 'steer' && !this.agentPrompts.canStart(agent)) {
+          const result = await this.withPromptSource(agent, 'guest:approved', () => this.handleAgentDriverRequest(agent, backendMethods.driverPromptSteer, { agent, prompt: text, expectedSessionId: companionSessionId(agent), plainText: true })) as BackendSendResult;
+          this.clearTurnSuggestionsForNewPrompt(agent);
+          await this.persistSnapshotOnly();
+          return { turnId: result.turnId, messageId: result.messageId };
+        }
+        const result = await this.agentPrompts.sendWithReceipt(agent, text, undefined, companionSessionId(agent), 'guest:approved');
+        this.clearTurnSuggestionsForNewPrompt(agent);
+        return result;
       }),
     }, () => this.snapshot, (agentId, state) => {
       this.onEvent?.({ seq: this.nextEventSeq(), type: 'conversation.shareChanged', agentId, payload: state, occurredAt: new Date().toISOString() });
@@ -865,6 +879,7 @@ export class AppBackendServer {
       onForwardedEvent: (connectionId, event) => this.forwardRemoteBackendEvent(connectionId, event),
       onProjectedSnapshotChanged: () => { void this.emitProjectedSnapshot(); },
     });
+    this.runProfiles = options.runProfiles ?? new RunProfileService(path.join(backendHomeDir(), "run-profiles.json"), this.agentGitService, (id, folder) => this.snapshot.agents.some(agent => agent.id === id && agent.folder === folder));
     this.documents = options.documents ?? new DocumentWorkspaceService(path.join(backendHomeDir(), "document-workspaces.json"));
     this.clientPreferences = new ClientPreferencesService({
       snapshot: () => this.remoteTeams.clientSnapshot(),
@@ -1114,6 +1129,10 @@ export class AppBackendServer {
     return this.missionExecution.developerInstructionsForAgent(agentId);
   }
 
+  async reopenMissionStage(agentId: string, stage: import('@workspace/core/missions').MissionStage) {
+    return this.missionExecution.reopenStage(agentId, stage);
+  }
+
   async setMissionTitle(agentId: string, title: string) {
     return this.missionExecution.setTitle(agentId, title);
   }
@@ -1294,7 +1313,8 @@ export class AppBackendServer {
     if (message.method === backendMethods.conversationShareControl) {
       try {
         if (!this.conversationShares) throw new Error('Conversation sharing is unavailable.');
-        return createAppRpcResult(message.id, await this.conversationShares.control(requireRecord(message.params).input as import('@workspace/core/conversation-sharing').ConversationShareControl));
+        const params = requireRecord(message.params);
+        return createAppRpcResult(message.id, await this.conversationShares.control(params.input as import('@workspace/core/conversation-sharing').ConversationShareControl));
       } catch (error) { return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, error instanceof Error ? error.message : 'Share operation failed.'); }
     }
     const sharedParams = message.params && typeof message.params === 'object' ? message.params as { agentId?: unknown; sourceAgentId?: unknown; input?: { id?: unknown; agentId?: unknown } } : undefined;
@@ -1432,9 +1452,11 @@ export class AppBackendServer {
             { agentId: created.id, application: source.openInApplication });
         }
         const shouldSelect = !isRecord(params?.options) || params.options.select !== false;
-        if (created && shouldSelect) return { ...response, result: commandResult(await preferences.update(clientId,
+        const afterAgentId = (message.method === backendMethods.agentDuplicate || message.method === backendMethods.agentFork)
+          && typeof params?.agentId === 'string' ? params.agentId : undefined;
+        if (created && (shouldSelect || afterAgentId)) return { ...response, result: commandResult(await preferences.update(clientId,
           createsAgent ? backendMethods.clientNavigationSelectAgent : backendMethods.clientNavigationSelectTeam,
-          createsAgent ? { agentId: created.id } : { teamId: created.id })) };
+          createsAgent ? { agentId: created.id } : { teamId: created.id }, { afterAgentId, select: shouldSelect })) };
       }
       if (isAppSnapshot(response.result) && reviewTargetAgentId && response.result.agents.some((agent) => agent.id === reviewTargetAgentId)) {
         return { ...response, result: await preferences.update(clientId, backendMethods.clientNavigationSelectAgent, { agentId: reviewTargetAgentId }) };
@@ -1839,6 +1861,7 @@ export class AppBackendServer {
       case backendMethods.connectionsDelete: {
         const connectionId = requireConnectionId(message.params);
         this.requireNoRemoteCreation(undefined, connectionId);
+        for (const team of this.snapshot.teams) await this.stopRemoteTeamProfiles(team, connectionId);
         await this.remoteClients.closeConnection(connectionId);
         this.remoteTeams.forgetConnection(connectionId);
         this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.filter((candidate) => candidate.id !== connectionId);
@@ -2188,6 +2211,7 @@ export class AppBackendServer {
                 ...(finishedPullRequest ? [finishedPullRequest] : []),
               );
             }
+            await this.runProfiles.stopAgent(agentId);
             if (existingAgent.backendSession) {
               await this.retireConversation(existingAgent);
               await this.driverRpc?.handle(backendMethods.driverConversationRelease, {
@@ -2231,6 +2255,7 @@ export class AppBackendServer {
             this.codeReviews?.closeForAgentRemoval(existingAgent);
             const agent = closeAgentInSnapshot(this.snapshot, agentId);
             this.agentRequests.clearAgent(agentId);
+            await this.runProfiles.releaseAgent(agentId);
             if (!agent) {
               throw new Error(`Agent not found: ${agentId}`);
             }
@@ -2244,6 +2269,27 @@ export class AppBackendServer {
         const params = requireRecord(message.params);
         const agentId = requireString(params.agentId, 'agentId');
         return this.routeAgentResultRequest(message.id, agentId, message.method, params, agent => saveMarkdownFile(agentFolder(agent), requireString(params.filePath, 'filePath'), requireString(params.content, 'content'), params.overwrite === true, backendHomeDir()));
+      }
+      case backendMethods.agentRunProfilesGet:
+      case backendMethods.agentRunProfileActionsGet:
+      case backendMethods.agentRunProfileSave:
+      case backendMethods.agentRunProfileDelete:
+      case backendMethods.agentRunProfileStart:
+      case backendMethods.agentProfileRunStop:
+      case backendMethods.agentProfileRunsStop: {
+        const params = requireRecord(message.params);
+        const agentId = requireString(params.agentId, 'agentId');
+        return this.routeAgentResultRequest(message.id, agentId, message.method, params, async agent => {
+          const folder = requireAgentFolder(agent);
+          if (message.method === backendMethods.agentRunProfilesGet) return this.runProfiles.get(agentId, folder);
+          if (message.method === backendMethods.agentRunProfileActionsGet) return this.runProfiles.discover(folder, requireString(params.directory, 'directory'));
+          if (message.method === backendMethods.agentRunProfileSave) return this.runProfiles.save(agentId, folder, requireRecord(params.input) as import('@workspace/core/run-profiles').RunProfileInput);
+          if (message.method === backendMethods.agentRunProfileDelete) return this.runProfiles.delete(agentId, folder, requireString(params.profileId, 'profileId'));
+          if (message.method === backendMethods.agentProfileRunStop) return this.runProfiles.stop(agentId, requireString(params.runId, 'runId'));
+          if (message.method === backendMethods.agentProfileRunsStop) return this.runProfiles.stopAgent(agentId);
+          const input = requireRecord(params.input);
+          return this.runProfiles.start(agentId, folder, { profileId: requireString(input.profileId, 'profileId'), command: requireString(input.command, 'command'), cwd: requireString(input.cwd, 'cwd') });
+        });
       }
       case backendMethods.agentFilesList: {
         const agentId = requireAgentId(message.params);
@@ -3056,6 +3102,10 @@ export class AppBackendServer {
             throw new Error(`Team deletion stopped after removing ${deletedMissions} of ${missions.length} Missions. The team remains; retry deletion to finish cleanup. ${reason}`, { cause: error });
           }
         }
+        for (const agentId of existingTeam?.agentIds ?? []) {
+          const response = await this.routeAgentResultRequest(message.id, agentId, backendMethods.agentProfileRunsStop, { agentId }, () => this.runProfiles.releaseAgent(agentId));
+          if ('error' in response) return response;
+        }
         const team = closeTeamInSnapshot(this.snapshot, teamId);
         if (!team) {
           return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Team not found: ${teamId}`);
@@ -3667,13 +3717,25 @@ export class AppBackendServer {
     }
   }
 
+  private async stopRemoteTeamProfiles(team: Team, connectionId: string): Promise<void> {
+    for (const link of this.remoteTeams.linksForTeam(team).filter(link => link.connectionId === connectionId)) {
+      // Profile execution hydrates the owner snapshot. Never invent local remote agents.
+      const known = this.remoteTeams.knownSnapshot(link.connectionId);
+      const owner = known?.teams.find(candidate => candidate.id === link.remoteTeamId);
+      for (const agentId of owner?.agentIds ?? []) {
+        await this.remoteTeams.request(link.connectionId, backendMethods.agentProfileRunsStop, { agentId });
+      }
+    }
+  }
+
   async close(): Promise<void> {
     this.closing = true;
-    this.conversationShares?.close();
+    await this.conversationShares?.close();
     await this.options.guestJoins?.close();
     this.autoResume.close();
     this.unsubscribeUsage?.();
     this.unsubscribeRequestUsage?.();
+    await this.runProfiles.close();
     await this.options.providerUpdates?.close();
     this.providerConnections?.close();
     this.agentWorkspaces.close();
@@ -3894,6 +3956,8 @@ export class AppBackendServer {
 
   private async persistAndEmitSnapshot(): Promise<AppSnapshot> {
     this.reconcileShares();
+    // Background worktree cleanup can temporarily hide an agent, then restore it on failure.
+    if (this.runProfiles.hasRuns) await this.runProfiles.retainAgents(new Set([...this.snapshot.agents.map(agent => agent.id), ...this.agentClosuresInFlight]));
     await this.saveSnapshot?.(this.snapshot);
     const snapshot = await this.remoteTeams.clientSnapshot();
     this.emitSnapshotUpdated(snapshot);
@@ -3902,6 +3966,7 @@ export class AppBackendServer {
 
   private async persistSnapshotOnly(): Promise<AppSnapshot> {
     this.reconcileShares();
+    if (this.runProfiles.hasRuns) await this.runProfiles.retainAgents(new Set([...this.snapshot.agents.map(agent => agent.id), ...this.agentClosuresInFlight]));
     await this.saveSnapshot?.(this.snapshot);
     return this.snapshot;
   }

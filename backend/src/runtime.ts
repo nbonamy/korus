@@ -165,6 +165,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
       contextForAgent: agentId => server.missionContext(agentId),
       submitResult: (agentId, input) => server.submitMissionResult(agentId, input),
       upsertTicket: (agentId, input) => server.upsertMissionTicket(agentId, input),
+      reopenStage: (agentId, stage) => server.reopenMissionStage(agentId, stage),
       setTitle: (agentId, title) => server.setMissionTitle(agentId, title),
       attachRepository: (agentId, repoPath) => server.attachMissionRepository(agentId, repoPath),
       listArtifacts: agentId => server.listMissionArtifacts(agentId),
@@ -317,7 +318,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     proposeGuest: (handle, identity, name, input) => server.proposeConversationGuest(handle, identity, name, input),
     guestProposals: (handle, identity) => server.conversationGuestProposals(handle, identity),
     withdrawGuest: (handle, identity, proposalId) => server.withdrawConversationGuest(handle, identity, proposalId),
-    guestCount: (handle, count) => server.conversationGuestCount(handle, count),
+    guestCount: (handle, count, guests) => server.conversationGuestCount(handle, count, guests),
     desktopFocused: async () => (await options.requestClient<{ focused: boolean }>(backendMethods.clientFocusGet, {})).focused === true,
     onAccessChanged: (enabled) => server.setCompanionAccessEnabled(enabled),
     async request<Result>(method: string, params?: unknown): Promise<Result> {

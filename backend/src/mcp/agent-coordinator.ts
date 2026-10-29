@@ -140,6 +140,7 @@ export type MissionToolPort = {
   contextForAgent(agentId: string): MissionToolContext | undefined;
   submitResult(agentId: string, input: MissionResultInput): Promise<{ success: true; status: 'awaitingReview' | 'accepted' }>;
   upsertTicket(agentId: string, input: MissionTicketDraftInput): Promise<MissionTicketDraftResult>;
+  reopenStage?(agentId: string, stage: MissionStage): Promise<{ success: true; stage: MissionStage }>;
   setTitle(agentId: string, title: string): Promise<{ success: true; title: string }>;
   attachRepository(agentId: string, repoPath: string): Promise<{ success: true; repoPath: string }>;
   listArtifacts(agentId: string): Array<{ stage: MissionStage } & MissionArtifactFile>;
@@ -410,6 +411,12 @@ export class AppMcpAgentCoordinator {
   missionContext(agentId: string): MissionToolContext | undefined {
     this.requireAgent(agentId);
     return this.missionTools?.contextForAgent(agentId);
+  }
+
+  async reopenMissionStage(agentId: string, stage: MissionStage) {
+    this.requireAgent(agentId);
+    if (!this.missionTools?.reopenStage) throw new McpToolError('Mission stage backtracking is unavailable.');
+    return this.missionTools.reopenStage(agentId, stage);
   }
 
   async setMissionTitle(agentId: string, title: string) {

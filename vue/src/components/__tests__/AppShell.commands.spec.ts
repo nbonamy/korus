@@ -532,25 +532,42 @@ describe('AppShell dialogs and commands', () => {
     expect(wrapper.findComponent({ name: 'AgentQuickOpen' }).exists()).toBe(false);
   });
 
-  it('excludes Mission agents from Command-K while keeping ordinary conversations searchable', async () => {
+  it.each(['cockpit', 'team'] as const)('opens one Command-K Mission entry with its remembered conversation from %s', async scope => {
     const snapshot = createInitialSnapshot();
     const regular = snapshot.agents[0]!;
-    const lead = { ...regular, id: 'mission-lead', name: 'Mission lead' };
-    const worker = { ...regular, id: 'mission-worker', name: 'Mission worker' };
+    const lead = { ...regular, id: 'mission-lead', name: 'Mission lead', teamId: 'mission-team' };
+    const worker = { ...regular, id: 'mission-worker', name: 'Mission worker', teamId: 'mission-team' };
     snapshot.agents.push(lead, worker);
-    snapshot.teams[0]!.agentIds.push(lead.id, worker.id);
-    const mission = createMission(snapshot, { outcome: 'Deliver', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: regular.id });
+    snapshot.teams.push({ id: 'mission-team', name: 'Mission team', agentIds: [lead.id, worker.id] });
+    const mission = createMission(snapshot, { outcome: 'Deliver', workflowType: 'shapeAndShipFeature', teamId: lead.teamId, orchestratorMemberId: lead.id });
     mission.stageAgentIds.requirements = lead.id;
+    mission.stage = 'implementation';
+    mission.execution!.runs.push({ id: 'lead-run', stage: 'requirements', memberId: lead.id, workerId: lead.id, status: 'accepted', skills: [], feedback: '', startedAt: '' });
     mission.execution!.runs.push({ id: 'run', stage: 'implementation', memberId: regular.id, workerId: worker.id, status: 'running', skills: [], feedback: '', startedAt: '' });
+    window.localStorage.setItem(`app.missionConversation.${mission.id}`, scope === 'cockpit' ? worker.id : 'missing-worker');
     const wrapper = mountShell({ snapshot });
     try {
-      await wrapper.get('[aria-label="Cockpit"]').trigger('click');
+      if (scope === 'cockpit') await wrapper.get('[aria-label="Cockpit"]').trigger('click');
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, cancelable: true }));
       await nextTick();
       const palette = wrapper.getComponent({ name: 'AgentQuickOpen' });
       expect(palette.text()).toContain(regular.name);
       await palette.get('input').setValue('Mission');
-      expect(palette.findAll('.quick-open-dialog__item')).toHaveLength(0);
+      expect(palette.findAll('.quick-open-dialog__item')).toHaveLength(1);
+      expect(palette.get('.agent-quick-open__copy strong').text()).toBe('Deliver');
+      expect(palette.find('.tabler-icon-target-arrow').exists()).toBe(true);
+      expect(palette.text()).not.toContain(lead.name);
+      expect(palette.text()).not.toContain(worker.name);
+      await palette.get('input').trigger('keydown.enter');
+      await flushPromises();
+      expect(wrapper.findComponent({ name: 'AgentQuickOpen' }).exists()).toBe(false);
+      expect(wrapper.emitted('select-team')?.at(-1)).toStrictEqual(['mission-team']);
+      if (scope === 'team') {
+        await wrapper.setProps({ snapshot: { ...snapshot, activeTeamId: 'mission-team' } });
+        await flushPromises();
+      }
+      expect(wrapper.get('.mission-workspace h1').text()).toBe('Deliver');
+      expect(wrapper.emitted('select-agent')?.at(-1)).toStrictEqual([scope === 'cockpit' ? worker.id : lead.id]);
     } finally { wrapper.unmount(); }
   });
 

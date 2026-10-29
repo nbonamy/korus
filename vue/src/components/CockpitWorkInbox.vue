@@ -156,14 +156,14 @@
             <span class="cockpit-inbox__elapsed">{{ elapsed(row.activityAt) }}</span>
 
             <div class="cockpit-inbox__row-actions">
-              <el-tooltip :content="row.assignment ? $t('surface.cockpitWorkInbox.viewAgent') : $t('backlogSource.viewItem', { identifier: workItemDisplayIdentifier(row.item) })" placement="top" :show-after="300">
+              <el-tooltip :content="$t('backlogSource.viewItem', { identifier: workItemDisplayIdentifier(row.item) })" placement="top" :show-after="300">
                 <button
                   class="cockpit-inbox__row-action"
                   type="button"
-                  :aria-label="row.assignment ? $t('backlogSource.viewAgent', { identifier: workItemDisplayIdentifier(row.item) }) : $t('backlogSource.viewItem', { identifier: workItemDisplayIdentifier(row.item) })"
+                  :aria-label="$t('backlogSource.viewItem', { identifier: workItemDisplayIdentifier(row.item) })"
                   @click.stop="viewRow(row)"
                 >
-                  <EyeIcon aria-hidden="true" />
+                  <FileTextIcon aria-hidden="true" />
                 </button>
               </el-tooltip>
               <el-tooltip v-if="!row.assignment" :content="startItemLabel(row.item)" placement="top" :show-after="300">
@@ -286,7 +286,7 @@ import type { Agent, RemoteConnection, Team, WorkBacklogAssignment, WorkIntegrat
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
 import { repositoryIconForAgent } from '@workspace/core/workspace-sidebar';
-import { DotsVerticalIcon, ExternalLinkIcon, EyeIcon, GitBranchIcon, PlayerPlayIcon, PlusCircleIcon, RefreshIcon } from '../shared/icons/app-icons';
+import { DotsVerticalIcon, ExternalLinkIcon, FileTextIcon, GitBranchIcon, PlayerPlayIcon, PlusCircleIcon, RefreshIcon } from '../shared/icons/app-icons';
 import WorkItemDetail from './WorkItemDetail.vue';
 import AgentAvatar from './AgentAvatar.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
@@ -636,8 +636,7 @@ function selectRow(row: InboxRow): void {
   else toggleSelection(row);
 }
 function viewRow(row: InboxRow): void {
-  if (row.agent) emit('select-assigned-agent', row.agent.id);
-  else detailItem.value = row.item;
+  detailItem.value = row.item;
 }
 function openSource(item: WorkItem): void { window.open(item.url, '_blank', 'noreferrer'); }
 function normalized(value: unknown): string | null { return typeof value === 'string' && value ? value : null; }

@@ -199,17 +199,20 @@ describe('CockpitWorkInbox', () => {
     const rows = wrapper.findAll('.cockpit-inbox__row');
     const open = vi.spyOn(window, 'open').mockImplementation(() => null);
 
-    expect(rows[0]?.get('.cockpit-inbox__row-action').attributes('aria-label')).toBe('View agent for #21');
+    expect(rows[0]?.get('.cockpit-inbox__row-action').attributes('aria-label')).toBe('View #21');
+    expect(rows[0]?.get('.cockpit-inbox__row-action').find('.tabler-icon-file-text').exists()).toBe(true);
     expect(rows[1]?.get('.cockpit-inbox__row-action').attributes('aria-label')).toBe('View #22');
     expect(wrapper.find('details').exists()).toBe(false);
 
     await rows[0]?.get('.cockpit-inbox__row-action').trigger('click');
+    expect(wrapper.get('.work-item-detail').text()).toContain('Assigned work');
+    expect(wrapper.emitted('select-assigned-agent')).toBeUndefined();
     await rows[1]?.get('.cockpit-inbox__row-action').trigger('click');
     await rows[0]?.get('[aria-label="More actions for #21"]').trigger('click');
     document.body.querySelector<HTMLButtonElement>('.app-menu__item')!.click();
     await flushPromises();
 
-    expect(wrapper.emitted('select-assigned-agent')).toStrictEqual([['agent-one']]);
+    expect(wrapper.emitted('select-assigned-agent')).toBeUndefined();
     expect(wrapper.get('.work-item-detail').text()).toContain('Ready work');
     expect(open).toHaveBeenCalledWith(assigned.url, '_blank', 'noreferrer');
     open.mockRestore();
