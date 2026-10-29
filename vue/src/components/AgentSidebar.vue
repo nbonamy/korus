@@ -196,16 +196,16 @@
             @click="toggleWorkspace(group)"
           >
             <strong>{{ group.label }}</strong>
-            <span
-              v-if="group.kind === 'repository' && group.remoteConnectionId"
-              class="agent-sidebar__host"
-              :class="{ 'agent-sidebar__host--offline': !remoteReady(group.remoteConnectionId) }"
-              role="img"
-              :aria-label="remoteHostLabel(group.remoteConnectionId)"
-              :title="remoteHostLabel(group.remoteConnectionId)"
-            >
-              <NetworkIcon aria-hidden="true" />
-            </span>
+            <el-tooltip v-if="group.kind === 'repository' && group.remoteConnectionId" :content="remoteHostLabel(group.remoteConnectionId)" placement="top" :show-after="300">
+              <span
+                class="agent-sidebar__host"
+                :class="{ 'agent-sidebar__host--offline': !remoteReady(group.remoteConnectionId) }"
+                role="img"
+                :aria-label="remoteHostLabel(group.remoteConnectionId)"
+              >
+                <NetworkIcon aria-hidden="true" />
+              </span>
+            </el-tooltip>
           </button>
           <span
             v-if="group.kind === 'quickChats'"
@@ -284,15 +284,16 @@
               @dragend="clientAgentOrderUpdate.onDragEnd"
             >
               <span v-if="session.remoteConnectionId" class="agent-sidebar__badges">
-                <span
-                  class="agent-sidebar__remote-marker"
-                  :class="{ 'agent-sidebar__host--offline': !remoteReady(session.remoteConnectionId) }"
-                  role="img"
-                  :aria-label="remoteHostLabel(session.remoteConnectionId)"
-                  :title="remoteHostLabel(session.remoteConnectionId)"
-                >
-                  <NetworkIcon aria-hidden="true" />
-                </span>
+                <el-tooltip :content="remoteHostLabel(session.remoteConnectionId)" placement="top" :show-after="300">
+                  <span
+                    class="agent-sidebar__remote-marker"
+                    :class="{ 'agent-sidebar__host--offline': !remoteReady(session.remoteConnectionId) }"
+                    role="img"
+                    :aria-label="remoteHostLabel(session.remoteConnectionId)"
+                  >
+                    <NetworkIcon aria-hidden="true" />
+                  </span>
+                </el-tooltip>
                 <span
                   v-if="showEngine(session, group.activity)"
                   class="agent-sidebar__engine"
@@ -1696,7 +1697,7 @@ function onResizePointerEnd(event: PointerEvent): void {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--space-4);
+  gap: var(--agent-sidebar-workspace-column-gap);
 }
 
 .agent-sidebar__engine {
@@ -1734,16 +1735,16 @@ function onResizePointerEnd(event: PointerEvent): void {
 }
 
 .agent-sidebar__remote-marker svg {
-  width: var(--icon-md);
-  height: var(--icon-md);
+  width: 18px;
+  height: 18px;
 }
 
 .agent-sidebar__agent:has(.agent-sidebar__remote-marker) {
-  --agent-sidebar-engine-track: 20px;
+  --agent-sidebar-engine-track: 18px;
 }
 
 .agent-sidebar__agent-row:hover .agent-sidebar__agent:has(.agent-sidebar__remote-marker):has(.agent-sidebar__engine) {
-  --agent-sidebar-engine-track: 44px;
+  --agent-sidebar-engine-track: 40px;
 }
 
 .agent-sidebar__status[data-status="working"],
