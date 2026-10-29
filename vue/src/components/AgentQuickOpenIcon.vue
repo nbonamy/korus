@@ -5,10 +5,9 @@
     data-icon="message"
     aria-hidden="true"
   />
-  <AgentAvatar v-else-if="repositoryIcon || agent?.workspace?.kind !== 'git'"
-    :avatar="repositoryIcon ?? agent?.avatar"
+  <RepositoryIcon v-else-if="repositoryIcon || agent?.workspace?.kind !== 'git'"
+    :icon="repositoryIcon ?? agent?.avatar"
     :name="name"
-    size="xs"
   />
   <component
     :is="agent.workspace.isLinkedWorktree ? GitForkIcon : GitBranchIcon"
@@ -24,7 +23,7 @@ import type { Agent } from '@workspace/core/contracts';
 import { repositoryIconForAgent } from '@workspace/core/workspace-sidebar';
 import { computed } from 'vue';
 import { GitBranchIcon, GitForkIcon, MessageIcon } from '../shared/icons/app-icons';
-import AgentAvatar from './AgentAvatar.vue';
+import RepositoryIcon from './RepositoryIcon.vue';
 
 const props = defineProps<{
   agent?: Agent;

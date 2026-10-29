@@ -162,6 +162,7 @@ Search by behavior first.
 | Product glyphs (incl. GitHub) | app icon catalog | `vue/src/shared/icons/app-icons.ts` |
 | Remote host status, standalone globe or branch badge, with a host tooltip | `RemoteHostIndicator` | `vue/src/components/` |
 | Local or remote host selection | `HostSelector` | `vue/src/components/` |
+| Repository image or emoji mark | `RepositoryIcon` (square, borderless avatar presentation) | `vue/src/components/` |
 | Reopen collapsed sidebar | `SidebarExpandButton` | `vue/src/shared/` |
 | Workspace header / body containment | `WorkspaceHeader`, `.workspace-header__title`, `.workspace-body` | `vue/src/shared/`, `styles/base.css` |
 | Dialog chrome and footer actions | `.app-dialog`, `.app-button` | `vue/src/styles/base.css` |

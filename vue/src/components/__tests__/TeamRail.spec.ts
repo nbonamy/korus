@@ -187,7 +187,7 @@ describe('TeamRail', () => {
 
     await wrapper.get('[aria-label="Cockpit"]').trigger('click');
 
-    expect(wrapper.get('[aria-label="Cockpit"]').find('svg.tabler-icon-ai-agents').exists()).toBe(true);
+    expect(wrapper.get('[aria-label="Cockpit"]').get('svg').attributes('fill')).toBe('currentColor');
     expect(wrapper.get('[aria-label="Cockpit"]').attributes('aria-pressed')).toBe('true');
     expect(wrapper.get('[aria-label="Cockpit"]').classes()).toContain('team-rail__cockpit--active');
     expect(wrapper.get('[aria-label="Skwad"]').attributes('aria-pressed')).toBe('false');
@@ -206,7 +206,7 @@ describe('TeamRail', () => {
 
     expect(wrapper.get('[aria-label="Backlog"]').attributes('aria-pressed')).toBe('true');
     expect(wrapper.get('[aria-label="Backlog"]').classes()).toContain('team-rail__backlog--active');
-    expect(wrapper.get('[aria-label="Backlog"]').findComponent({ name: 'BacklogIcon' }).exists()).toBe(true);
+    expect(wrapper.get('[aria-label="Backlog"]').find('svg.tabler-icon-git-pull-request').exists()).toBe(true);
     expect(wrapper.get('[aria-label="Skwad"]').classes()).not.toContain('team-rail__team--active');
     expect(wrapper.emitted('select-backlog')).toStrictEqual([[]]);
   });
@@ -215,7 +215,8 @@ describe('TeamRail', () => {
     const wrapper = mountRail({ teams, activeTeamId: 'team-sk' });
     const cockpit = wrapper.get('[aria-label="Cockpit"]');
     const add = wrapper.get('[aria-label="Create team"]');
-    expect(cockpit.get('svg').attributes('stroke')).toBe('currentColor');
+    expect(getComputedStyle(cockpit.element).background).toBe('rgba(0, 0, 0, 0)');
+    expect(getComputedStyle(cockpit.element).opacity).toBe('0.6');
     expect(wrapper.find('[role="separator"]').exists()).toBe(false);
     const navigation = [
       ['backlogActive', 'Backlog'],
