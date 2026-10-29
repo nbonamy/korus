@@ -1821,10 +1821,10 @@ export class AppBackendServer {
           const remoteTarget = projected.agents.find(agent => agent.handoff?.sourceAgentId === agentId && agent.handoff.operationId === operationId);
           if (remoteTarget) return this.routeAgentSnapshotRequest(message.id, remoteTarget.id, message.method, { agentId, input }, async () => { throw new Error('Remote handoff owner is unavailable.'); });
         }
+        if (this.tasks?.list(agentId).some(task => !['completed', 'cancelled', 'failed'].includes(task.state))) {
+          throw new Error('Resolve or cancel durable tasks before handing off this agent.');
+        }
         return this.routeAgentSnapshotRequest(message.id, agentId, message.method, { agentId, input }, async () => {
-          if (this.tasks?.list(agentId).some(task => !['completed', 'cancelled', 'failed'].includes(task.state))) {
-            throw new Error('Resolve or cancel durable tasks before handing off this agent.');
-          }
           await this.agentHandoffs.run(agentId, input);
           return this.persistAndEmitSnapshot();
         });

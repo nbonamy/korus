@@ -23,6 +23,7 @@ describe('repository-backed agent creation', () => {
     await git('init', '-b', 'main');
     await git('-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '--allow-empty', '-m', 'init');
     await git('branch', 'feature'); await git('remote', 'add', 'origin', 'https://github.com/example/repo.git');
+    await git('checkout', '-b', 'feature-primary');
     const remoteSnapshot = createRemoteTeamSnapshot(); remoteSnapshot.sourceFolder = { path: parent, initialized: true, recentRepoNames: [] };
     const remote = new AppBackendServer({ version: 'test', snapshot: remoteSnapshot, driverRpc: new BackendDriverRpc(new Map()) });
     const connection = readyRemoteConnection();
@@ -48,7 +49,12 @@ describe('repository-backed agent creation', () => {
     const preview = await server.handleMessage({ jsonrpc: '2.0', id: 'preview', method: 'agent/close/preview', params: { agentId: agent.id } });
     expect(preview).toHaveProperty('result');
     expect(request.mock.calls.some(([, method]) => method === 'agent/close/preview')).toBe(false);
-    expect((await git('branch', '--show-current')).stdout.trim()).toBe('main');
+    const defaultSession = await server.handleMessage({ jsonrpc: '2.0', id: 'default', method: 'agent/create', params: { entityResult: true,
+      input: { name: null, folder: root, teamId: 'pointer', remoteConnectionId: connection.id, repositorySession: {}, selection: { backend: 'codex' } } } });
+    expect(defaultSession).not.toHaveProperty('error');
+    expect(remoteSnapshot.agents.at(-1)?.folder).toBe(`${root}-main`);
+    expect((await exec('git', ['-C', `${root}-main`, 'branch', '--show-current'])).stdout.trim()).toBe('main');
+    expect((await git('branch', '--show-current')).stdout.trim()).toBe('feature-primary');
   });
 
   it('reuses the configured checkout for an equivalent remote without attempting another clone', async () => {

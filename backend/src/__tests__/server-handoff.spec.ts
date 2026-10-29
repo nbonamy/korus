@@ -4,7 +4,36 @@ import type { AgentBackend, RendererMessage } from '@workspace/core/contracts';
 import { codexBackendCapabilities, claudeBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { AppBackendServer } from '../server';
 import { BackendDriverRpc } from '../driver-rpc';
+import { DurableTaskService } from '../agents/durable-task-service';
 import { createTestSnapshot, createRemoteAgent, createRemoteTeamSnapshot, readyRemoteConnection } from './server-test-fixtures';
+
+function unfinishedTasks(parentAgentId: string, workerAgentId: string) {
+  return new DurableTaskService({ tasks: [{ id: 'task', parentAgentId, workerAgentId, state: 'interrupted',
+    requestId: 'request', requestFingerprint: 'fingerprint', backend: 'codex', assignment: { title: 'Inspect', doneWhen: 'Verified' },
+    prompt: 'Inspect', attemptId: 'attempt', createdAt: '', updatedAt: '', parentWakeBlocked: false,
+  }], save: async () => {}, agent: () => undefined, send: async () => { throw new Error('Unexpected prompt'); },
+    interrupt: async () => {}, onError: error => { throw error; } });
+}
+
+it.each(['worker', 'parent'] as const)('blocks remote handoff for a %s with controller-owned unfinished tasks', async role => {
+  const snapshot = createTestSnapshot();
+  const connection = readyRemoteConnection();
+  snapshot.remoteConnections.connections = [connection];
+  snapshot.teams[0]!.remoteLinks = [{ connectionId: connection.id, remoteTeamId: 'team-remote' }];
+  const agent = createRemoteAgent();
+  const remote = createRemoteTeamSnapshot([agent]);
+  const tasks = unfinishedTasks(role === 'parent' ? agent.id : 'parent', role === 'worker' ? agent.id : 'child');
+  const request = vi.fn(async (_connection: unknown, method: string) => method === 'snapshot/get'
+    ? { snapshot: remote, lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } } : remote);
+  const server = new AppBackendServer({ version: 'test', snapshot, tasks, remoteClients: { request, close: async () => {} } as never });
+  try {
+    await expect(server.handleMessage({ jsonrpc: '2.0', id: 'handoff', method: 'agent/handoff/start', params: {
+      agentId: agent.id, input: { operationId: 'once', selection: { backend: 'claude', model: null, reasoningEffort: null, serviceTier: null } },
+    } })).rejects.toThrow('Resolve or cancel durable tasks');
+    expect(request.mock.calls.map(([, method]) => method)).not.toContain('agent/handoff/start');
+    expect(tasks.list(agent.id)[0]?.state).toBe('interrupted');
+  } finally { tasks.close(); await server.close(); }
+});
 
 it('routes an ambiguous remote retry through the linked replacement without creating a local agent', async () => {
   const snapshot = createTestSnapshot();
@@ -17,13 +46,14 @@ it('routes an ambiguous remote retry through the linked replacement without crea
     request: vi.fn().mockResolvedValueOnce({ snapshot: remoteSnapshot, lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } }).mockResolvedValue(remoteSnapshot),
     close: vi.fn().mockResolvedValue(undefined),
   };
-  const server = new AppBackendServer({ version: 'test', snapshot, remoteClients: remoteClients as never });
+  const tasks = unfinishedTasks('old-remote', 'child');
+  const server = new AppBackendServer({ version: 'test', snapshot, tasks, remoteClients: remoteClients as never });
   const params = { agentId: 'old-remote', input: { operationId: 'once', selection: { backend: 'claude', model: null, reasoningEffort: null, serviceTier: null } } };
   try {
     await server.handleMessage({ jsonrpc: '2.0', id: 'retry', method: 'agent/handoff/start', params });
     expect(remoteClients.request).toHaveBeenLastCalledWith(snapshot.remoteConnections.connections[0], 'agent/handoff/start', { ...params, _clientId: 'remote-controller' }, expect.any(Function));
     expect(snapshot.agents).toEqual([]);
-  } finally { await server.close(); }
+  } finally { tasks.close(); await server.close(); }
 });
 
 describe.each(['codex', 'claude'] as const)('%s handoff routing', backend => {

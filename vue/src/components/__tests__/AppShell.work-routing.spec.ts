@@ -46,6 +46,28 @@ afterEach(() => {
 });
 
 describe('AppShell work routing', () => {
+  it('requests default-branch resolution on the selected host when opening remotely', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.remoteConnections.connections = [{ id: 'devbox', kind: 'ssh', name: 'Devbox', host: 'devbox', status: 'ready', createdAt: '', updatedAt: '', providerConnections: snapshot.providerConnections }];
+    setElectronTestClient({ listBackendModels: async () => [] });
+    const createAgent = vi.fn(async () => undefined);
+    const wrapper = mountShell({ snapshot, createAgent,
+      listSourceRepositories: async () => [{ name: 'repo', path: '/remote/repo', remoteIdentity: 'github.com/org/repo', worktrees: [] }],
+    });
+    wrapper.getComponent({ name: 'AgentSidebar' }).vm.$emit('open-on-remote', {
+      action: 'main', repositoryName: 'repo', repositoryKey: 'remote:github.com/org/repo', originUrl: 'https://github.com/org/repo.git',
+    });
+    await flushPromises();
+    const dialog = wrapper.getComponent({ name: 'RemoteTargetDialog' });
+    await dialog.findAll('button').find(button => button.text() === 'Open')!.trigger('click');
+    await flushPromises();
+    expect(createAgent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      folder: '/remote/repo', remoteConnectionId: 'devbox', repositorySession: {},
+    }));
+    wrapper.unmount();
+  });
+
   it.each([
     { provider: 'gitlab' as const, remoteConnectionId: undefined },
     { provider: 'github' as const, remoteConnectionId: undefined },

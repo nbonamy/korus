@@ -248,23 +248,28 @@ export function useRepositorySession(options: {
       error.value = checkout.state === 'unreachable' ? checkout.message : translate('remoteTarget.noOrigin');
       return false;
     }
+    const host = hostId.value;
+    const sourceRequest = sourceRequestId;
+    const hostRequest = hostRequestId;
+    const isCurrent = () => visible.value && sourceRequest === sourceRequestId && hostRequest === hostRequestId;
     hostBusy.value = true;
     error.value = null;
     try {
       const cloned = await options.cloneRepository({
         url: cloneUrlForRemote(current.originUrl) ?? current.originUrl,
-        ...(hostId.value ? { remoteConnectionId: hostId.value } : {}),
+        ...(host ? { remoteConnectionId: host } : {}),
         reuseExisting: true,
       });
-      locations.set(hostKey(hostId.value), cloned.path);
+      if (!isCurrent()) return false;
+      locations.set(hostKey(host), cloned.path);
       hostCheckout.value = { state: 'cloned', path: cloned.path };
-      source.value = sourceOn(current, hostId.value, cloned.path);
+      source.value = sourceOn(current, host, cloned.path);
       return true;
     } catch (caught) {
-      error.value = caught instanceof Error ? caught.message : String(caught);
+      if (isCurrent()) error.value = caught instanceof Error ? caught.message : String(caught);
       return false;
     } finally {
-      hostBusy.value = false;
+      if (isCurrent()) hostBusy.value = false;
     }
   }
 
@@ -272,6 +277,7 @@ export function useRepositorySession(options: {
     ++hostRequestId;
     sourceRequestId += 1;
     visible.value = false;
+    hostBusy.value = false;
     source.value = null;
     workSourceId.value = null;
     loading.value = false;

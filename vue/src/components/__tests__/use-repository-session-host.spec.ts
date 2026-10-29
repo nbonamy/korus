@@ -113,6 +113,48 @@ describe('repository session host choice', () => {
     expect(createAgent).not.toHaveBeenCalled();
   });
 
+  it.each(['resolve', 'reject'] as const)('ignores a stale clone %s after the dialog is replaced', async outcome => {
+    let resolve!: (repository: SourceRepository) => void;
+    let reject!: (error: Error) => void;
+    let resolveNext!: (repository: SourceRepository) => void;
+    const { session, createAgent, cloneRepository } = setup([], () => new Promise((accept, fail) => { resolve = accept; reject = fail; }));
+    await session.open(source);
+    await session.changeHost('devbox');
+    const opening = session.createForSourceBranch({ name: 'main', isDefault: true });
+    session.close();
+    const replacement = { repositoryName: 'second', repositoryRoot: '/local/second', originUrl: 'https://github.com/org/second.git' };
+    await session.open(replacement);
+    await session.changeHost('devbox');
+    cloneRepository.mockImplementationOnce(() => new Promise(accept => { resolveNext = accept; }));
+    const nextOpening = session.createForSourceBranch({ name: 'main', isDefault: true });
+    if (outcome === 'resolve') resolve(checkout('/remote/korus'));
+    else reject(new Error('Old clone failed'));
+    await opening;
+    expect(createAgent).not.toHaveBeenCalled();
+    expect(session.source.value).toStrictEqual(replacement);
+    expect(session.visible.value).toBe(true);
+    expect(session.hostCheckout.value?.state).toBe('missing');
+    expect(session.error.value).toBeNull();
+    expect(session.hostBusy.value).toBe(true);
+    resolveNext({ name: 'second', path: '/remote/second', worktrees: [] });
+    await nextOpening;
+    expect(createAgent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ folder: '/remote/second', remoteConnectionId: 'devbox' }));
+  });
+
+  it('does not create an agent when a clone finishes after closing the dialog', async () => {
+    let resolve!: (repository: SourceRepository) => void;
+    const { session, createAgent } = setup([], () => new Promise(accept => { resolve = accept; }));
+    await session.open(source);
+    await session.changeHost('devbox');
+    const opening = session.createForSourceBranch({ name: 'main', isDefault: true });
+    session.close();
+    resolve(checkout('/remote/korus'));
+    await opening;
+    expect(createAgent).not.toHaveBeenCalled();
+    expect(session.source.value).toBeNull();
+    expect(session.visible.value).toBe(false);
+  });
+
   it('reports a machine that cannot be reached instead of listing it as empty', async () => {
     const { session, listSourceRepositories } = setup([]);
     await session.open(source);

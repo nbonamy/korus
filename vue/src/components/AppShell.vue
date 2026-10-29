@@ -1624,6 +1624,7 @@ const remoteTarget = useRemoteTarget({
       await props.createAgent({
         name: null,
         folder: path,
+        repositorySession: {},
         selection: selection ?? { backend },
         sourceRepositoryName: request.repositoryName,
         remoteConnectionId,
