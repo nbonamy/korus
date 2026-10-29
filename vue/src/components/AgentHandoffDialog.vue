@@ -1,18 +1,9 @@
 <template>
   <FormDialog class="agent-handoff-dialog" width="480px" :model-value="true" :title="t('handoff.submit')" @update:model-value="close">
     <form id="agent-handoff-form" class="app-form-dialog agent-handoff-form" @submit.prevent="submitHandoff">
-      <div class="agent-handoff-form__destination">
-        <FormField :label="t('handoff.engine')">
-          <BackendSelector v-model="backend" :remote-connection-id="agent.remoteConnectionId" :disabled="busy" />
-          <span v-if="choices.length === 1">{{ backendDisplayName(choices[0]!) }}</span>
-        </FormField>
-        <FormField :label="t('handoff.model')" label-for="handoff-model">
-          <el-select id="handoff-model" v-model="model" :disabled="busy || loadingModels" :aria-label="t('handoff.model')">
-            <el-option :value="defaultModel" :label="t('handoff.defaultModel')" />
-            <el-option v-for="choice in models" :key="choice.id" :value="choice.model" :label="choice.displayName" />
-          </el-select>
-        </FormField>
-      </div>
+      <FormField :label="t('handoff.model')">
+        <BackendModelSelector v-model:selection="selection" :agent-id="agent.id" :remote-connection-id="agent.remoteConnectionId" :disabled="busy" @loading="loadingModels = $event" />
+      </FormField>
       <FormField :label="t('handoff.instructions')" label-for="handoff-instructions">
         <el-input id="handoff-instructions" v-model="instructions" type="textarea" :rows="3" :maxlength="4000" :disabled="busy" :placeholder="t('handoff.optional')" />
       </FormField>
@@ -29,22 +20,22 @@
     </form>
     <template #footer>
       <button class="app-button app-button--tertiary" type="button" @click="close">{{ busy ? t('handoff.hide') : t('handoff.cancel') }}</button>
-      <button class="app-button app-button--primary" type="submit" form="agent-handoff-form" :disabled="busy || !!blocker || !backend || loadingModels">{{ t('handoff.submit') }}</button>
+      <button class="app-button app-button--primary" type="submit" form="agent-handoff-form" :disabled="busy || !!blocker || !selection || loadingModels">{{ t('handoff.submit') }}</button>
     </template>
   </FormDialog>
   <AutomationExecutionConversationOverlay v-if="sourceVisible" :agent-name="agent.handoff?.sourceTitle ?? ''" :ticket="t('handoff.source')" :messages="sourceMessages" :loading="sourceLoading" :error="sourceError" @close="sourceVisible = false" />
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { provide, ref } from 'vue';
 import { defaultExecutionSelection } from '@workspace/core/execution-selection';
 import { useI18n } from 'vue-i18n';
-import type { Agent, AgentBackend, BackendConversationRef, BackendModelOption, RendererMessage } from '@workspace/core/contracts';
+import type { Agent, AgentBackend, BackendConversationRef, BackendModelOption, ExecutionSelection, RendererMessage } from '@workspace/core/contracts';
 import type { AgentHandoffInput } from '@workspace/core/agent-handoff';
-import { backendDisplayName } from '@workspace/core/backend-driver';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
-import BackendSelector from './BackendSelector.vue';
+import BackendModelSelector from './BackendModelSelector.vue';
+import { backendModelCatalogKey } from './backend-model-catalog';
 import { useBackendChoices } from './backend-selection';
 import AutomationExecutionConversationOverlay from './AutomationExecutionConversationOverlay.vue';
 
@@ -58,10 +49,9 @@ const props = defineProps<{
 const emit = defineEmits<{ close: [] }>();
 const { t } = useI18n();
 const choices = useBackendChoices(() => props.agent.remoteConnectionId);
-const backend = ref<AgentBackend | undefined>(choices.value.find(choice => choice !== props.agent.backend) ?? choices.value[0]);
-const defaultModel = '__provider_default__';
-const model = ref(defaultModel);
-const models = ref<BackendModelOption[]>([]);
+const initialBackend = choices.value.find(choice => choice !== props.agent.backend) ?? choices.value[0];
+const selection = ref<ExecutionSelection | undefined>(initialBackend ? defaultExecutionSelection(initialBackend) : undefined);
+provide(backendModelCatalogKey, { listModels: async (agentId, backend) => agentId ? await props.listModels(agentId, backend) : [] });
 const instructions = ref('');
 const busy = ref(false);
 const error = ref('');
@@ -71,23 +61,12 @@ const sourceVisible = ref(false);
 const sourceLoading = ref(false);
 const sourceError = ref('');
 const sourceMessages = ref<RendererMessage[]>([]);
-watch(backend, async (value, _, cleanup) => {
-  let current = true;
-  cleanup(() => { current = false; });
-  models.value = [];
-  model.value = defaultModel;
-  if (!value) return;
-  loadingModels.value = true;
-  try { const result = await props.listModels(props.agent.id, value); if (current) models.value = result.filter(item => !item.hidden); }
-  catch { /* The provider default remains a valid choice when the catalog is unavailable. */ }
-  finally { if (current) loadingModels.value = false; }
-}, { immediate: true });
 async function submitHandoff() {
-  if (busy.value || props.blocker || !backend.value || loadingModels.value) return;
+  if (busy.value || props.blocker || !selection.value || loadingModels.value) return;
   busy.value = true;
   error.value = '';
   try {
-    await props.submit(props.agent.id, { operationId, selection: { ...defaultExecutionSelection(backend.value), model: model.value !== defaultModel ? model.value : null }, ...(instructions.value.trim() ? { instructions: instructions.value.trim() } : {}) });
+    await props.submit(props.agent.id, { operationId, selection: { ...selection.value }, ...(instructions.value.trim() ? { instructions: instructions.value.trim() } : {}) });
     emit('close');
   } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); }
   finally { busy.value = false; }
@@ -135,16 +114,6 @@ async function openSource() {
 <style scoped>
 .agent-handoff-form {
   gap: var(--space-6);
-}
-
-.agent-handoff-form__destination {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-6);
-}
-
-.agent-handoff-form__destination :deep(.backend-selector) {
-  width: 100%;
 }
 
 .agent-handoff-form__workspace {
