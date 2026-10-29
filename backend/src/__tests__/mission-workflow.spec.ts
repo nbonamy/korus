@@ -94,6 +94,7 @@ it.each([
           if (parallel) await service.upsertTicket(run.workerId!, { title: 'Invoices', body: 'Add invoices.', repositoryPath: repo });
         } else if (stage === 'implementation') {
           expect(run.ticketIndex).toBe(parallel ? [0, 2, 1][attempt] : attempt);
+          expect(prompts.at(-1)).toContain('Commit all your ticket changes before submitting the result');
           const workspace = current().execution!.workspaces![0]!.path;
           if (parallel && attempt === 0) {
             const active = current().execution!.runs.filter(candidate => candidate.stage === 'implementation');

@@ -129,6 +129,7 @@ export function mountShell(overrides: Partial<{
   codexConversationSnapshot: CodexConversationSnapshot | null;
   claudeConversationSnapshot: ClaudeConversationSnapshot | null;
   chooseAgentFolder: () => Promise<string | null>;
+  chooseSourceFolder: () => Promise<string | null>;
   cloneSourceRepository: (input: import('@workspace/core/contracts').CloneSourceRepositoryInput) => Promise<SourceRepository>;
   createSourceRepository: (input: import('@workspace/core/contracts').CreateSourceRepositoryInput) => Promise<SourceRepository>;
   createProject: (input: import('@workspace/core/contracts').CreateProjectInput) => Promise<void>;
@@ -245,6 +246,7 @@ export function mountShell(overrides: Partial<{
       composerState: overrides.composerState ?? { text: '', selectionStart: 0, selectionEnd: 0 },
       queuedPrompts: overrides.queuedPrompts ?? snapshot.queuedPrompts ?? [],
       chooseAgentFolder: overrides.chooseAgentFolder ?? vi.fn().mockResolvedValue(null),
+      chooseSourceFolder: overrides.chooseSourceFolder ?? vi.fn().mockResolvedValue(null),
       cloneSourceRepository: overrides.cloneSourceRepository ?? vi.fn().mockRejectedValue(new Error('Unavailable')),
       createSourceRepository: overrides.createSourceRepository ?? vi.fn().mockRejectedValue(new Error('Unavailable')),
       createProject: overrides.createProject ?? vi.fn().mockRejectedValue(new Error('Unavailable')),
