@@ -261,7 +261,7 @@ Host bad;alias
       status: 'ready',
     });
 
-    expect(run.mock.calls.some(([, args]) => args.at(-1)?.includes('rm -f'))).toBe(false);
+    expect(run.mock.calls.some(([, args]) => args.at(-1)?.includes('rm -f') && !args.at(-1)?.includes('ln -sfn'))).toBe(false);
   });
 
   it('records connection errors without throwing', async () => {

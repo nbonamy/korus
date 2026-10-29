@@ -11,6 +11,7 @@ import { createEntityId } from '@workspace/core/ids';
 import { backendProviderTokensFilePath } from '../state';
 import { remoteCodexVersionCommand } from './remote-codex-command';
 import { remoteClaudeAuthenticationCommand, remoteClaudeInstallCommand, remoteClaudeVersionCommand } from './remote-claude-install';
+import { remoteEngineLinkCommand } from './remote-engine-links';
 import { remoteEnvironmentCommand, remoteNodeInstallCommand } from './remote-node';
 
 type ExecResult = {
@@ -85,6 +86,7 @@ export class SshConnectionService {
         claudeVersion = await this.ensureRemoteClaudeInstalled(next.host);
       }
       await progress('Verifying the remote environment…');
+      await this.linkRemoteEngines(next.host);
       const runtimeVersions = [`${product.daemonName} ${daemonVersion}`, ...(codexVersion ? [`Codex ${codexVersion}`] : []), ...(claudeVersion ? [`Claude ${claudeVersion}`] : [])];
       next = {
         ...next,
@@ -163,6 +165,13 @@ export class SshConnectionService {
       }
     } catch { /* Do not forward CLI output or SSH diagnostics to the renderer. */ }
     throw new Error('Remote Claude authentication status was unavailable.');
+  }
+
+  /** Refreshed on every connect, install and reconnect; the daemon falls back to full discovery without it. */
+  private async linkRemoteEngines(host: string): Promise<void> {
+    try {
+      await this.run('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', host, remoteEnvironmentCommand(remoteEngineLinkCommand())], { timeoutMs: 30_000 });
+    } catch { /* A host that cannot link still works, only its daemon starts slower. */ }
   }
 
   private async remoteClaudeVersion(host: string): Promise<string> {
