@@ -296,21 +296,12 @@ function showsCheck(item: Exclude<AppMenuItem, { type: 'separator' | 'submenu' }
 .app-menu__row {
   display: flex;
   align-items: center;
-  border-radius: var(--radius-xl);
-}
-
-.app-menu__row:hover {
-  background: var(--color-surface-low);
+  gap: var(--space-3);
 }
 
 .app-menu__row .app-menu__item {
   flex: 1 1 auto;
   min-width: 0;
-}
-
-.app-menu__row .app-menu__item:hover:not(:disabled),
-.app-menu__row .app-menu__item:focus-visible {
-  background: transparent;
 }
 
 .app-menu__secondary {
@@ -319,9 +310,8 @@ function showsCheck(item: Exclude<AppMenuItem, { type: 'separator' | 'submenu' }
   flex: 0 0 auto;
   width: 28px;
   height: 28px;
-  margin-right: var(--space-2);
   padding: 0;
-  border: 0;
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   color: var(--color-text);
   background: transparent;
@@ -330,7 +320,7 @@ function showsCheck(item: Exclude<AppMenuItem, { type: 'separator' | 'submenu' }
 
 .app-menu__secondary:hover:not(:disabled),
 .app-menu__secondary:focus-visible {
-  background: var(--color-surface-lowest);
+  background: var(--color-surface-low);
 }
 
 .app-menu__secondary:disabled {

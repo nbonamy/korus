@@ -88,7 +88,7 @@ export {
   IconShieldCheck as ShieldCheckIcon,
   IconSparkleHighlight as SparklesIcon,
   IconSquareCheck as SquareCheck,
-  IconServer as ServerIcon,
+  IconNetwork as NetworkIcon,
   IconSwitchHorizontal as SwitchHorizontalIcon,
   IconTargetArrow as TargetArrowIcon,
   IconTerminal as TerminalIcon,

@@ -289,7 +289,7 @@
                 :aria-label="remoteHostName(session.remoteConnectionId)"
                 :title="remoteHostName(session.remoteConnectionId)"
               >
-                <ServerIcon aria-hidden="true" />
+                <NetworkIcon aria-hidden="true" />
               </span>
               <span
                 v-if="!group.activity && session.status.type === 'awaitingInput'"
@@ -416,7 +416,7 @@ import {
   MessageIcon,
   PanelLeftCloseIcon,
   PlusIcon,
-  ServerIcon,
+  NetworkIcon,
   TargetArrowIcon,
   Trash2Icon,
 } from '../shared/icons/app-icons';
@@ -742,7 +742,7 @@ function repositorySessionMenuItems(
 ): AppMenuItem[] {
   const defaultBranch = repositorySessionMenu.defaultBranches.value[group.id];
   const remoteAction = (id: string) => hasReadyRemote.value
-    ? { secondaryAction: { id, label: t('sidebar.onRemoteMachine'), icon: ServerIcon } }
+    ? { secondaryAction: { id, label: t('sidebar.onRemoteMachine'), icon: NetworkIcon } }
     : {};
   return [
     {
