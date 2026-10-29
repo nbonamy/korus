@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { projectClientSnapshot, sanitizeClientPreferences, splitSettingsInput } from '../client-preferences';
 import { createInitialSnapshot } from '../snapshot';
+import type { Agent } from '../contracts';
 
 describe('client preference projection', () => {
   it('routes backlog favorites to client preferences and projects them without changing shared policy', () => {
@@ -35,6 +36,14 @@ describe('client preference projection', () => {
     const snapshot = createInitialSnapshot();
     expect(projectClientSnapshot(snapshot, 'new')).toBe(snapshot);
     const first = snapshot.agents[0]!, second = snapshot.agents[1]!;
+    const reviewer: Agent = { ...second, id: 'reviewer', name: 'Review', codeReview: {
+      id: 'review', targetAgentId: second.id, reviewerAgentId: 'reviewer',
+      scope: { type: 'uncommitted' }, threadMode: 'independent', status: 'ready',
+      activeRoundId: 'round', createdAt: '', updatedAt: '',
+      rounds: [{ id: 'round', number: 1, status: 'ready', startedAt: '', findings: [] }],
+    } };
+    snapshot.agents.splice(2, 0, reviewer);
+    snapshot.teams[0]!.agentIds.splice(snapshot.teams[0]!.agentIds.indexOf(second.id) + 1, 0, reviewer.id);
     snapshot.teams.push({ id: 'team-other', name: 'Other', agentIds: [] });
     snapshot.clientPreferences = { phone: {
       activeTeamId: first.teamId, activeAgentId: second.id,
@@ -45,13 +54,15 @@ describe('client preference projection', () => {
     const original = structuredClone(snapshot);
     const projected = projectClientSnapshot(snapshot, 'phone');
     expect(projected.teams[0]?.id).toBe('team-other');
-    expect(projected.teams[1]?.agentIds.slice(0, 2)).toStrictEqual([second.id, first.id]);
+    expect(projected.teams[1]?.agentIds.slice(0, 3)).toStrictEqual([second.id, reviewer.id, first.id]);
     expect(projected.teams[1]?.activeAgentId).toBe(second.id);
     expect(projected.activeAgentId).toBe(second.id);
     expect(projected.agents[1]?.openInApplication).toBe('xcode');
     expect(projected.general.agentListCompact).toBe(true);
     expect(projected.theme.mode).toBe('dark');
     expect(snapshot).toStrictEqual(original);
+    snapshot.clientPreferences.phone!.agentOrderByTeam![first.teamId!] = [reviewer.id, first.id, second.id];
+    expect(projectClientSnapshot(snapshot, 'phone').teams[1]?.agentIds.slice(0, 3)).toStrictEqual([reviewer.id, first.id, second.id]);
   });
 
   it('repairs deleted targets and follows a selected agent moved to another team', () => {
