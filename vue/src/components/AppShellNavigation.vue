@@ -117,6 +117,7 @@ type RepositorySessionPayload = {
   repositoryName: string;
   repositoryRoot: string;
   remoteConnectionId?: string;
+  originUrl?: string;
 };
 
 type OpenOnRemotePayload = { action: 'main' | 'new-worktree'; repositoryName: string; repositoryKey: string; originUrl?: string };

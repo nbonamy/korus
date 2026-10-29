@@ -8,7 +8,9 @@ import type {
   AppSnapshot,
   AutomationLocation,
   CreateAgentInput,
+  CloneSourceRepositoryInput,
   CreateSourceWorktreeInput,
+  RemoteConnection,
   SourceBranch,
   SourceRepository,
   SourceWorktree,
@@ -17,11 +19,12 @@ import type {
   WorkProviderKind,
 } from '@workspace/core/contracts';
 import { workItemAssignmentPrompt, workItemBranchName } from '@workspace/core/work-item-prompts';
-import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
+import { canonicalGitRemoteIdentity, cloneUrlForRemote } from '@workspace/core/git-remote';
 import { computed, ref } from 'vue';
 import { translate } from '../i18n';
 import type { WorkItemAssignmentSelection, WorkItemAssignmentSession } from './WorkItemAssignmentPicker.vue';
 import { resolveRepositorySessionContext, type RepositorySessionSource } from './repository-session-context';
+import type { RemoteCheckout } from './use-remote-target';
 
 export function useRepositorySession(options: {
   activeTeamId: () => string | undefined;
@@ -33,6 +36,8 @@ export function useRepositorySession(options: {
     options?: { reuseExisting?: boolean; selection?: import('@workspace/core/contracts/execution').ExecutionSelection; repository?: SourceRepository; remoteConnectionId?: string; isCurrent?: () => boolean; onPhase?: (phase: 'creatingAgent') => void },
   ) => Promise<{ agent: Agent; item: WorkItem }>;
   createSourceWorktree: (input: CreateSourceWorktreeInput) => Promise<SourceWorktree>;
+  cloneRepository?: (input: CloneSourceRepositoryInput) => Promise<SourceRepository>;
+  remoteConnections?: () => RemoteConnection[];
   getAgentGitRemote?: (agentId: string) => Promise<string | undefined>;
   getSnapshot: () => AppSnapshot;
   getWorkRepositories: (provider: WorkProviderKind) => WorkSource[];
@@ -65,6 +70,15 @@ export function useRepositorySession(options: {
   const worktreeBranchesLoading = ref(false);
   let sourceRequestId = 0;
   let worktreeRequestId = 0;
+  let hostRequestId = 0;
+  /** Where the repository is looked at: local when undefined. */
+  const hostId = ref<string | undefined>();
+  const hostCheckout = ref<RemoteCheckout | null>(null);
+  const hostBusy = ref(false);
+  const locations = new Map<string, string>();
+  let knownIdentity: string | undefined;
+  const hostKey = (id: string | undefined) => id ?? 'local';
+  const hosts = computed(() => (options.remoteConnections?.() ?? []).filter((connection) => connection.status === 'ready'));
 
   const assignmentSessions = computed<WorkItemAssignmentSession[]>(() => {
     const current = source.value;
@@ -91,6 +105,7 @@ export function useRepositorySession(options: {
   async function open(nextSource: RepositorySessionSource): Promise<void> {
     backend.value = preferredBackendChoices(options.getSnapshot(), context(nextSource).remoteConnectionId)[0];
     const requestId = ++sourceRequestId;
+    ++hostRequestId;
     source.value = nextSource;
     visible.value = true;
     branches.value = [];
@@ -98,6 +113,16 @@ export function useRepositorySession(options: {
     workSourceId.value = null;
     error.value = null;
     loading.value = true;
+    hostId.value = context(nextSource).remoteConnectionId;
+    hostCheckout.value = { state: 'cloned', path: nextSource.repositoryRoot };
+    hostBusy.value = false;
+    locations.clear();
+    locations.set(hostKey(hostId.value), nextSource.repositoryRoot);
+    knownIdentity = nextSource.originUrl ? canonicalGitRemoteIdentity(nextSource.originUrl) : undefined;
+    await load(nextSource, requestId);
+  }
+
+  async function load(nextSource: RepositorySessionSource, requestId: number): Promise<void> {
     const { teamId, remoteConnectionId, location } = context(nextSource);
     try {
       const loadedBranches = await options.listSourceBranches(nextSource.repositoryRoot, remoteConnectionId || undefined);
@@ -119,6 +144,7 @@ export function useRepositorySession(options: {
           && (agent.workspace.primaryWorktreeRoot === nextSource.repositoryRoot || agent.workspace.repositoryRoot === nextSource.repositoryRoot));
         const identity = checkout ? checkout.remoteIdentity : owningAgent
           ? canonicalGitRemoteIdentity(await options.getAgentGitRemote?.(owningAgent.id) ?? '') : undefined;
+        if (identity) knownIdentity = identity;
         if (requestId !== sourceRequestId) return;
         const provider = identity?.startsWith('github.com/') ? 'github' : identity?.startsWith('gitlab.com/') ? 'gitlab' : undefined;
         if (!provider) return;
@@ -143,7 +169,91 @@ export function useRepositorySession(options: {
     }
   }
 
+  function sourceOn(current: RepositorySessionSource, host: string | undefined, root: string): RepositorySessionSource {
+    const { remoteConnectionId: _host, agentId: _agent, ...rest } = current;
+    return { ...rest, repositoryRoot: root, ...(host ? { remoteConnectionId: host } : {}) };
+  }
+
+  /** Looks at the same repository on another machine: its checkout, branches and what is checked out there. */
+  async function changeHost(next: string | undefined): Promise<void> {
+    const current = source.value;
+    if (!current || next === hostId.value) return;
+    const request = ++hostRequestId;
+    hostId.value = next;
+    error.value = null;
+    const known = locations.get(hostKey(next));
+    if (known) {
+      hostCheckout.value = { state: 'cloned', path: known };
+      await adoptHost(current, next, known, request);
+      return;
+    }
+    if (!knownIdentity) {
+      hostCheckout.value = { state: 'noOrigin' };
+      branches.value = branches.value.map(({ worktreePath: _worktree, ...branch }) => branch);
+      return;
+    }
+    hostCheckout.value = { state: 'checking' };
+    try {
+      const match = (await options.listSourceRepositories(next)).find((repository) => repository.remoteIdentity === knownIdentity);
+      if (request !== hostRequestId) return;
+      if (match) {
+        locations.set(hostKey(next), match.path);
+        hostCheckout.value = { state: 'cloned', path: match.path };
+        await adoptHost(current, next, match.path, request);
+        return;
+      }
+      const cloneTo = hosts.value.find((connection) => connection.id === next)?.sourceFolderPath;
+      hostCheckout.value = { state: 'missing', ...(cloneTo ? { cloneTo } : {}) };
+      // Nothing is checked out on a machine that does not have the repository yet.
+      branches.value = branches.value.map(({ worktreePath: _worktree, ...branch }) => branch);
+    } catch (caught) {
+      if (request === hostRequestId) hostCheckout.value = { state: 'unreachable', message: caught instanceof Error ? caught.message : String(caught) };
+    }
+  }
+
+  async function adoptHost(current: RepositorySessionSource, host: string | undefined, root: string, request: number): Promise<void> {
+    const nextSource = sourceOn(current, host, root);
+    const requestId = ++sourceRequestId;
+    source.value = nextSource;
+    branches.value = [];
+    workItems.value = [];
+    workSourceId.value = null;
+    loading.value = true;
+    backend.value = preferredBackendChoices(options.getSnapshot(), host)[0];
+    if (request === hostRequestId) await load(nextSource, requestId);
+  }
+
+  /** A machine without the repository gets it cloned from its origin before any work starts there. */
+  async function ensureHostCheckout(): Promise<boolean> {
+    const current = source.value;
+    const checkout = hostCheckout.value;
+    if (!current || !checkout || checkout.state === 'cloned') return true;
+    if (checkout.state !== 'missing' || !options.cloneRepository) {
+      error.value = checkout.state === 'unreachable' ? checkout.message : translate('remoteTarget.noOrigin');
+      return false;
+    }
+    hostBusy.value = true;
+    error.value = null;
+    try {
+      const cloned = await options.cloneRepository({
+        url: cloneUrlForRemote(current.originUrl ?? '') ?? current.originUrl ?? '',
+        ...(hostId.value ? { remoteConnectionId: hostId.value } : {}),
+        reuseExisting: true,
+      });
+      locations.set(hostKey(hostId.value), cloned.path);
+      hostCheckout.value = { state: 'cloned', path: cloned.path };
+      source.value = sourceOn(current, hostId.value, cloned.path);
+      return true;
+    } catch (caught) {
+      error.value = caught instanceof Error ? caught.message : String(caught);
+      return false;
+    } finally {
+      hostBusy.value = false;
+    }
+  }
+
   function close(): void {
+    ++hostRequestId;
     sourceRequestId += 1;
     visible.value = false;
     source.value = null;
@@ -213,9 +323,10 @@ export function useRepositorySession(options: {
     }
   }
 
-  function createForSourceBranch(branch: SourceBranch): void {
+  async function createForSourceBranch(branch: SourceBranch): Promise<void> {
+    if (!await ensureHostCheckout()) return;
     const current = source.value;
-    if (current) void createSession(current, branch);
+    if (current) await createSession(current, branch);
   }
 
   async function startWork(selection: WorkItemAssignmentSelection): Promise<void> {
@@ -240,6 +351,7 @@ export function useRepositorySession(options: {
     handOverToNewAgent: (agent: Agent, item: WorkItem) => void | Promise<void>,
     handOverToExistingAgent: () => void | Promise<void>,
   ): Promise<void> {
+    if (selection.destination !== 'existing' && !await ensureHostCheckout()) return;
     const current = source.value;
     if (!current) return;
     if (selection.isCurrent && !selection.isCurrent()) return;
@@ -336,6 +448,7 @@ export function useRepositorySession(options: {
     backend,
     assignmentSessions,
     branches,
+    changeHost,
     close,
     closeWorktree,
     closeCreationProgress,
@@ -347,6 +460,10 @@ export function useRepositorySession(options: {
     createWorktree,
     customizeWork,
     error,
+    hostBusy,
+    hostCheckout,
+    hostId,
+    hosts,
     listBranches,
     loading,
     open,

@@ -472,7 +472,7 @@ const props = defineProps<{
 
 const { t } = useI18n();
 
-type SectionTarget = { agentId: string; repositoryName: string; repositoryRoot: string; remoteConnectionId?: string };
+type SectionTarget = { agentId: string; repositoryName: string; repositoryRoot: string; remoteConnectionId?: string; originUrl?: string };
 
 const emit = defineEmits<{
   'collapse-sidebar': [];
@@ -802,6 +802,7 @@ function sectionTarget(group: WorkspaceSidebarGroup): SectionTarget {
     repositoryName: group.label,
     repositoryRoot: group.repositoryRoot!,
     ...(group.remoteConnectionId ? { remoteConnectionId: group.remoteConnectionId } : {}),
+    ...(group.originUrl ? { originUrl: group.originUrl } : {}),
   };
 }
 

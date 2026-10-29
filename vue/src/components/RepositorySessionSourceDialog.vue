@@ -119,6 +119,34 @@
         <p v-if="filteredWorkItems.length === 0" class="repository-session-source-dialog__state">{{ tab === 'pullRequests' ? t(backlog.provider.value === 'gitlab' ? 'gitlabBacklog.noMergeRequests' : 'repositories.sessionSource.noPullRequests') : t('repositories.sessionSource.noIssues') }}</p>
       </template>
     </section>
+
+    <template v-if="showHostFooter" #footer>
+      <div class="repository-session-source-dialog__footer">
+        <el-select
+          class="repository-session-source-dialog__host"
+          size="small"
+          :model-value="hostId ?? localHostValue"
+          :aria-label="t('remoteTarget.machine')"
+          :disabled="hostBusy"
+          @update:model-value="emit('change-host', $event === localHostValue ? undefined : $event)"
+        >
+          <template #prefix>
+            <component :is="hostId ? NetworkIcon : DeviceImacIcon" class="repository-session-source-dialog__host-icon" aria-hidden="true" />
+          </template>
+          <el-option :value="localHostValue" :label="t('remoteTarget.thisComputer')">
+            <span class="repository-session-source-dialog__host-option"><DeviceImacIcon aria-hidden="true" />{{ t('remoteTarget.thisComputer') }}</span>
+          </el-option>
+          <el-option v-for="host in hosts" :key="host.id" :value="host.id" :label="host.name">
+            <span class="repository-session-source-dialog__host-option"><NetworkIcon aria-hidden="true" />{{ host.name }}</span>
+          </el-option>
+        </el-select>
+        <span
+          v-if="hostHint"
+          class="repository-session-source-dialog__host-hint"
+          :class="{ 'repository-session-source-dialog__host-hint--warning': hostCheckout?.state === 'missing' }"
+        >{{ hostHint }}</span>
+      </div>
+    </template>
   </el-dialog>
 </template>
 
@@ -133,11 +161,12 @@ import {
   IconGitPullRequest as GitPullRequestIcon,
   IconSearch as SearchIcon,
 } from '@tabler/icons-vue';
-import type { SourceBranch, WorkItem, WorkSource } from '@workspace/core/contracts';
+import type { RemoteConnection, SourceBranch, WorkItem, WorkSource } from '@workspace/core/contracts';
 import BacklogSourceSelector from './BacklogSourceSelector.vue';
 import WorkItemDetail from './WorkItemDetail.vue';
 import { useWorkSourceBacklog } from './use-work-source-backlog';
-import { ArrowRightIcon, GitBranchIcon, GitForkIcon as RepositoryIcon } from '../shared/icons/app-icons';
+import { ArrowRightIcon, DeviceImacIcon, GitBranchIcon, GitForkIcon as RepositoryIcon, NetworkIcon } from '../shared/icons/app-icons';
+import type { RemoteCheckout } from './use-remote-target';
 import WorkItemAssignmentPicker from './WorkItemAssignmentPicker.vue';
 import { useBackendChoices, useNewAgentBackend } from './backend-selection';
 const backendChoices = useBackendChoices();
@@ -161,7 +190,15 @@ const props = withDefaults(defineProps<{
   sessions?: WorkItemAssignmentSession[];
   visible: boolean;
   workItems?: WorkItem[];
+  /** Ready remote machines; the host footer appears only when there is a choice. */
+  hosts?: RemoteConnection[];
+  hostId?: string;
+  hostCheckout?: RemoteCheckout | null;
+  hostBusy?: boolean;
 }>(), {
+  hosts: () => [],
+  hostCheckout: null,
+  hostBusy: false,
   branches: () => [],
   modelAgentId: '',
   error: null,
@@ -176,6 +213,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   close: [];
   'custom-work-item': [selection: Omit<WorkItemAssignmentSelection, 'action'>];
+  'change-host': [hostId: string | undefined];
   'select-branch': [branch: SourceBranch];
   'select-repository': [repositoryId: string];
   'select-work-item': [item: WorkItem];
@@ -218,6 +256,18 @@ const tabs = computed<ReadonlyArray<{ id: SourceTab; label: string }>>(() => [
 const searchPlaceholder = computed(() => tab.value === 'branches'
   ? t('repositories.sessionSource.searchBranch')
   : t('repositories.sessionSource.searchWork'));
+// An empty option value reads as "nothing selected", so this computer needs a real one.
+const localHostValue = 'local';
+const showHostFooter = computed(() => props.purpose === 'session' && !selectedWorkItem.value && props.hosts.length > 0);
+const hostHint = computed(() => {
+  if (props.hostBusy) return t('remoteTarget.cloning');
+  const checkout = props.hostCheckout;
+  if (!checkout || checkout.state === 'cloned') return '';
+  if (checkout.state === 'checking') return t('remoteTarget.checking');
+  if (checkout.state === 'missing') return t('remoteTarget.willClone');
+  if (checkout.state === 'noOrigin') return t('remoteTarget.noOrigin');
+  return checkout.message;
+});
 const normalizedQuery = computed(() => query.value.trim().toLocaleLowerCase());
 const filteredBranches = computed(() => props.branches.filter((branch) => branch.name.toLocaleLowerCase().includes(normalizedQuery.value)));
 const filteredWorkItems = computed(() => (tab.value === 'issues' ? backlog.items.value : props.workItems).filter((item) => {
@@ -354,6 +404,41 @@ function customWorkItem(selection: Omit<WorkItemAssignmentSelection, 'action'>):
 
 .repository-session-source-dialog__assignment-header strong {
   font-size: var(--font-size-14);
+}
+
+.repository-session-source-dialog__footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  padding: var(--space-4) var(--space-8);
+  border-top: 1px solid var(--color-border);
+}
+
+.repository-session-source-dialog__host {
+  width: 180px;
+}
+
+.repository-session-source-dialog__host-icon,
+.repository-session-source-dialog__host-option svg {
+  width: var(--icon-md);
+  height: var(--icon-md);
+  flex: 0 0 auto;
+}
+
+.repository-session-source-dialog__host-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.repository-session-source-dialog__host-hint {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-12);
+}
+
+.repository-session-source-dialog__host-hint--warning {
+  color: var(--color-warning);
 }
 
 .repository-session-source-dialog__toolbar {

@@ -440,6 +440,11 @@
       :error="repositorySessionSourceError"
       :model-agent-id="repositorySessionSource?.agentId"
       :sessions="repositorySessionAssignmentSessions"
+      :hosts="repositorySession.hosts.value"
+      :host-id="repositorySession.hostId.value"
+      :host-checkout="repositorySession.hostCheckout.value"
+      :host-busy="repositorySession.hostBusy.value"
+      @change-host="repositorySession.changeHost"
       @close="closeRepositorySessionSource"
       @select-branch="openNewAgentForSourceBranch"
       @custom-work-item="customizeRepositorySessionWork"
@@ -1575,6 +1580,8 @@ const repositorySession = useRepositorySession({
   createAgent: (input) => props.createAgent(input),
   createIsolatedWorkItemAgent,
   createSourceWorktree: (input) => props.createSourceWorktree(input),
+  cloneRepository: (input) => props.cloneSourceRepository(input),
+  remoteConnections: () => props.snapshot.remoteConnections.connections,
   getAgentGitRemote: async (agentId) => (await props.getAgentGitWorkflow(agentId, { includePullRequest: false })).remoteUrl,
   getSnapshot: () => props.snapshot,
   getWorkRepositories: (provider) => props.workRepositoriesByProvider[provider] ?? [],

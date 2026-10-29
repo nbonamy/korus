@@ -371,12 +371,14 @@ describe('AgentSidebar sessions', () => {
       agentId: 'agent-dina',
       repositoryName: 'id8',
       repositoryRoot: '~/src/id8',
+      originUrl: 'git@github.com:nbonamy/id8.git',
       branch: { name: 'main', isDefault: true, worktreePath: '~/src/id8' },
     }]]);
     expect(wrapper.emitted('create-agent-from-repository')).toStrictEqual([[{
       agentId: 'agent-dina',
       repositoryName: 'id8',
       repositoryRoot: '~/src/id8',
+      originUrl: 'git@github.com:nbonamy/id8.git',
     }]]);
   });
 
@@ -430,12 +432,12 @@ describe('AgentSidebar sessions', () => {
     expect(wrapper.findAll('.agent-sidebar__remote-marker')).toHaveLength(1);
     expect(wrapper.get('.agent-sidebar__remote-marker').attributes('title')).toBe('Devbox');
     await wrapper.get('[aria-label="Create agent from branch, pull request, or issue"]').trigger('click');
-    expect(wrapper.emitted('create-agent-from-repository')).toStrictEqual([[{ agentId: 'local', repositoryName: 'id8', repositoryRoot: '~/src/id8' }]]);
+    expect(wrapper.emitted('create-agent-from-repository')).toStrictEqual([[{ agentId: 'local', repositoryName: 'id8', repositoryRoot: '~/src/id8', originUrl: origin }]]);
 
     await wrapper.setProps({ agents: [remote] });
     expect(wrapper.find('.agent-sidebar__remote-marker').exists()).toBe(false);
     await wrapper.get('[aria-label="Create agent from branch, pull request, or issue"]').trigger('click');
-    expect(wrapper.emitted('create-agent-from-repository')![1]).toStrictEqual([{ agentId: 'remote', repositoryName: 'id8', repositoryRoot: '/srv/id8', remoteConnectionId: 'devbox' }]);
+    expect(wrapper.emitted('create-agent-from-repository')![1]).toStrictEqual([{ agentId: 'remote', repositoryName: 'id8', repositoryRoot: '/srv/id8', remoteConnectionId: 'devbox', originUrl: origin }]);
   });
 
   it('shows repository branch loading failures in the session menu', async () => {

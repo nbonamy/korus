@@ -8,6 +8,8 @@ export type RepositorySessionSource = {
   workSource?: import('@workspace/core/contracts').WorkSource;
   repositoryName: string;
   repositoryRoot: string;
+  /** Persisted (credential-free) origin, to find or clone the repository on another machine. */
+  originUrl?: string;
 };
 
 export type RepositorySessionContext = {
