@@ -43,9 +43,35 @@ describe('AppShell missions', () => {
       expect(wrapper.get('[role="tab"][aria-label="README.md"]').attributes('aria-selected')).toBe('true');
       expect(wrapper.get('.markdown-panel').text()).toContain('Mission document');
       expect(wrapper.get('.mission-conversation-rail a').isVisible()).toBe(true);
+      const toggle = wrapper.get('[aria-label="Toggle right workspace"]');
+      await toggle.trigger('click');
+      await flushPromises();
+      expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(true);
+      expect(wrapper.get('.markdown-panel').isVisible()).toBe(false);
+      await toggle.trigger('click');
+      await flushPromises();
+      expect(wrapper.get('.right-workspace-panel').attributes('style')).not.toContain('display: none');
+      expect(wrapper.get('.markdown-panel').text()).toContain('Mission document');
       await wrapper.get('[aria-label="Close README.md tab"]').trigger('click');
       expect(wrapper.find('.markdown-panel').exists()).toBe(false);
       expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(true);
+    } finally { wrapper.unmount(); }
+  });
+
+  it('can hide an empty right workspace inherited from the agent surface', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    const mission = createMission(snapshot, { outcome: 'Keep the workbench accessible', workflowType: 'shapeAndShipFeature', teamId: agent.teamId, orchestratorMemberId: agent.id });
+    prepareMissionLead(mission, agent.id);
+    const wrapper = mountShell({ snapshot });
+    try {
+      await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+      wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', mission.id);
+      await flushPromises();
+      expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(false);
+      await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+      await flushPromises();
+      expect(wrapper.get('.mission-workspace__workbench').attributes('style')).not.toContain('display: none');
     } finally { wrapper.unmount(); }
   });
 

@@ -96,6 +96,12 @@ test('Mission message links reveal a usable document beside the conversation', a
       assert.ok(chatBounds.x + chatBounds.width <= documentBounds.x + 1, 'the document must sit beside the conversation');
       assert.ok(documentBounds.x + documentBounds.width <= width + 1, 'the preview must fit in the viewport');
       assert.equal(await page.locator('.mission-workspace__workbench').isVisible(), false);
+      const toggle = page.getByRole('button', { name: 'Toggle right workspace' });
+      await toggle.click();
+      assert.equal(await page.locator('.mission-workspace__workbench').isVisible(), true);
+      assert.equal(await document.isVisible(), false);
+      await toggle.click();
+      assert.equal(await document.isVisible(), true);
       measurements.push({ width, chatBounds, documentBounds });
       if (artifacts) {
         await mkdir(artifacts, { recursive: true });

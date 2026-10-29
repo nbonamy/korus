@@ -7,6 +7,17 @@
       </div>
       <span class="mission-workspace__mission-status" :data-status="mission.status">{{ t(`missions.${mission.status}`) }}</span>
       <MissionCostMenu :mission="mission" />
+      <button
+        class="app-icon-button"
+        type="button"
+        :aria-label="t('surface.agentHeader.toggleRightWorkspace')"
+        :title="t(conversationOnly ? 'surface.agentHeader.closeRightWorkspace' : 'surface.agentHeader.openRightWorkspace')"
+        :aria-pressed="conversationOnly"
+        :disabled="!workspaceToggleAvailable"
+        @click="emit('toggle-workspace')"
+      >
+        <IconLayoutSidebarRight aria-hidden="true" />
+      </button>
     </WorkspaceHeader>
 
     <div class="mission-workspace__body workspace-body" :class="{ 'mission-workspace__body--conversation-only': conversationOnly }">
@@ -188,6 +199,7 @@
 import { useExecutionSelection } from '../execution-selection';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { IconLayoutSidebarRight } from '@tabler/icons-vue';
 import type { Agent, OpenInApplicationCatalog } from '@workspace/core/contracts';
 import type { Mission, MissionArtifacts, MissionReviewFinding, MissionStage } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
@@ -214,6 +226,7 @@ const props = withDefaults(defineProps<{
   unreadAgentIds?: string[];
   sidebarCollapsed?: boolean;
   conversationOnly?: boolean;
+  workspaceToggleAvailable?: boolean;
   executeMission?: (input: MissionExecutionInput) => Promise<void>;
   implementationStartProgress?: MissionImplementationStartProgress | null;
   mission: Mission;
@@ -229,6 +242,7 @@ const emit = defineEmits<{
   'open-conversation': [agentId: string];
   'chat-about-review-finding': [payload: { agentId: string; finding: MissionReviewFinding }];
   'expand-sidebar': [];
+  'toggle-workspace': [];
   'open-worktree': [request: MissionWorkspaceOpenRequest];
 }>();
 const { t } = useI18n();
