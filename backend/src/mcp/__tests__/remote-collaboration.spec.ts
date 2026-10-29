@@ -9,7 +9,7 @@ import { AppStateStore } from '../../persistence/store';
 import { AppBackendServer } from '../../server';
 import { BackendDriverRpc } from '../../driver-rpc';
 import { DurableTaskService } from '../../agents/durable-task-service';
-import { codexSdkFixture, sdkSnapshot } from '../../codex/__tests__/sdk-surface-fixture';
+import { codexSdkFixture, sdkSnapshot, sdkSummary } from '../../codex/__tests__/sdk-surface-fixture';
 import { readyRemoteConnection } from '../../__tests__/server-test-fixtures';
 import { AppMcpService } from '../service';
 import { createTaskToolModuleProvider } from '../task-tools';
@@ -53,7 +53,7 @@ async function host(snapshot: AppSnapshot, label: string, remoteClients?: unknow
   mcp.setDriverRpc(rpc);
   mcp.setEventSink(event => server.emitEvent(event));
   await mcp.start();
-  cleanup.push(async () => { tasks.close(); await worktreeManager.close(); await mcp.stop(); await server.close(); await tasks.flush(); });
+  cleanup.push(async () => { tasks.close(); await worktreeManager.close(); await mcp.stop(); await server.close(); await tasks.flush(); await store.save(snapshot); });
   for (const id of [`${label}-worker`, `${label}-parent`]) {
     const conversation = provider.conversation(id);
     conversation.handle.sendMessage.mockImplementation(async () => {
@@ -101,6 +101,50 @@ async function connectedPair() {
 }
 
 describe('collaboration across daemon ownership boundaries', () => {
+  it.each([false, true])('inherits the authoritative same-host parent conversation (durable task: %s)', async durable => {
+    const { owner, workerHost, worker } = await connectedPair();
+    const parentConversation = workerHost.provider.conversation('remote-worker');
+    const childConversation = workerHost.provider.conversation('remote-child');
+    parentConversation.handle.fork.mockResolvedValue({ conversationId: 'remote-child', conversation: workerHost.provider.surface.conversation('remote-child'), snapshot: sdkSnapshot('remote-child') });
+    childConversation.handle.sendMessage.mockImplementation(async () => {
+      childConversation.setSnapshot({ busy: true, activeTurnId: 'child-turn' });
+      return childConversation.handle.getSnapshot();
+    });
+    const created = await workerHost.mcp.callTool(worker.id, 'create-agent', {
+      repoPath: '/remote/repo', startingContext: 'conversation', createWorktree: true,
+      branchName: 'same-host-child', prompt: 'Inspect the inherited context',
+      ...(durable ? { requestId: 'same-host-child', task: { title: 'Inspect', doneWhen: 'Verified' } } : {}),
+    });
+    expect(created.isError).toBe(false);
+    expect(created.structuredContent?.delegationContext).toStrictEqual({ requested: 'conversation', effective: 'conversation' });
+    const childId = created.structuredContent!.agentId as string;
+    expect(workerHost.snapshot.agents.find(agent => agent.id === childId)).toMatchObject({
+      teamId: worker.teamId, delegatedByAgentId: worker.id, folder: '/remote/same-host-child',
+      backendSession: { kind: 'codex', threadId: 'remote-child' },
+    });
+    expect(parentConversation.handle.fork).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ cwd: '/remote/same-host-child' }), { extensionContext: expect.objectContaining({ id: childId }) });
+    expect(childConversation.handle.sendMessage).toHaveBeenCalledOnce();
+    expect(owner.provider.conversation('remote-worker').handle.fork).not.toHaveBeenCalled();
+    expect(parentConversation.handle.sendMessage).not.toHaveBeenCalled();
+    if (durable) expect((await owner.store.loadTasks())[0]).toMatchObject({ workerAgentId: childId, acceptance: { backendSession: { kind: 'codex', threadId: 'remote-child' } } });
+  });
+
+  it.each(['missing', 'other-team', 'different-caller'])('rejects a %s local parent in remote provisioning', async invalid => {
+    const { owner, workerHost, worker } = await connectedPair();
+    const link = owner.snapshot.teams[0]!.remoteLinks![0]!;
+    if (invalid === 'other-team') worker.teamId = workerHost.snapshot.teams.find(team => team.id !== link.remoteTeamId)!.id;
+    const count = workerHost.snapshot.agents.length;
+    await expect(workerHost.server.handleMessage({ jsonrpc: '2.0', id: 'invalid-parent', method: backendMethods.collaborationWorkerCreate, params: {
+      ownerId: link.collaborationOwnerId, teamId: link.remoteTeamId, agentId: 'invalid-child',
+      localCallerId: invalid === 'missing' ? 'missing' : worker.id,
+      caller: { ...worker, ...(invalid === 'different-caller' ? { id: 'different' } : {}) },
+      input: { repoPath: '/remote/repo', createWorktree: true, branchName: 'invalid-child', startingContext: 'conversation' },
+      assignmentPrompt: 'Inspect',
+    } })).rejects.toThrow('parent');
+    expect(workerHost.snapshot.agents).toHaveLength(count);
+    expect(workerHost.createWorktree).not.toHaveBeenCalled();
+  });
+
   it('gives a UI-created remote chat its controlling roster, messaging and delegation', async () => {
     const local = createInitialSnapshot();
     local.providerConnections = [{ backend: 'codex', connected: true, installed: true, checking: false }];
@@ -134,6 +178,55 @@ describe('collaboration across daemon ownership boundaries', () => {
     expect(local.agents.find(agent => agent.id === child.structuredContent?.agentId)).toMatchObject({ teamId: local.teams[0]!.id, delegatedByAgentId: workerId });
     const ownerId = local.teams[0]!.remoteLinks![0]!.collaborationOwnerId;
     expect(remote.teams.find(team => team.id === local.teams[0]!.remoteLinks![0]!.remoteTeamId)?.collaborationOwnerId).toBe(ownerId);
+  });
+
+  it('retains remote-parent results across Stop racing completion and delivers after a user resume', async () => {
+    const { owner, workerHost, worker } = await connectedPair();
+    workerHost.provider.surface.readConversationSummary.mockResolvedValue(sdkSummary('remote-worker'));
+    await workerHost.server.sendTaskPrompt(worker, 'Work as parent');
+    const parent = workerHost.provider.conversation('remote-worker');
+    const created = await workerHost.mcp.callTool(worker.id, 'create-agent', {
+      remoteConnectionId: 'local', repoPath: '/local/repo', prompt: 'Inspect',
+      requestId: 'stopped-parent-child', task: { title: 'Inspect', doneWhen: 'Verified' },
+    });
+    expect(created.isError).toBe(false);
+    parent.handle.interrupt.mockImplementationOnce(async () => {
+      expect((await owner.store.loadTasks())[0]).toMatchObject({ parentWakeBlocked: true, parentStopRequested: true });
+      parent.setSnapshot({ busy: false, activeTurnId: null });
+      parent.emit({ seq: 2, origin: 'notification', occurredAt: '', conversationId: 'remote-worker', turnId: 'remote-turn',
+        type: 'turn.completed', payload: { status: 'completed', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null } } as never);
+      parent.emit({ seq: 3, origin: 'notification', occurredAt: '', conversationId: 'remote-worker',
+        type: 'conversation.activityChanged', payload: { threadStatus: { type: 'idle' }, busy: false, error: null } });
+      return parent.handle.getSnapshot();
+    });
+    await owner.server.handleMessage({ jsonrpc: '2.0', id: 'stop', method: backendMethods.agentInterrupt, params: { agentId: worker.id } });
+    const childId = created.structuredContent!.agentId as string;
+    expect((await owner.mcp.callTool(childId, 'complete-task', { summary: 'Verified', evidence: [], artifacts: [], caveats: [] })).isError).toBe(false);
+    const child = owner.provider.conversation('local-worker');
+    child.setSnapshot({ busy: false, activeTurnId: null });
+    child.emit({ seq: 2, origin: 'notification', occurredAt: '', conversationId: 'local-worker', turnId: 'local-turn',
+      type: 'turn.completed', payload: { status: 'completed', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null } } as never);
+    await vi.waitFor(() => expect(owner.tasks.list(worker.id)[0]).toMatchObject({ state: 'completed', delivery: { state: 'pending' } }));
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(owner.tasks.list(worker.id)[0]).toMatchObject({ parentWakeBlocked: true, parentStopRequested: true, delivery: { state: 'pending' } });
+    expect(parent.handle.sendMessage).toHaveBeenCalledOnce();
+
+    let seq = 3;
+    parent.handle.sendMessage.mockImplementation(async () => {
+      const turnId = seq === 3 ? 'resume-turn' : 'delivery-turn';
+      parent.setSnapshot({ busy: true, activeTurnId: turnId });
+      parent.emit({ seq: ++seq, origin: 'notification', occurredAt: '', conversationId: 'remote-worker', turnId,
+        type: 'turn.started', payload: { turn: { id: turnId, status: 'inProgress', items: [], error: null } } } as never);
+      return parent.handle.getSnapshot();
+    });
+    await owner.server.handleMessage({ jsonrpc: '2.0', id: 'resume', method: backendMethods.agentPromptSend, params: { agentId: worker.id, prompt: 'Resume my work' } });
+    parent.setSnapshot({ busy: false, activeTurnId: null });
+    parent.emit({ seq: ++seq, origin: 'notification', occurredAt: '', conversationId: 'remote-worker', turnId: 'resume-turn',
+      type: 'turn.completed', payload: { status: 'completed', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null } } as never);
+    parent.emit({ seq: ++seq, origin: 'notification', occurredAt: '', conversationId: 'remote-worker',
+      type: 'conversation.activityChanged', payload: { threadStatus: { type: 'idle' }, busy: false, error: null } });
+    await vi.waitFor(() => expect(owner.tasks.list(worker.id)[0]?.delivery?.state).toBe('accepted'));
+    expect(parent.handle.sendMessage).toHaveBeenCalledTimes(3);
   });
 
   it.each(['approval', 'failed steering', 'non-steerable provider'] as const)('queues remote messages on the worker during %s and drains them after idle', async state => {

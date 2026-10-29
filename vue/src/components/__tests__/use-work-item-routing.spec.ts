@@ -61,10 +61,18 @@ describe('useWorkItemRouting', () => {
     await harness.routing.startRepositoryWork(harness.agent.id, { item: selected, action: 'review', target: 'duplicate', workspace: { kind: 'worktree', branchName: 'topic' } });
     expect(harness.createBranch).toHaveBeenCalledWith(harness.createdAgent.id, { name: 'topic', createWorktree: true, pullRequestNumber: 12, requestRepository: selected.sourceId, confirmed: true });
   });
-  it('honors an explicit model when launching from a repository backlog', async () => {
+  it.each([
+    { host: undefined, backend: 'claude' as const, model: 'sonnet' },
+    { host: 'remote-dev', backend: 'codex' as const, model: 'gpt-test' },
+    { host: 'remote-dev', backend: 'claude' as const, model: null },
+  ])('preserves the source host $host and selection when duplicating repository work', async ({ host, backend, model }) => {
     const harness = createHarness();
-    await harness.routing.startRepositoryWork(harness.agent.id, { item: harness.item, action: 'fix', target: 'duplicate', workspace: { kind: 'worktree', branchName: 'fix/gh-12' }, selection: { backend: 'claude', model: 'sonnet', reasoningEffort: 'high', serviceTier: 'fast' } });
-    expect(harness.createAgent).toHaveBeenCalledWith(expect.objectContaining({ selection: { model: 'sonnet', reasoningEffort: 'high', serviceTier: 'fast', backend: 'claude' } }));
+    harness.agent.remoteConnectionId = host;
+    const selection = { backend, model, reasoningEffort: 'high', serviceTier: 'fast' };
+    await harness.routing.startRepositoryWork(harness.agent.id, { item: harness.item, action: 'fix', target: 'duplicate', workspace: { kind: 'worktree', branchName: 'fix/gh-12' }, selection });
+    expect(harness.createAgent).toHaveBeenCalledExactlyOnceWith({ name: `${harness.agent.name} #12`, folder: harness.agent.folder, teamId: harness.teamId, selection, ...(host ? { remoteConnectionId: host } : {}) });
+    expect(harness.createBranch).toHaveBeenCalledExactlyOnceWith(harness.createdAgent.id, { name: 'fix/gh-12', createWorktree: true, confirmed: true });
+    expect(harness.assign).toHaveBeenCalledWith(expect.objectContaining({ agentId: harness.createdAgent.id, item: harness.item }));
   });
   it.each([1, 2])('shows provisioning until all %i work items are handed over with their selected model', async count => {
     const harness = createHarness();

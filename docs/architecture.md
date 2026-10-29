@@ -465,6 +465,8 @@ Agents never move between backend locations.
   Callbacks validate the connection, team and caller before executing. Execution,
   native tool access and files remain owned by the worker's daemon. Cross-host
   conversation continuation uses a handoff rather than a foreign provider session.
+  Same-host remote delegation resolves the parent from the destination's controlled
+  team; native forks use that daemon's own session rather than a transported session.
 - Teammate messages are admitted separately from task startup. The worker daemon
   steers or queues admitted messages and drains its own queue. The controller
   serializes delivery per recipient and retries unconfirmed admissions with the

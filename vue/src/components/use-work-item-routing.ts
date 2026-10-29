@@ -110,7 +110,7 @@ export function useWorkItemRouting(options: {
 
     const targetAgent = input.target === 'duplicate'
       ? input.selection?.model || (input.selection?.backend && input.selection?.backend !== sourceAgent.backend)
-        ? await options.actions.createAgent({ name: `${sourceAgentName} ${workItemDisplayIdentifier(item)}`, folder: sourceAgent.folder ?? '', teamId: sourceAgent.teamId, ...(input.selection ? { selection: { ...input.selection } } : {}) })
+        ? await options.actions.createAgent({ name: `${sourceAgentName} ${workItemDisplayIdentifier(item)}`, folder: sourceAgent.folder ?? '', teamId: sourceAgent.teamId, ...(sourceAgent.remoteConnectionId ? { remoteConnectionId: sourceAgent.remoteConnectionId } : {}), ...(input.selection ? { selection: { ...input.selection } } : {}) })
         : await options.actions.duplicateAgent(sourceAgent.id, {
           select: false,
           name: `${sourceAgentName} ${workItemDisplayIdentifier(item)}`,

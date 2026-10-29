@@ -215,8 +215,12 @@ export class AppMcpService {
   }
 
   async provisionRemoteWorker(request: RemoteWorkerRequest): Promise<Agent> {
-    // Provider sessions belong to their host. Cross-host delegation always starts with a handoff.
-    const caller = { ...request.caller, backendSession: undefined };
+    // Only a controller-confirmed parent in this hidden team can supply a native session.
+    const localCaller = request.localCallerId ? this.snapshot.agents.find(agent =>
+      agent.id === request.localCallerId && agent.id === request.caller.id && agent.teamId === request.teamId
+      && !agent.remoteConnectionId && this.snapshot.teams.some(team => team.id === request.teamId && team.collaborationOwnerId === request.ownerId)) : undefined;
+    if (request.localCallerId && !localCaller) throw new McpToolError('The delegation parent is not a member of this controlled team.');
+    const caller = localCaller ?? { ...request.caller, backendSession: undefined };
     const response = await this.createAgentFromMcp(caller, {
       ...request.input, remoteConnectionId: undefined, task: undefined, prompt: undefined, instructions: undefined, teamId: request.teamId,
     }, request.agentId, request.assignmentPrompt, request.userInstructions);

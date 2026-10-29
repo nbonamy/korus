@@ -284,6 +284,7 @@ export class AppBackendServer {
     const link = this.snapshot.teams.find(team => team.id === pointer.localTeamId)!.remoteLinks!.find(link => link.connectionId === pointer.connectionId)!;
     const result = await this.remoteTeams.request<RemoteWorkerResult>(pointer.connectionId, backendMethods.collaborationWorkerCreate, {
       ownerId: link.collaborationOwnerId!, teamId: pointer.remoteTeamId, agentId: intendedId ?? `agent-${randomUUID()}`,
+      ...(caller.remoteConnectionId === pointer.connectionId && caller.teamId === pointer.localTeamId ? { localCallerId: caller.id } : {}),
       caller: { ...caller, backendSession: undefined }, input: { ...input, remoteConnectionId: undefined, task: undefined }, assignmentPrompt, userInstructions,
     } satisfies RemoteWorkerRequest);
     this.remoteTeams.adoptCreatedAgentSnapshot(pointer, result.snapshot);
@@ -1294,6 +1295,7 @@ export class AppBackendServer {
         await this.persistSnapshotOnly();
         const agent = await this.options.collaborationTools.provisionWorker({
           ...params, ownerId, teamId, agentId: requireString(params.agentId, 'agentId'),
+          ...(params.localCallerId === undefined ? {} : { localCallerId: requireString(params.localCallerId, 'localCallerId') }),
           caller: caller as Agent, input: input as CreateCoAgentInput,
         } as RemoteWorkerRequest);
         return createAppRpcResult(message.id, { agent, snapshot: await this.persistAndEmitSnapshot() } satisfies RemoteWorkerResult);
@@ -2688,6 +2690,9 @@ export class AppBackendServer {
       }
       case backendMethods.agentInterrupt: {
         const agentId = requireAgentId(message.params);
+        const location = await this.locationForAgentId(agentId);
+        // Remote parents' durable tasks belong to this controller, before the host sees Stop.
+        if (location?.kind === 'remote') await this.tasks?.blockParent(agentId);
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentInterrupt, { agentId }, async (agent) => {
           this.stoppingAgents.add(agent.id);
           try {

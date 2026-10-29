@@ -24,6 +24,8 @@ export type RemoteWorkerRequest = {
   teamId: string;
   agentId: string;
   caller: Agent;
+  /** Controller-confirmed parent on the receiving host; its session is resolved there. */
+  localCallerId?: string;
   input: CreateCoAgentInput;
   assignmentPrompt?: string;
   userInstructions?: Agent['delegationUserInstructions'];
