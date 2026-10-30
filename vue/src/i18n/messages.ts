@@ -995,6 +995,7 @@ export const messages = {
     chat: {
       composerActions: { visualize: 'Visualize', delegate: 'Delegate', review: 'Review', mission: 'Mission' },
       quickChatHeadline: 'What can I help with?',
+      quickChatContext: 'Ask about this team’s projects. Other conversations aren’t included.',
       savedDrafts: {
         title: 'Saved drafts',
         search: 'Search saved drafts',
