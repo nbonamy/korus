@@ -1,3 +1,4 @@
+import { CodexElectronAttachmentRegistry } from '@codex-app-sdk/electron';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -55,6 +56,15 @@ export class LocalMediaRegistry {
     } catch {
       return null;
     }
+  }
+}
+
+/** Resolve only media capabilities issued by this main process; prompt attachment
+ * admission continues to use the SDK registry's separate resolve() method. */
+export class LocalMediaAttachmentRegistry extends CodexElectronAttachmentRegistry {
+  constructor(private readonly media: LocalMediaRegistry) { super(); }
+  override path(reference: string): string {
+    return this.media.resolve(reference) ?? super.path(reference);
   }
 }
 

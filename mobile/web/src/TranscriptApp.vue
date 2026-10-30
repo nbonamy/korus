@@ -86,7 +86,7 @@ provideCodexHostCapabilities({
   async ingestAttachments() { return []; }, async pickAttachments() { return []; },
   async transcribeAudio() { throw new Error('Native composer owns dictation.'); },
   async openExternal(url) { await handler('transcript').postMessage(JSON.stringify({ type: 'openExternal', url })); },
-}, { imagePreviewBudgetBytes: 24 * 1024 * 1024, viewportImageLoading: true });
+}, { imagePreviewBudgetBytes: 64 * 1024 * 1024, viewportImageLoading: true });
 async function openFileImage(path: string, title: string) {
   const agentId = agent.value?.id;
   const epoch = ++imageOpenEpoch;

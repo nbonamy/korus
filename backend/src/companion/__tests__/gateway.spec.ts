@@ -4,6 +4,7 @@ import { CompanionGateway, companionAgentMethods, type GatewayState } from '../g
 import { companionSessionId, type CompanionTarget, type CompanionWorkspace } from '@workspace/core/companion-protocol';
 import type { BackendSkillSummary } from '@workspace/core/contracts';
 import { opaquePath } from '@workspace/core/companion-projection';
+import { codexSdkFixture, sdkAgent } from '../../codex/__tests__/sdk-surface-fixture';
 import { normalizePairingCode } from '@workspace/core/companion-pairing';
 const workspace: CompanionWorkspace = {
   teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }, { id: 'remote-team', name: 'Remote', agentIds: ['remote-agent'] }],
@@ -17,7 +18,7 @@ function claim(gateway: CompanionGateway, peerId: string, shown: string, name = 
 function fixture(autoAcceptCode?: string) {
   let now = 1;
   let saved: GatewayState = { grants: [], commands: {} };
-  const port = { onEvent: () => () => {}, push: vi.fn(async (_peerId: string, _registration: unknown, _notification: unknown) => 'sent' as const), changeGoal: vi.fn(async () => {}), updateQueuedPrompt: vi.fn(async () => {}), markRead: vi.fn(async () => {}), respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), synchronize: vi.fn(async () => ({ checkpoint: { epoch: 'epoch', revision: 1 }, frames: [] })), conversation: vi.fn(), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async (): Promise<import('@workspace/core/contracts/conversation').ConversationContentChunk> => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
+  const port = { onEvent: () => () => {}, push: vi.fn(async (_peerId: string, _registration: unknown, _notification: unknown) => 'sent' as const), changeGoal: vi.fn(async () => {}), updateQueuedPrompt: vi.fn(async () => {}), markRead: vi.fn(async () => {}), respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), synchronize: vi.fn(async () => ({ checkpoint: { epoch: 'epoch', revision: 1 }, frames: [] })), conversation: vi.fn(), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async (_agentId: string, _input: import('@workspace/core/contracts/conversation').ConversationContentInput): Promise<import('@workspace/core/contracts/conversation').ConversationContentChunk> => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
     models: vi.fn(async () => [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }]), selectModel: vi.fn(async () => {}),
     gitDiff: vi.fn(async () => ({ target: { type: 'uncommitted' as const }, summary: { changedFiles: 1, addedLines: 2, removedLines: 1 }, diff: 'patch', sections: [] })),
     previewFile: vi.fn(async (_id: string, path: string) => ({ path, kind: 'text' as const, size: 12, content: 'current source' })),
@@ -144,9 +145,22 @@ describe('companion authorization gateway', () => {
     f.port.conversation.mockRejectedValue(new Error('Authoritative conversation is unavailable.'));
     f.port.readConversationContent.mockRejectedValue(new Error('Conversation content is no longer available.'));
     const dataUrl = 'data:image/png;base64,cG5n';
-    f.port.readConversationContent.mockResolvedValueOnce({ data: Buffer.from(dataUrl.slice(0, 4)).toString('base64'), totalBytes: dataUrl.length, nextOffset: 4 });
-    f.port.readConversationContent.mockResolvedValueOnce({ data: Buffer.from(dataUrl.slice(4)).toString('base64'), totalBytes: dataUrl.length, nextOffset: null });
-    expect(await f.gateway.request('phone', 'conversation.image.read', { target: currentTarget, path: reference })).toStrictEqual({ dataUrl });
+    const sdk = codexSdkFixture();
+    const agent = sdkAgent('agent', sessionId);
+    const original = sdk.conversation(sessionId);
+    original.setSnapshot({ messages: [{ id: 'recorded-image', role: 'assistant', status: 'complete',
+      parts: [{ type: 'media', media: { url: reference, title: 'Recorded tool image' } }] }] });
+    original.handle.readContent.mockResolvedValueOnce({ data: Buffer.from(dataUrl.slice(0, 4)).toString('base64'), totalBytes: dataUrl.length, nextOffset: 4 })
+      .mockResolvedValueOnce({ data: Buffer.from(dataUrl.slice(4)).toString('base64'), totalBytes: dataUrl.length, nextOffset: null });
+    f.port.readConversationContent.mockImplementation((_agentId, input) => sdk.driver.readConversationContent(agent, input));
+    try {
+      await sdk.driver.loadConversation(agent);
+      // Frozen build 97 request/decoder: no new fields or client opt-in are required.
+      const reply = await f.gateway.request('phone', 'conversation.image.read', { target: currentTarget, path: reference });
+      expect(Object.keys(reply as object)).toStrictEqual(['dataUrl']);
+      expect(reply).toStrictEqual({ dataUrl });
+    } finally { await sdk.driver.close(); }
+    f.port.readConversationContent.mockRejectedValue(new Error('Conversation content is no longer available.'));
     expect(f.port.readConversationContent.mock.calls).toStrictEqual([['agent', { sessionId, contentId, offset: 0 }], ['agent', { sessionId, contentId, offset: 4 }]]);
     for (const chunk of [
       { data: 'YQ==', totalBytes: 30_000_000, nextOffset: null },

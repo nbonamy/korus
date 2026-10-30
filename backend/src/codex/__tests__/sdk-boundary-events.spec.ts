@@ -29,6 +29,10 @@ describe(`Codex SDK → ${product.name} backend event contract`, () => {
     expect((reset as any).payload.snapshot.messages[0].parts[0].media).toMatchObject({width:1600,height:900});
     const contentId = reference.split(':').at(-1)!;
     const input = { sessionId: 'conversation-a', contentId, offset: 0 };
+    conversation('conversation-a').handle.readContent.mockImplementation(async (_id, offset) => {
+      const end = Math.min(image.length, offset + 64 * 1024);
+      return { data: Buffer.from(image.slice(offset, end)).toString('base64'), totalBytes: image.length, nextOffset: end < image.length ? end : null };
+    });
     const chunks: Buffer[] = [];
     for (;;) {
       const chunk = await driver.readConversationContent(agent, input);
@@ -44,7 +48,29 @@ describe(`Codex SDK → ${product.name} backend event contract`, () => {
     await expect(driver.readConversationContent(sdkAgent('other'), input)).rejects.toThrow();
     await expect(driver.readConversationContent(agent, { ...input, sessionId: 'other' })).rejects.toThrow();
     conversation('conversation-a').setSnapshot({ messages: [] });
+    conversation('conversation-a').handle.readContent.mockRejectedValueOnce(new Error('Conversation content is no longer available.'));
     await expect(driver.readConversationContent(agent, input)).rejects.toThrow();
+  });
+
+  it('reads SDK-owned original screenshots and rejects a result after its agent changes sessions', async () => {
+    const { driver, conversation } = setup();
+    const agent = sdkAgent();
+    const contentId = 'd'.repeat(64);
+    conversation('conversation-a').setSnapshot({ messages: [{ id: 'recorded', role: 'assistant', status: 'complete',
+      parts: [{ type: 'media', media: { url: `conversation-image:conversation-a:${contentId}`, title: 'Recorded tool image' } }] }] });
+    const chunk = { data: Buffer.from('data:image/png;base64,b3JpZ2luYWw=').toString('base64'), totalBytes: Buffer.byteLength('data:image/png;base64,b3JpZ2luYWw='), nextOffset: null };
+    const read = conversation('conversation-a').handle.readContent.mockResolvedValueOnce(chunk);
+    await driver.loadConversation(agent);
+    const input = { sessionId: 'conversation-a', contentId, offset: 0 };
+    expect(await driver.readConversationContent(agent, input)).toStrictEqual(chunk);
+    expect(read).toHaveBeenCalledExactlyOnceWith(contentId, 0);
+    let finish!: (value: typeof chunk) => void;
+    read.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const pending = driver.readConversationContent(agent, input);
+    const rejected = expect(pending).rejects.toThrow('no longer available');
+    await driver.loadConversation(sdkAgent(agent.id, 'replacement'));
+    finish(chunk);
+    await rejected;
   });
 
   it('projects an SDK completed plan through the real driver and server into durable review state', async () => {

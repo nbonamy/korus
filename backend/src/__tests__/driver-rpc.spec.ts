@@ -291,6 +291,7 @@ describe('BackendDriverRpc', () => {
         clientInfo: { name: 'workspace', title: product.name, version: '0.3.0' },
         codexHome: '/tmp/agent-workspace-isolated-home/codex-home',
         loadingStrategy: 'lazy',
+        originalHistoryImages: true,
         transport: {
           command: expect.any(String),
         },

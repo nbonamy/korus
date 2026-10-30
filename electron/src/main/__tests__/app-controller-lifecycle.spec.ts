@@ -1,6 +1,10 @@
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { product } from '@workspace/core/product';
 import { EventEmitter } from 'node:events';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { ipcChannels } from '@workspace/core/ipc';
@@ -169,6 +173,25 @@ afterEach(async () => {
 });
 
 describe('controller desktop lifecycle', () => {
+  it('reads restored opaque image media through the native preview IPC without granting unknown tokens', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'korus-image-preview-'));
+    try {
+      const imagePath = path.join(directory, 'viewed.png');
+      const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1xkAAAAASUVORK5CYII=', 'base64');
+      await writeFile(imagePath, png);
+      const { backend, state } = setup();
+      const agentId = state.snapshot.agents[0]!.id;
+      backend.request.mockResolvedValueOnce([{ id: 'viewed', agentId, role: 'assistant', status: 'complete',
+        parts: [{ type: 'media', media: { url: pathToFileURL(imagePath).href, title: 'Viewed image', mimeType: 'image/png' } }] }]);
+      const messages = await invoke(ipcChannels.readConversationMessages, { backend: 'codex', threadId: 'history' }, agentId);
+      const reference = messages[0].parts[0].media.url;
+      expect(reference).toMatch(/^agent-workspace-media:\/\/generated\//);
+      expect(await invoke('codex-native:read-image-preview', reference)).toBe('data:image/png;base64,' + png.toString('base64'));
+      await expect(invoke('codex-native:read-image-preview', 'agent-workspace-media://generated/not-registered')).rejects.toThrow('invalid or expired');
+      await expect(invoke('codex-native:read-image-preview', pathToFileURL(imagePath).href)).rejects.toThrow('invalid or expired');
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  });
+
   it('exposes statistics deletion through preload and propagates backend failures',async()=>{
     const {backend}=setup();
     await import('../../preload');

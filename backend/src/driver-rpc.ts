@@ -72,6 +72,7 @@ export function appSurfaceOptions(options: BackendDriverRegistryOptions = {}): A
     clientInfo: { name: 'workspace', title: product.name, version: '0.3.0' },
     codexHome: options.generalSettings?.providerHomes?.codex?.homePath ?? backendCodexHomeDir(),
     loadingStrategy: 'lazy',
+    originalHistoryImages: true,
     transport: {
       ...resolveCodexLaunch(options.generalSettings?.codexBinaryPath),
       configOverrides: buildAppMcpConfigOverrides(

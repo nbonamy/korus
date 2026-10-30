@@ -516,10 +516,10 @@ test('image previews follow the viewport with stable geometry, bounded caching a
     const page = await browser.newPage({ viewport: { width: 402, height: 740 } });
     await page.addInitScript(() => {
       window.imageReads = []; window.openedImages = []; window.activeReads = 0; window.peakReads = 0;
-      window.imageUrls = new Set(); window.revokedImages = 0;
+      window.imageUrls = new Set(); window.imageBytes = new Map(); window.revokedImages = 0;
       const create = URL.createObjectURL.bind(URL), revoke = URL.revokeObjectURL.bind(URL);
-      URL.createObjectURL = blob => { const url = create(blob); window.imageUrls.add(url); return url; };
-      URL.revokeObjectURL = url => { if (window.imageUrls.delete(url)) window.revokedImages++; revoke(url); };
+      URL.createObjectURL = blob => { const url = create(blob); window.imageUrls.add(url); window.imageBytes.set(url,blob.size); return url; };
+      URL.revokeObjectURL = url => { if (window.imageUrls.delete(url)) window.revokedImages++; window.imageBytes.delete(url); revoke(url); };
       window.webkit = { messageHandlers: { transcript: { postMessage(json) {
         const event = JSON.parse(json); if (event.type === 'openImage') window.openedImages.push(event); if (event.type !== 'readConversationImage') return;
         window.imageReads.push(event); window.peakReads = Math.max(window.peakReads, ++window.activeReads);
@@ -554,11 +554,11 @@ test('image previews follow the viewport with stable geometry, bounded caching a
     await page.waitForFunction(() => window.activeReads === 0);
     assert.ok(await page.evaluate(() => window.peakReads <= 2), 'preview reads must be bounded');
     await page.waitForFunction(() => !document.body.textContent.includes('Loading image…'));
-    assert.ok(await page.evaluate(() => window.imageUrls.size <= 5), 'decoded pixels count toward the 24 MiB budget');
+    assert.ok(await page.evaluate(() => [...window.imageBytes.values()].reduce((a,b)=>a+b,0)+[...document.querySelectorAll('img')].reduce((a,x)=>a+x.naturalWidth*x.naturalHeight*4,0)<=64*1024*1024), 'compressed originals and decoded thumbnails share the 64 MiB bound');
     const readsBeforeReturn = await page.evaluate(() => window.imageReads.filter(e => e.path === '/tmp/shot-0.png').length);
     await shot(0).evaluate(el => el.scrollIntoView({block:'center'}));
-    await page.waitForFunction(() => document.querySelector('[aria-label="Open Shot 0"] img')?.naturalWidth === 2048);
-    assert.ok(await page.evaluate(count => window.imageReads.filter(e => e.path === '/tmp/shot-0.png').length > count, readsBeforeReturn), 'evicted previews reload on return without a tap');
+    await page.waitForFunction(() => document.querySelector('[aria-label="Open Shot 0"] img')?.naturalWidth > 0);
+    assert.ok(await page.evaluate(count => window.imageReads.filter(e => e.path === '/tmp/shot-0.png').length === count, readsBeforeReturn), 'returning previews reuse downloaded bytes without a host read');
     const settledReads = await page.evaluate(() => window.imageReads.length);
     await page.waitForTimeout(300);
     assert.equal(await page.evaluate(() => window.imageReads.length), settledReads, 'memory pressure must not cause a fetch loop');
@@ -567,7 +567,8 @@ test('image previews follow the viewport with stable geometry, bounded caching a
     await page.waitForFunction(() => window.imageUrls.size === 0);
     await page.evaluate(async () => { const c = window.imageBudgetConversation; c.frame.payload.snapshot.messages=[{id:'large',role:'assistant',parts:[{type:'media',media:{url:'/tmp/large.png',title:'Large image'}}]}]; await window.companionTranscript.setConversation(JSON.stringify(c)); });
     await page.waitForFunction(() => window.imageReads.some(e => e.path === '/tmp/large.png') && window.activeReads === 0 && !document.body.textContent.includes('Loading image…'));
-    assert.equal(await page.evaluate(() => window.imageUrls.size), 0, 'over-budget images must not stay retained');
+    await page.waitForFunction(() => document.querySelector('[aria-label="Open Large image"] img')?.naturalWidth > 0);
+    assert.ok(await page.getByRole('button',{name:'Open Large image',exact:true}).locator('img').evaluate(el=>el.naturalWidth<3072), 'large originals use bounded inline thumbnails');
     await page.getByRole('button',{name:'Open Large image',exact:true}).click();
     await page.waitForFunction(() => window.openedImages.some(image => image.title === 'Large image'));
     await mkdir('out', {recursive:true});
