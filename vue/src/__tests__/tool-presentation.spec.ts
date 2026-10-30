@@ -13,6 +13,7 @@ import {
   IconSitemap as SitemapIcon,
   IconUsers as UsersIcon,
   IconPhoto as PhotoIcon,
+  IconWorld as WorldIcon,
 } from '@tabler/icons-vue';
 import { messages } from '../i18n/messages';
 import { presentAppTool } from '../tool-presentation';
@@ -62,11 +63,13 @@ describe(`${product.name} tool presentation`, () => {
     ['delete-finding', MessageReportIcon, 'Deleted finding'],
     ['report-mission-review-finding', MessageReportIcon, 'Reported Mission finding'],
     ['list-agents', UsersIcon, 'Listed agents'],
+    ['list-hosts', WorldIcon, 'Listed hosts'],
     ['toggle_thread_flag', UsersIcon, 'Updated thread flag'],
     ['create-worktree', GitBranchIcon, 'Created worktree feature/tool-icons'],
     ['create-project', GitBranchIcon, 'Created project new-product'],
     ['display-markdown', MarkdownIcon, 'Displayed Review notes'],
     ['read-skill', MarkdownIcon, 'Loaded skill'],
+    ['reopen-mission-stage', TargetArrowIcon, 'Reopened mission stage'],
     ['set-mission-title', TargetArrowIcon, 'Named mission'],
     ['attach-mission-repository', GitBranchIcon, 'Attached mission repository'],
     ['get-mission-assignment', SquareCheck, 'Read mission assignment'],

@@ -2,7 +2,7 @@
   <FormDialog class="agent-handoff-dialog" width="480px" :model-value="true" :title="t('handoff.submit')" @update:model-value="close">
     <form id="agent-handoff-form" class="app-form-dialog agent-handoff-form" @submit.prevent="submitHandoff">
       <FormField :label="t('handoff.model')">
-        <BackendModelSelector v-model:selection="selection" :agent-id="agent.id" :team-id="agent.teamId" :disabled="busy" @loading="loadingModels = $event" />
+        <BackendModelSelector v-model:selection="selection" :agent-id="agent.id" :remote-connection-id="agent.remoteConnectionId" :disabled="busy" @loading="loadingModels = $event" />
       </FormField>
       <FormField :label="t('handoff.instructions')" label-for="handoff-instructions">
         <el-input id="handoff-instructions" v-model="instructions" type="textarea" :rows="3" :maxlength="4000" :disabled="busy" :placeholder="t('handoff.optional')" />
@@ -41,6 +41,7 @@ import AutomationExecutionConversationOverlay from './AutomationExecutionConvers
 
 const props = defineProps<{
   agent: Agent;
+  pendingOperationId?: string;
   blocker?: string | null;
   submit: (agentId: string, input: AgentHandoffInput) => Promise<void>;
   listModels: (agentId: string, backend: AgentBackend) => Promise<BackendModelOption[]>;
@@ -48,15 +49,16 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ close: [] }>();
 const { t } = useI18n();
-const choices = useBackendChoices(() => props.agent.teamId);
+const operationId = props.pendingOperationId ?? crypto.randomUUID();
+const choices = useBackendChoices(() => props.agent.remoteConnectionId);
 const initialBackend = choices.value.find(choice => choice !== props.agent.backend) ?? choices.value[0];
 const selection = ref<ExecutionSelection | undefined>(initialBackend ? defaultExecutionSelection(initialBackend) : undefined);
-provide(backendModelCatalogKey, { listModels: (agentId, backend) => props.listModels(agentId, backend) });
+provide(backendModelCatalogKey, { listModels: async (agentId, backend) => agentId ? await props.listModels(agentId, backend) : [] });
 const instructions = ref('');
 const busy = ref(false);
 const error = ref('');
 const loadingModels = ref(false);
-const operationId = crypto.randomUUID();
+
 const sourceVisible = ref(false);
 const sourceLoading = ref(false);
 const sourceError = ref('');

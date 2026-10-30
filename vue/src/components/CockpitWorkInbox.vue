@@ -247,6 +247,9 @@
             <el-option v-for="team in teams" :key="team.id" :label="team.name" :value="team.id" />
           </el-select>
         </label>
+        <label v-if="readyHosts.length">{{ $t('remoteTarget.machine') }}
+          <HostSelector v-model="selectedHost" :hosts="readyHosts" :disabled="startingWork" />
+        </label>
         <p v-if="startWorkError" class="cockpit-inbox__start-error" role="alert">{{ startWorkError }}</p>
         <label v-if="!workProviderDefinition(connection.provider).repositoryBacked">
           {{ $t('backlogSource.codeRepository') }}
@@ -255,7 +258,7 @@
           </el-select>
         </label>
         <label>{{ $t('repositoryBacklog.session') }}
-          <BackendModelSelector v-model:selection="selectedSelection" :team-id="selectedTeamId" :disabled="startingWork" />
+          <BackendModelSelector v-model:selection="selectedSelection" :remote-connection-id="remoteConnectionId" :disabled="startingWork" />
         </label>
       </div>
 
@@ -279,7 +282,7 @@ import { workProviderDefinition } from '@workspace/core/work-providers';
 import { translate } from '../i18n';
 import { computed, nextTick, onScopeDispose, ref, watch } from 'vue';
 import { IconAlertCircle, IconChevronDown, IconChevronLeft, IconChevronRight, IconCircleFilled, IconFilter, IconSearch } from '@tabler/icons-vue';
-import type { Agent, Team, WorkBacklogAssignment, WorkIntegrationConnection, WorkItem, WorkSource } from '@workspace/core/contracts';
+import type { Agent, RemoteConnection, Team, WorkBacklogAssignment, WorkIntegrationConnection, WorkItem, WorkSource } from '@workspace/core/contracts';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
 import { repositoryIconForAgent } from '@workspace/core/workspace-sidebar';
@@ -289,6 +292,7 @@ import AgentAvatar from './AgentAvatar.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import BackendModelSelector from './BackendModelSelector.vue';
+import HostSelector from './HostSelector.vue';
 import type { StartWorkItemsInput } from './use-work-item-routing';
 
 type InboxView = 'all' | 'backlog' | 'wip' | 'focus';
@@ -316,6 +320,7 @@ const props = withDefaults(defineProps<{
   status: 'notLoaded' | 'loading' | 'loaded' | 'error';
   statusFilter?: SummaryFilter | null;
   teams: Team[];
+  remoteConnections?: RemoteConnection[];
   totalItems?: number;
   hasNextPage?: boolean;
   defaultTeamId?: string | null;
@@ -344,6 +349,12 @@ const detailItem = ref<WorkItem | null>(null);
 const startingWork = ref(false);
 const startWorkError = ref<string | null>(null);
 const selectedTeamId = ref('');
+const selectedHost = ref('local');
+const readyHosts = computed(() => props.remoteConnections?.filter(connection => connection.status === 'ready') ?? []);
+const remoteConnectionId = computed(() => selectedHost.value === 'local' ? undefined : selectedHost.value);
+watch(readyHosts, hosts => {
+  if (remoteConnectionId.value && !hosts.some(host => host.id === remoteConnectionId.value)) selectedHost.value = 'local';
+});
 const singleLaunchItem = ref<WorkItem | null>(null);
 const launchItems = computed(() => singleLaunchItem.value ? [singleLaunchItem.value] : selectedItems.value);
 const codeRepositories = ref<import('@workspace/core/contracts').SourceRepository[]>([]);
@@ -351,15 +362,14 @@ const selectedCodeRepositoryPath = ref('');
 const codeRepositoriesLoading = ref(false);
 let contextRevision = 0;
 onScopeDispose(() => { ++contextRevision; });
-watch([startWorkDialogOpen, selectedTeamId], async () => {
+watch([startWorkDialogOpen, selectedTeamId, remoteConnectionId], async () => {
   const revision = ++contextRevision;
   codeRepositories.value = [];
   selectedCodeRepositoryPath.value = '';
   if (!startWorkDialogOpen.value || workProviderDefinition(props.connection.provider).repositoryBacked) return;
   codeRepositoriesLoading.value = true;
   try {
-    const team = props.teams.find(team => team.id === selectedTeamId.value);
-    const repositories = await props.listSourceRepositories?.(team?.remoteConnectionId) ?? [];
+    const repositories = await (remoteConnectionId.value ? props.listSourceRepositories?.(remoteConnectionId.value) : props.listSourceRepositories?.()) ?? [];
     if (revision === contextRevision) codeRepositories.value = repositories;
   } catch (error) {
     if (revision === contextRevision) startWorkError.value = error instanceof Error ? error.message : String(error);
@@ -562,6 +572,7 @@ function openStartWorkDialog(item?: WorkItem): void {
   singleLaunchItem.value = item?.id ? item : null;
   if (launchItems.value.length === 0) return;
   selectedTeamId.value = defaultTeamId();
+  selectedHost.value = 'local';
   startWorkError.value = null;
   startWorkDialogOpen.value = true;
 }
@@ -583,6 +594,7 @@ async function startSelectedWork(action: StartWorkItemsInput['action']): Promise
   startWorkError.value = null;
   try {
     await props.startWorkAction({ action, items, teamId: selectedTeamId.value, selection: selectedSelection.value,
+      ...(remoteConnectionId.value ? { remoteConnectionId: remoteConnectionId.value } : {}),
       ...(repository ? { repository, isCurrent: () => revision === contextRevision } : {}) });
     if (revision !== contextRevision) return;
     selectedItemIds.value = new Set([...selectedItemIds.value].filter(id => !items.some(item => item.id === id)));

@@ -33,7 +33,7 @@ it('routes Save As to the remote agent host rather than a local folder', async (
   const remote = new AppBackendServer({ version: 'test', snapshot: createRemoteTeamSnapshot([remoteAgent]) });
   const snapshot = createTestSnapshot();
   const connection = readyRemoteConnection(); snapshot.remoteConnections.connections = [connection];
-  snapshot.teams.push({ id: 'remote-pointer', name: 'Remote', agentIds: [], remoteConnectionId: connection.id, remoteTeamId: 'team-remote' });
+  snapshot.teams.push({ id: 'remote-pointer', name: 'Remote', agentIds: [], remoteLinks: [{ connectionId: connection.id, remoteTeamId: 'team-remote' }] });
   const documents = new DocumentWorkspaceService(path.join(home, 'client-documents.json'));
   const displayed = await documents.display(remoteAgent.id, { kind: 'markdown', content: 'Remote bytes' });
   const local = new AppBackendServer({ version: 'test', snapshot, documents, remoteClients: {

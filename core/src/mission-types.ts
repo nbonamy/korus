@@ -5,6 +5,8 @@ export type MissionReviewDebugState = 'identified' | 'remediated';
 
 export type MissionTicket = {
   id?: string;
+  /** Content generation; absent on legacy tickets means zero. */
+  revision?: number;
   title: string;
   body?: string;
   repositoryPath?: string;
@@ -20,6 +22,8 @@ export type MissionReviewFinding = {
   repositoryPath: string;
   location?: import('./code-review').CodeReviewLocation;
   selected: boolean;
+  /** Explicit user authorization, scoped to this Review, repository and worker across turns. */
+  remediationAssignment?: { reviewRunId: string; workerId: string; repositoryPath: string; startedAt: string };
   remediation: { state: 'open' } | { state: 'skipped'; startedAt: string } | { state: 'fixing'; startedAt: string } | { state: 'fixed'; completedAt: string; evidence?: string };
   createdAt: string;
   updatedAt: string;
@@ -51,6 +55,7 @@ export type MissionRun = {
   workerId?: string;
   ticketIndex?: number;
   ticketId?: string;
+  ticketRevision?: number;
   repositoryPath?: string;
   status: 'preparing' | 'running' | 'awaitingReview' | 'accepted' | 'cancelled' | 'failed';
   // Paths are retained only when reading older saved runs; skills load by name over MCP.
@@ -62,6 +67,8 @@ export type MissionRun = {
   error?: string;
   proposal?: MissionArtifacts;
   draftTickets?: MissionTicket[];
+  /** Canonical ticket content when the draft started; completion is excluded. */
+  draftTicketsBaseHash?: string;
   implementationResult?: { changes: string; tests: string };
 };
 export type MissionWorkspace = { repositoryPath: string; path: string; branch: string; baseSha?: string; deleted?: true; commitLock?: { agentId: string; runId: string; turnId: string } };
@@ -148,5 +155,5 @@ export type MissionReviewFindingUpdateInput = {
 export type MissionToolContext = { missionId: string; runId: string; stage: MissionStage; assignment?: MissionTicketAssignment };
 export type MissionArtifactWriteInput = { stage: MissionStage; content: string; expectedRevision?: number };
 export type MissionArtifactReadResult = { stage: MissionStage; content: string; revision: number; updatedAt: string };
-export type MissionTicketDraftInput = { ticketId?: string; title: string; body: string; repositoryPath: string; reference?: string; blockedByTicketIds?: string[] };
+export type MissionTicketDraftInput = { expectedRevision?: number; ticketId?: string; title: string; body: string; repositoryPath: string; reference?: string; blockedByTicketIds?: string[] };
 export type MissionTicketDraftResult = { success: true; ticketId: string; index: number; artifactRevision: number };

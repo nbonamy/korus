@@ -12,6 +12,8 @@ const methods: Set<string> = new Set([
   backendMethods.clientPreferencesUpdate,
 ]);
 
+type ClientUpdateOptions = { afterAgentId?: string; select?: boolean };
+
 /** Client presentation preferences never mutate the owning runtime or a remote host. */
 export class ClientPreferencesService {
   private readonly pending = new Map<string, Promise<AppSnapshot>>();
@@ -22,16 +24,16 @@ export class ClientPreferencesService {
 
   supports(method: string): boolean { return methods.has(method); }
 
-  update(clientId: string, method: string, params: Record<string, unknown>): Promise<AppSnapshot> {
+  update(clientId: string, method: string, params: Record<string, unknown>, options: ClientUpdateOptions = {}): Promise<AppSnapshot> {
     const previous = this.pending.get(clientId);
     const next = (previous ?? Promise.resolve()).catch(() => undefined)
-      .then(() => this.applyUpdate(clientId, method, params));
+      .then(() => this.applyUpdate(clientId, method, params, options));
     this.pending.set(clientId, next);
     void next.finally(() => { if (this.pending.get(clientId) === next) this.pending.delete(clientId); }).catch(() => undefined);
     return next;
   }
 
-  private async applyUpdate(clientId: string, method: string, params: Record<string, unknown>): Promise<AppSnapshot> {
+  private async applyUpdate(clientId: string, method: string, params: Record<string, unknown>, options: ClientUpdateOptions): Promise<AppSnapshot> {
     const original = await this.options.snapshot();
     const snapshot = structuredClone(projectClientSnapshot(original, clientId));
     const preferences = structuredClone(original.clientPreferences?.[clientId] ?? {});
@@ -43,7 +45,15 @@ export class ClientPreferencesService {
     if (method === backendMethods.clientNavigationSelectAgent) {
       const id = string(params.agentId);
       if (!snapshot.agents.some((agent) => agent.id === id)) throw new Error(`Agent not found: ${id}`);
-      selectAgent(snapshot, id);
+      if (options.afterAgentId && options.afterAgentId !== id) {
+        const sourceId = options.afterAgentId;
+        const team = snapshot.teams.find(team => team.agentIds.includes(id) && team.agentIds.includes(sourceId));
+        if (team) {
+          team.agentIds = team.agentIds.filter(agentId => agentId !== id);
+          team.agentIds.splice(team.agentIds.indexOf(sourceId) + 1, 0, id);
+        }
+      }
+      if (options.select !== false) selectAgent(snapshot, id);
     } else if (method === backendMethods.clientNavigationSelectTeam) {
       const id = string(params.teamId);
       if (!snapshot.teams.some((team) => team.id === id)) throw new Error(`Team not found: ${id}`);
@@ -51,7 +61,7 @@ export class ClientPreferencesService {
     } else if (method === backendMethods.clientAgentOrderUpdate) {
       if (!reorderAgentInTeam(snapshot, string(input?.teamId), string(input?.agentId), input?.beforeAgentId == null ? null : string(input.beforeAgentId))) throw new Error('Agent reorder target not found.');
     } else if (method === backendMethods.clientRepositoryOrderUpdate) {
-      if (!reorderRepositoryInTeam(snapshot, string(input?.teamId), string(input?.repositoryRoot), input?.beforeRepositoryRoot == null ? null : string(input.beforeRepositoryRoot))) throw new Error('Repository reorder target not found.');
+      if (!reorderRepositoryInTeam(snapshot, string(input?.teamId), string(input?.repositoryKey), input?.beforeRepositoryKey == null ? null : string(input.beforeRepositoryKey))) throw new Error('Repository reorder target not found.');
     } else if (method === backendMethods.clientTeamOrderUpdate) {
       if (!reorderTeamInSnapshot(snapshot, string(input?.teamId), input?.beforeTeamId == null ? null : string(input.beforeTeamId))) throw new Error('Team reorder target not found.');
     } else if (method === backendMethods.clientAgentExternalApplicationUpdate) {

@@ -28,8 +28,8 @@
     <div v-else class="visualize-panel__suggestions">
       <div class="visualize-panel__intro">
         <span class="visualize-panel__eyebrow">{{ translate('visualize.mode') }}</span>
-        <h2>{{ translate(visualize.suggestions.length ? 'visualize.chooseDiagram' : 'visualize.findingDiagrams') }}</h2>
-        <p>{{ translate(visualize.suggestions.length ? 'visualize.suggestedFromConversation' : 'visualize.suggestionsWillAppear') }}</p>
+        <h2>{{ translate(visualize.suggestions.length ? 'visualize.chooseDiagram' : 'visualize.chooseInConversation') }}</h2>
+        <p>{{ translate(visualize.suggestions.length ? 'visualize.suggestedFromConversation' : 'visualize.conversationChoice') }}</p>
       </div>
       <div v-if="visualize.suggestions.length" class="visualize-panel__suggestion-grid">
         <button
@@ -210,7 +210,7 @@ async function confirmDelete(visualization: Visualization): Promise<void> {
   display: flex;
   flex-direction: column;
   padding: var(--space-12);
-  padding-bottom: 108px;
+  padding-bottom: var(--space-4);
 }
 
 .visualize-panel__heading {
@@ -322,9 +322,9 @@ async function confirmDelete(visualization: Visualization): Promise<void> {
 }
 
 .visualize-panel__strip {
-  position: absolute;
-  left: var(--space-12);
-  bottom: var(--space-12);
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin: 0 var(--space-12) var(--space-12);
   max-width: calc(100% - 2 * var(--space-12));
   display: flex;
   gap: var(--space-6);

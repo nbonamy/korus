@@ -6,6 +6,7 @@ import type {
   AppSnapshot,
   CreateAgentInput,
   CreateSourceWorktreeInput,
+  CloneSourceRepositoryInput,
   DuplicateAgentOptions,
   SourceRepository,
   SourceWorktree,
@@ -32,6 +33,7 @@ export type StartWorkItemsInput = {
   teamId: string;
   selection?: import('@workspace/core/contracts/execution').ExecutionSelection;
   repository?: SourceRepository;
+  remoteConnectionId?: string;
   isCurrent?: () => boolean;
 };
 
@@ -55,6 +57,8 @@ type WorkItemRoutingActions = {
   createBranch: (agentId: string, input: AgentGitBranchInput) => Promise<unknown>;
   createWorktree: (input: CreateSourceWorktreeInput) => Promise<SourceWorktree>;
   listBranches: (repoPath: string, remoteConnectionId?: string) => Promise<unknown>;
+  listSourceRepositories?: (remoteConnectionId: string) => Promise<SourceRepository[]>;
+  cloneRepository?: (input: CloneSourceRepositoryInput) => Promise<SourceRepository>;
   duplicateAgent: (agentId: string, options: DuplicateAgentOptions) => Promise<Agent | null>;
   loadItems: (
     provider: WorkItem['provider'],
@@ -106,7 +110,7 @@ export function useWorkItemRouting(options: {
 
     const targetAgent = input.target === 'duplicate'
       ? input.selection?.model || (input.selection?.backend && input.selection?.backend !== sourceAgent.backend)
-        ? await options.actions.createAgent({ name: `${sourceAgentName} ${workItemDisplayIdentifier(item)}`, folder: sourceAgent.folder ?? '', teamId: sourceAgent.teamId, ...(input.selection ? { selection: { ...input.selection } } : {}) })
+        ? await options.actions.createAgent({ name: `${sourceAgentName} ${workItemDisplayIdentifier(item)}`, folder: sourceAgent.folder ?? '', teamId: sourceAgent.teamId, ...(sourceAgent.remoteConnectionId ? { remoteConnectionId: sourceAgent.remoteConnectionId } : {}), ...(input.selection ? { selection: { ...input.selection } } : {}) })
         : await options.actions.duplicateAgent(sourceAgent.id, {
           select: false,
           name: `${sourceAgentName} ${workItemDisplayIdentifier(item)}`,
@@ -190,10 +194,31 @@ export function useWorkItemRouting(options: {
     const backgrounded = new Promise<'background'>((resolve) => backgroundSignals.set(id, () => resolve('background')));
     let prepared = 0;
     let created = 0;
+    let remoteCatalog: Promise<SourceRepository[]> | undefined;
+    const remoteRepositories = new Map<string, Promise<SourceRepository>>();
+    async function repositoryFor(item: WorkItem): Promise<SourceRepository | undefined> {
+      if (input.repository || !input.remoteConnectionId) return input.repository;
+      const identity = workItemRepositoryIdentity(item);
+      if (!identity) throw new Error(`${item.sourceName} is not available in the source folder.`);
+      let pending = remoteRepositories.get(identity);
+      if (!pending) {
+        pending = (async () => {
+          remoteCatalog ??= options.actions.listSourceRepositories?.(input.remoteConnectionId!) ?? Promise.resolve([]);
+          const repositories = await remoteCatalog;
+          ensureCurrent(input.isCurrent);
+          const repository = repositories.find(candidate => candidate.remoteIdentity === identity);
+          if (repository) return repository;
+          if (!options.actions.cloneRepository) throw new Error(`${item.sourceName} is not available in the source folder.`);
+          return options.actions.cloneRepository({ url: `https://${identity}.git`, remoteConnectionId: input.remoteConnectionId, reuseExisting: true });
+        })();
+        remoteRepositories.set(identity, pending);
+      }
+      return pending;
+    }
     const settled = Promise.allSettled(input.items.map(async listedItem => {
       const { agent, item } = await createIsolatedAgent(listedItem, input.teamId, {
         selection: input.selection,
-        repository: input.repository, isCurrent: input.isCurrent,
+        repository: await repositoryFor(listedItem), remoteConnectionId: input.remoteConnectionId, isCurrent: input.isCurrent,
         onPhase: () => {
           if (++prepared !== input.items.length) return;
           const current = creationProgress.value;
@@ -242,15 +267,14 @@ export function useWorkItemRouting(options: {
   async function createIsolatedAgent(
     listedItem: WorkItem,
     teamId: string,
-    creationOptions: { reuseExisting?: boolean; selection?: import('@workspace/core/contracts/execution').ExecutionSelection; repository?: SourceRepository; isCurrent?: () => boolean; onPhase?: (phase: 'creatingAgent') => void } = {},
+    creationOptions: { reuseExisting?: boolean; selection?: import('@workspace/core/contracts/execution').ExecutionSelection; repository?: SourceRepository; remoteConnectionId?: string; isCurrent?: () => boolean; onPhase?: (phase: 'creatingAgent') => void } = {},
   ): Promise<{ agent: Agent; item: WorkItem }> {
     const team = options.model.snapshot().teams.find((candidate) => candidate.id === teamId);
     if (!team) throw new Error(translate('surface.appShell.theSelectedTeamIsUnavailable'));
 
     const item = await resolvePullRequestBranch(listedItem);
     ensureCurrent(creationOptions.isCurrent);
-    const repositoryIdentity = item.provider === 'github' ? `github.com/${item.sourceId}`
-      : item.provider === 'gitlab' && item.sourceId.startsWith('gitlab.com/') ? item.sourceId : undefined;
+    const repositoryIdentity = workItemRepositoryIdentity(item);
     const repository = creationOptions.repository ?? (workProviderDefinition(item.provider).repositoryBacked
       ? options.model.sourceRepositories().find((candidate) => repositoryIdentity && candidate.remoteIdentity === repositoryIdentity) : undefined);
     if (!repository) throw new Error(`${item.sourceName} is not available in the source folder.`);
@@ -261,7 +285,7 @@ export function useWorkItemRouting(options: {
       repoPath: repository.path,
       branchName: workItemBranchName(item),
       ...(creationOptions.reuseExisting ? { reuseExisting: true } : {}),
-      ...remoteConnection(team),
+      ...(creationOptions.remoteConnectionId ? { remoteConnectionId: creationOptions.remoteConnectionId } : {}),
     });
     ensureCurrent(creationOptions.isCurrent);
     creationOptions.onPhase?.('creatingAgent');
@@ -271,6 +295,7 @@ export function useWorkItemRouting(options: {
       ...(creationOptions.selection ? { selection: { ...creationOptions.selection } } : {}),
       sourceRepositoryName: repository.name,
       teamId: team.id,
+      ...(creationOptions.remoteConnectionId ? { remoteConnectionId: creationOptions.remoteConnectionId } : {}),
     });
     if (!agent) throw new Error(`Could not create an agent for ${item.sourceName} ${workItemDisplayIdentifier(item)}.`);
     return { agent, item };
@@ -334,8 +359,7 @@ export function useWorkItemRouting(options: {
 
   async function validateAgentRepository(agent: Agent): Promise<void> {
     if (agent.workspace?.kind !== 'git') throw new Error('The selected code repository is unavailable.');
-    const team = options.model.snapshot().teams.find(team => team.id === agent.teamId);
-    await options.actions.listBranches(agent.workspace.primaryWorktreeRoot, team?.remoteConnectionId);
+    await options.actions.listBranches(agent.workspace.primaryWorktreeRoot, agent.remoteConnectionId);
   }
 
   async function assignWithPrompt(
@@ -374,6 +398,11 @@ function workItemRepositoryName(item: WorkItem): string {
   return item.sourceName.split('/').filter(Boolean).at(-1) ?? item.sourceName;
 }
 
+function workItemRepositoryIdentity(item: WorkItem): string | undefined {
+  return item.provider === 'github' ? `github.com/${item.sourceId}`
+    : item.provider === 'gitlab' && item.sourceId.startsWith('gitlab.com/') ? item.sourceId : undefined;
+}
+
 function workItemTeamName(item: WorkItem): string {
   return `${workProviderTitle(item.provider)} ${workItemDisplayIdentifier(item)}`;
 }
@@ -384,9 +413,4 @@ function ensureCurrent(isCurrent?: () => boolean): void {
 
 function workProviderTitle(provider: WorkItem['provider']): string {
   return workProviderDefinition(provider).label;
-}
-
-function remoteConnection(team: Team): { remoteConnectionId?: string } {
-  const remoteConnectionId = team.remoteConnectionId?.trim();
-  return remoteConnectionId ? { remoteConnectionId } : {};
 }

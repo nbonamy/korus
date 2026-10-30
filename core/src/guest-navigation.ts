@@ -13,4 +13,4 @@ export type GuestJoinControl =
   | { action: 'open' | 'leave' | 'history' | 'cancel'; id: string }
   | { action: 'join'; id: string; name: string }
   | { action: 'withdraw'; id: string; proposalId: string }
-  | { action: 'propose'; id: string; proposalId: string; text: string };
+  | { action: 'propose'; id: string; proposalId: string; text: string; followUpBehavior?: 'queue' | 'steer' };

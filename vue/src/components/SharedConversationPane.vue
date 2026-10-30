@@ -10,13 +10,16 @@
     v-else
     :key="view.id"
     v-model="draft"
-    :disabled="busy || view.status !== 'ready'"
+    :disabled="busy || view.status !== 'ready' || (writerBusy && !draft.trim())"
     :capabilities="capabilities"
     :attach-enabled="false"
-    :placeholder="t('guest.placeholder')"
-    :busy="false"
+    :placeholder="t(view.proposalState?.writeAccess ? 'guest.writePlaceholder' : 'guest.placeholder')"
+    :busy="writerBusy"
+    :escape-interrupt="false"
+    :follow-up-behavior="followUpBehavior"
     :conversation-key="view.id"
-    @submit="propose"
+    @submit="propose($event, 'queue')"
+    @steer="propose($event, 'steer')"
     class="guest-transcript"
     :can-delete-turn="false"
     :can-edit-turn="false"
@@ -51,6 +54,7 @@
       <ConversationShareActivity v-if="visibleProposals.length" :proposals="visibleProposals" :disabled="busy || withdrawing || view.status !== 'ready'" @delete="withdraw" />
     </template>
     <template #before-composer>
+      <p class="shared-conversation-pane__access" role="status">{{ t(view.proposalState?.writeAccess ? 'guest.writeAccess' : 'guest.readOnly') }}</p>
       <p v-if="failed" role="alert">{{ t('guest.proposalFailed') }}</p>
       <p v-if="withdrawFailed" role="alert">{{ t('guest.deleteSuggestionFailed') }}</p>
     </template>
@@ -61,6 +65,7 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { CodexConversationPane, provideCodexHostCapabilities, useCodexHostCapabilities, type CodexChatMessage, type SurfaceMessage, type CodexConversationLink } from '@codex-app-sdk/vue';
+import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { guestConversationCapabilities } from '@workspace/core/guest-conversation';
 import type { GuestJoinControl, GuestJoinView } from '@workspace/core/guest-navigation';
 import type { RendererMessage } from '@workspace/core/contracts';
@@ -68,7 +73,7 @@ import { appApi } from '../platform-api';
 import { isAppToolVisible, provideAppToolPresentation } from '../tool-presentation';
 import DeferredConversationContent from './DeferredConversationContent.vue';
 import ConversationShareActivity from './ConversationShareActivity.vue';
-const props = defineProps<{ view: GuestJoinView; busy: boolean; control: (input: GuestJoinControl) => Promise<boolean> }>();
+const props = withDefaults(defineProps<{ view: GuestJoinView; busy: boolean; followUpBehavior?: 'queue' | 'steer'; control: (input: GuestJoinControl) => Promise<boolean> }>(), { followUpBehavior: 'queue' });
 const draft = ref(''); const failed = ref(false); const withdrawing = ref(false); const withdrawFailed = ref(false);
 const accessEnded = computed(() => ['rejected', 'storageUnavailable'].includes(props.view.status));
 const closing = ref(false); const closeFailed = ref(false);
@@ -88,12 +93,12 @@ async function withdraw(proposalId: string) {
   catch { withdrawFailed.value = true; }
   finally { withdrawing.value = false; }
 }
-let pending: { text: string; proposalId: string } | undefined;
-const capabilities = { ...guestConversationCapabilities, planMode: false };
+let pending: { text: string; proposalId: string; followUpBehavior?: 'queue' | 'steer' } | undefined;
+const capabilities = computed(() => ({ ...guestConversationCapabilities, planMode: false, steerPrompt: Boolean(props.view.proposalState?.writeAccess && defaultBackendCapabilities(props.view.target?.backend ?? props.view.frame?.backend ?? 'codex').steerPrompt) }));
 function author(id: string | undefined) { return props.view.proposalState?.authors.find(author => author.messageId === id)?.name ?? null; }
-async function propose(text: string) {
+async function propose(text: string, followUpBehavior: 'queue' | 'steer') {
   if (!text.trim() || props.view.status !== 'ready') return;
-  if (!pending || pending.text !== text) pending = { text, proposalId: crypto.randomUUID() };
+  if (!pending || pending.text !== text) pending = { text, proposalId: crypto.randomUUID(), ...(props.view.proposalState?.writeAccess ? { followUpBehavior } : {}) };
   failed.value = !await props.control({ action: 'propose', id: props.view.id, ...pending });
   if (failed.value) draft.value = text; else pending = undefined;
 }
@@ -110,8 +115,10 @@ provideCodexHostCapabilities({
     if (props.view.status !== 'ready' || !appApi) return null;
     try { return (await appApi.guestConversationImage(props.view.id, reference)).dataUrl; } catch { return null; }
   },
-});
+}, { imagePreviewBudgetBytes: 64 * 1024 * 1024, viewportImageLoading: true });
 const snapshot = computed(() => props.view.frame?.payload.snapshot);
+// Guests can submit follow-ups, but cannot stop the owner's active turn.
+const writerBusy = computed(() => Boolean(props.view.status === 'ready' && props.view.proposalState?.writeAccess && snapshot.value?.busy));
 const loaded = reactive(new Map<string, RendererMessage>());
 watch(() => [props.view.id, props.view.status === 'rejected', props.view.frame === null], () => loaded.clear());
 function deferred(id: string | undefined) { const message = snapshot.value?.messages.find(message => message.id === id); return (message as RendererMessage | undefined)?.deferredContent; }
@@ -130,6 +137,7 @@ function openLink(link: CodexConversationLink) {
 .shared-conversation-pane { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .shared-conversation-pane__ended { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-8); padding: var(--space-16); color: var(--color-text-muted); text-align: center; }
 .shared-conversation-pane__ended p { margin: 0; }
+.shared-conversation-pane__access { margin: 0; padding: var(--space-8); color: var(--color-text-muted); font-size: var(--font-size-12); }
 .shared-conversation-pane__author { color: var(--color-text-muted); font-size: var(--font-size-12); }
 .guest-transcript {
   flex: 1 1 auto;

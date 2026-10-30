@@ -167,7 +167,9 @@ describe('AppBackendServer', () => {
     snapshot.general.providerModelDefaults = { claude: {backend: 'claude',  model: 'target-model', reasoningEffort: null, serviceTier: null } };
     snapshot.agents = [{ id: 'source', teamId: 'team-test', name: 'Source', folder: '/code/repo-worktree', backend: 'codex', backendDefaults: { kind: 'codex', model: 'source-model' },
       backendSession: { kind: 'codex', threadId: 'source-thread' }, status: { type: 'working' }, createdAt: '', updatedAt: '', workspace: gitWorkspace('/code/repo', 'repo', 'feature/mobile') }];
-    snapshot.teams[0]!.agentIds = ['source'];
+    snapshot.agents.push({ ...snapshot.agents[0]!, id: 'leading', name: 'Leading' }, { ...snapshot.agents[0]!, id: 'following', name: 'Following' });
+    snapshot.teams[0]!.agentIds = ['source', 'leading', 'following'];
+    snapshot.clientPreferences = { desktop: { agentOrderByTeam: { 'team-test': ['leading', 'source', 'following'] } } };
     const handle = vi.fn(async () => ({ kind: 'claude', connected: true, state: { loggedIn: true } }));
     const server = new AppBackendServer({ version: 'test', pid: 1, snapshot, saveSnapshot: async () => {},
       driverRpc: { handle, onEvent: () => () => {}, close: async () => {} } as never,
@@ -177,10 +179,17 @@ describe('AppBackendServer', () => {
       const reply = await server.handleMessage({ jsonrpc: '2.0', id: 'duplicate', method: backendMethods.agentDuplicate, params: { agentId: 'source', options: { selection: { backend: 'claude' } } } });
       expect(reply).not.toHaveProperty('error');
       expect(handle).toHaveBeenCalledExactlyOnceWith('driver/provider/authentication', { backend: 'claude', action: 'check' });
-      const duplicate = snapshot.agents.find(agent => agent.id !== 'source')!;
+      const duplicate = snapshot.agents[1]!;
+      expect(reply).toMatchObject({ result: { teams: [{ agentIds: ['leading', 'source', duplicate.id, 'following'] }] } });
       expect(duplicate).toMatchObject({ folder: '/code/repo-worktree', workspace: snapshot.agents[0]!.workspace, backend: 'claude', backendDefaults: { kind: 'claude', model: 'target-model' }, status: { type: 'idle' } });
       expect(duplicate.backendSession).toBeUndefined();
       expect(snapshot.agents[0]!.backendSession).toStrictEqual({ kind: 'codex', threadId: 'source-thread' });
+      const backgroundReply = await server.handleMessage({ jsonrpc: '2.0', id: 'background-duplicate', method: backendMethods.agentDuplicate, params: { agentId: 'source', options: { select: false, selection: { backend: 'claude' } } } });
+      const background = snapshot.agents[1]!;
+      expect(backgroundReply).toMatchObject({ result: {
+        activeAgentId: duplicate.id,
+        teams: [{ agentIds: ['leading', 'source', background.id, duplicate.id, 'following'] }],
+      } });
       const count = snapshot.agents.length;
       await expect(server.handleMessage({ jsonrpc: '2.0', id: 'unavailable', method: backendMethods.agentDuplicate, params: { agentId: 'source', options: { selection: { backend: 'antigravity' } } } })).resolves.toMatchObject({ error: { message: expect.stringContaining('not connected') } });
       expect(snapshot.agents).toHaveLength(count);
@@ -377,8 +386,8 @@ describe('AppBackendServer', () => {
         params: {
           input: {
             teamId: 'team-test',
-            repositoryRoot: '/src/agent-workspace',
-            beforeRepositoryRoot: null,
+            repositoryKey: '/src/agent-workspace',
+            beforeRepositoryKey: null,
           },
         },
       })).resolves.toMatchObject({ result: { activeTeamId: 'team-test' } });

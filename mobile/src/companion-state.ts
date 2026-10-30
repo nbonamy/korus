@@ -138,7 +138,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   let reviewEpoch = 0;
   function dismissReview() { ++reviewEpoch; review.value = { status: 'idle', setup: null }; }
   const stopReview = watch(() => JSON.stringify([laptopId.value, status.value, agent.value?.id, agent.value?.backend, agent.value?.folder, agent.value?.teamId,
-    workspace.value.teams.find(team => team.id === agent.value?.teamId)?.remoteConnectionId, agent.value && companionSessionId(agent.value)]), dismissReview, { flush: 'sync' });
+    agent.value?.remoteConnectionId, agent.value && companionSessionId(agent.value)]), dismissReview, { flush: 'sync' });
   async function loadReview(backend?: AgentBackend) {
     const active = session; const id = agentId.value; const epoch = ++reviewEpoch;
     review.value = { status: 'loading', setup: review.value.setup };
@@ -479,7 +479,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   async function readConversationContent(id: string, input: import('@workspace/core/contracts/conversation').ConversationContentInput) {
     const active = session; const epoch = selectionEpoch;
     const valid = () => active === session && epoch === selectionEpoch && id === agentId.value && status.value === 'connected'
-      && agent.value?.backendSession?.kind === 'claude' && agent.value.backendSession.sessionId === input.sessionId;
+      && input.sessionId === (agent.value?.backendSession?.kind === 'codex' ? agent.value.backendSession.threadId : agent.value?.backendSession?.kind === 'claude' ? agent.value.backendSession.sessionId : null);
     if (!valid() || !active?.readConversationContent) throw new Error('Conversation content is unavailable.');
     const chunk = await active.readConversationContent(id, input);
     if (!valid()) throw new Error('Conversation changed.');
@@ -653,7 +653,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const duplicateAgent = (target: CompanionTarget, backend: AgentBackend) => startChat((active) => {
     const current = currentTarget();
     if (!current || !sameTarget(current, target)) throw new Error('Target is stale.');
-    if (!workspace.value.backends?.[current.teamId]?.includes(backend)) throw new Error('That engine is not available.');
+    if (!workspace.value.backends?.[current.locationId !== 'local' ? current.locationId : current.teamId]?.includes(backend)) throw new Error('That engine is not available.');
     return active.duplicateAgent?.(target, backend);
   });
   /** The engine of a chat that has not started: changed on the laptop, then the agent is reopened with it. */

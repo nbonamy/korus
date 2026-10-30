@@ -1382,7 +1382,7 @@ describe('AppShell authentication and conversation', () => {
     await item!.trigger('click');
     await flushPromises();
     if (label === 'Review') expect(wrapper.get('[aria-label="Code review"]').isVisible()).toBe(true);
-    if (label === 'Visualize') expect(startVisualize).toHaveBeenCalledExactlyOnceWith(createInitialSnapshot().activeAgentId, undefined);
+    if (label === 'Visualize') expect(startVisualize).toHaveBeenCalledExactlyOnceWith(createInitialSnapshot().activeAgentId, { choose: true });
     if (label === 'Delegate' || label === 'Mission') {
       expect(sendPromptAction).toHaveBeenCalledExactlyOnceWith(label === 'Delegate' ? '/delegate' : '/mission');
       expect(wrapper.find('[role="dialog"]').exists()).toBe(false);

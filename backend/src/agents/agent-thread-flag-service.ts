@@ -16,25 +16,28 @@ export class AgentThreadFlagService {
       throw new Error('This thread flag is no longer active.');
     }
     const allowedActions = id === 'work_proposed'
-      ? ['delegate', 'create_mission', 'dismiss', ...(response.id === 'delegate_to_worktree' ? ['execute'] : [])]
+      ? ['implement', 'delegate', 'create_mission', 'dismiss', ...(response.id === 'delegate_to_worktree' ? ['execute'] : [])]
       : ['execute', 'dismiss'];
     if (!allowedActions.includes(response.action)) {
       throw new Error('Invalid thread flag action.');
     }
     const key = `${agent.id}:${id}`;
     if (this.inFlight.has(key)) throw new Error('This thread flag is already being handled.');
+    const originalFlags = agent.threadFlags;
 
     this.inFlight.add(key);
     try {
+      if (id === 'work_proposed' && response.action === 'implement') {
+        await this.options.submit(agent, 'Implement the proposed work in this conversation using the current agent and workspace.');
+      }
       if (id === 'work_proposed' && (response.action === 'delegate' || response.action === 'execute')) {
         await this.options.submit(agent, PROPOSED_WORK_DELEGATION_PROMPT);
       }
       if (id === 'work_proposed' && response.action === 'create_mission') {
         await this.options.submit(agent, MISSION_COMMAND_PROMPT);
       }
-      if (!agent.threadFlags || normalizeThreadFlags(agent.threadFlags)[id] !== true) {
-        throw new Error('The thread flag changed while the action was being submitted.');
-      }
+      // Turn startup may consume the old flag or publish a new one before admission replies.
+      if (agent.threadFlags !== originalFlags) return;
       const threadFlags = normalizeThreadFlags(agent.threadFlags);
       delete threadFlags[id];
       agent.threadFlags = Object.keys(threadFlags).length > 0 ? threadFlags : undefined;

@@ -1,3 +1,4 @@
+import { conversationImageInput, readEmbeddedConversationImage } from '@workspace/core/conversation-images';
 import { executionSelectionSchema, executionSelectionOverridesSchema, executionSelectionRequestSchema } from '../execution-selection-schema';
 import type { ExecutionSelection } from '@workspace/core/contracts/execution';
 import { normalizePromptContent, type CodexPromptPart } from '@codex-app-sdk/core/surface';
@@ -31,6 +32,18 @@ import { previewFile } from './file-preview';
 import { companionMaxDevices, companionMaxInvitations } from '@workspace/core/companion-relay';
 import { pushRegistrationSchema } from './push-registration';
 
+/** Released phones used flat execution fields. Normalize only those known fields; strict schemas still reject everything else. */
+function legacySelection(value: unknown, keys: readonly string[]): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const input = value as Record<string, unknown>;
+  if (input.selection !== undefined || !keys.some(key => Object.hasOwn(input, key))) return value;
+  const result = { ...input }; const selection: Record<string, unknown> = {};
+  for (const key of keys) if (Object.hasOwn(result, key)) { selection[key] = result[key]; delete result[key]; }
+  return { ...result, selection };
+}
+const promptSelectionKeys = ['model', 'reasoningEffort', 'serviceTier'] as const;
+const reviewSelectionKeys = ['backend', 'model', 'reasoningEffort'] as const;
+
 const identity = z.string().min(1).max(200);
 const targetSchema = z.object({ hostId: identity, locationId: identity, teamId: identity, agentId: identity, sessionId: z.string().max(500).nullable() }).strict();
 const requestOutcomeSchema = z.discriminatedUnion('kind', [
@@ -40,7 +53,7 @@ const requestOutcomeSchema = z.discriminatedUnion('kind', [
 ]);
 const closeInputSchema = z.object({ deleteWorktree: z.literal(true), deleteRemoteBranch: z.boolean(), discardChanges: z.boolean(), confirmed: z.literal(true) }).strict();
 /** What a phone may ask of a prompt beyond its text: the same composer choices the desktop sends. */
-const promptOptionsSchema = z.object({
+const promptOptionsSchema = z.preprocess(value => legacySelection(value, promptSelectionKeys), z.object({
   content: z.custom<CodexPromptPart[]>(value => {
     try { return Array.isArray(value) && value.length <= 1000 && JSON.stringify(normalizePromptContent(value)).length <= 100_000; }
     catch { return false; }
@@ -49,20 +62,20 @@ const promptOptionsSchema = z.object({
   skills: z.array(z.object({ name: z.string().min(1).max(500), path: z.string().min(1).max(4096) }).strict()).max(100).optional(),
   selection: executionSelectionOverridesSchema.optional(), planMode: z.boolean().optional(), inputMethod: z.enum(['typed', 'dictated']).optional(),
   delegation: z.object({ startingContext: z.enum(['conversation', 'handoff']), instructions: z.string().max(100_000).optional() }).strict().optional(),
-}).strict();
+}).strict());
 // Strict transport shape and size limits remain gateway-owned; review policy is shared.
-const reviewSchema = z.object({ target: targetSchema, input: z.object({ scope: z.discriminatedUnion('type', [z.object({ type: z.literal('uncommitted') }).strict(), z.object({ type: z.literal('branch'), baseRef: z.string().min(1).max(200) }).strict()]),
+const reviewSchema = z.object({ target: targetSchema, input: z.preprocess(value => legacySelection(value, reviewSelectionKeys), z.object({ scope: z.discriminatedUnion('type', [z.object({ type: z.literal('uncommitted') }).strict(), z.object({ type: z.literal('branch'), baseRef: z.string().min(1).max(200) }).strict()]),
   threadMode: z.enum(['current', 'independent']), instructions: z.string().max(100_000).optional(),
   selection: executionSelectionOverridesSchema.optional(),
   automation: z.object({ enabled: z.boolean(), maxPriority: z.enum(['p0', 'p1', 'p2', 'p3']), maxRounds: z.number().int().min(1).max(10), autoCommit: z.boolean().optional() }).strict().optional(),
-}).strict().refine(isCodeReviewStartInput) }).strict();
+}).strict().refine(isCodeReviewStartInput)) }).strict();
 /** A branch name git accepts and no option or path trick can hide in. */
 const branchName = z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/).refine((name) => !name.includes('..') && !name.includes('//') && !/[./]$/.test(name) && !name.endsWith('.lock'));
 const repositorySchema = z.object({ teamId: identity, repositoryId: identity }).strict();
 const catalogSchema = z.object({ teamId: identity, provider: z.enum(['github', 'gitlab']) }).strict();
 const catalogBranchesSchema = catalogSchema.extend({ repositoryId: z.string().regex(/^repo:[a-f0-9]{64}$/) }).strict();
-const newChatSchema = z.object({ teamId: identity, repositoryId: identity, selection: executionSelectionRequestSchema, existingBranch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName }).strict().optional() }).strict().refine((input) => !(input.existingBranch && input.worktree), 'Choose an existing branch or a new worktree.');
-const projectSchema = z.object({ teamId: identity, selection: executionSelectionRequestSchema, source: z.enum(['new', 'local', 'github', 'gitlab', 'url']), value: z.string().trim().min(1).max(2000), branch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName, baseBranch: z.string().min(1).max(1024) }).strict().optional() }).strict().refine(input => {
+const newChatSchema = z.preprocess(value => legacySelection(value, ['backend']), z.object({ teamId: identity, repositoryId: identity, selection: executionSelectionRequestSchema, existingBranch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName }).strict().optional() }).strict().refine((input) => !(input.existingBranch && input.worktree), 'Choose an existing branch or a new worktree.'));
+const projectSchema = z.preprocess(value => legacySelection(value, ['backend']), z.object({ teamId: identity, selection: executionSelectionRequestSchema, source: z.enum(['new', 'local', 'github', 'gitlab', 'url']), value: z.string().trim().min(1).max(2000), branch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName, baseBranch: z.string().min(1).max(1024) }).strict().optional() }).strict().refine(input => {
   if ((input.branch || input.worktree) && !['github', 'gitlab', 'local'].includes(input.source)) return false;
   if (input.branch && input.worktree) return false;
   if (input.source === 'new') return input.value !== '.' && input.value !== '..' && !/[/\\\x00-\x1f]/u.test(input.value);
@@ -71,7 +84,7 @@ const projectSchema = z.object({ teamId: identity, selection: executionSelection
   if (/^git@[A-Za-z0-9.-]+:[A-Za-z0-9_./-]+$/u.test(input.value)) return true;
   try { const url = new URL(input.value); return ['https:', 'ssh:'].includes(url.protocol) && Boolean(url.hostname) && url.pathname.length > 1 && !url.password && (!url.username || url.protocol === 'ssh:'); }
   catch { return false; }
-}, 'Invalid project name or repository URL.');
+}, 'Invalid project name or repository URL.'));
 /** A new chat as the laptop runs it: the paths are real, resolved from what the phone named. */
 type NewChatRequest = Omit<CompanionNewChat, 'repositoryId'> & { remoteConnectionId?: string; repositoryName: string; repositoryRoot: string; defaultBranch?: string };
 type CompanionPromptOptions = z.infer<typeof promptOptionsSchema>;
@@ -201,6 +214,13 @@ const agentOperations = {
   'agent.queuedPrompt.delete': queuedPromptOperation('delete'),
   'conversation.image.read': agentOperation(withTarget(z.object({ path: z.string().min(1).max(4096) }).strict()))({
     act: async (port, agent, { path }, target) => {
+      const embedded = conversationImageInput(path);
+      if (embedded) {
+        if (agent.backendSession?.kind !== 'codex' || agent.backendSession.threadId !== embedded.sessionId || !port.readConversationContent) throw new Error('Conversation image is unavailable.');
+        // The provider checks the reference against its current snapshot. Reloading
+        // history here can discard the very image the phone is trying to display.
+        return { dataUrl: await readEmbeddedConversationImage(path, input => port.readConversationContent!(agent.id, input)) };
+      }
       const frame = currentReset(await port.conversation(agent.id), agent, target);
       const reference = conversationImageReference(frame, path);
       if (!port.readImage) throw new Error('Image reading is unavailable.');
@@ -243,7 +263,8 @@ const agentOperations = {
   }),
   'conversation.content.read': agentOperation(withTarget(z.object({ input: z.object({ sessionId: identity, contentId: z.string().regex(/^[a-f0-9]{64}$/), offset: z.number().int().nonnegative().safe() }).strict() }).strict()))({
     check: (agent, { input }) => {
-      if (agent.backendSession?.kind !== 'claude' || agent.backendSession.sessionId !== input.sessionId) throw new Error('Conversation content is unavailable.');
+      const session = agent.backendSession;
+      if ((session?.kind === 'codex' ? session.threadId : session?.kind === 'claude' ? session.sessionId : null) !== input.sessionId) throw new Error('Conversation content is unavailable.');
     },
     act: async (port, agent, { input }) => {
       if (!port.readConversationContent) throw new Error('Conversation content is unavailable.');
@@ -264,8 +285,8 @@ const agentOperations = {
   'skills.list': agentOperation(onlyTarget)({ act: async (port, agent) => ({ skills: await port.skills(agent.id) }), read: {} }),
   'plugins.list': agentOperation(onlyTarget)({ act: async (port, agent) => ({ plugins: await port.plugins?.(agent.id) ?? [] }), read: {} }),
   'models.list': agentOperation(onlyTarget)({ act: async (port, agent) => ({ models: await port.models(agent.id) }), read: {} }),
-  'agent.model.select': agentOperation(withTarget(z.strictObject({ selection: executionSelectionSchema })))({
-    act: async (port, agent, { selection }) => { if (selection.backend !== agent.backend) throw new Error('Execution selection does not match the agent provider.'); await port.selectModel(agent.id, selection); return {}; },
+  'agent.model.select': agentOperation(withTarget(z.union([z.strictObject({ selection: executionSelectionSchema }), z.strictObject({ model: z.string().min(1).max(200), reasoningEffort: z.string().min(1).max(40).nullable(), serviceTier: z.string().min(1).max(80).nullable() })])))({
+    act: async (port, agent, input) => { const selection = 'selection' in input ? input.selection : { backend: agent.backend, ...input }; if (selection.backend !== agent.backend) throw new Error('Execution selection does not match the agent provider.'); await port.selectModel(agent.id, selection); return {}; },
   }),
   'agent.interrupt': agentOperation(onlyTarget)({ act: async (port, agent) => { await port.interrupt(agent.id); return {}; } }),
   'agent.approvalPreset.set': agentOperation(withTarget(z.object({ preset: z.string().min(1).max(40) }).strict()))({
@@ -284,7 +305,7 @@ const agentOperations = {
   'agent.backend.set': agentOperation(withTarget(z.object({ backend: z.enum(['codex', 'claude', 'antigravity']) }).strict()))({
     check: (agent, { backend }, { backends }) => {
       if (!canSelectAgentBackend(agent)) throw new Error('The engine can only change before the first prompt.');
-      if (backends && !backends[agent.teamId ?? '']?.includes(backend)) throw new Error('That engine is not available.');
+      if (backends && !backends[agent.remoteConnectionId ?? agent.teamId ?? '']?.includes(backend)) throw new Error('That engine is not available.');
     },
     act: async (port, agent, { backend }) => { await port.setBackend(agent.id, backend); return {}; },
   }),
@@ -296,7 +317,7 @@ const agentOperations = {
   }),
   'agent.duplicate': agentOperation(withTarget(z.object({ backend: z.enum(['codex', 'claude', 'antigravity']) }).strict()))({
     check: (agent, { backend }, { backends }) => {
-      if (!backends?.[agent.teamId ?? '']?.includes(backend)) throw new Error('That engine is not available.');
+      if (!backends?.[agent.remoteConnectionId ?? agent.teamId ?? '']?.includes(backend)) throw new Error('That engine is not available.');
     },
     act: async (port, agent, { backend }) => {
       if (!port.duplicateAgent) throw new Error('Agent duplication is unavailable.');
@@ -522,12 +543,12 @@ export class CompanionGateway {
       const authorize = async () => {
         const current = await this.port.workspace();
         this.requireGrant(peer);
-        if (!current.teams.some(candidate => candidate.id === team.id && candidate.remoteConnectionId === team.remoteConnectionId)) throw new Error('Team changed.');
+        if (!current.teams.some(candidate => candidate.id === team.id)) throw new Error('Team changed.');
         if (!current.backends?.[team.id]?.includes(input.selection.backend)) throw new Error('That engine is not available.');
       };
       await authorize();
       if (!this.port.createProject) throw new Error('Project creation is unavailable.');
-      return { creationId: this.creations.start(peer.peerId, () => this.port.createProject!(input, team.remoteConnectionId, authorize)) };
+      return { creationId: this.creations.start(peer.peerId, () => this.port.createProject!(input, undefined, authorize)) };
     },
     'usage.get': async (peer, args) => {
       z.object({}).strict().parse(args);
@@ -569,8 +590,8 @@ export class CompanionGateway {
       const input = repositorySchema.parse(args);
       const workspace = await this.port.workspace();
       this.requireGrant(peer);
-      const { team, repository } = this.repository(workspace, input);
-      const branches = await this.port.branches(repository.primaryWorktreeRoot, team.remoteConnectionId);
+      const { repository, remoteConnectionId } = this.repository(workspace, input);
+      const branches = await this.port.branches(repository.primaryWorktreeRoot, remoteConnectionId);
       this.requireGrant(peer);
       return branches.map(({ name, isDefault, worktreePath }) => ({ name, isDefault, isCheckedOut: Boolean(worktreePath) }));
     },
@@ -578,9 +599,9 @@ export class CompanionGateway {
       const input = newChatSchema.parse(args);
       const workspace = await this.port.workspace();
       this.requireGrant(peer);
-      const { team, repository } = this.repository(workspace, input);
-      if (workspace.backends && !workspace.backends[team.id]?.includes(input.selection.backend)) throw new Error('That engine is not available.');
-      const request: NewChatRequest = { teamId: team.id, ...(team.remoteConnectionId ? { remoteConnectionId: team.remoteConnectionId } : {}), selection: input.selection,
+      const { team, repository, remoteConnectionId } = this.repository(workspace, input);
+      if (workspace.backends && !workspace.backends[remoteConnectionId ?? team.id]?.includes(input.selection.backend)) throw new Error('That engine is not available.');
+      const request: NewChatRequest = { teamId: team.id, ...(remoteConnectionId ? { remoteConnectionId } : {}), selection: input.selection,
         repositoryName: repository.repositoryName, repositoryRoot: repository.primaryWorktreeRoot, ...(repository.defaultBranch ? { defaultBranch: repository.defaultBranch } : {}),
         ...(input.existingBranch ? { existingBranch: input.existingBranch } : {}), ...(input.worktree ? { worktree: input.worktree } : {}) };
       return { creationId: this.creations.start(peer.peerId, () => this.port.createChat(request)) };
@@ -697,20 +718,20 @@ export class CompanionGateway {
   private repository(workspace: CompanionWorkspace, input: { teamId: string; repositoryId: string }) {
     const team = workspace.teams.find((candidate) => candidate.id === input.teamId);
     if (!team) throw new Error('Team not found.');
-    const repository = workspace.agents.flatMap((agent) => agent.teamId === team.id && agent.sessionKind !== 'quickChat' && agent.workspace?.kind === 'git' && opaquePath(agent.workspace.primaryWorktreeRoot) === input.repositoryId ? [agent.workspace] : [])[0];
-    if (!repository) throw new Error('Repository not found.');
-    return { team, repository };
+    const owner = workspace.agents.find((agent) => agent.teamId === team.id && agent.sessionKind !== 'quickChat' && agent.workspace?.kind === 'git' && opaquePath(agent.workspace.primaryWorktreeRoot, agent.remoteConnectionId) === input.repositoryId);
+    const repository = owner?.workspace?.kind === 'git' ? owner.workspace : undefined;
+    if (!owner || !repository) throw new Error('Repository not found.');
+    return { team, repository, remoteConnectionId: owner.remoteConnectionId };
   }
   private async projectRead<Result>(peer: Peer, teamId: string, read: (remoteConnectionId?: string) => Promise<Result>): Promise<Result> {
     const workspace = await this.port.workspace();
     this.requireGrant(peer);
     const team = workspace.teams.find(team => team.id === teamId);
     if (!team) throw new Error('Team not found.');
-    const remote = team.remoteConnectionId;
-    const result = await read(remote);
+    const result = await read();
     const current = await this.port.workspace();
     this.requireGrant(peer);
-    if (!current.teams.some(candidate => candidate.id === teamId && candidate.remoteConnectionId === remote)) throw new Error('Team changed.');
+    if (!current.teams.some(candidate => candidate.id === teamId)) throw new Error('Team changed.');
     return result;
   }
   private requireGrant({ peerId, grant }: Peer) {
@@ -725,7 +746,7 @@ export class CompanionGateway {
     if (mission && !worker) throw new Error('Mission workers are read-only.');
     const agent = own ?? mission;
     if (target.hostId !== this.hostId || !team || !agent
-      || target.locationId !== (team.remoteConnectionId ?? 'local') || target.sessionId !== companionSessionId(agent)) throw new Error('Target is stale.');
+      || target.locationId !== (agent.remoteConnectionId ?? 'local') || target.sessionId !== companionSessionId(agent)) throw new Error('Target is stale.');
     return { agent, workspace };
   }
   /** Drops expired receipts and those of devices that are no longer paired. */

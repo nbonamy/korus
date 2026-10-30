@@ -79,11 +79,14 @@ describe('MissionShipBoard', () => {
 
   it('offers a base update for pending delivery and keeps conflicts unshipped for agent resolution', async () => {
     const snapshot = createInitialSnapshot();
-    const agent = snapshot.agents[0]!;
-    const mission = createMission(snapshot, { outcome: 'Ship billing', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: agent.id });
+    const lead = snapshot.agents[0]!;
+    const repositoryPath = lead.folder!;
+    const agent = { ...lead, id: 'mission-repository-worker', folder: `${repositoryPath}-mission` };
+    snapshot.agents.push(agent);
+    const mission = createMission(snapshot, { outcome: 'Ship billing', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: lead.id });
     mission.stage = 'ship';
-    mission.execution!.workspaces = [{ repositoryPath: agent.folder!, path: `${agent.folder}-mission`, branch: 'mission/ship-billing' }];
-    mission.execution!.deliveries = [{ repositoryPath: agent.folder!, agentId: agent.id, status: 'pending' }];
+    mission.execution!.workspaces = [{ repositoryPath, path: agent.folder, branch: 'mission/ship-billing' }];
+    mission.execution!.deliveries = [{ repositoryPath, agentId: agent.id, status: 'pending' }];
     const workflow: AgentGitWorkflow = {
       repository: 'owner/repo', folder: agent.folder!, isLinkedWorktree: true, baseBranch: 'main', branch: 'mission/ship-billing', detached: false,
       remote: 'origin', remoteUrl: 'git@github.com:owner/repo.git', upstream: 'origin/mission/ship-billing', ahead: 1, behind: 0,

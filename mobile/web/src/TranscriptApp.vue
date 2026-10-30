@@ -48,7 +48,7 @@ const frame = shallowRef<CompanionConversation | null>(null);
 const agent = shallowRef<Agent | null>(null);
 const agents = shallowRef<Agent[]>([]);
 const ready = shallowRef(false);
-const files = createTranscriptFiles({ agentId: () => agent.value?.id,
+const files = createTranscriptFiles({ readContent: readConversationContent, agentId: () => agent.value?.id,
   revision: () => JSON.stringify([agent.value?.readState?.revision, agent.value?.updatedAt]),
   post: event => { void handler('transcript').postMessage(JSON.stringify(event)); } });
 const engines = shallowRef<{ current: string; choices: string[] } | null>(null);
@@ -86,7 +86,7 @@ provideCodexHostCapabilities({
   async ingestAttachments() { return []; }, async pickAttachments() { return []; },
   async transcribeAudio() { throw new Error('Native composer owns dictation.'); },
   async openExternal(url) { await handler('transcript').postMessage(JSON.stringify({ type: 'openExternal', url })); },
-});
+}, { imagePreviewBudgetBytes: 24 * 1024 * 1024, viewportImageLoading: true });
 async function openFileImage(path: string, title: string) {
   const agentId = agent.value?.id;
   const epoch = ++imageOpenEpoch;
@@ -125,7 +125,7 @@ const controller = createCodexConversationPaneController({
     openLink(link) {
       if (link.kind === 'external') void handler('transcript').postMessage(JSON.stringify({ type: 'openExternal', url: link.href }));
       else if (/\.(png|jpe?g|gif|webp|avif|bmp|heic|heif)$/i.test(link.path)) void openFileImage(link.path, link.path.split(/[\\/]/).at(-1) || 'Image');
-      else files.open({ path: link.path, ...(link.action ? { action: link.action } : {}), ...(link.turnId ? { turnId: link.turnId } : {}), ...(link.line ? { line: link.line } : {}) });
+      else files.open({ ...(link.diffContent ? { diffContent: link.diffContent } : {}), path: link.path, ...(link.action ? { action: link.action } : {}), ...(link.turnId ? { turnId: link.turnId } : {}), ...(link.line ? { line: link.line } : {}) });
     },
     async openImage(image) {
       const agentId = agent.value?.id;
@@ -207,7 +207,7 @@ window.companionTranscript = {
     if (!pending) return;
     contentRequests.delete(reply.requestId); clearTimeout(pending.timer);
     if (reply.agentId !== pending.agentId || reply.sessionId !== pending.sessionId || reply.agentId !== agent.value?.id
-      || agent.value.backendSession?.kind !== 'claude' || reply.sessionId !== agent.value.backendSession.sessionId || !reply.chunk || reply.error) pending.reject(new Error('Conversation changed.'));
+      || reply.sessionId !== (agent.value.backendSession?.kind === 'codex' ? agent.value.backendSession.threadId : agent.value.backendSession?.kind === 'claude' ? agent.value.backendSession.sessionId : null) || !reply.chunk || reply.error) pending.reject(new Error('Conversation changed.'));
     else pending.resolve(reply.chunk);
   },
   async setConversation(json) {

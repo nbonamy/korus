@@ -19,6 +19,21 @@ it('forwards explicit hosted MCP authorization separately from the provider iden
 });
 
 describe(`${product.name} web operations`, () => {
+  it('preserves the reviewed profile target and output/stop owner at the web boundary', async () => {
+    const request = vi.fn().mockResolvedValue({});
+    const input = { profileId: 'dev', command: 'npm run dev', cwd: '/remote/worktree' };
+    await invokeAppWebOperation({ request }, 'startRunProfile', ['remote-agent', input]);
+    await invokeAppWebOperation({ request }, 'getRunProfiles', ['remote-agent']);
+    await invokeAppWebOperation({ request }, 'getRunProfileActions', ['remote-agent', 'app']);
+    await invokeAppWebOperation({ request }, 'stopProfileRun', ['remote-agent', 'run']);
+    expect(request.mock.calls).toStrictEqual([
+      ['agent/runProfile/start', { agentId: 'remote-agent', input }],
+      ['agent/runProfiles/get', { agentId: 'remote-agent' }],
+      ['agent/runProfileActions/get', { agentId: 'remote-agent', directory: 'app' }],
+      ['agent/profileRun/stop', { agentId: 'remote-agent', runId: 'run' }],
+    ]);
+  });
+
   it('opts into request discovery while retaining local-only background Git reads', async () => {
     const request = vi.fn(async () => ({}));
     await invokeAppWebOperation({ request }, 'getAgentGitWorkflow', ['agent']);
@@ -112,12 +127,9 @@ describe(`${product.name} web operations`, () => {
     const request = vi.fn().mockResolvedValue({});
     await invokeAppWebOperation({ request }, 'checkRemoteConnection', ['devbox', true]);
     await invokeAppWebOperation({ request }, 'checkRemoteConnection', ['devbox', false, ['claude']]);
-    const input = { name: 'Remote', remoteConnectionId: 'devbox', remoteTeamId: 'existing' };
-    await invokeAppWebOperation({ request }, 'createTeam', [input]);
     expect(request.mock.calls).toStrictEqual([
       [backendMethods.connectionsRuntimeInspect, { connectionId: 'devbox' }],
       [backendMethods.connectionsRuntimeSync, { connectionId: 'devbox', backends: ['claude'] }],
-      [backendMethods.teamConnect, { input }],
     ]);
   });
   it.each([

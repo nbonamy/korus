@@ -1,17 +1,19 @@
 <template>
   <div class="visualize-editor" :class="{ 'visualize-editor--annotating': annotating }">
-    <div class="visualize-editor__compact-zoom">
-      <button type="button" class="visualize-editor__zoom-action" :disabled="zoomPercent <= 10" :aria-label="translate('visualize.zoomOut')" :title="translate('visualize.zoomOut')" @click="changeZoom(-0.1)">
-        <MinusIcon :stroke-width="1" aria-hidden="true" />
-      </button>
-      <span class="visualize-editor__zoom-level" aria-live="polite">{{ zoomPercent }}%</span>
-      <button type="button" class="visualize-editor__zoom-action" :disabled="zoomPercent >= 3000" :aria-label="translate('visualize.zoomIn')" :title="translate('visualize.zoomIn')" @click="changeZoom(0.1)">
-        <PlusIcon :stroke-width="1" aria-hidden="true" />
+    <div class="visualize-editor__navigation">
+      <div class="visualize-editor__compact-zoom">
+        <button type="button" class="visualize-editor__zoom-action" :disabled="zoomPercent <= 10" :aria-label="translate('visualize.zoomOut')" :title="translate('visualize.zoomOut')" @click="changeZoom(-0.1)">
+          <MinusIcon :stroke-width="1" aria-hidden="true" />
+        </button>
+        <span class="visualize-editor__zoom-level" aria-live="polite">{{ zoomPercent }}%</span>
+        <button type="button" class="visualize-editor__zoom-action" :disabled="zoomPercent >= 3000" :aria-label="translate('visualize.zoomIn')" :title="translate('visualize.zoomIn')" @click="changeZoom(0.1)">
+          <PlusIcon :stroke-width="1" aria-hidden="true" />
+        </button>
+      </div>
+      <button type="button" class="app-button app-button--tertiary visualize-editor__action visualize-editor__fit" :disabled="!ready" :aria-label="translate('visualize.fitCanvas')" :title="translate('visualize.fitCanvas')" @click="editor?.fit()">
+        <ArrowsMinimizeIcon :stroke-width="1" aria-hidden="true" />
       </button>
     </div>
-    <button type="button" class="app-button app-button--tertiary visualize-editor__action visualize-editor__fit" :disabled="!ready" :aria-label="translate('visualize.fitCanvas')" :title="translate('visualize.fitCanvas')" @click="editor?.fit()">
-      <ArrowsMinimizeIcon :stroke-width="1" aria-hidden="true" />
-    </button>
     <div class="visualize-editor__toolbar">
       <button type="button" class="app-button app-button--tertiary visualize-editor__action" :disabled="!ready" :aria-pressed="annotating" :aria-label="translate(annotating ? 'visualize.stopAnnotating' : 'visualize.annotateCanvas')" :title="translate(annotating ? 'visualize.stopAnnotating' : 'visualize.annotateCanvas')" @click="toggleAnnotation">
         <X v-if="annotating" :stroke-width="1" aria-hidden="true" />
@@ -50,7 +52,7 @@
     />
     <div v-if="error || !ready" class="visualize-editor__status">
       <span role="status">{{ error || translate('common.loading') }}</span>
-      <button v-if="error" type="button" class="app-button app-button--secondary" @click="retry">{{ translate('visualize.retrySave') }}</button>
+      <button v-if="error" type="button" class="app-button app-button--secondary" @click="retry">{{ translate(ready ? 'visualize.retrySave' : 'visualize.retryLoad') }}</button>
     </div>
   </div>
 </template>
@@ -96,6 +98,7 @@ let incoming: CanvasDocument | undefined;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let pending: Promise<void> | undefined;
 let disposed = false;
+let initializing = false;
 const key = (scene: CanvasScene) => JSON.stringify([scene.elements, scene.files, scene.selectedElementIds]);
 function changed(scene: CanvasScene) {
   local.value = scene;
@@ -250,13 +253,15 @@ async function savePng(): Promise<void> {
 function retry() {
   // Keep local work on failure. A stale revision requires an explicit reload rather than a blind overwrite.
   error.value = '';
-  void flush();
+  if (ready.value) void flush();
+  else void initialize();
 }
 function beforeUnload(event: BeforeUnloadEvent) {
   if (dirty.value || saving.value) { event.preventDefault(); event.returnValue = ''; }
 }
-onMounted(async () => {
-  window.addEventListener('beforeunload', beforeUnload);
+async function initialize() {
+  if (disposed || initializing) return;
+  initializing = true;
   try {
     const module = await import('./excalidraw-editor');
     const scene = await module.importVisualization(toRaw(props.visualization), props.imageSource ?? '');
@@ -267,7 +272,12 @@ onMounted(async () => {
     ready.value = true;
     refreshCanvasUi();
     if (!props.visualization.canvas) changed(scene);
-  } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); }
+  } catch (cause) { if (!disposed) error.value = cause instanceof Error ? cause.message : String(cause); }
+  finally { initializing = false; }
+}
+onMounted(() => {
+  window.addEventListener('beforeunload', beforeUnload);
+  void initialize();
 });
 onBeforeUnmount(() => {
   disposed = true;
@@ -279,8 +289,6 @@ onBeforeUnmount(() => {
 </script>
 <style scoped>
 .visualize-editor {
-  --visualize-fit-left: 148px;
-
   position: relative;
   display: flex;
   flex-direction: column;
@@ -288,11 +296,16 @@ onBeforeUnmount(() => {
   min-height: 0;
   overflow: hidden;
 }
-.visualize-editor__compact-zoom {
+.visualize-editor__navigation {
   position: absolute;
   left: 16px;
   bottom: 16px;
   z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.visualize-editor__compact-zoom {
   display: flex;
   height: var(--visualize-control-size, 36px);
   align-items: center;
@@ -347,10 +360,6 @@ onBeforeUnmount(() => {
   font-size: var(--font-size-12);
 }
 .visualize-editor__fit {
-  position: absolute;
-  left: var(--visualize-fit-left, 132px);
-  bottom: 16px;
-  z-index: 3;
   border: 0;
   border-radius: var(--visualize-control-radius, var(--radius-md));
   background: var(--visualize-control-background, var(--color-surface-low));
@@ -406,7 +415,8 @@ onBeforeUnmount(() => {
 .visualize-editor__host :deep(.sidebar-trigger__label-element:has(.default-sidebar-trigger)) {
   display: none;
 }
-.visualize-editor__host :deep(.App-bottom-bar) {
+.visualize-editor .visualize-editor__host :deep(.layer-ui__wrapper__footer),
+.visualize-editor .visualize-editor__host :deep(.App-bottom-bar) {
   display: none;
 }
 .visualize-editor__status {

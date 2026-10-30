@@ -6,9 +6,9 @@ import type { BackendSkillSummary } from '@workspace/core/contracts';
 import { opaquePath } from '@workspace/core/companion-projection';
 import { normalizePairingCode } from '@workspace/core/companion-pairing';
 const workspace: CompanionWorkspace = {
-  teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }, { id: 'remote-team', name: 'Remote', agentIds: ['remote-agent'], remoteConnectionId: 'ssh-host' }],
+  teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }, { id: 'remote-team', name: 'Remote', agentIds: ['remote-agent'] }],
   agents: [{ id: 'agent', name: 'Agent', teamId: 'team', folder: '/private', backend: 'codex', status: { type: 'idle' }, createdAt: '', updatedAt: '', mcpSessionId: 'private-session' },
-    { id: 'remote-agent', name: 'Remote', teamId: 'remote-team', folder: '/private', backend: 'claude', status: { type: 'idle' }, createdAt: '', updatedAt: '' }],
+    { id: 'remote-agent', name: 'Remote', teamId: 'remote-team', remoteConnectionId: 'ssh-host', folder: '/private', backend: 'claude', status: { type: 'idle' }, createdAt: '', updatedAt: '' }],
 };
 const target = { hostId: 'host', locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: null };
 function claim(gateway: CompanionGateway, peerId: string, shown: string, name = 'Phone') {
@@ -17,7 +17,7 @@ function claim(gateway: CompanionGateway, peerId: string, shown: string, name = 
 function fixture(autoAcceptCode?: string) {
   let now = 1;
   let saved: GatewayState = { grants: [], commands: {} };
-  const port = { onEvent: () => () => {}, push: vi.fn(async (_peerId: string, _registration: unknown, _notification: unknown) => 'sent' as const), changeGoal: vi.fn(async () => {}), updateQueuedPrompt: vi.fn(async () => {}), markRead: vi.fn(async () => {}), respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), synchronize: vi.fn(async () => ({ checkpoint: { epoch: 'epoch', revision: 1 }, frames: [] })), conversation: vi.fn(), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async () => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
+  const port = { onEvent: () => () => {}, push: vi.fn(async (_peerId: string, _registration: unknown, _notification: unknown) => 'sent' as const), changeGoal: vi.fn(async () => {}), updateQueuedPrompt: vi.fn(async () => {}), markRead: vi.fn(async () => {}), respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), synchronize: vi.fn(async () => ({ checkpoint: { epoch: 'epoch', revision: 1 }, frames: [] })), conversation: vi.fn(), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async (): Promise<import('@workspace/core/contracts/conversation').ConversationContentChunk> => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
     models: vi.fn(async () => [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }]), selectModel: vi.fn(async () => {}),
     gitDiff: vi.fn(async () => ({ target: { type: 'uncommitted' as const }, summary: { changedFiles: 1, addedLines: 2, removedLines: 1 }, diff: 'patch', sections: [] })),
     previewFile: vi.fn(async (_id: string, path: string) => ({ path, kind: 'text' as const, size: 12, content: 'current source' })),
@@ -132,6 +132,35 @@ describe('companion authorization gateway', () => {
     await vi.waitFor(() => expect(release).toBeTypeOf('function'));
     await f.gateway.revoke('phone'); release();
     await expect(loading).rejects.toThrow('not authorized');
+  });
+  it('serves referenced embedded images through the existing build 97 image request without granting other content', async () => {
+    const f = fixture(); await f.pair();
+    const sessionId = 'image-session'; const contentId = 'a'.repeat(64);
+    const reference = `conversation-image:${sessionId}:${contentId}`;
+    f.port.workspace.mockResolvedValue({ ...workspace, agents: [{ ...workspace.agents[0]!, backendSession: { kind: 'codex', threadId: sessionId } }] });
+    const currentTarget = { ...target, sessionId: JSON.stringify({ kind: 'codex', threadId: sessionId }) };
+    // Reading a thumbnail must not reload history: overlapping reloads can leave
+    // the companion snapshot unavailable, even though the provider owns the image.
+    f.port.conversation.mockRejectedValue(new Error('Authoritative conversation is unavailable.'));
+    f.port.readConversationContent.mockRejectedValue(new Error('Conversation content is no longer available.'));
+    const dataUrl = 'data:image/png;base64,cG5n';
+    f.port.readConversationContent.mockResolvedValueOnce({ data: Buffer.from(dataUrl.slice(0, 4)).toString('base64'), totalBytes: dataUrl.length, nextOffset: 4 });
+    f.port.readConversationContent.mockResolvedValueOnce({ data: Buffer.from(dataUrl.slice(4)).toString('base64'), totalBytes: dataUrl.length, nextOffset: null });
+    expect(await f.gateway.request('phone', 'conversation.image.read', { target: currentTarget, path: reference })).toStrictEqual({ dataUrl });
+    expect(f.port.readConversationContent.mock.calls).toStrictEqual([['agent', { sessionId, contentId, offset: 0 }], ['agent', { sessionId, contentId, offset: 4 }]]);
+    for (const chunk of [
+      { data: 'YQ==', totalBytes: 30_000_000, nextOffset: null },
+      { data: 'YQ==', totalBytes: 2, nextOffset: 0 },
+      { data: 'YQ==', totalBytes: 1, nextOffset: null },
+    ]) {
+      f.port.readConversationContent.mockResolvedValueOnce(chunk);
+      await expect(f.gateway.request('phone', 'conversation.image.read', { target: currentTarget, path: reference })).rejects.toThrow();
+    }
+    expect(f.port.readImage).not.toHaveBeenCalled();
+    await expect(f.gateway.request('phone', 'conversation.image.read', { target: currentTarget, path: reference.replace(contentId, 'b'.repeat(64)) })).rejects.toThrow('no longer available');
+    await expect(f.gateway.request('phone', 'conversation.image.read', { target: currentTarget, path: reference.replace(sessionId, 'another-session') })).rejects.toThrow('unavailable');
+    f.port.readConversationContent.mockImplementationOnce(async () => { await f.gateway.revoke('phone'); return { data: Buffer.from(dataUrl).toString('base64'), totalBytes: dataUrl.length, nextOffset: null }; });
+    await expect(f.gateway.request('phone', 'conversation.image.read', { target: currentTarget, path: reference })).rejects.toThrow('authorized');
   });
   it.each(['validation', 'saving', 'queued'] as const)('reports pending before admission finishes %s and deduplicates retries', async phase => {
     const f = fixture(); await f.pair();
@@ -710,6 +739,9 @@ describe('companion authorization gateway', () => {
     expect(f.port.models).toHaveBeenCalledExactlyOnceWith('agent');
     await f.gateway.request('phone', 'agent.model.select', { target, selection: { backend: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: null } });
     expect(f.port.selectModel).toHaveBeenCalledExactlyOnceWith('agent', { backend: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: null });
+    // Build 97 sends the selection fields at the top level.
+    await f.gateway.request('phone', 'agent.model.select', { target, model: 'legacy', reasoningEffort: null, serviceTier: 'fast' });
+    expect(f.port.selectModel).toHaveBeenLastCalledWith('agent', { backend: 'codex', model: 'legacy', reasoningEffort: null, serviceTier: 'fast' });
     await expect(f.gateway.request('phone', 'models.list', { ...target, agentId: 'unknown' })).rejects.toThrow('stale');
     await expect(f.gateway.request('phone', 'agent.model.select', { target: { ...target, agentId: 'unknown' }, selection: { backend: 'codex', model: 'gpt', reasoningEffort: null, serviceTier: null } })).rejects.toThrow('stale');
     await expect(f.gateway.request('phone', 'agent.model.select', { target, extra: 1, selection: { backend: 'codex', model: 'gpt', reasoningEffort: null, serviceTier: null } })).rejects.toThrow();
@@ -749,7 +781,7 @@ describe('companion authorization gateway', () => {
   it('starts a review for a shown agent with a validated scope, and passes delegation choices with a prompt', async () => {
     const f = fixture(); await f.pair();
     const input = { scope: { type: 'branch', baseRef: 'main' }, threadMode: 'independent', instructions: 'Focus on security', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3, autoCommit: false }, selection: { backend: 'claude', model: 'review-model', reasoningEffort: 'high' } };
-    await f.gateway.request('phone', 'agent.review.start', { target, input });
+    await f.gateway.request('phone', 'agent.review.start', { target, input: { ...input, selection: undefined, ...input.selection } });
     expect(f.port.startReview).toHaveBeenCalledExactlyOnceWith('agent', input);
     await expect(f.gateway.request('phone', 'agent.review.start', { target: { ...target, agentId: 'unknown' }, input })).rejects.toThrow('stale');
     await expect(f.gateway.request('stranger', 'agent.review.start', { target, input })).rejects.toThrow('authorized');
@@ -767,6 +799,12 @@ describe('companion authorization gateway', () => {
     await f.gateway.request('phone', 'prompt.submit', command);
     expect(f.port.submit).toHaveBeenCalledExactlyOnceWith(target, 'Plan it', 'mobile:phone', command.options);
     await expect(f.gateway.request('phone', 'prompt.submit', { ...command, options: { ...command.options, planMode: false } })).rejects.toThrow('reused');
+    const legacy = { ...command, clientCommandId: randomUUID(), options: { planMode: true, model: 'gpt', reasoningEffort: 'high', serviceTier: null } };
+    await f.gateway.request('phone', 'prompt.submit', legacy);
+    expect(f.port.submit).toHaveBeenLastCalledWith(target, 'Plan it', 'mobile:phone', { planMode: true, selection: { model: 'gpt', reasoningEffort: 'high', serviceTier: null } });
+    await f.gateway.request('phone', 'prompt.submit', legacy);
+    expect(f.port.submit).toHaveBeenCalledTimes(2);
+    await expect(f.gateway.request('phone', 'prompt.submit', { ...legacy, options: { ...legacy.options, selection: { model: 'other' } } })).rejects.toThrow();
     await expect(f.gateway.request('phone', 'prompt.submit', { ...command, clientCommandId: randomUUID(), options: { cwd: '/etc' } })).rejects.toThrow();
   });
   it('hands phone attachments to the laptop with the prompt and rejects oversized or malformed ones', async () => {
@@ -872,14 +910,14 @@ describe('companion authorization gateway', () => {
     const repositoryId = opaquePath('/code/repo');
     async function ready() {
       const f = fixture(); await f.pair();
-      f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex', 'claude'], 'remote-team': ['claude'] },
+      f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex', 'claude'], 'remote-team': ['claude'], 'ssh-host': ['claude'] },
         agents: [{ ...workspace.agents[0]!, workspace: repository }, { ...workspace.agents[1]!, workspace: { ...repository, repositoryRoot: '/srv/remote', primaryWorktreeRoot: '/srv/remote', repositoryName: 'remote-repo' } }] });
       return f;
     }
     const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
     it('creates in the default checkout or in a new worktree, with real paths the phone never saw', async () => {
       const f = await ready();
-      const { creationId } = await f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, selection: { backend: 'claude' } }) as { creationId: string };
+      const { creationId } = await f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, backend: 'claude' }) as { creationId: string };
       expect(f.port.createChat).toHaveBeenCalledWith({ teamId: 'team', selection: { backend: 'claude' }, repositoryName: 'repo', repositoryRoot: '/code/repo', defaultBranch: 'main' });
       await settled();
       expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'success', agentId: 'created' });
@@ -888,14 +926,14 @@ describe('companion authorization gateway', () => {
     });
     it('places a chat of a remote team on its own laptop', async () => {
       const f = await ready();
-      await f.gateway.request('phone', 'agent.create', { teamId: 'remote-team', repositoryId: opaquePath('/srv/remote'), selection: { backend: 'claude' } });
+      await f.gateway.request('phone', 'agent.create', { teamId: 'remote-team', repositoryId: opaquePath('/srv/remote', 'ssh-host'), selection: { backend: 'claude' } });
       expect(f.port.createChat).toHaveBeenCalledWith(expect.objectContaining({ remoteConnectionId: 'ssh-host', repositoryRoot: '/srv/remote' }));
     });
     it.each([
       ['an unknown repository', { repositoryId: 'nope' }],
       ['a repository of another team', { teamId: 'remote-team' }],
       ['an unknown team', { teamId: 'ghost' }],
-      ['an engine the team cannot use', { teamId: 'remote-team', repositoryId: opaquePath('/srv/remote'), selection: { backend: 'codex' } }],
+      ['an engine the team cannot use', { teamId: 'remote-team', repositoryId: opaquePath('/srv/remote', 'ssh-host'), selection: { backend: 'codex' } }],
       ['an unsupported engine', { backend: 'other' }],
       ...['', '-rf', '../x', 'a..b', 'a b', 'a/', 'x.lock', 'a//b', '/abs'].map((branchName): [string, object] => [`the branch ${JSON.stringify(branchName)}`, { worktree: { branchName } }]),
       ['an extra field', { folder: '/etc' }],
@@ -949,10 +987,24 @@ describe('companion authorization gateway', () => {
       await expect(f.gateway.request('stranger', 'agent.backend.set', { target, backend: 'claude' })).rejects.toThrow('authorized');
     });
   });
+  it('authorizes remote engine switches and duplicates against their owning host', async () => {
+    const f = fixture(); await f.pair();
+    f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex'], 'remote-team': ['codex'], 'ssh-host': ['claude'] } });
+    const remote = { ...target, locationId: 'ssh-host', teamId: 'remote-team', agentId: 'remote-agent' };
+    await f.gateway.request('phone', 'agent.backend.set', { target: remote, backend: 'claude' });
+    await f.gateway.request('phone', 'agent.duplicate', { target: remote, backend: 'claude' });
+    expect(f.port.setBackend).toHaveBeenCalledExactlyOnceWith('remote-agent', 'claude');
+    expect(f.port.duplicateAgent).toHaveBeenCalledExactlyOnceWith('remote-agent', 'claude');
+    for (const method of ['agent.backend.set', 'agent.duplicate']) {
+      await expect(f.gateway.request('phone', method, { target: remote, backend: 'codex' })).rejects.toThrow('not available');
+    }
+    expect(f.port.setBackend).toHaveBeenCalledOnce();
+    expect(f.port.duplicateAgent).toHaveBeenCalledOnce();
+  });
   describe('starting a quick chat', () => {
     async function ready() {
       const f = fixture(); await f.pair();
-      f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex', 'claude'], 'remote-team': ['claude'] } });
+      f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex', 'claude'], 'remote-team': ['claude'], 'ssh-host': ['claude'] } });
       return f;
     }
     it('creates one for a team and reports it like any other new chat', async () => {

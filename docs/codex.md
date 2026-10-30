@@ -35,6 +35,25 @@ routing envelope (agent, thread, revision) and recovery.
   provisional until the submitting turn's authoritative terminal event; a late
   terminal event belongs to its original turn and cannot clear a newer active turn.
 
+The SDK's content transport projects embedded image data and large file diffs into content-addressed
+references before snapshots and events leave the daemon. Reads use the owning
+conversation's current SDK snapshot and bounded chunks. Provider history is untouched;
+a weak projection cache does not retain discarded snapshots or create another
+transcript store. Desktop and companion hosts resolve the same references. File targets carry historical
+diff references; selecting a file fetches its exact patch in bounded chunks, separately
+from the current working-tree source.
+
+The shared renderer loads media and attachment previews near the chat viewport,
+with two concurrent reads and placeholders sized from intrinsic image dimensions.
+The SDK transport carries optional width and height from bounded header probes;
+older images retain their decoded ratio for subsequent cache eviction. Retained encoded bytes plus
+decoded pixels are bounded to 24 MiB on mobile and 64 MiB on desktop. Offscreen
+previews are evicted before visible ones and reload automatically on return;
+oversized or failed previews remain explicitly retryable. Independent desktop
+image tabs own their blob URLs until closed, rather than borrowing an evictable
+transcript URL. Provider history, transient decoding, browser caches, and separate
+image viewers are outside the transcript preview budget.
+
 ## Process And Home
 
 - Executable selection uses the host's discovered PATH, including login-shell and common

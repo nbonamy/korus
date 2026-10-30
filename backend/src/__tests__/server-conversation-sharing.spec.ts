@@ -15,6 +15,7 @@ import type { ConversationShareResult } from '@workspace/core/conversation-shari
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { decodeAppBackendEvent } from '@workspace/core/backend-protocol/events';
 import { product } from '@workspace/core/product';
+import { codexSdkFixture, sdkSnapshot } from '../codex/__tests__/sdk-surface-fixture';
 
 // Failure modes: duplicate/racing creates, failed writes, restart, stale session,
 // remote host, stale revoke, or diagnostics/events accidentally carrying a bearer.
@@ -47,7 +48,7 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       sendPrompt, tryHandlePromptCommand: commands, interrupt: async () => ({ backendSession: { kind: 'codex', threadId: 'original' } }),
       respondToAgentRequest: async () => undefined, close: async () => undefined, onEvent: () => () => {},
     };
-    const server = f.start(new BackendDriverRpc(new Map([['codex', driver]])));
+    let server = f.start(new BackendDriverRpc(new Map([['codex', driver]])));
     try {
       const share = await f.request(server, { action: 'create', target: f.target });
       const id = randomUUID(); const text = '  /mission exact guest text  ';
@@ -62,8 +63,67 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       await vi.waitFor(() => expect(sendPrompt.mock.calls.length, JSON.stringify(f.snapshot.agents[0]?.status)).toBe(1));
       await vi.waitFor(async () => expect((await f.request(server, { action: 'status', target: f.target })).state.authors).toContainEqual(expect.objectContaining({ messageId: 'native-message', name: 'Guest' })));
       expect(sendPrompt).toHaveBeenCalledTimes(1); expect(sendPrompt.mock.calls[0]?.[1]).toBe(text); expect(commands).not.toHaveBeenCalled();
+      const stateFile = path.join(f.directory, 'state.json');
+      const saved = JSON.parse(await readFile(stateFile, 'utf8'));
+      expect(saved.proposals[0]).not.toHaveProperty('backendSession');
+      await server.close();
+      // Recover the exact historical leak without changing invitations or delivery receipts.
+      await writeFile(stateFile, JSON.stringify({ ...saved, proposals: saved.proposals.map((proposal: object) => ({ ...proposal, backendSession: { kind: 'codex', threadId: 'original' } })) }));
+      server = f.start(new BackendDriverRpc(new Map([['codex', driver]])));
+      const recovered = await f.request(server, { action: 'copy', target: f.target });
+      expect(recovered.link).toBe(share.link);
+      expect(recovered.state.authors).toContainEqual(expect.objectContaining({ messageId: 'native-message', name: 'Guest' }));
+      expect(JSON.parse(await readFile(stateFile, 'utf8'))).toStrictEqual(saved);
+      expect(sendPrompt).toHaveBeenCalledTimes(1);
       const stopped = await f.request(server, { action: 'revoke', target: f.target, handle: share.state.handle! });
       expect(stopped.state.authors).toContainEqual(expect.objectContaining({ messageId: 'native-message' }));
+    } finally { await server.close(); }
+  });
+  it.each(['queue', 'steer'] as const)('uses the sending guest’s %s choice despite the owner preferences', async preference => {
+    const f = await fixture();
+    f.snapshot.clientPreferences = { controller: { general: { followUpBehavior: preference === 'queue' ? 'steer' : 'queue' } }, desktop: { general: { followUpBehavior: preference === 'queue' ? 'steer' : 'queue' } } };
+    const { driver, conversation } = codexSdkFixture();
+    const session = conversation('original');
+    const sendPrompt = session.handle.sendMessage, steerPrompt = session.handle.steerMessage;
+    const message = { id: 'guest-message', role: 'user' as const, status: 'complete' as const, turnId: 'turn', parts: [{ type: 'text' as const, text: '/mission plain guest prompt' }] };
+    // Identical earlier messages in the same turn must never acquire this guest's authorship.
+    const prior = [{ ...message, id: 'owner-message' }, { ...message, id: 'earlier-steer', kind: 'steer' as const }];
+    session.setSnapshot({ turnIds: ['turn'], activeTurnId: 'turn', messages: prior });
+    sendPrompt.mockResolvedValue(sdkSnapshot('original', { turnIds: ['turn'], activeTurnId: 'turn', messages: [message] }));
+    steerPrompt.mockResolvedValue(sdkSnapshot('original', { turnIds: ['turn'], activeTurnId: 'turn', messages: [...prior, { ...message, kind: 'steer' }] }));
+    const server = f.start(new BackendDriverRpc(new Map([['codex', driver]])));
+    try {
+      const share = await f.request(server, { action: 'create', target: f.target });
+      server.conversationGuestCount(share.state.handle!, 1, [{ identity: ownerId, name: 'Alex', discriminator: '1234abcd' }]);
+      const access = await server.handleMessage({ jsonrpc: '2.0', id: 'access', method: 'conversation/share/control', params: { _clientId: 'controller', input: { action: 'access', target: f.target, handle: share.state.handle, identity: ownerId, writeAccess: true } } });
+      expect(access).not.toHaveProperty('error');
+      f.snapshot.agents[0]!.status = { type: 'working' };
+      const input = { id: randomUUID(), text: '/mission plain guest prompt', followUpBehavior: preference };
+      await server.proposeConversationGuest(share.state.handle!, ownerId, 'Alex', input);
+      if (preference === 'steer') {
+        await vi.waitFor(() => expect(steerPrompt).toHaveBeenCalledTimes(1));
+        expect(steerPrompt).toHaveBeenCalledWith(input.text, {});
+        expect(sendPrompt).not.toHaveBeenCalled();
+      } else {
+        await new Promise(resolve => setTimeout(resolve, 30));
+        expect(sendPrompt).not.toHaveBeenCalled(); expect(steerPrompt).not.toHaveBeenCalled();
+        f.snapshot.agents[0]!.status = { type: 'idle' };
+        await f.request(server, { action: 'status', target: f.target });
+        await server.proposeConversationGuest(share.state.handle!, ownerId, 'Alex', input);
+        await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledTimes(1));
+      }
+      expect(sendPrompt.mock.calls[0]?.[0] ?? steerPrompt.mock.calls[0]?.[0]).toBe(input.text);
+      await vi.waitFor(async () => expect((await server.conversationGuestProposals(share.state.handle!, ownerId)).proposals).toContainEqual(expect.objectContaining({ id: input.id, status: 'submitted', messageId: message.id, text: '' })));
+      expect((await f.request(server, { action: 'status', target: f.target })).state.authors).toStrictEqual([{ messageId: message.id, identity: ownerId, name: 'Alex', discriminator: expect.any(String) }]);
+      const persisted = JSON.parse(await readFile(path.join(f.directory, 'state.json'), 'utf8'));
+      expect(persisted.proposals).toContainEqual(expect.objectContaining({ id: input.id, status: 'submitted', messageId: message.id, text: '' }));
+      for (const event of f.events.filter(event => event.type === 'conversation.shareChanged')) expect(decodeAppBackendEvent(event)).toStrictEqual(event);
+      if (preference === 'steer') {
+        await server.close();
+        const restored = f.start();
+        try { expect((await f.request(restored, { action: 'status', target: f.target })).state.authors).toStrictEqual([{ messageId: message.id, identity: ownerId, name: 'Alex', discriminator: expect.any(String) }]); }
+        finally { await restored.close(); }
+      }
     } finally { await server.close(); }
   });
   it('serves guest navigation RPCs with no provider, team or repository and rejects unscoped guest content reads', async () => {
@@ -78,6 +138,67 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       for (const method of ['client/guest/conversation/image', 'client/guest/conversation/content']) expect(await call(method, { id: 'a'.repeat(64), path: '/private', input: {} })).toMatchObject({ error: { message: 'Guest operation failed. Check local storage and try again.' } });
       expect((await joins.control({ action: 'state' })).entries).toHaveLength(0);
     } finally { await server.close(); }
+  });
+  it.each([
+    ['sidebar', undefined], ['sidebar', 'second-desktop'],
+    ['header', undefined], ['header', 'second-desktop'],
+  ] as const)('preserves client presentation through %s Leave and shared history responses (%s)', async (leaveControl, clientId) => {
+    const f = await fixture();
+    const snapshot = f.snapshot;
+    const localAgent = snapshot.agents[0]!;
+    const joinId = 'a'.repeat(64);
+    const sharedId = `shared-${joinId}`;
+    snapshot.agents.push({ ...localAgent, id: sharedId, folder: null, sessionKind: 'quickChat', sharedConversation: { joinId } });
+    snapshot.teams[0]!.agentIds.push(sharedId);
+    snapshot.teams[0]!.activeAgentId = localAgent.id;
+    const joins = new GuestJoins({ directory: path.join(f.root, 'guest'), relay });
+    let releaseLoad: (() => void) | undefined;
+    const control = vi.spyOn(joins, 'control').mockImplementation(async input => {
+      if (input.action === 'open') await new Promise<void>(resolve => { releaseLoad = resolve; });
+      return { entries: [], view: null };
+    });
+    const server = new AppBackendServer({ version: 'test', snapshot, guestJoins: joins });
+    const call = (method: string, params: Record<string, unknown> = {}) => server.handleMessage({
+      jsonrpc: '2.0', id: 'guest', method, params: { ...params, ...(clientId ? { _clientId: clientId } : {}) },
+    });
+    const read = async (id: string | undefined = clientId) => {
+      const response = await server.handleMessage({ jsonrpc: '2.0', id: 'read', method: 'snapshot/get', params: { _clientId: id ?? 'desktop' } });
+      if (!response || !('result' in response)) throw new Error(JSON.stringify(response));
+      return (response.result as { snapshot: import('@workspace/core/contracts').AppSnapshot }).snapshot;
+    };
+    try {
+      await call('client/preferences/update', { input: {
+        theme: { mode: 'dark', id: 'cappuccin-mocha' }, general: { agentListCompact: true, followUpBehavior: 'steer' },
+      } });
+      await call('client/navigation/selectAgent', { agentId: sharedId });
+      const before = await read();
+      const preferences = structuredClone(snapshot.clientPreferences);
+      // A history request can finish after Leave and its snapshot event.
+      const loading = call('agent/conversation/load', { agentId: sharedId });
+      await vi.waitFor(() => expect(releaseLoad).toBeTypeOf('function'));
+      const left = leaveControl === 'sidebar'
+        ? await call('agent/delete', { agentId: sharedId })
+        : await call('client/guest/conversation/control', { input: { action: 'leave', id: joinId } });
+      const assertPresentation = (result: typeof before) => {
+        expect(result.theme).toStrictEqual(before.theme);
+        expect(result.general).toStrictEqual(before.general);
+        expect(result.activeAgentId).toBe(localAgent.id);
+        expect(result.agents.map(agent => agent.id)).toStrictEqual([localAgent.id]);
+      };
+      if (!left || !('result' in left)) throw new Error(JSON.stringify(left));
+      if (leaveControl === 'sidebar') assertPresentation(left.result as typeof before);
+      else expect(left.result).toStrictEqual({ entries: [], view: null });
+      releaseLoad!();
+      const loaded = await loading;
+      if (!loaded || !('result' in loaded)) throw new Error(JSON.stringify(loaded));
+      assertPresentation(loaded.result as typeof before);
+      assertPresentation(await read());
+      expect(snapshot.clientPreferences).toStrictEqual(preferences);
+      const other = await read('other-client');
+      expect(other.theme).toStrictEqual(snapshot.theme);
+      expect(other.general).toStrictEqual(snapshot.general);
+      expect(control).toHaveBeenCalledWith({ action: 'open', id: joinId });
+    } finally { releaseLoad?.(); await server.close(); }
   });
   it.each(['create', 'copy'] as const)('refuses %s when the bound session changes during route publication', async action => {
     const f = await fixture(); let blocked = false;
@@ -181,9 +302,9 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       expect((await f.request(server, { action: 'status', target: nextTarget })).state.active).toBe(false);
       f.snapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'original' };
       expect((await f.request(server, { action: 'status', target: f.target })).state.active).toBe(false);
-      f.snapshot.teams[0]!.remoteConnectionId = 'remote-host';
+      f.snapshot.agents[0]!.remoteConnectionId = 'remote-host';
       await expect(f.request(server, { action: 'create', target: f.target })).rejects.toThrow();
-      delete f.snapshot.teams[0]!.remoteConnectionId;
+      delete f.snapshot.agents[0]!.remoteConnectionId;
       f.snapshot.agents = [];
       await expect(f.request(server, { action: 'create', target: f.target })).rejects.toThrow();
     } finally { await server.close(); }

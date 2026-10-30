@@ -23,6 +23,7 @@ describe('workspace sidebar projection', () => {
       label: 'agent-workspace',
       repositoryRoot: '/src/agent-workspace',
       repositoryKey: '/src/agent-workspace',
+      repositoryAgentId: 'agent-main',
       sessions: [{
         agentId: 'agent-main',
         customName: 'Main conversation',
@@ -239,6 +240,46 @@ describe('workspace sidebar projection', () => {
       repositoryRoot: '/src/agent-workspace',
       repositoryKey: 'remote:github.com/nbonamy/agent-workspace',
     });
+  });
+
+  it('shows a local and a remote agent of the same origin in one section keyed by that origin', () => {
+    const local = gitAgent('agent-local', 'Local', '/Users/me/src/korus', 'main', false, '/Users/me/src/korus');
+    const remote = gitAgent('agent-remote', 'Remote', '/home/me/korus', 'main', false, '/home/me/korus');
+    remote.remoteConnectionId = 'connection-devbox';
+    for (const agent of [local, remote]) if (agent.workspace?.kind === 'git') agent.workspace.originUrl = 'git@github.com:nbonamy/korus.git';
+
+    const [group, ...others] = projectSidebar({ agents: [remote, local], activeAgentId: null });
+
+    expect(others).toStrictEqual([]);
+    expect(group).toMatchObject({
+      id: 'git:remote:github.com/nbonamy/korus',
+      repositoryKey: 'remote:github.com/nbonamy/korus',
+      repositoryRoot: '/Users/me/src/korus',
+      repositoryAgentId: 'agent-local',
+      originUrl: 'git@github.com:nbonamy/korus.git',
+      spansHosts: true,
+    });
+    expect(group).not.toHaveProperty('remoteConnectionId');
+    expect(group?.sessions.map(session => [session.agentId, session.remoteConnectionId])).toStrictEqual([['agent-remote', 'connection-devbox'], ['agent-local', undefined]]);
+  });
+
+  it('keeps a remote-only section on its host and does not flag it as spanning hosts', () => {
+    const remote = gitAgent('agent-remote', 'Remote', '/home/me/korus', 'main', false, '/home/me/korus');
+    remote.remoteConnectionId = 'connection-devbox';
+
+    const [group] = projectSidebar({ agents: [remote], activeAgentId: null });
+
+    expect(group).toMatchObject({ id: 'git:connection-devbox:/home/me/korus', repositoryRoot: '/home/me/korus', remoteConnectionId: 'connection-devbox' });
+    expect(group).not.toHaveProperty('spansHosts');
+  });
+
+  it('keeps same-path repositories without origin apart across hosts', () => {
+    const local = gitAgent('agent-local', 'Local', '/src/app', 'main', false, '/src/app');
+    const remote = gitAgent('agent-remote', 'Remote', '/src/app', 'main', false, '/src/app');
+    remote.remoteConnectionId = 'connection-devbox';
+
+    expect(projectSidebar({ agents: [local, remote], activeAgentId: null }).map(group => group.id))
+      .toStrictEqual(['git:/src/app', 'git:connection-devbox:/src/app']);
   });
 
   it('resolves agent identity from the repository icon catalog', () => {

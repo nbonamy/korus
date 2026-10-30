@@ -2,11 +2,12 @@ import type { Agent, AppCommand } from '@workspace/core/contracts';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import type { CodexConversationPaneController, CodexMessageImage, CodexMessageImageContext } from '@codex-app-sdk/vue';
 import { reactive } from 'vue';
-import { shallowMount } from '@vue/test-utils';
+import { DOMWrapper, flushPromises, mount, shallowMount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import AgentWorkspace from '../AgentWorkspace.vue';
 import type { AgentRightWorkspaceState } from '../use-right-workspace-state';
 import type { RightWorkspaceTab } from '../right-workspace';
+import { stubElectronTestWindow } from '../../test/client';
 
 function createWorkspaceState(): AgentRightWorkspaceState {
   return {
@@ -30,7 +31,7 @@ function createWorkspaceState(): AgentRightWorkspaceState {
   };
 }
 
-function mountWorkspace(configureSnapshot?: (snapshot: ReturnType<typeof createInitialSnapshot>) => void) {
+function mountWorkspace(configureSnapshot?: (snapshot: ReturnType<typeof createInitialSnapshot>) => void, realRunProfiles = false) {
   const snapshot = createInitialSnapshot();
   configureSnapshot?.(snapshot);
   const currentAgent = snapshot.agents[0] as Agent;
@@ -43,9 +44,9 @@ function mountWorkspace(configureSnapshot?: (snapshot: ReturnType<typeof createI
     workspace.open = true;
   });
   const updateAgent = vi.fn().mockResolvedValue(undefined);
-  const wrapper = shallowMount(AgentWorkspace, {
+  const wrapper = (realRunProfiles ? mount : shallowMount)(AgentWorkspace, {
     attachTo: document.body,
-    global: { stubs: { AgentHeader: false } },
+    global: { stubs: { AgentHeader: false, ...(realRunProfiles ? { ConversationPane: true, RightWorkspacePanel: true } : {}) } },
     props: {
       activeAttachmentAnnotationCounts: {},
       addChatTextAnnotation: vi.fn(),
@@ -127,6 +128,43 @@ function mountWorkspace(configureSnapshot?: (snapshot: ReturnType<typeof createI
 }
 
 describe('AgentWorkspace', () => {
+  it('identifies a remote command by its agent host within a mixed team', async () => {
+    const profile = { id: 'dev', name: 'Dev', command: 'npm run dev', directory: '.', previewUrl: 'http://127.0.0.1:43210' };
+    const catalog = { repository: '/remote/repo', worktree: '/remote/worktree', profiles: [profile], targets: { dev: { cwd: '/remote/worktree' } }, runs: [] };
+    stubElectronTestWindow({ app: { getRunProfiles: vi.fn().mockResolvedValue(catalog), startRunProfile: vi.fn().mockResolvedValue({ id: 'run', agentId: 'agent-dina', profileId: profile.id, command: profile.command, cwd: '/remote/worktree', state: 'running', startedAt: '', output: '', outputTruncated: false }) } });
+    const { wrapper } = mountWorkspace(snapshot => {
+      snapshot.agents[0]!.remoteConnectionId = 'devbox';
+      snapshot.remoteConnections.connections = [{ id: 'devbox', kind: 'ssh', name: 'Devbox', host: 'devbox', status: 'ready', createdAt: '', updatedAt: '' }];
+    }, true);
+    try {
+      await wrapper.get('button[aria-label="Run profiles"]').trigger('click');
+      await flushPromises();
+      await new DOMWrapper(document.body).findAll('[role="menuitem"]').find(item => item.text().includes('Dev'))!.trigger('click');
+      await flushPromises();
+      expect(new DOMWrapper(document.body).get('[role="dialog"]').text()).toContain('Devbox');
+    } finally { wrapper.unmount(); }
+  });
+
+  it('opens a profile preview in the selected agent’s existing browser workspace', async () => {
+    const { wrapper, workspace, currentAgent, openRightWorkspaceTab } = mountWorkspace();
+    wrapper.getComponent({ name: 'AgentHeader' }).vm.$emit('run-preview', 'http://127.0.0.1:43210');
+    await wrapper.vm.$nextTick();
+    expect(workspace.browserInitialUrl).toBe('http://127.0.0.1:43210');
+    expect(workspace.browserOpenRequestId).toBe(1);
+    expect(openRightWorkspaceTab).toHaveBeenCalledExactlyOnceWith('browser', currentAgent.id);
+  });
+
+  it('hides hosted browser views while the profile dialog covers the workspace', async () => {
+    const { wrapper } = mountWorkspace();
+    const header = wrapper.getComponent({ name: 'AgentHeader' });
+    header.vm.$emit('run-profiles-visible', true);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.getComponent({ name: 'RightWorkspacePanel' }).props('visible')).toBe(false);
+    header.vm.$emit('run-profiles-visible', false);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.getComponent({ name: 'RightWorkspacePanel' }).props('visible')).toBe(true);
+  });
+
   it('routes inspecting a transferred agent through shell selection', () => {
     const { wrapper } = mountWorkspace();
     wrapper.getComponent({ name: 'AgentHeader' }).vm.$emit('select-agent', 'transferred-agent');
@@ -276,7 +314,7 @@ describe('AgentWorkspace', () => {
     expect(wrapper.findComponent({ name: 'AgentHeader' }).props('reportBackAgentName')).toBe('Main agent');
   });
 
-  it('lets the SDK handle fullscreen images and opens inline images in the agent workspace', () => {
+  it('lets the SDK handle fullscreen images and retains independent image tabs until closed', async () => {
     const { currentAgent, openRightWorkspaceTab, workspace, wrapper } = mountWorkspace();
     const image: CodexMessageImage = {
       alt: 'Architecture diagram',
@@ -301,6 +339,26 @@ describe('AgentWorkspace', () => {
       path: '/repo/diagram.png',
       title: 'diagram.png',
     });
+    const createUrl = vi.fn(() => 'blob:owned-tab');
+    vi.stubGlobal('URL', Object.assign(class extends URL {}, { createObjectURL: createUrl, revokeObjectURL: vi.fn() }));
+    vi.stubGlobal('fetch', vi.fn(async () => ({ blob: async () => new Blob(['image']) })));
+    try {
+      wrapper.vm.openConversationImage({ ...image, src: 'blob:transcript-preview' }, { ...context, intent: 'open' });
+      await flushPromises();
+      expect(Object.values(workspace.imagePanels)[0]?.src).toBe('blob:owned-tab');
+      expect(fetch).toHaveBeenCalledWith('blob:transcript-preview');
+      workspace.imagePanels = {};
+      await flushPromises();
+      // The browser workflow covers URL cleanup in the AppShell-owned workspace state.
+      let resolve!: (response: Response) => void;
+      vi.mocked(fetch).mockImplementationOnce(() => new Promise(done => { resolve = done; }) as Promise<Response>);
+      wrapper.vm.openConversationImage({ ...image, src: 'blob:slow-preview' }, { ...context, intent: 'open' });
+      workspace.imagePanels = {};
+      resolve(new Response('late')); await flushPromises();
+      expect(workspace.imagePanels).toStrictEqual({});
+      expect(createUrl).toHaveBeenCalledTimes(1);
+    } finally { wrapper.unmount(); vi.unstubAllGlobals(); }
+
   });
 
   it('routes browser commands to the requested agent workspace', () => {

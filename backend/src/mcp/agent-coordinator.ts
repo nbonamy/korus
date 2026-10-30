@@ -1,12 +1,11 @@
 import { executionSelectionOverridesSchema } from '../execution-selection-schema';
-import type { ExecutionSelectionOverrides } from '@workspace/core/contracts/execution';
 import type { MissionArtifactReadResult, MissionArtifactWriteInput, MissionResultInput, MissionReviewFindingInput, MissionReviewFindingUpdateInput, MissionTicketDraftInput, MissionTicketDraftResult, MissionToolContext } from '@workspace/core/mission-execution';
 import type { MissionArtifactFile, MissionStage } from '@workspace/core/missions';
 import { randomUUID } from 'node:crypto';
 import type { Agent, AgentBackend, AgentStatus, AnnouncementPhase, CelebrationKind, CreateSourceWorktreeInput, SourceRepository, SourceWorktree, WorkBacklogAssignmentStatus } from '@workspace/core/contracts';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { normalizeThreadFlagId, type ThreadFlagId } from '@workspace/core/thread-flags';
-import type { DelegatedTask, TaskContract } from '@workspace/core/delegated-task';
+import type { DelegatedTask } from '@workspace/core/delegated-task';
 
 export type McpAgentInfo = {
   id: string;
@@ -120,20 +119,7 @@ export type UpdateWorkItemResponse =
     note?: string;
   };
 
-export type McpCreateAgentInput = {
-  goal?: boolean;
-  requestId?: string;
-  task?: TaskContract;
-  selection?: ExecutionSelectionOverrides;
-  branchName?: string;
-  createWorktree?: boolean;
-  destinationPath?: string;
-  name?: string;
-  prompt?: string;
-  instructions?: string;
-  startingContext?: import('@workspace/core/delegation-context').DelegationStartingContext;
-  repoPath: string;
-};
+export type McpCreateAgentInput = import('@workspace/core/remote-collaboration').CreateCoAgentInput;
 
 export type McpCreateAgentResponse = {
   taskId?: string;
@@ -154,6 +140,7 @@ export type MissionToolPort = {
   contextForAgent(agentId: string): MissionToolContext | undefined;
   submitResult(agentId: string, input: MissionResultInput): Promise<{ success: true; status: 'awaitingReview' | 'accepted' }>;
   upsertTicket(agentId: string, input: MissionTicketDraftInput): Promise<MissionTicketDraftResult>;
+  reopenStage?(agentId: string, stage: MissionStage): Promise<{ success: true; stage: MissionStage }>;
   setTitle(agentId: string, title: string): Promise<{ success: true; title: string }>;
   attachRepository(agentId: string, repoPath: string): Promise<{ success: true; repoPath: string }>;
   listArtifacts(agentId: string): Array<{ stage: MissionStage } & MissionArtifactFile>;
@@ -166,14 +153,15 @@ export type MissionToolPort = {
 export type AppMcpAgentCoordinatorOptions = {
   missionTools?: MissionToolPort;
   getAgents: () => Agent[];
+  getHosts?: () => Array<{ id: string; name: string; status: string }>;
   onAgentUpdated?: (agent: Agent) => void;
   onInboxMessage?: (agentId: string, messageId: string) => void;
   onDisplayMarkdown?: (agent: Agent, input: DisplayMarkdownInput) => DisplayMarkdownResponse | Promise<DisplayMarkdownResponse>;
   onCelebrate?: (agent: Agent) => CelebrationResponse | Promise<CelebrationResponse>;
   onAnnounce?: (agent: Agent, phase: AnnouncementPhase, text: string) => AnnouncementResponse | Promise<AnnouncementResponse>;
   onUpdateWorkItem?: (agent: Agent, workItemId: string, status: WorkBacklogAssignmentStatus, note?: string) => UpdateWorkItemResponse | Promise<UpdateWorkItemResponse>;
-  onListSourceRepositories?: () => SourceRepository[] | Promise<SourceRepository[]>;
-  onListSourceWorktrees?: (repoPath: string) => SourceWorktree[] | Promise<SourceWorktree[]>;
+  onListSourceRepositories?: (remoteConnectionId?: string) => SourceRepository[] | Promise<SourceRepository[]>;
+  onListSourceWorktrees?: (repoPath: string, remoteConnectionId?: string) => SourceWorktree[] | Promise<SourceWorktree[]>;
   onCreateSourceWorktree?: (input: CreateSourceWorktreeInput) => SourceWorktree | Promise<SourceWorktree>;
   onCreateAgent?: (agent: Agent, input: McpCreateAgentInput & { teamId?: string }) => McpCreateAgentResponse | Promise<McpCreateAgentResponse>;
   onCloseAgent?: (callerAgentId: string, agentId: string) => Promise<void>;
@@ -192,14 +180,15 @@ export class AppMcpAgentCoordinator {
   private readonly missionTools?: MissionToolPort;
   private readonly messages: McpMessage[] = [];
   private readonly getAgents: () => Agent[];
+  private readonly getHosts: NonNullable<AppMcpAgentCoordinatorOptions['getHosts']>;
   private readonly onAgentUpdated?: (agent: Agent) => void;
   private readonly onInboxMessage?: (agentId: string, messageId: string) => void;
   private readonly onDisplayMarkdown?: (agent: Agent, input: DisplayMarkdownInput) => DisplayMarkdownResponse | Promise<DisplayMarkdownResponse>;
   private readonly onCelebrate?: (agent: Agent) => CelebrationResponse | Promise<CelebrationResponse>;
   private readonly onAnnounce?: (agent: Agent, phase: AnnouncementPhase, text: string) => AnnouncementResponse | Promise<AnnouncementResponse>;
   private readonly onUpdateWorkItem?: (agent: Agent, workItemId: string, status: WorkBacklogAssignmentStatus, note?: string) => UpdateWorkItemResponse | Promise<UpdateWorkItemResponse>;
-  private readonly onListSourceRepositories?: () => SourceRepository[] | Promise<SourceRepository[]>;
-  private readonly onListSourceWorktrees?: (repoPath: string) => SourceWorktree[] | Promise<SourceWorktree[]>;
+  private readonly onListSourceRepositories?: AppMcpAgentCoordinatorOptions['onListSourceRepositories'];
+  private readonly onListSourceWorktrees?: AppMcpAgentCoordinatorOptions['onListSourceWorktrees'];
   private readonly onCreateSourceWorktree?: (input: CreateSourceWorktreeInput) => SourceWorktree | Promise<SourceWorktree>;
   private readonly onCreateAgent?: (agent: Agent, input: McpCreateAgentInput & { teamId?: string }) => McpCreateAgentResponse | Promise<McpCreateAgentResponse>;
   private readonly onCloseAgent?: AppMcpAgentCoordinatorOptions['onCloseAgent'];
@@ -209,6 +198,7 @@ export class AppMcpAgentCoordinator {
   constructor(options: AppMcpAgentCoordinatorOptions) {
     this.missionTools = options.missionTools;
     this.getAgents = options.getAgents;
+    this.getHosts = options.getHosts ?? (() => []);
     this.onAgentUpdated = options.onAgentUpdated;
     this.onInboxMessage = options.onInboxMessage;
     this.onDisplayMarkdown = options.onDisplayMarkdown;
@@ -226,6 +216,7 @@ export class AppMcpAgentCoordinator {
 
   connectAgent(agentId: string, sessionId?: string): Agent {
     const agent = this.requireAgent(agentId);
+    if (agent.remoteConnectionId) return agent;
     const updatedAt = this.now().toISOString();
     agent.isRegistered = true;
     agent.mcpSessionId = sessionId;
@@ -241,6 +232,11 @@ export class AppMcpAgentCoordinator {
     return {
       agents: this.listVisibleAgents(caller),
     };
+  }
+
+  listHosts(callerAgentId: string): { hosts: Array<{ id: string; name: string; status: string }> } {
+    this.requireAgent(callerAgentId);
+    return { hosts: this.getHosts() };
   }
 
   sendMessage(from: string, to: string, content: string): SendMessageResponse {
@@ -312,7 +308,7 @@ export class AppMcpAgentCoordinator {
 
   clearStatus(agentId: string): boolean {
     const agent = this.getAgents().find((candidate) => candidate.id === agentId);
-    if (!agent || agent.statusText === undefined) return false;
+    if (!agent || agent.remoteConnectionId || agent.statusText === undefined) return false;
     delete agent.statusText;
     agent.updatedAt = this.now().toISOString();
     this.onAgentUpdated?.(agent);
@@ -417,6 +413,12 @@ export class AppMcpAgentCoordinator {
     return this.missionTools?.contextForAgent(agentId);
   }
 
+  async reopenMissionStage(agentId: string, stage: MissionStage) {
+    this.requireAgent(agentId);
+    if (!this.missionTools?.reopenStage) throw new McpToolError('Mission stage backtracking is unavailable.');
+    return this.missionTools.reopenStage(agentId, stage);
+  }
+
   async setMissionTitle(agentId: string, title: string) {
     this.requireAgent(agentId);
     if (!this.missionTools) throw new McpToolError('Mission title updates are unavailable.');
@@ -476,20 +478,20 @@ export class AppMcpAgentCoordinator {
     return this.onUpdateWorkItem(agent, normalizedWorkItemId, status, normalizedNote);
   }
 
-  async listSourceRepositories(agentId: string): Promise<{ repos: SourceRepository[] }> {
+  async listSourceRepositories(agentId: string, remoteConnectionId?: string): Promise<{ repos: SourceRepository[] }> {
     this.requireAgent(agentId);
     if (!this.onListSourceRepositories) {
       throw new McpToolError('Source repositories are not available.');
     }
 
     return {
-      repos: await this.onListSourceRepositories(),
+      repos: await this.onListSourceRepositories(remoteConnectionId),
     };
   }
 
-  async listSourceWorktrees(agentId: string, repoPath: string): Promise<{ repoPath: string; worktrees: SourceWorktree[] }> {
+  async listSourceWorktrees(agentId: string, repoPath: string, remoteConnectionId?: string): Promise<{ repoPath: string; worktrees: SourceWorktree[] }> {
     const normalizedRepoPath = repoPath.trim();
-    const { repos } = await this.listSourceRepositories(agentId);
+    const { repos } = await this.listSourceRepositories(agentId, remoteConnectionId);
     const repository = repos.find((candidate) => candidate.path === normalizedRepoPath);
     if (!repository) {
       throw new McpToolError('Source repository not found.');
@@ -498,7 +500,7 @@ export class AppMcpAgentCoordinator {
     return {
       repoPath: normalizedRepoPath,
       worktrees: this.onListSourceWorktrees
-        ? await this.onListSourceWorktrees(normalizedRepoPath)
+        ? remoteConnectionId ? await this.onListSourceWorktrees(normalizedRepoPath, remoteConnectionId) : await this.onListSourceWorktrees(normalizedRepoPath)
         : repository.worktrees,
     };
   }
@@ -510,6 +512,7 @@ export class AppMcpAgentCoordinator {
     }
 
     return this.onCreateSourceWorktree({
+      ...(input.remoteConnectionId ? { remoteConnectionId: input.remoteConnectionId } : {}),
       repoPath: input.repoPath.trim(),
       branchName: input.branchName.trim(),
       ...(input.destinationPath?.trim() ? { destinationPath: input.destinationPath.trim() } : {}),
@@ -523,6 +526,7 @@ export class AppMcpAgentCoordinator {
     }
 
     return this.onCreateAgent(agent, {
+      ...(input.remoteConnectionId ? { remoteConnectionId: input.remoteConnectionId.trim() } : {}),
       ...(input.goal !== undefined ? { goal: input.goal } : {}),
       ...(input.task ? { task: input.task, requestId: input.requestId } : {}),
       name: input.name?.trim(),

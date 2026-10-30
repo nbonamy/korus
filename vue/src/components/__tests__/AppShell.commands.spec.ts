@@ -315,7 +315,10 @@ describe('AppShell dialogs and commands', () => {
     wrapper.unmount();
   });
 
-  it('routes /visualize into the dedicated workspace without sending prose to chat', async () => {
+  it.each([
+    ['/visualize', { choose: true }],
+    ['/visualize focus on the deployment flow', { prompt: 'focus on the deployment flow' }],
+  ])('routes %s into the dedicated workspace without sending prose to chat', async (command, input) => {
     const snapshot = createInitialSnapshot();
     const next = structuredClone(snapshot);
     next.agents[0].visualize = {
@@ -333,10 +336,10 @@ describe('AppShell dialogs and commands', () => {
     const wrapper = mountShell({ snapshot, startVisualize, sendPromptAction, stubAgentWorkspace: false });
 
     const forwardPrompt = wrapper.getComponent({ name: 'AgentWorkspace' }).props('forwardPrompt') as (prompt: string) => Promise<void>;
-    await forwardPrompt('/visualize focus on the deployment flow');
+    await forwardPrompt(command);
     await flushPromises();
 
-    expect(startVisualize).toHaveBeenCalledExactlyOnceWith('agent-dina', { prompt: 'focus on the deployment flow' });
+    expect(startVisualize).toHaveBeenCalledExactlyOnceWith('agent-dina', input);
     expect(sendPromptAction).not.toHaveBeenCalled();
     expect(wrapper.findAll('[role="tab"]').map(tab => tab.text())).toContain('Visualize');
     wrapper.unmount();
@@ -415,83 +418,6 @@ describe('AppShell dialogs and commands', () => {
 
     expect(setVisualizeOpen).toHaveBeenCalledExactlyOnceWith('agent-dina', { open: false });
     expect(wrapper.findAll('[role="tab"]').map(tab => tab.text())).toContain('Visualize');
-    wrapper.unmount();
-  });
-
-  it('loads existing remote teams for the Team dialog from the selected connection backend', async () => {
-    const snapshot = createInitialSnapshot();
-    snapshot.remoteConnections.connections = [{
-      id: 'connection-devbox',
-      kind: 'ssh',
-      name: 'devbox',
-      host: 'devbox',
-      status: 'ready',
-      createdAt: '2026-06-14T10:00:00.000Z',
-      updatedAt: '2026-06-14T10:00:00.000Z',
-    }];
-    const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.teams = [{
-      id: 'team-remote',
-      name: 'Remote Core',
-      color: '#277da1',
-      agentIds: [],
-    }];
-    const getAutomationSnapshot = vi.fn().mockResolvedValue(remoteSnapshot);
-    const wrapper = mountShell({ snapshot, getAutomationSnapshot });
-
-    const loadRemoteTeams = wrapper.findComponent({ name: 'TeamDialog' }).props('loadRemoteTeams') as (connectionId: string) => Promise<Team[]>;
-    await expect(loadRemoteTeams('connection-devbox')).resolves.toStrictEqual(remoteSnapshot.teams);
-
-    expect(getAutomationSnapshot).toHaveBeenCalledWith({
-      kind: 'remote',
-      remoteConnectionId: 'connection-devbox',
-    });
-  });
-
-  it('disconnects the only remote team when Delete Team is invoked from the app menu', async () => {
-    let listener: (command: AppCommand) => void = () => undefined;
-    window.app = {
-      onAppCommand: vi.fn((nextListener: (command: AppCommand) => void) => {
-        listener = nextListener;
-        return () => undefined;
-      }),
-    } as Partial<AppApi> as AppApi;
-    const snapshot = createInitialSnapshot();
-    snapshot.teams[0] = {
-      ...snapshot.teams[0]!,
-      name: 'BUG',
-      remoteConnectionId: 'connection-devbox',
-      remoteTeamId: 'team-remote',
-    };
-    snapshot.remoteConnections.connections = [{
-      id: 'connection-devbox',
-      kind: 'ssh',
-      name: 'wall-e',
-      host: 'wall-e',
-      status: 'ready',
-      createdAt: '2026-06-14T10:00:00.000Z',
-      updatedAt: '2026-06-14T10:00:00.000Z',
-    }];
-    const remoteSnapshot = createEmptySnapshot();
-    remoteSnapshot.teams = [{ id: 'team-remote', name: 'BUG', agentIds: [] }];
-    const getAutomationSnapshot = vi.fn().mockResolvedValue(remoteSnapshot);
-    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never);
-    const wrapper = mountShell({ snapshot, getAutomationSnapshot });
-
-    listener({ type: 'close-active-team' });
-    await flushPromises();
-
-    expect(getAutomationSnapshot).toHaveBeenCalledExactlyOnceWith({
-      kind: 'remote',
-      remoteConnectionId: 'connection-devbox',
-    });
-    expect(confirm).toHaveBeenCalledExactlyOnceWith(
-      'BUG is the only team on wall-e, so it can’t be deleted. Do you want to disconnect instead?',
-      'Cannot delete team',
-      { cancelButtonText: 'Cancel', confirmButtonText: 'Yes', type: 'info' },
-    );
-    expect(wrapper.emitted('disconnect-team')).toStrictEqual([['team-app']]);
-    expect(wrapper.emitted('close-team')).toBeUndefined();
     wrapper.unmount();
   });
 
@@ -623,25 +549,42 @@ describe('AppShell dialogs and commands', () => {
     expect(wrapper.findComponent({ name: 'AgentQuickOpen' }).exists()).toBe(false);
   });
 
-  it('excludes Mission agents from Command-K while keeping ordinary conversations searchable', async () => {
+  it.each(['cockpit', 'team'] as const)('opens one Command-K Mission entry with its remembered conversation from %s', async scope => {
     const snapshot = createInitialSnapshot();
     const regular = snapshot.agents[0]!;
-    const lead = { ...regular, id: 'mission-lead', name: 'Mission lead' };
-    const worker = { ...regular, id: 'mission-worker', name: 'Mission worker' };
+    const lead = { ...regular, id: 'mission-lead', name: 'Mission lead', teamId: 'mission-team' };
+    const worker = { ...regular, id: 'mission-worker', name: 'Mission worker', teamId: 'mission-team' };
     snapshot.agents.push(lead, worker);
-    snapshot.teams[0]!.agentIds.push(lead.id, worker.id);
-    const mission = createMission(snapshot, { outcome: 'Deliver', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: regular.id });
+    snapshot.teams.push({ id: 'mission-team', name: 'Mission team', agentIds: [lead.id, worker.id] });
+    const mission = createMission(snapshot, { outcome: 'Deliver', workflowType: 'shapeAndShipFeature', teamId: lead.teamId, orchestratorMemberId: lead.id });
     mission.stageAgentIds.requirements = lead.id;
+    mission.stage = 'implementation';
+    mission.execution!.runs.push({ id: 'lead-run', stage: 'requirements', memberId: lead.id, workerId: lead.id, status: 'accepted', skills: [], feedback: '', startedAt: '' });
     mission.execution!.runs.push({ id: 'run', stage: 'implementation', memberId: regular.id, workerId: worker.id, status: 'running', skills: [], feedback: '', startedAt: '' });
+    window.localStorage.setItem(`app.missionConversation.${mission.id}`, scope === 'cockpit' ? worker.id : 'missing-worker');
     const wrapper = mountShell({ snapshot });
     try {
-      await wrapper.get('[aria-label="Cockpit"]').trigger('click');
+      if (scope === 'cockpit') await wrapper.get('[aria-label="Cockpit"]').trigger('click');
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, cancelable: true }));
       await nextTick();
       const palette = wrapper.getComponent({ name: 'AgentQuickOpen' });
       expect(palette.text()).toContain(regular.name);
       await palette.get('input').setValue('Mission');
-      expect(palette.findAll('.quick-open-dialog__item')).toHaveLength(0);
+      expect(palette.findAll('.quick-open-dialog__item')).toHaveLength(1);
+      expect(palette.get('.agent-quick-open__copy strong').text()).toBe('Deliver');
+      expect(palette.find('.tabler-icon-target-arrow').exists()).toBe(true);
+      expect(palette.text()).not.toContain(lead.name);
+      expect(palette.text()).not.toContain(worker.name);
+      await palette.get('input').trigger('keydown.enter');
+      await flushPromises();
+      expect(wrapper.findComponent({ name: 'AgentQuickOpen' }).exists()).toBe(false);
+      expect(wrapper.emitted('select-team')?.at(-1)).toStrictEqual(['mission-team']);
+      if (scope === 'team') {
+        await wrapper.setProps({ snapshot: { ...snapshot, activeTeamId: 'mission-team' } });
+        await flushPromises();
+      }
+      expect(wrapper.get('.mission-workspace h1').text()).toBe('Deliver');
+      expect(wrapper.emitted('select-agent')?.at(-1)).toStrictEqual([scope === 'cockpit' ? worker.id : lead.id]);
     } finally { wrapper.unmount(); }
   });
 

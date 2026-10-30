@@ -73,6 +73,13 @@ export type AppSnapshotGetResult = {
 };
 
 export type AppBackendRequestMap = {
+  [backendMethods.agentRunProfilesGet]: { params: { agentId: string }; result: import('../run-profiles').RunProfileCatalog };
+  [backendMethods.agentRunProfileActionsGet]: { params: { agentId: string; directory: string }; result: import('../run-profiles').RunProfileDiscovery };
+  [backendMethods.agentRunProfileSave]: { params: { agentId: string; input: import('../run-profiles').RunProfileInput }; result: import('../run-profiles').RunProfileCatalog };
+  [backendMethods.agentRunProfileDelete]: { params: { agentId: string; profileId: string }; result: import('../run-profiles').RunProfileCatalog };
+  [backendMethods.agentRunProfileStart]: { params: { agentId: string; input: import('../run-profiles').RunProfileStartInput }; result: import('../run-profiles').ProfileRun };
+  [backendMethods.agentProfileRunStop]: { params: { agentId: string; runId: string }; result: import('../run-profiles').ProfileRun };
+  [backendMethods.agentProfileRunsStop]: { params: { agentId: string }; result: void };
   [backendMethods.guestConversationControl]: { params: { input: import('../guest-navigation').GuestJoinControl }; result: import('../guest-navigation').GuestJoinState };
   [backendMethods.guestConversationImage]: { params: { id: string; path: string }; result: { dataUrl: string } };
   [backendMethods.guestConversationContent]: { params: { id: string; input: import('../contracts/conversation').ConversationContentInput }; result: import('../contracts/conversation').ConversationContentChunk };
@@ -177,6 +184,30 @@ export type AppBackendRequestMap = {
   [backendMethods.agentTasksList]: {
     params: { agentId: string };
     result: import('../delegated-task').DelegatedTask[];
+  };
+  [backendMethods.collaborationTaskAccess]: {
+    params: { teamId: string; ownerId: string; agentId: string; action: 'list' | 'cancel' | 'block'; taskId?: string };
+    result: import('../delegated-task').DelegatedTask[] | import('../delegated-task').DelegatedTask | null;
+  };
+  [backendMethods.collaborationTeamBind]: {
+    params: { teamId: string; ownerId: string };
+    result: AppSnapshot;
+  };
+  [backendMethods.collaborationWorkerCreate]: {
+    params: import('../remote-collaboration').RemoteWorkerRequest;
+    result: import('../remote-collaboration').RemoteWorkerResult;
+  };
+  [backendMethods.collaborationPromptSend]: {
+    params: { agentId: string; prompt: string; goal?: boolean };
+    result: import('../backend-driver').BackendSendResult;
+  };
+  [backendMethods.collaborationMessageSend]: {
+    params: { agentId: string; messageId: string; prompt: string };
+    result: { accepted: true };
+  };
+  [backendMethods.clientCollaborationCall]: {
+    params: import('../remote-collaboration').RemoteCollaborationCall;
+    result: import('../remote-collaboration').RemoteCollaborationReply;
   };
   [backendMethods.agentTaskCancel]: {
     params: { agentId: string; taskId: string };

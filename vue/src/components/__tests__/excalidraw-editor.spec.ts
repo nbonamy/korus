@@ -17,10 +17,33 @@ vi.mock('@excalidraw/excalidraw', () => ({
   })),
 }));
 vi.mock('@excalidraw/mermaid-to-excalidraw', () => ({ parseMermaidToExcalidraw: convert }));
-import { restoreElements } from '@excalidraw/excalidraw';
+import { convertToExcalidrawElements, restoreElements } from '@excalidraw/excalidraw';
+import { isCanvasDocument } from '@workspace/core/visualize-canvas';
 import { importVisualization, mountCanvas } from '../excalidraw-editor';
 const base: Visualization = { id: 'v', title: 'Diagram', content: { kind: 'mermaid', source: '' }, createdAt: '', updatedAt: '' };
 describe('canvas imports', () => {
+  it('imports converter image files as persistable canvas documents', async () => {
+    const image = { id: 'image', type: 'image', x: 0, y: 0, width: 120, height: 60, fileId: 'asset' };
+    convert.mockResolvedValueOnce({ elements: [image], files: { asset: { id: 'asset', mimeType: 'image/svg+xml', dataURL: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60" viewBox="0 0 1200 600"><text>Fallback diagram</text></svg>') } } });
+    vi.mocked(convertToExcalidrawElements).mockReturnValueOnce([image] as never);
+    vi.stubGlobal('Image', class {
+      naturalWidth = 120; naturalHeight = 60;
+      set src(value: string) {
+        const svg = new DOMParser().parseFromString(decodeURIComponent(value.slice(value.indexOf(',') + 1)), 'image/svg+xml').documentElement;
+        this.naturalWidth = Number(svg.getAttribute('width'));
+        this.naturalHeight = Number(svg.getAttribute('height'));
+      }
+      async decode() {}
+    });
+    const context = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as never);
+    const dataUrl = vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,YQ==');
+    try {
+      const scene = await importVisualization({ ...base, content: { kind: 'mermaid', source: 'flowchart LR; A --> B' } }, '');
+      expect(context.mock.contexts[0]).toMatchObject({ width: 1200, height: 600 });
+      expect(isCanvasDocument({ ...scene, revision: 1 })).toBe(true);
+      expect(scene.files.asset.mimeType).toBe('image/png');
+    } finally { context.mockRestore(); dataUrl.mockRestore(); }
+  });
   it.each(['flowchart LR; A@{img: "https://example.com/a.png"}', 'flowchart LR; click A "https://example.com"', '%%{init: {securityLevel: "loose"}}%%\nflowchart LR; A-->B'])('rejects active content before Mermaid creates DOM: %s', async source => {
     await expect(importVisualization({ ...base, content: { kind: 'mermaid', source } }, '')).rejects.toThrow('does not allow');
     expect(convert).not.toHaveBeenCalled();
@@ -33,7 +56,7 @@ describe('canvas imports', () => {
 });
 
 const originalFonts = Object.getOwnPropertyDescriptor(document, 'fonts');
-afterEach(() => { vi.unstubAllGlobals(); if (originalFonts) Object.defineProperty(document, 'fonts', originalFonts); else Reflect.deleteProperty(document, 'fonts'); });
+afterEach(() => { vi.clearAllMocks(); vi.unstubAllGlobals(); if (originalFonts) Object.defineProperty(document, 'fonts', originalFonts); else Reflect.deleteProperty(document, 'fonts'); });
 describe('canvas font loading', () => {
   it('remeasures the current scene after fonts load, enables binding repair and cleans up its listener', async () => {
     const fonts = new EventTarget();

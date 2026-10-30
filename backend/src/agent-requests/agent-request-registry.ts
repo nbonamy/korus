@@ -5,7 +5,7 @@ export type AgentRequestOwner = { kind: 'driver'; backend: AgentBackend; remoteC
 
 export type AgentRequestRegistryOptions = {
   getSnapshot: () => AppSnapshot;
-  remoteConnectionIdForAgent: (agent: Pick<Agent, 'teamId'>) => string | null;
+  remoteConnectionIdForAgent: (agent: Pick<Agent, 'remoteConnectionId'>) => string | null;
 };
 
 /** Tracks the backend or remote daemon responsible for each pending client request. */

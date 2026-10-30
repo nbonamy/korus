@@ -94,7 +94,7 @@
               :key="`${agent.id}:${modelReload}`"
               v-model:selection="reviewSelection"
               :agent-id="agent.id"
-              :team-id="agent.teamId"
+              :remote-connection-id="agent.remoteConnectionId"
               :selections="selections"
               :disabled="busy || threadMode === 'current'"
               @loading="modelsLoading = $event"
@@ -380,7 +380,7 @@ const threadMode = ref<CodeReviewThreadMode>("independent");
 const reviewSettings = useCodeReviewSettings();
 provide(backendModelCatalogKey, { listModels: reviewSettings.listModels });
 const remembered = reviewSettings.preferences();
-const connectedBackends = useBackendChoices(() => props.agent.teamId);
+const connectedBackends = useBackendChoices(() => props.agent.remoteConnectionId);
 const { selection: reviewSelection, backend: reviewBackend, model: reviewModel, reasoningEffort: reviewEffort, serviceTier: reviewTier } = useExecutionSelection();
 const initialBackend = preferredReviewBackend(props.agent.backend, connectedBackends.value, remembered?.backend);
 if (initialBackend) reviewBackend.value = initialBackend;

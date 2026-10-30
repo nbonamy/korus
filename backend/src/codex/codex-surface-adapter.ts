@@ -1,3 +1,4 @@
+import { ConversationContentTransport } from '@codex-app-sdk/backend';
 import { promptWithSelectedReferences } from '../agents/prompt-content';
 import { normalizePromptContent } from '@codex-app-sdk/core/surface';
 import type { ExecutionObservation } from '@workspace/core/usage';
@@ -75,7 +76,6 @@ const AGENT_HISTORY_CACHE_TTL_MS = 15 * 60 * 1_000;
 const SESSION_HANDOFF_TARGET_CHARACTERS = 4_000;
 const SESSION_HANDOFF_MAX_CHARACTERS = 6_000;
 const SESSION_HANDOFF_TIMEOUT_MS = 8 * 60 * 1_000;
-const REVIEW_TIMEOUT_MS = 30 * 60 * 1_000;
 const SESSION_HANDOFF_MODEL = 'gpt-5.6-luna';
 const SESSION_HANDOFF_REASONING_EFFORT = 'low';
 
@@ -98,6 +98,7 @@ End with the current objective and status, constraints, unresolved problems, pre
 type AgentConversation = {
   agent: Agent;
   handle: CodexConversation;
+  images: ConversationContentTransport;
   suppressEvents: boolean;
   unsubscribe: () => void;
 };
@@ -112,6 +113,7 @@ export class CodexSurfaceAgentAdapter {
   private readonly listeners = new Set<AdapterListener>();
   private readonly usageListeners = new Set<(observation:ExecutionObservation)=>void>();
   private readonly sessionsByAgentId = new Map<string, AgentConversation>();
+  private readonly submissions = new Map<string, Promise<void>>();
   private readonly sessionInitializations = new Map<string, Promise<AgentConversation>>();
   private readonly historyHydratedAtByAgentId = new Map<string, number>();
   private readonly agentIdsByThreadId = new Map<string, string>();
@@ -404,7 +406,7 @@ export class CodexSurfaceAgentAdapter {
       if (!targetTurnId) throw new Error('Codex did not start the review round.');
       const immediate = completedBeforeTarget.get(targetTurnId)
         ?? started.turns.find((turn) => turn.id === targetTurnId && turn.status !== 'inProgress')?.status;
-      const status = immediate ?? await reviewCompletion(completion);
+      const status = immediate ?? await completion;
       const snapshot = conversation.getSnapshot();
       const completedFinalAnswer = sessionFinalAnswerText(snapshot.messages, targetTurnId);
       if (status !== 'completed' && !(status === 'interrupted' && completedFinalAnswer)) {
@@ -428,11 +430,13 @@ export class CodexSurfaceAgentAdapter {
 
   async sendPrompt(agent: Agent, prompt: string, options: SendPromptOptions = {}) {
     const session = await this.ensureSession(agent);
-    const beforeTurnIds = session.handle.getSnapshot().turnIds;
-    const snapshot = await session.handle.sendMessage(promptWithSelectedReferences(prompt, options.content, true), surfacePromptOptions(options));
-    const turnId = resultTurnId(snapshot, beforeTurnIds);
-    const messages = snapshot.messages.filter(message => message.role === 'user' && message.turnId === turnId && message.kind !== 'steer');
-    return { threadId: session.handle.id, turnId, ...(messages.length === 1 ? { messageId: messages[0]!.id } : {}) };
+    return this.serializeSubmission(session, async () => {
+      const beforeTurnIds = session.handle.getSnapshot().turnIds;
+      const snapshot = await session.handle.sendMessage(promptWithSelectedReferences(prompt, options.content, true), surfacePromptOptions(options));
+      const turnId = resultTurnId(snapshot, beforeTurnIds);
+      const messages = snapshot.messages.filter(message => message.role === 'user' && message.turnId === turnId && message.kind !== 'steer');
+      return { threadId: session.handle.id, turnId, ...(messages.length === 1 ? { messageId: messages[0]!.id } : {}) };
+    });
   }
 
   async assertHandoffReady(agent: Agent): Promise<void> {
@@ -525,9 +529,27 @@ export class CodexSurfaceAgentAdapter {
 
   async steerPrompt(agent: Agent, prompt: string, options?: SendPromptOptions) {
     const session = await this.ensureSession(agent);
-    const beforeTurnIds = session.handle.getSnapshot().turnIds;
-    const snapshot = await session.handle.steerMessage(promptWithSelectedReferences(prompt, options?.content, true), surfacePromptOptions(options));
-    return { threadId: session.handle.id, turnId: resultTurnId(snapshot, beforeTurnIds) };
+    return this.serializeSubmission(session, async () => {
+      const before = session.handle.getSnapshot();
+      const knownMessages = new Set(before.messages.map(message => message.id));
+      const snapshot = await session.handle.steerMessage(promptWithSelectedReferences(prompt, options?.content, true), surfacePromptOptions(options));
+      const turnId = resultTurnId(snapshot, before.turnIds);
+      const messages = snapshot.messages.filter(message => message.role === 'user' && message.turnId === turnId && !knownMessages.has(message.id));
+      return { threadId: session.handle.id, turnId, ...(messages.length === 1 ? { messageId: messages[0]!.id } : {}) };
+    });
+  }
+
+  /** Keep owner and guest receipt capture isolated; the SDK owns message identity. */
+  private async serializeSubmission<T>(session: AgentConversation, submit: () => Promise<T>): Promise<T> {
+    const id = session.handle.id;
+    const operation = (this.submissions.get(id) ?? Promise.resolve()).then(() => {
+      if (this.closed || this.sessionsByAgentId.get(session.agent.id) !== session) throw new Error('Conversation is no longer active.');
+      return submit();
+    });
+    const settled = operation.then(() => {}, () => {});
+    this.submissions.set(id, settled);
+    try { return await operation; }
+    finally { if (this.submissions.get(id) === settled) this.submissions.delete(id); }
   }
 
   async interruptTurn(agent: Agent, expectedTurnId?: string) {
@@ -852,9 +874,14 @@ export class CodexSurfaceAgentAdapter {
     const owner = requestOwner ?? pendingQuestionOwner;
     if (owner) {
       try {
-        await invokeCodexConversationBridgeOperation(
+        const respond = () => invokeCodexConversationBridgeOperation(
           this.surface, owner.handle.id, 'respondToClientRequest', [nativeResponse],
         );
+        const request = owner.handle.getSnapshot().clientRequests.find(request => request.id === response.id);
+        // Async answers submit a new user message. Blocking replies and approvals
+        // must remain free to unblock provider work during submission.
+        if (request?.kind === 'ask_user' && request.payload.request.delivery === 'async') await this.serializeSubmission(owner, respond);
+        else await respond();
       } finally {
         this.publishConversationSnapshot(owner, owner.handle.getSnapshot());
       }
@@ -1026,6 +1053,12 @@ export class CodexSurfaceAgentAdapter {
     );
   }
 
+  async readConversationContent(agent: Agent, input: import('@workspace/core/contracts/conversation').ConversationContentInput): Promise<import('@workspace/core/contracts/conversation').ConversationContentChunk> {
+    const session = this.sessionsByAgentId.get(agent.id);
+    if (!session || agent.backendSession?.kind !== 'codex' || agent.backendSession.threadId !== input.sessionId || session.handle.id !== input.sessionId) throw new Error('Conversation image is no longer available.');
+    return session.images.read(session.handle.getSnapshot(), input.contentId, input.offset);
+  }
+
   private async bindAndLoad(
     agent: Agent,
     threadId: string,
@@ -1094,6 +1127,7 @@ export class CodexSurfaceAgentAdapter {
     const session: AgentConversation = {
       agent,
       handle,
+      images: new ConversationContentTransport(threadId),
       suppressEvents,
       unsubscribe: () => undefined,
     };
@@ -1156,7 +1190,7 @@ export class CodexSurfaceAgentAdapter {
       type: 'codex.conversationSnapshotChanged',
       payload: {
         revision,
-        snapshot: conversationSnapshotForTransport(snapshot),
+        snapshot: conversationSnapshotForTransport(session.images.project(snapshot)),
       },
     });
   }
@@ -1468,7 +1502,7 @@ export class CodexSurfaceAgentAdapter {
       type: 'codex.conversationEventReceived',
       payload: {
         revision,
-        event: structuredClone(event),
+        event: structuredClone(session.images.project(event)),
       },
     });
   }
@@ -1789,15 +1823,6 @@ function sessionHandoffCompletion(
       },
     );
   });
-}
-
-function reviewCompletion(completion: Promise<CodexSurfaceTurnStatus>): Promise<CodexSurfaceTurnStatus> {
-  return Promise.race([
-    completion,
-    new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('Code review timed out.')), REVIEW_TIMEOUT_MS);
-    }),
-  ]);
 }
 
 function subagentStatusFromTurn(

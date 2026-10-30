@@ -102,6 +102,8 @@ export {
   IconShieldCheck as ShieldCheckIcon,
   IconSparkleHighlight as SparklesIcon,
   IconSquareCheck as SquareCheck,
+  IconDeviceImac as DeviceImacIcon,
+  IconNetwork as NetworkIcon,
   IconSwitchHorizontal as SwitchHorizontalIcon,
   IconTargetArrow as TargetArrowIcon,
   IconTerminal as TerminalIcon,

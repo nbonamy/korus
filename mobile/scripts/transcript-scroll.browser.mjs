@@ -419,18 +419,21 @@ test('a normal laptop image link resolves through native and opens the image vie
         const event = JSON.parse(json); window.nativeEvents.push(event);
         if (event.type === 'readConversationImage' && event.path === 'slow.png') { window.slowImageRequest = event; return; }
         if (event.type === 'readConversationImage') queueMicrotask(() => window.companionTranscript.setImage(JSON.stringify({ requestId: event.requestId, agentId: event.agentId,
-          ...(event.path.endsWith('missing.png') ? { error: 'Unavailable' } : { dataUrl: 'data:image/png;base64,cG5n' }) })));
+          ...(event.path.endsWith('missing.png') ? { error: 'Unavailable' } : { dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1xkAAAAASUVORK5CYII=' }) })));
       } } } };
     });
     await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
     await page.waitForFunction(() => window.companionTranscript);
     await page.evaluate(async () => {
       const agent = { id: 'image-links', name: 'Images', backend: 'claude', folder: '/repo', status: { type: 'idle' } };
-      const message = { id: 'screenshots', role: 'assistant', parts: [{ type: 'text', text: '[Screenshot](/tmp/phone.png) [Missing](missing.png) [Slow](slow.png) [Fast](fast.png)' }] };
+      const message = { id: 'screenshots', role: 'assistant', parts: [{ type: 'text', text: '[Screenshot](/tmp/phone.png) [Missing](missing.png) [Slow](slow.png) [Fast](fast.png)' }, { type: 'media', media: { url: 'conversation-image:thread:' + 'a'.repeat(64), mimeType: 'image/png' } }] };
       await window.companionTranscript.setConversation(JSON.stringify({ agentId: agent.id, agent, ready: true,
         frame: { agentId: agent.id, backend: 'claude', payload: { snapshot: { messages: [message], turns: [], busy: false } } } }));
     });
-    for (const [label, path, src] of [['Screenshot', '/tmp/phone.png', 'data:image/png;base64,cG5n'], ['Missing', 'missing.png', '']]) {
+    await page.waitForFunction(() => window.nativeEvents.some(event => event.type === 'readConversationImage' && event.path.startsWith('conversation-image:')));
+    await page.waitForFunction(() => document.querySelector('img.chat-media-block__image')?.naturalWidth === 1);
+    assert.match(await page.locator('img.chat-media-block__image').first().getAttribute('src'), /^blob:/);
+    for (const [label, path, src] of [['Screenshot', '/tmp/phone.png', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1xkAAAAASUVORK5CYII='], ['Missing', 'missing.png', '']]) {
       const title = path.split('/').at(-1);
       await page.getByRole('link', { name: label, exact: true }).click();
       await page.waitForFunction(title => window.nativeEvents.some(event => event.type === 'openImage' && event.title === title), title);
@@ -444,7 +447,7 @@ test('a normal laptop image link resolves through native and opens the image vie
     await page.waitForFunction(() => window.nativeEvents.some(event => event.type === 'openImage' && event.title === 'fast.png'));
     await page.evaluate(async () => {
       const event = window.slowImageRequest;
-      window.companionTranscript.setImage(JSON.stringify({ requestId: event.requestId, agentId: event.agentId, dataUrl: 'data:image/png;base64,cG5n' }));
+      window.companionTranscript.setImage(JSON.stringify({ requestId: event.requestId, agentId: event.agentId, dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1xkAAAAASUVORK5CYII=' }));
       await Promise.resolve();
     });
     assert.equal((await page.evaluate(() => window.nativeEvents.filter(event => event.type === 'openImage'))).at(-1).title, 'fast.png');
@@ -502,5 +505,72 @@ test('conversation images open the native viewer through the SDK action without 
       assert.equal(page.url(), original);
       assert.deepEqual(await button.boundingBox(), before, 'opening an image keeps the transcript in place');
     }
+  } finally { await browser?.close(); await server.close(); }
+});
+
+test('image previews follow the viewport with stable geometry, bounded caching and conversation cleanup', async () => {
+  const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
+  let browser;
+  try {
+    await server.listen(); browser = await browserEngine.launch();
+    const page = await browser.newPage({ viewport: { width: 402, height: 740 } });
+    await page.addInitScript(() => {
+      window.imageReads = []; window.openedImages = []; window.activeReads = 0; window.peakReads = 0;
+      window.imageUrls = new Set(); window.revokedImages = 0;
+      const create = URL.createObjectURL.bind(URL), revoke = URL.revokeObjectURL.bind(URL);
+      URL.createObjectURL = blob => { const url = create(blob); window.imageUrls.add(url); return url; };
+      URL.revokeObjectURL = url => { if (window.imageUrls.delete(url)) window.revokedImages++; revoke(url); };
+      window.webkit = { messageHandlers: { transcript: { postMessage(json) {
+        const event = JSON.parse(json); if (event.type === 'openImage') window.openedImages.push(event); if (event.type !== 'readConversationImage') return;
+        window.imageReads.push(event); window.peakReads = Math.max(window.peakReads, ++window.activeReads);
+        setTimeout(() => {
+          window.activeReads--;
+          const canvas = document.createElement('canvas'); const index = Number(/shot-(\d+)/.exec(event.path)?.[1] ?? 2);
+          canvas.width = event.path.endsWith('large.png') ? 3072 : index % 3 === 0 ? 2048 : index % 3 === 1 ? 512 : 1024;
+          canvas.height = event.path.endsWith('large.png') ? 3072 : 1024 * 1024 / canvas.width;
+          window.companionTranscript.setImage(JSON.stringify({requestId:event.requestId,agentId:event.agentId,dataUrl:canvas.toDataURL('image/png')}));
+        }, 30);
+      } } } };
+    });
+    await page.goto(`${server.resolvedUrls.local[0]}transcript.html`); await page.waitForFunction(() => window.companionTranscript);
+    await page.evaluate(async () => {
+      const agent = {id:'images-budget',name:'Images',backend:'codex',status:{type:'idle'}};
+      window.imageBudgetConversation = {agentId:agent.id,agent,ready:true,frame:{agentId:agent.id,backend:'codex',payload:{snapshot:{messages:Array.from({length:12},(_,i)=>({id:`shot-${i}`,role:'assistant',parts:[{type:'text',text:'Context for screenshot '+i+'\n\n'+('Context line\n\n'.repeat(12))}, i % 2 ? {type:'attachment',attachment:{kind:'image',path:`/tmp/shot-${i}.png`,name:`Shot ${i}`,width:i%3===0?2048:i%3===1?512:1024,height:i%3===0?512:i%3===1?2048:1024}} : {type:'media',media:{url:`/tmp/shot-${i}.png`,title:`Shot ${i}`,width:i%3===0?2048:i%3===1?512:1024,height:i%3===0?512:i%3===1?2048:1024}}]})),turns:[],busy:false}}}};
+      await window.companionTranscript.setConversation(JSON.stringify(window.imageBudgetConversation));
+    });
+    await page.waitForFunction(() => window.imageReads.length > 0 && window.activeReads === 0);
+    await page.waitForTimeout(250);
+    const initialReads = await page.evaluate(() => window.imageReads.length);
+    assert.ok(initialReads < 6, `offscreen images should not fetch (read ${initialReads})`);
+    const shot = i => page.getByRole('button', {name: `Open Shot ${i}`, exact:true});
+    for (let i = 0; i < 12; i++) {
+      await shot(i).evaluate(el => el.scrollIntoView({block:'center'}));
+      const before = await shot(i).boundingBox();
+      const expectedRatio = i % 3 === 0 ? 4 : i % 3 === 1 ? 0.25 : 1;
+      assert.ok(Math.abs(before.width / before.height - expectedRatio) < 0.01, 'image placeholder must have its intrinsic ratio');
+      await page.waitForFunction(i => document.querySelector(`[aria-label="Open Shot ${i}"] img`)?.naturalWidth > 0, i);
+      assert.deepEqual(await shot(i).boundingBox(), before, 'loading cannot change the preview frame');
+    }
+    await page.waitForFunction(() => window.activeReads === 0);
+    assert.ok(await page.evaluate(() => window.peakReads <= 2), 'preview reads must be bounded');
+    await page.waitForFunction(() => !document.body.textContent.includes('Loading image…'));
+    assert.ok(await page.evaluate(() => window.imageUrls.size <= 5), 'decoded pixels count toward the 24 MiB budget');
+    const readsBeforeReturn = await page.evaluate(() => window.imageReads.filter(e => e.path === '/tmp/shot-0.png').length);
+    await shot(0).evaluate(el => el.scrollIntoView({block:'center'}));
+    await page.waitForFunction(() => document.querySelector('[aria-label="Open Shot 0"] img')?.naturalWidth === 2048);
+    assert.ok(await page.evaluate(count => window.imageReads.filter(e => e.path === '/tmp/shot-0.png').length > count, readsBeforeReturn), 'evicted previews reload on return without a tap');
+    const settledReads = await page.evaluate(() => window.imageReads.length);
+    await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => window.imageReads.length), settledReads, 'memory pressure must not cause a fetch loop');
+    const evidence = await page.evaluate(() => ({peakReads:window.peakReads,retainedImages:window.imageUrls.size,evictions:window.revokedImages}));
+    await page.evaluate(async () => { const c = window.imageBudgetConversation; c.frame.payload.snapshot.messages=[]; await window.companionTranscript.setConversation(JSON.stringify(c)); });
+    await page.waitForFunction(() => window.imageUrls.size === 0);
+    await page.evaluate(async () => { const c = window.imageBudgetConversation; c.frame.payload.snapshot.messages=[{id:'large',role:'assistant',parts:[{type:'media',media:{url:'/tmp/large.png',title:'Large image'}}]}]; await window.companionTranscript.setConversation(JSON.stringify(c)); });
+    await page.waitForFunction(() => window.imageReads.some(e => e.path === '/tmp/large.png') && window.activeReads === 0 && !document.body.textContent.includes('Loading image…'));
+    assert.equal(await page.evaluate(() => window.imageUrls.size), 0, 'over-budget images must not stay retained');
+    await page.getByRole('button',{name:'Open Large image',exact:true}).click();
+    await page.waitForFunction(() => window.openedImages.some(image => image.title === 'Large image'));
+    await mkdir('out', {recursive:true});
+    await writeFile(`out/image-memory-${process.env.TRANSCRIPT_BROWSER || 'chromium'}.json`, JSON.stringify({...evidence,initialReads,viewportReload:true,stableGeometry:true,releasedOnClose:true},null,2));
   } finally { await browser?.close(); await server.close(); }
 });

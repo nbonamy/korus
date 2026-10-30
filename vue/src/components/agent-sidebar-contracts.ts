@@ -1,4 +1,4 @@
-import type { Agent, OpenInApplication, OpenInApplicationCatalog, ReorderAgentsInput, ReorderRepositoriesInput, SourceBranch, Team } from '@workspace/core/contracts';
+import type { Agent, OpenInApplication, OpenInApplicationCatalog, RemoteConnection, ReorderAgentsInput, ReorderRepositoriesInput, SourceBranch, Team } from '@workspace/core/contracts';
 import type { Mission } from '@workspace/core/missions';
 
 export interface AgentSidebarProps {
@@ -25,9 +25,12 @@ export interface AgentSidebarProps {
   phoneScope?: boolean;
   quickSwitchShortcutsVisible?: boolean;
   repositoryIcons?: Record<string, string>;
-  listRepositoryBranches?: (input: { agentId: string; repositoryRoot: string }) => Promise<SourceBranch[]>;
+  listRepositoryBranches?: (input: { agentId: string; repositoryRoot: string; remoteConnectionId?: string }) => Promise<SourceBranch[]>;
+  remoteConnections?: RemoteConnection[];
   openInCatalog?: OpenInApplicationCatalog;
 }
+
+export type SidebarRepositoryTarget = { agentId: string; repositoryName: string; repositoryRoot: string; remoteConnectionId?: string; originUrl?: string };
 
 export type AgentSidebarEvents = {
   'collapse-sidebar': [];
@@ -36,9 +39,10 @@ export type AgentSidebarEvents = {
   'compact-session': [agentId: string];
   'cleanup-pull-request': [agentId: string];
   'update-collapsed-repositories': [repositoryKeys: string[]];
-  'create-agent-from-repository': [payload: { agentId: string; repositoryName: string; repositoryRoot: string }];
-  'create-agent-on-branch': [payload: { agentId: string; repositoryName: string; repositoryRoot: string; branch: SourceBranch }];
-  'create-agent-worktree-in-repository': [payload: { agentId: string; repositoryName: string; repositoryRoot: string }];
+  'create-agent-from-repository': [payload: SidebarRepositoryTarget];
+  'create-agent-on-branch': [payload: SidebarRepositoryTarget & { branch: SourceBranch }];
+  'create-agent-worktree-in-repository': [payload: SidebarRepositoryTarget];
+  'open-on-remote': [payload: { action: 'main' | 'new-worktree'; repositoryName: string; repositoryKey: string; originUrl?: string }];
   'duplicate-agent': [agentId: string];
   'fork-agent': [agentId: string];
   'share-agent': [agentId: string];

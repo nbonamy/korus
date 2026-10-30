@@ -1,8 +1,8 @@
 import { createEntityId } from '@workspace/core/ids';
 import type { AppSnapshot } from '@workspace/core/contracts';
-import { isMissionArtifacts, type Mission, type MissionReviewFinding, type MissionStage, type MissionTicket } from '@workspace/core/missions';
+import { isMissionArtifacts, sameMissionTicketWork, type Mission, type MissionReviewFinding, type MissionStage, type MissionTicket } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
-import { missionRunAssignment, missionDeveloperInstructions, type MissionArtifactReadResult, type MissionArtifactWriteInput, type MissionExecutionInput, type MissionReviewFindingInput, type MissionReviewFindingUpdateInput, type MissionTicketDraftInput, type MissionTicketDraftResult, type MissionToolContext } from '@workspace/core/mission-execution';
+import { missionRunTicketIndex, missionRunAssignment, missionDeveloperInstructions, type MissionArtifactReadResult, type MissionArtifactWriteInput, type MissionExecutionInput, type MissionReviewFindingInput, type MissionReviewFindingUpdateInput, type MissionTicketDraftInput, type MissionTicketDraftResult, type MissionToolContext } from '@workspace/core/mission-execution';
 import type { MissionService } from './mission-service';
 import { missionTeamRepositories } from './mission-execution-policy';
 
@@ -34,7 +34,9 @@ export class MissionAgentTools {
       }
       if (mission.stage !== 'review') continue;
       const remediationRepository = mission.artifacts.review.findings?.find(finding => (
-        finding.remediation.state === 'fixing' && this.implementationWorkerId(mission, finding.repositoryPath) === agentId
+        ['open', 'fixing'].includes(finding.remediation.state) && (finding.remediationAssignment
+          ? this.authorizedRemediation(mission, finding) && finding.remediationAssignment.workerId === agentId
+          : finding.remediation.state === 'fixing' && this.implementationWorkerId(mission, finding.repositoryPath) === agentId)
       ))?.repositoryPath;
       if (!remediationRepository) continue;
       const reviewRun = mission.execution?.runs.slice().reverse().find(candidate => (
@@ -51,6 +53,7 @@ export class MissionAgentTools {
     const run = runs[index];
     if (!run || run.workerId !== agentId || mission.status === 'completed' || run.stage !== mission.stage
       || !['running', 'awaitingReview', 'failed'].includes(run.status)) return false;
+    if (run.stage === 'implementation' && missionRunTicketIndex(mission, run) === undefined) return false;
     // A failed assignment can recover, but cannot supersede a replacement or a newer ticket for this worker.
     return !runs.slice(index + 1).some(candidate => candidate.stage === run.stage
       && (run.stage !== 'implementation' || candidate.ticketIndex === run.ticketIndex || candidate.workerId === agentId));
@@ -62,6 +65,11 @@ export class MissionAgentTools {
     const mission = this.requireMission(context.missionId);
     const run = mission.execution!.runs.find(candidate => candidate.id === context.runId)!;
     if (run.workerId === agentId && !this.ownsWritableRun(mission, run.id, agentId)) return undefined;
+    if (run.workerId !== agentId) {
+      return missionFindingFixInstructions(mission, (mission.artifacts.review.findings ?? []).filter(finding => (
+        this.authorizedRemediation(mission, finding) && finding.remediationAssignment?.workerId === agentId
+      )));
+    }
     return missionDeveloperInstructions(mission, run, missionTeamRepositories(this.ports.snapshot, mission));
   }
 
@@ -115,6 +123,7 @@ export class MissionAgentTools {
     const context = this.requireContext(agentId);
     if (context.stage !== 'tickets' || !input || typeof input.title !== 'string' || typeof input.body !== 'string'
       || typeof input.repositoryPath !== 'string'
+      || (input.expectedRevision !== undefined && (!Number.isInteger(input.expectedRevision) || input.expectedRevision < 0))
       || (input.ticketId !== undefined && typeof input.ticketId !== 'string')
       || (input.reference !== undefined && typeof input.reference !== 'string')
       || (input.blockedByTicketIds !== undefined && (!Array.isArray(input.blockedByTicketIds) || input.blockedByTicketIds.some(id => typeof id !== 'string')))) {
@@ -135,6 +144,8 @@ export class MissionAgentTools {
       if (!run || !this.ownsWritableRun(mission, run.id, agentId) || run.stage !== 'tickets') {
         throw new Error('This agent is not working on the active Tickets stage.');
       }
+      const currentRevision = mission.artifactFiles?.tickets?.revision ?? 0;
+      if (input.expectedRevision !== undefined && input.expectedRevision !== currentRevision) throw new Error('This mission artifact changed. Read it again before writing.');
       const drafts = structuredClone(run.draftTickets ?? []);
       const index = input.ticketId === undefined ? drafts.length : drafts.findIndex(ticket => ticket.id === input.ticketId);
       if (input.ticketId !== undefined && index < 0) throw new Error('Mission ticket draft not found.');
@@ -155,6 +166,16 @@ export class MissionAgentTools {
         ...(reference ? { reference } : {}),
         ...(dependsOn.length ? { dependsOn } : {}),
       };
+      if (input.ticketId === undefined) {
+        const duplicateIndex = drafts.findIndex(existing => sameMissionTicketWork(existing, ticket));
+        const duplicate = drafts[duplicateIndex];
+        if (duplicate?.id) return { success: true as const, ticketId: duplicate.id, index: duplicateIndex, artifactRevision: currentRevision };
+      }
+      const previous = drafts[index];
+      if (previous && sameMissionTicketWork(previous, ticket)) {
+        return { success: true as const, ticketId, index, artifactRevision: currentRevision };
+      }
+      if (previous) ticket.revision = (previous.revision ?? 0) + 1;
       if (index === drafts.length) drafts.push(ticket);
       else drafts[index] = ticket;
       if (!isMissionArtifacts({ ...mission.artifacts, tickets: drafts })) throw new Error('Mission ticket dependencies must be acyclic and reference existing tickets.');
@@ -164,6 +185,10 @@ export class MissionAgentTools {
       const artifactRevision = (mission.artifactFiles?.tickets?.revision ?? 0) + 1;
       (mission.artifactFiles ??= {}).tickets = { revision: artifactRevision, size: stored.size, updatedAt };
       run.draftTickets = drafts;
+      // A changed draft must be resubmitted before the user can approve it.
+      delete run.proposal;
+      delete run.finishedAt;
+      run.status = 'running';
       return { success: true as const, ticketId, index, artifactRevision };
     });
     await this.ports.publish();
@@ -236,16 +261,32 @@ export class MissionAgentTools {
       const finding = current.artifacts.review.findings?.find(candidate => candidate.id === input.findingId);
       if (!finding) throw new Error('Mission review finding was not found.');
       const ownsReview = this.ownsReviewRun(current, context.runId, agentId);
-      const ownsRemediation = current.stage === 'review' && finding.remediation.state === 'fixing'
-        && this.implementationWorkerId(current, finding.repositoryPath) === agentId;
+      const authorized = this.authorizedRemediation(current, finding);
+      const ownsRemediation = authorized
+        ? finding.remediationAssignment!.workerId === agentId
+        : !finding.remediationAssignment && current.status === 'active' && current.stage === 'review' && finding.remediation.state === 'fixing'
+          && this.implementationWorkerId(current, finding.repositoryPath) === agentId;
       if (!ownsReview && !ownsRemediation) throw new Error('This agent cannot update this Mission Review finding.');
       if (ownsRemediation && !ownsReview && (input.status !== 'fixed' || input.priority !== undefined || input.title !== undefined
         || input.body !== undefined || input.repositoryPath !== undefined || input.location !== undefined)) {
         throw new Error('A remediation worker can only mark its assigned finding fixed with evidence.');
       }
-      if (input.status === 'fixed' && finding.remediation.state !== 'fixing') throw new Error('Only a finding being remediated can be marked fixed.');
+      if (input.status === 'fixed') {
+        if (!['open', 'fixing'].includes(finding.remediation.state) || (!authorized && (finding.remediationAssignment || finding.remediation.state !== 'fixing'))) {
+          throw new Error(`Only unresolved findings with an active remediation assignment can be marked fixed (current state: ${finding.remediation.state}). Use Fix selected in Mission Review to authorize unresolved findings, then record the verified fix.`);
+        }
+        if (input.priority !== undefined || input.title !== undefined || input.body !== undefined || input.repositoryPath !== undefined || input.location !== undefined) {
+          throw new Error('Correct the finding separately, then use Fix selected to authorize its revised scope.');
+        }
+        if (!input.evidence?.trim()) throw new Error('Record verification evidence before marking a finding fixed.');
+      }
       if (repositoryPath && !current.execution?.workspaces?.some(workspace => workspace.repositoryPath === repositoryPath)) {
         throw new Error('Choose a repository represented in this Mission.');
+      }
+      // Correcting the work invalidates an earlier authorization for that finding.
+      if (input.priority !== undefined || input.title !== undefined || input.body !== undefined || repositoryPath !== undefined || input.location !== undefined) {
+        delete finding.remediationAssignment;
+        if (finding.remediation.state !== 'fixed') finding.remediation = { state: 'open' };
       }
       if (input.priority) finding.priority = input.priority;
       if (input.title?.trim()) finding.title = input.title.trim();
@@ -270,7 +311,7 @@ export class MissionAgentTools {
 
   private requireReviewContext(agentId: string): MissionToolContext {
     const context = this.requireContext(agentId);
-    if (context.stage !== 'review') throw new Error('Mission review finding tools are available only during Review.');
+    if (context.stage !== 'review') throw new Error('Mission review finding tools are available only during Review. Use Fix selected in Mission Review to authorize this worker for unresolved findings.');
     return context;
   }
 
@@ -283,6 +324,14 @@ export class MissionAgentTools {
   private ownsReviewRun(mission: Mission, runId: string, agentId: string): boolean {
     const run = mission.execution?.runs.find(candidate => candidate.id === runId);
     return !!run && run.stage === 'review' && this.ownsWritableRun(mission, runId, agentId);
+  }
+
+  private authorizedRemediation(mission: Mission, finding: MissionReviewFinding): boolean {
+    const assignment = finding.remediationAssignment;
+    const reviewRun = mission.execution?.runs.slice().reverse().find(run => run.stage === 'review');
+    return !!assignment && mission.stage === 'review' && mission.status === 'active' && finding.selected
+      && assignment.repositoryPath === finding.repositoryPath && assignment.reviewRunId === reviewRun?.id
+      && ['running', 'awaitingReview'].includes(reviewRun.status);
   }
 
   private implementationWorkerId(mission: Mission, repositoryPath: string): string | undefined {
@@ -298,13 +347,36 @@ export class MissionAgentTools {
   }
 }
 
-function missionTicketsMarkdown(tickets: MissionTicket[]): string {
+export function missionTicketsMarkdown(tickets: MissionTicket[]): string {
   return tickets.map((ticket, index) => [
     `# ${String(index + 1).padStart(2, '0')}: ${ticket.title}`,
+    `**Ticket ID:** ${ticket.id}`,
     ticket.body,
     `**Repository:** ${ticket.repositoryPath ?? 'Not assigned'}`,
     `**Blocked by:** ${ticket.dependsOn?.length ? ticket.dependsOn.map(blocker => `${String(blocker + 1).padStart(2, '0')}: ${tickets[blocker]?.title ?? 'Unknown ticket'}`).join(', ') : 'None (can start immediately)'}`,
-    '**Status:** ready-for-agent',
+    `**Status:** ${ticket.done ? 'completed' : 'ready-for-agent'}`,
     ticket.reference ? `**External reference:** ${ticket.reference}` : '',
   ].filter(Boolean).join('\n\n')).join('\n\n---\n\n');
+}
+
+function missionFindingFixInstructions(mission: Mission, findings: MissionReviewFinding[]): string {
+  const workspacePaths = new Map((mission.execution?.workspaces ?? []).map(workspace => [workspace.repositoryPath, workspace.path]));
+  return [
+    `Mission: ${mission.outcome} (${mission.id}). Stage: review.`,
+    ...findings.flatMap(finding => [
+      `${finding.id}: [${finding.priority.toUpperCase()}] ${finding.title}`,
+      `Repository: ${finding.repositoryPath}`,
+      `Mission worktree: ${workspacePaths.get(finding.repositoryPath) ?? 'unavailable'}`,
+      ...(finding.location ? [`Location: ${finding.location.file}${finding.location.line ? `:${finding.location.line}` : ''}`] : []),
+      finding.body,
+      '',
+    ]),
+    'Load mission-review through read-skill for remediation. Fix only the selected findings in their mapped Mission worktrees; coherent local commits are authorized, not push, merge or PR creation. Record each verified committed fix with update-mission-review-finding; no new Review submission or round is authorized.',
+    'Korus reports your recorded fixes and any unresolved findings to the Mission lead when this turn ends. Include verification and commit references in each finding’s evidence; leave blocked findings unresolved.',
+  ].join('\n');
+}
+
+export function missionFindingFixPrompt(mission: Mission, findings: MissionReviewFinding[]): string {
+  const context = missionFindingFixInstructions(mission, findings);
+  return `<context>\n${context.replace(/<\/?context>/giu, tag => tag.replace('<', '&lt;'))}\n</context>\n\nFix the ${findings.length} finding${findings.length === 1 ? '' : 's'} I selected.`;
 }

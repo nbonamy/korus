@@ -8,12 +8,16 @@ Visualize brings diagrams and interactive explanations into the workspace next t
 
 ## Start a visualization
 
-Enter `/visualize` in your conversation, or open **Visualize** from the workspace's **+** menu. The pane uses your conversation as context and can offer suggested diagrams. Select a suggestion when the agent is idle, or ask for a specific result in the composer.
+Enter `/visualize` to choose what to draw. The agent asks one question with three proposals based on your conversation. Pick one or use the **Other** field to describe your own idea; the result appears in the Visualize pane.
+
+For a specific result, include it in the command to generate directly:
 
 ```text
-Show how a request moves from the frontend through the backend
+/visualize Show how a request moves from the frontend through the backend
 and where authentication is checked.
 ```
+
+Open **Visualize** from the workspace's **+** menu to return to existing diagrams. If the pane is empty, the agent offers the same choice in the conversation.
 
 ## Explore the canvas
 
@@ -36,4 +40,4 @@ Keep the Visualize pane open while working on the visualization so the agent can
 
 Visualize supports Mermaid flowchart, state, sequence, class, ER, and XY diagrams, along with SVG and generated-image results. Ask for SVG if you need a diagram type outside those Mermaid families. Image generation depends on the tools available to the selected provider.
 
-If suggestions are still being generated, wait for the current turn to finish before choosing one. If the agent cannot access the canvas, reopen Visualize for that agent and ask it to inspect the current selection. After manual edits, ask for a targeted change to the existing canvas so those edits remain part of the result.
+Cancel the question if you do not want to generate a visualization. If the agent cannot access the canvas, reopen Visualize for that agent and ask it to inspect the current selection. After manual edits, ask for a targeted change to the existing canvas so those edits remain part of the result.

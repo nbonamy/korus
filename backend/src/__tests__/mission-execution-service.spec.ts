@@ -8,6 +8,7 @@ import { createMission, updateMission, type MissionArtifacts, type MissionStage 
 import { AppStateStore } from '../persistence/store';
 import { MissionService } from '../mission-service';
 import { MissionExecutionService } from '../mission-execution-service';
+import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../state-persistence';
 import { FileMissionArtifactStore } from '../mission-artifact-store';
 import { missionStageSkills } from '../bundled-skills/catalog';
 import type { Agent } from '@workspace/core/contracts';
@@ -411,7 +412,7 @@ describe('mission execution', () => {
     expect(h.ports.continueStage).not.toHaveBeenCalled();
   });
 
-  it('starts newly approved implementation even when an earlier backlog attempt was cancelled', async () => {
+  it('preserves an explicit stop across unchanged backlog approval until the ticket is retried', async () => {
     const h = setup();
     await h.store.change(h.current().id, mission => {
       mission.stage = 'tickets';
@@ -425,6 +426,8 @@ describe('mission execution', () => {
     });
     await h.command({ action: 'accept', runId: 'new-backlog', parallelImplementation: true });
     await h.service.waitForLaunches();
+    expect(h.current().execution!.runs).toHaveLength(2);
+    await h.command({ action: 'run', ticketIndex: 0 }); await h.service.waitForLaunches();
     expect(h.current().execution!.runs.at(-1)).toMatchObject({ stage: 'implementation', ticketId: 'mission-ticket-one', status: 'running' });
   });
 
@@ -633,7 +636,7 @@ describe('mission execution', () => {
       location: { file: 'src/review.ts', line: 42 },
     });
     expect(h.current().artifacts.review.findings).toStrictEqual([expect.objectContaining({ id: finding.id, selected: true, remediation: { state: 'open' } })]);
-    await expect(h.service.updateReviewFinding(h.originalAgents[0]!.id, { findingId: finding.id, status: 'fixed' })).rejects.toThrow('being remediated');
+    await expect(h.service.updateReviewFinding(h.originalAgents[0]!.id, { findingId: finding.id, status: 'fixed' })).rejects.toThrow('Fix selected');
     await expect(h.service.updateReviewFinding(h.originalAgents[0]!.id, { findingId: finding.id, repositoryPath: '/other/repo' })).rejects.toThrow('represented in this Mission');
     expect(h.current().artifacts.review.findings![0]!.repositoryPath).toBe(repositoryPath);
     await expect(h.command({ action: 'selectReviewFinding', findingId: finding.id, selected: 'false' })).rejects.toThrow('Invalid Mission review finding selection');
@@ -646,6 +649,7 @@ describe('mission execution', () => {
     h.ports.startRemediation.mockRejectedValueOnce(new Error('Provider unavailable'));
     await expect(h.command({ action: 'fixSelectedReviewFindings' })).rejects.toThrow('Provider unavailable');
     expect(h.current().artifacts.review.findings![0]!.remediation.state).toBe('open');
+    await expect(h.service.updateReviewFinding(h.originalAgents[0]!.id, { findingId: finding.id, status: 'fixed', evidence: 'Admission failed.' })).rejects.toThrow('Fix selected');
     await h.command({ action: 'fixSelectedReviewFindings' });
     expect(h.current().artifacts.review.findings![0]!.remediation.state).toBe('fixing');
     expect(h.ports.startRemediation).toHaveBeenLastCalledWith(implementerId, expect.stringContaining(finding.id));
@@ -692,13 +696,14 @@ describe('mission execution', () => {
     expect(h.current().artifacts.review.findings?.[0]).toMatchObject({ selected: true, remediation: { state: 'open' } });
   });
 
-  it('groups selected Review findings by repository and dispatches each batch to its implementer thread', async () => {
+  it('keeps repository-bound remediation authority across partial outcomes, continuations and restart', async ({ onTestFinished }) => {
     const h = setup();
     const apiWorkerId = h.originalAgents[1]!.id;
     const webWorkerId = 'agent-web-implementer';
     h.snapshot.agents.push({ ...structuredClone(h.originalAgents[1]!), id: webWorkerId, name: 'Web implementer' });
     await h.store.change(h.current().id, mission => {
       mission.stage = 'review';
+      mission.stageAgentIds.review = h.originalAgents[0]!.id;
       mission.execution!.workspaces = [
         { repositoryPath: '/repo/api', path: '/mission/api', branch: 'mission/billing' },
         { repositoryPath: '/repo/web', path: '/mission/web', branch: 'mission/billing' },
@@ -779,6 +784,74 @@ describe('mission execution', () => {
     expect(h.ports.sendMessage).toHaveBeenCalledTimes(2);
     expect(h.current().stage).toBe('review');
     expect(h.ports.continueStage).not.toHaveBeenCalled();
+
+    // A turn boundary must not discard the user's authorization or verified evidence.
+    const fixedEvidence = structuredClone(h.current().artifacts.review.findings!.slice(0, 2));
+    expect(h.service.contextForAgent(webWorkerId)).toMatchObject({ runId: 'review-run', stage: 'review' });
+    const leadId = h.originalAgents[0]!.id;
+    const newlyReported = await h.service.reportReviewFinding(leadId, {
+      priority: 'p2', title: 'New web issue', body: 'Needs its own authorization.', repositoryPath: '/repo/web',
+    });
+    await expect(h.service.updateReviewFinding(leadId, { findingId: newlyReported.id, status: 'fixed', evidence: 'Chat says done.' }))
+      .rejects.toThrow('Fix selected');
+    await expect(h.service.updateReviewFinding(webWorkerId, { findingId: newlyReported.id, status: 'fixed', evidence: 'Chat says done.' }))
+      .rejects.toThrow('cannot update');
+    await expect(h.service.updateReviewFinding(webWorkerId, { findingId: 'finding-web', status: 'fixed', evidence: ' ' }))
+      .rejects.toThrow('evidence');
+    await h.service.updateReviewFinding(webWorkerId, { findingId: 'finding-web', status: 'fixed', evidence: 'Owner approved; web regression passed.' });
+    expect(h.current().artifacts.review.findings!.slice(0, 2)).toStrictEqual(fixedEvidence);
+
+    // The explicit desktop command grants the new finding its own bounded assignment.
+    h.snapshot.agents.find(agent => agent.id === webWorkerId)!.status = { type: 'working' };
+    await expect(h.command({ action: 'fixSelectedReviewFindings' })).rejects.toThrow('still active');
+    h.snapshot.agents.find(agent => agent.id === webWorkerId)!.status = { type: 'idle' };
+    await h.command({ action: 'fixSelectedReviewFindings' });
+    expect(h.ports.startRemediation).toHaveBeenCalledTimes(3);
+    expect(h.ports.startRemediation.mock.calls[2]![0]).toBe(webWorkerId);
+    expect(h.ports.startRemediation.mock.calls[2]![1]).toContain(newlyReported.id);
+    expect(h.ports.startRemediation.mock.calls[2]![1]).not.toContain('finding-api-1');
+    await expect(h.command({ action: 'fixSelectedReviewFindings' })).rejects.toThrow('already running');
+
+    const home = await mkdtemp(path.join(tmpdir(), 'mission-review-recovery-'));
+    onTestFinished(() => rm(home, { recursive: true, force: true }));
+    const disk = new AppStateStore(home);
+    await disk.save(h.snapshot);
+    Object.assign(h.snapshot, await disk.load());
+    h.persisted.mockImplementation(snapshot => disk.save(snapshot));
+    const recovered = new MissionExecutionService(h.ports);
+    await recovered.recoverInterruptedRuns();
+    expect(h.current().artifacts.review.findings!.at(-1)!.remediation.state).toBe('open');
+    expect(recovered.contextForAgent(webWorkerId)).toMatchObject({ runId: 'review-run', stage: 'review' });
+    expect(recovered.developerInstructionsForAgent(webWorkerId)).toContain('/mission/web');
+    expect(recovered.developerInstructionsForAgent(webWorkerId)).not.toContain('/mission/api');
+    expect(recovered.developerInstructionsForAgent(webWorkerId)).not.toContain('As Mission lead');
+    await expect(recovered.updateReviewFinding(apiWorkerId, { findingId: newlyReported.id, status: 'fixed', evidence: 'Wrong worker.' }))
+      .rejects.toThrow();
+    await recovered.execute({ id: h.current().id, revision: h.current().revision, action: 'selectReviewFinding', findingId: newlyReported.id, selected: false });
+    await expect(recovered.updateReviewFinding(leadId, { findingId: newlyReported.id, status: 'fixed', evidence: 'Deselected.' })).rejects.toThrow('Fix selected');
+    await recovered.execute({ id: h.current().id, revision: h.current().revision, action: 'selectReviewFinding', findingId: newlyReported.id, selected: true });
+    await recovered.execute({ id: h.current().id, revision: h.current().revision, action: 'fixSelectedReviewFindings' });
+    await recovered.agentFinished(webWorkerId);
+    await expect(recovered.updateReviewFinding(leadId, { findingId: newlyReported.id, body: 'Different work.', status: 'fixed', evidence: 'Old authorization.' }))
+      .rejects.toThrow('Correct the finding separately');
+    await recovered.updateReviewFinding(leadId, { findingId: newlyReported.id, body: 'Corrected scope needs authorization.' });
+    await expect(recovered.updateReviewFinding(leadId, { findingId: newlyReported.id, status: 'fixed', evidence: 'Old authorization.' }))
+      .rejects.toThrow('Fix selected');
+    await recovered.execute({ id: h.current().id, revision: h.current().revision, action: 'fixSelectedReviewFindings' });
+    await recovered.agentFinished(webWorkerId);
+    // The lead can reconcile an authorized fix, with evidence, after restart.
+    await recovered.updateReviewFinding(leadId, { findingId: newlyReported.id, status: 'fixed', evidence: 'Commit fed321; new web regression passed.' });
+    const restored = (await disk.load()).missions![0]!;
+    expect(restored.artifacts.review.findings!.slice(0, 2)).toStrictEqual(fixedEvidence);
+    expect(restored.artifacts.review.findings!.at(-1)!.remediation).toMatchObject({ state: 'fixed', evidence: 'Commit fed321; new web regression passed.' });
+    expect(restored.stage).toBe('review');
+    expect(h.ports.continueStage).not.toHaveBeenCalled();
+    // Existing stage backtracking retires Review authority, including recovered assignments.
+    await recovered.reopenStage(leadId, 'tickets');
+    await recovered.waitForLaunches();
+    expect(recovered.contextForAgent(webWorkerId)?.stage).not.toBe('review');
+    await expect(recovered.updateReviewFinding(webWorkerId, { findingId: newlyReported.id, status: 'fixed', evidence: 'Old Review.' }))
+      .rejects.toThrow('only during Review');
   });
 
   it('freezes a debug Review selection into fixed and skipped findings without dispatching a provider turn', async () => {
@@ -866,6 +939,7 @@ describe('mission execution', () => {
     const implementationWorkerId = h.originalAgents[1]!.id;
     await h.store.change(h.current().id, mission => {
       mission.stage = 'review';
+      mission.stageAgentIds.review = reviewWorkerId;
       mission.execution!.workspaces = [{ repositoryPath: '/repo', path: '/mission/repo', branch: 'mission/billing' }];
       mission.execution!.runs = [
         {
@@ -888,6 +962,7 @@ describe('mission execution', () => {
     const dispatch = h.command({ action: 'fixSelectedReviewFindings' });
     await vi.waitFor(() => expect(acceptRemediation).toBeTypeOf('function'));
     expect(h.current().artifacts.review.findings?.[0]?.remediation.state).toBe('fixing');
+    await expect(h.service.reopenStage(reviewWorkerId, 'tickets')).rejects.toThrow('remediation');
 
     // The Review proposal's preceding turn may finish while remediation is still waiting for prompt admission.
     await h.service.agentFinished(reviewWorkerId);
@@ -895,6 +970,7 @@ describe('mission execution', () => {
 
     acceptRemediation();
     await dispatch;
+    await expect(h.service.reopenStage(reviewWorkerId, 'tickets')).rejects.toThrow('remediation');
     await h.store.change(h.current().id, mission => {
       mission.artifacts.review.findings![1]!.selected = true;
     });
@@ -1037,6 +1113,179 @@ describe('mission execution', () => {
     expect(h.ports.continueStage).toHaveBeenCalledWith(run.workerId, expect.stringContaining(`assigned ${product.name} Mission skill`));
   });
 
+  it('backtracks with the lead, preserves completed tickets and retries only new or revised work after restart', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const leadId = h.current().execution!.runs[0]!.workerId!;
+    await h.service.writeArtifact(leadId, { stage: 'requirements', content: '# Billing' });
+    await h.service.submit(leadId, { summary: 'Requirements', artifacts: { ...h.current().artifacts, requirements: { problem: 'Billing', acceptance: 'Pay' } } });
+    await h.command({ action: 'accept', runId: h.current().execution!.runs.at(-1)!.id });
+    await h.service.waitForLaunches();
+    const draft = (title: string) => ({ title, body: `Implement ${title}.`, repositoryPath });
+    const keep = await h.service.upsertTicket(leadId, draft('Account'));
+    const revise = await h.service.upsertTicket(leadId, draft('Checkout'));
+    const failed = await h.service.upsertTicket(leadId, draft('Invoice'));
+    const approveTickets = async () => {
+      await h.service.submit(leadId, { summary: 'Tickets', artifacts: h.current().artifacts });
+      await h.command({ action: 'accept', runId: h.current().execution!.runs.at(-1)!.id });
+      await h.service.waitForLaunches();
+    };
+    await approveTickets();
+    const result = (ticketId: string) => ({ summary: 'Implemented', ticketId, implementation: { changes: `commit for ${ticketId}`, tests: 'Checks pass' } });
+    const first = h.current().execution!.runs.at(-1)!;
+    await h.service.submit(first.workerId!, result(keep.ticketId));
+    await h.service.agentFinished(first.workerId!); await h.service.waitForLaunches();
+    const oldRevision = h.current().execution!.runs.at(-1)!;
+    await h.service.submit(oldRevision.workerId!, result(revise.ticketId));
+    await h.service.agentFinished(oldRevision.workerId!); await h.service.waitForLaunches();
+    const failure = h.current().execution!.runs.at(-1)!;
+    await h.service.agentFinished(failure.workerId!);
+    expect(h.current().execution!.runs.at(-1)!.status).toBe('failed');
+    const history = structuredClone(h.current().execution!.runs);
+    const evidence = structuredClone(h.current().artifacts.implementation);
+    await expect(h.service.reopenStage(failure.workerId!, 'tickets')).rejects.toThrow('lead');
+    const lead = h.snapshot.agents.find(agent => agent.id === leadId)!;
+    lead.status = { type: 'working' };
+    await h.service.reopenStage(leadId, 'requirements');
+    expect(h.current().artifacts.tickets.map(ticket => ticket.done)).toStrictEqual([true, true, false]);
+    expect(h.current().artifacts.implementation).toStrictEqual(evidence);
+    expect(h.current().execution!.runs.slice(0, history.length)).toStrictEqual(history);
+    expect(h.current().execution!.runs.at(-1)).toMatchObject({ stage: 'requirements', status: 'preparing', workerId: leadId });
+    await h.service.agentFinished(leadId); lead.status = { type: 'idle' };
+    await h.service.waitForLaunches();
+    expect(h.ports.continueStage).toHaveBeenLastCalledWith(leadId, expect.stringContaining('Requirements'));
+    await h.service.writeArtifact(leadId, { stage: 'requirements', content: '# Billing revised', expectedRevision: 1 });
+    await h.service.submit(leadId, { summary: 'Same requirements', artifacts: h.current().artifacts });
+    await h.command({ action: 'accept', runId: h.current().execution!.runs.at(-1)!.id }); await h.service.waitForLaunches();
+    const unchanged = await h.service.upsertTicket(leadId, { ...draft('Account'), ticketId: keep.ticketId });
+    expect(h.current().execution!.runs.at(-1)!.draftTickets?.[0]?.done).toBe(true);
+    expect((await h.service.upsertTicket(leadId, { ...draft('Account'), ticketId: keep.ticketId })).artifactRevision).toBe(unchanged.artifactRevision);
+    await h.service.submit(leadId, { summary: 'Unchanged backlog', artifacts: h.current().artifacts });
+    const edited = await h.service.upsertTicket(leadId, { ...draft('Checkout'), ticketId: revise.ticketId, body: 'Implement checkout with refunds.' });
+    await expect(h.command({ action: 'accept', runId: h.current().execution!.runs.at(-1)!.id })).rejects.toThrow('proposal');
+    await expect(h.service.upsertTicket(leadId, { ...draft('Checkout'), ticketId: revise.ticketId, expectedRevision: edited.artifactRevision - 1 })).rejects.toThrow('changed');
+    const added = await h.service.upsertTicket(leadId, { ...draft('Refund receipt'), blockedByTicketIds: [revise.ticketId] });
+    const disk = h.persisted.mock.calls.at(-1)![0];
+    h.snapshot.missions = snapshotFromPersistedState(persistedStateFromSnapshot(disk)).missions;
+    expect(h.snapshot.missions).toStrictEqual(disk.missions);
+    const restarted = new MissionExecutionService(h.ports);
+    await restarted.recoverInterruptedRuns();
+    await restarted.submit(leadId, { summary: 'Revised backlog', artifacts: h.current().artifacts });
+    await restarted.execute({ id: h.current().id, revision: h.current().revision, action: 'accept', runId: h.current().execution!.runs.at(-1)!.id });
+    await restarted.waitForLaunches();
+    expect(h.current().artifacts.tickets.map(ticket => [ticket.id, ticket.done])).toStrictEqual([
+      [keep.ticketId, true], [revise.ticketId, false], [failed.ticketId, false], [added.ticketId, false],
+    ]);
+    const replacement = h.current().execution!.runs.at(-1)!;
+    expect(replacement.ticketId).toBe(revise.ticketId);
+    expect(replacement.workerId).not.toBe(oldRevision.workerId);
+    await expect(restarted.submit(oldRevision.workerId!, result(revise.ticketId))).rejects.toThrow('Expected ticket 3');
+    await restarted.submit(replacement.workerId!, result(revise.ticketId));
+    await restarted.agentFinished(replacement.workerId!); await restarted.waitForLaunches();
+    expect(h.current().execution!.runs.at(-1)!.ticketId).toBe(added.ticketId);
+    expect(h.current().execution!.runs.filter(run => run.ticketId === keep.ticketId)).toHaveLength(1);
+    expect(h.current().execution!.runs.filter(run => run.ticketId === failed.ticketId)).toHaveLength(1);
+    expect(h.current().artifacts.implementation.changes).toContain(evidence.changes);
+    expect(h.ports.createWorktree).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['accepted', 'cancelled', 'failed'] as const)('plans from canonical ticket edits instead of reviving a %s legacy draft', async status => {
+    const h = setup();
+    const leadId = h.originalAgents[0]!.id;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.stageAgentIds.tickets = leadId;
+      mission.artifacts.requirements = { problem: 'Billing', acceptance: 'Owner pays' };
+      mission.artifacts.tickets = [{ id: 'mission-ticket-account', title: 'Account', body: 'Implement account.', repositoryPath: h.originalAgents[0]!.folder!, done: true }];
+      mission.artifacts.implementation = { changes: 'Account committed', tests: 'Checks pass' };
+      mission.execution!.runs = [{ id: 'earlier-tickets', stage: 'tickets', workerId: leadId, memberId: leadId, status, skills: [], feedback: '', startedAt: 'before', draftTickets: structuredClone(mission.artifacts.tickets) }];
+    });
+    const artifacts = structuredClone(h.current().artifacts);
+    artifacts.tickets[0]!.body = 'Implement account permissions.';
+    await h.store.mutate('update', { id: h.current().id, revision: h.current().revision, action: 'save', artifacts, stageAgentIds: h.current().stageAgentIds });
+    await h.service.reopenStage(leadId, 'tickets'); await h.service.waitForLaunches();
+    expect(h.current().execution!.runs.at(-1)!.draftTickets).toStrictEqual(h.current().artifacts.tickets);
+    await h.service.submit(leadId, { summary: 'Revised account', artifacts: h.current().artifacts });
+    expect(h.current().execution!.runs.at(-1)!.proposal?.tickets).toStrictEqual(h.current().artifacts.tickets);
+    expect(await h.service.readArtifact(leadId, 'tickets')).toMatchObject({ content: expect.stringContaining('Implement account permissions.'), revision: 1 });
+  });
+
+  it('preserves newer canonical work and additions when restarting cancelled Tickets after persistence', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'tickets';
+      mission.artifacts.requirements = { problem: 'Billing', acceptance: 'Owner pays' };
+      mission.artifacts.tickets = [{ id: 'mission-ticket-account', title: 'Account', body: 'Original work', repositoryPath, done: true }];
+      mission.artifacts.implementation = { changes: 'Account committed', tests: 'Checks pass' };
+    });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const cancelled = h.current().execution!.runs.at(-1)!;
+    await h.service.upsertTicket(cancelled.workerId!, { ticketId: 'mission-ticket-account', title: 'Account', body: 'Cancelled draft work', repositoryPath });
+    const artifactRevision = h.current().artifactFiles!.tickets!.revision;
+    await h.command({ action: 'cancel', runId: cancelled.id });
+    const artifacts = structuredClone(h.current().artifacts);
+    artifacts.tickets[0]!.body = 'New canonical work';
+    artifacts.tickets.push({ id: 'mission-ticket-receipt', title: 'Receipt', body: 'Issue receipts', repositoryPath, done: false });
+    await h.store.mutate('update', { id: h.current().id, revision: h.current().revision, action: 'save', artifacts, stageAgentIds: h.current().stageAgentIds });
+    const canonical = structuredClone(h.current().artifacts.tickets);
+    expect(canonical[0]).toMatchObject({ revision: 1, done: false });
+    const disk = h.persisted.mock.calls.at(-1)![0];
+    h.snapshot.missions = snapshotFromPersistedState(persistedStateFromSnapshot(disk)).missions;
+    expect(h.snapshot.missions).toStrictEqual(disk.missions);
+    const restarted = new MissionExecutionService(h.ports);
+    await restarted.execute({ id: h.current().id, revision: h.current().revision, action: 'run' }); await restarted.waitForLaunches();
+    const run = h.current().execution!.runs.at(-1)!;
+    await restarted.submit(run.workerId!, { summary: 'Current backlog', artifacts: h.current().artifacts });
+    expect(h.current().execution!.runs.at(-1)!.proposal!.tickets).toStrictEqual(canonical);
+    expect(await restarted.readArtifact(run.workerId!, 'tickets')).toMatchObject({ content: expect.stringContaining('New canonical work') });
+    expect(h.current().artifactFiles!.tickets!.revision).toBeGreaterThan(artifactRevision);
+    await restarted.execute({ id: h.current().id, revision: h.current().revision, action: 'accept', runId: run.id }); await restarted.waitForLaunches();
+    expect(h.current().artifacts.tickets).toStrictEqual(canonical);
+  });
+
+  it('rejects backtracking around active repository workers and recovers cancelled ticket drafts', async () => {
+    const h = setup();
+    await h.store.change(h.current().id, mission => { mission.stage = 'tickets'; mission.artifacts.requirements = { problem: 'Billing', acceptance: 'Pay' }; });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const leadId = h.current().execution!.runs.at(-1)!.workerId!;
+    const draft = { title: 'Account', body: 'Implement account.', repositoryPath: h.originalAgents[0]!.folder! };
+    const ticket = await h.service.upsertTicket(leadId, draft);
+    await h.command({ action: 'cancel', runId: h.current().execution!.runs.at(-1)!.id });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    expect(h.current().execution!.runs.at(-1)!.draftTickets?.[0]?.id).toBe(ticket.ticketId);
+    await h.service.submit(leadId, { summary: 'Tickets', artifacts: h.current().artifacts });
+    await h.command({ action: 'accept', runId: h.current().execution!.runs.at(-1)!.id }); await h.service.waitForLaunches();
+    const workerRun = h.current().execution!.runs.at(-1)!;
+    await expect(h.service.reopenStage(leadId, 'tickets')).rejects.toThrow('existing run');
+    await h.command({ action: 'cancel', runId: workerRun.id });
+    const worker = h.snapshot.agents.find(agent => agent.id === workerRun.workerId)!;
+    worker.status = { type: 'working' };
+    await expect(h.service.reopenStage(leadId, 'tickets')).rejects.toThrow('still active');
+    worker.status = { type: 'idle' };
+    h.persisted.mockRejectedValueOnce(new Error('storage unavailable'));
+    await expect(h.service.reopenStage(leadId, 'tickets')).rejects.toThrow('storage unavailable');
+    expect(h.current().stage).toBe('implementation');
+    await h.service.reopenStage(leadId, 'tickets'); await h.service.waitForLaunches();
+    await h.service.submit(leadId, { summary: 'Retained backlog', artifacts: h.current().artifacts });
+    const pending = h.current().execution!.runs.at(-1)!;
+    const lead = h.snapshot.agents.find(agent => agent.id === leadId)!;
+    lead.status = { type: 'working' };
+    await h.service.reopenStage(leadId, 'requirements');
+    expect(h.current().execution!.runs.find(run => run.id === pending.id)!.status).toBe('cancelled');
+    const restarted = new MissionExecutionService(h.ports);
+    await restarted.recoverInterruptedRuns();
+    expect(h.current().execution!.runs.at(-1)!.status).toBe('preparing');
+    lead.status = { type: 'idle' };
+    await restarted.agentFinished(leadId); await restarted.waitForLaunches();
+    expect(h.current().execution!.runs.at(-1)!.status).toBe('running');
+    await expect(h.command({ action: 'accept', runId: pending.id })).rejects.toThrow('proposal');
+    await expect(h.service.reopenStage(leadId, 'review')).rejects.toThrow('earlier');
+    await expect(h.service.submit(worker.id, { summary: 'Late', ticketId: ticket.ticketId, implementation: { changes: 'Late', tests: 'Pass' } })).rejects.toThrow('active run');
+    expect(h.current().artifacts.tickets[0]!.done).toBe(false);
+  });
+
   it('persists live ticket drafts in the Mission artifact and submits those exact drafts for review', async () => {
     const h = setup();
     await h.store.change(h.current().id, mission => {
@@ -1051,6 +1300,11 @@ describe('mission execution', () => {
       body: 'Deliver an owner-visible billing account with integration coverage.',
       repositoryPath: h.originalAgents[0]!.folder!,
     });
+    expect(await h.service.upsertTicket(run.workerId!, {
+      title: 'Create the billing account',
+      body: 'Deliver an owner-visible billing account with integration coverage.',
+      repositoryPath: h.originalAgents[0]!.folder!,
+    })).toStrictEqual(foundation);
     const checkout = await h.service.upsertTicket(run.workerId!, {
       title: 'Add owner checkout',
       body: 'Let an owner buy seats and verify the completed payment.',
@@ -1451,7 +1705,7 @@ it('rejects invalid configuration, stale commands and inactive worker results wi
   expect(h.current().execution!.runs.at(-1)!.status).toBe('running');
 });
 
-it('reopens reached stages while invalidating dependent acceptance and retains incomplete implementation failures', async () => {
+it('reopens reached stages preserving completed work and retains incomplete implementation failures', async () => {
   const h = setup(); await h.configure();
   await h.store.change(h.current().id, mission => {
     mission.stage = 'review'; mission.status = 'completed';
@@ -1459,9 +1713,9 @@ it('reopens reached stages while invalidating dependent acceptance and retains i
   });
   await expect(h.command({ action: 'run' })).rejects.toThrow('Reopen');
   await h.command({ action: 'reopen', stage: 'requirements' });
-  expect(h.current()).toMatchObject({ stage: 'requirements', status: 'active', artifacts: { tickets: [{ title: 'Pay', done: false }], implementation: { changes: '', tests: '' }, review: { summary: '', pullRequestUrl: '' } } });
+  expect(h.current()).toMatchObject({ stage: 'requirements', status: 'active', artifacts: { tickets: [{ title: 'Pay', done: true }], implementation: { changes: 'Payment', tests: 'Pass' }, review: { summary: '', pullRequestUrl: '' } } });
   await expect(h.command({ action: 'reopen', stage: 'review' })).rejects.toThrow('reached');
-  await h.store.change(h.current().id, mission => { mission.stage = 'implementation'; });
+  await h.store.change(h.current().id, mission => { mission.stage = 'implementation'; mission.artifacts.tickets[0]!.done = false; mission.artifacts.implementation = { changes: '', tests: '' }; });
   await h.command({ action: 'run' }); await h.service.waitForLaunches();
   const run = h.current().execution!.runs.at(-1)!;
   const artifacts = structuredClone(h.current().artifacts);

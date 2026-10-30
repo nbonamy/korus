@@ -86,6 +86,7 @@ export type CreateProjectInput = {
   name: string;
   selection?: import('./execution').ExecutionSelectionOverrides;
   teamId?: string;
+  remoteConnectionId?: string;
 };
 
 export type SourceFolderEntry = {

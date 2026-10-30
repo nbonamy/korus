@@ -177,7 +177,8 @@ const lanes = computed(() => {
     const repositoryPath =
       ticket.repositoryPath ?? t("missions.repositoryUnassigned");
     const runs = implementationRuns.value.filter(
-      (run) => run.ticketIndex === index,
+      (run) => (run.ticketId ? run.ticketId === ticket.id : run.ticketIndex === index)
+        && (run.ticketRevision ?? 0) === (ticket.revision ?? 0),
     );
     const item = { ticket, index, run: runs.at(-1) };
     const lane = grouped.get(repositoryPath) ?? [];

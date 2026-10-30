@@ -10,6 +10,55 @@ import { applyMissionScreenshotFixture } from '../mission-screenshot-fixture';
 import { missionCreatedWorkspaces } from '@workspace/core/mission-execution';
 
 describe('mission backend boundary', () => {
+  it('sends Update from main conflicts to the Mission repository worker without changing delivery', async () => {
+    const exec = promisify(execFile);
+    const root = await mkdtemp(join(tmpdir(), 'mission-update-conflict-'));
+    const repo = join(root, 'repo'), worktree = join(root, 'worktree');
+    let server: AppBackendServer | undefined;
+    try {
+      await exec('git', ['init', '-b', 'main', repo]);
+      await exec('git', ['config', 'user.email', 'test@example.com'], { cwd: repo });
+      await exec('git', ['config', 'user.name', 'Mission test'], { cwd: repo });
+      await writeFile(join(repo, 'shared.txt'), 'initial\n');
+      await exec('git', ['add', '.'], { cwd: repo });
+      await exec('git', ['commit', '-m', 'initial'], { cwd: repo });
+      await exec('git', ['worktree', 'add', '-b', 'mission/conflicts', worktree], { cwd: repo });
+      for (const [folder, content] of [[repo, 'main change\n'], [worktree, 'Mission change\n']] as const) {
+        await writeFile(join(folder, 'shared.txt'), content);
+        await exec('git', ['commit', '-am', 'change'], { cwd: folder });
+      }
+      const snapshot = createInitialSnapshot();
+      snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+      const lead = snapshot.agents[0]!;
+      lead.folder = repo;
+      const builder = { ...structuredClone(lead), id: 'mission-repository-worker', folder: worktree, status: { type: 'idle' as const }, backendSession: { kind: 'codex' as const, threadId: 'repository-thread' } };
+      snapshot.agents.push(builder);
+      snapshot.teams[0]!.agentIds.push(builder.id);
+      const mission = createMission(snapshot, { outcome: 'Ship', workflowType: 'shapeAndShipFeature', teamId: lead.teamId!, orchestratorMemberId: lead.id });
+      mission.stage = 'ship';
+      mission.execution!.workspaces = [{ repositoryPath: repo, path: worktree, branch: 'mission/conflicts' }];
+      mission.execution!.deliveries = [{ repositoryPath: repo, agentId: builder.id, status: 'pending' }];
+      mission.execution!.runs = [{ id: 'implementation', stage: 'implementation', memberId: lead.id, workerId: builder.id, repositoryPath: repo, status: 'accepted', skills: [], feedback: '', startedAt: '' }];
+      const before = structuredClone(mission);
+      const sendPrompt = vi.fn().mockResolvedValue({ backendSession: builder.backendSession, turnId: 'resolve-conflicts' });
+      const driver: AgentBackendDriver = {
+        backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }), getCapabilities: () => codexBackendCapabilities,
+        sendPrompt, interrupt: async () => ({ backendSession: builder.backendSession }), respondToAgentRequest: async () => undefined,
+        onEvent: () => () => {}, close: async () => {},
+      };
+      server = new AppBackendServer({ version: 'test', snapshot,
+        driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
+        workIntegrations: { githubConnected: async () => false } as never });
+      const result = await server.handleMessage({ jsonrpc: '2.0', id: 'update', method: backendMethods.agentGitUpdateFromBase,
+        params: { agentId: builder.id, input: { confirmed: true } } });
+      expect(result).toMatchObject({ result: { baseBranch: 'main', conflicts: ['shared.txt'] } });
+      await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledOnce());
+      expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: builder.id, folder: worktree, backendSession: builder.backendSession }), expect.stringMatching(/shared\.txt[\s\S]*Resolve the conflicts[\s\S]*Do not push/), undefined);
+      expect((await exec('git', ['diff', '--name-only', '--diff-filter=U'], { cwd: worktree })).stdout.trim()).toBe('shared.txt');
+      expect(snapshot.missions![0]).toStrictEqual(before);
+    } finally { await server?.close(); await rm(root, { recursive: true, force: true }); }
+  });
+
   it.each(['keep', 'delete', 'push', 'legacy missing'])('persists merged delivery and worktree cleanup before removing its builder (%s)', async cleanup => {
     const deleteWorktree = cleanup !== 'keep';
     const exec = promisify(execFile);
@@ -264,7 +313,7 @@ describe('mission backend boundary', () => {
       await vi.waitFor(() => expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ id: lead }), 'Follow-up', undefined));
       await send(caller.id, 'Ordinary conversation');
       await vi.waitFor(() => expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ id: caller.id }), 'Ordinary conversation', undefined));
-      await expect(server.startMissionFromAgent('missing-agent', { outcome: 'x', prompt: 'y' })).rejects.toThrow('local team');
+      await expect(server.startMissionFromAgent('missing-agent', { outcome: 'x', prompt: 'y' })).rejects.toThrow('local agent');
     } finally { await server.close(); }
   });
 

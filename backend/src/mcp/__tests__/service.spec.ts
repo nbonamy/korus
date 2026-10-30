@@ -33,6 +33,39 @@ describe('AppMcpService', () => {
     vi.restoreAllMocks();
   });
 
+  it('reports current remote hosts without exposing their SSH configuration', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.remoteConnections.connections = [{
+      id: 'host-one', kind: 'ssh', name: 'Wall-e', host: 'private-host', status: 'ready',
+      transport: { type: 'ssh-stdio', command: 'ssh', args: ['private-host'] },
+      createdAt: '2026-01-01', updatedAt: '2026-01-01',
+    }];
+    service = new AppMcpService({ snapshot });
+    const url = await service.start();
+    const list = async () => (await callTool(url, 'agent-dina', 'list-hosts', {})).result.structuredContent;
+    expect(await list()).toStrictEqual({ hosts: [{ id: 'host-one', name: 'Wall-e', status: 'ready' }] });
+    snapshot.remoteConnections.connections[0]!.status = 'error';
+    expect(await list()).toStrictEqual({ hosts: [{ id: 'host-one', name: 'Wall-e', status: 'error' }] });
+  });
+
+  it('lists repositories on the requested host through MCP', async () => {
+    const snapshot = createInitialSnapshot();
+    const listRemoteRepositories = vi.fn().mockResolvedValue([{ path: '/remote/project', name: 'project', worktrees: [] }]);
+    const listRemoteWorktrees = vi.fn().mockResolvedValue([{ path: '/remote/feature', name: 'feature' }]);
+    const createRemoteWorktree = vi.fn().mockResolvedValue({ path: '/remote/new-feature', name: 'new-feature' });
+    service = new AppMcpService({ snapshot, listRemoteRepositories, listRemoteWorktrees, createRemoteWorktree });
+    const url = await service.start();
+    const result = await callTool(url, 'agent-dina', 'list-repos', { remoteConnectionId: 'host-one' });
+    expect(result.result.structuredContent).toStrictEqual({ repos: [{ path: '/remote/project', name: 'project', worktrees: [] }] });
+    expect(listRemoteRepositories).toHaveBeenCalledExactlyOnceWith('host-one');
+    const worktrees = await callTool(url, 'agent-dina', 'list-worktrees', { remoteConnectionId: 'host-one', repoPath: '/remote/project' });
+    expect(worktrees.result.structuredContent).toStrictEqual({ repoPath: '/remote/project', worktrees: [{ path: '/remote/feature', name: 'feature' }] });
+    expect(listRemoteWorktrees).toHaveBeenCalledExactlyOnceWith('host-one', '/remote/project');
+    const created = await callTool(url, 'agent-dina', 'create-worktree', { remoteConnectionId: 'host-one', repoPath: '/remote/project', branchName: 'new-feature' });
+    expect(created.result.structuredContent).toStrictEqual({ path: '/remote/new-feature', name: 'new-feature' });
+    expect(createRemoteWorktree).toHaveBeenCalledExactlyOnceWith({ remoteConnectionId: 'host-one', repoPath: '/remote/project', branchName: 'new-feature' });
+  });
+
   it('starts a delegated agent before setup finishes and scopes waiting to that worker’s worktree', async () => {
     const folder = await mkdtemp(path.join(os.tmpdir(), 'background-worktree-'));
     await writeFile(path.join(folder, 'package.json'), '{}');

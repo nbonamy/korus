@@ -247,15 +247,31 @@ invitation discards its temporary session without changing saved joins.
 
 Sharing is a Korus workflow, independent of provider capabilities. A local agent
 with a bound conversation can share it; shared guest entries cannot reshare it.
+Guest write access is off by default and belongs to an authenticated peer on one
+active share, never to its display name or invitation. The owner grants it only
+while that peer is connected. Disconnecting the last session for a peer, share
+revocation, target invalidation and daemon restart clear that authority. Automatic
+admission waits in the existing sharing coordination queue and rechecks the exact
+access grant before dispatch. Revocation returns waiting automatic prompts to
+pending review; enabling access never promotes existing suggestions. An authorized
+guest chooses queue or steer when sending a prompt. That choice is captured with
+the prompt and deduplicated with its identity: queue waits for normal admission,
+while steer uses the normal owner steering operation. Read-only suggestions discard
+the guest's choice; the owner decides how to send them through the composer.
+Both retain the immutable conversation binding and plain-text guest policy;
+write access grants no workspace or other conversation actions.
 Moving a suggestion into the owner's draft dismisses it for the collaborator and
 carries no execution authority. The owner edits and sends that draft through the
 ordinary composer; this handoff requires no provider message identity. Pending proposals and decisions are private to the
 owner and proposer. Persisted dispatch intent is never replayed after uncertain
 submission; restart exposes delivery unresolved. Dismiss never submits. Guests
 can withdraw only their own pending proposals; withdrawal and owner decisions
-share the serialized authority boundary. Terminal
-receipts retain a text fingerprint for deduplication instead of discarded text;
-active proposal text has a two-MiB budget per link, alongside count limits.
+share the serialized authority boundary. Provider receipts contribute only message
+and turn identifiers to share records. Terminal proposals retain a text fingerprint
+for deduplication instead of discarded text. The loader removes the known legacy
+provider-session field while preserving invitations and receipts, and rejects other
+unexpected fields. Active proposal text has a two-MiB budget per link, alongside
+count limits.
 
 Guest rendezvous uses its own versioned protocols and an in-memory handle directory.
 Only a Noise-authenticated owner registers its routing hashes; active hashes cannot
@@ -330,8 +346,12 @@ parallel check, counter or state flag:
   `sourceNetwork`; counters keyed by a peer identity only reduce noise.
 - Stream framing and backpressure: the shared frame readers and `sendWithBackpressure`.
   Companion peers negotiate compressed response protocols with legacy JSON fallback.
-  Gzip preserves provider payloads, including screenshot data, within separate wire
-  and decoded-response bounds; requests retain their smaller inbound limit.
+  Gzip preserves provider payloads within separate wire and decoded-response bounds;
+  requests retain their smaller inbound limit. Embedded Codex images cross as SDK
+  references, with their bytes fetched through bounded content reads on demand.
+  The provider validates each reference against its current session snapshot;
+  fetching image bytes must not reload or republish conversation history. Transport
+  entries retain provider strings rather than duplicate full binary buffers.
 
 A review finding against this area names the invariant below that it breaks. Behavior
 listed as outside the relay's guarantees is not a defect.
@@ -376,8 +396,10 @@ Project acquisition uses the owning team's desktop operations for new repositori
 local repository selection, GitHub and GitLab discovery, and URL cloning. The phone
 sends names, catalog IDs or network Git URLs rather than filesystem paths. The local catalog
 contains repository roots, with linked worktrees nested beneath them; only roots
-become selectable opaque IDs. Provider catalog selections are bound to the daemon
-lifetime, provider, owning host location and current catalog identity; branch reads
+become selectable opaque IDs. Repository targets include the owning host in their
+opaque path identity, so equal checkout paths on different machines cannot select
+each other's work. Provider catalog selections are bound to the daemon lifetime,
+provider, owning host location and current catalog identity; branch reads
 and creation revalidate them. Legacy GitHub operations retain their existing IDs
 for compatible native clients. Integration credentials and checkout paths stay on
 the owning host; each write rechecks the grant, team location and available engine.
@@ -395,10 +417,16 @@ New worktree branches do not inherit the base's tracking configuration. Remote
 deletion requires a same-named tracked branch and excludes the primary worktree's
 branch; an arbitrary upstream never authorizes remote deletion. Companion previews
 and desktop dialogs use the same eligibility policy as the backend deletion guard.
+Released mobile execution fields are normalized at the gateway before entering the
+shared execution-selection contract. Unknown fields and conflicting old/new formats
+remain invalid.
+
 Conversation image reads accept only image references in the authoritative conversation,
 bound to its current host and session. The owning daemon resolves and reads the file;
 the phone receives bounded image bytes on demand. Image reads do not persist a copy;
-deleted source files are unavailable.
+deleted source files are unavailable. Embedded image references resolve against the
+current provider session, never a retained copy of a previous conversation. The
+existing image-read operation also serves released phones without new wire methods.
 
 Every agent operation names a full target (host, location, team, agent and session); a
 session the laptop has replaced is stale and never retargeted. Prompts, goals and reviews
@@ -686,6 +714,25 @@ sign-in and provider upgrades belong to that host, independently of Korus update
 User-local Codex upgrades verify package ownership and retain the `~/.local` npm
 prefix even when the Node runtime has a different default global directory.
 Version discovery accepts the previous daemon CLI name for hosts not yet upgraded.
+
+An SSH daemon owns its host's home exclusively. Each connection launches its own
+stdio daemon with its own in-memory state, so two live daemons on one home overwrite
+each other's saves and agents or teams vanish and reappear. The launch sets
+`APP_EXCLUSIVE_HOME=1`, which holds a SQLite exclusive transaction in
+`daemon-lock.sqlite` for the daemon's lifetime. The OS releases it on process exit;
+the lock database is never removed for stale-owner recovery. `daemon.lock` contains
+diagnostic owner metadata only. A live owner is waited for briefly while it shuts
+down; otherwise the new daemon exits with a message naming the duplicate session. Two saved
+connections to the same machine therefore cannot both be active. Local and
+`serve` daemons do not take the lock.
+
+Every connect, install and reconnect (the read-only inspection) links the host's `codex` and `claude` into the
+private `bin` directory, which the SSH launch puts first on PATH, and drops the link
+of an engine that is gone. The daemon resolves a linked engine with one file check
+and starts no login shell, which otherwise costs seconds per probe on slow hosts.
+Unlinked tools and dangling links fall back to full discovery, so a failed link
+only makes startup slower. A link is a cache: an engine moved by a version manager
+is picked up at the next reconnect.
 
 ## Development
 

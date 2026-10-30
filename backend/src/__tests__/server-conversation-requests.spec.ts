@@ -12,9 +12,20 @@ import {
   flushMicrotasks,
 } from './server-test-fixtures';
 
+function emitTurnStarted(server: AppBackendServer, agentId: string, turnId: string, backend: 'codex' | 'claude' = 'codex', conversationId = 'thread-dina') {
+  server.emitEvent(backend === 'codex' ? {
+    agentId, backend, threadId: conversationId, type: 'codex.conversationEventReceived',
+    payload: { revision: 1, event: { seq: 1, occurredAt: '', origin: 'notification', conversationId, turnId, type: 'turn.started', payload: { startedAt: '' } } },
+  } : {
+    agentId, backend, backendSessionId: conversationId, type: 'claude.conversationEventReceived',
+    payload: { revision: 1, event: { seq: 1, occurredAt: '', backend, agentId, backendSessionId: conversationId, turnId, type: 'turn.started', payload: { turn: { id: turnId, backend } } } },
+  });
+}
+
 describe('AppBackendServer', () => {
 
   it.each([
+    { action: 'implement', prompt: 'Implement the proposed work in this conversation using the current agent and workspace.' },
     { action: 'delegate', prompt: PROPOSED_WORK_DELEGATION_PROMPT },
     { action: 'create_mission', prompt: MISSION_COMMAND_PROMPT },
   ] as const)('routes proposal $action to its source and persists only after provider acceptance', async ({ action, prompt }) => {
@@ -63,6 +74,10 @@ describe('AppBackendServer', () => {
       await flushMicrotasks();
       expect(sendPrompt).toHaveBeenCalledTimes(2);
       expect(source.threadFlags.work_proposed).toBe(true);
+      emitTurnStarted(server, source.id, 'accepted', 'codex', 'source-thread');
+      expect(source.threadFlags).toBeUndefined();
+      // A fresh flag published before the admission reply must survive that reply.
+      source.threadFlags = { ready_for_review: true } as typeof source.threadFlags;
       acceptPrompt({ backendSession: { kind: 'codex', threadId: 'source-thread' }, turnId: 'accepted' });
       expect(await retry).toMatchObject({ result: { agents: [
         { id: other.id, threadFlags: { work_proposed: true } },
@@ -73,7 +88,7 @@ describe('AppBackendServer', () => {
     } finally { await server.close(); }
   });
 
-  it.each([true, false])('clears prompt hints when admitting a user prompt (review readiness: %s) and assigns the conversation title', async (reviewReady) => {
+  it.each([true, false])('clears all prompt hints when a user turn starts (review readiness: %s) and assigns the conversation title', async (reviewReady) => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 10, 15, 42));
     try {
@@ -91,9 +106,9 @@ describe('AppBackendServer', () => {
         createdAt: '2026-06-13T00:00:00.000Z',
         updatedAt: '2026-06-13T00:00:00.000Z',
       }];
-      const sendPrompt = vi.fn().mockResolvedValue({
-        backendSession: { kind: 'codex' as const, threadId: 'thread-dina' },
-        turnId: 'turn-1',
+      const sendPrompt = vi.fn().mockImplementation(async () => {
+        emitTurnStarted(server, 'agent-dina', 'turn-1');
+        return { backendSession: { kind: 'codex' as const, threadId: 'thread-dina' }, turnId: 'turn-1' };
       });
       const setConversationTitle = vi.fn().mockResolvedValue(undefined);
       const driver: AgentBackendDriver = {
@@ -126,10 +141,10 @@ describe('AppBackendServer', () => {
       });
       expect(response).toMatchObject({
         result: {
-          agents: [{ id: 'agent-dina', status: { type: 'working' }, threadFlags: { delegate_to_worktree: true } }],
+          agents: [{ id: 'agent-dina', status: { type: 'working' } }],
         },
       });
-      expect((response as { result: AppSnapshot }).result.agents[0]?.threadFlags).toStrictEqual({ delegate_to_worktree: true });
+      expect((response as { result: AppSnapshot }).result.agents[0]?.threadFlags).toBeUndefined();
       expect((response as { result: Record<string, unknown> }).result).not.toHaveProperty('messages');
       await flushMicrotasks();
 
@@ -144,7 +159,7 @@ describe('AppBackendServer', () => {
       );
       expect(events).toEqual(expect.arrayContaining([
         expect.objectContaining({ type: 'agent.statusChanged', payload: { type: 'working' } }),
-        expect.objectContaining({ type: 'agent.updated', payload: expect.objectContaining({ id: 'agent-dina', threadFlags: { delegate_to_worktree: true } }) }),
+        expect.objectContaining({ type: 'agent.updated', payload: expect.objectContaining({ id: 'agent-dina', threadFlags: null }) }),
         expect.objectContaining({ type: 'backend.statusChanged', payload: expect.objectContaining({ backend: 'codex', status: 'starting' }) }),
       ]));
       await server.close();
@@ -203,6 +218,32 @@ describe('AppBackendServer', () => {
       type: 'agent.updated', payload: expect.objectContaining({ id: 'agent-dina', threadFlags: null }),
     }));
     await server.close();
+  });
+
+  it.each(['codex', 'claude'] as const)('clears hints on an internal %s turn, persists them, and ignores duplicate starts', async backend => {
+    const snapshot = createTestSnapshot();
+    const agent = { id: 'agent-dina', teamId: 'team-test', name: 'Dina', folder: '/workspace/dina', backend,
+      backendSession: backend === 'codex' ? { kind: 'codex' as const, threadId: 'thread-dina' } : { kind: 'claude' as const, sessionId: 'thread-dina', transport: 'stdio' as const },
+      status: { type: 'idle' as const }, threadFlags: { work_proposed: true as const, ready_for_review: true as const }, suggestedPrompt: 'Old suggestion', createdAt: '', updatedAt: '' };
+    snapshot.agents = [agent];
+    let stored: AppSnapshot | undefined;
+    const server = new AppBackendServer({ version: 'test', snapshot, saveSnapshot: async value => { stored = structuredClone(value); } });
+    try {
+      emitTurnStarted(server, agent.id, 'next', backend, 'old-conversation');
+      expect(agent.suggestedPrompt).toBe('Old suggestion');
+      emitTurnStarted(server, agent.id, 'next', backend);
+      expect(agent.threadFlags).toBeUndefined();
+      expect(agent.suggestedPrompt).toBeUndefined();
+      expect(stored!.agents[0]!.threadFlags).toBeUndefined();
+      agent.threadFlags = { work_proposed: true } as typeof agent.threadFlags;
+      agent.suggestedPrompt = 'New suggestion';
+      emitTurnStarted(server, agent.id, 'next', backend);
+      expect(agent.suggestedPrompt).toBe('New suggestion');
+      expect(agent.threadFlags).toStrictEqual({ work_proposed: true });
+      emitTurnStarted(server, agent.id, 'following', backend);
+      expect(agent.threadFlags).toBeUndefined();
+      expect(agent.suggestedPrompt).toBeUndefined();
+    } finally { await server.close(); }
   });
 
   it(`renames the active conversation when the ${product.name} agent name changes`, async () => {
@@ -363,7 +404,8 @@ describe('AppBackendServer', () => {
     snapshot.agents = [{
       id: 'agent-dina', teamId: 'team-test', name: 'Dina', folder: '/workspace/dina', backend: 'codex',
       backendSession: { kind: 'codex', threadId: 'thread-dina' }, status: { type: 'working' },
-      threadFlags: { ready_for_review: true },
+      threadFlags: { ready_for_review: true, work_proposed: true, delegate_to_worktree: true },
+      suggestedPrompt: 'Previous turn suggestion',
       createdAt: '2026-06-13T00:00:00.000Z', updatedAt: '2026-06-13T00:00:00.000Z',
     }];
     let acceptPrompt!: (value: { backendSession: { kind: 'codex'; threadId: string }; turnId: string }) => void;
@@ -405,7 +447,8 @@ describe('AppBackendServer', () => {
       text: prompt,
       options: { attachments: [{ type: 'file', path: '/tmp/queue.txt', name: 'queue.txt' }], inputMethod: 'dictated', ...delegation, selection: { model: 'sol', reasoningEffort: 'high', serviceTier: 'fast' } },
     })]);
-    expect(snapshot.agents[0]?.threadFlags).toBeUndefined();
+    expect(snapshot.agents[0]?.threadFlags).toStrictEqual({ ready_for_review: true, work_proposed: true, delegate_to_worktree: true });
+    expect(snapshot.agents[0]?.suggestedPrompt).toBe('Previous turn suggestion');
     expect(sendPrompt).not.toHaveBeenCalled();
     expect(onPromptStarting).not.toHaveBeenCalled();
     expect(snapshot.agents[0]?.userDelegationOverrides).toBeUndefined();
@@ -453,6 +496,10 @@ describe('AppBackendServer', () => {
     });
     expect(snapshot.queuedPrompts).toHaveLength(1);
 
+    expect(snapshot.agents[0]?.suggestedPrompt).toBe('Previous turn suggestion');
+    emitTurnStarted(server, 'agent-dina', 'turn-next');
+    expect(snapshot.agents[0]?.threadFlags).toBeUndefined();
+    expect(snapshot.agents[0]?.suggestedPrompt).toBeUndefined();
     acceptPrompt({ backendSession: { kind: 'codex', threadId: 'thread-dina' }, turnId: 'turn-next' });
     await vi.waitFor(() => expect(snapshot.queuedPrompts).toStrictEqual([]));
     if (delegation.delegation) expect(snapshot.agents[0]?.userDelegationOverrides).toStrictEqual({ ...delegation.delegation, execution: { backend: 'codex', conversationId: 'thread-dina', turnId: 'turn-next' } });

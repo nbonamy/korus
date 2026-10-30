@@ -22,8 +22,6 @@ export type UsageProjections = {
   repository?: UsageSummary;
   /** The period before the selection, for the change badge. */
   previous: UsageSummary | null;
-  /** The activity grid's own window, independent of every filter. */
-  activity: UsageSummary | null;
 };
 
 const today = () => localDay();
@@ -43,6 +41,8 @@ export function useUsageAnalytics() {
     provider: "",
   });
   const projections = ref<UsageProjections | null>(null);
+  const activity = ref<UsageSummary | null>(null);
+  const activityLoaded = ref(false);
   const busy = ref(false);
   const error = ref(false);
   const clearing = ref(false);
@@ -87,7 +87,7 @@ export function useUsageAnalytics() {
   const daily = computed(() => grouped.value?.daily ?? []);
   const activityDays = computed(
     () =>
-      projections.value?.activity?.daily?.map((row) => ({
+      activity.value?.daily?.map((row) => ({
         day: row.day,
         tokens: row.tokens?.total ?? null,
       })) ?? null,
@@ -95,13 +95,31 @@ export function useUsageAnalytics() {
 
   // A newer request, a clear or unmount makes older responses stale.
   let generation = 0;
+  let activityGeneration = 0;
   let disposed = false;
   const providerQuery = () =>
     filter.value.provider
       ? { provider: filter.value.provider as AgentBackend }
       : {};
 
+  async function loadActivity(): Promise<void> {
+    const current = ++activityGeneration;
+    try {
+      const result = await appApi!.getUsage({ ...activityWindow(), timeZone: browserTimeZone(), group: "provider" });
+      if (!disposed && current === activityGeneration)
+        activity.value = result.available === false ? null : result;
+    } catch {
+      if (!disposed && current === activityGeneration) activity.value = null;
+    } finally {
+      if (!disposed && current === activityGeneration) activityLoaded.value = true;
+    }
+  }
+
   async function load(background = false): Promise<void> {
+    await Promise.all([loadProjections(background), loadActivity()]);
+  }
+
+  async function loadProjections(background = false): Promise<void> {
     const current = ++generation;
     busy.value = true;
     error.value = false;
@@ -114,14 +132,9 @@ export function useUsageAnalytics() {
         timeZone: browserTimeZone(),
       };
       const days = periodDays.value;
-      const [provider, model, activity, previous, repository] = await Promise.all([
+      const [provider, model, previous, repository] = await Promise.all([
         appApi!.getUsage({ ...query, group: "provider" }),
         appApi!.getUsage({ ...query, group: "model" }),
-        // Context only: failing to read these never blocks the view. The
-        // activity grid is a lifetime overview, so no filter applies to it.
-        appApi!
-          .getUsage({ ...activityWindow(), timeZone: browserTimeZone(), group: "provider" })
-          .catch(() => null),
         appApi!
           .getUsage({
             ...query,
@@ -141,7 +154,6 @@ export function useUsageAnalytics() {
         provider,
         model,
         ...(repository ? { repository } : {}),
-        activity: activity?.available === false ? null : activity,
         previous: previous?.available === false ? null : previous,
       };
     } catch {
@@ -156,18 +168,18 @@ export function useUsageAnalytics() {
   function setRange(days: number): void {
     filter.value.from = shiftDay(today(), -(days - 1));
     filter.value.to = today();
-    void load();
+    void loadProjections();
   }
   function setDate(key: "from" | "to", value: string): void {
     filter.value[key] = value;
-    void load();
+    void loadProjections();
   }
   watch(grouping, (next) => {
-    if (next === "repository" && !projections.value?.repository) void load(true);
+    if (next === "repository" && !projections.value?.repository) void loadProjections(true);
   });
   function setProvider(provider: string): void {
     filter.value.provider = provider;
-    void load();
+    void loadProjections();
   }
   async function clearStatistics(): Promise<void> {
     try {
@@ -186,6 +198,7 @@ export function useUsageAnalytics() {
     clearing.value = true;
     clearError.value = false;
     generation++;
+    activityGeneration++;
     try {
       await appApi!.clearUsage();
       await load();
@@ -207,6 +220,7 @@ export function useUsageAnalytics() {
   onUnmounted(() => {
     disposed = true;
     generation++;
+    activityGeneration++;
     document.removeEventListener("visibilitychange", refresh);
   });
 
@@ -228,6 +242,7 @@ export function useUsageAnalytics() {
     shareSeries,
     shareMeasure,
     activityDays,
+    activityLoaded,
     load,
     setRange,
     setDate,

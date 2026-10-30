@@ -10,10 +10,19 @@ type AppMenuItemBase = {
   value?: string | { addedLines: number; removedLines: number };
 };
 
+/** A second, icon-only action at the trailing edge of a row; it selects its own id. */
+export type AppMenuSecondaryAction = {
+  id: string;
+  label: string;
+  icon: Component;
+  disabled?: boolean;
+};
+
 export type AppMenuActionItem = AppMenuItemBase & {
   type: 'action';
   danger?: boolean;
   leadingColor?: string;
+  secondaryAction?: AppMenuSecondaryAction;
 };
 
 export type AppMenuCheckboxItem = AppMenuItemBase & {

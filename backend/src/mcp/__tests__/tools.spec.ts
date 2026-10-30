@@ -46,6 +46,7 @@ describe(`${product.name} MCP tool registration`, () => {
   const handlers = new Map<string, ToolHandler>();
   const coordinator = {
     missionContext: vi.fn(),
+    listHosts: vi.fn(),
     listAgents: vi.fn(),
     sendMessage: vi.fn(),
     checkMessages: vi.fn(),
@@ -56,6 +57,7 @@ describe(`${product.name} MCP tool registration`, () => {
     submitMissionResult: vi.fn(),
     upsertMissionTicket: vi.fn(),
     setMissionTitle: vi.fn(),
+    reopenMissionStage: vi.fn(),
     attachMissionRepository: vi.fn(),
     listMissionArtifacts: vi.fn(),
     readMissionArtifact: vi.fn(),
@@ -89,6 +91,7 @@ describe(`${product.name} MCP tool registration`, () => {
     const server = createServer(computerUse, browser);
 
     expect([...handlers.keys()]).toStrictEqual([
+      'list-hosts',
       'list-agents',
       'send-message',
       'check-messages',
@@ -125,6 +128,7 @@ describe(`${product.name} MCP tool registration`, () => {
       'task',
       'name',
       'selection',
+      'remoteConnectionId',
       'repoPath',
       'createWorktree',
       'branchName',
@@ -194,6 +198,11 @@ describe(`${product.name} MCP tool registration`, () => {
       structuredContent: { success: true, title: 'Add team billing' },
     });
     expect(coordinator.setMissionTitle).toHaveBeenCalledWith('agent-dina', 'Add team billing');
+    coordinator.reopenMissionStage.mockResolvedValue({ success: true, stage: 'requirements' });
+    expect(await handlers.get('reopen-mission-stage')!({ stage: 'requirements' })).toMatchObject({ structuredContent: { success: true, stage: 'requirements' } });
+    expect(coordinator.reopenMissionStage).toHaveBeenCalledWith('agent-dina', 'requirements');
+    const reopenDefinition = mocks.registerTool.mock.calls.find(([name]) => name === 'reopen-mission-stage')![1] as { inputSchema: z.ZodRawShape };
+    expect(z.object(reopenDefinition.inputSchema).safeParse({ stage: 'ship' }).success).toBe(false);
     coordinator.listMissionArtifacts.mockReturnValue([{ stage: 'requirements', revision: 1 }]);
     await handlers.get('list-mission-artifacts')!({});
     expect(coordinator.listMissionArtifacts).toHaveBeenCalledWith('agent-dina');

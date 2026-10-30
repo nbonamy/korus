@@ -98,6 +98,52 @@
         />
       </div>
 
+      <div
+        v-else-if="item.type === 'action' && item.secondaryAction"
+        class="app-menu__row"
+      >
+        <button
+          class="app-menu__item"
+          :class="{ 'app-menu__item--danger': item.danger }"
+          type="button"
+          role="menuitem"
+          :disabled="item.disabled"
+          @click="selectItem(item)"
+        >
+          <component
+            :is="item.icon"
+            v-if="item.icon"
+            class="app-menu__icon"
+          />
+          <span
+            v-else
+            class="app-menu__icon app-menu__icon--empty"
+            aria-hidden="true"
+          />
+          <span class="app-menu__copy">
+            <span class="app-menu__label">{{ item.label }}</span>
+          </span>
+        </button>
+        <span
+          class="app-menu__row-divider"
+          aria-hidden="true"
+        />
+        <button
+          class="app-menu__secondary"
+          type="button"
+          role="menuitem"
+          :aria-label="item.secondaryAction.label"
+          :title="item.secondaryAction.label"
+          :disabled="item.secondaryAction.disabled"
+          @click="emit('select', item.secondaryAction.id)"
+        >
+          <component
+            :is="item.secondaryAction.icon"
+            class="app-menu__icon"
+          />
+        </button>
+      </div>
+
       <button
         v-else
         class="app-menu__item"
@@ -249,6 +295,49 @@ function showsCheck(item: Exclude<AppMenuItem, { type: 'separator' | 'submenu' }
   font-size: var(--font-size-13-5);
   text-align: left;
   cursor: pointer;
+}
+
+.app-menu__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.app-menu__row .app-menu__item {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.app-menu__row-divider {
+  flex: 0 0 auto;
+  align-self: stretch;
+  width: 1px;
+  margin-block: var(--space-2);
+  background: var(--color-border);
+}
+
+.app-menu__secondary {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  color: var(--color-text);
+  background: transparent;
+  cursor: pointer;
+}
+
+.app-menu__secondary:hover:not(:disabled),
+.app-menu__secondary:focus-visible {
+  background: var(--color-surface-low);
+}
+
+.app-menu__secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .app-menu__info {

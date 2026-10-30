@@ -160,14 +160,14 @@ describe('companion engine', () => {
       }
     } finally { engine.dispose(); vi.useRealTimers(); }
   });
-  it('routes requested content as a separate chunk reply and rejects responses after selection changes', async () => {
+  it.each(['claude', 'codex'] as const)('routes %s content as separate chunks and rejects responses after selection changes', async backend => {
     const connector = createDemoConnector(); const connect = connector.connect;
     const chunk = { data: 'e30=', totalBytes: 2, nextOffset: null };
     let finish!: (value: typeof chunk) => void;
     const readConversationContent = vi.fn().mockResolvedValueOnce(chunk).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
     connector.connect = async (id) => {
       const session = await connect(id); const workspace = await session.getWorkspace();
-      workspace.agents[0] = { ...workspace.agents[0]!, backend: 'claude', backendSession: { kind: 'claude', sessionId: 'session', transport: 'stdio' } };
+      workspace.agents[0] = { ...workspace.agents[0]!, backend, backendSession: backend === 'codex' ? { kind: 'codex', threadId: 'session' } : { kind: 'claude', sessionId: 'session', transport: 'stdio' } };
       return { ...session, getWorkspace: async () => workspace, readConversationContent };
     };
     const { engine, events } = open(connector);
@@ -927,6 +927,29 @@ describe('companion engine', () => {
     });
   });
   describe('starting a chat in a repository', () => {
+    it('projects engine choices for the conversation and each repository without changing local creation choices', async () => {
+      const connector = createDemoConnector(); const original = connector.connect;
+      connector.connect = async id => {
+        const session = await original(id);
+        return { ...session, getWorkspace: async () => {
+          const workspace = await session.getWorkspace();
+          const agent = workspace.agents.find(agent => agent.id === 'demo-agent')!;
+          return { ...workspace, backends: { 'demo-team': ['codex' as const], box: ['claude' as const] }, agents: [
+            ...workspace.agents,
+            { ...agent, id: 'remote-agent', remoteConnectionId: 'box', folder: '/remote/repo',
+              workspace: { kind: 'git' as const, folder: '/remote/repo', repositoryRoot: '/remote/repo', primaryWorktreeRoot: '/remote/repo', repositoryName: 'remote', branch: 'main', isLinkedWorktree: false, updatedAt: '' } },
+          ] };
+        } };
+      };
+      const { engine, latest } = open(connector);
+      try {
+        await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+        await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+        expect(latest()).toMatchObject({ backends: ['codex'], conversationBackends: ['codex'], repositoryBackends: { '/remote/repo': ['claude'] } });
+        await engine.dispatch({ type: 'selectAgent', id: 'remote-agent' });
+        expect(latest()).toMatchObject({ backends: ['codex'], conversationBackends: ['claude'], repositoryBackends: { '/remote/repo': ['claude'] } });
+      } finally { engine.dispose(); }
+    });
     function withCreation(createChat: NonNullable<Awaited<ReturnType<ReturnType<typeof createDemoConnector>['connect']>>['createChat']>) {
       const connector = createDemoConnector(); const original = connector.connect;
       connector.connect = async (id) => {

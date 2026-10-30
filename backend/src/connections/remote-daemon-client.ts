@@ -23,7 +23,7 @@ import { warnMain } from '../log';
 import { sshStdioTransport } from './ssh-connections';
 
 export type RemoteDaemonClientOptions = {
-  requestHandlers?: Record<string, (params: unknown) => unknown | Promise<unknown>>;
+  requestHandlers?: Record<string, (params: unknown, connectionId: string) => unknown | Promise<unknown>>;
   spawnProcess?: typeof spawn;
 };
 
@@ -35,6 +35,9 @@ type PendingRequest = {
 
 export class RemoteDaemonClientManager {
   private readonly clients = new Map<string, RemoteDaemonClient>();
+  private readonly generations = new Map<string, number>();
+
+  generation(connectionId: string): number { return this.generations.get(connectionId) ?? 0; }
 
   constructor(private readonly options: RemoteDaemonClientOptions = {}) {}
 
@@ -90,6 +93,7 @@ export class RemoteDaemonClientManager {
       }
     });
     this.clients.set(connection.id, client);
+    this.generations.set(connection.id, this.generation(connection.id) + 1);
     try { await client.start(); }
     catch (error) {
       if (this.clients.get(connection.id) === client) this.clients.delete(connection.id);
@@ -297,7 +301,7 @@ class RemoteDaemonClient {
     }
 
     try {
-      this.writeResponse(createAppRpcResult(message.id, await handler(message.params)));
+      this.writeResponse(createAppRpcResult(message.id, await handler(message.params, this.connection.id)));
     } catch (error) {
       this.writeResponse(createAppRpcError(message.id, appRpcErrorCodes.internalError, error instanceof Error ? error.message : String(error)));
     }

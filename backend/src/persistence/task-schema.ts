@@ -27,7 +27,7 @@ const taskSchema = z.looseObject({
   assignment: taskContractSchema.loose(), prompt: text.max(100000), attemptId: text,
   goal: z.boolean().optional(),
   delegationUserInstructions: z.looseObject({ saved: z.string().max(MAX_DELEGATION_INSTRUCTIONS_LENGTH), taskSpecific: z.string().max(MAX_DELEGATION_INSTRUCTIONS_LENGTH).optional() }).optional(),
-  workspace: z.looseObject({ repositoryPath: text, branchName: text.optional(), destinationPath: text.optional() }).optional(),
+  workspace: z.looseObject({ repositoryPath: text, branchName: text.optional(), destinationPath: text.optional(), remoteConnectionId: text.optional() }).optional(),
   state: z.enum(['preparing', 'running', 'needs-input', 'interrupted', 'failed', 'completed', 'cancelled']),
   createdAt: text, updatedAt: text, folder: text.optional(), acceptance: acceptance.optional(), executionTurnId: text.optional(),
   submission: taskResultSchema.loose().extend({ id: text, attemptId: text, turnId: text, backendSession: session }).optional(),

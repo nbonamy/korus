@@ -67,6 +67,36 @@ describe('missions', () => {
     expect(() => updateMission(snapshot, { ...input, revision: 1 })).toThrow('required stage');
   });
 
+  it('invalidates only edited completed tickets when saving artifacts and rejects advancing stale completion', () => {
+    const snapshot = createInitialSnapshot();
+    const mission = createMission(snapshot, createInput(snapshot, 'Billing'));
+    mission.stage = 'implementation';
+    mission.artifacts.requirements = { problem: 'Billing', acceptance: 'Owner pays' };
+    mission.artifacts.tickets = [
+      { id: 'mission-ticket-account', title: 'Account', repositoryPath: '/repo', done: true, dependsOn: [2, 1] },
+      { id: 'mission-ticket-checkout', title: 'Checkout', repositoryPath: '/repo', done: true },
+      { id: 'mission-ticket-invoice', title: 'Invoice', repositoryPath: '/repo', done: true },
+    ];
+    mission.artifacts.implementation = { changes: 'Committed implementation', tests: 'Verified' };
+    const artifacts = structuredClone(mission.artifacts);
+    artifacts.tickets[0]!.dependsOn = [1, 2];
+    artifacts.tickets[1]!.body = 'Support refunds.';
+    const update = (action: UpdateMissionInput['action']) => updateMission(snapshot, { id: mission.id, revision: mission.revision, artifacts, stageAgentIds: {}, action });
+    mission.execution!.runs = [{ id: 'accepted-implementation', stage: 'implementation', memberId: snapshot.agents[0]!.id, workerId: snapshot.agents[0]!.id, ticketId: 'mission-ticket-checkout', status: 'accepted', skills: [], feedback: '', startedAt: 'before' }];
+    snapshot.agents[0]!.status = { type: 'working' };
+    expect(() => update('save')).toThrow('worker');
+    snapshot.agents[0]!.status = { type: 'idle' };
+    expect(() => update('advance')).toThrow('required stage');
+    update('save');
+    expect(mission.artifacts.tickets).toStrictEqual([
+      artifacts.tickets[0], { ...artifacts.tickets[1], done: false, revision: 1 }, artifacts.tickets[2],
+    ]);
+    update('save');
+    expect(mission.artifacts.tickets[1]).toMatchObject({ done: false, revision: 1 });
+    expect(mission.artifacts.implementation).toStrictEqual({ changes: 'Committed implementation', tests: 'Verified' });
+    expect(decodeAppSnapshot(snapshot)?.value.missions).toStrictEqual([mission]);
+  });
+
   it('deletes only the current mission revision', () => {
     const snapshot = createInitialSnapshot();
     const first = createMission(snapshot, createInput(snapshot, 'Billing'));

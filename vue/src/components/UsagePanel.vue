@@ -24,7 +24,7 @@
       </button>
     </template>
     <UsageActivity
-      v-if="projections"
+      v-if="activityLoaded"
       class="analytics-header"
       :days="activityDays"
     />
@@ -124,6 +124,7 @@ const {
   shareSeries,
   shareMeasure,
   activityDays,
+  activityLoaded,
   load,
   setRange,
   setDate,

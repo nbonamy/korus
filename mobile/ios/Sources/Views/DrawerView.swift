@@ -256,7 +256,7 @@ private struct GroupHeader: View {
             // Compensate optically for the bubble's smaller visible bounds.
             .offset(y: group.kind == .quickChats ? 3 : 0)
             Spacer(minLength: 8)
-            if model.canStartChat {
+            if group.hasQuickChats ? model.canStartChat : model.canStartChat(in: group) {
                 if group.hasQuickChats {
                     Button { model.startQuickChat() } label: {
                         Group {

@@ -264,6 +264,8 @@ export type BackendPromptOptions =
   };
 
 export type RendererMessageAttachment = {
+  width?: number;
+  height?: number;
   kind: 'file' | 'image';
   name: string;
   path?: string;
@@ -272,6 +274,8 @@ export type RendererMessageAttachment = {
 };
 
 export type RendererMessageMedia = {
+  width?: number;
+  height?: number;
   url: string;
   alt?: string;
   mimeType?: string;
@@ -344,6 +348,7 @@ export type AgentFileActivity = {
 };
 
 export type ConversationFileLink = {
+  diffContent?: import('../conversation-diffs').ConversationDiffContent;
   kind: 'file';
   href: string;
   path: string;
