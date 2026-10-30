@@ -56,20 +56,24 @@
           <button class="app-icon-button design-panel__close-inspector" type="button" :aria-label="t('design.closeInspector')" :title="t('design.closeInspector')" :disabled="interacting" @click="inspectorVisible = false"><XIcon /></button>
           <el-tabs v-model="inspectorTab" class="design-panel__tabs">
             <el-tab-pane name="properties" :label="t('design.properties')" :disabled="!!tweakDraft">
-              <div class="design-panel__fields">
+              <fieldset class="design-panel__fields" :disabled="busy">
                 <AppMenuButton :items="artboardItems" :ariaLabel="t('design.artboardActions')" :width="210" @select="artboardAction">
                   <template #trigger="{ attrs }"><button v-bind="attrs" class="app-button app-button--tertiary" type="button" :disabled="locked" :aria-label="t('design.artboardActions')">{{ t('design.artboardActions') }}<ChevronDown /></button></template>
                 </AppMenuButton>
                 <DesignLayers v-if="board" :board="board" :selected-id="current.selectedNodeId" :disabled="locked" @select="selectNode" @edit="editElements" />
-                <template v-if="selected">
-                  <FormField density="compact" :label="t('design.comment')">
+                <template v-if="selected || elementCommentDraft">
+                  <FormField density="compact" :label="elementCommentDraft ? t('design.commentOn', { title: elementCommentDraft.title }) : t('design.comment')">
                     <textarea v-model="commentDraft" :aria-label="t('design.comment')" rows="2" />
                   </FormField>
-                  <button class="app-button app-button--secondary" type="button" data-action="comment" :disabled="locked || !commentDraft.trim()" @click="comment">{{ t('design.sendComment') }}</button>
+                  <div class="design-panel__actions">
+                    <button v-if="elementCommentDraft" class="app-button app-button--secondary" type="button" data-action="discard-comment" @click="elementCommentDraft = undefined">{{ t('common.cancel') }}</button>
+                    <button class="app-button app-button--secondary" type="button" data-action="comment" :disabled="locked || !commentDraft.trim()" @click="comment">{{ t('design.sendComment') }}</button>
+                  </div>
                   <ul v-if="comments.length" class="design-panel__comments">
                     <li v-for="item in comments" :key="item.id">{{ item.text }}</li>
                   </ul>
-
+                </template>
+                <template v-if="selected">
                   <FormField v-if="!selected.children?.length && !['img', 'input', 'br', 'hr'].includes(selected.tag)" density="compact" :label="t('design.text')">
                     <textarea v-model="textDraft" :aria-label="t('design.text')" rows="2" @input="dirty = true" />
                   </FormField>
@@ -86,7 +90,7 @@
                     <button class="app-button app-button--primary" type="button" data-action="apply" :disabled="busy || !dirty" @click="apply">{{ t('design.apply') }}</button>
                   </div>
                 </template>
-              </div>
+              </fieldset>
             </el-tab-pane>
             <el-tab-pane name="code" :label="t('design.code')" :disabled="dirty || !!tweakDraft">
               <DesignCode v-if="board && inspectorTab === 'code'" :node="selected ?? board.root" :css="board.css ?? current.document.content.css" />
@@ -175,7 +179,7 @@ const error = ref('');
 const textDraft = ref('');
 const styleDraft = ref<Record<string, string>>({});
 const interactionDraft = ref<DesignInteractionValue | null>(null);
-const commentDraft = ref('');
+const elementCommentDraft = ref<{ nodeId: string; title: string; revision: number; text: string }>();
 const checkpointTitle = ref('');
 const draftRevision = ref(0);
 const draftNodeId = ref<string | null>(null);
@@ -202,7 +206,16 @@ const canvasContent = computed(() => {
   return preview;
 });
 const selected = computed(() => nodes.value.find(node => node.id === current.value.selectedNodeId));
-const comments = computed(() => current.value.document?.content.comments.filter(item => item.nodeId === selected.value?.id) ?? []);
+const commentDraft = computed({
+  get: () => elementCommentDraft.value?.text ?? '',
+  set: (text: string) => {
+    if (busy.value) return;
+    if (!text) { elementCommentDraft.value = undefined; return; }
+    if (elementCommentDraft.value) elementCommentDraft.value.text = text;
+    else if (selected.value) elementCommentDraft.value = { nodeId: selected.value.id, title: `${selected.value.tag} · ${selected.value.text?.slice(0, 35) || selected.value.id}`, revision: revision.value, text };
+  },
+});
+const comments = computed(() => current.value.document?.content.comments.filter(item => item.nodeId === (elementCommentDraft.value?.nodeId ?? selected.value?.id)) ?? []);
 const reviewComments = computed(() => current.value.document?.content.comments.filter(item => item.nodeId === reviewCommentDraft.value?.nodeId) ?? []);
 const artboardItems = computed<AppMenuItem[]>(() => [
   { type: 'action', id: 'add', label: t('design.addArtboard'), disabled: (current.value.document?.content.artboards.length ?? 0) >= 12 },
@@ -264,7 +277,7 @@ async function apply() {
   if (!edits.length) { resetDraft(); return; }
   if (await mutate({ type: 'edit', expectedRevision: draftRevision.value, edits })) { dirty.value = false; resetDraft(); }
 }
-async function reload() { if (await mutate({ type: 'read' })) { pendingCanvas.value = null; tweakDraft.value = null; interacting.value = false; interactingArtboardId = null; dirty.value = false; resetDraft(); } }
+async function reload() { if (await mutate({ type: 'read' })) { pendingCanvas.value = null; tweakDraft.value = null; elementCommentDraft.value = undefined; interacting.value = false; interactingArtboardId = null; dirty.value = false; resetDraft(); } }
 function previewTweak(tweak: DesignTweak, value: DesignTweakValue) {
   if (busy.value || dirty.value || interacting.value || pendingCanvas.value) return;
   if (tweakDraft.value && tweakDraft.value.tweakId !== tweak.id) return;
@@ -384,7 +397,8 @@ async function implement() {
   if (accepted) ElMessage.success(t('design.sentForCoding'));
 }
 async function comment() {
-  if (selected.value && await mutate({ type: 'comment', expectedRevision: revision.value, nodeId: selected.value.id, text: commentDraft.value })) commentDraft.value = '';
+  const draft = elementCommentDraft.value;
+  if (draft && await mutate({ type: 'comment', expectedRevision: draft.revision, nodeId: draft.nodeId, text: draft.text })) elementCommentDraft.value = undefined;
 }
 async function checkpoint() {
   if (await mutate({ type: 'checkpoint', expectedRevision: revision.value, title: checkpointTitle.value })) { checkpointTitle.value = ''; historyVisible.value = false; }
@@ -507,6 +521,10 @@ async function retryCanvas() {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 
 .design-panel__close-inspector {

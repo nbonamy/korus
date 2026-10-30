@@ -1,7 +1,76 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { expect, it, vi } from 'vitest';
-import type { DesignRequest, DesignWorkspace } from '@workspace/core/design';
+import type { DesignRequest, DesignResult, DesignWorkspace } from '@workspace/core/design';
 import DesignPanel from '../DesignPanel.vue';
+
+const editableWorkspace = (): DesignWorkspace => ({
+  conversationRef: null, isOpen: true, selectedArtboardId: 'desktop', selectedNodeId: 'heading', undo: [], checkpoints: [],
+  document: { id: 'design-a', revision: 1, content: { title: 'Page', css: '', comments: [], artboards: [{ id: 'desktop', title: 'Desktop', width: 800, height: 600, root: { id: 'page', tag: 'main', children: [{ id: 'heading', tag: 'h1', text: 'Hello' }, { id: 'cta', tag: 'button', text: 'Continue' }] } }] } },
+});
+
+// Unsent feedback must keep its original identity/revision after selection or
+// content changes, and remain available to discard after a rejected submission.
+it('keeps an element comment attached to its original target until sent or discarded', async () => {
+  const workspace = editableWorkspace();
+  const execute = vi.fn(async () => ({ workspace: structuredClone(workspace) }));
+  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace, execute } });
+  try {
+    await wrapper.get('textarea[aria-label="Element comment"]').setValue('Make the heading larger');
+    const changed = structuredClone(workspace);
+    changed.selectedNodeId = 'cta';
+    changed.document!.revision = 2;
+    changed.document!.content.artboards[0].root.children!.shift();
+    await wrapper.setProps({ workspace: changed });
+    expect(wrapper.text()).toContain('Comment on h1 · Hello');
+    execute.mockRejectedValueOnce(new Error('Stale design revision'));
+    await wrapper.get('[data-action="comment"]').trigger('click');
+    await flushPromises();
+    expect(execute).toHaveBeenLastCalledWith({ type: 'comment', expectedRevision: 1, nodeId: 'heading', text: 'Make the heading larger' });
+    expect((wrapper.get('textarea[aria-label="Element comment"]').element as HTMLTextAreaElement).value).toBe('Make the heading larger');
+    // Losing selection must not hide the only way to recover this draft.
+    await wrapper.setProps({ workspace: { ...changed, selectedNodeId: null } });
+    await wrapper.get('[data-action="discard-comment"]').trigger('click');
+    expect(wrapper.find('textarea[aria-label="Element comment"]').exists()).toBe(false);
+    await wrapper.setProps({ workspace: changed });
+    await wrapper.get('textarea[aria-label="Element comment"]').setValue('Clarify the next step');
+    execute.mockResolvedValueOnce({ workspace: changed });
+    await wrapper.get('[data-action="comment"]').trigger('click');
+    await flushPromises();
+    expect(execute).toHaveBeenLastCalledWith({ type: 'comment', expectedRevision: 2, nodeId: 'cta', text: 'Clarify the next step' });
+    expect((wrapper.get('textarea[aria-label="Element comment"]').element as HTMLTextAreaElement).value).toBe('');
+  } finally { wrapper.unmount(); }
+});
+
+// A pending save must not accept input that its response would then discard;
+// success and failure must both restore editing, with failed drafts retained.
+it.each([true, false])('prevents inspector edits during Apply and restores editing after success=%s', async success => {
+  const workspace = editableWorkspace();
+  let resolve!: (result: DesignResult) => void;
+  let reject!: (error: Error) => void;
+  const pending = new Promise<DesignResult>((done, fail) => { resolve = done; reject = fail; });
+  const execute = vi.fn(() => pending);
+  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace, execute } });
+  try {
+    await wrapper.get('textarea[aria-label="Text"]').setValue('First edit');
+    await wrapper.get('[data-action="apply"]').trigger('click');
+    const controls = ['textarea[aria-label="Text"]', 'input[aria-label="Text color"]', 'select[aria-label="Display"]', 'select[aria-label="On click"]'];
+    for (const selector of controls) expect(wrapper.get(selector).element.matches(':disabled')).toBe(true);
+    expect(execute).toHaveBeenCalledWith({ type: 'edit', expectedRevision: 1, edits: [{ type: 'text', nodeId: 'heading', text: 'First edit' }] });
+    if (success) {
+      const saved = structuredClone(workspace);
+      saved.document!.revision = 2;
+      saved.document!.content.artboards[0].root.children![0].text = 'First edit';
+      resolve({ workspace: saved });
+    } else reject(new Error('Save failed'));
+    await flushPromises();
+    for (const selector of controls) expect(wrapper.get(selector).element.matches(':disabled')).toBe(false);
+    expect((wrapper.get('textarea[aria-label="Text"]').element as HTMLTextAreaElement).value).toBe('First edit');
+    expect(wrapper.get('[data-action="apply"]').element.matches(':disabled')).toBe(success);
+    await wrapper.get('textarea[aria-label="Text"]').setValue('Second edit');
+    expect((wrapper.get('textarea[aria-label="Text"]').element as HTMLTextAreaElement).value).toBe('Second edit');
+    expect(wrapper.get('[data-action="apply"]').element.matches(':disabled')).toBe(false);
+  } finally { wrapper.unmount(); }
+});
 
 // Isolated editor failure modes: saving the wrong stable target, dropping a draft
 // on a background revision, stale overwrite, and granting preview app authority.
