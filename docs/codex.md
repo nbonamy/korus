@@ -43,11 +43,14 @@ transcript store. Desktop and companion hosts resolve the same references. File 
 diff references; selecting a file fetches its exact patch in bounded chunks, separately
 from the current working-tree source.
 
-Mobile bounds retained media and attachment previews to 24 MiB, counting encoded
-bytes and decoded pixels. Two preview loads run at a time. Eviction clears image
-sources and revokes owned blob URLs; a user can reload an evicted preview or open an
-over-budget image in the native viewer. Provider history, transient decoding, and
-the native fullscreen viewer are outside this preview budget.
+The shared renderer loads media and attachment previews near the chat viewport,
+with two concurrent reads and stable preview frames. Retained encoded bytes plus
+decoded pixels are bounded to 24 MiB on mobile and 64 MiB on desktop. Offscreen
+previews are evicted before visible ones and reload automatically on return;
+oversized or failed previews remain explicitly retryable. Independent desktop
+image tabs own their blob URLs until closed, rather than borrowing an evictable
+transcript URL. Provider history, transient decoding, browser caches, and separate
+image viewers are outside the transcript preview budget.
 
 ## Process And Home
 

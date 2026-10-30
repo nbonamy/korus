@@ -619,11 +619,23 @@ function openConversationImage(image: CodexMessageImage, context?: CodexMessageI
       ...(durablePath ? { subtitle: durablePath, path: durablePath } : {}),
       ...(image.mimeType ? { mimeType: image.mimeType } : {}),
       alt: image.alt || title,
-      src: image.src,
-      state: 'idle',
+      src: image.src.startsWith('blob:') ? '' : image.src,
+      state: image.src.startsWith('blob:') ? 'loading' : 'idle',
       error: null,
     },
   };
+  if (image.src.startsWith('blob:')) {
+    const panel = workspace.imagePanels[tab]!;
+    // Start fetching synchronously while the SDK preview lease is still alive.
+    void fetch(image.src).then(response => response.blob()).then(blob => {
+      if (workspace.imagePanels[tab] !== panel) return;
+      const url = URL.createObjectURL(blob);
+      panel.src = url; panel.state = 'idle';
+    }).catch(() => {
+      if (workspace.imagePanels[tab] !== panel) return;
+      panel.state = 'error'; panel.error = 'Image is unavailable.';
+    });
+  }
   openRightWorkspaceTab(tab, agent.id);
   return true;
 }

@@ -5,7 +5,8 @@ import { appApi } from '../platform-api';
 /** Keep attachment capabilities native; read conversation file images on their owning host. */
 export function provideConversationImagePreviews(agentId: () => string | undefined): void {
   const host = useCodexHostCapabilities();
-  if (!host) return;
+  // Native mobile hosts already provide their own reader and smaller preview pool.
+  if (!host || !appApi) return;
   provideCodexHostCapabilities({
     ...host,
     async readImagePreview(reference) {
@@ -23,7 +24,7 @@ export function provideConversationImagePreviews(agentId: () => string | undefin
       const preview = await appApi.previewAgentFile(owner, filePath);
       return preview.kind === 'image' ? preview.dataUrl ?? null : null;
     },
-  });
+  }, { imagePreviewBudgetBytes: 64 * 1024 * 1024, viewportImageLoading: true });
 }
 
 function localImagePath(reference: string): string | null {

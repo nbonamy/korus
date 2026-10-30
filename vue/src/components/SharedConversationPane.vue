@@ -115,7 +115,7 @@ provideCodexHostCapabilities({
     if (props.view.status !== 'ready' || !appApi) return null;
     try { return (await appApi.guestConversationImage(props.view.id, reference)).dataUrl; } catch { return null; }
   },
-});
+}, { imagePreviewBudgetBytes: 64 * 1024 * 1024, viewportImageLoading: true });
 const snapshot = computed(() => props.view.frame?.payload.snapshot);
 // Guests can submit follow-ups, but cannot stop the owner's active turn.
 const writerBusy = computed(() => Boolean(props.view.status === 'ready' && props.view.proposalState?.writeAccess && snapshot.value?.busy));

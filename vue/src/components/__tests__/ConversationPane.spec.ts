@@ -71,7 +71,7 @@ const executionPlan: ThreadPlan = {
 const nativeWindow = window as Window & { codexAppSdkNative?: CodexNativeRendererApi };
 
 describe('ConversationPane', () => {
-  afterEach(() => { delete nativeWindow.codexAppSdkNative; });
+  afterEach(() => { delete nativeWindow.codexAppSdkNative; vi.unstubAllGlobals(); });
   it('loads consecutive older Claude pages when more history remains', async () => {
     const snapshot = createInitialSnapshot();
     const owner = { ...agent, backend: 'claude' as const, backendSession: { kind: 'claude' as const, sessionId: 'session', transport: 'stdio' as const } };
@@ -148,7 +148,7 @@ describe('ConversationPane', () => {
     const owner = { ...agent, id: 'background-image-owner', backend };
     const wrapper = mountPane({ controller: controllerFor([{ ...messages[1]!, agentId: owner.id, parts: [{ type: 'text', text: `![Blue flower](<${reference}>)` }] }]), agent: owner });
     await flushPromises();
-    expect(wrapper.get('img.chat-media-block__image').attributes('src')).toBe('data:image/png;base64,cG5n');
+    expect(wrapper.get('img.chat-media-block__image').attributes('src')).toBe('blob:preview');
     expect(previewAgentFile).toHaveBeenCalledWith(owner.id, filePath);
   });
 
@@ -160,7 +160,7 @@ describe('ConversationPane', () => {
     setElectronTestClient({ readConversationContent });
     const wrapper = mountPane({ controller: controllerFor([{ ...messages[1]!, parts: [{ type: 'media', media: { url: reference, mimeType: 'image/png' } }] }]), agent });
     await flushPromises();
-    expect(wrapper.get('img.chat-media-block__image').attributes('src')).toBe(dataUrl);
+    expect(wrapper.get('img.chat-media-block__image').attributes('src')).toBe('blob:preview');
     expect(readConversationContent).toHaveBeenCalledExactlyOnceWith(agent.id, { sessionId: 'thread', contentId: 'a'.repeat(64), offset: 0 });
   });
 
@@ -187,6 +187,7 @@ describe('ConversationPane', () => {
     const previewAgentFile = vi.fn().mockResolvedValue({ kind: 'image', path: '/repo/banner.png', size: 3, dataUrl: 'data:image/png;base64,cG5n' });
     setElectronTestClient({ previewAgentFile });
     const wrapper = mountPane({ controller: controllerFor([{ ...messages[1]!, parts: [{ type: 'text', text: '![Banner](/repo/banner.png)' }] }]), agent: claudeAgent });
+    await flushPromises();
     await wrapper.setProps({ agent: { ...claudeAgent, id: 'different-agent' } });
     release();
     await flushPromises();
@@ -202,7 +203,7 @@ describe('ConversationPane', () => {
       kind: 'image', name: 'Upload', path: 'codex-attachment:upload', mimeType: 'image/png',
     } }] }]), agent: claudeAgent });
     await flushPromises();
-    expect(wrapper.get('img.chat-attachment-block__preview').attributes('src')).toBe('data:image/png;base64,cG5n');
+    expect(wrapper.get('img.chat-attachment-block__preview').attributes('src')).toBe('blob:preview');
     expect(previewAgentFile).not.toHaveBeenCalled();
   });
 
@@ -213,7 +214,7 @@ describe('ConversationPane', () => {
     const wrapper = mountPane({ controller: controllerFor([{ ...messages[1]!, parts: [{ type: 'text', text: '![Banner](/repo/banner.png)' }] }]), agent: claudeAgent });
     await flushPromises();
     expect(previewAgentFile).toHaveBeenCalledWith(claudeAgent.id, '/repo/banner.png');
-    expect(wrapper.get('img.chat-media-block__image').attributes('src')).toBeUndefined();
+    expect(wrapper.find('img.chat-media-block__image').exists()).toBe(false);
   });
 
   it('reads the full content of a cut row by itself, with nothing to click', async () => {
@@ -1098,6 +1099,12 @@ describe('ConversationPane', () => {
 });
 
 function installNativeImagePreview(readImagePreview: NonNullable<CodexNativeRendererApi['readImagePreview']>): void {
+  vi.stubGlobal('URL', Object.assign(class extends URL {}, { createObjectURL: () => 'blob:preview', revokeObjectURL: vi.fn() }));
+  vi.stubGlobal('fetch', vi.fn(async () => ({ blob: async () => ({ size: 3 }) })));
+  vi.stubGlobal('Image', class {
+    naturalWidth = 1; naturalHeight = 1; onload: (() => void) | null = null;
+    set src(value: string) { if (value) queueMicrotask(() => this.onload?.()); }
+  });
   nativeWindow.codexAppSdkNative = {
     capabilities: { attachments: true, clipboard: true, externalLinks: true, transcription: false },
     readImagePreview, copyToClipboard: vi.fn(), ingestAttachments: vi.fn(), openExternal: vi.fn(), pickAttachments: vi.fn(), transcribeAudio: vi.fn(),
