@@ -508,7 +508,7 @@ test('conversation images open the native viewer through the SDK action without 
   } finally { await browser?.close(); await server.close(); }
 });
 
-test('image previews bound concurrent reads and retained memory, and release resources on conversation change', async () => {
+test('image previews follow the viewport with stable geometry, bounded caching and conversation cleanup', async () => {
   const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
   let browser;
   try {
@@ -533,27 +533,40 @@ test('image previews bound concurrent reads and retained memory, and release res
     await page.goto(`${server.resolvedUrls.local[0]}transcript.html`); await page.waitForFunction(() => window.companionTranscript);
     await page.evaluate(async () => {
       const agent = {id:'images-budget',name:'Images',backend:'codex',status:{type:'idle'}};
-      window.imageBudgetConversation = {agentId:agent.id,agent,ready:true,frame:{agentId:agent.id,backend:'codex',payload:{snapshot:{messages:Array.from({length:12},(_,i)=>({id:`shot-${i}`,role:'assistant',parts:[i % 2 ? {type:'attachment',attachment:{kind:'image',path:`/tmp/shot-${i}.png`,name:`Shot ${i}`}} : {type:'media',media:{url:`/tmp/shot-${i}.png`,title:`Shot ${i}`}}]})),turns:[],busy:false}}}};
+      window.imageBudgetConversation = {agentId:agent.id,agent,ready:true,frame:{agentId:agent.id,backend:'codex',payload:{snapshot:{messages:Array.from({length:12},(_,i)=>({id:`shot-${i}`,role:'assistant',parts:[{type:'text',text:'Context for screenshot '+i+'\n\n'+('Context line\n\n'.repeat(12))}, i % 2 ? {type:'attachment',attachment:{kind:'image',path:`/tmp/shot-${i}.png`,name:`Shot ${i}`}} : {type:'media',media:{url:`/tmp/shot-${i}.png`,title:`Shot ${i}`}}]})),turns:[],busy:false}}}};
       await window.companionTranscript.setConversation(JSON.stringify(window.imageBudgetConversation));
     });
-    await page.waitForFunction(() => window.imageReads.length === 12 && window.activeReads === 0);
+    await page.waitForFunction(() => window.imageReads.length > 0 && window.activeReads === 0);
+    await page.waitForTimeout(250);
+    const initialReads = await page.evaluate(() => window.imageReads.length);
+    assert.ok(initialReads < 6, `offscreen images should not fetch (read ${initialReads})`);
+    const shot = i => page.getByRole('button', {name: `Open Shot ${i}`, exact:true});
+    for (let i = 0; i < 12; i++) {
+      await shot(i).evaluate(el => el.scrollIntoView({block:'center'}));
+      const before = await shot(i).boundingBox();
+      await page.waitForFunction(i => document.querySelector(`[aria-label="Open Shot ${i}"] img`)?.naturalWidth === 1024, i);
+      assert.deepEqual(await shot(i).boundingBox(), before, 'loading cannot change the preview frame');
+    }
+    await page.waitForFunction(() => window.activeReads === 0);
     assert.ok(await page.evaluate(() => window.peakReads <= 2), 'preview reads must be bounded');
-    await page.waitForFunction(() => window.revokedImages > 0 && !document.body.textContent.includes('Loading image…'));
+    await page.waitForFunction(() => !document.body.textContent.includes('Loading image…'));
     assert.ok(await page.evaluate(() => window.imageUrls.size <= 5), 'decoded pixels count toward the 24 MiB budget');
-    const first = page.getByRole('button', {name:'Open Shot 0',exact:true});
-    assert.match(await first.textContent(), /Load image/);
-    await first.click();
-    await page.waitForFunction(() => window.imageReads.length === 13 && window.activeReads === 0);
+    const readsBeforeReturn = await page.evaluate(() => window.imageReads.filter(e => e.path === '/tmp/shot-0.png').length);
+    await shot(0).evaluate(el => el.scrollIntoView({block:'center'}));
     await page.waitForFunction(() => document.querySelector('[aria-label="Open Shot 0"] img')?.naturalWidth === 1024);
+    assert.ok(await page.evaluate(count => window.imageReads.filter(e => e.path === '/tmp/shot-0.png').length > count, readsBeforeReturn), 'evicted previews reload on return without a tap');
+    const settledReads = await page.evaluate(() => window.imageReads.length);
+    await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => window.imageReads.length), settledReads, 'memory pressure must not cause a fetch loop');
     const evidence = await page.evaluate(() => ({peakReads:window.peakReads,retainedImages:window.imageUrls.size,evictions:window.revokedImages}));
     await page.evaluate(async () => { const c = window.imageBudgetConversation; c.frame.payload.snapshot.messages=[]; await window.companionTranscript.setConversation(JSON.stringify(c)); });
     await page.waitForFunction(() => window.imageUrls.size === 0);
     await page.evaluate(async () => { const c = window.imageBudgetConversation; c.frame.payload.snapshot.messages=[{id:'large',role:'assistant',parts:[{type:'media',media:{url:'/tmp/large.png',title:'Large image'}}]}]; await window.companionTranscript.setConversation(JSON.stringify(c)); });
-    await page.waitForFunction(() => window.imageReads.length === 14 && window.activeReads === 0 && !document.body.textContent.includes('Loading image…'));
+    await page.waitForFunction(() => window.imageReads.some(e => e.path === '/tmp/large.png') && window.activeReads === 0 && !document.body.textContent.includes('Loading image…'));
     assert.equal(await page.evaluate(() => window.imageUrls.size), 0, 'over-budget images must not stay retained');
     await page.getByRole('button',{name:'Open Large image',exact:true}).click();
     await page.waitForFunction(() => window.openedImages.some(image => image.title === 'Large image'));
     await mkdir('out', {recursive:true});
-    await writeFile(`out/image-memory-${process.env.TRANSCRIPT_BROWSER || 'chromium'}.json`, JSON.stringify({...evidence,releasedOnClose:true},null,2));
+    await writeFile(`out/image-memory-${process.env.TRANSCRIPT_BROWSER || 'chromium'}.json`, JSON.stringify({...evidence,initialReads,viewportReload:true,stableGeometry:true,releasedOnClose:true},null,2));
   } finally { await browser?.close(); await server.close(); }
 });
