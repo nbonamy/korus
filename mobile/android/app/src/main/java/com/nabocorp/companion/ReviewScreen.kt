@@ -20,11 +20,24 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import org.json.JSONObject
 
+@Composable internal fun ReviewFindingsButton(count: Int, enabled: Boolean, open: () -> Unit) {
+    TextButton(onClick = open, enabled = enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
+        Icon(Icons.Outlined.Checklist, null)
+        Spacer(Modifier.width(10.dp))
+        Text("Review findings · $count", style = MaterialTheme.typography.titleSmall)
+        Spacer(Modifier.weight(1f))
+        Icon(Icons.Outlined.ChevronRight, null)
+    }
+}
+
 /** A native navigation destination; Back returns to the unchanged conversation draft. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun ReviewScreen(model: CompanionModel) {
     val state = model.state
     val review = state.obj("review")
+    val details = review.optJSONObject("details")
+    val session = details?.optJSONObject("session")
+    if (details != null && session != null) { CodeReviewLedgerScreen(model, details, session); return }
     val setup = review.optJSONObject("setup")
     val status = review.string("status")
     val starting = status == "starting"
@@ -41,6 +54,7 @@ import org.json.JSONObject
         leading = if (starting) null else ({ AppBarIcon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, "Back to conversation", onClick = model::dismissReview) }),
         footer = if (ready) ({ AppProminentButton("Start Review", connected && state.optBoolean("canSend") && status == "ready" && choices.input(setup!!) != null) { model.startReview(choices) } }) else null, scroll = false) {
         when {
+            review.string("action") == "completed" -> AppUnavailable("Review complete", Modifier.weight(1f), Icons.Outlined.CheckCircle)
             starting -> AppProgress("Starting your review", Icons.Outlined.Checklist, "${model.productName} is preparing the reviewer.")
             setup?.optBoolean("activeReview") == true -> AppUnavailable("Review already started", Modifier.weight(1f), Icons.Outlined.Checklist, "Open the reviewer’s conversation to follow its progress.") {
                 setup.string("reviewerAgentId").takeIf { it.isNotBlank() }?.let { id -> AppUnavailableAction("Open Review Conversation", { model.selectAgent(id) }) }
@@ -62,6 +76,7 @@ import org.json.JSONObject
 @Composable private fun ReviewForm(setup: JSONObject, choices: ReviewChoices, busy: Boolean, status: String,
     choose: (ReviewChoices) -> Unit, provider: (String) -> Unit, refresh: () -> Unit, modifier: Modifier) {
     val efforts = setup.items("models").firstOrNull { it.string("id") == choices.model }?.strings("efforts").orEmpty()
+    val tiers = setup.items("models").firstOrNull { it.string("id") == choices.model }?.items("tiers").orEmpty()
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState()).testTag("review-form").padding(bottom = 24.dp)) {
         AppSection("Scope") {
             ReviewChoice("Uncommitted Changes", if (setup.optBoolean("uncommitted")) "Staged and unstaged changes in this workspace." else "No uncommitted changes.", Icons.Outlined.Difference,
@@ -81,9 +96,12 @@ import org.json.JSONObject
             AppDivider()
             NativeChoicePicker("Model", "Reviewer model", choices.model,
                 listOf("" to if (setup.string("backend") == setup.string("agentBackend")) "Current Model" else "Default Model") + setup.items("models").map { it.string("id") to it.string("name") }, !busy) { id ->
-                choose(choices.copy(model = id, effort = choices.effort.takeIf { effort -> setup.items("models").firstOrNull { it.string("id") == id }?.strings("efforts")?.contains(effort) == true }.orEmpty()))
+                val selected = setup.items("models").firstOrNull { it.string("id") == id }
+                choose(choices.copy(model = id, effort = choices.effort.takeIf { selected?.strings("efforts")?.contains(it) == true }.orEmpty(),
+                    serviceTier = choices.serviceTier?.takeIf { tier -> selected?.items("tiers")?.any { it.string("id") == tier } == true }))
             }
             if (efforts.isNotEmpty()) { AppDivider(); NativeChoicePicker("Reasoning", "Reviewer reasoning", choices.effort, listOf("" to "Default") + efforts.map { it to it.replaceFirstChar(Char::uppercase) }, !busy) { choose(choices.copy(effort = it)) } }
+            if (tiers.isNotEmpty()) { AppDivider(); NativeChoicePicker("Service Tier", "Reviewer service tier", choices.serviceTier.orEmpty(), listOf("" to "Standard") + tiers.map { it.string("id") to it.string("name") }, !busy) { choose(choices.copy(serviceTier = it.ifBlank { null })) } }
         }
         AppSection("Additional Instructions") {
             OutlinedTextField(value = choices.instructions, onValueChange = { choose(choices.copy(instructions = it)) }, enabled = !busy,

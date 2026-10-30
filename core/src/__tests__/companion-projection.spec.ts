@@ -16,6 +16,17 @@ const teams = [{ id: 'team', name: 'Korus', agentIds: [] }];
 const sidebar = (projected: ReturnType<typeof projectCompanionWorkspace>) => projectWorkspaceSidebar({ agents: projected.agents, activeAgentId: null, quickChatsLabel: 'Chats' });
 
 describe('companion workspace projection', () => {
+  it('exposes only the active-round count for visible reviewer conversations', () => {
+    const review: NonNullable<Agent['codeReview']> = { id: 'review', targetAgentId: 'target', reviewerAgentId: 'reviewer', scope: { type: 'uncommitted' }, threadMode: 'independent', status: 'ready', activeRoundId: 'round', createdAt: now, updatedAt: now,
+      rounds: [{ id: 'round', number: 1, status: 'ready', startedAt: now, findings: [{ id: 'f', roundId: 'round', title: 'Private finding', body: 'Details stay on demand', priority: 'p2', decision: { state: 'undecided' }, remediation: { state: 'notStarted' }, discussion: [], createdAt: now, updatedAt: now }] }] };
+    const agents = [agent('target', {}), agent('reviewer', { codeReview: review }), agent('outside', { teamId: 'other', codeReview: review })];
+    const read = () => projectCompanionWorkspace(companionWorkspaceOf({ teams, agents, general: {} as AppSnapshot['general'] }));
+    expect(read().reviewFindings).toStrictEqual({ reviewer: 1 });
+    expect(JSON.stringify(read())).not.toContain('Private finding');
+    review.activeRoundId = 'next'; review.rounds.push({ id: 'next', number: 2, status: 'reviewing', startedAt: now, findings: [] });
+    expect(read().reviewFindings).toStrictEqual({ reviewer: 0 });
+    review.status = 'finished'; expect(read().reviewFindings).toStrictEqual({});
+  });
   it('shares Git counts and desktop scopes without host paths or eager diff contents', () => {
     const summary = { changedFiles: 2, addedLines: 7, removedLines: 3 };
     const catalog = { defaultTarget: { type: 'uncommitted' as const }, uncommitted: summary, staged: summary,

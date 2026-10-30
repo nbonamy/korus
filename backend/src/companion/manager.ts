@@ -26,7 +26,7 @@ import { warnMain } from '../log';
 import { systemHostName } from './host-name';
 import { setTimeout as delay } from 'node:timers/promises';
 import { storePromptUploads } from './uploads';
-import { readReviewSetup } from './review-setup';
+import { readReviewSetup, readReviewSession, actOnReview } from './review-setup';
 import { CompanionProjectAcquisition } from './project-acquisition';
 import { resolveRepositorySession } from '../projects/repository-session';
 import { supportsSubscriptionQuota } from '@workspace/core/agent-backends';
@@ -331,6 +331,8 @@ export class CompanionManager {
       setApprovalPreset: async (agentId, preset) => { await this.backend.request(backendMethods.agentApprovalPresetUpdate, { agentId, preset, _clientId: 'companion-write' }); },
       setPermissionMode: async (agentId, mode) => { await this.backend.request(backendMethods.agentPermissionModeUpdate, { agentId, mode, _clientId: 'companion-write' }); },
       startReview: async (agentId, input) => (await this.backend.request<CreatedAgentResult>(backendMethods.agentCodeReviewStart, { agentId, input, entityResult: true, _clientId: 'companion-write' })).agentId,
+      readReview: agentId => readReviewSession(this.backend, peerIdFromPrivateKey(this.key).toString(), agentId),
+      reviewAction: (agentId, input) => actOnReview(this.backend, agentId, input),
       reviewSetup: (agentId, backend) => readReviewSetup(this.backend, peerIdFromPrivateKey(this.key).toString(), agentId, backend),
       selectModel: async (agentId, selection) => { await this.backend.request(backendMethods.agentUpdate, { input: { id: agentId, selection }, _clientId: 'companion-write' }); },
       save: (gateway) => this.persist((saved) => ({ ...saved, gateway })),

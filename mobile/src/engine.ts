@@ -54,6 +54,7 @@ export type EngineState = {
   groups: MobileSidebarGroup[];
   activityGroups: MobileActivityGroup[];
   agentId: string;
+  reviewFindingsCount: number | null;
   header: { title: string; repository: string | null; status: string; statusText: string; icon: string | null } | null;
   loading: boolean;
   conversationReady: boolean;
@@ -163,6 +164,8 @@ export type EngineCommand =
   | { type: 'approvalPreset'; preset: string } | { type: 'permissionMode'; mode: string }
   | { type: 'delegate'; startingContext: 'conversation' | 'handoff'; instructions?: string }
   | { type: 'loadReview'; backend?: 'codex' | 'claude' | 'antigravity' } | { type: 'dismissReview' }
+  | { type: 'loadReviewDetails' }
+  | { type: 'reviewAction'; target: CompanionTarget; input: import('@workspace/core/companion-review').CompanionReviewAction }
   | { type: 'review'; target: CompanionTarget; input: CompanionReviewInput };
 
 export type EnginePort = { connector: CompanionConnector; selectionStore?: SelectionStore; chatsLabel?: string; initialActive?: boolean; incrementalTranscript?: boolean; post(event: EngineEvent): void };
@@ -326,6 +329,7 @@ export function createEngine(port: EnginePort) {
       goal: agent?.goal ? { objective: agent.goal.objective, status: agent.goal.status } : null,
       goalBusy: state.goalBusy.value, goalError: state.goalError.value,
       review: state.review.value,
+      reviewFindingsCount: agent ? state.workspace.value.reviewFindings?.[agent.id] ?? null : null,
       loading: state.loading.value && !hasConversation.value, canSend: state.canSend.value, draft: state.draft.value.text,
       conversationReady: state.conversationReady.value, refreshing: state.refreshing.value,
       conversationGeneration: state.conversationGeneration.value,
@@ -676,6 +680,8 @@ export function createEngine(port: EnginePort) {
       case 'approvalPreset': return state.setApprovalPreset(command.preset);
       case 'permissionMode': return state.setPermissionMode(command.mode);
       case 'delegate': return state.delegate({ startingContext: command.startingContext, ...(command.instructions ? { instructions: command.instructions } : {}) });
+      case 'loadReviewDetails': return state.loadReviewDetails();
+      case 'reviewAction': return state.actOnReview(command.target, command.input);
       case 'loadReview': return state.loadReview(command.backend);
       case 'dismissReview': return state.dismissReview();
       case 'review': await state.startReview(command.input, command.target); return rememberSelection();

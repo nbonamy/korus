@@ -155,6 +155,7 @@ final class AppModel {
         }
     }
     var reviewState = ReviewState()
+    var reviewFindingsCount: Int?
     var mentions = EngineState.Suggestions()
     var skills = EngineState.Suggestions()
     private var conversationRead = ConversationReadState()
@@ -342,7 +343,13 @@ final class AppModel {
         set(\.planMode, state.composer.planMode)
         set(\.approvalPreset, state.permissions.approvalPreset)
         set(\.approvalPresets, state.permissions.presets)
-        if let target = composerDrafts.target, target != state.composerTarget { reviewOpen = false; presentedImage = nil; changesOpen = false; filePreviewOpen = false }
+        if let target = composerDrafts.target, target != state.composerTarget {
+            let sameReview = reviewState.details?.session?.id != nil && reviewState.details?.session?.id == state.review?.details?.session?.id
+                && target.hostId == state.composerTarget?.hostId && target.locationId == state.composerTarget?.locationId
+                && target.teamId == state.composerTarget?.teamId && target.agentId == state.composerTarget?.agentId
+            if !sameReview { reviewOpen = false }
+            presentedImage = nil; changesOpen = false; filePreviewOpen = false
+        }
         composerDrafts.select(state.composerTarget)
         set(\.supportsGoals, state.capabilities.goals ?? false)
         set(\.goal, state.goal)
@@ -350,6 +357,7 @@ final class AppModel {
         set(\.goalError, state.goalError ?? false)
         if !supportsGoals || planMode { composerDrafts.setGoalMode(false) }
         set(\.reviewState, state.review ?? ReviewState())
+        set(\.reviewFindingsCount, state.reviewFindingsCount)
         if state.review?.status == .started { reviewOpen = false }
         set(\.supportsAttachments, state.capabilities.attachments)
         set(\.canSend, state.canSend)

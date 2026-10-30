@@ -206,6 +206,9 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                                 Column {
                                     ConversationHeader(model, wide) { coroutine.launch { drawer.open() } }
                                     MissionContextBar(model)
+                                    if (state.has("reviewFindingsCount") && !state.isNull("reviewFindingsCount")) {
+                                        ReviewFindingsButton(state.optInt("reviewFindingsCount"), model.canManageSession, model::openReview)
+                                    }
                                 }
                             },
                             bottomBar = { if (!model.filePreviewOpen && state.string("agentId").isNotBlank()) Column {

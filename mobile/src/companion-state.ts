@@ -20,7 +20,7 @@ import { composerCapabilitiesFor, promptOptionsFor } from './composer-settings';
 import { createGitChanges } from './git-changes';
 import { reconcileWorkspace } from './workspace-reconcile';
 import type { DraftState, DraftStore } from './protected-storage';
-import type { CompanionReviewSetup } from '@workspace/core/companion-review';
+import type { CompanionReviewSetup, CompanionReviewDetails, CompanionReviewAction } from '@workspace/core/companion-review';
 
 export function createCompanionState(connector: CompanionConnector, store?: DraftStore, resolveUploads?: (references: readonly { type?: string; reference: string }[] | undefined) => CompanionUpload[], onNotification?: (notification: CompanionNotification) => void) {
   let pushRegistration: CompanionPushRegistration | null | undefined;
@@ -134,19 +134,69 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const skills = skillList.state;
   const pluginList = createRemoteList<BackendPluginSummary>(remote, {});
   const plugins = pluginList.state;
-  const review = shallowRef<{ status: 'idle' | 'loading' | 'ready' | 'failed' | 'starting' | 'started' | 'unknown'; setup: CompanionReviewSetup | null }>({ status: 'idle', setup: null });
+  const review = shallowRef<{ status: 'idle' | 'loading' | 'ready' | 'failed' | 'starting' | 'started' | 'unknown'; setup: CompanionReviewSetup | null; details?: CompanionReviewDetails; action?: 'idle' | 'working' | 'unknown' | 'failed' | 'completed' }>({ status: 'idle', setup: null });
   let reviewEpoch = 0;
   function dismissReview() { ++reviewEpoch; review.value = { status: 'idle', setup: null }; }
   const stopReview = watch(() => JSON.stringify([laptopId.value, status.value, agent.value?.id, agent.value?.backend, agent.value?.folder, agent.value?.teamId,
-    agent.value?.remoteConnectionId, agent.value && companionSessionId(agent.value)]), dismissReview, { flush: 'sync' });
+    agent.value?.remoteConnectionId, agent.value && companionSessionId(agent.value)]), (next, previous) => {
+      // Independent reviewers reset their provider session between rounds. Keep the ledger
+      // visible, invalidate its old target, and read it again under the new session identity.
+      if (review.value.details?.session && previous && JSON.stringify(JSON.parse(next).slice(0, -1)) === JSON.stringify(JSON.parse(previous).slice(0, -1))) {
+        ++reviewEpoch; review.value = { ...review.value, action: 'failed' }; void loadReviewDetails();
+      } else dismissReview();
+    }, { flush: 'sync' });
   async function loadReview(backend?: AgentBackend) {
     const active = session; const id = agentId.value; const epoch = ++reviewEpoch;
     review.value = { status: 'loading', setup: review.value.setup };
     try {
-      if (!active?.reviewSetup || !id || status.value !== 'connected') throw new Error('Review unavailable.');
+      if (!active || !id || status.value !== 'connected') throw new Error('Review unavailable.');
+      if (active.readReview) {
+        // An existing review must remain accessible even if model discovery is unavailable.
+        const details = await active.readReview(id).catch(() => null);
+        if (epoch !== reviewEpoch || active !== session) return;
+        if (details?.session) { review.value = { status: 'ready', setup: null, details, action: 'idle' }; return; }
+      }
+      if (!active.reviewSetup) throw new Error('Review unavailable.');
       const setup = await active.reviewSetup(id, backend);
-      if (epoch === reviewEpoch && active === session) review.value = { status: 'ready', setup };
+      if (epoch === reviewEpoch && active === session) {
+        review.value = { status: 'ready', setup };
+      }
     } catch { if (epoch === reviewEpoch) review.value = { status: 'failed', setup: review.value.setup }; }
+  }
+  let detailsRequest = 0;
+  let pendingDetails: number | null = null;
+  async function loadReviewDetails() {
+    const active = session; const id = agentId.value; const epoch = reviewEpoch;
+    if (!active?.readReview || !id || status.value !== 'connected' || pendingDetails !== null || review.value.action === 'working') return;
+    const request = ++detailsRequest; pendingDetails = request;
+    try {
+      const details = await active.readReview(id);
+      if (epoch === reviewEpoch && active === session) review.value = { ...review.value, details, action: 'idle' };
+    } catch {
+      if (epoch === reviewEpoch) review.value = { ...review.value, action: review.value.action === 'unknown' ? 'unknown' : 'failed' };
+    } finally { if (pendingDetails === request) pendingDetails = null; }
+  }
+  async function actOnReview(target: CompanionTarget, input: CompanionReviewAction) {
+    const active = session; const details = review.value.details; const current = currentTarget();
+    if (!active?.reviewAction || !details?.session || status.value !== 'connected' || !sameTarget(target, details.target)
+      || !current || !sameTarget(target, current) || ['working', 'unknown', 'failed'].includes(review.value.action ?? '')) return;
+    if (input.sessionId !== details.session.id || input.roundId !== details.session.activeRoundId || input.updatedAt !== details.session.updatedAt) {
+      review.value = { ...review.value, action: 'failed' }; return;
+    }
+    // A refresh begun before this action cannot unlock controls or replace its receipt.
+    const epoch = ++reviewEpoch; pendingDetails = null;
+    review.value = { ...review.value, action: 'working' };
+    try {
+      await active.reviewAction(target, input);
+      if (epoch !== reviewEpoch || active !== session) return;
+      if (input.action === 'finish' || (input.action === 'discard' && details.session.automation?.state !== 'running')) {
+        review.value = { ...review.value, details: { ...details, session: null }, action: 'completed' };
+        await refreshWorkspace(active);
+      } else {
+        review.value = { ...review.value, action: 'idle' };
+        await loadReviewDetails();
+      }
+    } catch { if (epoch === reviewEpoch) review.value = { ...review.value, action: 'unknown' }; }
   }
   async function startReview(input: CompanionReviewInput, target: import('@workspace/core/companion-protocol').CompanionTarget) {
     const active = session; const setup = review.value.setup; const epoch = reviewEpoch;
@@ -734,7 +784,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     chatCreation, createChat, createQuickChat, createProject, duplicateAgent, dismissChatCreation,
     // Lists read from the laptop on demand.
     usage, loadUsage, branches, loadBranches, dismissBranches, projectBranches, loadProjectBranches, dismissProjectBranches,
-    projectRepositories, loadProjectRepositories, dismissProjectRepositories, review, loadReview, startReview, dismissReview, git,
+    projectRepositories, loadProjectRepositories, dismissProjectRepositories, review, loadReview, loadReviewDetails, actOnReview, startReview, dismissReview, git,
     dispose() {
       git.dispose(); receiptCallbacks.clear(); disposed = true; reconnectWanted = false; closeSession();
       stopProjects(); dismissProjectRepositories(); stopUsage(); stopSkills(); skillList.reset(); stopPlugins(); pluginList.reset();

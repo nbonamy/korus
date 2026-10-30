@@ -3,10 +3,10 @@ import XCTest
 @testable import CompanionComposer
 
 final class ReviewSetupTests: XCTestCase {
-    private func setup(current: Bool = false) -> ReviewSetup {
+    private func setup(current: Bool = false, tiers: [ReviewSetup.Model.Tier]? = nil) -> ReviewSetup {
         .init(target: .init(hostId: "host", locationId: "local", teamId: "team", agentId: "agent", sessionId: nil),
               branch: "feature", baseRef: "main", uncommitted: false, branchChanges: true, currentThread: current, activeReview: false,
-              agentBackend: "codex", backend: "claude", backends: ["codex", "claude"], models: [.init(id: "review", name: "Review", efforts: ["high"])],
+              agentBackend: "codex", backend: "claude", backends: ["codex", "claude"], models: [.init(id: "review", name: "Review", efforts: ["high"], tiers: tiers)],
               preferences: .init(providers: ["claude": .init(model: "review", reasoningEffort: "high")]))
     }
 
@@ -22,6 +22,11 @@ final class ReviewSetupTests: XCTestCase {
         XCTAssertFalse(try XCTUnwrap(choices.input(setup)).automation.autoCommit)
         choices.automatic = true
         XCTAssertTrue(try XCTUnwrap(choices.input(setup)).automation.autoCommit)
+        choices.serviceTier = "fast"
+        XCTAssertEqual(try XCTUnwrap(choices.input(self.setup(tiers: [.init(id: "fast", name: "Fast")]))).selection?.serviceTier, "fast")
+        XCTAssertNil(try XCTUnwrap(choices.input(self.setup(tiers: []))).selection?.serviceTier)
+        choices.model = ""
+        XCTAssertNil(try XCTUnwrap(choices.input(setup)).selection?.serviceTier)
         choices.scope = "uncommitted"
         XCTAssertNil(choices.input(setup))
     }
