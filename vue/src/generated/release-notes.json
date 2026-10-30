@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.46.0",
+  "currentVersion": "0.47.0",
   "releases": [
+    {
+      "version": "0.47.0",
+      "releasedAt": "2026-10-29",
+      "sourceSha256": "bfa54e1ae53a559f4ce7de082ae0b2781bbbc24f6259a081ceb31846d3058efc",
+      "markdown": "### New features\n\n- **Remote agents in any team:** Mix local and SSH-hosted agents in the same team,\n  with Host selectors and connection indicators.\n- **Cockpit:** See activity across all teams in a shared sidebar with clearer\n  status sections and Mission progress.\n- **Repository commands:** Discover and pin commands from package.json, Makefiles\n  and Justfiles, then run, stop and inspect their output from the workspace.\n- **Guest write access:** See connected guest names and enable writing\n  individually. Guests remain read-only by default.\n- **Mission stage backtracking:** Return to earlier stages to add or revise\n  tickets, preserving completed work and rerunning changed tickets.\n- **Missions in Command-K:** Open each Mission through one entry and return to\n  its last selected agent.\n- **Implement:** Turn proposed work into implementation in the current conversation.\n- **Review last commit:** Review the latest commit alongside the existing\n  uncommitted-change and branch options.\n- **Faster Visualize:** Bare `/visualize` asks one question with three proposals\n  and Other; specific requests generate directly.\n- **Codex history summaries:** Open historical conversations with prompts and\n  final answers first, then use **View details** to load a turn's Working content.\n\n### Improvements and fixes\n\n- Retry remaining Mission Review findings after partial fixes, retaining\n  completed fixes and their evidence across restarts.\n- Restore historical tool images and load images and large content on demand,\n  with cached previews and correct image proportions.\n- Improve visualization rendering, canvas saving and retries, image sharpness\n  and narrow-pane controls.\n- Keep the Cost chart continuous and GitHub activity visible while changing\n  Analytics filters.\n- Place duplicated, forked and independent review agents directly below their\n  source conversation.\n- Keep Backlog ticket details available while work is in progress, using a\n  document action.\n- Use lighter Command-K typography, consistent icons, compact creation controls\n  and an inline merge recipient selector.\n- Keep queued prompts and Backlog actions within narrow layouts.\n- Remove the artificial review deadline and keep branch reviews focused on\n  their changes when behind main.\n- Preserve shared-conversation metadata across restarts and show SSH connection\n  health independently of provider state.\n- Clear stale work and review suggestions at the next turn, and exclude hidden\n  Mission workers from Dock and team unread badges."
+    },
     {
       "version": "0.46.0",
       "releasedAt": "2026-10-28",

@@ -4,6 +4,54 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.47.0] - 2026-10-29
+
+### New features
+
+- **Remote agents in any team:** Mix local and SSH-hosted agents in the same team,
+  with Host selectors and connection indicators.
+- **Cockpit:** See activity across all teams in a shared sidebar with clearer
+  status sections and Mission progress.
+- **Repository commands:** Discover and pin commands from package.json, Makefiles
+  and Justfiles, then run, stop and inspect their output from the workspace.
+- **Guest write access:** See connected guest names and enable writing
+  individually. Guests remain read-only by default.
+- **Mission stage backtracking:** Return to earlier stages to add or revise
+  tickets, preserving completed work and rerunning changed tickets.
+- **Missions in Command-K:** Open each Mission through one entry and return to
+  its last selected agent.
+- **Implement:** Turn proposed work into implementation in the current conversation.
+- **Review last commit:** Review the latest commit alongside the existing
+  uncommitted-change and branch options.
+- **Faster Visualize:** Bare `/visualize` asks one question with three proposals
+  and Other; specific requests generate directly.
+- **Codex history summaries:** Open historical conversations with prompts and
+  final answers first, then use **View details** to load a turn's Working content.
+
+### Improvements and fixes
+
+- Retry remaining Mission Review findings after partial fixes, retaining
+  completed fixes and their evidence across restarts.
+- Restore historical tool images and load images and large content on demand,
+  with cached previews and correct image proportions.
+- Improve visualization rendering, canvas saving and retries, image sharpness
+  and narrow-pane controls.
+- Keep the Cost chart continuous and GitHub activity visible while changing
+  Analytics filters.
+- Place duplicated, forked and independent review agents directly below their
+  source conversation.
+- Keep Backlog ticket details available while work is in progress, using a
+  document action.
+- Use lighter Command-K typography, consistent icons, compact creation controls
+  and an inline merge recipient selector.
+- Keep queued prompts and Backlog actions within narrow layouts.
+- Remove the artificial review deadline and keep branch reviews focused on
+  their changes when behind main.
+- Preserve shared-conversation metadata across restarts and show SSH connection
+  health independently of provider state.
+- Clear stale work and review suggestions at the next turn, and exclude hidden
+  Mission workers from Dock and team unread badges.
+
 ## [0.46.0] - 2026-10-28
 
 ### New features
