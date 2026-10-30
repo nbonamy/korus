@@ -51,16 +51,19 @@ afterEach(() => {
 });
 
 describe('AppShell dialogs and commands', () => {
-  it('loads the selected summary turn through the desktop action without fetching other history', async () => {
+  it.each(['codex', 'claude'] as const)('loads the selected %s summary turn through the desktop action without fetching other history', async (backend) => {
     const snapshot = createInitialSnapshot(); const agent = snapshot.agents[0]!;
     const turn = { id: 'older-turn', itemsView: 'summary' as const, status: 'completed' as const, error: null, willRetry: false,
       startedAt: '2026-01-01T00:00:00Z', completedAt: '2026-01-01T00:01:49Z', durationMs: 109000 };
-    const conversation = codexConversationSnapshot([
-      { ...codexTextMessage('prompt', 'user', 'Check this change.'), turnId: turn.id },
-      { ...codexTextMessage('answer', 'assistant', 'The change is ready.'), turnId: turn.id },
-    ], { turns: [turn], turnIds: [turn.id] });
+    const rows = [
+      { id: 'prompt', agentId: agent.id, role: 'user' as const, status: 'complete' as const, createdAt: '', turnId: turn.id, parts: [{ type: 'text' as const, text: 'Check this change.' }] },
+      { id: 'answer', agentId: agent.id, role: 'assistant' as const, status: 'complete' as const, createdAt: '', turnId: turn.id, parts: [{ type: 'text' as const, text: 'The change is ready.' }] },
+    ];
+    const conversation = codexConversationSnapshot(rows, { turns: [turn], turnIds: [turn.id] });
     const loadAgentTurnHistory = vi.fn().mockResolvedValue(undefined);
-    const wrapper = mountShell({ snapshot, stubAgentWorkspace: false, realConversationPane: true, codexConversationSnapshot: conversation });
+    if (backend === 'claude') { agent.backend = 'claude'; agent.backendSession = { kind: 'claude', sessionId: 'session', transport: 'stdio' }; }
+    const wrapper = mountShell({ snapshot, stubAgentWorkspace: false, realConversationPane: true,
+      ...(backend === 'codex' ? { codexConversationSnapshot: conversation } : { claudeConversationSnapshot: claudeConversationSnapshot(rows, { turns: [turn], turnIds: [turn.id] }) }) });
     try {
       await wrapper.setProps({ loadAgentTurnHistory }); await flushPromises();
       expect(wrapper.text()).toContain('The change is ready.');

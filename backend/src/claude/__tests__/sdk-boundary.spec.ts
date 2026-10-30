@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { product } from '@workspace/core/product';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { SDKAssistantMessage, SDKPartialAssistantMessage, SDKTaskStartedMessage } from '@anthropic-ai/claude-agent-sdk';
@@ -161,6 +161,81 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     expect(restored?.type === 'claude.conversationSnapshotChanged' && restored.payload.snapshot.messages.slice(1).map(message => message.id)).toStrictEqual(expectedIds);
   });
 
+  it('hydrates selected Claude turns through RPC after compaction, interruption and reasoning without leaking other work', async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), 'korus-claude-summary-')); homes.push(home);
+    const sessionId = '22222222-2222-4222-8222-222222222222';
+    const project = path.join(home, '.claude', 'projects', '-tmp-project'); await mkdir(project, { recursive: true });
+    const rows = Array.from({ length: 70 }, (_, i) => [
+      { type: 'user', uuid: `prompt-${i}`, promptId: `turn-${i}`, timestamp: '2026-01-01T00:00:00Z', message: { content: `Request ${i}` } },
+      ...(i === 68 ? [] : [{ type: 'assistant', uuid: `work-${i}`, timestamp: '2026-01-01T00:00:01Z', message: { content: [
+        ...(i === 67 ? [{ type: 'thinking', thinking: 'Private reasoning 67' }] : []),
+        { type: 'text', text: `PRIVATE COMMENTARY ${i}` },
+        { type: 'tool_use', id: `read-${i}`, name: 'Read', input: { file_path: `/synthetic/file-${i}` } },
+      ] } },
+      { type: 'user', uuid: `result-${i}`, message: { content: [{ type: 'tool_result', tool_use_id: `read-${i}`, content: `PRIVATE OUTPUT ${i} 工具🙂 ` + 'x'.repeat(20000) }] } }]),
+      ...(i === 65 ? [
+        { type: 'system', subtype: 'compact_boundary', uuid: 'compact-65', timestamp: '2026-01-01T00:00:20Z' },
+        { type: 'user', uuid: 'context-65', promptId: 'turn-65', isCompactSummary: true, isVisibleInTranscriptOnly: true, message: { content: 'INTERNAL COMPACTION CONTEXT' } },
+      ] : []),
+      ...(i === 69 ? [{ type: 'user', uuid: 'interrupt-69', promptId: 'turn-69', timestamp: '2026-01-01T00:00:30Z', message: { content: '[Request interrupted by user for tool use]' } }] : []),
+      ...(i === 66 ? [] : [{ type: 'assistant', uuid: `answer-${i}`, timestamp: '2026-01-01T00:01:49Z', message: { content: [{ type: 'text', text: i === 69 ? 'No response requested.' : `Final answer ${i}` }] } }]),
+    ]).flat();
+    await writeFile(path.join(project, `${sessionId}.jsonl`), rows.map(row => JSON.stringify(row)).join('\r\n'));
+    const { server, snapshot, events } = setup(false, undefined, [], home);
+    const owner = snapshot.agents[0]!; owner.backendSession = { kind: 'claude', sessionId, transport: 'stdio' };
+    const frames = () => events.filter((event): event is Extract<AppBackendEvent, { type: 'claude.conversationSnapshotChanged' | 'claude.conversationEventReceived' }> => event.agentId === owner.id && (event.type === 'claude.conversationSnapshotChanged' || event.type === 'claude.conversationEventReceived'));
+    const read = () => {
+      let replica: ClaudeConversationReplica | undefined;
+      for (const raw of frames()) {
+        const frame = decodeAppBackendEvent(JSON.parse(JSON.stringify(raw)));
+        if (frame.type === 'claude.conversationSnapshotChanged') replica = createClaudeConversationReplica(frame.payload.snapshot);
+        if (frame.type === 'claude.conversationEventReceived') replica?.apply(frame.payload.event);
+      }
+      return replica!.getSnapshot();
+    };
+    await server.handleMessage({ jsonrpc: '2.0', id: 'load', method: 'agent/conversation/load', params: { agentId: owner.id } });
+    const initialFrames = structuredClone(frames());
+    expect(JSON.stringify(read()).includes('PRIVATE')).toBe(false);
+    expect(JSON.stringify(read())).not.toContain('INTERNAL COMPACTION CONTEXT');
+    expect(JSON.stringify(read())).not.toContain('[Request interrupted by user for tool use]');
+    expect(new Set(read().turnIds).size).toBe(70);
+    expect(read().turns.find(turn => turn.id === 'claude-turn-68')?.itemsView).toBe('full');
+    expect(new Set(read().messages.map(message => message.id)).size).toBe(read().messages.length);
+    const file = path.join(project, `${sessionId}.jsonl`);
+    await rename(file, `${file}.offline`);
+    const failureStart = frames().length;
+    await expect(server.handleMessage({ jsonrpc: '2.0', id: 'unavailable', method: 'agent/conversation/turn/history/load', params: { agentId: owner.id, turnId: 'claude-turn-65' } })).rejects.toThrow('history is unavailable');
+    expect(read().turns.find(turn => turn.id === 'claude-turn-65')).toMatchObject({ itemsView: 'summary', detailsLoading: false, detailsError: expect.any(String) });
+    const failedExpansion = { turnId: 'claude-turn-65', frames: structuredClone(frames().slice(failureStart)), error: 'Details unavailable' };
+    await rename(`${file}.offline`, file);
+    const expansions: Array<{ turnId: string; frames: ReturnType<typeof frames> }> = [];
+    for (const i of [65, 66, 67, 69]) {
+      const turnId = `claude-turn-${i}`; const before = frames().length;
+      const expand = (suffix: string) => server.handleMessage({ jsonrpc: '2.0', id: `expand-${i}-${suffix}`, method: 'agent/conversation/turn/history/load', params: { agentId: owner.id, turnId } });
+      await Promise.all(i === 67 ? [expand('first'), expand('concurrent')] : [expand('first')]);
+      expect(frames().slice(before).filter(frame => frame.type === 'claude.conversationEventReceived' && frame.payload.event.type === 'turn.historyUpdated' && frame.payload.event.payload.turn.detailsLoading)).toHaveLength(1);
+      expansions.push({ turnId, frames: structuredClone(frames().slice(before)) });
+      const turn = read().turns.find(turn => turn.id === turnId)!;
+      expect(turn).toMatchObject({ itemsView: 'full', detailsLoading: false, detailsError: null });
+      expect(JSON.stringify(read().messages.filter(message => message.turnId === turnId))).toContain(`PRIVATE OUTPUT ${i}`);
+      expect(JSON.stringify(read().messages)).not.toContain('PRIVATE OUTPUT 64');
+      const after = frames().length;
+      await server.handleMessage({ jsonrpc: '2.0', id: `cached-${i}`, method: 'agent/conversation/turn/history/load', params: { agentId: owner.id, turnId } });
+      expect(frames()).toHaveLength(after);
+    }
+    expect(frames().every(frame => Buffer.byteLength(JSON.stringify(frame)) < 4 * 1024 * 1024)).toBe(true);
+    await server.handleMessage({ jsonrpc: '2.0', id: 'reopen', method: 'agent/conversation/load', params: { agentId: owner.id } });
+    for (const i of [65, 66, 67, 69]) expect(read().turns.find(turn => turn.id === `claude-turn-${i}`)?.itemsView).toBe('full');
+    const original = rows.map(row => JSON.stringify(row)).join('\r\n');
+    await writeFile(file, original.replace('PRIVATE OUTPUT 64', 'CHANGED OUTPUT 64'));
+    await expect(server.handleMessage({ jsonrpc: '2.0', id: 'changed-file', method: 'agent/conversation/turn/history/load', params: { agentId: owner.id, turnId: 'claude-turn-64' } })).rejects.toThrow('history changed');
+    await writeFile(file, original + '\r\n' + JSON.stringify({ type: 'queue-operation', operation: 'enqueue', content: 'Later native append' }));
+    await server.handleMessage({ jsonrpc: '2.0', id: 'append-safe', method: 'agent/conversation/turn/history/load', params: { agentId: owner.id, turnId: 'claude-turn-64' } });
+    expect(JSON.stringify(read().messages.filter(message => message.turnId === 'claude-turn-64'))).toContain('PRIVATE OUTPUT 64');
+    if (process.env.APP_CLAUDE_HISTORY_EVIDENCE) await writeFile(process.env.APP_CLAUDE_HISTORY_EVIDENCE,
+      JSON.stringify({ agent: owner, initialFrames, failedExpansion, expansions }, null, 2));
+  });
+
   it('restores turn timing from native history and preserves a running turn when reloaded', async () => {
     const home = await mkdtemp(path.join(os.tmpdir(), 'korus-claude-timing-'));
     homes.push(home);
@@ -192,7 +267,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     await driver.loadConversation(owner);
     expect(read().turns).toStrictEqual([{
       id: 'claude-prompt', status: 'completed', error: null, willRetry: false,
-      startedAt, completedAt, durationMs: 278_000,
+      startedAt, completedAt, durationMs: 278_000, itemsView: 'full',
     }]);
     expect(read().turnIds).toStrictEqual(['claude-prompt']);
 

@@ -50,8 +50,10 @@ export function applyClaudeConversationEvent(
     const message = event.payload.message;
     if (message.agentId !== snapshot.agentId || event.backendSessionId !== snapshot.sessionId) return;
     const index = snapshot.messages.findIndex((candidate) => candidate.id === message.id);
-    if (index < 0) snapshot.messages.push(message);
-    else snapshot.messages[index] = message;
+    if (index < 0) {
+      const before = snapshot.messages.findIndex(candidate => candidate.id === event.payload.beforeMessageId);
+      snapshot.messages.splice(before < 0 ? snapshot.messages.length : before, 0, message);
+    } else snapshot.messages[index] = message;
     return;
   }
   if (event.type === 'context.usageUpdated') {
@@ -165,7 +167,7 @@ export function applyClaudeConversationEvent(
     return;
   }
 
-  if (event.type === 'clientRequest.resolved') return;
+  if (event.type === 'clientRequest.resolved' || event.type === 'turn.historyUpdated') return;
 
   const exhaustiveEvent: never = event;
   void exhaustiveEvent;

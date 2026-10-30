@@ -192,7 +192,7 @@ describe('claudeTranscriptToRendererMessages', () => {
         kind: 'compaction',
         role: 'assistant',
         status: 'complete',
-        turnId: 'claude-compact-boundary-1',
+        turnId: 'claude-prompt-1',
         createdAt: '2026-08-10T12:00:02.000Z',
         parts: [],
       },
@@ -302,7 +302,10 @@ describe('loadClaudeTranscriptHistory', () => {
       updatedAt: '2026-06-06T00:00:00.000Z',
     };
 
-    await expect(loadClaudeTranscriptHistory(agent, { projectsRoot })).resolves.toStrictEqual({
+    const history = await loadClaudeTranscriptHistory(agent, { projectsRoot });
+    const { source, ...restored } = history!;
+    expect(await source!.readAll()).toStrictEqual(restored.messages);
+    expect(restored).toStrictEqual({
       turnBoundaries: { 'claude-prompt-1': 'assistant-1' },
       nativeMessageTurnIds: { 'user-1': 'claude-prompt-1', 'assistant-1': 'claude-prompt-1' },
       turns: [{

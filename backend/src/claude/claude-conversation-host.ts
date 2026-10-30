@@ -156,7 +156,8 @@ export class ClaudeConversationHost implements AgentBackendDriver {
   private readonly taskPlansByAgentId = new Map<string, ClaudeTaskPlan>();
   private readonly conversationRevisionsByAgentId = new Map<string, number>();
   private readonly historyWindows = new Map<string, ClaudeHistoryWindow>();
-  private readonly historyLoads = new Map<string, symbol>();
+  private readonly pendingTurnHistory = new Map<string, { window: ClaudeHistoryWindow; promise: Promise<void> }>();
+  private readonly historyLoads = new Map<string, { token: symbol; sessionId: string | null }>();
   private readonly pendingRequestOwners = new Map<string, ActiveClaudeTurn>();
   private readonly liveSessionIdsByAgentId = new Map<string, string>();
   private readonly subagents = new ClaudeSubagents(event => this.emit(event));
@@ -570,7 +571,9 @@ export class ClaudeConversationHost implements AgentBackendDriver {
 
   async releaseConversation(agentId: string): Promise<void> {
     this.subagents.release(agentId);
+    const releasedWindow = this.historyWindows.get(agentId);
     this.historyWindows.delete(agentId);
+    for (const [key, pending] of this.pendingTurnHistory) if (pending.window === releasedWindow) this.pendingTurnHistory.delete(key);
     this.historyLoads.delete(agentId);
     this.turnBoundariesByAgentId.delete(agentId);
     this.goalRefreshIds.delete(agentId);
@@ -594,10 +597,17 @@ export class ClaudeConversationHost implements AgentBackendDriver {
 
   async loadConversation(agent: Agent): Promise<BackendSession | null> {
     const sessionId = claudeSessionId(agent);
-    const load = Symbol();
+    const load = { token: Symbol(), sessionId };
     this.historyLoads.set(agent.id, load);
     const startingRevision = this.conversationRevisionsByAgentId.get(agent.id);
     const hasLiveSession = () => sessionId !== null && this.liveSessionIdsByAgentId.get(agent.id) === sessionId;
+    const cachedWindow = this.historyWindows.get(agent.id);
+    const cached = this.conversationReplicasByAgentId.get(agent.id)?.getSnapshot();
+    if (!hasLiveSession() && cached?.sessionId === sessionId && cachedWindow && await cachedWindow.isCurrent()) {
+      if (this.historyLoads.get(agent.id) !== load || this.conversationRevisionsByAgentId.get(agent.id) !== startingRevision) return null;
+      this.publishConversationSnapshot(cached);
+      return agent.backendSession ?? null;
+    }
     const history = hasLiveSession() ? null : await this.loadHistory(agent);
     if (this.historyLoads.get(agent.id) !== load) return null;
     const current = this.conversationReplicasByAgentId.get(agent.id)?.getSnapshot();
@@ -617,6 +627,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       history.messages,
       history.taskPlan,
       history.turns,
+      history.source,
     );
     for (const event of history.subagentEvents ?? []) this.emit(event);
 
@@ -638,6 +649,54 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     const frame = this.emitConversation({ agentId: agent.id, backend: 'claude', backendSessionId: window.sessionId ?? undefined,
       type: 'history.prepended', payload: page });
     return { hasOlder: page.hasOlder, frame };
+  }
+
+  async loadTurnHistory(agent: Agent, turnId: string): Promise<void> {
+    const window = this.historyWindows.get(agent.id);
+    const snapshot = this.conversationReplicasByAgentId.get(agent.id)?.getSnapshot();
+    if (!window || !snapshot || window.sessionId !== claudeSessionId(agent) || snapshot.sessionId !== window.sessionId) {
+      throw new Error('Claude history is no longer open. Reload the conversation.');
+    }
+    const turn = snapshot.turns.find(candidate => candidate.id === turnId);
+    if (!turn || !snapshot.messages.some(message => message.turnId === turnId)) throw new Error('Claude turn is no longer available. Reload the conversation.');
+    if (!window.isSummaryTurn(turnId)) return;
+    const key = JSON.stringify([agent.id, turnId]);
+    const existing = this.pendingTurnHistory.get(key);
+    if (existing?.window === window) return existing.promise;
+    const current = () => this.historyWindows.get(agent.id) === window
+      && (!this.historyLoads.has(agent.id) || this.historyLoads.get(agent.id)!.sessionId === snapshot.sessionId)
+      && this.conversationReplicasByAgentId.get(agent.id)?.getSnapshot().sessionId === snapshot.sessionId;
+    const publishTurn = (update: Partial<ClaudeConversationTurn>) => this.emitConversation({
+      agentId: agent.id, backend: 'claude', backendSessionId: snapshot.sessionId ?? undefined,
+      type: 'turn.historyUpdated', payload: { turn: { ...turn, ...update } },
+    });
+    const promise = (async () => {
+      publishTurn({ detailsLoading: true, detailsError: null });
+      try {
+        const messages = await window.expandTurn(turnId);
+        if (!current()) throw new Error('Claude history is no longer open. Reload the conversation.');
+        const latest = this.conversationReplicasByAgentId.get(agent.id)!.getSnapshot();
+        window.capture(latest.messages);
+        const latestIds = new Set(latest.messages.map(message => message.id));
+        const visible = new Set([...window.visibleMessageIds()].filter(id => latestIds.has(id)));
+        // Live rows after the selected history were delivered incrementally, not by the last reset.
+        for (const message of latest.messages) if (!window.isHistoricalMessage(message.id)) visible.add(message.id);
+        for (const message of messages) {
+          const beforeMessageId = window.nextVisibleMessage(message.id, visible);
+          this.emitConversation({ agentId: agent.id, backend: 'claude', backendSessionId: snapshot.sessionId ?? undefined,
+            type: 'message.replaced', payload: { message, ...(beforeMessageId ? { beforeMessageId } : {}) } });
+          visible.add(message.id);
+        }
+        window.reveal(messages);
+        publishTurn({ itemsView: 'full', detailsLoading: false, detailsError: null });
+      } catch (error) {
+        if (current()) publishTurn({ itemsView: 'summary', detailsLoading: false, detailsError: error instanceof Error ? error.message : String(error) });
+        throw error;
+      }
+    })();
+    this.pendingTurnHistory.set(key, { window, promise });
+    try { await promise; }
+    finally { if (this.pendingTurnHistory.get(key)?.promise === promise) this.pendingTurnHistory.delete(key); }
   }
 
   async readConversationContent(agent: Agent, input: import('@workspace/core/contracts/conversation').ConversationContentInput): Promise<import('@workspace/core/contracts/conversation').ConversationContentChunk> {
@@ -663,7 +722,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     }
 
     const backendSession = claudeBackendSession(ref.sessionId, undefined, undefined, currentTranscriptFolder);
-    const load = Symbol();
+    const load = { token: Symbol(), sessionId: ref.sessionId };
     this.historyLoads.set(agent.id, load);
     const revision = this.conversationRevisionsByAgentId.get(agent.id);
     const history = await this.loadHistory({
@@ -783,6 +842,12 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     if (history?.backendSession.kind === 'claude') {
       await this.flushPromptContent(history.backendSession.sessionId);
       await restorePromptContent(this.promptContentHome(), history.backendSession.sessionId, history.messages);
+      const source = history.source;
+      if (source) {
+        const home = this.promptContentHome(); const sessionId = history.backendSession.sessionId;
+        const restore = async (messages: RendererMessage[]) => { await restorePromptContent(home, sessionId, messages); return messages; };
+        history.source = { ...source, readTurn: async id => restore(await source.readTurn(id)), readAll: async () => restore(await source.readAll()) };
+      }
     }
     return history;
   }
@@ -862,6 +927,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     this.conversationReplicasByAgentId.clear();
     this.taskPlansByAgentId.clear();
     this.historyWindows.clear();
+    this.pendingTurnHistory.clear();
     this.historyLoads.clear();
     this.conversationRevisionsByAgentId.clear();
     this.liveSessionIdsByAgentId.clear();
@@ -1758,9 +1824,10 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     messages: RendererMessage[],
     taskPlan = new ClaudeTaskPlan(),
     turns: ClaudeConversationTurn[] = [],
+    source?: import('./history-source').ClaudeHistorySource,
   ): void {
     this.taskPlansByAgentId.set(agent.id, taskPlan);
-    const window = new ClaudeHistoryWindow(sessionId, messages);
+    const window = new ClaudeHistoryWindow(sessionId, messages, new Set(turns.filter(turn => turn.status !== 'inProgress').map(turn => turn.id)), source);
     this.historyWindows.set(agent.id, window);
     const page = window.older();
     this.publishConversationSnapshot({
@@ -1768,7 +1835,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       sessionId,
       activeTurnId: null,
       turnIds: turns.map(turn => turn.id),
-      turns,
+      turns: turns.map(turn => ({ ...turn, itemsView: window.isSummaryTurn(turn.id) ? 'summary' : 'full' })),
       messages: page.messages,
       answeredClientRequestIds: [],
       busy: false,
@@ -1794,8 +1861,9 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     let publishedSnapshot = snapshot;
     if (window) {
       publishedSnapshot = { ...snapshot, messages: window.reopen(snapshot.messages),
+        turns: snapshot.turns.map(turn => window.isSummaryTurn(turn.id) ? { ...turn, itemsView: 'summary' } : turn),
         historyState: { hasOlder: window.hasOlder, loadingOlder: false } };
-      snapshot = { ...snapshot, historyState: publishedSnapshot.historyState };
+      snapshot = { ...snapshot, turns: publishedSnapshot.turns, historyState: publishedSnapshot.historyState };
     }
     const revision = this.nextConversationRevision(snapshot.agentId);
     this.conversationReplicasByAgentId.set(
