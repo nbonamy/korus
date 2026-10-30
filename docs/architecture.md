@@ -403,6 +403,12 @@ Rules:
 - `sessionKind` distinguishes quick chats from agents; Git identity only enables
   repository grouping and actions. Closing a quick chat deletes its provider
   session (archive if the driver cannot delete); closing any other agent archives.
+- Quick Chats remain workspace-free and belong to their team. Session configuration
+  supplies the team's project names and local or remote folder locations, grouping
+  linked worktrees by repository. This catalog excludes conversations, agent activity
+  and Mission-owned workspaces; it is not shared team memory or file content.
+  Quick Chats can refresh project folders through the read-only team roster lookup.
+  Project context does not authorize contacting teammates or changing files.
 
 ### Provider Homes
 

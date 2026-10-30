@@ -368,8 +368,15 @@ describe('collaboration across daemon ownership boundaries', () => {
     expect(await owner.server.readTaskHistory(owner.server.collaborationAgents().find(agent => agent.id === workerId)!)).toStrictEqual([]);
     expect(remoteConversation.handle.readHistory).toHaveBeenCalledOnce();
     expect(owner.provider.conversation('remote-worker').handle.readHistory).not.toHaveBeenCalled();
+    // A project lookup must preserve the host of folders discovered after session configuration.
     const roster = await workerHost.mcp.callTool(workerId, 'list-agents', {});
-    expect(roster.structuredContent?.agents).toEqual(expect.arrayContaining([expect.objectContaining({ id: parent.id }), expect.objectContaining({ id: workerId })]));
+    const agents = roster.structuredContent?.agents as Array<{ id: string }>;
+    expect(agents.filter(agent => [parent.id, workerId].includes(agent.id))).toStrictEqual([
+      { id: parent.id, name: parent.name, folder: parent.folder, status: expect.any(String) },
+      { id: workerId, name: expect.any(String), folder: '/remote/remote-inspection', status: expect.any(String), remoteConnectionId: 'connection-devbox' },
+    ]);
+    const localRoster = await owner.mcp.callTool(parent.id, 'list-agents', {});
+    expect(localRoster.structuredContent).toStrictEqual(roster.structuredContent);
     expect((await workerHost.mcp.callTool(workerId, 'send-message', { to: parent.id, content: 'Remote question' })).isError).toBe(false);
     await vi.waitFor(() => expect(owner.provider.conversation('local-parent').handle.sendMessage).toHaveBeenCalledOnce());
     expect((await owner.mcp.callTool(parent.id, 'send-message', { to: workerId, content: 'Local answer' })).isError).toBe(false);

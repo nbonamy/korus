@@ -475,6 +475,7 @@ const heroHeadline = computed(() => {
 const heroSubhead = computed(() => {
   if (props.emptySubhead !== undefined) return props.emptySubhead;
   if (!props.agent) return translate('surface.conversationPane.chooseAnAgentFromTheLeftToStartANativeBackendSession');
+  if (props.agent.sessionKind === 'quickChat' && !props.agent.sharedConversation) return t('chat.quickChatContext');
   return props.agent.folder;
 });
 function collaborationMessageLabel(messageId: string | undefined): string | null {

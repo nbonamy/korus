@@ -12,6 +12,8 @@ export type McpAgentInfo = {
   name: string;
   folder: string | null;
   status: string;
+  /** Host owning the folder; absent for local agents. */
+  remoteConnectionId?: string;
 };
 
 export type McpMessage = {
@@ -661,6 +663,7 @@ export class AppMcpAgentCoordinator {
       name: agentDisplayName(agent),
       folder: agent.folder,
       status: agent.statusText ? `${agentStatusLabel(agent.status)}: ${agent.statusText}` : agentStatusLabel(agent.status),
+      ...(agent.remoteConnectionId ? { remoteConnectionId: agent.remoteConnectionId } : {}),
     };
   }
 
