@@ -660,6 +660,35 @@ try {
   assert.deepEqual(recoveryErrors, []);
   await writeFile(path.join(output, 'recovery.json'), JSON.stringify((await design({ type: 'read' })).workspace, null, 2));
   record('Range and type changes retain the captured tweak preview, reject reinterpretation and allow explicit discard without rendering errors.');
+  for (const removal of ['control', 'element', 'artboard']) {
+    await design({ type: 'edit', expectedRevision: recoveryRevision, edits: [
+      { type: 'artboard-add', artboard: { id: 'preview-recovery', title: 'Preview recovery', width: 800, height: 600, root: { id: 'preview-root', tag: 'main', children: [{ id: 'preview-target', tag: 'h1', text: 'Saved target', styles: { padding: '32px' } }] } } },
+      { type: 'tweak-set', tweak: { ...originalSpacing, id: 'preview-spacing', nodeId: 'preview-target', property: 'padding' } },
+    ] });
+    await design({ type: 'select', artboardId: 'preview-recovery', nodeId: 'preview-target' });
+    await page.reload();
+    await page.getByRole('tab', { name: 'Tweaks', exact: true }).click();
+    const preview = page.getByRole('slider', { name: 'Spacing', exact: true });
+    await preview.evaluate(input => { input.value = '56'; input.dispatchEvent(new Event('input', { bubbles: true })); });
+    recoveryRevision++;
+    const edit = removal === 'control' ? { type: 'tweak-remove', tweakId: 'preview-spacing' } : removal === 'element' ? { type: 'remove', nodeId: 'preview-target' } : { type: 'artboard-remove', artboardId: 'preview-recovery' };
+    await design({ type: 'edit', expectedRevision: recoveryRevision, edits: [edit] });
+    await waitRevision(++recoveryRevision);
+    const discard = page.getByRole('button', { name: 'Discard draft and reload', exact: true });
+    await discard.waitFor({ state: 'visible', timeout: 3000 });
+    await page.screenshot({ path: path.join(output, `removed-tweak-${removal}.png`) });
+    await discard.click();
+    await page.getByRole('button', { name: 'Play', exact: true }).and(page.locator(':enabled')).waitFor({ state: 'visible' });
+    const recovered = (await design({ type: 'read' })).workspace.document;
+    assert.equal(recovered.revision, recoveryRevision, 'Discarding a removed tweak preview must not save content.');
+    if (removal === 'control') assert.equal(recovered.content.artboards.find(board => board.id === 'preview-recovery').root.children[0].styles.padding, '32px');
+    if (removal !== 'artboard') {
+      await design({ type: 'edit', expectedRevision: recoveryRevision, edits: [{ type: 'artboard-remove', artboardId: 'preview-recovery' }] });
+      await waitRevision(++recoveryRevision);
+    }
+  }
+  assert.deepEqual(recoveryErrors, []);
+  record('Removing a previewed control, its element or its artboard keeps discard reachable and unlocks editing without saving the pending value.');
   if (live) {
     const designerId = snapshot.agents[1].id;
     console.log('Checking live provider generation in the isolated profile.');

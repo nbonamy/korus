@@ -1,7 +1,7 @@
 <template>
   <section class="design-panel" :aria-label="t('design.title')" :data-revision="revision">
-    <div v-if="error || draftTargetRemoved" class="design-panel__error" role="alert">
-      <span>{{ error || t('design.targetRemoved') }}</span>
+    <div v-if="error || draftTargetRemoved || tweakDraftRemoved" class="design-panel__error" role="alert">
+      <span>{{ error || t(tweakDraftRemoved ? 'design.tweakChanged' : 'design.targetRemoved') }}</span>
       <button v-if="tweakDraft" type="button" class="app-button app-button--primary" :disabled="busy" @click="retryTweak">{{ t('design.retryTweak') }}</button>
       <button v-if="pendingCanvas" type="button" class="app-button app-button--primary" :disabled="busy" @click="retryCanvas">{{ t('design.retryCanvas') }}</button>
       <button type="button" class="app-button app-button--secondary" data-action="reload" :disabled="busy" @click="reload">{{ t('design.discardReload') }}</button>
@@ -188,6 +188,10 @@ const board = computed(() => current.value.document?.content.artboards.find(item
 const nodes = computed(() => board.value && current.value.document ? designNodes({ ...current.value.document.content, artboards: [board.value] }) : []);
 const draftTargetRemoved = computed(() => dirty.value && !nodes.value.some(node => node.id === draftNodeId.value));
 const tweaks = computed(() => current.value.document?.content.tweaks?.filter(tweak => nodes.value.some(node => node.id === tweak.nodeId)) ?? []);
+const tweakDraftRemoved = computed(() => {
+  const draft = tweakDraft.value;
+  return !!draft && !tweaks.value.some(tweak => tweak.id === draft.tweakId);
+});
 const canvasContent = computed(() => {
   const content = current.value.document?.content;
   if (!content || !tweakDraft.value) return content;
