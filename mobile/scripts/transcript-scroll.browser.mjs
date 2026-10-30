@@ -525,7 +525,9 @@ test('image previews follow the viewport with stable geometry, bounded caching a
         window.imageReads.push(event); window.peakReads = Math.max(window.peakReads, ++window.activeReads);
         setTimeout(() => {
           window.activeReads--;
-          const canvas = document.createElement('canvas'); canvas.width = canvas.height = event.path.endsWith('large.png') ? 3072 : 1024;
+          const canvas = document.createElement('canvas'); const index = Number(/shot-(\d+)/.exec(event.path)?.[1] ?? 2);
+          canvas.width = event.path.endsWith('large.png') ? 3072 : index % 3 === 0 ? 2048 : index % 3 === 1 ? 512 : 1024;
+          canvas.height = event.path.endsWith('large.png') ? 3072 : 1024 * 1024 / canvas.width;
           window.companionTranscript.setImage(JSON.stringify({requestId:event.requestId,agentId:event.agentId,dataUrl:canvas.toDataURL('image/png')}));
         }, 30);
       } } } };
@@ -533,7 +535,7 @@ test('image previews follow the viewport with stable geometry, bounded caching a
     await page.goto(`${server.resolvedUrls.local[0]}transcript.html`); await page.waitForFunction(() => window.companionTranscript);
     await page.evaluate(async () => {
       const agent = {id:'images-budget',name:'Images',backend:'codex',status:{type:'idle'}};
-      window.imageBudgetConversation = {agentId:agent.id,agent,ready:true,frame:{agentId:agent.id,backend:'codex',payload:{snapshot:{messages:Array.from({length:12},(_,i)=>({id:`shot-${i}`,role:'assistant',parts:[{type:'text',text:'Context for screenshot '+i+'\n\n'+('Context line\n\n'.repeat(12))}, i % 2 ? {type:'attachment',attachment:{kind:'image',path:`/tmp/shot-${i}.png`,name:`Shot ${i}`}} : {type:'media',media:{url:`/tmp/shot-${i}.png`,title:`Shot ${i}`}}]})),turns:[],busy:false}}}};
+      window.imageBudgetConversation = {agentId:agent.id,agent,ready:true,frame:{agentId:agent.id,backend:'codex',payload:{snapshot:{messages:Array.from({length:12},(_,i)=>({id:`shot-${i}`,role:'assistant',parts:[{type:'text',text:'Context for screenshot '+i+'\n\n'+('Context line\n\n'.repeat(12))}, i % 2 ? {type:'attachment',attachment:{kind:'image',path:`/tmp/shot-${i}.png`,name:`Shot ${i}`,width:i%3===0?2048:i%3===1?512:1024,height:i%3===0?512:i%3===1?2048:1024}} : {type:'media',media:{url:`/tmp/shot-${i}.png`,title:`Shot ${i}`,width:i%3===0?2048:i%3===1?512:1024,height:i%3===0?512:i%3===1?2048:1024}}]})),turns:[],busy:false}}}};
       await window.companionTranscript.setConversation(JSON.stringify(window.imageBudgetConversation));
     });
     await page.waitForFunction(() => window.imageReads.length > 0 && window.activeReads === 0);
@@ -544,7 +546,9 @@ test('image previews follow the viewport with stable geometry, bounded caching a
     for (let i = 0; i < 12; i++) {
       await shot(i).evaluate(el => el.scrollIntoView({block:'center'}));
       const before = await shot(i).boundingBox();
-      await page.waitForFunction(i => document.querySelector(`[aria-label="Open Shot ${i}"] img`)?.naturalWidth === 1024, i);
+      const expectedRatio = i % 3 === 0 ? 4 : i % 3 === 1 ? 0.25 : 1;
+      assert.ok(Math.abs(before.width / before.height - expectedRatio) < 0.01, 'image placeholder must have its intrinsic ratio');
+      await page.waitForFunction(i => document.querySelector(`[aria-label="Open Shot ${i}"] img`)?.naturalWidth > 0, i);
       assert.deepEqual(await shot(i).boundingBox(), before, 'loading cannot change the preview frame');
     }
     await page.waitForFunction(() => window.activeReads === 0);
@@ -553,7 +557,7 @@ test('image previews follow the viewport with stable geometry, bounded caching a
     assert.ok(await page.evaluate(() => window.imageUrls.size <= 5), 'decoded pixels count toward the 24 MiB budget');
     const readsBeforeReturn = await page.evaluate(() => window.imageReads.filter(e => e.path === '/tmp/shot-0.png').length);
     await shot(0).evaluate(el => el.scrollIntoView({block:'center'}));
-    await page.waitForFunction(() => document.querySelector('[aria-label="Open Shot 0"] img')?.naturalWidth === 1024);
+    await page.waitForFunction(() => document.querySelector('[aria-label="Open Shot 0"] img')?.naturalWidth === 2048);
     assert.ok(await page.evaluate(count => window.imageReads.filter(e => e.path === '/tmp/shot-0.png').length > count, readsBeforeReturn), 'evicted previews reload on return without a tap');
     const settledReads = await page.evaluate(() => window.imageReads.length);
     await page.waitForTimeout(300);

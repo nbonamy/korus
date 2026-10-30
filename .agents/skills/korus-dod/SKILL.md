@@ -39,6 +39,7 @@ use the release row instead of the implementation rows:
 | --- | --- |
 | Docs/config only | `git diff --check` |
 | Scoped code | Focused workspace test and affected workspace typecheck |
+| Mobile-consumed contract or producer, including SDK upgrades | Released-client request/response/event regression through the owning runtime; old behavior retained without a mobile upgrade, with new behavior negotiated or separately versioned |
 | Visible frontend | Scoped-code gates plus one targeted runtime, DOM, or screenshot check |
 | Imports, exports, dependencies, CSS, or shared config | Relevant lint command |
 | Cross-cutting | `npm run test:ai` and affected workspace typechecks |

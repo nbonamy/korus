@@ -17,13 +17,16 @@ describe(`Codex SDK → ${product.name} backend event contract`, () => {
   it('transports image references in snapshots and events and resolves bytes only for the current owning session', async () => {
     const { driver, conversation, events } = setup();
     const agent = sdkAgent();
-    const image = 'data:image/png;base64,' + Buffer.alloc(500_000, 123).toString('base64');
+    const bytes = Buffer.alloc(500_000, 123);
+    Buffer.from('89504e470d0a1a0a0000000d494844520000064000000384', 'hex').copy(bytes);
+    const image = 'data:image/png;base64,' + bytes.toString('base64');
     const message = { id: 'shot', role: 'assistant' as const, status: 'complete' as const, parts: [{ type: 'media' as const, media: { url: image, mimeType: 'image/png' } }] };
     conversation('conversation-a').setSnapshot({ messages: [message] });
     await driver.loadConversation(agent);
     const reset = events.find(event => event.type === 'codex.conversationSnapshotChanged')!;
     expect(JSON.stringify(reset).length).toBeLessThan(10_000);
     const reference = (reset as any).payload.snapshot.messages[0].parts[0].media.url as string;
+    expect((reset as any).payload.snapshot.messages[0].parts[0].media).toMatchObject({width:1600,height:900});
     const contentId = reference.split(':').at(-1)!;
     const input = { sessionId: 'conversation-a', contentId, offset: 0 };
     const chunks: Buffer[] = [];
