@@ -45,8 +45,25 @@ describe('MissionReviewFindings', () => {
     const readOnlyMission = structuredClone(mission);
     readOnlyMission.artifacts.review.findings![0]!.selected = true;
     readOnlyMission.artifacts.review.findings![0]!.remediation = { state: 'fixed', completedAt: 'later', evidence: 'Mission tests pass.' };
-    readOnlyMission.artifacts.review.findings![1]!.remediation = { state: 'skipped', startedAt: 'later' };
     await wrapper.setProps({ mission: readOnlyMission });
+    // Partial remediation keeps the unresolved row selectable and retryable.
+    expect(wrapper.text()).toContain('Mission tests pass.');
+    expect(wrapper.findAll('.review-finding__quick-action')).toHaveLength(2);
+    await wrapper.findAll('.review-finding__toggle')[1]!.trigger('click');
+    await wrapper.findComponent({ name: 'ElSwitch' }).vm.$emit('change', true);
+    await flushPromises();
+    expect(executeMission).toHaveBeenLastCalledWith({ id: mission.id, revision: mission.revision, action: 'selectReviewFinding', findingId: 'finding-skipped', selected: true });
+    readOnlyMission.artifacts.review.findings![1]!.selected = true;
+    await wrapper.setProps({ mission: structuredClone(readOnlyMission) });
+    await wrapper.findAll('button').find(button => button.text().includes('Fix 1 selected'))!.trigger('click');
+    await flushPromises();
+    expect(executeMission).toHaveBeenLastCalledWith({ id: mission.id, revision: mission.revision, action: 'fixSelectedReviewFindings' });
+    readOnlyMission.artifacts.review.findings![1]!.remediation = { state: 'fixing', startedAt: 'later' };
+    await wrapper.setProps({ mission: structuredClone(readOnlyMission) });
+    expect(wrapper.text()).not.toContain('Fix 1 selected');
+    expect(wrapper.findComponent({ name: 'ElSwitch' }).exists()).toBe(false);
+    readOnlyMission.artifacts.review.findings![1]!.remediation = { state: 'skipped', startedAt: 'later' };
+    await wrapper.setProps({ mission: structuredClone(readOnlyMission) });
     expect(wrapper.findComponent({ name: 'ElSwitch' }).exists()).toBe(false);
     expect(wrapper.findAll('.review-finding__quick-action')).toHaveLength(0);
     expect(wrapper.findAll('button').some(button => button.text().includes('Fix 1 selected'))).toBe(false);
@@ -55,6 +72,7 @@ describe('MissionReviewFindings', () => {
     expect(executeMission).toHaveBeenLastCalledWith({ id: mission.id, revision: mission.revision, action: 'rerunReview' });
     expect(wrapper.text()).toContain('Fixed');
     expect(wrapper.text()).toContain('Skipped');
+    await wrapper.findAll('.review-finding__toggle')[0]!.trigger('click');
     expect(wrapper.text()).toContain('Mission tests pass.');
   });
 

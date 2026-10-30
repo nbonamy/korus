@@ -19,6 +19,7 @@ export function isMissionArtifacts(v: unknown): v is MissionArtifacts {
     && (!v.review.pullRequestUrl || /^https?:\/\//.test(v.review.pullRequestUrl));
 }
 function isMissionReviewFinding(v: unknown): v is MissionReviewFinding {
+  const assignment = record(v) ? v.remediationAssignment : undefined;
   return record(v) && text(v.id) && !!v.id.trim()
     && ['p0', 'p1', 'p2', 'p3'].includes(v.priority as string)
     && text(v.title) && !!v.title.trim() && v.title.length <= 80
@@ -27,6 +28,8 @@ function isMissionReviewFinding(v: unknown): v is MissionReviewFinding {
     && (v.location === undefined || (record(v.location) && text(v.location.file) && !!v.location.file.trim()
       && (v.location.line === undefined || (Number.isInteger(v.location.line) && (v.location.line as number) > 0))
       && (v.location.endLine === undefined || (Number.isInteger(v.location.endLine) && (v.location.endLine as number) > 0))))
+    && (assignment === undefined || (record(assignment)
+      && ['reviewRunId', 'workerId', 'repositoryPath', 'startedAt'].every(key => text(assignment[key]) && !!assignment[key].trim())))
     && typeof v.selected === 'boolean'
     && record(v.remediation) && ['open', 'skipped', 'fixing', 'fixed'].includes(v.remediation.state as string)
     && (v.remediation.state !== 'skipped' || text(v.remediation.startedAt))

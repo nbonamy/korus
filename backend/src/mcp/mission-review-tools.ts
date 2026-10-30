@@ -37,7 +37,7 @@ function registerMissionReviewTools(server: McpServer, coordinator: AppMcpAgentC
   })));
 
   server.registerTool('update-mission-review-finding', {
-    description: 'Correct a Mission Review finding or mark it fixed after completing and verifying its remediation.',
+    description: 'Correct a Mission Review finding or record a verified fix with evidence for a user-authorized remediation assignment. Authorization survives turn completion and restart; new findings require Fix selected in Mission Review.',
     inputSchema: {
       findingId: z.string().trim().min(1),
       priority: findingPrioritySchema.optional(),
