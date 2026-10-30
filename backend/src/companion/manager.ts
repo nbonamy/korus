@@ -280,6 +280,7 @@ export class CompanionManager {
         }));
       },
       markRead: async (agentId, revision) => { await this.backend.request(backendMethods.agentMarkRead, { agentId, revision, _clientId: 'companion-read' }); },
+      loadTurnHistory: async (agentId, turnId) => { await this.backend.request(backendMethods.agentConversationTurnHistoryLoad, { agentId, turnId, _clientId: 'companion-read' }); },
       loadOlderHistory: (agentId) => this.backend.request(backendMethods.agentConversationHistoryLoadOlder, { agentId, _clientId: 'companion-read' }),
       readConversationContent: (agentId, input) => this.backend.request(backendMethods.agentConversationContentRead, { agentId, input, _clientId: 'companion-read' }),
       synchronize: (agentId, checkpoint) => this.conversations.synchronize(agentId, checkpoint),
@@ -344,6 +345,7 @@ export class CompanionManager {
       onEvent: listener => { this.eventListeners.add(listener); return () => { this.eventListeners.delete(listener); }; },
       synchronize: (agentId, checkpoint) => this.conversations.synchronize(agentId, checkpoint),
       conversation: agentId => this.conversations.read(agentId),
+      loadTurnHistory: async (agentId, turnId) => { await this.backend.request(backendMethods.agentConversationTurnHistoryLoad, { agentId, turnId, _clientId: 'guest-read' }); },
       loadOlderHistory: agentId => this.backend.request(backendMethods.agentConversationHistoryLoadOlder, { agentId, _clientId: 'guest-read' }),
       readConversationContent: (agentId, input) => this.backend.request(backendMethods.agentConversationContentRead, { agentId, input, _clientId: 'guest-read' }),
       readImage: (agentId, filePath) => readConversationImage(() => this.backend.request(backendMethods.agentFilePreview, { agentId, filePath, _clientId: 'guest-read' })),

@@ -1,6 +1,6 @@
 import { PRIMARY_BROWSER_ID } from '@workspace/core/contracts';
 import type { CodexConversationVisualization } from '@codex-app-sdk/vue';
-import { computed, onScopeDispose, reactive, ref, watch } from 'vue';
+import { computed, onScopeDispose, reactive, ref, watch, watchEffect } from 'vue';
 import type { SidePanelGitDiffState, SidePanelImageState, SidePanelMarkdownState } from './side-panel';
 import {
   isRightWorkspaceBrowserTab,
@@ -50,6 +50,20 @@ export function useRightWorkspaceState(options: {
   workspaceBody: () => HTMLElement | null;
 }) {
   const workspaces = reactive<Record<string, AgentRightWorkspaceState>>({});
+  // Workspace state survives navigation away from AgentWorkspace. Its image
+  // tabs own these URLs independently of both transcript and pane lifetimes.
+  const imageTabUrls = new Set<string>();
+  watchEffect(() => {
+    const sources = new Set(Object.values(workspaces).flatMap(workspace => Object.values(workspace.imagePanels).map(panel => panel?.src)).filter((src): src is string => Boolean(src?.startsWith('blob:'))));
+    for (const url of imageTabUrls) if (!sources.has(url)) { URL.revokeObjectURL(url); imageTabUrls.delete(url); }
+    for (const url of sources) imageTabUrls.add(url);
+  });
+  onScopeDispose(() => {
+    for (const url of imageTabUrls) URL.revokeObjectURL(url);
+    imageTabUrls.clear();
+    // Invalidate pending reads as well as releasing completed images.
+    for (const workspace of Object.values(workspaces)) workspace.imagePanels = {};
+  });
   const resizing = ref(false);
   let stopActiveResize: (() => void) | null = null;
   const visible = computed(() => {

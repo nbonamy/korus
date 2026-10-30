@@ -20,8 +20,9 @@ outcome from the currently selected agent. Legacy snapshot responses retain thei
 shape; client navigation remains separate from the shared product operation.
 
 - Names are `resource[/subresource]/verb`, lower camel case, action last.
-  Renames have no aliases: stale local or remote daemons must be restarted or
-  synced.
+  Desktop-only and backend-internal renames have no aliases: stale local or remote
+  daemons must be restarted or synced. Mobile-consumed contracts follow the
+  compatibility rules below, including when routed through shared backend methods.
 - State-mutating methods return the authoritative `AppSnapshot`. Mutations persist
   before `snapshot.updated` is published. Read acknowledgments use a bounded agent
   metadata event instead of resending the workspace and complete after persistence.
@@ -40,6 +41,29 @@ shape; client navigation remains separate from the shared product operation.
   empty successes. Provider catalog UI respects advertised capabilities.
 - `driver/*`, `workspace/*` and a few `source/*` methods are backend-internal. Client
   code uses the app-level methods.
+
+## Mobile Compatibility
+
+Mobile applications update independently of the desktop and daemon. Every contract
+they consume must remain backwards compatible with shipped clients; desktop-only
+contracts are exempt. The boundary includes companion operations, pairing and relay
+messages, response framing and encoding, streamed workspace and conversation data,
+and the shared or SDK-owned data serialized into those messages. A change in a
+producer or dependency is a mobile API change when it changes that wire contract.
+
+- Keep existing method names, accepted request shapes and values, defaults, and
+  observable behavior. New request fields must be optional for existing operations.
+- Preserve existing response and event fields, their types, nullability, units,
+  identifiers and meaning. An additive field or enum/union variant is compatible
+  only if shipped decoders can safely consume or ignore it.
+- New representations, encodings and behaviors require explicit capability
+  negotiation or a separate version while the old path remains available. A
+  protocol version bump, app restart or forced mobile update does not preserve
+  compatibility. Do not remove legacy handling merely because the current mobile
+  source uses the replacement.
+- Prove compatibility through the owning runtime with released-client regression
+  cases as specified in [testing.md](testing.md#mobile-compatibility-evidence).
+  Passing checks against shared current types alone do not establish compatibility.
 
 ## Directions
 

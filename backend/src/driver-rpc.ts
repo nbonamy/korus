@@ -72,6 +72,8 @@ export function appSurfaceOptions(options: BackendDriverRegistryOptions = {}): A
     clientInfo: { name: 'workspace', title: product.name, version: '0.3.0' },
     codexHome: options.generalSettings?.providerHomes?.codex?.homePath ?? backendCodexHomeDir(),
     loadingStrategy: 'lazy',
+    historyItemsView: 'summary',
+    originalHistoryImages: true,
     transport: {
       ...resolveCodexLaunch(options.generalSettings?.codexBinaryPath),
       configOverrides: buildAppMcpConfigOverrides(
@@ -462,6 +464,14 @@ export class BackendDriverRpc {
         const driver = this.requireDriver(agent.backend);
         if (!driver.loadConversation) throw unsupportedBackendFeature(agent, 'conversation loading');
         return driver.loadConversation(agent);
+      }
+      case backendMethods.driverConversationTurnHistoryLoad: {
+        const { agent } = requireAgentParams(params);
+        const turnId = requireString(requireRecord(params).turnId, 'turnId');
+        const driver = this.requireDriver(agent.backend);
+        if (!driver.loadTurnHistory) throw unsupportedBackendFeature(agent, 'turn history');
+        await driver.loadTurnHistory(agent, turnId);
+        return null;
       }
       case backendMethods.driverConversationHistoryLoadOlder: {
         const { agent } = requireAgentParams(params);

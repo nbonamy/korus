@@ -1,4 +1,5 @@
 import { shareInvitationPattern } from '@workspace/core/conversation-share-relay';
+import { conversationImageInput, readEmbeddedConversationImage } from '@workspace/core/conversation-images';
 import { createHash } from 'node:crypto';
 import type { Stream } from '@libp2p/interface';
 import { z } from 'zod';
@@ -28,6 +29,7 @@ export type GuestConversationPort = {
   synchronize(agentId: string, checkpoint: CompanionCheckpoint | null): Promise<CompanionSync>;
   conversation(agentId: string): Promise<CompanionReset>;
   loadOlderHistory(agentId: string): Promise<BackendHistoryLoadResult>;
+  loadTurnHistory?(agentId: string, turnId: string): Promise<void>;
   readConversationContent(agentId: string, input: ConversationContentInput): Promise<ConversationContentChunk>;
   readImage(agentId: string, path: string): Promise<CompanionImage>;
 };
@@ -168,6 +170,14 @@ export class GuestConversationGateway {
                 } finally { pending = false; buffered = []; bufferedBytes = 0; }
                 break;
               }
+              case 'conversation.turn.load': {
+                const { turnId } = z.object({ turnId: z.string().min(1).max(200) }).strict().parse(request.args);
+                if (!this.port.loadTurnHistory) throw new Error('denied');
+                await this.port.loadTurnHistory(target.agentId, turnId); assert();
+                const frame = await this.port.conversation(target.agentId); assert();
+                if (!bound(frame, target)) throw new Error('denied'); remember(frame);
+                result = { update: guestConversationFrame(frame) }; break;
+              }
               case 'conversation.loadOlder': {
                 emptySchema.parse(request.args);
                 const page = await this.port.loadOlderHistory(target.agentId); assert();
@@ -177,6 +187,14 @@ export class GuestConversationGateway {
               }
               case 'conversation.image.read': {
                 const { path } = imageSchema.parse(request.args);
+                const embedded = conversationImageInput(path);
+                if (embedded) {
+                  if (target.backend !== 'codex' || embedded.sessionId !== target.sessionId || !images.has(path)) throw new Error('denied');
+                  result = { dataUrl: await readEmbeddedConversationImage(path, async input => {
+                    assert(); const chunk = await this.port.readConversationContent(target.agentId, input); assert(); return chunk;
+                  }) };
+                  break;
+                }
                 const frame = await this.port.conversation(target.agentId); assert(); if (!bound(frame, target)) throw new Error('denied');
                 remember(frame); const reference = imagePath(path);
                 if (!reference || !images.has(reference)) throw new Error('denied');

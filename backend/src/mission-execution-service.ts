@@ -11,7 +11,7 @@ import { missionWorkflow } from '@workspace/core/mission-workflows';
 import { missionLeadAgentId } from '@workspace/core/mission-attention';
 import { missionImplementationBusy, missionRunAssignment, missionRunTicketIndex, pendingMissionRun, type MissionArtifactReadResult, type MissionArtifactWriteInput, type MissionExecutionInput, type MissionImplementationStartProgress, type MissionResultInput, type MissionReviewFindingInput, type MissionReviewFindingUpdateInput, type MissionRun, type MissionTicketDraftInput, type MissionTicketDraftResult, type MissionToolContext } from '@workspace/core/mission-execution';
 import type { MissionService } from './mission-service';
-import { MissionAgentTools, missionTicketsMarkdown } from './mission-agent-tools';
+import { MissionAgentTools, missionFindingFixPrompt, missionTicketsMarkdown } from './mission-agent-tools';
 import { missionAgent, missionTeamRepositories, sameSkills, stageKickoffPrompt } from './mission-execution-policy';
 import { MissionWorkspaceService } from './mission-workspace-service';
 
@@ -147,6 +147,7 @@ export class MissionExecutionService {
         if (!finding) throw new Error('Mission review finding was not found.');
         if (finding.remediation.state !== 'open') throw new Error('A finding already being remediated cannot be changed.');
         finding.selected = input.selected;
+        if (!input.selected) delete finding.remediationAssignment;
         finding.updatedAt = new Date().toISOString();
       });
       return;
@@ -171,13 +172,15 @@ export class MissionExecutionService {
         candidate.stage === 'review' && candidate.status === 'awaitingReview' && candidate.workerId
       ));
       if (!reviewRun?.workerId) throw new Error('Submit the Review result before fixing findings.');
-      if ([...this.remediationTurns.values()].some(turn => turn.missionId === input.id)) {
+      if (mission.artifacts.review.findings?.some(finding => finding.remediation.state === 'fixing')
+        || [...this.remediationTurns.values()].some(turn => turn.missionId === input.id)) {
         throw new Error('Review finding remediation is already running.');
       }
       let findings: MissionReviewFinding[] = [];
       let batches: Array<{ workerId: string; findings: MissionReviewFinding[]; frozenFindingIds: string[] }> = [];
       let allFrozenFindingIds: string[] = [];
       let findingsMarked = false;
+      const previousAssignments = new Map((mission.artifacts.review.findings ?? []).map(finding => [finding.id, finding.remediationAssignment]));
       try {
         const openFindings = mission.artifacts.review.findings?.filter(finding => finding.remediation.state === 'open') ?? [];
         findings = openFindings.filter(finding => finding.selected);
@@ -193,7 +196,9 @@ export class MissionExecutionService {
           const workerId = mission.execution?.runs.slice().reverse().find(run => (
             run.stage === 'implementation' && run.repositoryPath === repositoryPath && run.status === 'accepted' && run.workerId
           ))?.workerId;
-          if (!workerId || !this.agent(workerId)) throw new Error(`The implementation worker for ${repositoryPath} is unavailable.`);
+          const worker = this.agent(workerId);
+          if (!workerId || !worker) throw new Error(`The implementation worker for ${repositoryPath} is unavailable.`);
+          if (['working', 'awaitingInput'].includes(worker.status.type)) throw new Error(`The implementation worker for ${repositoryPath} is still active. Wait for it to stop before retrying remediation.`);
           if (workerIds.has(workerId)) throw new Error('Each affected repository must have its own implementation worker.');
           if (this.remediationDispatches.has(workerId) || this.remediationTurns.has(workerId)) {
             throw new Error('Review finding remediation is already running.');
@@ -220,6 +225,9 @@ export class MissionExecutionService {
             finding.remediation = finding.selected
               ? { state: 'fixing', startedAt }
               : { state: 'skipped', startedAt };
+            if (finding.selected) {
+              finding.remediationAssignment = { reviewRunId: run.id, workerId: batches.find(batch => batch.findings[0]!.repositoryPath === finding.repositoryPath)!.workerId, repositoryPath: finding.repositoryPath, startedAt };
+            } else delete finding.remediationAssignment;
             finding.updatedAt = startedAt;
           }
         });
@@ -246,7 +254,11 @@ export class MissionExecutionService {
           if (changedFindingIds.size) {
             await this.ports.missions.change(input.id, current => {
               for (const finding of current.artifacts.review.findings ?? []) {
-                if (changedFindingIds.has(finding.id) && ['fixing', 'skipped'].includes(finding.remediation.state)) finding.remediation = { state: 'open' };
+                if (!changedFindingIds.has(finding.id) || !['fixing', 'skipped'].includes(finding.remediation.state)) continue;
+                finding.remediation = { state: 'open' };
+                const previous = previousAssignments.get(finding.id);
+                if (previous) finding.remediationAssignment = previous;
+                else delete finding.remediationAssignment;
               }
             });
             await this.ports.publish();
@@ -1075,23 +1087,6 @@ function missionTicketsHash(tickets: Mission['artifacts']['tickets']): string {
     ticket.id, ticket.revision ?? 0, ticket.title, ticket.body ?? '', ticket.repositoryPath,
     ticket.reference ?? '', [...(ticket.dependsOn ?? [])].sort((a, b) => a - b),
   ]))).digest('hex');
-}
-
-function missionFindingFixPrompt(mission: Mission, findings: MissionReviewFinding[]): string {
-  const workspacePaths = new Map((mission.execution?.workspaces ?? []).map(workspace => [workspace.repositoryPath, workspace.path]));
-  const context = [
-    ...findings.flatMap(finding => [
-      `${finding.id}: [${finding.priority.toUpperCase()}] ${finding.title}`,
-      `Repository: ${finding.repositoryPath}`,
-      `Mission worktree: ${workspacePaths.get(finding.repositoryPath) ?? 'unavailable'}`,
-      ...(finding.location ? [`Location: ${finding.location.file}${finding.location.line ? `:${finding.location.line}` : ''}`] : []),
-      finding.body,
-      '',
-    ]),
-    'Load mission-review through read-skill for remediation. Fix only the selected findings in their mapped Mission worktrees; coherent local commits are authorized, not push, merge or PR creation. Record each verified committed fix with update-mission-review-finding; no new Review submission or round is authorized.',
-    'Korus reports your recorded fixes and any unresolved findings to the Mission lead when this turn ends. Include verification and commit references in each finding’s evidence; leave blocked findings unresolved.',
-  ].join('\n');
-  return `<context>\n${context.replace(/<\/?context>/giu, tag => tag.replace('<', '&lt;'))}\n</context>\n\nFix the ${findings.length} finding${findings.length === 1 ? '' : 's'} I selected.`;
 }
 
 function missionRemediationReport(mission: Mission, findings: MissionReviewFinding[]): string {

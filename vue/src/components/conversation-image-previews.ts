@@ -1,14 +1,20 @@
+import { conversationImageInput, readEmbeddedConversationImage } from '@workspace/core/conversation-images';
 import { provideCodexHostCapabilities, useCodexHostCapabilities } from '@codex-app-sdk/vue';
 import { appApi } from '../platform-api';
 
 /** Keep attachment capabilities native; read conversation file images on their owning host. */
 export function provideConversationImagePreviews(agentId: () => string | undefined): void {
   const host = useCodexHostCapabilities();
-  if (!host) return;
+  // Native mobile hosts already provide their own reader and smaller preview pool.
+  if (!host || !appApi) return;
   provideCodexHostCapabilities({
     ...host,
     async readImagePreview(reference) {
-      const owner = agentId();
+      const owner = agentId(); const api = appApi;
+      if (owner && api && conversationImageInput(reference)) {
+        const image = await readEmbeddedConversationImage(reference, input => api.readConversationContent(owner, input));
+        return owner === agentId() ? image : null;
+      }
       try {
         const preview = await host.readImagePreview?.(reference);
         if (preview) return preview;
@@ -18,7 +24,7 @@ export function provideConversationImagePreviews(agentId: () => string | undefin
       const preview = await appApi.previewAgentFile(owner, filePath);
       return preview.kind === 'image' ? preview.dataUrl ?? null : null;
     },
-  });
+  }, { imagePreviewBudgetBytes: 64 * 1024 * 1024, viewportImageLoading: true });
 }
 
 function localImagePath(reference: string): string | null {

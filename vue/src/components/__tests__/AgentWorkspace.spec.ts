@@ -314,7 +314,7 @@ describe('AgentWorkspace', () => {
     expect(wrapper.findComponent({ name: 'AgentHeader' }).props('reportBackAgentName')).toBe('Main agent');
   });
 
-  it('lets the SDK handle fullscreen images and opens inline images in the agent workspace', () => {
+  it('lets the SDK handle fullscreen images and retains independent image tabs until closed', async () => {
     const { currentAgent, openRightWorkspaceTab, workspace, wrapper } = mountWorkspace();
     const image: CodexMessageImage = {
       alt: 'Architecture diagram',
@@ -339,6 +339,26 @@ describe('AgentWorkspace', () => {
       path: '/repo/diagram.png',
       title: 'diagram.png',
     });
+    const createUrl = vi.fn(() => 'blob:owned-tab');
+    vi.stubGlobal('URL', Object.assign(class extends URL {}, { createObjectURL: createUrl, revokeObjectURL: vi.fn() }));
+    vi.stubGlobal('fetch', vi.fn(async () => ({ blob: async () => new Blob(['image']) })));
+    try {
+      wrapper.vm.openConversationImage({ ...image, src: 'blob:transcript-preview' }, { ...context, intent: 'open' });
+      await flushPromises();
+      expect(Object.values(workspace.imagePanels)[0]?.src).toBe('blob:owned-tab');
+      expect(fetch).toHaveBeenCalledWith('blob:transcript-preview');
+      workspace.imagePanels = {};
+      await flushPromises();
+      // The browser workflow covers URL cleanup in the AppShell-owned workspace state.
+      let resolve!: (response: Response) => void;
+      vi.mocked(fetch).mockImplementationOnce(() => new Promise(done => { resolve = done; }) as Promise<Response>);
+      wrapper.vm.openConversationImage({ ...image, src: 'blob:slow-preview' }, { ...context, intent: 'open' });
+      workspace.imagePanels = {};
+      resolve(new Response('late')); await flushPromises();
+      expect(workspace.imagePanels).toStrictEqual({});
+      expect(createUrl).toHaveBeenCalledTimes(1);
+    } finally { wrapper.unmount(); vi.unstubAllGlobals(); }
+
   });
 
   it('routes browser commands to the requested agent workspace', () => {

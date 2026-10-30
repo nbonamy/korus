@@ -48,6 +48,7 @@
     :history-has-older="activeHistoryHasOlder"
     :history-loading-older="isLoadingOlderHistory"
     :load-older-agent-history="loadOlderAgentHistory"
+    :load-agent-turn-history="loadAgentTurnHistory"
     :is-sending="isSending"
     :connection-state="connectionState"
     :answered-client-request-ids="answeredClientRequestIds"
@@ -339,6 +340,7 @@ const {
   loadBackendModels,
   loadSnapshot,
   loadOlderAgentHistory,
+  loadAgentTurnHistory,
   chooseAgentFolder,
   chooseSourceFolder,
   listSourceFolders,
@@ -504,6 +506,7 @@ const agentConversationActions: AgentConversationActions = {
   threadFlag: respondToThreadFlagForAgent,
   prepare: prepareAgentConversation,
   loadOlder: loadOlderAgentHistory,
+  loadTurn: loadAgentTurnHistory,
   send: sendPromptToAgent,
   steer: steerPromptToAgent,
   interrupt: interruptAgentById,

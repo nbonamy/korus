@@ -636,7 +636,7 @@ describe('mission execution', () => {
       location: { file: 'src/review.ts', line: 42 },
     });
     expect(h.current().artifacts.review.findings).toStrictEqual([expect.objectContaining({ id: finding.id, selected: true, remediation: { state: 'open' } })]);
-    await expect(h.service.updateReviewFinding(h.originalAgents[0]!.id, { findingId: finding.id, status: 'fixed' })).rejects.toThrow('being remediated');
+    await expect(h.service.updateReviewFinding(h.originalAgents[0]!.id, { findingId: finding.id, status: 'fixed' })).rejects.toThrow('Fix selected');
     await expect(h.service.updateReviewFinding(h.originalAgents[0]!.id, { findingId: finding.id, repositoryPath: '/other/repo' })).rejects.toThrow('represented in this Mission');
     expect(h.current().artifacts.review.findings![0]!.repositoryPath).toBe(repositoryPath);
     await expect(h.command({ action: 'selectReviewFinding', findingId: finding.id, selected: 'false' })).rejects.toThrow('Invalid Mission review finding selection');
@@ -649,6 +649,7 @@ describe('mission execution', () => {
     h.ports.startRemediation.mockRejectedValueOnce(new Error('Provider unavailable'));
     await expect(h.command({ action: 'fixSelectedReviewFindings' })).rejects.toThrow('Provider unavailable');
     expect(h.current().artifacts.review.findings![0]!.remediation.state).toBe('open');
+    await expect(h.service.updateReviewFinding(h.originalAgents[0]!.id, { findingId: finding.id, status: 'fixed', evidence: 'Admission failed.' })).rejects.toThrow('Fix selected');
     await h.command({ action: 'fixSelectedReviewFindings' });
     expect(h.current().artifacts.review.findings![0]!.remediation.state).toBe('fixing');
     expect(h.ports.startRemediation).toHaveBeenLastCalledWith(implementerId, expect.stringContaining(finding.id));
@@ -695,13 +696,14 @@ describe('mission execution', () => {
     expect(h.current().artifacts.review.findings?.[0]).toMatchObject({ selected: true, remediation: { state: 'open' } });
   });
 
-  it('groups selected Review findings by repository and dispatches each batch to its implementer thread', async () => {
+  it('keeps repository-bound remediation authority across partial outcomes, continuations and restart', async ({ onTestFinished }) => {
     const h = setup();
     const apiWorkerId = h.originalAgents[1]!.id;
     const webWorkerId = 'agent-web-implementer';
     h.snapshot.agents.push({ ...structuredClone(h.originalAgents[1]!), id: webWorkerId, name: 'Web implementer' });
     await h.store.change(h.current().id, mission => {
       mission.stage = 'review';
+      mission.stageAgentIds.review = h.originalAgents[0]!.id;
       mission.execution!.workspaces = [
         { repositoryPath: '/repo/api', path: '/mission/api', branch: 'mission/billing' },
         { repositoryPath: '/repo/web', path: '/mission/web', branch: 'mission/billing' },
@@ -782,6 +784,74 @@ describe('mission execution', () => {
     expect(h.ports.sendMessage).toHaveBeenCalledTimes(2);
     expect(h.current().stage).toBe('review');
     expect(h.ports.continueStage).not.toHaveBeenCalled();
+
+    // A turn boundary must not discard the user's authorization or verified evidence.
+    const fixedEvidence = structuredClone(h.current().artifacts.review.findings!.slice(0, 2));
+    expect(h.service.contextForAgent(webWorkerId)).toMatchObject({ runId: 'review-run', stage: 'review' });
+    const leadId = h.originalAgents[0]!.id;
+    const newlyReported = await h.service.reportReviewFinding(leadId, {
+      priority: 'p2', title: 'New web issue', body: 'Needs its own authorization.', repositoryPath: '/repo/web',
+    });
+    await expect(h.service.updateReviewFinding(leadId, { findingId: newlyReported.id, status: 'fixed', evidence: 'Chat says done.' }))
+      .rejects.toThrow('Fix selected');
+    await expect(h.service.updateReviewFinding(webWorkerId, { findingId: newlyReported.id, status: 'fixed', evidence: 'Chat says done.' }))
+      .rejects.toThrow('cannot update');
+    await expect(h.service.updateReviewFinding(webWorkerId, { findingId: 'finding-web', status: 'fixed', evidence: ' ' }))
+      .rejects.toThrow('evidence');
+    await h.service.updateReviewFinding(webWorkerId, { findingId: 'finding-web', status: 'fixed', evidence: 'Owner approved; web regression passed.' });
+    expect(h.current().artifacts.review.findings!.slice(0, 2)).toStrictEqual(fixedEvidence);
+
+    // The explicit desktop command grants the new finding its own bounded assignment.
+    h.snapshot.agents.find(agent => agent.id === webWorkerId)!.status = { type: 'working' };
+    await expect(h.command({ action: 'fixSelectedReviewFindings' })).rejects.toThrow('still active');
+    h.snapshot.agents.find(agent => agent.id === webWorkerId)!.status = { type: 'idle' };
+    await h.command({ action: 'fixSelectedReviewFindings' });
+    expect(h.ports.startRemediation).toHaveBeenCalledTimes(3);
+    expect(h.ports.startRemediation.mock.calls[2]![0]).toBe(webWorkerId);
+    expect(h.ports.startRemediation.mock.calls[2]![1]).toContain(newlyReported.id);
+    expect(h.ports.startRemediation.mock.calls[2]![1]).not.toContain('finding-api-1');
+    await expect(h.command({ action: 'fixSelectedReviewFindings' })).rejects.toThrow('already running');
+
+    const home = await mkdtemp(path.join(tmpdir(), 'mission-review-recovery-'));
+    onTestFinished(() => rm(home, { recursive: true, force: true }));
+    const disk = new AppStateStore(home);
+    await disk.save(h.snapshot);
+    Object.assign(h.snapshot, await disk.load());
+    h.persisted.mockImplementation(snapshot => disk.save(snapshot));
+    const recovered = new MissionExecutionService(h.ports);
+    await recovered.recoverInterruptedRuns();
+    expect(h.current().artifacts.review.findings!.at(-1)!.remediation.state).toBe('open');
+    expect(recovered.contextForAgent(webWorkerId)).toMatchObject({ runId: 'review-run', stage: 'review' });
+    expect(recovered.developerInstructionsForAgent(webWorkerId)).toContain('/mission/web');
+    expect(recovered.developerInstructionsForAgent(webWorkerId)).not.toContain('/mission/api');
+    expect(recovered.developerInstructionsForAgent(webWorkerId)).not.toContain('As Mission lead');
+    await expect(recovered.updateReviewFinding(apiWorkerId, { findingId: newlyReported.id, status: 'fixed', evidence: 'Wrong worker.' }))
+      .rejects.toThrow();
+    await recovered.execute({ id: h.current().id, revision: h.current().revision, action: 'selectReviewFinding', findingId: newlyReported.id, selected: false });
+    await expect(recovered.updateReviewFinding(leadId, { findingId: newlyReported.id, status: 'fixed', evidence: 'Deselected.' })).rejects.toThrow('Fix selected');
+    await recovered.execute({ id: h.current().id, revision: h.current().revision, action: 'selectReviewFinding', findingId: newlyReported.id, selected: true });
+    await recovered.execute({ id: h.current().id, revision: h.current().revision, action: 'fixSelectedReviewFindings' });
+    await recovered.agentFinished(webWorkerId);
+    await expect(recovered.updateReviewFinding(leadId, { findingId: newlyReported.id, body: 'Different work.', status: 'fixed', evidence: 'Old authorization.' }))
+      .rejects.toThrow('Correct the finding separately');
+    await recovered.updateReviewFinding(leadId, { findingId: newlyReported.id, body: 'Corrected scope needs authorization.' });
+    await expect(recovered.updateReviewFinding(leadId, { findingId: newlyReported.id, status: 'fixed', evidence: 'Old authorization.' }))
+      .rejects.toThrow('Fix selected');
+    await recovered.execute({ id: h.current().id, revision: h.current().revision, action: 'fixSelectedReviewFindings' });
+    await recovered.agentFinished(webWorkerId);
+    // The lead can reconcile an authorized fix, with evidence, after restart.
+    await recovered.updateReviewFinding(leadId, { findingId: newlyReported.id, status: 'fixed', evidence: 'Commit fed321; new web regression passed.' });
+    const restored = (await disk.load()).missions![0]!;
+    expect(restored.artifacts.review.findings!.slice(0, 2)).toStrictEqual(fixedEvidence);
+    expect(restored.artifacts.review.findings!.at(-1)!.remediation).toMatchObject({ state: 'fixed', evidence: 'Commit fed321; new web regression passed.' });
+    expect(restored.stage).toBe('review');
+    expect(h.ports.continueStage).not.toHaveBeenCalled();
+    // Existing stage backtracking retires Review authority, including recovered assignments.
+    await recovered.reopenStage(leadId, 'tickets');
+    await recovered.waitForLaunches();
+    expect(recovered.contextForAgent(webWorkerId)?.stage).not.toBe('review');
+    await expect(recovered.updateReviewFinding(webWorkerId, { findingId: newlyReported.id, status: 'fixed', evidence: 'Old Review.' }))
+      .rejects.toThrow('only during Review');
   });
 
   it('freezes a debug Review selection into fixed and skipped findings without dispatching a provider turn', async () => {

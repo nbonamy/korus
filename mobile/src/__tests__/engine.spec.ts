@@ -160,14 +160,14 @@ describe('companion engine', () => {
       }
     } finally { engine.dispose(); vi.useRealTimers(); }
   });
-  it('routes requested content as a separate chunk reply and rejects responses after selection changes', async () => {
+  it.each(['claude', 'codex'] as const)('routes %s content as separate chunks and rejects responses after selection changes', async backend => {
     const connector = createDemoConnector(); const connect = connector.connect;
     const chunk = { data: 'e30=', totalBytes: 2, nextOffset: null };
     let finish!: (value: typeof chunk) => void;
     const readConversationContent = vi.fn().mockResolvedValueOnce(chunk).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
     connector.connect = async (id) => {
       const session = await connect(id); const workspace = await session.getWorkspace();
-      workspace.agents[0] = { ...workspace.agents[0]!, backend: 'claude', backendSession: { kind: 'claude', sessionId: 'session', transport: 'stdio' } };
+      workspace.agents[0] = { ...workspace.agents[0]!, backend, backendSession: backend === 'codex' ? { kind: 'codex', threadId: 'session' } : { kind: 'claude', sessionId: 'session', transport: 'stdio' } };
       return { ...session, getWorkspace: async () => workspace, readConversationContent };
     };
     const { engine, events } = open(connector);
@@ -675,6 +675,34 @@ describe('companion engine', () => {
     expect(events.filter((event) => event.type === 'conversation').at(-1)).toMatchObject({ frame: null, agentId: 'demo-reviewer' });
     complete(); await second;
     expect(latest()).toMatchObject({ loading: false, canSend: false, error: 'mobile.errors.loadConversation' });
+    engine.dispose();
+  });
+  it('returns turn-details completion and errors through the native engine without replacing another selection', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    const loadTurnHistory = vi.fn(async (_agentId: string, _turnId: string) => (await (await connect('demo-laptop')).loadConversation('demo-agent'))!);
+    connector.connect = async id => {
+      const session = await connect(id);
+      return { ...session, loadTurnHistory, getWorkspace: async () => {
+        const workspace = await session.getWorkspace();
+        return { ...workspace, agents: workspace.agents.map(agent => ({ ...agent, backendSession: { kind: 'codex' as const, threadId: agent.id } })) };
+      } };
+    };
+    const { engine, events } = open(connector);
+    await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+    await engine.dispatch({ type: 'loadTurnHistory', requestId: 'details', agentId: 'demo-agent', turnId: 'old-turn' });
+    expect(loadTurnHistory).toHaveBeenCalledExactlyOnceWith('demo-agent', 'old-turn');
+    expect(events.at(-1)).toMatchObject({ type: 'turnHistory', requestId: 'details', agentId: 'demo-agent' });
+    const mismatched = (await (await connect('demo-laptop')).loadConversation('demo-agent'))!;
+    loadTurnHistory.mockResolvedValueOnce({ ...mismatched, threadId: 'different-thread' } as typeof mismatched);
+    await engine.dispatch({ type: 'loadTurnHistory', requestId: 'wrong-session', agentId: 'demo-agent', turnId: 'old-turn' });
+    expect(events.at(-1)).toMatchObject({ type: 'turnHistory', requestId: 'wrong-session', error: expect.any(String) });
+    loadTurnHistory.mockRejectedValueOnce(new Error('offline'));
+    await engine.dispatch({ type: 'loadTurnHistory', requestId: 'retry', agentId: 'demo-agent', turnId: 'old-turn' });
+    expect(events.at(-1)).toMatchObject({ type: 'turnHistory', requestId: 'retry', error: expect.any(String) });
+    await engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
+    await engine.dispatch({ type: 'loadTurnHistory', requestId: 'stale', agentId: 'demo-agent', turnId: 'old-turn' });
+    expect(loadTurnHistory).toHaveBeenCalledTimes(3);
+    expect(events.at(-1)).toMatchObject({ type: 'turnHistory', requestId: 'stale', error: expect.any(String) });
     engine.dispose();
   });
   it('deduplicates history loads and ignores a result after the selected agent changes', async () => {

@@ -753,6 +753,12 @@ publishes only after saving.
   Host catalog policy is checked before provisioning and worker launch. This
   selection applies to implementation workers and retries without changing the lead
   or the Review configuration.
+- Review remediation authorization is persisted per selected finding, bound to its
+  Review run, repository and implementation worker. Turn completion and restart
+  return unfinished findings to open without discarding this authorization or fixed
+  evidence. The assigned worker or lead can record a verified fix on continuation;
+  deselection or correction of the finding revokes the assignment. New findings
+  require the user's Fix selected command. Chat alone grants no remediation authority.
 - Each repository's remediation turn reports its recorded fixes, verification
   evidence and unresolved findings to the Mission lead through agent messaging.
   Reports do not start another Review or advance the Mission.

@@ -61,7 +61,8 @@ const findings = computed(() => [...(props.mission.artifacts.review.findings ?? 
 const openSelectedCount = computed(() => findings.value.filter(finding => finding.selected && finding.remediation.state === 'open').length);
 const canArbitrate = computed(() => !props.readOnly && props.mission.stage === 'review' && Boolean(
   props.mission.execution?.runs.slice().reverse().find(run => run.stage === 'review' && run.status === 'awaitingReview' && run.proposal),
-) && findings.value.every(finding => finding.remediation.state === 'open'));
+) && findings.value.some(finding => finding.remediation.state === 'open')
+  && !findings.value.some(finding => finding.remediation.state === 'fixing'));
 const canRemediate = computed(() => canArbitrate.value);
 const canRerunReview = computed(() => !props.readOnly && props.mission.stage === 'review' && findings.value.length > 0 && findings.value.every(finding => (
   finding.remediation.state === 'fixed' || finding.remediation.state === 'skipped'

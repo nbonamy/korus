@@ -35,6 +35,31 @@ routing envelope (agent, thread, revision) and recovery.
   provisional until the submitting turn's authoritative terminal event; a late
   terminal event belongs to its original turn and cannot clear a newer active turn.
 
+The SDK's content transport projects embedded image data and large file diffs into content-addressed
+references before snapshots and events leave the daemon. Reads use the owning
+conversation's current SDK snapshot and bounded chunks. Provider history is untouched;
+a weak projection cache does not retain discarded snapshots or create another
+transcript store. The SDK also indexes original provider-recorded image outputs by
+conversation, turn, call and image identity, and reads their existing history bytes
+on demand. This preserves historical screenshots independently of temporary files;
+Korus keeps no image archive or history parser. Content reads stay bound to the
+owning agent session across asynchronous I/O. Desktop and companion hosts resolve
+the same references. File targets carry historical diff references; selecting a file fetches its exact patch in bounded chunks, separately
+from the current working-tree source.
+
+The shared renderer loads media and attachment previews near the chat viewport,
+with two concurrent reads and placeholders sized from intrinsic image dimensions.
+The SDK transport carries optional width and height from bounded header probes;
+older images retain their decoded ratio for subsequent cache eviction. Compressed originals and rendered thumbnails share a 64 MiB cache on mobile and
+desktop. Offscreen decoded previews are released while downloaded originals stay
+cached with their thumbnails, so returning reuses previews without another host read. Inline
+thumbnails match their rendered size; opening, copying and downloading use original
+bytes. Cached originals are evicted by recency when the cache needs room;
+oversized or failed previews remain explicitly retryable. Independent desktop
+image tabs own their blob URLs until closed, rather than borrowing an evictable
+transcript URL. Provider history, transient decoding, browser caches, and separate
+image viewers are outside the transcript preview budget.
+
 ## Process And Home
 
 - Executable selection uses the host's discovered PATH, including login-shell and common
@@ -112,6 +137,13 @@ threads, routed by `threadId` and `agentId`.
   protocol parsing or transcript reduction belongs in the bridge. The conversation
   is never bound to a roster agent and is deleted after the job. Model selection
   comes from the current catalog and never falls back to a different model family.
+
+Historical conversation loading requests SDK summaries independently of turn paging.
+Completed turns retain their prompt and final answer; expanding Working details asks
+the owning SDK handle for that turn and receives normal replica updates. Desktop,
+shared conversations and native mobile forward the same operation; they do not
+reconstruct omitted messages or keep a second history cache. Live turns remain full,
+and exhaustive reads for handoffs and other backend consumers use SDK `readHistory`.
 
 ## Settings And Policy
 

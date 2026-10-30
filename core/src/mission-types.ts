@@ -22,6 +22,8 @@ export type MissionReviewFinding = {
   repositoryPath: string;
   location?: import('./code-review').CodeReviewLocation;
   selected: boolean;
+  /** Explicit user authorization, scoped to this Review, repository and worker across turns. */
+  remediationAssignment?: { reviewRunId: string; workerId: string; repositoryPath: string; startedAt: string };
   remediation: { state: 'open' } | { state: 'skipped'; startedAt: string } | { state: 'fixing'; startedAt: string } | { state: 'fixed'; completedAt: string; evidence?: string };
   createdAt: string;
   updatedAt: string;

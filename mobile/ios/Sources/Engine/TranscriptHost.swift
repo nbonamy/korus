@@ -180,7 +180,7 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
             onFilePreviewVisibility?(open)
             return
         }
-        if ["readConversationContent", "readConversationImage", "readFilePreview"].contains(event["type"] as? String ?? ""), message.frameInfo.isMainFrame {
+        if ["readConversationContent", "readConversationImage", "readFilePreview", "loadTurnHistory"].contains(event["type"] as? String ?? ""), message.frameInfo.isMainFrame {
             onReadContent?(event)
             return
         }

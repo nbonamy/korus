@@ -12,18 +12,20 @@ function setup(getAgentGitDiff: (id: string) => Promise<AgentGitDiff>) {
   const previewAgentFile = vi.fn();
   const downloadAgentFile = vi.fn().mockResolvedValue(undefined);
   const reportError = vi.fn();
+  const readConversationContent = vi.fn();
   const previews = useWorkspacePreviews({
     currentAgent: () => snapshot.agents.find((item) => item.id === snapshot.activeAgentId) ?? null,
     getSnapshot: () => snapshot,
     getAgentGitDiff,
     previewAgentFile,
     downloadAgentFile,
+    readConversationContent,
     reportError,
     workspaceFor: workspace.workspaceFor,
     openTab: workspace.openTab,
     closeTab: workspace.closeTab,
   });
-  return { agent, snapshot, workspace, previews, previewAgentFile, downloadAgentFile, reportError };
+  return { agent, snapshot, workspace, previews, previewAgentFile, downloadAgentFile, reportError, readConversationContent };
 }
 
 const result: AgentGitDiff = {
@@ -32,6 +34,21 @@ const result: AgentGitDiff = {
 };
 
 describe('workspace diff queries', () => {
+  it('reads an exact historical diff on selection instead of the current git diff', async () => {
+    const state = setup(vi.fn());
+    const text = 'diff --git a/example b/example\nhistorical 🪴\n';
+    state.agent.backendSession = { kind: 'codex', threadId: 'thread' };
+    state.readConversationContent.mockResolvedValue({ data: Buffer.from(text).toString('base64'), totalBytes: Buffer.byteLength(text), nextOffset: null });
+    expect(state.readConversationContent).not.toHaveBeenCalled();
+    await state.previews.openConversationFile({ kind: 'file', href: '/repo/file.txt', path: '/repo/file.txt', action: 'create', diffContent: { sessionId: 'thread', contentId: 'a'.repeat(64), byteLength: Buffer.byteLength(text), changeKind: 'add' } });
+    const panels = Object.values(state.workspace.workspaceFor(state.agent.id).diffPanels);
+    expect(panels).toHaveLength(1);
+    expect(panels[0]).toMatchObject({ state: 'idle', diff: expect.stringContaining('+historical 🪴') });
+    expect(state.previewAgentFile).not.toHaveBeenCalled();
+    state.readConversationContent.mockRejectedValue(new Error('Offline'));
+    await state.previews.openConversationFile({ kind: 'file', href: '/repo/file.txt', path: '/repo/file.txt', diffContent: { sessionId: 'thread', contentId: 'a'.repeat(64), byteLength: 10, changeKind: 'add' } });
+    expect(Object.values(state.workspace.workspaceFor(state.agent.id).diffPanels)[0]).toMatchObject({ state: 'error' });
+  });
   it.each(['binary', 'tooLarge'])('downloads %s chat files without opening or replacing sidebar tabs', async kind => {
     const state = setup(vi.fn());
     state.workspace.openTab('review', state.agent.id);

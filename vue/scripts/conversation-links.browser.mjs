@@ -31,7 +31,7 @@ test('Mission message links reveal a usable document beside the conversation', a
       load(id) {
         if (id !== '\0conversation-links-fixture') return;
         return `
-          import { createApp, h } from 'vue';
+          import { createApp, h, reactive } from 'vue';
           import ElementPlus from 'element-plus';
           import 'element-plus/dist/index.css';
           import '@codex-app-sdk/vue/styles.css';
@@ -53,7 +53,13 @@ test('Mission message links reveal a usable document beside the conversation', a
           window.previewCalls = [];
           window.browserCalls = [];
           window.open = (...args) => { window.browserCalls.push(args); return null; };
-          const messages = codexConversationSnapshot([codexTextMessage('links', 'assistant', '[Relative](README.md) [Absolute](<' + agent.folder + '/README.md>) [Example](https://example.com)')]);
+          const imageBlob = await (await fetch('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1xkAAAAASUVORK5CYII=')).blob();
+          const imageUrl = URL.createObjectURL(imageBlob);
+          const messages = reactive(codexConversationSnapshot([
+            codexTextMessage('links', 'assistant', '[Relative](README.md) [Absolute](<' + agent.folder + '/README.md>) [Example](https://example.com)'),
+            { ...codexTextMessage('image', 'user', ''), parts: [{ type: 'attachment', attachment: { kind: 'image', url: imageUrl, name: 'Retained screenshot', mimeType: 'image/png' } }] },
+          ]));
+          window.releaseConversationImage = () => { URL.revokeObjectURL(imageUrl); messages.messages = messages.messages.filter(message => message.id !== 'image'); };
           createApp({ render: () => h(AppShell, {
             snapshot, activeAgent: agent, codexConversationSnapshot: messages,
             selectMission: async () => {},
@@ -111,6 +117,31 @@ test('Mission message links reveal a usable document beside the conversation', a
       assert.equal(await page.locator('.mission-workspace__workbench').isVisible(), true);
     }
     assert.deepEqual(await page.evaluate(() => window.previewCalls), [['agent-dina', 'README.md'], ['agent-dina', 'README.md']]);
+    // The conversation owns this temporary URL; the independent image tab must survive its release.
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await conversation.getByRole('button', { name: 'Open Retained screenshot', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('.image-preview-panel img')?.naturalWidth === 1);
+    const retainedSource = await page.locator('.image-preview-panel img').getAttribute('src');
+    await page.evaluate(() => window.releaseConversationImage());
+    await conversation.getByRole('link', { name: 'Relative', exact: true }).click();
+    await page.getByRole('tab', { name: 'Retained screenshot', exact: true }).click();
+    assert.equal(await page.evaluate(async () => {
+      try { return (await fetch(document.querySelector('.image-preview-panel img').src)).ok; } catch { return false; }
+    }), true, 'the image tab must own readable bytes after the conversation releases its preview');
+    await page.waitForFunction(() => document.querySelector('.image-preview-panel img')?.naturalWidth === 1);
+    await page.getByRole('button', { name: 'Automations', exact: true }).click();
+    assert.equal(await page.locator('.image-preview-panel').count(), 0);
+    await page.locator('.team-rail__team').first().click();
+    await page.getByRole('tab', { name: 'Retained screenshot', exact: true }).click();
+    assert.equal(await page.evaluate(async () => {
+      try { return (await fetch(document.querySelector('.image-preview-panel img').src)).ok; } catch { return false; }
+    }), true, 'image-tab bytes must survive navigating away from the workspace');
+    if (artifacts) await page.screenshot({ path: path.join(artifacts, 'image-tab-retained.png') });
+    await page.getByRole('button', { name: 'Close Retained screenshot tab', exact: true }).click();
+    assert.equal(await page.getByRole('tab', { name: 'Retained screenshot', exact: true }).count(), 0);
+    assert.equal(await page.locator('.image-preview-panel img').count(), 0);
+    await page.waitForFunction(async source => { try { await fetch(source); return false; } catch { return true; } }, retainedSource);
+    measurements.push({ imageSurvivesPreviewRelease: true, imageSurvivesWorkspaceNavigation: true, tabSourceRevokedOnClose: true });
     assert.deepEqual(errors, []);
     if (artifacts) await writeFile(path.join(artifacts, 'measurements.json'), JSON.stringify(measurements, null, 2));
   } finally {

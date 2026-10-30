@@ -151,6 +151,8 @@ runs independently of loaded tree nodes, so an unopened directory remains search
   Mission activity aggregates the lead and repository agents in priority order:
   any agent needs input, unread lead, any agent working, then idle, independently
   of workflow completion. Desktop and mobile use the same aggregation policy.
+  Desktop Dock and team-rail unread badges count ordinary conversations and current
+  Mission leads; hidden workers retain their unread state within the Mission.
 
 ## Canonical UI
 

@@ -17,6 +17,7 @@ const idSchema = z.string().regex(/^[a-f0-9]{64}$/);
 const controlSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('state') }).strict(), z.object({ action: z.literal('prepare'), link: z.string().max(2048), teamId: z.string().min(1).max(200).optional() }).strict(),
   ...(['open', 'leave', 'history', 'cancel'] as const).map(action => z.object({ action: z.literal(action), id: idSchema }).strict()),
+  z.object({ action: z.literal('turnHistory'), id: idSchema, turnId: z.string().min(1).max(200) }).strict(),
   z.object({ action: z.literal('join'), id: idSchema, name: z.string().max(200) }).strict(),
   z.object({ action: z.literal('propose'), id: idSchema, proposalId: z.string().uuid(), text: z.string().min(1).max(100_000), followUpBehavior: z.enum(['queue', 'steer']).optional() }).strict(),
   z.object({ action: z.literal('withdraw'), id: idSchema, proposalId: z.string().uuid() }).strict(),
@@ -56,9 +57,11 @@ export class GuestJoins {
       session.view.proposalState = proposalState; return this.state();
     }
     // A history read must not hold the persistence mutex: Leave/revocation can cancel it.
-    if (action.action === 'history') {
+    if (action.action === 'history' || action.action === 'turnHistory') {
       const session = this.ready(action.id); const generation = session.generation;
-      await session.client!.loadOlder(); if (generation !== session.generation) throw new Error('Guest conversation unavailable.');
+      if (action.action === 'turnHistory') await session.client!.loadTurnHistory(action.turnId);
+      else await session.client!.loadOlder();
+      if (generation !== session.generation) throw new Error('Guest conversation unavailable.');
       return this.state();
     }
     return this.serial(async () => {

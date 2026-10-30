@@ -99,6 +99,7 @@ export type EngineEvent =
   | { type: 'notification'; notification: CompanionNotification }
   | { type: 'notificationOpenFailed' }
   | { type: 'sendResult'; requestId: string; status: 'accepted' | 'rejected' | 'unknown' }
+  | { type: 'turnHistory'; requestId: string; agentId: string; error?: string }
   | { type: 'conversationContent'; requestId: string; agentId: string; sessionId: string; chunk?: import('@workspace/core/contracts/conversation').ConversationContentChunk; error?: string }
   | { type: 'state'; state: EngineState }
   /** The open conversation, for the transcript: the provider's own snapshot plus the agent it belongs to. */
@@ -145,6 +146,7 @@ export type EngineCommand =
   | { type: 'read'; agentId: string; revision: number; generation: number }
   | { type: 'selectAllTeams' } | { type: 'selectTeam'; id: string } | { type: 'selectAgent'; id: string }
   | { type: 'loadOlder'; agentId: string }
+  | { type: 'loadTurnHistory'; requestId: string; agentId: string; turnId: string }
   | { type: 'draft'; text: string }
   | { type: 'loadSkills' }
   | { type: 'loadMentions' }
@@ -486,6 +488,15 @@ export function createEngine(port: EnginePort) {
         await state.selectTeam(target.teamId, target.agentId);
         if (epoch !== notificationEpoch || disposed) return;
         return rememberSelection();
+      }
+      case 'loadTurnHistory': {
+        try {
+          await state.loadTurnHistory(command.agentId, command.turnId);
+          if (!disposed) port.post({ type: 'turnHistory', requestId: command.requestId, agentId: command.agentId });
+        } catch {
+          if (!disposed) port.post({ type: 'turnHistory', requestId: command.requestId, agentId: command.agentId, error: 'Couldn’t load turn details. Try again.' });
+        }
+        return;
       }
       case 'readConversationContent': {
         try {

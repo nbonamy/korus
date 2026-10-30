@@ -170,3 +170,52 @@ test('transcript files open Source and Diff on demand, fit phones and wide scree
     await writeFile(`${dir}/${process.env.TRANSCRIPT_BROWSER ?? 'chromium'}.json`, JSON.stringify({ passed: true, evidence }, null, 2));
   } finally { await browser?.close(); await server.close(); }
 });
+
+// Exact historical content must be fetched only after selection, with retry and stale-read protection.
+test('deferred Codex diffs load in bounded chunks when selected and retry without losing the conversation', async () => {
+  const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
+  let browser;
+  try {
+    await server.listen(); browser = await (process.env.TRANSCRIPT_BROWSER === 'webkit' ? webkit : chromium).launch();
+    const page = await browser.newPage({ viewport: { width: 393, height: 740 } });
+    await page.addInitScript(() => {
+      window.diffReads = []; window.failDiff = true;
+      window.diffText = 'historical 🪴\n' + 'x'.repeat(70_000) + '\nlast historical line\n';
+      window.webkit = { messageHandlers: { transcript: { postMessage(json) {
+        const event = JSON.parse(json);
+        if (event.type === 'readFilePreview') queueMicrotask(() => window.companionTranscript.setContent(JSON.stringify({ type: 'conversationFile', requestId: event.requestId, agentId: event.agentId,
+          preview: { path: event.input.path, source: { kind: 'text', content: 'CURRENT source', path: event.input.path, size: 14 }, diff: 'wrong current diff', diffScope: 'uncommitted' } })));
+        if (event.type !== 'readConversationContent') return;
+        window.diffReads.push(event);
+        const bytes = new TextEncoder().encode(window.diffText); const end = Math.min(bytes.length, event.input.offset + 65536);
+        queueMicrotask(() => window.companionTranscript.setContent(JSON.stringify({ type: 'conversationContent', requestId: event.requestId, agentId: event.agentId, sessionId: event.input.sessionId,
+          ...(window.failDiff ? { error: 'Disconnected' } : { chunk: { data: btoa(String.fromCharCode(...bytes.slice(event.input.offset, end))), totalBytes: bytes.length, nextOffset: end < bytes.length ? end : null } }) })));
+      } } } };
+    });
+    await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
+    await page.waitForFunction(() => window.companionTranscript);
+    await page.evaluate(() => {
+      const change = { path: '/repo/screenshot.txt', kind: { type: 'add' }, diff: '', diffContent: { sessionId: 'thread', contentId: 'b'.repeat(64), byteLength: new TextEncoder().encode(window.diffText).length, changeKind: 'add' } };
+      return window.companionTranscript.setConversation(JSON.stringify({ agentId: 'owner', generation: 1, ready: true,
+        agent: { id: 'owner', name: 'owner', backend: 'codex', backendSession: { kind: 'codex', threadId: 'thread' }, status: { type: 'idle' } }, peers: [],
+        frame: { payload: { snapshot: { messages: [{ id: 'm', role: 'assistant', status: 'complete', parts: [{ type: 'tool', id: 'item', kind: 'fileChange', title: '1 file change', status: 'completed', statusText: JSON.stringify({ source: 'codex', action: 'create', phase: 'completed', params: { target: 'screenshot.txt' } }), input: { changes: [change] }, metadata: { changes: [change] } }] }], turns: [], activeTurnId: null, busy: false } } } }));
+    });
+    assert.equal(await page.evaluate(() => window.diffReads.length), 0);
+    await page.getByRole('link', { name: 'screenshot.txt', exact: true }).first().click();
+    const pane = page.getByRole('complementary', { name: 'File preview' });
+    await pane.getByRole('alert').waitFor({ timeout: 5000 });
+    await page.evaluate(() => { window.failDiff = false; });
+    await pane.getByRole('button', { name: 'Retry', exact: true }).click();
+    await pane.locator('.git-diff-preview-panel').waitFor({ timeout: 5000 });
+    assert.match(await pane.textContent(), /historical 🪴/);
+    assert.match(await pane.textContent(), /last historical line/);
+    assert.doesNotMatch(await pane.textContent(), /wrong current diff/);
+    assert.deepEqual(await page.evaluate(() => window.diffReads.map(r => r.input.offset)), [0, 0, 65536]);
+    await pane.getByRole('button', { name: 'Show source', exact: true }).click();
+    assert.match(await pane.textContent(), /CURRENT source/);
+    await pane.getByRole('button', { name: 'Show diff', exact: true }).click();
+    assert.equal(await page.evaluate(() => window.diffReads.length), 3);
+    await mkdir('out', { recursive: true });
+    await writeFile(`out/deferred-diff-${process.env.TRANSCRIPT_BROWSER ?? 'chromium'}.json`, JSON.stringify({ lazy: true, exactUnicodeAndTail: true, retry: true, chunks: 2, sourceAndDiff: true }));
+  } finally { await browser?.close(); await server.close(); }
+});

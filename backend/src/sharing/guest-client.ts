@@ -45,6 +45,11 @@ export class GuestConversationClient {
     })();
     this.syncing = work.finally(() => { this.syncing = undefined; }); return this.syncing;
   }
+  async loadTurnHistory(turnId: string): Promise<void> {
+    const result = await this.request('conversation.turn.load', { turnId }) as { update: GuestConversationUpdate };
+    if (!this.cache.receive(result.update)) await this.synchronize(null);
+    this.changed();
+  }
   async loadOlder(): Promise<{ hasOlder: boolean }> {
     const result = await this.request('conversation.loadOlder', {}) as { update: GuestConversationUpdate; hasOlder: boolean };
     if (!this.cache.receive(result.update)) await this.synchronize(null); this.changed(); return { hasOlder: result.hasOlder };

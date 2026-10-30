@@ -25,6 +25,13 @@ export function missionLeadAgentId(mission: Mission): string | undefined {
   return undefined;
 }
 
+/** Global unread badges follow visible conversations and each Mission's current lead. */
+export function navigationUnreadAgentIds(missions: readonly Mission[], unreadAgentIds: readonly string[]): string[] {
+  const owned = new Set(missions.flatMap(missionAgentIds));
+  const leads = new Set(missions.map(missionLeadAgentId).filter((id): id is string => Boolean(id)));
+  return unreadAgentIds.filter(id => !owned.has(id) || leads.has(id));
+}
+
 export function agentAttention(agent: Pick<Agent, 'id' | 'status'> | undefined, unreadAgentIds: ReadonlySet<string>): AgentAttention | null {
   if (!agent) return null;
   if (agent.status.type === 'awaitingInput') return 'needsInput';

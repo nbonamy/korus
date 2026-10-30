@@ -34,7 +34,9 @@ export class MissionAgentTools {
       }
       if (mission.stage !== 'review') continue;
       const remediationRepository = mission.artifacts.review.findings?.find(finding => (
-        finding.remediation.state === 'fixing' && this.implementationWorkerId(mission, finding.repositoryPath) === agentId
+        ['open', 'fixing'].includes(finding.remediation.state) && (finding.remediationAssignment
+          ? this.authorizedRemediation(mission, finding) && finding.remediationAssignment.workerId === agentId
+          : finding.remediation.state === 'fixing' && this.implementationWorkerId(mission, finding.repositoryPath) === agentId)
       ))?.repositoryPath;
       if (!remediationRepository) continue;
       const reviewRun = mission.execution?.runs.slice().reverse().find(candidate => (
@@ -63,6 +65,11 @@ export class MissionAgentTools {
     const mission = this.requireMission(context.missionId);
     const run = mission.execution!.runs.find(candidate => candidate.id === context.runId)!;
     if (run.workerId === agentId && !this.ownsWritableRun(mission, run.id, agentId)) return undefined;
+    if (run.workerId !== agentId) {
+      return missionFindingFixInstructions(mission, (mission.artifacts.review.findings ?? []).filter(finding => (
+        this.authorizedRemediation(mission, finding) && finding.remediationAssignment?.workerId === agentId
+      )));
+    }
     return missionDeveloperInstructions(mission, run, missionTeamRepositories(this.ports.snapshot, mission));
   }
 
@@ -254,16 +261,32 @@ export class MissionAgentTools {
       const finding = current.artifacts.review.findings?.find(candidate => candidate.id === input.findingId);
       if (!finding) throw new Error('Mission review finding was not found.');
       const ownsReview = this.ownsReviewRun(current, context.runId, agentId);
-      const ownsRemediation = current.stage === 'review' && finding.remediation.state === 'fixing'
-        && this.implementationWorkerId(current, finding.repositoryPath) === agentId;
+      const authorized = this.authorizedRemediation(current, finding);
+      const ownsRemediation = authorized
+        ? finding.remediationAssignment!.workerId === agentId
+        : !finding.remediationAssignment && current.status === 'active' && current.stage === 'review' && finding.remediation.state === 'fixing'
+          && this.implementationWorkerId(current, finding.repositoryPath) === agentId;
       if (!ownsReview && !ownsRemediation) throw new Error('This agent cannot update this Mission Review finding.');
       if (ownsRemediation && !ownsReview && (input.status !== 'fixed' || input.priority !== undefined || input.title !== undefined
         || input.body !== undefined || input.repositoryPath !== undefined || input.location !== undefined)) {
         throw new Error('A remediation worker can only mark its assigned finding fixed with evidence.');
       }
-      if (input.status === 'fixed' && finding.remediation.state !== 'fixing') throw new Error('Only a finding being remediated can be marked fixed.');
+      if (input.status === 'fixed') {
+        if (!['open', 'fixing'].includes(finding.remediation.state) || (!authorized && (finding.remediationAssignment || finding.remediation.state !== 'fixing'))) {
+          throw new Error(`Only unresolved findings with an active remediation assignment can be marked fixed (current state: ${finding.remediation.state}). Use Fix selected in Mission Review to authorize unresolved findings, then record the verified fix.`);
+        }
+        if (input.priority !== undefined || input.title !== undefined || input.body !== undefined || input.repositoryPath !== undefined || input.location !== undefined) {
+          throw new Error('Correct the finding separately, then use Fix selected to authorize its revised scope.');
+        }
+        if (!input.evidence?.trim()) throw new Error('Record verification evidence before marking a finding fixed.');
+      }
       if (repositoryPath && !current.execution?.workspaces?.some(workspace => workspace.repositoryPath === repositoryPath)) {
         throw new Error('Choose a repository represented in this Mission.');
+      }
+      // Correcting the work invalidates an earlier authorization for that finding.
+      if (input.priority !== undefined || input.title !== undefined || input.body !== undefined || repositoryPath !== undefined || input.location !== undefined) {
+        delete finding.remediationAssignment;
+        if (finding.remediation.state !== 'fixed') finding.remediation = { state: 'open' };
       }
       if (input.priority) finding.priority = input.priority;
       if (input.title?.trim()) finding.title = input.title.trim();
@@ -288,7 +311,7 @@ export class MissionAgentTools {
 
   private requireReviewContext(agentId: string): MissionToolContext {
     const context = this.requireContext(agentId);
-    if (context.stage !== 'review') throw new Error('Mission review finding tools are available only during Review.');
+    if (context.stage !== 'review') throw new Error('Mission review finding tools are available only during Review. Use Fix selected in Mission Review to authorize this worker for unresolved findings.');
     return context;
   }
 
@@ -301,6 +324,14 @@ export class MissionAgentTools {
   private ownsReviewRun(mission: Mission, runId: string, agentId: string): boolean {
     const run = mission.execution?.runs.find(candidate => candidate.id === runId);
     return !!run && run.stage === 'review' && this.ownsWritableRun(mission, runId, agentId);
+  }
+
+  private authorizedRemediation(mission: Mission, finding: MissionReviewFinding): boolean {
+    const assignment = finding.remediationAssignment;
+    const reviewRun = mission.execution?.runs.slice().reverse().find(run => run.stage === 'review');
+    return !!assignment && mission.stage === 'review' && mission.status === 'active' && finding.selected
+      && assignment.repositoryPath === finding.repositoryPath && assignment.reviewRunId === reviewRun?.id
+      && ['running', 'awaitingReview'].includes(reviewRun.status);
   }
 
   private implementationWorkerId(mission: Mission, repositoryPath: string): string | undefined {
@@ -326,4 +357,26 @@ export function missionTicketsMarkdown(tickets: MissionTicket[]): string {
     `**Status:** ${ticket.done ? 'completed' : 'ready-for-agent'}`,
     ticket.reference ? `**External reference:** ${ticket.reference}` : '',
   ].filter(Boolean).join('\n\n')).join('\n\n---\n\n');
+}
+
+function missionFindingFixInstructions(mission: Mission, findings: MissionReviewFinding[]): string {
+  const workspacePaths = new Map((mission.execution?.workspaces ?? []).map(workspace => [workspace.repositoryPath, workspace.path]));
+  return [
+    `Mission: ${mission.outcome} (${mission.id}). Stage: review.`,
+    ...findings.flatMap(finding => [
+      `${finding.id}: [${finding.priority.toUpperCase()}] ${finding.title}`,
+      `Repository: ${finding.repositoryPath}`,
+      `Mission worktree: ${workspacePaths.get(finding.repositoryPath) ?? 'unavailable'}`,
+      ...(finding.location ? [`Location: ${finding.location.file}${finding.location.line ? `:${finding.location.line}` : ''}`] : []),
+      finding.body,
+      '',
+    ]),
+    'Load mission-review through read-skill for remediation. Fix only the selected findings in their mapped Mission worktrees; coherent local commits are authorized, not push, merge or PR creation. Record each verified committed fix with update-mission-review-finding; no new Review submission or round is authorized.',
+    'Korus reports your recorded fixes and any unresolved findings to the Mission lead when this turn ends. Include verification and commit references in each finding’s evidence; leave blocked findings unresolved.',
+  ].join('\n');
+}
+
+export function missionFindingFixPrompt(mission: Mission, findings: MissionReviewFinding[]): string {
+  const context = missionFindingFixInstructions(mission, findings);
+  return `<context>\n${context.replace(/<\/?context>/giu, tag => tag.replace('<', '&lt;'))}\n</context>\n\nFix the ${findings.length} finding${findings.length === 1 ? '' : 's'} I selected.`;
 }

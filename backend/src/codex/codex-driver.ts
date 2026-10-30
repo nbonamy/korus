@@ -245,9 +245,17 @@ export class CodexBackendDriver implements AgentBackendDriver {
     };
   }
 
+  readConversationContent(agent: Agent, input: import('@workspace/core/contracts/conversation').ConversationContentInput) {
+    return this.sessionManager.readConversationContent(agent, input);
+  }
+
   async loadConversation(agent: Agent): Promise<BackendSession | null> {
     const threadId = await this.sessionManager.loadConversation(agent);
     return threadId ? codexBackendSession(threadId) : null;
+  }
+
+  loadTurnHistory(agent: Agent, turnId: string): Promise<void> {
+    return this.sessionManager.loadTurnHistory(agent, turnId);
   }
 
   async loadOlderHistory(agent: Agent) {

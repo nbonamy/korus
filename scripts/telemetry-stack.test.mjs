@@ -585,8 +585,11 @@ test(
         "connects a private desktop profile through lost acknowledgements and restarts to the real collector",
         async () => {
           await sql("TRUNCATE usage_daily,install_days,installs");
+          await mkdir(path.join(root, "backend/node_modules"), {
+            recursive: true,
+          });
           const bundleDir = await mkdtemp(
-            path.join(root, "node_modules/.telemetry-profile-"),
+            path.join(root, "backend/node_modules/.telemetry-profile-"),
           );
           try {
             const outfile = path.join(bundleDir, "workflow.mjs");

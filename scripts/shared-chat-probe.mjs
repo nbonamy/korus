@@ -31,9 +31,11 @@ try {
         "Set both relay URL and peer identity when overriding the product relay.",
     };
   else {
-    // Keep external packages resolvable from the checkout, while isolating concurrent builds.
-    await mkdir(path.join(root, ".app-dev"), { recursive: true });
-    directory = await mkdtemp(path.join(root, ".app-dev/shared-chat-probe-"));
+    // Resolve external dependencies from their owning backend workspace.
+    await mkdir(path.join(root, "backend/.app-dev"), { recursive: true });
+    directory = await mkdtemp(
+      path.join(root, "backend/.app-dev/shared-chat-probe-"),
+    );
     const bundle = path.join(directory, "probe.mjs");
     await build({
       absWorkingDir: root,

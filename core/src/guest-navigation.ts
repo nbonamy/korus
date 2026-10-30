@@ -12,5 +12,6 @@ export type GuestJoinControl =
   | { action: 'prepare'; link: string; teamId?: string }
   | { action: 'open' | 'leave' | 'history' | 'cancel'; id: string }
   | { action: 'join'; id: string; name: string }
+  | { action: 'turnHistory'; id: string; turnId: string }
   | { action: 'withdraw'; id: string; proposalId: string }
   | { action: 'propose'; id: string; proposalId: string; text: string; followUpBehavior?: 'queue' | 'steer' };

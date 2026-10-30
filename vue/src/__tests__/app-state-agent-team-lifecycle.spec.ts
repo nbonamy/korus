@@ -5,6 +5,7 @@ import { nextTick, reactive } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useAppState } from '../app-state';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
+import { createMission } from '@workspace/core/missions';
 import type { AppSnapshot, AppApi, DevicePairingSession, MainToRendererEvent, SourceRepository } from '@workspace/core/contracts';
 import { clearConfetti } from '../shared/confetti/use-confetti';
 import { stubElectronTestWindow, stubLegacyElectronTestWindow } from '../test/client';
@@ -467,6 +468,27 @@ describe('useAppState', () => {
     state.setRendererWindowFocused(true);
     expect(state.unreadAgentIds.value).toStrictEqual([]);
     expect(setDockBadgeCount).toHaveBeenLastCalledWith(0);
+  });
+
+  it('excludes hidden Mission workers from the startup Dock count while retaining their unread state', async () => {
+    const remote = createInitialSnapshot(); const lead = remote.agents[0]!, worker = remote.agents[1]!;
+    const mission = createMission(remote, { outcome: 'Ship work', workflowType: 'shapeAndShipFeature', teamId: remote.teams[0]!.id, orchestratorMemberId: lead.id });
+    mission.stage = 'ship'; mission.stageAgentIds = { requirements: lead.id, implementation: worker.id, review: lead.id };
+    worker.readState = { revision: 19, readRevision: 18 };
+    const listeners: Array<(event: MainToRendererEvent) => void> = [];
+    const setDockBadgeCount = vi.fn().mockResolvedValue(undefined);
+    stubElectronTestWindow({ app: { getSnapshot: vi.fn().mockResolvedValue(remote), setDockBadgeCount,
+      onEvent: vi.fn(listener => { listeners.push(listener); return () => {}; }) } });
+    const state = useAppState();
+    state.setRendererWindowFocused(false);
+    await state.loadSnapshot();
+    state.setRendererWindowFocused(true);
+    expect(state.unreadAgentIds.value).toContain(worker.id);
+    expect(state.snapshot.value.agents.find(agent => agent.id === worker.id)?.readState).toStrictEqual({ revision: 19, readRevision: 18 });
+    expect(setDockBadgeCount).toHaveBeenLastCalledWith(0);
+    state.setRendererWindowFocused(false);
+    listeners[0]!({ type: 'agent.updated', seq: 1, occurredAt: '', agentId: lead.id, payload: { id: lead.id, readState: { revision: 2, readRevision: 1 } } });
+    expect(setDockBadgeCount).toHaveBeenLastCalledWith(1);
   });
 
   it('clears desktop unread and Dock badges when mobile acknowledges activity, and marks focused activity read', async () => {

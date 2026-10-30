@@ -129,6 +129,7 @@ export function createAgentHistoryState(options: {
     isHydratingActiveAgentHistory,
     isLoadingOlderHistory,
     loadOlder,
+    loadTurn: (agentId: string, turnId: string) => appApi!.loadAgentTurnHistory(agentId, turnId),
     markHydrating,
     reset,
     statusFor,

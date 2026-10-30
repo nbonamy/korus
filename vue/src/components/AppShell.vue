@@ -697,7 +697,7 @@ import type { MissionWorkspaceOpenRequest } from './MissionWorkspaceOpenIn.vue';
 import ConversationPane from './ConversationPane.vue';
 import { useDebugWorktreeInitialization } from './debug-worktree-initialization';
 import AppMenu from '../shared/menu/AppMenu.vue';
-import { missionAgentIds } from '@workspace/core/mission-attention';
+import { missionAgentIds, navigationUnreadAgentIds } from '@workspace/core/mission-attention';
 import type { Mission, MissionStage, CreateMissionInput, DeleteMissionInput } from '@workspace/core/missions';
 import { missionCreatedWorkspaces, type MissionImplementationStartProgress } from '@workspace/core/mission-execution';
 import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
@@ -889,6 +889,7 @@ const props = withDefaults(defineProps<{
   duplicateAgentAction?: (agentId: string, options?: import('@workspace/core/contracts').DuplicateAgentOptions) => Promise<Agent | null>;
   assignWorkItemAction?: (payload: { agentId: string; item: WorkItem; prompt?: string }) => Promise<void>;
   loadOlderAgentHistory?: (agentId: string) => Promise<void>;
+  loadAgentTurnHistory?: (agentId: string, turnId: string) => Promise<void>;
   retryAgentHistory?: () => Promise<void>;
   agentConversationFor?: (agentId: string) => AgentConversationView | null;
   agentConversationActions?: AgentConversationActions;
@@ -1743,7 +1744,7 @@ const agentMentionGroups = computed<readonly CodexComposerMentionGroup[]>(() => 
   }];
 });
 const unreadTeamIds = computed(() => {
-  const unreadAgentIdSet = new Set(props.unreadAgentIds);
+  const unreadAgentIdSet = new Set(navigationUnreadAgentIds(props.snapshot.missions ?? [], props.unreadAgentIds ?? []));
   return props.snapshot.teams
     .filter((team) => (
       (activeSurface.value !== 'agent' || cockpitScope.value || team.id !== activeTeam.value?.id)
@@ -1964,6 +1965,7 @@ watch(
   { immediate: true, flush: 'sync' },
 );
 const workspacePreviews = useWorkspacePreviews({
+  readConversationContent: (agentId, input) => appApi ? appApi.readConversationContent(agentId, input) : Promise.reject(new Error('Conversation content unavailable.')),
   downloadAgentFile,
   reportError: message => { ElMessage.error(message); },
   closeTab: closeRightWorkspaceTab,
@@ -2395,6 +2397,7 @@ const conversationPaneActions: CodexConversationPaneActions = {
   forkTurn: (turnId) => emit('fork-turn', turnId),
   interrupt: () => emit('interrupt-agent'),
   loadOlderHistory: () => props.loadOlderAgentHistory?.(currentAgent.value?.id ?? ''),
+  loadTurnHistory: (turnId) => props.loadAgentTurnHistory?.(currentAgent.value?.id ?? '', turnId),
   menuSelect: (item) => {
     const composerCommand = conversationMenuCommand(item.payload);
     if (composerCommand && currentAgent.value) return runConversationMenuCommand(currentAgent.value.id, composerCommand);

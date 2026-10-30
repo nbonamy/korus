@@ -87,8 +87,8 @@ by mutating user-global tool config.
   completes), emits `agent.updated`, and may carry the start `announcement`. Stable
   instructions make it the first action of a task.
 - `finish_turn` is the last tool action of a substantive turn. It clears status
-  and may replace the thread flag; omission preserves it. `work_proposed` offers
-  concrete separate work identified in discussion without granting execution
+  and may replace the thread flag; omission preserves it within the current turn.
+  `work_proposed` offers concrete separate work identified in discussion without granting execution
   authority; it cannot replace implementation already requested in the conversation.
   `delegate_to_worktree` is accepted as a legacy alias and normalized on restore
   and tool calls. Workflow-managed agents retain their own proposal lifecycle;
@@ -98,10 +98,12 @@ by mutating user-global tool config.
   submits to the source conversation using its current agent and workspace;
   delegation and Mission creation use their existing procedures and authority boundaries.
   One in-flight response covers both proposal aliases. Acceptance clears the
-  proposal; submission failure preserves it for retry. Review readiness is separate:
-  new user prompts clear `ready_for_review`, and handoffs assess it unless review
-  is deferred or the user requests immediate commit/push. Flags are persisted app
-  state cleared with the conversation runtime.
+  proposal; submission failure preserves it for retry. Every new provider turn clears
+  all thread flags and prompt suggestions, including queued and internal starts.
+  Queue admission and rejected starts preserve them; successful steering clears them.
+  Duplicate starts cannot erase hints published by the current turn. Handoffs assess
+  review readiness unless review is deferred or the user requests immediate commit/push.
+  Flags are persisted app state cleared with the conversation runtime.
 - Prompt suggestions are agent-scoped Korus metadata, not provider conversation
   state or draft text. The renderer uses the SDK's placeholder contract; a
   suggestion never authorizes or submits work. Suggestions reuse the active

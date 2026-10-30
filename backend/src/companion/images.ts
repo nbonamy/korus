@@ -1,3 +1,4 @@
+import { conversationImageInput } from '@workspace/core/conversation-images';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { marked } from 'marked';
@@ -6,7 +7,7 @@ import type { CompanionImage, CompanionReset } from '@workspace/core/companion-p
 
 /** Authoritative message references are the allowlist; a phone cannot turn this into a file browser. */
 export function conversationImageReference(frame: CompanionReset, requestedPath: string): string {
-  const normalized = imagePath(requestedPath);
+  const normalized = conversationImageInput(requestedPath) ? requestedPath : imagePath(requestedPath);
   if (!normalized || !conversationImageReferences(frame.payload.snapshot.messages).has(normalized)) throw new Error('Image is not referenced by this conversation.');
   return normalized;
 }
@@ -25,7 +26,7 @@ export function conversationImageReferences(messages: ReadonlyArray<CompanionRes
         if (part.attachment.path) references.push(part.attachment.path);
         if (part.attachment.url) references.push(part.attachment.url);
       } else if (part.type === 'media') references.push(part.media.url);
-      for (const reference of references) { const normalized = imagePath(reference); if (normalized) paths.add(normalized); }
+      for (const reference of references) { const normalized = conversationImageInput(reference) ? reference : imagePath(reference); if (normalized) paths.add(normalized); }
     }
   }
   return paths;

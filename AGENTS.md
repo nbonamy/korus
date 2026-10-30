@@ -74,6 +74,21 @@ Development uses installed `codex-app-sdk` packages by default. Set
 set `CODEX_APP_SDK_SOURCE_ROOT` to use another checkout. Source linking does not
 require rebuilding, releasing or reinstalling the SDK during development.
 
+## Mobile API Compatibility
+
+Every endpoint and wire contract consumed by the mobile application must remain
+strictly backwards compatible with shipped mobile clients. This includes shared
+desktop/mobile endpoints, streamed events, serialized provider data and changes
+introduced through SDK upgrades. Desktop-only endpoints have no such requirement.
+Do not require a mobile update to keep existing operations working. Preserve old
+requests and response semantics; introduce incompatible new behavior only through
+explicit opt-in negotiation or a separate version that retains the old contract.
+Changes affecting mobile must include released-client regression evidence through
+the owning runtime boundary before handoff, commit or push. Shared current types
+and tests of only the newest client are insufficient. See
+[protocol.md](docs/protocol.md#mobile-compatibility) and
+[testing.md](docs/testing.md#mobile-compatibility-evidence).
+
 ## Documentation Map
 
 Keep `AGENTS.md` high-level. Before changing a feature area, read the relevant

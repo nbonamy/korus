@@ -48,7 +48,7 @@ const frame = shallowRef<CompanionConversation | null>(null);
 const agent = shallowRef<Agent | null>(null);
 const agents = shallowRef<Agent[]>([]);
 const ready = shallowRef(false);
-const files = createTranscriptFiles({ agentId: () => agent.value?.id,
+const files = createTranscriptFiles({ readContent: readConversationContent, agentId: () => agent.value?.id,
   revision: () => JSON.stringify([agent.value?.readState?.revision, agent.value?.updatedAt]),
   post: event => { void handler('transcript').postMessage(JSON.stringify(event)); } });
 const engines = shallowRef<{ current: string; choices: string[] } | null>(null);
@@ -86,7 +86,7 @@ provideCodexHostCapabilities({
   async ingestAttachments() { return []; }, async pickAttachments() { return []; },
   async transcribeAudio() { throw new Error('Native composer owns dictation.'); },
   async openExternal(url) { await handler('transcript').postMessage(JSON.stringify({ type: 'openExternal', url })); },
-});
+}, { imagePreviewBudgetBytes: 64 * 1024 * 1024, viewportImageLoading: true });
 async function openFileImage(path: string, title: string) {
   const agentId = agent.value?.id;
   const epoch = ++imageOpenEpoch;
@@ -97,6 +97,17 @@ async function openFileImage(path: string, title: string) {
   if (epoch === imageOpenEpoch && agentId && agentId === agent.value?.id) void handler('transcript').postMessage(JSON.stringify({ type: 'openImage', agentId, title, src }));
 }
 const contentRequests = new Map<string, { agentId: string; sessionId: string; resolve: (chunk: ConversationContentChunk) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
+const turnRequests = new Map<string, { agentId: string; session: string; resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
+function loadTurnHistory(turnId: string): Promise<void> {
+  const agentId = agent.value?.id;
+  if (!agentId) return Promise.reject(new Error('No conversation.'));
+  const requestId = crypto.randomUUID();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { turnRequests.delete(requestId); reject(new Error('Turn details request timed out.')); }, 60_000);
+    turnRequests.set(requestId, { agentId, session: JSON.stringify(agent.value?.backendSession), resolve, reject, timer });
+    void handler('transcript').postMessage(JSON.stringify({ type: 'loadTurnHistory', requestId, agentId, turnId }));
+  });
+}
 function readConversationContent(agentId: string, input: ConversationContentInput): Promise<ConversationContentChunk> {
   const requestId = crypto.randomUUID();
   return new Promise((resolve, reject) => {
@@ -122,10 +133,11 @@ const controller = createCodexConversationPaneController({
   }),
   actions: {
     loadOlderHistory: loadOlder,
+    loadTurnHistory,
     openLink(link) {
       if (link.kind === 'external') void handler('transcript').postMessage(JSON.stringify({ type: 'openExternal', url: link.href }));
       else if (/\.(png|jpe?g|gif|webp|avif|bmp|heic|heif)$/i.test(link.path)) void openFileImage(link.path, link.path.split(/[\\/]/).at(-1) || 'Image');
-      else files.open({ path: link.path, ...(link.action ? { action: link.action } : {}), ...(link.turnId ? { turnId: link.turnId } : {}), ...(link.line ? { line: link.line } : {}) });
+      else files.open({ ...(link.diffContent ? { diffContent: link.diffContent } : {}), path: link.path, ...(link.action ? { action: link.action } : {}), ...(link.turnId ? { turnId: link.turnId } : {}), ...(link.line ? { line: link.line } : {}) });
     },
     async openImage(image) {
       const agentId = agent.value?.id;
@@ -200,6 +212,15 @@ window.companionTranscript = {
     return { identity: message.identity, checkpoint: cached.checkpoint, agentId: message.agent.id, revision: message.agent.readState?.revision ?? 0, generation: message.generation };
   },
   setContent(json) {
+    const message = JSON.parse(json) as { type?: string; requestId: string; agentId: string; error?: string };
+    if (message.type === 'turnHistory') {
+      const pending = turnRequests.get(message.requestId);
+      if (!pending) return;
+      turnRequests.delete(message.requestId); clearTimeout(pending.timer);
+      if (message.error || message.agentId !== pending.agentId || agent.value?.id !== pending.agentId || JSON.stringify(agent.value.backendSession) !== pending.session) pending.reject(new Error(message.error ?? 'Conversation changed.'));
+      else pending.resolve();
+      return;
+    }
     if ((JSON.parse(json) as { type?: string }).type === 'conversationFile') { files.receive(JSON.parse(json)); return; }
     if ((JSON.parse(json) as { type?: string }).type === 'conversationImage') { setImage(json); return; }
     const reply = JSON.parse(json) as { requestId: string; agentId: string; sessionId: string; chunk?: ConversationContentChunk; error?: string };
@@ -207,7 +228,7 @@ window.companionTranscript = {
     if (!pending) return;
     contentRequests.delete(reply.requestId); clearTimeout(pending.timer);
     if (reply.agentId !== pending.agentId || reply.sessionId !== pending.sessionId || reply.agentId !== agent.value?.id
-      || agent.value.backendSession?.kind !== 'claude' || reply.sessionId !== agent.value.backendSession.sessionId || !reply.chunk || reply.error) pending.reject(new Error('Conversation changed.'));
+      || reply.sessionId !== (agent.value.backendSession?.kind === 'codex' ? agent.value.backendSession.threadId : agent.value.backendSession?.kind === 'claude' ? agent.value.backendSession.sessionId : null) || !reply.chunk || reply.error) pending.reject(new Error('Conversation changed.'));
     else pending.resolve(reply.chunk);
   },
   async setConversation(json) {
