@@ -44,7 +44,9 @@ diff references; selecting a file fetches its exact patch in bounded chunks, sep
 from the current working-tree source.
 
 The shared renderer loads media and attachment previews near the chat viewport,
-with two concurrent reads and stable preview frames. Retained encoded bytes plus
+with two concurrent reads and placeholders sized from intrinsic image dimensions.
+The SDK transport carries optional width and height from bounded header probes;
+older images retain their decoded ratio for subsequent cache eviction. Retained encoded bytes plus
 decoded pixels are bounded to 24 MiB on mobile and 64 MiB on desktop. Offscreen
 previews are evicted before visible ones and reload automatically on return;
 oversized or failed previews remain explicitly retryable. Independent desktop
