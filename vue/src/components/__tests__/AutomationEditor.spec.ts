@@ -87,7 +87,7 @@ describe('AutomationEditor', () => {
     await flushPromises();
     await withModels.get('[aria-label="Coding agent and model"]').trigger('click');
     await flushPromises();
-    [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent?.trim() === 'fast')!.click();
+    document.querySelector<HTMLButtonElement>('button[aria-label="Service tier: Standard"]')!.click();
     await flushPromises();
     await withModels.get('textarea').setValue('Check tasks');
     await withModels.get('form').trigger('submit');

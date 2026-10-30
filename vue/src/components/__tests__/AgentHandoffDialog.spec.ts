@@ -29,7 +29,10 @@ describe('AgentHandoffDialog', () => {
       await flushPromises();
     };
     await choose('high');
-    await choose('fast');
+    await wrapper.get('[aria-label="Coding agent and model"]').trigger('click');
+    await flushPromises();
+    document.querySelector<HTMLButtonElement>('button[aria-label="Service tier: Standard"]')!.click();
+    await flushPromises();
     expect(wrapper.get('[aria-label="Coding agent and model"]').text()).toMatch(/Sonnet.*high.*fast/);
     await wrapper.get('textarea').setValue('Explain the flaky test.');
     await wrapper.get('form').trigger('submit');
