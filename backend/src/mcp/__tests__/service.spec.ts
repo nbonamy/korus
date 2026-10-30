@@ -1307,7 +1307,7 @@ describe('AppMcpService', () => {
         },
       }),
       expect.stringContaining(expectedPrompt.split("</context>\n\n").at(-1)!),
-      undefined,
+      { planMode: false },
     );
     expect(response.result.structuredContent).toMatchObject({
       success: true,
@@ -1500,7 +1500,7 @@ describe('AppMcpService', () => {
     expect(response.result.structuredContent).toMatchObject({ success: true, promptSubmitted: true });
     const child = snapshot.agents.find(agent => agent.name === 'ACP worker')!;
     expect(child).toMatchObject({ backend: 'antigravity', delegatedByAgentId: parent.id, backendDefaults: { kind: 'antigravity', model: 'gemini-low' }, backendSession: { kind: 'antigravity', sessionId: 'child-session' } });
-    expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: child.id }), expect.stringContaining('Keep commits local'), undefined);
+    expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: child.id }), expect.stringContaining('Keep commits local'), { planMode: false });
     expect(parent.backendSession).toEqual({ kind: 'antigravity', sessionId: 'parent-session' });
     expect(snapshot.activeAgentId).toBe(parent.id);
   });

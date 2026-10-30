@@ -135,6 +135,30 @@ describe('AppController', () => {
     expect(currentSnapshot(controller).agents[0]?.status).toStrictEqual({ type: 'awaitingInput' });
   });
 
+  it.each(['success', 'error'] as const)('forwards creation %s even when a synchronization snapshot already covers its sequence', async state => {
+    const snapshot = createInitialSnapshot();
+    const clientState: ClientState = { sourceFolderPath: '', shouldPreventDisplaySleep: false };
+    let resolveSnapshot!: (value: { snapshot: AppSnapshot; lastEventSeq: number; clientState: ClientState }) => void;
+    const pending = new Promise<{ snapshot: AppSnapshot; lastEventSeq: number; clientState: ClientState }>(resolve => { resolveSnapshot = resolve; });
+    let reads = 0;
+    const backend = createBackendClient();
+    backend.request = vi.fn(async (method: string) => method === backendMethods.snapshotGet
+      ? ++reads === 1 ? { snapshot, lastEventSeq: 0, clientState } : pending
+      : clientState) as typeof backend.request;
+    const controller = new AppController(snapshot, backend);
+    const send = vi.fn();
+    setMainWindowSend(controller, send);
+    await controller.initialize();
+    const progress = { id: 'creation', state: 'running' as const, backend: 'codex' as const, repositoryName: 'korus', createWorktree: false, hasPrompt: true };
+    emitBackendEvent(controller, { seq: 1, agentId: 'agent-dina', type: 'agentCreation.progress', payload: progress });
+    const refresh = getSnapshot(controller);
+    await vi.waitFor(() => expect(reads).toBe(2));
+    emitBackendEvent(controller, { seq: 3, agentId: 'agent-dina', type: 'agentCreation.progress', payload: { ...progress, state } });
+    resolveSnapshot({ snapshot, lastEventSeq: 3, clientState });
+    await refresh;
+    expect(send).toHaveBeenCalledWith(ipcChannels.event, expect.objectContaining({ type: 'agentCreation.progress', payload: { ...progress, state } }));
+  });
+
   it('replays buffered provider frames before publishing the reconnected snapshot', async () => {
     vi.useFakeTimers();
     const initialSnapshot = createInitialSnapshot();

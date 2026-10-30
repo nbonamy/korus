@@ -133,7 +133,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     resolveAgentId: id => server.resolveTaskAgentId(id),
     save: saveBackendTasks,
     agent: id => server.collaborationAgents().find(agent => agent.id === id),
-    send: (agent, prompt, goal) => server.sendTaskPrompt(agent, prompt, goal),
+    send: (agent, prompt, goal, planMode) => server.sendTaskPrompt(agent, prompt, goal, planMode),
     interrupt: (agent, expectedTurnId) => server.interruptTaskWorker(agent, expectedTurnId),
     readHistory: agent => server.readTaskHistory(agent),
     onError: error => warnMain('tasks', 'transition failed', { message: String(error) }),
@@ -153,7 +153,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   const mcpService: AppMcpService = new AppMcpService({
     getCollaborationAgents: () => server.collaborationAgents(),
     createRemoteWorker: (...args) => server.provisionRemoteWorker(...args),
-    sendRemotePrompt: (agent, prompt, goal) => server.sendTaskPrompt(agent, prompt, goal),
+    sendRemotePrompt: (agent, prompt, goal, planMode) => server.sendTaskPrompt(agent, prompt, goal, planMode),
     sendRemoteMessage: (agent, prompt, messageId) => server.deliverRemoteMessage(agent, prompt, messageId),
     resolveDelegationParent: id => server.resolveTaskAgentId(id),
     forwardCollaboration: (agentId, name, args) => server.forwardCollaborationCall(agentId, name, args),

@@ -30,12 +30,12 @@ async function host(snapshot: AppSnapshot, label: string, remoteClients?: unknow
   let server!: AppBackendServer;
   const tasks = new DurableTaskService({ tasks: savedTasks, save: data => store.saveTasks(data), resolveAgentId: id => server.resolveTaskAgentId(id),
     agent: id => server.collaborationAgents().find(agent => agent.id === id),
-    send: (agent, prompt, goal) => server.sendTaskPrompt(agent, prompt, goal),
+    send: (agent, prompt, goal, planMode) => server.sendTaskPrompt(agent, prompt, goal, planMode),
     interrupt: (agent, turnId) => server.interruptTaskWorker(agent, turnId), onError: error => { throw error; } });
   const mcp = new AppMcpService({ snapshot, tasks, worktreeManager, persistSnapshot: () => store.save(snapshot),
     getCollaborationAgents: () => server.collaborationAgents(),
     createRemoteWorker: (...args) => server.provisionRemoteWorker(...args),
-    sendRemotePrompt: (agent, prompt, goal) => server.sendTaskPrompt(agent, prompt, goal),
+    sendRemotePrompt: (agent, prompt, goal, planMode) => server.sendTaskPrompt(agent, prompt, goal, planMode),
     sendRemoteMessage: (agent, prompt, messageId) => server.deliverRemoteMessage(agent, prompt, messageId),
     resolveDelegationParent: id => server.resolveTaskAgentId(id),
     forwardCollaboration: (agentId, name, args) => server.forwardCollaborationCall(agentId, name, args),
@@ -115,6 +115,7 @@ describe('collaboration across daemon ownership boundaries', () => {
     const created = await workerHost.mcp.callTool(worker.id, 'create-agent', {
       repoPath: '/remote/repo', startingContext: 'conversation', createWorktree: true,
       branchName: 'same-host-child', prompt: 'Inspect the inherited context',
+      planMode: true,
       ...(durable ? { requestId: 'same-host-child', task: { title: 'Inspect', doneWhen: 'Verified' } } : {}),
     });
     expect(created.isError).toBe(false);
@@ -126,6 +127,7 @@ describe('collaboration across daemon ownership boundaries', () => {
     });
     expect(parentConversation.handle.fork).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ cwd: '/remote/same-host-child' }), { extensionContext: expect.objectContaining({ id: childId }) });
     expect(childConversation.handle.sendMessage).toHaveBeenCalledOnce();
+    expect(childConversation.handle.sendMessage).toHaveBeenCalledWith(expect.stringContaining('Inspect the inherited context'), expect.objectContaining({ planMode: true }));
     expect(owner.provider.conversation('remote-worker').handle.fork).not.toHaveBeenCalled();
     expect(parentConversation.handle.sendMessage).not.toHaveBeenCalled();
     if (durable) expect((await owner.store.loadTasks())[0]).toMatchObject({ workerAgentId: childId, acceptance: { backendSession: { kind: 'codex', threadId: 'remote-child' } } });

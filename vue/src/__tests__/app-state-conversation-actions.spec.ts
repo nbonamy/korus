@@ -1014,7 +1014,7 @@ describe('useAppState', () => {
           revision,
           snapshot: codexConversationSnapshot([
             codexTextMessage(`message-${text}`, 'assistant', text),
-          ]),
+          ], { planMode: text === 'Newest' }),
         },
         occurredAt: `2026-09-06T00:00:0${seq}.000Z`,
       });
@@ -1023,6 +1023,32 @@ describe('useAppState', () => {
     expect(state.activeCodexConversationSnapshot.value?.messages).toStrictEqual([
       expect.objectContaining({ parts: [{ type: 'text', text: 'Newest' }] }),
     ]);
+    // A recovered/native snapshot must restore the composer even if its
+    // transient modeUpdated notification never reached this renderer.
+    expect(state.planMode.value).toBe(true);
+
+    state.setPlanMode(false);
+    listeners[0]?.({
+      seq: 3, agentId: 'agent-dina', backend: 'codex', threadId: 'thread-1',
+      type: 'codex.conversationEventReceived',
+      payload: { revision: 3, event: {
+        seq: 10, type: 'conversation.settingsChanged', conversationId: 'thread-1', origin: 'action',
+        occurredAt: '2026-09-06T00:00:03.000Z',
+        payload: { approvalPreset: null, selectedModelId: null, selectedReasoningEffort: null, selectedServiceTier: null, planMode: true },
+      } },
+      occurredAt: '2026-09-06T00:00:03.000Z',
+    });
+    expect(state.planMode.value).toBe(true);
+
+    state.setPlanMode(false);
+    listeners[0]?.({
+      seq: 4, agentId: 'agent-dina', backend: 'codex', threadId: 'thread-1',
+      type: 'codex.conversationSnapshotChanged',
+      payload: { revision: 4, snapshot: codexConversationSnapshot([], { planMode: true }) },
+      occurredAt: '2026-09-06T00:00:04.000Z',
+    });
+    // Unchanged provider settings do not erase an unsent manual toggle.
+    expect(state.planMode.value).toBe(false);
   });
 
   it('projects only the provider snapshot matching the selected agent session', async () => {

@@ -139,6 +139,7 @@ const {
   fileCatalogError,
   fileCatalogStatus,
   handleMainEvent: syncComposerStateFromMainEvent,
+  syncPlanMode: syncComposerPlanMode,
   loadActive: loadActiveAgentCatalogs,
   loadAll: loadAllAgentCatalogs,
   loadFiles: loadAgentFilesForActiveAgent,
@@ -589,7 +590,12 @@ export function useAppState() {
           handleMainEvent(event);
           continue;
         }
-        if (event.seq <= lastBackendEventSeq) continue;
+        if (event.seq <= lastBackendEventSeq) {
+          // Provisioning progress is transient and absent from snapshots. A
+          // covered terminal must still settle its already-visible dialog.
+          if (event.type === 'agentCreation.progress') syncAgentCreationProgressFromMainEvent(event);
+          continue;
+        }
         if (event.seq !== lastBackendEventSeq + 1) {
           gap = true;
           break;
@@ -2131,6 +2137,9 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
           threadId: event.threadId,
         },
       };
+      if (current?.threadId !== event.threadId || current.snapshot.planMode !== event.payload.snapshot.planMode) {
+        syncComposerPlanMode(event.agentId, event.payload.snapshot.planMode);
+      }
       return;
     }
     case 'codex.conversationEventReceived': {
@@ -2159,6 +2168,9 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
           snapshot: nextSnapshot,
         },
       };
+      if (event.payload.event.type === 'conversation.settingsChanged') {
+        syncComposerPlanMode(event.agentId, nextSnapshot.planMode);
+      }
       return;
     }
     case 'antigravity.conversationSnapshotChanged':

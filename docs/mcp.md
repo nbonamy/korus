@@ -129,6 +129,12 @@ by mutating user-global tool config.
 - With a `task` contract (`title`, `doneWhen`), a stable parent-scoped `requestId`
   is mandatory and reused after a timeout. Returned `taskId`/`agentId`/status
   describe accepted startup, not completed work.
+- Plan and Goal delegation require an explicit user request and are mutually
+  exclusive. Plan delegation submits the first prompt in provider Plan mode;
+  the existing interactive plan review owns approval before implementation.
+  Durable assignments waiting for that approval remain needs-input, without a
+  completed result. Regular startup explicitly uses default mode, including when
+  its native conversation inherits a planning parent's settings.
 - Goal delegation uses the same app-owned goal operation as the composer, with
   the assignment and its context as the objective. Durable tasks persist that
   startup choice and keep their result-reporting contract; retries do not start

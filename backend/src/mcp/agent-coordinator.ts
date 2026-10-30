@@ -530,6 +530,7 @@ export class AppMcpAgentCoordinator {
     return this.onCreateAgent(agent, {
       ...(input.remoteConnectionId ? { remoteConnectionId: input.remoteConnectionId.trim() } : {}),
       ...(input.goal !== undefined ? { goal: input.goal } : {}),
+      ...(input.planMode !== undefined ? { planMode: input.planMode } : {}),
       ...(input.task ? { task: input.task, requestId: input.requestId } : {}),
       name: input.name?.trim(),
       prompt: input.prompt?.trim() || undefined,
