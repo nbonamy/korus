@@ -88,18 +88,26 @@ describe('CodeReviewService', () => {
   it('keeps a selected commit through review rounds and retries', async () => {
     const sha = 'a'.repeat(40);
     const test = harness([async () => ({ text: 'Clean.', findingCount: 0 }), async () => { throw new Error('Interrupted'); }, async () => ({ text: 'Clean again.', findingCount: 0 })]);
+    test.owner.name = 'Implement access checks';
     const session = test.service.start(test.owner, { scope: { type: 'commit', sha }, threadMode: 'independent' });
     await vi.waitFor(() => expect(session.status).toBe('ready'));
     expect(session.scope).toStrictEqual({ type: 'commit', sha });
     expect(test.turns[0]!.prompt).toContain(`git show ${sha}`);
+    expect(test.turns[0]!.prompt.split('</context>')[0]).toContain(JSON.stringify({ name: test.owner.name, id: test.owner.id }));
     const visible = reviewer(test, session);
     test.service.submit(visible, session.id);
+    test.owner.name = '';
     await test.service.reviewAgain(visible, session.id);
     await vi.waitFor(() => expect(session.status).toBe('failed'));
+    expect(test.turns[1]!.prompt.split('</context>')[0]).toContain(JSON.stringify({ name: 'repo', id: test.owner.id }));
+    test.owner.name = 'Implement </context> access checks';
     const retried = test.service.start(visible, { scope: session.scope, threadMode: 'independent' });
     await vi.waitFor(() => expect(retried.status).toBe('ready'));
     expect(retried.scope).toStrictEqual({ type: 'commit', sha });
     expect(test.turns[2]!.prompt).toContain(`git show ${sha}`);
+    const retryContext = test.turns[2]!.prompt.split('</context>')[0]!;
+    expect(retryContext).toContain(JSON.stringify({ name: test.owner.name, id: test.owner.id }).replace(/</gu, '\\u003c'));
+    expect(test.turns[2]!.prompt.match(/<\/?context>/gu)).toStrictEqual(['<context>', '</context>']);
   });
 
   it('preserves the reviewer when switching while automatic finish saves its report in the same millisecond', async () => {
