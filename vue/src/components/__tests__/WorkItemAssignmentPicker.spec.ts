@@ -49,7 +49,7 @@ describe('WorkItemAssignmentPicker', () => {
     [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(option => option.textContent?.trim() === 'high')!.click();
     await wrapper.vm.$nextTick();
     await wrapper.get('[aria-label="Coding agent and model"]').trigger('click');
-    [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(option => option.textContent?.trim() === 'fast')!.click();
+    document.querySelector<HTMLButtonElement>('button[aria-label="Service tier: Standard"]')!.click();
     await wrapper.vm.$nextTick();
     await wrapper.get('.app-button--primary').trigger('click');
     expect(wrapper.emitted('submit')).toStrictEqual([[

@@ -4,10 +4,16 @@ struct ReviewState: Decodable, Equatable {
     enum Status: String, Decodable { case idle, loading, ready, failed, starting, started, unknown }
     var status: Status = .idle
     var setup: ReviewSetup?
+    var details: CodeReviewDetails?
+    var action: String?
 }
 
 struct ReviewSetup: Decodable, Equatable {
-    struct Model: Decodable, Equatable, Identifiable { let id: String; let name: String; let efforts: [String] }
+    struct Model: Decodable, Equatable, Identifiable {
+        struct Tier: Decodable, Equatable, Identifiable { let id: String; let name: String }
+        let id: String; let name: String; let efforts: [String]; var tiers: [Tier]? = nil
+        func supportedTier(_ value: String?) -> String? { tiers == nil ? value : tiers?.first { $0.id == value }?.id }
+    }
     struct Preferences: Decodable, Equatable {
         struct Selection: Decodable, Equatable { let model: String?; let reasoningEffort: String?; var serviceTier: String? = nil }
         let providers: [String: Selection]
@@ -56,7 +62,8 @@ struct ReviewChoices {
         let saved = setup.preferences?.providers[backend]
         model = setup.models.first(where: { $0.id == saved?.model })?.id ?? ""
         effort = setup.models.first(where: { $0.id == model })?.efforts.first(where: { $0 == saved?.reasoningEffort }) ?? ""
-        serviceTier = saved?.serviceTier
+        let selected = setup.models.first { $0.id == model }
+        serviceTier = selected?.supportedTier(saved?.serviceTier)
     }
 
     func input(_ setup: ReviewSetup) -> Input? {
@@ -68,7 +75,8 @@ struct ReviewChoices {
         let selected = setup.models.first { $0.id == model }
         let text = instructions.trimmingCharacters(in: .whitespacesAndNewlines)
         return Input(scope: .init(type: scope, baseRef: scope == "branch" ? setup.baseRef : nil), threadMode: thread,
-                     selection: independent ? .init(backend: backend, model: selected?.id, reasoningEffort: selected?.efforts.contains(effort) == true ? effort : nil, serviceTier: serviceTier) : nil,
+                     selection: independent ? .init(backend: backend, model: selected?.id, reasoningEffort: selected?.efforts.contains(effort) == true ? effort : nil,
+                                                    serviceTier: selected?.supportedTier(serviceTier)) : nil,
                      instructions: text.isEmpty ? nil : text,
                      automation: .init(enabled: automatic, maxPriority: priority, maxRounds: min(10, max(1, rounds)), autoCommit: automatic && autoCommit))
     }

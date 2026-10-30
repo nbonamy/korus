@@ -23,6 +23,7 @@ import { createAgentComposerState } from '../../agent-composer-state';
 import type { AgentConversationView } from '../../app-state';
 import { agentConversationState } from '../use-agent-conversation';
 import { claudeConversationSnapshot } from '../../test/claude-conversation-fixtures';
+import { translate } from '../../i18n';
 
 const agent: Agent = {
   id: 'agent-dina',
@@ -657,7 +658,8 @@ describe('ConversationPane', () => {
     expect(wrapper.findAll('.chat-work-group')).toHaveLength(1);
   });
 
-  it('welcomes an empty unnamed quick chat without repeating its placeholder title', () => {
+  // Empty Quick Chats must explain their team scope without promising shared conversation memory.
+  it('welcomes a Quick Chat and explains its context before the first message', async () => {
     const wrapper = mountPane({
       controller: controllerFor([]),
       agent: {
@@ -671,6 +673,9 @@ describe('ConversationPane', () => {
 
     expect(wrapper.text()).toContain('What can I help with?');
     expect(wrapper.text()).not.toContain('Chat with Untitled conversation');
+    expect(wrapper.get('.conversation-pane__empty p').text()).toBe(translate('chat.quickChatContext'));
+    await wrapper.setProps({ agent: { ...agent, sessionKind: 'quickChat', folder: null, sharedConversation: { joinId: 'shared' } } });
+    expect(wrapper.find('.conversation-pane__empty p').exists()).toBe(false);
   });
 
   it('renders an app-owned empty state without exposing the worker folder', () => {

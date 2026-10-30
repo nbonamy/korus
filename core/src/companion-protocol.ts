@@ -63,6 +63,8 @@ export type CompanionMission = { id: string; teamId: string; outcome: string; st
   review?: CompanionMissionReview };
 /** `backends` lists, per team, the engines that are connected and enabled on the laptop that hosts it. */
 export type CompanionWorkspace = { conversationSync?: boolean; gitStatuses?: Record<string, CompanionGitStatus>; teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[]; backends?: Record<string, AgentBackend[]>; agentRequests?: Record<string, AgentRequest[]>; queuedPrompts?: { id: string; agentId: string; text: string }[];
+  /** Active-round finding counts, keyed by reviewer conversation; full findings stay on demand. */
+  reviewFindings?: Record<string, number>;
   /** Workers implementing mission tickets: openable from their mission, never listed among the team's agents. */
   missionProgress?: CompanionMission[]; missionAgents?: Agent[] };
 /** Account quota windows on the paired laptop; billing and credit details stay on the host. */

@@ -2,9 +2,10 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h } from 'vue';
 import { createEmptySnapshot } from '@workspace/core/snapshot';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ElPopover, ElTabs, ElTabPane } from 'element-plus';
+import { ElPopover, ElTabs, ElTabPane, ElTooltip } from 'element-plus';
 import type { BackendModelOption, ExecutionSelection } from '@workspace/core/contracts';
 import BackendModelSelector from '../BackendModelSelector.vue';
+import AppMenuButton from '../../shared/menu/AppMenuButton.vue';
 import { backendChoicesKey, provideBackendChoices } from '../backend-selection';
 import { backendModelCatalogKey } from '../backend-model-catalog';
 
@@ -127,13 +128,13 @@ describe('BackendModelSelector', () => {
       { id: 'fast', model: 'gpt-fast', displayName: 'GPT Fast',
         supportedReasoningEfforts: [{ reasoningEffort: 'low', description: '' }, { reasoningEffort: 'high', description: '' }],
         serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }, { id: 'ultrafast', name: 'Ultrafast', description: '' }] },
-      { id: 'tiers-only', model: 'gpt-tiers', displayName: 'GPT Tiers', serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }] },
+      { id: 'tiers-only', model: 'gpt-tiers', displayName: 'GPT Tiers', serviceTiers: [{ id: 'priority', name: 'Fast', description: '' }] },
       { id: 'plain', model: 'gpt-plain', displayName: 'GPT Plain', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: '' }] },
     ] as BackendModelOption[];
     function mountSelector(initial: { model?: string; reasoningEffort?: string; serviceTier?: string } = {}) {
       const wrapper = mount(BackendModelSelector, {
-        props: { agentId: 'agent', selection: { backend: 'codex' as const, model: initial.model ?? '', reasoningEffort: initial.reasoningEffort ?? '', serviceTier: initial.serviceTier ?? '' }, 'onUpdate:selection': (selection: ExecutionSelection | undefined) => wrapper.setProps({ selection }) },
-        global: { components: { ElPopover, ElTabs, ElTabPane }, provide: {
+        props: { agentId: 'agent', selection: { backend: 'codex' as const, model: initial.model ?? '', reasoningEffort: initial.reasoningEffort ?? null, serviceTier: initial.serviceTier ?? null }, 'onUpdate:selection': (selection: ExecutionSelection | undefined) => wrapper.setProps({ selection }) },
+        global: { components: { ElPopover, ElTabs, ElTabPane, ElTooltip }, stubs: { transition: false }, provide: {
           [backendChoicesKey as symbol]: computed(() => ['codex']),
           [backendModelCatalogKey as symbol]: { listModels: async () => catalog },
         } },
@@ -143,43 +144,78 @@ describe('BackendModelSelector', () => {
     const open = async (wrapper: ReturnType<typeof mountSelector>) => { await wrapper.get('[aria-label="Coding agent and model"]').trigger('click'); await flushPromises(); };
     const row = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent?.trim() === label)!;
 
-    it('lists what the model offers under its efforts, after a divider and without section titles', async () => {
-      const wrapper = mountSelector();
+    // Header failures: changing tier changes model/effort, binary mode opens a menu,
+    // additional modes cannot be selected, or an unsupported model retains the control.
+    it('toggles Standard/Fast from the header without changing the model or effort', async () => {
+      const wrapper = mountSelector({ model: 'gpt-tiers' });
       await flushPromises();
       await open(wrapper);
-      const submenu = row('low').closest('[role="menu"]')!;
-      expect([...submenu.querySelectorAll('[role="menuitemradio"], [role="separator"]')].map(item => item.getAttribute('role') === 'separator' ? '---' : item.textContent?.trim()))
-        .toStrictEqual(['low', 'high', '---', 'standard', 'fast', 'ultrafast']);
+      const toggle = () => document.querySelector<HTMLButtonElement>('button[aria-label^="Service tier:"]')!;
+      expect(toggle()).not.toBeNull();
+      expect(toggle().getAttribute('aria-label')).toBe('Service tier: Standard');
+      expect(toggle().getAttribute('aria-pressed')).toBe('false');
+      expect(toggle().getAttribute('aria-haspopup')).toBeNull();
+      const activation = new KeyboardEvent('keydown', { code: 'Space', key: ' ', bubbles: true, cancelable: true });
+      toggle().dispatchEvent(activation);
+      expect(activation.defaultPrevented).toBe(false);
+      toggle().click();
+      await flushPromises();
+      expect(wrapper.props('selection')).toStrictEqual({ backend: 'codex', model: 'gpt-tiers', reasoningEffort: null, serviceTier: 'priority' });
+      expect(toggle().getAttribute('aria-pressed')).toBe('true');
+      expect(toggle().getAttribute('aria-label')).toBe('Service tier: Fast');
+      expect(row('Standard')).toBeUndefined();
+      toggle().click();
+      await flushPromises();
+      expect(wrapper.props('selection')?.serviceTier).toBeNull();
+      expect(toggle().getAttribute('aria-pressed')).toBe('false');
+      await wrapper.setProps({ disabled: true });
+      expect(toggle().disabled).toBe(true);
     });
 
-    it('sets the tier with the model and keeps the effort, and Standard clears it', async () => {
+    it('opens a mode picker for additional tiers, keeps effort, and lets Standard clear the tier', async () => {
       const wrapper = mountSelector({ model: 'gpt-fast', reasoningEffort: 'low' });
       await flushPromises();
       await open(wrapper);
-      row('ultrafast').click();
+      const button = () => document.querySelector<HTMLButtonElement>('button[aria-label^="Service tier:"]')!;
+      expect(button()).not.toBeNull();
+      expect(button().getAttribute('aria-haspopup')).toBe('menu');
+      expect(button().getAttribute('aria-pressed')).toBeNull();
+      const submenu = row('low').closest('[role="menu"]')!;
+      expect([...submenu.querySelectorAll('[role="menuitemradio"]')].map(item => item.textContent?.trim())).toStrictEqual(['low', 'high']);
+      button().click();
+      await flushPromises();
+      await vi.waitFor(() => expect(wrapper.findComponent(AppMenuButton).findComponent(ElPopover).emitted('after-enter')).toHaveLength(1));
+      expect(wrapper.props('selection')?.serviceTier).toBeNull();
+      expect(row('Standard').getAttribute('aria-checked')).toBe('true');
+      row('Ultrafast').click();
       await flushPromises();
       expect(wrapper.props('selection')?.model).toBe('gpt-fast');
       expect(wrapper.props('selection')?.reasoningEffort).toBe('low');
       expect(wrapper.props('selection')?.serviceTier).toBe('ultrafast');
       expect(wrapper.get('button').text()).toContain('ultrafast');
-      await open(wrapper);
-      row('standard').click();
+      expect(button().getAttribute('aria-label')).toBe('Service tier: Ultrafast');
+      await vi.waitFor(() => expect(button().getAttribute('aria-expanded')).toBe('false'));
+      button().click();
+      await flushPromises();
+      expect(row('Ultrafast').getAttribute('aria-checked')).toBe('true');
+      row('Standard').click();
       await flushPromises();
       expect(wrapper.props('selection')?.serviceTier).toBeNull();
       expect(wrapper.props('selection')?.reasoningEffort).toBe('low');
     });
 
-    it('opens a submenu for a model that only has tiers, without a divider', async () => {
+    it('selects a model with only tiers directly and hides the control for unsupported models', async () => {
       const wrapper = mountSelector();
       await flushPromises();
       await open(wrapper);
-      const submenu = [...document.querySelectorAll('[role="menu"]')].find(menu => [...menu.querySelectorAll('[role="menuitemradio"]')].map(item => item.textContent?.trim()).join() === 'standard,fast')!;
-      expect(submenu).toBeDefined();
-      expect(submenu.querySelectorAll('[role="separator"]')).toHaveLength(0);
-      [...submenu.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent?.trim() === 'fast')!.click();
+      row('GPT Tiers').click();
       await flushPromises();
       expect(wrapper.props('selection')?.model).toBe('gpt-tiers');
-      expect(wrapper.props('selection')?.serviceTier).toBe('fast');
+      await open(wrapper);
+      expect(document.querySelector('button[aria-label^="Service tier:"]')).not.toBeNull();
+      await wrapper.setProps({ selection: { ...wrapper.props('selection')!, model: 'gpt-plain' } });
+      await flushPromises();
+      expect(document.querySelector('button[aria-label^="Service tier:"]')).toBeNull();
     });
 
     it('drops a tier the newly chosen model does not offer', async () => {

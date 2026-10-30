@@ -13,6 +13,20 @@ describe('Claude conversation replica', () => {
     expect(replica.getSnapshot()).toStrictEqual(initial);
     replica.apply(page); replica.apply(page);
     expect(replica.getSnapshot()).toStrictEqual({ ...initial, messages: [older, live], historyState: { hasOlder: false, loadingOlder: false } });
+    const detail = { ...older, id: 'earlier-detail', turnId: 'past', parts: [{ type: 'text' as const, text: 'Hydrated earlier detail' }] };
+    const replacement = event({ type: 'message.replaced', backendSessionId: 'session', payload: { message: detail, beforeMessageId: older.id } });
+    replica.apply({ ...replacement, backendSessionId: 'other' });
+    expect(replica.getSnapshot().messages).toStrictEqual([older, live]);
+    replica.apply(replacement); replica.apply(replacement);
+    expect(replica.getSnapshot().messages).toStrictEqual([detail, older, live]);
+    const update = event({ type: 'turn.historyUpdated', backendSessionId: 'session', payload: { turn: {
+      id: 'past', status: 'completed', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null,
+      itemsView: 'full', detailsLoading: false, detailsError: null,
+    } } });
+    replica.apply({ ...update, backendSessionId: 'other' });
+    expect(replica.getSnapshot().turns).toStrictEqual([]);
+    replica.apply(update);
+    expect(replica.getSnapshot()).toMatchObject({ busy: true, activeTurnId: 'turn', turns: [update.payload.turn] });
   });
   it('keeps a steering message between the answers received before and after it', () => {
     const replica = createClaudeConversationReplica(emptySnapshot());

@@ -229,6 +229,8 @@ replace a newer dialog or navigation selection.
   actions. Use Element Plus teleport/placement for popovers, Element Plus tabs for
   navigation, radio/segmented controls for exclusive form choices; pill tabs keep
   symmetric edge padding.
+  Nested menus stay inside their owning overlay's outside-click boundary. Selection
+  and Escape dismissal restore trigger focus after the popup closes.
   Exclusive-choice popup menus show the selected option with `CheckIcon` in place
   of its leading icon; other options keep their normal icons. Use radio items
   with `checked` for accessibility and `:show-selection-check="false"` on `AppMenu`

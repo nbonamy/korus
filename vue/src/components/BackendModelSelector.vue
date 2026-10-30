@@ -9,11 +9,21 @@
         <ChevronDown class="backend-model-selector__chevron" aria-hidden="true" />
       </button>
     </template>
-    <el-tabs v-model="backend" :aria-label="t('surface.agentDialog.codingAgent')">
-      <el-tab-pane v-for="choice in tabs" :key="choice" :name="choice" :label="backendDisplayName(choice)" :disabled="disabled">
-        <template #label><span class="backend-model-selector__tab" role="img" :title="backendDisplayName(choice)" :aria-label="backendDisplayName(choice)"><BackendIcon :backend="choice" /></span></template>
-      </el-tab-pane>
-    </el-tabs>
+    <div class="backend-model-selector__header">
+      <el-tabs v-model="backend" :aria-label="t('surface.agentDialog.codingAgent')">
+        <el-tab-pane v-for="choice in tabs" :key="choice" :name="choice" :label="backendDisplayName(choice)" :disabled="disabled">
+          <template #label><span class="backend-model-selector__tab" role="img" :title="backendDisplayName(choice)" :aria-label="backendDisplayName(choice)"><BackendIcon :backend="choice" /></span></template>
+        </el-tab-pane>
+      </el-tabs>
+      <el-tooltip v-if="serviceTiers.length" :content="tierTooltip" :trigger-keys="[]" placement="top" :show-after="300">
+        <span class="backend-model-selector__tier">
+          <AppMenuButton v-if="serviceTiers.length > 1" v-model:open="tierOpen" :ariaLabel="t('modelPicker.serviceTier')" :items="tierItems" :width="188" :teleported="false" @select="serviceTier = $event">
+            <template #trigger="{ attrs }"><button v-bind="attrs" class="app-icon-button backend-model-selector__tier-button" :class="{ 'backend-model-selector__tier-button--active': serviceTier }" type="button" :disabled="disabled" :aria-label="tierAccessibleName"><CodexUltrafastIcon v-if="serviceTier === 'ultrafast'" :size="16" /><BoltIcon v-else aria-hidden="true" /></button></template>
+          </AppMenuButton>
+          <button v-else class="app-icon-button backend-model-selector__tier-button" :class="{ 'backend-model-selector__tier-button--active': serviceTier }" type="button" :disabled="disabled" :aria-label="tierAccessibleName" :aria-pressed="Boolean(serviceTier)" @click="serviceTier = serviceTier ? '' : serviceTiers[0]!.id"><CodexUltrafastIcon v-if="serviceTier === 'ultrafast'" :size="16" /><BoltIcon v-else aria-hidden="true" /></button>
+        </span>
+      </el-tooltip>
+    </div>
     <AppMenu class="app-menu--embedded" :items="modelItems" :ariaLabel="t('modelPicker.model')" @select="selectModel" />
     <!-- Only on a cold first load; a cached catalog is shown straight away and refreshed behind the scenes. -->
     <div v-if="loading" class="backend-model-selector__loading" aria-busy="true" role="status" :aria-label="t('modelPicker.loading')">
@@ -26,12 +36,14 @@
 import { computed, ref, watch } from 'vue';
 import { executionSelectionControls } from '../execution-selection';
 import { useI18n } from 'vue-i18n';
+import { CodexUltrafastIcon } from '@codex-app-sdk/vue';
 import type { AgentBackend, BackendModelOption, ExecutionSelection } from '@workspace/core/contracts';
 import { backendDisplayName } from '@workspace/core/backend-driver';
 import { agentBackends } from '@workspace/core/contracts/shared';
 import AppMenu from '../shared/menu/AppMenu.vue';
+import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
-import { ChevronDown } from '../shared/icons/app-icons';
+import { BoltIcon, ChevronDown } from '../shared/icons/app-icons';
 import BackendIcon from './BackendIcon.vue';
 import { useAgentHost, useBackendChoices, useCatalogAgentId, useNewAgentBackend, useRememberBackend, useSavedModelSelection } from './backend-selection';
 import { cacheModels, cachedModels, defaultReasoningEffort, presentCatalog, useBackendModelCatalog } from './backend-model-catalog';
@@ -60,6 +72,8 @@ const agentHost = useAgentHost(() => catalogAgentId.value);
 const catalogHost = computed(() => catalogAgentId.value ? agentHost.value : props.remoteConnectionId || 'local');
 const { t } = useI18n();
 const open = ref(false);
+const tierOpen = ref(false);
+watch([open, backend, model], () => { tierOpen.value = false; });
 const loading = ref(false);
 watch(loading, value => emit('loading', value), { immediate: true });
 const models = ref<BackendModelOption[]>([]);
@@ -74,16 +88,23 @@ function showCatalog(catalog: BackendModelOption[]) {
 }
 const selectedModel = computed(() => models.value.find(option => option.model === model.value));
 const efforts = computed(() => selectedModel.value?.supportedReasoningEfforts ?? []);
+const serviceTiers = computed(() => selectedModel.value?.serviceTiers ?? []);
+const currentTierName = computed(() => serviceTiers.value.find(tier => tier.id === serviceTier.value)?.name ?? t('modelPicker.standardTier'));
+const tierAccessibleName = computed(() => t('modelPicker.currentServiceTier', { tier: currentTierName.value }));
+const tierTooltip = computed(() => !serviceTier.value ? t('modelPicker.normalSpeed') : currentTierName.value.toLowerCase() === 'fast' ? t('modelPicker.fastMode') : currentTierName.value);
+const tierItems = computed<AppMenuItem[]>(() => [
+  { id: '', label: t('modelPicker.standardTier'), type: 'radio', checked: !serviceTier.value },
+  ...serviceTiers.value.map((tier): AppMenuItem => ({ id: tier.id, label: tier.name, type: 'radio', checked: serviceTier.value === tier.id })),
+]);
 // Lowercase like the effort next to it, so the two read as one setting.
 const tierLabel = (name: string) => name.toLowerCase();
 const serviceTierName = computed(() => tierLabel(selectedModel.value?.serviceTiers?.find(tier => tier.id === serviceTier.value)?.name ?? ''));
-// A model with reasoning efforts or service tiers opens a submenu of them, so model, effort and tier are one gesture.
+// Reasoning stays model-specific; service tier is controlled separately in the header.
 const modelItems = computed<AppMenuItem[]>(() => [
   ...models.value.map((option): AppMenuItem => {
     const selected = model.value === option.model;
-    const tiers = option.serviceTiers ?? [];
-    if (!option.supportedReasoningEfforts?.length && !tiers.length) return { id: `model:${option.model}`, label: option.displayName, type: 'radio', checked: selected };
-    const summary = [selected ? reasoningEffort.value : '', selected ? tierLabel(tiers.find(tier => tier.id === serviceTier.value)?.name ?? '') : ''].filter(Boolean).join(' · ');
+    if (!option.supportedReasoningEfforts?.length) return { id: `model:${option.model}`, label: option.displayName, type: 'radio', checked: selected };
+    const summary = selected ? reasoningEffort.value : '';
     return {
       id: `submenu:${option.model}`, type: 'submenu', label: option.displayName, checked: selected,
       ...(summary ? { value: summary } : {}),
@@ -91,12 +112,6 @@ const modelItems = computed<AppMenuItem[]>(() => [
         ...(option.supportedReasoningEfforts ?? []).map((effort): AppMenuItem => ({
           id: `effort:${option.model}:${effort.reasoningEffort}`, label: effort.reasoningEffort, type: 'radio',
           checked: selected && reasoningEffort.value === effort.reasoningEffort,
-        })),
-        ...(option.supportedReasoningEfforts?.length && tiers.length ? [{ id: `separator:${option.model}`, type: 'separator' as const }] : []),
-        // The standard tier is "no tier"; the others are whatever the provider offers, however many.
-        ...(tiers.length ? [{ id: `tier:${option.model}:`, label: tierLabel(t('modelPicker.standardTier')), type: 'radio' as const, checked: selected && !serviceTier.value }] : []),
-        ...tiers.map((tier): AppMenuItem => ({
-          id: `tier:${option.model}:${tier.id}`, label: tierLabel(tier.name), type: 'radio', checked: selected && serviceTier.value === tier.id,
         })),
       ],
     };
@@ -149,16 +164,10 @@ function selectDefaultModel() {
 }
 function selectModel(id: string) {
   const [kind, chosen = '', ...rest] = id.split(':');
-  const sameModel = model.value === chosen;
   if (kind === 'effort') {
     // Setting the model resets the effort, so the effort is applied once that watcher has run.
     model.value = chosen;
     reasoningEffort.value = rest.join(':');
-  } else if (kind === 'tier') {
-    // Choosing a tier on the model already in use keeps its effort; on another model that model's default effort applies.
-    model.value = chosen;
-    serviceTier.value = rest.join(':');
-    if (!sameModel) reasoningEffort.value = defaultReasoningEffort(models.value.find(option => option.model === chosen));
   } else model.value = chosen;
   open.value = false;
 }
@@ -227,13 +236,47 @@ function selectModel(id: string) {
 }
 
 .backend-model-selector__popover .el-tabs__header {
+  margin-bottom: 0;
+}
+
+.backend-model-selector__header {
+  display: flex;
+  align-items: center;
   margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.backend-model-selector__header .el-tabs {
+  flex: 1;
+  min-width: 0;
 }
 
 /* One divider carries the separation between provider and model lists. */
 .backend-model-selector__popover .el-tabs__nav-wrap::after {
-  height: 1px;
-  background-color: var(--color-border);
+  display: none;
+}
+
+.backend-model-selector__tier {
+  display: inline-flex;
+  flex: none;
+  padding-left: var(--space-4);
+  margin-left: var(--space-4);
+  border-left: 1px solid var(--color-border);
+}
+
+.backend-model-selector__tier-button.app-icon-button {
+  width: 32px;
+  height: 32px;
+}
+
+.backend-model-selector__tier-button--active.app-icon-button,
+.backend-model-selector__tier-button--active.app-icon-button:hover:not(:disabled) {
+  color: var(--color-primary);
+  background: var(--color-primary-container);
+}
+
+.backend-model-selector__tier-button--active > svg {
+  fill: currentcolor;
 }
 
 .backend-model-selector__popover .el-tabs__nav {

@@ -23,9 +23,10 @@ export type AgentEffectInstructionSettings = {
 
 export const CHECK_INBOX_PROMPT = `Manual recovery: check your unread ${product.name} agent messages.`;
 
-const COLLABORATION_BOUNDARY = [
+const collaborationBoundary = (isQuickChat: boolean) => [
   'Do not proactively message other agents.',
-  'Use list-agents, send-message, or broadcast-message only when the user explicitly requests coordination or a concrete cross-repository contract blocker requires a decision or action from a specific agent.',
+  `Use ${isQuickChat ? 'send-message or broadcast-message' : 'list-agents, send-message, or broadcast-message'} only when the user explicitly requests coordination or a concrete cross-repository contract blocker requires a decision or action from a specific agent.`,
+  ...(isQuickChat ? ['You may use list-agents as a read-only lookup of this team’s project folders, without contacting teammates.'] : []),
   'Never send FYIs, progress reports, acknowledgments, commit/hash notices, or "no action needed" messages.',
 ].join(' ');
 
@@ -76,7 +77,7 @@ export function appDeveloperInstructions(
     `Use the ${product.mcpServerName} MCP server for agent collaboration.`,
     `${product.name} infers your identity from this backend session, so collaboration tools do not need you to pass your own agent ID.`,
     'Start every user task with exactly one set-status as your first action: short status and a brief natural start announcement. Update status only on a change of direction, without announcement. Announcements are best-effort start/completion acknowledgments, not progress, reasoning, output or secrets; never wait or retry speech. Informational teammate messages need no status or announcement; finish_turn owns completion.',
-    `${product.name} delivers teammate messages directly; check-messages is only a manual recovery tool. Reply to teammate messages only when the sender needs information, a decision, coordination, or action. Silently absorb FYIs, acknowledgments, confirmations, and closures. Never acknowledge an acknowledgment. ${COLLABORATION_BOUNDARY}`,
+    `${product.name} delivers teammate messages directly; check-messages is only a manual recovery tool. Reply to teammate messages only when the sender needs information, a decision, coordination, or action. Silently absorb FYIs, acknowledgments, confirmations, and closures. Never acknowledge an acknowledgment. ${collaborationBoundary(isQuickChat)}`,
     `Delegate only when explicitly authorized. Native subagents run inside this provider session; ${product.name} co-agents are separate teammates created with create-agent. Clarify ambiguous delegation requests. Load korus-delegation for co-agent work. ${delegationSuggestionInstruction}`,
     ...(isQuickChat ? ['For an explicit Quick Chat → new project request, use create-project following korus-delegation.'] : []),
     'Call finish_turn exactly once as the last tool action of each substantive turn, immediately before the final response. It clears status and groups completion effects; announce only genuine completion. Assess ready_for_review at every handoff when the intended uncommitted diff is complete and validated, including after a no-edit turn. Omit it for incomplete work, no reviewable diff, deferred review or explicit commit/push requests. Proposals never authorize actions. Omitted flag preserves a flag within the current turn; the next turn clears conversation flags and prompt suggestions.',

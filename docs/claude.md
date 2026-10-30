@@ -59,8 +59,10 @@ adding steering, forks, goals, turn mutations or context controls.
   provisional). An asynchronous interrupt callback settles only its own turn and
   cannot clear a newer one on the same session. Readiness and task success are
   separate.
-- Text has no work/final phase and stays unphased; Korus does not guess a
-  final-answer boundary.
+- Native text has no work/final phase. The shared grouping rule treats text before
+  later tool work or continuation input as Working content and trailing text as the
+  final answer; explicit
+  phases and reasoning parts retain their provider semantics.
 
 ## Homes And Authentication
 
@@ -113,13 +115,38 @@ UUID assigned at submission. Records live under the configured home's
 Hydration uses only matching authored records; text and current catalogs cannot
 create historical mention identities.
 
-The host opens the newest history window and prepends older pages through the
-driver history seam. Each page has both a message-count and serialized-byte
-budget; pages use immutable message/turn identities from one normalized transcript
-read, so appends cannot move the older-history cursor. Cold reads still parse the
-native file on the owning backend; the retained history and cursor are ephemeral
-and cleared on release or session replacement. Reads overtaken by a newer load,
-release, or live turn cannot replace that conversation.
+The host opens recent history using the SDK's current-chain message UUIDs. A
+backward native-file read extends that slice to complete prompt boundaries and
+recovers metadata the SDK omits, including prompt IDs and compaction markers.
+Both paths use the same native normalizer; SDK rows are never independently
+assigned turn identities. The SDK may still scan the file, so this does not make
+cold reads constant-time. Empty, unavailable, or unmatched SDK history falls back
+to the native reader. Isolated homes cannot use a different process-wide SDK home.
+
+Scrolling beyond the recent slice hydrates the native archive, including history
+before compaction, and prepends bounded pages through the existing driver seam.
+Each page has message-count and serialized-byte budgets. The archive joins at the
+original recent message identities, preserves expanded details, and excludes
+later file appends owned by the live replica. Replacement, truncation, or a changed
+join requires reload. Archive failures retain the recent view and allow retry;
+concurrent requests share the read. The index and cursor are ephemeral and cleared
+on release or session replacement. Delayed reads cannot replace another session.
+Starting new provider work also hydrates a deferred archive first, restoring native
+task, goal, and subagent state before continuation. This state upgrade keeps the
+visible transcript window intact; historical state cannot overwrite a live query.
+Compaction context remains inside its original turn; internal summary records do
+not create user messages or duplicate turn identities.
+Completed historical turns publish summaries with prompt and final-answer content.
+An ephemeral byte-range index keeps Working content in the native file until
+expansion. Selected ranges are verified against their indexed hashes; appends are
+safe, while replacement or changed bytes require a reload. Unchanged files reuse
+the open index and cached expansions. Exhaustive reads retain the original native
+projection and authored mentions.
+Working expansion sends the complete selected turn through the same conversation
+replica, including segments outside the visible page. Insertion anchors preserve
+source order; older paging skips already loaded rows. Details errors are retryable,
+concurrent requests share one read, and results for a released or superseded
+session cannot mutate its replacement. Live turns retain full detail.
 Interrupted-session continuation hydrates history before starting the live turn,
 so the live replica retains its older-page cursor.
 
@@ -135,7 +162,7 @@ content reads.
 
 A long conversation never travels whole: the daemon opens the most recent rows within a
 byte budget (so one event stays far under the 4 MiB limit and a phone never receives a
-frame it cannot take) and prepends older pages on demand. A row is shown as it is. Only a
+frame it cannot take) and prepends older pages on demand. Loaded Working rows are shown as they are. Only a
 part that is huge on its own (a screenshot, a file dump) is cut to a preview, and a row
 that would still not fit is cut part by part, never dropped. The exact row stays readable
 by content ID in bounded chunks. The desktop pane reads a cut row in the background as it

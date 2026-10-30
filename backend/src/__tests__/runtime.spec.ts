@@ -10,7 +10,8 @@ import { createCodexLifecycle } from '../codex/provider-lifecycle';
 import { buildAppMcpConfigOverrides } from '../mcp/codex-config';
 import { ProviderUpdateRuntime } from '../provider-update-runtime';
 import type { ProviderUpdates } from '../provider-updates';
-import { createTestSnapshot } from './server-test-fixtures';
+import { RemoteTeamService } from '../connections/remote-team-service';
+import { createTestSnapshot, createRemoteTeamSnapshot, gitWorkspace } from './server-test-fixtures';
 
 const mocks = vi.hoisted(() => ({
   snapshot: {
@@ -68,6 +69,7 @@ const mocks = vi.hoisted(() => ({
   serverClose: vi.fn(),
   remoteCollaborationCall: vi.fn(),
   missionDeveloperInstructions: vi.fn(),
+  collaborationAgents: vi.fn(),
   createDefaultBackendDrivers: vi.fn(),
   createBackendDriver: vi.fn(),
   useRealDriverRpc: false,
@@ -184,7 +186,8 @@ vi.mock('../server', () => ({
     initialize = vi.fn().mockResolvedValue(undefined);
     setCompanionAccessEnabled = vi.fn();
     requireConnectedEngine = vi.fn(async (backend: string) => backend);
-    constructor(options: unknown) { mocks.serverOptions.push(options); }
+    constructor(private options: { snapshot: AppSnapshot }) { mocks.serverOptions.push(options); }
+    collaborationAgents = () => mocks.collaborationAgents(this.options.snapshot);
     emitEvent = mocks.serverEmitEvent;
     close = mocks.serverClose;
     missionDeveloperInstructions = mocks.missionDeveloperInstructions;
@@ -282,6 +285,7 @@ describe('daemon runtime', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.useRealDriverRpc = false;
+    mocks.collaborationAgents.mockImplementation((snapshot: AppSnapshot) => snapshot.agents);
     mocks.providerLifecycles = null;
     mocks.mcpOptions.length = 0;
     mocks.serverOptions.length = 0;
@@ -458,6 +462,59 @@ describe('daemon runtime', () => {
     const automationTask = mocks.schedulerTasks[0] as SchedulerTask;
     await automationTask.run();
     expect(mocks.automationRunAll).toHaveBeenCalledOnce();
+  });
+
+  it('gives Quick Chats a current team project catalog without importing other conversations or teams', async () => {
+    const snapshot = createTestSnapshot();
+    const project: Agent = { ...mocks.snapshot.agents[0]!, teamId: 'team-test', workspace: gitWorkspace('/src/app', 'App', 'main') } as Agent;
+    const chat: Agent = { ...project, id: 'quick', name: null, folder: null, workspace: undefined, sessionKind: 'quickChat' };
+    snapshot.agents = [project, chat, { ...project, id: 'private', teamId: 'other-team', folder: '/private/project' }];
+    snapshot.teams[0]!.agentIds = [project.id, chat.id];
+    // Remote projects belong to their owning daemon, never the persisted local roster.
+    snapshot.teams[0]!.remoteLinks = [{ connectionId: 'devbox', remoteTeamId: 'team-remote' }];
+    const remoteTeams = new RemoteTeamService({
+      getSnapshot: () => snapshot, clients: {} as never,
+      onForwardedEvent: vi.fn(), onProjectedSnapshotChanged: vi.fn(),
+    });
+    mocks.collaborationAgents.mockImplementation(() => remoteTeams.clientSnapshotFromKnownRemotes().agents);
+    mocks.loadBackendSnapshot.mockResolvedValue(snapshot);
+    const runtime = await createDaemonRuntime({ emitEvent, requestClient, version: 'test' });
+    try {
+      const options = mocks.createDefaultBackendDrivers.mock.calls[0]![0] as import('../driver-rpc').BackendDriverRegistryOptions;
+      const context = (agent: Agent) => {
+        const instructions = options.additionalDeveloperInstructions!(agent)!;
+        const data = instructions.match(/<team_context>\n(.*?)\n<\/team_context>/s)?.[1];
+        expect(data).toBeDefined();
+        expect(instructions).not.toContain('/private/project');
+        expect(instructions).not.toContain('Dina');
+        return JSON.parse(data!);
+      };
+      expect(context(chat)).toStrictEqual({
+        team: { id: 'team-test', name: 'Test Team' },
+        projects: [{ name: 'App', locations: [{ folder: '/src/app' }] }],
+      });
+      // A linked worktree stays part of its repository; folders and remote locations remain distinct.
+      snapshot.agents.push(
+        { ...project, id: 'worktree', folder: '/src/app-fix', workspace: { ...project.workspace!, folder: '/src/app-fix', isLinkedWorktree: true } as Agent['workspace'] },
+        { ...project, id: 'notes', folder: '/src/notes', workspace: { kind: 'folder', folder: '/src/notes', label: 'Notes', updatedAt: '' } },
+      );
+      remoteTeams.rememberSnapshot('devbox', createRemoteTeamSnapshot([
+        { ...project, id: 'remote', teamId: 'team-remote', folder: '/srv/app', workspace: gitWorkspace('/srv/app', 'Remote App', 'main') },
+      ]));
+      expect(context({ ...chat, backend: 'claude' }).projects).toStrictEqual([
+        { name: 'App', locations: [{ folder: '/src/app' }, { folder: '/src/app-fix' }] },
+        { name: 'Notes', locations: [{ folder: '/src/notes' }] },
+        { name: 'Remote App', locations: [{ folder: '/srv/app', remoteConnectionId: 'devbox' }] },
+      ]);
+      expect(options.additionalDeveloperInstructions!(project)).not.toContain('<team_context>');
+      snapshot.agents = [chat];
+      expect(context(chat).projects).toStrictEqual([
+        { name: 'Remote App', locations: [{ folder: '/srv/app', remoteConnectionId: 'devbox' }] },
+      ]);
+      snapshot.teams[0]!.remoteLinks = [];
+      expect(context(chat).projects).toStrictEqual([]);
+      expect(options.additionalDeveloperInstructions!({ ...chat, teamId: 'missing' })).not.toContain('<team_context>');
+    } finally { await runtime.stop(); }
   });
 
   it('removes desktop-owned tools from a web-hosted runtime', async () => {

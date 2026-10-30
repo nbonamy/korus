@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'vite';
 import { chromium, webkit } from 'playwright';
 
@@ -625,5 +625,112 @@ test('summary turns load only the selected Working details through the native br
     await page.getByRole('button', { name: /Done.*1m 49s/i }).click();
     assert.equal(await page.evaluate(() => window.turnRequests.length), 1);
     await page.screenshot({ path: `/tmp/korus-summary-${browserEngine === webkit ? 'webkit' : 'chromium'}.png`, fullPage: true });
+  } finally { await browser?.close(); await server.close(); }
+});
+
+
+// The fixture is emitted by the real Claude host/RPC workflow in sdk-boundary.spec.ts.
+// This checks the production native replica and pane, rather than replacing a scene on click.
+test('Claude backend frames reveal selected Working content and retain it across collapse', async t => {
+  if (!process.env.APP_CLAUDE_HISTORY_EVIDENCE) { t.skip('Run the Claude RPC evidence workflow first.'); return; }
+  const fixture = JSON.parse(await readFile(process.env.APP_CLAUDE_HISTORY_EVIDENCE, 'utf8'));
+  const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
+  let browser;
+  const warnings = [];
+  try {
+    await server.listen(); browser = await browserEngine.launch();
+    const page = await browser.newPage({ viewport: { width: 393, height: 740 } });
+    page.on('console', message => { if (/duplicate key|unhandled|error/i.test(message.text())) warnings.push(message.text()); });
+    page.on('pageerror', error => warnings.push(error.message));
+    await page.addInitScript(fixture => {
+      window.claudeFixture = fixture; window.turnRequests = []; window.bridgeErrors = []; window.failedDetailDelivered = false;
+      window.webkit = { messageHandlers: { transcript: { postMessage(json) {
+        const request = JSON.parse(json);
+        if (request.type !== 'loadTurnHistory') return;
+        window.turnRequests.push(request);
+        queueMicrotask(async () => {
+          try {
+            const failure = window.claudeFixture.failedExpansion;
+            const shouldFail = failure && failure.turnId === request.turnId && !window.failedDetailDelivered;
+            if (shouldFail) window.failedDetailDelivered = true;
+            const expansion = shouldFail ? failure : window.claudeFixture.expansions.find(item => item.turnId === request.turnId);
+            if (!expansion) throw new Error('Unknown requested turn');
+            const context = window.claudeContext;
+            const frames = expansion.frames;
+            const result = await window.companionTranscript.setTransfer(JSON.stringify({ ...context, frames,
+              checkpoint: { epoch: 'claude-history', revision: frames.at(-1).payload.revision } }));
+            if (result?.needsReset) throw new Error('Native replica rejected expansion');
+            window.companionTranscript.setContent(JSON.stringify({ type: 'turnHistory', requestId: request.requestId, agentId: request.agentId, ...(expansion.error ? { error: expansion.error } : {}) }));
+          } catch (error) { window.bridgeErrors.push(String(error)); }
+        });
+      } } } };
+    }, fixture);
+    await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
+    await page.waitForFunction(() => window.companionTranscript);
+    const initial = await page.evaluate(async () => {
+      const fixture = window.claudeFixture;
+      window.claudeContext = { agent: fixture.agent, agentId: fixture.agent.id, generation: 1, ready: true, peers: [], engines: null,
+        identity: 'claude-summary-evidence', history: { hasOlder: !fixture.olderPages, loadingOlder: false, failed: false } };
+      return window.companionTranscript.setTransfer(JSON.stringify({ ...window.claudeContext, frames: fixture.initialFrames,
+        checkpoint: { epoch: 'claude-history', revision: fixture.initialFrames.at(-1).payload.revision } }));
+    });
+    assert.equal(initial?.needsReset, undefined);
+    assert.equal(await page.evaluate(() => window.turnRequests.length), 0);
+    assert.equal((await page.locator('body').innerText()).includes('PRIVATE'), false);
+    const answerOnly = page.locator('.codex-message-turn').filter({ has: page.getByText('Request 68', { exact: true }) });
+    assert.equal(await answerOnly.locator('.chat-work-group__header').count(), 1);
+    assert.equal(await answerOnly.locator('.chat-work-group__header').getAttribute('aria-expanded'), null);
+    assert.equal(await answerOnly.getByRole('button', { name: /View details|Hide details/i }).count(), 0);
+    for (const index of [65, 66, 67, 69]) {
+      const turn = page.locator('.codex-message-turn').filter({ has: page.getByText(`Request ${index}`, { exact: true }) });
+      const expand = turn.getByRole('button', { name: /View details/i });
+      assert.equal(await expand.count(), 1, 'one details action per native turn across compaction');
+      await expand.click();
+      if (index === 65) {
+        await turn.getByRole('alert').waitFor();
+        await turn.getByRole('alert').getByRole('button', { name: /Retry/i }).click();
+      }
+      await turn.getByText(`PRIVATE COMMENTARY ${index}`, { exact: true }).waitFor();
+      await turn.getByRole('button', { name: /Hide details/i }).waitFor();
+      assert.equal(await page.evaluate(() => window.turnRequests.at(-1).turnId), `claude-turn-${index}`);
+      await turn.getByRole('button', { name: /Hide details/i }).click();
+      await turn.getByRole('button', { name: /View details/i }).click();
+      await turn.getByText(`PRIVATE COMMENTARY ${index}`, { exact: true }).waitFor();
+    }
+    assert.equal(await page.evaluate(() => window.turnRequests.length), 5, 'cached expansions do not issue another native request');
+    assert.deepEqual(await page.evaluate(() => window.bridgeErrors), []);
+    assert.equal((await page.locator('body').innerText()).includes('PRIVATE COMMENTARY 64'), false);
+    assert.equal((await page.locator('body').innerText()).includes('Empty response'), false);
+    if (fixture.olderPages) {
+      const anchor = page.getByText('Request 69', { exact: true });
+      await anchor.scrollIntoViewIfNeeded();
+      const before = await anchor.boundingBox();
+      for (const older of fixture.olderPages) {
+        const received = await page.evaluate(async older => {
+          const result = await window.companionTranscript.setTransfer(JSON.stringify({ ...window.claudeContext, frames: older.frames,
+            checkpoint: { epoch: 'claude-history', revision: older.frames.at(-1).payload.revision } }));
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          return result;
+        }, older);
+        assert.equal(received?.needsReset, undefined, 'archive pages use the existing native frame contract');
+      }
+      const after = await anchor.boundingBox();
+      assert.ok(Math.abs(after.y - before.y) < 3, `archive join moved the visible anchor: ${before.y} -> ${after.y}`);
+      const oldest = page.locator('.codex-message-turn').filter({ has: page.getByText('Request 0', { exact: true }) });
+      await page.mouse.move(200, 350);
+      // Scroll through the SDK's local render window as well as the host's archive pages.
+      for (let attempt = 0; attempt < 8; attempt++) {
+        await page.mouse.wheel(0, -100000);
+        try { await oldest.waitFor({ timeout: 1000 }); break; } catch { /* Reveal the next local window. */ }
+      }
+      await oldest.waitFor({ timeout: 2000 });
+      assert.equal(await oldest.count(), 1);
+      await oldest.getByRole('button', { name: /View details/i }).click();
+      await oldest.getByText('PRIVATE COMMENTARY 0', { exact: true }).waitFor();
+      assert.equal(await page.evaluate(() => window.turnRequests.at(-1).turnId), 'claude-turn-0');
+      assert.deepEqual(await page.evaluate(() => window.bridgeErrors), []);
+    }
+    assert.deepEqual(warnings, []);
+    await page.screenshot({ path: `/tmp/korus-claude-real-frames-${process.env.TRANSCRIPT_BROWSER || 'chromium'}.png`, fullPage: true });
   } finally { await browser?.close(); await server.close(); }
 });

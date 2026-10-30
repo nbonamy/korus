@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { withInferredWorkPhases } from '../inferred-work-phases';
+import { withInferredWorkPhases, withInferredTurnWorkPhases } from '../conversation-work-phases';
 
 const tool = { type: 'tool', id: 't1', kind: 'shell', title: 'ls', status: 'completed' } as const;
 const assistant = (parts: unknown[]) => ({ id: 'a1', role: 'assistant', status: 'complete', turnId: 'turn-1', parts }) as never;
@@ -12,6 +12,18 @@ describe('withInferredWorkPhases', () => {
       { type: 'text', text: 'Let me look.' }, tool, { type: 'text', text: 'Now editing.' }, tool, { type: 'text', text: 'All done.' },
     ])) as never;
     expect(phases(result)).toEqual(['commentary', 'tool', 'commentary', 'tool', 'final_answer']);
+  });
+
+  it('keeps earlier answers and steering inside Working across assistant message boundaries', () => {
+    const messages = [
+      { role: 'assistant', parts: [{ type: 'text', text: 'First attempt' }] },
+      { role: 'user', kind: 'steer', parts: [{ type: 'text', text: 'Try another approach' }] },
+      { role: 'assistant', parts: [{ type: 'text', text: 'Final result' }] },
+    ];
+    const result = withInferredTurnWorkPhases(messages);
+    expect(phases(result[0] as never)).toStrictEqual(['commentary']);
+    expect(phases(result[2] as never)).toStrictEqual(['final_answer']);
+    expect(result[1]).toBe(messages[1]);
   });
 
   it('handles chat messages whose text parts carry content', () => {

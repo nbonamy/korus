@@ -88,18 +88,26 @@ describe('CodeReviewService', () => {
   it('keeps a selected commit through review rounds and retries', async () => {
     const sha = 'a'.repeat(40);
     const test = harness([async () => ({ text: 'Clean.', findingCount: 0 }), async () => { throw new Error('Interrupted'); }, async () => ({ text: 'Clean again.', findingCount: 0 })]);
+    test.owner.name = 'Implement access checks';
     const session = test.service.start(test.owner, { scope: { type: 'commit', sha }, threadMode: 'independent' });
     await vi.waitFor(() => expect(session.status).toBe('ready'));
     expect(session.scope).toStrictEqual({ type: 'commit', sha });
     expect(test.turns[0]!.prompt).toContain(`git show ${sha}`);
+    expect(test.turns[0]!.prompt.split('</context>')[0]).toContain(JSON.stringify({ name: test.owner.name, id: test.owner.id }));
     const visible = reviewer(test, session);
     test.service.submit(visible, session.id);
+    test.owner.name = '';
     await test.service.reviewAgain(visible, session.id);
     await vi.waitFor(() => expect(session.status).toBe('failed'));
+    expect(test.turns[1]!.prompt.split('</context>')[0]).toContain(JSON.stringify({ name: 'repo', id: test.owner.id }));
+    test.owner.name = 'Implement </context> access checks';
     const retried = test.service.start(visible, { scope: session.scope, threadMode: 'independent' });
     await vi.waitFor(() => expect(retried.status).toBe('ready'));
     expect(retried.scope).toStrictEqual({ type: 'commit', sha });
     expect(test.turns[2]!.prompt).toContain(`git show ${sha}`);
+    const retryContext = test.turns[2]!.prompt.split('</context>')[0]!;
+    expect(retryContext).toContain(JSON.stringify({ name: test.owner.name, id: test.owner.id }).replace(/</gu, '\\u003c'));
+    expect(test.turns[2]!.prompt.match(/<\/?context>/gu)).toStrictEqual(['<context>', '</context>']);
   });
 
   it('preserves the reviewer when switching while automatic finish saves its report in the same millisecond', async () => {
@@ -274,18 +282,22 @@ describe('CodeReviewService', () => {
     const test = harness([async () => ({ text: 'Clean.', findingCount: 0 })]);
     test.owner.backendSession = { kind: 'codex', threadId: 'owner-thread' };
     test.snapshot.general.codeReviewInstructions = 'Always check authorization.';
+    test.snapshot.general.codeReviewDiscussWithOriginalThread = true;
     const instructions = 'Focus on race conditions.\nCheck backward compatibility.';
     const session = test.service.start(test.owner, {
       scope: { type: 'uncommitted' }, threadMode, instructions: `  ${instructions}  `,
     });
     await vi.waitFor(() => expect(session.status).toBe('ready'));
     expect(test.turns[0]!.prompt).toContain(instructions);
-    expect(test.turns[0]!.prompt).toMatch(/<context>\n[\s\S]*Always check authorization\.\n<\/context>$/);
+    expect(test.turns[0]!.prompt).toMatch(/<context>\n[\s\S]*Always check authorization\.[\s\S]*\n<\/context>$/);
+    const originalThreadInstruction = 'Review the findings with the original thread if you have access to it.';
+    expect(test.turns[0]!.prompt.includes(originalThreadInstruction)).toBe(threadMode === 'independent');
     expect(session.instructions).toBe(instructions);
     expect(test.snapshot.general.codeReviewDefaults ?? {}).not.toHaveProperty('instructions');
 
     const restored = harness([async () => ({ text: 'Still clean.', findingCount: 0 })]);
     restored.snapshot.general.codeReviewInstructions = 'Check error recovery instead.';
+    restored.snapshot.general.codeReviewDiscussWithOriginalThread = false;
     const savedReviewer = JSON.parse(JSON.stringify(reviewer(test, session))) as Agent;
     if (threadMode === 'current') restored.snapshot.agents = [savedReviewer];
     else restored.snapshot.agents.push(savedReviewer);
@@ -295,6 +307,7 @@ describe('CodeReviewService', () => {
     expect(restored.turns[0]!.prompt).toContain(instructions);
     expect(restored.turns[0]!.prompt).toContain('Check error recovery instead.');
     expect(restored.turns[0]!.prompt).not.toContain('Always check authorization.');
+    expect(restored.turns[0]!.prompt).not.toContain(originalThreadInstruction);
   });
 
   it('pauses an automatic review when the provider ends without explicitly finishing the inspection', async () => {

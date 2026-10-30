@@ -382,6 +382,13 @@ close, duplicate or re-engine it; the laptop refuses those. Repository workers a
 the mission lead is selected independently from non-implementation stages. Host paths stay on the laptop. Mission actions are limited to continuing a completed implementation to review, accepting a ticket's run that awaits
 acceptance, and, during review, selecting an open finding, fixing the selected ones, reviewing again and accepting the submitted review after its findings are fixed or skipped. Acceptance uses the desktop operation; shipping remains desktop-owned.
 A review's findings cross with titles, explanations and locations trimmed to the last two path segments. Review readiness comes from the latest run's submitted result, independently of findings that arrive while it is running; missing readiness on an older daemon does not authorize remediation. Every action carries the mission revision the phone saw and is checked against the mission as it stands.
+Standalone code reviews use the desktop-owned review ledger and lifecycle. Phones read
+findings, discussion, decisions and remediation across rounds through a target-bound
+projection without reviewer provider sessions or absolute location paths. Mutations
+name the displayed review, active round and ledger revision; stale selections are
+refused. Only a ready, idle manual round accepts arbitration or remediation. An
+uncertain action requires a fresh status read before another submission. Review
+screens refresh while visible and foregrounded; they do not create a second ledger.
 Git status counts and available diff scopes cross as presentation metadata, without
 host paths or patch contents. Diffs are fetched through a target-bound, read-only
 gateway operation that uses the owning daemon’s Git service; the gateway rechecks

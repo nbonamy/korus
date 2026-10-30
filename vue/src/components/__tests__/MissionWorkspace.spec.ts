@@ -198,7 +198,9 @@ describe('MissionWorkspace', () => {
     const picker = wrapper.get('[aria-label="Coding agent and model"]');
     expect(picker.text()).toContain('fast');
     await picker.trigger('click'); await flushPromises();
-    [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent?.trim() === 'ultrafast')!.click();
+    document.querySelector<HTMLButtonElement>('button[aria-label="Service tier: Fast"]')!.click();
+    await flushPromises();
+    [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent?.trim() === 'Ultrafast')!.click();
     await flushPromises();
     await wrapper.get('[role="dialog"] .app-button--primary').trigger('click'); await flushPromises();
     expect(executeMission).toHaveBeenCalledExactlyOnceWith({

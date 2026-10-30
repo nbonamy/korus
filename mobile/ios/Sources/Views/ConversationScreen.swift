@@ -53,6 +53,11 @@ struct ConversationScreen: View {
             }
             .safeAreaInset(edge: .top, spacing: 0) { MissionContextBar() }
             .safeAreaInset(edge: .top, spacing: 0) {
+                if let count = model.reviewFindingsCount {
+                    ReviewFindingsButton(count: count, enabled: model.canManageSession, action: model.openReview)
+                }
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
                 if model.hasTranscript && model.showConnectionLost {
                     ConnectionLostNotice(reconnect: model.reconnect)
                     .padding(.horizontal, 20).padding(.vertical, 10)

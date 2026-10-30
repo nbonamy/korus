@@ -81,6 +81,8 @@ type CompanionOperations = {
   createChat?(chat: CompanionNewChat, signal?: AbortSignal): Promise<string>;
   createQuickChat?(chat: { teamId: string; backend: AgentBackend }, signal?: AbortSignal): Promise<string>;
   setBackend?(agentId: string, backend: AgentBackend): Promise<void>;
+  readReview?(agentId: string): Promise<import('@workspace/core/companion-review').CompanionReviewDetails>;
+  reviewAction?(target: CompanionTarget, input: import('@workspace/core/companion-review').CompanionReviewAction): Promise<void>;
   reviewSetup?(agentId: string, backend?: AgentBackend): Promise<CompanionReviewSetup>;
   startReview?(target: CompanionTarget, input: CompanionReviewInput): Promise<string | void>;
   setApprovalPreset?(agentId: string, preset: string): Promise<void>;

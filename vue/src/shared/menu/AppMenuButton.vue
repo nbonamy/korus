@@ -1,15 +1,16 @@
 <template>
   <!-- Outside the popover so its own trigger handling runs first; row-level click handlers never see the trigger click. -->
-  <span class="app-menu-button" :class="{ 'app-menu-button--block': block }" @click.stop @keydown.esc.stop.prevent="open = false">
+  <span ref="root" class="app-menu-button" :class="{ 'app-menu-button--block': block }" @click.stop @keydown.esc.stop.prevent="closeAndReturnFocus">
   <el-popover
     v-model:visible="open"
     :placement="placement"
     trigger="click"
     :width="width"
-    :teleported="true"
+    :teleported="teleported"
     :show-arrow="false"
     :offset="6"
     popper-class="app-popover"
+    @after-leave="returnTriggerFocus"
   >
     <template #reference>
       <span class="app-menu-button__trigger" :class="{ 'app-menu-button--block': block }">
@@ -27,14 +28,14 @@
       :ariaLabel="ariaLabel"
       :items="items"
       @select="select"
-      @keydown.esc.stop.prevent="open = false"
+      @keydown.esc.stop.prevent="closeAndReturnFocus"
     />
   </el-popover>
   </span>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import AppMenu from './AppMenu.vue';
 import type { AppMenuItem } from './app-menu';
 
@@ -52,18 +53,32 @@ withDefaults(defineProps<{
   maxHeight?: string;
   /** Let the trigger fill its container instead of sizing to its content. */
   block?: boolean;
+  /** Keep nested menus inside their owning overlay's outside-click boundary. */
+  teleported?: boolean;
   /** Shown instead of the items while they load or when loading failed. */
   message?: string;
   messageTone?: 'default' | 'error';
-}>(), { heading: undefined, placement: 'bottom-end', width: 220, maxHeight: undefined, block: false, message: undefined, messageTone: 'default' });
+}>(), { heading: undefined, placement: 'bottom-end', width: 220, maxHeight: undefined, block: false, teleported: true, message: undefined, messageTone: 'default' });
 
 const emit = defineEmits<{ select: [itemId: string] }>();
 const open = defineModel<boolean>('open', { default: false });
+const root = ref<HTMLElement>();
+let returnFocus = false;
 const triggerAttrs = computed(() => ({ 'aria-haspopup': 'menu' as const, 'aria-expanded': open.value }));
 
 function select(itemId: string): void {
-  open.value = false;
+  closeAndReturnFocus();
   emit('select', itemId);
+}
+
+function closeAndReturnFocus(): void {
+  returnFocus = true;
+  open.value = false;
+}
+
+function returnTriggerFocus(): void {
+  if (returnFocus) root.value?.querySelector<HTMLElement>('[aria-haspopup="menu"]')?.focus();
+  returnFocus = false;
 }
 </script>
 
