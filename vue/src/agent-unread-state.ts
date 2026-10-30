@@ -2,6 +2,7 @@ import type { Agent, AppSnapshot, MainToRendererEvent } from '@workspace/core/co
 import { providerConversationEventView } from '@workspace/core/provider-conversation-event';
 import { computed, ref } from 'vue';
 import { hasUnreadActivity } from '@workspace/core/agent-read-state';
+import { navigationUnreadAgentIds } from '@workspace/core/mission-attention';
 import { appHostCapabilities, appApi } from './platform-api';
 
 export function createAgentUnreadState(options: { getSnapshot: () => AppSnapshot }) {
@@ -112,7 +113,7 @@ export function createAgentUnreadState(options: { getSnapshot: () => AppSnapshot
 
   function syncDockBadge(): void {
     if (appHostCapabilities.dockBadge) {
-      void appApi?.setDockBadgeCount?.(unreadAgentIds.value.length).catch(() => undefined);
+      void appApi?.setDockBadgeCount?.(navigationUnreadAgentIds(options.getSnapshot().missions ?? [], unreadAgentIds.value).length).catch(() => undefined);
     }
   }
 

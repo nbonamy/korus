@@ -693,7 +693,7 @@ import type { MissionWorkspaceOpenRequest } from './MissionWorkspaceOpenIn.vue';
 import ConversationPane from './ConversationPane.vue';
 import { useDebugWorktreeInitialization } from './debug-worktree-initialization';
 import AppMenu from '../shared/menu/AppMenu.vue';
-import { missionAgentIds } from '@workspace/core/mission-attention';
+import { missionAgentIds, navigationUnreadAgentIds } from '@workspace/core/mission-attention';
 import type { Mission, MissionStage, CreateMissionInput, DeleteMissionInput } from '@workspace/core/missions';
 import { missionCreatedWorkspaces, type MissionImplementationStartProgress } from '@workspace/core/mission-execution';
 import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
@@ -1734,7 +1734,7 @@ const agentMentionGroups = computed<readonly CodexComposerMentionGroup[]>(() => 
   }];
 });
 const unreadTeamIds = computed(() => {
-  const unreadAgentIdSet = new Set(props.unreadAgentIds);
+  const unreadAgentIdSet = new Set(navigationUnreadAgentIds(props.snapshot.missions ?? [], props.unreadAgentIds ?? []));
   return props.snapshot.teams
     .filter((team) => (
       (activeSurface.value !== 'agent' || cockpitScope.value || team.id !== activeTeam.value?.id)
