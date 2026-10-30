@@ -117,7 +117,7 @@ type UnsequencedClaudeConversationEvent<Event extends ClaudeConversationEvent = 
   Event extends ClaudeConversationEvent
     ? Omit<Event, 'seq' | 'occurredAt'> & { occurredAt?: string }
     : never;
-type ClaudeHistoryLoader = (agent: Agent) => Promise<ClaudeTranscriptHistory | null>;
+type ClaudeHistoryLoader = (agent: Agent, options?: import('./transcript-history-adapter').ClaudeTranscriptHistoryOptions) => Promise<ClaudeTranscriptHistory | null>;
 type ClaudeBackendDriverOptions = {
   appMcpServerUrl?: string | null;
   hostedMcpServerUrls?: () => Readonly<Record<string, string>>;
@@ -156,6 +156,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
   private readonly taskPlansByAgentId = new Map<string, ClaudeTaskPlan>();
   private readonly conversationRevisionsByAgentId = new Map<string, number>();
   private readonly historyWindows = new Map<string, ClaudeHistoryWindow>();
+  private readonly pendingOlderHistory = new Map<string, { window: ClaudeHistoryWindow; promise: Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> }>();
   private readonly pendingTurnHistory = new Map<string, { window: ClaudeHistoryWindow; promise: Promise<void> }>();
   private readonly historyLoads = new Map<string, { token: symbol; sessionId: string | null }>();
   private readonly pendingRequestOwners = new Map<string, ActiveClaudeTurn>();
@@ -359,6 +360,17 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     if (this.activeTurnsByAgentId.has(agent.id)) {
       throw new Error('Claude already has an active turn for this agent.');
     }
+    const history = this.historyWindows.get(agent.id);
+    if (history?.hasDeferredArchive) {
+      // New work needs the complete native task/goal state, independently of how far the user scrolled.
+      await history.loadEarlier(true);
+      if (this.historyWindows.get(agent.id) !== history || history.sessionId !== claudeSessionId(agent)
+        || this.historyLoads.has(agent.id) && this.historyLoads.get(agent.id)!.sessionId !== history.sessionId) {
+        throw new Error('Claude conversation changed while restoring its state.');
+      }
+      if (this.activeTurnsByAgentId.has(agent.id) || this.forkingAgentIds.has(agent.id)) throw new Error('Claude conversation is already in use.');
+    }
+    if (history) this.restoreHistoryState(agent, history);
     const folder = claudeWorkingDirectory(agent);
     const goalRefreshId = Symbol();
     this.goalRefreshIds.set(agent.id, goalRefreshId);
@@ -573,6 +585,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     this.subagents.release(agentId);
     const releasedWindow = this.historyWindows.get(agentId);
     this.historyWindows.delete(agentId);
+    this.pendingOlderHistory.delete(agentId);
     for (const [key, pending] of this.pendingTurnHistory) if (pending.window === releasedWindow) this.pendingTurnHistory.delete(key);
     this.historyLoads.delete(agentId);
     this.turnBoundariesByAgentId.delete(agentId);
@@ -608,7 +621,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       this.publishConversationSnapshot(cached);
       return agent.backendSession ?? null;
     }
-    const history = hasLiveSession() ? null : await this.loadHistory(agent);
+    const history = hasLiveSession() ? null : await this.loadHistory(agent, true);
     if (this.historyLoads.get(agent.id) !== load) return null;
     const current = this.conversationReplicasByAgentId.get(agent.id)?.getSnapshot();
     // A turn can start while history is being read. Keep its live message identities.
@@ -645,10 +658,41 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     if (!window || !snapshot || window.sessionId !== claudeSessionId(agent) || snapshot.sessionId !== window.sessionId) {
       throw new Error('Claude history is no longer open. Reload the conversation.');
     }
-    const page = window.older();
-    const frame = this.emitConversation({ agentId: agent.id, backend: 'claude', backendSessionId: window.sessionId ?? undefined,
-      type: 'history.prepended', payload: page });
-    return { hasOlder: page.hasOlder, frame };
+    const existing = this.pendingOlderHistory.get(agent.id);
+    if (existing?.window === window) return existing.promise;
+    const promise = (async () => {
+      await window.loadEarlier();
+      const latest = this.conversationReplicasByAgentId.get(agent.id)?.getSnapshot();
+      if (this.historyWindows.get(agent.id) !== window || latest?.sessionId !== snapshot.sessionId
+        || this.historyLoads.has(agent.id) && this.historyLoads.get(agent.id)!.sessionId !== snapshot.sessionId) {
+        throw new Error('Claude history is no longer open. Reload the conversation.');
+      }
+      this.restoreHistoryState(agent, window);
+      const page = window.older();
+      for (const turn of window.pageTurns(page.messages)) {
+        if (!latest.turns.some(current => current.id === turn.id)) this.emitConversation({
+          agentId: agent.id, backend: 'claude', backendSessionId: window.sessionId ?? undefined,
+          type: 'turn.historyUpdated', payload: { turn },
+        });
+      }
+      const frame = this.emitConversation({ agentId: agent.id, backend: 'claude', backendSessionId: window.sessionId ?? undefined,
+        type: 'history.prepended', payload: page });
+      return { hasOlder: page.hasOlder, frame };
+    })();
+    this.pendingOlderHistory.set(agent.id, { window, promise });
+    try { return await promise; }
+    finally { if (this.pendingOlderHistory.get(agent.id)?.promise === promise) this.pendingOlderHistory.delete(agent.id); }
+  }
+
+  private restoreHistoryState(agent: Agent, window: ClaudeHistoryWindow): void {
+    const state = window.takeRecoveredState();
+    if (!state || this.liveSessionIdsByAgentId.get(agent.id) === window.sessionId || this.activeTurnsByAgentId.has(agent.id)) return;
+    const taskPlan = state.taskPlan ?? new ClaudeTaskPlan();
+    this.taskPlansByAgentId.set(agent.id, taskPlan);
+    this.emitConversation({ agentId: agent.id, backend: 'claude', backendSessionId: window.sessionId ?? undefined,
+      type: 'turn.executionPlanUpdated', payload: { plan: taskPlan.plan } });
+    this.publishGoal(agent.id, state.goal);
+    for (const event of state.subagentEvents ?? []) this.emit(event);
   }
 
   async loadTurnHistory(agent: Agent, turnId: string): Promise<void> {
@@ -728,7 +772,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     const history = await this.loadHistory({
       ...agent,
       backendSession,
-    });
+    }, true);
     if (this.historyLoads.get(agent.id) !== load || this.conversationRevisionsByAgentId.get(agent.id) !== revision) {
       throw new Error('Claude conversation changed while loading history.');
     }
@@ -739,6 +783,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       history?.messages ?? [],
       history?.taskPlan,
       history?.turns,
+      history?.source,
     );
     if (resolvedBackendSession.kind === 'claude') {
       this.turnBoundariesByAgentId.delete(agent.id);
@@ -834,11 +879,11 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     await Promise.all(sessionId ? [...this.promptContentWrites.get(sessionId) ?? []] : [...this.promptContentWrites.values()].flatMap(writes => [...writes]));
   }
 
-  private async loadHistory(agent: Agent): Promise<ClaudeTranscriptHistory | null> {
+  private async loadHistory(agent: Agent, recent = false): Promise<ClaudeTranscriptHistory | null> {
     const history = this.historyLoader === loadClaudeTranscriptHistory
       ? await loadClaudeTranscriptHistory(agent, {
-        projectsRoot: this.claudeProjectsRoot(),
-      }) : await this.historyLoader(agent);
+        projectsRoot: this.claudeProjectsRoot(), recent,
+      }) : await this.historyLoader(agent, { recent });
     if (history?.backendSession.kind === 'claude') {
       await this.flushPromptContent(history.backendSession.sessionId);
       await restorePromptContent(this.promptContentHome(), history.backendSession.sessionId, history.messages);
@@ -846,7 +891,14 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       if (source) {
         const home = this.promptContentHome(); const sessionId = history.backendSession.sessionId;
         const restore = async (messages: RendererMessage[]) => { await restorePromptContent(home, sessionId, messages); return messages; };
-        history.source = { ...source, readTurn: async id => restore(await source.readTurn(id)), readAll: async () => restore(await source.readAll()) };
+        const restoredSource = (original: import('./history-source').ClaudeHistorySource): import('./history-source').ClaudeHistorySource => ({
+          ...original, readTurn: async id => restore(await original.readTurn(id)), readAll: async () => restore(await original.readAll()),
+          ...(original.loadEarlier ? { loadEarlier: async () => {
+            const archive = await original.loadEarlier!();
+            return { ...archive, messages: await restore(archive.messages), source: restoredSource(archive.source) };
+          } } : {}),
+        });
+        history.source = restoredSource(source);
       }
     }
     return history;
@@ -927,6 +979,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     this.conversationReplicasByAgentId.clear();
     this.taskPlansByAgentId.clear();
     this.historyWindows.clear();
+    this.pendingOlderHistory.clear();
     this.pendingTurnHistory.clear();
     this.historyLoads.clear();
     this.conversationRevisionsByAgentId.clear();

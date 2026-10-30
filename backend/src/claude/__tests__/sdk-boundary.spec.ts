@@ -10,6 +10,7 @@ import { createClaudeConversationReplica, type ClaudeConversationReplica } from 
 import { decodeAppBackendEvent, type AppBackendEvent } from '@workspace/core/backend-protocol/events';
 import { getLocalClaudeAuthentication } from '../authentication';
 import { ClaudeBackendDriver } from '../claude-driver';
+import { loadClaudeTranscriptHistory } from '../transcript-history-adapter';
 import { ClaudeAgentSdkTransport } from '../agent-sdk-transport';
 import { createQueryHarness } from './sdk-query-fixture';
 import { AppBackendServer } from '../../server';
@@ -63,9 +64,9 @@ function requestFixture(id: string, input = 10, read = 199990, write5 = 0, write
 describe(`Claude Agent SDK → ${product.name} backend`, () => {
   const servers: AppBackendServer[] = [];
   const homes: string[] = [];
-  function setup(withConnections = false, usage?: UsageService, models: Array<Record<string, unknown>> = [], homeDir?: string, env?: NodeJS.ProcessEnv) {
+  function setup(withConnections = false, usage?: UsageService, models: Array<Record<string, unknown>> = [], homeDir?: string, env?: NodeJS.ProcessEnv, history?: ConstructorParameters<typeof ClaudeBackendDriver>[1]) {
     const sdk = createQueryHarness(models);
-    const driver = new ClaudeBackendDriver(new ClaudeAgentSdkTransport({ createQuery: sdk.createQuery, env }), undefined, { homeDir });
+    const driver = new ClaudeBackendDriver(new ClaudeAgentSdkTransport({ createQuery: sdk.createQuery, env }), history, { homeDir });
     const snapshot = createTestSnapshot();
     snapshot.general.claudeCodeEnabled = true;
     snapshot.agents = [agent(), agent('claude-b')];
@@ -161,7 +162,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     expect(restored?.type === 'claude.conversationSnapshotChanged' && restored.payload.snapshot.messages.slice(1).map(message => message.id)).toStrictEqual(expectedIds);
   });
 
-  it('hydrates selected Claude turns through RPC after compaction, interruption and reasoning without leaking other work', async () => {
+  it.each([false, true])('hydrates selected Claude turns through RPC after compaction, interruption and reasoning without leaking other work (recent=%s)', async recent => {
     const home = await mkdtemp(path.join(os.tmpdir(), 'korus-claude-summary-')); homes.push(home);
     const sessionId = '22222222-2222-4222-8222-222222222222';
     const project = path.join(home, '.claude', 'projects', '-tmp-project'); await mkdir(project, { recursive: true });
@@ -181,7 +182,12 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
       ...(i === 66 ? [] : [{ type: 'assistant', uuid: `answer-${i}`, timestamp: '2026-01-01T00:01:49Z', message: { content: [{ type: 'text', text: i === 69 ? 'No response requested.' : `Final answer ${i}` }] } }]),
     ]).flat();
     await writeFile(path.join(project, `${sessionId}.jsonl`), rows.map(row => JSON.stringify(row)).join('\r\n'));
-    const { server, snapshot, events } = setup(false, undefined, [], home);
+    const readSessionMessages = async () => rows.slice(rows.findIndex(row => row.uuid === 'prompt-64')).map(row => ({
+      type: row.type as 'user' | 'assistant' | 'system', uuid: row.uuid, session_id: sessionId, message: row.message,
+      parent_tool_use_id: null, parent_agent_id: null,
+    }));
+    const { server, snapshot, events } = setup(false, undefined, [], home, undefined, recent
+      ? (owner, options) => loadClaudeTranscriptHistory(owner, { ...options, projectsRoot: path.join(home, '.claude', 'projects'), readSessionMessages }) : undefined);
     const owner = snapshot.agents[0]!; owner.backendSession = { kind: 'claude', sessionId, transport: 'stdio' };
     const frames = () => events.filter((event): event is Extract<AppBackendEvent, { type: 'claude.conversationSnapshotChanged' | 'claude.conversationEventReceived' }> => event.agentId === owner.id && (event.type === 'claude.conversationSnapshotChanged' || event.type === 'claude.conversationEventReceived'));
     const read = () => {
@@ -198,7 +204,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     expect(JSON.stringify(read()).includes('PRIVATE')).toBe(false);
     expect(JSON.stringify(read())).not.toContain('INTERNAL COMPACTION CONTEXT');
     expect(JSON.stringify(read())).not.toContain('[Request interrupted by user for tool use]');
-    expect(new Set(read().turnIds).size).toBe(70);
+    expect(new Set(read().turnIds).size).toBe(recent ? 6 : 70);
     expect(read().turns.find(turn => turn.id === 'claude-turn-68')?.itemsView).toBe('full');
     expect(new Set(read().messages.map(message => message.id)).size).toBe(read().messages.length);
     const file = path.join(project, `${sessionId}.jsonl`);
@@ -223,6 +229,21 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
       await server.handleMessage({ jsonrpc: '2.0', id: `cached-${i}`, method: 'agent/conversation/turn/history/load', params: { agentId: owner.id, turnId } });
       expect(frames()).toHaveLength(after);
     }
+    const olderPages: Array<{ frames: ReturnType<typeof frames>; hasOlder: boolean }> = [];
+    while (read().historyState.hasOlder) {
+      const before = frames().length;
+      const previous = read().messages;
+      await server.handleMessage({ jsonrpc: '2.0', id: 'older', method: 'agent/conversation/history/loadOlder', params: { agentId: owner.id } });
+      expect(read().messages.slice(-previous.length)).toStrictEqual(previous);
+      olderPages.push({ frames: structuredClone(frames().slice(before)), hasOlder: read().historyState.hasOlder });
+    }
+    const archiveExpansionStart = frames().length;
+    await server.handleMessage({ jsonrpc: '2.0', id: 'old-details', method: 'agent/conversation/turn/history/load', params: { agentId: owner.id, turnId: 'claude-turn-0' } });
+    expansions.push({ turnId: 'claude-turn-0', frames: structuredClone(frames().slice(archiveExpansionStart)) });
+    expect(read().turns.find(turn => turn.id === 'claude-turn-0')?.itemsView).toBe('full');
+    expect(JSON.stringify(read().messages)).toContain('PRIVATE OUTPUT 0');
+    expect(read().turnIds).toStrictEqual(Array.from({ length: 70 }, (_, i) => `claude-turn-${i}`));
+    expect(new Set(read().messages.map(message => message.id)).size).toBe(read().messages.length);
     expect(frames().every(frame => Buffer.byteLength(JSON.stringify(frame)) < 4 * 1024 * 1024)).toBe(true);
     await server.handleMessage({ jsonrpc: '2.0', id: 'reopen', method: 'agent/conversation/load', params: { agentId: owner.id } });
     for (const i of [65, 66, 67, 69]) expect(read().turns.find(turn => turn.id === `claude-turn-${i}`)?.itemsView).toBe('full');
@@ -232,8 +253,8 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     await writeFile(file, original + '\r\n' + JSON.stringify({ type: 'queue-operation', operation: 'enqueue', content: 'Later native append' }));
     await server.handleMessage({ jsonrpc: '2.0', id: 'append-safe', method: 'agent/conversation/turn/history/load', params: { agentId: owner.id, turnId: 'claude-turn-64' } });
     expect(JSON.stringify(read().messages.filter(message => message.turnId === 'claude-turn-64'))).toContain('PRIVATE OUTPUT 64');
-    if (process.env.APP_CLAUDE_HISTORY_EVIDENCE) await writeFile(process.env.APP_CLAUDE_HISTORY_EVIDENCE,
-      JSON.stringify({ agent: owner, initialFrames, failedExpansion, expansions }, null, 2));
+    if (recent && process.env.APP_CLAUDE_HISTORY_EVIDENCE) await writeFile(process.env.APP_CLAUDE_HISTORY_EVIDENCE,
+      JSON.stringify({ agent: owner, initialFrames, failedExpansion, expansions, olderPages }, null, 2));
   });
 
   it('restores turn timing from native history and preserves a running turn when reloaded', async () => {

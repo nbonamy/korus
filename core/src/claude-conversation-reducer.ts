@@ -43,6 +43,14 @@ export function applyClaudeConversationEvent(
       return true;
     });
     snapshot.messages = [...older, ...snapshot.messages];
+    const historicalTurns = [...new Set(older.flatMap(message => message.turnId ? [message.turnId] : []))];
+    const knownTurns = new Set(snapshot.turns.map(turn => turn.id));
+    const newTurns = historicalTurns.filter(id => knownTurns.has(id) && !snapshot.turnIds.includes(id));
+    if (newTurns.length) {
+      snapshot.turnIds = [...newTurns, ...snapshot.turnIds];
+      const order = new Map(snapshot.turnIds.map((id, index) => [id, index]));
+      snapshot.turns.sort((a, b) => (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity));
+    }
     snapshot.historyState = { hasOlder: event.payload.hasOlder, loadingOlder: false };
     return;
   }

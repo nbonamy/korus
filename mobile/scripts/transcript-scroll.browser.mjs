@@ -670,7 +670,7 @@ test('Claude backend frames reveal selected Working content and retain it across
     const initial = await page.evaluate(async () => {
       const fixture = window.claudeFixture;
       window.claudeContext = { agent: fixture.agent, agentId: fixture.agent.id, generation: 1, ready: true, peers: [], engines: null,
-        identity: 'claude-summary-evidence', history: { hasOlder: true, loadingOlder: false, failed: false } };
+        identity: 'claude-summary-evidence', history: { hasOlder: !fixture.olderPages, loadingOlder: false, failed: false } };
       return window.companionTranscript.setTransfer(JSON.stringify({ ...window.claudeContext, frames: fixture.initialFrames,
         checkpoint: { epoch: 'claude-history', revision: fixture.initialFrames.at(-1).payload.revision } }));
     });
@@ -701,6 +701,35 @@ test('Claude backend frames reveal selected Working content and retain it across
     assert.deepEqual(await page.evaluate(() => window.bridgeErrors), []);
     assert.equal((await page.locator('body').innerText()).includes('PRIVATE COMMENTARY 64'), false);
     assert.equal((await page.locator('body').innerText()).includes('Empty response'), false);
+    if (fixture.olderPages) {
+      const anchor = page.getByText('Request 69', { exact: true });
+      await anchor.scrollIntoViewIfNeeded();
+      const before = await anchor.boundingBox();
+      for (const older of fixture.olderPages) {
+        const received = await page.evaluate(async older => {
+          const result = await window.companionTranscript.setTransfer(JSON.stringify({ ...window.claudeContext, frames: older.frames,
+            checkpoint: { epoch: 'claude-history', revision: older.frames.at(-1).payload.revision } }));
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          return result;
+        }, older);
+        assert.equal(received?.needsReset, undefined, 'archive pages use the existing native frame contract');
+      }
+      const after = await anchor.boundingBox();
+      assert.ok(Math.abs(after.y - before.y) < 3, `archive join moved the visible anchor: ${before.y} -> ${after.y}`);
+      const oldest = page.locator('.codex-message-turn').filter({ has: page.getByText('Request 0', { exact: true }) });
+      await page.mouse.move(200, 350);
+      // Scroll through the SDK's local render window as well as the host's archive pages.
+      for (let attempt = 0; attempt < 8; attempt++) {
+        await page.mouse.wheel(0, -100000);
+        try { await oldest.waitFor({ timeout: 1000 }); break; } catch { /* Reveal the next local window. */ }
+      }
+      await oldest.waitFor({ timeout: 2000 });
+      assert.equal(await oldest.count(), 1);
+      await oldest.getByRole('button', { name: /View details/i }).click();
+      await oldest.getByText('PRIVATE COMMENTARY 0', { exact: true }).waitFor();
+      assert.equal(await page.evaluate(() => window.turnRequests.at(-1).turnId), 'claude-turn-0');
+      assert.deepEqual(await page.evaluate(() => window.bridgeErrors), []);
+    }
     assert.deepEqual(warnings, []);
     await page.screenshot({ path: `/tmp/korus-claude-real-frames-${process.env.TRANSCRIPT_BROWSER || 'chromium'}.png`, fullPage: true });
   } finally { await browser?.close(); await server.close(); }
