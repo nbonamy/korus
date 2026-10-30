@@ -82,6 +82,13 @@ describe(`${product.name} web operations`, () => {
       [backendMethods.agentGitBranchWork, { agentId: 'agent', input }],
     ]);
   });
+  it('preserves base-update confirmation and conflict results through the web transport', async () => {
+    const input = { confirmed: true };
+    const result = { baseBranch: 'main', branch: 'feature', conflicts: ['src/app.js'] };
+    const request = vi.fn().mockResolvedValue(result);
+    await expect(invokeAppWebOperation({ request }, 'updateAgentGitBranchFromBase', ['agent', input])).resolves.toStrictEqual(result);
+    expect(request).toHaveBeenCalledExactlyOnceWith(backendMethods.agentGitUpdateFromBase, { agentId: 'agent', input });
+  });
   it('routes prune inventory and confirmed selections to the owning agent', async () => {
     const request = vi.fn().mockResolvedValue({ deleted: [], failed: [] });
     const input = { confirmed: true, targets: [{ id: 'refs/heads/feature', revision: 'checked' }] };
