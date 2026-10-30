@@ -222,7 +222,9 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     additionalDeveloperInstructions: (agent) => [
       tasks.instructions(agent.id),
       server?.missionDeveloperInstructions(agent.id),
-      quickChatTeamInstructions(snapshot, agent),
+      agent.sessionKind === 'quickChat'
+        ? quickChatTeamInstructions({ ...snapshot, agents: server?.collaborationAgents() ?? snapshot.agents }, agent)
+        : undefined,
       agent.worktreeInitialization?.state === 'running'
         ? '<context>Worktree initialization is running in the background. Begin independent inspection and editing. Before dependency-dependent checks, changing package manifests, lockfiles or setup inputs, running installation commands, or committing, call wait-for-worktree-initialization. Do not run competing setup commands. If setup fails, report the failure rather than claiming checks passed.</context>' : undefined,
       visualizeService.developerInstructions(),
