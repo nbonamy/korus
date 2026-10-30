@@ -36,6 +36,7 @@
     :tool-visibility="isAppToolVisible"
     :transform-message="transform"
     @load-older-history="control({ action: 'history', id: view.id })"
+    @load-turn-history="control({ action: 'turnHistory', id: view.id, turnId: $event })"
     @open-link="openLink"
   >
     <template #message-header="{ message }">

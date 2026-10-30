@@ -29,6 +29,7 @@ export type GuestConversationPort = {
   synchronize(agentId: string, checkpoint: CompanionCheckpoint | null): Promise<CompanionSync>;
   conversation(agentId: string): Promise<CompanionReset>;
   loadOlderHistory(agentId: string): Promise<BackendHistoryLoadResult>;
+  loadTurnHistory?(agentId: string, turnId: string): Promise<void>;
   readConversationContent(agentId: string, input: ConversationContentInput): Promise<ConversationContentChunk>;
   readImage(agentId: string, path: string): Promise<CompanionImage>;
 };
@@ -168,6 +169,14 @@ export class GuestConversationGateway {
                   result = { checkpoint: { ...sync.checkpoint, revision } };
                 } finally { pending = false; buffered = []; bufferedBytes = 0; }
                 break;
+              }
+              case 'conversation.turn.load': {
+                const { turnId } = z.object({ turnId: z.string().min(1).max(200) }).strict().parse(request.args);
+                if (!this.port.loadTurnHistory) throw new Error('denied');
+                await this.port.loadTurnHistory(target.agentId, turnId); assert();
+                const frame = await this.port.conversation(target.agentId); assert();
+                if (!bound(frame, target)) throw new Error('denied'); remember(frame);
+                result = { update: guestConversationFrame(frame) }; break;
               }
               case 'conversation.loadOlder': {
                 emptySchema.parse(request.args);

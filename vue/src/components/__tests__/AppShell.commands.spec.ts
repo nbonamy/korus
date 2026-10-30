@@ -51,6 +51,26 @@ afterEach(() => {
 });
 
 describe('AppShell dialogs and commands', () => {
+  it('loads the selected summary turn through the desktop action without fetching other history', async () => {
+    const snapshot = createInitialSnapshot(); const agent = snapshot.agents[0]!;
+    const turn = { id: 'older-turn', itemsView: 'summary' as const, status: 'completed' as const, error: null, willRetry: false,
+      startedAt: '2026-01-01T00:00:00Z', completedAt: '2026-01-01T00:01:49Z', durationMs: 109000 };
+    const conversation = codexConversationSnapshot([
+      { ...codexTextMessage('prompt', 'user', 'Check this change.'), turnId: turn.id },
+      { ...codexTextMessage('answer', 'assistant', 'The change is ready.'), turnId: turn.id },
+    ], { turns: [turn], turnIds: [turn.id] });
+    const loadAgentTurnHistory = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mountShell({ snapshot, stubAgentWorkspace: false, realConversationPane: true, codexConversationSnapshot: conversation });
+    try {
+      await wrapper.setProps({ loadAgentTurnHistory }); await flushPromises();
+      expect(wrapper.text()).toContain('The change is ready.');
+      expect(loadAgentTurnHistory).not.toHaveBeenCalled();
+      await wrapper.findAll('button').find(button => /View details/.test(button.text()))!.trigger('click');
+      await flushPromises();
+      expect(loadAgentTurnHistory).toHaveBeenCalledExactlyOnceWith(agent.id, turn.id);
+    } finally { wrapper.unmount(); }
+  });
+
   it('can page back to the first Claude request across multiple older pages', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;

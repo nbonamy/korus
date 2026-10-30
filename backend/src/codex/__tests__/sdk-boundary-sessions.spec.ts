@@ -70,6 +70,10 @@ describe(`Codex SDK → ${product.name} session policy`, () => {
     expect(session.handle.updateSettings).toHaveBeenCalledWith({ serviceTier: 'fast' });
     await expect(driver.loadOlderHistory(agent)).resolves.toStrictEqual({ hasOlder: true });
     expect(session.handle.loadOlderHistory).toHaveBeenCalledOnce();
+    await driver.loadTurnHistory(agent, 'older-turn');
+    expect(session.handle.loadTurnHistory).toHaveBeenCalledExactlyOnceWith('older-turn');
+    session.handle.loadTurnHistory.mockRejectedValueOnce(new Error('details unavailable'));
+    await expect(driver.loadTurnHistory(agent, 'older-turn')).rejects.toThrow('details unavailable');
     session.handle.loadOlderHistory.mockRejectedValueOnce(new Error('page unavailable'));
     await expect(driver.loadOlderHistory(agent)).rejects.toThrow('page unavailable');
   });

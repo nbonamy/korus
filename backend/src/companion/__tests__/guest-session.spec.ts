@@ -75,6 +75,9 @@ async function fixture(backend: Agent['backend'] = 'claude', submit?: (target: i
     onEvent: (listener: (event: AppBackendEvent) => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     synchronize: (id: string, checkpoint: Parameters<ConversationSource['synchronize']>[1]) => source.synchronize(id, checkpoint),
     conversation: (id: string) => source.read(id),
+    loadTurnHistory: vi.fn(async (_id: string, _turnId: string) => {
+      messages = [...messages, message('turn-working-details')]; revision++; emit(reset());
+    }),
     loadOlderHistory: vi.fn(async () => {
       await blocked?.(); const older = Array.from({ length: 120 }, (_, i) => message(`old-${i}`)); messages = [...older, ...messages]; revision++;
       if (backend === 'claude') {
@@ -528,6 +531,7 @@ describe('encrypted guest conversation authorization', () => {
     expect(JSON.stringify(first.client.snapshot)).not.toMatch(/PRIVATE_OTHER_CHAT|PRIVATE_QUEUED|team-test/);
     expect((await f.shares.control({ action: 'status', target: f.target })).state.connectedGuests).toBe(2);
     await first.client.loadOlder(); expect(first.client.snapshot?.payload.snapshot.messages).toHaveLength(121);
+    if (backend === 'codex') { await first.client.loadTurnHistory('old-turn'); expect(first.client.snapshot?.payload.snapshot.messages.at(-1)?.id).toBe('turn-working-details'); expect(f.port.loadTurnHistory).toHaveBeenCalledExactlyOnceWith('shared', 'old-turn'); }
     f.delta(); await vi.waitFor(() => expect(second.client.snapshot?.payload.snapshot.messages.at(-1)?.id).toBe('delta'));
     f.delta(true); await vi.waitFor(() => expect(second.client.snapshot?.payload.snapshot.messages.at(-1)?.id).toBe('after-gap'));
     f.live(); await vi.waitFor(() => expect(second.client.snapshot?.payload.snapshot.messages.at(-1)?.id).toBe('live'));

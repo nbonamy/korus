@@ -146,6 +146,13 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
     isConversationCurrent(agentId) { return cache.current(target(agentId)); },
     cachedConversation(agentId) { return cache.peek(target(agentId)); },
     async loadConversation(agentId) { return cache.select(agentId ? target(agentId) : null); },
+    async loadTurnHistory(agentId, turnId) {
+      const identity = target(agentId);
+      const frame = await call<CompanionConversation>('conversation.turn.load', { target: identity, turnId });
+      if (closed || JSON.stringify(target(agentId)) !== JSON.stringify(identity)) throw new Error('Conversation changed.');
+      cache.receive(frame);
+      return cache.peek(identity) ?? frame;
+    },
     async loadOlderHistory(agentId) {
       const identity = target(agentId);
       const page = await call<{ frame: ProviderConversationFrame; hasOlder: boolean }>('conversation.loadOlder', identity);

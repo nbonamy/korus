@@ -667,6 +667,11 @@ export class CodexSurfaceAgentAdapter {
     return conversationSummary(summary);
   }
 
+  async loadTurnHistory(agent: Agent, turnId: string): Promise<void> {
+    const session = await this.ensureSession(agent);
+    await session.handle.loadTurnHistory(turnId);
+  }
+
   async loadOlderHistory(agent: Agent): Promise<{ hasOlder: boolean }> {
     const session = await this.ensureSession(agent);
     const loadOlderHistory = (session.handle as CodexConversation & {
@@ -1056,7 +1061,9 @@ export class CodexSurfaceAgentAdapter {
   async readConversationContent(agent: Agent, input: import('@workspace/core/contracts/conversation').ConversationContentInput): Promise<import('@workspace/core/contracts/conversation').ConversationContentChunk> {
     const session = this.sessionsByAgentId.get(agent.id);
     if (!session || agent.backendSession?.kind !== 'codex' || agent.backendSession.threadId !== input.sessionId || session.handle.id !== input.sessionId) throw new Error('Conversation image is no longer available.');
-    return session.images.read(session.handle.getSnapshot(), input.contentId, input.offset);
+    const chunk = await session.handle.readContent(input.contentId, input.offset);
+    if (this.closed || this.sessionsByAgentId.get(agent.id) !== session || agent.backendSession?.kind !== 'codex' || agent.backendSession.threadId !== input.sessionId) throw new Error('Conversation image is no longer available.');
+    return chunk;
   }
 
   private async bindAndLoad(

@@ -139,6 +139,7 @@ export type AgentBackendDriver = {
   respondToAgentRequest(response: AgentRequestResponse): Promise<void>;
   loadConversation?(agent: Agent): Promise<BackendSession | null>;
   loadOlderHistory?(agent: Agent): Promise<BackendHistoryLoadResult>;
+  loadTurnHistory?(agent: Agent, turnId: string): Promise<void>;
   readConversationContent?(agent: Agent, input: import('./contracts/conversation').ConversationContentInput): Promise<import('./contracts/conversation').ConversationContentChunk>;
   listConversations?(agent: Agent, input?: ConversationListInput): Promise<ConversationSummary[]>;
   resumeConversation?(agent: Agent, target: ConversationResumeTarget): Promise<BackendConversationResumeResult>;

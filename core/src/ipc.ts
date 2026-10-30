@@ -150,6 +150,7 @@ export const ipcChannels = {
   restartAgent: 'agent:restart',
   loadConversationHistory: 'agent:history:hydrate',
   loadOlderAgentHistory: 'agent:history:load-older',
+  loadAgentTurnHistory: 'agent:history:load-turn',
   readConversationContent: 'agent:conversation:content:read',
   closeAgent: 'agent:close',
   selectAgent: 'agent:select',

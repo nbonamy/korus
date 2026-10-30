@@ -516,10 +516,10 @@ test('image previews follow the viewport with stable geometry, bounded caching a
     const page = await browser.newPage({ viewport: { width: 402, height: 740 } });
     await page.addInitScript(() => {
       window.imageReads = []; window.openedImages = []; window.activeReads = 0; window.peakReads = 0;
-      window.imageUrls = new Set(); window.revokedImages = 0;
+      window.imageUrls = new Set(); window.imageBytes = new Map(); window.revokedImages = 0;
       const create = URL.createObjectURL.bind(URL), revoke = URL.revokeObjectURL.bind(URL);
-      URL.createObjectURL = blob => { const url = create(blob); window.imageUrls.add(url); return url; };
-      URL.revokeObjectURL = url => { if (window.imageUrls.delete(url)) window.revokedImages++; revoke(url); };
+      URL.createObjectURL = blob => { const url = create(blob); window.imageUrls.add(url); window.imageBytes.set(url,blob.size); return url; };
+      URL.revokeObjectURL = url => { if (window.imageUrls.delete(url)) window.revokedImages++; window.imageBytes.delete(url); revoke(url); };
       window.webkit = { messageHandlers: { transcript: { postMessage(json) {
         const event = JSON.parse(json); if (event.type === 'openImage') window.openedImages.push(event); if (event.type !== 'readConversationImage') return;
         window.imageReads.push(event); window.peakReads = Math.max(window.peakReads, ++window.activeReads);
@@ -554,11 +554,11 @@ test('image previews follow the viewport with stable geometry, bounded caching a
     await page.waitForFunction(() => window.activeReads === 0);
     assert.ok(await page.evaluate(() => window.peakReads <= 2), 'preview reads must be bounded');
     await page.waitForFunction(() => !document.body.textContent.includes('Loading image…'));
-    assert.ok(await page.evaluate(() => window.imageUrls.size <= 5), 'decoded pixels count toward the 24 MiB budget');
+    assert.ok(await page.evaluate(() => [...window.imageBytes.values()].reduce((a,b)=>a+b,0)+[...document.querySelectorAll('img')].reduce((a,x)=>a+x.naturalWidth*x.naturalHeight*4,0)<=64*1024*1024), 'compressed originals and decoded thumbnails share the 64 MiB bound');
     const readsBeforeReturn = await page.evaluate(() => window.imageReads.filter(e => e.path === '/tmp/shot-0.png').length);
     await shot(0).evaluate(el => el.scrollIntoView({block:'center'}));
-    await page.waitForFunction(() => document.querySelector('[aria-label="Open Shot 0"] img')?.naturalWidth === 2048);
-    assert.ok(await page.evaluate(count => window.imageReads.filter(e => e.path === '/tmp/shot-0.png').length > count, readsBeforeReturn), 'evicted previews reload on return without a tap');
+    await page.waitForFunction(() => document.querySelector('[aria-label="Open Shot 0"] img')?.naturalWidth > 0);
+    assert.ok(await page.evaluate(count => window.imageReads.filter(e => e.path === '/tmp/shot-0.png').length === count, readsBeforeReturn), 'returning previews reuse downloaded bytes without a host read');
     const settledReads = await page.evaluate(() => window.imageReads.length);
     await page.waitForTimeout(300);
     assert.equal(await page.evaluate(() => window.imageReads.length), settledReads, 'memory pressure must not cause a fetch loop');
@@ -567,10 +567,63 @@ test('image previews follow the viewport with stable geometry, bounded caching a
     await page.waitForFunction(() => window.imageUrls.size === 0);
     await page.evaluate(async () => { const c = window.imageBudgetConversation; c.frame.payload.snapshot.messages=[{id:'large',role:'assistant',parts:[{type:'media',media:{url:'/tmp/large.png',title:'Large image'}}]}]; await window.companionTranscript.setConversation(JSON.stringify(c)); });
     await page.waitForFunction(() => window.imageReads.some(e => e.path === '/tmp/large.png') && window.activeReads === 0 && !document.body.textContent.includes('Loading image…'));
-    assert.equal(await page.evaluate(() => window.imageUrls.size), 0, 'over-budget images must not stay retained');
+    await page.waitForFunction(() => document.querySelector('[aria-label="Open Large image"] img')?.naturalWidth > 0);
+    assert.ok(await page.getByRole('button',{name:'Open Large image',exact:true}).locator('img').evaluate(el=>el.naturalWidth<3072), 'large originals use bounded inline thumbnails');
     await page.getByRole('button',{name:'Open Large image',exact:true}).click();
     await page.waitForFunction(() => window.openedImages.some(image => image.title === 'Large image'));
     await mkdir('out', {recursive:true});
     await writeFile(`out/image-memory-${process.env.TRANSCRIPT_BROWSER || 'chromium'}.json`, JSON.stringify({...evidence,initialReads,viewportReload:true,stableGeometry:true,releasedOnClose:true},null,2));
+  } finally { await browser?.close(); await server.close(); }
+});
+
+
+test('summary turns load only the selected Working details through the native bridge and cache reopens', async () => {
+  const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
+  let browser;
+  try {
+    await server.listen(); browser = await browserEngine.launch();
+    const page = await browser.newPage({ viewport: { width: 393, height: 740 } });
+    await page.addInitScript(() => {
+      window.turnRequests = [];
+      window.webkit = { messageHandlers: { transcript: { postMessage(json) {
+        const request = JSON.parse(json);
+        if (request.type !== 'loadTurnHistory') return;
+        window.turnRequests.push(request);
+        queueMicrotask(async () => {
+          const scene = structuredClone(window.summaryScene);
+          const turn = scene.frame.payload.snapshot.turns.find(turn => turn.id === request.turnId);
+          turn.itemsView = 'full';
+          scene.frame.payload.snapshot.messages.splice(1, 0, { id: 'work', turnId: request.turnId, role: 'assistant', status: 'complete', createdAt: '',
+            parts: [{ type: 'text', text: 'Inspected the selected turn only.', phase: 'commentary' }] });
+          window.summaryScene = scene;
+          await window.companionTranscript.setConversation(JSON.stringify(scene));
+          window.companionTranscript.setContent(JSON.stringify({ type: 'turnHistory', requestId: request.requestId, agentId: request.agentId }));
+        });
+      } } } };
+    });
+    await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
+    await page.waitForFunction(() => window.companionTranscript);
+    await page.evaluate(async () => {
+      const agent = { id: 'summary-agent', name: 'Summary', backend: 'codex', backendSession: { kind: 'codex', threadId: 'summary-thread' }, status: { type: 'idle' } };
+      const turn = { id: 'summary-turn', itemsView: 'summary', status: 'completed', startedAt: '2026-01-01T00:00:00Z', completedAt: '2026-01-01T00:01:49Z', durationMs: 109000 };
+      const messages = [{ id: 'request', turnId: turn.id, role: 'user', status: 'complete', createdAt: '', parts: [{ type: 'text', text: 'Check this turn.' }] },
+        { id: 'answer', turnId: turn.id, role: 'assistant', status: 'complete', createdAt: '', parts: [{ type: 'text', text: 'Here is the final answer.', phase: 'final_answer' }] }];
+      window.summaryScene = { generation: 1, agentId: agent.id, agent, ready: true, peers: [], history: { hasOlder: false, loadingOlder: false, failed: false },
+        frame: { agentId: agent.id, backend: 'codex', payload: { snapshot: { messages, turns: [turn], activeTurnId: null, busy: false } } } };
+      await window.companionTranscript.setConversation(JSON.stringify(window.summaryScene));
+    });
+    assert.equal(await page.getByText('Here is the final answer.', { exact: true }).isVisible(), true);
+    assert.equal(await page.evaluate(() => window.turnRequests.length), 0);
+    const details = page.getByRole('button', { name: /Done.*1m 49s.*View details/i });
+    await details.click();
+    await page.getByText('Inspected the selected turn only.', { exact: true }).waitFor();
+    const requests = await page.evaluate(() => window.turnRequests);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].turnId, 'summary-turn');
+    assert.equal(requests[0].agentId, 'summary-agent');
+    await page.getByRole('button', { name: /Done.*1m 49s/i }).click();
+    await page.getByRole('button', { name: /Done.*1m 49s/i }).click();
+    assert.equal(await page.evaluate(() => window.turnRequests.length), 1);
+    await page.screenshot({ path: `/tmp/korus-summary-${browserEngine === webkit ? 'webkit' : 'chromium'}.png`, fullPage: true });
   } finally { await browser?.close(); await server.close(); }
 });

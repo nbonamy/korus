@@ -62,8 +62,10 @@ function conversationFixture(id: string) {
     continueInterruptedTurn: vi.fn<CodexConversation['continueInterruptedTurn']>(async () => snapshot),
     fork: vi.fn<CodexConversation['fork']>(),
     forkTurn: vi.fn<CodexConversation['forkTurn']>(),
+    readContent: vi.fn<CodexConversation['readContent']>(),
     readHistory: vi.fn<CodexConversation['readHistory']>(),
     loadOlderHistory: vi.fn<CodexConversation['loadOlderHistory']>(),
+    loadTurnHistory: vi.fn<CodexConversation['loadTurnHistory']>(async () => snapshot),
   } satisfies Partial<CodexConversation>;
   return {
     handle,

@@ -254,6 +254,10 @@ export class CodexBackendDriver implements AgentBackendDriver {
     return threadId ? codexBackendSession(threadId) : null;
   }
 
+  loadTurnHistory(agent: Agent, turnId: string): Promise<void> {
+    return this.sessionManager.loadTurnHistory(agent, turnId);
+  }
+
   async loadOlderHistory(agent: Agent) {
     return this.sessionManager.loadOlderHistory(agent);
   }

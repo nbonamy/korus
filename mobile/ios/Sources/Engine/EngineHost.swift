@@ -151,6 +151,7 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
         case "conversationTransfer": if let json { onTranscript?(.transfer, json) }
         case "conversation": if let json { onTranscript?(.conversation, json) }
         case "conversationContext": if let json { onTranscript?(.context, json) }
+        case "turnHistory": if let json { onContent?(json) }
         case "conversationContent": if let json { onContent?(json) }
         case "conversationImage": if let json { onContent?(json) }
         case "conversationFile": if let json { onContent?(json) }

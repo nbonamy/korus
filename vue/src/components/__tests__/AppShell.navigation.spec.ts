@@ -308,7 +308,7 @@ describe('AppShell navigation and teams', () => {
     expect(wrapper.emitted('select-team')).toStrictEqual([['team-app']]);
   });
 
-  it('derives unread teams from their unread agents', () => {
+  it('derives unread teams from visible conversations and Mission leads, excluding hidden workers', async () => {
     const snapshot = createInitialSnapshot();
     const otherAgent = {
       ...snapshot.agents[0]!,
@@ -329,8 +329,16 @@ describe('AppShell navigation and teams', () => {
       unreadAgentIds: ['agent-jesse', otherAgent.id],
     });
 
-    expect(wrapper.getComponent({ name: 'TeamRail' }).props('unreadTeamIds'))
-      .toStrictEqual(['team-other']);
+    expect(wrapper.find('[aria-label="Other Team, unread activity"]').exists()).toBe(true);
+    const worker = { ...otherAgent, id: 'other-worker' };
+    snapshot.agents.push(worker); snapshot.teams.at(-1)!.agentIds.push(worker.id);
+    const mission = createMission(snapshot, { outcome: 'Ship work', workflowType: 'shapeAndShipFeature', teamId: 'team-other', orchestratorMemberId: otherAgent.id });
+    mission.stage = 'ship'; mission.stageAgentIds = { requirements: otherAgent.id, implementation: worker.id, review: otherAgent.id };
+    await wrapper.setProps({ snapshot: structuredClone(snapshot), unreadAgentIds: [worker.id] });
+    expect(wrapper.find('[aria-label="Other Team, unread activity"]').exists()).toBe(false);
+    await wrapper.setProps({ unreadAgentIds: [worker.id, otherAgent.id] });
+    expect(wrapper.find('[aria-label="Other Team, unread activity"]').exists()).toBe(true);
+    wrapper.unmount();
   });
 
   it('shows unread activity for the previously selected team while cockpit is open', async () => {
