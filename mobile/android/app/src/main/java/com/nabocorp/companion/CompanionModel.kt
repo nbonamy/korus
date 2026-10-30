@@ -670,6 +670,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
                     drainTranscript()
                 }
                 "conversationContext" -> { latestContext = payload; context = payload; drainTranscript() }
+                "turnHistory" -> transcript.call("companionTranscript", "setContent", payload)
                 "conversationContent" -> transcript.call("companionTranscript", "setContent", payload)
                 "conversationFile" -> transcript.call("companionTranscript", "setContent", payload)
                 "conversationImage" -> transcript.call("companionTranscript", "setImage", payload)
@@ -685,7 +686,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
             when (body.string("type")) {
                 "ready" -> { transcriptReady = true; drainTranscript() }
                 "loadOlder" -> command("loadOlder", "agentId" to body.string("agentId"))
-                "readConversationImage", "readConversationContent", "readFilePreview" -> dispatch(body)
+                "readConversationImage", "readConversationContent", "readFilePreview", "loadTurnHistory" -> dispatch(body)
                 "filePreviewVisibility" -> { filePreviewOpen = body.optBoolean("open"); if (filePreviewOpen) dictation.cancel(); acknowledge() }
                 "backend" -> { chooseCreationBackend(body.string("backend")); dispatch(body) }
                 "openExternal" -> openExternal(getApplication(), body.string("url"))

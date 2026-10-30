@@ -65,6 +65,7 @@ function conversationFixture(id: string) {
     readContent: vi.fn<CodexConversation['readContent']>(),
     readHistory: vi.fn<CodexConversation['readHistory']>(),
     loadOlderHistory: vi.fn<CodexConversation['loadOlderHistory']>(),
+    loadTurnHistory: vi.fn<CodexConversation['loadTurnHistory']>(async () => snapshot),
   } satisfies Partial<CodexConversation>;
   return {
     handle,

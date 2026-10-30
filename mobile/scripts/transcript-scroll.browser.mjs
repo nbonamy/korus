@@ -575,3 +575,55 @@ test('image previews follow the viewport with stable geometry, bounded caching a
     await writeFile(`out/image-memory-${process.env.TRANSCRIPT_BROWSER || 'chromium'}.json`, JSON.stringify({...evidence,initialReads,viewportReload:true,stableGeometry:true,releasedOnClose:true},null,2));
   } finally { await browser?.close(); await server.close(); }
 });
+
+
+test('summary turns load only the selected Working details through the native bridge and cache reopens', async () => {
+  const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
+  let browser;
+  try {
+    await server.listen(); browser = await browserEngine.launch();
+    const page = await browser.newPage({ viewport: { width: 393, height: 740 } });
+    await page.addInitScript(() => {
+      window.turnRequests = [];
+      window.webkit = { messageHandlers: { transcript: { postMessage(json) {
+        const request = JSON.parse(json);
+        if (request.type !== 'loadTurnHistory') return;
+        window.turnRequests.push(request);
+        queueMicrotask(async () => {
+          const scene = structuredClone(window.summaryScene);
+          const turn = scene.frame.payload.snapshot.turns.find(turn => turn.id === request.turnId);
+          turn.itemsView = 'full';
+          scene.frame.payload.snapshot.messages.splice(1, 0, { id: 'work', turnId: request.turnId, role: 'assistant', status: 'complete', createdAt: '',
+            parts: [{ type: 'text', text: 'Inspected the selected turn only.', phase: 'commentary' }] });
+          window.summaryScene = scene;
+          await window.companionTranscript.setConversation(JSON.stringify(scene));
+          window.companionTranscript.setContent(JSON.stringify({ type: 'turnHistory', requestId: request.requestId, agentId: request.agentId }));
+        });
+      } } } };
+    });
+    await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
+    await page.waitForFunction(() => window.companionTranscript);
+    await page.evaluate(async () => {
+      const agent = { id: 'summary-agent', name: 'Summary', backend: 'codex', backendSession: { kind: 'codex', threadId: 'summary-thread' }, status: { type: 'idle' } };
+      const turn = { id: 'summary-turn', itemsView: 'summary', status: 'completed', startedAt: '2026-01-01T00:00:00Z', completedAt: '2026-01-01T00:01:49Z', durationMs: 109000 };
+      const messages = [{ id: 'request', turnId: turn.id, role: 'user', status: 'complete', createdAt: '', parts: [{ type: 'text', text: 'Check this turn.' }] },
+        { id: 'answer', turnId: turn.id, role: 'assistant', status: 'complete', createdAt: '', parts: [{ type: 'text', text: 'Here is the final answer.', phase: 'final_answer' }] }];
+      window.summaryScene = { generation: 1, agentId: agent.id, agent, ready: true, peers: [], history: { hasOlder: false, loadingOlder: false, failed: false },
+        frame: { agentId: agent.id, backend: 'codex', payload: { snapshot: { messages, turns: [turn], activeTurnId: null, busy: false } } } };
+      await window.companionTranscript.setConversation(JSON.stringify(window.summaryScene));
+    });
+    assert.equal(await page.getByText('Here is the final answer.', { exact: true }).isVisible(), true);
+    assert.equal(await page.evaluate(() => window.turnRequests.length), 0);
+    const details = page.getByRole('button', { name: /Done.*1m 49s.*View details/i });
+    await details.click();
+    await page.getByText('Inspected the selected turn only.', { exact: true }).waitFor();
+    const requests = await page.evaluate(() => window.turnRequests);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].turnId, 'summary-turn');
+    assert.equal(requests[0].agentId, 'summary-agent');
+    await page.getByRole('button', { name: /Done.*1m 49s/i }).click();
+    await page.getByRole('button', { name: /Done.*1m 49s/i }).click();
+    assert.equal(await page.evaluate(() => window.turnRequests.length), 1);
+    await page.screenshot({ path: `/tmp/korus-summary-${browserEngine === webkit ? 'webkit' : 'chromium'}.png`, fullPage: true });
+  } finally { await browser?.close(); await server.close(); }
+});

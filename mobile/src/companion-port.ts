@@ -62,6 +62,7 @@ type CompanionOperations = {
   cachedConversation?(agentId: string): CompanionConversation | null | undefined;
   loadConversation(agentId: string): Promise<CompanionConversation | null>;
   loadOlderHistory?(agentId: string): Promise<CompanionHistoryPage>;
+  loadTurnHistory?(agentId: string, turnId: string): Promise<CompanionConversation>;
   readConversationContent?(agentId: string, input: ConversationContentInput): Promise<ConversationContentChunk>;
   /** Prompts and reviews name the target captured when the person acted, so a replaced session is refused rather than retargeted. */
   sendPrompt(target: CompanionTarget, prompt: string, clientCommandId?: string, options?: CompanionPromptOptions, attachments?: CompanionUpload[]): Promise<void>;

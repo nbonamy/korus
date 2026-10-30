@@ -667,6 +667,11 @@ export class CodexSurfaceAgentAdapter {
     return conversationSummary(summary);
   }
 
+  async loadTurnHistory(agent: Agent, turnId: string): Promise<void> {
+    const session = await this.ensureSession(agent);
+    await session.handle.loadTurnHistory(turnId);
+  }
+
   async loadOlderHistory(agent: Agent): Promise<{ hasOlder: boolean }> {
     const session = await this.ensureSession(agent);
     const loadOlderHistory = (session.handle as CodexConversation & {

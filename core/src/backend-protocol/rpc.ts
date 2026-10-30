@@ -73,6 +73,8 @@ export type AppSnapshotGetResult = {
 };
 
 export type AppBackendRequestMap = {
+  [backendMethods.agentConversationTurnHistoryLoad]: { params: { agentId: string; turnId: string }; result: void };
+  [backendMethods.driverConversationTurnHistoryLoad]: { params: { agent: import('../contracts').Agent; turnId: string }; result: void };
   [backendMethods.agentRunProfilesGet]: { params: { agentId: string }; result: import('../run-profiles').RunProfileCatalog };
   [backendMethods.agentRunProfileActionsGet]: { params: { agentId: string; directory: string }; result: import('../run-profiles').RunProfileDiscovery };
   [backendMethods.agentRunProfileSave]: { params: { agentId: string; input: import('../run-profiles').RunProfileInput }; result: import('../run-profiles').RunProfileCatalog };

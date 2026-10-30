@@ -502,6 +502,16 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     return preview;
   }
 
+  async function loadTurnHistory(id: string, turnId: string): Promise<void> {
+    const active = session; const epoch = selectionEpoch;
+    const valid = () => active === session && epoch === selectionEpoch && id === agentId.value && status.value === 'connected';
+    if (!valid() || !active?.loadTurnHistory) throw new Error('Turn history is unavailable.');
+    const frame = await active.loadTurnHistory(id, turnId);
+    if (!valid()) throw new Error('Conversation changed.');
+    if (!matchesCurrentSession(frame)) throw new Error('Conversation identity mismatch.');
+    conversation.value = frame;
+  }
+
   async function loadOlder(id: string) {
     const active = session;
     if (id !== agentId.value || !active?.loadOlderHistory || status.value !== 'connected' || loadingOlder.value || !history.value.hasOlder) return;
@@ -707,7 +717,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     // What the laptop hosts, and which of it is selected.
     teamId, agentId, workspace, agents, agent, missions, selectTeam, selectAgent, selectBackend, markRead, createTeam, teamCreation, dismissTeamCreation, missionAction, finishReview, continueMission, acceptTicket, selectFinding, fixFindings, rerunReview, dismissMissionAction,
     // The selected conversation and its history.
-    conversation, conversationReady, conversationGeneration, loading, refreshing, history, loadOlder, readImage, readFilePreview, readConversationContent,
+    conversation, conversationReady, conversationGeneration, loading, refreshing, history, loadOlder, loadTurnHistory, readImage, readFilePreview, readConversationContent,
     conversationUpdates: (since: import('@workspace/core/companion-journal').CompanionCheckpoint | null) => {
       const target = currentTarget();
       return target ? connector.conversationUpdates?.(target, since) ?? null : null;

@@ -121,6 +121,7 @@ export type GatewayPort = {
   synchronize?(agentId: string, checkpoint: CompanionCheckpoint | null): Promise<CompanionSync>;
   conversation(agentId: string): Promise<CompanionReset>;
   loadOlderHistory(agentId: string): Promise<BackendHistoryLoadResult>;
+  loadTurnHistory?(agentId: string, turnId: string): Promise<void>;
   readConversationContent?(agentId: string, input: ConversationContentInput): Promise<ConversationContentChunk>;
   submit(target: CompanionTarget, text: string, clientId: string, options?: CompanionPromptOptions, uploads?: CompanionUpload[]): Promise<void>;
   models(agentId: string): Promise<unknown[]>;
@@ -247,6 +248,14 @@ const agentOperations = {
       }
       return result;
     } },
+  }),
+  'conversation.turn.load': agentOperation(withTarget(z.object({ turnId: identity }).strict()))({
+    act: async (port, agent, input) => {
+      if (!port.loadTurnHistory) throw new Error('Turn history is unavailable.');
+      await port.loadTurnHistory(agent.id, input.turnId);
+      return port.conversation(agent.id);
+    },
+    read: { verify: (frame, current, target) => currentReset(frame, current, target) },
   }),
   'conversation.loadOlder': agentOperation(onlyTarget)({
     act: async (port, agent) => {

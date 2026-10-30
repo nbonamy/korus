@@ -884,6 +884,7 @@ const props = withDefaults(defineProps<{
   duplicateAgentAction?: (agentId: string, options?: import('@workspace/core/contracts').DuplicateAgentOptions) => Promise<Agent | null>;
   assignWorkItemAction?: (payload: { agentId: string; item: WorkItem; prompt?: string }) => Promise<void>;
   loadOlderAgentHistory?: (agentId: string) => Promise<void>;
+  loadAgentTurnHistory?: (agentId: string, turnId: string) => Promise<void>;
   retryAgentHistory?: () => Promise<void>;
   agentConversationFor?: (agentId: string) => AgentConversationView | null;
   agentConversationActions?: AgentConversationActions;
@@ -2387,6 +2388,7 @@ const conversationPaneActions: CodexConversationPaneActions = {
   forkTurn: (turnId) => emit('fork-turn', turnId),
   interrupt: () => emit('interrupt-agent'),
   loadOlderHistory: () => props.loadOlderAgentHistory?.(currentAgent.value?.id ?? ''),
+  loadTurnHistory: (turnId) => props.loadAgentTurnHistory?.(currentAgent.value?.id ?? '', turnId),
   menuSelect: (item) => {
     const composerCommand = conversationMenuCommand(item.payload);
     if (composerCommand && currentAgent.value) return runConversationMenuCommand(currentAgent.value.id, composerCommand);

@@ -518,6 +518,9 @@ export class AppController {
       return this.loadConversationHistory(agentId);
     });
 
+    ipc.handle(ipcChannels.loadAgentTurnHistory, async (_event, agentId: string, turnId: string) => {
+      await this.requireBackendClient().request(backendMethods.agentConversationTurnHistoryLoad, { agentId, turnId });
+    });
     ipc.handle(ipcChannels.loadOlderAgentHistory, async (_event, agentId: string) => {
       return this.loadOlderAgentHistory(agentId);
     });

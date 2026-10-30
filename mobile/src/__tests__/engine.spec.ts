@@ -677,6 +677,34 @@ describe('companion engine', () => {
     expect(latest()).toMatchObject({ loading: false, canSend: false, error: 'mobile.errors.loadConversation' });
     engine.dispose();
   });
+  it('returns turn-details completion and errors through the native engine without replacing another selection', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    const loadTurnHistory = vi.fn(async (_agentId: string, _turnId: string) => (await (await connect('demo-laptop')).loadConversation('demo-agent'))!);
+    connector.connect = async id => {
+      const session = await connect(id);
+      return { ...session, loadTurnHistory, getWorkspace: async () => {
+        const workspace = await session.getWorkspace();
+        return { ...workspace, agents: workspace.agents.map(agent => ({ ...agent, backendSession: { kind: 'codex' as const, threadId: agent.id } })) };
+      } };
+    };
+    const { engine, events } = open(connector);
+    await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+    await engine.dispatch({ type: 'loadTurnHistory', requestId: 'details', agentId: 'demo-agent', turnId: 'old-turn' });
+    expect(loadTurnHistory).toHaveBeenCalledExactlyOnceWith('demo-agent', 'old-turn');
+    expect(events.at(-1)).toMatchObject({ type: 'turnHistory', requestId: 'details', agentId: 'demo-agent' });
+    const mismatched = (await (await connect('demo-laptop')).loadConversation('demo-agent'))!;
+    loadTurnHistory.mockResolvedValueOnce({ ...mismatched, threadId: 'different-thread' } as typeof mismatched);
+    await engine.dispatch({ type: 'loadTurnHistory', requestId: 'wrong-session', agentId: 'demo-agent', turnId: 'old-turn' });
+    expect(events.at(-1)).toMatchObject({ type: 'turnHistory', requestId: 'wrong-session', error: expect.any(String) });
+    loadTurnHistory.mockRejectedValueOnce(new Error('offline'));
+    await engine.dispatch({ type: 'loadTurnHistory', requestId: 'retry', agentId: 'demo-agent', turnId: 'old-turn' });
+    expect(events.at(-1)).toMatchObject({ type: 'turnHistory', requestId: 'retry', error: expect.any(String) });
+    await engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
+    await engine.dispatch({ type: 'loadTurnHistory', requestId: 'stale', agentId: 'demo-agent', turnId: 'old-turn' });
+    expect(loadTurnHistory).toHaveBeenCalledTimes(3);
+    expect(events.at(-1)).toMatchObject({ type: 'turnHistory', requestId: 'stale', error: expect.any(String) });
+    engine.dispose();
+  });
   it('deduplicates history loads and ignores a result after the selected agent changes', async () => {
     const connector = createDemoConnector(); const connect = connector.connect;
     let complete!: (value: CompanionHistoryPage) => void;

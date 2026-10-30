@@ -139,6 +139,7 @@ const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?
   restartAgent: [backendMethods.agentConversationReset, named('agentId')],
   loadConversationHistory: [backendMethods.agentConversationLoad, named('agentId')],
   loadOlderAgentHistory: [backendMethods.agentConversationHistoryLoadOlder, named('agentId')],
+  loadAgentTurnHistory: [backendMethods.agentConversationTurnHistoryLoad, named('agentId', 'turnId')],
   readConversationContent: [backendMethods.agentConversationContentRead, named('agentId', 'input')],
   closeAgent: [backendMethods.agentDelete, namedOptional('agentId', 'input')],
   markAgentRead: [backendMethods.agentMarkRead, named('agentId', 'revision')],

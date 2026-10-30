@@ -2614,6 +2614,14 @@ export class AppBackendServer {
           return this.snapshot;
         });
       }
+      case backendMethods.agentConversationTurnHistoryLoad: {
+        const agentId = requireAgentId(message.params);
+        const turnId = requireString(requireRecord(message.params).turnId, 'turnId');
+        return this.routeAgentResultRequest(message.id, agentId, backendMethods.agentConversationTurnHistoryLoad, { agentId, turnId }, async (agent) => {
+          await this.handleAgentDriverRequest(agent, backendMethods.driverConversationTurnHistoryLoad, { agent, turnId });
+          return null;
+        });
+      }
       case backendMethods.agentConversationHistoryLoadOlder: {
         const agentId = requireAgentId(message.params);
         return this.routeAgentResultRequest(message.id, agentId, backendMethods.agentConversationHistoryLoadOlder, { agentId }, async (agent) => (

@@ -138,6 +138,13 @@ threads, routed by `threadId` and `agentId`.
   is never bound to a roster agent and is deleted after the job. Model selection
   comes from the current catalog and never falls back to a different model family.
 
+Historical conversation loading requests SDK summaries independently of turn paging.
+Completed turns retain their prompt and final answer; expanding Working details asks
+the owning SDK handle for that turn and receives normal replica updates. Desktop,
+shared conversations and native mobile forward the same operation; they do not
+reconstruct omitted messages or keep a second history cache. Live turns remain full,
+and exhaustive reads for handoffs and other backend consumers use SDK `readHistory`.
+
 ## Settings And Policy
 
 - **Approval presets** are app-owned shortcuts over thread settings; the renderer

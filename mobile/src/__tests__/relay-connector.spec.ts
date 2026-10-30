@@ -266,6 +266,11 @@ describe('native relay host adapter', () => {
         hostId: host.hostId, locationId: 'remote', teamId: 'team', agentId: 'agent', sessionId: '{"kind":"codex","threadId":"thread"}',
       } });
       await expect(session.loadOlderHistory!('unknown')).rejects.toThrow();
+      transport.response = method => method === 'conversation.turn.load' ? page.frame : page;
+      expect(await session.loadTurnHistory!('agent', 'old-turn')).toStrictEqual(page.frame);
+      expect(transport.requests.at(-1)).toMatchObject({ method: 'conversation.turn.load', args: { target: {
+        hostId: host.hostId, locationId: 'remote', teamId: 'team', agentId: 'agent', sessionId: '{"kind":"codex","threadId":"thread"}',
+      }, turnId: 'old-turn' } });
     } finally { await connector.dispose!(); }
   });
   it('pins the introduced laptop, claims the code, and reuses the limited pinned circuit for approval polls', async () => {

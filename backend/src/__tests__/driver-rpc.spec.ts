@@ -29,6 +29,21 @@ describe('BackendDriverRpc', () => {
       expect(sendPrompt).not.toHaveBeenCalled(); expect(steerPrompt).not.toHaveBeenCalled();
     } finally { await rpc.close(); }
   });
+  it('routes turn history through the owning agent without changing selection or submitting a prompt', async () => {
+    const snapshot = createTestSnapshot(); const agent = createAgent();
+    snapshot.agents.push(agent); snapshot.teams[0].agentIds.push(agent.id);
+    const selected = snapshot.activeAgentId;
+    const loadTurnHistory = vi.fn().mockResolvedValue(undefined);
+    const driver = createDriver({ loadTurnHistory });
+    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new BackendDriverRpc(new Map([['codex', driver]])), saveSnapshot: vi.fn().mockResolvedValue(undefined) });
+    try {
+      expect(await server.handleMessage({ jsonrpc: '2.0', id: 'details', method: 'agent/conversation/turn/history/load', params: { agentId: agent.id, turnId: 'older-turn' } })).toMatchObject({ result: null });
+      expect(loadTurnHistory).toHaveBeenCalledExactlyOnceWith(agent, 'older-turn');
+      expect(snapshot.activeAgentId).toBe(selected);
+      await expect(server.handleMessage({ jsonrpc: '2.0', id: 'invalid', method: 'agent/conversation/turn/history/load', params: { agentId: agent.id, turnId: '' } })).rejects.toThrow();
+      expect(loadTurnHistory).toHaveBeenCalledTimes(1);
+    } finally { await server.close(); }
+  });
   it('routes bounded content reads through the owning driver and rejects invalid offsets', async () => {
     const snapshot = createTestSnapshot(); const agent = { ...createAgent(), backend: 'claude' as const, backendSession: { kind: 'claude' as const, sessionId: 'session', transport: 'stdio' as const } };
     snapshot.agents = [agent]; snapshot.teams[0].agentIds = [agent.id];
@@ -291,6 +306,7 @@ describe('BackendDriverRpc', () => {
         clientInfo: { name: 'workspace', title: product.name, version: '0.3.0' },
         codexHome: '/tmp/agent-workspace-isolated-home/codex-home',
         loadingStrategy: 'lazy',
+        historyItemsView: 'summary',
         originalHistoryImages: true,
         transport: {
           command: expect.any(String),
