@@ -613,6 +613,53 @@ try {
   await page.screenshot({ path: path.join(output, 'artboard-positions.png') });
   await writeFile(path.join(output, 'artboard-positions.json'), JSON.stringify((await design({ type: 'read' })).workspace, null, 2));
   record('Artboards move freely at the canvas scale, support keyboard nudging and cancellation, and retain positions through conflicts, reload and undoable arrangement.');
+  // Recovery must remain reachable when incoming agent edits invalidate a draft.
+  let recoveryRevision = (await gestureState()).revision;
+  for (const removal of ['element', 'artboard']) {
+    await design({ type: 'edit', expectedRevision: recoveryRevision, edits: [{ type: 'artboard-add', artboard: { id: 'recovery', title: 'Recovery', width: 800, height: 600, root: { id: 'recovery-root', tag: 'main', children: [{ id: 'recovery-text', tag: 'h1', text: 'Saved text' }] } } }] });
+    await design({ type: 'select', artboardId: 'recovery', nodeId: 'recovery-text' });
+    await page.reload();
+    await page.getByRole('textbox', { name: 'Text', exact: true }).fill('Unsaved text');
+    recoveryRevision++;
+    await design({ type: 'edit', expectedRevision: recoveryRevision, edits: [removal === 'element' ? { type: 'remove', nodeId: 'recovery-text' } : { type: 'artboard-remove', artboardId: 'recovery' }] });
+    await waitRevision(++recoveryRevision);
+    const discard = page.getByRole('button', { name: 'Discard draft and reload', exact: true });
+    await discard.waitFor({ state: 'visible', timeout: 3000 });
+    await page.screenshot({ path: path.join(output, `removed-${removal}-draft.png`) });
+    await discard.click();
+    await page.getByRole('button', { name: 'Play', exact: true }).and(page.locator(':enabled')).waitFor({ state: 'visible' });
+    assert.equal((await gestureState()).revision, recoveryRevision, 'Discarding an orphaned draft must not save content.');
+    if (removal === 'element') {
+      await design({ type: 'edit', expectedRevision: recoveryRevision, edits: [{ type: 'artboard-remove', artboardId: 'recovery' }] });
+      await waitRevision(++recoveryRevision);
+    }
+  }
+  record('Removing a dirty inspector target or its artboard keeps discard/reload reachable and unlocks editing without saving the draft.');
+  await design({ type: 'select', artboardId: 'checkout', nodeId: 'checkout-root' });
+  await page.reload();
+  await page.getByRole('tab', { name: 'Tweaks', exact: true }).click();
+  const recoveryErrors = [];
+  page.on('pageerror', error => recoveryErrors.push(String(error)));
+  const originalSpacing = (await gestureState()).content.tweaks.find(tweak => tweak.id === 'spacing');
+  for (const replacement of [{ ...originalSpacing, max: 48 }, { ...originalSpacing, type: 'color' }]) {
+    await spacing.evaluate(input => { input.value = '56'; input.dispatchEvent(new Event('input', { bubbles: true })); });
+    await design({ type: 'edit', expectedRevision: recoveryRevision, edits: [{ type: 'tweak-set', tweak: replacement }] });
+    await waitRevision(++recoveryRevision);
+    assert.deepEqual(recoveryErrors, [], 'A changed tweak definition must not throw during rendering.');
+    assert.equal(await spacing.inputValue(), '56', 'Keep the draft control and value tied to the reviewed definition.');
+    await spacing.dispatchEvent('change');
+    await page.getByRole('button', { name: 'Apply my tweak', exact: true }).click();
+    await page.getByText('This control has changed. Discard the preview and choose a new value.', { exact: true }).waitFor({ state: 'visible' });
+    await page.screenshot({ path: path.join(output, `changed-tweak-${replacement.type}.png`) });
+    await page.getByRole('button', { name: 'Discard draft and reload', exact: true }).click();
+    assert.equal((await gestureState()).revision, recoveryRevision);
+    // Restore the definition for the next independent conflict; preserve its CSS.
+    await design({ type: 'edit', expectedRevision: recoveryRevision, edits: [{ type: 'tweak-set', tweak: originalSpacing }] });
+    await waitRevision(++recoveryRevision);
+  }
+  assert.deepEqual(recoveryErrors, []);
+  await writeFile(path.join(output, 'recovery.json'), JSON.stringify((await design({ type: 'read' })).workspace, null, 2));
+  record('Range and type changes retain the captured tweak preview, reject reinterpretation and allow explicit discard without rendering errors.');
   if (live) {
     const designerId = snapshot.agents[1].id;
     console.log('Checking live provider generation in the isolated profile.');

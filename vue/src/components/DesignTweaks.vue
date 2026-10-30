@@ -1,7 +1,7 @@
 <template>
   <div class="design-tweaks">
-    <p v-if="!tweaks.length" class="design-tweaks__empty">{{ t('design.noTweaks') }}</p>
-    <FormField v-for="tweak in tweaks" :key="tweak.id" density="compact" :label="tweak.label">
+    <p v-if="!displayedTweaks.length" class="design-tweaks__empty">{{ t('design.noTweaks') }}</p>
+    <FormField v-for="tweak in displayedTweaks" :key="tweak.id" density="compact" :label="tweak.label">
       <template v-if="tweak.type === 'range'">
         <output>{{ display(tweak) }}</output>
         <input type="range" :aria-label="tweak.label" :min="tweak.min" :max="tweak.max" :step="tweak.step" :value="value(tweak) ?? tweak.min" :disabled="unavailable(tweak)" @input="preview(tweak, Number(($event.target as HTMLInputElement).value))" @change="commit(tweak, Number(($event.target as HTMLInputElement).value))" />
@@ -23,12 +23,17 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import type { DesignNode } from '@workspace/core/design';
 import { designTweakCss, readDesignTweak, type DesignTweak, type DesignTweakValue } from '@workspace/core/design-tweaks';
 import FormField from '../shared/form/FormField.vue';
 import { translate as t } from '../i18n';
-const props = defineProps<{ tweaks: DesignTweak[]; nodes: DesignNode[]; draft: { tweakId: string; value: DesignTweakValue } | null; disabled: boolean }>();
+const props = defineProps<{ tweaks: DesignTweak[]; nodes: DesignNode[]; draft: { tweakId: string; value: DesignTweakValue; definition: DesignTweak } | null; disabled: boolean }>();
 const emit = defineEmits<{ preview: [tweak: DesignTweak, value: DesignTweakValue]; commit: [tweak: DesignTweak, value: DesignTweakValue] }>();
+const displayedTweaks = computed(() => {
+  const draft = props.draft;
+  return props.tweaks.map(tweak => draft?.tweakId === tweak.id ? draft.definition : tweak);
+});
 const node = (tweak: DesignTweak) => props.nodes.find(item => item.id === tweak.nodeId);
 function value(tweak: DesignTweak) { return props.draft?.tweakId === tweak.id ? props.draft.value : node(tweak) ? readDesignTweak(tweak, node(tweak)!) : null; }
 function display(tweak: DesignTweak) { return props.draft?.tweakId === tweak.id ? designTweakCss(tweak, props.draft.value) : node(tweak)?.styles?.[tweak.property] ?? t('design.fromStyles'); }

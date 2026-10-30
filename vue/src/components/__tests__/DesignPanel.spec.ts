@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { expect, it, vi } from 'vitest';
-import type { DesignWorkspace } from '@workspace/core/design';
+import type { DesignRequest, DesignWorkspace } from '@workspace/core/design';
 import DesignPanel from '../DesignPanel.vue';
 
 // Isolated editor failure modes: saving the wrong stable target, dropping a draft
@@ -40,7 +40,7 @@ it('edits a stable selected node, retains conflicting drafts, routes comments an
   expect(execute).toHaveBeenLastCalledWith({ type: 'comment', expectedRevision: 1, nodeId: 'page', text: 'Make the next step clearer' });
   await wrapper.get('button[data-action="build"]').trigger('click');
   await flushPromises();
-  expect(execute).toHaveBeenLastCalledWith({ type: 'comment', expectedRevision: 1, nodeId: 'page', text: 'Make the next step clearer' });
+  expect(execute).toHaveBeenLastCalledWith({ type: 'read' });
   await wrapper.get('button[data-action="implement"]').trigger('click');
   await flushPromises();
   expect(execute).toHaveBeenLastCalledWith({ type: 'implement', expectedRevision: 1, artboardId: 'desktop' });
@@ -50,4 +50,47 @@ it('edits a stable selected node, retains conflicting drafts, routes comments an
   expect(wrapper.find('textarea[aria-label="Text"]').exists()).toBe(false);
   expect(wrapper.get('button[data-action="play"]').attributes('aria-pressed')).toBe('true');
   wrapper.unmount();
+});
+
+// Rejection may follow a persisted choice. Retrying must review fresh state,
+// retain revision checks, and submit only after another explicit confirmation.
+it('returns rejected coding handoffs to review and confirms the latest saved direction', async () => {
+  const workspace: DesignWorkspace = {
+    conversationRef: null, isOpen: true, selectedArtboardId: 'desktop', selectedNodeId: null, undo: [], checkpoints: [],
+    document: { id: 'design-a', revision: 1, content: { title: 'Page', css: '', comments: [], artboards: [{ id: 'desktop', title: 'Desktop', width: 800, height: 600, root: { id: 'page', tag: 'main', text: 'Hello' } }] } },
+  };
+  let rejectProvider = true;
+  const execute = vi.fn(async (request: DesignRequest) => {
+    if (request.type === 'implement') {
+      if (request.expectedRevision !== workspace.document!.revision) throw new Error('Stale design revision');
+      workspace.document!.revision++;
+      workspace.document!.content.chosenArtboardId = request.artboardId;
+      if (rejectProvider) throw new Error('Provider rejected coding request');
+    }
+    return { workspace: structuredClone(workspace) };
+  });
+  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace: structuredClone(workspace), execute } });
+  try {
+    const review = async () => { await wrapper.get('[data-action="build"]').trigger('click'); await flushPromises(); };
+    const send = async () => { await wrapper.get('[data-action="implement"]').trigger('click'); await flushPromises(); };
+    await review(); await send();
+    expect(wrapper.find('[data-action="implement"]').exists()).toBe(false);
+    expect(wrapper.get('[role="alert"]').text()).toContain('Provider rejected');
+    workspace.document!.revision++;
+    workspace.document!.content.artboards[0].title = 'Refined direction';
+    await review();
+    expect(wrapper.get('.design-panel__build-summary').text()).toContain('Refined direction');
+    expect(execute).toHaveBeenLastCalledWith({ type: 'read' });
+    // A change after review must still be rejected instead of silently accepted.
+    workspace.document!.revision++;
+    await send();
+    expect(wrapper.get('[role="alert"]').text()).toContain('Stale');
+    rejectProvider = false;
+    await review();
+    expect(execute).toHaveBeenLastCalledWith({ type: 'read' });
+    await send();
+    expect(execute).toHaveBeenLastCalledWith({ type: 'implement', expectedRevision: 4, artboardId: 'desktop' });
+    expect(wrapper.find('[data-action="implement"]').exists()).toBe(false);
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  } finally { wrapper.unmount(); }
 });

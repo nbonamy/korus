@@ -1,7 +1,7 @@
 <template>
   <section class="design-panel" :aria-label="t('design.title')" :data-revision="revision">
-    <div v-if="error" class="design-panel__error" role="alert">
-      <span>{{ error }}</span>
+    <div v-if="error || draftTargetRemoved" class="design-panel__error" role="alert">
+      <span>{{ error || t('design.targetRemoved') }}</span>
       <button v-if="tweakDraft" type="button" class="app-button app-button--primary" :disabled="busy" @click="retryTweak">{{ t('design.retryTweak') }}</button>
       <button v-if="pendingCanvas" type="button" class="app-button app-button--primary" :disabled="busy" @click="retryCanvas">{{ t('design.retryCanvas') }}</button>
       <button type="button" class="app-button app-button--secondary" data-action="reload" :disabled="busy" @click="reload">{{ t('design.discardReload') }}</button>
@@ -186,6 +186,7 @@ const locked = computed(() => busy.value || dirty.value || interacting.value || 
 const revision = computed(() => current.value.document?.revision ?? 0);
 const board = computed(() => current.value.document?.content.artboards.find(item => item.id === current.value.selectedArtboardId) ?? current.value.document?.content.artboards[0]);
 const nodes = computed(() => board.value && current.value.document ? designNodes({ ...current.value.document.content, artboards: [board.value] }) : []);
+const draftTargetRemoved = computed(() => dirty.value && !nodes.value.some(node => node.id === draftNodeId.value));
 const tweaks = computed(() => current.value.document?.content.tweaks?.filter(tweak => nodes.value.some(node => node.id === tweak.nodeId)) ?? []);
 const canvasContent = computed(() => {
   const content = current.value.document?.content;
@@ -362,16 +363,21 @@ async function sendReviewComment() {
   const draft = reviewCommentDraft.value;
   if (draft && await mutate({ type: 'comment', expectedRevision: draft.revision, nodeId: draft.nodeId, text: draft.text })) reviewCommentDraft.value = undefined;
 }
-function reviewBuild() {
+async function reviewBuild() {
   if (locked.value || !board.value) return;
+  if (!await mutate({ type: 'read' }) || !board.value) return;
   buildDraft.value = { artboardId: board.value.id, title: board.value.title, notes: board.value.notes, revision: revision.value };
   error.value = ''; buildVisible.value = true;
 }
 async function implement() {
   const draft = buildDraft.value;
-  if (draft && await mutate({ type: 'implement', expectedRevision: draft.revision, artboardId: draft.artboardId })) {
-    buildVisible.value = false; ElMessage.success(t('design.sentForCoding'));
-  }
+  if (!draft || busy.value) return;
+  const accepted = await mutate({ type: 'implement', expectedRevision: draft.revision, artboardId: draft.artboardId });
+  // A rejected submission may already have saved the choice. Return to the
+  // canvas so another attempt reviews fresh state before confirming it.
+  buildVisible.value = false;
+  buildDraft.value = undefined;
+  if (accepted) ElMessage.success(t('design.sentForCoding'));
 }
 async function comment() {
   if (selected.value && await mutate({ type: 'comment', expectedRevision: revision.value, nodeId: selected.value.id, text: commentDraft.value })) commentDraft.value = '';
