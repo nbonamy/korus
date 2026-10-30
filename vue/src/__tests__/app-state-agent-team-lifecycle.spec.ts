@@ -956,7 +956,7 @@ describe('useAppState', () => {
     expect(state.isActiveAgentHistoryFailed.value).toBe(false);
   });
 
-  it('keeps the current agent selected when duplicating in the background', async () => {
+  it.each(['duplicate', 'create'] as const)('keeps the current agent selected for a background %s', async operation => {
     const initialSnapshot = createInitialSnapshot();
     const copy = {
       ...initialSnapshot.agents[0]!,
@@ -972,20 +972,27 @@ describe('useAppState', () => {
       activeAgentId: copy.id,
     };
     const duplicateAgent = vi.fn().mockResolvedValue(duplicatedSnapshot);
+    const createAgent = vi.fn().mockResolvedValue(duplicatedSnapshot);
     stubElectronTestWindow({
       app: {
         getSnapshot: vi.fn().mockResolvedValue(initialSnapshot),
         onEvent: vi.fn(),
         duplicateAgent,
+        createAgent,
       } satisfies Partial<AppApi>,
     });
 
     const state = useAppState();
     await state.loadSnapshot();
 
-    await expect(state.duplicateAgent('agent-dina', { select: false })).resolves.toMatchObject({ id: copy.id });
-
-    expect(duplicateAgent).toHaveBeenCalledWith('agent-dina', { select: false });
+    if (operation === 'duplicate') {
+      await expect(state.duplicateAgent('agent-dina', { select: false })).resolves.toMatchObject({ id: copy.id });
+      expect(duplicateAgent).toHaveBeenCalledWith('agent-dina', { select: false });
+    } else {
+      const input = { name: null, folder: '/tmp/background-worktree' };
+      await expect(state.createAgent(input, { select: false })).resolves.toMatchObject({ id: copy.id });
+      expect(createAgent).toHaveBeenCalledExactlyOnceWith(input);
+    }
     expect(state.snapshot.value.activeAgentId).toBe('agent-dina');
     expect(state.snapshot.value.agents).toContainEqual(copy);
   });

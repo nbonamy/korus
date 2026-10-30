@@ -6,6 +6,9 @@
         <strong>{{ t(visibleWorktreeInitialization.state === 'running' ? 'worktreeInitialization.running' : visibleWorktreeInitialization.state === 'complete' ? 'worktreeInitialization.complete' : 'worktreeInitialization.failed') }}</strong>
         <small :title="visibleWorktreeInitialization.error ?? visibleWorktreeInitialization.command ?? initializationCommand">{{ visibleWorktreeInitialization.error ?? visibleWorktreeInitialization.command ?? (initializationCommand || t('worktreeInitialization.preparing')) }}</small>
       </div>
+      <button class="app-icon-button" type="button" :aria-label="t('common.close')" :title="t('common.close')" @click="dismissed = true">
+        <X aria-hidden="true" />
+      </button>
     </div>
 </template>
 
@@ -13,6 +16,7 @@
 import { computed, inject, onScopeDispose, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { IconCheck } from '@tabler/icons-vue';
+import { X } from '../shared/icons/app-icons';
 import type { Agent } from '@workspace/core/contracts';
 import { worktreeInitializationPreviewKey } from './debug-worktree-initialization';
 
@@ -27,6 +31,7 @@ const displayedAgent = computed(() => {
 });
 
 const initializationDone = ref(false);
+const dismissed = ref(false);
 const initializationCommand = ref('');
 let initializationTimer: ReturnType<typeof setTimeout> | undefined;
 watch([
@@ -37,6 +42,7 @@ watch([
 ], ([id, folder, state, command], [previousId, previousFolder, previousState]) => {
   clearTimeout(initializationTimer);
   const sameAgent = id === previousId && folder === previousFolder;
+  if (!sameAgent || (state === 'running' && previousState !== 'running') || (state === 'error' && previousState !== 'error')) dismissed.value = false;
   if (!sameAgent || (state === 'running' && previousState !== 'running')) initializationCommand.value = command ?? '';
   else if (command !== undefined) initializationCommand.value = command;
   initializationDone.value = sameAgent && previousState === 'running' && state === 'complete';
@@ -44,6 +50,7 @@ watch([
 }, { immediate: true });
 onScopeDispose(() => clearTimeout(initializationTimer));
 const visibleWorktreeInitialization = computed(() => {
+  if (dismissed.value) return null;
   const state = displayedAgent.value?.worktreeInitialization;
   return state && (state.state !== 'complete' || initializationDone.value) ? state : null;
 });

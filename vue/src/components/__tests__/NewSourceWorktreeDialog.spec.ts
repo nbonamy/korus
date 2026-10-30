@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mountProvisioningHost } from './provisioning-host';
-import { activeProvisioningOperation, backgroundProvisioningOperation } from '../provisioning-operations';
+import { activeProvisioningOperation } from '../provisioning-operations';
 import type { SourceRepository } from '@workspace/core/contracts';
 import NewSourceWorktreeDialog from '../NewSourceWorktreeDialog.vue';
 
@@ -205,12 +205,12 @@ describe('NewSourceWorktreeDialog', () => {
     await wrapper.get('.new-source-worktree-dialog__branch-input').setValue('feature/later');
     await flushPromises();
     await wrapper.get('.new-source-worktree-dialog .app-button--primary').trigger('click');
-    backgroundProvisioningOperation('manual-worktree-creation');
+    await host().findAll('button').find(button => button.text() === 'Run in background')!.trigger('click');
     expect(activeProvisioningOperation.value).toBeNull();
 
     resolveCreation({ name: 'feature/later', path: '/tmp/agent-workspace-feature-later' });
     await flushPromises();
-    expect(wrapper.emitted('created')).toStrictEqual([[{ name: 'feature/later', path: '/tmp/agent-workspace-feature-later' }]]);
+    expect(wrapper.emitted('created')).toStrictEqual([[{ name: 'feature/later', path: '/tmp/agent-workspace-feature-later' }, { select: false }]]);
     expect(wrapper.emitted('close')).toStrictEqual([[]]);
     expect(activeProvisioningOperation.value).toBeNull();
   });

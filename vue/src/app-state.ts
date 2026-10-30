@@ -986,13 +986,15 @@ export function useAppState() {
     adoptNavigationSnapshot(await appApi.openAgentPath(agentId, application, filePath));
   }
 
-  async function createAgent(input: CreateAgentInput): Promise<Agent | null> {
+  async function createAgent(input: CreateAgentInput, navigation?: { select?: boolean }): Promise<Agent | null> {
     if (!appApi?.createAgent) {
       return null;
     }
 
     const previousAgentIds = new Set(snapshot.value.agents.map((agent) => agent.id));
-    adoptNavigationSnapshot(await appApi.createAgent(input));
+    const nextSnapshot = await appApi.createAgent(input);
+    if (navigation?.select === false) adoptBackgroundSnapshot(nextSnapshot);
+    else adoptNavigationSnapshot(nextSnapshot);
     await loadActiveAgentCatalogs();
     return snapshot.value.agents.find((agent) => !previousAgentIds.has(agent.id)) ?? activeAgent.value;
   }

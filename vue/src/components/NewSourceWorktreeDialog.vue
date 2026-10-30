@@ -132,7 +132,7 @@ useNewAgentBackend(backend, backendChoices, () => props.visible);
 
 const emit = defineEmits<{
   close: [];
-  created: [worktree: SourceWorktree];
+  created: [worktree: SourceWorktree, navigation?: { select?: boolean }];
 }>();
 const branchName = ref('');
 const baseBranch = ref('');
@@ -274,7 +274,10 @@ function onVisibilityChanged(visible: boolean): void {
 }
 
 function completeCreation(): void {
-  if (createdWorktree.value) emit('created', createdWorktree.value);
+  if (createdWorktree.value) {
+    if (isProvisioningBackgrounded('manual-worktree-creation')) emit('created', createdWorktree.value, { select: false });
+    else emit('created', createdWorktree.value);
+  }
   close();
 }
 

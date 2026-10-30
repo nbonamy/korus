@@ -269,7 +269,7 @@ describe('ConversationPane', () => {
     expect(getComputedStyle(pane.element).overflow).toBe('hidden');
   });
 
-  it('shows background worktree setup beside the live conversation until it finishes, and retains failures', async () => {
+  it('shows background worktree setup and lets users dismiss status without cancelling setup or hiding later failures', async () => {
     vi.useFakeTimers();
     const wrapper = mountPane({ controller: controllerFor(messages), agent: { ...agent, worktreeInitialization: { state: 'running', command: 'npm ci' } } });
     try {
@@ -293,6 +293,18 @@ describe('ConversationPane', () => {
       await wrapper.setProps({ agent: { ...agent, worktreeInitialization: { state: 'error', command: 'npm ci', error: 'Installation failed' } } });
       expect(status().text()).toContain('Installation failed');
       expect(status().find('.app-spinner').exists()).toBe(false);
+      await status().get('button[aria-label="Close"]').trigger('click');
+      expect(status().exists()).toBe(false);
+      expect(wrapper.props('agent')?.worktreeInitialization).toStrictEqual({ state: 'error', command: 'npm ci', error: 'Installation failed' });
+      await wrapper.setProps({ agent: { ...agent, name: 'Renamed', worktreeInitialization: { state: 'error', command: 'npm ci', error: 'Installation failed' } } });
+      expect(status().exists()).toBe(false);
+      await wrapper.setProps({ agent: { ...agent, worktreeInitialization: { state: 'running', command: 'npm ci' } } });
+      expect(status().find('.app-spinner').exists()).toBe(true);
+      await status().get('button[aria-label="Close"]').trigger('click');
+      await wrapper.setProps({ agent: { ...agent, worktreeInitialization: { state: 'running', command: 'npm run build' } } });
+      expect(status().exists()).toBe(false);
+      await wrapper.setProps({ agent: { ...agent, worktreeInitialization: { state: 'error', command: 'npm run build', error: 'Build failed' } } });
+      expect(status().text()).toContain('Build failed');
     } finally { wrapper.unmount(); vi.useRealTimers(); }
   });
 

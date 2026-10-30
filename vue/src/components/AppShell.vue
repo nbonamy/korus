@@ -827,7 +827,7 @@ const props = withDefaults(defineProps<{
   revertAgentGitChanges?: (agentId: string, input: import('@workspace/core/contracts').AgentGitRevertInput) => Promise<import('@workspace/core/contracts').AgentGitWorkflow>;
   openInApplications?: OpenInApplicationCatalog;
   openAgentPath?: (agentId: string, application: OpenInApplication, filePath?: string) => Promise<void>;
-  createAgent?: (input: CreateAgentInput) => Promise<Agent | null | void>;
+  createAgent?: (input: CreateAgentInput, navigation?: { select?: boolean }) => Promise<Agent | null | void>;
   createMission?: (input: CreateMissionInput) => Promise<Mission>;
   selectMission?: (missionId: string | null) => Promise<void>;
   deleteMission?: (input: DeleteMissionInput) => Promise<void>;
@@ -1573,7 +1573,7 @@ const {
 const repositorySession = useRepositorySession({
   activeTeamId: () => activeTeam.value?.id ?? undefined,
   assignWorkItem: (payload) => props.assignWorkItemAction(payload),
-  createAgent: (input) => props.createAgent(input),
+  createAgent: (input, navigation) => navigation ? props.createAgent(input, navigation) : props.createAgent(input),
   createIsolatedWorkItemAgent,
   createSourceWorktree: (input) => props.createSourceWorktree(input),
   cloneRepository: (input) => props.cloneSourceRepository(input),
