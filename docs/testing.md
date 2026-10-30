@@ -145,6 +145,22 @@ necessary, write down the failure modes first.
   forwarded props. Assert event retention before supplying a later navigation
   snapshot that could repair lost state.
 
+## Mobile Compatibility Evidence
+
+Every change to a mobile-consumed contract or its producer must extend the owning
+daemon, companion gateway or relay workflow with a released-client regression case.
+Exercise the existing client's request against the current implementation, verify
+the operation's result, and check the response and streamed events against the
+older client's decoding expectations. Keep those expectations independent of shared
+current types. SDK upgrades and serialization changes are subject to the same gate.
+
+Preserve released-client fixtures and assertions when adding a new contract; do not
+regenerate or weaken them to match an incompatible implementation. New functionality
+must also demonstrate that unnegotiated old clients retain their existing behavior.
+These cases belong in the normal test suites and CI, not an optional manual check.
+The handoff identifies the affected mobile boundary, released-client baseline and
+compatibility evidence. Desktop-only changes need no mobile compatibility fixture.
+
 ## Fixtures
 
 Scripted, never simulators: `backend/src/codex/__tests__/sdk-surface-fixture.ts`
