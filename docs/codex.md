@@ -35,6 +35,20 @@ routing envelope (agent, thread, revision) and recovery.
   provisional until the submitting turn's authoritative terminal event; a late
   terminal event belongs to its original turn and cannot clear a newer active turn.
 
+The SDK's content transport projects embedded image data and large file diffs into content-addressed
+references before snapshots and events leave the daemon. Reads use the owning
+conversation's current SDK snapshot and bounded chunks. Provider history is untouched;
+a weak projection cache does not retain discarded snapshots or create another
+transcript store. Desktop and companion hosts resolve the same references. File targets carry historical
+diff references; selecting a file fetches its exact patch in bounded chunks, separately
+from the current working-tree source.
+
+Mobile bounds retained media and attachment previews to 24 MiB, counting encoded
+bytes and decoded pixels. Two preview loads run at a time. Eviction clears image
+sources and revokes owned blob URLs; a user can reload an evicted preview or open an
+over-budget image in the native viewer. Provider history, transient decoding, and
+the native fullscreen viewer are outside this preview budget.
+
 ## Process And Home
 
 - Executable selection uses the host's discovered PATH, including login-shell and common

@@ -479,7 +479,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   async function readConversationContent(id: string, input: import('@workspace/core/contracts/conversation').ConversationContentInput) {
     const active = session; const epoch = selectionEpoch;
     const valid = () => active === session && epoch === selectionEpoch && id === agentId.value && status.value === 'connected'
-      && agent.value?.backendSession?.kind === 'claude' && agent.value.backendSession.sessionId === input.sessionId;
+      && input.sessionId === (agent.value?.backendSession?.kind === 'codex' ? agent.value.backendSession.threadId : agent.value?.backendSession?.kind === 'claude' ? agent.value.backendSession.sessionId : null);
     if (!valid() || !active?.readConversationContent) throw new Error('Conversation content is unavailable.');
     const chunk = await active.readConversationContent(id, input);
     if (!valid()) throw new Error('Conversation changed.');

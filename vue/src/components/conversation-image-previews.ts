@@ -1,3 +1,4 @@
+import { conversationImageInput, readEmbeddedConversationImage } from '@workspace/core/conversation-images';
 import { provideCodexHostCapabilities, useCodexHostCapabilities } from '@codex-app-sdk/vue';
 import { appApi } from '../platform-api';
 
@@ -8,7 +9,11 @@ export function provideConversationImagePreviews(agentId: () => string | undefin
   provideCodexHostCapabilities({
     ...host,
     async readImagePreview(reference) {
-      const owner = agentId();
+      const owner = agentId(); const api = appApi;
+      if (owner && api && conversationImageInput(reference)) {
+        const image = await readEmbeddedConversationImage(reference, input => api.readConversationContent(owner, input));
+        return owner === agentId() ? image : null;
+      }
       try {
         const preview = await host.readImagePreview?.(reference);
         if (preview) return preview;

@@ -152,6 +152,18 @@ describe('ConversationPane', () => {
     expect(previewAgentFile).toHaveBeenCalledWith(owner.id, filePath);
   });
 
+  it('resolves an embedded conversation image through scoped content reads', async () => {
+    installNativeImagePreview(vi.fn().mockResolvedValue(null));
+    const reference = 'conversation-image:thread:' + 'a'.repeat(64);
+    const dataUrl = 'data:image/png;base64,cG5n';
+    const readConversationContent = vi.fn(async () => ({ data: Buffer.from(dataUrl).toString('base64'), totalBytes: dataUrl.length, nextOffset: null }));
+    setElectronTestClient({ readConversationContent });
+    const wrapper = mountPane({ controller: controllerFor([{ ...messages[1]!, parts: [{ type: 'media', media: { url: reference, mimeType: 'image/png' } }] }]), agent });
+    await flushPromises();
+    expect(wrapper.get('img.chat-media-block__image').attributes('src')).toBe(dataUrl);
+    expect(readConversationContent).toHaveBeenCalledExactlyOnceWith(agent.id, { sessionId: 'thread', contentId: 'a'.repeat(64), offset: 0 });
+  });
+
   it('shows the limit-reset notice above the composer and saves the auto-resume toggle', async () => {
     const setAutoResume = vi.fn().mockResolvedValue({});
     setElectronTestClient({ setAutoResume });

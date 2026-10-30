@@ -346,8 +346,12 @@ parallel check, counter or state flag:
   `sourceNetwork`; counters keyed by a peer identity only reduce noise.
 - Stream framing and backpressure: the shared frame readers and `sendWithBackpressure`.
   Companion peers negotiate compressed response protocols with legacy JSON fallback.
-  Gzip preserves provider payloads, including screenshot data, within separate wire
-  and decoded-response bounds; requests retain their smaller inbound limit.
+  Gzip preserves provider payloads within separate wire and decoded-response bounds;
+  requests retain their smaller inbound limit. Embedded Codex images cross as SDK
+  references, with their bytes fetched through bounded content reads on demand.
+  The provider validates each reference against its current session snapshot;
+  fetching image bytes must not reload or republish conversation history. Transport
+  entries retain provider strings rather than duplicate full binary buffers.
 
 A review finding against this area names the invariant below that it breaks. Behavior
 listed as outside the relay's guarantees is not a defect.
@@ -413,10 +417,16 @@ New worktree branches do not inherit the base's tracking configuration. Remote
 deletion requires a same-named tracked branch and excludes the primary worktree's
 branch; an arbitrary upstream never authorizes remote deletion. Companion previews
 and desktop dialogs use the same eligibility policy as the backend deletion guard.
+Released mobile execution fields are normalized at the gateway before entering the
+shared execution-selection contract. Unknown fields and conflicting old/new formats
+remain invalid.
+
 Conversation image reads accept only image references in the authoritative conversation,
 bound to its current host and session. The owning daemon resolves and reads the file;
 the phone receives bounded image bytes on demand. Image reads do not persist a copy;
-deleted source files are unavailable.
+deleted source files are unavailable. Embedded image references resolve against the
+current provider session, never a retained copy of a previous conversation. The
+existing image-read operation also serves released phones without new wire methods.
 
 Every agent operation names a full target (host, location, team, agent and session); a
 session the laptop has replaced is stale and never retargeted. Prompts, goals and reviews

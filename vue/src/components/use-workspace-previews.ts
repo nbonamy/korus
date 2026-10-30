@@ -1,3 +1,4 @@
+import { readConversationDiff } from '@workspace/core/conversation-diffs';
 import { diffForPath } from '@workspace/core/file-diff';
 import { watch } from 'vue';
 import type { FileKind } from '@workspace/core/file-kind';
@@ -27,6 +28,7 @@ import {
 import type { AgentRightWorkspaceState } from './use-right-workspace-state';
 
 export type WorkspacePreviewOptions = {
+  readConversationContent?: (agentId: string, input: import('@workspace/core/contracts/conversation').ConversationContentInput) => Promise<import('@workspace/core/contracts/conversation').ConversationContentChunk>;
   closeTab: (agentId: string, tab: RightWorkspaceTab) => void;
   currentAgent: () => Agent | null;
   getSnapshot: () => AppSnapshot;
@@ -63,12 +65,34 @@ export function useWorkspacePreviews(options: WorkspacePreviewOptions) {
 
   let filePreviewRequestId = 0;
   const gitDiffRequestIds = new Map<string, number>();
+  const contentRequestIds = new Map<string, number>();
   let gitDiffFocusSequence = 0;
 
   async function openConversationFile(link: ConversationFileLink, agentId = options.currentAgent()?.id): Promise<void> {
     const agent = agentId ? agentForId(agentId) : null;
     if (!agent) return;
     const filePath = link.filepath ?? link.path;
+    if (link.diffContent) {
+      const content = link.diffContent;
+      if (agent.backendSession?.kind !== 'codex' || agent.backendSession.threadId !== content.sessionId) return;
+      const workspace = options.workspaceFor(agent.id);
+      const tab = rightWorkspaceDiffTab(content.contentId, filePath);
+      const requestId = ++filePreviewRequestId;
+      const requestKey = JSON.stringify([agent.id, tab]);
+      contentRequestIds.set(requestKey, requestId);
+      workspace.diffPanels = { ...workspace.diffPanels, [tab]: { kind: 'gitDiff', title: fileBasename(filePath), subtitle: filePath, diff: '', state: 'loading', error: null } };
+      options.openTab(tab, agent.id);
+      const current = () => contentRequestIds.get(requestKey) === requestId && agentForId(agent.id)?.backendSession?.kind === 'codex'
+        && agentConversationId(agentForId(agent.id)!) === content.sessionId;
+      try {
+        if (!options.readConversationContent) throw new Error('Update the desktop to load this diff.');
+        const diff = await readConversationDiff(filePath, content, input => options.readConversationContent!(agent.id, input), current);
+        if (current() && workspace.diffPanels[tab]) workspace.diffPanels[tab] = { ...workspace.diffPanels[tab]!, diff, state: 'idle', error: null };
+      } catch (error) {
+        if (current() && workspace.diffPanels[tab]) workspace.diffPanels[tab] = { ...workspace.diffPanels[tab]!, state: 'error', error: error instanceof Error ? error.message : String(error) };
+      }
+      return;
+    }
     if (link.action === 'edit') {
       if (link.turnId && openTurnDiff(agent.id, link.turnId, filePath)) return;
       await openAgentGitDiff(agent.id);

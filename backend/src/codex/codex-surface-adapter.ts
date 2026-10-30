@@ -1,3 +1,4 @@
+import { ConversationContentTransport } from '@codex-app-sdk/backend';
 import { promptWithSelectedReferences } from '../agents/prompt-content';
 import { normalizePromptContent } from '@codex-app-sdk/core/surface';
 import type { ExecutionObservation } from '@workspace/core/usage';
@@ -97,6 +98,7 @@ End with the current objective and status, constraints, unresolved problems, pre
 type AgentConversation = {
   agent: Agent;
   handle: CodexConversation;
+  images: ConversationContentTransport;
   suppressEvents: boolean;
   unsubscribe: () => void;
 };
@@ -1051,6 +1053,12 @@ export class CodexSurfaceAgentAdapter {
     );
   }
 
+  async readConversationContent(agent: Agent, input: import('@workspace/core/contracts/conversation').ConversationContentInput): Promise<import('@workspace/core/contracts/conversation').ConversationContentChunk> {
+    const session = this.sessionsByAgentId.get(agent.id);
+    if (!session || agent.backendSession?.kind !== 'codex' || agent.backendSession.threadId !== input.sessionId || session.handle.id !== input.sessionId) throw new Error('Conversation image is no longer available.');
+    return session.images.read(session.handle.getSnapshot(), input.contentId, input.offset);
+  }
+
   private async bindAndLoad(
     agent: Agent,
     threadId: string,
@@ -1119,6 +1127,7 @@ export class CodexSurfaceAgentAdapter {
     const session: AgentConversation = {
       agent,
       handle,
+      images: new ConversationContentTransport(threadId),
       suppressEvents,
       unsubscribe: () => undefined,
     };
@@ -1181,7 +1190,7 @@ export class CodexSurfaceAgentAdapter {
       type: 'codex.conversationSnapshotChanged',
       payload: {
         revision,
-        snapshot: conversationSnapshotForTransport(snapshot),
+        snapshot: conversationSnapshotForTransport(session.images.project(snapshot)),
       },
     });
   }
@@ -1493,7 +1502,7 @@ export class CodexSurfaceAgentAdapter {
       type: 'codex.conversationEventReceived',
       payload: {
         revision,
-        event: structuredClone(event),
+        event: structuredClone(session.images.project(event)),
       },
     });
   }

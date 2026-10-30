@@ -160,14 +160,14 @@ describe('companion engine', () => {
       }
     } finally { engine.dispose(); vi.useRealTimers(); }
   });
-  it('routes requested content as a separate chunk reply and rejects responses after selection changes', async () => {
+  it.each(['claude', 'codex'] as const)('routes %s content as separate chunks and rejects responses after selection changes', async backend => {
     const connector = createDemoConnector(); const connect = connector.connect;
     const chunk = { data: 'e30=', totalBytes: 2, nextOffset: null };
     let finish!: (value: typeof chunk) => void;
     const readConversationContent = vi.fn().mockResolvedValueOnce(chunk).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
     connector.connect = async (id) => {
       const session = await connect(id); const workspace = await session.getWorkspace();
-      workspace.agents[0] = { ...workspace.agents[0]!, backend: 'claude', backendSession: { kind: 'claude', sessionId: 'session', transport: 'stdio' } };
+      workspace.agents[0] = { ...workspace.agents[0]!, backend, backendSession: backend === 'codex' ? { kind: 'codex', threadId: 'session' } : { kind: 'claude', sessionId: 'session', transport: 'stdio' } };
       return { ...session, getWorkspace: async () => workspace, readConversationContent };
     };
     const { engine, events } = open(connector);

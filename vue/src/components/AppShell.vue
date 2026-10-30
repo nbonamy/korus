@@ -1955,6 +1955,7 @@ watch(
   { immediate: true, flush: 'sync' },
 );
 const workspacePreviews = useWorkspacePreviews({
+  readConversationContent: (agentId, input) => appApi ? appApi.readConversationContent(agentId, input) : Promise.reject(new Error('Conversation content unavailable.')),
   downloadAgentFile,
   reportError: message => { ElMessage.error(message); },
   closeTab: closeRightWorkspaceTab,

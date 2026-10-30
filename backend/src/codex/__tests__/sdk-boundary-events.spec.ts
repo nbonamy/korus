@@ -14,6 +14,36 @@ describe(`Codex SDK → ${product.name} backend event contract`, () => {
   const setup = () => { const fixture = codexSdkFixture(); fixtures.push(fixture); return fixture; };
   afterEach(async () => { await Promise.all(fixtures.splice(0).map(({ driver }) => driver.close())); });
 
+  it('transports image references in snapshots and events and resolves bytes only for the current owning session', async () => {
+    const { driver, conversation, events } = setup();
+    const agent = sdkAgent();
+    const image = 'data:image/png;base64,' + Buffer.alloc(500_000, 123).toString('base64');
+    const message = { id: 'shot', role: 'assistant' as const, status: 'complete' as const, parts: [{ type: 'media' as const, media: { url: image, mimeType: 'image/png' } }] };
+    conversation('conversation-a').setSnapshot({ messages: [message] });
+    await driver.loadConversation(agent);
+    const reset = events.find(event => event.type === 'codex.conversationSnapshotChanged')!;
+    expect(JSON.stringify(reset).length).toBeLessThan(10_000);
+    const reference = (reset as any).payload.snapshot.messages[0].parts[0].media.url as string;
+    const contentId = reference.split(':').at(-1)!;
+    const input = { sessionId: 'conversation-a', contentId, offset: 0 };
+    const chunks: Buffer[] = [];
+    for (;;) {
+      const chunk = await driver.readConversationContent(agent, input);
+      chunks.push(Buffer.from(chunk.data, 'base64'));
+      if (chunk.nextOffset === null) break;
+      input.offset = chunk.nextOffset;
+    }
+    expect(Buffer.concat(chunks).toString()).toBe(image);
+    conversation('conversation-a').emit({ ...metadata, type: 'conversation.historyPrepended', payload: { messages: [message] } });
+    const live = events.filter(event => event.type === 'codex.conversationEventReceived').at(-1)!;
+    expect(JSON.stringify(live)).toContain(reference);
+    expect(JSON.stringify(live).length).toBeLessThan(10_000);
+    await expect(driver.readConversationContent(sdkAgent('other'), input)).rejects.toThrow();
+    await expect(driver.readConversationContent(agent, { ...input, sessionId: 'other' })).rejects.toThrow();
+    conversation('conversation-a').setSnapshot({ messages: [] });
+    await expect(driver.readConversationContent(agent, input)).rejects.toThrow();
+  });
+
   it('projects an SDK completed plan through the real driver and server into durable review state', async () => {
     const { driver, conversation } = setup();
     const snapshot = createTestSnapshot();
