@@ -1,4 +1,5 @@
 import { shareInvitationPattern } from '@workspace/core/conversation-share-relay';
+import { conversationImageInput, readEmbeddedConversationImage } from '@workspace/core/conversation-images';
 import { createHash } from 'node:crypto';
 import type { Stream } from '@libp2p/interface';
 import { z } from 'zod';
@@ -177,6 +178,14 @@ export class GuestConversationGateway {
               }
               case 'conversation.image.read': {
                 const { path } = imageSchema.parse(request.args);
+                const embedded = conversationImageInput(path);
+                if (embedded) {
+                  if (target.backend !== 'codex' || embedded.sessionId !== target.sessionId || !images.has(path)) throw new Error('denied');
+                  result = { dataUrl: await readEmbeddedConversationImage(path, async input => {
+                    assert(); const chunk = await this.port.readConversationContent(target.agentId, input); assert(); return chunk;
+                  }) };
+                  break;
+                }
                 const frame = await this.port.conversation(target.agentId); assert(); if (!bound(frame, target)) throw new Error('denied');
                 remember(frame); const reference = imagePath(path);
                 if (!reference || !images.has(reference)) throw new Error('denied');

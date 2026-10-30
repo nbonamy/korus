@@ -83,7 +83,7 @@ async function fixture(backend: Agent['backend'] = 'claude', submit?: (target: i
       }
       emit(reset()); return { hasOlder: false };
     }),
-    readConversationContent: vi.fn(async () => { await blocked?.(); return { data: 'expanded transcript', nextOffset: null, totalBytes: 19 }; }),
+    readConversationContent: vi.fn(async (): Promise<import('@workspace/core/contracts/conversation').ConversationContentChunk> => { await blocked?.(); return { data: 'expanded transcript', nextOffset: null, totalBytes: 19 }; }),
     readImage: vi.fn(async () => { await blocked?.(); return { dataUrl: 'data:image/png;base64,YQ==' }; }),
   };
   const gateway = new GuestConversationGateway(port);
@@ -93,7 +93,7 @@ async function fixture(backend: Agent['backend'] = 'claude', submit?: (target: i
   const transports = new Map<number, GuestConversationTransport>();
   async function open(route = link, identity?: number) { let transport = identity === undefined ? undefined : transports.get(identity); if (!transport) { transport = new GuestConversationTransport(await generateKeyPair('Ed25519'), pin); cleanup.push(() => transport!.stop()); if (identity !== undefined) transports.set(identity, transport); } const opened = await transport.open(route); if (opened.status !== 'ready') throw new Error(opened.status); return opened.stream; }
   async function client(name = ' Alex ', route = link, identity?: number) { const stream = await open(route, identity); const client = new GuestConversationClient(stream); cleanup.push(() => client.close()); const joined = await client.join(route, name); return { client, joined }; }
-  return { manyReferences: () => { messages = [{ ...message('many-media'), parts: [{ type: 'text', text: Array.from({ length: 2049 }, (_, index) => `![image](/fixture/${index}.png)`).join('\n') }] }]; revision++; }, forgetMedia: () => { messages = [message('recent-only')]; revision++; source.clear(); }, addLink: async (index: number) => {
+  return { addEmbeddedImage: (reference: string) => { messages.push({ ...message('embedded-image'), parts: [{ type: 'media', media: { url: reference, mimeType: 'image/png' } }] } as never); revision++; }, manyReferences: () => { messages = [{ ...message('many-media'), parts: [{ type: 'text', text: Array.from({ length: 2049 }, (_, index) => `![image](/fixture/${index}.png)`).join('\n') }] }]; revision++; }, forgetMedia: () => { messages = [message('recent-only')]; revision++; source.clear(); }, addLink: async (index: number) => {
     const other = { ...agent, id: `shared-${index}`, backendSession: { kind: 'claude' as const, sessionId: `bound-${index}`, transport: 'stdio' as const } }; snapshot.agents.push(other);
     const value = await shares.control({ action: 'create', target: conversationShareTarget(other)! });
     const route = decodeConversationShareLink(value.link!, pin)!; handles.push(route.handle); await connector.advertise(); return route;
@@ -627,6 +627,36 @@ describe('encrypted guest conversation authorization', () => {
     expect((await request('conversation.content.read', { input: { sessionId: 'bound', contentId: 'b'.repeat(64), offset: 0 } })).error).toBe('denied');
     expect(f.port.readImage).not.toHaveBeenCalled(); expect(f.port.readConversationContent).not.toHaveBeenCalled();
     await evidence('denied', { methods: denied, checkedAccess: ['readOnly', 'write'], targetSubstitution: 'denied', arbitraryPaths: 'denied', missingContentReference: 'denied' });
+  }, 30_000);
+  it('reads only proven embedded Codex images in chunks without reloading history and drops revoked reads', async () => {
+    const f = await fixture('codex');
+    const contentId = 'b'.repeat(64); const reference = `conversation-image:bound:${contentId}`;
+    const dataUrl = 'data:image/png;base64,cG5n';
+    f.addEmbeddedImage(reference);
+    const { client } = await f.client(); await client.synchronize();
+    const conversation = vi.spyOn(f.port, 'conversation').mockRejectedValue(new Error('History must not reload for image bytes.'));
+    f.port.readConversationContent.mockResolvedValueOnce({ data: Buffer.from(dataUrl.slice(0, 8)).toString('base64'), totalBytes: dataUrl.length, nextOffset: 8 });
+    f.port.readConversationContent.mockResolvedValueOnce({ data: Buffer.from(dataUrl.slice(8)).toString('base64'), totalBytes: dataUrl.length, nextOffset: null });
+    expect(await client.readImage(reference)).toStrictEqual({ dataUrl });
+    expect(f.port.readConversationContent.mock.calls).toStrictEqual([
+      ['shared', { sessionId: 'bound', contentId, offset: 0 }], ['shared', { sessionId: 'bound', contentId, offset: 8 }],
+    ]);
+    for (const denied of [reference.replace(contentId, 'c'.repeat(64)), reference.replace('bound', 'OTHER')]) {
+      await expect(client.readImage(denied)).rejects.toThrow('denied');
+    }
+    expect(f.port.readConversationContent).toHaveBeenCalledTimes(2);
+    expect(conversation).not.toHaveBeenCalled(); expect(f.port.readImage).not.toHaveBeenCalled();
+    let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; });
+    f.port.readConversationContent.mockImplementationOnce(async () => {
+      await gate; return { data: Buffer.from(dataUrl.slice(0, 8)).toString('base64'), totalBytes: dataUrl.length, nextOffset: 8 };
+    });
+    const read = client.readImage(reference).then(() => 'leaked', () => 'closed');
+    await vi.waitFor(() => expect(f.port.readConversationContent).toHaveBeenCalledTimes(3));
+    await f.shares.control({ action: 'revoke', handle: f.link.handle, target: f.target });
+    release(); expect(await read).toBe('closed');
+    await vi.waitFor(() => expect(f.listeners.size).toBe(0));
+    expect(f.port.readConversationContent).toHaveBeenCalledTimes(3); expect(client.snapshot).toBeNull();
+    await evidence('embedded-image', { chunks: 2, exactImage: true, unprovenReference: 'denied', otherSession: 'denied', reloads: 0, revokedRead: 'closed' });
   }, 30_000);
   it('keeps content ownership from older delivered history when the provider reloads its recent window', async () => {
     const f = await fixture(); f.addMedia(); const { client } = await f.client(); await client.synchronize(); await client.loadOlder();
