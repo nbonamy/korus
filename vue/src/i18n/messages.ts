@@ -812,6 +812,8 @@ export const messages = {
     },
     reviewSettings: {
       title: 'Code review',
+      discussWithOriginalThread: 'Review findings with the original thread',
+      discussWithOriginalThreadDescription: 'Ask independent reviewers to discuss findings with the original thread when available.',
       instructions: 'Review instructions',
       description: 'Applied to every review agent, in addition to instructions for an individual review.',
       placeholder: 'e.g. Focus on security and backward compatibility',

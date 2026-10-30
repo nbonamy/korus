@@ -282,18 +282,22 @@ describe('CodeReviewService', () => {
     const test = harness([async () => ({ text: 'Clean.', findingCount: 0 })]);
     test.owner.backendSession = { kind: 'codex', threadId: 'owner-thread' };
     test.snapshot.general.codeReviewInstructions = 'Always check authorization.';
+    test.snapshot.general.codeReviewDiscussWithOriginalThread = true;
     const instructions = 'Focus on race conditions.\nCheck backward compatibility.';
     const session = test.service.start(test.owner, {
       scope: { type: 'uncommitted' }, threadMode, instructions: `  ${instructions}  `,
     });
     await vi.waitFor(() => expect(session.status).toBe('ready'));
     expect(test.turns[0]!.prompt).toContain(instructions);
-    expect(test.turns[0]!.prompt).toMatch(/<context>\n[\s\S]*Always check authorization\.\n<\/context>$/);
+    expect(test.turns[0]!.prompt).toMatch(/<context>\n[\s\S]*Always check authorization\.[\s\S]*\n<\/context>$/);
+    const originalThreadInstruction = 'Review the findings with the original thread if you have access to it.';
+    expect(test.turns[0]!.prompt.includes(originalThreadInstruction)).toBe(threadMode === 'independent');
     expect(session.instructions).toBe(instructions);
     expect(test.snapshot.general.codeReviewDefaults ?? {}).not.toHaveProperty('instructions');
 
     const restored = harness([async () => ({ text: 'Still clean.', findingCount: 0 })]);
     restored.snapshot.general.codeReviewInstructions = 'Check error recovery instead.';
+    restored.snapshot.general.codeReviewDiscussWithOriginalThread = false;
     const savedReviewer = JSON.parse(JSON.stringify(reviewer(test, session))) as Agent;
     if (threadMode === 'current') restored.snapshot.agents = [savedReviewer];
     else restored.snapshot.agents.push(savedReviewer);
@@ -303,6 +307,7 @@ describe('CodeReviewService', () => {
     expect(restored.turns[0]!.prompt).toContain(instructions);
     expect(restored.turns[0]!.prompt).toContain('Check error recovery instead.');
     expect(restored.turns[0]!.prompt).not.toContain('Always check authorization.');
+    expect(restored.turns[0]!.prompt).not.toContain(originalThreadInstruction);
   });
 
   it('pauses an automatic review when the provider ends without explicitly finishing the inspection', async () => {

@@ -47,13 +47,14 @@ describe('state persistence', () => {
     expect(restored.agents[0]!.readState).toStrictEqual({ revision: 7, readRevision: 5 });
     expect(isAppSnapshot(restored)).toBe(true);
   });
-  it.each([true, false])('retains interactive Plan-mode preference after a host restart: %s', async useInteractivePlans => {
+  it.each([true, false])('retains plan and review workflow toggles after a host restart: %s', async useInteractivePlans => {
     const home = await tempHome();
     const snapshot = createInitialSnapshot();
-    updateSettingsInSnapshot(snapshot, { general: { useInteractivePlans } });
+    updateSettingsInSnapshot(snapshot, { general: { useInteractivePlans, codeReviewDiscussWithOriginalThread: useInteractivePlans } });
     await new AppStateStore(home).save(snapshot);
     const restored = await new AppStateStore(home).load();
     expect(restored.general.useInteractivePlans).toBe(useInteractivePlans);
+    expect(restored.general.codeReviewDiscussWithOriginalThread).toBe(useInteractivePlans);
   });
   it.each([false, true])('retains workflow preferences and worker context after reload (execution bound: %s)', async bound => {
     const home = await tempHome();
@@ -1423,7 +1424,7 @@ describe('state persistence', () => {
 
     const restored = snapshotFromPersistedState(persistedStateFromSnapshot(snapshot));
 
-    expect(restored.general).toStrictEqual({ ...snapshot.general, guestDisplayName: '', codeReviewInstructions: '', missionInstructions: '', autoResumeAfterLimit: true, autoResumeOnStartup: true, useInteractivePlans: true, git: { pull: 'git-config', update: 'merge' } });
+    expect(restored.general).toStrictEqual({ ...snapshot.general, guestDisplayName: '', codeReviewInstructions: '', codeReviewDiscussWithOriginalThread: false, missionInstructions: '', autoResumeAfterLimit: true, autoResumeOnStartup: true, useInteractivePlans: true, git: { pull: 'git-config', update: 'merge' } });
   });
 
   it('removes credentials from restored workspace origins', () => {

@@ -78,7 +78,12 @@ export class CodeReviewService {
   private runReview(
     agent: Agent, prompt: string, url: string, reviewerSession?: BackendSession,
   ): Promise<BackendCodeReviewResult> {
-    const instructions = this.options.snapshot.general.codeReviewInstructions?.trim();
+    const general = this.options.snapshot.general;
+    const instructions = [
+      general.codeReviewInstructions?.trim(),
+      general.codeReviewDiscussWithOriginalThread && agent.codeReview?.threadMode === 'independent'
+        ? 'Review the findings with the original thread if you have access to it.' : undefined,
+    ].filter(Boolean).join('\n\n');
     if (instructions) {
       const context = instructions.replace(/<\/?context>/giu, tag => tag.replace('<', '&lt;'));
       prompt += `\n\n<context>\nUser's custom review instructions:\n${context}\n</context>`;

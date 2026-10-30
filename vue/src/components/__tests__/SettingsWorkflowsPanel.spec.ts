@@ -26,6 +26,18 @@ it('orders workflow sections and saves plan, review and Mission preferences inde
     expect(updateSettings).toHaveBeenLastCalledWith({ general: { codeReviewInstructions: 'Check authorization.\nKeep findings actionable.' } });
     await wrapper.setProps({ settings: { ...defaultGeneralSettings, codeReviewInstructions: 'Check authorization.\nKeep findings actionable.' } });
     expect((instructions.element as HTMLTextAreaElement).value).toBe('Check authorization.\nKeep findings actionable.');
+    const discuss = wrapper.get('[role="switch"][aria-label="Review findings with the original thread"]');
+    expect(discuss.attributes('aria-checked')).toBe('false');
+    await discuss.trigger('click');
+    await vi.advanceTimersByTimeAsync(600);
+    await flushPromises();
+    expect(updateSettings).toHaveBeenLastCalledWith({ general: { codeReviewDiscussWithOriginalThread: true } });
+    await wrapper.setProps({ settings: { ...defaultGeneralSettings, codeReviewInstructions: 'Check authorization.\nKeep findings actionable.', codeReviewDiscussWithOriginalThread: true } });
+    expect(discuss.attributes('aria-checked')).toBe('true');
+    await discuss.trigger('click');
+    await vi.advanceTimersByTimeAsync(600);
+    await flushPromises();
+    expect(updateSettings).toHaveBeenLastCalledWith({ general: { codeReviewDiscussWithOriginalThread: false } });
     await instructions.setValue('');
     await vi.advanceTimersByTimeAsync(600);
     await flushPromises();
