@@ -1,4 +1,6 @@
 import type { Dirent } from 'node:fs';
+import { getSessionMessages } from '@anthropic-ai/claude-agent-sdk';
+import { readClaudeArchive, readRecentClaudeTranscript, type ClaudeTranscriptSlice } from './recent-history';
 import { createClaudeHistorySource, type ClaudeHistorySource, type ClaudeTurnRange } from './history-source';
 import { access, readFile, readdir, realpath, stat } from 'node:fs/promises';
 import os from 'node:os';
@@ -27,6 +29,8 @@ export type ClaudeTranscriptHistory = {
 export type ClaudeTranscriptHistoryOptions = {
   projectsRoot?: string;
   subagentId?: string;
+  recent?: boolean;
+  readSessionMessages?: typeof getSessionMessages;
 };
 
 export type ClaudeTranscriptSettings = {
@@ -80,7 +84,43 @@ export async function loadClaudeTranscriptHistory(
     };
   }
 
-  const content = await readFile(transcriptPath, 'utf8');
+  if (options.recent) {
+    // The SDK uses the process-wide Claude home. An injected home must never fall
+    // through to another user's history; callers using an isolated home supply its reader.
+    const canReadSdk = options.readSessionMessages || projectsRoot === path.join(claudeConfigDirectory(), 'projects');
+    const recent = canReadSdk ? await (async () => {
+      try {
+        const messages = await (options.readSessionMessages ?? getSessionMessages)(sessionId, {
+          dir: agent.backendSession!.kind === 'claude' ? agent.backendSession!.transcriptFolder ?? claudeWorkingDirectory(agent) : agent.folder ?? undefined,
+          includeSystemMessages: true,
+        });
+        if (messages.some(message => message.session_id !== sessionId)) return null;
+        return await readRecentClaudeTranscript(transcriptPath, messages);
+      } catch { return null; } // Unsupported/empty SDK history retains the exhaustive native fallback.
+    })() : null;
+    if (recent && recent.offset > 0) {
+      const history = await decodeClaudeHistory(agent, sessionId, transcriptPath, recent.content, recent);
+      let pending: Promise<ClaudeTranscriptHistory> | undefined;
+      const archive = () => pending ??= readClaudeArchive(transcriptPath, recent)
+        .then(content => decodeClaudeHistory(agent, sessionId, transcriptPath, content, { ...recent, offset: 0 }))
+        .catch(error => { pending = undefined; throw error; });
+      history.source = { ...history.source!,
+        readAll: async () => (await archive()).messages,
+        loadEarlier: async () => {
+          const full = await archive();
+          return { messages: full.messages, turns: full.turns ?? [], source: full.source!,
+            taskPlan: full.taskPlan, goal: full.goal, subagentEvents: full.subagentEvents };
+        },
+      };
+      return history;
+    }
+    if (recent) return decodeClaudeHistory(agent, sessionId, transcriptPath, recent.content, recent);
+  }
+  return decodeClaudeHistory(agent, sessionId, transcriptPath, await readFile(transcriptPath, 'utf8'));
+}
+
+async function decodeClaudeHistory(agent: Agent, sessionId: string, transcriptPath: string, content: string, snapshot?: ClaudeTranscriptSlice): Promise<ClaudeTranscriptHistory> {
+  if (agent.backendSession?.kind !== 'claude') throw new Error('Claude session is unavailable.');
   const settings = claudeTranscriptSettings(content);
   const { model: _model, reasoningEffort: _reasoningEffort, ...session } = agent.backendSession;
   const turnBoundaries: Record<string, string> = {};
@@ -92,7 +132,7 @@ export async function loadClaudeTranscriptHistory(
   const ranges = new Map<string, ClaudeTurnRange>();
   const messages = claudeTranscriptToRendererMessages(content, agent.id, sessionId, turnBoundaries, nativeMessageTurnIds, false, taskPlan, turns, ranges);
   const source = await createClaudeHistorySource(transcriptPath, content, ranges,
-    text => claudeTranscriptToRendererMessages(text, agent.id, sessionId));
+    text => claudeTranscriptToRendererMessages(text, agent.id, sessionId), snapshot);
   return {
     backendSession: {
       ...session,

@@ -1,11 +1,17 @@
 import { createHash } from 'node:crypto';
 import { open, stat } from 'node:fs/promises';
-import type { RendererMessage } from '@workspace/core/contracts';
+import type { Stats } from 'node:fs';
+import type { ClaudeConversationTurn, RendererMessage, ThreadGoal } from '@workspace/core/contracts';
+import type { BackendEvent } from '@workspace/core/backend-driver';
+import type { ClaudeTaskPlan } from './claude-task-plan';
+
+export type ClaudeHistoryState = { taskPlan?: ClaudeTaskPlan; goal?: ThreadGoal | null; subagentEvents?: BackendEvent[] };
 
 export type ClaudeHistorySource = {
   readTurn(turnId: string): Promise<RendererMessage[]>;
   readAll(): Promise<RendererMessage[]>;
   isCurrent(): Promise<boolean>;
+  loadEarlier?(): Promise<ClaudeHistoryState & { messages: RendererMessage[]; turns: ClaudeConversationTurn[]; source: ClaudeHistorySource }>;
 };
 
 export type ClaudeTurnRange = { start: number; end: number };
@@ -18,12 +24,14 @@ export async function createClaudeHistorySource(
   content: string,
   ranges: Map<string, ClaudeTurnRange>,
   decode: (content: string) => RendererMessage[],
+  snapshot?: { offset: number; version: Stats },
 ): Promise<ClaudeHistorySource> {
-  const version = await stat(file);
+  const version = snapshot?.version ?? await stat(file);
+  const offset = snapshot?.offset ?? 0;
   const bytes = Buffer.from(content);
-  const whole: IndexedRange = { start: 0, end: bytes.length, hash: hash(bytes) };
+  const whole: IndexedRange = { start: offset, end: offset + bytes.length, hash: hash(bytes) };
   const index = new Map<string, IndexedRange>();
-  for (const [id, range] of ranges) index.set(id, { ...range, hash: hash(bytes.subarray(range.start, range.end)) });
+  for (const [id, range] of ranges) index.set(id, { start: offset + range.start, end: offset + range.end, hash: hash(bytes.subarray(range.start, range.end)) });
 
   const read = async (range: IndexedRange): Promise<RendererMessage[]> => {
     const handle = await open(file, 'r').catch(() => null);

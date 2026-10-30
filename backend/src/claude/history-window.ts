@@ -1,7 +1,7 @@
-import type { ClaudeHistorySource } from './history-source';
+import type { ClaudeHistorySource, ClaudeHistoryState } from './history-source';
 import { withInferredTurnWorkPhases } from '@workspace/core/conversation-work-phases';
 import { createHash } from 'node:crypto';
-import type { RendererMessage, RendererMessagePart } from '@workspace/core/contracts';
+import type { ClaudeConversationTurn, RendererMessage, RendererMessagePart } from '@workspace/core/contracts';
 import type { ConversationContentChunk, ConversationContentInput } from '@workspace/core/contracts/conversation';
 
 // Leave room for routing envelopes and snapshot state under the 4 MiB event limit.
@@ -27,8 +27,11 @@ export class ClaudeHistoryWindow {
   private visibleIds = new Set<string>();
   private readonly loadedTurns = new Set<string>();
   private readonly historyMessages: Map<string, RendererMessage>;
+  private readonly archiveTurns = new Map<string, ClaudeConversationTurn>();
+  private pendingArchive?: Promise<void>;
+  private recoveredState?: ClaudeHistoryState;
 
-  constructor(public sessionId: string | null, messages: RendererMessage[] = [], private readonly summaryTurnIds = new Set<string>(), private readonly source?: ClaudeHistorySource) {
+  constructor(public sessionId: string | null, messages: RendererMessage[] = [], private readonly summaryTurnIds = new Set<string>(), private source?: ClaudeHistorySource) {
     this.initialIds = new Set(messages.map(message => message.id));
     this.historyMessages = phasedHistory(messages, this.summaryTurnIds);
     const workTurns = new Set([...this.historyMessages.values()].filter(message => message.kind === 'steer' || message.parts.some(isWork)).map(message => message.turnId));
@@ -68,8 +71,50 @@ export class ClaudeHistoryWindow {
 
   isCurrent(): Promise<boolean> { return this.source?.isCurrent() ?? Promise.resolve(false); }
 
-  get hasOlder(): boolean { return this.before > 0; }
+  get hasOlder(): boolean { return this.before > 0 || Boolean(this.source?.loadEarlier); }
+  get hasDeferredArchive(): boolean { return Boolean(this.source?.loadEarlier); }
   isDeferred(messageId: string): boolean { return this.contentByMessage.has(messageId); }
+
+  takeRecoveredState(): ClaudeHistoryState | undefined {
+    const state = this.recoveredState;
+    this.recoveredState = undefined;
+    return state;
+  }
+
+  async loadEarlier(forContinuation = false): Promise<void> {
+    if (!this.source?.loadEarlier || !forContinuation && this.messages.slice(0, this.before).some(message => !this.visibleIds.has(message.id))) return;
+    if (this.pendingArchive) return this.pendingArchive;
+    const source = this.source;
+    const pending = (async () => {
+      const archive = await source.loadEarlier!();
+      const original = this.messages.filter(message => this.initialIds.has(message.id));
+      const split = archive.messages.length - original.length;
+      if (split < 0 || archive.messages.slice(split).some((message, index) => message.id !== original[index]!.id)) {
+        throw new Error('Claude history changed. Reload the conversation before loading older messages.');
+      }
+      const older = archive.messages.slice(0, split);
+      const summaryIds = new Set(archive.turns.filter(turn => turn.status !== 'inProgress').map(turn => turn.id));
+      const phased = phasedHistory(older, summaryIds);
+      const workTurns = new Set([...phased.values()].filter(message => message.kind === 'steer' || message.parts.some(isWork)).map(message => message.turnId));
+      for (const id of summaryIds) if (workTurns.has(id)) this.summaryTurnIds.add(id);
+      for (const [id, message] of phased) { this.initialIds.add(id); this.historyMessages.set(id, summarize(message)); }
+      this.messages.unshift(...older.map(message => this.historyMessages.get(message.id) ?? message));
+      for (const turn of archive.turns) this.archiveTurns.set(turn.id, turn);
+      this.before += older.length;
+      this.source = archive.source;
+      this.recoveredState = { taskPlan: archive.taskPlan, goal: archive.goal, subagentEvents: archive.subagentEvents };
+    })();
+    this.pendingArchive = pending;
+    try { await pending; }
+    finally { if (this.pendingArchive === pending) this.pendingArchive = undefined; }
+  }
+
+  pageTurns(messages: RendererMessage[]): ClaudeConversationTurn[] {
+    return [...new Set(messages.map(message => message.turnId))].flatMap(id => {
+      const turn = id ? this.archiveTurns.get(id) : undefined;
+      return turn ? [{ ...turn, itemsView: this.isSummaryTurn(turn.id) ? 'summary' as const : 'full' as const }] : [];
+    });
+  }
 
   older(known = this.visibleIds): { messages: RendererMessage[]; hasOlder: boolean } {
     const page = this.recent(this.messages.slice(0, this.before).filter(message => !known.has(message.id)));

@@ -115,13 +115,25 @@ UUID assigned at submission. Records live under the configured home's
 Hydration uses only matching authored records; text and current catalogs cannot
 create historical mention identities.
 
-The host opens the newest history window and prepends older pages through the
-driver history seam. Each page has both a message-count and serialized-byte
-budget; pages use immutable message/turn identities from one normalized transcript
-read, so appends cannot move the older-history cursor. Cold reads still parse the
-native file on the owning backend; the retained index and cursor are ephemeral
-and cleared on release or session replacement. Reads overtaken by a newer load,
-release, or live turn cannot replace that conversation.
+The host opens recent history using the SDK's current-chain message UUIDs. A
+backward native-file read extends that slice to complete prompt boundaries and
+recovers metadata the SDK omits, including prompt IDs and compaction markers.
+Both paths use the same native normalizer; SDK rows are never independently
+assigned turn identities. The SDK may still scan the file, so this does not make
+cold reads constant-time. Empty, unavailable, or unmatched SDK history falls back
+to the native reader. Isolated homes cannot use a different process-wide SDK home.
+
+Scrolling beyond the recent slice hydrates the native archive, including history
+before compaction, and prepends bounded pages through the existing driver seam.
+Each page has message-count and serialized-byte budgets. The archive joins at the
+original recent message identities, preserves expanded details, and excludes
+later file appends owned by the live replica. Replacement, truncation, or a changed
+join requires reload. Archive failures retain the recent view and allow retry;
+concurrent requests share the read. The index and cursor are ephemeral and cleared
+on release or session replacement. Delayed reads cannot replace another session.
+Starting new provider work also hydrates a deferred archive first, restoring native
+task, goal, and subagent state before continuation. This state upgrade keeps the
+visible transcript window intact; historical state cannot overwrite a live query.
 Compaction context remains inside its original turn; internal summary records do
 not create user messages or duplicate turn identities.
 Completed historical turns publish summaries with prompt and final-answer content.

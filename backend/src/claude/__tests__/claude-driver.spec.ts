@@ -1077,7 +1077,7 @@ describe('ClaudeBackendDriver', () => {
         sessionId: 'claude-session-existing',
         transport: 'stdio',
       },
-    }));
+    }), { recent: false });
   });
 
   it('resumes Claude conversations from transcript refs', async () => {
@@ -1128,7 +1128,7 @@ describe('ClaudeBackendDriver', () => {
         sessionId: 'claude-session-existing',
         transport: 'stdio',
       },
-    }));
+    }), { recent: true });
     await vi.waitFor(() => expect(transport.readContextUsage).toHaveBeenCalledWith(expect.objectContaining({
       sessionId: 'claude-session-existing',
     })));
