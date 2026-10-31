@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.48.1",
+  "currentVersion": "0.48.2",
   "releases": [
+    {
+      "version": "0.48.2",
+      "releasedAt": "2026-10-31",
+      "sourceSha256": "ba96e251fc91f8be2c7e3aa2398a23ce81e458fd840dbf49f3ed5c4e8eb88e37",
+      "markdown": "### Improvements and fixes\n\n- Show named agents without the repository prefix in Worktree view."
+    },
     {
       "version": "0.48.1",
       "releasedAt": "2026-10-31",

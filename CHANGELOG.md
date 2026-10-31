@@ -4,6 +4,12 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.48.2] - 2026-10-31
+
+### Improvements and fixes
+
+- Show named agents without the repository prefix in Worktree view.
+
 ## [0.48.1] - 2026-10-31
 
 ### New features
