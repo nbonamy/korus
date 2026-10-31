@@ -6,7 +6,7 @@
         <strong>{{ t(visibleWorktreeInitialization.state === 'running' ? 'worktreeInitialization.running' : visibleWorktreeInitialization.state === 'complete' ? 'worktreeInitialization.complete' : 'worktreeInitialization.failed') }}</strong>
         <small :title="visibleWorktreeInitialization.error ?? visibleWorktreeInitialization.command ?? initializationCommand">{{ visibleWorktreeInitialization.error ?? visibleWorktreeInitialization.command ?? (initializationCommand || t('worktreeInitialization.preparing')) }}</small>
       </div>
-      <button class="app-icon-button" type="button" :aria-label="t('common.close')" :title="t('common.close')" @click="dismissed = true">
+      <button class="app-icon-button" type="button" :aria-label="t('common.close')" :title="t('common.close')" @click="dismissInitialization">
         <X aria-hidden="true" />
       </button>
     </div>
@@ -32,6 +32,16 @@ const displayedAgent = computed(() => {
 
 const initializationDone = ref(false);
 const dismissed = ref(false);
+const dismissalKey = computed(() => {
+  const agent = displayedAgent.value;
+  return agent ? `app:worktreeInitializationDismissed:v1:${JSON.stringify([agent.id, agent.folder])}` : null;
+});
+function dismissInitialization(): void {
+  dismissed.value = true;
+  const state = displayedAgent.value?.worktreeInitialization?.state;
+  try { if (dismissalKey.value && state) localStorage.setItem(dismissalKey.value, state); }
+  catch { /* Keep dismissal in this pane when storage is unavailable. */ }
+}
 const initializationCommand = ref('');
 let initializationTimer: ReturnType<typeof setTimeout> | undefined;
 watch([
@@ -43,6 +53,12 @@ watch([
   clearTimeout(initializationTimer);
   const sameAgent = id === previousId && folder === previousFolder;
   if (!sameAgent || (state === 'running' && previousState !== 'running') || (state === 'error' && previousState !== 'error')) dismissed.value = false;
+  try {
+    if (dismissalKey.value) {
+      if (!sameAgent || (state === 'error' && previousState !== 'error')) dismissed.value = localStorage.getItem(dismissalKey.value) === state;
+      else if (state === 'running' && previousState !== 'running') localStorage.removeItem(dismissalKey.value);
+    }
+  } catch { /* Preserve the pane-local dismissal if storage is unavailable. */ }
   if (!sameAgent || (state === 'running' && previousState !== 'running')) initializationCommand.value = command ?? '';
   else if (command !== undefined) initializationCommand.value = command;
   initializationDone.value = sameAgent && previousState === 'running' && state === 'complete';
