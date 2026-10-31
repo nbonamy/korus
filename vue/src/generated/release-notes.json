@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.47.1",
+  "currentVersion": "0.47.2",
   "releases": [
+    {
+      "version": "0.47.2",
+      "releasedAt": "2026-10-30",
+      "sourceSha256": "bc56c698a38bcffa7c50317d74c7363baa928250e9a9fdac92db52dfa8560b36",
+      "markdown": "### Improvements and fixes\n\n- **Missions:** Identify agents with clearer tabs and repository icons, see which\n  ticket is selected, and notice when the conversation switches agents.\n- Open Mission documents in a centered dialog without hiding the workflow;\n  choose whether to open documents requested by agents.\n- Give new Mission leads their own names instead of inheriting the initiating\n  agent’s name.\n- Start delegated agents in Plan mode when requested, keeping the composer’s\n  Plan indicator synchronized through plan review.\n- Keep focus in the current conversation when agent creation runs in the\n  background, and dismiss failed worktree setup notifications.\n- Keep split-pane headers beneath dialogs and hide redundant team activity\n  indicators while viewing Cockpit.\n- Show proposed-work actions only for agents on the repository’s default branch.\n- Fix **Update from main** in the web app.\n- Restore historical screenshots inside Working details and keep images sharp\n  without enlarging low-resolution thumbnails.\n- Keep tall image previews compact and browse assistant images in fullscreen\n  with arrow buttons or the Left and Right keys.\n- Dictate answers to agent questions and review the transcript before continuing.\n- Press Enter to fill a suggested follow-up, then Enter again to send it.\n- Improve Computer Use text entry with clipboard paste and animate the physical\n  pointer when clicking."
+    },
     {
       "version": "0.47.1",
       "releasedAt": "2026-10-30",
