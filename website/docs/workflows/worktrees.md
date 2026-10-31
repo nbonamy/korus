@@ -48,7 +48,15 @@ You can also request delegation in plain language:
 
 > Create a Korus teammate in a dedicated worktree on `feat/export-csv`. Implement the agreed export flow, add the relevant tests, and leave the changes ready for review.
 
-When Korus offers **Start implementation in a worktree?** above the composer, the checkmark sends a delegation request to the current agent. That agent creates the separate teammate using the selected starting context. The dismiss button removes the proposal. Accepting this proposal starts implementation; it does not approve a later merge or push.
+After an idea takes shape, **Turn this into work?** can appear above the composer for an agent on the repository's default branch. Choose **Implement** to continue in this conversation, **Delegate** to create a teammate in a worktree, or **Mission** for a staged feature workflow. **Discard** dismisses the proposal. Each action starts the selected workflow; it does not approve a later merge or push.
+
+To review a plan before the delegated agent edits files, say so explicitly:
+
+```text
+/delegate Start in Plan mode. Propose the CSV export implementation and tests, then wait for my approval before editing.
+```
+
+The teammate starts its first prompt in Plan mode. Review its [interactive plan](../features/conversations#review-an-interactive-plan), request revisions, then approve implementation. Delegation starts work directly unless you request planning first.
 
 Continue the implementation discussion with the new agent so its instructions, changes, and evidence stay together. This creates a Korus teammate, rather than a [native subagent](./parallel-agents#choose-the-kind-of-agent).
 
@@ -83,7 +91,7 @@ If provisioning fails, read the reported phase and error. Check whether a branch
 
 Korus remembers your cleanup choices. Check them before each merge: deleting the worktree closes its agent, and branch cleanup can remove both the local branch and its matching remote branch. Keep them when more work is planned.
 
-The destination checkout must be clean, and the feature branch must include the latest destination commits. If Korus requests a branch update, update from the base, resolve conflicts, and rerun the relevant checks before merging.
+The destination checkout must be clean, and the feature branch must include the latest destination commits. If **Merge** reports **Update required**, choose **Update from main** (the label follows your base branch). If the update conflicts, Korus asks the agent to resolve the conflicts in its worktree. Follow the resolution, inspect the diff and checks, then choose **Merge** again. Ask for guidance when a conflict requires a product decision; a branch update does not itself merge into the destination.
 
 When merge cleanup removes the worktree, Korus closes the associated agent after the delivery completes. Retaining the worktree keeps it available for further work. A cleanup warning can mean the merge succeeded while a folder remains; inspect that warning before retrying the merge.
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { once } from "node:events";
 import test from "node:test";
 import { chromium } from "playwright";
@@ -56,19 +56,154 @@ test("navigation, films, and cards work at desktop and phone widths", async () =
     const origin = `http://127.0.0.1:${server.address().port}`;
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage();
+    const captures = new URL(
+      "../.app-dev/website-walkthrough/",
+      import.meta.url,
+    );
+    await mkdir(captures, { recursive: true });
+    let walkthroughRequests = 0;
     await page.route("**/*", (route) =>
       route.request().url().startsWith(origin)
         ? route.continue()
-        : route.abort(),
+        : route
+              .request()
+              .url()
+              .startsWith("https://www.youtube-nocookie.com/embed/")
+          ? (walkthroughRequests++,
+            route.fulfill({
+              contentType: "text/html",
+              body: "<button>Video player</button>",
+            }))
+          : route.abort(),
     );
     for (const width of [1440, 1040, 820, 761, 760, 600, 430, 390, 320]) {
       await page.setViewportSize({ width, height: 844 });
+      const priorRequests = walkthroughRequests;
       await page.goto(origin);
+      const walkthrough = page.getByRole("link", {
+        name: "Watch Korus in action",
+      });
+      assert.equal(
+        await walkthrough.count(),
+        1,
+        "The live walkthrough has a prominent hero action",
+      );
+      assert.equal(
+        await walkthrough.getAttribute("href"),
+        "https://youtu.be/VuK3O0EHi14",
+        "The link also works without JavaScript",
+      );
+      const action = await walkthrough.boundingBox();
+      const downloadAction = await page
+        .locator(".hero-actions .button-primary")
+        .boundingBox();
+      const screenshot = await page.locator(".hero-shot").boundingBox();
+      assert.ok(
+        action.y + action.height < screenshot.y &&
+          action.y + action.height <= 844,
+        `The video action is visible before the screenshot at ${width}px`,
+      );
+      if (width <= 600) {
+        assert.ok(
+          Math.abs(action.width - downloadAction.width) < 1 &&
+            action.width >= width - 48,
+          "Both mobile actions use the available width",
+        );
+        assert.ok(
+          action.y >= downloadAction.y + downloadAction.height,
+          "Mobile actions stack",
+        );
+      } else {
+        assert.ok(
+          Math.abs(action.y - downloadAction.y) < 1,
+          "Desktop actions sit beside each other",
+        );
+      }
+      assert.equal(
+        walkthroughRequests,
+        priorRequests,
+        "YouTube is not loaded before clicking",
+      );
+      assert.equal(await page.locator("dialog iframe").count(), 0);
+      if ([1440, 390].includes(width))
+        await page.screenshot({
+          path: new URL(`hero-${width}.png`, captures).pathname,
+        });
+      await walkthrough.click();
+      const overlay = page.getByRole("dialog", {
+        name: "Korus in action",
+        exact: true,
+      });
+      await overlay.waitFor({ state: "visible" });
+      const player = overlay.locator("iframe");
+      await player.waitFor();
+      const embed = new URL(await player.getAttribute("src"));
+      assert.equal(embed.pathname, "/embed/VuK3O0EHi14");
+      assert.equal(embed.searchParams.get("autoplay"), "1");
+      assert.equal(
+        await page
+          .locator("video")
+          .evaluateAll((videos) => videos.every((video) => video.paused)),
+        true,
+        "Background films pause for the walkthrough",
+      );
+      const frame = await player.boundingBox();
+      assert.ok(
+        frame.x >= 0 &&
+          frame.y >= 0 &&
+          frame.x + frame.width <= width &&
+          frame.y + frame.height <= 844,
+        "The player fits the viewport",
+      );
+      assert.ok(
+        frame.width >= width * 0.85,
+        "The overlay uses almost the full width",
+      );
+      assert.equal(
+        await page.evaluate(
+          () => getComputedStyle(document.documentElement).overflow,
+        ),
+        "hidden",
+        "The background is locked",
+      );
+      if ([1440, 390].includes(width))
+        await page.screenshot({
+          path: new URL(`overlay-${width}.png`, captures).pathname,
+        });
+      for (const method of ["escape", "button", "backdrop"]) {
+        if (method !== "escape") await walkthrough.click();
+        if (method === "escape") await page.keyboard.press("Escape");
+        if (method === "button")
+          await overlay.getByRole("button", { name: "Close video" }).click();
+        if (method === "backdrop") await page.mouse.click(1, 1);
+        await overlay.waitFor({ state: "hidden" });
+        await page
+          .locator("#walkthrough iframe")
+          .waitFor({ state: "detached" });
+        assert.equal(
+          await page.locator("dialog iframe").count(),
+          0,
+          "Closing removes the player and stops playback",
+        );
+        assert.equal(
+          await walkthrough.evaluate((node) => node === document.activeElement),
+          true,
+          "Focus returns to the video action",
+        );
+        assert.notEqual(
+          await page.evaluate(
+            () => getComputedStyle(document.documentElement).overflow,
+          ),
+          "hidden",
+          "Closing restores page scrolling",
+        );
+      }
       for (const selector of [
         ".hero-copy",
         ".hero h1",
         ".hero-lede",
-        ".hero-actions .button",
+        ".hero-actions .button-primary",
+        ".hero-actions .button-secondary",
         ".showcase-stage",
         '[role="tab"] >> nth=0',
         '[role="tab"] >> nth=2',
@@ -315,7 +450,7 @@ test("navigation, films, and cards work at desktop and phone widths", async () =
       );
       await visitor.goto(origin);
       const buttonBounds = await visitor
-        .locator(".hero-actions .button")
+        .locator(".hero-actions .button-primary")
         .boundingBox();
       assert.ok(
         buttonBounds.x >= 0 && buttonBounds.x + buttonBounds.width <= 320,

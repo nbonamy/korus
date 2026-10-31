@@ -10,15 +10,15 @@ Use standalone Code Review when you already have changes to assess in an agent's
 
 Open the agent working in the checkout you want reviewed. Connect the provider that will do the review, and finish or pause other writers in that folder so the selected change remains stable. An independent reviewer uses the same checkout as the implementation agent; it does not create a worktree.
 
-There must be something to review: staged, unstaged, or untracked changes, or a branch with changes against its base. Inspect the current folder and branch if the expected diff is missing.
+Choose a working diff, the latest commit, or a branch with changes against its base. Inspect the current folder and branch if the expected diff is missing.
 
 ## Start a review
 
 1. Enter `/review` in the agent's composer to open Code Review. Add instructions after the command to focus the review, such as `/review Focus on authorization and data loss risks.`
-2. Choose **Uncommitted changes** for the working diff, or **Current branch** for changes against the base shown in the panel, including uncommitted changes. Unavailable scopes are disabled. A clean checkout with no branch changes shows **Nothing to review**.
+2. Choose **Uncommitted changes** for the working diff, **Last commit** for the latest commit, or **Current branch** for changes against the base shown in the panel, including uncommitted changes. Unavailable scopes are disabled.
 3. Choose **Independent reviewer** for a separate Review agent and fresh conversation, or **Current thread** to use the current agent's existing conversation. Current thread requires an existing provider session.
 4. When using an independent reviewer, choose its connected provider. It can differ from the implementation agent's provider. Current thread uses the existing agent's provider.
-5. Choose a **Review model** and, when the model supports it, **Review effort**. Default keeps the existing reviewer defaults. Korus remembers the last-used provider, model and effort, including separate selections for each provider.
+5. Use the **Review model** picker to choose the model, reasoning effort, and processing speed where supported. Default keeps the existing reviewer defaults. Korus remembers your selections separately for each provider.
 6. Click **Start review** and wait for the round to finish. Follow the separate Review agent when using independent mode.
 
 Choose the scope deliberately. If the feature is committed on a branch, reviewing only uncommitted changes will miss those commits. Check the displayed base for a branch review before starting.
@@ -26,6 +26,8 @@ Choose the scope deliberately. If the feature is committed on a branch, reviewin
 ## Set reusable review instructions
 
 In **Settings → Workflows → Code review**, save **Review instructions** for standards you want every reviewer to apply, such as checking authorization, compatibility, or migration safety. They accompany review agents, including automatic reviews and fresh rounds, alongside any instructions you supply for an individual review.
+
+**Review findings with the original thread** controls whether independent reviewers should consult the implementation conversation when available. Turn it off when you want a review without that consultation.
 
 ## Automatic remediation
 
@@ -79,3 +81,7 @@ The completion message includes the saved report's location. Use it to revisit t
 Review state is saved while the session is active. If a round fails, read its error, resolve the provider or workspace problem, and use **Retry review** when offered. An existing active review must finish or stop before another starts for the same target. After interrupted work resumes, check the findings and actual files before authorizing more changes.
 
 See [Workspace & diffs](../features/workspace) for inspecting the changes beside the conversation.
+
+## Review from your phone
+
+On iPhone or Android, open the agent's review controls to choose the scope and reviewer, including the model and supported speed. Inspect findings, discuss an issue, select fixes, and run another round or finish the review. The review runs in the computer's checkout, so keep that computer connected. These controls are separate from a Mission's Review stage.

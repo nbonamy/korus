@@ -20,7 +20,7 @@ Name the recipient, what it needs to decide or do, and the information to send. 
 
 A message sent to an idle teammate starts a turn in its conversation. Messages to a busy teammate are delivered after its current turn finishes. The receiving conversation identifies the sender, so you can inspect both the request and the response.
 
-The sidebar shows an agent's short status while it works. An agent can also mark a completed diff ready for review or propose implementation in a worktree. These are next-action signals: inspect the conversation and diff before deciding what to do.
+The sidebar shows an agent's short status while it works. An agent can also mark a completed diff ready for review or, on the repository's default branch, propose work. Choose **Implement**, **Delegate**, or **Mission** to start that work, or **Discard** to dismiss the proposal. Inspect the conversation and diff before deciding what to do.
 
 Give each writing task an owner and a separate worktree when isolation is needed. A message coordinates intent; the actual diff and checks still establish the result.
 
