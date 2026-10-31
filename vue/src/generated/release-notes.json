@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.47.2",
+  "currentVersion": "0.48.0",
   "releases": [
+    {
+      "version": "0.48.0",
+      "releasedAt": "2026-10-31",
+      "sourceSha256": "bec0e0c6faca066c84147ccddf72cc518e0a12b351139b8e2d17b57f018aa032",
+      "markdown": "### New features\n\n- **Design:** Explore website and app interfaces with `/design`, the composer’s\n  **+** menu, or the command palette. Compare proposals, refine them with comments\n  and controls, and send your chosen direction for coding.\n- **Background pruning:** Use **Run in background** to keep working while cleanup\n  finishes, then see how many items were pruned.\n\n### Improvements and fixes\n\n- **Missions:** Follow stages across the top and resize the conversation beside\n  the requirements, tickets, and implementation work.\n- Revisit approved Mission requirements without restarting planning, reuse\n  available workers during parallel implementation, and recover failed workers\n  that still need to commit their changes.\n- Review interactive plans and Mission requirements without separate answer\n  confirmation switches or extra warnings before **Revise** and **Approve**.\n- Mark worktrees with uncommitted changes in red and exclude Git-ignored files\n  from prune counts.\n- Automatically close merge-conflict handoff dialogs after five seconds, with\n  an animated countdown on **Close**.\n- Keep **Working** details folded while loading and show a spinner until they\n  are ready to expand.\n- Dismiss proposed-work and review actions as soon as a prompt is submitted,\n  without flickering back while the request is accepted."
+    },
     {
       "version": "0.47.2",
       "releasedAt": "2026-10-30",

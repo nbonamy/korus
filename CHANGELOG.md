@@ -4,6 +4,34 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.48.0] - 2026-10-31
+
+### New features
+
+- **Design:** Explore website and app interfaces with `/design`, the composer’s
+  **+** menu, or the command palette. Compare proposals, refine them with comments
+  and controls, and send your chosen direction for coding.
+- **Background pruning:** Use **Run in background** to keep working while cleanup
+  finishes, then see how many items were pruned.
+
+### Improvements and fixes
+
+- **Missions:** Follow stages across the top and resize the conversation beside
+  the requirements, tickets, and implementation work.
+- Revisit approved Mission requirements without restarting planning, reuse
+  available workers during parallel implementation, and recover failed workers
+  that still need to commit their changes.
+- Review interactive plans and Mission requirements without separate answer
+  confirmation switches or extra warnings before **Revise** and **Approve**.
+- Mark worktrees with uncommitted changes in red and exclude Git-ignored files
+  from prune counts.
+- Automatically close merge-conflict handoff dialogs after five seconds, with
+  an animated countdown on **Close**.
+- Keep **Working** details folded while loading and show a spinner until they
+  are ready to expand.
+- Dismiss proposed-work and review actions as soon as a prompt is submitted,
+  without flickering back while the request is accepted.
+
 ## [0.47.2] - 2026-10-30
 
 ### Improvements and fixes
