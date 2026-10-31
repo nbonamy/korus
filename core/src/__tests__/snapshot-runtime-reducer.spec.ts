@@ -487,7 +487,7 @@ describe('snapshot runtime reducer', () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents[0]!.statusText = 'Reviewing MCP shape';
     snapshot.agents[0]!.suggestedPrompt = 'Review the changes';
-    snapshot.agents[0]!.threadFlags = { delegate_to_worktree: true };
+    snapshot.agents[0]!.threadFlags = { work_proposed: true };
 
     applyMainEventToSnapshot(snapshot, {
       seq: 1,

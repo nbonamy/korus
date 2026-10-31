@@ -103,7 +103,7 @@ function registerCollaborationTools(
     server.registerTool('finish_turn', {
       description: finishTurnDescription,
       inputSchema: {
-        flag: z.enum(threadFlagIds).optional().describe('Optional thread flag. work_proposed offers separate work; delegate_to_worktree is its legacy alias. ready_for_review is separate review readiness. Omit to preserve the existing flag.'),
+        flag: z.enum(threadFlagIds).optional().describe('Optional thread flag. work_proposed offers separate work and is filtered unless this agent is on the repository’s default branch. ready_for_review is separate review readiness. Omit to preserve the existing flag.'),
         ...finishTurnEffectsSchema,
       },
     }, input => loggedToolResult('finish_turn', {

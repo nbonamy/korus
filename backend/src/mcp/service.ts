@@ -133,6 +133,7 @@ export class AppMcpService {
     this.coordinator = new AppMcpAgentCoordinator({
       missionTools: options.missionTools,
       getAgents: this.getCollaborationAgents,
+      resolveWorkspaceIdentity: this.resolveWorkspaceIdentity,
       getHosts: () => this.snapshot.remoteConnections.connections.map(({ id, name, status }) => ({ id, name, status })),
       now: this.now,
       onAgentUpdated: (agent) => this.emit({

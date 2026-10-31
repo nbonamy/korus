@@ -1,5 +1,8 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { AgentGitService } from '../../git/agent-git-service';
 import path from 'node:path';
 import { DocumentWorkspaceService } from '../../document-workspace-service';
 import { product } from '@workspace/core/product';
@@ -404,46 +407,78 @@ describe('AppMcpService', () => {
     expect(parent.userDelegationOverrides).toBeUndefined();
   });
 
-  it.each(['work_proposed', 'delegate_to_worktree'])('finishes turns with %s by clearing status and replacing the proposal in one update', async (flag) => {
+  it('filters work proposals against the current Git branch while finishing the turn normally', async () => {
+    const flag = 'work_proposed';
+    const folder = await mkdtemp(path.join(os.tmpdir(), 'mcp-work-proposal-'));
+    const run = (args: string[]) => promisify(execFile)('git', args, { cwd: folder });
+    await run(['init', '--initial-branch=trunk']);
+    await run(['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'fixture']);
+    await run(['update-ref', 'refs/remotes/origin/trunk', 'HEAD']);
+    await run(['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk']);
+    const git = new AgentGitService();
     const snapshot = createInitialSnapshot();
+    snapshot.agents[0]!.folder = folder;
     snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
     const events: any[] = [];
-    service = new AppMcpService({ snapshot, onEvent: (event) => events.push(event) });
-    const url = await service.start();
+    service = new AppMcpService({ snapshot, resolveWorkspaceIdentity: folder => git.identity(folder), onEvent: (event) => events.push(event) });
+    try {
+      const url = await service.start();
+      const removedAlias = await callTool(url, 'agent-dina', 'finish_turn', { flag: 'delegate_to_worktree' });
+      expect(removedAlias.result.isError).toBe(true);
 
-    await callTool(url, 'agent-dina', 'set-status', { status: 'Considering delegation' });
-    const delegated = await callTool(url, 'agent-dina', 'finish_turn', {
-      flag,
-    });
-    expect(delegated.result.structuredContent).toStrictEqual({
-      success: true, status: null, flag: 'work_proposed',
-    });
-    expect(snapshot.agents[0]!.statusText).toBeUndefined();
-    expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
-    expect(events.at(-1)).toEqual(expect.objectContaining({
-      type: 'agent.updated',
-      payload: expect.objectContaining({
-        statusText: null,
-        threadFlags: { work_proposed: true },
-      }),
-    }));
+      await callTool(url, 'agent-dina', 'set-status', { status: 'Considering delegation' });
+      const delegated = await callTool(url, 'agent-dina', 'finish_turn', {
+        flag,
+      });
+      expect(delegated.result.structuredContent).toStrictEqual({
+        success: true, status: null, flag: 'work_proposed',
+      });
+      expect(snapshot.agents[0]!.statusText).toBeUndefined();
+      expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
+      expect(events.at(-1)).toEqual(expect.objectContaining({
+        type: 'agent.updated',
+        payload: expect.objectContaining({
+          statusText: null,
+          threadFlags: { work_proposed: true },
+        }),
+      }));
 
-    await callTool(url, 'agent-dina', 'set-status', { status: 'Implementing here' });
-    expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
+      await callTool(url, 'agent-dina', 'set-status', { status: 'Implementing here' });
+      expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
 
-    const plain = await callTool(url, 'agent-dina', 'finish_turn', {});
-    expect(plain.result.structuredContent).toStrictEqual({
-      success: true, status: null,
-    });
-    expect(snapshot.agents[0]!.statusText).toBeUndefined();
-    expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
-    expect(events.at(-1)).toEqual(expect.objectContaining({
-      type: 'agent.updated',
-      payload: expect.objectContaining({
-        statusText: null,
-        threadFlags: { work_proposed: true },
-      }),
-    }));
+      const plain = await callTool(url, 'agent-dina', 'finish_turn', {});
+      expect(plain.result.structuredContent).toStrictEqual({
+        success: true, status: null,
+      });
+      expect(snapshot.agents[0]!.statusText).toBeUndefined();
+      expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
+      expect(events.at(-1)).toEqual(expect.objectContaining({
+        type: 'agent.updated',
+        payload: expect.objectContaining({
+          statusText: null,
+          threadFlags: { work_proposed: true },
+        }),
+      }));
+      snapshot.agents[0]!.threadFlags = undefined;
+      await run(['switch', '-c', 'feature/discussion']);
+      const filtered = await callTool(url, 'agent-dina', 'finish_turn', { flag, suggestedPrompt: 'Keep investigating' });
+      expect(filtered.result.structuredContent).toStrictEqual({ success: true, status: null });
+      expect(snapshot.agents[0]!.threadFlags).toBeUndefined();
+      expect(snapshot.agents[0]!.suggestedPrompt).toBe('Keep investigating');
+      expect(events.at(-1)).toMatchObject({ type: 'agent.updated', payload: { threadFlags: null, statusText: null } });
+      await callTool(url, 'agent-dina', 'finish_turn', { flag: 'ready_for_review' });
+      expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ ready_for_review: true });
+      await run(['checkout', '--detach']);
+      await callTool(url, 'agent-dina', 'finish_turn', { flag });
+      expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ ready_for_review: true });
+      snapshot.agents[0]!.folder = os.tmpdir();
+      await callTool(url, 'agent-dina', 'finish_turn', { flag });
+      expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ ready_for_review: true });
+      snapshot.agents[0]!.folder = folder;
+      await run(['switch', 'trunk']);
+      await callTool(url, 'agent-dina', 'finish_turn', { flag });
+      expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
+    } finally { await service?.stop(); await rm(folder, { recursive: true, force: true }); }
   });
 
   it('publishes a caller-scoped prompt suggestion and explicitly clears it when omitted', async () => {

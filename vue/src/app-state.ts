@@ -1,4 +1,4 @@
-import { normalizeThreadFlags, normalizeThreadFlagId } from '@workspace/core/thread-flags';
+import { normalizeThreadFlags } from '@workspace/core/thread-flags';
 import { product } from '@workspace/core/product';
 import { createAntigravityConversationState } from './antigravity-conversation-state';
 import type { AntigravityConversationSnapshot } from '@workspace/core/contracts/antigravity-conversation';
@@ -262,7 +262,7 @@ export function useAppState() {
 
   async function respondToThreadFlagForAgent(agentId: string, response: import('@workspace/core/thread-flags').ThreadFlagResponse): Promise<void> {
     const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
-    if (!agent || normalizeThreadFlags(agent.threadFlags ?? {})[normalizeThreadFlagId(response.id)] !== true || !appApi) {
+    if (!agent || normalizeThreadFlags(agent.threadFlags ?? {})[response.id] !== true || !appApi) {
       throw new Error('No active thread flag.');
     }
     adoptBackgroundSnapshot(await appApi.respondToThreadFlag(agent.id, response));

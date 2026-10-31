@@ -90,14 +90,14 @@ by mutating user-global tool config.
   and may replace the thread flag; omission preserves it within the current turn.
   `work_proposed` offers concrete separate work identified in discussion without granting execution
   authority; it cannot replace implementation already requested in the conversation.
-  `delegate_to_worktree` is accepted as a legacy alias and normalized on restore
-  and tool calls. Workflow-managed agents retain their own proposal lifecycle;
-  delegated co-agents cannot offer recursive work proposals.
+  Proposals require a fresh Git identity with the current branch equal to the repository’s
+  default branch. Non-default branches, detached checkouts and unavailable Git identities
+  discard the requested flag. Workflow-managed agents retain their own proposal lifecycle.
 - Proposal responses use the agent-scoped flag service for current-conversation
   implementation, delegation, Mission creation and dismissal. Implementation
   submits to the source conversation using its current agent and workspace;
   delegation and Mission creation use their existing procedures and authority boundaries.
-  One in-flight response covers both proposal aliases. Acceptance clears the
+  One in-flight response covers each proposal. Acceptance clears the
   proposal; submission failure preserves it for retry. Every new provider turn clears
   all thread flags and prompt suggestions, including queued and internal starts.
   Queue admission and rejected starts preserve them; successful steering clears them.

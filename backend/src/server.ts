@@ -92,7 +92,7 @@ import { sendAgentPrompt } from '@workspace/core/agent-chat-service';
 import { AgentPlanReviewService } from './agents/agent-plan-review-service';
 import { AgentThreadFlagService } from './agents/agent-thread-flag-service';
 import type { PlanReviewResponse } from '@workspace/core/plan-review';
-import { normalizeThreadFlagId, normalizeThreadFlags, type ThreadFlagId, type ThreadFlagResponse } from '@workspace/core/thread-flags';
+import { normalizeThreadFlags, type ThreadFlagId, type ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { agentConversationId, planReviewFromEvent } from '@workspace/core/plan-review';
 import { isAgentRequestResponse, type AgentRequestResponse } from '@workspace/core/agent-request';
 import { AgentWorkspaceService } from './agents/agent-workspace-service';
@@ -4807,8 +4807,8 @@ function debugCodeReviewScenario(value: unknown): DebugCodeReviewScenario {
   throw new Error('Invalid code review debug scenario.');
 }
 
-function debugThreadFlagId(value: unknown): Exclude<ThreadFlagId, 'delegate_to_worktree'> {
-  if (value === 'work_proposed' || value === 'delegate_to_worktree' || value === 'ready_for_review') return normalizeThreadFlagId(value);
+function debugThreadFlagId(value: unknown): ThreadFlagId {
+  if (value === 'work_proposed' || value === 'ready_for_review') return value;
   throw new Error('Invalid thread flag id.');
 }
 

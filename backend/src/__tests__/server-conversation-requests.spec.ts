@@ -33,7 +33,7 @@ describe('AppBackendServer', () => {
     const source = {
       id: 'proposal-source', teamId: snapshot.teams[0]!.id, name: 'Source', folder: '/workspace/source', backend: 'codex' as const,
       backendSession: { kind: 'codex' as const, threadId: 'source-thread' }, status: { type: 'idle' as const },
-      threadFlags: { work_proposed: true as const, delegate_to_worktree: true as const, ready_for_review: true as const },
+      threadFlags: { work_proposed: true as const, ready_for_review: true as const },
       createdAt: '2026-06-13T00:00:00.000Z', updatedAt: '2026-06-13T00:00:00.000Z',
     };
     const other = { ...source, id: 'other-agent', threadFlags: { work_proposed: true as const } };
@@ -65,7 +65,7 @@ describe('AppBackendServer', () => {
       await flushMicrotasks();
       expect(source.threadFlags.work_proposed).toBe(true);
       expect(sendPrompt).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: source.id }), prompt, undefined);
-      await expect(respond('delegate_to_worktree', 'dismiss')).rejects.toThrow('already being handled');
+      await expect(respond('work_proposed', 'dismiss')).rejects.toThrow('already being handled');
       const rejection = expect(failed).rejects.toThrow('provider unavailable');
       rejectPrompt(new Error('provider unavailable'));
       await rejection;
@@ -101,7 +101,7 @@ describe('AppBackendServer', () => {
         folder: '/Users/nbonamy/src/agent-workspace',
         backend: 'codex',
         status: { type: 'idle' },
-        threadFlags: { ...(reviewReady ? { ready_for_review: true as const } : {}), delegate_to_worktree: true },
+        threadFlags: { ...(reviewReady ? { ready_for_review: true as const } : {}), work_proposed: true },
         suggestedPrompt: 'Review the diff',
         createdAt: '2026-06-13T00:00:00.000Z',
         updatedAt: '2026-06-13T00:00:00.000Z',
@@ -404,7 +404,7 @@ describe('AppBackendServer', () => {
     snapshot.agents = [{
       id: 'agent-dina', teamId: 'team-test', name: 'Dina', folder: '/workspace/dina', backend: 'codex',
       backendSession: { kind: 'codex', threadId: 'thread-dina' }, status: { type: 'working' },
-      threadFlags: { ready_for_review: true, work_proposed: true, delegate_to_worktree: true },
+      threadFlags: { ready_for_review: true, work_proposed: true },
       suggestedPrompt: 'Previous turn suggestion',
       createdAt: '2026-06-13T00:00:00.000Z', updatedAt: '2026-06-13T00:00:00.000Z',
     }];
@@ -447,7 +447,7 @@ describe('AppBackendServer', () => {
       text: prompt,
       options: { attachments: [{ type: 'file', path: '/tmp/queue.txt', name: 'queue.txt' }], inputMethod: 'dictated', ...delegation, selection: { model: 'sol', reasoningEffort: 'high', serviceTier: 'fast' } },
     })]);
-    expect(snapshot.agents[0]?.threadFlags).toStrictEqual({ ready_for_review: true, work_proposed: true, delegate_to_worktree: true });
+    expect(snapshot.agents[0]?.threadFlags).toStrictEqual({ ready_for_review: true, work_proposed: true });
     expect(snapshot.agents[0]?.suggestedPrompt).toBe('Previous turn suggestion');
     expect(sendPrompt).not.toHaveBeenCalled();
     expect(onPromptStarting).not.toHaveBeenCalled();

@@ -563,9 +563,10 @@ describe('ConversationPane', () => {
     expect(wrapper.emitted('remove-review-finding')).toStrictEqual([[]]);
   });
 
-  it.each(['work_proposed', 'delegate_to_worktree'] as const)('renders %s as one proposal with four composer actions', async (id) => {
+  it('renders a work proposal with four composer actions', async () => {
+    const id = 'work_proposed';
     const wrapper = mountPane({ controller: controllerFor(messages), agent });
-    await wrapper.setProps({ agent: { ...agent, threadFlags: { [id]: true, work_proposed: true } } });
+    await wrapper.setProps({ agent: { ...agent, threadFlags: { [id]: true } } });
     expect(wrapper.findAll('.thread-flag-affordance')).toHaveLength(1);
     expect(wrapper.get('.codex-conversation-pane__composer-shelf .thread-flag-affordance').text()).toContain('Turn this into work?');
     for (const label of ['Implement', 'Delegate', 'Mission']) {

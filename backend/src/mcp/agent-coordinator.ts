@@ -2,9 +2,9 @@ import { executionSelectionOverridesSchema } from '../execution-selection-schema
 import type { MissionArtifactReadResult, MissionArtifactWriteInput, MissionResultInput, MissionReviewFindingInput, MissionReviewFindingUpdateInput, MissionTicketDraftInput, MissionTicketDraftResult, MissionToolContext } from '@workspace/core/mission-execution';
 import type { MissionArtifactFile, MissionStage } from '@workspace/core/missions';
 import { randomUUID } from 'node:crypto';
-import type { Agent, AgentBackend, AgentStatus, AnnouncementPhase, CelebrationKind, CreateSourceWorktreeInput, SourceRepository, SourceWorktree, WorkBacklogAssignmentStatus } from '@workspace/core/contracts';
+import type { Agent, AgentWorkspaceIdentity, AgentBackend, AgentStatus, AnnouncementPhase, CelebrationKind, CreateSourceWorktreeInput, SourceRepository, SourceWorktree, WorkBacklogAssignmentStatus } from '@workspace/core/contracts';
 import { agentDisplayName } from '@workspace/core/agent-display';
-import { normalizeThreadFlagId, type ThreadFlagId } from '@workspace/core/thread-flags';
+import type { ThreadFlagId } from '@workspace/core/thread-flags';
 import type { DelegatedTask } from '@workspace/core/delegated-task';
 
 export type McpAgentInfo = {
@@ -155,6 +155,7 @@ export type MissionToolPort = {
 export type AppMcpAgentCoordinatorOptions = {
   missionTools?: MissionToolPort;
   getAgents: () => Agent[];
+  resolveWorkspaceIdentity?: (folder: string) => Promise<AgentWorkspaceIdentity>;
   getHosts?: () => Array<{ id: string; name: string; status: string }>;
   onAgentUpdated?: (agent: Agent) => void;
   onInboxMessage?: (agentId: string, messageId: string) => void;
@@ -182,6 +183,7 @@ export class AppMcpAgentCoordinator {
   private readonly missionTools?: MissionToolPort;
   private readonly messages: McpMessage[] = [];
   private readonly getAgents: () => Agent[];
+  private readonly resolveWorkspaceIdentity?: AppMcpAgentCoordinatorOptions['resolveWorkspaceIdentity'];
   private readonly getHosts: NonNullable<AppMcpAgentCoordinatorOptions['getHosts']>;
   private readonly onAgentUpdated?: (agent: Agent) => void;
   private readonly onInboxMessage?: (agentId: string, messageId: string) => void;
@@ -200,6 +202,7 @@ export class AppMcpAgentCoordinator {
   constructor(options: AppMcpAgentCoordinatorOptions) {
     this.missionTools = options.missionTools;
     this.getAgents = options.getAgents;
+    this.resolveWorkspaceIdentity = options.resolveWorkspaceIdentity;
     this.getHosts = options.getHosts ?? (() => []);
     this.onAgentUpdated = options.onAgentUpdated;
     this.onInboxMessage = options.onInboxMessage;
@@ -319,9 +322,11 @@ export class AppMcpAgentCoordinator {
 
   async finishTurn(agentId: string, input: FinishTurnInput = {}): Promise<FinishTurnResponse> {
     const agent = this.requireAgent(agentId);
-    const flag = input.flag ? normalizeThreadFlagId(input.flag) : undefined;
-    if (flag === 'work_proposed' && agent.delegatedByAgentId) {
-      throw new McpToolError('work_proposed is unavailable because this agent is already a delegated co-agent.');
+    let flag = input.flag;
+    if (flag === 'work_proposed') {
+      const workspace = agent.folder
+        ? await this.resolveWorkspaceIdentity?.(agent.folder).catch(() => undefined) : undefined;
+      if (workspace?.kind !== 'git' || !workspace.branch || workspace.branch !== workspace.defaultBranch) flag = undefined;
     }
     const normalizedAnnouncement = input.announcement
       ? this.normalizedAnnouncement({ phase: 'finish', text: input.announcement.text })
