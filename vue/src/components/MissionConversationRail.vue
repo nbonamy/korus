@@ -132,11 +132,17 @@ watch([() => props.mission.id, selectedAgentId], ([id, agentId]) => {
 watch(displayedAgentId, agentId => { if (agentId) emit('open-conversation', agentId); }, { immediate: true });
 
 const unreadIds = computed(() => new Set(props.unreadAgentIds ?? []));
-const attentionOf = (conversation: Conversation) => agentAttention(props.agents?.find(agent => agent.id === conversation.agentId), unreadIds.value);
+const attentionOf = (conversation: Conversation) => {
+  const agent = props.agents?.find(agent => agent.id === conversation.agentId);
+  const attention = agentAttention(agent, unreadIds.value);
+  if (attention === 'needsInput') return attention;
+  if (agent?.status.type === 'working') return 'working';
+  return conversation.key === 'mission-lead' ? attention : null;
+};
 function tabLabel(conversation: Conversation): string {
   const attention = attentionOf(conversation);
   if (!attention) return tabTitle(conversation);
-  return `${tabTitle(conversation)}, ${attention === 'needsInput' ? t('status.awaitingInput') : t('sidebar.unread')}`;
+  return `${tabTitle(conversation)}, ${attention === 'needsInput' ? t('status.awaitingInput') : attention === 'working' ? t('status.working') : t('sidebar.unread')}`;
 }
 
 function tabTitle(conversation: Conversation): string {
@@ -283,6 +289,7 @@ function conversationKey(run: Conversation['run']): string {
 .mission-conversation-rail__dot {
   align-self: center;
   flex: 0 0 auto;
+  margin-inline-start: 3px;
   width: var(--agent-status-dot-size, 8px);
   height: var(--agent-status-dot-size, 8px);
   border-radius: var(--radius-full);
@@ -291,6 +298,10 @@ function conversationKey(run: Conversation['run']): string {
 
 .mission-conversation-rail__dot[data-attention="needsInput"] {
   background: var(--color-primary);
+}
+
+.mission-conversation-rail__dot[data-attention="working"] {
+  background: var(--color-warning);
 }
 
 .mission-conversation-rail__switcher strong {
