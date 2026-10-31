@@ -22,6 +22,16 @@ tests.add_dependency(app)
   app.add_file_references([project.main_group.new_file(File.join(root, file))])
 end
 tests.add_file_references([project.main_group.new_file(File.join(root, 'mobile/ios/Tests/LiveActivities/LiveActivityUITests.swift'))])
+vault = project.new_target(:unit_test_bundle, 'VaultTests', :ios, '26.0')
+vault.add_dependency(app)
+['mobile/ios/Sources/Engine/Keychain.swift', 'mobile/ios/Tests/Vault/KeychainTests.swift'].each do |file|
+  vault.add_file_references([project.main_group.new_file(File.join(root, file))])
+end
+vault.build_configurations.each do |c|
+  c.build_settings.merge!({'PRODUCT_BUNDLE_IDENTIFIER' => 'dev.korus.vaulttests', 'GENERATE_INFOPLIST_FILE' => 'YES',
+    'SWIFT_VERSION' => '5.0', 'TEST_HOST' => '$(BUILT_PRODUCTS_DIR)/ActivityFixture.app/ActivityFixture',
+    'BUNDLE_LOADER' => '$(TEST_HOST)', 'CODE_SIGN_IDENTITY' => '-', 'CODE_SIGNING_ALLOWED' => 'YES'})
+end
 widget = project.new_target(:app_extension, 'WorkActivity', :ios, '26.0')
 ['mobile/ios/Shared/WorkActivityAttributes.swift', 'mobile/ios/Shared/WorkActivityViews.swift', 'mobile/ios/LiveActivity/WorkActivityWidget.swift'].each do |file|
   widget.add_file_references([project.main_group.new_file(File.join(root, file))])
@@ -54,6 +64,7 @@ project.save
 scheme = Xcodeproj::XCScheme.new
 scheme.add_build_target(app)
 scheme.add_test_target(tests)
+scheme.add_test_target(vault)
 scheme.save_as(project.path, 'Activity')
 `;
 let device;

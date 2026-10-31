@@ -658,7 +658,10 @@ relay protocol preserves ordinary notification requests and released clients. Th
 daemon persists activity identity before starting it, coalesces workspace changes,
 and sends bounded APNs `liveactivity` payloads through the relay's existing Apple key.
 ActivityKit background wakes exchange rotated tokens over a short authenticated
-request without subscribing to conversations. Updates refresh stale dates; an idle
+request without subscribing to conversations. The phone's pairing and device-identity
+Keychain items remain device-only and support background access after first unlock;
+existing items migrate on a successful read. Drafts retain unlocked-device protection.
+Updates refresh stale dates; an idle
 workspace ends the activity. Disconnected hosts become visibly stale instead of
 claiming fresh status. APNs acceptance does not prove display or background wake;
 signed-device delivery must be checked separately from simulator lifecycle tests.
