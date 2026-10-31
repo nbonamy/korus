@@ -16,6 +16,8 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import androidx.compose.runtime.*
 import org.json.JSONObject
+import java.io.File
+import java.util.concurrent.Executors
 
 /** A single bundled page with a main-frame, origin-scoped message port. No generic Java bridge. */
 @SuppressLint("SetJavaScriptEnabled")
@@ -28,7 +30,11 @@ class WebPage(
     private val failed: () -> Unit,
     private val active: () -> Boolean = { true },
 ) {
-    companion object { const val ORIGIN = "https://appassets.androidplatform.net" }
+    companion object {
+        const val ORIGIN = "https://appassets.androidplatform.net"
+        private val imageCacheWork = Executors.newSingleThreadExecutor()
+    }
+    private val imageCache = DeviceImageCache(File(context.cacheDir, "ConversationImages/v1"))
     val url = "$ORIGIN/assets/web/$page.html"
     private val application = context.applicationContext
     private var configuration = Configuration(context.resources.configuration)
@@ -124,6 +130,23 @@ class WebPage(
                         try {
                             require(page == "engine")
                             val body = envelope.getJSONObject("message")
+                            if (body.getString("type").startsWith("imageCache.")) {
+                                val type = body.getString("type"); val host = body.getString("host")
+                                val key = body.optString("key"); val dataUrl = body.optString("dataUrl")
+                                imageCacheWork.execute {
+                                    try {
+                                        val value: Any? = when (type) {
+                                            "imageCache.read" -> imageCache.read(host, key)
+                                            "imageCache.write" -> { imageCache.write(host, key, dataUrl); true }
+                                            "imageCache.forget" -> { imageCache.forget(host); true }
+                                            else -> throw IllegalArgumentException()
+                                        }
+                                        result.put("result", value ?: JSONObject.NULL)
+                                    } catch (_: Exception) { result.put("error", "Image cache is unavailable.") }
+                                    webView.post { if (usable) reply.postMessage(result.toString()) }
+                                }
+                                return@addWebMessageListener
+                            }
                             val value: Any? = when (body.getString("type")) {
                                 "relay" -> JSONObject(product.getJSONObject("relay").toString()).apply { if (BuildConfig.DEBUG) put("allowLocalDevelopment", true) }
                                 "vault.read" -> JSONObject().put("value", vault.read(body.getString("key")) ?: JSONObject.NULL)

@@ -12,7 +12,7 @@ export default defineConfig({
   root: __dirname,
   base: './',
   plugins: [vue(), ...(android ? [] : [appleCryptoBuild()])],
-  resolve: { dedupe: ['vue'], alias: {
+  resolve: { dedupe: ['vue', '@codex-app-sdk/core', '@codex-app-sdk/vue'], alias: {
     ...(android ? {} : {
       '@chainsafe/libp2p-noise': path.resolve(__dirname, '../src/apple-crypto/noise.ts'),
       '@libp2p/crypto/keys': path.resolve(__dirname, '../src/apple-crypto/keys.ts'),

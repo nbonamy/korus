@@ -41,6 +41,10 @@ A selected issue supplies context for Requirements. A Linear team or project doe
 
 The stage rail, artifact workbench, and conversation stay together in the Mission surface. Select an earlier stage to inspect its accepted artifact; viewing it does not move the workflow backward.
 
+Use the agent tabs to switch between the Mission lead and repository workers. Repository icons and ticket selection help identify whose conversation you are reading. **⌘K** lists each Mission once and returns to its last selected agent. Mission documents open in a centered dialog; choose whether to open an agent's document request without leaving the workflow.
+
+To change accepted requirements or tickets, ask the Mission lead to return to the relevant stage. Stop active repository workers first. Completed work and tickets are preserved; revising a ticket makes that ticket eligible for implementation again, while unchanged completed tickets stay complete. Advancing through Requirements, Tickets, and Review still requires your approval.
+
 ## Approve Requirements and Tickets
 
 Wait for a proposal, read it, and give feedback before choosing **Approve and continue**. In Requirements, select text to leave inline comments and send them to the lead. In Tickets, open a ticket card to inspect its details and comment on the relevant text. You can also request changes directly in chat.
@@ -53,7 +57,11 @@ Mission startup shows provisioning progress. **Run in background** lets you retu
 
 Korus creates one Mission worktree per affected repository. Tickets in the same repository run sequentially with a repository worker; ready tickets in different repositories can run concurrently. Dependencies can keep a ticket waiting even when its repository worker is idle.
 
+In **Start implementation**, enable **Allow parallel agents in the same repository** when you want independent, ready tickets to run together. Those agents share the repository's Mission worktree, files, and Git state. Use this only when the tickets can safely coexist; if their edits conflict, they stop for guidance.
+
 Open a ticket to inspect its evidence or select its worker conversation for clarification. Workers record changes and verification as they complete their tickets. Implementation results advance automatically; there is no separate manual approval for every completed ticket. The explicit human review follows the completed implementation.
+
+To start another conversation in a Mission repository worktree, right-click the Mission and choose **New agent in mission worktree**. This uses the existing worktree, so coordinate any edits with the Mission's workers.
 
 Use **Stop ticket** when a running task needs to halt, or **Retry ticket** after a failed or stopped task's blocker is resolved. Stopping does not undo files already changed. Once every ticket has completed and evidence is available, choose **Continue to Review**.
 

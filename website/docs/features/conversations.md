@@ -16,13 +16,13 @@ empty result, and check the rendered interaction. Leave the change
 uncommitted so I can review it.
 ```
 
-Use the composer's available context controls to supply file mentions, skills, and attachments. Desktop Antigravity conversations support images, WAV audio, PDFs, and UTF-8 text; its remote-team and browser-hosted conversations do not support attachments. Each agent keeps its own conversation and draft as you switch agents.
+Use the composer's available context controls to supply file mentions, skills, and attachments. Desktop Antigravity conversations support images, WAV audio, PDFs, and UTF-8 text; its SSH-hosted and browser-hosted conversations do not support attachments. Each agent keeps its own conversation and draft as you switch agents.
 
-Choose a model in the composer before sending when you need a particular provider model. Reasoning effort and speed choices depend on the engine and model. Supported Claude models offer **Fast** in the speed selector; use the normal speed to turn it off. Fast mode can incur extra provider charges and is not included in subscription usage. Check the option's description before enabling it.
+Choose a model in the composer before sending when you need a particular provider model. Reasoning effort and speed choices depend on the engine and model. Use the model picker's speed control to choose normal, fast, or ultrafast processing where offered. Supported Claude models offer **Fast**; use normal speed to turn it off. Fast mode can incur extra provider charges and is not included in subscription usage. Check the option's description before enabling it.
 
 The composer's **+** menu includes **Visualize**, **Delegate**, **Review**, and **Mission** across supported engines. These open [Visualize](./visualize), request [worktree delegation](../workflows/worktrees#delegate-implementation), open [Code Review](../workflows/code-review), and request a [Mission](../workflows/missions), respectively. The corresponding slash commands remain available.
 
-After a response, the empty composer may suggest a follow-up. Press **Tab**, **Right Arrow**, or **Space** to accept it into the draft, then edit or send it. Accepting a suggestion does not send a message or replace text you have already typed. Follow-up suggestions are also available in the mobile composer.
+After a response, the empty composer may suggest a follow-up. Press **Enter**, **Tab**, **Right Arrow**, or **Space** to accept it into the draft, then edit or send it. The first Enter fills the draft; press Enter again to send it. Accepting a suggestion does not send a message or replace text you have already typed. Follow-up suggestions are also available in the mobile composer.
 
 Use **Image Gen** in the skill picker when you want a Claude or other non-Codex agent to generate or edit an image through Codex. A connected Codex setup supplies that image capability. Manage reusable workflows in [Settings → Skills](../providers/#manage-agent-skills).
 
@@ -36,7 +36,9 @@ Invite someone to follow a conversation and suggest prompts while you keep contr
 
 Anyone with the invitation can read the full available conversation history and future updates, including tool output and content attached to that conversation. Check what the history contains before sharing. Access is limited to that conversation; joining does not grant control of your workspace or coding-provider account.
 
-Collaborators propose messages from their composer. Their suggestions appear above your composer; choose **Move suggestion to composer** to put one in your draft. Edit it if needed and send it yourself, or delete the suggestion. A suggestion never runs automatically, and guests cannot approve tools or interrupt the agent. Each collaborator can delete their own pending suggestion.
+Guests start with read-only access and propose messages from their composer. Their suggestions appear above your composer; choose **Move suggestion to composer** to put one in your draft. Edit it if needed and send it yourself, or delete the suggestion. Each collaborator can delete their own pending suggestion.
+
+In **Share with guests**, connected guests appear by name. Enable **Write access** for an individual guest to let that person send prompts directly, without moving each suggestion into your composer. Those prompts run through your agent with its existing permissions. Turn write access off to return the guest to suggestions requiring your approval. Guests cannot approve tools or interrupt the agent, including when write access is enabled.
 
 Return to **Share with guests** to **Copy link** again or **Stop sharing**. Stopping sharing revokes the invitation and ends guest access. Collaborators can also **Leave** a joined conversation. Your computer and Korus backend need to remain available for live updates.
 
@@ -81,6 +83,10 @@ Keep planning and implementation separate: **Revise** asks for another proposal;
 
 Korus renders messages, tool calls, command output, plans, approvals, and file changes. Use those details to check what the agent inspected and what it actually validated.
 
+Saved Codex and Claude conversations open with prompts and final answers first. Expand a turn's **View details** or **Working** section to load its tool activity, command output, and other working details. Older Claude messages remain available across compaction boundaries. Expand the relevant turn before judging what evidence it contains.
+
+Open an assistant image in fullscreen to inspect it; use the arrow buttons or Left and Right keys to move between images.
+
 Open a document or diff in the workspace when you need to examine it while continuing the discussion.
 
 Claude Code's native task lists also appear in the execution-plan panel, with progress restored when you reopen the conversation. Completed task lists stay closed after a restart and clear when the next turn starts.
@@ -104,6 +110,8 @@ Claude steering delivers input at a tool boundary or in a following turn; it doe
 ## Respond to requests
 
 Answer inline questions and inspect approval requests in the conversation. An agent awaiting input needs a response before it can proceed. Where an approval offers different scopes, choose the one appropriate to the action; the controls depend on your provider and permission settings.
+
+For questions with a free-text answer, use the microphone when available to dictate it. Review and edit the transcript before continuing.
 
 Select text in a message to attach targeted feedback instead of retyping the passage. Image attachments also support annotations. Submit the resulting annotations with your next message, or on their own when the annotation contains the complete request.
 

@@ -137,6 +137,45 @@ watch.addEventListener("click", (event) => {
 });
 selectShowcase(0);
 
+// YouTube loads only after intent; removing the frame stops its audio on close.
+const walkthrough = document.querySelector("#walkthrough");
+const walkthroughLink = document.querySelector("[data-watch-walkthrough]");
+walkthroughLink.addEventListener("click", (event) => {
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  if (typeof walkthrough.showModal !== "function") return;
+  event.preventDefault();
+  pauseShowcase();
+  pauseFilms();
+  const player = document.createElement("iframe");
+  player.src =
+    "https://www.youtube-nocookie.com/embed/VuK3O0EHi14?autoplay=1&rel=0&playsinline=1&cc_load_policy=1";
+  player.title = "Delegate, review, and merge AI coding work with Korus";
+  player.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
+  player.allowFullscreen = true;
+  player.referrerPolicy = "strict-origin-when-cross-origin";
+  walkthrough.querySelector(".walkthrough-player").replaceChildren(player);
+  document.documentElement.classList.add("watching-video");
+  walkthrough.showModal();
+});
+walkthrough
+  .querySelector("button")
+  .addEventListener("click", () => walkthrough.close());
+walkthrough.addEventListener("click", (event) => {
+  if (event.target !== walkthrough) return;
+  const bounds = walkthrough.getBoundingClientRect();
+  if (
+    event.clientX < bounds.left ||
+    event.clientX > bounds.right ||
+    event.clientY < bounds.top ||
+    event.clientY > bounds.bottom
+  )
+    walkthrough.close();
+});
+walkthrough.addEventListener("close", () => {
+  walkthrough.querySelector(".walkthrough-player").replaceChildren();
+  document.documentElement.classList.remove("watching-video");
+});
+
 // Keep MP4s off the network until a visitor chooses a film. The cover is a
 // direct media link so the walkthroughs remain available without JavaScript.
 const films = [...document.querySelectorAll(".product-film")];

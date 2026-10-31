@@ -18,6 +18,7 @@ import { composerCapabilitiesFor, type ComposerChange } from './composer-setting
 import { createLifecycle } from './engine-lifecycle';
 import { activeSession, projectMobileActivityGroups, projectMobileGroups, type MobileActivityGroup, type MobileSidebarGroup } from './workspace-groups';
 import type { SelectionStore } from './selection-store';
+import { ConversationImageCache, type ImageCacheStore } from './image-cache';
 import type { CompanionRequestReply, CompanionClosePreview } from '@workspace/core/companion-protocol';
 
 /** Everything the native shell draws, as plain data: no framework, no protocol detail. */
@@ -171,11 +172,12 @@ export type EngineCommand =
   | { type: 'reviewAction'; target: CompanionTarget; input: import('@workspace/core/companion-review').CompanionReviewAction }
   | { type: 'review'; target: CompanionTarget; input: CompanionReviewInput };
 
-export type EnginePort = { connector: CompanionConnector; selectionStore?: SelectionStore; chatsLabel?: string; initialActive?: boolean; incrementalTranscript?: boolean; post(event: EngineEvent): void };
+export type EnginePort = { connector: CompanionConnector; imageCache?: ImageCacheStore; selectionStore?: SelectionStore; chatsLabel?: string; initialActive?: boolean; incrementalTranscript?: boolean; post(event: EngineEvent): void };
 
 const effortsOf = (model: BackendModelOption) => (model.supportedReasoningEfforts ?? []).map((option) => option.reasoningEffort);
 
 export function createEngine(port: EnginePort) {
+  const imageCache = port.imageCache ? new ConversationImageCache(port.imageCache) : undefined;
   const state = createCompanionState(port.connector, undefined, undefined, notification => { if (!disposed && (foreground || notification.kind === 'read')) port.post({ type: 'notification', notification }); });
   const startup = ref<EngineState['startup']>('loading');
   const pairing = ref<EngineState['pairing']>('idle');
@@ -526,7 +528,7 @@ export function createEngine(port: EnginePort) {
       }
       case 'readConversationImage': {
         try {
-          const image = await state.readImage(command.agentId, command.path);
+          const image = await state.readImage(command.agentId, command.path, imageCache);
           if (!disposed) port.post({ type: 'conversationImage', requestId: command.requestId, agentId: command.agentId, ...image });
         } catch {
           if (!disposed) port.post({ type: 'conversationImage', requestId: command.requestId, agentId: command.agentId, error: 'Image is unavailable.' });
@@ -612,6 +614,7 @@ export function createEngine(port: EnginePort) {
       case 'forget': {
         const laptopId = command.laptopId ?? state.laptopId.value;
         if (!laptops.value.some(laptop => laptop.id === laptopId)) return;
+        await imageCache?.forget(laptopId).catch(() => {});
         if (laptopId === state.laptopId.value) {
           ++notificationEpoch; pendingNotification = null; ++restoreEpoch;
           await state.revoke();

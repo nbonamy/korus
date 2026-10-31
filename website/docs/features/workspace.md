@@ -16,6 +16,10 @@ Activity view groups agents into **Needs input**, **Done**, **Working**, and **I
 
 Unread updates show a dot in place of the elapsed-time indicator. Each section scrolls independently; use **Show more** to reach additional agents. In **Idle**, open **Sort idle agents** and choose **Repository** or **Recent activity**. Each team remembers its view and idle sorting choices.
 
+### Follow all teams in Cockpit
+
+Open **Cockpit** from the left rail to follow activity across teams without switching between them. Its shared sidebar groups agents by activity and shows Mission progress. Select an agent or Mission to open its conversation and work; local and SSH-hosted agents appear together, with host connection indicators for remote work.
+
 ## Documents and plans
 
 Ask the agent to display Markdown in the side panel when a guide, report, or proposal should remain visible:
@@ -25,6 +29,8 @@ Show the implementation proposal in the side panel so we can discuss each step.
 ```
 
 Plans and displayed documents have their own tabs. Keep the artifact open while discussing revisions so feedback refers to a concrete result.
+
+In a Mission, documents open one at a time in a centered dialog, keeping the Mission workflow in place behind it. When an agent requests a document, choose whether to open it.
 
 Use **Outline** in a Markdown document to show its headings and jump to a section. It is available when the document has headings. For plan choices, section comments, and implementation approval, see [Interactive plans](./conversations#review-an-interactive-plan).
 
@@ -51,6 +57,16 @@ The selector's menu also breaks the selected diff down by what each file is for:
 The **Changes** pane lists files under the same groups by default; select a group header to fold or unfold it. Its refresh action reloads the selected diff. Its **…** menu controls staged, unstaged, and untracked sections when available, grouping by file type, word wrap, and expanding or collapsing files. Select a file in the diff to open its preview.
 
 Use the full repository diff before delivery so earlier or unrelated edits are accounted for.
+
+Select lines in a source or diff preview to attach a comment to the conversation. Use this for precise feedback on a change, then send the annotations with your next message.
+
+## Run repository commands
+
+Use the play button in the conversation header to open **Run profiles**, then **Choose commands…**. Korus finds scripts in `package.json` and targets in Makefiles and Justfiles. Search or filter by source file, then click a command to pin it. **Custom command** lets you supply a name, command, working directory relative to the worktree, and optional preview URL.
+
+Choosing commands saves them without running them. Select a pinned command from the play menu to run it and inspect its output, state, and exit code. Use **Stop** to end a running command, or **Preview** when a URL and an owning-host browser are available.
+
+Pinned commands are shared across a repository's worktrees, but each run uses the selected agent's checkout and host. Check those before starting. Closing the output dialog leaves the command running; restarting Korus's daemon does not restart saved commands. Keep credentials in the host's private configuration rather than command text.
 
 ## Browse Git history
 
@@ -90,13 +106,15 @@ that needs fixing.
 
 Each device is attached to one agent at a time. **Detach** releases it for another agent and leaves it running; **Power off** shuts it down. Neither erases its data.
 
-Simulator access is for local virtual devices, not physical phones or remote teams.
+Simulator access uses local virtual devices.
 
 ## Browse and start backlog work
 
 Connect [GitHub, GitLab, or Linear](../providers/#connect-github-or-linear) in Settings first. Open **Backlog** from the left rail to browse work across sources, or use the repository's **Backlog** pane or **Create from…** issue picker for work in that repository.
 
 Choose **GitHub**, **GitLab**, or **Linear** when several are connected, then a repository, GitLab project, or Linear **Team / project**. A repository's backlog stays scoped to its own hosting provider and project. Selecting a Linear source changes the issues shown while keeping the code repository context. GitLab uses `#` for issues and `!` for merge requests; Linear issues display their identifier, such as `ENG-42`, and their native workflow status.
+
+The global Backlog also offers shortcuts for assigned issues, pull requests awaiting your review, and your own pull requests. Use the repository filters to include work inside or outside your repositories and organizations you administer. **Check feedback** starts an agent to inspect unresolved review comments on a pull request and summarize what needs attention.
 
 Use the star beside a repository or Linear source to keep it in **Favorites**. Drag a favorite by its handle to reorder it, or focus the handle and use the up and down arrow keys. Favorites and their order are saved separately for each backlog provider. Removing a favorite does not disconnect the source or remove its agents.
 
@@ -148,6 +166,8 @@ The iPhone and Android companions connect to your computer's Korus workspace. En
 
 The companion remembers multiple computers. Use **Connections** in mobile Settings to add or switch computers, rename a saved connection, or forget one you no longer use. Pairings start with the computer's name; renaming a connection changes the label on that phone. Forgetting removes its saved connection rather than deleting work on the computer. Revoke a lost device from the desktop.
 
+On iPhone, enable **Live Activities** in mobile Settings to follow running work and requests for attention from the Lock Screen and Dynamic Island. The activity follows the selected computer across its teams, including Mission workers. Tap an agent row to return to its conversation. Allow Live Activities in iOS Settings if prompted; this control is separate from notification permission. Switching computers or turning Live Activities off ends the previous activity.
+
 Use the mobile sidebar to browse one team or **All teams**, switch between repository and activity views, and create a team. Select an agent to follow its conversation, respond to requests, or send a follow-up. Mobile Settings also offers usage, follow-up behavior, notification controls, and optional app lock.
 
 ## Understand usage and performance
@@ -155,7 +175,7 @@ Use the mobile sidebar to browse one team or **All teams**, switch between repos
 Open **Settings → Analytics** to see usage recorded by Korus:
 
 - **Token activity** shows the past year across providers. This overview stays independent of the filters below it.
-- **Usage** shows token totals, input and output, usage share, and trends. Choose **Cost** for estimated API costs in USD, or **Tokens → Ratio** for the input-token share. Choose a provider, a 7-, 30-, or 90-day window or custom dates, and group the results by provider or model.
+- **Usage** shows token totals, input and output, usage share, and trends. Choose **Cost** for estimated API costs in USD, or **Tokens → Ratio** for the input-token share. Choose a provider, a 7-, 30-, or 90-day window or custom dates, and group the results by provider, model, or repository. Repository totals combine worktrees, with separate entries for Missions and Quick Chats.
 - **Model performance** compares time to first token and output speed when measurements are available. **N/A** means a measurement is unavailable, not zero.
 
 The **Output speed over time** chart plots a separate line for each model. Use the date and provider filters to compare how measured generation speed changes across your work.

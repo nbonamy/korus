@@ -119,6 +119,14 @@ nothing until asked. **Watch with sound** restarts the current film with sound,
 captions, and native controls, and it then stays on that film. Without
 JavaScript, the link opens the MP4 directly.
 
+The hero's **Watch Korus in action** button opens the live delegation, review,
+and merge walkthrough (`VuK3O0EHi14`) in a large native dialog. The YouTube
+privacy-enhanced embed loads only on click, with sound and captions requested;
+opening it pauses the inline films. Closing with Escape, the close button, or
+the backdrop removes the player and restores focus and page scrolling. The
+button links directly to YouTube without JavaScript, and the dialog keeps a
+YouTube link available if embedded playback is unavailable.
+
 Feature-card films open from their rendered poster frame. No MP4 is requested
 until the visitor clicks; native controls provide seeking and fullscreen. Only one
 film plays at a time across the page. The films use the approved Calm American

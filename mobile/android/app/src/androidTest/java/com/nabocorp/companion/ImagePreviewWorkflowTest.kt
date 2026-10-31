@@ -16,11 +16,62 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
+import java.io.File
+import java.util.UUID
 
 /** Real transcript/native viewer failures: image clicks disappear, zoom cannot reset,
  * stale/locked events disclose another conversation, unsafe sources reach a loader,
  * invalid remote responses decode, or retry never fetches fresh image bytes. */
 class ImagePreviewWorkflowTest {
+    @Test fun deviceCachePersistsBinaryImagesAndEvictsByLastAccessWithinItsSizeLimit() {
+        val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
+        val root = File(context.cacheDir, UUID.randomUUID().toString())
+        val host = "a".repeat(64); val other = "b".repeat(64); val first = "1".repeat(64); val second = "2".repeat(64)
+        val image = "data:image/png;base64,$png"
+        var now = 100_000L
+        // This fixture PNG is larger than the inline one used on iOS; charge two complete records.
+        val bytes = Base64.decode(png, Base64.DEFAULT)
+        val budget = (bytes.size + 75L) * 2
+        fun store() = DeviceImageCache(root, budget) { now }
+        try {
+            store().write(host, first, image); now += 172_800_000
+            store().write(other, first, image); now += 1000
+            assertEquals(image, store().read(host, first)); now += 1000
+            store().write(host, second, image)
+            assertNull(store().read(other, first)); assertEquals(image, store().read(host, first))
+            assertTrue(root.listFiles()!!.sumOf { it.length() } <= budget)
+            assertTrue(root.listFiles()!!.all { it.readBytes().takeLast(bytes.size).toByteArray().contentEquals(bytes) })
+            store().forget(host); assertNull(store().read(host, first))
+            store().write(other, first, image)
+            root.listFiles()!!.single().writeText("corrupt")
+            assertNull(store().read(other, first))
+            try { store().write("../escape", first, image); fail("Invalid cache scope") } catch (_: IllegalArgumentException) { }
+        } finally { root.deleteRecursively() }
+        NativeEngineFixture(app.activityRule.scenario).use { e ->
+            mount(e)
+            fun call(body: JSONObject, transcript: Boolean = false): JSONObject {
+                val id = UUID.randomUUID().toString()
+                val envelope = json("id" to id, "channel" to "native", "message" to body)
+                val script = """(() => { window.cacheReply = null; const previous = companionNative.onmessage;
+                    companionNative.onmessage = event => { const reply = JSON.parse(event.data);
+                        if (reply.id === '$id') { window.cacheReply = JSON.stringify(reply); companionNative.onmessage = previous; }
+                        else previous?.(event); };
+                    companionNative.postMessage(${JSONObject.quote(envelope.toString())}); })()"""
+                if (transcript) page(e, script) else e.evaluate(script)
+                var response: String? = null
+                app.waitUntil(10_000) { response = (if (transcript) page(e, "window.cacheReply") else e.evaluate("window.cacheReply")) as? String; response != null }
+                return JSONObject(response!!)
+            }
+            val scope = "c".repeat(64); val key = "d".repeat(64)
+            try {
+                assertFalse(call(json("type" to "imageCache.write", "host" to scope, "key" to key, "dataUrl" to image)).has("error"))
+                assertEquals(image, call(json("type" to "imageCache.read", "host" to scope, "key" to key)).getString("result"))
+                assertTrue(call(json("type" to "imageCache.read", "host" to scope, "key" to key), transcript = true).has("error"))
+                assertTrue(call(json("type" to "imageCache.read", "host" to "../escape", "key" to key)).has("error"))
+                File(context.filesDir, "image-cache-verification.json").writeText(json("binaryPersistence" to true, "lruEviction" to true, "engineBridge" to true, "transcriptDenied" to true).toString())
+            } finally { call(json("type" to "imageCache.forget", "host" to scope)) }
+        }
+    }
     @get:Rule val app = createAndroidComposeRule<CompanionActivity>()
     private val png by lazy {
         val bitmap = android.graphics.Bitmap.createBitmap(600,360,android.graphics.Bitmap.Config.ARGB_8888)

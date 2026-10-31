@@ -24,6 +24,7 @@ import Observation
         }
     }
     func setUnlocked(_ unlocked: Bool) {}
+    func openActivity(_ url: URL) {}
     func setActive(_ active: Bool) {
         execution.update(working: true, foreground: active)
         if active { record("coverVisibleOnResume") }
