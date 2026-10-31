@@ -95,6 +95,8 @@ it.each([
         } else if (stage === 'implementation') {
           expect(run.ticketIndex).toBe(parallel ? [0, 2, 1][attempt] : attempt);
           expect(prompts.at(-1)).toContain('Commit all your ticket changes before submitting the result');
+          expect(prompts.map(prompt => prompt.replace(/<context>[\s\S]*?<\/context>/gu, '').trim()))
+            .toContain(`Start ticket ${run.ticketIndex! + 1}: ${artifacts.tickets[run.ticketIndex!]!.title}`);
           const workspace = current().execution!.workspaces![0]!.path;
           if (parallel && attempt === 0) {
             const active = current().execution!.runs.filter(candidate => candidate.stage === 'implementation');
@@ -124,11 +126,11 @@ it.each([
     expect(current().status).toBe('completed');
     expect(current().execution!.workspaces![0]!.baseSha).toBe(baseline);
     expect(current().execution!.runs[0]!.workerId).toBe(current().execution!.runs[1]!.workerId);
-    if (parallel) expect(new Set(current().execution!.runs.filter(run => run.stage === 'implementation').map(run => run.workerId)).size).toBe(3);
+    if (parallel) expect(new Set(current().execution!.runs.filter(run => run.stage === 'implementation').map(run => run.workerId)).size).toBe(2);
     else expect(current().execution!.runs[2]!.workerId).toBe(current().execution!.runs[3]!.workerId);
     expect(current().execution!.runs[2]!.workerId).not.toBe(current().execution!.runs[1]!.workerId);
     expect(current().execution!.runs.at(-1)!.workerId).toBe(current().execution!.runs[1]!.workerId);
-    expect(new Set(current().execution!.runs.map(run => run.workerId)).size).toBe(parallel ? 4 : 2);
+    expect(new Set(current().execution!.runs.map(run => run.workerId)).size).toBe(parallel ? 3 : 2);
     expect(await readWorktreeHead(repo)).toBe(baseline);
     expect(await readFile(join(repo, 'billing.txt'), 'utf8')).toBe('original\n');
     expect((await git(repo, ['status', '--porcelain'])).stdout).toBe('');

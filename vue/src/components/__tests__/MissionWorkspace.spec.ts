@@ -271,8 +271,8 @@ describe('MissionWorkspace', () => {
     expect(getComputedStyle(wrapper.get('.mission-workspace__body').element).boxShadow).toBe('var(--shadow-content-edge)');
     expect(wrapper.get('[aria-label="Workflow progress"]').findAll('button')).toHaveLength(5);
     expect(wrapper.get('[aria-current="step"]').text()).toContain('Requirements');
-    expect(wrapper.get('.mission-workspace__run-status').text()).toBe('Shaping requirements');
-    expect(wrapper.get('.mission-workspace__run-status').attributes()).toMatchObject({
+    expect(wrapper.get('.mission-workspace__stage-loading h3').text()).toBe('Welcome to your new mission');
+    expect(wrapper.get('.mission-workspace__stage-loading').attributes()).toMatchObject({
       role: 'status',
       'aria-live': 'polite',
     });
@@ -285,14 +285,6 @@ describe('MissionWorkspace', () => {
     expect(wrapper.find('input').exists()).toBe(false);
     expect(wrapper.find('textarea').exists()).toBe(false);
     expect(wrapper.find('select').exists()).toBe(false);
-    const stageHeader = wrapper.get('.mission-workspace__stage-header');
-    const conversationHeader = wrapper.get('.mission-conversation-rail__navigation');
-    expect(getComputedStyle(stageHeader.element).minHeight).not.toBe('');
-    expect(getComputedStyle(stageHeader.element).minHeight).toBe(getComputedStyle(conversationHeader.element).height);
-    expect(getComputedStyle(wrapper.get('.mission-stage-rail__heading').element).minHeight).toBe(getComputedStyle(stageHeader.element).minHeight);
-    const scrollingContent = wrapper.get('.mission-workspace__workbench-scroll');
-    expect(scrollingContent.element.contains(stageHeader.element)).toBe(false);
-
     await wrapper.setProps({ sidebarCollapsed: true });
     const sidebarButton = wrapper.get('button[aria-label="Show agent sidebar"]');
     expect(sidebarButton.text()).toBe('');
@@ -309,11 +301,7 @@ describe('MissionWorkspace', () => {
     const wrapper = mountWorkspace(mission, { executeMission });
 
     expect(wrapper.get('[aria-label="Artifact ready for review"]').text()).toContain('Teams need one bill');
-    const stageHeader = wrapper.get('.mission-workspace__stage-header');
-    expect(stageHeader.get('h2').text()).toBe('Mission brief');
-    expect(stageHeader.text()).not.toContain('Define the outcome');
-    expect(stageHeader.find('.mission-workspace__review-status').exists()).toBe(false);
-    expect(stageHeader.find('.app-button').exists()).toBe(false);
+    expect(wrapper.find('.mission-workspace__stage-header').exists()).toBe(false);
     expect(wrapper.get('.plan-review-footer .app-button--primary').text()).toBe('Approve');
     expect(wrapper.find('.mission-workspace__artifact-toolbar').exists()).toBe(false);
     expect(wrapper.get('.plan-review-panel').text()).toContain('Teams need one bill');
@@ -329,6 +317,27 @@ describe('MissionWorkspace', () => {
       runId: 'run-requirements',
     });
     expect(executeMission).toHaveBeenCalledOnce();
+  });
+
+  it('unlocks review actions when the lead resubmits unchanged requirements', async () => {
+    const mission = missionWithRun('awaitingReview', true);
+    const sendMissionPrompt = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mountWorkspace(mission, { sendMissionPrompt });
+    try {
+      await wrapper.get('button[aria-label="Comment on this section: Problem and scope"]').trigger('click');
+      await wrapper.get('textarea').setValue('Please double-check this scope.');
+      await wrapper.get('.plan-review-footer .app-button--secondary').trigger('click');
+      await flushPromises();
+      expect(sendMissionPrompt).toHaveBeenCalledOnce();
+      expect(wrapper.get('.plan-review-footer .app-button--primary').attributes('disabled')).toBeDefined();
+      mission.execution!.runs[0]!.finishedAt = '2026-09-19T00:03:00.000Z';
+      await wrapper.setProps({ mission: structuredClone(mission) });
+      await flushPromises();
+      expect(wrapper.get('.plan-review-footer .app-button--primary').attributes('disabled')).toBeUndefined();
+      await wrapper.get('button[aria-label="Comment on this section: Problem and scope"]').trigger('click');
+      await wrapper.get('textarea').setValue('One more clarification.');
+      expect(wrapper.get('.plan-review-footer .app-button--secondary').attributes('disabled')).toBeUndefined();
+    } finally { wrapper.unmount(); }
   });
 
   it('shows button and worktree progress while approved tickets start Implementation', async () => {
@@ -570,8 +579,8 @@ describe('MissionWorkspace', () => {
     await requirements!.trigger('click');
 
     expect(wrapper.get('[aria-label="Accepted artifact"]').text()).toContain('Teams need one bill');
-    expect(wrapper.get('.mission-workspace__stage-header h2').text()).toBe('Mission brief');
-    expect(wrapper.get('.mission-workspace__accepted-status').text()).toBe('Accepted');
+    expect(wrapper.find('.mission-workspace__stage-header').exists()).toBe(false);
+    expect(requirements!.attributes('aria-pressed')).toBe('true');
     expect(wrapper.get('[aria-label="Stage conversation"]').get('header').text()).toContain('Mission lead');
   });
 
@@ -626,6 +635,18 @@ describe('MissionWorkspace', () => {
     expect(sendMissionPrompt.mock.calls[0]![0]).toContain('Ticket 01 — Create billing account');
     expect(sendMissionPrompt.mock.calls[0]![0]).toContain('Ticket 02 — Add owner checkout');
     expect(sendMissionPrompt.mock.calls[0]![0]).toContain('Include the cancellation path.');
+    const updated = structuredClone(mission);
+    const run = updated.execution!.runs.at(-1)!;
+    run.status = 'awaitingReview';
+    run.proposal = structuredClone(updated.artifacts);
+    run.proposal.tickets = structuredClone(run.draftTickets!);
+    run.proposal.tickets[1]!.title = 'Add checkout with cancellation';
+    run.proposal.tickets[1]!.body = 'Let owners buy seats and cancel.';
+    await wrapper.setProps({ mission: updated });
+    await flushPromises();
+    expect(wrapper.findComponent({ name: 'ElDialog' }).props('modelValue')).toBe(true);
+    expect(ticketDialogText()).toContain('Add checkout with cancellation');
+    expect(ticketDialogText()).toContain('Let owners buy seats and cancel.');
     wrapper.unmount();
   });
 
@@ -864,7 +885,9 @@ describe('MissionWorkspace', () => {
     expect(wrapper.find('[aria-label="Accepted artifact"]').exists()).toBe(false);
     expect(wrapper.get('.code-review-slot').text()).toContain('agent-dina');
     expect(wrapper.get('.code-review-slot').text()).toContain('Acceptance verified');
-    expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('100');
+    const stages = wrapper.get('[aria-label="Workflow progress"]').findAll('button');
+    expect(stages.every(stage => stage.attributes('aria-label')?.includes('Complete'))).toBe(true);
+    expect(stages.every(stage => !stage.text().includes('Complete'))).toBe(true);
   });
 
   it('renders the real review surface slot for debug Mission fixtures', async () => {

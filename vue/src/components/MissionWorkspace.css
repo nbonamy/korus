@@ -51,11 +51,42 @@
 }
 
 .mission-workspace__body {
+  --mission-chat-width: 40%;
+  --mission-chat-size: clamp(300px, var(--mission-chat-width), calc(100% - 360px));
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(210px, 238px) minmax(360px, 1fr) minmax(
-      300px,
-      36%
-    );
+  grid-template-columns: minmax(0, 1fr) var(--mission-chat-size);
+}
+
+.mission-workspace__body--resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.mission-workspace__chat-resizer {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  right: var(--mission-chat-size);
+  bottom: 0;
+  width: var(--space-4);
+  transform: translateX(50%);
+  outline: none;
+  cursor: col-resize;
+  touch-action: none;
+  -webkit-app-region: no-drag;
+}
+
+.mission-workspace__chat-resizer::after {
+  position: absolute;
+  inset: 0 3px;
+  content: '';
+}
+
+.mission-workspace__chat-resizer:hover::after,
+.mission-workspace__chat-resizer:focus-visible::after,
+.mission-workspace__body--resizing .mission-workspace__chat-resizer::after {
+  background: var(--color-resize-handle-hover);
 }
 
 .mission-workspace__body--conversation-only {
@@ -85,7 +116,6 @@
   justify-content: space-between;
   gap: var(--space-10);
   padding: var(--space-4) var(--space-12);
-  border-bottom: 1px solid var(--color-border);
   background: var(--color-surface-lowest);
 }
 
@@ -98,6 +128,48 @@
 
 .mission-workspace__workbench-scroll--requirements {
   padding-bottom: 0;
+}
+
+.mission-workspace__workbench-scroll--requirements > .mission-workspace__artifact {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+}
+
+.mission-workspace__workbench-scroll--stage-loading {
+  display: flex;
+  flex-direction: column;
+}
+
+.mission-workspace__stage-loading {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: var(--space-8);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-18);
+  line-height: var(--line-height-28);
+  text-align: center;
+}
+
+.mission-workspace__stage-loading h3 {
+  color: var(--color-text);
+  font-size: var(--font-size-20);
+  font-weight: var(--font-weight-semibold);
+}
+
+.mission-workspace__stage-loading p {
+  max-width: 400px;
+  font-size: var(--font-size-14);
+  line-height: var(--line-height-22);
+}
+
+.mission-workspace__stage-icon {
+  width: var(--space-20);
+  height: var(--space-20);
+  color: var(--color-primary);
 }
 
 .mission-workspace__stage-heading {
@@ -139,12 +211,6 @@
 .mission-workspace__empty-artifact button svg {
   width: var(--icon-sm);
   height: var(--icon-sm);
-}
-
-.mission-workspace__stage-header .app-button {
-  min-height: 28px;
-  padding: 0 var(--space-6);
-  font-size: var(--font-size-12);
 }
 
 .mission-workspace__stage-actions {
@@ -230,26 +296,13 @@
   padding: 0 0 var(--space-8);
 }
 
-.mission-workspace__review-hint {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  margin-top: var(--space-10);
-  padding: var(--space-6);
-  border-top: 1px solid var(--color-border);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-13);
-}
 
-.mission-workspace__review-hint svg {
-  width: var(--icon-md);
-  height: var(--icon-md);
-}
-
-
-@container (max-width: 980px) {
+@container (max-width: 760px) {
   .mission-workspace__body {
-    grid-template-columns: 200px minmax(360px, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mission-workspace__chat-resizer {
+    display: none;
   }
 }
 

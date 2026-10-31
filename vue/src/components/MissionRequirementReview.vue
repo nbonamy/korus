@@ -48,6 +48,14 @@ async function respondToReview(response: PlanReviewResponse): Promise<PlanReview
 }
 </script>
 <style scoped>
+.mission-requirement-review {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
 .mission-requirement-review :deep(.plan-review-document) {
   padding: 0;
 }

@@ -150,7 +150,7 @@ watch(() => props.resetKey, () => {
 });
 
 function ticketKey(ticket: MissionTicket, index: number): string {
-  return ticket.id ?? `ticket-${index}-${ticket.title}`;
+  return ticket.id ?? `ticket-${index}`;
 }
 
 function ticketNumber(index: number): string {

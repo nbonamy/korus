@@ -356,6 +356,12 @@ function customWorkItem(selection: Omit<WorkItemAssignmentSelection, 'action'>):
   border-bottom: 1px solid var(--color-border);
 }
 
+.repository-session-source-dialog__sources :deep(.el-select .el-select__wrapper) {
+  height: 28px;
+  min-height: 28px;
+  padding-block: 0;
+}
+
 .repository-session-source-dialog__assignment-header {
   min-height: 54px;
   display: flex;

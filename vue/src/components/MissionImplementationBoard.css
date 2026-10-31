@@ -1,8 +1,7 @@
 .mission-implementation {
   display: grid;
-  max-width: 860px;
+  min-width: 0;
   gap: var(--space-8);
-  margin: 0 auto;
 }
 
 .mission-implementation__summary {
@@ -145,8 +144,8 @@
 }
 
 .mission-implementation__lane ol {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--space-3);
   margin: 0;
   padding: var(--space-6);

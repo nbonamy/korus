@@ -704,7 +704,9 @@ publishes only after saving.
   stage instructions and sending the next kickoff.
 - The lead can reopen an earlier reached stage through its identity-bound tool.
   Backtracking retires the lead's pending proposal and waits for repository workers
-  to stop; viewing an earlier artifact has no lifecycle effect. Tickets, completed
+  to stop; viewing an earlier artifact has no lifecycle effect. Reopening Requirements
+  restores the accepted brief as a pending proposal the user can review while the
+  lead revises it. Tickets, completed
   implementation and run history survive stage changes. Tickets drafts extend the
   existing backlog using stable IDs. An authored ticket change resets only that
   ticket and increments its content revision; unchanged submissions preserve completion.
@@ -727,16 +729,19 @@ publishes only after saving.
   affected repositories when code work begins, sharing one Mission suffix and
   branch name. Repositories run in parallel; work within one repository is
   serialized unless the user opts into parallel implementation when approving
-  Tickets. That choice is persisted with the implementation model. Parallel
+  Tickets. That choice is persisted with the implementation model. Concurrent
   attempts use distinct worker conversations in the same repository worktree,
-  with dependency-ready tickets dispatched independently. Shared files and Git
+  with dependency-ready tickets dispatched independently. Available workers from
+  accepted tickets can be reused after their provider turn finishes. Shared files and Git
   state are a disclosed risk: workers stop for user guidance on conflicts and
   commit only their own changes, using selected lines for mixed files. Other
   workers' uncommitted changes do not prevent ticket submission. Each worktree
   has a persisted cooperative commit lock owned by the worker and provider turn.
   Parallel workers wait to acquire it before changing the Git index and release it after
   committing; successful ticket submission also releases any lock held by that
-  assignment in the same durable update. Completed owner turns release it. After a
+  assignment in the same durable update. Failed assignments retain commit-lock
+  access for recovery while they still own the current ticket revision and have
+  not been replaced. Completed owner turns release it. After a
   daemon restart, a persisted lock is released only after the provider conversation
   is loaded and confirmed idle; unavailable or active owners retain it. This coordinates participating
   workers, not external Git processes or concurrent edits to files.

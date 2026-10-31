@@ -1,46 +1,38 @@
 <template>
-  <aside class="mission-stage-rail" :aria-label="t('missions.progress')">
-    <div class="mission-stage-rail__heading">
-      <ListIcon aria-hidden="true" />
-      <strong>{{ t('missions.process') }}</strong>
-    </div>
-    <ol class="mission-stage-rail__stages">
+  <nav class="mission-stage-rail" :aria-label="t('missions.progress')">
+    <ol ref="stageList" class="mission-stage-rail__stages">
       <li v-for="(stage, index) in stages" :key="stage">
         <button
           type="button"
           :class="{ 'mission-stage-rail__stage--viewed': viewedStage === stage }"
+          :data-stage="stage"
+          :data-state="stageState(stage)"
           :disabled="index > currentIndex"
           :aria-current="stage === mission.stage ? 'step' : undefined"
+          :aria-pressed="viewedStage === stage"
+          :aria-label="`${t(`missions.${stage}`)}, ${stageStatus(stage)}`"
           @click="emit('view-stage', stage)"
         >
           <span class="mission-stage-rail__marker" :data-state="stageState(stage)">
-            <CheckIcon v-if="stageState(stage) === 'complete'" aria-hidden="true" />
+            <CheckIcon v-if="stageState(stage) === 'complete'" stroke="3" aria-hidden="true" />
             <span v-else>{{ index + 1 }}</span>
           </span>
           <span class="mission-stage-rail__copy">
             <strong>{{ t(`missions.${stage}`) }}</strong>
-            <small>{{ stageStatus(stage) }}</small>
           </span>
         </button>
       </li>
     </ol>
-    <div class="mission-stage-rail__progress">
-      <span>{{ t('missions.stageCount', { current: completedStageCount, total: stages.length }) }}</span>
-      <strong>{{ progressPercent }}%</strong>
-      <div role="progressbar" :aria-valuenow="progressPercent" aria-valuemin="0" aria-valuemax="100">
-        <span :style="{ width: `${progressPercent}%` }" />
-      </div>
-    </div>
-  </aside>
+  </nav>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, useTemplateRef, watchPostEffect } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Mission, MissionStage } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
 import { pendingMissionRun } from '@workspace/core/mission-execution';
-import { CheckIcon, ListIcon } from '../shared/icons/app-icons';
+import { CheckIcon } from '../shared/icons/app-icons';
 
 const props = defineProps<{ mission: Mission; viewedStage: MissionStage }>();
 const emit = defineEmits<{ 'view-stage': [stage: MissionStage] }>();
@@ -48,8 +40,13 @@ const { t } = useI18n();
 const stages = computed(() => missionWorkflow(props.mission.workflow.type).stages);
 const activeRun = computed(() => pendingMissionRun(props.mission));
 const currentIndex = computed(() => stages.value.indexOf(props.mission.stage));
-const completedStageCount = computed(() => props.mission.status === 'completed' ? stages.value.length : currentIndex.value);
-const progressPercent = computed(() => Math.round((completedStageCount.value / stages.value.length) * 100));
+const stageList = useTemplateRef<HTMLOListElement>('stageList');
+
+watchPostEffect(() => {
+  const stage = props.viewedStage;
+  stageList.value?.querySelector<HTMLButtonElement>(`[data-stage="${stage}"]`)
+    ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+});
 
 function stageState(stage: MissionStage): 'complete' | 'current' | 'upcoming' {
   const index = stages.value.indexOf(stage);
@@ -74,63 +71,37 @@ function stageStatus(stage: MissionStage): string {
 <style scoped>
 .mission-stage-rail {
   display: flex;
-  min-height: 0;
-  flex-direction: column;
-  padding-bottom: var(--space-10);
-  border-right: 1px solid var(--color-border);
-  background: color-mix(
-    in srgb,
-    var(--color-surface),
-    var(--color-shell-main) 80%
-  );
-}
-
-.mission-stage-rail__heading {
-  display: flex;
-  min-height: var(--workbench-subheader-height);
-  flex: 0 0 auto;
-  align-items: center;
-  gap: var(--space-6);
-  padding: 0 var(--space-12);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.mission-stage-rail__heading > svg {
-  width: var(--icon-lg);
-  height: var(--icon-lg);
-  color: var(--color-primary);
-}
-
-.mission-stage-rail__copy {
-  display: grid;
+  height: var(--workbench-subheader-height);
   min-width: 0;
-  gap: var(--space-1);
-}
-
-.mission-stage-rail__copy small {
-  overflow: hidden;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-12);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
 }
 
 .mission-stage-rail__stages {
   display: grid;
-  gap: var(--space-3);
+  min-width: 0;
+  flex: 1;
+  grid-template-columns: repeat(5, minmax(108px, 1fr));
+  gap: var(--space-2);
   margin: 0;
-  padding: var(--space-8);
+  padding: var(--space-2);
+  overflow: auto hidden;
   list-style: none;
+  scrollbar-width: thin;
+  scroll-padding-inline: var(--space-2);
 }
 
 .mission-stage-rail__stages button {
   display: flex;
   width: 100%;
+  height: 100%;
+  min-width: 0;
   align-items: center;
-  gap: var(--space-6);
-  padding: var(--space-6);
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-8);
   border: 0;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   color: var(--color-text);
   background: transparent;
   text-align: left;
@@ -143,19 +114,40 @@ function stageStatus(stage: MissionStage): string {
 }
 
 .mission-stage-rail__stages .mission-stage-rail__stage--viewed {
-  background: var(--color-primary-container);
+  background: var(--color-surface-high);
+}
+
+.mission-stage-rail__stages button[data-state="complete"] strong {
+  color: var(--color-on-success-container);
+}
+
+.mission-stage-rail__stages button[data-state="current"] strong {
+  color: var(--color-primary);
+}
+
+.mission-stage-rail__copy {
+  min-width: 0;
+  font-size: var(--font-size-12);
+}
+
+.mission-stage-rail__copy strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mission-stage-rail__marker {
   display: grid;
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
+  width: var(--space-10);
+  height: var(--space-10);
+  flex: 0 0 var(--space-10);
   place-items: center;
-  border: 2px solid var(--color-border-strong);
+  border: 1.5px solid var(--color-border-strong);
   border-radius: var(--radius-full);
   background: var(--color-surface-lowest);
-  font-size: var(--font-size-12);
+  font-size: var(--font-size-11);
+  line-height: 1;
 }
 
 .mission-stage-rail__marker[data-state="current"] {
@@ -170,48 +162,7 @@ function stageStatus(stage: MissionStage): string {
 }
 
 .mission-stage-rail__marker svg {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
-}
-
-.mission-stage-rail__progress {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: var(--space-4);
-  margin: auto var(--space-8) 0;
-  padding: var(--space-8) var(--space-4) 0;
-  border-top: 1px solid var(--color-border);
-  font-size: var(--font-size-12);
-}
-
-.mission-stage-rail__progress [role="progressbar"] {
-  height: 6px;
-  grid-column: 1 / -1;
-  overflow: hidden;
-  border-radius: var(--radius-full);
-  background: var(--color-surface-high);
-}
-
-.mission-stage-rail__progress [role="progressbar"] span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--color-primary);
-}
-
-@container (max-width: 680px) {
-  .mission-stage-rail {
-    min-height: auto;
-    border-right: 0;
-    border-bottom: 1px solid var(--color-border);
-    border-left: 0;
-  }
-  .mission-stage-rail__stages {
-    grid-template-columns: repeat(4, minmax(120px, 1fr));
-    overflow-x: auto;
-  }
-  .mission-stage-rail__progress {
-    margin-top: var(--space-8);
-  }
+  width: var(--space-6);
+  height: var(--space-6);
 }
 </style>
