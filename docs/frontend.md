@@ -221,6 +221,9 @@ replace a newer dialog or navigation selection.
   right as tertiary, secondary, primary. Compact pickers use
   the filter as the whole top row, then loading/error/empty/results. Dialogs emit
   domain actions; the parent or composable persists and calls the backend.
+  Header controls teleport their dialogs to the document body so split-pane headers
+  and resize handles stay below modal overlays. Keep each dialog’s state and actions
+  with its originating control.
   Shared dialog styles reset inherited text alignment to left; footer actions stay
   right-aligned. Do not add per-dialog alignment resets.
 - **Menus and tabs:** `AppMenu` gives consistent rows, roles and states; add roving
