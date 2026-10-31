@@ -1,42 +1,49 @@
 <template>
   <aside class="mission-conversation-rail" :aria-label="t('missions.support')">
     <div class="mission-conversation-rail__navigation">
-      <header>
+      <ElTabs
+        v-if="conversations.length > 1"
+        v-model="selectedAgentId"
+        type="border-card"
+        class="mission-conversation-rail__switcher"
+        :aria-label="t('missions.conversations')"
+      >
+        <ElTabPane
+          v-for="conversation in conversations"
+          :key="conversation.key"
+          :name="conversation.agentId"
+          :label="tabLabel(conversation)"
+        >
+          <template #label>
+            <span class="mission-conversation-rail__tab-label" :aria-label="tabLabel(conversation)">
+              <TargetArrowIcon v-if="conversation.key === 'mission-lead'" aria-hidden="true" />
+              <RepositoryIcon v-else-if="tabIcon(conversation)" :icon="tabIcon(conversation)" :name="tabTitle(conversation)" aria-hidden="true" />
+              <FolderIcon v-else aria-hidden="true" />
+              <strong>{{ tabTitle(conversation) }}</strong>
+              <i
+                v-if="attentionOf(conversation)"
+                class="mission-conversation-rail__dot"
+                :data-attention="attentionOf(conversation)"
+                aria-hidden="true"
+              />
+            </span>
+          </template>
+        </ElTabPane>
+      </ElTabs>
+      <header v-if="conversations.length <= 1" :aria-label="headerTitle">
         <span class="mission-conversation-rail__mark">
           <CodeIcon v-if="selectedConversation?.run.stage === 'implementation'" aria-hidden="true" />
           <TargetArrowIcon v-else aria-hidden="true" />
         </span>
         <div class="mission-conversation-rail__heading">
           <h2>{{ headerTitle }}</h2>
-          <p><strong>{{ headerRole }}</strong><span>{{ headerHint }}</span></p>
         </div>
       </header>
-      <div
-        v-if="conversations.length > 1"
-        class="mission-conversation-rail__switcher"
-        role="tablist"
-        :aria-label="t('missions.conversations')"
-      >
-        <button
-          v-for="conversation in conversations"
-          :key="conversation.key"
-          type="button"
-          role="tab"
-          :aria-label="tabLabel(conversation)"
-          :aria-selected="conversation.key === selectedConversation?.key"
-          @click="selectedAgentId = conversation.agentId"
-        >
-          <strong>{{ tabTitle(conversation) }}</strong>
-          <i
-            v-if="attentionOf(conversation)"
-            class="mission-conversation-rail__dot"
-            :data-attention="attentionOf(conversation)"
-            aria-hidden="true"
-          />
-        </button>
-      </div>
     </div>
-    <slot v-if="conversationAgentId" name="conversation" :agent-id="conversationAgentId" />
+    <div v-if="displayedAgentId" class="mission-conversation-rail__conversation">
+      <slot name="conversation" :agent-id="displayedAgentId" />
+      <div ref="conversationOverlay" class="mission-conversation-rail__switch-overlay" aria-hidden="true" />
+    </div>
     <div v-else class="mission-conversation-rail__empty">
       <SparklesIcon aria-hidden="true" />
       <p>{{ t(mission.stage === 'ship' ? 'missions.shipConversationHint' : 'missions.missionLeadStarting') }}</p>
@@ -45,16 +52,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, useTemplateRef, watch } from 'vue';
+import { ElTabPane, ElTabs } from 'element-plus';
 import { useI18n } from 'vue-i18n';
 import type { Agent } from '@workspace/core/contracts';
 import type { Mission } from '@workspace/core/missions';
 import { agentAttention, missionLeadAgentId } from '@workspace/core/mission-attention';
 import { missionRunTicketIndex } from '@workspace/core/mission-execution';
-import { CodeIcon, SparklesIcon, TargetArrowIcon } from '../shared/icons/app-icons';
+import { repositoryIconForAgent } from '@workspace/core/workspace-sidebar';
+import RepositoryIcon from './RepositoryIcon.vue';
+import { CodeIcon, FolderIcon, SparklesIcon, TargetArrowIcon } from '../shared/icons/app-icons';
 
 type Conversation = { key: string; agentId: string; run: NonNullable<Mission['execution']>['runs'][number] };
-const props = defineProps<{ mission: Mission; agents?: Agent[]; unreadAgentIds?: string[] }>();
+const props = defineProps<{ mission: Mission; agents?: Agent[]; unreadAgentIds?: string[]; repositoryIcons?: Record<string, string> }>();
 const selectionBinding = defineModel<string>('selectedAgentId', { default: '' });
 const selectedAgentId = ref(selectionBinding.value);
 watch(selectionBinding, value => { selectedAgentId.value = value; }, { flush: 'sync' });
@@ -83,17 +93,32 @@ const leadAgentId = computed(() => {
 const selectedConversation = computed(() => conversations.value.find(conversation => conversation.agentId === selectedAgentId.value)
   ?? conversations.value.find(conversation => conversation.agentId === leadAgentId.value));
 const conversationAgentId = computed(() => selectedConversation.value?.agentId ?? leadAgentId.value);
-const headerTitle = computed(() => selectedConversation.value ? tabTitle(selectedConversation.value) : t('missions.missionLead'));
-const headerRole = computed(() => selectedConversation.value?.run.stage === 'implementation'
-  ? t('missions.builder')
-  : t(`missions.${selectedConversation.value?.run.stage ?? props.mission.stage}`));
-const headerHint = computed(() => {
-  const run = selectedConversation.value?.run;
-  if (run?.stage === 'implementation' && run.ticketIndex !== undefined) {
-    return props.mission.artifacts.tickets[run.ticketIndex]?.title ?? t('missions.implementationAgentHint');
+const displayedAgentId = ref(conversationAgentId.value);
+const conversationOverlay = useTemplateRef<HTMLDivElement>('conversationOverlay');
+watch(conversationAgentId, async (id, previous, onCleanup) => {
+  const overlay = conversationOverlay.value;
+  if (!previous || !overlay?.animate || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    displayedAgentId.value = id;
+    return;
   }
-  return run ? t(`missions.stageActivity.${run.stage}`) : t('missions.missionLeadHint');
-});
+  const animation = overlay.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: 'ease-in-out', fill: 'both' });
+  let cancelled = false;
+  onCleanup(() => { cancelled = true; animation.cancel(); });
+  try {
+    await animation.finished;
+    if (cancelled) return;
+    displayedAgentId.value = id;
+    await nextTick();
+    if (cancelled) return;
+    animation.reverse();
+    await animation.finished;
+    animation.cancel();
+  } catch { /* A newer selection or unmount cancels this transition. */ }
+}, { flush: 'post' });
+const tabIcon = (conversation: Conversation) => repositoryIconForAgent(
+  props.agents?.find(agent => agent.id === conversation.agentId), props.repositoryIcons ?? {},
+);
+const headerTitle = computed(() => selectedConversation.value ? tabTitle(selectedConversation.value) : t('missions.missionLead'));
 
 watch([selectedAgentId, conversations, leadAgentId], ([selected, choices, lead]) => {
   if (selected !== lead && !choices.some(conversation => conversation.agentId === selected)) selectedAgentId.value = lead;
@@ -104,7 +129,7 @@ watch([() => props.mission.id, selectedAgentId], ([id, agentId]) => {
     else window.localStorage.removeItem(storageKey(id));
   } catch { /* Keep the current selection when client storage is unavailable. */ }
 }, { immediate: true });
-watch(conversationAgentId, agentId => { if (agentId) emit('open-conversation', agentId); }, { immediate: true });
+watch(displayedAgentId, agentId => { if (agentId) emit('open-conversation', agentId); }, { immediate: true });
 
 const unreadIds = computed(() => new Set(props.unreadAgentIds ?? []));
 const attentionOf = (conversation: Conversation) => agentAttention(props.agents?.find(agent => agent.id === conversation.agentId), unreadIds.value);
@@ -146,16 +171,20 @@ function conversationKey(run: Conversation['run']): string {
 }
 
 .mission-conversation-rail__navigation {
+  display: flex;
+  height: var(--workbench-subheader-height);
   flex: 0 0 auto;
+  flex-direction: column;
   background: var(--color-surface-lowest);
 }
 
 .mission-conversation-rail__navigation > header {
   display: flex;
-  min-height: var(--workbench-subheader-height);
+  min-height: 0;
+  flex: 1;
   align-items: center;
   gap: var(--space-4);
-  padding: var(--space-6) var(--space-8);
+  padding: 0 var(--space-8);
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -175,34 +204,6 @@ function conversationKey(run: Conversation['run']): string {
   white-space: nowrap;
 }
 
-.mission-conversation-rail__heading p {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  gap: var(--space-2);
-  margin: 0;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-12);
-  line-height: var(--line-height-18);
-}
-
-.mission-conversation-rail__heading p strong {
-  flex: 0 0 auto;
-  color: var(--color-text);
-  font-weight: var(--font-weight-medium);
-}
-
-.mission-conversation-rail__heading p span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mission-conversation-rail__heading p span::before {
-  margin-right: var(--space-2);
-  content: "·";
-}
-
 .mission-conversation-rail__mark {
   display: grid;
   width: var(--space-12);
@@ -220,37 +221,63 @@ function conversationKey(run: Conversation['run']): string {
 }
 
 .mission-conversation-rail__switcher {
-  display: flex;
-  gap: var(--space-8);
-  padding: 0 var(--space-8);
-  overflow-x: auto;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.mission-conversation-rail__switcher button {
-  display: flex;
-  gap: var(--space-4);
-  min-width: 0;
+  --el-tabs-header-height: var(--workbench-subheader-height);
   flex: 0 0 auto;
-  align-items: center;
-  padding: var(--space-3) 0 var(--space-4);
   border: 0;
-  border-bottom: 2px solid transparent;
+  box-shadow: none;
+}
+
+.mission-conversation-rail__switcher :deep(.el-tabs__content) {
+  display: none;
+}
+
+.mission-conversation-rail__switcher :deep(.el-tabs__header .el-tabs__item.is-top) {
+  padding: 0 var(--space-8);
   color: var(--color-text-muted);
-  background: transparent;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
 }
 
-.mission-conversation-rail__switcher button:hover,
-.mission-conversation-rail__switcher button:focus-visible {
-  color: var(--color-text);
+.mission-conversation-rail__switcher :deep(.el-tabs__header .el-tabs__item.is-active) {
+  border-bottom-color: var(--color-border);
+  color: var(--color-primary);
+  background-color: var(--color-surface-lowest);
 }
 
-.mission-conversation-rail__switcher button[aria-selected="true"] {
-  border-bottom-color: var(--color-primary);
-  color: var(--color-text);
+.mission-conversation-rail__switcher :deep(.el-tabs__item:focus-visible) {
+  border-radius: 0;
+  box-shadow: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.mission-conversation-rail__tab-label {
+  display: flex;
+  gap: var(--space-2);
+  min-width: 0;
+  align-items: center;
+}
+
+.mission-conversation-rail__tab-label > svg {
+  width: var(--icon-md);
+  height: var(--icon-md);
+  flex: 0 0 auto;
+}
+
+.mission-conversation-rail__conversation {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.mission-conversation-rail__switch-overlay {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  background: var(--color-surface-lowest);
+  opacity: 0;
+  pointer-events: none;
 }
 
 .mission-conversation-rail__dot {
