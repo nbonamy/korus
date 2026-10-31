@@ -413,6 +413,18 @@ test("navigation, films, and cards work at desktop and phone widths", async () =
       assert.equal(new URL(page.url()).pathname, "/docs/");
     }
     await page.goto(origin);
+    const design = page.locator("#design");
+    assert.equal(await design.count(), 1, "The homepage introduces Design");
+    const designImage = design.locator("img");
+    await designImage.scrollIntoViewIfNeeded();
+    await page.waitForFunction(
+      (image) => image.complete && image.naturalWidth > 0,
+      await designImage.elementHandle(),
+    );
+    await design.getByRole("link", { name: /design/i }).click();
+    await page.getByRole("heading", { level: 1, name: /^Design\b/ }).waitFor();
+    assert.equal(new URL(page.url()).pathname, "/docs/features/design.html");
+    await page.goto(origin);
     await page
       .locator("#automations a[href='/docs/features/automations.html']")
       .click();

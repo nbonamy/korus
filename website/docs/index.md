@@ -30,7 +30,7 @@ Read [core concepts](./getting-started/core-concepts), [parallel agents](./workf
 
 ## Go from idea to delivery
 
-Use a [Mission](./workflows/missions) to move through Requirements, Tickets, Implementation, Review, and Ship. Use [Code Review](./workflows/code-review) when you already have changes to assess, or [Visualize](./features/visualize) to explore a design in the conversation.
+Use a [Mission](./workflows/missions) to move through Requirements, Tickets, Implementation, Review, and Ship. Use [Code Review](./workflows/code-review) when you already have changes to assess. Explore an interface in [Design](./features/design) before coding, or use [Visualize](./features/visualize) to think through a system with diagrams.
 
 ## Choose your engine
 

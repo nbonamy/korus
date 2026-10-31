@@ -100,6 +100,12 @@ Refresh them with the `korus-live-preview` skill when those surfaces change,
 and bump the `?v=` query on the image URLs. Computer Use and the choice of
 agents and Analytics use text-only cards.
 
+The Design card uses `assets/screens/design.webp`, a capture of the running
+Design pane with three neutral storefront checkout proposals. It shows the
+real artboard canvas and coding handoff controls; the proposals are demo
+content. The capture contains no private conversations, repositories, or
+account details. Keep this card linked to the Design user guide.
+
 The Skills capture shows the real Discover panel with its curated catalog in an
 isolated preview. It contains no private skill names, provider accounts, or
 repository data.

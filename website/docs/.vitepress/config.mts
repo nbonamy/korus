@@ -76,6 +76,7 @@ export default defineConfig({
           { text: "Conversations", link: "/features/conversations" },
           { text: "Workspace & diffs", link: "/features/workspace" },
           { text: "Browser", link: "/features/browser" },
+          { text: "Design", link: "/features/design" },
           { text: "Visualize", link: "/features/visualize" },
           { text: "Automations", link: "/features/automations" },
           { text: "Computer Use", link: "/features/computer-use" },

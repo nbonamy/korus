@@ -6,7 +6,7 @@ description: Inspect files and Git changes, and run mobile simulators beside the
 
 The workspace beside the conversation keeps the artifacts you need for decisions within reach.
 
-Use its **+** menu to open **Files**, **Changes**, **Review**, **Visualize**, **Simulator**, or **Browser** where supported. Tabs can be closed with their close button; right-click a tab for its tab actions.
+Use its **+** menu to open **Files**, **Changes**, **Review**, **Design**, **Visualize**, **Simulator**, or **Browser** where supported. Tabs can be closed with their close button; right-click a tab for its tab actions. See [Design](./design) for interface proposals and the handoff to coding.
 
 ## Organize agents by activity
 
@@ -147,6 +147,8 @@ Use **Pull** in the Git menu to fetch changes from the current branch's upstream
 **Revert changes** discards uncommitted work after confirmation. Including untracked files is off by default; leave it off unless you intend to delete those files too.
 
 Use **Prune** to review local branches, remote branches, and linked worktrees for removal. Merged, unused local branches are selected by default; remote branches are opt-in. Review unmerged work and uncommitted or ignored files before confirming. Deleting a worktree removes its files and can leave agents without their working folders.
+
+Worktrees with uncommitted changes are marked in red. The uncommitted-file count excludes Git-ignored files; check those files separately when deciding whether a checkout can be deleted. Choose **Run in background** to continue working during cleanup, then inspect the completion count and any failures before assuming every selected item was removed.
 
 ## Agent workspace state
 

@@ -6,6 +6,8 @@ description: Explore a design with diagrams and targeted canvas feedback.
 
 Visualize brings diagrams and interactive explanations into the workspace next to your conversation.
 
+For website and app interface proposals, use [Design](./design) to compare artboards, refine screens, and send a chosen direction for coding.
+
 ## Start a visualization
 
 Enter `/visualize` to choose what to draw. The agent asks one question with three proposals based on your conversation. Pick one or use the **Other** field to describe your own idea; the result appears in the Visualize pane.
