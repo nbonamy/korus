@@ -1,3 +1,4 @@
+import { isDesignWorkspace, type DesignWorkspace } from '@workspace/core/design';
 import { migrateRemoteTeamLinks } from './persistence/migrations';
 import { readPersistedExecutionSelection } from '@workspace/core/execution-selection';
 import { isRateLimitPause } from '@workspace/core/auto-resume';
@@ -83,6 +84,7 @@ export type PersistedAgent = Pick<Agent, 'id' | 'name' | 'folder' | 'createdAt' 
   rateLimitPause?: Agent['rateLimitPause'];
   autoResumePending?: boolean;
   goal?: ThreadGoal;
+  designWorkspace?: DesignWorkspace;
   visualize?: Omit<VisualizeSession, 'visualizations'> & { visualizations?: Visualization[] };
   statusText?: string;
   lastActivityAt?: string;
@@ -166,6 +168,7 @@ function persistedAgentFromSnapshot(agent: Agent, libraries?: RepositoryVisualiz
     ...(agent.planReview ? { planReview: { ...agent.planReview } } : {}),
     ...(agent.codeReview ? { codeReview: cloneCodeReviewSession(agent.codeReview) } : {}),
     ...(agent.goal ? { goal: { ...agent.goal } } : {}),
+    ...(agent.designWorkspace ? { designWorkspace: structuredClone(agent.designWorkspace) } : {}),
     ...(persistedVisualize ? { visualize: persistedVisualize } : {}),
     statusText: agent.statusText,
     createdAt: agent.createdAt,
@@ -430,6 +433,7 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
       ? { codeReview: cloneCodeReviewSession(value.codeReview) }
       : {}),
     ...(goal ? { goal } : {}),
+    ...(isDesignWorkspace(value.designWorkspace) ? { designWorkspace: structuredClone(value.designWorkspace) } : {}),
     ...(visualize ? { visualize } : {}),
     ...(typeof value.statusText === 'string' ? { statusText: value.statusText } : {}),
     status: { type: 'idle' },

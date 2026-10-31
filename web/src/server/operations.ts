@@ -15,6 +15,7 @@ type ParamsFactory = (args: unknown[]) => unknown;
 const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?]>> = {
   getUsage: [backendMethods.usageGet, namedOptional('filter')],
   clearUsage: [backendMethods.usageClear],
+  design: [backendMethods.agentDesign, named('agentId', 'input')],
   startVisualize: [backendMethods.agentVisualizeStart, namedOptional('agentId', 'input')],
   setVisualizeOpen: [backendMethods.agentVisualizeOpenSet, named('agentId', 'input')],
   generateVisualizationSuggestion: [backendMethods.agentVisualizationSuggestionGenerate, named('agentId', 'input')],
@@ -201,8 +202,10 @@ export async function invokeAppWebOperation(
   operation: string,
   args: unknown[],
 ): Promise<unknown> {
-  if ((operation === 'sendPrompt' || operation === 'steerPrompt') && isRecord(args[2]) && args[2].attachments !== undefined
-    && (!Array.isArray(args[2].attachments) || args[2].attachments.length > 0)) {
+  const attachmentOptions = operation === 'design' && isRecord(args[1]) && args[1].type === 'open' ? args[1]
+    : operation === 'sendPrompt' || operation === 'steerPrompt' ? args[2] : undefined;
+  if (isRecord(attachmentOptions) && attachmentOptions.attachments !== undefined
+    && (!Array.isArray(attachmentOptions.attachments) || attachmentOptions.attachments.length > 0)) {
     throw new Error('Web attachments require a trusted upload service. Use the local desktop app.');
   }
   if (operation === 'updateSettings') {

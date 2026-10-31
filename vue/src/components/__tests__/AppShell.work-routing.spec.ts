@@ -1171,4 +1171,3 @@ describe('AppShell work routing', () => {
     expect(wrapper.emitted('restart-agent')).toStrictEqual([['agent-dina']]);
   });
 });
-

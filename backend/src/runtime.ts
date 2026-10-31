@@ -1,3 +1,5 @@
+import { DesignService } from './design-service';
+import { createDesignToolModuleProvider } from './mcp/design-tools';
 import { GuestJoins } from './sharing/guest-joins';
 import { UsageService } from './usage/usage-service';
 import { UsageLedger } from './usage/usage-ledger';
@@ -138,6 +140,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     readHistory: agent => server.readTaskHistory(agent),
     onError: error => warnMain('tasks', 'transition failed', { message: String(error) }),
   });
+  const designService = new DesignService({ capture: embeddedBrowserAvailable ? input => options.requestClient<string>(backendMethods.clientDesignCapture, input) : undefined, snapshot, persist: () => saveBackendSnapshot(snapshot), publish: agent => server?.emitEvent({ agentId: agent.id, type: 'agent.updated', payload: { id: agent.id, designWorkspace: agent.designWorkspace } }) });
   const visualizeService = new VisualizeService({
     snapshot,
     generatedImagesRoot: path.join(backendCodexHomeDir(), 'generated_images'),
@@ -209,6 +212,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
         ? (agentId, input) => options.requestClient(backendMethods.clientMobileSimulatorExecute, { agentId, input })
         : undefined),
       createVisualizeToolModuleProvider(visualizeService),
+      createDesignToolModuleProvider(designService),
       createTaskToolModuleProvider(tasks, id => Boolean(snapshot.teams.find(team => team.id === snapshot.agents.find(agent => agent.id === id)?.teamId)?.collaborationOwnerId), { wait: (id, input) => server.waitCollaborationTasks(id, input), cancel: (id, task) => server.cancelCollaborationTask(id, task) }),
     ],
   });
@@ -354,6 +358,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     agentGitService,
     agentCreation,
     visualizeService,
+    designService,
     driverRpc,
     onEvent: (event) => { companion.event(event); options.emitEvent(event); },
     onBackendEventApplied: (event) => { mcpService.handleBackendEvent(event); tasks.handleEvent(event); automationRunner.handleEvent(event); },
@@ -381,6 +386,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
         }),
         [backendMethods.clientExternalOpen]: (params) => options.requestClient(backendMethods.clientExternalOpen, params),
         [backendMethods.clientSpokenAnnouncementQueue]: (params) => options.requestClient(backendMethods.clientSpokenAnnouncementQueue, params),
+        [backendMethods.clientDesignCapture]: params => options.requestClient(backendMethods.clientDesignCapture, params),
         [backendMethods.clientBrowserOpen]: (params) => options.requestClient(backendMethods.clientBrowserOpen, params),
         [backendMethods.clientBrowserExecute]: (params) => options.requestClient(backendMethods.clientBrowserExecute, params),
         [backendMethods.clientComputerUseExecute]: (params) => options.requestClient(backendMethods.clientComputerUseExecute, params),

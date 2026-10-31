@@ -25,6 +25,25 @@ vi.mock('electron', () => ({
 }));
 
 describe('provider sign-out IPC', () => {
+  it('resolves Design reference attachments through the native registry before daemon dispatch', async () => {
+    const request = vi.fn().mockResolvedValue({ workspace: { isOpen: true } });
+    const controller = new AppController(createInitialSnapshot(), createBackendClient({ request }), fakeAppLifecycle());
+    controller.registerIpcHandlers();
+    await import('../../preload/index');
+    const api = bridge.exposed.get('app') as AppApi;
+    const image = { type: 'image' as const, path: '/tmp/reference.png', name: 'reference.png', mimeType: 'image/png' };
+    const registry = (controller as unknown as { nativeAttachmentRegistry: { register(input: typeof image): { reference: string } } }).nativeAttachmentRegistry;
+    const { reference } = registry.register(image);
+    const input = { type: 'open', prompt: 'Recreate this screen', attachments: [{ type: 'image', reference }] } as const;
+    await api.design('agent-dina', input);
+    expect(request).toHaveBeenCalledExactlyOnceWith('agent/design', {
+      agentId: 'agent-dina', input: { type: 'open', prompt: input.prompt, attachments: [image] },
+    });
+    request.mockClear();
+    await expect(api.design('agent-dina', { ...input, attachments: [{ type: 'image', reference: 'missing' }] })).rejects.toThrow();
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it('carries a reviewed profile target and stop identity through the real preload bridge', async () => {
     const run = { id: 'run', agentId: 'agent-remote', state: 'running' };
     const request = vi.fn().mockResolvedValue(run);

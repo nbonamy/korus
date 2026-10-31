@@ -40,7 +40,7 @@
                 >
                   <BacklogIcon v-if="tab === 'backlog'" aria-hidden="true" />
                   <IconChecklist v-if="tab === 'codeReview'" aria-hidden="true" />
-                  <IconSitemap v-else-if="tab === 'visualize'" aria-hidden="true" />
+                  <IconSitemap v-else-if="tab === 'visualize' || tab === 'design'" aria-hidden="true" />
                   <ClockHour8Icon v-else-if="tab === 'gitLog'" aria-hidden="true" />
                   <FileDiffIcon v-else-if="tab === 'review'" aria-hidden="true" />
                   <IconDeviceMobile v-else-if="tab === 'simulator'" aria-hidden="true" />
@@ -147,6 +147,10 @@
         <IconChecklist aria-hidden="true" />
         <span>{{ $t('surface.rightWorkspacePanel.review') }}</span>
       </button>
+      <button type="button" @click="emit('openTab', 'design')">
+        <IconSitemap aria-hidden="true" />
+        <span>{{ $t('design.title') }}</span>
+      </button>
       <button type="button" @click="emit('openTab', 'visualize')">
         <IconSitemap aria-hidden="true" />
         <span>{{ $t('surface.rightWorkspacePanel.visualize') }}</span>
@@ -201,6 +205,7 @@
       @open-file="emit('previewFile', $event)"
     />
 
+    <DesignPanel v-if="tabs.includes('design')" v-show="activeTab === 'design'" :key="agent.id" :agent-id="agent.id" :workspace="agent.designWorkspace ?? emptyDesign" :execute="input => executeDesign(agent.id, input)" />
     <VisualizePanel
       v-if="presentedTabs.includes('visualize') && agent.visualize"
       v-show="activeTab === 'visualize'"
@@ -412,6 +417,13 @@ import WorkspaceLinkDropTarget from './WorkspaceLinkDropTarget.vue';
 import { externalBrowserUrl, openInExternalBrowser } from './browser-external';
 import CodeReviewPanel from './CodeReviewPanel.vue';
 import VisualizePanel from './VisualizePanel.vue';
+import DesignPanel from './DesignPanel.vue';
+import type { DesignRequest, DesignWorkspace } from '@workspace/core/design';
+const emptyDesign: DesignWorkspace = { conversationRef: null, isOpen: true, document: null, selectedArtboardId: null, selectedNodeId: null, undo: [], checkpoints: [] };
+async function executeDesign(agentId: string, input: DesignRequest) {
+  if (!appApi) throw new Error('Design is unavailable.');
+  return appApi.design(agentId, input);
+}
 import FileExplorerPanel from './FileExplorerPanel.vue';
 import GitDiffPreviewPanel from './GitDiffPreviewPanel.vue';
 import GitReviewPanel from './GitReviewPanel.vue';
@@ -608,6 +620,7 @@ const activeProjectFilePath = computed(() => {
 const simulatorAvailable = Boolean(appApi?.mobileSimulator);
 const addMenuItems = computed<AppMenuItem[]>(() => [
   { id: 'codeReview', type: 'action', label: translate('surface.rightWorkspacePanel.review'), icon: IconChecklist },
+  { id: 'design', type: 'action', label: translate('design.title'), icon: IconSitemap },
   { id: 'visualize', type: 'action', label: translate('surface.rightWorkspacePanel.visualize'), icon: IconSitemap },
   { id: 'review', type: 'action', label: translate('surface.rightWorkspacePanel.changes'), icon: FileDiffIcon },
   ...(simulatorAvailable ? [{ id: 'simulator', type: 'action', label: translate('surface.mobileSimulator.tab'), icon: IconDeviceMobile } satisfies AppMenuItem] : []),
@@ -719,6 +732,7 @@ function tabLabel(tab: RightWorkspaceTab): string {
   if (tab === 'simulator') return translate('surface.mobileSimulator.tab');
   if (tab === 'backlog') return translate('surface.rightWorkspacePanel.backlog');
   if (tab === 'codeReview') return translate('surface.rightWorkspacePanel.review');
+  if (tab === 'design') return translate('design.title');
   if (tab === 'visualize') return translate('surface.rightWorkspacePanel.visualize');
   if (tab === 'review') return translate('surface.rightWorkspacePanel.changes');
   if (tab === 'browser') return props.browserVisualization?.title || 'Browser';

@@ -254,3 +254,17 @@ select an agent, pick a folder, send, stream, interrupt or approve, restore afte
 reload) and screenshot checks for shell, sidebars, composer, artifact panes, diffs
 and theme switching apply once the
 chosen desktop tool is configured.
+
+The Design acceptance smoke runs the built web shell and an isolated daemon:
+`npm run build:web && node scripts/verify-design-workspace.mjs [output-directory]`.
+It copies existing local Codex authentication only to pass shell onboarding, submits
+no model turns, and removes its temporary profile afterward. Deterministic authored
+content exercises user edits, targeted batches, stale-write rejection, reload,
+iframe isolation, Play, recovery, shared-canvas navigation, inspector toggling,
+alternatives, layer/layout editing, drag/resize conflicts, prototype navigation with
+form-state recovery, live tweak previews, stale-tweak recovery, and offline HTML
+playback. The output directory
+retains a JSON check report, document, handoff, HTML and screenshots. Add `--live`
+to exercise the configured provider with an open-ended brief and verify three
+directions with tradeoffs and generated controls; this consumes provider usage. Native capture requires
+separate desktop verification.

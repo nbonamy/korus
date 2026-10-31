@@ -179,7 +179,7 @@ import { agentDisplayName } from '@workspace/core/agent-display';
 import { repositoryPeersForAgent } from '@workspace/core/agent-folder';
 import { translate } from '../i18n';
 import { localizedErrorMessage } from '../i18n/errors';
-import { appHostCapabilities } from '../platform-api';
+import { appApi, appHostCapabilities } from '../platform-api';
 import AgentEmptyState from './AgentEmptyState.vue';
 import AgentHeader from './AgentHeader.vue';
 import ConversationPane from './ConversationPane.vue';
@@ -746,6 +746,10 @@ function loadSubagentMessages(agentId: string, conversationId: string): Promise<
 }
 
 function openRightWorkspaceTabFromMenu(agentId: string, tab: RightWorkspaceTab): void {
+  if (tab === 'design') {
+    void appApi?.design(agentId, { type: 'open' }).then(() => openRightWorkspaceTab(tab, agentId)).catch(error => ElMessage.error(localizedErrorMessage(error, translate)));
+    return;
+  }
   if (tab === 'visualize') {
     void props.startVisualize(agentId).catch(error => {
       ElMessage.error(localizedErrorMessage(error, translate));

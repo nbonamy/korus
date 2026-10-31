@@ -42,6 +42,7 @@ const agentFieldPolicy = {
   autoResumePending: 'persisted',
   goal: 'persisted',
   visualize: 'persisted',
+  designWorkspace: 'persisted',
   isRegistered: 'runtime',
   mcpSessionId: 'runtime',
   statusText: 'persisted',

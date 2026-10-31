@@ -414,4 +414,3 @@ function ensureCurrent(isCurrent?: () => boolean): void {
 function workProviderTitle(provider: WorkItem['provider']): string {
   return workProviderDefinition(provider).label;
 }
-

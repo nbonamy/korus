@@ -14,6 +14,7 @@ export const ipcChannels = {
 
   listAgentTasks: 'agent:tasks:list',
   cancelAgentTask: 'agent:task:cancel',
+  design: 'agent:design',
   startVisualize: 'agent:visualize:start',
   setVisualizeOpen: 'agent:visualize:open:set',
   generateVisualizationSuggestion: 'agent:visualize:suggestion:generate',
