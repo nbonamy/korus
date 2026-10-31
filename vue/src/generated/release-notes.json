@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.48.2",
+  "currentVersion": "0.48.3",
   "releases": [
+    {
+      "version": "0.48.3",
+      "releasedAt": "2026-10-31",
+      "sourceSha256": "1fa172175f18819bc2937a4b508b4b394ef2e5b828abcb04d4c8bae17688b788",
+      "markdown": "### Improvements and fixes\n\n- Keep Working details visible while an agent is active."
+    },
     {
       "version": "0.48.2",
       "releasedAt": "2026-10-31",

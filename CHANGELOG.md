@@ -4,6 +4,12 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.48.3] - 2026-10-31
+
+### Improvements and fixes
+
+- Keep Working details visible while an agent is active.
+
 ## [0.48.2] - 2026-10-31
 
 ### Improvements and fixes

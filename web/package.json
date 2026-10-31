@@ -1,6 +1,6 @@
 {
   "name": "@workspace/web",
-  "version": "0.48.2",
+  "version": "0.48.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,9 +13,9 @@
     "test:coverage": "vitest run --coverage --config vitest.config.ts"
   },
   "dependencies": {
-    "@codex-app-sdk/web": "0.19.4",
-    "@workspace/core": "0.48.2",
-    "@workspace/vue": "0.48.2",
+    "@codex-app-sdk/web": "0.19.5",
+    "@workspace/core": "0.48.3",
+    "@workspace/vue": "0.48.3",
     "express": "^5.1.0",
     "vue": "^3.5.35",
     "ws": "^8.18.0"
