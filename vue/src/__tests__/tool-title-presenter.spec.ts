@@ -75,7 +75,7 @@ describe(`${product.name} tool title presenter`, () => {
     ['workspace.upsert-mission-ticket', { title: 'Add checkout' }, 'running', 'Drafting mission ticket'],
     ['workspace.upsert-mission-ticket', { title: 'Add checkout' }, 'completed', 'Drafted mission ticket'],
     ['workspace.upsert-mission-ticket', { title: 'Add checkout' }, 'error', 'Could not draft mission ticket'],
-    ['workspace.toggle_thread_flag', { id: 'delegate_to_worktree', value: true }, 'completed', 'Updated thread flag'],
+    ['workspace.toggle_thread_flag', { id: 'work_proposed', value: true }, 'completed', 'Updated thread flag'],
     ['workspace.send-message', { to: 'computer-use' }, 'completed', 'Sent message to computer-use'],
     ['workspace.list-agents', {}, 'completed', 'Listed agents'],
     ['workspace.report_finding', { title: 'Keep tool copy product-facing' }, 'running', 'Reporting finding'],

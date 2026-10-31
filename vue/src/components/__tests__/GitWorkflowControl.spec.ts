@@ -15,10 +15,12 @@ import '../../styles/base.css';
 const agent = { id: 'agent-1', name: 'Dina', avatar: 'DI', folder: '/repo/worktree', backend: 'codex', backendDefaults: { kind: 'codex' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as Agent;
 const status: AgentGitStatus = { folder: agent.folder!, branch: 'feature/demo', ahead: 2, behind: 0, changedFiles: 2, addedLines: 4, removedLines: 1, hasUntracked: false, state: 'dirty', updatedAt: '' };
 const workflow: AgentGitWorkflow = { repository: 'owner/repo', folder: agent.folder!, isLinkedWorktree: true, baseBranch: 'main', branch: 'feature/demo', detached: false, remote: 'origin', remoteUrl: 'git@github.com:owner/repo.git', upstream: 'origin/feature/demo', ahead: 2, behind: 0, stagedAddedLines: 4, stagedRemovedLines: 1, unstagedAddedLines: 2, unstagedRemovedLines: 0, untrackedAddedLines: 3, untrackedRemovedLines: 0, files: [{ path: 'a.ts', indexStatus: ' ', worktreeStatus: 'M' }, { path: 'new.ts', indexStatus: '?', worktreeStatus: '?' }], stagedFiles: [], unstagedFiles: ['a.ts', 'new.ts'], githubConnected: true };
+const inlineTeleport = { template: '<slot />' };
 // The menu opens in a popper attached to the body.
 const bodyAll = (selector: string) => Array.from(document.body.querySelectorAll(selector)).map((element) => new DOMWrapper(element));
-function mountControl(overrides: Partial<Record<string, unknown>> = {}) {
-  return mount(GitWorkflowControl, { props: { agent, gitStatus: status, getWorkflow: async () => workflow, ...overrides } });
+function mountControl(overrides: Partial<Record<string, unknown>> = {}, realTeleport = false) {
+  // Browser coverage owns overlay placement; these workflows exercise dialog actions inline.
+  return mount(GitWorkflowControl, { attachTo: document.body, global: { stubs: { teleport: realTeleport ? false : inlineTeleport } }, props: { agent, gitStatus: status, getWorkflow: async () => workflow, ...overrides } });
 }
 
 describe('GitWorkflowControl', () => {
@@ -102,17 +104,17 @@ describe('GitWorkflowControl', () => {
     const toggle = wrapper.get<HTMLInputElement>('[role="switch"][aria-label="Report to another agent"]');
     expect(toggle.element.checked).toBe(false);
     expect(wrapper.find('[aria-label="Report recipient"]').exists()).toBe(false);
-    await toggle.setValue(true);
+    await wrapper.get('.el-switch[aria-label="Report to another agent"]').trigger('click');
     expect(submitButton(wrapper, 'Merge').attributes('disabled')).toBeDefined();
     await wrapper.get('[aria-label="Report recipient"] select').setValue('recipient');
     expect(submitButton(wrapper, 'Merge').attributes('disabled')).toBeUndefined();
     await wrapper.setProps({ reportBackAgents: [] });
     expect(submitButton(wrapper, 'Merge').attributes('disabled')).toBeDefined();
     expect(toggle.element.disabled).toBe(false);
-    await toggle.setValue(false);
+    await wrapper.get('.el-switch[aria-label="Report to another agent"]').trigger('click');
     expect(submitButton(wrapper, 'Merge').attributes('disabled')).toBeUndefined();
     await wrapper.setProps({ reportBackAgents: recipients });
-    await toggle.setValue(true);
+    await wrapper.get('.el-switch[aria-label="Report to another agent"]').trigger('click');
     await wrapper.get('[aria-label="Report recipient"] select').setValue('recipient');
     await submitButton(wrapper, 'Merge').trigger('click');
     await flushPromises();
@@ -132,7 +134,7 @@ describe('GitWorkflowControl', () => {
     const wrapper = mountControl();
     await flushPromises();
     const actions = (wrapper.vm as unknown as { getCommandActions(): CommandPaletteAction[] }).getCommandActions();
-    const palette = mount(CommandPalette, { props: { actions }, attrs: { onExecute: (action: CommandPaletteAction) => action.run() } });
+    const palette = mount(CommandPalette, { global: { stubs: { teleport: inlineTeleport } }, props: { actions }, attrs: { onExecute: (action: CommandPaletteAction) => action.run() } });
     try {
       await palette.get('input').setValue('Branch');
       const row = palette.findAll('button').find(button => button.text().includes('Branch'))!;
@@ -167,11 +169,11 @@ describe('GitWorkflowControl', () => {
     const branchCurrentWork = vi.fn(async (_agentId: string, _input: BranchWorkInput) => { await pending; return { state: 'completed' as const, folder: '/worktree', branchName: 'feature', agentId: 'worker', retainedPaths: [] }; });
     let publish!: (event: MainToRendererEvent) => void;
     stubElectronTestWindow({ app: { previewBranchCurrentWork, branchCurrentWork, onEvent: listener => { publish = listener; return () => undefined; } } });
-    const wrapper = mountControl(); await flushPromises();
+    const wrapper = mountControl({}, true); await flushPromises();
     await wrapper.get('.git-workflow-control__trigger').trigger('click');
     await bodyAll('[role="menuitem"]').find(item => item.text() === 'Branch')!.trigger('click'); await flushPromises();
-    await wrapper.get('input[name="branch"]').setValue('feature');
-    await submitButton(wrapper, 'Branch').trigger('click'); await flushPromises();
+    await new DOMWrapper(document.body).get('input[name="branch"]').setValue('feature');
+    await new DOMWrapper(document.body).findAll('button').find(button => button.text() === 'Branch')!.trigger('click'); await flushPromises();
     publish({ type: 'git.branchWorkProgress', agentId: agent.id, occurredAt: '', seq: 1, payload: { id: branchCurrentWork.mock.calls[0]![1].requestId, agentId: agent.id, branchName: 'feature', state: 'running', phase: 'creatingAgent' } });
     await flushPromises();
     const host = mountProvisioningHost();
@@ -725,14 +727,14 @@ describe('GitWorkflowControl', () => {
     expect(wrapper.findAll('.git-workflow-control__merge-cleanup')[1]?.text()).toBe('Delete local and origin branches');
     const cleanup = wrapper.findAll<HTMLInputElement>('.git-workflow-control__merge-cleanup input[role="switch"]');
     expect(cleanup.map(control => control.element.checked)).toStrictEqual([true, true]);
-    await cleanup[0]!.setValue(false);
-    expect(cleanup[1]!.element.checked).toBe(false);
-    expect(cleanup[1]!.element.disabled).toBe(true);
-    await cleanup[0]!.setValue(true);
-    expect(cleanup[1]!.element.disabled).toBe(false);
-    await cleanup[1]!.setValue(true);
-    await choices[1]?.find('input').setValue(true);
-    expect(choices[1]?.classes()).toContain('git-workflow-control__merge-option--selected');
+    await wrapper.findAll('.git-workflow-control__merge-cleanup .el-switch')[0]!.trigger('click');
+    expect(wrapper.findAll<HTMLInputElement>('.git-workflow-control__merge-cleanup input[role="switch"]')[1]!.element.checked).toBe(false);
+    expect(wrapper.findAll<HTMLInputElement>('.git-workflow-control__merge-cleanup input[role="switch"]')[1]!.element.disabled).toBe(true);
+    await wrapper.findAll('.git-workflow-control__merge-cleanup .el-switch')[0]!.trigger('click');
+    expect(wrapper.findAll<HTMLInputElement>('.git-workflow-control__merge-cleanup input[role="switch"]')[1]!.element.disabled).toBe(false);
+    await wrapper.findAll<HTMLInputElement>('.git-workflow-control__merge-cleanup input[role="switch"]')[1]!.setValue(true);
+    await wrapper.findAll('.git-workflow-control__merge-strategy label')[1]!.find('input').setValue(true);
+    expect(wrapper.findAll('.git-workflow-control__merge-strategy label')[1]!.classes()).toContain('git-workflow-control__merge-option--selected');
     const message = wrapper.get<HTMLTextAreaElement>('.git-workflow-control__merge-message');
     expect(message.element.value).toBe('');
     expect(message.attributes('placeholder')).toBe('Squash commit message…');

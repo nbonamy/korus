@@ -31,6 +31,8 @@ import { conversationImageReference } from './images';
 import { previewFile } from './file-preview';
 import { companionMaxDevices, companionMaxInvitations } from '@workspace/core/companion-relay';
 import { pushRegistrationSchema } from './push-registration';
+import { liveActivityRegistrationSchema } from './live-activity-schema';
+import type { LiveActivityRegistration } from '@workspace/core/companion-live-activity';
 
 /** Released phones used flat execution fields. Normalize only those known fields; strict schemas still reject everything else. */
 function legacySelection(value: unknown, keys: readonly string[]): unknown {
@@ -95,6 +97,7 @@ const commandSchema = z.object({ target: targetSchema, text: z.string().max(100_
 export type GatewayState = { push?: Record<string, CompanionPushRegistration>; grants: CompanionGrant[]; commands: Record<string, StoredCommand> };
 const commandRetentionMs = 7 * 86_400_000;
 export type GatewayPort = {
+  registerLiveActivity?(peerId: string, registration: LiveActivityRegistration | null): Promise<void>;
   createTeam?(name: string): Promise<string>;
   executeMission?(input: { id: string; revision: number } & ({ action: 'continueToReview' } | { action: 'accept'; runId: string }
     | { action: 'selectReviewFinding'; findingId: string; selected: boolean } | { action: 'fixSelectedReviewFindings' } | { action: 'rerunReview' })): Promise<void>;
@@ -586,6 +589,14 @@ export class CompanionGateway {
       const usage = await this.port.usage();
       this.requireGrant(peer);
       return usage;
+    },
+    'liveActivity.register': async (peer, args) => {
+      const registration = liveActivityRegistrationSchema.nullable().parse(args);
+      this.requireGrant(peer);
+      if (!this.port.registerLiveActivity) throw new Error('Live Activities are unavailable.');
+      await this.port.registerLiveActivity(peer.peerId, registration);
+      this.requireGrant(peer);
+      return {};
     },
     'notifications.register': async (peer, args) => {
       const registration = pushRegistrationSchema.nullable().parse(args);

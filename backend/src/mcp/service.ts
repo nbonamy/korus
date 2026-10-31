@@ -7,6 +7,7 @@ import { readFile } from 'node:fs/promises';
 import os from 'node:os';
 import { sendAgentPrompt } from '@workspace/core/agent-chat-service';
 import { agentDisplayName } from '@workspace/core/agent-display';
+import { missionAgentIds } from '@workspace/core/mission-attention';
 import { handoffInProgress } from '@workspace/core/agent-handoff';
 import { requireAgentFolder } from '@workspace/core/agent-folder';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
@@ -63,7 +64,7 @@ const maxMarkdownBytes = 2 * 1024 * 1024;
 export type AppMcpServiceOptions = {
   getCollaborationAgents?: () => Agent[];
   createRemoteWorker?: (caller: Agent, input: McpCreateAgentInput & { teamId?: string }, intendedId?: string, assignmentPrompt?: string, userInstructions?: Agent['delegationUserInstructions']) => Promise<Agent>;
-  sendRemotePrompt?: (agent: Agent, prompt: string, goal?: boolean) => Promise<BackendSendResult>;
+  sendRemotePrompt?: (agent: Agent, prompt: string, goal?: boolean, planMode?: boolean) => Promise<BackendSendResult>;
   sendRemoteMessage?: (agent: Agent, prompt: string, messageId: string) => Promise<{ accepted: true }>;
   resolveDelegationParent?: (id: string) => string;
   forwardCollaboration?: (agentId: string, name: string, args: Record<string, unknown>) => Promise<CallToolResult | undefined>;
@@ -133,6 +134,7 @@ export class AppMcpService {
     this.coordinator = new AppMcpAgentCoordinator({
       missionTools: options.missionTools,
       getAgents: this.getCollaborationAgents,
+      resolveWorkspaceIdentity: this.resolveWorkspaceIdentity,
       getHosts: () => this.snapshot.remoteConnections.connections.map(({ id, name, status }) => ({ id, name, status })),
       now: this.now,
       onAgentUpdated: (agent) => this.emit({
@@ -434,7 +436,9 @@ export class AppMcpService {
 
     return {
       success: true,
-      message: resolvedPath ? `Displayed ${resolvedPath.relativePath} in the side panel.` : 'Displayed Markdown in the side panel.',
+      message: this.snapshot.missions?.some(mission => missionAgentIds(mission).includes(agent.id))
+        ? `Requested opening ${resolvedPath?.relativePath ?? 'Markdown'} in the Mission. The user can open or dismiss the request.`
+        : resolvedPath ? `Displayed ${resolvedPath.relativePath} in the side panel.` : 'Displayed Markdown in the side panel.',
       ...(resolvedPath ? { path: resolvedPath.relativePath } : {}),
       title,
     };
@@ -535,11 +539,15 @@ export class AppMcpService {
     assignmentUserInstructions?: Agent['delegationUserInstructions'],
   ): Promise<McpCreateAgentResponse> {
     const prompt = input.prompt?.trim() ?? '';
+    if (input.planMode && input.goal) return { success: false, message: 'planMode and goal cannot be enabled together.' };
+    if (input.planMode && !prompt && !assignmentPrompt) return { success: false, message: 'prompt is required when planMode is true' };
     if (input.goal && !prompt && !assignmentPrompt) return { success: false, message: 'prompt is required when goal is true' };
-    if (input.goal && !input.remoteConnectionId) {
+    if ((input.goal || input.planMode) && !input.remoteConnectionId) {
       const backend = resolveAgentBackend(this.snapshot, input.selection?.backend ?? caller.backend);
       const target = { ...caller, id: intendedId ?? '', backend, backendSession: undefined, backendDefaults: delegatedBackendDefaults(caller, input) };
-      if (!this.requireDriverRpc().getCapabilities(target).goals) return { success: false, message: 'This backend does not support goals.' };
+      const capabilities = this.requireDriverRpc().getCapabilities(target);
+      if (input.goal && !capabilities.goals) return { success: false, message: 'This backend does not support goals.' };
+      if (input.planMode && capabilities.planMode === 'unsupported') return { success: false, message: 'This backend does not support Plan mode.' };
     }
     const instructions = input.instructions?.trim();
     const userOverrides = input.createWorktree && !assignmentPrompt ? caller.userDelegationOverrides : undefined;
@@ -562,6 +570,7 @@ export class AppMcpService {
       const task = await this.tasks.create(caller, {
         requestId: input.requestId ?? '', task: input.task, prompt: fullPrompt,
         ...(input.goal ? { goal: true } : {}),
+        ...(input.planMode ? { planMode: true } : {}),
         ...(userInstructions ? { delegationUserInstructions: userInstructions } : {}),
         backend: input.selection?.backend ?? caller.backend, specification: input,
         workspace: {
@@ -591,7 +600,7 @@ export class AppMcpService {
     if (input.remoteConnectionId) {
       if (!this.options.createRemoteWorker) throw new McpToolError('Remote agent creation is unavailable.');
       const worker = await this.options.createRemoteWorker(caller, { ...input, startingContext }, intendedId, assignmentPrompt ?? (prompt ? fullPrompt : undefined), userInstructions);
-      if (prompt) await this.startAgentWithPrompt(worker, delegatedAssignmentPrompt(worker, fullPrompt), input.goal);
+      if (prompt) await this.startAgentWithPrompt(worker, delegatedAssignmentPrompt(worker, fullPrompt), input.goal, input.planMode);
       return { success: true, agentId: worker.id, agentName: agentDisplayName(worker), folder: worker.folder ?? undefined,
         ...(branchName ? { branchName } : {}), promptSubmitted: Boolean(prompt),
         ...(worker.delegationContext ? { delegationContext: worker.delegationContext } : {}),
@@ -656,7 +665,7 @@ export class AppMcpService {
           type: 'agentCreation.progress',
           payload: { ...progress, state: 'running', phase: 'startingPrompt' },
         });
-        await this.startAgentWithPrompt(createdAgent, delegatedAssignmentPrompt(createdAgent, fullPrompt), input.goal);
+        await this.startAgentWithPrompt(createdAgent, delegatedAssignmentPrompt(createdAgent, fullPrompt), input.goal, input.planMode);
       }
 
       const createdAgentName = agentDisplayName(createdAgent);
@@ -719,10 +728,10 @@ export class AppMcpService {
     return { requested, effective: 'conversation' };
   }
 
-  private startAgentWithPrompt(agent: Agent, prompt: string, goal?: boolean): Promise<BackendSendResult> {
+  private startAgentWithPrompt(agent: Agent, prompt: string, goal?: boolean, planMode?: boolean): Promise<BackendSendResult> {
     if (agent.remoteConnectionId) {
       if (!this.options.sendRemotePrompt) return Promise.reject(new McpToolError('Remote prompt submission is unavailable.'));
-      return this.options.sendRemotePrompt(agent, prompt, goal);
+      return this.options.sendRemotePrompt(agent, prompt, goal, planMode === true);
     }
     return new Promise((resolve, reject) => {
       this.recordPromptInputMethod(agent.id, 'typed');
@@ -731,7 +740,7 @@ export class AppMcpService {
         this.backendDriverForAgent(agent),
         agent.id,
         prompt,
-        undefined,
+        { planMode: planMode === true },
         (event) => this.emit(event),
         {
           goal,

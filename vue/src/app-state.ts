@@ -1,4 +1,4 @@
-import { normalizeThreadFlags, normalizeThreadFlagId } from '@workspace/core/thread-flags';
+import { normalizeThreadFlags } from '@workspace/core/thread-flags';
 import { product } from '@workspace/core/product';
 import { createAntigravityConversationState } from './antigravity-conversation-state';
 import type { AntigravityConversationSnapshot } from '@workspace/core/contracts/antigravity-conversation';
@@ -139,6 +139,7 @@ const {
   fileCatalogError,
   fileCatalogStatus,
   handleMainEvent: syncComposerStateFromMainEvent,
+  syncPlanMode: syncComposerPlanMode,
   loadActive: loadActiveAgentCatalogs,
   loadAll: loadAllAgentCatalogs,
   loadFiles: loadAgentFilesForActiveAgent,
@@ -261,7 +262,7 @@ export function useAppState() {
 
   async function respondToThreadFlagForAgent(agentId: string, response: import('@workspace/core/thread-flags').ThreadFlagResponse): Promise<void> {
     const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
-    if (!agent || normalizeThreadFlags(agent.threadFlags ?? {})[normalizeThreadFlagId(response.id)] !== true || !appApi) {
+    if (!agent || normalizeThreadFlags(agent.threadFlags ?? {})[response.id] !== true || !appApi) {
       throw new Error('No active thread flag.');
     }
     adoptBackgroundSnapshot(await appApi.respondToThreadFlag(agent.id, response));
@@ -589,7 +590,12 @@ export function useAppState() {
           handleMainEvent(event);
           continue;
         }
-        if (event.seq <= lastBackendEventSeq) continue;
+        if (event.seq <= lastBackendEventSeq) {
+          // Provisioning progress is transient and absent from snapshots. A
+          // covered terminal must still settle its already-visible dialog.
+          if (event.type === 'agentCreation.progress') syncAgentCreationProgressFromMainEvent(event);
+          continue;
+        }
         if (event.seq !== lastBackendEventSeq + 1) {
           gap = true;
           break;
@@ -980,13 +986,15 @@ export function useAppState() {
     adoptNavigationSnapshot(await appApi.openAgentPath(agentId, application, filePath));
   }
 
-  async function createAgent(input: CreateAgentInput): Promise<Agent | null> {
+  async function createAgent(input: CreateAgentInput, navigation?: { select?: boolean }): Promise<Agent | null> {
     if (!appApi?.createAgent) {
       return null;
     }
 
     const previousAgentIds = new Set(snapshot.value.agents.map((agent) => agent.id));
-    adoptNavigationSnapshot(await appApi.createAgent(input));
+    const nextSnapshot = await appApi.createAgent(input);
+    if (navigation?.select === false) adoptBackgroundSnapshot(nextSnapshot);
+    else adoptNavigationSnapshot(nextSnapshot);
     await loadActiveAgentCatalogs();
     return snapshot.value.agents.find((agent) => !previousAgentIds.has(agent.id)) ?? activeAgent.value;
   }
@@ -2131,6 +2139,9 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
           threadId: event.threadId,
         },
       };
+      if (current?.threadId !== event.threadId || current.snapshot.planMode !== event.payload.snapshot.planMode) {
+        syncComposerPlanMode(event.agentId, event.payload.snapshot.planMode);
+      }
       return;
     }
     case 'codex.conversationEventReceived': {
@@ -2159,6 +2170,9 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
           snapshot: nextSnapshot,
         },
       };
+      if (event.payload.event.type === 'conversation.settingsChanged') {
+        syncComposerPlanMode(event.agentId, nextSnapshot.planMode);
+      }
       return;
     }
     case 'antigravity.conversationSnapshotChanged':

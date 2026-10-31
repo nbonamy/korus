@@ -43,12 +43,14 @@
     />
     </slot>
     </div>
+    <WorkspacePreviewHost :dialog="previewDialog" :open="rightWorkspaceVisible" :title="previewTitle" @close="closePreview?.()">
     <RightWorkspacePanel
       v-for="agent in snapshot.agents.filter(agent => !agent.sharedConversation)"
       :key="agent.id"
       v-show="!emptySplitPane && isRightWorkspaceVisible(agent.id)"
       class="app-shell__right-workspace"
-      :style="{ flexBasis: rightWorkspaceExpanded ? '100%' : `${workspaceWidthFor(agent.id)}px` }"
+      :content-only="previewDialog"
+      :style="{ flexBasis: previewDialog || rightWorkspaceExpanded ? '100%' : `${workspaceWidthFor(agent.id)}px` }"
       :active-tab="rightWorkspaceFor(agent.id).activeTab"
       :agent="agent"
       :agents="snapshot.agents"
@@ -113,6 +115,7 @@
       @dragover="linkDrag.over"
       @drop="linkDrag.drop"
     />
+    </WorkspacePreviewHost>
     <WorkspaceLinkDropTarget
       v-if="linkDrag.draggedLink.value && !rightWorkspaceVisible"
       class="app-shell__closed-workspace-drop"
@@ -120,7 +123,7 @@
       @drop="linkDrag.drop"
     />
     <div
-      v-if="!emptySplitPane && rightWorkspaceVisible && !rightWorkspaceExpanded && !currentAgent?.sharedConversation"
+      v-if="!previewDialog && !emptySplitPane && rightWorkspaceVisible && !rightWorkspaceExpanded && !currentAgent?.sharedConversation"
       class="app-shell__right-workspace-resizer"
       :aria-label="$t('surface.appShell.resizeRightWorkspace')"
       @pointerdown="startRightWorkspaceResize"
@@ -181,6 +184,7 @@ import AgentEmptyState from './AgentEmptyState.vue';
 import AgentHeader from './AgentHeader.vue';
 import ConversationPane from './ConversationPane.vue';
 import RightWorkspacePanel from './RightWorkspacePanel.vue';
+import WorkspacePreviewHost from './WorkspacePreviewHost.vue';
 import WorkspaceLinkDropTarget from './WorkspaceLinkDropTarget.vue';
 import { useWorkspaceLinkDrag } from './use-workspace-link-drag';
 import { constrainedRightWorkspaceWidth, type AgentRightWorkspaceState } from './use-right-workspace-state';
@@ -201,6 +205,8 @@ import {
 } from './right-workspace';
 
 const props = withDefaults(defineProps<{
+  previewDialog?: boolean;
+  closePreview?: () => void;
   showHeader?: boolean;
   guestView?: import('@workspace/core/guest-navigation').GuestJoinView | null;
   guestBusy?: boolean;
@@ -356,6 +362,16 @@ const {
   toggleRightWorkspace,
 } = toRefs(props);
 
+const previewTitle = computed(() => {
+  const agent = props.snapshot.agents.find(agent => props.isRightWorkspaceVisible(agent.id));
+  if (!agent) return undefined;
+  const workspace = props.rightWorkspaceFor(agent.id);
+  const panels: Partial<Record<RightWorkspaceTab, {title:string} | null>> = {
+    ...workspace.filePanels, ...workspace.imagePanels, ...workspace.diffPanels,
+    plan:workspace.planPanel, review:workspace.gitReviewPanel,
+  };
+  return workspace.activeTab ? panels[workspace.activeTab]?.title : undefined;
+});
 const workspaceBody = ref<HTMLElement | null>(null);
 const workspaceBodyWidth = ref<number | null>(null);
 const rightWorkspaceExpanded = computed(() => Boolean(

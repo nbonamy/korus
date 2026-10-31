@@ -1,7 +1,7 @@
 import { appApi } from '../../platform-api';
 import { setElectronTestClient } from '../../test/client';
 import { product } from '@workspace/core/product';
-import { flushPromises } from '@vue/test-utils';
+import { DOMWrapper, flushPromises } from '@vue/test-utils';
 import { ElMessageBox } from 'element-plus';
 import type {
   CodexNativeAttachment,
@@ -1218,13 +1218,13 @@ describe('AppShell dialogs and commands', () => {
 
     listener({ type: 'debug-operation-progress', kind: 'pullRequest' });
     await flushPromises();
-    expect(wrapper.text()).toContain('Building handoff report');
-    expect(wrapper.text()).toContain('Run in background');
+    expect(new DOMWrapper(document.body).text()).toContain('Building handoff report');
+    expect(new DOMWrapper(document.body).text()).toContain('Run in background');
 
     listener({ type: 'debug-operation-progress', kind: 'merge' });
     await flushPromises();
-    expect(wrapper.text()).toContain('Building handoff report');
-    expect(wrapper.text()).toContain('Run in background');
+    expect(new DOMWrapper(document.body).text()).toContain('Building handoff report');
+    expect(new DOMWrapper(document.body).text()).toContain('Run in background');
   });
 
   it('attaches a screenshot command to the active agent composer', async () => {

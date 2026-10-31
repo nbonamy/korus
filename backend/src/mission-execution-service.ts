@@ -836,7 +836,10 @@ export class MissionExecutionService {
       const lead = leadRun ? this.agent(leadRun.workerId) : member;
       if (!lead) throw new Error('The main Mission agent is unavailable.');
       const workerId = createEntityId('agent');
-      createAgentInSnapshot(this.ports.snapshot, { name: `${member.name || 'Agent'} · ${mission.outcome} · ${run.stage}`, teamId: mission.execution!.teamId, folder: workingFolder, ...(implementationModel && implementationModel.backend !== lead.backend ? {} : { backendDefaults: structuredClone(lead.backendDefaults) }), avatar: member.avatar, selection: { backend: implementationModel?.backend ?? lead.backend } }, undefined, workerId, { select: false });
+      const name = run.stage === 'implementation'
+        ? `${member.name || 'Agent'} · ${mission.outcome} · ${run.stage}`
+        : `Mission lead · ${mission.outcome}`;
+      createAgentInSnapshot(this.ports.snapshot, { name, teamId: mission.execution!.teamId, folder: workingFolder, ...(implementationModel && implementationModel.backend !== lead.backend ? {} : { backendDefaults: structuredClone(lead.backendDefaults) }), avatar: member.avatar, selection: { backend: implementationModel?.backend ?? lead.backend } }, undefined, workerId, { select: false });
       worker = this.agent(workerId)!;
       await this.ports.missions.change(id, current => {
         current.execution!.runs.find(run => run.id === runId)!.workerId = worker!.id;

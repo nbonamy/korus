@@ -68,7 +68,7 @@ export function useWorkspacePreviews(options: WorkspacePreviewOptions) {
   const contentRequestIds = new Map<string, number>();
   let gitDiffFocusSequence = 0;
 
-  async function openConversationFile(link: ConversationFileLink, agentId = options.currentAgent()?.id): Promise<void> {
+  async function openConversationFile(link: ConversationFileLink, agentId = options.currentAgent()?.id, downloadUnsupported = true): Promise<void> {
     const agent = agentId ? agentForId(agentId) : null;
     if (!agent) return;
     const filePath = link.filepath ?? link.path;
@@ -98,7 +98,7 @@ export function useWorkspacePreviews(options: WorkspacePreviewOptions) {
       await openAgentGitDiff(agent.id);
       return;
     }
-    await openFile(agent.id, filePath, true, true);
+    await openFile(agent.id, filePath, true, downloadUnsupported);
   }
 
   function openTurnDiff(agentId: string, turnId: string, filePath: string): boolean {
@@ -168,6 +168,7 @@ export function useWorkspacePreviews(options: WorkspacePreviewOptions) {
     try {
       const result = await options.previewAgentFile(agent.id, trimmedPath);
       if (workspace.filePreviewRequestIds[tab] !== requestId) return;
+      if (reveal && !downloadUnsupported && (!workspace.open || !workspace.tabs.includes(tab))) return;
       if (downloadUnsupported && (result.kind === 'binary' || result.kind === 'tooLarge')) {
         try {
           await options.downloadAgentFile(agent.id, trimmedPath);
@@ -281,6 +282,7 @@ export function useWorkspacePreviews(options: WorkspacePreviewOptions) {
     if (request.purpose !== 'plan') {
       const identifier = request.documentId ?? request.path ?? crypto.randomUUID();
       const tab = request.path ? rightWorkspaceFileTab(request.path) : rightWorkspaceMarkdownTab(identifier);
+      workspace.filePreviewRequestIds = { ...workspace.filePreviewRequestIds, [tab]: ++filePreviewRequestId };
       workspace.filePanels = {
         ...workspace.filePanels,
         [tab]: {

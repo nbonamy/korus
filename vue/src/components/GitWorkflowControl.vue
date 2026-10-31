@@ -61,6 +61,7 @@
     </template>
   </div>
 
+  <Teleport to="body">
   <FormDialog
     v-if="revertDialogOpen"
     v-model="revertDialogOpen"
@@ -88,7 +89,6 @@
     class="app-dialog git-workflow-control__dialog"
     :class="{ 'git-workflow-control__dialog--transient': commitOperation.status !== 'editing' && commitOperation.status !== 'error' }"
     width="min(560px, calc(100vw - 32px))"
-    :teleported="false"
     :show-close="false"
     :close-on-click-modal="!commitOperationRunning"
     :close-on-press-escape="!commitOperationRunning"
@@ -164,7 +164,6 @@
     class="app-dialog git-workflow-control__dialog"
     :class="{ 'git-workflow-control__dialog--transient': pushOperation.status === 'pushing' || pushOperation.status === 'success' }"
     width="min(620px, calc(100vw - 32px))"
-    :teleported="false"
     :show-close="false"
     :close-on-click-modal="!pushOperationRunning"
     :close-on-press-escape="!pushOperationRunning"
@@ -210,7 +209,6 @@
     class="app-dialog git-workflow-control__dialog"
     :class="{ 'git-workflow-control__dialog--transient': pullRequestOperation.status === 'success' }"
     width="min(560px, calc(100vw - 32px))"
-    :teleported="false"
     :show-close="false"
     :close-on-click-modal="!pullRequestOperationRunning"
     :close-on-press-escape="!pullRequestOperationRunning"
@@ -287,7 +285,6 @@
       'git-workflow-control__dialog--transient': mergeOperation.status === 'success',
     }"
     :width="mergeTargetDirtyWarning ? 'min(520px, calc(100vw - 32px))' : 'min(660px, calc(100vw - 32px))'"
-    :teleported="false"
     :show-close="false"
     :close-on-click-modal="!mergeOperationRunning"
     :close-on-press-escape="!mergeOperationRunning"
@@ -373,7 +370,6 @@
     class="app-dialog git-workflow-control__dialog"
     :class="{ 'git-workflow-control__dialog--transient': updateOperation.status === 'success' }"
     width="min(560px, calc(100vw - 32px))"
-    :teleported="false"
     :show-close="false"
     :close-on-click-modal="!updateOperationRunning"
     :close-on-press-escape="!updateOperationRunning"
@@ -397,6 +393,7 @@
   </el-dialog>
   <BranchCurrentWorkDialog v-if="appApi" :key="`branch-${agent.id}`" v-model="branchWorkDialogOpen" :agent-id="agent.id" :load="appApi.previewBranchCurrentWork" :transfer="appApi.branchCurrentWork" :progress="branchWorkProgress" @started="branchWorkProgress = null" @transferred="loadWorkflow({ closeMenu: false })" @inspect-agent="emit('inspect-agent', $event)" />
   <GitPruneDialog v-if="pruneDialogOpen && appApi" :key="agent.id" v-model="pruneDialogOpen" :agent-id="agent.id" :load="appApi.getAgentGitPrune" :prune="appApi.pruneAgentGit" @pruned="loadWorkflow({ closeMenu: false })" />
+  </Teleport>
 </template>
 
 <script setup lang="ts">

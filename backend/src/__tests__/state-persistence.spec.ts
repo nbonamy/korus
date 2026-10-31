@@ -483,7 +483,7 @@ describe('state persistence', () => {
   it('round-trips valid turn suggestions and drops invalid persisted values', () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents[0].threadFlags = {
-      delegate_to_worktree: true,
+      work_proposed: true,
       ready_for_review: true,
     };
     snapshot.agents[0].suggestedPrompt = 'Review the changes';
@@ -496,7 +496,7 @@ describe('state persistence', () => {
     expect(snapshotFromPersistedState(persisted).agents[0].suggestedPrompt).toBe('Review the changes');
     persisted.agents[0].suggestedPrompt = 123;
     expect(snapshotFromPersistedState(persisted).agents[0].suggestedPrompt).toBeUndefined();
-    persisted.agents[0].threadFlags = { delegate_to_worktree: false };
+    persisted.agents[0].threadFlags = { work_proposed: false };
     expect(snapshotFromPersistedState(persisted).agents[0].threadFlags).toBeUndefined();
   });
 

@@ -431,6 +431,11 @@ export class CodexSurfaceAgentAdapter {
   async sendPrompt(agent: Agent, prompt: string, options: SendPromptOptions = {}) {
     const session = await this.ensureSession(agent);
     return this.serializeSubmission(session, async () => {
+      // Korus's mode selection persists through follow-ups and hydration. The
+      // SDK send option alone is a per-turn override and does not publish it.
+      if (typeof options.planMode === 'boolean' && options.planMode !== session.handle.getSnapshot().planMode) {
+        await session.handle.updateSettings({ planMode: options.planMode });
+      }
       const beforeTurnIds = session.handle.getSnapshot().turnIds;
       const snapshot = await session.handle.sendMessage(promptWithSelectedReferences(prompt, options.content, true), surfacePromptOptions(options));
       const turnId = resultTurnId(snapshot, beforeTurnIds);

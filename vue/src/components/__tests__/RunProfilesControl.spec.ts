@@ -15,7 +15,7 @@ function menuAction(wrapper: ReturnType<typeof mount>, text: string) { return [.
 async function setup(overrides = {}, props = {}, realDialogs = false) {
   const api = { getRunProfiles: vi.fn().mockResolvedValue(structuredClone(catalog)), getRunProfileActions: vi.fn().mockResolvedValue({ actions: [], warnings: [] }), startRunProfile: vi.fn().mockResolvedValue(run), saveRunProfile: vi.fn().mockResolvedValue(catalog), deleteRunProfile: vi.fn().mockResolvedValue(catalog), stopProfileRun: vi.fn().mockResolvedValue({ ...run, state: 'stopped' }), ...overrides };
   stubElectronTestWindow({ app: api });
-  const wrapper = mount(RunProfilesControl, { props: { agent, hostLabel: 'Local host', previewAvailable: true, ...props }, global: realDialogs ? { stubs: { ElDialog, teleport: false, transition: false } } : {} });
+  const wrapper = mount(RunProfilesControl, { attachTo: document.body, props: { agent, hostLabel: 'Local host', previewAvailable: true, ...props }, global: realDialogs ? { stubs: { ElDialog, teleport: false, transition: false } } : { stubs: { teleport: true } } });
   await wrapper.get('[aria-label="Run profiles"]').trigger('click');
   await flushPromises();
   return { wrapper, api };
@@ -36,12 +36,12 @@ describe('RunProfilesControl', () => {
   it('opens the source and pinned lists directly in one real dialog without preselecting or running commands', async () => {
     const { wrapper, api } = await setup({ getRunProfileActions: vi.fn().mockResolvedValue({ actions: [{ name: 'lint', command: 'npm run lint', directory: '.', source: 'package.json' }], warnings: [] }) }, {}, true);
     await button(wrapper, 'Choose commands…').trigger('click'); await flushPromises();
-    expect(wrapper.findAll('[role="dialog"]')).toHaveLength(1);
-    expect(wrapper.get('[aria-label="Available commands"]').text()).toContain('npm run lint');
-    expect(wrapper.get('[aria-label="Pinned commands"]').text()).toContain('npm run dev');
-    expect(wrapper.findAll('input[type="checkbox"]')).toHaveLength(0);
+    expect(new DOMWrapper(document.body).findAll('[role="dialog"]')).toHaveLength(1);
+    expect(new DOMWrapper(document.body).get('[aria-label="Available commands"]').text()).toContain('npm run lint');
+    expect(new DOMWrapper(document.body).get('[aria-label="Pinned commands"]').text()).toContain('npm run dev');
+    expect(new DOMWrapper(document.body).findAll('input[type="checkbox"]')).toHaveLength(0);
     await button(wrapper, 'Done').trigger('click'); await flushPromises();
-    expect(wrapper.find('[aria-label="Available commands"]').exists()).toBe(false);
+    expect(new DOMWrapper(document.body).find('[aria-label="Available commands"]').exists()).toBe(false);
     expect(api.startRunProfile).not.toHaveBeenCalled(); expect(api.saveRunProfile).not.toHaveBeenCalled();
   });
 
@@ -86,7 +86,7 @@ describe('RunProfilesControl', () => {
     await button(wrapper, 'Close').trigger('click'); wrapper.unmount();
     let resolve!: (value: RunProfileCatalog) => void;
     api.getRunProfiles.mockImplementationOnce(() => new Promise<RunProfileCatalog>(done => { resolve = done; }));
-    const pending = mount(RunProfilesControl, { props: { agent, hostLabel: 'Local host', previewAvailable: true } });
+    const pending = mount(RunProfilesControl, { attachTo: document.body, props: { agent, hostLabel: 'Local host', previewAvailable: true } });
     await pending.get('[aria-label="Run profiles"]').trigger('click');
     await pending.setProps({ agent: { ...agent, id: 'two' } }); resolve(catalog); await flushPromises();
     expect(pending.find('[role="dialog"]').exists()).toBe(false);

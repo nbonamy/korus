@@ -20,6 +20,23 @@ async function fixture() {
   return { engine, events, registerPush, loadedAgents, notify: (notification: CompanionNotification) => notify(notification) };
 }
 describe('native notification bridge', () => {
+  it('completes a background ActivityKit registration without restoring a conversation or changing the selected laptop', async () => {
+    const connector = createDemoConnector();
+    const registerLiveActivity = vi.fn(async (_id: string, _registration: unknown) => {});
+    const connect = vi.spyOn(connector, 'connect');
+    const events: EngineEvent[] = [];
+    const engine = createEngine({ connector: { ...connector, registerLiveActivity }, initialActive: false, post: event => events.push(event) });
+    try {
+      await engine.start(); events.length = 0;
+      await engine.dispatch({ type: 'liveActivityRegistration', laptopId: 'demo-laptop', requestId: 'token', registration: null });
+      expect(registerLiveActivity).toHaveBeenCalledExactlyOnceWith('demo-laptop', null);
+      expect(connect).not.toHaveBeenCalled();
+      expect(events).toContainEqual({ type: 'liveActivityRegistered', requestId: 'token', success: true });
+      registerLiveActivity.mockRejectedValueOnce(new Error('Offline'));
+      await engine.dispatch({ type: 'liveActivityRegistration', laptopId: 'demo-laptop', requestId: 'retry', registration: null });
+      expect(events).toContainEqual({ type: 'liveActivityRegistered', requestId: 'retry', success: false });
+    } finally { engine.dispose(); }
+  });
   it.each(['reconnect', 'workspace update'])('reconciles desktop reads from persisted state on %s', async mode => {
     const connector = createDemoConnector(); const connect = connector.connect;
     let read = false;

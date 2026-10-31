@@ -90,14 +90,14 @@ by mutating user-global tool config.
   and may replace the thread flag; omission preserves it within the current turn.
   `work_proposed` offers concrete separate work identified in discussion without granting execution
   authority; it cannot replace implementation already requested in the conversation.
-  `delegate_to_worktree` is accepted as a legacy alias and normalized on restore
-  and tool calls. Workflow-managed agents retain their own proposal lifecycle;
-  delegated co-agents cannot offer recursive work proposals.
+  Proposals require a fresh Git identity with the current branch equal to the repository’s
+  default branch. Non-default branches, detached checkouts and unavailable Git identities
+  discard the requested flag. Workflow-managed agents retain their own proposal lifecycle.
 - Proposal responses use the agent-scoped flag service for current-conversation
   implementation, delegation, Mission creation and dismissal. Implementation
   submits to the source conversation using its current agent and workspace;
   delegation and Mission creation use their existing procedures and authority boundaries.
-  One in-flight response covers both proposal aliases. Acceptance clears the
+  One in-flight response covers each proposal. Acceptance clears the
   proposal; submission failure preserves it for retry. Every new provider turn clears
   all thread flags and prompt suggestions, including queued and internal starts.
   Queue admission and rejected starts preserve them; successful steering clears them.
@@ -129,6 +129,12 @@ by mutating user-global tool config.
 - With a `task` contract (`title`, `doneWhen`), a stable parent-scoped `requestId`
   is mandatory and reused after a timeout. Returned `taskId`/`agentId`/status
   describe accepted startup, not completed work.
+- Plan and Goal delegation require an explicit user request and are mutually
+  exclusive. Plan delegation submits the first prompt in provider Plan mode;
+  the existing interactive plan review owns approval before implementation.
+  Durable assignments waiting for that approval remain needs-input, without a
+  completed result. Regular startup explicitly uses default mode, including when
+  its native conversation inherits a planning parent's settings.
 - Goal delegation uses the same app-owned goal operation as the composer, with
   the assignment and its context as the objective. Durable tasks persist that
   startup choice and keep their result-reporting contract; retries do not start
@@ -163,6 +169,8 @@ by mutating user-global tool config.
 - `display-markdown` takes exactly one of `path` or `markdown`. Paths must resolve
   inside the caller's folder, be regular files and fit the preview limit (renderer
   previews, by contrast, accept paths outside the agent folder).
+  Mission document presentation is a request, not confirmation that the user opened
+  the document. Document retention and delivery are independent of that choice.
 - `update-work-item` changes the caller's own assignment status (`blocked` requires
   a note). Automation completion is owned by the scheduled conversation's turn,
   not by work-item status.
@@ -370,6 +378,9 @@ Invariants the tool schemas cannot enforce:
 - Coordinate actions use absolute logical screen points, never window-relative
   positions or screenshot pixels. Physical clicks and drags require the target app
   frontmost and unobstructed; AX actions and background typing do not.
+  Clicks animate the virtual cursor for AX actions or the real pointer for physical
+  input. Physical clicks leave the pointer at the target and stop before clicking
+  if the target app loses focus during movement.
 - One helper process lives for the session so IDs and diff baselines stay valid;
   every call resets a 30-second inactivity timeout, after which the next
   interaction starts with a fresh observation. Native callbacks have a 35-second

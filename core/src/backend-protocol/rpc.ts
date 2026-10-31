@@ -200,7 +200,7 @@ export type AppBackendRequestMap = {
     result: import('../remote-collaboration').RemoteWorkerResult;
   };
   [backendMethods.collaborationPromptSend]: {
-    params: { agentId: string; prompt: string; goal?: boolean };
+    params: { agentId: string; prompt: string; goal?: boolean; planMode?: boolean };
     result: import('../backend-driver').BackendSendResult;
   };
   [backendMethods.collaborationMessageSend]: {

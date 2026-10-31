@@ -79,10 +79,10 @@ describe('AppMcpAgentCoordinator', () => {
     });
     expect(agents[0]!.statusText).toBe('Reviewing coverage');
     expect(coordinator.debugAgents()[0]?.status).toBe('Running tests: Reviewing coverage');
-    agents[0]!.threadFlags = { delegate_to_worktree: true };
+    agents[0]!.threadFlags = { work_proposed: true };
     await coordinator.setStatus('agent-dina', '   ');
     expect(agents[0]!.statusText).toBeUndefined();
-    expect(agents[0]!.threadFlags).toStrictEqual({ delegate_to_worktree: true });
+    expect(agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
     expect(onAgentUpdated).toHaveBeenCalledTimes(3);
   });
 
@@ -95,10 +95,11 @@ describe('AppMcpAgentCoordinator', () => {
       message: 'Celebration requested.',
     });
     const { agents, coordinator, onAgentUpdated } = fixture({ onAnnounce, onCelebrate });
+    agents[0]!.delegatedByAgentId = 'agent-parent';
     await coordinator.setStatus('agent-dina', 'Reviewing changes');
 
     await expect(coordinator.finishTurn('agent-dina', {
-      flag: 'delegate_to_worktree',
+      flag: 'work_proposed',
       announcement: { text: '  Ready to hand off.  ' },
       celebration: true,
     })).resolves.toStrictEqual({
@@ -126,20 +127,6 @@ describe('AppMcpAgentCoordinator', () => {
     expect(onAgentUpdated).toHaveBeenCalledTimes(4);
   });
 
-  it.each(['work_proposed', 'delegate_to_worktree'] as const)('rejects recursive %s suggestions from delegated co-agents', async (flag) => {
-    const { agents, coordinator, onAgentUpdated } = fixture();
-    agents[0]!.delegatedByAgentId = 'agent-parent';
-
-    await expect(coordinator.finishTurn('agent-dina', { flag }))
-      .rejects.toThrow('already a delegated co-agent');
-    expect(agents[0]!.threadFlags).toBeUndefined();
-    expect(onAgentUpdated).not.toHaveBeenCalled();
-
-    agents[0]!.threadFlags = { delegate_to_worktree: true };
-    await expect(coordinator.finishTurn('agent-dina'))
-      .resolves.toStrictEqual({ success: true, status: null });
-    expect(agents[0]!.threadFlags).toStrictEqual({ delegate_to_worktree: true });
-  });
 
   it('labels every backend status variant', () => {
     const { agents, coordinator } = fixture();
@@ -440,6 +427,7 @@ function fixture(overrides: Partial<AppMcpAgentCoordinatorOptions> = {}) {
   let id = 0;
   const coordinator = new AppMcpAgentCoordinator({
     getAgents: () => agents,
+    resolveWorkspaceIdentity: async folder => ({ kind: 'git', folder, repositoryName: 'test', repositoryRoot: folder, primaryWorktreeRoot: folder, branch: 'main', defaultBranch: 'main', isLinkedWorktree: false, updatedAt: '' }),
     onAgentUpdated,
     onInboxMessage,
     createId: () => `message-${++id}`,

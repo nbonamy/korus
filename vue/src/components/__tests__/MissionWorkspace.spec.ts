@@ -286,9 +286,9 @@ describe('MissionWorkspace', () => {
     expect(wrapper.find('textarea').exists()).toBe(false);
     expect(wrapper.find('select').exists()).toBe(false);
     const stageHeader = wrapper.get('.mission-workspace__stage-header');
-    const conversationHeader = wrapper.get('.mission-conversation-rail__navigation > header');
+    const conversationHeader = wrapper.get('.mission-conversation-rail__navigation');
     expect(getComputedStyle(stageHeader.element).minHeight).not.toBe('');
-    expect(getComputedStyle(stageHeader.element).minHeight).toBe(getComputedStyle(conversationHeader.element).minHeight);
+    expect(getComputedStyle(stageHeader.element).minHeight).toBe(getComputedStyle(conversationHeader.element).height);
     expect(getComputedStyle(wrapper.get('.mission-stage-rail__heading').element).minHeight).toBe(getComputedStyle(stageHeader.element).minHeight);
     const scrollingContent = wrapper.get('.mission-workspace__workbench-scroll');
     expect(scrollingContent.element.contains(stageHeader.element)).toBe(false);
@@ -531,17 +531,28 @@ describe('MissionWorkspace', () => {
     const conversations = wrapper.get('[aria-label="Mission conversations"]');
     const tabs = conversations.findAll('[role="tab"]');
     expect(tabs).toHaveLength(2);
-    expect(tabs.map(tab => tab.attributes('aria-label'))).toStrictEqual(['Mission lead', 'billing-service']);
+    expect(tabs.map(tab => tab.find('[aria-label]').attributes('aria-label'))).toStrictEqual(['Mission lead', 'billing-service']);
     expect(tabs.map(tab => tab.text())).toStrictEqual(['Mission lead', 'billing-service']);
     expect(tabs[0]!.attributes('aria-selected')).toBe('true');
-    await tabs[1]!.trigger('click');
+    const ticket = implementationLane.get('[aria-label="Open OAuth connection and its agent conversation"]');
+    expect(ticket.attributes('aria-pressed')).toBe('false');
+    await ticket.trigger('click');
     expect(tabs[1]!.attributes('aria-selected')).toBe('true');
-    expect(wrapper.get('[aria-label="Stage conversation"]').get('header').text()).toContain('billing-serviceBuilderOAuth connection');
+    expect(ticket.attributes('aria-pressed')).toBe('true');
+    const tickets = implementationLane.findAll('.mission-implementation__ticket');
+    expect(tickets.map(card => card.attributes('aria-pressed'))).toStrictEqual(['false', 'true']);
+    expect(wrapper.get('[aria-label="Stage conversation"]').find('header').exists()).toBe(false);
     expect(wrapper.get('.conversation-slot').text()).toContain(snapshot.agents[1]!.id);
+
+    await tickets[0]!.trigger('click');
+    expect(tickets.map(card => card.attributes('aria-pressed'))).toStrictEqual(['true', 'false']);
+    expect(tabs[1]!.attributes('aria-selected')).toBe('true');
 
     await tabs[0]!.trigger('click');
 
     expect(tabs[0]!.attributes('aria-selected')).toBe('true');
+    expect(ticket.attributes('aria-pressed')).toBe('false');
+    expect(tickets.map(card => card.attributes('aria-pressed'))).toStrictEqual(['false', 'false']);
     expect(wrapper.get('.conversation-slot').text()).toContain(snapshot.agents[0]!.id);
     expect(wrapper.emitted('open-conversation')?.at(-1)).toStrictEqual([snapshot.agents[0]!.id]);
   });
@@ -711,8 +722,7 @@ describe('MissionWorkspace', () => {
 
     await board.findAll('.mission-implementation__ticket')[0]!.trigger('click');
     expect(wrapper.get('.conversation-slot').text()).toContain('agent-dina');
-    expect(wrapper.get('[aria-label="Stage conversation"]').get('h2').text()).toBe('billing-service');
-    expect(wrapper.get('[aria-label="Stage conversation"]').get('header p').text()).toBe('BuilderCheckout');
+    expect(wrapper.get('[aria-label="Stage conversation"]').get('[role="tab"][aria-selected="true"]').text()).toBe('billing-service');
     expect(wrapper.findComponent({ name: 'ElDialog' }).props('modelValue')).toBe(false);
 
     await board.findAll('.mission-implementation__ticket-details')[0]!.trigger('click');

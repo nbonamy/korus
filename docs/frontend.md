@@ -138,8 +138,8 @@ runs independently of loaded tree nodes, so an unopened directory remains search
   desktop and mobile own their local view preference, clock and transitions. Native
   activity rows share one identity space across groups so regrouping preserves rows.
 - Team-rail dot: red for unread, orange for working, unread wins, never on the
-  selected team. Agent activity is stored apart from metadata so startup hydration
-  does not make idle agents look active.
+  selected team or while Cockpit is selected. Agent activity is stored apart from
+  metadata so startup hydration does not make idle agents look active.
 - Duplicate and fork creation insert the new agent immediately after its source
   in the creating client's saved order. Background copies keep the current selection.
 - Mission navigation reuses the workspace group, session row and status-dot
@@ -148,6 +148,10 @@ runs independently of loaded tree nodes, so an unopened directory remains search
   Mission-owned workers stay out of the global agent sidebar.
   Conversation selection is remembered per Mission in client-local storage and
   falls back to the Mission lead when the selected worker is unavailable.
+  Mission previews reuse workspace surfaces inside a modal instead of consuming
+  workspace columns. Agent Markdown requests share one replaceable pending request per Mission.
+  Pending requests do not select an agent or alter the workspace layout. Native
+  plans retain their separate review lifecycle.
   Mission activity aggregates the lead and repository agents in priority order:
   any agent needs input, unread lead, any agent working, then idle, independently
   of workflow completion. Desktop and mobile use the same aggregation policy.
@@ -221,6 +225,9 @@ replace a newer dialog or navigation selection.
   right as tertiary, secondary, primary. Compact pickers use
   the filter as the whole top row, then loading/error/empty/results. Dialogs emit
   domain actions; the parent or composable persists and calls the backend.
+  Header controls teleport their dialogs to the document body so split-pane headers
+  and resize handles stay below modal overlays. Keep each dialog’s state and actions
+  with its originating control.
   Shared dialog styles reset inherited text alignment to left; footer actions stay
   right-aligned. Do not add per-dialog alignment resets.
 - **Menus and tabs:** `AppMenu` gives consistent rows, roles and states; add roving

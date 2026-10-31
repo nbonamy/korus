@@ -637,6 +637,38 @@ before contacting Apple. Global, host and token budgets bound delivery even when
 clients rotate identities; concurrent duplicate notifications share one send.
 Apple invalid-token responses remove only the registration that produced the failure.
 
+iOS Live Activities use ActivityKit and a WidgetKit extension, independently of alert
+notification permission. The selected laptop aggregates running agents and requests
+across teams, including Mission workers, without transporting conversation contents.
+The daemon owns the laptop name, distinct active-agent count and the start of each
+continuous work interval it observes. Token rotation preserves those elapsed-time
+anchors. At most two rows are projected: attention first, then active work, then
+recently completed work when space remains. Counts include all active agents;
+completed rows do not count as active. An all-idle workspace ends the activity.
+Native settings and the system's Live Activity authorization control participation.
+Switching laptops or opting out ends the activity and withdraws its registrations.
+Row links carry the host and agent identities. The native app defers navigation
+until its selected laptop connects; the engine resolves the current authorized
+workspace and rejects a missing agent or different laptop rather than redirecting
+to another conversation.
+
+ActivityKit push-to-start and activity-update tokens have separate, phone-signed
+consent bound to the paired host, relay, environment and activity instance. A dedicated
+relay protocol preserves ordinary notification requests and released clients. The
+daemon persists activity identity before starting it, coalesces workspace changes,
+and sends bounded APNs `liveactivity` payloads through the relay's existing Apple key.
+ActivityKit background wakes exchange rotated tokens over a short authenticated
+request without subscribing to conversations. Updates refresh stale dates; an idle
+workspace ends the activity. Disconnected hosts become visibly stale instead of
+claiming fresh status. APNs acceptance does not prove display or background wake;
+signed-device delivery must be checked separately from simulator lifecycle tests.
+A renewed start registration can replace an accepted start whose update token never
+arrived after its stale window; heartbeats never retry that start, and live or
+dismissed update-token instances are preserved.
+After an app build changes, the native client withdraws a saved registration if
+ActivityKit has no matching active instance, before requesting a fresh start.
+Ordinary relaunches preserve pending starts and existing activities.
+
 Attention alerts are suppressed when the desktop is focused on the exact active
 conversation, matched by host, location, team, agent and session. Other conversations
 remain eligible regardless of where the prompt started; unavailable desktop focus

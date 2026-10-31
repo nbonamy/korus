@@ -18,7 +18,7 @@ function claim(gateway: CompanionGateway, peerId: string, shown: string, name = 
 function fixture(autoAcceptCode?: string) {
   let now = 1;
   let saved: GatewayState = { grants: [], commands: {} };
-  const port = { onEvent: () => () => {}, push: vi.fn(async (_peerId: string, _registration: unknown, _notification: unknown) => 'sent' as const), changeGoal: vi.fn(async () => {}), updateQueuedPrompt: vi.fn(async () => {}), markRead: vi.fn(async () => {}), respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), synchronize: vi.fn(async () => ({ checkpoint: { epoch: 'epoch', revision: 1 }, frames: [] })), conversation: vi.fn(), loadTurnHistory: vi.fn(async (_agentId: string, _turnId: string) => {}), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async (_agentId: string, _input: import('@workspace/core/contracts/conversation').ConversationContentInput): Promise<import('@workspace/core/contracts/conversation').ConversationContentChunk> => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
+  const port = { registerLiveActivity: vi.fn(async (_peerId: string, _registration: unknown) => {}), onEvent: () => () => {}, push: vi.fn(async (_peerId: string, _registration: unknown, _notification: unknown) => 'sent' as const), changeGoal: vi.fn(async () => {}), updateQueuedPrompt: vi.fn(async () => {}), markRead: vi.fn(async () => {}), respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), synchronize: vi.fn(async () => ({ checkpoint: { epoch: 'epoch', revision: 1 }, frames: [] })), conversation: vi.fn(), loadTurnHistory: vi.fn(async (_agentId: string, _turnId: string) => {}), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async (_agentId: string, _input: import('@workspace/core/contracts/conversation').ConversationContentInput): Promise<import('@workspace/core/contracts/conversation').ConversationContentChunk> => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
     models: vi.fn(async () => [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }]), selectModel: vi.fn(async () => {}),
     gitDiff: vi.fn(async () => ({ target: { type: 'uncommitted' as const }, summary: { changedFiles: 1, addedLines: 2, removedLines: 1 }, diff: 'patch', sections: [] })),
     previewFile: vi.fn(async (_id: string, path: string) => ({ path, kind: 'text' as const, size: 12, content: 'current source' })),
@@ -40,6 +40,22 @@ function fixture(autoAcceptCode?: string) {
     } };
 }
 describe('companion authorization gateway', () => {
+  it('admits Live Activity registration only over a paired phone request without changing legacy notification registration', async () => {
+    const f = fixture();
+    const registration = { kind: 'start', token: 'ab'.repeat(32), environment: 'development' };
+    await expect(f.gateway.request('outsider', 'liveActivity.register', registration)).rejects.toThrow();
+    const pending = await claim(f.gateway, 'phone', f.gateway.invite().code);
+    await f.gateway.decide(pending.pendingId, true);
+    const legacySnapshot = await f.gateway.request('phone', 'snapshot.get', {});
+    await f.gateway.request('phone', 'liveActivity.register', registration);
+    expect(f.port.registerLiveActivity).toHaveBeenCalledExactlyOnceWith('phone', registration);
+    await f.gateway.request('phone', 'liveActivity.register', null);
+    expect(f.port.registerLiveActivity).toHaveBeenLastCalledWith('phone', null);
+    await expect(f.gateway.request('phone', 'liveActivity.register', { ...registration, token: '../escape' })).rejects.toThrow();
+    await f.gateway.request('phone', 'notifications.register', { token: 'ab'.repeat(32), environment: 'development' });
+    expect(f.port.registerLiveActivity).toHaveBeenCalledTimes(2);
+    expect(await f.gateway.request('phone', 'snapshot.get', {})).toStrictEqual(legacySnapshot);
+  });
   it('loads one turn only for the current authorized conversation and rechecks the result', async () => {
     const f = fixture();
     const input = { target, turnId: 'historical-turn' };

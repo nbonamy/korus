@@ -292,10 +292,10 @@ describe('Unified backend → mounted application', () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
     const agent = snapshot.agents[0]!;
-    agent.threadFlags = { delegate_to_worktree: true, ...(ready ? { ready_for_review: true } : {}) };
+    agent.threadFlags = { work_proposed: true, ...(ready ? { ready_for_review: true } : {}) };
     const { api } = installBackendFixture(snapshot);
     const cleared = structuredClone(snapshot);
-    cleared.agents[0]!.threadFlags = { delegate_to_worktree: true };
+    cleared.agents[0]!.threadFlags = { work_proposed: true };
     api.respondToThreadFlag.mockResolvedValue(cleared);
     const wrapper = mount(App);
     await flushPromises();
@@ -325,7 +325,7 @@ describe('Unified backend → mounted application', () => {
   it.each([['Implement', 'implement'], ['Delegate', 'delegate'], ['Mission', 'create_mission']] as const)('handles %s, retries, discard and review routing through the client seam', async (label, action) => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.threadFlags = { delegate_to_worktree: true };
+    agent.threadFlags = { work_proposed: true };
     const { api, emit } = installBackendFixture(snapshot);
     const wrapper = mount(App);
     await flushPromises();
@@ -355,7 +355,7 @@ describe('Unified backend → mounted application', () => {
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
     expect(wrapper.find('.thread-flag-affordance').exists()).toBe(false);
 
-    emit({ type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, threadFlags: { delegate_to_worktree: true } } });
+    emit({ type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, threadFlags: { work_proposed: true } } });
     await flushPromises();
     api.respondToThreadFlag.mockResolvedValueOnce(cleared);
     await wrapper.get('button[aria-label="Discard"]').trigger('click');

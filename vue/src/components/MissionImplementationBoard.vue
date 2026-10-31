@@ -78,7 +78,8 @@
             :item="item"
             :repository-path="lane.repositoryPath"
             :selected="selectedIndex === item.index"
-            @open-conversation="openConversation"
+            :active="(item.ticket.id ?? item.index) === activeTicketKey && Boolean(item.run?.workerId && item.run.workerId === activeAgentId)"
+            @open-conversation="openConversation(item)"
             @open-details="selectedIndex = item.index"
           />
         </TransitionGroup>
@@ -148,6 +149,7 @@ type TicketItem = MissionImplementationTicketItem;
 
 const props = withDefaults(defineProps<{
   agents?: Agent[];
+  activeAgentId?: string;
   mission: Mission;
   busy?: boolean;
   readOnly?: boolean;
@@ -165,6 +167,7 @@ const emit = defineEmits<{
 }>();
 const { t } = useI18n();
 const selectedIndex = ref(-1);
+const activeTicketKey = ref<string | number>();
 const implementationRuns = computed(
   () =>
     props.mission.execution?.runs.filter(
@@ -223,8 +226,10 @@ watch(ticketItems, () => {
   if (selectedIndex.value >= 0 && !selected.value) selectedIndex.value = -1;
 });
 
-function openConversation(workerId?: string): void {
-  if (workerId) emit("open-conversation", workerId);
+function openConversation(item: TicketItem): void {
+  if (!item.run?.workerId) return;
+  activeTicketKey.value = item.ticket.id ?? item.index;
+  emit("open-conversation", item.run.workerId);
 }
 function repositoryName(repositoryPath: string): string {
   return missionRepositoryName(repositoryPath);

@@ -93,7 +93,7 @@ import { sendAgentPrompt } from '@workspace/core/agent-chat-service';
 import { AgentPlanReviewService } from './agents/agent-plan-review-service';
 import { AgentThreadFlagService } from './agents/agent-thread-flag-service';
 import type { PlanReviewResponse } from '@workspace/core/plan-review';
-import { normalizeThreadFlagId, normalizeThreadFlags, type ThreadFlagId, type ThreadFlagResponse } from '@workspace/core/thread-flags';
+import { normalizeThreadFlags, type ThreadFlagId, type ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { agentConversationId, planReviewFromEvent } from '@workspace/core/plan-review';
 import { isAgentRequestResponse, type AgentRequestResponse } from '@workspace/core/agent-request';
 import { AgentWorkspaceService } from './agents/agent-workspace-service';
@@ -208,16 +208,18 @@ export class AppBackendServer {
   private readonly browserExtensionPackages: BrowserExtensionPackages;
   private readonly tasks?: DurableTaskService;
 
-  async sendTaskPrompt(agent: Agent, prompt: string, goal?: boolean): Promise<BackendSendResult> {
+  async sendTaskPrompt(agent: Agent, prompt: string, goal?: boolean, planMode?: boolean): Promise<BackendSendResult> {
+    if (goal && planMode) throw new Error('planMode and goal cannot be enabled together.');
     if (agent.remoteConnectionId) {
       if (this.tasks?.mayStartAutomatedPrompt(agent.id) === false) throw new Error('Agent is stopped.');
-      return this.remoteTeams.request<BackendSendResult>(agent.remoteConnectionId, backendMethods.collaborationPromptSend, { agentId: agent.id, prompt, goal });
+      return this.remoteTeams.request<BackendSendResult>(agent.remoteConnectionId, backendMethods.collaborationPromptSend, { agentId: agent.id, prompt, goal, ...(typeof planMode === 'boolean' ? { planMode } : {}) });
     }
     agent = this.snapshot.agents.find(candidate => candidate.id === agent.id) ?? agent;
     await this.requireConnectedEngine(agent.backend);
     if (!this.snapshot.agents.includes(agent)) throw new Error('Agent was removed before task prompt admission.');
     if (this.tasks?.mayStartAutomatedPrompt(agent.id) === false || agent.planReview?.status === 'pending') throw new Error('Agent is stopped or waiting for a review decision.');
-    const receipt = await this.agentPrompts.sendWithReceipt(agent, prompt, undefined, undefined, undefined, goal);
+    if (planMode && this.backendDriverForAgent(agent).getCapabilities(agent).planMode === 'unsupported') throw new Error('This backend does not support Plan mode.');
+    const receipt = await this.agentPrompts.sendWithReceipt(agent, prompt, typeof planMode === 'boolean' ? { planMode } : undefined, undefined, undefined, goal);
     await this.persistSnapshotOnly();
     return receipt;
   }
@@ -1543,7 +1545,7 @@ export class AppBackendServer {
         const agent = this.snapshot.agents.find(agent => agent.id === requireString(params.agentId, 'agentId'));
         if (!agent) throw new Error('Remote worker not found.');
         const prompt = requireString(params.prompt, 'prompt');
-        return createAppRpcResult(message.id, await this.sendTaskPrompt(agent, prompt, params.goal === true));
+        return createAppRpcResult(message.id, await this.sendTaskPrompt(agent, prompt, params.goal === true, typeof params.planMode === 'boolean' ? params.planMode : undefined));
       }
       case backendMethods.collaborationMessageSend: {
         const params = requireRecord(message.params);
@@ -4820,8 +4822,8 @@ function debugCodeReviewScenario(value: unknown): DebugCodeReviewScenario {
   throw new Error('Invalid code review debug scenario.');
 }
 
-function debugThreadFlagId(value: unknown): Exclude<ThreadFlagId, 'delegate_to_worktree'> {
-  if (value === 'work_proposed' || value === 'delegate_to_worktree' || value === 'ready_for_review') return normalizeThreadFlagId(value);
+function debugThreadFlagId(value: unknown): ThreadFlagId {
+  if (value === 'work_proposed' || value === 'ready_for_review') return value;
   throw new Error('Invalid thread flag id.');
 }
 

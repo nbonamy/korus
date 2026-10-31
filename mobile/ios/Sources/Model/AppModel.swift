@@ -8,6 +8,9 @@ import UIKit
 final class AppModel {
     let notifications = NotificationInbox()
     let push = PushNotifications.shared
+    let liveActivities = WorkLiveActivities()
+    private var pendingActivityHost: String?
+    private var pendingActivityAgent: String?
     var notificationError: String?
     var pushRegistrationFailed = false
     var git = GitChangesState()
@@ -177,6 +180,11 @@ final class AppModel {
     let transcript = TranscriptHost()
 
     init() {
+        liveActivities.onRegistration = { [weak self] id, host, registration in
+            self?.command("liveActivityRegistration", ["requestId": id, "laptopId": host, "registration": registration as Any? ?? NSNull()])
+        }
+        engine.onLiveActivityRegistered = { [weak self] id, success in self?.liveActivities.complete(id, success: success) }
+        liveActivities.refresh()
         engine.onNotification = { [weak self] notification in self?.receive(notification) }
         engine.onNotificationOpenFailed = { [weak self] in self?.notificationError = "This conversation is unavailable. Check the laptop connection and try again." }
         push.onNotification = { [weak self] notification, tapped in
@@ -192,6 +200,7 @@ final class AppModel {
             self?.engineActivity = nil
             self?.syncEngineActivity()
             Task { await self?.push.refresh() }
+            self?.liveActivities.refresh()
         }
         engine.onSendResult = { [weak self] result in
             self?.composerDrafts.completeSend(result)
@@ -293,6 +302,7 @@ final class AppModel {
         set(\.connectionDetail, state.errorDetail ?? "")
         set(\.suggestedPrompt, state.suggestedPrompt)
         set(\.laptops, state.laptops)
+        if state.startup == .ready { liveActivities.retainHosts(Set(state.laptops.map(\.id))) }
         set(\.pairing, state.pairing)
         set(\.pairingError, state.pairingError)
         set(\.teams, state.teams)
@@ -306,6 +316,10 @@ final class AppModel {
             command("idleSort", ["order": sidebarIdleSort.rawValue])
         }
         set(\.laptopID, hostID)
+        if state.connection == .connected { liveActivities.selectHost(hostID) }
+        if pendingActivityHost == hostID && state.connection == .connected {
+            showActivityDestination()
+        }
         set(\.teamID, state.teamId)
         set(\.allTeams, nextAllTeams)
         let created = chatCreation == .creating && state.chatCreation == .idle
@@ -583,6 +597,28 @@ final class AppModel {
     func closeWorktreeSheet() { if chatCreation != .creating { newWorktreeGroup = nil; dismissChatFailure() } }
     func dismissChatFailure() { if chatCreation == .failed { chatCreation = .idle; command("dismissNewChat") } }
     func disconnect() { command("disconnect") }
+    func openActivity(_ url: URL) {
+        guard url.scheme == "companion-activity", url.host == "activity",
+              let host = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "host" })?.value,
+              !host.isEmpty, host == liveActivities.selectedHost else { return }
+        pendingActivityHost = host
+        let agent = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "agent" })?.value
+        pendingActivityAgent = agent?.isEmpty == false ? agent : nil
+        if connection == .connected && laptopID == host { showActivityDestination() }
+        else if foreground && screenUnlocked { command("connect", ["laptopId": host]) }
+    }
+    private func showActivityDestination() {
+        guard let host = pendingActivityHost else { return }
+        let agent = pendingActivityAgent
+        pendingActivityHost = nil; pendingActivityAgent = nil
+        if let agent {
+            dictation.cancel()
+            drawerOpen = false; reviewOpen = false; changesOpen = false; filePreviewOpen = false
+            command("openActivityThread", ["laptopId": host, "agentId": agent])
+        } else {
+            command("selectAllTeams"); chooseSidebarOrganization(.activity); drawerOpen = true
+        }
+    }
     func reconnect() { command("reconnect") }
     private func acknowledgeRead() {
         guard connection == .connected, conversationReady else { return }
@@ -614,7 +650,7 @@ final class AppModel {
         updateBackgroundExecution()
         updateConnectionNotice()
         updateUpdatingIndicator()
-        if active { Task { await push.refresh() } } else { notifications.clear() }
+        if active { Task { await push.refresh() }; liveActivities.refresh() } else { notifications.clear() }
         if !active { dictation.cancel() }
         syncEngineActivity()
     }
@@ -632,6 +668,7 @@ final class AppModel {
         guard engineActivity != visible else { return }
         engineActivity = visible
         command("activity", ["active": visible])
+        if visible, let host = pendingActivityHost { command("connect", ["laptopId": host]) }
     }
 }
 

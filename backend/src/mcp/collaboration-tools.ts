@@ -103,7 +103,7 @@ function registerCollaborationTools(
     server.registerTool('finish_turn', {
       description: finishTurnDescription,
       inputSchema: {
-        flag: z.enum(threadFlagIds).optional().describe('Optional thread flag. work_proposed offers separate work; delegate_to_worktree is its legacy alias. ready_for_review is separate review readiness. Omit to preserve the existing flag.'),
+        flag: z.enum(threadFlagIds).optional().describe('Optional thread flag. work_proposed offers separate work and is filtered unless this agent is on the repository’s default branch. ready_for_review is separate review readiness. Omit to preserve the existing flag.'),
         ...finishTurnEffectsSchema,
       },
     }, input => loggedToolResult('finish_turn', {
@@ -181,11 +181,12 @@ function registerCollaborationTools(
       branchName: z.string().optional().describe('Branch name for the new worktree. Required when createWorktree is true.'),
       destinationPath: z.string().optional().describe('Optional destination path for the new worktree.'),
       prompt: z.string().optional().describe('Concise visible request. Starts the agent and waits for acceptance.'),
-      goal: z.boolean().optional().describe('Run the delegated assignment as a native goal instead of a regular prompt. Requires prompt and a goal-capable backend (Codex or Claude). Claude limits the complete objective, including assignment context, to 4,000 characters.'),
+      goal: z.boolean().optional().describe('Enable only when explicitly requested by the user. Runs the assignment as a native goal instead of a regular prompt. Defaults to false; cannot be combined with planMode. Requires prompt and a goal-capable backend (Codex or Claude). Claude limits the complete objective, including assignment context, to 4,000 characters.'),
+      planMode: z.boolean().optional().describe('Enable only when explicitly requested by the user. Starts the first prompt in provider Plan mode and waits for user approval before implementation. Defaults to false; cannot be combined with goal. Requires prompt and a Plan-capable backend.'),
       startingContext: z.enum(['conversation', 'handoff']).optional().describe('Worktree delegation override: continue the native conversation or start fresh with a handoff. Defaults to saved preferences; unsupported/cross-provider continuation falls back visibly.'),
       instructions: z.string().optional().describe(`Assignment guidance and missing context; requires prompt. Applied to forks and handoffs. Saved user instructions take priority; ${product.name} supplies explicit per-task user overrides separately. No secrets.`),
     }),
-  }, ({ name, selection, remoteConnectionId, repoPath, createWorktree, branchName, destinationPath, prompt, goal, instructions, task, requestId, startingContext }) => loggedToolResult('create-agent', {
+  }, ({ name, selection, remoteConnectionId, repoPath, createWorktree, branchName, destinationPath, prompt, goal, planMode, instructions, task, requestId, startingContext }) => loggedToolResult('create-agent', {
     agentId: callerAgentId,
     repoPath,
     createWorktree: createWorktree === true,
@@ -199,6 +200,7 @@ function registerCollaborationTools(
     destinationPath,
     prompt,
     ...(goal !== undefined ? { goal } : {}),
+    ...(planMode !== undefined ? { planMode } : {}),
     task,
     requestId,
     startingContext,
@@ -211,7 +213,7 @@ function registerCollaborationTools(
   }, ({ agentId }) => loggedToolResult('close-agent', { callerAgentId, agentId }, () => coordinator.closeAgent(callerAgentId, agentId)));
 
   server.registerTool('display-markdown', {
-    description: `Display Markdown in the ${product.name} side panel. Plan-mode proposals open automatically through native plan output; do not display a second copy here. Provide exactly one of path or markdown. Use path for Markdown files in your agent folder; use markdown for inline generated content.`,
+    description: `Present Markdown in ${product.name}. Mission agents request opening a document; the user chooses whether to open it. Other conversations display it in the side panel. Plan-mode proposals open automatically through native plan output; do not display a second copy here. Provide exactly one of path or markdown. Use path for Markdown files in your agent folder; use markdown for inline generated content.`,
     inputSchema: {
       path: z.string().optional().describe('Markdown file path relative to your agent folder, or an absolute path inside it.'),
       markdown: z.string().optional().describe('Inline Markdown content to display.'),

@@ -1668,7 +1668,14 @@ export class AppController {
       this.backendEventBuffer = [];
       let gap = false;
       for (const event of buffered) {
-        if (event.seq <= this.lastBackendEventSeq) continue;
+        if (event.seq <= this.lastBackendEventSeq) {
+          // Progress is absent from snapshots. Forward covered updates on the
+          // client channel without rolling the backend sequence backwards.
+          if (event.type === 'agentCreation.progress') {
+            this.emitClientEvent({ type: event.type, agentId: event.agentId, payload: event.payload });
+          }
+          continue;
+        }
         if (event.seq !== this.lastBackendEventSeq + 1) {
           gap = true;
           break;

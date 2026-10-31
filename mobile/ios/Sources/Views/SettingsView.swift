@@ -38,6 +38,16 @@ struct SettingsView: View {
                         row("Notifications", systemImage: "bell", value: model.push.standing.label, chevron: true)
                     }
                     .tint(.primary)
+                    Toggle(isOn: Binding(get: { model.liveActivities.enabled }, set: { model.liveActivities.enabled = $0 })) {
+                        plainLabel("Live Activities", systemImage: "platter.filled.bottom.iphone")
+                    }
+                    if model.liveActivities.enabled && !model.liveActivities.systemEnabled {
+                        Button("Allow Live Activities in Settings") {
+                            if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                        }
+                    } else if model.liveActivities.registrationFailed {
+                        Button("Retry Live Activity setup", systemImage: "arrow.clockwise") { model.liveActivities.refresh(force: true) }
+                    }
                     if model.pushRegistrationFailed {
                         Button("Retry notification setup", systemImage: "arrow.clockwise") { Task { await model.push.refresh() } }
                     }

@@ -1,4 +1,4 @@
-import { flushPromises } from '@vue/test-utils';
+import { DOMWrapper, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import { ElMessageBox } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -151,7 +151,7 @@ describe('AppShell command palette', () => {
     await wrapper.get('.quick-open-dialog input').trigger('keydown.enter'); await flushPromises();
     expect(revert).not.toHaveBeenCalled();
     expect(wrapper.findComponent({ name: 'CommandPalette' }).exists()).toBe(false);
-    const dialog = wrapper.getComponent({ name: 'GitWorkflowControl' });
+    const dialog = new DOMWrapper(document.body).get('.app-form-dialog-shell');
     expect(dialog.text()).toContain('Revert uncommitted changes?');
     await dialog.findAll('button').find(button => button.text() === 'Revert' && button.classes().includes('app-button--primary'))!.trigger('click');
     await flushPromises();

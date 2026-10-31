@@ -551,7 +551,11 @@ export function createAgentComposerState(options: {
     const agentId = event.agentId ?? snapshot().activeAgentId;
     const mode = event.payload.mode;
     if (!agentId) return;
-    configuration(agentId).planMode = mode === 'plan';
+    syncPlanMode(agentId, mode === 'plan');
+  }
+
+  function syncPlanMode(agentId: string, enabled: boolean): void {
+    configuration(agentId).planMode = enabled;
     if (agentId === snapshot().activeAgentId) restore(agentId);
   }
 
@@ -625,6 +629,7 @@ export function createAgentComposerState(options: {
     selectServiceTierForAgent,
     setPlanMode,
     setPlanModeForAgent,
+    syncPlanMode,
     configurationForAgent: configuration,
     skillCatalogError,
     skillCatalogStatus,

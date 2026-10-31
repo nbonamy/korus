@@ -101,7 +101,7 @@ export function registerComputerUseTools(server: McpServer, computerUse: Compute
       ...actionTargetSchema,
       click_count: z.number().int().min(1).max(3).optional(),
       mouse_button: z.enum(['left', 'right', 'middle']).optional(),
-      physical: z.boolean().optional().describe('Send a foreground mouse click instead of AXPress.'),
+      physical: z.boolean().optional().describe('Move the real cursor to the target and click in the foreground instead of AXPress. Leaves the cursor at the target.'),
     }),
   }, (arguments_) => executeWindowTargeted(computerUse, 'click', arguments_));
 

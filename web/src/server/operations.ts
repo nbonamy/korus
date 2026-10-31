@@ -91,6 +91,7 @@ const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?
   commitAgentGitChanges: [backendMethods.agentGitCommit, named('agentId', 'input')],
   pushAgentGitBranch: [backendMethods.agentGitPush, named('agentId', 'input')],
   pullAgentGitBranch: [backendMethods.agentGitPull, named('agentId', 'input')],
+  updateAgentGitBranchFromBase: [backendMethods.agentGitUpdateFromBase, named('agentId', 'input')],
   revertAgentGitChanges: [backendMethods.agentGitRevert, named('agentId', 'input')],
   getAgentGitPrune: [backendMethods.agentGitPruneGet, named('agentId')],
   pruneAgentGit: [backendMethods.agentGitPrune, named('agentId', 'input')],
