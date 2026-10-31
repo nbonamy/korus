@@ -225,7 +225,7 @@ body > .site-header {
   border: 1px solid transparent;
 }
 .hero-actions .button-secondary {
-  border-color: var(--ink);
+  border: 1px solid var(--ink);
   color: var(--ink);
   background: var(--paper);
 }
@@ -337,7 +337,8 @@ html.watching-video {
 .walkthrough-player {
   aspect-ratio: 16 / 9;
 }
-.walkthrough-player iframe {
+.walkthrough-player iframe,
+.walkthrough-player video {
   display: block;
   width: 100%;
   height: 100%;
@@ -744,8 +745,7 @@ html.watching-video {
 .capability-wide {
   grid-column: span 2;
 }
-.capability-mobile,
-.capability-activity {
+.capability-mobile {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
@@ -753,34 +753,80 @@ html.watching-video {
   min-height: 0;
   padding: clamp(24px, 4vw, 56px);
 }
-.capability-mobile h3,
-.capability-activity h3 {
+.capability-mobile h3 {
   margin: 14px 0 0;
   font-size: clamp(28px, 3.4vw, 42px);
   line-height: 1.05;
   letter-spacing: -0.04em;
 }
-.capability-mobile p,
-.capability-activity p {
+.capability-mobile p {
   margin: 16px 0 0;
   font-size: 17px;
 }
-.capability-mobile .capability-shot,
-.capability-activity .capability-shot {
+.capability-mobile .capability-shot {
   width: auto;
   max-width: 100%;
-  max-height: 520px;
-  margin: 0 auto;
-}
-.capability-mobile .capability-shot {
   max-height: 480px;
+  margin: 0 auto;
   border: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
 }
-.capability-activity .capability-shot {
-  max-width: min(100%, 340px);
+.capability-focus {
+  padding: clamp(24px, 4vw, 56px);
+}
+.capability-focus h3 {
+  max-width: none;
+  margin: 0 0 32px;
+  font-size: clamp(28px, 3.4vw, 42px);
+  letter-spacing: -0.03em;
+}
+.focus-modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 40px;
+}
+.focus-modes figure {
+  min-width: 0;
+  margin: 0;
+}
+.focus-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: clamp(360px, 40vw, 520px);
+  margin-bottom: 24px;
+}
+.focus-preview .capability-shot {
+  width: auto;
+  max-width: min(100%, 300px);
+  max-height: 100%;
+  margin: 0;
+  box-shadow: none;
+}
+.focus-modes h4 {
+  margin: 0 0 10px;
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.focus-modes p {
+  margin-bottom: 16px;
+}
+.focus-modes .text-link {
+  color: var(--blue);
+  font-size: 15px;
+  font-weight: 500;
+}
+.focus-demo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.focus-demo:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 4px;
 }
 .capability-dark {
   color: #fff;
@@ -1046,11 +1092,17 @@ html.watching-video {
   }
   .capability-grid,
   .capability-mobile,
-  .capability-activity {
+  .focus-modes {
     grid-template-columns: minmax(0, 1fr);
   }
   .capability-wide {
     grid-column: auto;
+  }
+  .focus-preview {
+    height: auto;
+  }
+  .focus-preview-activity .capability-shot {
+    max-width: min(100%, 240px);
   }
   .section-heading {
     display: block;

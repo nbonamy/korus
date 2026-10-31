@@ -42,7 +42,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=walkthrough-1" />
+    <link rel="stylesheet" href="styles.css?v=focus-views-2" />
   </head>
   <body>
     <header class="site-header shell">
@@ -333,31 +333,82 @@
             />
           </article>
           <article
-            class="capability capability-wide capability-activity reveal"
+            id="focus-views"
+            class="capability capability-wide capability-focus reveal"
+            aria-labelledby="focus-views-title"
           >
-            <div>
-              <span class="capability-label">ACTIVITY VIEW</span>
-              <h3>Focus on what needs you next.</h3>
-              <p>
-                Bring questions, approvals, and unread results into focus.
-                Unblock the work that needs you, then let your agents keep
-                moving—without checking every conversation.
-                <a
-                  class="text-link"
-                  href="/docs/features/workspace.html#organize-agents-by-activity"
-                  >Work by activity <span aria-hidden="true">↗</span></a
-                >
-              </p>
+            <h3 id="focus-views-title">Choose how you want to focus.</h3>
+            <div class="focus-modes">
+              <figure>
+                <div class="focus-preview focus-preview-activity">
+                  <img
+                    class="capability-shot"
+                    src="assets/screens/activity.webp?v=activity-2"
+                    width="520"
+                    height="1124"
+                    alt="Korus Activity view grouping Backend, Database, Frontend, and Mobile into Needs input, Done, Working, and Idle"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </div>
+                <figcaption>
+                  <h4>By activity</h4>
+                  <p>
+                    Bring questions, approvals, and unread results into focus.
+                    Unblock the work that needs you without checking every
+                    conversation.
+                  </p>
+                  <a
+                    class="text-link"
+                    href="/docs/features/workspace.html#organize-agents-by-activity"
+                    >Work by activity <span aria-hidden="true">↗</span></a
+                  >
+                </figcaption>
+              </figure>
+              <figure>
+                <div class="focus-preview">
+                  <img
+                    class="capability-shot"
+                    src="assets/screens/worktree.webp"
+                    width="520"
+                    height="664"
+                    alt="Korus Worktree view grouping Backend, Database, Frontend, and Mobile under Team invitations"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </div>
+                <figcaption>
+                  <h4>By feature</h4>
+                  <p>
+                    Keep matching worktrees together across repositories. Open
+                    the feature’s agents in split view to follow every part of
+                    the work.
+                  </p>
+                  <a
+                    class="text-link focus-demo"
+                    href="__FEATURE_VIDEO__"
+                    data-watch-feature
+                    data-captions="__FEATURE_CAPTIONS__"
+                    aria-haspopup="dialog"
+                    aria-controls="walkthrough"
+                  >
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="m8 5 11 7-11 7Z" />
+                    </svg>
+                    Watch one feature span four repos
+                  </a>
+                </figcaption>
+              </figure>
             </div>
-            <img
-              class="capability-shot"
-              src="assets/screens/activity.webp?v=activity-1"
-              width="648"
-              height="1200"
-              alt="Korus Activity view grouping storefront agents into Needs input, Done, Working, and Idle"
-              loading="lazy"
-              decoding="async"
-            />
           </article>
           <article class="capability reveal">
             <span class="capability-label">QUICK CHAT</span>
@@ -781,6 +832,6 @@
       </div>
       <div class="walkthrough-player"></div>
     </dialog>
-    <script src="script.js?v=walkthrough-2"></script>
+    <script src="script.js?v=focus-views-1"></script>
   </body>
 </html>
