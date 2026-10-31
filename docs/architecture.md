@@ -1027,10 +1027,10 @@ Provider-native Markdown proposals own plan review identity and approval. Korus 
 section and selected-text comments and decorates flat Markdown checkbox lists as
 multiple choices and `( )` / `(x)` lists as single choices. Other code examples, nested
 lists and mixed lists retain normal Markdown rendering. Authored HTML remains
-escaped by the shared Markdown renderer. Model-selected defaults are proposals;
-only explicitly confirmed groups become feedback. Confirmation survives answer
-edits and reloads; toggling it off or resetting the group clears it. Unconfirmed
-drafts remain saved without ratifying defaults.
+escaped by the shared Markdown renderer. Model-selected defaults are proposals.
+Editing a choice includes the selected answers in feedback; resetting the group
+removes that feedback. Saved choices survive reloads. Revise and Approve submit
+directly after pending edits are saved.
 
 Fenced Mermaid diagrams stay in the native proposal Markdown and render through
 the shared read-only Visualize renderer. Whole-diagram comments use the existing
@@ -1044,7 +1044,7 @@ ordinary Markdown and native review actions without choice controls.
 Draft feedback belongs to the agent, conversation and native review ID. The owning
 host persists it with optimistic versions through the existing review response
 contract. Saving does not start a turn. Revise explicitly sends feedback in a
-Plan-mode turn, with confirmed answers and comments inside hidden context; Approve
+Plan-mode turn, with selected answers and comments inside hidden context; Approve
 uses the native implementation authorization path. Persisted delivery intent
 prevents automatic retry after an uncertain delivery. New proposals start unanswered and retain prior
 feedback in bounded review history.

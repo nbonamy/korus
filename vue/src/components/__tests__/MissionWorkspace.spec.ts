@@ -392,7 +392,7 @@ describe('MissionWorkspace', () => {
     wrapper.unmount();
   });
 
-  it('reviews requirement choices and diagrams through the shared plan editor and sends confirmed feedback without approving', async () => {
+  it('reviews requirement choices and diagrams and sends selected feedback directly without approving', async () => {
     const mission = missionWithRun('awaitingReview', true);
     mission.execution!.runs[0]!.proposal!.requirements.problem = '# Payment roles\n\n- [x] Owner\n- [ ] Member\n\n## Billing flow\n\n```mermaid\nflowchart LR\n Owner --> Checkout\n```';
     const sendMissionPrompt = vi.fn().mockRejectedValueOnce(new Error('Delivery failed')).mockResolvedValue(undefined);
@@ -401,10 +401,7 @@ describe('MissionWorkspace', () => {
     try {
       expect(wrapper.get('figure img').attributes('alt')).toContain('Billing flow');
       await wrapper.findAll('.plan-choice-option input')[1]!.setValue(true);
-      await wrapper.get('.plan-review-footer .app-button--primary').trigger('click');
-      expect(wrapper.get('[role="dialog"]').text()).toContain('Approve the requirements and continue to Tickets anyway?');
-      await wrapper.get('[role="dialog"] .app-button--tertiary').trigger('click');
-      await wrapper.get('[role="switch"]').setValue(true);
+      expect(wrapper.find('[role="switch"]').exists()).toBe(false);
       await wrapper.get('button[aria-label^="Comment on diagram"]').trigger('click');
       await wrapper.get('textarea').setValue('Include the cancellation path.');
       const revise = wrapper.get('.plan-review-footer .app-button--secondary');
@@ -435,7 +432,7 @@ describe('MissionWorkspace', () => {
       const choices = wrapper.findAll('.plan-choice-option input');
       expect(choices[1]!.attributes('disabled')).toBeUndefined();
       await choices[1]!.setValue(true);
-      await wrapper.get('[role="switch"]').setValue(true);
+      expect(wrapper.find('[role="switch"]').exists()).toBe(false);
       await wrapper.get('button[aria-label="Comment on this section: Payment roles"]').trigger('click');
       await wrapper.get('textarea').setValue('Allow a delegated billing owner.');
       await wrapper.get('.plan-review-footer .app-button--secondary').trigger('click');
@@ -450,8 +447,8 @@ describe('MissionWorkspace', () => {
       expect(wrapper.get('.plan-choice-option input').attributes('disabled')).toBeUndefined();
       expect(wrapper.find('textarea').exists()).toBe(false);
       await wrapper.get('.plan-review-footer .app-button--primary').trigger('click');
-      await wrapper.get('[role="dialog"] .app-button--primary').trigger('click');
       await flushPromises();
+      expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
       expect(executeMission).not.toHaveBeenCalled();
       expect(sendMissionPrompt).not.toHaveBeenCalled();
     } finally { wrapper.unmount(); }

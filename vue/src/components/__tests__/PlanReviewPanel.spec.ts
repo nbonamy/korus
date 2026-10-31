@@ -11,10 +11,6 @@ const result = (current: PlanReview, response: PlanReviewResponse): PlanReview =
   : { ...current, status: response.resolution };
 const button = (wrapper: ReturnType<typeof mount>, text: string) => wrapper.findAll('button').find(b => b.text() === text)!;
 const save = async () => { await new Promise(resolve => setTimeout(resolve, 400)); await flushPromises(); };
-const continueWarning = async (wrapper: ReturnType<typeof mount>) => {
-  const dialog = wrapper.find('[role="dialog"]');
-  if (dialog.exists()) await dialog.get('.app-button--primary').trigger('click');
-};
 
 describe('Markdown plan review', () => {
   it('renders read-only diagrams and preserves separate whole-diagram comments through reload and revision', async () => {
@@ -67,7 +63,7 @@ describe('Markdown plan review', () => {
     } finally { wrapper.unmount(); }
   });
 
-  it('keeps normal Markdown, offers checkbox/radio choices, and sends explicitly confirmed groups through Revise', async () => {
+  it('keeps normal Markdown and sends selected checkbox/radio choices directly through Revise', async () => {
     const current = review();
     const respond = vi.fn(async response => result(current, response));
     const wrapper = mount(PlanReviewPanel, { props: { review: current, respond } });
@@ -81,7 +77,7 @@ describe('Markdown plan review', () => {
       expect(button(wrapper, 'Revise').attributes('disabled')).toBeDefined();
       await wrapper.findAll('.plan-choice-option input[type="checkbox"]')[2]!.setValue();
       await wrapper.findAll('input[type="radio"]')[0]!.setValue();
-      for (const group of wrapper.findAll('.plan-choice-group')) await group.get('[role="switch"]').setValue(true);
+      expect(wrapper.find('[role="switch"]').exists()).toBe(false);
       await button(wrapper, 'Revise').trigger('click');
       expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
       await flushPromises();
@@ -95,7 +91,7 @@ describe('Markdown plan review', () => {
     } finally { wrapper.unmount(); }
   });
 
-  it.each(['revise', 'accept'] as const)('warns before %s with unconfirmed questions and allows going back or continuing', async resolution => {
+  it.each(['revise', 'accept'] as const)('submits %s directly with unanswered questions and flushes edited choices', async resolution => {
     const current = review();
     const respond = vi.fn(async response => result(current, response));
     const wrapper = mount(PlanReviewPanel, { props: { review: current, respond } });
@@ -103,61 +99,44 @@ describe('Markdown plan review', () => {
       await wrapper.findAll('.plan-choice-option input[type="checkbox"]')[1]!.setValue();
       const action = resolution === 'accept' ? 'Approve' : 'Revise';
       await button(wrapper, action).trigger('click');
-      expect(wrapper.get('[role="dialog"]').text()).toContain('unconfirmed');
-      expect(respond.mock.calls.some(([r]) => r.resolution !== 'save')).toBe(false);
-      await button(wrapper, 'Go back').trigger('click');
       expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
-      expect((wrapper.findAll('.plan-choice-option input[type="checkbox"]')[1]!.element as HTMLInputElement).checked).toBe(true);
-      await button(wrapper, action).trigger('click');
-      await button(wrapper, `${action} anyway`).trigger('click');
       await flushPromises();
       expect(respond.mock.calls.map(([r]) => r.resolution)).toEqual(['save', resolution]);
     } finally { wrapper.unmount(); }
   });
 
-  it('discards an open warning when a replacement review arrives', async () => {
+  it('approves an untouched proposal directly without creating choice feedback', async () => {
     const current = review();
     const respond = vi.fn(async response => result(current, response));
     const wrapper = mount(PlanReviewPanel, { props: { review: current, respond } });
     try {
       await button(wrapper, 'Approve').trigger('click');
-      expect(wrapper.get('[role="dialog"]').text()).toContain('unconfirmed');
-      await wrapper.setProps({ review: { ...current, id: 'replacement', markdown: '# Replacement plan' } });
       expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
-      expect(respond).not.toHaveBeenCalled();
-      await button(wrapper, 'Approve').trigger('click');
       await flushPromises();
-      expect(respond).toHaveBeenCalledExactlyOnceWith({ reviewId: 'replacement', resolution: 'accept', draftVersion: 0 });
+      expect(respond).toHaveBeenCalledExactlyOnceWith({ reviewId: current.id, resolution: 'accept', draftVersion: 0 });
     } finally { wrapper.unmount(); }
   });
 
-  it('confirms proposed groups explicitly, preserves confirmation on reload and edits, and clears it on toggle-off and reset', async () => {
+  it('preserves selected answers across reload and removes them when reset to the proposal', async () => {
     let current = review();
     const respond = vi.fn(async response => { current = result(current, response); return current; });
     let wrapper = mount(PlanReviewPanel, { props: { review: current, respond } });
     try {
-      const groups = wrapper.findAll('.plan-choice-group');
-      await groups[0]!.get('[role="switch"]').setValue(true);
-      await groups[1]!.get('[role="switch"]').setValue(true);
+      await wrapper.findAll('.plan-choice-option input[type="checkbox"]')[1]!.setValue();
+      await wrapper.findAll('input[type="radio"]')[0]!.setValue();
       await save();
       expect(current.draft?.choices).toEqual([
-        expect.objectContaining({ selected: ['macOS'], confirmed: true }),
-        expect.objectContaining({ selected: ['Home'], confirmed: true }),
+        expect.objectContaining({ selected: ['macOS', 'Windows'], confirmed: true }),
+        expect.objectContaining({ selected: ['Project'], confirmed: true }),
       ]);
       wrapper.unmount();
       wrapper = mount(PlanReviewPanel, { props: { review: current, respond } });
-      expect(wrapper.findAll('.plan-choice-group').every(group => group.get('[role="switch"]').attributes('aria-checked') === 'true')).toBe(true);
-      await wrapper.findAll('[role="switch"]')[0]!.setValue(false);
-      await save();
-      expect(current.draft?.choices.find(c => c.id === 's1-g0')).toMatchObject({ selected: ['macOS'], confirmed: false });
-      await wrapper.findAll('[role="switch"]')[0]!.setValue(true);
-      await wrapper.findAll('.plan-choice-option input[type="checkbox"]')[1]!.setValue();
-      await save();
-      expect(current.draft?.choices.find(c => c.id === 's1-g0')).toMatchObject({ selected: ['macOS', 'Windows'], confirmed: true });
-      await wrapper.findAll('.plan-choice-group')[0]!.get('button[aria-label="Clear choice"]').trigger('click');
+      expect(wrapper.find('[role="switch"]').exists()).toBe(false);
+      expect(wrapper.findAll('input[type="radio"]').map(input => (input.element as HTMLInputElement).checked)).toEqual([true, false]);
+      await wrapper.findAll('.plan-choice-group')[0]!.get('button[aria-label="Reset"]').trigger('click');
       await save();
       expect(current.draft?.choices).toHaveLength(1);
-      expect(wrapper.findAll('[role="switch"]')[0]!.attributes('aria-checked')).toBe('false');
+      expect(wrapper.findAll('.plan-choice-option input[type="checkbox"]').map(input => (input.element as HTMLInputElement).checked)).toEqual([true, false, false]);
     } finally { wrapper.unmount(); }
   });
 
@@ -173,27 +152,26 @@ describe('Markdown plan review', () => {
       await wrapper.get('button[aria-label="Comment on this section: Platforms"]').trigger('click');
       await wrapper.get('textarea').setValue('Keep Linux.');
       await button(wrapper, 'Revise').trigger('click');
-      await continueWarning(wrapper);
       await flushPromises();
       expect(respond.mock.calls.map(call => call[0].resolution)).toEqual(['save', 'revise']);
       expect(respond.mock.calls[0]![0].draft.choices).toEqual([]);
     } finally { wrapper.unmount(); }
   });
 
-  it('loads the proposed radio selection without submitting feedback and lets the user confirm it', async () => {
-    const current = review();
+  it('includes restored answers on Revise without requiring a separate confirmation', async () => {
+    const current: PlanReview = { ...review(), draft: { comments: [], choices: [{ id: 's2-g1', quote: 'Storage', selected: ['Home'], confirmed: false }] } };
     const respond = vi.fn(async response => result(current, response));
     const wrapper = mount(PlanReviewPanel, { props: { review: current, respond } });
     try {
       expect(wrapper.findAll('input[type="radio"]').map(input => (input.element as HTMLInputElement).checked)).toEqual([false, true]);
       await save();
       expect(respond).not.toHaveBeenCalled();
-      expect(button(wrapper, 'Revise').attributes('disabled')).toBeDefined();
-      await wrapper.findAll('.plan-choice-group')[1]!.get('[role="switch"]').setValue(true);
+      expect(wrapper.find('[role="switch"]').exists()).toBe(false);
       await button(wrapper, 'Revise').trigger('click');
-      await continueWarning(wrapper);
       await flushPromises();
       expect(respond.mock.calls[0]![0].draft.choices[0].selected).toEqual(['Home']);
+      expect(respond.mock.calls[0]![0].draft.choices[0].confirmed).toBe(true);
+      expect(respond.mock.calls.map(([response]) => response.resolution)).toEqual(['save', 'revise']);
     } finally { wrapper.unmount(); }
   });
 
@@ -236,7 +214,6 @@ describe('Markdown plan review', () => {
       await wrapper.get('button[aria-label="Comment on this section: Platforms"]').trigger('click');
       await wrapper.get('textarea').setValue('Keep Linux.');
       await button(wrapper, resolution === 'accept' ? 'Approve' : 'Cancel').trigger('click');
-      await continueWarning(wrapper);
       await flushPromises();
       expect(respond.mock.calls.map(c => c[0].resolution)).toEqual(['save', resolution]);
       expect(respond).toHaveBeenLastCalledWith({ reviewId: current.id, resolution, draftVersion: 1 });
@@ -251,7 +228,6 @@ describe('Markdown plan review', () => {
     try {
       await wrapper.findAll('.plan-choice-option input[type="checkbox"]')[1]!.setValue();
       await button(wrapper, 'Approve').trigger('click');
-      await continueWarning(wrapper);
       expect(respond).toHaveBeenCalledOnce();
       if (outcome === 'new review') await wrapper.setProps({ review: { ...review(), id: 'new', conversationId: 'other' } });
       complete();
@@ -273,12 +249,10 @@ describe('Markdown plan review', () => {
       await flushPromises();
       respond.mockRejectedValueOnce(Error('Offline'));
       await button(wrapper, 'Revise').trigger('click');
-      await continueWarning(wrapper);
       await flushPromises();
       expect(wrapper.get('[role="alert"]').text()).toBe('Offline');
       const failedCalls = respond.mock.calls.length;
       await button(wrapper, 'Revise').trigger('click');
-      await continueWarning(wrapper);
       await flushPromises();
       expect(respond).toHaveBeenLastCalledWith({ reviewId: current.id, resolution: 'revise', draftVersion: 1 });
       expect(respond).toHaveBeenCalledTimes(failedCalls + 1);
@@ -293,12 +267,12 @@ describe('Markdown plan review', () => {
     try {
       expect(wrapper.get('.comment-preview').text()).toBe('Keep all platforms.');
       expect((wrapper.findAll('input[type="radio"]')[0]!.element as HTMLInputElement).checked).toBe(true);
-      const reset = wrapper.get('button[aria-label="Clear choice"]');
+      const reset = wrapper.get('button[aria-label="Reset"]');
       expect(reset.text()).toBe('');
       await reset.trigger('mouseenter');
       await vi.waitFor(() => {
         const tooltip = document.querySelector<HTMLElement>('[role="tooltip"]');
-        expect(tooltip?.textContent).toBe('Clear choice');
+        expect(tooltip?.textContent).toBe('Reset');
         expect(tooltip && getComputedStyle(tooltip).display).not.toBe('none');
       });
       expect(reset.get('svg').attributes('aria-hidden')).toBe('true');

@@ -128,7 +128,7 @@ export const messages = {
       filesTruncated: 'Showing the first 500 changed files.',
     },
     planModeSettings: { title: 'Plan mode', interactive: 'Use interactive plans', description: 'Review plans with choices and section comments before approving implementation.' },
-    planFeedback: { diagram: 'Diagram {number}: {title}', commentDiagram: 'Comment on diagram {number}: {title}', confirmAnswer: 'Confirm answer: {question}', confirmed: 'Confirmed', unconfirmedTitle: 'Unconfirmed choices', unconfirmedRevise: 'Some answers are unconfirmed. Only confirmed answers will be applied; the other questions will stay open.', unconfirmedApprove: 'Some answers are unconfirmed. Approve the plan and start implementation anyway?', goBack: 'Go back', reviseAnyway: 'Revise anyway', approveAnyway: 'Approve anyway', deliveryPending: 'Feedback delivery is unconfirmed. Check the conversation before requesting a new revision.', review: 'Interactive plan', submit: 'Revise', implement: 'Approve', comment: 'Comment on this section', proposed: 'proposed', clear: 'Clear choice', retry: 'Retry save', unavailable: 'Plan feedback is unavailable.' },
+    planFeedback: { diagram: 'Diagram {number}: {title}', commentDiagram: 'Comment on diagram {number}: {title}', deliveryPending: 'Feedback delivery is unconfirmed. Check the conversation before requesting a new revision.', review: 'Interactive plan', submit: 'Revise', implement: 'Approve', comment: 'Comment on this section', proposed: 'proposed', clear: 'Reset', retry: 'Retry save', unavailable: 'Plan feedback is unavailable.' },
     commands: {
       title: 'Command Palette', search: 'Search commands…', empty: 'No commands available in this context.', noResults: 'No matching commands.',
       disconnected: 'Host disconnected', engineUnavailable: 'Connect an engine to continue', busy: 'Agent is busy', notIdle: 'Agent must be idle', gitBusy: 'Git operation in progress', gitUnavailable: 'Unavailable for this repository',
@@ -342,7 +342,6 @@ export const messages = {
       requirementCommentLabel: 'Requirement comment', requirementCommentPlaceholder: 'What should change?', saveRequirementComment: 'Save requirement comment',
       editRequirementComment: 'Edit requirement comment', removeRequirementComment: 'Remove requirement comment', sendRequirementComments: 'Send {count} requirement comment | Send {count} requirement comments',
       requirementFeedbackPrompt: 'Revise the mission requirements using this feedback:',
-      unconfirmedRequirementsApprove: 'Some answers are unconfirmed. Approve the requirements and continue to Tickets anyway?',
       ticketCommentHelp: 'Select ticket text to leave an inline comment.', ticketComments: 'Ticket comments',
       ticketCommentLabel: 'Ticket comment', ticketCommentPlaceholder: 'What should change?', saveTicketComment: 'Save ticket comment',
       editTicketComment: 'Edit ticket comment', removeTicketComment: 'Remove ticket comment', sendTicketComments: 'Send {count} ticket comment | Send {count} ticket comments',

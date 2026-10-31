@@ -4,7 +4,6 @@
       v-if="review"
       :review="review"
       :interactive="true"
-      :approval-warning="t('missions.unconfirmedRequirementsApprove')"
       :plan-updating="disabled"
       :respond="respond && !readOnly ? respondToReview : undefined"
     />

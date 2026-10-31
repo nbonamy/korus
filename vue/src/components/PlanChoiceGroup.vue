@@ -13,16 +13,6 @@
         <small v-if="option.proposed" :class="{ 'plan-choice-proposed--hidden': answer }">{{ t('planFeedback.proposed') }}</small></span
       >
     </label>
-    <div class="plan-choice-confirm">
-      <span>{{ t('planFeedback.confirmed') }}</span>
-      <el-switch
-        size="small"
-        :model-value="answer?.confirmed === true"
-        :aria-label="t('planFeedback.confirmAnswer', { question: group.quote })"
-        :disabled="disabled || (group.kind === 'radio' && !selected.length)"
-        @update:model-value="confirm($event === true)"
-      />
-    </div>
     <el-tooltip v-if="answer" :content="t('planFeedback.clear')" placement="top" :show-after="300">
       <button
         type="button"
@@ -55,9 +45,6 @@ const selected = computed(
     props.answer?.selected ??
     props.group.options.filter((o) => o.proposed).map((o) => o.label),
 );
-function confirm(confirmed: boolean) {
-  emit('change', { id: props.group.id, quote: props.group.quote, selected: [...selected.value], confirmed });
-}
 function change(label: string, checked: boolean) {
   const values =
     props.group.kind === 'radio'
@@ -65,7 +52,7 @@ function change(label: string, checked: boolean) {
       : props.group.options
           .filter((o) => (o.label === label ? checked : selected.value.includes(o.label)))
           .map((o) => o.label);
-  emit('change', { id: props.group.id, quote: props.group.quote, selected: values, confirmed: props.answer?.confirmed === true });
+  emit('change', { id: props.group.id, quote: props.group.quote, selected: values, confirmed: true });
 }
 </script>
 <style scoped>
@@ -100,15 +87,6 @@ small {
   font-size: 10px;
   color: var(--color-text-muted);
   margin-left: 5px;
-}
-.plan-choice-confirm {
-  justify-self: end;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 24px;
-  font-size: 12px;
-  color: var(--color-text-muted);
 }
 .plan-choice-reset {
   position: absolute;
