@@ -20,7 +20,7 @@ Use the composer's available context controls to supply file mentions, skills, a
 
 Choose a model in the composer before sending when you need a particular provider model. Reasoning effort and speed choices depend on the engine and model. Use the model picker's speed control to choose normal, fast, or ultrafast processing where offered. Supported Claude models offer **Fast**; use normal speed to turn it off. Fast mode can incur extra provider charges and is not included in subscription usage. Check the option's description before enabling it.
 
-The composer's **+** menu includes **Visualize**, **Delegate**, **Review**, and **Mission** across supported engines. These open [Visualize](./visualize), request [worktree delegation](../workflows/worktrees#delegate-implementation), open [Code Review](../workflows/code-review), and request a [Mission](../workflows/missions), respectively. The corresponding slash commands remain available.
+The composer's **+** menu includes **Design**, **Visualize**, **Delegate**, **Review**, and **Mission** across supported engines. Use [Design](./design) to compare and refine interfaces, [Visualize](./visualize) for diagrams, [worktree delegation](../workflows/worktrees#delegate-implementation) for separate implementation, [Code Review](../workflows/code-review) for existing changes, or a [Mission](../workflows/missions) for a staged feature. The corresponding slash commands remain available.
 
 After a response, the empty composer may suggest a follow-up. Press **Enter**, **Tab**, **Right Arrow**, or **Space** to accept it into the draft, then edit or send it. The first Enter fills the draft; press Enter again to send it. Accepting a suggestion does not send a message or replace text you have already typed. Follow-up suggestions are also available in the mobile composer.
 
@@ -71,11 +71,11 @@ Review the proposed plan and answer any questions before asking the agent to imp
 In **Settings → Workflows → Plan mode**, enable **Use interactive plans** to review choices and comment on individual sections of a plan.
 
 1. Read the plan in the workspace beside the conversation.
-2. Choose the answers you want and turn on **Confirmed** for each choice. An answer marked **proposed** is the agent's suggestion, not your confirmation.
+2. Review the proposed answers and select the choices you want. Use **Clear choice** to remove a saved answer and return to the proposal.
 3. Use **Comment on this section** to request a specific change without retyping the section.
-4. Choose **Revise** to send the confirmed answers and comments back for a revised plan, or **Approve** to start implementation.
+4. Choose **Revise** to send your selected answers and comments back for a revised plan, or **Approve** to start implementation.
 
-Your draft feedback is saved as you work and remains available after reloading. If choices are unconfirmed, Korus warns before revision or approval. Go back to confirm them when they should guide the work; approving anyway authorizes implementation with those choices still open.
+Your draft feedback is saved as you work and remains available after reloading. Selecting an answer records your choice directly. Review the plan and any open questions before approving implementation.
 
 Keep planning and implementation separate: **Revise** asks for another proposal; **Approve** authorizes the agent to implement the plan.
 
@@ -84,6 +84,8 @@ Keep planning and implementation separate: **Revise** asks for another proposal;
 Korus renders messages, tool calls, command output, plans, approvals, and file changes. Use those details to check what the agent inspected and what it actually validated.
 
 Saved Codex and Claude conversations open with prompts and final answers first. Expand a turn's **View details** or **Working** section to load its tool activity, command output, and other working details. Older Claude messages remain available across compaction boundaries. Expand the relevant turn before judging what evidence it contains.
+
+While Working details load, they stay folded and show a spinner. Expand them once they are ready.
 
 Open an assistant image in fullscreen to inspect it; use the arrow buttons or Left and Right keys to move between images.
 

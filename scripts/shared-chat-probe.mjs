@@ -31,11 +31,10 @@ try {
         "Set both relay URL and peer identity when overriding the product relay.",
     };
   else {
-    // Resolve external dependencies from their owning backend workspace.
-    await mkdir(path.join(root, "backend/.app-dev"), { recursive: true });
-    directory = await mkdtemp(
-      path.join(root, "backend/.app-dev/shared-chat-probe-"),
-    );
+    // Resolve external packages from the backend workspace, including nested SDK installs.
+    const workspace = path.join(root, "backend/.app-dev");
+    await mkdir(workspace, { recursive: true });
+    directory = await mkdtemp(path.join(workspace, "shared-chat-probe-"));
     const bundle = path.join(directory, "probe.mjs");
     await build({
       absWorkingDir: root,

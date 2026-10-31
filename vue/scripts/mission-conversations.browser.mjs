@@ -17,7 +17,7 @@ test('Mission workspace pairs horizontal workflow steps with persistent conversa
    plugins: [vue(), { name: 'mission-tabs-check', configureServer(server) {
    server.middlewares.use('/tabs-check', (_req, res) => { res.setHeader('Content-Type', 'text/html'); res.end('<!doctype html><html><head><style>html,body,#app{height:100%;margin:0}#app{display:flex;flex-direction:column}</style></head><body><div id="app"></div><script type="module" src="/tabs-fixture.js"></script></body></html>'); });
    }, resolveId(id) { if (id === '/tabs-fixture.js') return '\0tabs-fixture'; }, load(id) { if (id !== '\0tabs-fixture') return; return `
-   import { createApp, h, ref } from 'vue';
+   import { createApp, h, reactive, ref } from 'vue';
    import ElementPlus from 'element-plus';
    import 'element-plus/dist/index.css';
    import '@codex-app-sdk/vue/styles.css';
@@ -44,10 +44,15 @@ test('Mission workspace pairs horizontal workflow steps with persistent conversa
     const repositoryPath = run.repositoryPath ?? mission.artifacts.tickets[run.ticketIndex]?.repositoryPath;
     if (agent && repositoryPath) agent.workspace = {kind:'git', primaryWorktreeRoot:repositoryPath, repositoryRoot:repositoryPath};
    }
-   const fixture = JSON.parse(sessionStorage.getItem('fixture'+location.search) ?? 'null') ?? {snapshot, mission};
+   const fixture = reactive(JSON.parse(sessionStorage.getItem('fixture'+location.search) ?? 'null') ?? {snapshot, mission});
    sessionStorage.setItem('fixture'+location.search, JSON.stringify(fixture));
    const conversationOnly = ref(false);
-   createApp({render: () => h(MissionWorkspace, {mission: fixture.mission, agents: fixture.snapshot.agents, repositoryIcons: {'/repos/korus':'📦', '/repos/website':'🌐'}, workspaceToggleAvailable: true, conversationOnly: conversationOnly.value, onToggleWorkspace: () => { conversationOnly.value = !conversationOnly.value; }}, {conversation: ({agentId}) => h('div', {class: 'conversation-pane', style: 'padding:16px'}, 'Conversation: '+agentId)})}).use(ElementPlus).use(i18n).mount('#app');
+   const unreadAgentIds = ref([]);
+   window.setMissionAttention = (states, unread) => {
+    for (const agent of fixture.snapshot.agents) agent.status = {type: states[agent.id] ?? 'idle'};
+    unreadAgentIds.value = unread;
+   };
+   createApp({render: () => h(MissionWorkspace, {mission: fixture.mission, agents: fixture.snapshot.agents, unreadAgentIds: unreadAgentIds.value, repositoryIcons: {'/repos/korus':'📦', '/repos/website':'🌐'}, workspaceToggleAvailable: true, conversationOnly: conversationOnly.value, onToggleWorkspace: () => { conversationOnly.value = !conversationOnly.value; }}, {conversation: ({agentId}) => h('div', {class: 'conversation-pane', style: 'padding:16px'}, 'Conversation: '+agentId)})}).use(ElementPlus).use(i18n).mount('#app');
    `; } }] });
   let browser;
   try {
@@ -68,6 +73,33 @@ test('Mission workspace pairs horizontal workflow steps with persistent conversa
    assert.equal(await tabs.count(), 4);
    assert.equal(await tabs.first().locator('svg').count(), 1);
    assert.equal(await tabs.nth(1).locator('.agent-avatar').count(), 1);
+   const tabAgentIds = await tabs.evaluateAll(tabs => tabs.map(tab => tab.id.slice(4)));
+   await page.evaluate(ids => window.setMissionAttention({[ids[1]]:'awaitingInput', [ids[2]]:'working'}, ids), tabAgentIds);
+   const dotStates = () => tabs.evaluateAll(tabs => tabs.map(tab => tab.querySelector('[data-attention]')?.dataset.attention ?? null));
+   await page.waitForFunction(() => document.querySelectorAll('.mission-conversation-rail [data-attention="working"]').length === 1);
+   assert.deepEqual(await dotStates(), ['unread', 'needsInput', 'working', null]);
+   for (const dark of [false, true]) {
+    await page.evaluate(dark => document.documentElement.classList.toggle('dark', dark), dark);
+    const colors = await tabs.evaluateAll(tabs => tabs.slice(0,3).map((tab,index) => {
+     const dot = tab.querySelector('[data-attention]');
+     const token = document.createElement('i');
+     token.style.background = 'var('+['--color-error','--color-primary','--color-warning'][index]+')';
+     document.body.append(token);
+     const expected = getComputedStyle(token).backgroundColor;
+     token.remove();
+     return {actual:getComputedStyle(dot).backgroundColor, expected};
+    }));
+    assert.ok(colors.every(color => color.actual === color.expected), 'lead unread/input/working dots must use red/blue/orange theme tokens');
+    await page.screenshot({path:path.join(artifacts, 'agent-dots-'+(dark?'dark':'light')+'.png'), animations:'disabled'});
+   }
+   await page.evaluate(() => document.documentElement.classList.remove('dark'));
+   await page.evaluate(ids => window.setMissionAttention({[ids[0]]:'awaitingInput', [ids[1]]:'working'}, ids), tabAgentIds);
+   assert.deepEqual(await dotStates(), ['needsInput', 'working', null, null]);
+   await page.evaluate(ids => window.setMissionAttention({[ids[0]]:'working'}, ids), tabAgentIds);
+   assert.deepEqual(await dotStates(), ['working', null, null, null]);
+   await page.evaluate(() => window.setMissionAttention({}, []));
+   assert.deepEqual(await dotStates(), [null, null, null, null]);
+
    const chat = page.locator('.mission-conversation-rail .conversation-pane');
    const overlay = page.locator('.mission-conversation-rail__switch-overlay');
    const agentOf = async index => (await tabs.nth(index).getAttribute('id')).slice(4);
