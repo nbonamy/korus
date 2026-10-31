@@ -1360,9 +1360,11 @@ describe('AppShell authentication and conversation', () => {
     expect(wrapper.emitted('sendPrompt')).toBeUndefined();
   });
 
-  it.each(['Visualize', 'Delegate', 'Review', 'Mission'])('runs %s from the composer menu without consuming the draft or attachments', async label => {
+  it.each(['Design', 'Visualize', 'Delegate', 'Review', 'Mission'])('runs %s from the composer menu without consuming the draft or attachments', async label => {
     const sendPromptAction = vi.fn().mockResolvedValue(undefined);
     const startVisualize = vi.fn().mockResolvedValue(createInitialSnapshot());
+    const design = vi.fn().mockResolvedValue({ workspace: { isOpen: true } });
+    setElectronTestClient({ design });
     const draft = { text: 'Keep this draft', selectionStart: 4, selectionEnd: 4 };
     const attachment: CodexNativeAttachment = { id: 'notes', type: 'file', reference: '/tmp/notes.txt', name: 'notes.txt', mimeType: 'text/plain', size: 10 };
     const snapshot = createInitialSnapshot();
@@ -1374,13 +1376,14 @@ describe('AppShell authentication and conversation', () => {
     if (label === 'Visualize') {
       expect(wrapper.findAll('.chat-composer-action-menu [role="menuitem"], .chat-composer-action-menu [role="menuitemcheckbox"], .chat-composer-action-menu [role="separator"]')
         .map(row => row.attributes('role') === 'separator' ? '---' : row.text())).toStrictEqual([
-        'Approval', '---', 'Visualize', 'Delegate', 'Review', 'Mission', '---', 'Goal mode', 'Plan mode', '---', 'Add Files & Photos',
+        'Approval', '---', 'Design', 'Visualize', 'Delegate', 'Review', 'Mission', '---', 'Goal mode', 'Plan mode', '---', 'Add Files & Photos',
       ]);
     }
     const item = wrapper.findAll('[role="menuitem"]').find(item => item.text() === label);
     expect(item, `${label} menu item`).toBeDefined();
     await item!.trigger('click');
     await flushPromises();
+    if (label === 'Design') expect(design).toHaveBeenCalledExactlyOnceWith(snapshot.activeAgentId, { type: 'open' });
     if (label === 'Review') expect(wrapper.get('[aria-label="Code review"]').isVisible()).toBe(true);
     if (label === 'Visualize') expect(startVisualize).toHaveBeenCalledExactlyOnceWith(createInitialSnapshot().activeAgentId, { choose: true });
     if (label === 'Delegate' || label === 'Mission') {

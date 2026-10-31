@@ -7,7 +7,7 @@ export const messages = {
       buildThis: 'Build this', sendForCoding: 'Send for coding', sentForCoding: 'Sent for coding', reviewComment: 'Comment on this proposal', buildHelp: 'Your agent will implement this direction and its linked screens using the saved design and your comments.',
       proposalComment: 'Proposal comment', commentOn: 'Comment on {title}', commentPlaceholder: 'What would you like to change?',
       title: 'Design', revision: 'r{revision}', edit: 'Edit', play: 'Play', export: 'Export',
-      discardReload: 'Discard draft and reload', emptyTitle: 'Build something together', emptyHelp: 'Describe a design in the conversation with /design, then select an element to edit it or leave a comment.',
+      discardReload: 'Discard draft and reload', emptyTitle: 'Explore design ideas', emptyHelp: 'Use /design in the chat to explore ideas for a website, app, or interface. Your agent will create visual proposals here for you to compare and refine.',
       artboard: 'Artboard', zoom: 'Zoom', fit: 'Fit', undo: 'Undo', element: 'Element', text: 'Text', color: 'Text color', fill: 'Fill',
       onClick: 'On click', noInteraction: 'None', interactionTarget: 'Interaction target', action_navigate: 'Go to artboard', action_back: 'Go back', action_toggle: 'Toggle visibility', action_show: 'Show element', action_hide: 'Hide element', action_scroll: 'Scroll to element',
       tweaks: 'Tweaks', noTweaks: 'Ask your agent to add controls for this artboard.', fromStyles: 'From stylesheet', retryTweak: 'Apply my tweak', tweakChanged: 'This control has changed. Discard the preview and choose a new value.',
@@ -134,7 +134,7 @@ export const messages = {
       disconnected: 'Host disconnected', engineUnavailable: 'Connect an engine to continue', busy: 'Agent is busy', notIdle: 'Agent must be idle', gitBusy: 'Git operation in progress', gitUnavailable: 'Unavailable for this repository',
       groups: { navigation: 'Navigation', conversation: 'Conversation', team: 'Team', settings: 'Settings', agent: 'Agent', workspace: 'Workspace', git: 'Git', application: 'Application' },
       cockpit: 'Open Cockpit', backlog: 'Open Backlog', automations: 'Open Automations', quickChat: 'New Quick Chat',
-      newAgent: 'New agent', fork: 'Fork conversation', resume: 'Resume conversation', visualize: 'Open Visualize', plan: 'Open plan', filesPane: 'Open files', codeReview: 'Open code review', simulator: 'Open simulator', gitAction: 'Git: {action}',
+      newAgent: 'New agent', fork: 'Fork conversation', resume: 'Resume conversation', design: 'Open Design', visualize: 'Open Visualize', plan: 'Open plan', filesPane: 'Open files', codeReview: 'Open code review', simulator: 'Open simulator', gitAction: 'Git: {action}',
     },
     shortcuts: {
       title: 'Keyboard Shortcuts', search: 'Search actions or keys…', noResults: 'No matching shortcuts.', empty: 'No shortcuts available in this context.', close: 'Close',
@@ -1026,7 +1026,7 @@ export const messages = {
       completeAction: `Start using ${product.name}`,
     },
     chat: {
-      composerActions: { visualize: 'Visualize', delegate: 'Delegate', review: 'Review', mission: 'Mission' },
+      composerActions: { design: 'Design', visualize: 'Visualize', delegate: 'Delegate', review: 'Review', mission: 'Mission' },
       quickChatHeadline: 'What can I help with?',
       quickChatContext: 'Ask about this team’s projects. Other conversations aren’t included.',
       savedDrafts: {
@@ -1651,6 +1651,7 @@ export const messages = {
             },
             reopenMissionStage: { running: 'Reopening mission stage', completed: 'Reopened mission stage', failed: 'Could not reopen mission stage' },
             setMissionTitle: { running: 'Naming mission', completed: 'Named mission', failed: 'Could not name mission' },
+            openDesign: { running: 'Opening Design', completed: 'Opened Design', failed: 'Could not open Design' },
             suggestVisualizations: { running: 'Suggesting diagrams', completed: 'Suggested diagrams', failed: 'Could not suggest diagrams' },
             addVisualization: { running: 'Creating diagram', completed: 'Created diagram', failed: 'Could not create diagram' },
             readVisualizationCanvas: { running: 'Reading canvas selection', completed: 'Read canvas selection', failed: 'Could not read canvas selection' },

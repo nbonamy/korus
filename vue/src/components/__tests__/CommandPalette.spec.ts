@@ -17,7 +17,7 @@ function setup(overrides: Partial<Parameters<typeof commandPaletteActions>[0]> =
     capabilities: { ...defaultBackendCapabilities('codex') }, gitAvailable: true, gitActions: [], planAvailable: false, simulatorAvailable: true, ...overrides,
   });
   const command = vi.fn();
-  const actions = { command, settings: vi.fn(), cockpit: vi.fn(), backlog: vi.fn(), automations: vi.fn(), quickChat: vi.fn(), newAgent: vi.fn(), files: vi.fn(), filesPane: vi.fn(), codeReview: vi.fn(), simulator: vi.fn(), visualize: vi.fn(), plan: vi.fn() };
+  const actions = { command, settings: vi.fn(), cockpit: vi.fn(), backlog: vi.fn(), automations: vi.fn(), quickChat: vi.fn(), newAgent: vi.fn(), files: vi.fn(), filesPane: vi.fn(), codeReview: vi.fn(), simulator: vi.fn(), design: vi.fn(), visualize: vi.fn(), plan: vi.fn() };
   const wrapper = mount(defineComponent({
     components: { CommandPalette },
     setup() {
@@ -71,7 +71,7 @@ describe('CommandPalette', () => {
   });
   it('keeps artifact panes in workspace-menu order and puts file search in navigation', () => {
     const { wrapper } = setup({ planAvailable: true });
-    expect(sectionRows(wrapper, 'Workspace')).toStrictEqual(['Open code review', 'Open Visualize', 'Open changes', 'Open simulator', 'Open browser', 'Open files', 'Open plan']);
+    expect(sectionRows(wrapper, 'Workspace')).toStrictEqual(['Open code review', 'Open Design', 'Open Visualize', 'Open changes', 'Open simulator', 'Open browser', 'Open files', 'Open plan']);
     expect(sectionRows(wrapper, 'Navigation')).toContain('Go to file');
     wrapper.unmount();
   });
@@ -101,6 +101,20 @@ describe('CommandPalette', () => {
     await wrapper.get('input').trigger('keydown.enter');
     expect(actions.codeReview).toHaveBeenCalledExactlyOnceWith();
     wrapper.unmount();
+  });
+  it('opens Design through its existing action and blocks it while the host is disconnected', async () => {
+    const { wrapper, context, actions } = setup({ hostConnected: false });
+    try {
+      await wrapper.get('input').setValue('design');
+      expect(wrapper.get('button').text()).toContain('Open Design');
+      expect(wrapper.get('button').attributes('disabled')).toBeDefined();
+      await wrapper.get('input').trigger('keydown.enter');
+      expect(actions.design).not.toHaveBeenCalled();
+      context.hostConnected = true;
+      await nextTick();
+      await wrapper.get('input').trigger('keydown.enter');
+      expect(actions.design).toHaveBeenCalledExactlyOnceWith();
+    } finally { wrapper.unmount(); }
   });
   it('exposes simulator search only on supporting hosts and blocks disconnected dispatch', async () => {
     const { wrapper, context, actions } = setup({ simulatorAvailable: false, hostConnected: false, engineConnected: false });
@@ -248,7 +262,7 @@ describe('CommandPalette', () => {
     expect(wrapper.findAll('kbd')).toHaveLength(0);
     context.agent = null;
     await wrapper.get('input').setValue('');
-    expect(wrapper.text()).not.toMatch(/Rename agent|Open files|Open simulator|Open code review|Quit/);
+    expect(wrapper.text()).not.toMatch(/Rename agent|Open files|Open simulator|Open code review|Open Design|Quit/);
     expect(wrapper.text()).toContain('New agent');
     context.shortcuts.onboarding = true;
     await nextTick();

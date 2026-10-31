@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import * as z from 'zod/v4';
 import type { DesignNode, DesignRequest } from '@workspace/core/design';
 import type { DesignTweak } from '@workspace/core/design-tweaks';
-import type { DesignService } from '../design-service';
+import { designPrompt, type DesignService } from '../design-service';
 import { loggedToolResult, type AppMcpToolModuleProvider } from './tool-modules';
 
 const interaction = z.discriminatedUnion('type', [
@@ -32,7 +32,13 @@ function register(server: McpServer, service: DesignService, agentId: string) {
     const { workspace } = await service.execute(agentId, request);
     return { document: workspace.document, selectedArtboardId: workspace.selectedArtboardId, selectedNodeId: workspace.selectedNodeId, checkpoints: workspace.checkpoints.map(({ id, title, revision }) => ({ id, title, revision })) };
   });
-  server.registerTool('read-design', { description: 'Read this conversation’s saved Design document, stable node IDs, exact revision, selection and element comments. Use before every edit. The user must open Design first.' }, () => run({ type: 'read' }));
+  server.registerTool('open-design', {
+    description: 'Open Design for this conversation. Only after the user explicitly requests it or confirms your offer to explore a design. Preserves saved artboards, edits and comments. Continue in the current turn using the returned guidance; this does not submit another prompt or authorize implementation.',
+  }, () => loggedToolResult('open-design', { agentId }, async () => {
+    await service.execute(agentId, { type: 'open' });
+    return { success: true, instructions: designPrompt('the exploration requested by the user') };
+  }));
+  server.registerTool('read-design', { description: 'Read this conversation’s saved Design document, stable node IDs, exact revision, selection and element comments. Use before every edit. Design must be open first; use open-design only with user authorization.' }, () => run({ type: 'read' }));
   server.registerTool('create-design', {
     description: 'Create the initial design in an open Design pane. Authored HTML trees only: unique immutable IDs, text on leaves, CSS, inline styles and embedded data images. Optional tweaks expose range/color/select/toggle controls bound to node styles or CSS variables; initialize the bound styles. Color controls use six-digit hex. No scripts, event handlers, network URLs or frameworks. Existing designs can only be changed through edit-design.',
     inputSchema: { content: z.object({ title: z.string().min(1).max(200), css: z.string().max(50_000).describe('Fallback stylesheet for artboards without their own css. Not combined with artboard css.'), comments: z.array(z.never()).max(0), artboards: z.array(artboard).min(1).max(12), tweaks: z.array(tweak).max(200).optional() }) },

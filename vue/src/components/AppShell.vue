@@ -2502,6 +2502,7 @@ async function sendModelCommand(agentId: string, command: '/delegate' | '/missio
 
 async function runConversationMenuCommand(agentId: string, command: ConversationMenuCommand): Promise<void> {
   try {
+    if (command === 'design') return await startDesignForAgent(agentId);
     if (command === 'review') return await openCodeReviewForAgent(agentId);
     if (command === 'visualize') return await startVisualizeForAgent(agentId, { choose: true });
     await sendModelCommand(agentId, command === 'mission' ? '/mission' : '/delegate');
@@ -2744,6 +2745,7 @@ const paletteActions = computed(() => {
     filesPane: () => { if (agent) agentWorkspace.value?.openRightWorkspaceTabFromMenu(agent.id, 'files'); },
     codeReview: () => { if (agent) return openCodeReviewForAgent(agent.id); },
     simulator: () => { if (agent) agentWorkspace.value?.openRightWorkspaceTabFromMenu(agent.id, 'simulator'); },
+    design: () => { if (agent) return startDesignForAgent(agent.id); },
     visualize: () => { if (agent) return startVisualizeForAgent(agent.id); },
     plan: () => openRightWorkspaceTab('plan', agent?.id),
   });

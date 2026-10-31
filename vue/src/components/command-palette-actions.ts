@@ -47,6 +47,7 @@ type Actions = {
   filesPane: () => void;
   codeReview: () => void | Promise<void>;
   simulator: () => void;
+  design: () => void | Promise<void>;
   visualize: () => void | Promise<void>;
   plan: () => void;
 };
@@ -104,6 +105,7 @@ export function commandPaletteActions(context: Context, actions: Actions): Comma
 
   // Artifact panes follow the workspace menu; file search belongs to navigation.
   result.push({ id: 'codeReview', section: 'workspace', label: translate('commands.codeReview'), aliases: 'review reviews findings inspection', scope: agentScope, disabledReason: disconnected, run: actions.codeReview });
+  result.push({ id: 'design', section: 'workspace', label: translate('commands.design'), aliases: 'design mockup prototype exploration', scope: agentScope, disabledReason: disconnected, run: actions.design });
   result.push({ id: 'visualize', section: 'workspace', label: translate('commands.visualize'), aliases: 'diagram canvas artifact', scope: agentScope, disabledReason: disconnected, run: actions.visualize });
   if (context.agent.folder && context.gitAvailable) addShortcut('review', 'workspace', disconnected, agentScope);
   if (context.simulatorAvailable) result.push({ id: 'simulator', section: 'workspace', label: translate('commands.simulator'), aliases: 'mobile device ios android emulator', scope: agentScope, disabledReason: disconnected, run: actions.simulator });

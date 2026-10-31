@@ -40,7 +40,8 @@
                 >
                   <BacklogIcon v-if="tab === 'backlog'" aria-hidden="true" />
                   <IconChecklist v-if="tab === 'codeReview'" aria-hidden="true" />
-                  <IconSitemap v-else-if="tab === 'visualize' || tab === 'design'" aria-hidden="true" />
+                  <IconPalette v-else-if="tab === 'design'" aria-hidden="true" />
+                  <IconSitemap v-else-if="tab === 'visualize'" aria-hidden="true" />
                   <ClockHour8Icon v-else-if="tab === 'gitLog'" aria-hidden="true" />
                   <FileDiffIcon v-else-if="tab === 'review'" aria-hidden="true" />
                   <IconDeviceMobile v-else-if="tab === 'simulator'" aria-hidden="true" />
@@ -148,7 +149,7 @@
         <span>{{ $t('surface.rightWorkspacePanel.review') }}</span>
       </button>
       <button type="button" @click="emit('openTab', 'design')">
-        <IconSitemap aria-hidden="true" />
+        <IconPalette aria-hidden="true" />
         <span>{{ $t('design.title') }}</span>
       </button>
       <button type="button" @click="emit('openTab', 'visualize')">
@@ -401,7 +402,7 @@ import { translate } from '../i18n';
 import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
-import { IconDeviceMobile, IconChecklist, IconChevronLeft, IconChevronRight, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconLego, IconSitemap, IconWorld } from '@tabler/icons-vue';
+import { IconDeviceMobile, IconChecklist, IconChevronLeft, IconChevronRight, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconLego, IconPalette, IconSitemap, IconWorld } from '@tabler/icons-vue';
 import type { Agent, AgentGitStatus, AgentSubagentTree, AppSnapshot, OpenInApplication, OpenInApplicationCatalog, RendererMessage, WorkBacklogAssignment, WorkItem } from '@workspace/core/contracts';
 import type { CodexConversationLink, CodexConversationVisualization } from '@codex-app-sdk/vue';
 import { ArrowUpRightIcon, ClockHour8Icon, BacklogIcon, CircleXIcon, CodeIcon, CopyIcon, DownloadIcon, FileDiffIcon, FileTextIcon, FoldersIcon, PhotoIcon, PlusIcon, SquareXIcon, X } from '../shared/icons/app-icons';
@@ -620,7 +621,7 @@ const activeProjectFilePath = computed(() => {
 const simulatorAvailable = Boolean(appApi?.mobileSimulator);
 const addMenuItems = computed<AppMenuItem[]>(() => [
   { id: 'codeReview', type: 'action', label: translate('surface.rightWorkspacePanel.review'), icon: IconChecklist },
-  { id: 'design', type: 'action', label: translate('design.title'), icon: IconSitemap },
+  { id: 'design', type: 'action', label: translate('design.title'), icon: IconPalette },
   { id: 'visualize', type: 'action', label: translate('surface.rightWorkspacePanel.visualize'), icon: IconSitemap },
   { id: 'review', type: 'action', label: translate('surface.rightWorkspacePanel.changes'), icon: FileDiffIcon },
   ...(simulatorAvailable ? [{ id: 'simulator', type: 'action', label: translate('surface.mobileSimulator.tab'), icon: IconDeviceMobile } satisfies AppMenuItem] : []),

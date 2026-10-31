@@ -10,6 +10,7 @@ describe('appDeveloperInstructions', () => {
     expect(instructions).toContain('read-skill');
     expect(instructions).toContain('korus-inline-html');
     expect(instructions).toContain('korus-visualize');
+    expect(instructions).toContain('open-design only after the user explicitly requests it or confirms your offer');
     expect(instructions).toContain('korus-delegation');
     expect(instructions).not.toMatch(/^# /m);
     expect(instructions).not.toContain('<artifact');

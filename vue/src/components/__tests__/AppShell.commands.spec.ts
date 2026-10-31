@@ -290,14 +290,24 @@ describe('AppShell dialogs and commands', () => {
     wrapper.unmount();
   });
 
-  it('opens Design from the workspace launcher using the owning agent', async () => {
+  it.each(['workspace launcher', 'composer menu', 'command palette'])('opens Design from the %s using the owning agent', async source => {
     const design = vi.fn().mockResolvedValue({ workspace: { conversationRef: null, isOpen: true, document: null, selectedArtboardId: null, selectedNodeId: null, undo: [], checkpoints: [] } });
-    setElectronTestClient({ design });
-    const wrapper = mountShell({ stubAgentWorkspace: false });
-    await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
-    const button = wrapper.findAll('.right-workspace-panel__launcher button').find(button => button.text() === 'Design');
-    expect(button).toBeDefined();
-    await button!.trigger('click');
+    let command!: (command: AppCommand) => void;
+    setElectronTestClient({ design, onAppCommand: vi.fn(listener => { command = listener; return () => {}; }) });
+    const wrapper = mountShell({ stubAgentWorkspace: false, realConversationPane: true });
+    if (source === 'workspace launcher') {
+      await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+      await wrapper.findAll('.right-workspace-panel__launcher button').find(button => button.text() === 'Design')!.trigger('click');
+    } else if (source === 'composer menu') {
+      await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
+      await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Design')!.trigger('click');
+    } else {
+      command({ type: 'open-command-palette' });
+      await flushPromises();
+      const input = wrapper.get('[role="dialog"] input');
+      await input.setValue('design');
+      await input.trigger('keydown.enter');
+    }
     await flushPromises();
     expect(design).toHaveBeenCalledWith('agent-dina', { type: 'open' });
     expect(wrapper.findAll('[role="tab"]').map(tab => tab.text())).toContain('Design');

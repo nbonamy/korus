@@ -330,6 +330,12 @@ tool authorization stay conversation-scoped.
 
 ## Design Documents
 
+The composer menu, command palette and `/design` share the Design opener.
+Agents may offer an exploration, but `open-design` requires an explicit user request
+or confirmation. It opens the caller’s saved workspace without submitting a new
+provider turn; the caller continues with the Design tools. Exploration grants no
+implementation authority.
+
 Design keeps authored HTML node trees, stable IDs, embedded CSS and data-image assets
 in daemon-owned documents. User and agent edits share serialized, revision-checked
 operations. Text changes target leaves; structural operations preserve unrelated

@@ -95,10 +95,37 @@ try {
   ] } }, { id: 'mobile', title: 'Mobile', width: 375, height: 640, root: { id: 'mobile-root', tag: 'main', children: [{ id: 'mobile-heading', tag: 'h1', text: 'A second artboard' }] } }] } });
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  page.on('pageerror', error => console.error(`Browser error: ${error.message}`));
   await page.goto(url);
   await page.locator('.design-panel').waitFor({ state: 'visible', timeout: 60_000 });
   await page.locator('.design-canvas').waitFor({ state: 'visible' });
   assert.equal(await page.locator('.design-canvas iframe').count(), 2);
+  const savedDesign = (await design({ type: 'read' })).workspace.document;
+  const composer = page.locator('[role="textbox"][contenteditable]').first();
+  await composer.fill('Keep this design draft');
+  await page.getByRole('button', { name: 'Close Design tab', exact: true }).click();
+  await page.locator('.design-panel').waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: 'Composer actions', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Design', exact: true }).waitFor();
+  await page.screenshot({ path: path.join(output, 'design-composer-menu.png') });
+  await page.getByRole('menuitem', { name: 'Design', exact: true }).click();
+  await page.locator('.design-panel').waitFor({ state: 'visible' });
+  assert.deepEqual((await design({ type: 'read' })).workspace.document, savedDesign);
+  assert.equal(await composer.textContent(), 'Keep this design draft');
+  await page.getByRole('button', { name: 'Close Design tab', exact: true }).click();
+  await page.locator('.design-panel').waitFor({ state: 'hidden' });
+  await page.keyboard.press('Meta+Shift+P');
+  const palette = page.getByRole('dialog', { name: 'Command Palette', exact: true });
+  await palette.getByRole('searchbox').fill('design');
+  await palette.getByRole('button', { name: 'Open Design', exact: true }).waitFor();
+  await page.screenshot({ path: path.join(output, 'design-command-palette.png') });
+  await palette.getByRole('searchbox').press('Enter');
+  await page.locator('.design-panel').waitFor({ state: 'visible' });
+  assert.deepEqual((await design({ type: 'read' })).workspace.document, savedDesign);
+  assert.equal(await composer.textContent(), 'Keep this design draft');
+  await composer.fill('');
+  record('Composer + and command palette reopen the owning saved Design without submitting or consuming the conversation draft.');
+
   const assertToolbar = async () => {
     const geometry = await page.locator('.design-panel').evaluate(panel => {
       const panelBounds = panel.getBoundingClientRect();
