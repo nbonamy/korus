@@ -138,8 +138,8 @@ runs independently of loaded tree nodes, so an unopened directory remains search
   desktop and mobile own their local view preference, clock and transitions. Native
   activity rows share one identity space across groups so regrouping preserves rows.
 - Team-rail dot: red for unread, orange for working, unread wins, never on the
-  selected team. Agent activity is stored apart from metadata so startup hydration
-  does not make idle agents look active.
+  selected team or while Cockpit is selected. Agent activity is stored apart from
+  metadata so startup hydration does not make idle agents look active.
 - Duplicate and fork creation insert the new agent immediately after its source
   in the creating client's saved order. Background copies keep the current selection.
 - Mission navigation reuses the workspace group, session row and status-dot

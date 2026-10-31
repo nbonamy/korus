@@ -234,11 +234,11 @@ function isTeamActive(teamId: string): boolean {
 }
 
 function isTeamUnread(teamId: string): boolean {
-  return teamId !== props.activeTeamId && unreadTeamIdSet.value.has(teamId);
+  return !props.cockpitActive && teamId !== props.activeTeamId && unreadTeamIdSet.value.has(teamId);
 }
 
 function isTeamWorking(teamId: string): boolean {
-  return workingTeamIdSet.value.has(teamId);
+  return !props.cockpitActive && workingTeamIdSet.value.has(teamId);
 }
 
 function showsTeamActivityIndicator(teamId: string): boolean {
