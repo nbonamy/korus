@@ -2860,12 +2860,15 @@ export class AppBackendServer {
           async (agent) => {
             assertPromptSession(agent, expectedSessionId);
             const options = params.options as SendPromptOptions | undefined;
+            const previousFlags = agent.threadFlags;
+            const previousSuggestion = agent.suggestedPrompt;
             // Phone receipts await provider acceptance when idle; busy sends enter the desktop queue.
             let result: AppSnapshot;
             if (expectedSessionId !== undefined && this.agentPrompts.canStart(agent)) {
               await this.agentPrompts.sendAndWaitForAcceptance(agent, prompt, options, expectedSessionId, clientId);
               result = this.snapshot;
             } else result = this.agentPrompts.send(agentId, prompt, options, clientId);
+            if (agent.threadFlags === previousFlags && agent.suggestedPrompt === previousSuggestion) this.clearTurnHints(agent);
             await this.persistSnapshotOnly();
             return result;
           },

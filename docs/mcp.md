@@ -100,7 +100,12 @@ by mutating user-global tool config.
   One in-flight response covers each proposal. Acceptance clears the
   proposal; submission failure preserves it for retry. Every new provider turn clears
   all thread flags and prompt suggestions, including queued and internal starts.
-  Queue admission and rejected starts preserve them; successful steering clears them.
+  Prompt admission, including queue admission, clears them; rejected submissions
+  preserve them. The submitting client hides flags immediately while admission is
+  pending and restores them on rejection unless a newer flag has arrived.
+  Stale snapshots and admission responses cannot restore a submitted flag while
+  the client waits for its authoritative clear; a fresh flag publication remains visible.
+  Successful steering clears them.
   Duplicate starts cannot erase hints published by the current turn. Handoffs assess
   review readiness unless review is deferred or the user requests immediate commit/push.
   Flags are persisted app state cleared with the conversation runtime.

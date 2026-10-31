@@ -88,7 +88,7 @@ describe('AppBackendServer', () => {
     } finally { await server.close(); }
   });
 
-  it.each([true, false])('clears all prompt hints when a user turn starts (review readiness: %s) and assigns the conversation title', async (reviewReady) => {
+  it.each([true, false])('clears all prompt hints on user submission before the provider starts (review readiness: %s) and assigns the conversation title', async (reviewReady) => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 10, 15, 42));
     try {
@@ -106,10 +106,8 @@ describe('AppBackendServer', () => {
         createdAt: '2026-06-13T00:00:00.000Z',
         updatedAt: '2026-06-13T00:00:00.000Z',
       }];
-      const sendPrompt = vi.fn().mockImplementation(async () => {
-        emitTurnStarted(server, 'agent-dina', 'turn-1');
-        return { backendSession: { kind: 'codex' as const, threadId: 'thread-dina' }, turnId: 'turn-1' };
-      });
+      let accept!: (value: { backendSession: { kind: 'codex'; threadId: string }; turnId: string }) => void;
+      const sendPrompt = vi.fn().mockImplementation(() => new Promise(resolve => { accept = resolve; }));
       const setConversationTitle = vi.fn().mockResolvedValue(undefined);
       const driver: AgentBackendDriver = {
         backend: 'codex',
@@ -146,6 +144,9 @@ describe('AppBackendServer', () => {
       });
       expect((response as { result: AppSnapshot }).result.agents[0]?.threadFlags).toBeUndefined();
       expect((response as { result: Record<string, unknown> }).result).not.toHaveProperty('messages');
+      emitTurnStarted(server, 'agent-dina', 'turn-1');
+      accept({ backendSession: { kind: 'codex', threadId: 'thread-dina' }, turnId: 'turn-1' });
+      await vi.advanceTimersByTimeAsync(0);
       await flushMicrotasks();
 
       expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), 'revert everything', undefined);
@@ -447,8 +448,8 @@ describe('AppBackendServer', () => {
       text: prompt,
       options: { attachments: [{ type: 'file', path: '/tmp/queue.txt', name: 'queue.txt' }], inputMethod: 'dictated', ...delegation, selection: { model: 'sol', reasoningEffort: 'high', serviceTier: 'fast' } },
     })]);
-    expect(snapshot.agents[0]?.threadFlags).toStrictEqual({ ready_for_review: true, work_proposed: true });
-    expect(snapshot.agents[0]?.suggestedPrompt).toBe('Previous turn suggestion');
+    expect(snapshot.agents[0]?.threadFlags).toBeUndefined();
+    expect(snapshot.agents[0]?.suggestedPrompt).toBeUndefined();
     expect(sendPrompt).not.toHaveBeenCalled();
     expect(onPromptStarting).not.toHaveBeenCalled();
     expect(snapshot.agents[0]?.userDelegationOverrides).toBeUndefined();
@@ -496,7 +497,7 @@ describe('AppBackendServer', () => {
     });
     expect(snapshot.queuedPrompts).toHaveLength(1);
 
-    expect(snapshot.agents[0]?.suggestedPrompt).toBe('Previous turn suggestion');
+    expect(snapshot.agents[0]?.suggestedPrompt).toBeUndefined();
     emitTurnStarted(server, 'agent-dina', 'turn-next');
     expect(snapshot.agents[0]?.threadFlags).toBeUndefined();
     expect(snapshot.agents[0]?.suggestedPrompt).toBeUndefined();
