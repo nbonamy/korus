@@ -42,7 +42,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=hero-pair-1" />
+    <link rel="stylesheet" href="styles.css?v=walkthrough-1" />
   </head>
   <body>
     <header class="site-header shell">
@@ -98,6 +98,26 @@
                 data-platform-download
                 ><span>Download<span data-platform-label></span></span>
                 <span aria-hidden="true">→</span></a
+              >
+              <a
+                class="button button-secondary"
+                href="https://youtu.be/VuK3O0EHi14"
+                data-watch-walkthrough
+                aria-haspopup="dialog"
+                aria-controls="walkthrough"
+                ><svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="m8 5 11 7-11 7Z" />
+                </svg>
+                Watch Korus in action</a
               >
               <a class="text-link" href="#download"
                 >All downloads <span aria-hidden="true">↓</span></a
@@ -714,6 +734,33 @@
       <a class="header-link" href="/privacy/">Privacy</a>
       <span class="mono">© <span id="year"></span> nabocorp</span>
     </footer>
-    <script src="script.js?v=anywhere-1"></script>
+    <dialog
+      id="walkthrough"
+      class="walkthrough"
+      aria-labelledby="walkthrough-title"
+    >
+      <div class="walkthrough-toolbar">
+        <h2 id="walkthrough-title">Korus in action</h2>
+        <a href="https://youtu.be/VuK3O0EHi14" target="_blank" rel="noopener"
+          >Watch on YouTube</a
+        >
+        <button type="button" aria-label="Close video" autofocus>
+          <svg
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
+            <path d="m6 6 12 12M6 18 18 6" />
+          </svg>
+        </button>
+      </div>
+      <div class="walkthrough-player"></div>
+    </dialog>
+    <script src="script.js?v=walkthrough-1"></script>
   </body>
 </html>

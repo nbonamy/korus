@@ -4,7 +4,6 @@
       v-if="review"
       :review="review"
       :interactive="true"
-      :approval-warning="t('missions.unconfirmedRequirementsApprove')"
       :plan-updating="disabled"
       :respond="respond && !readOnly ? respondToReview : undefined"
     />
@@ -49,6 +48,14 @@ async function respondToReview(response: PlanReviewResponse): Promise<PlanReview
 }
 </script>
 <style scoped>
+.mission-requirement-review {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
 .mission-requirement-review :deep(.plan-review-document) {
   padding: 0;
 }

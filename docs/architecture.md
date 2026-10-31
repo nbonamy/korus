@@ -639,6 +639,8 @@ clears or changes it, Korus never re-detects.
   selections and uses force removal only with discard consent. Remote deletion uses a
   live-head lease. PR badges are context, not proof of ancestry; partial failures
   leave remaining selections untouched and require a refreshed inventory.
+  Displayed file counts include only uncommitted changes, excluding ignored files
+  and `node_modules`. Deletion checks retain the complete worktree status.
   Missing worktrees are eligible when Git marks their registration prunable or locked;
   cleanup targets the selected registration, not a repository-wide worktree prune.
   Unmerged remote branches require manual selection; merge status does not block
@@ -702,7 +704,9 @@ publishes only after saving.
   stage instructions and sending the next kickoff.
 - The lead can reopen an earlier reached stage through its identity-bound tool.
   Backtracking retires the lead's pending proposal and waits for repository workers
-  to stop; viewing an earlier artifact has no lifecycle effect. Tickets, completed
+  to stop; viewing an earlier artifact has no lifecycle effect. Reopening Requirements
+  restores the accepted brief as a pending proposal the user can review while the
+  lead revises it. Tickets, completed
   implementation and run history survive stage changes. Tickets drafts extend the
   existing backlog using stable IDs. An authored ticket change resets only that
   ticket and increments its content revision; unchanged submissions preserve completion.
@@ -725,16 +729,19 @@ publishes only after saving.
   affected repositories when code work begins, sharing one Mission suffix and
   branch name. Repositories run in parallel; work within one repository is
   serialized unless the user opts into parallel implementation when approving
-  Tickets. That choice is persisted with the implementation model. Parallel
+  Tickets. That choice is persisted with the implementation model. Concurrent
   attempts use distinct worker conversations in the same repository worktree,
-  with dependency-ready tickets dispatched independently. Shared files and Git
+  with dependency-ready tickets dispatched independently. Available workers from
+  accepted tickets can be reused after their provider turn finishes. Shared files and Git
   state are a disclosed risk: workers stop for user guidance on conflicts and
   commit only their own changes, using selected lines for mixed files. Other
   workers' uncommitted changes do not prevent ticket submission. Each worktree
   has a persisted cooperative commit lock owned by the worker and provider turn.
   Parallel workers wait to acquire it before changing the Git index and release it after
   committing; successful ticket submission also releases any lock held by that
-  assignment in the same durable update. Completed owner turns release it. After a
+  assignment in the same durable update. Failed assignments retain commit-lock
+  access for recovery while they still own the current ticket revision and have
+  not been replaced. Completed owner turns release it. After a
   daemon restart, a persisted lock is released only after the provider conversation
   is loaded and confirmed idle; unavailable or active owners retain it. This coordinates participating
   workers, not external Git processes or concurrent edits to files.
@@ -1025,10 +1032,10 @@ Provider-native Markdown proposals own plan review identity and approval. Korus 
 section and selected-text comments and decorates flat Markdown checkbox lists as
 multiple choices and `( )` / `(x)` lists as single choices. Other code examples, nested
 lists and mixed lists retain normal Markdown rendering. Authored HTML remains
-escaped by the shared Markdown renderer. Model-selected defaults are proposals;
-only explicitly confirmed groups become feedback. Confirmation survives answer
-edits and reloads; toggling it off or resetting the group clears it. Unconfirmed
-drafts remain saved without ratifying defaults.
+escaped by the shared Markdown renderer. Model-selected defaults are proposals.
+Editing a choice includes the selected answers in feedback; resetting the group
+removes that feedback. Saved choices survive reloads. Revise and Approve submit
+directly after pending edits are saved.
 
 Fenced Mermaid diagrams stay in the native proposal Markdown and render through
 the shared read-only Visualize renderer. Whole-diagram comments use the existing
@@ -1042,7 +1049,7 @@ ordinary Markdown and native review actions without choice controls.
 Draft feedback belongs to the agent, conversation and native review ID. The owning
 host persists it with optimistic versions through the existing review response
 contract. Saving does not start a turn. Revise explicitly sends feedback in a
-Plan-mode turn, with confirmed answers and comments inside hidden context; Approve
+Plan-mode turn, with selected answers and comments inside hidden context; Approve
 uses the native implementation authorization path. Persisted delivery intent
 prevents automatic retry after an uncertain delivery. New proposals start unanswered and retain prior
 feedback in bounded review history.

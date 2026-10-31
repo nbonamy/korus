@@ -6,18 +6,18 @@
         :key="section.id"
         :section="section"
         :draft="draft"
-        :disabled="locked || busy || warning !== null || !respond"
+        :disabled="locked || busy || !respond"
         @comment="changeComment"
         @choice="changeChoice"
       />
     </article>
     <PlanReviewFooter
-      :disabled="locked || busy || warning !== null || Boolean(save.error.value) || !respond"
+      :disabled="locked || busy || Boolean(save.error.value) || !respond"
       :has-feedback="hasFeedback"
       :can-approve="review.canApprove !== false"
-      @approve="requestDecision('accept')"
+      @approve="decide('accept')"
       @cancel="decide('cancel')"
-      @revise="requestDecision('revise')"
+      @revise="decide('revise')"
     >
       <span v-if="review.deliveryPending" role="status">{{
         t('planFeedback.deliveryPending')
@@ -27,22 +27,6 @@
         {{ t('planFeedback.retry') }}
       </button>
     </PlanReviewFooter>
-    <FormDialog
-      :model-value="warning !== null && !locked"
-      :title="t('planFeedback.unconfirmedTitle')"
-      width="440px"
-      @update:model-value="warning = null"
-    >
-      <p>{{ warning === 'accept' && approvalWarning ? approvalWarning : t(warning === 'accept' ? 'planFeedback.unconfirmedApprove' : 'planFeedback.unconfirmedRevise') }}</p>
-      <template #footer>
-        <button class="app-button app-button--tertiary" type="button" @click="warning = null">
-          {{ t('planFeedback.goBack') }}
-        </button>
-        <button class="app-button app-button--primary" type="button" :disabled="locked || busy" @click="continueDecision">
-          {{ t(warning === 'accept' ? 'planFeedback.approveAnyway' : 'planFeedback.reviseAnyway') }}
-        </button>
-      </template>
-    </FormDialog>
   </section>
 </template>
 <script setup lang="ts">
@@ -60,12 +44,10 @@ import { useDebouncedSave } from '../shared/use-debounced-save';
 import { planMarkdownSections } from './plan-markdown';
 import PlanReviewSection from './PlanReviewSection.vue';
 import PlanReviewFooter from './PlanReviewFooter.vue';
-import FormDialog from '../shared/dialog/FormDialog.vue';
 const props = withDefaults(
   defineProps<{
     review: PlanReview;
     interactive?: boolean;
-    approvalWarning?: string;
     planUpdating?: boolean;
     respond?: (response: PlanReviewResponse) => Promise<PlanReview>;
   }>(),
@@ -78,7 +60,6 @@ const version = ref(props.review.draftVersion ?? 0);
 const busy = ref(false);
 const decided = ref(false);
 const actionError = ref('');
-const warning = ref<'accept' | 'revise' | null>(null);
 let disposed = false;
 onBeforeUnmount(() => {
   disposed = true;
@@ -130,19 +111,6 @@ async function retrySave() {
   save.schedule(copy(draft.value));
   await save.flush();
 }
-function requestDecision(resolution: 'accept' | 'revise') {
-  if (locked.value || busy.value || !props.respond) return;
-  const unconfirmed = sections.value.some(section => section.blocks.some(block =>
-    'choice' in block && !draft.value.choices.some(answer => answer.id === block.choice.id && answer.confirmed === true),
-  ));
-  if (unconfirmed) warning.value = resolution;
-  else void decide(resolution);
-}
-function continueDecision() {
-  const resolution = warning.value;
-  warning.value = null;
-  if (resolution) void decide(resolution);
-}
 async function decide(resolution: PlanReviewResolution) {
   if (
     locked.value ||
@@ -154,6 +122,10 @@ async function decide(resolution: PlanReviewResolution) {
   busy.value = true;
   actionError.value = '';
   try {
+    if (resolution !== 'cancel' && draft.value.choices.some(choice => choice.confirmed !== true)) {
+      draft.value = { ...copy(draft.value), choices: draft.value.choices.map(choice => ({ ...choice, confirmed: true })) };
+      save.schedule(copy(draft.value));
+    }
     if (!(await save.flush()) || disposed || locked.value) return;
     await props.respond({ reviewId, resolution, draftVersion: version.value });
     decided.value = true;

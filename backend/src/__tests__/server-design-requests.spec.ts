@@ -1,0 +1,54 @@
+import { BackendDriverRpc } from '../driver-rpc';
+import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { expect, it, vi } from 'vitest';
+import { AppBackendServer } from '../server';
+import { createTestSnapshot } from './server-test-fixtures';
+
+it('routes Design edits to their owning daemon, validates requests and publishes saved state', async () => {
+  const snapshot = createTestSnapshot();
+  snapshot.agents.push({ id: 'designer', teamId: snapshot.teams[0].id, backend: 'codex', folder: '/tmp', name: 'Designer', status: { type: 'idle' }, createdAt: '', updatedAt: '' });
+  snapshot.teams[0].agentIds.push('designer');
+  const saveSnapshot = vi.fn().mockResolvedValue(undefined);
+  const sendPrompt = vi.fn().mockResolvedValue({ backendSession: { kind: 'codex', threadId: 'designer-session' }, turnId: 'comment-turn' });
+  const driverRpc = new BackendDriverRpc(new Map([['codex', { backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }), getCapabilities: () => codexBackendCapabilities, sendPrompt, interrupt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => undefined, close: vi.fn() }]]));
+  const server = new AppBackendServer({ snapshot, version: 'test', saveSnapshot, driverRpc });
+  const request = (input: unknown, agentId = 'designer') => server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'agent/design', params: { agentId, input } });
+  try {
+    const attachments = [{ type: 'image', path: '/tmp/reference.png', name: 'reference.png', mimeType: 'image/png' }];
+    expect(await request({ type: 'open', prompt: 'Recreate this screen', attachments })).toMatchObject({ result: { workspace: { isOpen: true, document: null } } });
+    await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledOnce());
+    expect(sendPrompt.mock.calls[0][1]).toContain('Design Recreate this screen');
+    expect(sendPrompt.mock.calls[0][2]).toMatchObject({ attachments });
+    sendPrompt.mockClear();
+    snapshot.agents.find(agent => agent.id === 'designer')!.status = { type: 'idle' };
+    expect(await request({ type: 'create', content: { title: 'App', css: '', comments: [], artboards: [{ id: 'desktop', title: 'Desktop', width: 800, height: 600, root: { id: 'hello', tag: 'h1', text: 'Hello' } }] } })).toMatchObject({ result: { workspace: { document: { revision: 1 } } } });
+    expect(await request({ type: 'edit', expectedRevision: 1, edits: [{ type: 'text', nodeId: 'hello', text: 'Saved' }] })).toMatchObject({ result: { workspace: { document: { revision: 2 } } } });
+    expect(saveSnapshot).toHaveBeenCalled();
+    expect(await request({ type: 'read' })).toMatchObject({ result: { workspace: { document: { content: { artboards: [{ root: { text: 'Saved' } }] } } } } });
+    await request({ type: 'comment', expectedRevision: 2, nodeId: 'hello', text: 'Keep this headline.' });
+    await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledOnce());
+    const prompt = sendPrompt.mock.calls[0][1] as string;
+    expect(prompt.split('<context>')[0].trim()).toBe('Design Keep this headline.');
+    expect(prompt).toContain('\"nodeId\":\"hello\"');
+    expect(prompt).toContain('\"revision\":3');
+    snapshot.agents.find(agent => agent.id === 'designer')!.status = { type: 'idle' };
+    await expect(request({ type: 'implement', expectedRevision: 2, artboardId: 'desktop' })).rejects.toThrow('Stale');
+    await expect(request({ type: 'implement', expectedRevision: 3, artboardId: 'missing' })).rejects.toThrow();
+    expect(sendPrompt).toHaveBeenCalledOnce();
+    expect(await request({ type: 'implement', expectedRevision: 3, artboardId: 'desktop' })).toMatchObject({ result: { workspace: { document: { revision: 4, content: { chosenArtboardId: 'desktop' } } } } });
+    await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledTimes(2));
+    const implementation = sendPrompt.mock.calls[1][1] as string;
+    expect(implementation).toContain('Implement the selected design');
+    expect(implementation).toContain('"artboardId":"desktop"');
+    expect(implementation).toContain('"revision":4');
+    expect(implementation).toContain('Saved');
+    expect(implementation).toContain('Keep this headline.');
+    expect(implementation).toContain('Do not commit, push or deploy');
+    snapshot.agents.find(agent => agent.id === 'designer')!.status = { type: 'idle' };
+    sendPrompt.mockRejectedValueOnce(new Error('Provider rejected coding request'));
+    await expect(request({ type: 'implement', expectedRevision: 4, artboardId: 'desktop' })).rejects.toThrow('Provider rejected coding request');
+    await expect(request({ type: 'edit', expectedRevision: 1, edits: [{ type: 'text', nodeId: 'hello', text: 'Stale' }] })).rejects.toThrow('Stale');
+    await expect(request({ type: 'unknown' })).rejects.toThrow();
+    expect(await request({ type: 'open' }, 'missing')).toHaveProperty('error');
+  } finally { await server.close(); }
+});

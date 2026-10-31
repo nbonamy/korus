@@ -118,12 +118,12 @@ describe('AgentConversationPanel', () => {
       view, actions, agents: snapshot.agents, focused: false, mentionGroups: [], modelMenuItems: [], selectModelMenuItem,
       savedPromptDrafts: [], savePromptDraft: vi.fn(), removePromptDraft: vi.fn(), openLink: vi.fn(), openImage: vi.fn(), openVisualization: vi.fn(),
     }, global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } } });
-    for (const label of ['Visualize', 'Delegate', 'Review', 'Mission']) {
+    for (const label of ['Design', 'Visualize', 'Delegate', 'Review', 'Mission']) {
       await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
       await wrapper.findAll('[role="menuitem"]').find(item => item.text() === label)!.trigger('click');
     }
     expect(wrapper.emitted('composer-command')).toStrictEqual([
-      [agent.id, 'visualize'], [agent.id, 'delegate'], [agent.id, 'review'], [agent.id, 'mission'],
+      [agent.id, 'design'], [agent.id, 'visualize'], [agent.id, 'delegate'], [agent.id, 'review'], [agent.id, 'mission'],
     ]);
     view.agent = { ...agent, threadFlags: { work_proposed: true } };
     await flushPromises();
@@ -132,7 +132,7 @@ describe('AgentConversationPanel', () => {
       await flushPromises();
       expect(actions.threadFlag).toHaveBeenLastCalledWith(agent.id, { id: 'work_proposed', action });
     }
-    expect(wrapper.emitted('composer-command')).toHaveLength(4);
+    expect(wrapper.emitted('composer-command')).toHaveLength(5);
     expect(selectModelMenuItem).not.toHaveBeenCalled();
     expect(actions.send).not.toHaveBeenCalled();
     expect(actions.updateComposerState).not.toHaveBeenCalled();

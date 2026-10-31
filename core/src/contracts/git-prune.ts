@@ -15,7 +15,10 @@ export type GitPruneTarget = {
   /** Discard warnings; unavailable means the backend cannot validate deletion. */
   blocked?: 'inUse' | 'changes' | 'locked' | 'unavailable' | 'notMerged';
   usedBy: string[];
+  /** Uncommitted entries, excluding ignored files and node_modules. */
   changedFiles: number;
+  /** Explicit uncommitted count; absent in inventories with combined file counts. */
+  uncommittedFiles?: number;
   pullRequest?: AgentGitPullRequest;
 };
 

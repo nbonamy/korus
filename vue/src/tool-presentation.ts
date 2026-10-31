@@ -19,6 +19,7 @@ import {
   IconSitemap as SitemapIcon,
   IconUsers as UsersIcon,
   IconPhoto as PhotoIcon,
+  IconPalette as PaletteIcon,
   IconWorld as WorldIcon,
 } from '@tabler/icons-vue';
 import { presentClaudeToolTitle } from './claude-tool-titles';
@@ -35,6 +36,7 @@ const icons = {
   hosts: WorldIcon as unknown as ToolIcon,
   agents: UsersIcon as unknown as ToolIcon,
   image: PhotoIcon as unknown as ToolIcon,
+  design: PaletteIcon as unknown as ToolIcon,
   simulator: MobileIcon as unknown as ToolIcon,
   browser: BrowserIcon as unknown as ToolIcon,
   computerUse: DeviceDesktopIcon as unknown as ToolIcon,
@@ -147,6 +149,7 @@ function appToolIcon(tool: string): ToolIcon | undefined {
   if (COMPUTER_USE_TOOLS.has(tool)) return icons.computerUse;
   if (MESSAGE_TOOLS.has(tool)) return icons.messages;
   if (REVIEW_TOOLS.has(tool)) return icons.review;
+  if (tool === 'open-design') return icons.design;
   if (VISUALIZE_TOOLS.has(tool)) return icons.visualize;
   if (AGENT_TOOLS.has(tool)) return icons.agents;
   if (TASK_TOOLS.has(tool)) return icons.workItem;

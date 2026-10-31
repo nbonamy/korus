@@ -9,7 +9,7 @@ type Worktree = { path: string; branch?: string; locked: boolean; prunable: bool
 type Candidate = GitPruneTarget & { remoteUrl?: string };
 
 // Ignored directories stay collapsed (`!! node_modules/`); expanding them overflows the Git output buffer.
-const WORKTREE_STATUS_ARGS = ['status', '--porcelain=v1', '-z', '--ignored'];
+const WORKTREE_STATUS_ARGS = ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignored=matching'];
 
 /** Inventory and deletion share one safety policy; the client never supplies a path or Git command. */
 export class GitPruneService {
@@ -151,6 +151,7 @@ export class GitPruneService {
       const worktreeMissing = tree ? await missingWorktree(tree) : false;
       const usedBy = treePath ? canonicalOwners.filter(owner => contains(treePath, owner.folder)).map(owner => owner.name) : [];
       let changedFiles = 0;
+      let uncommittedFiles = 0;
       let statusText = '';
       let blocked: GitPruneTarget['blocked'] = !merge.merged ? 'notMerged' : undefined;
       if (tree) {
@@ -159,8 +160,8 @@ export class GitPruneService {
           if (!worktreeMissing) {
             const status = await this.git(tree.path, WORKTREE_STATUS_ARGS);
             statusText = status.stdout;
-            changedFiles = status.stdout.split('\0').filter(Boolean).length;
-            if (changedFiles) blocked = 'changes';
+            ({ changedFiles, uncommittedFiles } = worktreeFileCounts(status.stdout));
+            if (status.stdout) blocked = 'changes';
           }
         } catch { blocked = 'unavailable'; }
         if (tree.locked || matches.length > 1) blocked = 'locked';
@@ -168,7 +169,7 @@ export class GitPruneService {
         if (matches.length > 1) blocked = 'unavailable';
       }
       const id = `refs/heads/${branch}`;
-      candidates.push({ id, kind: 'local', name: branch, branch, sha, ...merge, usedBy, changedFiles,
+      candidates.push({ id, kind: 'local', name: branch, branch, sha, ...merge, usedBy, changedFiles, uncommittedFiles,
         ...(tree ? { worktree: tree.path, worktreeLabel: relative(rootPath, tree.path) } : {}), ...(blocked ? { blocked } : {}),
         ...(worktreeMissing ? { worktreeMissing: true } : {}),
         revision: revision([id, sha, baseSha, tree?.path ?? '', worktreeMissing ? 'missing' : 'present', await this.worktreeState(tree, worktreeMissing, owners, statusText)]),
@@ -209,6 +210,23 @@ export class GitPruneService {
       groups: [...groups.values()].sort((a, b) => groupRank(a) - groupRank(b) || a.branch.localeCompare(b.branch)), unavailableRemotes,
     } };
   }
+}
+
+function worktreeFileCounts(status: string): { changedFiles: number; uncommittedFiles: number } {
+  const entries = status.split('\0');
+  let changedFiles = 0;
+  let uncommittedFiles = 0;
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index]!;
+    if (!entry) continue;
+    const flags = entry.slice(0, 2);
+    // Renames/copies have a second NUL-delimited path, not a second changed file.
+    if (/[RC]/u.test(flags)) index += 1;
+    if (flags === '!!' || entry.slice(3).split('/').includes('node_modules')) continue;
+    changedFiles += 1;
+    uncommittedFiles += 1;
+  }
+  return { changedFiles, uncommittedFiles };
 }
 
 function pruneFailureDetail(cause: unknown, remoteUrl?: string): string {

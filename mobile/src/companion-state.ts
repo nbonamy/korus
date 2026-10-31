@@ -21,6 +21,7 @@ import { createGitChanges } from './git-changes';
 import { reconcileWorkspace } from './workspace-reconcile';
 import type { DraftState, DraftStore } from './protected-storage';
 import type { CompanionReviewSetup, CompanionReviewDetails, CompanionReviewAction } from '@workspace/core/companion-review';
+import type { ConversationImageCache } from './image-cache';
 
 export function createCompanionState(connector: CompanionConnector, store?: DraftStore, resolveUploads?: (references: readonly { type?: string; reference: string }[] | undefined) => CompanionUpload[], onNotification?: (notification: CompanionNotification) => void) {
   let pushRegistration: CompanionPushRegistration | null | undefined;
@@ -535,11 +536,21 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if (!valid()) throw new Error('Conversation changed.');
     return chunk;
   }
-  async function readImage(id: string, path: string) {
+  async function readImage(id: string, path: string, cache?: ConversationImageCache) {
     const active = session; const epoch = selectionEpoch;
     const valid = () => active === session && epoch === selectionEpoch && id === agentId.value && status.value === 'connected';
     if (!valid() || !active?.readImage) throw new Error('Image is unavailable.');
-    const image = await active.readImage(id, path);
+    const owner = agent.value; const host = laptopId.value;
+    const identity = owner && companionSessionId(owner);
+    const load = () => {
+      const current = companionAgents(workspace.value).find(candidate => candidate.id === id);
+      if (active !== session || host !== laptopId.value || status.value !== 'connected' || !current ||
+          current.backend !== owner?.backend || companionSessionId(current) !== identity) throw new Error('Conversation changed.');
+      return active.readImage!(id, path);
+    };
+    const provider = owner?.backendSession;
+    const sessionId = provider?.kind === 'codex' ? provider.threadId : provider?.sessionId ?? null;
+    const image = cache && owner ? await cache.read(host, owner.backend, sessionId, path, load) : await load();
     if (!valid()) throw new Error('Conversation changed.');
     return image;
   }

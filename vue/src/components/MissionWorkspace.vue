@@ -20,17 +20,21 @@
       </button>
     </WorkspaceHeader>
 
-    <div class="mission-workspace__body workspace-body" :class="{ 'mission-workspace__body--conversation-only': conversationOnly }">
-      <MissionStageRail v-show="!conversationOnly" :mission="mission" :viewed-stage="viewedStage" @view-stage="viewedStage = $event" />
-
+    <div
+      ref="workspaceBody"
+      class="mission-workspace__body workspace-body"
+      :class="{ 'mission-workspace__body--conversation-only': conversationOnly, 'mission-workspace__body--resizing': chatResize }"
+      :style="chatWidth === null ? undefined : { '--mission-chat-width': `${chatWidth}px` }"
+    >
       <main v-show="!conversationOnly" class="mission-workspace__workbench">
-        <header class="mission-workspace__stage-header">
+        <MissionStageRail :mission="mission" :viewed-stage="viewedStage" @view-stage="viewedStage = $event" />
+        <header v-if="viewedStage !== 'requirements'" class="mission-workspace__stage-header">
           <div class="mission-workspace__stage-heading">
             <h2>{{ stageHeadingTitle }}</h2>
             <span v-if="stageHeadingMeta">{{ stageHeadingMeta }}</span>
           </div>
           <div class="mission-workspace__stage-actions">
-            <div v-if="activeStageRun" class="mission-workspace__run-status" role="status" aria-live="polite">
+            <div v-if="activeStageRun && !showStageLoading" class="mission-workspace__run-status" role="status" aria-live="polite">
               <span class="app-spinner app-spinner--primary" aria-hidden="true" />
               <span>{{ activeStageStatus }}</span>
             </div>
@@ -60,7 +64,7 @@
           </div>
         </header>
 
-        <div class="mission-workspace__workbench-scroll" :class="{ 'mission-workspace__workbench-scroll--requirements': viewedStage === 'requirements' }">
+        <div class="mission-workspace__workbench-scroll" :class="{ 'mission-workspace__workbench-scroll--requirements': viewedStage === 'requirements', 'mission-workspace__workbench-scroll--stage-loading': showStageLoading }">
           <p v-if="error || artifactError" class="mission-workspace__error" role="alert">{{ error || artifactError }}</p>
           <MissionImplementationBoard
             v-if="viewedStage === 'implementation' && mission.artifacts.tickets.length"
@@ -87,10 +91,10 @@
             :chat-about-finding="chatAboutReviewFinding"
           />
 
-          <section v-else-if="viewedStage === 'tickets' && activeRun?.draftTickets?.length && !activeRun.proposal" class="mission-workspace__artifact" :aria-label="t('missions.draftTickets')" aria-live="polite">
+          <section v-else-if="viewedStage === 'tickets' && visibleTickets.length" class="mission-workspace__artifact" :aria-label="t(activeRun?.draftTickets?.length && !activeRun.proposal ? 'missions.draftTickets' : viewedStage === mission.stage && activeRun?.proposal ? 'missions.proposal' : 'missions.acceptedArtifact')">
             <MissionTicketBoard
               :tickets="visibleTickets"
-              annotatable
+              :annotatable="viewedStage === mission.stage && Boolean(activeRun?.proposal || activeRun?.draftTickets?.length)"
               :disabled="feedbackBusy || debugFixture"
               :reset-key="feedbackReset"
               @send-comments="sendTicketComments"
@@ -98,32 +102,31 @@
           </section>
 
           <section v-else-if="!['implementation', 'ship'].includes(viewedStage) && viewedStage === mission.stage && activeRun?.proposal" class="mission-workspace__artifact" :aria-label="t('missions.proposal')">
-            <MissionTicketBoard
-              v-if="viewedStage === 'tickets' && visibleTickets.length"
-              :tickets="visibleTickets"
-              annotatable
-              :disabled="feedbackBusy || debugFixture"
-              :reset-key="feedbackReset"
-              @send-comments="sendTicketComments"
-            />
             <MissionRequirementReview
-              v-else-if="viewedStage === 'requirements'"
+              v-if="viewedStage === 'requirements'"
               :content="artifactMarkdown"
-              :review-id="`${activeRun.id}:${activeRun.startedAt}`"
+              :review-id="`${activeRun.id}:${activeRun.startedAt}:${activeRun.finishedAt ?? ''}`"
               :disabled="busy"
               :respond="debugFixture || executeMission ? respondToRequirements : undefined"
             />
             <MarkdownPanel v-else-if="viewedStage !== 'review'" :content="artifactMarkdown" />
-            <footer v-if="viewedStage !== 'requirements'" class="mission-workspace__review-hint">
-              <MessageCircleIcon aria-hidden="true" />
-              <span>{{ t('missions.reviewInConversation') }}</span>
-            </footer>
           </section>
 
           <section v-else-if="!['implementation', 'ship'].includes(viewedStage) && artifactMarkdown" class="mission-workspace__artifact" :aria-label="t('missions.acceptedArtifact')">
-            <MissionTicketBoard v-if="viewedStage === 'tickets' && visibleTickets.length" :tickets="visibleTickets" />
-            <MissionRequirementReview v-else-if="viewedStage === 'requirements'" :content="artifactMarkdown" :review-id="mission.id" read-only />
+            <MissionRequirementReview v-if="viewedStage === 'requirements'" :content="artifactMarkdown" :review-id="mission.id" read-only />
             <MarkdownPanel v-else-if="viewedStage !== 'review'" :content="artifactMarkdown" />
+          </section>
+
+          <section v-else-if="showStageLoading" class="mission-workspace__stage-loading" role="status" aria-live="polite">
+            <template v-if="viewedStage === 'requirements'">
+              <TargetArrowIcon class="mission-workspace__stage-icon" aria-hidden="true" />
+              <h3>{{ t('missions.missionLeadWelcome') }}</h3>
+              <p>{{ t('missions.missionLeadWelcomeDescription') }}</p>
+            </template>
+            <template v-else>
+              <span class="app-spinner app-spinner--xl app-spinner--primary" aria-hidden="true" />
+              <h3>{{ activeStageStatus }}</h3>
+            </template>
           </section>
 
           <section v-else-if="!['implementation', 'ship'].includes(viewedStage) && !activeStageRun" class="mission-workspace__empty-artifact">
@@ -154,6 +157,27 @@
       >
         <template #conversation="{ agentId }"><slot name="conversation" :agent-id="agentId" /></template>
       </MissionConversationRail>
+      <div
+        v-show="!conversationOnly"
+        class="mission-workspace__chat-resizer"
+        role="separator"
+        :aria-label="t('missions.resizeChat')"
+        aria-orientation="vertical"
+        :aria-valuemin="300"
+        :aria-valuemax="maximumChatWidth"
+        :aria-valuenow="Math.round(effectiveChatWidth)"
+        tabindex="0"
+        @pointerdown="startChatResize"
+        @pointermove="moveChatResize"
+        @pointerup="endChatResize"
+        @pointercancel="endChatResize"
+        @lostpointercapture="stopChatResize"
+        @keydown.left.prevent="resizeChat(effectiveChatWidth + 16)"
+        @keydown.right.prevent="resizeChat(effectiveChatWidth - 16)"
+        @keydown.home.prevent="resizeChat(300)"
+        @keydown.end.prevent="resizeChat(maximumChatWidth)"
+        @dblclick="resizeChat(workspaceWidth * 0.4)"
+      />
     </div>
   </section>
   <FormDialog
@@ -198,14 +222,14 @@
 
 <script setup lang="ts">
 import { useExecutionSelection } from '../execution-selection';
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { IconLayoutSidebarRight } from '@tabler/icons-vue';
 import type { Agent, OpenInApplicationCatalog } from '@workspace/core/contracts';
 import type { Mission, MissionArtifacts, MissionReviewFinding, MissionStage } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
 import { missionImplementationBusy, pendingMissionRun, type MissionArtifactReadResult, type MissionExecutionInput, type MissionImplementationStartProgress } from '@workspace/core/mission-execution';
-import { ArrowRightIcon, CheckIcon, FileTextIcon, MessageCircleIcon, PlayerPlayIcon } from '../shared/icons/app-icons';
+import { ArrowRightIcon, CheckIcon, FileTextIcon, PlayerPlayIcon, TargetArrowIcon } from '../shared/icons/app-icons';
 import BackendModelSelector from './BackendModelSelector.vue';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import MarkdownPanel from './MarkdownPanel.vue';
@@ -249,6 +273,60 @@ const emit = defineEmits<{
   'open-worktree': [request: MissionWorkspaceOpenRequest];
 }>();
 const { t } = useI18n();
+const workspaceBody = useTemplateRef<HTMLElement>('workspaceBody');
+const workspaceWidth = ref(0);
+const chatWidthStorageKey = 'app.missionChatWidth';
+const chatWidth = ref<number | null>(readChatWidth());
+const maximumChatWidth = computed(() => Math.max(300, workspaceWidth.value - 360));
+const effectiveChatWidth = computed(() => Math.min(maximumChatWidth.value,
+  Math.max(300, chatWidth.value ?? workspaceWidth.value * 0.4)));
+const chatResize = ref<{ pointerId: number; target: HTMLElement; x: number; width: number } | null>(null);
+let workspaceObserver: ResizeObserver | undefined;
+
+function readChatWidth(): number | null {
+  try {
+    const value = Number(window.localStorage.getItem(chatWidthStorageKey));
+    return Number.isFinite(value) && value >= 300 ? value : null;
+  } catch { return null; }
+}
+function resizeChat(width: number, save = true): void {
+  chatWidth.value = Math.round(Math.min(maximumChatWidth.value, Math.max(300, width)));
+  if (save) {
+    try { window.localStorage.setItem(chatWidthStorageKey, String(chatWidth.value)); }
+    catch { /* Keep resizing available when local storage is unavailable. */ }
+  }
+}
+function startChatResize(event: PointerEvent): void {
+  if (event.button !== 0 || !(event.currentTarget instanceof HTMLElement)) return;
+  event.preventDefault();
+  workspaceWidth.value = workspaceBody.value?.getBoundingClientRect().width ?? 0;
+  chatResize.value = { pointerId: event.pointerId, target: event.currentTarget, x: event.clientX, width: effectiveChatWidth.value };
+  event.currentTarget.setPointerCapture?.(event.pointerId);
+}
+function moveChatResize(event: PointerEvent): void {
+  const drag = chatResize.value;
+  if (drag?.pointerId === event.pointerId) resizeChat(drag.width + drag.x - event.clientX, false);
+}
+function endChatResize(event: PointerEvent): void {
+  if (chatResize.value?.pointerId === event.pointerId) stopChatResize();
+}
+function stopChatResize(): void {
+  const drag = chatResize.value;
+  chatResize.value = null;
+  if (!drag) return;
+  if (drag.target.hasPointerCapture?.(drag.pointerId)) drag.target.releasePointerCapture(drag.pointerId);
+  if (chatWidth.value !== null) resizeChat(chatWidth.value);
+}
+onMounted(() => {
+  const measure = () => { workspaceWidth.value = workspaceBody.value?.getBoundingClientRect().width ?? 0; };
+  measure();
+  if (typeof ResizeObserver !== 'undefined' && workspaceBody.value) {
+    workspaceObserver = new ResizeObserver(measure);
+    workspaceObserver.observe(workspaceBody.value);
+  }
+});
+watch(() => props.conversationOnly, stopChatResize);
+onBeforeUnmount(() => { stopChatResize(); workspaceObserver?.disconnect(); });
 const busy = ref(false);
 const error = ref('');
 const artifactError = ref('');
@@ -341,6 +419,9 @@ function stageState(stage: MissionStage): 'complete' | 'current' | 'upcoming' {
   if (index < currentIndex.value || props.mission.status === 'completed') return 'complete';
   return stage === props.mission.stage ? 'current' : 'upcoming';
 }
+const showStageLoading = computed(() => ['requirements', 'tickets'].includes(viewedStage.value)
+  && Boolean(activeStageRun.value) && !artifactMarkdown.value && !activeRun.value?.proposal
+  && !activeRun.value?.draftTickets?.length);
 const artifactMarkdown = computed(() => canonicalArtifact.value || stageMarkdown(
   viewedStage.value,
   viewedStage.value === props.mission.stage && activeRun.value?.proposal

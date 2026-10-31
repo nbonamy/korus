@@ -1,3 +1,4 @@
+import { DesignService, designPrompt, designImplementationPrompt } from './design-service';
 import { resolveHandoffAgentId } from './agents/delegation-lineage';
 import type { DelegatedTask, WaitTasksInput, WaitTasksResult } from '@workspace/core/delegated-task';
 import { RunProfileService } from './run-profile-service';
@@ -163,6 +164,7 @@ export type AppBackendServerOptions = {
   saveCodeReviewReport?: (agent: Agent, session: CodeReviewSession) => Promise<string>;
   agentCreation?: AgentCreationService;
   worktreeInitializationForFolder?: (folder: string) => Agent['worktreeInitialization'];
+  designService?: DesignService;
   visualizeService?: VisualizeService;
 };
 
@@ -598,6 +600,7 @@ export class AppBackendServer {
   private readonly codeReviews?: CodeReviewService;
   private readonly agentCreation: AgentCreationService;
   private readonly projectCreation: ProjectCreationService;
+  private readonly design: DesignService;
   private readonly visualize: VisualizeService;
   private readonly deleteMissionHome: (missionId: string) => Promise<void>;
   private unsubscribeDriverEvents?: () => void;
@@ -735,6 +738,7 @@ export class AppBackendServer {
       resume: agent => this.agentPrompts.sendAndWaitForAcceptance(agent, 'continue', undefined, companionSessionId(agent)),
       onError: error => warnMain('auto-resume', 'could not resume conversation', { message: String(error) }),
     });
+    this.design = options.designService ?? new DesignService({ snapshot: this.snapshot, persist: async () => { await this.persistSnapshotOnly(); }, publish: agent => this.emitEvent({ agentId: agent.id, type: 'agent.updated', payload: { id: agent.id, designWorkspace: agent.designWorkspace } }) });
     this.visualize = options.visualizeService ?? new VisualizeService({
       snapshot: this.snapshot,
       generatedImagesRoot: path.join(os.tmpdir(), 'agent-workspace-generated-images'),
@@ -2349,6 +2353,19 @@ export class AppBackendServer {
           ...offset,
         }));
       }
+      case backendMethods.agentDesign: {
+        const agentId = requireStringParam(message.params, 'agentId');
+        const input = requireRecordParam(message.params, 'input') as unknown as import('@workspace/core/design').DesignRequest<import('@workspace/core/contracts').PromptAttachment>;
+        return this.routeAgentResultRequest(message.id, agentId, message.method, { agentId, input }, async (agent) => {
+          const result = await this.design.execute(agentId, input);
+          if (input.type === 'open' && (input.prompt?.trim() || input.attachments?.length)) {
+            this.agentPrompts.send(agentId, designPrompt(input.prompt?.trim() || 'Create a software interface from the attached references.'), input.attachments?.length ? { attachments: input.attachments } : undefined);
+          }
+          if (input.type === 'implement') await this.agentPrompts.sendAndWaitForAcceptance(agent, designImplementationPrompt(result.workspace, input.artboardId));
+          if (input.type === 'comment') this.agentPrompts.send(agentId, designPrompt(input.text, `Element comment target: ${JSON.stringify({ documentId: result.workspace.document?.id, nodeId: input.nodeId, revision: result.workspace.document?.revision })}. `));
+          return result;
+        });
+      }
       case backendMethods.agentVisualizeStart: {
         const agentId = requireStringParam(message.params, 'agentId');
         const params = requireRecord(message.params);
@@ -2870,12 +2887,15 @@ export class AppBackendServer {
           async (agent) => {
             assertPromptSession(agent, expectedSessionId);
             const options = params.options as SendPromptOptions | undefined;
+            const previousFlags = agent.threadFlags;
+            const previousSuggestion = agent.suggestedPrompt;
             // Phone receipts await provider acceptance when idle; busy sends enter the desktop queue.
             let result: AppSnapshot;
             if (expectedSessionId !== undefined && this.agentPrompts.canStart(agent)) {
               await this.agentPrompts.sendAndWaitForAcceptance(agent, prompt, options, expectedSessionId, clientId);
               result = this.snapshot;
             } else result = this.agentPrompts.send(agentId, prompt, options, clientId);
+            if (agent.threadFlags === previousFlags && agent.suggestedPrompt === previousSuggestion) this.clearTurnHints(agent);
             await this.persistSnapshotOnly();
             return result;
           },
@@ -3900,6 +3920,10 @@ export class AppBackendServer {
     }
     if (route.kind === 'local') {
       return createAppRpcResult(messageId, await localHandler(route.agent));
+    }
+    if (method === backendMethods.agentDesign) {
+      const input = requireRecordParam(params, 'input') as unknown as import('@workspace/core/design').DesignRequest<import('@workspace/core/contracts').PromptAttachment>;
+      if (input.type === 'open' && input.attachments?.length) throw new Error('Remote attachments require a trusted file transfer. Send text or use a local agent.');
     }
     return createAppRpcResult(messageId, await this.backendHandleForAgentLocation(route).request<Result>(method, params, () => localHandler(route.agent)));
   }

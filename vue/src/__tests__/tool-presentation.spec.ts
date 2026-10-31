@@ -13,6 +13,7 @@ import {
   IconSitemap as SitemapIcon,
   IconUsers as UsersIcon,
   IconPhoto as PhotoIcon,
+  IconPalette as PaletteIcon,
   IconWorld as WorldIcon,
 } from '@tabler/icons-vue';
 import { messages } from '../i18n/messages';
@@ -38,6 +39,7 @@ describe(`${product.name} tool presentation`, () => {
   it.each([
     ['close-agent', UsersIcon, 'Closed agent'],
     ['generate-image', PhotoIcon, 'Generated images'],
+    ['open-design', PaletteIcon, 'Opened Design'],
     ['wait-tasks', SquareCheck, 'Checked delegated tasks'],
     ['complete-task', SquareCheck, 'Submitted task result'],
     ['cancel-task', SquareCheck, 'Requested task cancellation'],

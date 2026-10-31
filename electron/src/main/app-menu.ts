@@ -362,6 +362,10 @@ function buildDebugUiPreviews(callbacks: AppMenuCallbacks): MenuItemConstructorO
         kind: 'merge',
       }),
     },
+    {
+      label: 'Merge Conflicts',
+      click: () => callbacks.sendAppCommand({ type: 'debug-operation-progress', kind: 'conflicts' }),
+    },
   ];
 }
 

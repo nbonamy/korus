@@ -419,6 +419,7 @@ export type Agent = {
   autoResumePending?: boolean;
   goal?: ThreadGoal;
   visualize?: import('./visualize').VisualizeSession;
+  designWorkspace?: import('./design').DesignWorkspace;
   isRegistered?: boolean;
   mcpSessionId?: string;
   statusText?: string;
@@ -757,7 +758,7 @@ export type AppCommand =
   | { type: 'debug-missing-engines'; enabled: boolean }
   | { type: 'debug-provider-upgrades'; enabled: boolean }
   | { type: 'debug-review-uncommitted'; enabled: boolean }
-  | { type: 'debug-operation-progress'; kind: 'worktreeInitialization' | 'worktreeIndicator' | 'pullRequest' | 'merge' }
+  | { type: 'debug-operation-progress'; kind: 'worktreeInitialization' | 'worktreeIndicator' | 'pullRequest' | 'merge' | 'conflicts' }
   | { type: 'edit-active-agent' }
   | { type: 'new-team' }
   | { type: 'open-agent-composer'; agentId?: string; prompt?: string; submit?: boolean }
@@ -876,6 +877,7 @@ export type AppApi = {
   changeTelemetryConsent(action: import('./telemetry-consent').TelemetryConsentAction): Promise<import('./telemetry-consent').TelemetryConsentView>;
   previewTelemetryDay(day: string): Promise<import('./telemetry-consent').TelemetryProfilePreview>;
   clearUsage(): Promise<void>;
+  design(agentId: string, input: import('./design').DesignRequest): Promise<import('./design').DesignResult>;
   startVisualize(agentId: string, input?: import('./visualize').StartVisualizeInput): Promise<AppSnapshot>;
   setVisualizeOpen(agentId: string, input: import('./visualize').SetVisualizeOpenInput): Promise<AppSnapshot>;
   generateVisualizationSuggestion(agentId: string, input: import('./visualize').GenerateVisualizationSuggestionInput): Promise<AppSnapshot>;

@@ -6,6 +6,9 @@ import { presentAppToolTitle } from '../tool-title-presenter';
 
 describe(`${product.name} tool title presenter`, () => {
   it.each([
+    ['korus.open-design', {}, 'running', 'Opening Design'],
+    ['mcp__korus__open_design', {}, 'completed', 'Opened Design'],
+    ['korus.open-design', {}, 'error', 'Could not open Design'],
     ['korus.generate-image', { prompt: 'Private prompt' }, 'running', 'Generating images'],
     ['mcp__korus__generate_image', {}, 'completed', 'Generated images'],
     ['korus.generate-image', {}, 'error', 'Could not generate images'],

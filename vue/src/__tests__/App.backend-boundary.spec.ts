@@ -184,6 +184,99 @@ describe('Unified backend → mounted application', () => {
     }
   });
 
+  it.each(['work_proposed', 'ready_for_review'] as const)('clears %s as soon as a prompt is submitted, before backend acceptance', async flag => {
+    const snapshot = createInitialSnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const agent = snapshot.agents[0]!;
+    agent.threadFlags = { [flag]: true };
+    const { api, emit } = installBackendFixture(snapshot);
+    let accept!: (value: typeof snapshot) => void;
+    api.sendPrompt.mockImplementationOnce(() => new Promise(resolve => { accept = resolve; }));
+    const wrapper = mount(App);
+    try {
+      await flushPromises();
+      expect(wrapper.find('.thread-flag-affordance').exists()).toBe(true);
+      const editor = wrapper.get('[role="textbox"][contenteditable]');
+      editor.element.textContent = 'Continue with this direction';
+      await editor.trigger('input');
+      await wrapper.get('form').trigger('submit');
+      await flushPromises();
+      expect(api.sendPrompt).toHaveBeenCalledOnce();
+      expect(wrapper.find('.thread-flag-affordance').exists()).toBe(false);
+      emit({ type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, statusText: 'Starting' } });
+      emit({ type: 'snapshot.updated', payload: structuredClone(snapshot) });
+      await flushPromises();
+      expect(wrapper.find('.thread-flag-affordance').exists()).toBe(false);
+      accept(structuredClone(snapshot));
+      await flushPromises();
+      expect(wrapper.find('.thread-flag-affordance').exists()).toBe(false);
+      emit({ type: 'snapshot.updated', payload: structuredClone(snapshot) });
+      await flushPromises();
+      expect(wrapper.find('.thread-flag-affordance').exists()).toBe(false);
+      emit({ type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, threadFlags: null } });
+      await flushPromises();
+      expect(wrapper.find('.thread-flag-affordance').exists()).toBe(false);
+      emit({ type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, threadFlags: { [flag]: true } } });
+      await flushPromises();
+      expect(wrapper.find('.thread-flag-affordance').exists()).toBe(true);
+    } finally { wrapper.unmount(); }
+  });
+
+  it('keeps a fresh flag when an older submission snapshot arrives after it', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.agents[0]!.threadFlags = { work_proposed: true };
+    const { api, emit } = installBackendFixture(snapshot);
+    let accept!: (value: typeof snapshot) => void;
+    api.sendPrompt.mockImplementationOnce(() => new Promise(resolve => { accept = resolve; }));
+    const wrapper = mount(App);
+    try {
+      await flushPromises();
+      const editor = wrapper.get('[role="textbox"][contenteditable]');
+      editor.element.textContent = 'Continue';
+      await editor.trigger('input');
+      await wrapper.get('form').trigger('submit');
+      await flushPromises();
+      emit({ type: 'agent.updated', agentId: snapshot.agents[0]!.id,
+        payload: { id: snapshot.agents[0]!.id, threadFlags: { ready_for_review: true } } });
+      await flushPromises();
+      expect(wrapper.find('button[aria-label="Open code review"]').exists()).toBe(true);
+      accept(structuredClone(snapshot));
+      await flushPromises();
+      expect(wrapper.find('button[aria-label="Open code review"]').exists()).toBe(true);
+      expect(wrapper.find('button[aria-label="Implement"]').exists()).toBe(false);
+    } finally { wrapper.unmount(); }
+  });
+
+  it.each([false, true])('restores flags after a rejected prompt without replacing newer flags (new flag: %s)', async newerFlag => {
+    const snapshot = createInitialSnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.agents[0]!.threadFlags = { work_proposed: true };
+    const { api, emit } = installBackendFixture(snapshot);
+    let reject!: (error: Error) => void;
+    api.sendPrompt.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; }));
+    const wrapper = mount(App);
+    try {
+      await flushPromises();
+      const editor = wrapper.get('[role="textbox"][contenteditable]');
+      editor.element.textContent = 'Continue';
+      await editor.trigger('input');
+      await wrapper.get('form').trigger('submit');
+      await flushPromises();
+      expect(wrapper.find('.thread-flag-affordance').exists()).toBe(false);
+      emit({ type: 'snapshot.updated', payload: structuredClone(snapshot) });
+      await flushPromises();
+      expect(wrapper.find('.thread-flag-affordance').exists()).toBe(false);
+      if (newerFlag) emit({ type: 'agent.updated', agentId: snapshot.agents[0]!.id,
+        payload: { id: snapshot.agents[0]!.id, threadFlags: { ready_for_review: true } } });
+      reject(new Error('Prompt was not accepted'));
+      await flushPromises();
+      expect(wrapper.find('.thread-flag-affordance').exists()).toBe(true);
+      expect(wrapper.find('button[aria-label="Implement"]').exists()).toBe(!newerFlag);
+      expect(wrapper.find('button[aria-label="Open code review"]').exists()).toBe(newerFlag);
+    } finally { wrapper.unmount(); }
+  });
+
   it.each([
     '../research/quality%20findings.md',
     '/repo/research/quality%20findings.md',

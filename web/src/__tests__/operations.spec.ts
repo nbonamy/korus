@@ -61,13 +61,16 @@ describe(`${product.name} web operations`, () => {
     expect(request).toHaveBeenCalledExactlyOnceWith(backendMethods.agentConversationsList, { agentId: 'agent', input });
   });
 
-  it.each(['sendPrompt', 'steerPrompt'])('rejects untrusted Web attachments before %s dispatch and preserves text prompts', async operation => {
+  it.each(['sendPrompt', 'steerPrompt', 'design'])('rejects untrusted Web attachments before %s dispatch and preserves text prompts', async operation => {
     const request = vi.fn().mockResolvedValue({});
+    const args = (attachments?: unknown[]) => operation === 'design'
+      ? ['agent', { type: 'open', prompt: 'Inspect', ...(attachments ? { attachments } : {}) }]
+      : ['agent', 'Inspect', ...(attachments ? [{ attachments }] : [])];
     for (const attachment of [{ type: 'file', path: '/private/file' }, { type: 'image', reference: 'forged-registry-id' }]) {
-      await expect(invokeAppWebOperation({ request }, operation, ['agent', 'Inspect', { attachments: [attachment] }])).rejects.toThrow('trusted upload');
+      await expect(invokeAppWebOperation({ request }, operation, args([attachment]))).rejects.toThrow('trusted upload');
     }
     expect(request).not.toHaveBeenCalled();
-    await invokeAppWebOperation({ request }, operation, ['agent', 'Hello']);
+    await invokeAppWebOperation({ request }, operation, args());
     expect(request).toHaveBeenCalledOnce();
   });
 

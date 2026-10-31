@@ -6,6 +6,7 @@ import { exposeCodexNativeRendererApi, TypedIpcRenderer } from '@codex-app-sdk/e
 const ipc = new TypedIpcRenderer<AppIpcRequests, AppIpcEvents>(ipcRenderer);
 
 const api: AppApi = {
+  design: (agentId, input) => ipc.invoke(ipcChannels.design, agentId, input),
   startVisualize: (agentId, input) => ipc.invoke(ipcChannels.startVisualize, agentId, input),
   setVisualizeOpen: (agentId, input) => ipc.invoke(ipcChannels.setVisualizeOpen, agentId, input),
   generateVisualizationSuggestion: (agentId, input) => ipc.invoke(ipcChannels.generateVisualizationSuggestion, agentId, input),

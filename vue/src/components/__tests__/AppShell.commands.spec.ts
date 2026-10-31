@@ -290,6 +290,45 @@ describe('AppShell dialogs and commands', () => {
     wrapper.unmount();
   });
 
+  it.each(['workspace launcher', 'composer menu', 'command palette'])('opens Design from the %s using the owning agent', async source => {
+    const design = vi.fn().mockResolvedValue({ workspace: { conversationRef: null, isOpen: true, document: null, selectedArtboardId: null, selectedNodeId: null, undo: [], checkpoints: [] } });
+    let command!: (command: AppCommand) => void;
+    setElectronTestClient({ design, onAppCommand: vi.fn(listener => { command = listener; return () => {}; }) });
+    const wrapper = mountShell({ stubAgentWorkspace: false, realConversationPane: true });
+    if (source === 'workspace launcher') {
+      await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+      await wrapper.findAll('.right-workspace-panel__launcher button').find(button => button.text() === 'Design')!.trigger('click');
+    } else if (source === 'composer menu') {
+      await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
+      await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Design')!.trigger('click');
+    } else {
+      command({ type: 'open-command-palette' });
+      await flushPromises();
+      const input = wrapper.get('[role="dialog"] input');
+      await input.setValue('design');
+      await input.trigger('keydown.enter');
+    }
+    await flushPromises();
+    expect(design).toHaveBeenCalledWith('agent-dina', { type: 'open' });
+    expect(wrapper.findAll('[role="tab"]').map(tab => tab.text())).toContain('Design');
+    wrapper.unmount();
+  });
+
+  it('starts Design with the reference image instead of sending an ordinary prompt', async () => {
+    const design = vi.fn().mockResolvedValue({ workspace: { isOpen: true } });
+    const sendPromptAction = vi.fn();
+    setElectronTestClient({ design });
+    const wrapper = mountShell({ sendPromptAction, stubAgentWorkspace: false });
+    const attachments = [{ type: 'image' as const, reference: 'electron-attachment:reference' }];
+    try {
+      await conversationControllerActions(wrapper).submit!('/design recreate this screen', { attachments });
+      await flushPromises();
+      expect(design).toHaveBeenCalledExactlyOnceWith('agent-dina', { type: 'open', prompt: 'recreate this screen', attachments });
+      expect(sendPromptAction).not.toHaveBeenCalled();
+      expect(wrapper.findAll('[role="tab"]').map(tab => tab.text())).toContain('Design');
+    } finally { wrapper.unmount(); }
+  });
+
   it('starts Visualize from an empty workspace before any Visualize session exists', async () => {
     const snapshot = createInitialSnapshot();
     const startVisualize = vi.fn().mockResolvedValue(snapshot);
@@ -1211,6 +1250,19 @@ describe('AppShell dialogs and commands', () => {
     await flushPromises();
     expect(new DOMWrapper(document.body).text()).toContain('Building handoff report');
     expect(new DOMWrapper(document.body).text()).toContain('Run in background');
+
+    listener({ type: 'debug-operation-progress', kind: 'conflicts' });
+    await flushPromises();
+    const body = new DOMWrapper(document.body);
+    expect(body.text()).toContain('Agent resolving conflicts');
+    expect(body.findAll('button').find(button => button.text() === 'Close')?.classes()).toContain('app-button--secondary');
+    await vi.advanceTimersByTimeAsync(2000);
+    listener({ type: 'debug-operation-progress', kind: 'conflicts' });
+    await flushPromises();
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(body.text()).toContain('Agent resolving conflicts');
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(body.text()).not.toContain('Agent resolving conflicts');
   });
 
   it('attaches a screenshot command to the active agent composer', async () => {

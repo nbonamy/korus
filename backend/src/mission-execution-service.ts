@@ -382,7 +382,7 @@ export class MissionExecutionService {
           if (missionLeadAgentId(current) !== leadAgentId) throw new Error('Only the Mission lead can reopen a stage.');
           if (workflow.stages.indexOf(input.stage) >= workflow.stages.indexOf(current.stage)) throw new Error('Choose an earlier Mission stage.');
           // The lead may be making this call from its own active turn. Keep its
-          // proposal/history, but retire the assignment before queuing its replacement.
+          // proposal/history, but retire the assignment before assigning its replacement.
           for (const run of current.execution?.runs ?? []) {
             if (run.workerId === leadAgentId && run.stage !== 'implementation' && ['preparing', 'running', 'awaitingReview'].includes(run.status)) {
               run.status = 'cancelled'; run.finishedAt = new Date().toISOString();
@@ -397,7 +397,21 @@ export class MissionExecutionService {
         if (input.stage !== 'review') current.artifacts.review = { summary: '', pullRequestUrl: '' };
         if (input.stage !== 'ship') delete current.execution!.deliveries;
         if (leadAgentId && (input.stage === 'requirements' || input.stage === 'tickets' || input.stage === 'review')) {
-          runId = this.enqueueRun(current, {});
+          const nextRunId = this.enqueueRun(current, {});
+          if (input.stage === 'requirements' && current.artifactFiles?.requirements
+            && workflow.stageReady('requirements', current.artifacts)) {
+            const previous = current.execution!.runs.slice().reverse().find(run => (
+              run.id !== nextRunId && run.stage === 'requirements' && run.status === 'accepted'
+            ));
+            const run = current.execution!.runs.find(run => run.id === nextRunId)!;
+            run.workerId = leadAgentId;
+            run.skills = structuredClone(previous?.skills ?? []);
+            run.proposal = structuredClone(current.artifacts);
+            run.status = 'awaitingReview';
+            run.finishedAt = new Date().toISOString();
+          } else {
+            runId = nextRunId;
+          }
         }
       }, true);
       if (runId) this.dispatchRuns(input.id, [runId]);
@@ -629,7 +643,7 @@ export class MissionExecutionService {
         const acquired = await this.ports.missions.changeAsync(context.missionId, mission => {
           if (signal?.aborted || this.activeTurns.get(agentId) !== turnId) throw new Error('The requesting provider turn is no longer active.');
           const run = mission.execution?.runs.find(candidate => candidate.id === context.runId);
-          if (!mission.execution?.parallelImplementation || !run || run.status !== 'running' || !this.agentTools.ownsWritableRun(mission, run.id, agentId)) throw new Error('No active parallel implementation assignment.');
+          if (!mission.execution?.parallelImplementation || !run || !this.agentTools.ownsWritableRun(mission, run.id, agentId)) throw new Error('No active parallel implementation assignment.');
           const workspace = mission.execution.workspaces?.find(candidate => candidate.repositoryPath === run.repositoryPath && !candidate.deleted);
           if (!workspace) throw new Error('Mission workspace is unavailable.');
           // Abort the transaction so a waiter does not persist an unpublished revision.
@@ -972,7 +986,14 @@ export class MissionExecutionService {
     const repositoryWorker = execution.runs.slice().reverse().find(run => (
       run.stage === 'implementation' && run.repositoryPath === repositoryPath && run.workerId
     ));
-    const memberId = input.memberId ?? repositoryWorker?.memberId ?? execution.memberIds[ticketIndex % execution.memberIds.length]!;
+    const reusableWorker = execution.parallelImplementation
+      ? execution.runs.slice().reverse().find(run => (
+        run.stage === 'implementation' && run.repositoryPath === repositoryPath && run.status === 'accepted'
+        && this.agent(run.workerId)
+        && execution.runs.slice().reverse().find(candidate => candidate.workerId === run.workerId)?.id === run.id
+      ))
+      : repositoryWorker;
+    const memberId = input.memberId ?? reusableWorker?.memberId ?? repositoryWorker?.memberId ?? execution.memberIds[ticketIndex % execution.memberIds.length]!;
     const member = this.agent(memberId);
     if (!execution.memberIds.includes(memberId) || !member || member.teamId !== execution.teamId) throw new Error('The selected team member is unavailable.');
     if (input.feedback !== undefined && (typeof input.feedback !== 'string' || input.feedback.length > 20_000)) throw new Error('Invalid revision feedback.');
@@ -981,9 +1002,8 @@ export class MissionExecutionService {
       id: runId,
       stage: 'implementation',
       memberId,
-      // Parallel assignments get their own conversation, including retries. No busy
-      // or accepted-but-still-finishing repository worker can be reassigned.
-      ...(!execution.parallelImplementation && !(mission.artifacts.tickets[ticketIndex]!.revision ?? 0) && repositoryWorker?.workerId ? { workerId: repositoryWorker.workerId } : {}),
+      // Reserve an available repository worker; dispatch waits for its provider turn.
+      ...(!(mission.artifacts.tickets[ticketIndex]!.revision ?? 0) && reusableWorker?.workerId ? { workerId: reusableWorker.workerId } : {}),
       ticketIndex,
       ticketId: (mission.artifacts.tickets[ticketIndex]!.id ??= createEntityId('mission-ticket')),
       ...(mission.artifacts.tickets[ticketIndex]!.revision !== undefined ? { ticketRevision: mission.artifacts.tickets[ticketIndex]!.revision } : {}),

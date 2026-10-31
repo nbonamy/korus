@@ -208,16 +208,36 @@ body > .site-header {
 }
 .hero-actions {
   order: 2;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, auto);
   align-items: center;
   justify-content: center;
-  gap: 20px;
+  gap: 16px;
 }
 .hero-actions .text-link {
+  grid-column: 1 / -1;
   color: var(--blue);
   font-size: 15px;
   font-weight: 500;
+}
+.hero-actions .button {
+  justify-content: center;
+  border: 1px solid transparent;
+}
+.hero-actions .button-secondary {
+  border-color: var(--ink);
+  color: var(--ink);
+  background: var(--paper);
+}
+.hero-actions .button-secondary:hover {
+  background: var(--panel);
+}
+.hero-actions .button:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 4px;
+}
+.button-secondary svg {
+  flex-shrink: 0;
 }
 .hero-meta {
   order: 3;
@@ -258,6 +278,86 @@ body > .site-header {
 }
 .button-primary:hover {
   background: #163f90;
+}
+
+/* Keep the live walkthrough separate from the short inline product films. */
+html.watching-video {
+  overflow: hidden;
+}
+.walkthrough {
+  width: min(calc(100vw - 32px), calc((100dvh - 100px) * 16 / 9));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  color: var(--white);
+  background: var(--ink);
+}
+.walkthrough::backdrop {
+  background: rgb(0 0 0 / 85%);
+}
+.walkthrough-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 56px;
+  padding: 6px 8px 6px 20px;
+}
+.walkthrough-toolbar h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+.walkthrough-toolbar a {
+  color: inherit;
+  font-size: 13px;
+  text-underline-offset: 4px;
+}
+.walkthrough-toolbar button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+.walkthrough-toolbar button:hover {
+  background: rgb(255 255 255 / 15%);
+}
+.walkthrough-toolbar :focus-visible {
+  outline: 2px solid var(--white);
+  outline-offset: 2px;
+}
+.walkthrough-player {
+  aspect-ratio: 16 / 9;
+}
+.walkthrough-player iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+@media (width <= 600px) {
+  .hero-actions {
+    width: 100%;
+    grid-template-columns: 1fr;
+  }
+  .walkthrough {
+    width: min(calc(100vw - 16px), calc((100dvh - 80px) * 16 / 9));
+  }
+  .walkthrough-toolbar {
+    gap: 10px;
+    padding-left: 12px;
+  }
+  .walkthrough-toolbar h2 {
+    font-size: 14px;
+  }
 }
 
 /* Large app screenshot */

@@ -16,7 +16,7 @@ Open **View → Keyboard Shortcuts** for a searchable reference to actions and k
 
 | Shortcut | Action |
 | --- | --- |
-| ⌘K | Open the agent picker. |
+| ⌘K | Open the agent and Mission picker; a Mission returns to its last selected agent. |
 | ⌘N | Create a team. |
 | ⌘1–9 | Select the corresponding agent in the active team. |
 | Control Tab | Cycle forward through agents. |
@@ -37,7 +37,7 @@ Hold Command briefly to reveal the quick agent shortcut hints.
 | ⌘R | Restart the active agent with a fresh conversation. |
 | ⌘Shift K | Compact the active session when it is idle. |
 | ⌘W | Close the active agent. |
-| ⌘Shift W | Close the active team; remote teams offer the applicable delete or disconnect flow. |
+| ⌘Shift W | Close the active team. |
 | ⌘Shift M | Toggle muting spoken announcements. |
 
 Some shortcuts require an active agent workspace and are suspended while a modal dialog is open. Browser access requires a host that supports the embedded browser.

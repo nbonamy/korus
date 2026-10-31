@@ -4,6 +4,33 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.47.2] - 2026-10-30
+
+### Improvements and fixes
+
+- **Missions:** Identify agents with clearer tabs and repository icons, see which
+  ticket is selected, and notice when the conversation switches agents.
+- Open Mission documents in a centered dialog without hiding the workflow;
+  choose whether to open documents requested by agents.
+- Give new Mission leads their own names instead of inheriting the initiating
+  agent’s name.
+- Start delegated agents in Plan mode when requested, keeping the composer’s
+  Plan indicator synchronized through plan review.
+- Keep focus in the current conversation when agent creation runs in the
+  background, and dismiss failed worktree setup notifications.
+- Keep split-pane headers beneath dialogs and hide redundant team activity
+  indicators while viewing Cockpit.
+- Show proposed-work actions only for agents on the repository’s default branch.
+- Fix **Update from main** in the web app.
+- Restore historical screenshots inside Working details and keep images sharp
+  without enlarging low-resolution thumbnails.
+- Keep tall image previews compact and browse assistant images in fullscreen
+  with arrow buttons or the Left and Right keys.
+- Dictate answers to agent questions and review the transcript before continuing.
+- Press Enter to fill a suggested follow-up, then Enter again to send it.
+- Improve Computer Use text entry with clipboard paste and animate the physical
+  pointer when clicking.
+
 ## [0.47.1] - 2026-10-30
 
 ### New features

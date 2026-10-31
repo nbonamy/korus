@@ -8,7 +8,7 @@ import { createServer } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { chromium } from 'playwright';
 
-test('Mission conversations preserve selection and switch beneath a covering overlay', async () => {
+test('Mission workspace pairs horizontal workflow steps with persistent conversation tabs', async () => {
   const root = fileURLToPath(new URL('../..', import.meta.url));
   const artifacts = process.env.MISSION_CONVERSATION_ARTIFACTS ?? path.join(root, '.app-dev/mission-conversations');
   const require = createRequire(path.join(root, 'vue/package.json'));
@@ -17,7 +17,7 @@ test('Mission conversations preserve selection and switch beneath a covering ove
    plugins: [vue(), { name: 'mission-tabs-check', configureServer(server) {
    server.middlewares.use('/tabs-check', (_req, res) => { res.setHeader('Content-Type', 'text/html'); res.end('<!doctype html><html><head><style>html,body,#app{height:100%;margin:0}#app{display:flex;flex-direction:column}</style></head><body><div id="app"></div><script type="module" src="/tabs-fixture.js"></script></body></html>'); });
    }, resolveId(id) { if (id === '/tabs-fixture.js') return '\0tabs-fixture'; }, load(id) { if (id !== '\0tabs-fixture') return; return `
-   import { createApp, h } from 'vue';
+   import { createApp, h, ref } from 'vue';
    import ElementPlus from 'element-plus';
    import 'element-plus/dist/index.css';
    import '@codex-app-sdk/vue/styles.css';
@@ -46,7 +46,8 @@ test('Mission conversations preserve selection and switch beneath a covering ove
    }
    const fixture = JSON.parse(sessionStorage.getItem('fixture'+location.search) ?? 'null') ?? {snapshot, mission};
    sessionStorage.setItem('fixture'+location.search, JSON.stringify(fixture));
-   createApp({render: () => h(MissionWorkspace, {mission: fixture.mission, agents: fixture.snapshot.agents, repositoryIcons: {'/repos/korus':'📦', '/repos/website':'🌐'}}, {conversation: ({agentId}) => h('div', {class: 'conversation-pane', style: 'padding:16px'}, 'Conversation: '+agentId)})}).use(ElementPlus).use(i18n).mount('#app');
+   const conversationOnly = ref(false);
+   createApp({render: () => h(MissionWorkspace, {mission: fixture.mission, agents: fixture.snapshot.agents, repositoryIcons: {'/repos/korus':'📦', '/repos/website':'🌐'}, workspaceToggleAvailable: true, conversationOnly: conversationOnly.value, onToggleWorkspace: () => { conversationOnly.value = !conversationOnly.value; }}, {conversation: ({agentId}) => h('div', {class: 'conversation-pane', style: 'padding:16px'}, 'Conversation: '+agentId)})}).use(ElementPlus).use(i18n).mount('#app');
    `; } }] });
   let browser;
   try {
@@ -57,6 +58,13 @@ test('Mission conversations preserve selection and switch beneath a covering ove
    await page.goto(`${server.resolvedUrls.local[0]}tabs-check`);
    const tabs = page.locator('.mission-conversation-rail [role="tab"]');
    await tabs.first().waitFor();
+   const workflow = page.getByLabel('Workflow progress', {exact:true});
+   const workbench = page.locator('.mission-workspace__workbench');
+   const initialWorkflow = await workflow.boundingBox();
+   const initialWorkbench = await workbench.boundingBox();
+   assert.ok(Math.abs(initialWorkflow.x - initialWorkbench.x) <= 1
+    && Math.abs(initialWorkflow.width - initialWorkbench.width) <= 1,
+   'workflow steps must fill the workspace header instead of a separate column');
    assert.equal(await tabs.count(), 4);
    assert.equal(await tabs.first().locator('svg').count(), 1);
    assert.equal(await tabs.nth(1).locator('.agent-avatar').count(), 1);
@@ -111,6 +119,20 @@ test('Mission conversations preserve selection and switch beneath a covering ove
    assert.equal(await ticket.getAttribute('aria-pressed'), 'true');
    assert.equal(await page.locator('.mission-implementation__ticket[aria-pressed="true"]').count(), 1);
    await page.locator('.mission-workspace__workbench-scroll').evaluate(el => el.scrollTop = 0);
+   const stages = workflow.getByRole('button');
+   assert.equal(await stages.count(), 5);
+   assert.equal(await stages.nth(3).isDisabled(), true, 'future stages remain unavailable');
+   assert.equal(await stages.nth(4).isDisabled(), true);
+   const activeConversation = await chat.innerText();
+   await stages.first().focus();
+   await stages.first().press('Enter');
+   await page.getByLabel('Accepted artifact', {exact:true}).waitFor();
+   assert.match(await stages.nth(2).getAttribute('aria-current'), /step/, 'viewing an artifact must not advance the workflow');
+   assert.equal(await stages.first().getAttribute('aria-pressed'), 'true');
+   assert.equal(await chat.innerText(), activeConversation, 'stage browsing keeps the selected conversation');
+   await stages.nth(2).click();
+   await page.waitForFunction(() => [...document.querySelectorAll('.mission-implementation__lane ol > li')]
+    .every(card => Number(getComputedStyle(card).opacity) === 1));
    const measurements = [];
    for (const width of [1440, 1100]) {
     await page.setViewportSize({width, height:900});
@@ -118,8 +140,16 @@ test('Mission conversations preserve selection and switch beneath a covering ove
      await page.evaluate(dark => document.documentElement.classList.toggle('dark', dark), dark);
 
      const navigation = await page.locator('.mission-conversation-rail__navigation').boundingBox();
-     const stageHeader = await page.locator('.mission-workspace__stage-header').boundingBox();
+     const stageHeader = await workflow.boundingBox();
      const tabBar = await page.locator('.mission-conversation-rail__switcher').boundingBox();
+     const body = await page.locator('.mission-workspace__body').boundingBox();
+     const workspace = await workbench.boundingBox();
+     const chats = await page.locator('.mission-conversation-rail').boundingBox();
+     assert.ok(Math.abs(workspace.x - body.x) <= 1 && Math.abs(workspace.x + workspace.width - chats.x) <= 1
+      && Math.abs(chats.x + chats.width - body.x - body.width) <= 1, 'workspace and chats must occupy the two columns');
+     const stepBounds = await stages.evaluateAll(buttons => buttons.map(button => button.getBoundingClientRect().toJSON()));
+     assert.ok(stepBounds.every(bounds => Math.abs(bounds.y - stepBounds[0].y) <= 1), 'all workflow steps must stay on one row');
+     assert.ok(stepBounds.every(bounds => bounds.x >= workspace.x && bounds.x + bounds.width <= workspace.x + workspace.width), 'all five steps must fit in the desktop workspace header');
      assert.ok(Math.abs(tabBar.height - stageHeader.height) <= 1, 'tab bar must fill the header height');
      assert.equal(await page.locator('.mission-conversation-rail__navigation > header').count(), 0, 'no subtitle row beneath the tabs');
      assert.ok(Math.abs(navigation.height - stageHeader.height) <= 1, 'tabs must share the neighboring header height');
@@ -132,12 +162,43 @@ test('Mission conversations preserve selection and switch beneath a covering ove
      measurements.push(await page.locator('.mission-conversation-rail__switcher').evaluate(el => ({width:innerWidth, dark:document.documentElement.classList.contains('dark'), bounds:el.getBoundingClientRect().toJSON(), tabs:[...el.querySelectorAll('[role="tab"]')].map(tab => ({text:tab.textContent, bounds:tab.getBoundingClientRect().toJSON()}))})));
     }
    }
+   await page.setViewportSize({width:1440, height:900});
+   const resizer = page.getByRole('separator', {name:'Resize mission chat'});
+   const chatWidth = async () => (await page.locator('.mission-conversation-rail').boundingBox()).width;
+   const originalWidth = await chatWidth();
+   const handle = await resizer.boundingBox();
+   await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+   await page.mouse.down();
+   await page.mouse.move(handle.x + handle.width / 2 - 100, handle.y + handle.height / 2, {steps:5});
+   await page.mouse.up();
+   assert.ok(Math.abs(await chatWidth() - originalWidth - 100) <= 1, 'dragging the divider must resize the chat');
+   await resizer.press('ArrowRight');
+   const savedWidth = await chatWidth();
+   assert.ok(Math.abs(savedWidth - originalWidth - 84) <= 1, 'keyboard resizing must adjust the chat width');
+   await page.reload(); await tabs.first().waitFor();
+   assert.ok(Math.abs(await chatWidth() - savedWidth) <= 1, 'the resized width must survive reload');
+   await resizer.press('Home');
+   assert.ok(Math.abs(await chatWidth() - 300) <= 1, 'the chat must retain its minimum usable width');
+   await resizer.dblclick();
+   assert.ok(Math.abs(await chatWidth() - originalWidth) <= 1, 'double-clicking resets the split');
    await page.goto(`${server.resolvedUrls.local[0]}tabs-check?tickets`);
    await page.evaluate(() => document.documentElement.classList.add('dark'));
    await page.getByRole('button', {name:'Implement', exact:true}).waitFor();
-   const headerHeights = await page.evaluate(() => ['.mission-workspace__stage-header', '.mission-stage-rail__heading', '.mission-conversation-rail__navigation'].map(selector => document.querySelector(selector).getBoundingClientRect().height));
-   assert.ok(Math.max(...headerHeights) - Math.min(...headerHeights) <= 1, 'Implement button must not enlarge its header');
+   const headerHeights = await page.evaluate(() => ['.mission-stage-rail', '.mission-conversation-rail__navigation'].map(selector => document.querySelector(selector).getBoundingClientRect().height));
+   assert.ok(Math.max(...headerHeights) - Math.min(...headerHeights) <= 1, 'workflow and chat headers stay aligned while ticket approval is available');
    await page.screenshot({path:path.join(artifacts, 'tickets-dark.png'), animations:'disabled'});
+   await page.setViewportSize({width:900, height:900});
+   assert.equal(await page.locator('.mission-conversation-rail').isVisible(), true, 'the two-pane layout keeps chats available at intermediate widths');
+   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'horizontal workflow scrolling must not widen the page');
+   await page.setViewportSize({width:640, height:900});
+   assert.equal(await page.locator('.mission-conversation-rail').isVisible(), false);
+   await page.getByRole('button', {name:'Toggle right workspace', exact:true}).click();
+   assert.equal(await workbench.isVisible(), false);
+   assert.equal(await page.locator('.mission-conversation-rail').isVisible(), true, 'compact conversation-only mode remains reachable');
+   await page.screenshot({path:path.join(artifacts, 'compact-conversation.png'), animations:'disabled'});
+   await page.getByRole('button', {name:'Toggle right workspace', exact:true}).click();
+   assert.equal(await workbench.isVisible(), true);
+   assert.equal(await page.locator('.mission-conversation-rail').isVisible(), false);
    assert.deepEqual(errors, []);
    await writeFile(path.join(artifacts, 'measurements.json'), JSON.stringify(measurements,null,2));
    console.log('PASS: real Mission tabs click, keyboard navigation, remembered selection, ticket-to-agent selection, reduced motion, 1440/1100 light/dark screenshots');

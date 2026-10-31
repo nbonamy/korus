@@ -12,6 +12,7 @@ const SIMULATOR_ACTIONS = new Set([
 ]);
 
 const TOOL_KEYS: Record<string, string> = {
+  'open-design': 'openDesign',
   'generate-image': 'generateImage',
   simulator: 'simulator',
   'read-skill': 'readSkill',

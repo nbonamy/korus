@@ -589,7 +589,7 @@ test('summary turns load only the selected Working details through the native br
         const request = JSON.parse(json);
         if (request.type !== 'loadTurnHistory') return;
         window.turnRequests.push(request);
-        queueMicrotask(async () => {
+        window.completeTurnHistory = async () => {
           const scene = structuredClone(window.summaryScene);
           const turn = scene.frame.payload.snapshot.turns.find(turn => turn.id === request.turnId);
           turn.itemsView = 'full';
@@ -598,7 +598,7 @@ test('summary turns load only the selected Working details through the native br
           window.summaryScene = scene;
           await window.companionTranscript.setConversation(JSON.stringify(scene));
           window.companionTranscript.setContent(JSON.stringify({ type: 'turnHistory', requestId: request.requestId, agentId: request.agentId }));
-        });
+        };
       } } } };
     });
     await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
@@ -614,9 +614,26 @@ test('summary turns load only the selected Working details through the native br
     });
     assert.equal(await page.getByText('Here is the final answer.', { exact: true }).isVisible(), true);
     assert.equal(await page.evaluate(() => window.turnRequests.length), 0);
-    const details = page.getByRole('button', { name: /Done.*1m 49s.*View details/i });
+    const details = page.getByRole('button', { name: /Done.*1m 49s/i });
+    const answer = page.getByText('Here is the final answer.', { exact: true });
+    const before = await answer.boundingBox();
     await details.click();
+    const spinner = details.getByRole('status', { name: /Loading details/ });
+    await spinner.waitFor();
+    assert.equal(await details.getAttribute('aria-expanded'), 'false');
+    assert.equal(await details.isDisabled(), true);
+    assert.equal(await details.locator('svg').count(), 1, 'the spinner must replace the chevron');
+    assert.notEqual(await spinner.evaluate(element => getComputedStyle(element).animationName), 'none');
+    await page.waitForTimeout(250);
+    assert.equal(await page.locator('.chat-fold--open').count(), 0);
+    const pending = await answer.boundingBox();
+    assert(Math.abs(pending.y - before.y) < 1, 'loading must not move the final answer');
+    await mkdir('out', { recursive: true });
+    await page.screenshot({ path: `out/working-loading-${process.env.TRANSCRIPT_BROWSER || 'chromium'}.png` });
+    await page.evaluate(() => window.completeTurnHistory());
     await page.getByText('Inspected the selected turn only.', { exact: true }).waitFor();
+    assert.equal(await details.getAttribute('aria-expanded'), 'true');
+    assert.equal(await details.getByRole('status').count(), 0);
     const requests = await page.evaluate(() => window.turnRequests);
     assert.equal(requests.length, 1);
     assert.equal(requests[0].turnId, 'summary-turn');
@@ -624,6 +641,7 @@ test('summary turns load only the selected Working details through the native br
     await page.getByRole('button', { name: /Done.*1m 49s/i }).click();
     await page.getByRole('button', { name: /Done.*1m 49s/i }).click();
     assert.equal(await page.evaluate(() => window.turnRequests.length), 1);
+    await writeFile(`out/working-loading-${process.env.TRANSCRIPT_BROWSER || 'chromium'}.json`, JSON.stringify({ reads: requests.length, pendingAnswerShiftPx: pending.y - before.y, collapsedWhileLoading: true, spinnerReplacesChevron: true, cachedReopen: true }, null, 2));
     await page.screenshot({ path: `/tmp/korus-summary-${browserEngine === webkit ? 'webkit' : 'chromium'}.png`, fullPage: true });
   } finally { await browser?.close(); await server.close(); }
 });

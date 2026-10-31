@@ -323,7 +323,7 @@ function conversationKey(run: Conversation['run']): string {
   color: var(--color-primary);
 }
 
-@container (max-width: 980px) {
+@container (max-width: 760px) {
   .mission-conversation-rail {
     display: none;
   }

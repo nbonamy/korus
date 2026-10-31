@@ -21,6 +21,15 @@ export const codexBackendCommands: BackendCommandSummary[] = [
     submitOnSelect: true,
   },
   {
+    id: 'app.design',
+    backend: 'codex',
+    name: 'design',
+    displayName: 'Design',
+    description: `Open ${product.name} Design workspace.`,
+    slashName: 'design',
+    submitOnSelect: true,
+  },
+  {
     id: 'app.visualize',
     backend: 'codex',
     name: 'visualize',
@@ -79,6 +88,15 @@ export const claudeBackendCommands: BackendCommandSummary[] = [
     displayName: 'Review',
     description: `Open ${product.name}'s code review workflow.`,
     slashName: 'review',
+    submitOnSelect: true,
+  },
+  {
+    id: 'app.design',
+    backend: 'claude',
+    name: 'design',
+    displayName: 'Design',
+    description: `Open ${product.name} Design workspace.`,
+    slashName: 'design',
     submitOnSelect: true,
   },
   {

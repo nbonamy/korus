@@ -514,6 +514,7 @@ describe('app menu', () => {
       'Worktree Initialization Indicator',
       'Pull Request Progress',
       'Merge Progress',
+      'Merge Conflicts',
     ]);
     expect(submenuLabels(debugMenu, 'Debug', 'Effects')).toStrictEqual([
       'Confetti',
@@ -539,6 +540,7 @@ describe('app menu', () => {
       'Worktree Initialization Indicator',
       'Pull Request Progress',
       'Merge Progress',
+      'Merge Conflicts',
     ]);
     expect(menuItem(debugMenu, 'View', 'Next Team')?.accelerator).toBe('Command+`');
     expect(menuItem(debugMenu, 'View', 'Next Agent')?.accelerator).toBe('Control+Tab');
@@ -582,6 +584,10 @@ describe('app menu', () => {
     clickNestedItem(debugMenu, 'Debug', 'Effects', 'Shapes');
     clickNestedItem(debugMenu, 'Debug', 'Effects', 'School Pride');
     clickItem(debugMenu, 'Debug', `Open ${product.name} Website`);
+    clickNestedItem(debugMenu, 'Debug', 'UI Previews', 'Merge Conflicts');
+    expect(debugCallbacks.sendAppCommand).toHaveBeenLastCalledWith({
+      type: 'debug-operation-progress', kind: 'conflicts',
+    });
 
     expect(debugCallbacks.reload).toHaveBeenCalledOnce();
     expect(debugCallbacks.toggleDeveloperTools).toHaveBeenCalledOnce();

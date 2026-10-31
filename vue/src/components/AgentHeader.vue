@@ -287,7 +287,7 @@ const emit = defineEmits<{
 
 const gitWorkflowControl = ref<InstanceType<typeof GitWorkflowControl> | null>(null);
 
-function showDebugGitOperationProgress(operation: 'pullRequest' | 'merge'): void | Promise<void> {
+function showDebugGitOperationProgress(operation: 'pullRequest' | 'merge' | 'conflicts'): void | Promise<void> {
   return gitWorkflowControl.value?.showDebugOperationProgress(operation);
 }
 

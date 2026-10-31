@@ -1,8 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ElDialog from 'element-plus/es/components/dialog/index';
-import { ElMessageBox } from 'element-plus';
-import type { GitPruneInventory, GitPruneTarget } from '@workspace/core/contracts';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import type { GitPruneInventory, GitPruneResult, GitPruneTarget } from '@workspace/core/contracts';
 import GitPruneDialog from '../GitPruneDialog.vue';
 
 afterEach(() => vi.restoreAllMocks());
@@ -27,6 +27,69 @@ function create(props = {}) {
 }
 
 describe('GitPruneDialog', () => {
+  it.each([
+    { dirty: true, pullRequest: undefined },
+    { dirty: true, pullRequest: { number: 7, url: 'https://github.com/owner/repo/pull/7', title: 'Merged work', draft: false, headSha: 'abc', state: 'merged' as const } },
+    { dirty: false, pullRequest: undefined },
+  ])('prioritizes uncommitted work over merged history and PR badges ($dirty)', async ({ dirty, pullRequest }) => {
+    const local = target('feat/done', { worktree: '/repo/tree', merged: true, changedFiles: 2,
+      uncommittedFiles: dirty ? 1 : 0, blocked: 'changes', pullRequest });
+    const wrapper = create({ load: async () => ({ ...inventory, groups: [{ branch: local.branch, local, remotes: [] }] }) });
+    await flushPromises();
+    const state = wrapper.get('.git-prune-dialog__state');
+    expect(state.text()).toBe(dirty ? 'Uncommitted changes' : 'Merged');
+    expect(state.find('.git-prune-dialog__pr').exists()).toBe(false);
+    if (dirty) expect(getComputedStyle(state.get('span').element).color).toBe('var(--color-error)');
+    expect(wrapper.text()).toContain(dirty ? '1 uncommitted file' : 'Worktree /repo/tree');
+    expect(wrapper.text()).not.toContain('uncommitted or ignored');
+    if (!dirty) expect(wrapper.text()).not.toContain('uncommitted file');
+    expect((wrapper.get('input[role="switch"]').element as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('does not infer uncommitted changes from an inventory that only has combined file counts', async () => {
+    const local = target('investigate/diffmap-integration', { worktree: '/repo/diffmap', changedFiles: 19, blocked: 'changes' });
+    const wrapper = create({ load: async () => ({ ...inventory, groups: [{ branch: local.branch, local, remotes: [] }] }) });
+    await flushPromises();
+    const state = wrapper.get('.git-prune-dialog__state');
+    expect(state.text()).toBe('Merged');
+    expect(state.find('.git-prune-dialog__dirty').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('19');
+  });
+
+  it.each([
+    { kind: 'success' as const, result: { deleted: [local.id, remote.id], failed: [] }, message: '2 items pruned' },
+    { kind: 'warning' as const, result: { deleted: [local.id], failed: [{ id: remote.id, message: 'Remote changed' }] }, message: '1 item pruned. 1 failed.' },
+    { kind: 'error' as const, result: null, message: 'Prune failed: Offline' },
+  ])('reports background $kind after the closed dialog unmounts', async ({ kind, result, message }) => {
+    let resolve!: (result: GitPruneResult) => void;
+    let reject!: (error: Error) => void;
+    const prune = vi.fn(() => new Promise<GitPruneResult>((yes, no) => { resolve = yes; reject = no; }));
+    const toast = vi.spyOn(ElMessage, kind).mockImplementation(() => ({ close: vi.fn() }));
+    const wrapper = create({ prune });
+    await flushPromises();
+    await wrapper.get('input[aria-label="Delete origin/feat/web"]').setValue(true);
+    await wrapper.get('[data-action="prune"]').trigger('click');
+    expect(wrapper.findAll('.app-form-dialog__footer-actions button').map(button => button.text())).toStrictEqual(['Run in background']);
+    const background = wrapper.findAll('button').find(button => button.text() === 'Run in background');
+    expect(background).toBeDefined();
+    await background!.trigger('click');
+    expect(wrapper.emitted('update:modelValue')).toStrictEqual([[false]]);
+    expect(toast).not.toHaveBeenCalled();
+    wrapper.unmount(); // GitWorkflowControl removes its dialog when it closes.
+    const reopened = create({ agentId: 'agent-2' });
+    await flushPromises();
+    if (result) resolve(result);
+    else reject(new Error('Offline'));
+    await flushPromises();
+    expect(prune).toHaveBeenCalledExactlyOnceWith('agent-1', { confirmed: true, targets: [
+      { id: local.id, revision: local.revision }, { id: remote.id, revision: remote.revision },
+    ] });
+    expect(toast).toHaveBeenCalledExactlyOnceWith(expect.stringContaining(message));
+    if (kind === 'warning') expect(toast).toHaveBeenCalledWith(expect.stringContaining('Remote changed'));
+    expect(reopened.emitted('update:modelValue')).toBeUndefined();
+    expect(reopened.get('[data-action="prune"]').attributes('disabled')).toBeUndefined();
+  });
+
   it.each(['github', 'gitlab'] as const)('shows a native %s request status beside the remote branch', async provider => {
     const url = provider === 'gitlab' ? 'https://gitlab.com/group/sub/repo/-/merge_requests/7' : 'https://github.com/owner/repo/pull/7';
     const requestRemote = { ...remote, pullRequest: { number: 7, url, title: 'Work', draft: false, headSha: 'abc', state: 'merged' as const } };
@@ -144,7 +207,7 @@ describe('GitPruneDialog', () => {
     expect(switches.map(input => [input.attributes('aria-label'), (input.element as HTMLInputElement).checked, (input.element as HTMLInputElement).disabled])).toStrictEqual([
       ['Delete feat/web', true, false], ['Delete origin/feat/web', false, false], ['Delete feat/busy', false, false],
     ]);
-    expect(wrapper.text()).toContain('used by Ada');
+    expect(wrapper.text()).not.toContain('used by Ada');
     const remoteRow = wrapper.get('.git-prune-dialog__row--remote');
     expect(remoteRow.get('.git-prune-dialog__detail').text()).toBe('Remote branch');
     expect(wrapper.text()).toContain('Prune 1 item');
@@ -162,7 +225,7 @@ describe('GitPruneDialog', () => {
     expect(wrapper.emitted('update:modelValue')).toStrictEqual([[false]]);
   });
 
-  it('submits nothing on Cancel and requires an explicit retry after inventory errors', async () => {
+  it('submits nothing on Close and requires an explicit retry after inventory errors', async () => {
     const load = vi.fn().mockRejectedValueOnce(new Error('Offline')).mockResolvedValue(inventory);
     const prune = vi.fn();
     const wrapper = create({ load, prune });
@@ -171,7 +234,9 @@ describe('GitPruneDialog', () => {
     expect(wrapper.get('button[data-action="prune"]').attributes('disabled')).toBeDefined();
     await wrapper.get('button[aria-label="Refresh branches"]').trigger('click');
     await flushPromises();
-    await wrapper.findAll('button').find(button => button.text() === 'Cancel')!.trigger('click');
+    const close = wrapper.findAll('button').find(button => button.text() === 'Close')!;
+    expect(close.classes()).toContain('app-button--tertiary');
+    await close.trigger('click');
     expect(prune).not.toHaveBeenCalled();
     expect(wrapper.emitted('update:modelValue')).toStrictEqual([[false]]);
   });

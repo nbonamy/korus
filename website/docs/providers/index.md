@@ -67,7 +67,7 @@ Once detected:
 
 Antigravity supports streaming conversations, history, approvals, interruption, native Plan mode, and Korus workflows including reviews, Missions, delegation, and automations. Review its proposed plan before accepting implementation. Model choices come from the ACP runtime and may differ from the editor's catalog; available effort variants appear in the model choices.
 
-Desktop conversations accept images, WAV audio, PDFs, and UTF-8 text attachments. Antigravity attachments are unavailable for remote teams and browser-hosted sessions. Steering a running turn, goals, conversation forks, and edit/retry/delete turn actions are not available; queue a follow-up or interrupt instead. See [Conversations](../features/conversations) for shared controls.
+Desktop conversations accept images, WAV audio, PDFs, and UTF-8 text attachments. Antigravity attachments are unavailable for SSH-hosted agents and browser-hosted sessions. Steering a running turn, goals, conversation forks, and edit/retry/delete turn actions are not available; queue a follow-up or interrupt instead. See [Conversations](../features/conversations) for shared controls.
 
 ## Connect GitHub, GitLab, or Linear {#connect-github-or-linear}
 
@@ -92,6 +92,20 @@ In backlog pickers, choose the provider first, then its **Repository** or **Team
 A Linear team or project identifies **where the issue lives**, not **where code runs**. Work started from a repository uses that repository. Without a repository context, choose a **Code repository** before starting. [Automations](../features/automations) schedule prompts independently of work sources; include the repository in the prompt when asking a Quick Chat to create an agent or worktree.
 
 Git branches, commits, pushes, and delivery requests still belong to the code repository. GitHub repositories use pull requests; GitLab projects use merge requests. Linear supplies backlog work alongside those delivery workflows. See [Browse and start backlog work](../features/workspace#browse-and-start-backlog-work) and [Missions](../workflows/missions) for the entry points.
+
+## Remote hosts
+
+Run agents on another computer while keeping their conversations alongside local work in the same team.
+
+1. Configure SSH key access to the host and add it to your SSH configuration.
+2. Open **Settings → Connections → Add remote**, choose the host, and connect. Verify the host identity when asked.
+3. Initialize the environment and select the coding engines to install. Korus prepares its remote runtime and reports setup progress.
+4. Expand the host's row to connect the selected coding-provider accounts and manage engine updates. A working local sign-in does not establish remote access; check each remote engine's connection state.
+5. When opening a repository or creating work, choose **Host**. Korus can use an existing clone there or clone the repository from its origin. Check the destination path, coding engine, and model before starting.
+
+Local and remote agents can share a team, but each agent's files, Git operations, tools, and running processes belong to its host. A repository credential or service available locally may need separate setup there. Agents stay on their chosen host; create another agent to work elsewhere.
+
+The host indicator shows connection health separately from whether the coding engine is signed in. If it is unavailable, reconnect from Connections rather than creating a duplicate agent. **Update Korus** upgrades the remote runtime; finish active turns and pending requests first. Removing the connection removes those remote agents from this app while leaving them running on the host. Missions and conversation sharing use local agents.
 
 ## Manage agent skills
 

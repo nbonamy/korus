@@ -39,12 +39,14 @@ import { appHostCapabilities, appApi } from './platform-api';
 import { createWorkProviderState, isRemoteAutomationLocation } from './work-provider-state';
 import { createAgentComposerState, type AgentComposerConfiguration } from './agent-composer-state';
 import { createAgentUnreadState } from './agent-unread-state';
+import { createAgentThreadFlagState } from './agent-thread-flag-state';
 import { createAgentHistoryState } from './agent-history-state';
 import { createSourceRepositoryState } from './source-repository-state';
 import { workspaceSidebarRepositoryKeyForAgent } from '@workspace/core/workspace-sidebar';
 import { isSnapshotEventOwnedBy, type RendererOnlySnapshotEvent } from '@workspace/core/snapshot-event-ownership';
 
 const snapshot = ref<AppSnapshot>(createEmptySnapshot());
+const threadFlagState = createAgentThreadFlagState({ getSnapshot: () => snapshot.value });
 const hasLoadedSnapshot = ref(false);
 const isLoading = ref(false);
 const connectionState = ref<BackendConnectionState>({ status: 'connecting' });
@@ -577,6 +579,7 @@ export function useAppState() {
       if (activeAgentId && state.snapshot.agents.some((agent) => agent.id === activeAgentId)) {
         selectAgentInSnapshot(state.snapshot, activeAgentId);
       }
+      threadFlagState.project(state.snapshot);
       snapshot.value = state.snapshot;
       pruneUnreadAgentIds();
       pruneConversationFrames();
@@ -679,9 +682,10 @@ export function useAppState() {
     }
 
     const options = resolvedPromptOptions(agentId, trimmed, submissionOptions);
-    adoptBackgroundSnapshot(options
-      ? await appApi.steerPrompt(agentId, trimmed, options)
-      : await appApi.steerPrompt(agentId, trimmed));
+    const api = appApi;
+    await submitWithClearedThreadFlags(agentId, () => options
+      ? api.steerPrompt!(agentId, trimmed, options)
+      : api.steerPrompt!(agentId, trimmed));
   }
 
   async function interruptActiveAgent(): Promise<void> {
@@ -838,12 +842,16 @@ export function useAppState() {
     markAgentSending(agentId, true);
 
     try {
-      adoptBackgroundSnapshot(options
-        ? await api.sendPrompt(agentId, prompt, options)
-        : await api.sendPrompt(agentId, prompt));
+      await submitWithClearedThreadFlags(agentId, () => options
+        ? api.sendPrompt(agentId, prompt, options)
+        : api.sendPrompt(agentId, prompt));
     } finally {
       markAgentSending(agentId, false);
     }
+  }
+
+  async function submitWithClearedThreadFlags(agentId: string, submit: () => Promise<AppSnapshot>): Promise<void> {
+    await threadFlagState.submit(agentId, submit, adoptBackgroundSnapshot);
   }
 
   async function sendAgentPrompt(agentId: string, prompt: string): Promise<void> {
@@ -2353,6 +2361,7 @@ function syncAnsweredClientRequestsFromMainEvent(event: Extract<MainToRendererEv
 }
 
 function adoptSnapshotFromMainEvent(event: MainToRendererEvent): void {
+  threadFlagState.observe(event);
   if (isAppSnapshot(event.snapshot)) {
     adoptBackgroundSnapshot(event.snapshot);
     return;
@@ -2366,6 +2375,7 @@ function adoptSnapshotFromMainEvent(event: MainToRendererEvent): void {
     return;
   }
   applyMainEventToSnapshot(snapshot.value, event);
+  if (event.type === 'agent.updated' && Object.hasOwn(event.payload, 'threadFlags')) threadFlagState.project(snapshot.value, event.agentId);
   if (event.type === 'agent.conversationAttached' && event.backend === 'claude') {
     synchronizeComposerSelectionForAgent(event.agentId);
   }
@@ -2381,12 +2391,14 @@ function adoptBackgroundSnapshot(nextSnapshot: AppSnapshot): void {
     if (nextSnapshot.activeAgentId) void loadActiveAgentCatalogs(nextSnapshot.activeAgentId);
     return;
   }
+  threadFlagState.project(nextSnapshot);
   snapshot.value = nextSnapshot;
   pruneUnreadAgentIds();
   pruneConversationFrames();
 }
 
 function adoptNavigationSnapshot(nextSnapshot: AppSnapshot): void {
+  threadFlagState.project(nextSnapshot);
   const previousAgentId = snapshot.value.activeAgentId;
   rememberActiveComposerConfiguration();
   snapshot.value = nextSnapshot;

@@ -772,6 +772,9 @@ describe('AppBackendServer', () => {
     await expect(server.handleMessage({ jsonrpc: '2.0', id: 'remote-file', method: 'agent/prompt/send',
       params: { agentId: 'agent-remote', prompt: 'Inspect', options: { attachments: [{ type: 'file', path: '/local-only.pdf' }] } },
     })).rejects.toThrow('trusted file transfer');
+    await expect(server.handleMessage({ jsonrpc: '2.0', id: 'remote-design-file', method: 'agent/design',
+      params: { agentId: 'agent-remote', input: { type: 'open', prompt: 'Inspect', attachments: [{ type: 'image', path: '/local-only.png' }] } },
+    })).rejects.toThrow('trusted file transfer');
     expect(remoteClients.request.mock.calls.length).toBe(dispatched);
   });
 

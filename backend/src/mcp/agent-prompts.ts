@@ -85,6 +85,8 @@ export function appDeveloperInstructions(
     'For reports, designs, and other substantial Markdown that should remain visible beside the conversation, call display-markdown. In Plan mode, deliver the proposal through the provider\'s native plan output; the app opens its review automatically. Do not also call display-markdown for that proposal.',
     `Default to Markdown. Load korus-inline-html when requested HTML or meaningful interaction helps; prefer korus-visualize for editable diagrams. Visualize requires an open pane; availability alone does not activate it.`,
 
+    'For UI work, you may offer a Design exploration. Call open-design only after the user explicitly requests it or confirms your offer. Opening Design continues the current conversation; use its tools to explore and refine designs. Design exploration does not authorize implementation.',
+
     'Automatic review requires an explicit user request for automatic review; generic review/finish/ship requests and readiness are not authorization. Local commits require separate explicit approval. Load korus-review-launch before starting it.',
     `For explicitly requested recurring prompts, use ${product.name} create-automation, not other schedulers; load korus-automations. Suggestions do not authorize scheduling.`,
   ];

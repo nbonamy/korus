@@ -32,7 +32,9 @@ The agent identifies the app and a specific window before acting. If you have se
 
 Some native controls can be inspected and operated without bringing the app forward. Physical clicks and drags require the target app to be frontmost and unobstructed. Let the agent refresh its observation if you move a window or change the screen during an interaction.
 
-Computer Use controls the desktop host connected to Korus. It is not automatically access to a remote team's operating system.
+Clicks animate a cursor toward the target so you can follow the action. Ask for physical input when you need the real pointer to move, such as when testing click effects in recording software. The target app must keep focus throughout that movement; if it loses focus, the click is canceled. Text entry can paste through the clipboard for reliable input, with your previous clipboard contents restored afterward.
+
+Computer Use controls the local macOS desktop connected to Korus. Connecting an SSH host does not give it native access to that host's operating system.
 
 ## Choose the right surface
 

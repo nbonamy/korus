@@ -12,9 +12,13 @@ A **team** groups agents. An **agent** has an identity, a working folder, provid
 
 Use names that communicate responsibility: implementation, documentation, or review, for example. A team groups work; it does not turn the members into one conversation or give them isolated files automatically.
 
+A team can contain agents on this computer and on connected SSH hosts. Each agent's host owns its files and running work. See [Remote hosts](../providers/#remote-hosts) for setup and [Cockpit](../features/workspace#follow-all-teams-in-cockpit) to follow activity across teams.
+
 ## Quick Chats and project work
 
 Use a Quick Chat to discuss an idea without first attaching it to a repository task. When the idea becomes implementation work, ask for a project or a dedicated agent with an explicit working folder.
+
+A Quick Chat opened in a team can use that team's project context. Name the repository when several could fit, or answer the agent's clarification. This lets you discuss work across projects before choosing where implementation belongs.
 
 The start-work menu can create a new project, open an existing folder, browse GitHub or GitLab repositories, or clone a repository URL. Opening a project gives the conversation concrete filesystem context. Creating a project folder and creating a Git worktree are different operations: worktrees require an existing Git repository.
 

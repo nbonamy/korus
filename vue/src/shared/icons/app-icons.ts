@@ -10,8 +10,11 @@ export { default as DuoPoseIcon } from './DuoPoseIcon.vue';
 export { default as PlayerPlayIcon } from './PlayerPlayIcon.vue';
 
 export {
+  IconArrowForwardUp as ArrowForwardUpIcon,
   IconAffiliate as AffiliateIcon,
   IconAlertTriangle as AlertTriangleIcon,
+  IconHistory as HistoryIcon,
+  IconX as XIcon,
   IconClockHour8 as ClockHour8Icon,
   IconArrowBackUp as ArrowBackUpIcon,
   IconArrowRight as ArrowRightIcon,
@@ -74,6 +77,9 @@ export {
   IconMessageCircle as MessageCircleIcon,
   IconMessageCircleX as MessageCircleXIcon,
   IconMinus as MinusIcon,
+  IconLayoutSidebarRight as LayoutSidebarRightIcon,
+  IconHandMove as HandMoveIcon,
+  IconPointer as PointerIcon,
   IconLayoutSidebarLeftCollapse as PanelLeftCloseIcon,
   IconLayoutSidebarLeftExpand as PanelLeftOpenIcon,
   IconLogout as QuitIcon,

@@ -477,6 +477,7 @@ describe('GitWorkflowControl', () => {
   });
 
   it('pulls the tracked branch and shows the agent conflict handoff', async () => {
+    vi.useFakeTimers();
     const pullBranch = vi.fn().mockResolvedValue({ workflow, upstream: 'origin/feature/demo', branch: 'feature/demo', conflicts: ['a.ts'] });
     const wrapper = mountControl({ pullBranch, getWorkflow: async () => ({ ...workflow, files: [] }) });
     await flushPromises();
@@ -486,6 +487,16 @@ describe('GitWorkflowControl', () => {
     expect(pullBranch).toHaveBeenCalledExactlyOnceWith(agent.id, { confirmed: true });
     expect(wrapper.text()).toContain('Agent resolving conflicts');
     expect(wrapper.text()).toContain('origin/feature/demo');
+    await vi.advanceTimersByTimeAsync(2000);
+    await submitButton(wrapper, 'Close').trigger('click');
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+    await wrapper.setProps({ getWorkflow: async () => workflow });
+    await wrapper.get('.git-workflow-control__trigger').trigger('click');
+    await bodyAll('[role="menuitem"]').find(item => item.text() === 'Pull')!.trigger('click');
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(wrapper.get('[role="dialog"]').text()).toContain('Commit your changes first');
+    expect(pullBranch).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
   });
 
   it('disables pull without an upstream and asks before pulling dirty work', async () => {
@@ -524,6 +535,7 @@ describe('GitWorkflowControl', () => {
   });
 
   it('can continue a dirty update and hands detected conflicts to the agent', async () => {
+    vi.useFakeTimers();
     const updateFromBase = vi.fn().mockResolvedValue({
       workflow,
       baseBranch: 'main',
@@ -541,6 +553,13 @@ describe('GitWorkflowControl', () => {
     expect(updateFromBase).toHaveBeenCalledWith('agent-1', { confirmed: true, allowDirty: true });
     expect(wrapper.text()).toContain('Agent resolving conflicts');
     expect(wrapper.text()).toContain('The agent has been asked to resolve 1 conflict from main.');
+    expect(submitButton(wrapper, 'Close').classes()).toContain('app-button--secondary');
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(true);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+    expect(updateFromBase).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
   });
 
   it('runs a clean update immediately in the Git progress dialog', async () => {
