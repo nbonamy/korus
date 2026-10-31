@@ -183,7 +183,7 @@ export function projectWorktreeSidebar(repositoryGroups: readonly WorkspaceSideb
       }
       if (branch && (branch === 'main' || branch === 'master' || session.kind === 'main' || session.defaultBranch === branch)) group.protected = true;
       group.sessions.push(branch ? { ...session,
-        displayTitle: session.customName ? `${repository.label} · ${session.customName}` : repository.label,
+        displayTitle: session.customName ?? repository.label,
       } : session);
     }
   }

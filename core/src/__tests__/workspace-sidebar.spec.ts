@@ -19,7 +19,7 @@ describe('workspace sidebar projection', () => {
     const feature = grouped.find(group => group.kind === 'worktree')!;
     expect(feature.label).toBe('feat/one');
     expect(feature.sessions.map(session => [session.agentId, session.displayTitle, session.isActive, session.isUnread])).toStrictEqual([
-      ['api', 'api', false, true], ['web', 'web · Client', true, false],
+      ['api', 'api', false, true], ['web', 'Client', true, false],
     ]);
     expect(feature.sessions[1]!.remoteConnectionId).toBe('remote');
     expect(grouped.flatMap(group => group.sessions.map(session => session.agentId)).sort()).toStrictEqual(['api', 'chat', 'detached', 'folder', 'web']);
