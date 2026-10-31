@@ -17,7 +17,8 @@ All notable Korus changes are recorded here.
 ### Improvements and fixes
 
 - **Missions:** Follow stages across the top and resize the conversation beside
-  the requirements, tickets, and implementation work.
+  the requirements, tickets, and implementation work. Agent tabs show blue when
+  input is needed and orange while working; red unread dots appear only on the lead.
 - Revisit approved Mission requirements without restarting planning, reuse
   available workers during parallel implementation, and recover failed workers
   that still need to commit their changes.
@@ -31,6 +32,7 @@ All notable Korus changes are recorded here.
   are ready to expand.
 - Dismiss proposed-work and review actions as soon as a prompt is submitted,
   without flickering back while the request is accepted.
+- Keep unread dots clear of truncated names in the agent sidebar.
 
 ## [0.47.2] - 2026-10-30
 
