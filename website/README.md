@@ -126,7 +126,7 @@ captions, and native controls, and it then stays on that film. Without
 JavaScript, the link opens the MP4 directly.
 
 The hero's **Watch Korus in action** button opens the live delegation, review,
-and merge walkthrough (`VuK3O0EHi14`) in a large native dialog. The YouTube
+and merge walkthrough (`O_2bpL8IXNM`) in a large native dialog. The YouTube
 privacy-enhanced embed loads only on click, with sound and captions requested;
 opening it pauses the inline films. Closing with Escape, the close button, or
 the backdrop removes the player and restores focus and page scrolling. The

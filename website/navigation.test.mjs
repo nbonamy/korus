@@ -90,7 +90,7 @@ test("navigation, films, and cards work at desktop and phone widths", async () =
       );
       assert.equal(
         await walkthrough.getAttribute("href"),
-        "https://youtu.be/VuK3O0EHi14",
+        "https://youtu.be/O_2bpL8IXNM",
         "The link also works without JavaScript",
       );
       const action = await walkthrough.boundingBox();
@@ -138,7 +138,7 @@ test("navigation, films, and cards work at desktop and phone widths", async () =
       const player = overlay.locator("iframe");
       await player.waitFor();
       const embed = new URL(await player.getAttribute("src"));
-      assert.equal(embed.pathname, "/embed/VuK3O0EHi14");
+      assert.equal(embed.pathname, "/embed/O_2bpL8IXNM");
       assert.equal(embed.searchParams.get("autoplay"), "1");
       assert.equal(
         await page

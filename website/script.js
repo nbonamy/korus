@@ -148,7 +148,7 @@ walkthroughLink.addEventListener("click", (event) => {
   pauseFilms();
   const player = document.createElement("iframe");
   player.src =
-    "https://www.youtube-nocookie.com/embed/VuK3O0EHi14?autoplay=1&rel=0&playsinline=1&cc_load_policy=1";
+    "https://www.youtube-nocookie.com/embed/O_2bpL8IXNM?autoplay=1&rel=0&playsinline=1&cc_load_policy=1";
   player.title = "Delegate, review, and merge AI coding work with Korus";
   player.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
   player.allowFullscreen = true;
