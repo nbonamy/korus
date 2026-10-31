@@ -135,6 +135,7 @@ export const ipcChannels = {
   createMission: 'mission:create',
   selectMission: 'mission:select',
   deleteMission: 'mission:delete',
+  featureControl: 'feature:control',
   readMissionArtifact: 'mission:artifact:read',
   updateMission: 'mission:update',
   createQuickChat: 'agent:quick-chat:create',

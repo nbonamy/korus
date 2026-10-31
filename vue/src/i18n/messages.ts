@@ -543,6 +543,13 @@ export const messages = {
       cloningTitle: 'Cloning {repository}',
       onHost: 'On {host}',
     },
+    features: {
+      rename: 'Rename', renameTitle: 'Rename feature', label: 'Label', actions: 'Feature actions',
+      open: 'Open feature in split view', openLimited: 'Open the first 4 of {count} agents in split view',
+      deleteTitle: 'Delete {feature}?', deleteDescription: 'Remove this feature’s agents and delete the listed worktrees and local branches. Uncommitted changes in these worktrees will be discarded.',
+      deleteAction: 'Delete feature and worktrees', worktrees: 'Worktrees to delete',
+      changedFiles: '{count} uncommitted files', save: 'Save',
+    },
     sidebar: {
       create: 'Create',
       allTeams: 'All teams',
@@ -585,6 +592,7 @@ export const messages = {
       recentActivity: 'Recent activity',
       repository: 'Repository',
       activity: 'Activity',
+      worktree: 'Worktree',
       activityGroups: { attention: 'Needs input', recent: 'Done', working: 'Working', idle: 'Idle' },
       workspaceSessions: 'Workspace sessions',
       showMoreRows: 'Show more',

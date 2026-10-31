@@ -121,7 +121,18 @@ by mutating user-global tool config.
   retain the caller's team and collaborate through its controlling daemon; that
   daemon owns durable task records and validates remote callback identity. Native
   execution and filesystem tools remain on the worker's host.
-- `create-agent` creates a Korus co-agent in the caller's team without selecting it,
+- `create-agent` expands a targets array into independent co-agent creations in
+  the caller’s team; a single creation uses one target. Shared defaults are merged
+  with per-target overrides, with execution defaults reset on provider changes.
+  Results retain target order and preserve successes when another target fails.
+  Failed startup returns the allocated worker identity when one exists, so
+  callers can recover it without duplicating the worker.
+  The scalar request/response remains a compatibility boundary for existing
+  callers and remote provisioning; both forms use the same creation pipeline.
+  An optional initial feature label is saved with the team roster without
+  replacing a saved user label or renaming Git branches.
+  Creation leaves client sidebar organization unchanged and creates each worker
+  without selecting it,
   optionally with an isolated worktree, and stays pending until the new agent
   accepts its initial prompt. `prompt` is the concise visible request;
   `instructions` supplements canonical task references with missing context,

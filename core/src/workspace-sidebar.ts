@@ -1,3 +1,4 @@
+import { featureLabel } from './feature-groups';
 import type { Agent, AgentPullRequestTracking, AgentStatus } from './contracts';
 import { agentDisplayName } from './agent-display';
 import { repositoryIconKeyForRemote } from './git-remote';
@@ -9,6 +10,7 @@ export type WorkspaceSidebarSession = {
   conversationTitle: string | null;
   displayTitle: string;
   branch: string | null;
+  defaultBranch?: string | null;
   folder: string | null;
   isLinkedWorktree: boolean;
   kind: 'main' | 'branch' | 'worktree' | 'detached' | 'folder';
@@ -23,8 +25,10 @@ export type WorkspaceSidebarSession = {
 
 export type WorkspaceSidebarGroup = {
   id: string;
-  kind: 'repository' | 'folder' | 'quickChats';
+  kind: 'repository' | 'worktree' | 'folder' | 'quickChats';
   label: string;
+  branch?: string;
+  protected?: boolean;
   /** Primary checkout of the section on `remoteConnectionId` (local when absent): the local one when the section has it. */
   repositoryRoot?: string;
   repositoryKey?: string;
@@ -147,6 +151,7 @@ export function projectWorkspaceSidebar(input: {
       displayTitle: sessionLabel,
       ...(agent.sharedConversation ? { shared: true } : {}),
       branch: isGit ? workspace.branch : null,
+      ...(isGit && workspace.defaultBranch !== undefined ? { defaultBranch: workspace.defaultBranch } : {}),
       folder: agent.folder,
       isLinkedWorktree: isGit && workspace.isLinkedWorktree,
       kind: workspaceSessionKind(agent),
@@ -162,6 +167,31 @@ export function projectWorkspaceSidebar(input: {
   const projectedGroups = [...groups.values()];
   disambiguateDuplicateSessionLabels(projectedGroups);
   return projectedGroups;
+}
+
+/** Worktree view groups the exact Git branch across repositories, independently of folder names. */
+export function projectWorktreeSidebar(repositoryGroups: readonly WorkspaceSidebarGroup[], labels?: Readonly<Record<string, string>>): WorkspaceSidebarGroup[] {
+  const groups = new Map<string, WorkspaceSidebarGroup>();
+  for (const repository of repositoryGroups) {
+    for (const session of repository.sessions) {
+      const branch = repository.kind === 'repository' ? session.branch : null;
+      const id = branch ? `worktree:${branch}` : repository.id;
+      let group = groups.get(id);
+      if (!group) {
+        group = branch ? { id, kind: 'worktree', label: featureLabel(labels, branch), branch, sessions: [] } : { ...repository, sessions: [] };
+        groups.set(id, group);
+      }
+      if (branch && (branch === 'main' || branch === 'master' || session.kind === 'main' || session.defaultBranch === branch)) group.protected = true;
+      group.sessions.push(branch ? { ...session,
+        displayTitle: session.customName ? `${repository.label} · ${session.customName}` : repository.label,
+      } : session);
+    }
+  }
+  let index = 0;
+  return [...groups.values()].map(group => {
+    const labels = disambiguateLabels(group.sessions.map(session => ({ agentId: session.agentId, label: session.displayTitle })));
+    return { ...group, sessions: group.sessions.map((session, i) => ({ ...session, displayTitle: labels[i]!.label, quickSwitchIndex: index++ })) };
+  });
 }
 
 export function projectAgentMentionLabels(agents: readonly Agent[], quickChatsLabel: string): AgentMentionProjection[] {

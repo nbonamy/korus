@@ -1,3 +1,7 @@
+import type { AgentGitWorkflow } from '@workspace/core/contracts';
+import { FeatureGroupService } from './features/feature-group-service';
+import type { FeatureGroupRequest, FeatureAgentRequest } from '@workspace/core/feature-groups';
+import { isDefaultFeatureBranch } from '@workspace/core/feature-groups';
 import { DesignService, designPrompt, designImplementationPrompt } from './design-service';
 import { resolveHandoffAgentId } from './agents/delegation-lineage';
 import type { DelegatedTask, WaitTasksInput, WaitTasksResult } from '@workspace/core/delegated-task';
@@ -499,9 +503,15 @@ export class AppBackendServer {
     if (name === 'task-block-parent') { await this.tasks?.blockParent(agentId); return { content: [], structuredContent: { success: true } }; }
     if (!remoteCollaborationTools.has(name) || !this.options.collaborationTools) throw new Error('Collaboration operation is unavailable.');
     const args = { ...requireRecord(input.arguments) };
-    if (['create-agent', 'list-repos', 'list-worktrees', 'create-worktree'].includes(name)) {
-      if (args.remoteConnectionId === 'local') delete args.remoteConnectionId;
-      else args.remoteConnectionId ??= connectionId;
+    const resolveTargetHost = (target: Record<string, unknown>) => {
+      if (target.remoteConnectionId === 'local') delete target.remoteConnectionId;
+      else target.remoteConnectionId ??= connectionId;
+      return target;
+    };
+    if (name === 'create-agent' && Array.isArray(args.targets)) {
+      args.targets = args.targets.map(target => resolveTargetHost({ ...requireRecord(target) }));
+    } else if (['create-agent', 'list-repos', 'list-worktrees', 'create-worktree'].includes(name)) {
+      resolveTargetHost(args);
     }
     const result = await this.options.collaborationTools.callTool(agentId, name, args);
     if (name === 'list-hosts' && result.structuredContent) {
@@ -509,6 +519,7 @@ export class AppBackendServer {
     }
     return result;
   }
+  private featureGroups?: FeatureGroupService;
   private readonly version: string;
   private readonly pid: number;
   private readonly snapshot: AppSnapshot;
@@ -1951,6 +1962,49 @@ export class AppBackendServer {
         onCreated(created.agent.id);
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
+      case backendMethods.featureControl: {
+        const input = requireRecord(requireRecord(message.params).input);
+        const type = requireString(input.type, 'type');
+        const branch = requireString(input.branch, 'branch');
+        if (type === 'inspect-agent' || type === 'cleanup-agent') {
+          const agentId = requireString(input.agentId, 'agentId');
+          const inspect = async (agent: Agent) => {
+            const workflow = await this.agentGitService.workflow(requireAgentFolder(agent));
+            if (workflow.branch !== branch || workflow.baseBranch === branch || isDefaultFeatureBranch(branch, [agent])) throw new Error('The worktree branch changed or is the default branch.');
+            return workflow;
+          };
+          if (type === 'inspect-agent') return this.routeAgentResultRequest(message.id, agentId, message.method, { input }, inspect);
+          if (input.confirmed !== true || typeof input.deleteWorktree !== 'boolean') throw new Error('Feature cleanup requires confirmation.');
+          return this.routeAgentSnapshotRequest(message.id, agentId, message.method, { input }, async agent => {
+            await inspect(agent);
+            if (agent.status.type === 'working' || agent.status.type === 'awaitingInput') {
+              const interrupted = await this.handleMessage({ jsonrpc: '2.0', id: randomUUID(), method: backendMethods.agentInterrupt, params: { agentId } });
+              if (interrupted && 'error' in interrupted) throw new Error(interrupted.error.message);
+            }
+            const removed = await this.handleMessage({ jsonrpc: '2.0', id: randomUUID(), method: backendMethods.agentDelete, params: { agentId, input: { confirmed: true, deleteWorktree: input.deleteWorktree, discardChanges: input.deleteWorktree, expectedBranch: branch } } });
+            if (!removed || 'error' in removed) throw new Error(removed && 'error' in removed ? removed.error.message : 'Agent cleanup failed.');
+            return removed.result as AppSnapshot;
+          });
+        }
+        if (!['rename', 'preview-delete', 'delete'].includes(type)) throw new Error('Unknown feature operation.');
+        const teamId = requireString(input.teamId, 'teamId');
+        if (type === 'rename') requireString(input.label, 'label');
+        if (type === 'delete' && (input.confirmed !== true || typeof input.fingerprint !== 'string')) throw new Error('Feature deletion requires confirmation.');
+        this.featureGroups ??= new FeatureGroupService(this.snapshot, {
+          currentSnapshot: () => this.remoteTeams.clientSnapshot(),
+          inspect: async (agentId, branch) => {
+            const response = await this.handleMessage({ jsonrpc: '2.0', id: randomUUID(), method: backendMethods.featureControl, params: { input: { type: 'inspect-agent', agentId, branch } satisfies FeatureAgentRequest } });
+            if (!response || 'error' in response) throw new Error(response && 'error' in response ? response.error.message : 'Feature inspection failed.');
+            return response.result as AgentGitWorkflow;
+          },
+          close: async (agentId, branch, deleteWorktree) => {
+            const response = await this.handleMessage({ jsonrpc: '2.0', id: randomUUID(), method: backendMethods.featureControl, params: { input: { type: 'cleanup-agent', agentId, branch, deleteWorktree, confirmed: true } satisfies FeatureAgentRequest } });
+            if (!response || 'error' in response) throw new Error(response && 'error' in response ? response.error.message : 'Feature cleanup failed.');
+          },
+          save: () => this.persistAndEmitSnapshot(),
+        });
+        return createAppRpcResult(message.id, await this.featureGroups.execute(input as unknown as FeatureGroupRequest));
+      }
       case backendMethods.missionExecute: {
         const input = requireRecord(message.params).input as MissionExecutionInput;
         await this.missionExecution.execute(input);
@@ -2194,6 +2248,7 @@ export class AppBackendServer {
               ? existingAgent.pullRequest
               : undefined;
             const requestName = finishedPullRequest?.provider === 'gitlab' ? 'merge request' : 'pull request';
+            const expectedCleanup: [identity?: typeof finishedPullRequest, branch?: string] = input?.expectedBranch ? [finishedPullRequest, input.expectedBranch] : finishedPullRequest ? [finishedPullRequest] : [];
             if (input?.pullRequestCleanup === true) {
               if (!finishedPullRequest || (finishedPullRequest.state !== 'merged' && finishedPullRequest.state !== 'closed')) {
                 throw new Error(`This agent does not have a finished ${requestName} ready for cleanup.`);
@@ -2214,7 +2269,7 @@ export class AppBackendServer {
                 input.deleteRemoteBranch === true,
                 finishedPullRequest?.headSha,
                 input.discardChanges === true,
-                ...(finishedPullRequest ? [finishedPullRequest] : []),
+                ...expectedCleanup,
               );
             }
             await this.runProfiles.stopAgent(agentId);
@@ -2248,7 +2303,7 @@ export class AppBackendServer {
                   input.deleteRemoteBranch === true,
                   finishedPullRequest?.headSha,
                   input.discardChanges === true,
-                  ...(finishedPullRequest ? [finishedPullRequest] : []),
+                  ...expectedCleanup,
                 );
               } catch (error) {
                 restoreRoster();
@@ -4623,7 +4678,7 @@ function requireAgentId(params: unknown): string {
 
 function requireAgentCloseRequest(params: unknown): {
   agentId: string;
-  input?: { deleteWorktree: boolean; deleteRemoteBranch?: boolean; discardChanges?: boolean; pullRequestCleanup?: boolean; confirmed: true };
+  input?: { deleteWorktree: boolean; expectedBranch?: string; deleteRemoteBranch?: boolean; discardChanges?: boolean; pullRequestCleanup?: boolean; confirmed: true };
 } {
   const record = requireRecord(params);
   const agentId = requireString(record.agentId, 'agentId');
@@ -4631,6 +4686,7 @@ function requireAgentCloseRequest(params: unknown): {
   const input = requireRecord(record.input);
   if (input.confirmed !== true) throw new Error('Deleting a worktree requires confirmation.');
   if (typeof input.deleteWorktree !== 'boolean') throw new Error('deleteWorktree must be a boolean.');
+  if (input.expectedBranch !== undefined && (typeof input.expectedBranch !== 'string' || !input.expectedBranch.trim())) throw new Error('Invalid expected branch.');
   if (input.deleteRemoteBranch !== undefined && typeof input.deleteRemoteBranch !== 'boolean') {
     throw new Error('deleteRemoteBranch must be a boolean.');
   }
@@ -4653,6 +4709,7 @@ function requireAgentCloseRequest(params: unknown): {
     agentId,
     input: {
       deleteWorktree: input.deleteWorktree,
+      ...(typeof input.expectedBranch === 'string' ? { expectedBranch: input.expectedBranch } : {}),
       ...(input.deleteRemoteBranch === undefined ? {} : { deleteRemoteBranch: input.deleteRemoteBranch }),
       ...(input.pullRequestCleanup === undefined ? {} : { pullRequestCleanup: input.pullRequestCleanup }),
       ...(input.discardChanges === undefined ? {} : { discardChanges: input.discardChanges }),

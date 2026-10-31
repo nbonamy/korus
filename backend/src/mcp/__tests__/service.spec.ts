@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -1251,6 +1251,92 @@ describe('AppMcpService', () => {
     expect(snapshot.agents.at(-1)).toMatchObject({ name: null, folder: '/tmp/branch-agent' });
   });
 
+
+  it('creates one or many repository worktrees through the same authenticated contract without changing focus', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'agent-targets-'));
+    const git = promisify(execFile);
+    const snapshot = createInitialSnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    createQuickChatInSnapshot(snapshot, { teamId: 'team-app' }, undefined, 'batch-caller');
+    const initialCount = snapshot.agents.length;
+    const sendPrompt = vi.fn().mockResolvedValue({ backendSession: { kind: 'codex', threadId: 'worker' }, turnId: 'turn' });
+    const manager = new WorktreeManager({ getInitializationMode: () => 'off' });
+    service = new AppMcpService({ snapshot, worktreeManager: manager });
+    service.setDriverRpc(new BackendDriverRpc(new Map([['codex', createDriver({ sendPrompt })]])));
+    try {
+      for (const repo of ['api', 'web', 'extra']) {
+        const folder = path.join(root, repo);
+        await mkdir(folder);
+        await git('git', ['init', '-b', 'main', folder]);
+        await git('git', ['-C', folder, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'initial']);
+      }
+      const url = await service.start();
+      const create = (targets: unknown[]) => callTool(url, 'batch-caller', 'create-agent', {
+        branchName: 'feat1', createWorktree: true, featureLabel: 'Account settings',
+        selection: { backend: 'codex', model: 'shared-model', reasoningEffort: 'high' },
+        targets,
+      });
+      const response = await create([
+        { repoPath: path.join(root, 'api') },
+        { repoPath: path.join(root, 'missing') },
+        { repoPath: path.join(root, 'web'), prompt: 'Implement the client.', selection: { model: 'web-model' } },
+      ]);
+      const result = response.result.structuredContent;
+      expect(response.result.isError).toBe(false);
+      expect(result).toMatchObject({ success: false, results: [
+        { success: true, repoPath: path.join(root, 'api'), folder: path.join(root, 'api-feat1'), promptSubmitted: false },
+        { success: false, repoPath: path.join(root, 'missing'), message: expect.any(String) },
+        { success: true, repoPath: path.join(root, 'web'), folder: path.join(root, 'web-feat1'), promptSubmitted: true },
+      ] });
+      for (const repo of ['api', 'web']) {
+        const folder = path.join(root, `${repo}-feat1`);
+        expect((await git('git', ['-C', folder, 'branch', '--show-current'])).stdout.trim()).toBe('feat1');
+        expect(snapshot.agents.find(agent => agent.folder === folder)).toMatchObject({
+          teamId: 'team-app', delegatedByAgentId: 'batch-caller',
+          backendDefaults: { kind: 'codex', model: repo === 'api' ? 'shared-model' : 'web-model', reasoningEffort: 'high' },
+        });
+      }
+      expect(snapshot.teams.find(team => team.id === 'team-app')!.featureLabels).toStrictEqual({ feat1: 'Account settings' });
+      snapshot.teams.find(team => team.id === 'team-app')!.featureLabels = { feat1: 'User label' };
+      await create([{ repoPath: path.join(root, 'extra') }]);
+      expect(snapshot.teams.find(team => team.id === 'team-app')!.featureLabels).toStrictEqual({ feat1: 'User label' });
+      expect(snapshot.activeAgentId).toBe('batch-caller');
+      expect(sendPrompt).toHaveBeenCalledOnce();
+      const single = await callTool(url, 'batch-caller', 'create-agent', { targets: [{ repoPath: path.join(root, 'api') }] });
+      expect(single.result.structuredContent).toMatchObject({ success: true, results: [{ success: true, folder: path.join(root, 'api'), promptSubmitted: false }] });
+      expect(snapshot.agents).toHaveLength(initialCount + 4);
+      sendPrompt.mockRejectedValueOnce(new Error('Provider startup rejected'));
+      const failedStartup = await callTool(url, 'batch-caller', 'create-agent', {
+        targets: [{ repoPath: path.join(root, 'api'), prompt: 'Start the assignment.' }],
+      });
+      expect(failedStartup.result.structuredContent).toMatchObject({ success: false, results: [{
+        success: false, agentId: expect.any(String), folder: path.join(root, 'api'), message: 'Provider startup rejected',
+      }] });
+      const partial = failedStartup.result.structuredContent.results[0];
+      expect(snapshot.agents.find(agent => agent.id === partial.agentId)?.folder).toBe(partial.folder);
+
+    } finally { await manager.close(); await rm(root, { recursive: true, force: true }); }
+  });
+
+  it('rejects malformed or ambiguous target batches before provisioning any agent', async () => {
+    const snapshot = createInitialSnapshot();
+    service = new AppMcpService({ snapshot });
+    const url = await service.start();
+    const count = snapshot.agents.length;
+    for (const input of [
+      { targets: [] },
+      { targets: [{ repoPath: '/repo' }], repoPath: '/other' },
+      { targets: [{ repoPath: '/repo' }, { repoPath: ' ' }] },
+      { targets: [{ repoPath: '/repo' }, { repoPath: '/repo' }] },
+      { createWorktree: true, targets: [{ repoPath: '/repo' }] },
+      { planMode: true, goal: true, targets: [{ repoPath: '/repo', prompt: 'Work' }] },
+      { targets: [{ repoPath: '/repo', task: { title: 'Task', doneWhen: 'Done' }, prompt: 'Work' }] },
+    ]) {
+      const response = await callTool(url, 'agent-dina', 'create-agent', input);
+      expect(response.result.isError, JSON.stringify(input)).toBe(true);
+      expect(snapshot.agents).toHaveLength(count);
+    }
+  });
 
   it('lets create-agent override the inherited service tier, and drops it for antigravity', async () => {
     const snapshot = createInitialSnapshot();

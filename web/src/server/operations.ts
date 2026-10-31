@@ -125,6 +125,7 @@ const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?
   createProject: [backendMethods.projectCreate, named('input')],
   executeMission: [backendMethods.missionExecute, named('input')],
   createMission: [backendMethods.missionCreate, named('input')],
+  featureControl: [backendMethods.featureControl, named('input')],
   deleteMission: [backendMethods.missionDelete, named('input')],
   readMissionArtifact: [backendMethods.missionArtifactRead, (args) => ({ missionId: args[0], stage: args[1] })],
   updateMission: [backendMethods.missionUpdate, named('input')],

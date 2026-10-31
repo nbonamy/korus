@@ -8,7 +8,7 @@ import { useI18n } from 'vue-i18n';
 import type { Agent, OpenInApplication, OpenInApplicationCatalog, RemoteConnection } from '@workspace/core/contracts';
 import { projectWorkspaceSidebar, type SidebarActivity, type WorkspaceSidebarGroup, type WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar';
 import { formatCompactAge, formatElapsed } from '../shared/compact-age';
-import { BellIcon, CircleCheckIcon, ClockHour8Icon, LoaderIcon, MoonIcon, FolderIcon, GitBranchIcon, GitForkIcon, NetworkIcon, Trash2Icon } from '../shared/icons/app-icons';
+import { BellIcon, CircleCheckIcon, ClockHour8Icon, LoaderIcon, MoonIcon, FolderIcon, GitBranchIcon, GitForkIcon, NetworkIcon, PencilIcon, Trash2Icon } from '../shared/icons/app-icons';
 import { useBackendChoices } from './backend-selection';
 import { backendDisplayName } from '@workspace/core/backend-driver';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
@@ -28,9 +28,19 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
   const missionsCollapsed = ref(false);
   const activityIcons = markRaw({ attention: BellIcon, recent: CircleCheckIcon, working: LoaderIcon, idle: MoonIcon });
   const organizationMenuItems = computed<AppMenuItem[]>(() => [
-    { id: 'repository', type: 'radio', checked: organizationMode.value === 'repository', label: t('sidebar.repository'), icon: FolderIcon },
     { id: 'activity', type: 'radio', checked: organizationMode.value === 'activity', label: t('sidebar.activity'), icon: BellIcon },
+    { id: 'repository', type: 'radio', checked: organizationMode.value === 'repository', label: t('sidebar.repository'), icon: FolderIcon },
+    { id: 'worktree', type: 'radio', checked: organizationMode.value === 'worktree', label: t('sidebar.worktree'), icon: GitForkIcon },
   ]);
+  const featureMenuItems = computed<AppMenuItem[]>(() => [
+    { id: 'rename', type: 'action', label: t('features.rename'), icon: PencilIcon },
+    { id: 'delete', type: 'action', label: t('common.delete'), icon: Trash2Icon, danger: true },
+  ]);
+  function featureAction(group: WorkspaceSidebarGroup, action: string): void {
+    if (!group.branch || group.protected) return;
+    if (action === 'rename') emit('rename-feature', { branch: group.branch, label: group.label });
+    if (action === 'delete') emit('delete-feature', { branch: group.branch, label: group.label });
+  }
   const minWidth = computed(() => props.minWidth ?? 200);
   const maxWidth = computed(() => props.maxWidth ?? 420);
   const resizeStep = 16;
@@ -48,6 +58,7 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
   const organization = useAgentSidebarOrganization({
     activityOnly: () => props.allTeams ?? false,
     teamId: () => props.teamId, agents: () => props.agents, repositoryGroups: () => repositoryGroups.value,
+    featureLabels: () => props.teams?.find(team => team.id === props.teamId)?.featureLabels,
     label: activity => t(`sidebar.activityGroups.${activity}`),
   });
   const organizationMode = organization.mode;
@@ -224,7 +235,7 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     if (group.kind === 'quickChats') {
       return t(isWorkspaceCollapsed(group) ? 'sidebar.expandChats' : 'sidebar.collapseChats');
     }
-    if (group.kind === 'folder') {
+    if (group.kind === 'folder' || group.kind === 'worktree') {
       return t(isWorkspaceCollapsed(group) ? 'sidebar.expandFolder' : 'sidebar.collapseFolder', { folder: group.label });
     }
     return t(isWorkspaceCollapsed(group) ? 'sidebar.expandRepository' : 'sidebar.collapseRepository', { repository: group.label });
@@ -506,6 +517,8 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     sidebarStyle,
     t,
     organizationMenuItems,
+    featureMenuItems,
+    featureAction,
     organization,
     emit,
     quickChatGroup,

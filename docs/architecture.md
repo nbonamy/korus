@@ -523,6 +523,16 @@ Agents never move between backend locations.
 
 ## Source Repositories And Worktrees
 
+Feature groups use a team's exact Git branch identity across repositories. Display
+labels live in the team's `featureLabels` in `roster.json`; renaming a label never
+renames branches. Creation supplies an initial label without replacing a saved user
+label. Cleanup binds confirmation to the current members, paths, branch heads and
+working-file status. The owning daemon preflights every member before cleanup;
+checkout changes, default branches and worktrees shared outside the group block
+deletion. Agent cleanup retains the confirmed branch binding through the existing
+Git deletion primitive. Remote inspection must support feature cleanup before any
+member is removed. Partial failures leave the remaining group recoverable.
+
 Branch moves capture all tracked and untracked changes against a source HEAD,
 preserving staging and working-file contents separately. Ignored files stay in the
 source checkout. The backend saves a private recovery journal under the repository's

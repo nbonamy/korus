@@ -61,6 +61,9 @@ export type AgentSidebarEvents = {
   'create-mission': [];
   'delete-mission': [id: string];
   'create-agent-in-mission-worktree': [payload: { missionId: string; worktreePath: string }];
+  'open-feature': [agentIds: string[]];
+  'rename-feature': [feature: { branch: string; label: string }];
+  'delete-feature': [feature: { branch: string; label: string }];
   'delete-repository': [agentId: string];
   'select-mission': [id: string];
   'update-repository-icon': [payload: { repositoryKey: string; repositoryRoot: string; icon: string | undefined }];

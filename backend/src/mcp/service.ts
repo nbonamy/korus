@@ -1,3 +1,4 @@
+import { setFeatureLabel } from '@workspace/core/feature-groups';
 import type { ExecutionSelectionOverrides } from '@workspace/core/contracts/execution';
 import { applyExecutionSelection, defaultExecutionSelection, executionSelectionForAgent, resolveExecutionSelection } from '@workspace/core/execution-selection';
 import { delegatedAssignmentPrompt } from '../agents/worktree-delegation';
@@ -38,7 +39,7 @@ import { scanSourceRepositories } from '../source-repositories';
 import { WorktreeManager } from '../worktrees/worktree-manager';
 import { createWorktreeInitializationToolModuleProvider } from './worktree-initialization-tools';
 import type { BackendDriverRpc } from '../driver-rpc';
-import { AppMcpAgentCoordinator, McpToolError, type AnnouncementResponse, type CelebrationResponse, type DisplayMarkdownInput, type DisplayMarkdownResponse, type McpCreateAgentInput, type McpCreateAgentResponse, type MissionToolPort, type UpdateWorkItemResponse } from './agent-coordinator';
+import { AppMcpAgentCoordinator, McpAgentCreationError, McpToolError, type AnnouncementResponse, type CelebrationResponse, type DisplayMarkdownInput, type DisplayMarkdownResponse, type McpCreateAgentInput, type McpCreateAgentResponse, type MissionToolPort, type UpdateWorkItemResponse } from './agent-coordinator';
 import { agentMessagesPrompt, type MessageInfo } from './agent-prompts';
 import { AppMcpHttpServer } from './http-server';
 import type { ComputerUseClient } from './computer-use-tools';
@@ -159,6 +160,17 @@ export class AppMcpService {
       onListSourceRepositories: (connectionId) => this.listSourceRepositories(connectionId),
       onListSourceWorktrees: (repoPath, connectionId) => this.listSourceWorktrees(repoPath, connectionId),
       onCreateSourceWorktree: (input) => this.createSourceWorktree(input),
+      onFeatureLabel: async (caller, branch, label) => {
+        if (!caller.teamId) throw new Error('A feature requires a team.');
+        const team = this.snapshot.teams.find(team => team.id === caller.teamId)!;
+        const existing = team.featureLabels?.[branch];
+        if (typeof existing === 'string' && existing.trim()) return;
+        const previous = team.featureLabels;
+        setFeatureLabel(this.snapshot, caller.teamId, branch, label);
+        try { await this.persistSnapshot?.(); }
+        catch (error) { team.featureLabels = previous; throw error; }
+        this.emitSnapshotUpdated(caller.id);
+      },
       onCreateAgent: (agent, input) => this.createAgentFromMcp(agent, input),
       onCloseAgent: options.closeAgent,
     });
@@ -626,6 +638,7 @@ export class AppMcpService {
       },
     });
 
+    let createdAgent: Agent | undefined;
     try {
       let folder = repoPath;
       if (input.createWorktree) {
@@ -645,7 +658,7 @@ export class AppMcpService {
       }
 
       const createInput: CreateAgentInput = { name: input.name?.trim() || null, folder, delegatedByAgentId: this.options.resolveDelegationParent?.(caller.id) ?? caller.id, teamId: input.teamId ?? caller.teamId, selection: { backend: progress.backend } };
-      const createdAgent = this.agentCreation.create(createInput, { select: false, ...(intendedId ? { id: intendedId } : {}) });
+      createdAgent = this.agentCreation.create(createInput, { select: false, ...(intendedId ? { id: intendedId } : {}) });
       if (userInstructions && (prompt || assignmentPrompt)) createdAgent.delegationUserInstructions = { ...userInstructions };
       // Creation applies the target provider's saved model and approval policy first.
       createdAgent.backendDefaults = { ...createdAgent.backendDefaults, ...delegatedBackendDefaults(caller, input) };
@@ -698,6 +711,7 @@ export class AppMcpService {
         type: 'agentCreation.progress',
         payload: { ...progress, state: 'error', error: message },
       });
+      if (createdAgent) throw new McpAgentCreationError(message, createdAgent.id, createdAgent.folder);
       throw error;
     }
   }

@@ -177,12 +177,12 @@ describe('AgentSidebar sessions', () => {
     expect(document.body.textContent).toContain('Organize agents by');
     const menu = document.body.querySelector('[role="menu"][aria-label="Organize agents by"]')!;
     const options = [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')];
-    expect(options.map(option => option.textContent?.trim())).toStrictEqual(['Repository', 'Activity']);
+    expect(options.map(option => option.textContent?.trim())).toStrictEqual(['Activity', 'Repository', 'Worktree']);
     expect(options.every(option => option.querySelector('svg'))).toBe(true);
     expect(options[0]!.querySelectorAll('svg')).toHaveLength(1);
-    expect(options[0]!.firstElementChild?.classList.contains('tabler-icon-check')).toBe(true);
-    expect(options[1]!.firstElementChild?.classList.contains('tabler-icon-bell')).toBe(true);
-    options[1]!.click();
+    expect(options[1]!.firstElementChild?.classList.contains('tabler-icon-check')).toBe(true);
+    expect(options[0]!.firstElementChild?.classList.contains('tabler-icon-bell')).toBe(true);
+    options[0]!.click();
     await flushPromises();
     view = wrapper.get('button[aria-label="Agent view"]');
     expect(view.attributes('aria-expanded')).toBe('false');
@@ -211,6 +211,65 @@ describe('AgentSidebar sessions', () => {
     expect(wrapper.get('.agent-sidebar__session-title--active').text()).toBe('Dina');
     expect(wrapper.findAll('.agent-sidebar__session-title--active')).toHaveLength(1);
     expect(wrapper.find('[aria-label="Working"]').exists()).toBe(true);
+  });
+
+  it('groups matching worktree branches across repositories and remembers the user choice independently of new agents', async () => {
+    const make = (id: string, repo: number, branch: string): Agent => {
+      const source = agents[repo]!;
+      if (source.workspace?.kind !== 'git') throw new Error('Expected Git fixture');
+      return { ...source, id, name: null, folder: `/src/repo${repo}-${branch}`,
+        workspace: { ...source.workspace, branch, isLinkedWorktree: true } };
+    };
+    const rows = [make('api-one', 0, 'feat1'), make('api-two', 0, 'feat2'), make('web-one', 1, 'feat1')];
+    const props = { agents: rows, activeAgentId: 'web-one', teamId: 'worktree-view', teamName: 'Team' };
+    let wrapper = mount(AgentSidebar, { attachTo: document.body, props });
+    try {
+      await wrapper.get('button[aria-label="Agent view"]').trigger('click');
+      await flushPromises();
+      const option = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(row => row.textContent?.trim() === 'Worktree');
+      expect(option).toBeDefined();
+      option!.click();
+      await flushPromises();
+      const group = (branch: string) => wrapper.findAll('[data-group-kind="worktree"]').find(section => section.find('header strong').text() === branch)!;
+      expect(group('feat1').findAll('[data-reorder-id]').map(row => row.attributes('data-reorder-id'))).toStrictEqual(['api-one', 'web-one']);
+      expect(group('feat1').find('button[aria-label=\"Open feature in split view\"]').exists()).toBe(true);
+      expect(group('feat1').text()).toContain('id8');
+      expect(group('feat1').text()).toContain('multi-llm-ts');
+      expect(group('feat1').get('[data-reorder-id="web-one"]').attributes('aria-pressed')).toBe('true');
+      await group('feat2').get('[data-reorder-id="api-two"]').trigger('click');
+      expect(wrapper.emitted('select-agent')?.at(-1)).toStrictEqual(['api-two']);
+      await wrapper.setProps({ agents: [...rows, make('web-two', 1, 'feat2')] });
+      expect(group('feat2').findAll('[data-reorder-id]')).toHaveLength(2);
+      wrapper.unmount();
+      wrapper = mount(AgentSidebar, { attachTo: document.body, props });
+      expect(group('feat1').exists()).toBe(true);
+      await wrapper.setProps({ teamId: 'other-team' });
+      expect(wrapper.find('[data-group-kind="worktree"]').exists()).toBe(false);
+      expect(wrapper.find('[data-group-kind="repository"]').exists()).toBe(true);
+    } finally { wrapper.unmount(); localStorage.removeItem('app:agentOrganization:worktree-view'); }
+  });
+
+  it('offers rename and deletion only for feature groups while opening their agents through the group action', async () => {
+    localStorage.setItem('app:agentOrganization:feature-actions', 'worktree');
+    const source = agents[0]!;
+    if (source.workspace?.kind !== 'git') throw new Error('Expected Git fixture');
+    const feature = { ...source, id: 'feature-agent', name: null, workspace: { ...source.workspace, branch: 'feat1', isLinkedWorktree: true } };
+    const wrapper = mount(AgentSidebar, { attachTo: document.body,
+      props: { agents: [source, feature], teams: [{ id: 'feature-actions', name: 'Team', agentIds: [source.id, feature.id], featureLabels: { feat1: 'Account settings' } }], teamId: 'feature-actions', teamName: 'Team', activeAgentId: source.id } });
+    try {
+      const sections = wrapper.findAll('[data-group-kind="worktree"]');
+      const main = sections.find(section => section.get('header strong').text() === 'main')!;
+      const group = sections.find(section => section.get('header strong').text() === 'Account settings')!;
+      expect(main.find('button[aria-label="Feature actions"]').exists()).toBe(false);
+      await group.get('button[aria-label="Open feature in split view"]').trigger('click');
+      expect(wrapper.emitted('open-feature')?.at(-1)).toStrictEqual([['feature-agent']]);
+      await group.get('button[aria-label="Feature actions"]').trigger('click');
+      await flushPromises();
+      const actions = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
+      expect(actions.map(action => action.textContent?.trim())).toStrictEqual(['Rename', 'Delete']);
+      actions[0]!.click(); await flushPromises();
+      expect(wrapper.emitted('rename-feature')?.at(-1)).toStrictEqual([{ branch: 'feat1', label: 'Account settings' }]);
+    } finally { wrapper.unmount(); localStorage.removeItem('app:agentOrganization:feature-actions'); }
   });
 
   it('organizes live activity in priority order, ages recent work, and restores each team’s client-local choice', async () => {

@@ -72,6 +72,34 @@ async function setup(parentBackend: 'codex' | 'claude') {
 }
 
 describe('durable tasks through authenticated MCP and real provider adapters', () => {
+  it('tracks and retries each target independently while applying shared Plan defaults and provider-specific overrides', async () => {
+    const f = await setup('codex');
+    const native = f.codex.conversation('codex-worker');
+    const input = { planMode: true, selection: { model: 'codex-only-model', reasoningEffort: 'high' }, targets: [
+      { repoPath: '/api', prompt: 'Plan the API.', requestId: 'api', task: { title: 'API', doneWhen: 'Plan approved' } },
+      { repoPath: '/web', prompt: 'Inspect the client.', planMode: false, selection: { backend: 'claude' }, requestId: 'web', task: { title: 'Client', doneWhen: 'Inspection complete' } },
+    ] };
+    const creating = f.call(f.parent.id, 'create-agent', input);
+    await vi.waitFor(() => expect(f.claudeSdk.inputs).toHaveLength(1));
+    f.claudeSdk.emit({ type: 'system', subtype: 'init', session_id: 'claude-worker' });
+    const result = (await creating).structuredContent;
+    expect(result).toMatchObject({ success: true, results: [{ success: true, taskId: expect.any(String) }, { success: true, taskId: expect.any(String) }] });
+    expect(native.handle.sendMessage).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ planMode: true }));
+    expect(f.claudeSdk.options[0]!.permissionMode).not.toBe('plan');
+    const workers = result.results.map((entry: { agentId: string }) => f.snapshot.agents.find(agent => agent.id === entry.agentId)!);
+    expect(workers[0].backendDefaults).toMatchObject({ kind: 'codex', model: 'codex-only-model' });
+    expect(workers[1].backendDefaults?.model).not.toBe('codex-only-model');
+    const saved = await f.store.loadTasks();
+    expect(saved.map(task => task.requestId)).toStrictEqual(['api', 'web']);
+    expect(new Set(saved.map(task => task.workerAgentId)).size).toBe(2);
+    const count = f.snapshot.agents.length;
+    const retry = (await f.call(f.parent.id, 'create-agent', input)).structuredContent;
+    expect(retry.results.map((entry: { taskId: string }) => entry.taskId)).toStrictEqual(result.results.map((entry: { taskId: string }) => entry.taskId));
+    expect(f.snapshot.agents).toHaveLength(count);
+    expect(native.handle.sendMessage).toHaveBeenCalledOnce();
+    expect(f.claudeSdk.inputs).toHaveLength(1);
+  });
+
   it.each([undefined, false])('keeps startup out of Plan and Goal modes without an explicit opt-in (%s)', async planMode => {
     const f = await setup('codex');
     const native = f.codex.conversation('codex-worker');

@@ -1,4 +1,3 @@
-import { executionSelectionOverridesSchema } from '../execution-selection-schema';
 import { product } from '@workspace/core/product';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import * as z from 'zod/v4';
@@ -6,7 +5,7 @@ import { threadFlagIds } from '@workspace/core/thread-flags';
 import type { AppMcpAgentCoordinator } from './agent-coordinator';
 import { CHECK_INBOX_PROMPT } from './agent-prompts';
 import { loggedToolResult, type AppMcpToolModuleProvider } from './tool-modules';
-import { taskContractSchema } from '../persistence/task-schema';
+import { createAgentInputSchema } from './create-agent-schema';
 
 export function createCollaborationToolModuleProvider(
   coordinator: AppMcpAgentCoordinator,
@@ -169,43 +168,23 @@ function registerCollaborationTools(
   }, () => coordinator.createSourceWorktree(callerAgentId, { repoPath, branchName, destinationPath, ...(remoteConnectionId ? { remoteConnectionId } : {}) })));
 
   server.registerTool('create-agent', {
-    description: `Create a ${product.name} co-agent in your team, optionally on another host or in an isolated worktree. Use list-hosts to discover current host IDs and status. Read korus-delegation before delegating. With a prompt, returns after startup acceptance, not task completion.`,
-    inputSchema: z.strictObject({
-      requestId: z.string().trim().min(1).max(200).optional().describe('Required in task mode. Reuse the same stable ID when retrying this creation call.'),
-      task: taskContractSchema.optional().describe('Saved assignment contract. Requires prompt and requestId; returns taskId for wait-tasks.'),
-      name: z.string().optional().describe('Optional custom name. When omitted, the agent displays its branch or folder name.'),
-      selection: executionSelectionOverridesSchema.optional().describe('Execution overrides. Same-provider work inherits the caller; a different provider uses its own defaults. Null selects the provider default, including Standard tier.'),
-      remoteConnectionId: z.string().trim().min(1).optional().describe('Host ID from list-hosts. Omit to create on your current host. Repository paths refer to the selected host.'),
-      repoPath: z.string().describe('Repository or worktree folder path.'),
-      createWorktree: z.boolean().optional().describe('If true, create a new worktree from repoPath before creating the agent.'),
-      branchName: z.string().optional().describe('Branch name for the new worktree. Required when createWorktree is true.'),
-      destinationPath: z.string().optional().describe('Optional destination path for the new worktree.'),
-      prompt: z.string().optional().describe('Concise visible request. Starts the agent and waits for acceptance.'),
-      goal: z.boolean().optional().describe('Enable only when explicitly requested by the user. Runs the assignment as a native goal instead of a regular prompt. Defaults to false; cannot be combined with planMode. Requires prompt and a goal-capable backend (Codex or Claude). Claude limits the complete objective, including assignment context, to 4,000 characters.'),
-      planMode: z.boolean().optional().describe('Enable only when explicitly requested by the user. Starts the first prompt in provider Plan mode and waits for user approval before implementation. Defaults to false; cannot be combined with goal. Requires prompt and a Plan-capable backend.'),
-      startingContext: z.enum(['conversation', 'handoff']).optional().describe('Worktree delegation override: continue the native conversation or start fresh with a handoff. Defaults to saved preferences; unsupported/cross-provider continuation falls back visibly.'),
-      instructions: z.string().optional().describe(`Assignment guidance and missing context; requires prompt. Applied to forks and handoffs. Saved user instructions take priority; ${product.name} supplies explicit per-task user overrides separately. No secrets.`),
-    }),
-  }, ({ name, selection, remoteConnectionId, repoPath, createWorktree, branchName, destinationPath, prompt, goal, planMode, instructions, task, requestId, startingContext }) => loggedToolResult('create-agent', {
+    description: `Create one or more ${product.name} co-agents in your team using targets (one target for a single agent). Top-level settings are shared defaults; target settings override them. Each result reports its own success or failure; successful targets are preserved. Omitting a target prompt leaves that agent idle. Sidebar organization is unchanged. Targets may use other hosts or isolated worktrees. Use list-hosts to discover current host IDs and status. Read korus-delegation before delegating. With a prompt, returns after startup acceptance, not task completion.`,
+    inputSchema: createAgentInputSchema,
+  }, input => loggedToolResult('create-agent', {
     agentId: callerAgentId,
-    repoPath,
-    createWorktree: createWorktree === true,
-  }, () => coordinator.createAgent(callerAgentId, {
-    name,
-    selection,
-    remoteConnectionId,
-    repoPath,
-    createWorktree,
-    branchName,
-    destinationPath,
-    prompt,
-    ...(goal !== undefined ? { goal } : {}),
-    ...(planMode !== undefined ? { planMode } : {}),
-    task,
-    requestId,
-    startingContext,
-    instructions,
-  })));
+    targetCount: input.targets?.length ?? 1,
+    createWorktree: input.createWorktree === true,
+  }, () => coordinator.createAgent(callerAgentId, input.targets ? {
+    featureLabel: input.featureLabel,
+    selection: input.selection,
+    branchName: input.branchName,
+    createWorktree: input.createWorktree,
+    startingContext: input.startingContext,
+    planMode: input.planMode,
+    goal: input.goal,
+    instructions: input.instructions,
+    targets: input.targets,
+  } : { ...input, repoPath: input.repoPath! })));
 
   server.registerTool('close-agent', {
     description: 'Close an idle agent you created. Unfinished tasks must be completed or cancelled first. Preserves its worktree and branches.',

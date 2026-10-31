@@ -1,12 +1,32 @@
 import { describe, expect, it } from 'vitest';
 import type { Agent } from '../contracts';
-import { projectAgentMentionLabels, projectWorkspaceSidebar, repositoryIconForAgent } from '../workspace-sidebar';
+import { projectAgentMentionLabels, projectWorkspaceSidebar, projectWorktreeSidebar, repositoryIconForAgent } from '../workspace-sidebar';
 
 const projectSidebar = (input: Omit<Parameters<typeof projectWorkspaceSidebar>[0], 'quickChatsLabel'>) => (
   projectWorkspaceSidebar({ ...input, quickChatsLabel: 'Quick chats' })
 );
 
 describe('workspace sidebar projection', () => {
+  it('groups exact branch names across repositories without losing quick chats, detached or folder agents', () => {
+    const api = gitAgent('api', null, '/src/api-feature', 'feat/one', true, '/src/api');
+    const web = gitAgent('web', 'Client', '/src/web-feature', 'feat/one', true, '/src/web');
+    web.remoteConnectionId = 'remote';
+    const detached = gitAgent('detached', null, '/src/api-detached', '', true, '/src/api');
+    if (detached.workspace?.kind === 'git') detached.workspace.branch = null;
+    const quick = { ...baseAgent('chat', 'Question', ''), sessionKind: 'quickChat' as const };
+    const project = () => projectWorktreeSidebar(projectSidebar({ agents: [api, web, detached, quick, baseAgent('folder', null, '/notes')], activeAgentId: 'web', unreadAgentIds: ['api'] }));
+    const grouped = project();
+    const feature = grouped.find(group => group.kind === 'worktree')!;
+    expect(feature.label).toBe('feat/one');
+    expect(feature.sessions.map(session => [session.agentId, session.displayTitle, session.isActive, session.isUnread])).toStrictEqual([
+      ['api', 'api', false, true], ['web', 'web · Client', true, false],
+    ]);
+    expect(feature.sessions[1]!.remoteConnectionId).toBe('remote');
+    expect(grouped.flatMap(group => group.sessions.map(session => session.agentId)).sort()).toStrictEqual(['api', 'chat', 'detached', 'folder', 'web']);
+    if (api.workspace?.kind === 'git') api.workspace.branch = 'feat/two';
+    expect(project().filter(group => group.kind === 'worktree').map(group => group.label)).toStrictEqual(['feat/two', 'feat/one']);
+  });
+
   it('groups primary checkouts and linked worktrees beneath the canonical repository', () => {
     const agents = [
       gitAgent('agent-main', 'Main conversation', '/src/agent-workspace', 'main', false),

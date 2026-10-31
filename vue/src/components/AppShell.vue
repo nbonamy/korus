@@ -65,6 +65,9 @@
       @create-mission="createNewMission"
       @delete-mission="deleteMissionFromSidebar"
       @create-agent-in-mission-worktree="createAgentInMissionWorktree"
+      @open-feature="openFeatureAgents"
+      @rename-feature="showFeatureDialog('rename', $event)"
+      @delete-feature="showFeatureDialog('delete', $event)"
       @delete-repository="repositoryDeletionAgentId = $event"
       @select-mission="selectMission"
       :active-team="activeTeam"
@@ -582,6 +585,7 @@
       :remove-repository="deleteRepositoryAction"
       @close="repositoryDeletionAgentId = null"
     />
+    <FeatureGroupDialog v-if="featureDialog && activeTeam" :key="`${activeTeam.id}:${featureDialog.branch}:${featureDialog.mode}`" :feature="{ ...featureDialog, teamId: activeTeam.id }" :mode="featureDialog.mode" :request="featureControl" @close="featureDialog = null" />
     <MissionDeleteDialog
       :visible="missionDeleteTarget !== null"
       :mission="missionDeleteTarget"
@@ -693,6 +697,7 @@ import MissionShipBoard from './MissionShipBoard.vue';
 import MissionWorkspace from './MissionWorkspace.vue';
 import MissionDocumentRequest from './MissionDocumentRequest.vue';
 import { useMissionDocuments } from './use-mission-documents';
+import FeatureGroupDialog from './FeatureGroupDialog.vue';
 import MissionDeleteDialog from './MissionDeleteDialog.vue';
 import RepositoryDeleteDialog from './RepositoryDeleteDialog.vue';
 import type { DeleteRepositoryInput } from '@workspace/core/contracts/workspace';
@@ -837,6 +842,7 @@ const props = withDefaults(defineProps<{
   createAgent?: (input: CreateAgentInput, navigation?: { select?: boolean }) => Promise<Agent | null | void>;
   createMission?: (input: CreateMissionInput) => Promise<Mission>;
   selectMission?: (missionId: string | null) => Promise<void>;
+  featureControl?: (input: import('@workspace/core/feature-groups').FeatureGroupRequest) => Promise<import('@workspace/core/feature-groups').FeatureGroupResult>;
   deleteMission?: (input: DeleteMissionInput) => Promise<void>;
   deleteRepositoryAction?: (agentId: string, input: DeleteRepositoryInput) => Promise<void>;
   readMissionArtifact?: (missionId: string, stage: import('@workspace/core/missions').MissionStage) => Promise<import('@workspace/core/mission-execution').MissionArtifactReadResult>;
@@ -1000,6 +1006,7 @@ const props = withDefaults(defineProps<{
   createAgent: async () => undefined,
   createMission: async () => { throw new Error('Missions unavailable.'); },
   selectMission: async () => undefined,
+  featureControl: async () => { throw new Error('Feature operations unavailable.'); },
   deleteMission: async () => { throw new Error('Missions unavailable.'); },
   deleteRepositoryAction: async () => { throw new Error('Repository deletion unavailable.'); },
   readMissionArtifact: async () => { throw new Error('Mission artifacts unavailable.'); },
@@ -1302,6 +1309,15 @@ async function loadRepositoryDeletionPreview(agentId: string) {
   return appApi.previewRepositoryDeletion(agentId);
 }
 
+const featureDialog = ref<{ branch: string; label: string; mode: 'rename' | 'delete' } | null>(null);
+function showFeatureDialog(mode: 'rename' | 'delete', feature: { branch: string; label: string }): void {
+  if (activeTeam.value) featureDialog.value = { ...feature, mode };
+}
+function openFeatureAgents(agentIds: string[]): void {
+  activeSurface.value = 'agent';
+  selectedMissionId.value = null;
+  split.openAgents(agentIds);
+}
 function deleteMissionFromSidebar(id: string): void {
   if (!props.snapshot.missions?.some(candidate => candidate.id === id)) return;
   missionDeleteTargetId.value = id;

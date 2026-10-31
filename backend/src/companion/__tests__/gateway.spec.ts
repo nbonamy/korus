@@ -40,6 +40,15 @@ function fixture(autoAcceptCode?: string) {
     } };
 }
 describe('companion authorization gateway', () => {
+  it('keeps the released phone snapshot response unchanged when desktop feature labels are persisted', async () => {
+    const f = fixture();
+    await f.pair();
+    const before = await f.gateway.request('phone', 'snapshot.get', {});
+    f.port.workspace.mockResolvedValueOnce({ ...workspace, teams: workspace.teams.map(team => ({ ...team, featureLabels: { feat1: 'Account settings' } })) });
+    expect(await f.gateway.request('phone', 'snapshot.get', {})).toStrictEqual(before);
+    await expect(f.gateway.request('phone', 'feature/control', { type: 'delete', branch: 'feat1', confirmed: true })).rejects.toThrow();
+  });
+
   it('admits Live Activity registration only over a paired phone request without changing legacy notification registration', async () => {
     const f = fixture();
     const registration = { kind: 'start', token: 'ab'.repeat(32), environment: 'development' };

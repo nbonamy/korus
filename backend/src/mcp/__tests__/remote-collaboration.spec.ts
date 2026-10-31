@@ -103,6 +103,26 @@ async function connectedPair() {
 }
 
 describe('collaboration across daemon ownership boundaries', () => {
+  it('expands a target batch across owning hosts while retaining scalar remote provisioning and caller focus', async () => {
+    const { owner, workerHost, worker } = await connectedPair();
+    const focus = [owner.snapshot.activeAgentId, workerHost.snapshot.activeAgentId];
+    const response = await workerHost.mcp.callTool(worker.id, 'create-agent', {
+      createWorktree: true, branchName: 'feat/shared', targets: [
+        { repoPath: '/remote/repo' },
+        { remoteConnectionId: 'local', repoPath: '/local/repo' },
+      ],
+    });
+    expect(response.isError).toBe(false);
+    expect(response.structuredContent).toMatchObject({ success: true, results: [
+      { success: true, repoPath: '/remote/repo', folder: '/remote/feat/shared' },
+      { success: true, repoPath: '/local/repo', folder: '/local/feat/shared' },
+    ] });
+    expect(workerHost.createWorktree).toHaveBeenCalledWith(expect.objectContaining({ repoPath: '/remote/repo', branchName: 'feat/shared' }));
+    expect(owner.createWorktree).toHaveBeenCalledWith(expect.objectContaining({ repoPath: '/local/repo', branchName: 'feat/shared' }));
+    expect([owner.snapshot.activeAgentId, workerHost.snapshot.activeAgentId]).toStrictEqual(focus);
+    expect(workerHost.tasks.list(worker.id)).toHaveLength(0);
+  });
+
   it.each([false, true])('inherits the authoritative same-host parent conversation (durable task: %s)', async durable => {
     const { owner, workerHost, worker } = await connectedPair();
     const parentConversation = workerHost.provider.conversation('remote-worker');

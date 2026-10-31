@@ -485,8 +485,8 @@ export class AgentGitService {
     return folder;
   }
 
-  async deleteLinkedWorktree(folder: string, deleteRemoteBranch = false, expectedHeadSha?: string, discardChanges = false, expectedIdentity?: Pick<AgentPullRequestTracking, 'provider' | 'repository' | 'branch'>): Promise<void> {
-    const { current, target } = await this.linkedWorktreeDeletionPlan(folder, deleteRemoteBranch, expectedHeadSha, discardChanges, expectedIdentity);
+  async deleteLinkedWorktree(folder: string, deleteRemoteBranch = false, expectedHeadSha?: string, discardChanges = false, expectedIdentity?: Pick<AgentPullRequestTracking, 'provider' | 'repository' | 'branch'>, expectedBranch?: string): Promise<void> {
+    const { current, target } = await this.linkedWorktreeDeletionPlan(folder, deleteRemoteBranch, expectedHeadSha, discardChanges, expectedIdentity, expectedBranch);
 
     if (deleteRemoteBranch) {
       const branch = current.upstream!.slice(current.remote!.length + 1);
@@ -499,17 +499,18 @@ export class AgentGitService {
     await this.runGit(target.path, ['branch', '-D', current.branch!]);
   }
 
-  async validateLinkedWorktreeDeletion(folder: string, deleteRemoteBranch = false, expectedHeadSha?: string, discardChanges = false, expectedIdentity?: Pick<AgentPullRequestTracking, 'provider' | 'repository' | 'branch'>): Promise<void> {
-    await this.linkedWorktreeDeletionPlan(folder, deleteRemoteBranch, expectedHeadSha, discardChanges, expectedIdentity);
+  async validateLinkedWorktreeDeletion(folder: string, deleteRemoteBranch = false, expectedHeadSha?: string, discardChanges = false, expectedIdentity?: Pick<AgentPullRequestTracking, 'provider' | 'repository' | 'branch'>, expectedBranch?: string): Promise<void> {
+    await this.linkedWorktreeDeletionPlan(folder, deleteRemoteBranch, expectedHeadSha, discardChanges, expectedIdentity, expectedBranch);
   }
 
-  private async linkedWorktreeDeletionPlan(folder: string, deleteRemoteBranch: boolean, expectedHeadSha?: string, discardChanges = false, expectedIdentity?: Pick<AgentPullRequestTracking, 'provider' | 'repository' | 'branch'>): Promise<{
+  private async linkedWorktreeDeletionPlan(folder: string, deleteRemoteBranch: boolean, expectedHeadSha?: string, discardChanges = false, expectedIdentity?: Pick<AgentPullRequestTracking, 'provider' | 'repository' | 'branch'>, expectedBranch?: string): Promise<{
     current: Omit<AgentGitWorkflow, 'githubConnected' | 'existingPullRequest'>;
     target: { path: string; branch?: string };
   }> {
     const current = await this.workflow(folder);
     if (!current.isLinkedWorktree) throw new Error('The current folder is not a linked worktree.');
     if (!current.branch || current.detached) throw new Error('The linked worktree does not have a local branch to delete.');
+    if (expectedBranch && current.branch !== expectedBranch) throw new Error('The worktree branch changed. Reopen the deletion confirmation.');
     if (expectedIdentity && (current.branch !== expectedIdentity.branch || current.repository !== expectedIdentity.repository || current.repositoryProvider !== expectedIdentity.provider)) {
       throw new Error('The worktree repository or branch no longer matches the tracked request. Keep it and review its current work.');
     }

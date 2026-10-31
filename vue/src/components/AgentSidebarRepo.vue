@@ -140,6 +140,11 @@
             data-icon="message"
             aria-hidden="true"
           />
+          <GitForkIcon
+            v-else-if="group.kind === 'worktree'"
+            class="agent-sidebar__workspace-icon"
+            aria-hidden="true"
+          />
           <FolderIcon
             v-else-if="group.kind === 'folder'"
             class="agent-sidebar__workspace-icon"
@@ -176,6 +181,16 @@
             >
               <PlusIcon aria-hidden="true" />
             </button>
+          </span>
+          <span v-else-if="group.kind === 'worktree'" class="agent-sidebar__workspace-actions">
+            <button type="button" :aria-label="t('features.open')" :title="group.sessions.length > 4 ? t('features.openLimited', { count: group.sessions.length }) : t('features.open')" @click.stop="emit('open-feature', group.sessions.map(session => session.agentId))">
+              <OpenFeatureIcon aria-hidden="true" />
+            </button>
+            <AppMenuButton v-if="!group.protected" :ariaLabel="t('features.actions')" :items="featureMenuItems" @select="featureAction(group, $event)">
+              <template #trigger="{ attrs }">
+                <button v-bind="attrs" type="button" :aria-label="t('features.actions')" :title="t('features.actions')"><MoreHorizontalIcon aria-hidden="true" /></button>
+              </template>
+            </AppMenuButton>
           </span>
           <span v-else-if="group.kind === 'repository'" class="agent-sidebar__workspace-actions">
             <button
@@ -216,6 +231,7 @@
               :session="session"
               :group-kind="group.kind"
               :host="rowHost(session)"
+              :repository-icon="activityRepository.get(session.agentId)"
               v-show="!isWorkspaceCollapsed(group)"
               class="agent-sidebar__agent"
               :class="[
@@ -307,6 +323,8 @@
 
 <script setup lang="ts">
 import { toRefs } from 'vue';
+import OpenFeatureIcon from '../shared/icons/OpenFeatureIcon.vue';
+import { IconDots as MoreHorizontalIcon } from '@tabler/icons-vue';
 import AgentSidebarMenus from './AgentSidebarMenus.vue';
 import MissionProgressIcon from './MissionProgressIcon.vue';
 import type { AgentSidebarModel } from './use-agent-sidebar';
@@ -325,6 +343,8 @@ const {
   t,
   teamName,
   organizationMenuItems,
+  featureMenuItems,
+  featureAction,
   organization,
   emit,
   quickChatGroup,
@@ -351,6 +371,7 @@ const {
   sectionTarget,
   remoteConnection,
   rowHost,
+  activityRepository,
   repositorySessionMenu,
   setRepositorySessionMenuVisible,
   selectRepositorySessionMenuItem,
@@ -385,6 +406,10 @@ const {
 
 .agent-sidebar__workspace-group > .agent-sidebar__group-rows {
   display: contents;
+}
+
+.agent-sidebar__workspace-group[data-group-kind="worktree"] .agent-sidebar__agent {
+  padding-inline-start: calc(var(--agent-sidebar-workspace-inline-padding) + var(--space-10));
 }
 
 .agent-sidebar__start-work {
