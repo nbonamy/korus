@@ -4,6 +4,24 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.48.1] - 2026-10-31
+
+### New features
+
+- **Cross-repository features:** Ask an agent to create matching worktrees and
+  agents across repositories.
+- **Worktree view:** Group agents by feature, rename feature groups, and open up
+  to four agents in split view.
+- **Feature cleanup:** Right-click a feature to delete its worktrees together,
+  and run cleanup in the background.
+
+### Improvements and fixes
+
+- Keep dismissed worktree setup errors dismissed when switching agents or
+  restarting.
+- Show matching branch and worktree icons and colors in Repository and Worktree
+  views.
+
 ## [0.48.0] - 2026-10-31
 
 ### New features

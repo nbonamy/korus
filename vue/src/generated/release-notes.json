@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.48.0",
+  "currentVersion": "0.48.1",
   "releases": [
+    {
+      "version": "0.48.1",
+      "releasedAt": "2026-10-31",
+      "sourceSha256": "489a82313a22bcd33459cfbe75ead2aada6b84c1519a0801c0667cf64c499f5a",
+      "markdown": "### New features\n\n- **Cross-repository features:** Ask an agent to create matching worktrees and\n  agents across repositories.\n- **Worktree view:** Group agents by feature, rename feature groups, and open up\n  to four agents in split view.\n- **Feature cleanup:** Right-click a feature to delete its worktrees together,\n  and run cleanup in the background.\n\n### Improvements and fixes\n\n- Keep dismissed worktree setup errors dismissed when switching agents or\n  restarting.\n- Show matching branch and worktree icons and colors in Repository and Worktree\n  views."
+    },
     {
       "version": "0.48.0",
       "releasedAt": "2026-10-31",
