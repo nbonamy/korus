@@ -1988,7 +1988,7 @@ export class AppBackendServer {
         }
         if (!['rename', 'preview-delete', 'delete'].includes(type)) throw new Error('Unknown feature operation.');
         const teamId = requireString(input.teamId, 'teamId');
-        if (type === 'rename') requireString(input.label, 'label');
+        if (type === 'rename' && typeof input.label !== 'string') throw new Error('Invalid label.');
         if (type === 'delete' && (input.confirmed !== true || typeof input.fingerprint !== 'string')) throw new Error('Feature deletion requires confirmation.');
         this.featureGroups ??= new FeatureGroupService(this.snapshot, {
           currentSnapshot: () => this.remoteTeams.clientSnapshot(),

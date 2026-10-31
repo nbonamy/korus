@@ -50,7 +50,10 @@ describe('feature groups through the backend and real Git', () => {
       expect(roster.data.teams[0].featureLabels).toStrictEqual({ feat1: 'Account settings' });
       expect((await f.store.load()).teams[0]!.featureLabels).toStrictEqual({ feat1: 'Account settings' });
       expect((await f.git('git', ['-C', join(f.root, 'api-feat1'), 'branch', '--show-current'])).stdout.trim()).toBe('feat1');
+      await f.call({ type: 'rename', label: '' });
+      expect((await f.store.load()).teams[0]!.featureLabels).toStrictEqual({});
       let preview = (await f.call({ type: 'preview-delete' })).preview;
+      expect(preview.label).toBe('feat1');
       expect(preview.worktrees.map((tree: { path: string }) => tree.path)).toStrictEqual([join(f.root, 'api-feat1'), join(f.root, 'web-feat1')]);
       await expect(f.call({ type: 'delete', fingerprint: preview.fingerprint, confirmed: false })).rejects.toThrow();
       await f.call({ type: 'rename', label: 'New label' });

@@ -36,8 +36,10 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     { id: 'rename', type: 'action', label: t('features.rename'), icon: PencilIcon },
     { id: 'delete', type: 'action', label: t('common.delete'), icon: Trash2Icon, danger: true },
   ]);
-  function featureAction(group: WorkspaceSidebarGroup, action: string): void {
-    if (!group.branch || group.protected) return;
+  function featureAction(action: string): void {
+    const group = contextMenuFeature.value;
+    contextMenuFeature.value = null;
+    if (!group?.branch || group.protected) return;
     if (action === 'rename') emit('rename-feature', { branch: group.branch, label: group.label });
     if (action === 'delete') emit('delete-feature', { branch: group.branch, label: group.label });
   }
@@ -120,6 +122,7 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
   const contextMenuMissionId = ref<string | null>(null);
   const contextMissionWorkspaces = computed(() => missionCreatedWorkspaces(props.missions?.find(mission => mission.id === contextMenuMissionId.value)));
   const contextMenuRepositoryAgentId = ref<string | null>(null);
+  const contextMenuFeature = ref<WorkspaceSidebarGroup | null>(null);
   const repositoryMenuItems = computed<AppMenuItem[]>(() => [{ id: 'delete', type: 'action', label: t('repositoryDeletion.action'), icon: Trash2Icon, danger: true }]);
   const hasReadyRemote = computed(() => (props.remoteConnections ?? []).some(connection => connection.status === 'ready'));
   const repositorySessionMenu = markRaw(useRepositorySessionMenu(() => props.listRepositoryBranches, t, () => repositoryGroups.value));
@@ -366,12 +369,16 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     repositorySessionMenuId.value = null;
   }
 
-  function openRepositoryMenu(group: WorkspaceSidebarGroup, event: MouseEvent): void {
-    if (group.kind !== 'repository' || props.phoneScope) return;
-    event.preventDefault();
+  function openWorkspaceMenu(group: WorkspaceSidebarGroup, event: MouseEvent): void {
+    if ((group.kind !== 'repository' && group.kind !== 'worktree') || props.phoneScope) return;
     contextMenuAgentId.value = null;
     contextMenuMissionId.value = null;
-    contextMenuRepositoryAgentId.value = group.sessions[0]?.agentId ?? null;
+    contextMenuRepositoryAgentId.value = null;
+    contextMenuFeature.value = null;
+    if (group.kind === 'worktree' && group.protected) return;
+    event.preventDefault();
+    if (group.kind === 'worktree') contextMenuFeature.value = group;
+    else contextMenuRepositoryAgentId.value = group.sessions[0]?.agentId ?? null;
     contextMenuPosition.value = { x: event.clientX, y: event.clientY };
   }
 
@@ -382,6 +389,7 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
   }
 
   function openAgentMenu(agentId: string, event: MouseEvent): void {
+    contextMenuFeature.value = null;
     contextMenuRepositoryAgentId.value = null;
     contextMenuMissionId.value = null;
     contextMenuAgentId.value = agentId;
@@ -392,6 +400,7 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
   }
 
   function openMissionMenu(missionId: string, event: MouseEvent): void {
+    contextMenuFeature.value = null;
     contextMenuRepositoryAgentId.value = null;
     contextMenuAgentId.value = null;
     contextMenuMissionId.value = missionId;
@@ -519,6 +528,7 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     organizationMenuItems,
     featureMenuItems,
     featureAction,
+    contextMenuFeature,
     organization,
     emit,
     quickChatGroup,
@@ -529,7 +539,7 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     missionDotStatus,
     workspaceGroups,
     clientRepositoryOrderUpdate,
-    openRepositoryMenu,
+    openWorkspaceMenu,
     isWorkspaceCollapsed,
     repositoryIcon,
     updateRepositoryIcon,

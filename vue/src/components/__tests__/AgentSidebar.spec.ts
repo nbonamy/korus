@@ -249,7 +249,7 @@ describe('AgentSidebar sessions', () => {
     } finally { wrapper.unmount(); localStorage.removeItem('app:agentOrganization:worktree-view'); }
   });
 
-  it('offers rename and deletion only for feature groups while opening their agents through the group action', async () => {
+  it('offers rename and deletion on feature-header right-click while opening agents through the group action', async () => {
     localStorage.setItem('app:agentOrganization:feature-actions', 'worktree');
     const source = agents[0]!;
     if (source.workspace?.kind !== 'git') throw new Error('Expected Git fixture');
@@ -261,14 +261,23 @@ describe('AgentSidebar sessions', () => {
       const main = sections.find(section => section.get('header strong').text() === 'main')!;
       const group = sections.find(section => section.get('header strong').text() === 'Account settings')!;
       expect(main.find('button[aria-label="Feature actions"]').exists()).toBe(false);
+      expect(group.find('button[aria-label="Feature actions"]').exists()).toBe(false);
       await group.get('button[aria-label="Open feature in split view"]').trigger('click');
       expect(wrapper.emitted('open-feature')?.at(-1)).toStrictEqual([['feature-agent']]);
-      await group.get('button[aria-label="Feature actions"]').trigger('click');
+      await group.get('header').trigger('contextmenu', { clientX: 80, clientY: 120 });
       await flushPromises();
       const actions = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
       expect(actions.map(action => action.textContent?.trim())).toStrictEqual(['Rename', 'Delete']);
       actions[0]!.click(); await flushPromises();
       expect(wrapper.emitted('rename-feature')?.at(-1)).toStrictEqual([{ branch: 'feat1', label: 'Account settings' }]);
+      expect(document.body.querySelector('[role="menu"]')).toBeNull();
+      await group.get('header').trigger('contextmenu', { clientX: 80, clientY: 120 });
+      const deleteAction = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(action => action.textContent?.trim() === 'Delete')!;
+      deleteAction.click(); await flushPromises();
+      expect(wrapper.emitted('delete-feature')?.at(-1)).toStrictEqual([{ branch: 'feat1', label: 'Account settings' }]);
+      await group.get('header').trigger('contextmenu', { clientX: 80, clientY: 120 });
+      await main.get('header').trigger('contextmenu', { clientX: 80, clientY: 160 });
+      expect(document.body.querySelector('[role="menu"]')).toBeNull();
     } finally { wrapper.unmount(); localStorage.removeItem('app:agentOrganization:feature-actions'); }
   });
 

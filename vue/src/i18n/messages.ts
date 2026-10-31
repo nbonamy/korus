@@ -548,6 +548,9 @@ export const messages = {
       open: 'Open feature in split view', openLimited: 'Open the first 4 of {count} agents in split view',
       deleteTitle: 'Delete {feature}?', deleteDescription: 'Remove this feature’s agents and delete the listed worktrees and local branches. Uncommitted changes in these worktrees will be discarded.',
       deleteAction: 'Delete feature and worktrees', worktrees: 'Worktrees to delete',
+      deleting: 'Deleting feature…',
+      deleted: '{feature} deleted · {count} worktrees | {feature} deleted · {count} worktree | {feature} deleted · {count} worktrees',
+      deleteFailed: 'Could not delete {feature}: {message}',
       changedFiles: '{count} uncommitted files', save: 'Save',
     },
     sidebar: {

@@ -25,6 +25,10 @@ export function setFeatureLabel(snapshot: AppSnapshot, teamId: string, branch: s
   if (!team) throw new Error('Team not found.');
   if (!branch.trim() || branch !== branch.trim() || isDefaultFeatureBranch(branch, snapshot.agents.filter(agent => agent.teamId === teamId))) throw new Error('Default branch groups cannot be renamed or deleted.');
   const trimmed = label.trim();
-  if (!trimmed || trimmed.length > 120) throw new Error('Feature labels must contain 1–120 characters.');
-  team.featureLabels = { ...team.featureLabels, [branch]: trimmed };
+  if (trimmed.length > 120) throw new Error('Feature labels must be at most 120 characters.');
+  if (trimmed) team.featureLabels = { ...team.featureLabels, [branch]: trimmed };
+  else {
+    const { [branch]: _label, ...labels } = team.featureLabels ?? {};
+    team.featureLabels = labels;
+  }
 }

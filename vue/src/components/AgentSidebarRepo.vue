@@ -132,7 +132,7 @@
           v-bind="group.kind === 'repository' ? clientRepositoryOrderUpdate.dragItemAttributes(group.id) : {}"
           @dragstart="group.kind === 'repository' && clientRepositoryOrderUpdate.onDragStart(group.id, $event)"
           @dragend="clientRepositoryOrderUpdate.onDragEnd"
-          @contextmenu="openRepositoryMenu(group, $event)"
+          @contextmenu="openWorkspaceMenu(group, $event)"
         >
           <MessageIcon
             v-if="group.kind === 'quickChats'"
@@ -183,14 +183,11 @@
             </button>
           </span>
           <span v-else-if="group.kind === 'worktree'" class="agent-sidebar__workspace-actions">
-            <button type="button" :aria-label="t('features.open')" :title="group.sessions.length > 4 ? t('features.openLimited', { count: group.sessions.length }) : t('features.open')" @click.stop="emit('open-feature', group.sessions.map(session => session.agentId))">
-              <OpenFeatureIcon aria-hidden="true" />
-            </button>
-            <AppMenuButton v-if="!group.protected" :ariaLabel="t('features.actions')" :items="featureMenuItems" @select="featureAction(group, $event)">
-              <template #trigger="{ attrs }">
-                <button v-bind="attrs" type="button" :aria-label="t('features.actions')" :title="t('features.actions')"><MoreHorizontalIcon aria-hidden="true" /></button>
-              </template>
-            </AppMenuButton>
+            <el-tooltip :content="group.sessions.length > 4 ? t('features.openLimited', { count: group.sessions.length }) : t('features.open')" placement="right" :show-after="300">
+              <button type="button" :aria-label="t('features.open')" @click.stop="emit('open-feature', group.sessions.map(session => session.agentId))">
+                <OpenFeatureIcon aria-hidden="true" />
+              </button>
+            </el-tooltip>
           </span>
           <span v-else-if="group.kind === 'repository'" class="agent-sidebar__workspace-actions">
             <button
@@ -324,7 +321,6 @@
 <script setup lang="ts">
 import { toRefs } from 'vue';
 import OpenFeatureIcon from '../shared/icons/OpenFeatureIcon.vue';
-import { IconDots as MoreHorizontalIcon } from '@tabler/icons-vue';
 import AgentSidebarMenus from './AgentSidebarMenus.vue';
 import MissionProgressIcon from './MissionProgressIcon.vue';
 import type { AgentSidebarModel } from './use-agent-sidebar';
@@ -343,8 +339,6 @@ const {
   t,
   teamName,
   organizationMenuItems,
-  featureMenuItems,
-  featureAction,
   organization,
   emit,
   quickChatGroup,
@@ -360,7 +354,7 @@ const {
   missionDotStatus,
   workspaceGroups,
   clientRepositoryOrderUpdate,
-  openRepositoryMenu,
+  openWorkspaceMenu,
   isWorkspaceCollapsed,
   repositoryIcon,
   updateRepositoryIcon,
