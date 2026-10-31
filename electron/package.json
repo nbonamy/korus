@@ -26,7 +26,7 @@
     "prepare:mobile-simulator": "node ../scripts/prepare-mobile-simulator.mjs"
   },
   "dependencies": {
-    "@codex-app-sdk/electron": "0.19.3",
+    "@codex-app-sdk/electron": "0.19.4",
     "@grpc/grpc-js": "1.14.6",
     "@grpc/proto-loader": "0.8.1",
     "@workspace/core": "0.47.2",

@@ -19,7 +19,7 @@
     "test:watch": "vitest watch"
   },
   "devDependencies": {
-    "@codex-app-sdk/core": "0.19.3",
+    "@codex-app-sdk/core": "0.19.4",
     "@types/node": "^25.9.1",
     "@vitest/coverage-v8": "4.1.8",
     "typescript": "^6.0.3",
