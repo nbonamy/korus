@@ -376,6 +376,9 @@ Invariants the tool schemas cannot enforce:
 - Coordinate actions use absolute logical screen points, never window-relative
   positions or screenshot pixels. Physical clicks and drags require the target app
   frontmost and unobstructed; AX actions and background typing do not.
+  Clicks animate the virtual cursor for AX actions or the real pointer for physical
+  input. Physical clicks leave the pointer at the target and stop before clicking
+  if the target app loses focus during movement.
 - One helper process lives for the session so IDs and diff baselines stay valid;
   every call resets a 30-second inactivity timeout, after which the next
   interaction starts with a fresh observation. Native callbacks have a 35-second
