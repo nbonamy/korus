@@ -55,6 +55,28 @@ Create an agent in the folder you want to work in and choose **Claude Code** if 
 
 Confirm that the engine responds and uses the intended working folder before assigning implementation work. Review any permission requests in the conversation. Available models, effort levels, and permission modes depend on Claude Code; Codex controls do not all apply to Claude sessions.
 
+## Permissions and configuration
+
+Korus enables Claude Code's user, project, and local settings. User settings follow the home shown under **Location**; project settings and instructions follow the agent's working folder. Claude Code resolves these settings and any managed organization policy.
+
+Without a saved permission choice in Korus, a new session receives no explicit permission-mode override: Claude Code uses its startup configuration, normally **Default**. To choose a mode for an agent, open the conversation composer's **+ → Permissions** menu:
+
+| Mode | What it does |
+| --- | --- |
+| **Default** | Asks before tool actions that need permission, honoring Claude's configured rules. |
+| **Accept edits** | Approves file edits automatically; other protected actions can still ask. |
+| **Don't ask** | Denies actions that would need a permission prompt instead of asking. It does not grant unrestricted access. |
+| **Auto (experimental)** | Uses Claude's permission classifier to approve or deny requests, where supported. |
+| **Dangerously skip permissions** | Bypasses normal permission checks. Provider safeguards and enforced policy still apply. |
+
+An explicit choice is saved for that agent and overrides Claude's configured default mode. Korus supplies it when starting or resuming a session and updates a live session before the next prompt. Entering or leaving **Dangerously skip permissions** restarts and resumes the native session to apply its safety gate. **Plan** is a separate composer control: it temporarily uses Claude's planning mode, then returns to the saved permission choice, or **Default** if none was selected.
+
+Model and effort choices in Korus override provider defaults. The speed selector explicitly sets Fast on or off, even if your Claude settings specify a different default.
+
+Korus adds its instructions and collaboration tools, preapproves its own collaboration tools when Claude routes them for approval, and disables Claude's native scheduling tools in favor of [Korus automations](../features/automations).
+
+Claude Code continues to enforce managed settings, tool restrictions, and account limits; selecting a mode does not override them. For example, organization policy can disable permission bypass, and Auto or Fast may be unavailable. These are [Claude permission modes](https://code.claude.com/docs/en/agent-sdk/permissions), not Codex sandbox presets.
+
 ## Conversation controls
 
 For steering, forks, and goals, see [Conversations](../features/conversations). Steering waits for a tool boundary or following turn; forks require an idle conversation and keep the same working folder; goals require native hooks and do not support token budgets. Edit, retry, and delete turn actions remain unavailable.

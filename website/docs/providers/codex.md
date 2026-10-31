@@ -51,6 +51,22 @@ Start with a request such as:
 
 Check that Codex responds and uses the intended folder. If a tool needs approval, review the request in the conversation. A successful sign-in alone does not prove that every repository, model, or external tool is available.
 
+## Permissions and configuration
+
+Korus reads Codex configuration from the home shown under **Location**, together with applicable project configuration and instructions. Model, reasoning, and speed choices made in Korus take precedence for that agent.
+
+**Permissions are explicitly set by Korus.** New agents default to **Full access**, unless Codex requirements restrict it. Choose a different preset using the permission control in the conversation composer:
+
+| Preset | What it allows |
+| --- | --- |
+| **Ask for approval** | Uses Codex's workspace-write sandbox. Requests that need additional permission pause for your decision. |
+| **Approve for me** | Uses the same workspace-write sandbox, with Codex's automatic reviewer deciding approval requests. |
+| **Full access** | Runs without the Codex filesystem sandbox or tool-approval prompts. Your operating-system permissions still apply. |
+
+Korus applies an available preset when creating a conversation. When loading or resuming one, it reapplies the agent's saved preset if the conversation differs. Changing the preset updates the conversation settings. Editing sandbox or approval defaults in your Codex configuration does **not** replace this agent-level choice, even if you configured read-only access there.
+
+Codex's enforced requirements remain authoritative. If a requested preset is unavailable, Korus uses a compatible preset, preferring **Approve for me**, then **Ask for approval**, then **Full access**. If none is compatible, Korus leaves sandbox and approval settings to Codex's effective configuration. A Korus selection cannot bypass provider or organization restrictions.
+
 ## Credits and banked resets
 
 Open **Settings → Codex** to view the connected account's **Credits** and **Banked resets** when available. These are provider account balances, not a separate Korus subscription.
@@ -74,7 +90,7 @@ For the **Separate Korus chats** setup on macOS:
 1. Install the ChatGPT desktop app if you want to use its Codex customization interface.
 2. Open **Settings → Codex** and select **Launch ChatGPT**. **Settings → Plugins → Install Codex Plugins and MCP Servers** uses the same launch action.
 3. If ChatGPT is already running, Korus offers to quit and relaunch it for the separate Korus Codex home.
-4. Manage the desired skills, plugins, or sandbox policies there, then return to Korus and verify the tool in a conversation.
+4. Manage the desired skills, plugins, or other Codex configuration there, then return to Korus and verify it in a conversation. For sandbox and approval behavior, the [Korus permission preset](#permissions-and-configuration) takes precedence where permitted.
 
 ::: info Existing setup and ChatGPT launch
 The current **Launch ChatGPT** action targets Korus's separate Codex home. If you chose **Use existing setup**, customize the existing Codex environment you selected rather than assuming this launch action opens it. Check **Location** before comparing settings.
