@@ -140,9 +140,11 @@
             data-icon="message"
             aria-hidden="true"
           />
-          <GitForkIcon
+          <component
             v-else-if="group.kind === 'worktree'"
+            :is="worktreeGroupKind(group) === 'worktree' ? GitForkIcon : GitBranchIcon"
             class="agent-sidebar__workspace-icon"
+            :data-session-kind="worktreeGroupKind(group)"
             aria-hidden="true"
           />
           <FolderIcon
@@ -324,7 +326,8 @@ import OpenFeatureIcon from '../shared/icons/OpenFeatureIcon.vue';
 import AgentSidebarMenus from './AgentSidebarMenus.vue';
 import MissionProgressIcon from './MissionProgressIcon.vue';
 import type { AgentSidebarModel } from './use-agent-sidebar';
-import { AlertTriangleIcon, ArrowsSortIcon, FolderIcon, GitForkIcon, MessageIcon, PanelLeftCloseIcon, PlusIcon, TargetArrowIcon } from '../shared/icons/app-icons';
+import type { WorkspaceSidebarGroup } from '@workspace/core/workspace-sidebar';
+import { AlertTriangleIcon, ArrowsSortIcon, FolderIcon, GitBranchIcon, GitForkIcon, MessageIcon, PanelLeftCloseIcon, PlusIcon, TargetArrowIcon } from '../shared/icons/app-icons';
 import BackendIcon from './BackendIcon.vue';
 import RepositoryIconPicker from './RepositoryIconPicker.vue';
 import StartWorkMenu from './StartWorkMenu.vue';
@@ -333,6 +336,10 @@ import RepositoryAgentRow from './RepositoryAgentRow.vue';
 import RemoteHostIndicator from './RemoteHostIndicator.vue';
 
 const props = defineProps<{ model: AgentSidebarModel }>();
+function worktreeGroupKind(group: WorkspaceSidebarGroup): 'main' | 'branch' | 'worktree' {
+  if (group.protected) return 'main';
+  return group.sessions.some(session => session.kind === 'worktree') ? 'worktree' : 'branch';
+}
 const {
   compact,
   sidebarStyle,

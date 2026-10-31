@@ -5,16 +5,19 @@
   justify-self: center;
 }
 
-.agent-sidebar__agent[data-session-kind="main"] .agent-sidebar__session-icon {
+.agent-sidebar__agent[data-session-kind="main"] .agent-sidebar__session-icon,
+.agent-sidebar__workspace-icon[data-session-kind="main"] {
   color: var(--color-primary);
 }
 
-.agent-sidebar__agent[data-session-kind="branch"] .agent-sidebar__session-icon {
+.agent-sidebar__agent[data-session-kind="branch"] .agent-sidebar__session-icon,
+.agent-sidebar__workspace-icon[data-session-kind="branch"] {
   color: var(--color-success);
 }
 
 .agent-sidebar__agent[data-session-kind="worktree"]
-  .agent-sidebar__session-icon {
+  .agent-sidebar__session-icon,
+.agent-sidebar__workspace-icon[data-session-kind="worktree"] {
   color: var(--color-warning);
 }
 

@@ -622,6 +622,29 @@ describe('AgentSidebar sessions', () => {
     wrapper.unmount();
   });
 
+  it('uses matching branch and worktree icons and colors on worktree group headers', () => {
+    const first = agents[0]!, second = agents[1]!;
+    if (first.workspace?.kind !== 'git' || second.workspace?.kind !== 'git') throw new Error('Expected Git fixtures');
+    const make = (agent: Agent, id: string, branch: string, linked: boolean): Agent => ({
+      ...agent, id, name: null, folder: `/src/${id}`,
+      workspace: { ...(agent.workspace as Extract<NonNullable<Agent['workspace']>, { kind: 'git' }>), branch, defaultBranch: 'trunk', isLinkedWorktree: linked },
+    });
+    const rows = [make(first, 'main', 'trunk', false), make(first, 'branch', 'topic', false),
+      make(first, 'feature-branch', 'feat/shared', false), make(second, 'feature-tree', 'feat/shared', true)];
+    localStorage.setItem('app:agentOrganization:worktree-icons', 'worktree');
+    const wrapper = mount(AgentSidebar, { attachTo: document.body, props: { agents: rows, activeAgentId: null, teamId: 'worktree-icons', teamName: 'Team' } });
+    try {
+      const icon = (label: string) => wrapper.findAll('[data-group-kind="worktree"]').find(group => group.get('header strong').text() === label)!.get('header > svg');
+      expect(icon('trunk').classes()).toContain('tabler-icon-git-branch');
+      expect(getComputedStyle(icon('trunk').element).color).toBe('var(--color-primary)');
+      expect(icon('topic').classes()).toContain('tabler-icon-git-branch');
+      expect(getComputedStyle(icon('topic').element).color).toBe('var(--color-success)');
+      expect(icon('feat/shared').classes()).toContain('tabler-icon-git-fork');
+      expect(getComputedStyle(icon('feat/shared').element).color).toBe('var(--color-warning)');
+      expect(wrapper.find('[data-reorder-id="feature-tree"] .agent-avatar').exists()).toBe(true);
+    } finally { wrapper.unmount(); localStorage.removeItem('app:agentOrganization:worktree-icons'); }
+  });
+
   it('renders compact workspace rows with repository headers, branches, and status icons', () => {
     const wrapper = mount(AgentSidebar, {
       props: {
