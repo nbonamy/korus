@@ -12,7 +12,7 @@ test('Mission conversations preserve selection and switch beneath a covering ove
   const root = fileURLToPath(new URL('../..', import.meta.url));
   const artifacts = process.env.MISSION_CONVERSATION_ARTIFACTS ?? path.join(root, '.app-dev/mission-conversations');
   const require = createRequire(path.join(root, 'vue/package.json'));
-  const server = await createServer({ configFile: false, root, server: { host: '127.0.0.1', port: 0 },
+  const server = await createServer({ configFile: false, root, cacheDir: path.join(artifacts, 'vite-cache'), server: { host: '127.0.0.1', port: 0, watch: null },
    resolve: { alias: { '@workspace/core': path.join(root, 'core/src'), '@codex-app-sdk/vue/styles.css': require.resolve('@codex-app-sdk/vue/styles.css') }, dedupe: ['vue'] },
    plugins: [vue(), { name: 'mission-tabs-check', configureServer(server) {
    server.middlewares.use('/tabs-check', (_req, res) => { res.setHeader('Content-Type', 'text/html'); res.end('<!doctype html><html><head><style>html,body,#app{height:100%;margin:0}#app{display:flex;flex-direction:column}</style></head><body><div id="app"></div><script type="module" src="/tabs-fixture.js"></script></body></html>'); });

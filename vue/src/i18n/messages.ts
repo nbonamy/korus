@@ -251,6 +251,8 @@ export const messages = {
     },
     surface: surfaceMessages,
     missions: {
+      documentPreview: 'Preview', documentRequest: 'Document request', documentOpenRequest: 'Agent wants to open {document}',
+      openDocument: 'Open document', dismissDocumentRequest: 'Dismiss document request', closeDocument: 'Close document',
       costMenu: 'Mission cost', costLead: 'Lead', costOther: 'Other', costTotal: 'Total', costNoUsage: 'No usage yet',
       acceptedArtifact: 'Accepted artifact',
       draftTickets: 'Draft tickets', draftTicketsHint: '{count} draft | {count} drafts', ticketCount: '{count} ticket | {count} tickets', inProgress: 'In progress',

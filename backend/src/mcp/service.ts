@@ -7,6 +7,7 @@ import { readFile } from 'node:fs/promises';
 import os from 'node:os';
 import { sendAgentPrompt } from '@workspace/core/agent-chat-service';
 import { agentDisplayName } from '@workspace/core/agent-display';
+import { missionAgentIds } from '@workspace/core/mission-attention';
 import { handoffInProgress } from '@workspace/core/agent-handoff';
 import { requireAgentFolder } from '@workspace/core/agent-folder';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
@@ -435,7 +436,9 @@ export class AppMcpService {
 
     return {
       success: true,
-      message: resolvedPath ? `Displayed ${resolvedPath.relativePath} in the side panel.` : 'Displayed Markdown in the side panel.',
+      message: this.snapshot.missions?.some(mission => missionAgentIds(mission).includes(agent.id))
+        ? `Requested opening ${resolvedPath?.relativePath ?? 'Markdown'} in the Mission. The user can open or dismiss the request.`
+        : resolvedPath ? `Displayed ${resolvedPath.relativePath} in the side panel.` : 'Displayed Markdown in the side panel.',
       ...(resolvedPath ? { path: resolvedPath.relativePath } : {}),
       title,
     };

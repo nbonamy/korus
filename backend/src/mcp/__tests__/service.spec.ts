@@ -12,6 +12,7 @@ import type { AgentBackendDriver, BackendEvent } from '@workspace/core/backend-d
 import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type { Agent, AppSnapshot, BackendPublishedEvent } from '@workspace/core/contracts';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
+import { createMission } from '@workspace/core/missions';
 import { createQuickChatInSnapshot } from '@workspace/core/agent-manager';
 import { projectWorkspaceSidebar } from '@workspace/core/workspace-sidebar';
 import { BackendDriverRpc } from '../../driver-rpc';
@@ -1142,11 +1143,15 @@ describe('AppMcpService', () => {
     } finally { await rm(home, { recursive: true, force: true }); }
   });
 
-  it('still displays markdown when document retention fails', async () => {
+  it('requests Mission document presentation without claiming it opened, even when retention fails', async () => {
     const events: BackendEvent[] = [];
-    service = new AppMcpService({ snapshot: createInitialSnapshot(), retainDocument: async () => { throw new Error('store is corrupt'); }, onEvent: event => events.push(event) });
+    const snapshot = createInitialSnapshot();
+    const mission = createMission(snapshot, { outcome: 'Review documents', workflowType: 'shapeAndShipFeature', teamId: snapshot.agents[0]!.teamId, orchestratorMemberId: 'agent-dina' });
+    mission.stageAgentIds = { requirements: 'agent-dina' };
+    service = new AppMcpService({ snapshot, retainDocument: async () => { throw new Error('store is corrupt'); }, onEvent: event => events.push(event) });
     const url = await service.start();
-    await callTool(url, 'agent-dina', 'display-markdown', { markdown: '# Still shown\n', title: 'Proposal' });
+    const response = await callTool(url, 'agent-dina', 'display-markdown', { markdown: '# Still shown\n', title: 'Proposal' });
+    expect(response.result.structuredContent).toStrictEqual({ success: true, title: 'Proposal', message: 'Requested opening Markdown in the Mission. The user can open or dismiss the request.' });
     expect(events.find(event => event.type === 'client.markdownDisplayRequested')).toMatchObject({ payload: { kind: 'markdown', title: 'Proposal', content: '# Still shown\n' } });
   });
 

@@ -11,8 +11,8 @@
         class="app-icon-button"
         type="button"
         :aria-label="t('surface.agentHeader.toggleRightWorkspace')"
-        :title="t(conversationOnly ? 'surface.agentHeader.closeRightWorkspace' : 'surface.agentHeader.openRightWorkspace')"
-        :aria-pressed="conversationOnly"
+        :title="t(workspacePreviewOpen || conversationOnly ? 'surface.agentHeader.closeRightWorkspace' : 'surface.agentHeader.openRightWorkspace')"
+        :aria-pressed="workspacePreviewOpen || conversationOnly"
         :disabled="!workspaceToggleAvailable"
         @click="emit('toggle-workspace')"
       >
@@ -229,6 +229,7 @@ const props = withDefaults(defineProps<{
   sidebarCollapsed?: boolean;
   conversationOnly?: boolean;
   workspaceToggleAvailable?: boolean;
+  workspacePreviewOpen?: boolean;
   executeMission?: (input: MissionExecutionInput) => Promise<void>;
   implementationStartProgress?: MissionImplementationStartProgress | null;
   mission: Mission;

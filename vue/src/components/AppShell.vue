@@ -286,7 +286,7 @@
         :history-load-failed="isConversationLoadFailed"
         :is-loading="isLoading"
         :is-modal-dialog-visible="isModalDialogVisible"
-        :is-right-workspace-visible="isRightWorkspaceVisible"
+        :is-right-workspace-visible="isPresentedWorkspaceVisible"
         :has-visible-messages="conversationMessages.length > 0"
         :has-running-plan-tool="conversationHasRunningPlanTool"
         :latest-conversation-turn-id="conversationLatestTurnId"
@@ -307,8 +307,10 @@
         :open-right-workspace-tab="openRightWorkspaceTab"
         :push-agent-git-branch="props.pushAgentGitBranch"
         :right-workspace-for="rightWorkspaceFor"
+        :preview-dialog="activeSurface === 'mission'"
+        :close-preview="closeWorkspacePreview"
         :right-workspaces="rightWorkspaces"
-        :right-workspace-visible="rightWorkspaceVisible"
+        :right-workspace-visible="activeSurface === 'mission' ? missionWorkspaceVisible : rightWorkspaceVisible"
         :read-conversation-messages="readConversationMessages"
         :retry-conversation-history="props.retryAgentHistory"
         :select-agent-from-shell="selectAgentFromShell"
@@ -347,7 +349,7 @@
           <SplitLayoutControl :model-value="split.layout.value" @update:model-value="split.setLayout" />
         </template>
         <template v-if="activeSurface === 'mission' && selectedMission" #conversation>
-          <MissionWorkspace :repository-icons="snapshot.general.repositoryIcons" v-model:viewed-stage="missionViewedStage" :conversation-only="rightWorkspaceVisible" :workspace-toggle-available="Boolean(currentAgent && !currentAgent.sharedConversation)" :key="selectedMission.id" :agents="snapshot.agents" :unread-agent-ids="unreadAgentIds" :sidebar-collapsed="agentSidebarCollapsed || compactViewport" @expand-sidebar="expandSidebar" @toggle-workspace="toggleRightWorkspace" :mission="selectedMission" :implementation-start-progress="missionImplementationStartProgress" :read-mission-artifact="readMissionArtifact" :execute-mission="executeMission" :send-mission-prompt="forwardPrompt" :open-in-available="missionOpenInAvailable" :open-in-applications="openInApplications" @chat-about-review-finding="prepareMissionReviewDiscussion" @open-conversation="emit('select-agent', $event)" @open-worktree="openMissionWorktree">
+          <MissionWorkspace :repository-icons="snapshot.general.repositoryIcons" v-model:viewed-stage="missionViewedStage" :workspace-preview-open="missionWorkspaceVisible" :workspace-toggle-available="Boolean(currentAgent && !currentAgent.sharedConversation)" :key="selectedMission.id" :agents="snapshot.agents" :unread-agent-ids="unreadAgentIds" :sidebar-collapsed="agentSidebarCollapsed || compactViewport" @expand-sidebar="expandSidebar" @toggle-workspace="toggleRightWorkspace" :mission="selectedMission" :implementation-start-progress="missionImplementationStartProgress" :read-mission-artifact="readMissionArtifact" :execute-mission="executeMission" :send-mission-prompt="forwardPrompt" :open-in-available="missionOpenInAvailable" :open-in-applications="openInApplications" @chat-about-review-finding="prepareMissionReviewDiscussion" @open-conversation="emit('select-agent', $event)" @open-worktree="openMissionWorktree">
             <template #code-review="{ agentId, reviewSummary, chatAboutFinding }">
               <MissionCodeReview v-if="snapshot.agents.find(agent => agent.id === agentId) && props.getAgentGitDiff" :agent="snapshot.agents.find(agent => agent.id === agentId)!" :agents="snapshot.agents" :git-statuses="snapshot.agentGitStatuses" :get-diff="props.getAgentGitDiff" :mission="selectedMission" :review-summary="reviewSummary" :execute-mission="executeMission" :open-in-available="missionOpenInAvailable" :open-in-applications="openInApplications" @chat-about-finding="chatAboutFinding" @open-worktree="openMissionWorktree" />
             </template>
@@ -373,6 +375,9 @@
             </template>
             <template #conversation="{ agentId }">
               <ConversationPane v-if="currentAgent?.id === agentId" ref="missionConversationPane" :controller="conversationPaneController" :agent="currentAgent" :agents="snapshot.agents" :saved-prompt-drafts="snapshot.general.savedPromptDrafts" :save-prompt-draft="savePromptDraft" :remove-prompt-draft="removePromptDraft" :history-load-failed="props.isConversationLoadFailed" :history-loading="isConversationLoading" :has-visible-messages="conversationMessages.length > 0" :empty-headline="selectedMission.stage === 'requirements' ? t('missions.whatDoYouWantToBuild') : undefined" :empty-subhead="selectedMission.stage === 'requirements' ? '' : undefined" @retry-history="props.retryAgentHistory">
+                <template #composer-drawers>
+                  <MissionDocumentRequest v-if="missionDocuments.pending.value" :request="missionDocuments.pending.value" @open="missionDocuments.confirm" @dismiss="missionDocuments.dismiss" />
+                </template>
                 <template v-if="selectedMission.stage === 'requirements' && conversationMessages.length === 0" #empty-actions>
                   <AppMenu class="app-menu--embedded" :ariaLabel="t('missions.chooseIssue')" :items="missionSourceMenuItems" @select="openMissionIssuePicker" />
                 </template>
@@ -686,6 +691,8 @@ import type { AgentConversationView } from '../app-state';
 import MissionCodeReview from './MissionCodeReview.vue';
 import MissionShipBoard from './MissionShipBoard.vue';
 import MissionWorkspace from './MissionWorkspace.vue';
+import MissionDocumentRequest from './MissionDocumentRequest.vue';
+import { useMissionDocuments } from './use-mission-documents';
 import MissionDeleteDialog from './MissionDeleteDialog.vue';
 import RepositoryDeleteDialog from './RepositoryDeleteDialog.vue';
 import type { DeleteRepositoryInput } from '@workspace/core/contracts/workspace';
@@ -1884,7 +1891,8 @@ const splitActions = computed<AgentConversationActions | undefined>(() => props.
 } : undefined);
 function openConversationLink(agentId: string, link: CodexConversationLink): void | Promise<void> {
   if (link.kind === 'external') return appPlatformActions.openExternal?.(link.href);
-  return workspacePreviews.openConversationFile({ ...link, kind: 'file' }, agentId);
+  if (activeSurface.value === 'mission') missionPreviewAgentId.value = agentId;
+  return workspacePreviews.openConversationFile({ ...link, kind: 'file' }, agentId, activeSurface.value !== 'mission');
 }
 const {
   closeTab: closeRightWorkspaceTabLocal,
@@ -1894,13 +1902,36 @@ const {
   resizing: rightWorkspaceResizing,
   selectTab: selectRightWorkspaceTab,
   startResize: startRightWorkspaceResize,
-  toggle: toggleRightWorkspace,
+  toggle: toggleRightWorkspaceLocal,
   toggleFiles: toggleFileExplorer,
   workspaceFor: rightWorkspaceFor,
   workspaces: rightWorkspaces,
 } = rightWorkspaceState;
 
-function openRightWorkspaceTab(tab: RightWorkspaceTab, agentId?: string): void {
+const missionPreviewAgentId = ref<string | null>(null);
+const missionWorkspaceVisible = computed(() => {
+  const id = missionPreviewAgentId.value ?? currentAgent.value?.id;
+  return Boolean(id && selectedMission.value && missionAgentIds(selectedMission.value).includes(id) && rightWorkspaceFor(id).open);
+});
+function isPresentedWorkspaceVisible(agentId: string): boolean {
+  return activeSurface.value === 'mission'
+    ? missionWorkspaceVisible.value && agentId === (missionPreviewAgentId.value ?? currentAgent.value?.id)
+    : isRightWorkspaceVisible(agentId);
+}
+function toggleRightWorkspace(): void {
+  const id = missionPreviewAgentId.value ?? currentAgent.value?.id;
+  if (activeSurface.value === 'mission' && missionWorkspaceVisible.value && id) rightWorkspaceFor(id).open = false;
+  else {
+    missionPreviewAgentId.value = currentAgent.value?.id ?? null;
+    toggleRightWorkspaceLocal();
+  }
+}
+function closeWorkspacePreview(): void {
+  const id = missionPreviewAgentId.value ?? currentAgent.value?.id;
+  if (id) rightWorkspaceFor(id).open = false;
+}
+function openRightWorkspaceTab(tab: RightWorkspaceTab, agentId = currentAgent.value?.id): void {
+  if (activeSurface.value === 'mission' && agentId) missionPreviewAgentId.value = agentId;
   openRightWorkspaceTabLocal(tab, agentId);
 }
 
@@ -1955,6 +1986,13 @@ watch(
   },
   { immediate: true, flush: 'sync' },
 );
+const missionDocuments = useMissionDocuments({
+  missions: () => props.snapshot.missions ?? [],
+  agents: () => props.snapshot.agents,
+  activeMissionId: () => activeSurface.value === 'mission' ? selectedMissionId.value : null,
+  currentAgentId: () => currentAgent.value?.id,
+  open: request => openMarkdownRequest(request),
+});
 const workspacePreviews = useWorkspacePreviews({
   readConversationContent: (agentId, input) => appApi ? appApi.readConversationContent(agentId, input) : Promise.reject(new Error('Conversation content unavailable.')),
   downloadAgentFile,
@@ -1972,10 +2010,13 @@ const workspacePreviews = useWorkspacePreviews({
 const {
   handleFileActivity,
   openAgentGitDiff: openAgentGitDiffForAgent,
-  openFile: openFilePreviewForAgent,
   openMarkdown: openMarkdownRequest,
   openSidePanel: openSidePanelRequest,
 } = workspacePreviews;
+function openFilePreviewForAgent(agentId: string, path: string): Promise<void> {
+  if (activeSurface.value === 'mission') missionPreviewAgentId.value = agentId;
+  return workspacePreviews.openFile(agentId, path);
+}
 function openAgentGitDiffPreview(agentId = currentAgent.value?.id, target?: import('@workspace/core/contracts').AgentGitDiffTarget, focusKind?: import('@workspace/core/file-kind').FileKind): Promise<void> {
   return agentId ? openAgentGitDiffForAgent(agentId, target, focusKind) : Promise.resolve();
 }
@@ -3476,7 +3517,7 @@ const resumeSessionAgent = computed(() => (
 ));
 watch(() => props.markdownDisplayRequests, (requests) => {
   if (!requests.length) return;
-  for (const request of requests) openMarkdownRequest(request);
+  for (const request of requests) if (!missionDocuments.request(request)) openMarkdownRequest(request);
   emit('consume-markdown-displays', requests.length);
 }, { immediate: true });
 

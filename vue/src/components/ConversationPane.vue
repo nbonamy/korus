@@ -82,6 +82,7 @@
         </el-tooltip>
       </template>
       <template #composer-drawers>
+        <slot name="composer-drawers" />
         <ConversationShareActivity v-if="shareProposals.length" :proposals="shareProposals" owner :disabled="shareBusy || movingSuggestion" :edit-disabled="!canMoveSuggestion" :failed="shareFailed" @edit="moveSuggestion" @delete="dismissSuggestion" />
       </template>
       <template #composer-shelf-actions="{ disabled }">

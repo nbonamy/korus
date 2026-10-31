@@ -1,7 +1,7 @@
 <template>
-  <aside class="right-workspace-panel" :aria-label="$t('surface.rightWorkspacePanel.rightWorkspace')">
+  <component :is="contentOnly ? 'div' : 'aside'" class="right-workspace-panel" :class="{'right-workspace-panel--content-only':contentOnly}" :aria-label="contentOnly ? undefined : $t('surface.rightWorkspacePanel.rightWorkspace')">
     <WorkspaceLinkDropTarget v-if="linkDropActive" />
-    <header class="right-workspace-panel__tabs">
+    <header v-if="!contentOnly" class="right-workspace-panel__tabs">
       <div ref="tabStripRoot" class="right-workspace-panel__tab-strip">
         <button
           v-if="tabsOverflow"
@@ -126,7 +126,7 @@
     </header>
 
     <AppContextMenu
-      v-if="tabContextMenu"
+      v-if="!contentOnly && tabContextMenu"
       :ariaLabel="$t('surface.rightWorkspacePanel.tabActions')"
       :items="tabContextMenuItems"
       :x="tabContextMenu.x"
@@ -139,7 +139,7 @@
       <div class="right-workspace-panel__content">
 
         <nav
-      v-if="tabs.length === 0"
+      v-if="!contentOnly && tabs.length === 0"
       class="right-workspace-panel__launcher"
       :aria-label="$t('surface.rightWorkspacePanel.openAWorkspaceTab')"
     >
@@ -169,13 +169,13 @@
         </nav>
 
     <GitLogPanel
-      v-if="tabs.includes('gitLog')"
+      v-if="presentedTabs.includes('gitLog')"
       v-show="activeTab === 'gitLog'"
       :agent="agent"
       :branch="gitStatus?.branch ?? (agent.workspace?.kind === 'git' ? agent.workspace.branch : undefined)"
     />
     <GitReviewPanel
-      v-if="tabs.includes('review')"
+      v-if="presentedTabs.includes('review')"
       v-show="activeTab === 'review'"
       :agent="agent"
       :git-status="gitStatus"
@@ -186,7 +186,7 @@
     />
 
     <CodeReviewPanel
-      v-if="tabs.includes('codeReview')"
+      v-if="presentedTabs.includes('codeReview')"
       v-show="activeTab === 'codeReview'"
       :agent="agent"
       :git-status="gitStatus"
@@ -202,7 +202,7 @@
     />
 
     <VisualizePanel
-      v-if="tabs.includes('visualize') && agent.visualize"
+      v-if="presentedTabs.includes('visualize') && agent.visualize"
       v-show="activeTab === 'visualize'"
       :busy="agent.status.type === 'working' || agent.status.type === 'awaitingInput'"
       :visualize="agent.visualize"
@@ -215,7 +215,7 @@
     />
 
     <RepositoryBacklogPanel
-      v-if="tabs.includes('backlog') && startRepositoryWork"
+      v-if="presentedTabs.includes('backlog') && startRepositoryWork"
       v-show="activeTab === 'backlog'"
       :agent="agent"
       :agents="agents ?? []"
@@ -230,9 +230,9 @@
       :visible="visible && activeTab === 'backlog'"
     />
 
-    <MobileSimulatorPanel v-if="simulatorAvailable && tabs.includes('simulator')" v-show="activeTab === 'simulator'" :agent-id="agent.id" :visible="activeTab === 'simulator' && visible" />
+    <MobileSimulatorPanel v-if="simulatorAvailable && presentedTabs.includes('simulator')" v-show="activeTab === 'simulator'" :agent-id="agent.id" :visible="activeTab === 'simulator' && visible" />
     <BrowserPanel
-      v-if="browserAvailable && tabs.includes('browser')"
+      v-if="browserAvailable && presentedTabs.includes('browser')"
       :key="browserVisualization ? 'visualization' : 'browser'"
       v-show="activeTab === 'browser'"
       :agent-id="agent.id"
@@ -262,7 +262,7 @@
     </template>
 
         <div
-          v-if="tabs.includes('files')"
+          v-if="presentedTabs.includes('files')"
           v-show="activeTab === 'files'"
           class="right-workspace-panel__open-file"
         >
@@ -278,7 +278,7 @@
         </div>
 
     <PlanReviewPanel
-      v-if="tabs.includes('plan') && currentNativeReview"
+      v-if="presentedTabs.includes('plan') && currentNativeReview"
       v-show="activeTab === 'plan'"
       :key="`${agent.id}:${currentNativeReview.id}`"
       :review="currentNativeReview"
@@ -286,7 +286,7 @@
       :respond="planReviewResponder"
       :plan-updating="planUpdating"
     />
-    <MarkdownPanel v-else-if="tabs.includes('plan') && planPanel" v-show="activeTab === 'plan'" :content="planPanel.content" :state="planPanel.state" :error="planPanel.error" @open-file="openMarkdownFile($event, planPanel)" />
+    <MarkdownPanel v-else-if="presentedTabs.includes('plan') && planPanel" v-show="activeTab === 'plan'" :content="planPanel.content" :state="planPanel.state" :error="planPanel.error" @open-file="openMarkdownFile($event, planPanel)" />
 
     <template v-if="subagentTree && loadSubagentMessages">
       <SubagentPanel
@@ -323,7 +323,7 @@
         :language="sourceFilePanel(tab)?.language"
         :path="sourceFilePanel(tab)?.path"
         :state="sourceFilePanel(tab)?.state"
-        annotatable
+        :annotatable="!contentOnly"
         @annotate="emit('annotateCode', $event)"
       />
     </div>
@@ -338,7 +338,7 @@
         :diff="diffPanel(tab)?.diff ?? ''"
         :error="diffPanel(tab)?.error"
         :state="diffPanel(tab)?.state"
-        annotatable
+        :annotatable="!contentOnly"
         @annotate="emit('annotateCode', $event)"
       />
     </div>
@@ -355,7 +355,7 @@
 
       <Transition name="right-workspace-files">
         <div
-          v-if="fileExplorerVisible"
+          v-if="!contentOnly && fileExplorerVisible"
           class="right-workspace-panel__files-shell"
           :style="{
             flexBasis: `${visualFilesPaneWidth}px`,
@@ -381,7 +381,7 @@
         </div>
       </Transition>
     </div>
-  </aside>
+  </component>
 </template>
 
 <script setup lang="ts">
@@ -451,6 +451,7 @@ async function loadDirectory(input: AgentDirectoryInput): Promise<AgentDirectory
 }
 
 const props = withDefaults(defineProps<{
+  contentOnly?: boolean;
   saveDocument?: (tab: RightWorkspaceFileTab) => Promise<void>;
   linkDropActive?: boolean;
   browserPanels?: Partial<Record<RightWorkspaceBrowserTab, RightWorkspaceBrowserPanel>>;
@@ -576,21 +577,22 @@ function updateBrowserUrl(tab: 'browser' | RightWorkspaceBrowserTab, url: string
 }
 const browserUrl = ref('');
 const browserUrls = ref<Partial<Record<RightWorkspaceBrowserTab, string>>>({});
-const browserTabs = computed(() => props.tabs.filter(isRightWorkspaceBrowserTab).filter(tab => props.browserPanels[tab]));
+const presentedTabs = computed(() => props.contentOnly ? props.activeTab ? [props.activeTab] : [] : props.tabs);
+const browserTabs = computed(() => presentedTabs.value.filter(isRightWorkspaceBrowserTab).filter(tab => props.browserPanels[tab]));
 const tabsOverflow = ref(false);
 const canScrollTabsLeft = ref(false);
 const canScrollTabsRight = ref(false);
 let tabResizeObserver: ResizeObserver | null = null;
 const visualFilesPaneWidth = ref(props.filesPaneWidth);
-const fileTabs = computed(() => props.tabs.filter(isRightWorkspaceFileTab));
-const diffTabs = computed(() => props.tabs.filter(isRightWorkspaceDiffTab));
-const imageTabs = computed(() => props.tabs.filter(isRightWorkspaceImageTab));
-const subagentTabs = computed<RightWorkspaceSubagentTab[]>(() => props.tabs.filter(isRightWorkspaceSubagentTab));
+const fileTabs = computed(() => presentedTabs.value.filter(isRightWorkspaceFileTab));
+const diffTabs = computed(() => presentedTabs.value.filter(isRightWorkspaceDiffTab));
+const imageTabs = computed(() => presentedTabs.value.filter(isRightWorkspaceImageTab));
+const subagentTabs = computed<RightWorkspaceSubagentTab[]>(() => presentedTabs.value.filter(isRightWorkspaceSubagentTab));
 const fileExplorerToggleVisible = computed(() => (
   props.activeTab === 'files'
   || (props.activeTab !== null && isRightWorkspaceFileTab(props.activeTab))
 ));
-const fileExplorerVisible = computed(() => props.filesPaneOpen && fileExplorerToggleVisible.value);
+const fileExplorerVisible = computed(() => !props.contentOnly && props.filesPaneOpen && fileExplorerToggleVisible.value);
 const activeProjectFilePath = computed(() => {
   if (!props.activeTab) return null;
   const filePath = (isRightWorkspaceFileTab(props.activeTab)
@@ -902,6 +904,8 @@ function urlForTab(tab: RightWorkspaceTab): string {
 </script>
 
 <style scoped>
+.right-workspace-panel.right-workspace-panel--content-only { border: 0; }
+
 .right-workspace-panel {
   position: relative;
   flex: 0 0 420px;

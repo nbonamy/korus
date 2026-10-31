@@ -169,6 +169,8 @@ by mutating user-global tool config.
 - `display-markdown` takes exactly one of `path` or `markdown`. Paths must resolve
   inside the caller's folder, be regular files and fit the preview limit (renderer
   previews, by contrast, accept paths outside the agent folder).
+  Mission document presentation is a request, not confirmation that the user opened
+  the document. Document retention and delivery are independent of that choice.
 - `update-work-item` changes the caller's own assignment status (`blocked` requires
   a note). Automation completion is owned by the scheduled conversation's turn,
   not by work-item status.
