@@ -182,13 +182,26 @@ describe('repository pruning with real Git', () => {
     });
   });
 
-  it('counts a collapsed ignored directory once instead of listing every file', async () => {
+  it('excludes all ignored entries and node_modules from counts while counting changes once', async () => {
     await fixture(async ({ repo, worktree, service }) => {
-      await writeFile(join(repo, '.git', 'info', 'exclude'), 'deps/\n');
+      await writeFile(join(repo, '.git', 'info', 'exclude'), 'deps/\nnode_modules/\n');
       await mkdir(join(worktree, 'deps'));
       for (const name of ['a', 'b', 'c']) await writeFile(join(worktree, 'deps', name), name);
-      const local = (await service.inventory(repo, [])).groups.find(group => group.branch === 'feat/done')!.local!;
-      expect(local).toMatchObject({ blocked: 'changes', changedFiles: 1 });
+      for (const directory of ['node_modules', 'packages/web/node_modules']) {
+        await mkdir(join(worktree, directory), { recursive: true });
+        await writeFile(join(worktree, directory, 'package.json'), '{}');
+      }
+      const read = async () => (await service.inventory(repo, [])).groups.find(group => group.branch === 'feat/done')!.local!;
+      expect(await read()).toMatchObject({ merged: true, blocked: 'changes', changedFiles: 0, uncommittedFiles: 0 });
+      await git(worktree, ['mv', 'file.txt', 'renamed.txt']);
+      await writeFile(join(worktree, 'new file.txt'), 'untracked work');
+      await mkdir(join(worktree, 'node_modules-not-dependencies'));
+      await writeFile(join(worktree, 'node_modules-not-dependencies', 'keep.txt'), 'work');
+      const dirty = await read();
+      expect(dirty).toMatchObject({ merged: true, blocked: 'changes', changedFiles: 3, uncommittedFiles: 3 });
+      expect((await service.prune(repo, { confirmed: true, targets: [select(dirty)] }, () => [])).deleted).toStrictEqual([]);
+      await access(join(worktree, 'node_modules', 'package.json'));
+      await access(join(worktree, 'new file.txt'));
     });
   });
 

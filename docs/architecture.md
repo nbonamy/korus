@@ -639,6 +639,8 @@ clears or changes it, Korus never re-detects.
   selections and uses force removal only with discard consent. Remote deletion uses a
   live-head lease. PR badges are context, not proof of ancestry; partial failures
   leave remaining selections untouched and require a refreshed inventory.
+  Displayed file counts include only uncommitted changes, excluding ignored files
+  and `node_modules`. Deletion checks retain the complete worktree status.
   Missing worktrees are eligible when Git marks their registration prunable or locked;
   cleanup targets the selected registration, not a repository-wide worktree prune.
   Unmerged remote branches require manual selection; merge status does not block
