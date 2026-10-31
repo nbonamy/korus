@@ -43,6 +43,14 @@ export function applyClaudeConversationEvent(
       return true;
     });
     snapshot.messages = [...older, ...snapshot.messages];
+    const historicalTurns = [...new Set(older.flatMap(message => message.turnId ? [message.turnId] : []))];
+    const knownTurns = new Set(snapshot.turns.map(turn => turn.id));
+    const newTurns = historicalTurns.filter(id => knownTurns.has(id) && !snapshot.turnIds.includes(id));
+    if (newTurns.length) {
+      snapshot.turnIds = [...newTurns, ...snapshot.turnIds];
+      const order = new Map(snapshot.turnIds.map((id, index) => [id, index]));
+      snapshot.turns.sort((a, b) => (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity));
+    }
     snapshot.historyState = { hasOlder: event.payload.hasOlder, loadingOlder: false };
     return;
   }
@@ -50,8 +58,10 @@ export function applyClaudeConversationEvent(
     const message = event.payload.message;
     if (message.agentId !== snapshot.agentId || event.backendSessionId !== snapshot.sessionId) return;
     const index = snapshot.messages.findIndex((candidate) => candidate.id === message.id);
-    if (index < 0) snapshot.messages.push(message);
-    else snapshot.messages[index] = message;
+    if (index < 0) {
+      const before = snapshot.messages.findIndex(candidate => candidate.id === event.payload.beforeMessageId);
+      snapshot.messages.splice(before < 0 ? snapshot.messages.length : before, 0, message);
+    } else snapshot.messages[index] = message;
     return;
   }
   if (event.type === 'context.usageUpdated') {
@@ -165,7 +175,7 @@ export function applyClaudeConversationEvent(
     return;
   }
 
-  if (event.type === 'clientRequest.resolved') return;
+  if (event.type === 'clientRequest.resolved' || event.type === 'turn.historyUpdated') return;
 
   const exhaustiveEvent: never = event;
   void exhaustiveEvent;

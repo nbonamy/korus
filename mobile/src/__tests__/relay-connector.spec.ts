@@ -3,6 +3,7 @@ import { codexConversationSnapshot, codexTextMessage } from '../../../vue/src/te
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateKeyPair } from '@libp2p/crypto/keys';
 import { companionPushAuthorizationMessage } from '@workspace/core/companion-notification';
+import { liveActivityAuthorizationMessage, type LiveActivityRegistration } from '@workspace/core/companion-live-activity';
 import { peerIdFromPrivateKey, peerIdFromString } from '@libp2p/peer-id';
 import { randomUUID } from 'node:crypto';
 import { CompanionFrameDecoder, companionFrameLimit, companionUpdatesProtocol, companionResponseLimit, encodeCompanionFrame } from '@workspace/core/companion-protocol';
@@ -158,6 +159,24 @@ describe('native relay host adapter', () => {
     } finally { session.close(); await connector.dispose!(); }
   });
 
+  it('registers ActivityKit tokens while suspended without opening a transcript, signed for the paired host', async () => {
+    const connector = createRelayConnector(vault(), host.relay); await pairWith(connector);
+    await connector.suspend!(); transport.requests.length = 0;
+    transport.response = () => ({});
+    const registration: LiveActivityRegistration = { token: 'ab'.repeat(32), environment: 'development', kind: 'update', instanceId: 'a7dd30ba-8472-4b2e-8675-910016589490' };
+    try {
+      await connector.registerLiveActivity!(host.hostId, registration);
+      expect(transport.requests.map(call => call.method)).toStrictEqual(['liveActivity.register']);
+      const signed = transport.requests[0]!.args;
+      expect(await peerIdFromString(transport.phone).publicKey!.verify(liveActivityAuthorizationMessage(
+        host.relay.peerId, host.hostId, transport.phone, signed, signed.authorization.expiresAt), unb64(signed.authorization.signature))).toBe(true);
+      expect(await peerIdFromString(transport.phone).publicKey!.verify(companionPushAuthorizationMessage(
+        host.relay.peerId, host.hostId, transport.phone, signed, signed.authorization.expiresAt), unb64(signed.authorization.signature))).toBe(false);
+      await expect(connector.registerLiveActivity!('unknown-host', registration)).rejects.toThrow('Pair');
+      await connector.registerLiveActivity!(host.hostId, null);
+      expect(transport.requests.at(-1)).toMatchObject({ method: 'liveActivity.register', args: null });
+    } finally { await connector.dispose!(); }
+  });
   it('registers a phone token and accepts attention only from the paired laptop identity', async () => {
     const connector = createRelayConnector(vault(), host.relay);
     await pairWith(connector);

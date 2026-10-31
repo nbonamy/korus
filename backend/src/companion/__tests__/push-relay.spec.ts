@@ -3,12 +3,13 @@ import { generateKeyPair } from '@libp2p/crypto/keys';
 import { peerIdFromPrivateKey } from '@libp2p/peer-id';
 import { companionPushAuthorizationMessage } from '@workspace/core/companion-notification';
 import { CompanionPushRelay } from '../push-relay';
+import { liveActivityAuthorizationMessage } from '@workspace/core/companion-live-activity';
 
 const host = 'h'.repeat(52); const relayId = 'relay';
 let phone: Awaited<ReturnType<typeof generateKeyPair>>; let peerId: string;
 beforeEach(async () => { phone = await generateKeyPair('Ed25519'); peerId = peerIdFromPrivateKey(phone).toString(); });
 const source = '192.0.2.1';
-async function input(hostId = host, token = 'ab'.repeat(32), transport?: 'fcm') {
+async function input(hostId = host, token = 'ab'.repeat(32), transport?: 'apns' | 'fcm') {
   const registration = { token, environment: 'development' as const, ...(transport ? { transport } : {}) };
   const expiresAt = 100000;
   const signature = Buffer.from(await phone.sign(companionPushAuthorizationMessage(relayId, hostId, peerId, registration, expiresAt))).toString('base64');
@@ -18,6 +19,30 @@ async function input(hostId = host, token = 'ab'.repeat(32), transport?: 'fcm') 
   } };
 }
 describe('push relay admission', () => {
+  it('requires separate Live Activity consent and binds the update token to its exact activity and laptop', async () => {
+    const send = vi.fn(async () => 'sent' as const); const sendLiveActivity = vi.fn(async () => 'sent' as const);
+    let paired = true;
+    const relay = new CompanionPushRelay(relayId, () => paired, { send, sendLiveActivity }, () => 1000);
+    const registration = { token: 'cd'.repeat(32), kind: 'update' as const, environment: 'development' as const, instanceId: 'a7dd30ba-8472-4b2e-8675-910016589490' };
+    const expiresAt = 100000;
+    const signature = Buffer.from(await phone.sign(liveActivityAuthorizationMessage(relayId, host, peerId, registration, expiresAt))).toString('base64');
+    const valid = { peerId, registration: { ...registration, authorization: { expiresAt, signature } },
+      activity: { hostId: host, instanceId: registration.instanceId, startedAt: 1000, timestamp: 1, event: 'update', state: { running: 3, attention: 2, agents: [{ id: 'a', name: 'Mobile', status: 'approval', detail: 'Needs your approval' }], more: 0 } } };
+    for (const changed of [
+      { ...valid, registration: (await input()).registration },
+      { ...valid, registration: { ...valid.registration, kind: 'start' } },
+      { ...valid, activity: { ...valid.activity, instanceId: 'f7dd30ba-8472-4b2e-8675-910016589490' } },
+      { ...valid, activity: { ...valid.activity, hostId: 'other' } },
+      { ...valid, activity: { ...valid.activity, state: { running: -1, attention: 2 } } },
+    ]) await expect(relay.liveActivity(host, source, changed)).rejects.toThrow();
+    expect(sendLiveActivity).not.toHaveBeenCalled();
+    expect(await relay.liveActivity(host, source, valid)).toBe('sent');
+    expect(await relay.liveActivity(host, source, valid)).toBe('sent');
+    expect(sendLiveActivity).toHaveBeenCalledExactlyOnceWith(valid.registration, valid.activity);
+    expect(send).not.toHaveBeenCalled();
+    paired = false;
+    await expect(relay.liveActivity(host, source, valid)).rejects.toThrow();
+  });
   it('admits consented read checkpoints and rejects missing or invalid revisions before delivery', async () => {
     const send = vi.fn(async () => 'sent' as const); const valid = await input();
     const relay = new CompanionPushRelay(relayId, () => true, { send }, () => 1000);
@@ -96,6 +121,9 @@ describe('push relay admission', () => {
     expect(await relay.send(host, source, valid)).toBe('unavailable');
     expect(await relay.send(host, source, valid)).toBe('sent');
     for (let i = 0; i < 125; i++) await relay.send(host, source, { ...valid, notification: { ...valid.notification, id: String(i) } });
+    expect(send).toHaveBeenCalledTimes(60);
+    const explicitApns = await input(host, valid.registration.token, 'apns');
+    expect(await relay.send(host, '198.51.100.9', { ...explicitApns, notification: { ...explicitApns.notification, id: 'explicit-apns' } })).toBe('unavailable');
     expect(send).toHaveBeenCalledTimes(60);
   });
   it('keeps delivering for other sources while one source rotates laptop identities', async () => {

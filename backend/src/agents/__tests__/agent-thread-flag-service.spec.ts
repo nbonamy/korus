@@ -8,7 +8,6 @@ describe('AgentThreadFlagService', () => {
   it.each([
     [{ id: 'work_proposed', action: 'delegate' }, PROPOSED_WORK_DELEGATION_PROMPT],
     [{ id: 'work_proposed', action: 'create_mission' }, MISSION_COMMAND_PROMPT],
-    [{ id: 'delegate_to_worktree', action: 'execute' }, PROPOSED_WORK_DELEGATION_PROMPT],
   ] as const)('accepts %j and clears only the proposal after submission', async (response, prompt) => {
     const agent = createInitialSnapshot().agents[0]!;
     agent.threadFlags = { [response.id]: true, ready_for_review: true };
@@ -47,18 +46,18 @@ describe('AgentThreadFlagService', () => {
 
   it('dismisses without prompting and rejects stale or concurrent actions', async () => {
     const agent = createInitialSnapshot().agents[0]!;
-    agent.threadFlags = { delegate_to_worktree: true };
+    agent.threadFlags = { work_proposed: true };
     let accept!: () => void;
     const submit = vi.fn(() => new Promise<void>((resolve) => { accept = resolve; }));
     const service = new AgentThreadFlagService({ submit });
-    const pending = service.respond(agent, { id: 'delegate_to_worktree', action: 'execute' });
+    const pending = service.respond(agent, { id: 'work_proposed', action: 'delegate' });
     await expect(service.respond(agent, { id: 'work_proposed', action: 'create_mission' })).rejects.toThrow('already being handled');
     accept();
     await pending;
-    await expect(service.respond(agent, { id: 'delegate_to_worktree', action: 'dismiss' })).rejects.toThrow('no longer active');
+    await expect(service.respond(agent, { id: 'work_proposed', action: 'dismiss' })).rejects.toThrow('no longer active');
 
-    agent.threadFlags = { delegate_to_worktree: true };
-    await service.respond(agent, { id: 'delegate_to_worktree', action: 'dismiss' });
+    agent.threadFlags = { work_proposed: true };
+    await service.respond(agent, { id: 'work_proposed', action: 'dismiss' });
     expect(submit).toHaveBeenCalledTimes(1);
   });
 

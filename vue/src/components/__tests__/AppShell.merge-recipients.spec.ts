@@ -1,4 +1,4 @@
-import { flushPromises } from '@vue/test-utils';
+import { DOMWrapper, flushPromises } from '@vue/test-utils';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { Agent, AgentGitWorkflow } from '@workspace/core/contracts';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
@@ -28,16 +28,17 @@ it('lists merge recipients in manual sidebar order and retains the selected reci
   await wrapper.get('.git-workflow-control__trigger').trigger('click');
   await wrapper.findAll('[role="menuitem"]').find(item => item.text().trim() === 'Merge')!.trigger('click');
   await flushPromises();
-  await wrapper.get<HTMLInputElement>('[role="switch"][aria-label="Report to another agent"]').setValue(true);
-  const options = () => wrapper.findAll('[aria-label="Report recipient"] option').map(option => option.text());
+  const dialog = new DOMWrapper(document.body).get('.git-workflow-control__dialog');
+  await dialog.get<HTMLInputElement>('[role="switch"][aria-label="Report to another agent"]').setValue(true);
+  const options = () => dialog.findAll('[aria-label="Report recipient"] option').map(option => option.text());
   expect(options()).toStrictEqual(sidebarNames());
-  await wrapper.get('[aria-label="Report recipient"] select').setValue('alpha');
+  await dialog.get('[aria-label="Report recipient"] select').setValue('alpha');
 
   const reordered = { ...snapshot, teams: snapshot.teams.map(team => ({ ...team, agentIds: ['beta', 'gamma', source.id, 'alpha'] })) };
   await wrapper.setProps({ snapshot: reordered }); await flushPromises();
   expect(sidebarNames()).toStrictEqual(['Beta', 'Gamma', 'Alpha']);
   expect(options()).toStrictEqual(sidebarNames());
-  expect(wrapper.get<HTMLSelectElement>('[aria-label="Report recipient"] select').element.value).toBe('alpha');
+  expect(dialog.get<HTMLSelectElement>('[aria-label="Report recipient"] select').element.value).toBe('alpha');
   expect(merge).not.toHaveBeenCalled();
   wrapper.unmount();
 });

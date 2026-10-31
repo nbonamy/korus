@@ -18,6 +18,7 @@ struct CompanionApp: App {
                         .allowsHitTesting(false)
                 }
                 .task { await lock.unlock() }
+                .onOpenURL { model.openActivity($0) }
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
                     case .background:

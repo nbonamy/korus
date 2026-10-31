@@ -6,6 +6,7 @@ import type { DelegationStartingContext } from './delegation-context';
 export type CreateCoAgentInput = {
   remoteConnectionId?: string;
   goal?: boolean;
+  planMode?: boolean;
   requestId?: string;
   task?: TaskContract;
   selection?: ExecutionSelectionOverrides;

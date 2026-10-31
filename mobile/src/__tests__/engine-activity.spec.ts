@@ -22,9 +22,12 @@ describe('native activity drawer feed', () => {
       workspace.agents = rows.map(([id, type, time]) => ({ ...base, id, name: id, hasSubmittedPrompt: true,
         status: { type }, lastActivityAt: `2026-10-16T${time}:00Z` }));
       workspace.teams[0]!.agentIds = workspace.agents.map(a => a.id);
+      workspace.teams.push({ id: 'other-team', name: 'Other', agentIds: ['demo-reviewer'] });
+      workspace.agents.push({ ...base, id: 'demo-reviewer', name: 'Other agent', teamId: 'other-team' });
       return { ...session, getWorkspace: async () => projectCompanionWorkspace(workspace) };
     };
-    const engine = createEngine({ connector, post() {} });
+    let failedOpens = 0;
+    const engine = createEngine({ connector, post(event) { if (event.type === 'notificationOpenFailed') failedOpens++; } });
     const order = () => engine.snapshot().activityGroups.map(g => [g.activity, g.sessions.map(s => s.agentId)]);
     try {
       await engine.start();
@@ -39,6 +42,13 @@ describe('native activity drawer feed', () => {
       expect(engine.snapshot().agentId).toBe(selected);
       await engine.dispatch({ type: 'idleSort', order: 'activity' });
       expect(order()).toStrictEqual(recent);
+      await engine.dispatch({ type: 'openActivityThread', laptopId: 'demo-laptop', agentId: 'demo-reviewer' });
+      expect(engine.snapshot().teamId).toBe('other-team');
+      expect(engine.snapshot().agentId).toBe('demo-reviewer');
+      await engine.dispatch({ type: 'openActivityThread', laptopId: 'demo-laptop', agentId: 'missing' });
+      await engine.dispatch({ type: 'openActivityThread', laptopId: 'foreign-host', agentId: 'demo-agent' });
+      expect(failedOpens).toBe(2);
+      expect(engine.snapshot().agentId).toBe('demo-reviewer');
     } finally { engine.dispose(); vi.useRealTimers(); }
   });
 

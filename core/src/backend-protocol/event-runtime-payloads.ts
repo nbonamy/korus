@@ -371,6 +371,7 @@ function expectClaudeConversationEvent(value: unknown, path: string): void {
   expectLiteral(value.backend, ['claude'], `${path}.backend`);
   expectLiteral(value.type, [
     'history.prepended',
+    'turn.historyUpdated',
     'message.replaced',
     'context.usageUpdated',
     'turn.started',

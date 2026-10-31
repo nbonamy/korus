@@ -1,5 +1,5 @@
 import type { Agent } from '@workspace/core/contracts';
-import { normalizeThreadFlagId, normalizeThreadFlags, type ThreadFlagResponse } from '@workspace/core/thread-flags';
+import { normalizeThreadFlags, type ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { PROPOSED_WORK_DELEGATION_PROMPT } from './worktree-delegation';
 import { MISSION_COMMAND_PROMPT } from './mission-command';
 
@@ -11,12 +11,12 @@ export class AgentThreadFlagService {
   }) {}
 
   async respond(agent: Agent, response: ThreadFlagResponse): Promise<void> {
-    const id = normalizeThreadFlagId(response.id);
+    const id = response.id;
     if (!agent.threadFlags || normalizeThreadFlags(agent.threadFlags)[id] !== true) {
       throw new Error('This thread flag is no longer active.');
     }
     const allowedActions = id === 'work_proposed'
-      ? ['implement', 'delegate', 'create_mission', 'dismiss', ...(response.id === 'delegate_to_worktree' ? ['execute'] : [])]
+      ? ['implement', 'delegate', 'create_mission', 'dismiss']
       : ['execute', 'dismiss'];
     if (!allowedActions.includes(response.action)) {
       throw new Error('Invalid thread flag action.');
@@ -30,7 +30,7 @@ export class AgentThreadFlagService {
       if (id === 'work_proposed' && response.action === 'implement') {
         await this.options.submit(agent, 'Implement the proposed work in this conversation using the current agent and workspace.');
       }
-      if (id === 'work_proposed' && (response.action === 'delegate' || response.action === 'execute')) {
+      if (id === 'work_proposed' && response.action === 'delegate') {
         await this.options.submit(agent, PROPOSED_WORK_DELEGATION_PROMPT);
       }
       if (id === 'work_proposed' && response.action === 'create_mission') {

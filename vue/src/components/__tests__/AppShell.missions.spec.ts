@@ -24,13 +24,16 @@ function representGitHubRepository(agent: ReturnType<typeof createInitialSnapsho
 }
 
 describe('AppShell missions', () => {
-  it.each(['README.md', '/workspace/mission/README.md'])('opens a rendered Mission file link beside its conversation (%s)', async target => {
+  it.each(['README.md', '/workspace/mission/README.md', '/tmp/telemetry-merge3-evidence.json'])('opens a rendered Mission document link in a dialog without hiding the Mission (%s)', async target => {
+    const evidence = target.endsWith('.json');
+    const path = evidence ? target : 'README.md';
+    const content = evidence ? '{\"commit\":\"8116155c\"}' : '# Mission document';
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
     agent.folder = '/workspace/mission';
     const mission = createMission(snapshot, { outcome: 'Follow conversation links', workflowType: 'shapeAndShipFeature', teamId: agent.teamId, orchestratorMemberId: agent.id });
     prepareMissionLead(mission, agent.id);
-    const previewAgentFile = vi.fn().mockResolvedValue({ kind: 'text', path: 'README.md', content: '# Mission document', size: 18 });
+    const previewAgentFile = vi.fn().mockResolvedValue({ kind: 'text', path, content, size: content.length });
     const wrapper = mountShell({ snapshot, realConversationPane: true, previewAgentFile,
       codexConversationSnapshot: codexConversationSnapshot([codexTextMessage('links', 'assistant', `[Readme](<${target}>)`)]),
     });
@@ -39,22 +42,111 @@ describe('AppShell missions', () => {
       await flushPromises();
       await wrapper.get('.mission-conversation-rail a').trigger('click');
       await flushPromises();
-      expect(previewAgentFile).toHaveBeenCalledExactlyOnceWith(agent.id, 'README.md');
-      expect(wrapper.get('[role="tab"][aria-label="README.md"]').attributes('aria-selected')).toBe('true');
-      expect(wrapper.get('.markdown-panel').text()).toContain('Mission document');
+      expect(previewAgentFile).toHaveBeenCalledExactlyOnceWith(agent.id, path);
+      expect(wrapper.get('.mission-document-dialog h2').text()).toBe(path.split('/').at(-1));
+      expect(wrapper.get('.mission-document-dialog').find('[role="tablist"]').exists()).toBe(false);
+      expect(wrapper.get('.mission-document-dialog').findAll('.markdown-panel, .source-preview-panel')).toHaveLength(1);
+      expect(wrapper.get('.mission-document-dialog').find('[data-code-annotation-trigger]').exists()).toBe(false);
+      expect(wrapper.get('.mission-document-dialog').text()).toContain(evidence ? '8116155c' : 'Mission document');
       expect(wrapper.get('.mission-conversation-rail a').isVisible()).toBe(true);
-      const toggle = wrapper.get('[aria-label="Toggle right workspace"]');
-      await toggle.trigger('click');
-      await flushPromises();
+      expect(wrapper.get('.mission-stage-rail').isVisible()).toBe(true);
       expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(true);
-      expect(wrapper.get('.markdown-panel').isVisible()).toBe(false);
-      await toggle.trigger('click');
+      const dialog = wrapper.getComponent({name:'WorkspacePreviewHost'});
+      await wrapper.get('[aria-label="Close document"]').trigger('click');
       await flushPromises();
-      expect(wrapper.get('.right-workspace-panel').attributes('style')).not.toContain('display: none');
-      expect(wrapper.get('.markdown-panel').text()).toContain('Mission document');
-      await wrapper.get('[aria-label="Close README.md tab"]').trigger('click');
-      expect(wrapper.find('.markdown-panel').exists()).toBe(false);
+      expect(wrapper.find('.mission-document-dialog').exists()).toBe(false);
+      dialog.vm.$emit('close');
+      await flushPromises();
+      expect(wrapper.find('.mission-document-dialog').exists()).toBe(false);
       expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(true);
+    } finally { wrapper.unmount(); }
+  });
+
+  it('keeps one document request per Mission across agents and opens only after confirmation', async () => {
+    const snapshot = createInitialSnapshot();
+    const [lead, worker] = snapshot.agents;
+    const mission = createMission(snapshot, { outcome: 'Review documents', workflowType: 'shapeAndShipFeature', teamId: lead!.teamId, orchestratorMemberId: lead!.id });
+    prepareMissionLead(mission, lead!.id);
+    mission.execution!.runs.push({ ...mission.execution!.runs[0]!, id:'worker-run', stage:'implementation', workerId:worker!.id });
+    const other = { ...lead!, id:'other-document-agent', name:'Other agent' };
+    snapshot.agents.push(other);
+    snapshot.teams.find(team => team.id === other.teamId)!.agentIds.push(other.id);
+    const otherMission = createMission(snapshot, { outcome:'Other documents', workflowType:'shapeAndShipFeature', teamId:other.teamId, orchestratorMemberId:other.id });
+    prepareMissionLead(otherMission, other.id);
+    const wrapper = mountShell({ snapshot, realConversationPane:true });
+    try {
+      wrapper.getComponent({ name:'AppShellNavigation' }).vm.$emit('select-mission', mission.id);
+      await flushPromises();
+      const selections = wrapper.emitted('select-agent')?.length ?? 0;
+      await wrapper.setProps({ markdownDisplayRequests: [
+        {kind:'markdown',agentId:lead!.id,title:'First document',content:'# First'},
+        {kind:'markdown',agentId:worker!.id,title:'Latest document',content:'# Latest'},
+        {kind:'markdown',agentId:other.id,title:'Other document',content:'# Other'},
+      ] });
+      await flushPromises();
+      const drawer = wrapper.get('.mission-document-request');
+      expect(drawer.text()).toContain('Agent wants to open Latest document');
+      expect(drawer.text()).not.toContain('First document');
+      expect(wrapper.find('.mission-document-dialog').exists()).toBe(false);
+      expect(wrapper.emitted('select-agent')?.length ?? 0).toBe(selections);
+      expect(wrapper.get('.mission-stage-rail').isVisible()).toBe(true);
+      expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(true);
+      await drawer.get('[aria-label="Open document"]').trigger('click');
+      await flushPromises();
+      expect(wrapper.get('.mission-document-dialog').text()).toContain('Latest');
+      expect(wrapper.find('.mission-document-request').exists()).toBe(false);
+      await wrapper.setProps({ markdownDisplayRequests: [{kind:'markdown',agentId:lead!.id,title:'Next document',content:'# Next'}] });
+      await flushPromises();
+      expect(wrapper.get('.mission-document-dialog').text()).toContain('Latest');
+      expect(wrapper.get('.mission-document-dialog').text()).not.toContain('Next');
+      await wrapper.get('[aria-label="Dismiss document request"]').trigger('click');
+      expect(wrapper.find('.mission-document-request').exists()).toBe(false);
+      await wrapper.get('[aria-label="Close document"]').trigger('click');
+      await flushPromises();
+      expect(wrapper.find('.mission-document-dialog').exists()).toBe(false);
+      expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(true);
+      wrapper.getComponent({name:'AppShellNavigation'}).vm.$emit('select-mission', otherMission.id);
+      await wrapper.setProps({activeAgent:other});
+      await flushPromises();
+      expect(wrapper.get('.mission-document-request').text()).toContain('Agent wants to open Other document');
+      await wrapper.get('[aria-label="Dismiss document request"]').trigger('click');
+      expect(wrapper.find('.mission-document-request').exists()).toBe(false);
+    } finally { wrapper.unmount(); }
+  });
+
+  it('preserves an accepted document against older reads and recovers from failed Mission previews', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    const mission = createMission(snapshot, { outcome:'Read documents', workflowType:'shapeAndShipFeature', teamId:agent.teamId, orchestratorMemberId:agent.id });
+    prepareMissionLead(mission, agent.id);
+    let finish!: (value: {kind:'text'; path:string; content:string; size:number}) => void;
+    const previewAgentFile = vi.fn().mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }))
+      .mockRejectedValueOnce(new Error('Document unavailable'))
+      .mockResolvedValue({kind:'text',path:'notes.md',content:'# Recovered',size:11});
+    const wrapper = mountShell({snapshot,realConversationPane:true,previewAgentFile,
+      codexConversationSnapshot:codexConversationSnapshot([codexTextMessage('document-link','assistant','[Notes](notes.md)')]),
+    });
+    try {
+      wrapper.getComponent({name:'AppShellNavigation'}).vm.$emit('select-mission',mission.id);
+      await flushPromises();
+      const link = wrapper.get('.mission-conversation-rail a');
+      await link.trigger('click');
+      await wrapper.get('[aria-label="Close document"]').trigger('click');
+      await wrapper.setProps({markdownDisplayRequests:[{kind:'markdown',agentId:agent.id,path:'notes.md',title:'Notes',content:'# Accepted document'}]});
+      await wrapper.get('[aria-label="Open document"]').trigger('click');
+      finish({kind:'text',path:'notes.md',content:'# Stale',size:7});
+      await flushPromises();
+      expect(wrapper.get('.mission-document-dialog').text()).toContain('Accepted document');
+      expect(wrapper.get('.mission-document-dialog').text()).not.toContain('Stale');
+      await wrapper.get('[aria-label="Close document"]').trigger('click');
+      await flushPromises();
+      expect(wrapper.find('.mission-document-dialog').exists()).toBe(false);
+      await link.trigger('click'); await flushPromises();
+      expect(wrapper.get('.mission-document-dialog').text()).toContain('Document unavailable');
+      await wrapper.get('[aria-label="Close document"]').trigger('click');
+      await link.trigger('click'); await flushPromises();
+      expect(wrapper.get('.mission-document-dialog').text()).toContain('Recovered');
+      expect(wrapper.get('.mission-document-dialog').text()).not.toContain('Stale');
     } finally { wrapper.unmount(); }
   });
 
@@ -68,10 +160,11 @@ describe('AppShell missions', () => {
       await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
       wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', mission.id);
       await flushPromises();
-      expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(false);
+      expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(true);
+      expect(wrapper.find('.mission-document-dialog').exists()).toBe(true);
       await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
       await flushPromises();
-      expect(wrapper.get('.mission-workspace__workbench').attributes('style')).not.toContain('display: none');
+      expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(true);
     } finally { wrapper.unmount(); }
   });
 

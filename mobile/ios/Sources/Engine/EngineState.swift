@@ -2,6 +2,7 @@ import Foundation
 
 /// The engine's state as it arrives from JSON; `AppModel` maps it onto the view models the screens draw.
 struct EngineState: Decodable {
+    let reviewFindingsCount: Int?
     let git: GitChangesState?
     struct QueuedPrompt: Decodable, Identifiable, Equatable { let id: String; let text: String }
     let queuedPrompts: [QueuedPrompt]?

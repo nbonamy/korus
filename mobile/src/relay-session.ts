@@ -206,6 +206,8 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
     async createChat(chat, signal) { return created((await call<{ creationId: string }>('agent.create', chat)).creationId, signal); },
     async createQuickChat(chat, signal) { return created((await call<{ creationId: string }>('agent.quickChat.create', chat)).creationId, signal); },
     async setBackend(agentId, backend) { await call('agent.backend.set', { target: target(agentId), backend }); },
+    readReview: agentId => call('agent.review.read', { target: target(agentId) }),
+    reviewAction: (target, input) => call('agent.review.action', { target, input }),
     reviewSetup: (agentId, backend) => call('agent.review.setup', { target: target(agentId), ...(backend ? { backend } : {}) }),
     async startReview(target, input) {
       const result = await call<{ reviewerAgentId?: string | null }>('agent.review.start', { target, input });

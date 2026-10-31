@@ -333,6 +333,26 @@ describe('useAppState', () => {
     expect(state.activeAgent.value?.id).toBe('agent-jesse');
   });
 
+  it.each(['success', 'error'] as const)('retains creation %s covered by a repaired snapshot instead of leaving the dialog running', async terminal => {
+    let receive!: (event: MainToRendererEvent) => void;
+    const snapshot = createInitialSnapshot();
+    const repair = deferred<{ snapshot: AppSnapshot; lastBackendEventSeq: number; connection: { status: 'connected' } }>();
+    const getSnapshotState = vi.fn()
+      .mockResolvedValueOnce({ snapshot: structuredClone(snapshot), lastBackendEventSeq: 0, connection: { status: 'connected' } })
+      .mockReturnValueOnce(repair.promise);
+    stubElectronTestWindow({ app: { getSnapshotState, onEvent: vi.fn(listener => { receive = listener; return () => {}; }) } });
+    const state = useAppState();
+    await state.loadSnapshot();
+    const progress = { id: 'create-worker', backend: 'codex' as const, repositoryName: 'korus', createWorktree: false, hasPrompt: true };
+    receive({ seq: 1, source: 'backend', occurredAt: '', agentId: snapshot.activeAgentId!, type: 'agentCreation.progress', payload: { ...progress, state: 'running', phase: 'creatingAgent' } });
+    expect(state.agentCreationProgresses.value).toMatchObject([{ state: 'running' }]);
+    receive({ seq: 3, source: 'backend', occurredAt: '', agentId: snapshot.activeAgentId!, type: 'agent.statusChanged', payload: { type: 'working' } });
+    await vi.waitFor(() => expect(getSnapshotState).toHaveBeenCalledTimes(2));
+    receive({ seq: 4, source: 'backend', occurredAt: '', agentId: snapshot.activeAgentId!, type: 'agentCreation.progress', payload: { ...progress, state: terminal, agentId: 'worker' } });
+    repair.resolve({ snapshot: structuredClone(snapshot), lastBackendEventSeq: 4, connection: { status: 'connected' } });
+    await vi.waitFor(() => expect(state.agentCreationProgresses.value).toMatchObject([{ id: 'create-worker', state: terminal }]));
+  });
+
   it('preserves the optimistic agent selection while repairing an event sequence gap', async () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const backendSnapshot = createInitialSnapshot();

@@ -44,15 +44,15 @@ async function setup(parentBackend: 'codex' | 'claude') {
   for (const id of ['codex-worker', 'codex-parent']) {
     const conversation = codex.conversation(id);
     conversation.handle.sendMessage.mockImplementation(async () => {
-      conversation.setSnapshot({ activeTurnId: 'codex-turn', busy: true });
+      conversation.setSnapshot({ ...conversation.handle.getSnapshot(), activeTurnId: 'codex-turn', busy: true });
       conversation.emit({ ...metadata, conversationId: id, type: 'turn.started', payload: { turn: { id: 'codex-turn', status: 'inProgress', items: [], error: null } } } as never);
       return conversation.handle.getSnapshot();
     });
   }
   let mcp!: AppMcpService;
   let server!: AppBackendServer;
-  const tasks = new DurableTaskService({ tasks: [], save: data => store.saveTasks(data), agent: id => snapshot.agents.find(agent => agent.id === id), send: async (agent, prompt, goal) => {
-    const receipt = await server.sendTaskPrompt(agent, prompt, goal);
+  const tasks = new DurableTaskService({ tasks: [], save: data => store.saveTasks(data), agent: id => snapshot.agents.find(agent => agent.id === id), send: async (agent, prompt, goal, planMode) => {
+    const receipt = await server.sendTaskPrompt(agent, prompt, goal, planMode);
     await store.save(snapshot);
     return receipt;
   }, interrupt: (agent, expectedTurnId) => rpc.handle(backendMethods.driverInterrupt, { agent, expectedTurnId }), onError: error => { throw error; } });
@@ -68,10 +68,106 @@ async function setup(parentBackend: 'codex' | 'claude') {
     const text = await response.text();
     return JSON.parse(text.startsWith('event:') ? text.split('\n').find(line => line.startsWith('data: '))!.slice(6) : text).result;
   }
-  return { tasks, store, snapshot, parent, server, call, codex, claudeSdk, metadata, rpc };
+  return { tasks, store, snapshot, parent, server, call, codex, claudeSdk, metadata, rpc, url };
 }
 
 describe('durable tasks through authenticated MCP and real provider adapters', () => {
+  it.each([undefined, false])('keeps startup out of Plan and Goal modes without an explicit opt-in (%s)', async planMode => {
+    const f = await setup('codex');
+    const native = f.codex.conversation('codex-worker');
+    // A native conversation can inherit planning settings from its parent.
+    f.codex.surface.createConversation.mockResolvedValue(sdkSnapshot('codex-worker', { planMode: true }));
+    native.setSnapshot({ planMode: true });
+    const created = await f.call(f.parent.id, 'create-agent', { repoPath: '/repo', prompt: 'Perform the assignment', ...(planMode === undefined ? {} : { planMode }) });
+    expect(created.isError).toBe(false);
+    expect(native.handle.sendMessage).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ planMode: false }));
+    expect(native.handle.setGoal).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { backend: 'codex', durable: false }, { backend: 'codex', durable: true },
+    { backend: 'claude', durable: false }, { backend: 'claude', durable: true },
+  ] as const)('starts the first prompt in Plan mode and waits for approval ($backend, durable: $durable)', async ({ backend, durable }) => {
+    const f = await setup('codex');
+    const native = f.codex.conversation('codex-worker');
+    const input = { repoPath: '/repo', prompt: 'Plan the assignment before implementing', planMode: true,
+      ...(durable ? { requestId: 'plan-worker', task: { title: 'Planned assignment', doneWhen: 'Implemented and verified' } } : {}), selection: { backend } };
+    native.handle.updateSettings.mockImplementation(async settings => {
+      native.setSnapshot({ ...native.handle.getSnapshot(), planMode: settings.planMode === true });
+      native.emit({ ...f.metadata, type: 'conversation.settingsChanged', payload: { approvalPreset: null, selectedModelId: null, selectedReasoningEffort: null, selectedServiceTier: null, planMode: settings.planMode === true } });
+      return native.handle.getSnapshot();
+    });
+    const creating = f.call(f.parent.id, 'create-agent', input);
+    if (backend === 'claude') {
+      await vi.waitFor(() => expect(f.claudeSdk.inputs).toHaveLength(1));
+      expect(f.claudeSdk.options[0]!.permissionMode).toBe('plan');
+      f.claudeSdk.emit({ type: 'system', subtype: 'init', session_id: 'claude-worker' });
+    }
+    const created = await creating;
+    expect(created.isError).toBe(false);
+    expect(created.structuredContent.promptSubmitted).toBe(true);
+    const worker = f.snapshot.agents.find(agent => agent.id === created.structuredContent.agentId)!;
+    expect(worker.goal).toBeUndefined();
+    if (backend === 'codex') {
+      expect(native.handle.updateSettings).toHaveBeenCalledExactlyOnceWith({ planMode: true });
+      expect(native.handle.updateSettings.mock.invocationCallOrder[0]).toBeLessThan(native.handle.sendMessage.mock.invocationCallOrder[0]!);
+      expect(native.handle.sendMessage).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('Plan the assignment'), expect.objectContaining({ planMode: true }));
+      expect(native.handle.setGoal).not.toHaveBeenCalled();
+      native.emit({ ...f.metadata, type: 'plan.completed', payload: { itemId: 'proposal', markdown: '# Proposal\n\nImplement after approval.' } });
+      native.setSnapshot({ ...native.handle.getSnapshot(), busy: false, activeTurnId: null });
+      native.emit({ ...f.metadata, type: 'turn.completed', payload: { status: 'completed', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null } });
+      native.emit({ ...f.metadata, type: 'conversation.activityChanged', payload: { threadStatus: { type: 'idle' }, busy: false, error: null } });
+    } else {
+      expect(f.claudeSdk.inputs[0]!.message.content).toEqual([{ type: 'text', text: expect.stringContaining('Plan the assignment') }]);
+      f.claudeSdk.emit({ type: 'assistant', session_id: 'claude-worker', message: { content: [{ type: 'tool_use', id: 'proposal', name: 'ExitPlanMode', input: { plan: '# Proposal\n\nImplement after approval.' } }] } });
+      f.claudeSdk.emit({ type: 'result', subtype: 'success', session_id: 'claude-worker', is_error: false });
+    }
+    await vi.waitFor(() => expect(worker.planReview).toMatchObject({ status: 'pending', markdown: '# Proposal\n\nImplement after approval.' }));
+    await vi.waitFor(() => expect(worker.status.type).toBe('idle'));
+    if (backend === 'codex') expect(native.handle.getSnapshot().planMode).toBe(true);
+    if (durable) {
+      await vi.waitFor(async () => expect((await f.store.loadTasks())[0]).toMatchObject({ planMode: true, state: 'needs-input' }));
+      expect(f.tasks.list(f.parent.id)[0]!.delivery).toBeUndefined();
+      const retry = await f.call(f.parent.id, 'create-agent', input);
+      expect(retry.structuredContent.agentId).toBe(worker.id);
+    }
+    expect(backend === 'codex' ? native.handle.sendMessage.mock.calls.length : f.claudeSdk.inputs.length).toBe(1);
+    const approving = f.server.handleMessage({ jsonrpc: '2.0', id: 'approve', method: 'agent/planReview/respond', params: {
+      agentId: worker.id, response: { reviewId: worker.planReview!.id, resolution: 'accept' },
+    } });
+    if (backend === 'claude') {
+      await vi.waitFor(() => expect(f.claudeSdk.inputs).toHaveLength(2));
+      expect(f.claudeSdk.runtimes[0]!.setPermissionMode).toHaveBeenCalledWith('default');
+    }
+    expect(await approving).not.toHaveProperty('error');
+    expect(worker.planReview!.status).toBe('accept');
+    if (backend === 'codex') expect(native.handle.getSnapshot().planMode).toBe(false);
+    if (backend === 'codex') expect(native.handle.sendMessage).toHaveBeenLastCalledWith('implement the plan', expect.objectContaining({ planMode: false }));
+    else expect(f.claudeSdk.inputs[1]!.message.content).toEqual([{ type: 'text', text: 'implement the plan' }]);
+  });
+
+  it('does not send the first prompt if the persistent Plan setting is rejected', async () => {
+    const f = await setup('codex');
+    const native = f.codex.conversation('codex-worker');
+    native.handle.updateSettings.mockRejectedValueOnce(new Error('Native Plan settings rejected'));
+    const created = await f.call(f.parent.id, 'create-agent', { repoPath: '/repo', prompt: 'Plan the assignment', planMode: true });
+    expect(created.isError).toBe(true);
+    expect(native.handle.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('advertises Plan and Goal startup only for explicit user requests, with both optional', async () => {
+    const f = await setup('codex');
+    const url = new URL(f.url); url.searchParams.set('agentId', f.parent.id);
+    const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 'tools', method: 'tools/list' }) });
+    const data = await response.json() as { result: { tools: Array<{ name: string; inputSchema: { properties: Record<string, { description: string }>; required?: string[] } }> } };
+    const schema = data.result.tools.find(tool => tool.name === 'create-agent')!.inputSchema;
+    for (const name of ['planMode', 'goal']) {
+      expect(schema.properties[name]!.description).toMatch(/only.*explicitly.*user/i);
+      expect(schema.required ?? []).not.toContain(name);
+    }
+  });
+
   it.each([
     { backend: 'codex', durable: false }, { backend: 'codex', durable: true },
     { backend: 'claude', durable: false }, { backend: 'claude', durable: true },
@@ -111,6 +207,8 @@ describe('durable tasks through authenticated MCP and real provider adapters', (
     const count = f.snapshot.agents.length;
     for (const [input, message] of [
       [{ repoPath: '/repo', goal: true }, 'prompt is required when goal is true'],
+      [{ repoPath: '/repo', planMode: true }, 'prompt is required when planMode is true'],
+      [{ repoPath: '/repo', planMode: true, goal: true, prompt: 'Work' }, 'planMode and goal cannot be enabled together.'],
       [{ repoPath: '/repo', goal: true, prompt: 'Work', selection: { backend: 'antigravity' } }, 'This backend does not support goals.'],
     ] as const) {
       const result = await f.call(f.parent.id, 'create-agent', input);
@@ -127,6 +225,10 @@ describe('durable tasks through authenticated MCP and real provider adapters', (
     const count = f.snapshot.agents.length;
     const result = await f.call(f.parent.id, 'create-agent', { repoPath: '/repo', goal: true, prompt: 'Perform the assignment' });
     expect(result.structuredContent).toStrictEqual({ success: false, message: 'This backend does not support goals.' });
+    expect(f.snapshot.agents).toHaveLength(count);
+    vi.spyOn(f.codex.driver, 'getCapabilities').mockReturnValue({ ...f.codex.driver.getCapabilities(f.parent), planMode: 'unsupported' });
+    const planning = await f.call(f.parent.id, 'create-agent', { repoPath: '/repo', planMode: true, prompt: 'Plan the assignment' });
+    expect(planning.structuredContent).toStrictEqual({ success: false, message: 'This backend does not support Plan mode.' });
     expect(f.snapshot.agents).toHaveLength(count);
   });
 
@@ -255,7 +357,11 @@ describe('durable tasks through authenticated MCP and real provider adapters', (
       expect(f.snapshot.agents.find(agent => agent.id === task.workerAgentId)!.status.type).toBe('working');
     }
     expect((await f.store.loadTasks())[0]).toMatchObject({ state: outcome, submission });
-    if (outcome === 'completed') await vi.waitFor(() => expect(f.tasks.list(f.parent.id)[0]!.delivery?.state).toBe('accepted'));
+    if (outcome === 'completed') {
+      await vi.waitFor(() => expect(f.tasks.list(f.parent.id)[0]!.delivery?.state).toBe('accepted'));
+      // Startup mode belongs to the worker; result delivery must preserve the parent's own mode.
+      expect(f.codex.conversation('codex-parent').handle.sendMessage.mock.calls[0]![1]).not.toHaveProperty('planMode');
+    }
     else expect(f.tasks.list(f.parent.id)[0]!.delivery).toBeUndefined();
   });
 

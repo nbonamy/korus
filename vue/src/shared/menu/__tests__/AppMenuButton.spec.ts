@@ -1,6 +1,8 @@
-import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
+import { ElPopover } from 'element-plus';
+import { describe, expect, it, vi } from 'vitest';
 import AppMenuButton from '../AppMenuButton.vue';
+import AppMenu from '../AppMenu.vue';
 import type { AppMenuItem } from '../app-menu';
 
 const items: AppMenuItem[] = [
@@ -8,8 +10,10 @@ const items: AppMenuItem[] = [
   { id: 'b', type: 'radio', label: 'Second', checked: false },
 ];
 
-function mountButton(props: Record<string, unknown> = {}) {
+function mountButton(props: Record<string, unknown> = {}, native = false) {
   return mount(AppMenuButton, {
+    attachTo: native ? document.body : undefined,
+    global: { components: native ? { ElPopover } : {}, stubs: native ? { transition: false } : {} },
     props: { ariaLabel: 'Choices', items, ...props },
     slots: { trigger: '<template #trigger="{ attrs }"><button class="trigger" v-bind="attrs">Open</button></template>' },
   });
@@ -42,5 +46,19 @@ describe('AppMenuButton', () => {
     expect(body().querySelector('.app-menu')).not.toBeNull();
     await wrapper.setProps({ open: false });
     expect(body().querySelector('.app-menu')).toBeNull();
+  });
+
+  // A teleported popup can leave keyboard focus in hidden content on dismissal.
+  it.each(['choice', 'Escape'])('returns focus to its trigger after keyboard dismissal by %s', async dismissal => {
+    const wrapper = mountButton({}, true);
+    await wrapper.get('.trigger').trigger('click');
+    await flushPromises();
+    await vi.waitFor(() => expect(wrapper.findComponent(ElPopover).emitted('after-enter')).toHaveLength(1));
+    const row = wrapper.findComponent(AppMenu).get<HTMLButtonElement>('.app-menu__item').element;
+    row.focus();
+    expect(document.activeElement).toBe(row);
+    if (dismissal === 'choice') row.click();
+    else row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
+    await vi.waitFor(() => expect(document.activeElement).toBe(wrapper.get('.trigger').element));
   });
 });

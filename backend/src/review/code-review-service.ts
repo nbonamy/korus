@@ -1,6 +1,7 @@
 import { applyExecutionSelection, executionSelectionForAgent, resolveExecutionSelection } from '@workspace/core/execution-selection';
 import { randomUUID } from 'node:crypto';
 import { product } from '@workspace/core/product';
+import { agentDisplayName } from '@workspace/core/agent-display';
 import {
   activeCodeReviewRound,
   activeReviewForAgent,
@@ -77,7 +78,12 @@ export class CodeReviewService {
   private runReview(
     agent: Agent, prompt: string, url: string, reviewerSession?: BackendSession,
   ): Promise<BackendCodeReviewResult> {
-    const instructions = this.options.snapshot.general.codeReviewInstructions?.trim();
+    const general = this.options.snapshot.general;
+    const instructions = [
+      general.codeReviewInstructions?.trim(),
+      general.codeReviewDiscussWithOriginalThread && agent.codeReview?.threadMode === 'independent'
+        ? 'Review the findings with the original thread if you have access to it.' : undefined,
+    ].filter(Boolean).join('\n\n');
     if (instructions) {
       const context = instructions.replace(/<\/?context>/giu, tag => tag.replace('<', '&lt;'));
       prompt += `\n\n<context>\nUser's custom review instructions:\n${context}\n</context>`;
@@ -529,7 +535,8 @@ export class CodeReviewService {
         } else await this.assertReviewWorkspace(agent, session, true);
         if ((session.automation.state !== 'running' && session.automation.enabled) || agent.codeReview !== session) return;
       }
-      const result = await this.runReview(agent, reviewPrompt(session), context.url, initialReviewerSession);
+      const target = this.options.snapshot.agents.find(candidate => candidate.id === session.targetAgentId);
+      const result = await this.runReview(agent, reviewPrompt(session, target), context.url, initialReviewerSession);
       if (agent.codeReview !== session || round.status !== 'reviewing') {
         return;
       }
@@ -1051,9 +1058,12 @@ function reviewToolDiscoveryInstructions(): string {
   return `If ${product.mcpServerName} tools are deferred or listed without input schemas, use ToolSearch (or your provider's tool-discovery equivalent) to load the schemas for read-skill, report_finding, update_finding and finish_review_round before calling them. Never guess fields. Korus review rounds use report_finding; native ReportFindings has a different schema and does not save to the Korus ledger.`;
 }
 
-function reviewPrompt(session: CodeReviewSession): string {
+function reviewPrompt(session: CodeReviewSession, target?: Agent): string {
   const mcpServerName = product.mcpServerName;
   const ledger = codeReviewLedger(session);
+  const origin = session.threadMode === 'independent'
+    ? `Originating agent: ${JSON.stringify({ name: target ? agentDisplayName(target) : null, id: session.targetAgentId }).replace(/</gu, '\\u003c')}\n`
+    : '';
   const detailedScope = session.automation?.baseRef
     ? `all changes against the fixed baseline ${session.automation.baseRef}, including subsequent review commits and working changes (use git diff ${session.automation.baseRef} and inspect untracked files). Do not recalculate the baseline or review only the latest commit`
     : session.scope.type === 'branch'
@@ -1067,7 +1077,7 @@ function reviewPrompt(session: CodeReviewSession): string {
     ? `commit ${session.scope.sha}`
     : 'the current uncommitted changes';
   return `<context>
-${reviewToolDiscoveryInstructions()}
+${origin}${reviewToolDiscoveryInstructions()}
 Load korus-reviewer through read-skill before inspection. Cumulative review ledger:
 
 ${JSON.stringify(ledger, null, 2)}

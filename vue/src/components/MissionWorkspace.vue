@@ -11,8 +11,8 @@
         class="app-icon-button"
         type="button"
         :aria-label="t('surface.agentHeader.toggleRightWorkspace')"
-        :title="t(conversationOnly ? 'surface.agentHeader.closeRightWorkspace' : 'surface.agentHeader.openRightWorkspace')"
-        :aria-pressed="conversationOnly"
+        :title="t(workspacePreviewOpen || conversationOnly ? 'surface.agentHeader.closeRightWorkspace' : 'surface.agentHeader.openRightWorkspace')"
+        :aria-pressed="workspacePreviewOpen || conversationOnly"
         :disabled="!workspaceToggleAvailable"
         @click="emit('toggle-workspace')"
       >
@@ -65,6 +65,7 @@
           <MissionImplementationBoard
             v-if="viewedStage === 'implementation' && mission.artifacts.tickets.length"
             :agents="agents"
+            :active-agent-id="conversationAgentId"
             :mission="mission"
             :busy="busy"
             :read-only="debugFixture"
@@ -147,6 +148,7 @@
         v-model:selected-agent-id="conversationAgentId"
         :mission="mission"
         :agents="agents"
+        :repository-icons="repositoryIcons"
         :unread-agent-ids="unreadAgentIds"
         @open-conversation="emit('open-conversation', $event)"
       >
@@ -222,10 +224,12 @@ import type { MissionWorkspaceOpenRequest } from './MissionWorkspaceOpenIn.vue';
 
 const props = withDefaults(defineProps<{
   agents?: Agent[];
+  repositoryIcons?: Record<string, string>;
   unreadAgentIds?: string[];
   sidebarCollapsed?: boolean;
   conversationOnly?: boolean;
   workspaceToggleAvailable?: boolean;
+  workspacePreviewOpen?: boolean;
   executeMission?: (input: MissionExecutionInput) => Promise<void>;
   implementationStartProgress?: MissionImplementationStartProgress | null;
   mission: Mission;

@@ -200,7 +200,7 @@ describe('CodeReviewPanel', () => {
     await flushPromises();
     await body.findAll('[role="tab"]').find(tab => tab.find('[aria-label="Codex"]').exists())!.trigger('click');
     await flushPromises();
-    await body.findAll('[role="menuitemradio"]').find(item => item.text() === 'standard')!.trigger('click');
+    await body.get('button[aria-label="Service tier: Fast"]').trigger('click');
     await flushPromises();
     expect(wrapper.get('.backend-model-selector').text()).toContain('high');
     await wrapper.get('.code-review-panel__start').trigger('click');
@@ -307,8 +307,7 @@ describe('CodeReviewPanel', () => {
     await modelGroup.get('button[aria-label="Coding agent and model"]').trigger('click');
     await flushPromises();
     const modelMenu = new DOMWrapper(document.body);
-    expect(modelMenu.findAll('[role="menuitemradio"]').map(item => item.text())).toContain('fast');
-    await modelMenu.findAll('[role="menuitemradio"]').find(item => item.text() === 'fast')!.trigger('click');
+    await modelMenu.get('button[aria-label="Service tier: Standard"]').trigger('click');
     await flushPromises();
     await wrapper.findAll('button').find((button) => button.text().includes('Start review'))!.trigger('click');
     expect(actions.startReview).toHaveBeenCalledWith('owner', { scope: { type: 'uncommitted' }, threadMode: 'independent', automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false }, selection: { backend: 'codex', model: 'codex-model', reasoningEffort: 'high', serviceTier: 'fast' } });

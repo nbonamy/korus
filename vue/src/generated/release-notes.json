@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.47.0",
+  "currentVersion": "0.47.1",
   "releases": [
+    {
+      "version": "0.47.1",
+      "releasedAt": "2026-10-30",
+      "sourceSha256": "f0cc15775d5f37341febe330bafbe66ba23ea94d585dc06c381826b8f3e23dfd",
+      "markdown": "### New features\n\n- **Team-aware Quick Chats:** Ask about your team’s projects, with clarification\n  when several projects could match.\n- **Mobile code reviews:** Choose a reviewer and speed, inspect and discuss\n  findings, and run follow-up rounds on iOS and Android.\n- **Reviewer consultation:** Choose whether independent reviewers should discuss\n  findings with the original conversation in Settings → Workflows.\n\n### Improvements and fixes\n\n- Open Claude conversations faster, scroll back to messages from before\n  compaction, and expand each turn’s Working details on demand.\n- Keep historical Working details accessible and remove empty details toggles\n  when a turn has no Working content.\n- Choose normal, fast, or ultrafast processing from the model picker’s speed\n  control when supported by the provider, with clearer active-speed indicators.\n- Restore keyboard focus after selecting or dismissing nested menus."
+    },
     {
       "version": "0.47.0",
       "releasedAt": "2026-10-29",

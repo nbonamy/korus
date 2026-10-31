@@ -173,6 +173,7 @@ function expectedEmptySnapshot(): AppSnapshot {
       commitMessageInstructions: '',
       pullRequestInstructions: '',
       codeReviewInstructions: '',
+      codeReviewDiscussWithOriginalThread: false,
       missionInstructions: '',
       preventSleepWhenAgentsRun: true,
       preventSleepWhenRemoteAccessEnabled: true,

@@ -29,7 +29,7 @@ import type { RemoteCheckout } from './use-remote-target';
 export function useRepositorySession(options: {
   activeTeamId: () => string | undefined;
   assignWorkItem: (payload: { agentId: string; item: WorkItem; prompt?: string }) => Promise<void>;
-  createAgent: (input: CreateAgentInput) => Promise<Agent | null | void>;
+  createAgent: (input: CreateAgentInput, navigation?: { select?: boolean }) => Promise<Agent | null | void>;
   createIsolatedWorkItemAgent: (
     item: WorkItem,
     teamId: string,
@@ -340,13 +340,15 @@ export function useRepositorySession(options: {
     return options.suggestSourceWorktreePath({ ...input, ...(remoteConnectionId ? { remoteConnectionId } : {}) });
   }
 
-  async function createFromWorktree(worktree: SourceWorktree): Promise<void> {
+  async function createFromWorktree(worktree: SourceWorktree, navigation?: { select?: boolean }): Promise<void> {
     const nextSource = worktreeSource.value;
     closeWorktree();
     if (!nextSource) return;
     const { teamId, remoteConnectionId } = context(nextSource);
     try {
-      await options.createAgent({ name: null, folder: worktree.path, sourceRepositoryName: nextSource.repositoryName, ...(teamId ? { teamId } : {}), ...(remoteConnectionId ? { remoteConnectionId } : {}), selection: { backend: backend.value } });
+      const input = { name: null, folder: worktree.path, sourceRepositoryName: nextSource.repositoryName, ...(teamId ? { teamId } : {}), ...(remoteConnectionId ? { remoteConnectionId } : {}), selection: { backend: backend.value } };
+      if (navigation) await options.createAgent(input, navigation);
+      else await options.createAgent(input);
     } catch (caught) {
       options.notifyError(caught instanceof Error ? caught.message : String(caught));
     }

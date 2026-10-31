@@ -6,7 +6,7 @@ import type {
   RendererMessagePart,
 } from './contracts';
 
-type ClaudeTranscriptState = Pick<ClaudeConversationSnapshot, 'messages'>;
+type ClaudeTranscriptState = Pick<ClaudeConversationSnapshot, 'messages'> & Partial<Pick<ClaudeConversationSnapshot, 'turns'>>;
 
 export function appendSystemMessage(snapshot: ClaudeTranscriptState, agentId: string, text: string, createdAt = new Date().toISOString()): RendererMessage {
   const message: RendererMessage = {
@@ -154,7 +154,8 @@ export function pruneSupersededEmptyAssistantPlaceholders(snapshot: ClaudeTransc
 
   for (let index = lastAgentMessageIndex - 1; index >= 0; index -= 1) {
     const message = snapshot.messages[index];
-    if (message?.agentId === agentId && isPlainEmptyAssistantPlaceholder(message)) {
+    if (message?.agentId === agentId && isPlainEmptyAssistantPlaceholder(message)
+      && !snapshot.turns?.some(turn => turn.id === message.turnId && turn.itemsView === 'summary')) {
       snapshot.messages.splice(index, 1);
     }
   }

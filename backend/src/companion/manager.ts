@@ -1,3 +1,4 @@
+import { hostname } from 'node:os';
 import { GuestConversationGateway } from '../sharing/guest-gateway';
 import type { GuestConversationGrant } from '../sharing/conversation-shares';
 import type { ConversationShareRoute } from '@workspace/core/conversation-sharing';
@@ -5,6 +6,7 @@ import type { ShareRoutingStatus } from '@workspace/core/conversation-share-rela
 import { PromptRejectedError } from '../agents/prompt-rejected';
 import { product } from '@workspace/core/product';
 import { CompanionNotifications } from './notifications';
+import { CompanionLiveActivities, type SavedLiveActivities } from './live-activities';
 import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -26,14 +28,14 @@ import { warnMain } from '../log';
 import { systemHostName } from './host-name';
 import { setTimeout as delay } from 'node:timers/promises';
 import { storePromptUploads } from './uploads';
-import { readReviewSetup } from './review-setup';
+import { readReviewSetup, readReviewSession, actOnReview } from './review-setup';
 import { CompanionProjectAcquisition } from './project-acquisition';
 import { resolveRepositorySession } from '../projects/repository-session';
 import { supportsSubscriptionQuota } from '@workspace/core/agent-backends';
 import { readConversationImage } from './images';
 import { readConfiguredPairing } from './configured-pairing';
 
-type Saved = { v: 1; identity: string; enabled: boolean; relayOrigin: string; relayPeerId: string; gateway: GatewayState };
+type Saved = { v: 1; identity: string; enabled: boolean; relayOrigin: string; relayPeerId: string; gateway: GatewayState; activities?: SavedLiveActivities };
 const controlSchema = z.discriminatedUnion('action', [z.object({ action: z.literal('status') }).strict(),
   z.object({ action: z.literal('enable'), relayOrigin: z.string().max(500), relayPeerId: z.string().min(32).max(128) }).strict(),
   z.object({ action: z.literal('resume') }).strict(),
@@ -76,6 +78,10 @@ export class CompanionManager {
   private gateway!: CompanionGateway;
   private guestGateway?: GuestConversationGateway;
   private notifications?: CompanionNotifications;
+  private activities?: CompanionLiveActivities;
+  private activityTimer?: ReturnType<typeof setTimeout>;
+  private activityHeartbeat?: ReturnType<typeof setInterval>;
+  private activityRefreshedAt = 0;
   private notificationWork = Promise.resolve();
   private connector!: CompanionOutboundConnector;
   private writes = Promise.resolve();
@@ -138,6 +144,7 @@ export class CompanionManager {
   }
   private readonly eventListeners = new Set<(event: AppBackendEvent) => void>();
   event(event: AppBackendEvent) {
+    this.scheduleActivity();
     const notifications = this.notifications?.capture(event) ?? [];
     this.conversations.observe(event);
     for (const action of notifications) if (this.saved?.enabled) {
@@ -153,6 +160,14 @@ export class CompanionManager {
       }).catch(() => { warnMain('companion', 'notification delivery unavailable'); });
     }
     for (const listener of this.eventListeners) listener(event);
+  }
+  private scheduleActivity() {
+    if (!this.activities || !this.saved.enabled || this.activityTimer) return;
+    this.activityTimer = setTimeout(() => {
+      this.activityTimer = undefined; this.activityRefreshedAt = Date.now();
+      void this.activities?.refresh().catch(() => { warnMain('companion', 'Live Activity update unavailable'); });
+    }, Math.max(0, 15_000 - (Date.now() - this.activityRefreshedAt)));
+    this.activityTimer.unref();
   }
   private async desktopIsViewing(target: CompanionTarget): Promise<boolean> {
     try {
@@ -181,6 +196,7 @@ export class CompanionManager {
         case 'resume':
           await this.resume(); break;
         case 'disable':
+          for (const grant of this.gateway.grants) await this.activities?.register(grant.peerId, null);
           await this.persist((saved) => ({ ...saved, enabled: false })); this.connector.disablePhone();
           if (this.shareRoutes.some(route => this.matchesRelay(route))) await this.connector.advertise();
           else { await this.connector.stop(); this.transportRelay = ''; }
@@ -195,7 +211,7 @@ export class CompanionManager {
           }
           break;
         case 'decide': await this.gateway.decide(action.pendingId, action.approve); await this.connector.advertise(); break;
-        case 'revoke': await this.gateway.revoke(action.peerId); await this.connector.advertise(); break;
+        case 'revoke': await this.activities?.register(action.peerId, null); await this.gateway.revoke(action.peerId); await this.connector.advertise(); break;
       }
       return { status: this.status(), ...(invitation ? { invitation } : {}) };
     });
@@ -217,6 +233,7 @@ export class CompanionManager {
   }
   async stop() {
     await this.ready?.catch(() => {});
+    clearTimeout(this.activityTimer); clearInterval(this.activityHeartbeat);
     await this.connector?.stop(); this.transportRelay = '';
     this.guestGateway?.close();
     this.conversations.clear();
@@ -246,6 +263,7 @@ export class CompanionManager {
     const projects = new CompanionProjectAcquisition(this.backend);
     void systemHostName().then((name) => { this.hostName = name; }).catch(() => {});
     this.gateway = new CompanionGateway(peerIdFromPrivateKey(this.key).toString(), saved.gateway, {
+      registerLiveActivity: (peerId, registration) => this.activities!.register(peerId, registration),
       hostName: () => this.hostName,
       gitDiff: (agentId, target) => this.backend.request(backendMethods.agentGitDiffGet, { agentId, target, _clientId: 'companion-read' }),
       previewFile: (agentId, filePath) => this.backend.request(backendMethods.agentFilePreview, { agentId, filePath, _clientId: 'companion-read' }),
@@ -331,6 +349,8 @@ export class CompanionManager {
       setApprovalPreset: async (agentId, preset) => { await this.backend.request(backendMethods.agentApprovalPresetUpdate, { agentId, preset, _clientId: 'companion-write' }); },
       setPermissionMode: async (agentId, mode) => { await this.backend.request(backendMethods.agentPermissionModeUpdate, { agentId, mode, _clientId: 'companion-write' }); },
       startReview: async (agentId, input) => (await this.backend.request<CreatedAgentResult>(backendMethods.agentCodeReviewStart, { agentId, input, entityResult: true, _clientId: 'companion-write' })).agentId,
+      readReview: agentId => readReviewSession(this.backend, peerIdFromPrivateKey(this.key).toString(), agentId),
+      reviewAction: (agentId, input) => actOnReview(this.backend, agentId, input),
       reviewSetup: (agentId, backend) => readReviewSetup(this.backend, peerIdFromPrivateKey(this.key).toString(), agentId, backend),
       selectModel: async (agentId, selection) => { await this.backend.request(backendMethods.agentUpdate, { input: { id: agentId, selection }, _clientId: 'companion-write' }); },
       save: (gateway) => this.persist((saved) => ({ ...saved, gateway })),
@@ -354,6 +374,11 @@ export class CompanionManager {
       phoneEnabled: () => this.saved.enabled,
       sharing: { handles: () => this.shareRoutes.filter(route => this.matchesRelay(route)).map(route => route.handle), status: value => this.setShareStatus(value), ...(this.guestGateway ? { accept: (stream, peer) => this.guestGateway!.accept(stream, peer) } : {}) },
     });
+    this.activities = new CompanionLiveActivities({ hostId: this.gateway.hostId, hostName: hostname(), initial: saved.activities,
+      authorized: peerId => this.saved.enabled && this.gateway.grants.some(grant => grant.peerId === peerId),
+      workspace: () => this.workspace(), save: activities => this.persist(saved => ({ ...saved, activities })),
+      push: (peerId, registration, activity) => this.connector.liveActivity(peerId, registration, activity) });
+    this.activityHeartbeat = setInterval(() => this.scheduleActivity(), 30_000); this.activityHeartbeat.unref();
     await this.persist();
     const relay = this.relay;
     this.backend.onAccessChanged?.(saved.enabled && Boolean(relay));

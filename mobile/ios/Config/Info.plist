@@ -7,6 +7,10 @@
 	<!-- Encryption is supplied by Apple CryptoKit and operating-system networking. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>CFBundleURLTypes</key>
+	<array><dict><key>CFBundleURLSchemes</key><array><string>companion-activity</string></array></dict></array>
 	<key>UIBackgroundModes</key>
 	<array><string>remote-notification</string></array>
 	<key>UILaunchScreen</key>

@@ -3,6 +3,7 @@ import type { Agent } from '../contracts';
 import type { AppSnapshot } from '../contracts';
 import { companionWorkspaceOf, projectCompanionWorkspace } from '../companion-projection';
 import { projectWorkspaceSidebar } from '../workspace-sidebar';
+import { workActivityState } from '../companion-live-activity';
 
 const now = '2026-01-01T00:00:00Z';
 function agent(id: string, patch: Partial<Agent>): Agent {
@@ -16,6 +17,17 @@ const teams = [{ id: 'team', name: 'Korus', agentIds: [] }];
 const sidebar = (projected: ReturnType<typeof projectCompanionWorkspace>) => projectWorkspaceSidebar({ agents: projected.agents, activeAgentId: null, quickChatsLabel: 'Chats' });
 
 describe('companion workspace projection', () => {
+  it('exposes only the active-round count for visible reviewer conversations', () => {
+    const review: NonNullable<Agent['codeReview']> = { id: 'review', targetAgentId: 'target', reviewerAgentId: 'reviewer', scope: { type: 'uncommitted' }, threadMode: 'independent', status: 'ready', activeRoundId: 'round', createdAt: now, updatedAt: now,
+      rounds: [{ id: 'round', number: 1, status: 'ready', startedAt: now, findings: [{ id: 'f', roundId: 'round', title: 'Private finding', body: 'Details stay on demand', priority: 'p2', decision: { state: 'undecided' }, remediation: { state: 'notStarted' }, discussion: [], createdAt: now, updatedAt: now }] }] };
+    const agents = [agent('target', {}), agent('reviewer', { codeReview: review }), agent('outside', { teamId: 'other', codeReview: review })];
+    const read = () => projectCompanionWorkspace(companionWorkspaceOf({ teams, agents, general: {} as AppSnapshot['general'] }));
+    expect(read().reviewFindings).toStrictEqual({ reviewer: 1 });
+    expect(JSON.stringify(read())).not.toContain('Private finding');
+    review.activeRoundId = 'next'; review.rounds.push({ id: 'next', number: 2, status: 'reviewing', startedAt: now, findings: [] });
+    expect(read().reviewFindings).toStrictEqual({ reviewer: 0 });
+    review.status = 'finished'; expect(read().reviewFindings).toStrictEqual({});
+  });
   it('shares Git counts and desktop scopes without host paths or eager diff contents', () => {
     const summary = { changedFiles: 2, addedLines: 7, removedLines: 3 };
     const catalog = { defaultTarget: { type: 'uncommitted' as const }, uncommitted: summary, staged: summary,
@@ -46,10 +58,13 @@ describe('companion workspace projection', () => {
   it('includes pending requests only for agents visible to the phone', () => {
     const request = { id: 'approval', conversationId: 'thread', kind: 'approval' as const,
       approval: { id: 'approval', conversationId: 'thread', itemId: 'command', kind: 'command' as const, title: 'Run command', command: 'git status', allowedScopes: ['once' as const] } };
-    const workspace = companionWorkspaceOf({ teams, agents: [agent('keep', {}), agent('worker', {})],
+    const workspace = companionWorkspaceOf({ teams, agents: [agent('keep', { name: 'Mobile', status: { type: 'working' } }), agent('worker', {}),
+      agent('outside', { teamId: 'other', name: 'Outside phone scope', status: { type: 'working' } })],
       general: {} as AppSnapshot['general'], agentRequests: { keep: [request], worker: [request], missing: [request] },
       missions: [{ execution: { runs: [{ workerId: 'worker' }] } }] as unknown as AppSnapshot['missions'] });
     expect(projectCompanionWorkspace(workspace).agentRequests).toStrictEqual({ keep: [request] });
+    expect(workActivityState(workspace)).toStrictEqual({ active: 1, running: 1, attention: 1,
+      agents: [{ id: 'keep', name: 'Mobile', backend: 'codex', status: 'approval', detail: 'Needs your approval' }], more: 0 });
   });
 
   describe('missions', () => {

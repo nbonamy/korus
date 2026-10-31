@@ -382,6 +382,13 @@ close, duplicate or re-engine it; the laptop refuses those. Repository workers a
 the mission lead is selected independently from non-implementation stages. Host paths stay on the laptop. Mission actions are limited to continuing a completed implementation to review, accepting a ticket's run that awaits
 acceptance, and, during review, selecting an open finding, fixing the selected ones, reviewing again and accepting the submitted review after its findings are fixed or skipped. Acceptance uses the desktop operation; shipping remains desktop-owned.
 A review's findings cross with titles, explanations and locations trimmed to the last two path segments. Review readiness comes from the latest run's submitted result, independently of findings that arrive while it is running; missing readiness on an older daemon does not authorize remediation. Every action carries the mission revision the phone saw and is checked against the mission as it stands.
+Standalone code reviews use the desktop-owned review ledger and lifecycle. Phones read
+findings, discussion, decisions and remediation across rounds through a target-bound
+projection without reviewer provider sessions or absolute location paths. Mutations
+name the displayed review, active round and ledger revision; stale selections are
+refused. Only a ready, idle manual round accepts arbitration or remediation. An
+uncertain action requires a fresh status read before another submission. Review
+screens refresh while visible and foregrounded; they do not create a second ledger.
 Git status counts and available diff scopes cross as presentation metadata, without
 host paths or patch contents. Diffs are fetched through a target-bound, read-only
 gateway operation that uses the owning daemon’s Git service; the gateway rechecks
@@ -629,6 +636,38 @@ relay and expiration. The relay verifies this consent and a current paired route
 before contacting Apple. Global, host and token budgets bound delivery even when
 clients rotate identities; concurrent duplicate notifications share one send.
 Apple invalid-token responses remove only the registration that produced the failure.
+
+iOS Live Activities use ActivityKit and a WidgetKit extension, independently of alert
+notification permission. The selected laptop aggregates running agents and requests
+across teams, including Mission workers, without transporting conversation contents.
+The daemon owns the laptop name, distinct active-agent count and the start of each
+continuous work interval it observes. Token rotation preserves those elapsed-time
+anchors. At most two rows are projected: attention first, then active work, then
+recently completed work when space remains. Counts include all active agents;
+completed rows do not count as active. An all-idle workspace ends the activity.
+Native settings and the system's Live Activity authorization control participation.
+Switching laptops or opting out ends the activity and withdraws its registrations.
+Row links carry the host and agent identities. The native app defers navigation
+until its selected laptop connects; the engine resolves the current authorized
+workspace and rejects a missing agent or different laptop rather than redirecting
+to another conversation.
+
+ActivityKit push-to-start and activity-update tokens have separate, phone-signed
+consent bound to the paired host, relay, environment and activity instance. A dedicated
+relay protocol preserves ordinary notification requests and released clients. The
+daemon persists activity identity before starting it, coalesces workspace changes,
+and sends bounded APNs `liveactivity` payloads through the relay's existing Apple key.
+ActivityKit background wakes exchange rotated tokens over a short authenticated
+request without subscribing to conversations. Updates refresh stale dates; an idle
+workspace ends the activity. Disconnected hosts become visibly stale instead of
+claiming fresh status. APNs acceptance does not prove display or background wake;
+signed-device delivery must be checked separately from simulator lifecycle tests.
+A renewed start registration can replace an accepted start whose update token never
+arrived after its stale window; heartbeats never retry that start, and live or
+dismissed update-token instances are preserved.
+After an app build changes, the native client withdraws a saved registration if
+ActivityKit has no matching active instance, before requesting a fresh start.
+Ordinary relaunches preserve pending starts and existing activities.
 
 Attention alerts are suppressed when the desktop is focused on the exact active
 conversation, matched by host, location, team, agent and session. Other conversations

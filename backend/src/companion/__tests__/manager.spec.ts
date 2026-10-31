@@ -2,12 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, rm, writeFile, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-const transport = vi.hoisted(() => ({ start: vi.fn(async (..._args: unknown[]) => {}), stop: vi.fn(async () => {}), advertise: vi.fn(async () => true) }));
+const transport = vi.hoisted(() => ({ start: vi.fn(async (..._args: unknown[]) => {}), stop: vi.fn(async () => {}), advertise: vi.fn(async () => true), liveActivity: vi.fn(async (..._args: unknown[]) => 'sent' as const) }));
 vi.mock('../connector', () => ({ CompanionOutboundConnector: class {
   connected = false;
   async start(...args: unknown[]) { await transport.start(...args); this.connected = true; }
   async stop() { await transport.stop(); this.connected = false; }
   async advertise() { return transport.advertise(); }
+  liveActivity(...args: unknown[]) { return transport.liveActivity(...args); }
   revoke() {}
   disablePhone() {}
 } }));
@@ -24,6 +25,29 @@ async function fixture(onAccessChanged?: (enabled: boolean) => void) {
   return { directory, manager };
 }
 describe('daemon companion persistence', () => {
+  it('publishes authoritative aggregate counts after an event and removes activity registration when mobile access is disabled', async () => {
+    const { directory, manager } = await fixture(); await manager.control({ action: 'status' }); await manager.stop();
+    const file = path.join(directory, 'state.json'); const saved = JSON.parse(await readFile(file, 'utf8'));
+    saved.enabled = true;
+    saved.gateway.grants = [{ peerId: 'phone', name: 'Phone', createdAt: 1 }];
+    saved.activities = { phone: { start: { kind: 'start', token: 'ab'.repeat(32), environment: 'development' } } };
+    await writeFile(file, JSON.stringify(saved));
+    const snapshot = createTestSnapshot();
+    snapshot.agents = [{ id: 'working', teamId: 'team', name: 'Working', folder: null, backend: 'codex', status: { type: 'working' }, createdAt: '', updatedAt: '' }];
+    snapshot.teams = [{ id: 'team', name: 'Team', agentIds: ['working'] }];
+    const restored = new CompanionManager(directory, { request: async <T>() => ({ snapshot }) as T }, {});
+    try {
+      await restored.control({ action: 'status' });
+      restored.event({ type: 'agent.updated', seq: 1, occurredAt: new Date().toISOString(), agentId: 'working', payload: { id: 'working', status: { type: 'working' } } });
+      await vi.waitFor(() => expect(transport.liveActivity).toHaveBeenCalledWith('phone', saved.activities.phone.start,
+        expect.objectContaining({ event: 'start', state: { hostName: os.hostname(), active: 1, running: 1, attention: 0, agents: [{ id: 'working', name: 'Working', backend: 'codex', startedAt: expect.any(Number), status: 'working', detail: 'Working' }], more: 0 } })));
+      await restored.control({ action: 'disable' });
+      const disabled = JSON.parse(await readFile(file, 'utf8'));
+      expect(disabled.activities).toStrictEqual({});
+      expect(disabled.enabled).toBe(false);
+      expect(disabled.gateway.grants).toHaveLength(1);
+    } finally { await restored.stop(); }
+  });
   it('reuses the durable endpoint for sharing without enabling paired-phone access', async () => {
     const { directory, manager } = await fixture();
     const first = await manager.shareEndpoint();

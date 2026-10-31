@@ -47,13 +47,19 @@ describe('mission conversation tabs', () => {
     await wrapper.setProps({ selectedAgentId: 'web', mission: { ...shared, revision: shared.revision + 1 } });
     expect(wrapper.findAll('[role="tab"]')[2]!.attributes('aria-selected')).toBe('true');
     expect(wrapper.emitted('open-conversation')!.at(-1)).toStrictEqual(['web']);
+    wrapper.unmount();
+    const reopened = render([agent('lead'), agent('api'), agent('web')]);
+    expect(reopened.findAll('[role="tab"]')[2]!.attributes('aria-selected')).toBe('true');
+    await reopened.setProps({ agents: [agent('lead'), agent('api')] });
+    expect(reopened.findAll('[role="tab"]')[0]!.attributes('aria-selected')).toBe('true');
+    expect(reopened.emitted('open-conversation')!.at(-1)).toStrictEqual(['lead']);
   });
 
   it('puts a blue dot on a tab whose agent needs input and a red one on a tab with unread activity', () => {
     const wrapper = render([agent('lead'), agent('api', 'awaitingInput'), agent('web')], ['web']);
     expect(dots(wrapper)).toStrictEqual([null, 'needsInput', 'unread']);
     const tabs = wrapper.findAll('[role="tab"]');
-    expect(tabs.map(tab => tab.attributes('aria-label'))).toStrictEqual(['Mission lead', 'api, Awaiting input', 'web, Unread activity']);
+    expect(tabs.map(tab => tab.find('[aria-label]').attributes('aria-label'))).toStrictEqual(['Mission lead', 'api, Awaiting input', 'web, Unread activity']);
   });
 
   it('shows no dot on tabs that are read and not waiting', () => {

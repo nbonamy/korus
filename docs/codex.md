@@ -178,7 +178,12 @@ and exhaustive reads for handoffs and other backend consumers use SDK `readHisto
   selected model (`daemon` omits `settings.model`, uses the Plan preset's `medium`
   effort and `developer_instructions: null`). Because Codex persists the mode,
   leaving Plan mode must send `mode: "default"`; omitting it keeps the thread in
-  Plan.
+  Plan. Korus mode selections first await the SDK's persistent conversation
+  setting, then submit the prompt. This keeps the composer and restored settings
+  aligned with execution; the SDK's send option alone overrides only one turn.
+  Composer mode also follows the SDK snapshot and settings events so transport
+  recovery does not depend on a transient mode notification. Snapshots with an
+  unchanged mode preserve an unsent local mode selection.
 - **Plans:** `turn/plan/updated` is the structured execution plan (complete only when
   every step is, finalized as incomplete/interrupted/failed at `turn/completed`).
   `item/plan/delta` drafts a proposed plan (experimental); the completed `plan` item

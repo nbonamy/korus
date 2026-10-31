@@ -1,4 +1,4 @@
-import { flushPromises, mount } from '@vue/test-utils';
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot-construction';
 import { createMission } from '@workspace/core/missions';
@@ -111,8 +111,8 @@ describe('MissionShipBoard', () => {
     await wrapper.findAll('button').find(button => button.text() === 'Update from main')!.trigger('click');
     await flushPromises();
     expect(updateFromBase).toHaveBeenCalledExactlyOnceWith(agent.id, { confirmed: true });
-    expect(wrapper.text()).toContain('Agent resolving conflicts');
-    expect(wrapper.text()).toContain('Review the resolved changes before merging.');
+    expect(new DOMWrapper(document.body).text()).toContain('Agent resolving conflicts');
+    expect(new DOMWrapper(document.body).text()).toContain('Review the resolved changes before merging.');
     expect(mergeBranch).not.toHaveBeenCalled();
     expect(executeMission).not.toHaveBeenCalled();
   });

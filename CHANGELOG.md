@@ -4,6 +4,27 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.47.1] - 2026-10-30
+
+### New features
+
+- **Team-aware Quick Chats:** Ask about your team’s projects, with clarification
+  when several projects could match.
+- **Mobile code reviews:** Choose a reviewer and speed, inspect and discuss
+  findings, and run follow-up rounds on iOS and Android.
+- **Reviewer consultation:** Choose whether independent reviewers should discuss
+  findings with the original conversation in Settings → Workflows.
+
+### Improvements and fixes
+
+- Open Claude conversations faster, scroll back to messages from before
+  compaction, and expand each turn’s Working details on demand.
+- Keep historical Working details accessible and remove empty details toggles
+  when a turn has no Working content.
+- Choose normal, fast, or ultrafast processing from the model picker’s speed
+  control when supported by the provider, with clearer active-speed indicators.
+- Restore keyboard focus after selecting or dismissing nested menus.
+
 ## [0.47.0] - 2026-10-29
 
 ### New features

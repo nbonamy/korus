@@ -31,6 +31,8 @@ import { conversationImageReference } from './images';
 import { previewFile } from './file-preview';
 import { companionMaxDevices, companionMaxInvitations } from '@workspace/core/companion-relay';
 import { pushRegistrationSchema } from './push-registration';
+import { liveActivityRegistrationSchema } from './live-activity-schema';
+import type { LiveActivityRegistration } from '@workspace/core/companion-live-activity';
 
 /** Released phones used flat execution fields. Normalize only those known fields; strict schemas still reject everything else. */
 function legacySelection(value: unknown, keys: readonly string[]): unknown {
@@ -95,6 +97,7 @@ const commandSchema = z.object({ target: targetSchema, text: z.string().max(100_
 export type GatewayState = { push?: Record<string, CompanionPushRegistration>; grants: CompanionGrant[]; commands: Record<string, StoredCommand> };
 const commandRetentionMs = 7 * 86_400_000;
 export type GatewayPort = {
+  registerLiveActivity?(peerId: string, registration: LiveActivityRegistration | null): Promise<void>;
   createTeam?(name: string): Promise<string>;
   executeMission?(input: { id: string; revision: number } & ({ action: 'continueToReview' } | { action: 'accept'; runId: string }
     | { action: 'selectReviewFinding'; findingId: string; selected: boolean } | { action: 'fixSelectedReviewFindings' } | { action: 'rerunReview' })): Promise<void>;
@@ -140,6 +143,8 @@ export type GatewayPort = {
   setApprovalPreset(agentId: string, preset: string): Promise<void>;
   setPermissionMode(agentId: string, mode: string): Promise<void>;
   startReview(agentId: string, input: z.infer<typeof reviewSchema>['input']): Promise<string | void>;
+  readReview?(agentId: string): Promise<import('@workspace/core/companion-review').CompanionReviewDetails>;
+  reviewAction?(agentId: string, input: import('@workspace/core/companion-review').CompanionReviewAction): Promise<void>;
   reviewSetup?(agentId: string, backend?: AgentBackend): Promise<CompanionReviewSetup>;
   selectModel(agentId: string, selection: ExecutionSelection): Promise<void>;
   save(state: GatewayState): Promise<void>;
@@ -348,11 +353,30 @@ const agentOperations = {
     },
     read: {},
   }),
+  'agent.review.read': agentOperation(withTarget(z.object({}).strict()))({
+    act: async (port, agent) => {
+      if (!port.readReview) throw new Error('Review details unavailable.');
+      return port.readReview(agent.id);
+    }, read: {},
+  }),
+  'agent.review.action': agentOperation(withTarget(z.object({ input: z.intersection(
+    z.object({ sessionId: z.string().min(1).max(200), roundId: z.string().min(1).max(200), updatedAt: z.string().max(200) }),
+    z.discriminatedUnion('action', [
+      z.object({ action: z.literal('decide'), findingId: z.string().min(1).max(200), selected: z.boolean() }),
+      z.object({ action: z.literal('discuss'), findingId: z.string().min(1).max(200), question: z.string().trim().min(1).max(20_000) }),
+      ...(['submit', 'again', 'finish', 'manual', 'discard'] as const).map(action => z.object({ action: z.literal(action) })),
+    ]),
+  ) }).strict()))({
+    act: async (port, agent, { input }) => {
+      if (!port.reviewAction) throw new Error('Review actions unavailable.');
+      await port.reviewAction(agent.id, input); return {};
+    },
+  }),
   'agent.review.start': agentOperation((args) => reviewSchema.parse(args))({
     act: async (port, agent, input) => ({ reviewerAgentId: await port.startReview(agent.id, input) ?? null }),
   }),
 } satisfies Record<string, AgentOperation<unknown, unknown>>;
-for (const method of ['agent.backend.set', 'agent.rename', 'agent.duplicate', 'agent.restart', 'agent.close.preview', 'agent.close', 'agent.review.setup', 'agent.review.start'] as const) agentOperations[method].structural = true;
+for (const method of ['agent.backend.set', 'agent.rename', 'agent.duplicate', 'agent.restart', 'agent.close.preview', 'agent.close', 'agent.review.setup', 'agent.review.start', 'agent.review.read', 'agent.review.action'] as const) agentOperations[method].structural = true;
 export const companionAgentMethods = Object.keys(agentOperations);
 type Peer = { peerId: string; grant: CompanionGrant };
 type Operation = (peer: Peer, args: unknown) => Promise<unknown>;
@@ -565,6 +589,14 @@ export class CompanionGateway {
       const usage = await this.port.usage();
       this.requireGrant(peer);
       return usage;
+    },
+    'liveActivity.register': async (peer, args) => {
+      const registration = liveActivityRegistrationSchema.nullable().parse(args);
+      this.requireGrant(peer);
+      if (!this.port.registerLiveActivity) throw new Error('Live Activities are unavailable.');
+      await this.port.registerLiveActivity(peer.peerId, registration);
+      this.requireGrant(peer);
+      return {};
     },
     'notifications.register': async (peer, args) => {
       const registration = pushRegistrationSchema.nullable().parse(args);

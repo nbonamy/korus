@@ -14,7 +14,8 @@ internal data class ReviewChoices(
         val selected = setup.items("models").firstOrNull { it.string("id") == saved.string("model") }
         return copy(scope = if (initial) if (setup.optBoolean("uncommitted")) "uncommitted" else "branch" else scope,
             backend = provider, model = selected?.string("id").orEmpty(),
-            effort = selected?.strings("efforts")?.firstOrNull { it == saved.string("reasoningEffort") }.orEmpty(), serviceTier = saved.string("serviceTier").takeIf { it.isNotBlank() })
+            effort = selected?.strings("efforts")?.firstOrNull { it == saved.string("reasoningEffort") }.orEmpty(),
+            serviceTier = saved.string("serviceTier").takeIf { it.isNotBlank() && selected != null && (!selected.has("tiers") || selected.items("tiers").any { tier -> tier.string("id") == it }) })
     }
     fun input(setup: JSONObject): JSONObject? {
         if (setup.optBoolean("activeReview") || setup.string("backend") != backend ||
@@ -26,7 +27,8 @@ internal data class ReviewChoices(
             "threadMode" to thread,
             "automation" to json("enabled" to automatic, "maxPriority" to priority, "maxRounds" to rounds.coerceIn(1, 10), "autoCommit" to (automatic && autoCommit))).apply {
             if (thread == "independent") {
-                put("selection", ExecutionSelection(backend, selected?.string("id"), effort.takeIf { selected?.strings("efforts")?.contains(it) == true }, serviceTier).toJson())
+                put("selection", ExecutionSelection(backend, selected?.string("id"), effort.takeIf { selected?.strings("efforts")?.contains(it) == true },
+                    serviceTier?.takeIf { selected != null && (!selected.has("tiers") || selected.items("tiers").any { tier -> tier.string("id") == it }) }).toJson())
             }
             instructions.trim().takeIf { it.isNotEmpty() }?.let { put("instructions", it) }
         }

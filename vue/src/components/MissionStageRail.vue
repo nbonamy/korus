@@ -1,7 +1,7 @@
 <template>
   <aside class="mission-stage-rail" :aria-label="t('missions.progress')">
     <div class="mission-stage-rail__heading">
-      <TargetArrowIcon aria-hidden="true" />
+      <ListIcon aria-hidden="true" />
       <strong>{{ t('missions.process') }}</strong>
     </div>
     <ol class="mission-stage-rail__stages">
@@ -40,7 +40,7 @@ import { useI18n } from 'vue-i18n';
 import type { Mission, MissionStage } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
 import { pendingMissionRun } from '@workspace/core/mission-execution';
-import { CheckIcon, TargetArrowIcon } from '../shared/icons/app-icons';
+import { CheckIcon, ListIcon } from '../shared/icons/app-icons';
 
 const props = defineProps<{ mission: Mission; viewedStage: MissionStage }>();
 const emit = defineEmits<{ 'view-stage': [stage: MissionStage] }>();

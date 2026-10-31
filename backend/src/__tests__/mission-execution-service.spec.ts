@@ -1053,7 +1053,9 @@ describe('mission execution', () => {
   });
 
   it('prepares an isolated mission worker without starting its provider conversation', async () => {
-    const h = setup(); await h.configure();
+    const h = setup();
+    h.snapshot.agents[0]!.name = h.originalAgents[0]!.name = 'Agent · Previous Mission · implementation';
+    await h.configure();
     h.snapshot.general.useInteractivePlans = false;
     await h.command({ action: 'run' }); await h.service.waitForLaunches();
     const mission = h.current(); const run = mission.execution!.runs[0]!;
@@ -1061,7 +1063,7 @@ describe('mission execution', () => {
     expect(h.ports.createWorktree).not.toHaveBeenCalled();
     expect(h.snapshot.agents.slice(0, 2)).toStrictEqual(h.originalAgents);
     const worker = h.snapshot.agents.find(agent => agent.id === run.workerId)!;
-    expect(worker).toMatchObject({ folder: '/app/missions/mission', backend: h.originalAgents[0]!.backend, status: { type: 'idle' } });
+    expect(worker).toMatchObject({ name: 'Mission lead · Team billing', folder: '/app/missions/mission', backend: h.originalAgents[0]!.backend, status: { type: 'idle' } });
     expect(worker).not.toHaveProperty('backendSession');
     expect(run.skills).toStrictEqual([{ name: 'mission-shape-requirements' }]);
     const instructions = h.service.developerInstructionsForAgent(run.workerId!);

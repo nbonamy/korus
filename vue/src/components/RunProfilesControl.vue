@@ -4,6 +4,7 @@
       <template #trigger="{ attrs }"><button v-bind="attrs" class="run-profiles-control__trigger" type="button" :aria-label="$t('runProfiles.title')" :title="$t('runProfiles.title')"><PlayerPlayIcon aria-hidden="true" /></button></template>
     </AppMenuButton>
   </div>
+  <Teleport to="body">
   <RunProfileImport v-if="managing" :agent-id="agent.id" :profiles="catalog?.profiles ?? []" :running-profile-ids="catalog?.runs.filter(run => run.state === 'running').map(run => run.profileId) ?? []" @change="adopt" @done="closeManager" />
   <FormDialog v-if="selection" :model-value="true" :title="selection.profile.name" :subtitle="`${hostLabel} · ${latestRun?.state === 'running' ? latestRun.cwd : selection.cwd ?? selection.profile.directory}`" width="600px" @update:model-value="closeRunner">
     <div class="command-runner">
@@ -23,6 +24,7 @@
       <button v-else class="app-button app-button--primary" :disabled="busy || !selection.cwd || Boolean(targetError)" @click="start"><PlayerPlayIcon :size="16" aria-hidden="true" />{{ $t('runProfiles.runCommand') }}</button>
     </template>
   </FormDialog>
+  </Teleport>
 </template>
 
 <script setup lang="ts">

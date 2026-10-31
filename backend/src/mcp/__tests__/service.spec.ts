@@ -1,5 +1,8 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { AgentGitService } from '../../git/agent-git-service';
 import path from 'node:path';
 import { DocumentWorkspaceService } from '../../document-workspace-service';
 import { product } from '@workspace/core/product';
@@ -9,6 +12,7 @@ import type { AgentBackendDriver, BackendEvent } from '@workspace/core/backend-d
 import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type { Agent, AppSnapshot, BackendPublishedEvent } from '@workspace/core/contracts';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
+import { createMission } from '@workspace/core/missions';
 import { createQuickChatInSnapshot } from '@workspace/core/agent-manager';
 import { projectWorkspaceSidebar } from '@workspace/core/workspace-sidebar';
 import { BackendDriverRpc } from '../../driver-rpc';
@@ -404,46 +408,78 @@ describe('AppMcpService', () => {
     expect(parent.userDelegationOverrides).toBeUndefined();
   });
 
-  it.each(['work_proposed', 'delegate_to_worktree'])('finishes turns with %s by clearing status and replacing the proposal in one update', async (flag) => {
+  it('filters work proposals against the current Git branch while finishing the turn normally', async () => {
+    const flag = 'work_proposed';
+    const folder = await mkdtemp(path.join(os.tmpdir(), 'mcp-work-proposal-'));
+    const run = (args: string[]) => promisify(execFile)('git', args, { cwd: folder });
+    await run(['init', '--initial-branch=trunk']);
+    await run(['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'fixture']);
+    await run(['update-ref', 'refs/remotes/origin/trunk', 'HEAD']);
+    await run(['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk']);
+    const git = new AgentGitService();
     const snapshot = createInitialSnapshot();
+    snapshot.agents[0]!.folder = folder;
     snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
     const events: any[] = [];
-    service = new AppMcpService({ snapshot, onEvent: (event) => events.push(event) });
-    const url = await service.start();
+    service = new AppMcpService({ snapshot, resolveWorkspaceIdentity: folder => git.identity(folder), onEvent: (event) => events.push(event) });
+    try {
+      const url = await service.start();
+      const removedAlias = await callTool(url, 'agent-dina', 'finish_turn', { flag: 'delegate_to_worktree' });
+      expect(removedAlias.result.isError).toBe(true);
 
-    await callTool(url, 'agent-dina', 'set-status', { status: 'Considering delegation' });
-    const delegated = await callTool(url, 'agent-dina', 'finish_turn', {
-      flag,
-    });
-    expect(delegated.result.structuredContent).toStrictEqual({
-      success: true, status: null, flag: 'work_proposed',
-    });
-    expect(snapshot.agents[0]!.statusText).toBeUndefined();
-    expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
-    expect(events.at(-1)).toEqual(expect.objectContaining({
-      type: 'agent.updated',
-      payload: expect.objectContaining({
-        statusText: null,
-        threadFlags: { work_proposed: true },
-      }),
-    }));
+      await callTool(url, 'agent-dina', 'set-status', { status: 'Considering delegation' });
+      const delegated = await callTool(url, 'agent-dina', 'finish_turn', {
+        flag,
+      });
+      expect(delegated.result.structuredContent).toStrictEqual({
+        success: true, status: null, flag: 'work_proposed',
+      });
+      expect(snapshot.agents[0]!.statusText).toBeUndefined();
+      expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
+      expect(events.at(-1)).toEqual(expect.objectContaining({
+        type: 'agent.updated',
+        payload: expect.objectContaining({
+          statusText: null,
+          threadFlags: { work_proposed: true },
+        }),
+      }));
 
-    await callTool(url, 'agent-dina', 'set-status', { status: 'Implementing here' });
-    expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
+      await callTool(url, 'agent-dina', 'set-status', { status: 'Implementing here' });
+      expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
 
-    const plain = await callTool(url, 'agent-dina', 'finish_turn', {});
-    expect(plain.result.structuredContent).toStrictEqual({
-      success: true, status: null,
-    });
-    expect(snapshot.agents[0]!.statusText).toBeUndefined();
-    expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
-    expect(events.at(-1)).toEqual(expect.objectContaining({
-      type: 'agent.updated',
-      payload: expect.objectContaining({
-        statusText: null,
-        threadFlags: { work_proposed: true },
-      }),
-    }));
+      const plain = await callTool(url, 'agent-dina', 'finish_turn', {});
+      expect(plain.result.structuredContent).toStrictEqual({
+        success: true, status: null,
+      });
+      expect(snapshot.agents[0]!.statusText).toBeUndefined();
+      expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
+      expect(events.at(-1)).toEqual(expect.objectContaining({
+        type: 'agent.updated',
+        payload: expect.objectContaining({
+          statusText: null,
+          threadFlags: { work_proposed: true },
+        }),
+      }));
+      snapshot.agents[0]!.threadFlags = undefined;
+      await run(['switch', '-c', 'feature/discussion']);
+      const filtered = await callTool(url, 'agent-dina', 'finish_turn', { flag, suggestedPrompt: 'Keep investigating' });
+      expect(filtered.result.structuredContent).toStrictEqual({ success: true, status: null });
+      expect(snapshot.agents[0]!.threadFlags).toBeUndefined();
+      expect(snapshot.agents[0]!.suggestedPrompt).toBe('Keep investigating');
+      expect(events.at(-1)).toMatchObject({ type: 'agent.updated', payload: { threadFlags: null, statusText: null } });
+      await callTool(url, 'agent-dina', 'finish_turn', { flag: 'ready_for_review' });
+      expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ ready_for_review: true });
+      await run(['checkout', '--detach']);
+      await callTool(url, 'agent-dina', 'finish_turn', { flag });
+      expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ ready_for_review: true });
+      snapshot.agents[0]!.folder = os.tmpdir();
+      await callTool(url, 'agent-dina', 'finish_turn', { flag });
+      expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ ready_for_review: true });
+      snapshot.agents[0]!.folder = folder;
+      await run(['switch', 'trunk']);
+      await callTool(url, 'agent-dina', 'finish_turn', { flag });
+      expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
+    } finally { await service?.stop(); await rm(folder, { recursive: true, force: true }); }
   });
 
   it('publishes a caller-scoped prompt suggestion and explicitly clears it when omitted', async () => {
@@ -1107,11 +1143,15 @@ describe('AppMcpService', () => {
     } finally { await rm(home, { recursive: true, force: true }); }
   });
 
-  it('still displays markdown when document retention fails', async () => {
+  it('requests Mission document presentation without claiming it opened, even when retention fails', async () => {
     const events: BackendEvent[] = [];
-    service = new AppMcpService({ snapshot: createInitialSnapshot(), retainDocument: async () => { throw new Error('store is corrupt'); }, onEvent: event => events.push(event) });
+    const snapshot = createInitialSnapshot();
+    const mission = createMission(snapshot, { outcome: 'Review documents', workflowType: 'shapeAndShipFeature', teamId: snapshot.agents[0]!.teamId, orchestratorMemberId: 'agent-dina' });
+    mission.stageAgentIds = { requirements: 'agent-dina' };
+    service = new AppMcpService({ snapshot, retainDocument: async () => { throw new Error('store is corrupt'); }, onEvent: event => events.push(event) });
     const url = await service.start();
-    await callTool(url, 'agent-dina', 'display-markdown', { markdown: '# Still shown\n', title: 'Proposal' });
+    const response = await callTool(url, 'agent-dina', 'display-markdown', { markdown: '# Still shown\n', title: 'Proposal' });
+    expect(response.result.structuredContent).toStrictEqual({ success: true, title: 'Proposal', message: 'Requested opening Markdown in the Mission. The user can open or dismiss the request.' });
     expect(events.find(event => event.type === 'client.markdownDisplayRequested')).toMatchObject({ payload: { kind: 'markdown', title: 'Proposal', content: '# Still shown\n' } });
   });
 
@@ -1307,7 +1347,7 @@ describe('AppMcpService', () => {
         },
       }),
       expect.stringContaining(expectedPrompt.split("</context>\n\n").at(-1)!),
-      undefined,
+      { planMode: false },
     );
     expect(response.result.structuredContent).toMatchObject({
       success: true,
@@ -1500,7 +1540,7 @@ describe('AppMcpService', () => {
     expect(response.result.structuredContent).toMatchObject({ success: true, promptSubmitted: true });
     const child = snapshot.agents.find(agent => agent.name === 'ACP worker')!;
     expect(child).toMatchObject({ backend: 'antigravity', delegatedByAgentId: parent.id, backendDefaults: { kind: 'antigravity', model: 'gemini-low' }, backendSession: { kind: 'antigravity', sessionId: 'child-session' } });
-    expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: child.id }), expect.stringContaining('Keep commits local'), undefined);
+    expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: child.id }), expect.stringContaining('Keep commits local'), { planMode: false });
     expect(parent.backendSession).toEqual({ kind: 'antigravity', sessionId: 'parent-session' });
     expect(snapshot.activeAgentId).toBe(parent.id);
   });

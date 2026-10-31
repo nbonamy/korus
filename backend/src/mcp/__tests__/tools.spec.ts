@@ -135,6 +135,7 @@ describe(`${product.name} MCP tool registration`, () => {
       'destinationPath',
       'prompt',
       'goal',
+      'planMode',
       'startingContext',
       'instructions',
     ]);

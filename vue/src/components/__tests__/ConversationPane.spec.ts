@@ -23,6 +23,7 @@ import { createAgentComposerState } from '../../agent-composer-state';
 import type { AgentConversationView } from '../../app-state';
 import { agentConversationState } from '../use-agent-conversation';
 import { claudeConversationSnapshot } from '../../test/claude-conversation-fixtures';
+import { translate } from '../../i18n';
 
 const agent: Agent = {
   id: 'agent-dina',
@@ -268,7 +269,7 @@ describe('ConversationPane', () => {
     expect(getComputedStyle(pane.element).overflow).toBe('hidden');
   });
 
-  it('shows background worktree setup beside the live conversation until it finishes, and retains failures', async () => {
+  it('shows background worktree setup and lets users dismiss status without cancelling setup or hiding later failures', async () => {
     vi.useFakeTimers();
     const wrapper = mountPane({ controller: controllerFor(messages), agent: { ...agent, worktreeInitialization: { state: 'running', command: 'npm ci' } } });
     try {
@@ -292,6 +293,18 @@ describe('ConversationPane', () => {
       await wrapper.setProps({ agent: { ...agent, worktreeInitialization: { state: 'error', command: 'npm ci', error: 'Installation failed' } } });
       expect(status().text()).toContain('Installation failed');
       expect(status().find('.app-spinner').exists()).toBe(false);
+      await status().get('button[aria-label="Close"]').trigger('click');
+      expect(status().exists()).toBe(false);
+      expect(wrapper.props('agent')?.worktreeInitialization).toStrictEqual({ state: 'error', command: 'npm ci', error: 'Installation failed' });
+      await wrapper.setProps({ agent: { ...agent, name: 'Renamed', worktreeInitialization: { state: 'error', command: 'npm ci', error: 'Installation failed' } } });
+      expect(status().exists()).toBe(false);
+      await wrapper.setProps({ agent: { ...agent, worktreeInitialization: { state: 'running', command: 'npm ci' } } });
+      expect(status().find('.app-spinner').exists()).toBe(true);
+      await status().get('button[aria-label="Close"]').trigger('click');
+      await wrapper.setProps({ agent: { ...agent, worktreeInitialization: { state: 'running', command: 'npm run build' } } });
+      expect(status().exists()).toBe(false);
+      await wrapper.setProps({ agent: { ...agent, worktreeInitialization: { state: 'error', command: 'npm run build', error: 'Build failed' } } });
+      expect(status().text()).toContain('Build failed');
     } finally { wrapper.unmount(); vi.useRealTimers(); }
   });
 
@@ -550,9 +563,10 @@ describe('ConversationPane', () => {
     expect(wrapper.emitted('remove-review-finding')).toStrictEqual([[]]);
   });
 
-  it.each(['work_proposed', 'delegate_to_worktree'] as const)('renders %s as one proposal with four composer actions', async (id) => {
+  it('renders a work proposal with four composer actions', async () => {
+    const id = 'work_proposed';
     const wrapper = mountPane({ controller: controllerFor(messages), agent });
-    await wrapper.setProps({ agent: { ...agent, threadFlags: { [id]: true, work_proposed: true } } });
+    await wrapper.setProps({ agent: { ...agent, threadFlags: { [id]: true } } });
     expect(wrapper.findAll('.thread-flag-affordance')).toHaveLength(1);
     expect(wrapper.get('.codex-conversation-pane__composer-shelf .thread-flag-affordance').text()).toContain('Turn this into work?');
     for (const label of ['Implement', 'Delegate', 'Mission']) {
@@ -657,7 +671,8 @@ describe('ConversationPane', () => {
     expect(wrapper.findAll('.chat-work-group')).toHaveLength(1);
   });
 
-  it('welcomes an empty unnamed quick chat without repeating its placeholder title', () => {
+  // Empty Quick Chats must explain their team scope without promising shared conversation memory.
+  it('welcomes a Quick Chat and explains its context before the first message', async () => {
     const wrapper = mountPane({
       controller: controllerFor([]),
       agent: {
@@ -671,6 +686,9 @@ describe('ConversationPane', () => {
 
     expect(wrapper.text()).toContain('What can I help with?');
     expect(wrapper.text()).not.toContain('Chat with Untitled conversation');
+    expect(wrapper.get('.conversation-pane__empty p').text()).toBe(translate('chat.quickChatContext'));
+    await wrapper.setProps({ agent: { ...agent, sessionKind: 'quickChat', folder: null, sharedConversation: { joinId: 'shared' } } });
+    expect(wrapper.find('.conversation-pane__empty p').exists()).toBe(false);
   });
 
   it('renders an app-owned empty state without exposing the worker folder', () => {

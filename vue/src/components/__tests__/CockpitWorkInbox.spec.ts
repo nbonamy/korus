@@ -365,7 +365,9 @@ describe('CockpitWorkInbox', () => {
     await flushPromises();
     await wrapper.get('[aria-label="Coding agent and model"]').trigger('click');
     await flushPromises();
-    [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(row => row.textContent?.trim() === 'ultrafast')!.click();
+    document.querySelector<HTMLButtonElement>('button[aria-label="Service tier: Standard"]')!.click();
+    await flushPromises();
+    [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(row => row.textContent?.trim() === 'Ultrafast')!.click();
     await flushPromises();
     await wrapper.findAll('.app-dialog__footer button').find((button) => button.text() === 'Investigate')?.trigger('click');
     expect(startWorkAction).toHaveBeenCalledWith(expect.objectContaining({ action: 'investigate', items: [second], selection: expect.objectContaining({ model: 'gpt-fast', serviceTier: 'ultrafast' }) }));

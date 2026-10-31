@@ -24,7 +24,7 @@ class ReviewWorkflowTest {
         "target" to target(host).toJson(), "branch" to "feature/native", "baseRef" to "main", "uncommitted" to changes,
         "branchChanges" to changes, "currentThread" to current, "activeReview" to active, "reviewerAgentId" to if (active) "reviewer" else null,
         "agentBackend" to "codex", "backend" to backend, "backends" to JSONArray(listOf("codex", "claude")),
-        "models" to JSONArray().put(json("id" to "$backend-review", "name" to "Review model", "efforts" to JSONArray(listOf("high", "low")))),
+        "models" to JSONArray().put(json("id" to "$backend-review", "name" to "Review model", "efforts" to JSONArray(listOf("high", "low")), "tiers" to JSONArray().put(json("id" to "fast", "name" to "Fast")))),
         "preferences" to json("providers" to json(backend to json("model" to "$backend-review", "reasoningEffort" to "high"))))
     private fun state(status: String = "ready", setup: JSONObject? = setup(), host: String = "host", connected: Boolean = true) = json(
         "startup" to "ready", "conversationReady" to true, "connection" to if (connected) "connected" else "reconnecting", "agentId" to "agent", "composerTarget" to target(host).toJson(),
@@ -53,6 +53,54 @@ class ReviewWorkflowTest {
         else -> value
     }
 
+    @Test fun findingsCanBeReadSelectedRemediatedAndReviewedAgain() {
+        NativeEngineFixture(app.activityRule.scenario).use { engine ->
+            app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }
+            val finding = json("id" to "finding", "roundId" to "round", "priority" to "p1", "title" to "Preserve the draft",
+                "body" to "A reconnect must keep the unfinished message.", "decision" to json("state" to "undecided"),
+                "remediation" to json("state" to "notStarted"), "discussion" to JSONArray())
+            val round = json("id" to "round", "number" to 1, "status" to "reviewing", "findings" to JSONArray().put(finding))
+            val session = json("id" to "review", "activeRoundId" to "round", "updatedAt" to "v1", "status" to "reviewing", "busy" to false,
+                "targetAgentId" to "agent", "reviewerAgentId" to "reviewer", "rounds" to JSONArray().put(round))
+            fun update(action: String = "idle", connected: Boolean = true) {
+                val next = state(setup = setup(active = true), connected = connected).put("reviewFindingsCount", 1)
+                next.obj("review").put("details", json("target" to target().toJson(), "session" to session)).put("action", action)
+                engine.state(next)
+            }
+            update(); mount(engine)
+            app.onNodeWithText("Review findings · 1").assertIsDisplayed().performClick()
+            app.onNodeWithText("Review Changes").assertIsDisplayed()
+            app.onNodeWithText("Preserve the draft").performClick()
+            app.onNodeWithText("A reconnect must keep the unfinished message.").assertIsDisplayed()
+            app.onNodeWithContentDescription("Select Preserve the draft").assertIsNotEnabled()
+            session.put("status", "ready"); round.put("status", "ready"); update()
+            app.onNodeWithContentDescription("Select Preserve the draft").performClick()
+            assertEquals("decide", engine.commands().last { it.string("type") == "reviewAction" }.obj("input").string("action"))
+            finding.put("decision", json("state" to "rejected")); update()
+            app.onNodeWithText("Complete round").performClick()
+            app.onNodeWithText("Complete round", useUnmergedTree = true).assertExists()
+            app.onNodeWithText("Confirm").performClick()
+            assertEquals("submit", engine.commands().last { it.string("type") == "reviewAction" }.obj("input").string("action"))
+            update("unknown")
+            app.onNodeWithText("Refresh status").assertIsDisplayed().performClick()
+            assertEquals("loadReviewDetails", engine.commands().last().string("type"))
+            session.put("status", "readyToFinish"); round.put("status", "completed"); finding.put("remediation", json("state" to "skipped")); update()
+            app.onNodeWithText("Review again").performClick()
+            // A desktop update while the confirmation is open must not authorize a newer revision.
+            session.put("updatedAt", "v2"); update()
+            app.onNodeWithText("Confirm").performClick()
+            val input = engine.commands().last { it.string("type") == "reviewAction" }.obj("input")
+            assertEquals(tree(json("sessionId" to "review", "roundId" to "round", "updatedAt" to "v1", "action" to "again")), tree(input))
+            val next = state(setup = setup(active = true))
+            next.put("composerTarget", ConversationTarget("host", "local", "team", "agent", "next-session").toJson())
+            next.obj("review").put("details", json("target" to next.obj("composerTarget"), "session" to session)).put("action", "idle")
+            engine.state(next)
+            app.onNodeWithText("Finish review").assertIsDisplayed()
+            next.put("connection", "reconnecting"); engine.state(next)
+            app.onNodeWithText("Finish review").assertIsNotEnabled()
+        }
+    }
+
     @Test fun reviewFormPreservesDraftAndRequiresExplicitAutomationAndCommitConsent() {
         NativeEngineFixture(app.activityRule.scenario).use { engine ->
             app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }
@@ -69,6 +117,8 @@ class ReviewWorkflowTest {
             assertTrue(engine.commands().none { it.string("type") == "read" })
             assertEquals(1, engine.commands().count { it.string("type") == "loadReview" })
             assertTrue(engine.commands().none { it.string("type") == "review" })
+            reveal(hasContentDescription("Reviewer service tier")).performClick()
+            app.onNodeWithText("Fast").performClick()
             app.onNodeWithText("Uncommitted Changes").assertIsSelected()
             reveal(hasText("Current Branch")).performClick()
             reveal(hasText("Current Conversation")).performClick()
@@ -92,7 +142,7 @@ class ReviewWorkflowTest {
             reveal(hasContentDescription("Increase maximum rounds")).performClick()
             app.onNodeWithText("Start Review").performClick()
             assertEquals(tree(json("type" to "review", "target" to target().toJson(), "input" to json(
-                "scope" to json("type" to "branch", "baseRef" to "main"), "threadMode" to "independent", "selection" to json("backend" to "codex", "model" to "codex-review", "reasoningEffort" to "high", "serviceTier" to null), "instructions" to "Check retries",
+                "scope" to json("type" to "branch", "baseRef" to "main"), "threadMode" to "independent", "selection" to json("backend" to "codex", "model" to "codex-review", "reasoningEffort" to "high", "serviceTier" to "fast"), "instructions" to "Check retries",
                 "automation" to json("enabled" to true, "maxPriority" to "p1", "maxRounds" to 4, "autoCommit" to true)))),
                 tree(engine.commands().single { it.string("type") == "review" }))
             engine.state(state("starting"))
@@ -144,6 +194,7 @@ class ReviewWorkflowTest {
             reveal(hasTestTag("review-instructions")).assertTextContains("Keep focus")
             reveal(hasContentDescription("Reviewer model")).performClick()
             app.onNodeWithText("Default Model").performClick()
+            app.onNodeWithContentDescription("Reviewer service tier").assertDoesNotExist()
             app.onNodeWithContentDescription("Reviewer reasoning").assertDoesNotExist()
             reveal(hasContentDescription("Reviewer model")).performClick()
             app.onNodeWithText("Review model").performClick()

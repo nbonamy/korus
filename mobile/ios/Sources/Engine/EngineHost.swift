@@ -10,6 +10,7 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
     var onSendResult: ((ComposerSendResult) -> Void)?
     var onNotification: ((ChatNotification) -> Void)?
     var onNotificationOpenFailed: (() -> Void)?
+    var onLiveActivityRegistered: ((String, Bool) -> Void)?
     /// The engine page was killed by the system and has loaded again from scratch; everything it knew must be told to it anew.
     var onRestarted: (() -> Void)?
     var onGitDiff: ((String) -> Void)?
@@ -144,6 +145,9 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
         case "notification":
             if let data = json?.data(using: .utf8), let decoded = try? JSONDecoder().decode(NotificationEvent.self, from: data) { onNotification?(decoded.notification) }
         case "notificationOpenFailed": onNotificationOpenFailed?()
+        case "liveActivityRegistered":
+            if let data = json?.data(using: .utf8), let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let id = value["requestId"] as? String, let success = value["success"] as? Bool { onLiveActivityRegistered?(id, success) }
         case "sendResult":
             if let data = json?.data(using: .utf8), let decoded = try? JSONDecoder().decode(ComposerSendResult.self, from: data) { onSendResult?(decoded) }
         case "state":

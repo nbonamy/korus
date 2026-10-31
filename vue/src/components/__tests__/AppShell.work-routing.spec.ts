@@ -364,9 +364,9 @@ describe('AppShell work routing', () => {
     await worktreeDialog.vm.$emit('created', {
       name: 'feature-session',
       path: '/Users/nbonamy/src/agent-workspace-feature-session',
-    });
+    }, { select: false });
     await flushPromises();
-    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/agent-workspace-feature-session', sourceRepositoryName: 'agent-workspace', teamId: 'team-app', selection: { ...{ backend: 'codex' } } });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/agent-workspace-feature-session', sourceRepositoryName: 'agent-workspace', teamId: 'team-app', selection: { ...{ backend: 'codex' } } }, { select: false });
   });
 
   it('creates quick chats inside the active team', async () => {

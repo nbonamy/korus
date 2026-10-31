@@ -341,22 +341,29 @@ describe('AppShell navigation and teams', () => {
     wrapper.unmount();
   });
 
-  it('shows unread activity for the previously selected team while cockpit is open', async () => {
+  it('hides team activity while Cockpit is selected and restores it when leaving', async () => {
     const snapshot = createInitialSnapshot();
-    const wrapper = mountShell({
-      snapshot,
-      unreadAgentIds: ['agent-jesse'],
-    });
+    const workingAgent = { ...snapshot.agents[0]!, id: 'working-agent', teamId: 'working-team', status: { type: 'working' as const } };
+    snapshot.agents.push(workingAgent);
+    snapshot.teams.push({ ...snapshot.teams[0]!, id: 'working-team', name: 'Working team', agentIds: [workingAgent.id] });
+    const wrapper = mountShell({ snapshot, unreadAgentIds: ['agent-jesse'] });
 
-    expect(wrapper.getComponent({ name: 'TeamRail' }).props('unreadTeamIds')).toStrictEqual([]);
-
+    expect(wrapper.get('[aria-label="Working team, agents working"]').find('.team-rail__unread-indicator').exists()).toBe(true);
     await wrapper.get('[aria-label="Cockpit"]').trigger('click');
     await flushPromises();
 
-    expect(wrapper.getComponent({ name: 'TeamRail' }).props('unreadTeamIds'))
-      .toStrictEqual(['team-app']);
-    expect(wrapper.get(`[aria-label="${product.defaultTeamName}, unread activity"]`).classes())
-      .toContain('team-rail__team--unread');
+    expect(wrapper.get('[aria-label="Cockpit"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.find('.team-rail__unread-indicator').exists()).toBe(false);
+    expect(wrapper.find('.team-rail__team--unread').exists()).toBe(false);
+    expect(wrapper.find(`[aria-label="${product.defaultTeamName}"]`).exists()).toBe(true);
+    expect(wrapper.find('[aria-label="Working team"]').exists()).toBe(true);
+
+    await wrapper.get('[aria-label="Backlog"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get(`[aria-label="${product.defaultTeamName}, unread activity"]`).get('.team-rail__unread-indicator').classes())
+      .not.toContain('team-rail__unread-indicator--working');
+    expect(wrapper.get('[aria-label="Working team, agents working"]').get('.team-rail__unread-indicator').classes())
+      .toContain('team-rail__unread-indicator--working');
   });
 
   it('derives working teams from their active agents', () => {

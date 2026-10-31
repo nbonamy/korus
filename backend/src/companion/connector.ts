@@ -1,5 +1,6 @@
 import { ShareOwnerTransport, type ShareOwnerOptions } from '../sharing/owner-transport';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
+import type { LiveActivityRegistration, LiveActivityPush } from '@workspace/core/companion-live-activity';
 import type { PrivateKey } from '@libp2p/interface';
 import type { PushResult } from './apns';
 import type { CompanionGateway } from './gateway';
@@ -38,6 +39,10 @@ export class CompanionOutboundConnector {
 
   push(peerId: string, registration: CompanionPushRegistration, notification: CompanionNotification): Promise<PushResult> {
     return this.client.push(peerId, registration, notification);
+  }
+
+  liveActivity(peerId: string, registration: LiveActivityRegistration, activity: LiveActivityPush): Promise<PushResult> {
+    return this.client.liveActivity(peerId, registration, activity);
   }
 
   revoke(peerId: string) {

@@ -3,8 +3,9 @@
     <button
       type="button"
       class="mission-implementation__ticket"
-      :class="{ 'mission-implementation__ticket--selected': selected }"
+      :class="{ 'mission-implementation__ticket--selected': selected, 'mission-implementation__ticket--active': active }"
       :aria-label="t('missions.openTicketThread', { title: item.ticket.title })"
+      :aria-pressed="Boolean(active)"
       :disabled="!item.run?.workerId"
       @click="emit('open-conversation', item.run?.workerId)"
     >
@@ -57,6 +58,7 @@ const props = defineProps<{
   item: MissionImplementationTicketItem;
   repositoryPath: string;
   selected: boolean;
+  active?: boolean;
 }>();
 const emit = defineEmits<{ 'open-conversation': [agentId?: string]; 'open-details': [] }>();
 const { t } = useI18n();
@@ -99,7 +101,10 @@ const preview = computed(() => missionTicketPreview(props.item.ticket, t('missio
   cursor: default;
 }
 
-.mission-implementation__ticket--selected {
+.mission-implementation__ticket--selected,
+.mission-implementation__ticket--active,
+.mission-implementation__ticket--active:hover:not(:disabled),
+.mission-implementation__ticket--active:focus-visible {
   border-color: var(--color-primary);
   background: var(--color-primary-container);
 }

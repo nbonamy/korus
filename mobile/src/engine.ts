@@ -54,6 +54,7 @@ export type EngineState = {
   groups: MobileSidebarGroup[];
   activityGroups: MobileActivityGroup[];
   agentId: string;
+  reviewFindingsCount: number | null;
   header: { title: string; repository: string | null; status: string; statusText: string; icon: string | null } | null;
   loading: boolean;
   conversationReady: boolean;
@@ -93,6 +94,7 @@ export type EngineState = {
 };
 
 export type EngineEvent =
+  | { type: 'liveActivityRegistered'; requestId: string; success: boolean }
   | { type: 'conversationFile'; requestId: string; agentId: string; preview?: import('@workspace/core/companion-files').CompanionFilePreview; error?: string }
   | { type: 'gitDiff'; diff: string }
   | { type: 'conversationImage'; requestId: string; agentId: string; dataUrl?: string; error?: string }
@@ -130,6 +132,7 @@ export type EngineCommand =
   | ({ type: 'createProject' } & Omit<import('@workspace/core/companion-protocol').CompanionProjectInput, 'teamId'>)
   | { type: 'loadUsage' }
   | { type: 'pushRegistration'; registration: CompanionPushRegistration | null }
+  | { type: 'liveActivityRegistration'; laptopId: string; requestId: string; registration: import('@workspace/core/companion-live-activity').LiveActivityRegistration | null }
   | { type: 'openNotification'; target: CompanionTarget }
   | { type: 'readConversationContent'; requestId: string; agentId: string; input: import('@workspace/core/contracts/conversation').ConversationContentInput }
   | { type: 'dismissRequest'; key: string }
@@ -144,6 +147,7 @@ export type EngineCommand =
   /** App visibility; background connections have the same grace period as the native lock. */
   | { type: 'activity'; active: boolean }
   | { type: 'read'; agentId: string; revision: number; generation: number }
+  | { type: 'openActivityThread'; laptopId: string; agentId: string }
   | { type: 'selectAllTeams' } | { type: 'selectTeam'; id: string } | { type: 'selectAgent'; id: string }
   | { type: 'loadOlder'; agentId: string }
   | { type: 'loadTurnHistory'; requestId: string; agentId: string; turnId: string }
@@ -163,6 +167,8 @@ export type EngineCommand =
   | { type: 'approvalPreset'; preset: string } | { type: 'permissionMode'; mode: string }
   | { type: 'delegate'; startingContext: 'conversation' | 'handoff'; instructions?: string }
   | { type: 'loadReview'; backend?: 'codex' | 'claude' | 'antigravity' } | { type: 'dismissReview' }
+  | { type: 'loadReviewDetails' }
+  | { type: 'reviewAction'; target: CompanionTarget; input: import('@workspace/core/companion-review').CompanionReviewAction }
   | { type: 'review'; target: CompanionTarget; input: CompanionReviewInput };
 
 export type EnginePort = { connector: CompanionConnector; selectionStore?: SelectionStore; chatsLabel?: string; initialActive?: boolean; incrementalTranscript?: boolean; post(event: EngineEvent): void };
@@ -326,6 +332,7 @@ export function createEngine(port: EnginePort) {
       goal: agent?.goal ? { objective: agent.goal.objective, status: agent.goal.status } : null,
       goalBusy: state.goalBusy.value, goalError: state.goalError.value,
       review: state.review.value,
+      reviewFindingsCount: agent ? state.workspace.value.reviewFindings?.[agent.id] ?? null : null,
       loading: state.loading.value && !hasConversation.value, canSend: state.canSend.value, draft: state.draft.value.text,
       conversationReady: state.conversationReady.value, refreshing: state.refreshing.value,
       conversationGeneration: state.conversationGeneration.value,
@@ -466,6 +473,16 @@ export function createEngine(port: EnginePort) {
 
   async function dispatch(command: EngineCommand): Promise<void> {
     switch (command.type) {
+      case 'liveActivityRegistration': {
+        let success = false;
+        try {
+          if (!port.connector.registerLiveActivity) throw new Error('Live Activities are unavailable.');
+          await port.connector.registerLiveActivity(command.laptopId, command.registration);
+          success = true;
+        } catch { /* Native retains the token and retries when the app returns. */ }
+        port.post({ type: 'liveActivityRegistered', requestId: command.requestId, success });
+        return;
+      }
       case 'pushRegistration': return state.registerPush(command.registration);
       case 'queuedPrompt': return state.updateQueuedPrompt(command.target, command.promptId, command.action);
       case 'openNotification': {
@@ -623,6 +640,19 @@ export function createEngine(port: EnginePort) {
       case 'fixFindings': return state.fixFindings(command.missionId);
       case 'rerunReview': return state.rerunReview(command.missionId);
       case 'dismissMissionAction': return state.dismissMissionAction();
+      case 'openActivityThread': {
+        const epoch = ++notificationEpoch; pendingNotification = null; ++restoreEpoch;
+        const agent = companionAgents(state.workspace.value).find(agent => agent.id === command.agentId);
+        const team = state.workspace.value.teams.find(team => team.id === agent?.teamId);
+        if (command.laptopId !== state.laptopId.value || state.status.value !== 'connected' || !agent || !team) {
+          port.post({ type: 'notificationOpenFailed' }); return;
+        }
+        await port.connector.resume?.();
+        if (epoch !== notificationEpoch || disposed) return;
+        allTeams.value = false;
+        await state.selectTeam(team.id, agent.id);
+        return rememberSelection();
+      }
       case 'selectAllTeams': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; allTeams.value = state.workspace.value.teams.length > 1; return rememberSelection();
       case 'selectTeam': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; allTeams.value = false; await state.selectTeam(command.id); return rememberSelection();
       case 'selectAgent': {
@@ -676,6 +706,8 @@ export function createEngine(port: EnginePort) {
       case 'approvalPreset': return state.setApprovalPreset(command.preset);
       case 'permissionMode': return state.setPermissionMode(command.mode);
       case 'delegate': return state.delegate({ startingContext: command.startingContext, ...(command.instructions ? { instructions: command.instructions } : {}) });
+      case 'loadReviewDetails': return state.loadReviewDetails();
+      case 'reviewAction': return state.actOnReview(command.target, command.input);
       case 'loadReview': return state.loadReview(command.backend);
       case 'dismissReview': return state.dismissReview();
       case 'review': await state.startReview(command.input, command.target); return rememberSelection();

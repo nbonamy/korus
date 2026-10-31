@@ -1,8 +1,25 @@
 import SwiftUI
 
+struct ReviewFindingsButton: View {
+    let count: Int
+    let enabled: Bool
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: "checklist")
+                Text("Review findings · \(count)").font(.subheadline.weight(.semibold))
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold))
+            }.padding(.horizontal, 16).frame(minHeight: 44).contentShape(Rectangle())
+        }.buttonStyle(.plain).foregroundStyle(.tint).disabled(!enabled).background(.bar)
+    }
+}
+
 /// A navigation destination keeps setup in the conversation's Back stack.
 struct ReviewSetupView: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.scenePhase) private var scenePhase
     @State private var choices = ReviewChoices()
     @State private var loaded = false
     @State private var loadedBackend = ""
@@ -11,7 +28,11 @@ struct ReviewSetupView: View {
 
     var body: some View {
         Group {
-            if app.reviewState.status == .starting {
+            if let details = app.reviewState.details, let session = details.session {
+                CodeReviewLedgerView(details: details, session: session)
+            } else if app.reviewState.action == "completed" {
+                ContentUnavailableView("Review complete", systemImage: "checkmark.circle")
+            } else if app.reviewState.status == .starting {
                 AppSheetProgress(title: "Starting your review", symbol: "checklist",
                                  message: "\(app.productName) is preparing the reviewer.")
             } else if let setup = app.reviewState.setup {
@@ -37,6 +58,14 @@ struct ReviewSetupView: View {
         .navigationTitle(app.reviewState.status == .starting ? "" : "Review Changes")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(app.reviewState.status == .starting)
+        .task {
+            while !Task.isCancelled {
+                if scenePhase == .active && app.connection == .connected && app.reviewState.details?.session != nil && app.reviewState.action != "working" && app.reviewState.action != "unknown" {
+                    app.command("loadReviewDetails")
+                }
+                do { try await Task.sleep(for: .seconds(3)) } catch { return }
+            }
+        }
         .onChange(of: app.connection) { _, connection in
             if connection == .connected { app.command("loadReview") }
         }
@@ -77,11 +106,18 @@ struct ReviewSetupView: View {
                     }
                     .onChange(of: choices.model) { _, _ in
                         if !efforts(setup).contains(choices.effort) { choices.effort = "" }
+                        if !tiers(setup).contains(where: { $0.id == choices.serviceTier }) { choices.serviceTier = nil }
                     }
                     if !efforts(setup).isEmpty {
                         Picker("Reasoning", selection: $choices.effort) {
                             Text("Default").tag("")
                             ForEach(efforts(setup), id: \.self) { Text($0.capitalized).tag($0) }
+                        }
+                    }
+                    if !tiers(setup).isEmpty {
+                        Picker("Service Tier", selection: $choices.serviceTier) {
+                            Text("Standard").tag(String?.none)
+                            ForEach(tiers(setup)) { Text($0.name).tag(Optional($0.id)) }
                         }
                     }
                 } header: { Text("Model") }
@@ -126,6 +162,7 @@ struct ReviewSetupView: View {
     }
 
     private func efforts(_ setup: ReviewSetup) -> [String] { setup.models.first { $0.id == choices.model }?.efforts ?? [] }
+    private func tiers(_ setup: ReviewSetup) -> [ReviewSetup.Model.Tier] { setup.models.first { $0.id == choices.model }?.tiers ?? [] }
 
     private func choice(_ title: String, description: String, icon: String, selected: Bool, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {

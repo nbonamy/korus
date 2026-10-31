@@ -652,7 +652,10 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
                     }
                     if (oldId != nextId || composerDrafts.target != nextTarget) {
                         dictation.cancel()
-                        reviewOpen = false; reviewChoices = ReviewChoices(); reviewLoadedBackend = null
+                        val reviewId = state.obj("review").obj("details").obj("session").string("id")
+                        val sameReview = reviewId.isNotBlank() && reviewId == next.obj("review").obj("details").obj("session").string("id")
+                            && composerDrafts.target?.copy(sessionId = nextTarget?.sessionId) == nextTarget && oldId == nextId
+                        if (!sameReview) { reviewOpen = false; reviewChoices = ReviewChoices(); reviewLoadedBackend = null }
                         receipt = null; renderedAgent = ""; attachmentPreview = null; conversationImage = null; filePreviewOpen = false
                     }
                     composerDrafts.select(nextTarget)

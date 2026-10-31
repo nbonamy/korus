@@ -15,6 +15,7 @@ export type DelegatedTask = {
   assignment: TaskContract;
   prompt: string;
   goal?: boolean;
+  planMode?: boolean;
   delegationUserInstructions?: import('./delegation-context').DelegationUserInstructions;
   workspace?: TaskWorkspace;
   attemptId: string;

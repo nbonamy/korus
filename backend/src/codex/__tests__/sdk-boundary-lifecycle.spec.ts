@@ -27,6 +27,7 @@ describe(`Codex SDK → ${product.name} backend lifecycle`, () => {
     expect(options?.delegation).toStrictEqual(delegation);
     await expect(driver.sendPrompt(agent, 'Implement', options)).resolves.toStrictEqual({ backendSession: { kind: 'codex', threadId: 'conversation-a' }, turnId: 'accepted' });
     expect(surface.createConversation).toHaveBeenCalledWith({ cwd: '/repo', threadSource: 'user' }, { extensionContext: agent });
+    expect(conversation('conversation-a').handle.updateSettings).toHaveBeenCalledWith({ planMode: true });
     expect(conversation('conversation-a').handle.sendMessage).toHaveBeenCalledWith('Implement', { model: 'model', reasoningEffort: 'high', serviceTier: 'fast', planMode: true });
     expect(conversation('conversation-a').handle.rename).toHaveBeenCalledWith('agent-a');
     const skills = [{ name: 'check', path: '/repo/check/SKILL.md' }];

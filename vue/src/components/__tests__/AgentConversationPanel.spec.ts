@@ -125,7 +125,7 @@ describe('AgentConversationPanel', () => {
     expect(wrapper.emitted('composer-command')).toStrictEqual([
       [agent.id, 'visualize'], [agent.id, 'delegate'], [agent.id, 'review'], [agent.id, 'mission'],
     ]);
-    view.agent = { ...agent, threadFlags: { delegate_to_worktree: true } };
+    view.agent = { ...agent, threadFlags: { work_proposed: true } };
     await flushPromises();
     for (const [label, action] of [['Implement', 'implement'], ['Delegate', 'delegate'], ['Mission', 'create_mission'], ['Discard', 'dismiss']] as const) {
       await wrapper.get(`button[aria-label="${label}"]`).trigger('click');

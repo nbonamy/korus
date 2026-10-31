@@ -4,6 +4,7 @@ import { shareAdmissionProtocol, shareAdmissionFrameLimit, shareRendezvousProtoc
 import { RelayIngress } from './relay-ingress';
 import { WindowBudget } from './source-budget';
 import { companionPushProtocol } from '@workspace/core/companion-notification';
+import { companionLiveActivityProtocol } from '@workspace/core/companion-live-activity';
 import { CompanionPushRelay } from './push-relay';
 import { RelayConnections } from './relay-connections';
 import type { ApnsSender } from './apns';
@@ -100,7 +101,7 @@ export class CompanionRelayPolicy {
       && !invite.withdrawn && invite.expiresAt > this.now());
   }
 }
-export async function createCompanionRelay(options: { key: PrivateKey; listen: string; now?: () => number; trustedProxy?: boolean; hostIds?: string[]; pairing?: ConfiguredPairing; tls?: { cert: string; key: string }; push?: Pick<ApnsSender, 'send'>; log?: (message: string, details: Record<string, unknown>) => void }) {
+export async function createCompanionRelay(options: { key: PrivateKey; listen: string; now?: () => number; trustedProxy?: boolean; hostIds?: string[]; pairing?: ConfiguredPairing; tls?: { cert: string; key: string }; push?: Pick<ApnsSender, 'send'> & Partial<Pick<ApnsSender, 'sendLiveActivity'>>; log?: (message: string, details: Record<string, unknown>) => void }) {
   const ingress = new RelayIngress(options.trustedProxy);
   const policy = new CompanionRelayPolicy(options.hostIds ? new Set(options.hostIds) : undefined, options.now ?? Date.now, options.pairing);
   const relay = await createLibp2p({ privateKey: options.key, addresses: { listen: [options.listen] },
@@ -173,11 +174,11 @@ export async function createCompanionRelay(options: { key: PrivateKey; listen: s
     } catch { stream.abort(new Error('Guest routing request denied.')); }
   }, { maxInboundStreams: 2, maxOutboundStreams: 1 });
   const push = new CompanionPushRelay(relay.peerId.toString(), (host, device) => policy.paired(host, device), options.push);
-  await relay.handle(companionPushProtocol, async (stream, connection) => {
+  for (const protocol of [companionPushProtocol, companionLiveActivityProtocol]) await relay.handle(protocol, async (stream, connection) => {
     try {
       const source = ingress.source(connection.remoteAddr);
       if (!source || !policy.reserve(connection.remotePeer.toString(), source)) throw new Error('Denied.');
-      const result = await push.send(connection.remotePeer.toString(), source, await readOne(stream));
+      const result = await (protocol === companionPushProtocol ? push.send.bind(push) : push.liveActivity.bind(push))(connection.remotePeer.toString(), source, await readOne(stream));
       stream.send(encodeCompanionFrame({ result }));
       await stream.close({ signal: AbortSignal.timeout(5000) });
     } catch { stream.abort(new Error('Push unavailable.')); }

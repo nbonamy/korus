@@ -393,7 +393,7 @@ describe('AppBackendServer', () => {
 
     const set = await server.handleMessage({
       jsonrpc: '2.0', id: 'debug-thread-flag-set', method: backendMethods.debugThreadFlagSet,
-      params: { agentId: 'agent-dina', id: 'delegate_to_worktree', value: true },
+      params: { agentId: 'agent-dina', id: 'work_proposed', value: true },
     });
     expect((set as { result: AppSnapshot }).result.agents[0]?.threadFlags)
       .toStrictEqual({ work_proposed: true });

@@ -7,13 +7,13 @@ import { providerConversationEventView } from '@workspace/core/provider-conversa
 import { handoffInProgress } from '@workspace/core/agent-handoff';
 import { taskContractSchema, taskResultSchema } from '../persistence/task-schema';
 
-type CreateTaskInput = { requestId: string; task: TaskContract; prompt: string; goal?: boolean; delegationUserInstructions?: DelegatedTask['delegationUserInstructions']; backend: Agent['backend']; workspace?: TaskWorkspace; specification: unknown };
+type CreateTaskInput = { requestId: string; task: TaskContract; prompt: string; goal?: boolean; planMode?: boolean; delegationUserInstructions?: DelegatedTask['delegationUserInstructions']; backend: Agent['backend']; workspace?: TaskWorkspace; specification: unknown };
 type TaskPorts = {
   tasks: DelegatedTask[];
   save(tasks: DelegatedTask[]): Promise<void>;
   agent(id: string): Agent | undefined;
   resolveAgentId?(id: string): string;
-  send(agent: Agent, prompt: string, goal?: boolean): Promise<TaskAcceptance>;
+  send(agent: Agent, prompt: string, goal?: boolean, planMode?: boolean): Promise<TaskAcceptance>;
   interrupt(agent: Agent, expectedTurnId: string): Promise<unknown>;
   readHistory?(agent: Agent): Promise<RendererMessage[]>;
   onError(error: unknown): void;
@@ -87,6 +87,7 @@ export class DurableTaskService {
         parentAgentId: parent.id, workerAgentId: `agent-${randomUUID()}`, backend: input.backend,
         assignment, prompt, attemptId: `attempt-${randomUUID()}`, state: 'preparing',
         ...(input.goal ? { goal: true } : {}),
+        ...(input.planMode ? { planMode: true } : {}),
         ...(input.delegationUserInstructions ? { delegationUserInstructions: { ...input.delegationUserInstructions } } : {}),
         ...(input.workspace ? { workspace: input.workspace } : {}),
         createdAt: now, updatedAt: now, parentWakeBlocked: this.stoppedParents.has(parent.id),
@@ -107,7 +108,7 @@ export class DurableTaskService {
         return true;
       });
       if (!ready) return this.list(parent.id, [task.id])[0]!;
-      const receipt = await this.ports.send(worker, `<context>\n[${product.name} task ${task.id}; attempt ${task.attemptId}]\n</context>\n\n${delegatedAssignmentPrompt(worker, prompt)}\n\n<context>\nRequired durable result reporting: before your final response, call complete-task with the outcome, then finish_turn. If user instructions prohibit executing the assignment, perform no task work and report that outcome through complete-task. These lifecycle calls do not execute the task. Keep your final response exactly as the user instructions request; do not append a task summary or explanation.\n</context>`, task.goal);
+      const receipt = await this.ports.send(worker, `<context>\n[${product.name} task ${task.id}; attempt ${task.attemptId}]\n</context>\n\n${delegatedAssignmentPrompt(worker, prompt)}\n\n<context>\n${task.planMode ? 'First produce the interactive plan and wait for user approval before implementation. A proposed plan alone does not complete the assignment; do not submit complete-task while waiting for approval. ' : ''}Required durable result reporting: when the assignment is finished, before your final response, call complete-task with the outcome, then finish_turn. If user instructions prohibit executing the assignment, perform no task work and report that outcome through complete-task. These lifecycle calls do not execute the task. Keep your final response exactly as the user instructions request; do not append a task summary or explanation.\n</context>`, task.goal, task.planMode === true);
       await this.change(tasks => {
         const current = tasks.find(item => item.id === task.id)!;
         current.acceptance = receipt;
@@ -308,6 +309,9 @@ export class DurableTaskService {
               task.state = outcome === 'interrupted' ? 'interrupted' : 'failed';
               task.detail = 'The submitting turn did not succeed. The provisional result is retained.';
             }
+          } else if (!result && outcome === 'completed' && worker?.planReview?.status === 'pending' && worker.planReview.turnId === view.turnId) {
+            task.state = 'needs-input';
+            task.detail = 'Waiting for user approval of the plan.';
           } else if (!result || result.turnId === view.turnId) {
             task.state = outcome === 'failed' ? 'failed' : 'interrupted';
             task.detail = 'Turn ended without a valid explicit result. This is not task completion.';

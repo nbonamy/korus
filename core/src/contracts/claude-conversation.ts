@@ -16,6 +16,9 @@ export type ClaudeConversationTurn = {
   startedAt: string | null;
   completedAt: string | null;
   durationMs: number | null;
+  itemsView?: 'summary' | 'full';
+  detailsLoading?: boolean;
+  detailsError?: string | null;
 };
 
 export type ClaudeConversationSnapshot = {
@@ -46,6 +49,10 @@ type ClaudeConversationEventBase = {
 
 export type ClaudeConversationEvent =
   | ClaudeConversationEventBase & {
+      type: 'turn.historyUpdated';
+      payload: { turn: ClaudeConversationTurn };
+    }
+  | ClaudeConversationEventBase & {
       type: 'turn.executionPlanUpdated';
       payload: { plan: ThreadPlan | null };
     }
@@ -55,7 +62,7 @@ export type ClaudeConversationEvent =
     }
   | ClaudeConversationEventBase & {
       type: 'message.replaced';
-      payload: { message: RendererMessage };
+      payload: { message: RendererMessage; beforeMessageId?: string };
     }
   | ClaudeConversationEventBase & {
       type: 'context.usageUpdated';

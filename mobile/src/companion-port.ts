@@ -81,6 +81,8 @@ type CompanionOperations = {
   createChat?(chat: CompanionNewChat, signal?: AbortSignal): Promise<string>;
   createQuickChat?(chat: { teamId: string; backend: AgentBackend }, signal?: AbortSignal): Promise<string>;
   setBackend?(agentId: string, backend: AgentBackend): Promise<void>;
+  readReview?(agentId: string): Promise<import('@workspace/core/companion-review').CompanionReviewDetails>;
+  reviewAction?(target: CompanionTarget, input: import('@workspace/core/companion-review').CompanionReviewAction): Promise<void>;
   reviewSetup?(agentId: string, backend?: AgentBackend): Promise<CompanionReviewSetup>;
   startReview?(target: CompanionTarget, input: CompanionReviewInput): Promise<string | void>;
   setApprovalPreset?(agentId: string, preset: string): Promise<void>;
@@ -91,6 +93,8 @@ type CompanionOperations = {
 export type CompanionSession = CompanionLink & CompanionOperations;
 /** Host transport owns pairing and encrypted routing; Vue consumes app-owned reads and actions. */
 export type CompanionConnector = {
+  /** A short authenticated token exchange, also usable during ActivityKit's background wake. */
+  registerLiveActivity?(laptopId: string, registration: import('@workspace/core/companion-live-activity').LiveActivityRegistration | null): Promise<void>;
   laptops: readonly { id: string; name: string }[];
   cachedConversation?(target: CompanionTarget): CompanionConversation | null | undefined;
   conversationUpdates?(target: CompanionTarget, since: CompanionCheckpoint | null): CompanionSync | null;

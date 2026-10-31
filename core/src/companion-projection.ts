@@ -60,8 +60,9 @@ export function projectCompanionWorkspace(source: CompanionWorkspace & { reposit
   const agents = source.agents.filter(inTeams).map(projectAgent);
   const missionAgents = (source.missionAgents ?? []).filter(inTeams).map(projectAgent);
   const missionProgress = (source.missionProgress ?? []).filter((mission) => teams.some((team) => team.id === mission.teamId));
+  const reviewFindings = Object.fromEntries(agents.flatMap(agent => source.reviewFindings?.[agent.id] === undefined ? [] : [[agent.id, source.reviewFindings[agent.id]]]));
   return { ...(source.gitStatuses ? { gitStatuses: Object.fromEntries(agents.flatMap(agent => source.gitStatuses?.[agent.id] ? [[agent.id, projectGitStatus(source.gitStatuses[agent.id]!)]] : [])) } : {}), teams, agents, repositoryIcons, modelFavorites: source.modelFavorites ?? [], backends: source.backends ?? {}, agentRequests: Object.fromEntries([...agents, ...missionAgents].map((agent) => [agent.id, source.agentRequests?.[agent.id] ?? []])), missionProgress, missionAgents,
-    queuedPrompts: (source.queuedPrompts ?? []).filter(prompt => agents.some(agent => agent.id === prompt.agentId)).map(({ id, agentId, text }) => ({ id, agentId, text })) };
+    reviewFindings, queuedPrompts: (source.queuedPrompts ?? []).filter(prompt => agents.some(agent => agent.id === prompt.agentId)).map(({ id, agentId, text }) => ({ id, agentId, text })) };
 }
 
 /** The laptop's workspace as the desktop sidebar lists it: mission-owned workers stay out of the agent list. */
@@ -142,8 +143,12 @@ export function companionWorkspaceOf(snapshot: Pick<AppSnapshot, 'teams' | 'agen
     return [id, projectGitStatus({ ...status, ...(turn ? { lastTurn: turn } : {}) })];
   }));
   const { missions, workerIds: ticketWorkerIds } = companionMissionsOf(snapshot);
+  const reviewFindings = Object.fromEntries(snapshot.agents.flatMap(agent => {
+    const review = agent.codeReview;
+    return review && review.status !== 'finished' ? [[agent.id, review.rounds.find(round => round.id === review.activeRoundId)?.findings.length ?? 0]] : [];
+  }));
   return { ...(gitStatuses ? { gitStatuses } : {}), missionProgress: missions, missionAgents: snapshot.agents.filter((agent) => ticketWorkerIds.has(agent.id)), queuedPrompts: snapshot.queuedPrompts?.map(({ id, agentId, text }) => ({ id, agentId, text })), agentRequests: snapshot.agentRequests ?? {}, teams: snapshot.teams, agents: snapshot.agents.filter((agent) => !workerIds.has(agent.id)), repositoryIcons: snapshot.general.repositoryIcons, modelFavorites: snapshot.general.modelFavorites,
-    backends: Object.fromEntries([
+    reviewFindings, backends: Object.fromEntries([
       ...snapshot.teams.map((team) => [team.id, enabledAgentBackends({ providerConnections: snapshot.providerConnections ?? [] })] as const),
       ...(snapshot.remoteConnections?.connections ?? []).map((connection) => [connection.id, enabledAgentBackends({ providerConnections: providerConnectionsForHost({ ...snapshot, remoteConnections: snapshot.remoteConnections } as AppSnapshot, connection.id) })] as const),
     ]) };

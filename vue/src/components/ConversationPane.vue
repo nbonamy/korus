@@ -82,6 +82,7 @@
         </el-tooltip>
       </template>
       <template #composer-drawers>
+        <slot name="composer-drawers" />
         <ConversationShareActivity v-if="shareProposals.length" :proposals="shareProposals" owner :disabled="shareBusy || movingSuggestion" :edit-disabled="!canMoveSuggestion" :failed="shareFailed" @edit="moveSuggestion" @delete="dismissSuggestion" />
       </template>
       <template #composer-shelf-actions="{ disabled }">
@@ -475,6 +476,7 @@ const heroHeadline = computed(() => {
 const heroSubhead = computed(() => {
   if (props.emptySubhead !== undefined) return props.emptySubhead;
   if (!props.agent) return translate('surface.conversationPane.chooseAnAgentFromTheLeftToStartANativeBackendSession');
+  if (props.agent.sessionKind === 'quickChat' && !props.agent.sharedConversation) return t('chat.quickChatContext');
   return props.agent.folder;
 });
 function collaborationMessageLabel(messageId: string | undefined): string | null {

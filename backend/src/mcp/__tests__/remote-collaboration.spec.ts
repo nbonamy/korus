@@ -30,12 +30,12 @@ async function host(snapshot: AppSnapshot, label: string, remoteClients?: unknow
   let server!: AppBackendServer;
   const tasks = new DurableTaskService({ tasks: savedTasks, save: data => store.saveTasks(data), resolveAgentId: id => server.resolveTaskAgentId(id),
     agent: id => server.collaborationAgents().find(agent => agent.id === id),
-    send: (agent, prompt, goal) => server.sendTaskPrompt(agent, prompt, goal),
+    send: (agent, prompt, goal, planMode) => server.sendTaskPrompt(agent, prompt, goal, planMode),
     interrupt: (agent, turnId) => server.interruptTaskWorker(agent, turnId), onError: error => { throw error; } });
   const mcp = new AppMcpService({ snapshot, tasks, worktreeManager, persistSnapshot: () => store.save(snapshot),
     getCollaborationAgents: () => server.collaborationAgents(),
     createRemoteWorker: (...args) => server.provisionRemoteWorker(...args),
-    sendRemotePrompt: (agent, prompt, goal) => server.sendTaskPrompt(agent, prompt, goal),
+    sendRemotePrompt: (agent, prompt, goal, planMode) => server.sendTaskPrompt(agent, prompt, goal, planMode),
     sendRemoteMessage: (agent, prompt, messageId) => server.deliverRemoteMessage(agent, prompt, messageId),
     resolveDelegationParent: id => server.resolveTaskAgentId(id),
     forwardCollaboration: (agentId, name, args) => server.forwardCollaborationCall(agentId, name, args),
@@ -115,6 +115,7 @@ describe('collaboration across daemon ownership boundaries', () => {
     const created = await workerHost.mcp.callTool(worker.id, 'create-agent', {
       repoPath: '/remote/repo', startingContext: 'conversation', createWorktree: true,
       branchName: 'same-host-child', prompt: 'Inspect the inherited context',
+      planMode: true,
       ...(durable ? { requestId: 'same-host-child', task: { title: 'Inspect', doneWhen: 'Verified' } } : {}),
     });
     expect(created.isError).toBe(false);
@@ -126,6 +127,7 @@ describe('collaboration across daemon ownership boundaries', () => {
     });
     expect(parentConversation.handle.fork).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ cwd: '/remote/same-host-child' }), { extensionContext: expect.objectContaining({ id: childId }) });
     expect(childConversation.handle.sendMessage).toHaveBeenCalledOnce();
+    expect(childConversation.handle.sendMessage).toHaveBeenCalledWith(expect.stringContaining('Inspect the inherited context'), expect.objectContaining({ planMode: true }));
     expect(owner.provider.conversation('remote-worker').handle.fork).not.toHaveBeenCalled();
     expect(parentConversation.handle.sendMessage).not.toHaveBeenCalled();
     if (durable) expect((await owner.store.loadTasks())[0]).toMatchObject({ workerAgentId: childId, acceptance: { backendSession: { kind: 'codex', threadId: 'remote-child' } } });
@@ -368,8 +370,15 @@ describe('collaboration across daemon ownership boundaries', () => {
     expect(await owner.server.readTaskHistory(owner.server.collaborationAgents().find(agent => agent.id === workerId)!)).toStrictEqual([]);
     expect(remoteConversation.handle.readHistory).toHaveBeenCalledOnce();
     expect(owner.provider.conversation('remote-worker').handle.readHistory).not.toHaveBeenCalled();
+    // A project lookup must preserve the host of folders discovered after session configuration.
     const roster = await workerHost.mcp.callTool(workerId, 'list-agents', {});
-    expect(roster.structuredContent?.agents).toEqual(expect.arrayContaining([expect.objectContaining({ id: parent.id }), expect.objectContaining({ id: workerId })]));
+    const agents = roster.structuredContent?.agents as Array<{ id: string }>;
+    expect(agents.filter(agent => [parent.id, workerId].includes(agent.id))).toStrictEqual([
+      { id: parent.id, name: parent.name, folder: parent.folder, status: expect.any(String) },
+      { id: workerId, name: expect.any(String), folder: '/remote/remote-inspection', status: expect.any(String), remoteConnectionId: 'connection-devbox' },
+    ]);
+    const localRoster = await owner.mcp.callTool(parent.id, 'list-agents', {});
+    expect(localRoster.structuredContent).toStrictEqual(roster.structuredContent);
     expect((await workerHost.mcp.callTool(workerId, 'send-message', { to: parent.id, content: 'Remote question' })).isError).toBe(false);
     await vi.waitFor(() => expect(owner.provider.conversation('local-parent').handle.sendMessage).toHaveBeenCalledOnce());
     expect((await owner.mcp.callTool(parent.id, 'send-message', { to: workerId, content: 'Local answer' })).isError).toBe(false);

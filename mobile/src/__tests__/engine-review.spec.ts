@@ -90,3 +90,61 @@ describe('native composer actions', () => {
     } finally { f.engine.dispose(); }
   });
 });
+
+it('refreshes review findings, serializes actions and never replays an uncertain remediation or late result after navigation', async () => {
+  const connector = createDemoConnector(); const connect = connector.connect;
+  let resolve!: () => void;
+  const details: import('@workspace/core/companion-review').CompanionReviewDetails = { target: { hostId: 'demo-laptop', locationId: 'local', teamId: 'demo-team', agentId: 'demo-agent', sessionId: null }, session: {
+    id: 'review', targetAgentId: 'demo-agent', reviewerAgentId: 'demo-reviewer', status: 'ready', activeRoundId: 'round', updatedAt: 'v1', busy: false,
+    rounds: [{ id: 'round', number: 1, status: 'ready', findings: [], startedAt: '' }] } };
+  const readReview = vi.fn(async () => structuredClone(details));
+  const reviewAction = vi.fn(async () => new Promise<void>(r => { resolve = r; }));
+  let update!: (workspace: import('@workspace/core/companion-protocol').CompanionWorkspace, frame: null) => void;
+  let workspace!: import('@workspace/core/companion-protocol').CompanionWorkspace;
+  connector.connect = async id => {
+    const session = await connect(id); workspace = { ...await session.getWorkspace(), reviewFindings: { "demo-agent": 1 } };
+    return { ...session, getWorkspace: async () => workspace, readReview, reviewAction, onUpdate(listener) { update = listener; return () => {}; } };
+  };
+  const engine = createEngine({ connector, post() {} });
+  try {
+    await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+    expect(engine.snapshot().reviewFindingsCount).toBe(1);
+    expect(readReview).not.toHaveBeenCalled();
+    details.target = engine.snapshot().composerTarget!;
+    await engine.dispatch({ type: 'loadReviewDetails' });
+    expect(engine.snapshot().review.details).toStrictEqual(details);
+    const command = { type: 'reviewAction' as const, target: details.target, input: { sessionId: 'review', roundId: 'round', updatedAt: 'v1', action: 'submit' as const } };
+    let finishPoll!: (value: typeof details) => void;
+    readReview.mockImplementationOnce(() => new Promise(r => { finishPoll = r; }));
+    const polling = engine.dispatch({ type: 'loadReviewDetails' });
+    const pending = engine.dispatch(command);
+    finishPoll(structuredClone(details)); await polling;
+    expect(engine.snapshot().review.action).toBe('working');
+    await engine.dispatch(command); expect(reviewAction).toHaveBeenCalledTimes(1);
+    details.session!.status = 'readyToFinish'; resolve(); await pending;
+    expect(engine.snapshot().review.details?.session?.status).toBe('readyToFinish');
+    reviewAction.mockRejectedValueOnce(new Error('Connection lost'));
+    await engine.dispatch({ ...command, input: { ...command.input, action: 'again' } });
+    expect(engine.snapshot().review.action).toBe('unknown');
+    await engine.dispatch(command); expect(reviewAction).toHaveBeenCalledTimes(2);
+    await engine.dispatch({ type: 'loadReviewDetails' });
+    expect(engine.snapshot().review.action).toBe('idle');
+    details.session!.updatedAt = 'v2';
+    await engine.dispatch({ type: 'loadReviewDetails' });
+    await engine.dispatch(command);
+    expect(reviewAction).toHaveBeenCalledTimes(2);
+    expect(engine.snapshot().review.action).toBe('failed');
+    details.target = { ...details.target, sessionId: 'next-round-session' };
+    workspace = { ...workspace, reviewFindings: { "demo-agent": 3 }, agents: workspace.agents.map(agent => agent.id === 'demo-agent' ? { ...agent, backendSession: { kind: 'codex' as const, threadId: 'next-round-session' } } : agent) };
+    update(workspace, null);
+    expect(engine.snapshot().reviewFindingsCount).toBe(3);
+    await vi.waitFor(() => expect(engine.snapshot().review.details?.target.sessionId).toBe('next-round-session'));
+    expect(engine.snapshot().review.details?.session?.id).toBe('review');
+    let finish!: (value: typeof details) => void;
+    readReview.mockImplementationOnce(() => new Promise(r => { finish = r; }));
+    const late = engine.dispatch({ type: 'loadReviewDetails' });
+    await engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' }); finish(details); await late;
+    expect(engine.snapshot().review.details).toBeUndefined();
+    expect(engine.snapshot().reviewFindingsCount).toBeNull();
+  } finally { engine.dispose(); }
+});

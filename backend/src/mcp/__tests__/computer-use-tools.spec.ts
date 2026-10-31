@@ -157,7 +157,7 @@ describe('Computer Use MCP tools', () => {
     ['computer-use-focus-app', { pid: 42, window_id: 7 }, 'focus_app'],
     ['computer-use-get-app-state', { app: product.name, accessibilityScope: 'menu_bar', maxDepth: 12 }, 'get_app_state'],
     ['computer-use-get-app-state', { app: product.name, window_id: 7, maxDepth: 12 }, 'get_app_state'],
-    ['computer-use-click', { app: product.name, window_id: 7, selector: { role: 'AXButton', title: 'Cancel' } }, 'click'],
+    ['computer-use-click', { app: product.name, window_id: 7, physical: true, selector: { role: 'AXButton', title: 'Cancel' } }, 'click'],
     ['computer-use-dismiss', { app: product.name, window_id: 7, accessibilityScope: 'menu_bar' }, 'dismiss'],
     ['computer-use-press-key', { app: product.name, window_id: 7, key: 'Super_L+v' }, 'press_key'],
     ['computer-use-type-text', { app: product.name, window_id: 7, text: 'hello' }, 'type_text'],

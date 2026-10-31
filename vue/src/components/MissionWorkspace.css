@@ -1,4 +1,5 @@
 .mission-workspace {
+  --workbench-subheader-height: 52px;
   container-type: inline-size;
   display: flex;
   flex: 1;
@@ -83,7 +84,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-10);
-  padding: var(--space-6) var(--space-12);
+  padding: var(--space-4) var(--space-12);
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface-lowest);
 }
@@ -114,9 +115,9 @@
 
 .mission-workspace__stage-header h2 {
   overflow: hidden;
-  font-size: var(--font-size-24);
+  font-size: var(--font-size-18);
   font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-32);
+  line-height: var(--line-height-24);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -138,6 +139,12 @@
 .mission-workspace__empty-artifact button svg {
   width: var(--icon-sm);
   height: var(--icon-sm);
+}
+
+.mission-workspace__stage-header .app-button {
+  min-height: 28px;
+  padding: 0 var(--space-6);
+  font-size: var(--font-size-12);
 }
 
 .mission-workspace__stage-actions {
