@@ -1875,7 +1875,7 @@ const splitActions = computed<AgentConversationActions | undefined>(() => props.
   send: async (agentId, prompt, options) => {
     await backendSwitch.settled();
     const design = prompt.match(/^\/design(?:\s+([\s\S]*))?$/u);
-    if (design && !options?.attachments?.length) return startDesignForAgent(agentId, design[1]?.trim());
+    if (design) return startDesignForAgent(agentId, design[1]?.trim(), options?.attachments);
     const visualize = prompt.match(/^\/visualize(?:\s+([\s\S]*))?$/u);
     if (visualize && !options?.attachments?.length) {
       return startVisualizeForAgent(agentId, visualize[1]?.trim() ? { prompt: visualize[1].trim() } : { choose: true });
@@ -1951,9 +1951,9 @@ async function openCodeReviewForAgent(agentId: string, instructions?: string): P
   openRightWorkspaceTab('codeReview', agentId);
 }
 
-async function startDesignForAgent(agentId: string, prompt?: string): Promise<void> {
+async function startDesignForAgent(agentId: string, prompt?: string, attachments?: RendererSendPromptOptions['attachments']): Promise<void> {
   if (!appApi) throw new Error('Design is unavailable.');
-  await appApi.design(agentId, { type: 'open', ...(prompt ? { prompt } : {}) });
+  await appApi.design(agentId, { type: 'open', ...(prompt ? { prompt } : {}), ...(attachments?.length ? { attachments } : {}) });
   openRightWorkspaceTab('design', agentId);
 }
 
@@ -3292,7 +3292,7 @@ function prepareMissionReviewDiscussion(payload: PendingMissionReviewDiscussion)
 
 function forwardPrompt(prompt: string, options?: RendererSendPromptOptions): void | Promise<void> {
   const designCommand = prompt.match(/^\/design(?:\s+([\s\S]*))?$/u);
-  if (designCommand && !options?.attachments?.length && currentAgent.value) return startDesignForAgent(currentAgent.value.id, designCommand[1]?.trim());
+  if (designCommand && currentAgent.value) return startDesignForAgent(currentAgent.value.id, designCommand[1]?.trim(), options?.attachments);
   const visualizeCommand = prompt.match(/^\/visualize(?:\s+([\s\S]*))?$/u);
   if (visualizeCommand && !options?.attachments?.length && currentAgent.value) {
     const direction = visualizeCommand[1]?.trim();

@@ -8,16 +8,16 @@ import { applyTweakEdit } from './design-tweaks';
 
 export class DesignService {
   private writes = new Map<string, Promise<unknown>>();
-  constructor(private options: { snapshot: AppSnapshot; persist: () => Promise<void>; publish: () => void; capture?: (input: DesignCaptureInput) => Promise<string> }) {}
+  constructor(private options: { snapshot: AppSnapshot; persist: () => Promise<void>; publish: (agent: Agent) => void; capture?: (input: DesignCaptureInput) => Promise<string> }) {}
 
-  execute(agentId: string, request: DesignRequest): Promise<DesignResult> {
+  execute(agentId: string, request: DesignRequest<unknown>): Promise<DesignResult> {
     const next = (this.writes.get(agentId) ?? Promise.resolve()).catch(() => undefined).then(() => this.apply(agentId, request));
     this.writes.set(agentId, next);
     void next.finally(() => { if (this.writes.get(agentId) === next) this.writes.delete(agentId); }).catch(() => undefined);
     return next;
   }
 
-  private async apply(agentId: string, request: DesignRequest): Promise<DesignResult> {
+  private async apply(agentId: string, request: DesignRequest<unknown>): Promise<DesignResult> {
     const agent = this.options.snapshot.agents.find(item => item.id === agentId);
     if (!agent) throw new Error('Design agent not found.');
     if (!request || !['read', 'open', 'close', 'export', 'capture', 'create', 'select', 'edit', 'implement', 'comment', 'checkpoint', 'restore', 'undo', 'redo'].includes(request.type)) throw new Error('Invalid design request.');
@@ -122,7 +122,7 @@ export class DesignService {
     agent.designWorkspace = workspace;
     try { await this.options.persist(); }
     catch (error) { this.restore(agent, before); throw error; }
-    this.options.publish();
+    this.options.publish(agent);
     return { workspace: structuredClone(workspace) };
   }
 

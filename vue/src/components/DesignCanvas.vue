@@ -3,7 +3,7 @@
     <div v-if="!play" class="design-canvas__document"><h2>{{ content.title }}</h2><slot name="history" /></div>
     <div class="design-canvas__boards" :style="canvasStyle">
       <article v-for="board in boards" v-show="!play || board.id === activeArtboardId" :key="board.id" class="design-canvas__artboard" :data-artboard-id="board.id" :data-active="board.id === activeArtboardId" :style="boardStyle(board)">
-        <header v-if="!play" class="design-canvas__caption">
+        <header v-if="!play" class="design-canvas__caption" :style="{ height: `${captionHeight}px` }">
           <button type="button" :aria-label="t('design.editArtboard', { name: board.title })" :title="t('design.moveArtboardHint')" :disabled="locked" @pointerdown.stop="startBoardDrag($event, board.id)" @keydown="nudgeBoard($event, board.id)" @click="clickBoard($event, board.id)">{{ board.title }}</button>
           <CheckIcon v-if="board.id === content.chosenArtboardId" class="design-canvas__chosen" :aria-label="t('design.chosen')" />
           <button class="app-icon-button" type="button" :aria-label="t('design.focusArtboard', { name: board.title })" :title="t('design.focusArtboard', { name: board.title })" :disabled="locked" @click="emit('focus', board.id)"><ArrowsDiagonalIcon /></button>
@@ -32,7 +32,7 @@ const stageHeight = ref(600);
 const displayed = shallowRef(props.content);
 watch([() => props.content, () => props.interacting], () => { if (!props.interacting) displayed.value = props.content; });
 const boards = computed(() => displayed.value.artboards);
-type BoardDrag = { id: string; pointerId: number; startX: number; startY: number; start: { x: number; y: number }; position: { x: number; y: number }; origin: { x: number; y: number }; scale: number; revision: number; moved: boolean; ending: boolean };
+type BoardDrag = { id: string; pointerId: number; startX: number; startY: number; start: { x: number; y: number }; position: { x: number; y: number }; origin: { x: number; y: number }; rows: Map<string, number>; scale: number; revision: number; moved: boolean; ending: boolean };
 const boardDrag = ref<BoardDrag | null>(null);
 const positions = computed(() => {
   const result = designArtboardPositions(boards.value);
@@ -41,6 +41,27 @@ const positions = computed(() => {
   if (boardDrag.value?.moved) result.set(boardDrag.value.id, boardDrag.value.position);
   return result;
 });
+const captionHeight = 36;
+// Captions are editor chrome, not scaled screen content. Reserve a caption
+// gutter for each preceding screen in a column without changing saved positions.
+const captionRows = computed(() => {
+  if (boardDrag.value) return boardDrag.value.rows;
+  const rows = new Map<string, number>();
+  const ordered = [...boards.value].sort((a, b) => positions.value.get(a.id)!.y - positions.value.get(b.id)!.y);
+  for (const board of ordered) {
+    const position = positions.value.get(board.id)!;
+    let row = 0;
+    for (const above of ordered) {
+      const previous = positions.value.get(above.id)!;
+      if (previous.y + above.height <= position.y && previous.x < position.x + board.width && previous.x + above.width > position.x) {
+        row = Math.max(row, (rows.get(above.id) ?? 0) + 1);
+      }
+    }
+    rows.set(board.id, row);
+  }
+  return rows;
+});
+const captionGutters = computed(() => props.play ? 0 : Math.max(0, ...captionRows.value.values()) * captionHeight);
 const bounds = computed(() => ({
   x: Math.min(0, ...[...positions.value.values()].map(position => position.x)),
   y: Math.min(0, ...[...positions.value.values()].map(position => position.y)),
@@ -68,7 +89,7 @@ const zoom = computed(() => {
   const selected = props.play || props.zoomChoice === 'selection' ? boards.value.find(board => board.id === activeArtboardId.value) : undefined;
   const width = selected?.width ?? bounds.value.right - bounds.value.x;
   const height = selected?.height ?? bounds.value.bottom - bounds.value.y;
-  return Math.max(0.001, Math.min(1, (stageWidth.value - 64) / Math.max(1, width), (stageHeight.value - (props.play ? 108 : 164)) / Math.max(1, height)));
+  return Math.max(0.001, Math.min(1, (stageWidth.value - 64) / Math.max(1, width), (stageHeight.value - (props.play ? 108 : 164) - (selected ? 0 : captionGutters.value)) / Math.max(1, height)));
 });
 watch([bounds, () => !!boardDrag.value, () => props.zoomChoice, () => props.documentId], async () => {
   if (boardDrag.value) return;
@@ -80,11 +101,14 @@ watch([bounds, () => !!boardDrag.value, () => props.zoomChoice, () => props.docu
 }, { immediate: true });
 const canvasStyle = computed(() => {
   const playing = props.play ? boards.value.find(board => board.id === activeArtboardId.value) : undefined;
-  return { width: `${(playing?.width ?? bounds.value.right - origin.value.x) * zoom.value}px`, height: `${(playing?.height ?? bounds.value.bottom - origin.value.y) * zoom.value + (props.play ? 0 : 200)}px` };
+  return { width: `${(playing?.width ?? bounds.value.right - origin.value.x) * zoom.value}px`, height: `${(playing?.height ?? bounds.value.bottom - origin.value.y) * zoom.value + (props.play ? 0 : 200) + captionGutters.value}px` };
 });
+function boardTop(id: string) {
+  return props.play ? 0 : (positions.value.get(id)!.y - origin.value.y) * zoom.value + (captionRows.value.get(id) ?? 0) * captionHeight;
+}
 function boardStyle(board: DesignArtboard) {
   const position = positions.value.get(board.id)!;
-  return { width: `${board.width * zoom.value}px`, left: `${props.play ? 0 : (position.x - origin.value.x) * zoom.value}px`, top: `${props.play ? 0 : (position.y - origin.value.y) * zoom.value}px`, zIndex: boardDrag.value?.id === board.id ? 2 : board.id === activeArtboardId.value ? 1 : 0 };
+  return { width: `${board.width * zoom.value}px`, left: `${props.play ? 0 : (position.x - origin.value.x) * zoom.value}px`, top: `${boardTop(board.id)}px`, zIndex: boardDrag.value?.id === board.id ? 2 : board.id === activeArtboardId.value ? 1 : 0 };
 }
 let suppressClickUntil = 0;
 function startBoardDrag(event: PointerEvent, id: string) {
@@ -92,7 +116,7 @@ function startBoardDrag(event: PointerEvent, id: string) {
   event.preventDefault();
   (event.currentTarget as HTMLElement).focus();
   const position = positions.value.get(id)!;
-  boardDrag.value = { id, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, start: { ...position }, position: { ...position }, origin: { x: bounds.value.x, y: bounds.value.y }, scale: zoom.value, revision: props.revision, moved: false, ending: false };
+  boardDrag.value = { id, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, start: { ...position }, position: { ...position }, origin: { x: bounds.value.x, y: bounds.value.y }, rows: new Map(captionRows.value), scale: zoom.value, revision: props.revision, moved: false, ending: false };
   stage.value.setPointerCapture(event.pointerId);
 }
 function movePointer(event: PointerEvent) {
@@ -169,7 +193,7 @@ async function focus(artboardId: string) {
   const position = positions.value.get(artboardId);
   if (stage.value && position) {
     stage.value.scrollLeft = props.play ? 0 : (position.x - origin.value.x) * zoom.value;
-    stage.value.scrollTop = props.play ? 0 : (position.y - origin.value.y) * zoom.value;
+    stage.value.scrollTop = boardTop(artboardId);
   }
 }
 watch(zoom, async (value, previous) => {
@@ -233,7 +257,6 @@ defineExpose({ focus, zoom, activeArtboardId });
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  height: 36px;
   color: var(--color-text-muted);
 }
 

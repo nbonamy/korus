@@ -574,7 +574,7 @@ try {
   const caption = page.getByRole('button', { name: 'Edit Checkout', exact: true });
   await page.locator('.design-canvas:visible').evaluate(canvas => { canvas.scrollTop = 0; canvas.scrollLeft = 0; });
   let captionBounds = await caption.boundingBox();
-  await drag({ x: captionBounds.x + 30, y: captionBounds.y + 18 }, { x: captionBounds.x + 130, y: captionBounds.y + 78 });
+  await drag({ x: captionBounds.x + 30, y: captionBounds.y + captionBounds.height / 2 }, { x: captionBounds.x + 130, y: captionBounds.y + captionBounds.height / 2 + 60 });
   await waitRevision(++positionRevision);
   let positioned = (await gestureState()).content.artboards.find(board => board.id === 'checkout');
   assert.deepEqual(positioned.position, { x: -1000, y: 120 });
@@ -583,11 +583,11 @@ try {
   await waitRevision(++positionRevision);
   assert.equal((await gestureState()).content.artboards.find(board => board.id === 'checkout').position.x, -999);
   captionBounds = await caption.boundingBox();
-  await drag({ x: captionBounds.x + 30, y: captionBounds.y + 18 }, { x: captionBounds.x + 70, y: captionBounds.y + 48 }, false);
+  await drag({ x: captionBounds.x + 30, y: captionBounds.y + captionBounds.height / 2 }, { x: captionBounds.x + 70, y: captionBounds.y + captionBounds.height / 2 + 30 }, false);
   await page.keyboard.press('Escape'); await page.mouse.up();
   assert.equal((await gestureState()).revision, positionRevision, 'Cancelling artboard movement must not save a revision.');
   captionBounds = await caption.boundingBox();
-  await drag({ x: captionBounds.x + 30, y: captionBounds.y + 18 }, { x: captionBounds.x + 90, y: captionBounds.y + 38 }, false);
+  await drag({ x: captionBounds.x + 30, y: captionBounds.y + captionBounds.height / 2 }, { x: captionBounds.x + 90, y: captionBounds.y + captionBounds.height / 2 + 20 }, false);
   await design({ type: 'edit', expectedRevision: positionRevision, edits: [{ type: 'text', nodeId: 'checkout-title', text: 'Agent edit during board move' }] });
   await waitRevision(++positionRevision);
   await page.mouse.up();
@@ -689,6 +689,35 @@ try {
   }
   assert.deepEqual(recoveryErrors, []);
   record('Removing a previewed control, its element or its artboard keeps discard reachable and unlocks editing without saving the pending value.');
+  // Captions share the canvas geometry, including at sidebar overview scale.
+  const geometryRevision = (await gestureState()).revision;
+  const geometryBoards = ['top', 'bottom', 'right'].map((name, index) => ({
+    id: `geometry-${name}`, title: `Geometry ${name}`, width: 1440, height: 900,
+    position: { x: index === 2 ? 3040 : 0, y: index === 1 ? 980 : 0 },
+    root: { id: `geometry-root-${name}`, tag: 'main', text: 'Software proposal' },
+  }));
+  await design({ type: 'edit', expectedRevision: geometryRevision, edits: geometryBoards.map(artboard => ({ type: 'artboard-add', artboard })) });
+  await waitRevision(geometryRevision + 1);
+  await fitAll();
+  const captionGeometry = await page.locator('.design-canvas:visible').evaluate(canvas => {
+    const bounds = selector => { const r = canvas.querySelector(selector).getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height, bottom: r.bottom }; };
+    return { frame: bounds('[data-artboard-id="geometry-top"] iframe'), caption: bounds('[data-artboard-id="geometry-bottom"] header') };
+  });
+  await writeFile(path.join(output, 'caption-geometry.json'), JSON.stringify(captionGeometry, null, 2));
+  await page.screenshot({ path: path.join(output, 'caption-geometry.png') });
+  assert.ok(captionGeometry.caption.y >= captionGeometry.frame.bottom, 'The second-row caption must not overlap the previous screen at overview zoom.');
+  assert.ok(captionGeometry.caption.height >= 32, 'Overview captions must retain readable controls instead of shrinking with the screens.');
+  await page.getByRole('button', { name: 'Artboard', exact: true }).click();
+  await page.getByRole('menuitemradio', { name: 'Geometry bottom', exact: true }).click();
+  await page.locator('[data-artboard-id="geometry-bottom"][data-active="true"]').waitFor();
+  const focusedGeometry = await page.locator('[data-artboard-id="geometry-bottom"] iframe').boundingBox();
+  const geometryStage = await page.locator('.design-canvas:visible').boundingBox();
+  assert.ok(focusedGeometry.y >= geometryStage.y && focusedGeometry.y + focusedGeometry.height <= geometryStage.y + geometryStage.height + 1, 'Focusing a lower screen must include its caption gutter in scrolling.');
+  const savedGeometry = (await gestureState()).content.artboards.filter(board => board.id.startsWith('geometry-'));
+  assert.deepEqual(savedGeometry.map(board => board.position), geometryBoards.map(board => board.position), 'Viewport gutters and focusing must not alter authored positions.');
+  await design({ type: 'edit', expectedRevision: geometryRevision + 1, edits: geometryBoards.map(board => ({ type: 'artboard-remove', artboardId: board.id })) });
+  await waitRevision(geometryRevision + 2);
+  record('Two-row software proposals keep captions clear of previous screens at overview zoom.');
   if (live) {
     const designerId = snapshot.agents[1].id;
     console.log('Checking live provider generation in the isolated profile.');

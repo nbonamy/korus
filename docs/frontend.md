@@ -323,6 +323,9 @@ in daemon-owned documents. User and agent edits share serialized, revision-check
 operations. Text changes target leaves; structural operations preserve unrelated
 nodes. Full-document replacement is unavailable after creation. Persistent undo and
 named checkpoints recover saved content while revisions remain monotonic.
+Saved Design changes publish only the owning agent's workspace state; they never
+replace the client roster containing projected remote agents. Desktop reference
+attachments pass through the native attachment registry before provider dispatch.
 
 Artboard operations share the same atomic edit batches. Duplication remaps authored
 IDs, CSS selectors and interaction targets; it leaves comments on their original
@@ -334,6 +337,8 @@ artboard operations across reloads.
 Artboard coordinates belong to saved content; viewport pan and zoom do not.
 Artboards without explicit coordinates retain their derived horizontal positions.
 Moving an artboard never rewrites the layout inside it.
+The canvas reserves display-only gutters for readable captions between stacked
+screens. Those gutters stay fixed during a drag and never change saved coordinates.
 
 Layer moves preserve stable identity and comments within their artboard; copies get
 new identities and remapped CSS selectors and internal targets. Removing a subtree

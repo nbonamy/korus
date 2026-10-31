@@ -1,4 +1,4 @@
-import type { BackendConversationRef } from './contracts';
+import type { BackendConversationRef, RendererPromptAttachment } from './contracts';
 import { isDesignTweaks, type DesignTweak, type DesignTweakEdit } from './design-tweaks';
 
 export type DesignInteraction =
@@ -48,9 +48,9 @@ export type DesignEdit =
   | { type: 'artboard-remove'; artboardId: string }
   | { type: 'artboard-move'; artboardId: string; index: number }
   | { type: 'choose-artboard'; artboardId: string | null };
-export type DesignRequest =
+export type DesignRequest<Attachment = RendererPromptAttachment> =
   | { type: 'read' }
-  | { type: 'open'; prompt?: string }
+  | { type: 'open'; prompt?: string; attachments?: readonly Attachment[] }
   | { type: 'close' }
   | { type: 'export'; artboardId?: string }
   | { type: 'capture'; expectedRevision: number; artboardId?: string }

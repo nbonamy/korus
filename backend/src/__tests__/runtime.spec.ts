@@ -11,6 +11,8 @@ import { buildAppMcpConfigOverrides } from '../mcp/codex-config';
 import { ProviderUpdateRuntime } from '../provider-update-runtime';
 import type { ProviderUpdates } from '../provider-updates';
 import { RemoteTeamService } from '../connections/remote-team-service';
+import { applyMainEventToSnapshot } from '@workspace/core/snapshot';
+import type { DesignService } from '../design-service';
 import { createTestSnapshot, createRemoteTeamSnapshot, gitWorkspace } from './server-test-fixtures';
 
 const mocks = vi.hoisted(() => ({
@@ -284,6 +286,7 @@ describe('daemon runtime', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.serverEmitEvent.mockReset();
     mocks.useRealDriverRpc = false;
     mocks.collaborationAgents.mockImplementation((snapshot: AppSnapshot) => snapshot.agents);
     mocks.providerLifecycles = null;
@@ -462,6 +465,32 @@ describe('daemon runtime', () => {
     const automationTask = mocks.schedulerTasks[0] as SchedulerTask;
     await automationTask.run();
     expect(mocks.automationRunAll).toHaveBeenCalledOnce();
+  });
+
+  it('publishes local Design changes without removing projected SSH agents from the client roster', async () => {
+    const snapshot = createTestSnapshot();
+    const local: Agent = { ...mocks.snapshot.agents[0]!, teamId: 'team-test' } as Agent;
+    snapshot.agents = [local];
+    snapshot.teams[0]!.agentIds = [local.id];
+    snapshot.teams[0]!.remoteLinks = [{ connectionId: 'devbox', remoteTeamId: 'team-remote' }];
+    const remoteTeams = new RemoteTeamService({ getSnapshot: () => snapshot, clients: {} as never,
+      onForwardedEvent: vi.fn(), onProjectedSnapshotChanged: vi.fn() });
+    remoteTeams.rememberSnapshot('devbox', createRemoteTeamSnapshot([{ ...local, id: 'remote', teamId: 'team-remote' }]));
+    const client = structuredClone(remoteTeams.clientSnapshotFromKnownRemotes());
+    expect(client.agents.map(agent => agent.id)).toStrictEqual([local.id, 'remote']);
+    mocks.loadBackendSnapshot.mockResolvedValue(snapshot);
+    mocks.serverEmitEvent.mockImplementation(event => applyMainEventToSnapshot(client, event));
+    const runtime = await createDaemonRuntime({ emitEvent, requestClient, version: 'test' });
+    try {
+      const design = (mocks.serverOptions[0] as { designService: DesignService }).designService;
+      for (const type of ['open', 'close'] as const) {
+        await design.execute(local.id, { type });
+        expect(client.agents.map(agent => agent.id)).toStrictEqual([local.id, 'remote']);
+        expect(client.teams[0]!.agentIds).toStrictEqual([local.id, 'remote']);
+        expect(client.agents[0]!.designWorkspace?.isOpen).toBe(type === 'open');
+        expect(snapshot.agents.map(agent => agent.id)).toStrictEqual([local.id]);
+      }
+    } finally { await runtime.stop(); }
   });
 
   it('gives Quick Chats a current team project catalog without importing other conversations or teams', async () => {

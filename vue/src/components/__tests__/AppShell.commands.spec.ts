@@ -304,6 +304,21 @@ describe('AppShell dialogs and commands', () => {
     wrapper.unmount();
   });
 
+  it('starts Design with the reference image instead of sending an ordinary prompt', async () => {
+    const design = vi.fn().mockResolvedValue({ workspace: { isOpen: true } });
+    const sendPromptAction = vi.fn();
+    setElectronTestClient({ design });
+    const wrapper = mountShell({ sendPromptAction, stubAgentWorkspace: false });
+    const attachments = [{ type: 'image' as const, reference: 'electron-attachment:reference' }];
+    try {
+      await conversationControllerActions(wrapper).submit!('/design recreate this screen', { attachments });
+      await flushPromises();
+      expect(design).toHaveBeenCalledExactlyOnceWith('agent-dina', { type: 'open', prompt: 'recreate this screen', attachments });
+      expect(sendPromptAction).not.toHaveBeenCalled();
+      expect(wrapper.findAll('[role="tab"]').map(tab => tab.text())).toContain('Design');
+    } finally { wrapper.unmount(); }
+  });
+
   it('starts Visualize from an empty workspace before any Visualize session exists', async () => {
     const snapshot = createInitialSnapshot();
     const startVisualize = vi.fn().mockResolvedValue(snapshot);

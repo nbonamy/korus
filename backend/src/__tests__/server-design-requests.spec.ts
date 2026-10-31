@@ -14,7 +14,13 @@ it('routes Design edits to their owning daemon, validates requests and publishes
   const server = new AppBackendServer({ snapshot, version: 'test', saveSnapshot, driverRpc });
   const request = (input: unknown, agentId = 'designer') => server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'agent/design', params: { agentId, input } });
   try {
-    expect(await request({ type: 'open' })).toMatchObject({ result: { workspace: { isOpen: true, document: null } } });
+    const attachments = [{ type: 'image', path: '/tmp/reference.png', name: 'reference.png', mimeType: 'image/png' }];
+    expect(await request({ type: 'open', prompt: 'Recreate this screen', attachments })).toMatchObject({ result: { workspace: { isOpen: true, document: null } } });
+    await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledOnce());
+    expect(sendPrompt.mock.calls[0][1]).toContain('Design Recreate this screen');
+    expect(sendPrompt.mock.calls[0][2]).toMatchObject({ attachments });
+    sendPrompt.mockClear();
+    snapshot.agents.find(agent => agent.id === 'designer')!.status = { type: 'idle' };
     expect(await request({ type: 'create', content: { title: 'App', css: '', comments: [], artboards: [{ id: 'desktop', title: 'Desktop', width: 800, height: 600, root: { id: 'hello', tag: 'h1', text: 'Hello' } }] } })).toMatchObject({ result: { workspace: { document: { revision: 1 } } } });
     expect(await request({ type: 'edit', expectedRevision: 1, edits: [{ type: 'text', nodeId: 'hello', text: 'Saved' }] })).toMatchObject({ result: { workspace: { document: { revision: 2 } } } });
     expect(saveSnapshot).toHaveBeenCalled();
