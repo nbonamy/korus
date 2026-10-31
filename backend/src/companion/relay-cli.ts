@@ -63,7 +63,9 @@ export async function runCompanionRelay(configFile: string, env: NodeJS.ProcessE
     firebase = new FcmSender({ projectId: credentials.project_id, clientEmail: credentials.client_email, privateKey: credentials.private_key });
   }
   const push = config.apns || firebase ? { send: (registration: import('@workspace/core/companion-notification').CompanionPushRegistration, notification: import('@workspace/core/companion-notification').CompanionNotification) =>
-    (registration.transport === 'fcm' ? firebase : senders[registration.environment])?.send(registration, notification) ?? Promise.resolve('unavailable' as const) } : undefined;
+    (registration.transport === 'fcm' ? firebase : senders[registration.environment])?.send(registration, notification) ?? Promise.resolve('unavailable' as const),
+    sendLiveActivity: (registration: import('@workspace/core/companion-live-activity').LiveActivityRegistration, activity: import('@workspace/core/companion-live-activity').LiveActivityPush) =>
+      senders[registration.environment]?.sendLiveActivity(registration, activity) ?? Promise.resolve('unavailable' as const) } : undefined;
   const relay = await createCompanionRelay({ push, pairing, log: logLine, key: identity, listen: config.listen, trustedProxy: config.trustedProxy, hostIds: config.hostIds,
     tls: config.certificateFile && config.privateKeyFile ? { cert: await readFile(config.certificateFile, 'utf8'), key: await readFile(config.privateKeyFile, 'utf8') } : undefined });
   let health;

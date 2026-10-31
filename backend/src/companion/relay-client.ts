@@ -1,4 +1,5 @@
 import { companionPushProtocol, type CompanionNotification, type CompanionPushRegistration } from '@workspace/core/companion-notification';
+import { companionLiveActivityProtocol, type LiveActivityRegistration, type LiveActivityPush } from '@workspace/core/companion-live-activity';
 import { readFirstCompanionFrame, encodeCompanionFrame } from '@workspace/core/companion-protocol';
 import { companionAdmissionIntervalMs, companionAdmissionProtocol } from '@workspace/core/companion-relay';
 import { z } from 'zod';
@@ -42,12 +43,20 @@ export class RelayClient {
   }
 
   async push(peerId: string, registration: CompanionPushRegistration, notification: CompanionNotification): Promise<PushResult> {
+    return this.deliver(peerId, companionPushProtocol, { peerId, registration, notification });
+  }
+
+  liveActivity(peerId: string, registration: LiveActivityRegistration, activity: LiveActivityPush): Promise<PushResult> {
+    return this.deliver(peerId, companionLiveActivityProtocol, { peerId, registration, activity });
+  }
+
+  private async deliver(peerId: string, protocol: string, payload: unknown): Promise<PushResult> {
     if (!this.link.connected || !this.authorized(peerId)) return 'unavailable';
-    const stream = await this.link.dialRelay(companionPushProtocol, dialTimeoutMs);
+    const stream = await this.link.dialRelay(protocol, dialTimeoutMs);
     try {
       if (!this.authorized(peerId)) return 'unavailable';
       stream.maxReadBufferLength = 16_384; stream.inactivityTimeout = 15_000;
-      stream.send(encodeCompanionFrame({ peerId, registration, notification }));
+      stream.send(encodeCompanionFrame(payload));
       await stream.close({ signal: AbortSignal.timeout(closeTimeoutMs) });
       return pushAnswer.parse(await readFirstCompanionFrame(stream)).result;
     } finally { stream.abort(new Error('Push request finished.')); }

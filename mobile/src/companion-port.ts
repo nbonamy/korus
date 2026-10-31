@@ -93,6 +93,8 @@ type CompanionOperations = {
 export type CompanionSession = CompanionLink & CompanionOperations;
 /** Host transport owns pairing and encrypted routing; Vue consumes app-owned reads and actions. */
 export type CompanionConnector = {
+  /** A short authenticated token exchange, also usable during ActivityKit's background wake. */
+  registerLiveActivity?(laptopId: string, registration: import('@workspace/core/companion-live-activity').LiveActivityRegistration | null): Promise<void>;
   laptops: readonly { id: string; name: string }[];
   cachedConversation?(target: CompanionTarget): CompanionConversation | null | undefined;
   conversationUpdates?(target: CompanionTarget, since: CompanionCheckpoint | null): CompanionSync | null;
