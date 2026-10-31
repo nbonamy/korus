@@ -1361,7 +1361,7 @@ const agentWorkspace = ref<{
   handleBrowserOpenCommand(command: Extract<AppCommand, { type: 'open-browser' }>): void;
   openConversationImage(image: CodexMessageImage, context?: CodexMessageImageContext, agentId?: string): boolean;
   openConversationVisualization(visualization: CodexConversationVisualization, agentId?: string): void;
-  showDebugGitOperationProgress(operation: 'pullRequest' | 'merge'): void | Promise<void>;
+  showDebugGitOperationProgress(operation: 'pullRequest' | 'merge' | 'conflicts'): void | Promise<void>;
   workspaceBodyElement(): HTMLElement | null;
 } | null>(null);
 const settingsActiveTab = ref<SettingsTab>('general');

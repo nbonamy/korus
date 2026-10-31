@@ -387,7 +387,15 @@
     <template #footer>
       <div v-if="updateOperation.status === 'confirmingDirty'" class="app-dialog__footer"><button class="app-button app-button--tertiary" type="button" @click="updateDialogOpen = false">{{ $t('surface.gitWorkflowControl.cancel') }}</button><button class="app-button app-button--secondary" type="button" @click="updateFromBase(true)">{{ $t('surface.gitWorkflowControl.updateAnyway') }}</button><button class="app-button app-button--primary" type="button" @click="commitBeforeUpdate">{{ $t('surface.gitWorkflowControl.commitFirst') }}</button></div>
       <div v-else-if="updateOperation.status === 'confirmingRequired'" class="app-dialog__footer"><button class="app-button app-button--tertiary" type="button" @click="updateDialogOpen = false">{{ $t('surface.gitWorkflowControl.cancel') }}</button><button class="app-button app-button--primary" type="button" @click="updateFromBase(false)">{{ $t('surface.gitWorkflowControl.updateFromBranch', { branch: baseBranch }) }}</button></div>
-      <div v-else-if="updateOperation.status === 'conflicts'" class="app-dialog__footer"><button class="app-button app-button--tertiary" type="button" @click="updateDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button></div>
+      <div v-else-if="updateOperation.status === 'conflicts'" class="app-dialog__footer">
+        <button class="app-button app-button--secondary" type="button" @click="updateDialogOpen = false">
+          <svg class="git-workflow-control__countdown" viewBox="0 0 16 16" aria-hidden="true">
+            <circle class="git-workflow-control__countdown-track" cx="8" cy="8" r="6" />
+            <circle class="git-workflow-control__countdown-ring" cx="8" cy="8" r="6" pathLength="1" />
+          </svg>
+          {{ $t('surface.gitWorkflowControl.close') }}
+        </button>
+      </div>
       <div v-else-if="updateOperation.status === 'error'" class="app-dialog__footer"><button class="app-button app-button--tertiary" type="button" @click="updateDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button><button class="app-button app-button--primary" type="button" @click="updateFromBase(Boolean(workflow?.files.length))">{{ $t('surface.gitWorkflowControl.retry') }}</button></div>
     </template>
   </el-dialog>
@@ -716,6 +724,12 @@ watch(mergeDialogOpen, (open) => {
 
 watch(updateDialogOpen, (open) => {
   if (!open && !updateOperationRunning.value) resetUpdateOperation();
+});
+
+watch([updateDialogOpen, () => updateOperation.value.status], ([open, status], _, onCleanup) => {
+  if (!open || status !== 'conflicts') return;
+  const timer = setTimeout(() => { updateDialogOpen.value = false; }, 5000);
+  onCleanup(() => clearTimeout(timer));
 });
 
 watch(deleteWorktree, (enabled) => {
@@ -1286,12 +1300,21 @@ function clearUpdateSuccessTimer(): void {
   }
 }
 
-async function showDebugOperationProgress(operation: 'pullRequest' | 'merge'): Promise<void> {
+async function showDebugOperationProgress(operation: 'pullRequest' | 'merge' | 'conflicts'): Promise<void> {
   clearDebugOperationTimers();
   pullRequestDialogOpen.value = false;
   mergeDialogOpen.value = false;
+  updateDialogOpen.value = false;
   resetPullRequestOperation();
   resetMergeOperation();
+
+  if (operation === 'conflicts') {
+    await nextTick();
+    resetUpdateOperation();
+    updateOperation.value = { status: 'conflicts', count: 2 };
+    updateDialogOpen.value = true;
+    return;
+  }
 
   if (operation === 'pullRequest') {
     pullRequestTitle.value = 'Debug progress preview';
@@ -1771,6 +1794,37 @@ function handleMainEvent(event: MainToRendererEvent): void {
 
 :global(.git-workflow-control__dialog .el-dialog__body) {
   padding-bottom: 0;
+}
+
+.git-workflow-control__countdown {
+  width: 16px;
+  height: 16px;
+  transform: rotate(-90deg);
+}
+
+.git-workflow-control__countdown circle {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+
+.git-workflow-control__countdown-track {
+  opacity: 0.25;
+}
+
+.git-workflow-control__countdown-ring {
+  stroke-dasharray: 1 1;
+  animation: git-conflict-countdown 5s linear forwards;
+}
+
+@keyframes git-conflict-countdown {
+  to { stroke-dasharray: 0 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .git-workflow-control__countdown-ring {
+    animation-timing-function: steps(5);
+  }
 }
 
 :global(.git-workflow-control__dialog--transient .el-dialog__footer) {

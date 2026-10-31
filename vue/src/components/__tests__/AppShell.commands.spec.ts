@@ -1240,6 +1240,19 @@ describe('AppShell dialogs and commands', () => {
     await flushPromises();
     expect(new DOMWrapper(document.body).text()).toContain('Building handoff report');
     expect(new DOMWrapper(document.body).text()).toContain('Run in background');
+
+    listener({ type: 'debug-operation-progress', kind: 'conflicts' });
+    await flushPromises();
+    const body = new DOMWrapper(document.body);
+    expect(body.text()).toContain('Agent resolving conflicts');
+    expect(body.findAll('button').find(button => button.text() === 'Close')?.classes()).toContain('app-button--secondary');
+    await vi.advanceTimersByTimeAsync(2000);
+    listener({ type: 'debug-operation-progress', kind: 'conflicts' });
+    await flushPromises();
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(body.text()).toContain('Agent resolving conflicts');
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(body.text()).not.toContain('Agent resolving conflicts');
   });
 
   it('attaches a screenshot command to the active agent composer', async () => {

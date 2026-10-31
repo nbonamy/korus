@@ -799,7 +799,7 @@ function workspaceBodyElement(): HTMLElement | null {
   return workspaceBody.value;
 }
 
-function showDebugGitOperationProgress(operation: 'pullRequest' | 'merge'): void | Promise<void> {
+function showDebugGitOperationProgress(operation: 'pullRequest' | 'merge' | 'conflicts'): void | Promise<void> {
   return agentHeaders.get(props.currentAgent?.id ?? '')?.showDebugGitOperationProgress(operation);
 }
 
