@@ -85,6 +85,19 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
               message.frameInfo.request.url == WebAssets.url("engine.html"),
               let body = message.body as? [String: Any], let type = body["type"] as? String else { replyHandler(nil, "Invalid request."); return }
         switch type {
+        case "imageCache.read", "imageCache.write", "imageCache.forget":
+            guard let host = body["host"] as? String else { replyHandler(nil, "Invalid image cache scope."); return }
+            let key = body["key"] as? String ?? "", dataUrl = body["dataUrl"] as? String ?? ""
+            Task {
+                do {
+                    let cache = DeviceImageCache.shared
+                    switch type {
+                    case "imageCache.read": replyHandler(try await cache.read(host: host, key: key) as Any? ?? NSNull(), nil)
+                    case "imageCache.write": try await cache.write(host: host, key: key, dataUrl: dataUrl); replyHandler(true, nil)
+                    default: try await cache.forget(host: host); replyHandler(true, nil)
+                    }
+                } catch { replyHandler(nil, "Image cache is unavailable.") }
+            }
         case "connection.diagnostic":
             guard let record = body["record"] as? [String: Any] else { replyHandler(nil, "Invalid diagnostic."); return }
             diagnosticQueue.async { [connectionLog] in connectionLog.append(record) }

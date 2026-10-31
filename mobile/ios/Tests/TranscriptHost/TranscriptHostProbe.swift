@@ -279,6 +279,18 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
         await wait { !fileOpen }
         check(!fileOpen, "closing a file preview restores native conversation chrome")
 
+        let cacheRoot = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("image-cache-probe")
+        let imageCache = DeviceImageCache(directory: cacheRoot)
+        let scope = String(repeating: "a", count: 64), imageKey = String(repeating: "1", count: 64)
+        do {
+            try await imageCache.write(host: scope, key: imageKey, dataUrl: "data:image/png;base64,\(png)")
+            let cached = try await DeviceImageCache(directory: cacheRoot).read(host: scope, key: imageKey)
+            check(cached == "data:image/png;base64,\(png)", "iOS cache bytes survive storage-owner recreation in the device cache directory")
+            try await imageCache.forget(host: scope)
+            let forgotten = try await imageCache.read(host: scope, key: imageKey)
+            check(forgotten == nil, "forgetting the laptop removes its device image bytes")
+        } catch { check(false, "native iOS image cache is available") }
+
         let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("transcript-results.json")
         try! JSONSerialization.data(withJSONObject: checks, options: [.prettyPrinted, .sortedKeys]).write(to: url)
         print("TRANSCRIPT_NATIVE_DONE")

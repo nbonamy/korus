@@ -117,6 +117,14 @@ API with the containing pane's agent identity, so project and remote-host files
 are resolved on their owning host. The renderer receives bounded image data URLs;
 it does not read the filesystem or treat project paths as attachment capabilities.
 
+Mobile retains immutable conversation images as binary bytes in each platform's
+OS-purgeable cache directory. A shared 256 MiB budget evicts the least recently
+accessed images across paired hosts; there is no time expiry. Keys include host,
+provider and conversation identity. Forgetting a host clears its entries. Mutable
+file paths bypass this cache, and missing, corrupt or unavailable entries fall
+back to the authorized host reader. Disk caching leaves viewport loading and the
+renderer memory budget independent.
+
 The file explorer uses directory entries from the owning daemon rather than the
 composer's bounded file catalog. Directory pages are cached by the explorer's
 agent and folder identity; refresh invalidates those pages. Workspace search
