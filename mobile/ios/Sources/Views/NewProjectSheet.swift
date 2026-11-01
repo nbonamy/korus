@@ -17,26 +17,39 @@ enum NewProjectSource: String, Identifiable, CaseIterable {
 
 struct NewAgentMenu: View {
     let enabled: Bool
+    var allTeams = false
     let quickChat: () -> Void
     let select: (NewProjectSource) -> Void
+    @State private var showingTeamRequired = false
 
     var body: some View {
-        Menu {
-            Button("Quick Chat", systemImage: "square.and.pencil", action: quickChat)
-            Divider()
-            ForEach(NewProjectSource.allCases) { source in
-                Button(source.menuTitle, systemImage: source.symbol) { select(source) }
+        Group {
+            if allTeams {
+                Button { showingTeamRequired = true } label: { label }
+            } else {
+                Menu {
+                    Button("Quick Chat", systemImage: "square.and.pencil", action: quickChat)
+                    Divider()
+                    ForEach(NewProjectSource.allCases) { source in
+                        Button(source.menuTitle, systemImage: source.symbol) { select(source) }
+                    }
+                } label: { label }
+                .menuOrder(.fixed)
             }
-        } label: {
-            Label("New Agent", systemImage: "plus")
-                .font(.subheadline.weight(.semibold))
-                .padding(.horizontal, 12)
-                .frame(minHeight: 40)
         }
-        .menuOrder(.fixed)
         .buttonStyle(.glassProminent)
         .tint(.accentColor)
-        .disabled(!enabled)
+        .disabled(!enabled && !allTeams)
+        .alert("Switch to a team to create a new agent.", isPresented: $showingTeamRequired) {
+            Button("OK", role: .cancel) {}
+        }
+    }
+
+    private var label: some View {
+        Label("New Agent", systemImage: "plus")
+            .font(.subheadline.weight(.semibold))
+            .padding(.horizontal, 12)
+            .frame(minHeight: 40)
     }
 }
 

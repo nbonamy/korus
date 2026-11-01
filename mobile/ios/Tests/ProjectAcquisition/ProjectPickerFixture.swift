@@ -84,12 +84,14 @@ enum EngineState {
     @State private var name = "Original"
     @State private var forgetting: EngineState.Laptop?
     @State private var forgotten = false
+    @State private var allTeams = ProcessInfo.processInfo.arguments.contains("--all-teams")
     var body: some Scene {
         WindowGroup {
             @Bindable var model = model
             VStack {
                 Button("Existing Project") { model.newProjectSource = .existing }
-                NewAgentMenu(enabled: true, quickChat: {}, select: { model.newProjectSource = $0 })
+                NewAgentMenu(enabled: true, allTeams: allTeams, quickChat: {}, select: { model.newProjectSource = $0 })
+                if allTeams { Button("Switch to Team") { allTeams = false } }
                 Text(model.selection)
                 Button("Rename Agent") { showingRename = true }
                 Text("Agent: \(name)")

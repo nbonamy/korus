@@ -3,6 +3,21 @@ import XCTest
 // Regression: replacing a scrolled repository catalog with asynchronously loaded
 // branches must expose tappable rows, including when changing repositories.
 final class ProjectPickerUITests: XCTestCase {
+    @MainActor func testAllTeamsExplainsCreationWithoutOpeningTheMenu() {
+        let app = XCUIApplication()
+        continueAfterFailure = false
+        app.launchArguments = ["--all-teams"]
+        app.launch()
+        app.buttons["New Agent"].tap()
+        let prompt = app.alerts["Switch to a team to create a new agent."]
+        XCTAssertTrue(prompt.waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["From GitHub"].exists)
+        capture("all-teams-new-agent")
+        prompt.buttons["OK"].tap()
+        app.buttons["Switch to Team"].tap()
+        app.buttons["New Agent"].tap()
+        XCTAssertTrue(app.buttons["From GitHub"].waitForExistence(timeout: 3))
+    }
     @MainActor private func openGitLab(_ app: XCUIApplication) {
         app.buttons["New Agent"].tap()
         XCTAssertTrue(app.buttons["From GitHub"].exists)

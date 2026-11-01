@@ -34,6 +34,7 @@ import org.json.JSONObject
     val sidebar = model.sidebar
     val activity = sidebar.organization == "activity"
     var newTeam by remember { mutableStateOf(false) }
+    var teamRequired by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxHeight().safeDrawingPadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Image(painterResource(R.drawable.app_icon), model.product.string("name"), Modifier.size(28.dp).clip(RoundedCornerShape(7.dp)))
@@ -142,8 +143,8 @@ import org.json.JSONObject
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             var newMenu by remember { mutableStateOf(false) }
             Box(Modifier.weight(1f)) {
-                Button(onClick = { newMenu = true }, enabled = model.canStartCreation, modifier = Modifier.heightIn(min = 48.dp)) { Icon(Icons.Outlined.Add, null, Modifier.size(20.dp)); Spacer(Modifier.width(8.dp)); Text("New Agent", fontWeight = FontWeight.SemiBold) }
-                DropdownMenu(expanded = newMenu, onDismissRequest = { newMenu = false }) {
+                Button(onClick = { if (state.optBoolean("allTeams")) teamRequired = true else newMenu = true }, enabled = state.optBoolean("allTeams") || model.canStartCreation, modifier = Modifier.heightIn(min = 48.dp)) { Icon(Icons.Outlined.Add, null, Modifier.size(20.dp)); Spacer(Modifier.width(8.dp)); Text("New Agent", fontWeight = FontWeight.SemiBold) }
+                DropdownMenu(expanded = newMenu && !state.optBoolean("allTeams"), onDismissRequest = { newMenu = false }) {
                     listOf(Triple("Quick Chat", CreationKind.QUICK, Icons.Outlined.Edit), Triple("New Project", CreationKind.PROJECT, Icons.Outlined.CreateNewFolder), Triple("Existing Project", CreationKind.LOCAL, Icons.Outlined.Folder), Triple("From GitHub", CreationKind.GITHUB, Icons.Outlined.Code), Triple("From GitLab", CreationKind.GITLAB, Icons.Outlined.Code), Triple("From URL", CreationKind.URL, Icons.Outlined.Link)).forEachIndexed { index, (label, kind, icon) ->
                         if (index == 1) HorizontalDivider()
                         DropdownMenuItem(text = { Text(label) }, leadingIcon = { Icon(icon, null, tint = MaterialTheme.colorScheme.primary) }, onClick = { newMenu = false; model.openCreation(kind); close() })
@@ -154,6 +155,8 @@ import org.json.JSONObject
         }
     }
     if (newTeam) NewTeamDialog(model) { newTeam = false; model.command("dismissTeamCreation") }
+    if (teamRequired) AlertDialog(onDismissRequest = { teamRequired = false }, title = { Text("Switch to a team to create a new agent.") },
+        confirmButton = { TextButton(onClick = { teamRequired = false }) { Text("OK") } })
 }
 
 @Composable private fun NewTeamDialog(model: CompanionModel, dismiss: () -> Unit) {

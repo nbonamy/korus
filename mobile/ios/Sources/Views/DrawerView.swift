@@ -187,6 +187,7 @@ struct DrawerView: View {
             }
             HStack(spacing: 10) {
                 NewAgentMenu(enabled: model.canStartChat && model.chatCreation != .creating,
+                             allTeams: model.allTeams,
                              quickChat: model.startQuickChat, select: model.openProject)
                 Spacer()
                 Button { showingSettings = true } label: {
