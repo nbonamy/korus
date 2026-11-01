@@ -42,6 +42,7 @@ export type AgentSidebarEvents = {
   'create-agent-from-repository': [payload: SidebarRepositoryTarget];
   'create-agent-on-branch': [payload: SidebarRepositoryTarget & { branch: SourceBranch }];
   'create-agent-worktree-in-repository': [payload: SidebarRepositoryTarget];
+  'create-feature-worktree': [repositories: SidebarRepositoryTarget[]];
   'open-on-remote': [payload: { action: 'main' | 'new-worktree'; repositoryName: string; repositoryKey: string; originUrl?: string }];
   'duplicate-agent': [agentId: string];
   'fork-agent': [agentId: string];
@@ -61,6 +62,9 @@ export type AgentSidebarEvents = {
   'create-mission': [];
   'delete-mission': [id: string];
   'create-agent-in-mission-worktree': [payload: { missionId: string; worktreePath: string }];
+  'open-feature': [agentIds: string[]];
+  'rename-feature': [feature: { branch: string; label: string }];
+  'delete-feature': [feature: { branch: string; label: string }];
   'delete-repository': [agentId: string];
   'select-mission': [id: string];
   'update-repository-icon': [payload: { repositoryKey: string; repositoryRoot: string; icon: string | undefined }];

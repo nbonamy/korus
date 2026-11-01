@@ -4,6 +4,7 @@ import type { TaskContract } from './delegated-task';
 import type { DelegationStartingContext } from './delegation-context';
 
 export type CreateCoAgentInput = {
+  featureLabel?: string;
   remoteConnectionId?: string;
   goal?: boolean;
   planMode?: boolean;
@@ -18,6 +19,16 @@ export type CreateCoAgentInput = {
   instructions?: string;
   startingContext?: DelegationStartingContext;
   repoPath: string;
+};
+
+/** Defaults shared by every target; target settings override these defaults. */
+export type CreateCoAgentDefaults = Pick<CreateCoAgentInput,
+  'featureLabel' | 'selection' | 'branchName' | 'createWorktree' | 'startingContext' | 'planMode' | 'goal' | 'instructions'>;
+
+export type CreateCoAgentTarget = Omit<CreateCoAgentInput, 'branchName' | 'createWorktree' | 'featureLabel'>;
+
+export type CreateCoAgentsInput = CreateCoAgentDefaults & {
+  targets: CreateCoAgentTarget[];
 };
 
 export type RemoteWorkerRequest = {

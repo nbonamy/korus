@@ -5,6 +5,27 @@ import { useSplitWorkspace } from '../use-split-workspace';
 describe('split workspace selection', () => {
   // Storage failures and stale rosters are exercised here because the App fixture
   // cannot represent unavailable browser storage or a restart with a changed roster.
+  it.each([1, 2, 3, 4, 6])('opens only feature agents in the matching layout, capped at four (%s agents)', async count => {
+    const ids = Array.from({ length: count }, (_, index) => `feature-${index}`);
+    const current = ref('other');
+    const scope = effectScope();
+    const options = { agentIds: () => ['other', ...ids], currentAgentId: () => current.value,
+      teamId: () => `feature-open-${count}`, selectAgent: (id: string) => { current.value = id; } };
+    let split = scope.run(() => useSplitWorkspace(options))!;
+    try {
+      split.openAgents(ids);
+      await nextTick();
+      expect(split.layout.value).toBe(count === 1 ? 'single' : count === 2 ? '2-vertical' : '4-quadrant');
+      expect(split.panes.value.map(pane => pane.agentId)).toStrictEqual(count === 3 ? [...ids, null] : ids.slice(0, 4));
+      expect(current.value).toBe(ids[0]);
+      scope.stop();
+      const restored = effectScope();
+      split = restored.run(() => useSplitWorkspace(options))!;
+      expect(split.panes.value.filter(pane => pane.agentId).map(pane => pane.agentId)).toStrictEqual(ids.slice(0, 4));
+      restored.stop();
+    } finally { scope.stop(); localStorage.removeItem(`app:splitWorkspace:v1:feature-open-${count}`); }
+  });
+
   it('restores occupied focus before following selection and clears departed agents on restart', async () => {
     const agents = ref(['a', 'b', 'c']);
     const current = ref('a');

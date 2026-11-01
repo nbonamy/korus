@@ -132,12 +132,19 @@
           v-bind="group.kind === 'repository' ? clientRepositoryOrderUpdate.dragItemAttributes(group.id) : {}"
           @dragstart="group.kind === 'repository' && clientRepositoryOrderUpdate.onDragStart(group.id, $event)"
           @dragend="clientRepositoryOrderUpdate.onDragEnd"
-          @contextmenu="openRepositoryMenu(group, $event)"
+          @contextmenu="openWorkspaceMenu(group, $event)"
         >
           <MessageIcon
             v-if="group.kind === 'quickChats'"
             class="agent-sidebar__workspace-icon"
             data-icon="message"
+            aria-hidden="true"
+          />
+          <component
+            v-else-if="group.kind === 'worktree'"
+            :is="worktreeGroupKind(group) === 'worktree' ? GitForkIcon : GitBranchIcon"
+            class="agent-sidebar__workspace-icon"
+            :data-session-kind="worktreeGroupKind(group)"
             aria-hidden="true"
           />
           <FolderIcon
@@ -176,6 +183,25 @@
             >
               <PlusIcon aria-hidden="true" />
             </button>
+          </span>
+          <span v-else-if="group.kind === 'worktree'" class="agent-sidebar__workspace-actions">
+            <el-tooltip :content="group.sessions.length > 4 ? t('features.openLimited', { count: group.sessions.length }) : t('features.open')" placement="right" :show-after="300">
+              <button type="button" :aria-label="t('features.open')" @click.stop="emit('open-feature', group.sessions.map(session => session.agentId))">
+                <OpenFeatureIcon aria-hidden="true" />
+              </button>
+            </el-tooltip>
+            <AppMenuButton
+              v-if="group.protected && !phoneScope"
+              :ariaLabel="t('features.newWorktree')"
+              :items="[{ id: 'new-worktree', type: 'action', label: t('sidebar.newWorktree'), icon: GitForkIcon }]"
+              @select="emit('create-feature-worktree', featureRepositoryTargets)"
+            >
+              <template #trigger="{ attrs }">
+                <button v-bind="attrs" type="button" :aria-label="t('features.newWorktree')" :title="t('features.newWorktree')">
+                  <PlusIcon aria-hidden="true" />
+                </button>
+              </template>
+            </AppMenuButton>
           </span>
           <span v-else-if="group.kind === 'repository'" class="agent-sidebar__workspace-actions">
             <button
@@ -216,6 +242,7 @@
               :session="session"
               :group-kind="group.kind"
               :host="rowHost(session)"
+              :repository-icon="activityRepository.get(session.agentId)"
               v-show="!isWorkspaceCollapsed(group)"
               class="agent-sidebar__agent"
               :class="[
@@ -307,10 +334,12 @@
 
 <script setup lang="ts">
 import { toRefs } from 'vue';
+import OpenFeatureIcon from '../shared/icons/OpenFeatureIcon.vue';
 import AgentSidebarMenus from './AgentSidebarMenus.vue';
 import MissionProgressIcon from './MissionProgressIcon.vue';
 import type { AgentSidebarModel } from './use-agent-sidebar';
-import { AlertTriangleIcon, ArrowsSortIcon, FolderIcon, GitForkIcon, MessageIcon, PanelLeftCloseIcon, PlusIcon, TargetArrowIcon } from '../shared/icons/app-icons';
+import type { WorkspaceSidebarGroup } from '@workspace/core/workspace-sidebar';
+import { AlertTriangleIcon, ArrowsSortIcon, FolderIcon, GitBranchIcon, GitForkIcon, MessageIcon, PanelLeftCloseIcon, PlusIcon, TargetArrowIcon } from '../shared/icons/app-icons';
 import BackendIcon from './BackendIcon.vue';
 import RepositoryIconPicker from './RepositoryIconPicker.vue';
 import StartWorkMenu from './StartWorkMenu.vue';
@@ -319,6 +348,10 @@ import RepositoryAgentRow from './RepositoryAgentRow.vue';
 import RemoteHostIndicator from './RemoteHostIndicator.vue';
 
 const props = defineProps<{ model: AgentSidebarModel }>();
+function worktreeGroupKind(group: WorkspaceSidebarGroup): 'main' | 'branch' | 'worktree' {
+  if (group.protected) return 'main';
+  return group.sessions.some(session => session.kind === 'worktree') ? 'worktree' : 'branch';
+}
 const {
   compact,
   sidebarStyle,
@@ -339,8 +372,9 @@ const {
   missionStatusLabel,
   missionDotStatus,
   workspaceGroups,
+  featureRepositoryTargets,
   clientRepositoryOrderUpdate,
-  openRepositoryMenu,
+  openWorkspaceMenu,
   isWorkspaceCollapsed,
   repositoryIcon,
   updateRepositoryIcon,
@@ -351,6 +385,7 @@ const {
   sectionTarget,
   remoteConnection,
   rowHost,
+  activityRepository,
   repositorySessionMenu,
   setRepositorySessionMenuVisible,
   selectRepositorySessionMenuItem,
@@ -385,6 +420,10 @@ const {
 
 .agent-sidebar__workspace-group > .agent-sidebar__group-rows {
   display: contents;
+}
+
+.agent-sidebar__workspace-group[data-group-kind="worktree"] .agent-sidebar__agent {
+  padding-inline-start: calc(var(--agent-sidebar-workspace-inline-padding) + var(--space-10));
 }
 
 .agent-sidebar__start-work {

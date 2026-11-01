@@ -177,12 +177,12 @@ describe('AgentSidebar sessions', () => {
     expect(document.body.textContent).toContain('Organize agents by');
     const menu = document.body.querySelector('[role="menu"][aria-label="Organize agents by"]')!;
     const options = [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')];
-    expect(options.map(option => option.textContent?.trim())).toStrictEqual(['Repository', 'Activity']);
+    expect(options.map(option => option.textContent?.trim())).toStrictEqual(['Activity', 'Repository', 'Worktree']);
     expect(options.every(option => option.querySelector('svg'))).toBe(true);
     expect(options[0]!.querySelectorAll('svg')).toHaveLength(1);
-    expect(options[0]!.firstElementChild?.classList.contains('tabler-icon-check')).toBe(true);
-    expect(options[1]!.firstElementChild?.classList.contains('tabler-icon-bell')).toBe(true);
-    options[1]!.click();
+    expect(options[1]!.firstElementChild?.classList.contains('tabler-icon-check')).toBe(true);
+    expect(options[0]!.firstElementChild?.classList.contains('tabler-icon-bell')).toBe(true);
+    options[0]!.click();
     await flushPromises();
     view = wrapper.get('button[aria-label="Agent view"]');
     expect(view.attributes('aria-expanded')).toBe('false');
@@ -211,6 +211,93 @@ describe('AgentSidebar sessions', () => {
     expect(wrapper.get('.agent-sidebar__session-title--active').text()).toBe('Dina');
     expect(wrapper.findAll('.agent-sidebar__session-title--active')).toHaveLength(1);
     expect(wrapper.find('[aria-label="Working"]').exists()).toBe(true);
+  });
+
+  it('groups matching worktree branches across repositories and remembers the user choice independently of new agents', async () => {
+    const make = (id: string, repo: number, branch: string): Agent => {
+      const source = agents[repo]!;
+      if (source.workspace?.kind !== 'git') throw new Error('Expected Git fixture');
+      return { ...source, id, name: null, folder: `/src/repo${repo}-${branch}`,
+        workspace: { ...source.workspace, branch, isLinkedWorktree: true } };
+    };
+    const rows = [make('api-one', 0, 'feat1'), make('api-two', 0, 'feat2'), make('web-one', 1, 'feat1')];
+    const props = { agents: rows, activeAgentId: 'web-one', teamId: 'worktree-view', teamName: 'Team' };
+    let wrapper = mount(AgentSidebar, { attachTo: document.body, props });
+    try {
+      await wrapper.get('button[aria-label="Agent view"]').trigger('click');
+      await flushPromises();
+      const option = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(row => row.textContent?.trim() === 'Worktree');
+      expect(option).toBeDefined();
+      option!.click();
+      await flushPromises();
+      const group = (branch: string) => wrapper.findAll('[data-group-kind="worktree"]').find(section => section.find('header strong').text() === branch)!;
+      expect(group('feat1').findAll('[data-reorder-id]').map(row => row.attributes('data-reorder-id'))).toStrictEqual(['api-one', 'web-one']);
+      expect(group('feat1').find('button[aria-label=\"Open feature in split view\"]').exists()).toBe(true);
+      expect(group('feat1').text()).toContain('id8');
+      expect(group('feat1').text()).toContain('multi-llm-ts');
+      expect(group('feat1').get('[data-reorder-id="web-one"]').attributes('aria-pressed')).toBe('true');
+      await group('feat2').get('[data-reorder-id="api-two"]').trigger('click');
+      expect(wrapper.emitted('select-agent')?.at(-1)).toStrictEqual(['api-two']);
+      await wrapper.setProps({ agents: [...rows, make('web-two', 1, 'feat2')] });
+      expect(group('feat2').findAll('[data-reorder-id]')).toHaveLength(2);
+      wrapper.unmount();
+      wrapper = mount(AgentSidebar, { attachTo: document.body, props });
+      expect(group('feat1').exists()).toBe(true);
+      await wrapper.setProps({ teamId: 'other-team' });
+      expect(wrapper.find('[data-group-kind="worktree"]').exists()).toBe(false);
+      expect(wrapper.find('[data-group-kind="repository"]').exists()).toBe(true);
+    } finally { wrapper.unmount(); localStorage.removeItem('app:agentOrganization:worktree-view'); }
+  });
+
+  it('offers rename and deletion on feature-header right-click while opening agents through the group action', async () => {
+    localStorage.setItem('app:agentOrganization:feature-actions', 'worktree');
+    const source = agents[0]!;
+    if (source.workspace?.kind !== 'git') throw new Error('Expected Git fixture');
+    const feature = { ...source, id: 'feature-agent', name: null, workspace: { ...source.workspace, branch: 'feat1', isLinkedWorktree: true } };
+    const wrapper = mount(AgentSidebar, { attachTo: document.body,
+      props: { agents: [source, feature], teams: [{ id: 'feature-actions', name: 'Team', agentIds: [source.id, feature.id], featureLabels: { feat1: 'Account settings' } }], teamId: 'feature-actions', teamName: 'Team', activeAgentId: source.id } });
+    try {
+      const sections = wrapper.findAll('[data-group-kind="worktree"]');
+      const main = sections.find(section => section.get('header strong').text() === 'main')!;
+      const group = sections.find(section => section.get('header strong').text() === 'Account settings')!;
+      expect(main.find('button[aria-label="Feature actions"]').exists()).toBe(false);
+      expect(group.find('button[aria-label="Feature actions"]').exists()).toBe(false);
+      await group.get('button[aria-label="Open feature in split view"]').trigger('click');
+      expect(wrapper.emitted('open-feature')?.at(-1)).toStrictEqual([['feature-agent']]);
+      await group.get('header').trigger('contextmenu', { clientX: 80, clientY: 120 });
+      await flushPromises();
+      const actions = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
+      expect(actions.map(action => action.textContent?.trim())).toStrictEqual(['Rename', 'Delete']);
+      actions[0]!.click(); await flushPromises();
+      expect(wrapper.emitted('rename-feature')?.at(-1)).toStrictEqual([{ branch: 'feat1', label: 'Account settings' }]);
+      expect(document.body.querySelector('[role="menu"]')).toBeNull();
+      await group.get('header').trigger('contextmenu', { clientX: 80, clientY: 120 });
+      const deleteAction = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(action => action.textContent?.trim() === 'Delete')!;
+      deleteAction.click(); await flushPromises();
+      expect(wrapper.emitted('delete-feature')?.at(-1)).toStrictEqual([{ branch: 'feat1', label: 'Account settings' }]);
+      await group.get('header').trigger('contextmenu', { clientX: 80, clientY: 120 });
+      await main.get('header').trigger('contextmenu', { clientX: 80, clientY: 160 });
+      expect(document.body.querySelector('[role="menu"]')).toBeNull();
+    } finally { wrapper.unmount(); localStorage.removeItem('app:agentOrganization:feature-actions'); }
+  });
+
+  it('offers new worktrees from the default branch group for all team repositories', async () => {
+    localStorage.setItem('app:agentOrganization:feature-create', 'worktree');
+    const wrapper = mount(AgentSidebar, { attachTo: document.body,
+      props: { agents, teamId: 'feature-create', teamName: 'Team', activeAgentId: agents[0]!.id } });
+    try {
+      const main = wrapper.findAll('[data-group-kind="worktree"]').find(section => section.get('header strong').text() === 'main')!;
+      await main.get('button[aria-label="New worktree"]').trigger('click');
+      await flushPromises();
+      const items = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+      expect(items.map(item => item.textContent?.trim())).toStrictEqual(['New worktree…']);
+      items[0]!.click();
+      await flushPromises();
+      expect(wrapper.emitted('create-feature-worktree')?.[0]?.[0]).toMatchObject([
+        { repositoryName: 'id8', repositoryRoot: '~/src/id8' },
+        { repositoryName: 'multi-llm-ts', repositoryRoot: '~/src/multi-llm-ts' },
+      ]);
+    } finally { wrapper.unmount(); }
   });
 
   it('organizes live activity in priority order, ages recent work, and restores each team’s client-local choice', async () => {
@@ -552,6 +639,29 @@ describe('AgentSidebar sessions', () => {
     expect(icon().classes()).toContain('tabler-icon-git-fork');
     expect(getComputedStyle(icon().element).color).toBe('var(--color-warning)');
     wrapper.unmount();
+  });
+
+  it('uses matching branch and worktree icons and colors on worktree group headers', () => {
+    const first = agents[0]!, second = agents[1]!;
+    if (first.workspace?.kind !== 'git' || second.workspace?.kind !== 'git') throw new Error('Expected Git fixtures');
+    const make = (agent: Agent, id: string, branch: string, linked: boolean): Agent => ({
+      ...agent, id, name: null, folder: `/src/${id}`,
+      workspace: { ...(agent.workspace as Extract<NonNullable<Agent['workspace']>, { kind: 'git' }>), branch, defaultBranch: 'trunk', isLinkedWorktree: linked },
+    });
+    const rows = [make(first, 'main', 'trunk', false), make(first, 'branch', 'topic', false),
+      make(first, 'feature-branch', 'feat/shared', false), make(second, 'feature-tree', 'feat/shared', true)];
+    localStorage.setItem('app:agentOrganization:worktree-icons', 'worktree');
+    const wrapper = mount(AgentSidebar, { attachTo: document.body, props: { agents: rows, activeAgentId: null, teamId: 'worktree-icons', teamName: 'Team' } });
+    try {
+      const icon = (label: string) => wrapper.findAll('[data-group-kind="worktree"]').find(group => group.get('header strong').text() === label)!.get('header > svg');
+      expect(icon('trunk').classes()).toContain('tabler-icon-git-branch');
+      expect(getComputedStyle(icon('trunk').element).color).toBe('var(--color-primary)');
+      expect(icon('topic').classes()).toContain('tabler-icon-git-branch');
+      expect(getComputedStyle(icon('topic').element).color).toBe('var(--color-success)');
+      expect(icon('feat/shared').classes()).toContain('tabler-icon-git-fork');
+      expect(getComputedStyle(icon('feat/shared').element).color).toBe('var(--color-warning)');
+      expect(wrapper.find('[data-reorder-id="feature-tree"] .agent-avatar').exists()).toBe(true);
+    } finally { wrapper.unmount(); localStorage.removeItem('app:agentOrganization:worktree-icons'); }
   });
 
   it('renders compact workspace rows with repository headers, branches, and status icons', () => {

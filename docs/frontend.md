@@ -57,6 +57,13 @@ weight and predictable geometry over decorative cards or explanatory copy.
   `use-*.ts` composables; shells coordinate and keep only navigation and one-step
   event forwarding.
 - **Core** owns cross-client policy and contracts, specified in core tests.
+- Sidebar organization is a client-local, per-team preference. Repository and
+  Worktree views use the same agent identities; Worktree groups exact Git branch
+  names across repositories from backend workspace metadata. Creating agents does
+  not change that preference, and detached or non-Git sessions retain their own
+  groups. Labels come from persisted team metadata. Opening a group assigns only
+  its members to the existing split layout, capped at four in sidebar order; a
+  three-agent group keeps the fourth pane empty. Cockpit stays in Activity view.
 - **Product components** (`vue/src/components/`) represent one product concept with
   typed props and semantic emits. **Shared primitives** (`vue/src/shared/`) are
   domain-neutral with isolated tests and never import product components, stores,

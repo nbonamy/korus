@@ -86,6 +86,30 @@ for (const film of [
   }
 }
 
+// Live recordings use the same content-hashed delivery as the illustrated films.
+const featureDirectory = resolve(
+  process.env.APP_FEATURE_FILM ??
+    fileURLToPath(
+      new URL("../videos/local/multi-repo-feature/", import.meta.url),
+    ),
+);
+for (const [kind, name] of [
+  ["VIDEO", "multi-repo-feature.mp4"],
+  ["CAPTIONS", "multi-repo-feature.vtt"],
+]) {
+  const bytes = await readFile(join(featureDirectory, name)).catch(() => {
+    throw new Error(
+      `Missing ${name}. Restore the approved recording in videos/local/multi-repo-feature/; see website/README.md.`,
+    );
+  });
+  const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 12);
+  media.push({
+    token: `__FEATURE_${kind}__`,
+    path: `media/${hash}-${name}`,
+    bytes,
+  });
+}
+
 // Publish a static artifact rather than the website's source directory.
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });

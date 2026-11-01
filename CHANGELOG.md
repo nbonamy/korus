@@ -4,6 +4,44 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.48.4] - 2026-11-01
+
+### Improvements and fixes
+
+- **Worktree view:** Create matching worktrees and agents across selected
+  repositories from the main group's **+** menu, with creation progress and
+  **Run in background** support.
+
+## [0.48.3] - 2026-10-31
+
+### Improvements and fixes
+
+- Keep Working details visible while an agent is active.
+
+## [0.48.2] - 2026-10-31
+
+### Improvements and fixes
+
+- Show named agents without the repository prefix in Worktree view.
+
+## [0.48.1] - 2026-10-31
+
+### New features
+
+- **Cross-repository features:** Ask an agent to create matching worktrees and
+  agents across repositories.
+- **Worktree view:** Group agents by feature, rename feature groups, and open up
+  to four agents in split view.
+- **Feature cleanup:** Right-click a feature to delete its worktrees together,
+  and run cleanup in the background.
+
+### Improvements and fixes
+
+- Keep dismissed worktree setup errors dismissed when switching agents or
+  restarting.
+- Show matching branch and worktree icons and colors in Repository and Worktree
+  views.
+
 ## [0.48.0] - 2026-10-31
 
 ### New features

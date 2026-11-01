@@ -1,4 +1,5 @@
 export const backendMethods = {
+  featureControl: 'feature/control',
   clientCollaborationCall: 'client/collaboration/call',
   collaborationTaskAccess: 'collaboration/task/access',
   collaborationTeamBind: 'collaboration/team/bind',

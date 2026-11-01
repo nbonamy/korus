@@ -99,7 +99,7 @@ test("navigation, films, and cards work at desktop and phone widths", async () =
       );
       assert.equal(
         await walkthrough.getAttribute("href"),
-        "https://youtu.be/VuK3O0EHi14",
+        "https://youtu.be/O_2bpL8IXNM",
         "The link also works without JavaScript",
       );
       const action = await walkthrough.boundingBox();
@@ -147,7 +147,7 @@ test("navigation, films, and cards work at desktop and phone widths", async () =
       const player = overlay.locator("iframe");
       await player.waitFor();
       const embed = new URL(await player.getAttribute("src"));
-      assert.equal(embed.pathname, "/embed/VuK3O0EHi14");
+      assert.equal(embed.pathname, "/embed/O_2bpL8IXNM");
       assert.equal(embed.searchParams.get("autoplay"), "1");
       assert.equal(
         await page
@@ -205,6 +205,79 @@ test("navigation, films, and cards work at desktop and phone widths", async () =
           ),
           "hidden",
           "Closing restores page scrolling",
+        );
+      }
+      const spotlight = page.locator("#focus-views");
+      assert.equal(
+        await spotlight.locator("img").count(),
+        2,
+        "Activity and Worktree views share the same feature block",
+      );
+      const featureAction = spotlight.locator("[data-watch-feature]");
+      await spotlight.scrollIntoViewIfNeeded();
+      const spotBounds = await spotlight.boundingBox();
+      const workflowBounds = await page.locator("#workflows").boundingBox();
+      assert.ok(
+        spotBounds.y >= workflowBounds.y + workflowBounds.height,
+        "Both focus modes belong in the existing features section",
+      );
+      assert.ok(
+        spotBounds.x >= 0 && spotBounds.x + spotBounds.width <= width,
+        "The focus modes fit the viewport",
+      );
+      assert.match(
+        await featureAction.getAttribute("href"),
+        /\.mp4$/,
+        "The short demo also opens directly without JavaScript",
+      );
+      if ([1440, 390].includes(width)) {
+        await page.waitForFunction(
+          (node) => getComputedStyle(node).opacity === "1",
+          await spotlight.elementHandle(),
+        );
+        await spotlight
+          .locator("img")
+          .evaluateAll((images) =>
+            Promise.all(images.map((image) => image.decode())),
+          );
+        await spotlight.screenshot({
+          path: new URL(`focus-views-${width}.png`, captures).pathname,
+        });
+        await featureAction.click();
+        const featureOverlay = page.getByRole("dialog", {
+          name: "One feature. Across your repositories.",
+        });
+        await featureOverlay.waitFor({ state: "visible" });
+        await page.waitForFunction(() => {
+          const video = document.querySelector("#walkthrough video");
+          return (
+            video?.currentTime > 0 &&
+            video.controls &&
+            !video.muted &&
+            video.textTracks[0]?.cues?.length > 0
+          );
+        });
+        assert.equal(
+          await page
+            .locator("video:not(#walkthrough video)")
+            .evaluateAll((videos) => videos.every((video) => video.paused)),
+          true,
+          "The short demo pauses other films",
+        );
+        await page.keyboard.press("Escape");
+        await featureOverlay.waitFor({ state: "hidden" });
+        await page.locator("#walkthrough video").waitFor({ state: "detached" });
+        assert.equal(
+          await page.locator("#walkthrough video").count(),
+          0,
+          "Closing removes the short demo and its audio",
+        );
+        assert.equal(
+          await featureAction.evaluate(
+            (node) => node === document.activeElement,
+          ),
+          true,
+          "Focus returns to the short demo action",
         );
       }
       for (const selector of [
@@ -975,6 +1048,12 @@ test("navigation, films, and cards work at desktop and phone widths", async () =
       await noScript.locator('[data-platform="ios"] a').getAttribute("href"),
       "https://apps.apple.com/us/app/korus-mobile/id6822816255",
     );
+    const featureDirect = noScript.locator("[data-watch-feature]");
+    const featureMedia = await noScript.request.get(
+      new URL(await featureDirect.getAttribute("href"), origin).href,
+    );
+    assert.equal(featureMedia.status(), 200);
+    assert.equal(featureMedia.headers()["content-type"], "video/mp4");
     const heroLink = noScript.getByRole("link", { name: "Watch with sound" });
     const heroMedia = await noScript.request.get(
       new URL(await heroLink.getAttribute("href"), origin).href,

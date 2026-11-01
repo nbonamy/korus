@@ -96,6 +96,7 @@ const requestTimeoutByMethod = {
   [backendMethods.agentCreate]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.missionExecute]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.missionCreate]: IO_REQUEST_TIMEOUT_MS,
+  [backendMethods.featureControl]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.missionDelete]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.missionArtifactRead]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.missionUpdate]: IO_REQUEST_TIMEOUT_MS,

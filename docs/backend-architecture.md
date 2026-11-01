@@ -484,7 +484,9 @@ Its receive-window credit stays below the paused-buffer capacity: pausing cannot
 recall bytes already granted to the sender, and resuming can dispatch buffered
 bytes synchronously. A retained transcript is presentation-only during reconnect;
 render acknowledgments are bound to the current connection/selection generation,
-not compared against an earlier connection's revision counter.
+not compared against an earlier connection's revision counter. Selection generations
+are scoped to an engine-page instance; a retained transcript accepts a restarted
+engine's first transfer even when native coalescing omits intermediate frames.
 
 Pending questions, tool confirmations and approvals travel in the workspace's
 app-owned request projection. Responses carry the owning host, team, agent,

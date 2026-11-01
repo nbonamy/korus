@@ -1,5 +1,5 @@
 <template>
-  <component :is="sidebar.organizationMode === 'repository' ? AgentSidebarRepo : AgentSidebarActivity" :model="sidebar" />
+  <component :is="sidebar.organizationMode === 'activity' ? AgentSidebarActivity : AgentSidebarRepo" :model="sidebar" />
 </template>
 
 <script setup lang="ts">

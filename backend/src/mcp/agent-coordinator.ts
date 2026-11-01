@@ -1,3 +1,5 @@
+import { isDefaultFeatureBranch } from '@workspace/core/feature-groups';
+import type { CreateCoAgentsInput } from '@workspace/core/remote-collaboration';
 import { executionSelectionOverridesSchema } from '../execution-selection-schema';
 import type { MissionArtifactReadResult, MissionArtifactWriteInput, MissionResultInput, MissionReviewFindingInput, MissionReviewFindingUpdateInput, MissionTicketDraftInput, MissionTicketDraftResult, MissionToolContext } from '@workspace/core/mission-execution';
 import type { MissionArtifactFile, MissionStage } from '@workspace/core/missions';
@@ -136,6 +138,12 @@ export type McpCreateAgentResponse = {
   message: string;
 };
 
+export type McpCreateAgentsResponse = {
+  success: boolean;
+  results: Array<McpCreateAgentResponse & { repoPath: string; remoteConnectionId?: string }>;
+  message: string;
+};
+
 export type MissionToolPort = {
   acquireCommitLock?(agentId: string, signal?: AbortSignal): Promise<{ acquired: boolean }>;
   releaseCommitLock?(agentId: string): Promise<{ released: true }>;
@@ -166,6 +174,7 @@ export type AppMcpAgentCoordinatorOptions = {
   onListSourceRepositories?: (remoteConnectionId?: string) => SourceRepository[] | Promise<SourceRepository[]>;
   onListSourceWorktrees?: (repoPath: string, remoteConnectionId?: string) => SourceWorktree[] | Promise<SourceWorktree[]>;
   onCreateSourceWorktree?: (input: CreateSourceWorktreeInput) => SourceWorktree | Promise<SourceWorktree>;
+  onFeatureLabel?: (agent: Agent, branch: string, label: string) => Promise<void>;
   onCreateAgent?: (agent: Agent, input: McpCreateAgentInput & { teamId?: string }) => McpCreateAgentResponse | Promise<McpCreateAgentResponse>;
   onCloseAgent?: (callerAgentId: string, agentId: string) => Promise<void>;
   createId?: () => string;
@@ -176,6 +185,13 @@ export class McpToolError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'McpToolError';
+  }
+}
+
+/** A worker exists even though its startup failed; callers must recover it instead of duplicating it. */
+export class McpAgentCreationError extends McpToolError {
+  constructor(message: string, readonly agentId: string, readonly folder: string | null) {
+    super(message);
   }
 }
 
@@ -194,6 +210,7 @@ export class AppMcpAgentCoordinator {
   private readonly onListSourceRepositories?: AppMcpAgentCoordinatorOptions['onListSourceRepositories'];
   private readonly onListSourceWorktrees?: AppMcpAgentCoordinatorOptions['onListSourceWorktrees'];
   private readonly onCreateSourceWorktree?: (input: CreateSourceWorktreeInput) => SourceWorktree | Promise<SourceWorktree>;
+  private readonly onFeatureLabel?: AppMcpAgentCoordinatorOptions['onFeatureLabel'];
   private readonly onCreateAgent?: (agent: Agent, input: McpCreateAgentInput & { teamId?: string }) => McpCreateAgentResponse | Promise<McpCreateAgentResponse>;
   private readonly onCloseAgent?: AppMcpAgentCoordinatorOptions['onCloseAgent'];
   private readonly createId: () => string;
@@ -214,6 +231,7 @@ export class AppMcpAgentCoordinator {
     this.onListSourceWorktrees = options.onListSourceWorktrees;
     this.onCreateSourceWorktree = options.onCreateSourceWorktree;
     this.onCreateAgent = options.onCreateAgent;
+    this.onFeatureLabel = options.onFeatureLabel;
     this.onCloseAgent = options.onCloseAgent;
     this.createId = options.createId ?? randomUUID;
     this.now = options.now ?? (() => new Date());
@@ -526,7 +544,49 @@ export class AppMcpAgentCoordinator {
     });
   }
 
-  async createAgent(agentId: string, input: McpCreateAgentInput): Promise<McpCreateAgentResponse> {
+  async createAgent(agentId: string, input: McpCreateAgentInput | CreateCoAgentsInput): Promise<McpCreateAgentResponse | McpCreateAgentsResponse> {
+    const caller = this.requireAgent(agentId);
+    if (!this.onCreateAgent) throw new McpToolError('Agent creation is not available.');
+    if (input.featureLabel && (!input.createWorktree || !input.branchName || isDefaultFeatureBranch(input.branchName, this.getAgents().filter(agent => agent.teamId === caller.teamId)))) throw new McpToolError('A feature label requires a non-default worktree branch.');
+    const { targets, ...defaults } = 'targets' in input ? input : { targets: [input] };
+    const results: McpCreateAgentsResponse['results'] = [];
+    for (const target of targets) {
+      const { selection, ...settings } = { ...defaults, ...target };
+      // A different provider uses its own defaults; never leak the shared model across providers.
+      const sharedSelection = defaults.selection;
+      const mergedSelection = target.selection?.backend && target.selection.backend !== (sharedSelection?.backend ?? caller.backend)
+        ? target.selection : { ...sharedSelection, ...selection };
+      try {
+        const result = await this.createAgentTarget(agentId, { ...settings, selection: mergedSelection });
+        results.push({ ...result, repoPath: target.repoPath, ...(target.remoteConnectionId ? { remoteConnectionId: target.remoteConnectionId } : {}) });
+      } catch (error) {
+        if (!('targets' in input)) throw error;
+        results.push({
+          success: false,
+          ...(error instanceof McpAgentCreationError ? { agentId: error.agentId, folder: error.folder ?? undefined } : {}),
+          repoPath: target.repoPath,
+          ...(target.remoteConnectionId ? { remoteConnectionId: target.remoteConnectionId } : {}),
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    let labelError: string | undefined;
+    if (input.featureLabel && results.some(result => result.agentId)) {
+      try {
+        if (!this.onFeatureLabel) throw new Error('Feature labels are unavailable.');
+        await this.onFeatureLabel(caller, input.branchName!, input.featureLabel);
+      } catch (error) { labelError = `Agents were created, but the feature label could not be saved: ${error instanceof Error ? error.message : String(error)}`; }
+    }
+    // Retain the released scalar response at the compatibility boundary only.
+    if (!('targets' in input)) {
+      const { repoPath: _repo, remoteConnectionId: _host, ...result } = results[0]!;
+      return labelError ? { ...result, success: false, message: labelError } : result;
+    }
+    return { success: !labelError && results.every(result => result.success), results,
+      message: labelError ?? `${results.filter(result => result.success).length} of ${results.length} targets succeeded.` };
+  }
+
+  private async createAgentTarget(agentId: string, input: McpCreateAgentInput): Promise<McpCreateAgentResponse> {
     const agent = this.requireAgent(agentId);
     if (!this.onCreateAgent) {
       throw new McpToolError('Agent creation is not available.');

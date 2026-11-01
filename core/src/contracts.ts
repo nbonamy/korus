@@ -316,6 +316,8 @@ export type Team = {
   delegationHandoffs?: Record<string, { operationId: string; targetAgentId?: string; remoteConnectionId?: string }>;
   /** Collaboration authority for a team controlled by another daemon. */
   collaborationOwnerId?: string;
+  /** Display labels for branch groups; Git branch names remain unchanged. */
+  featureLabels?: Record<string, string>;
   agentIds: string[];
   activeAgentId?: string;
 };
@@ -976,6 +978,7 @@ export type AppApi = {
   createSourceRepository(input: CreateSourceRepositoryInput): Promise<SourceRepository>;
   previewRepositoryDeletion(agentId: string): Promise<import('./contracts/workspace').RepositoryDeletionPreview>;
   deleteRepository(agentId: string, input: import('./contracts/workspace').DeleteRepositoryInput): Promise<AppSnapshot>;
+  featureControl(input: import('./feature-groups').FeatureGroupRequest): Promise<import('./feature-groups').FeatureGroupResult>;
   createProject(input: CreateProjectInput): Promise<AppSnapshot>;
   listSourceBranches(repoPath: string, remoteConnectionId?: string): Promise<SourceBranch[]>;
   listSourceWorktrees(repoPath: string, remoteConnectionId?: string): Promise<SourceWorktree[]>;

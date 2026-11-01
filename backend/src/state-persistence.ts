@@ -1126,6 +1126,7 @@ function sanitizeTeam(value: unknown, agents: Agent[], remoteConnectionIds: Set<
     name: value.name,
     avatar: typeof value.avatar === 'string' ? value.avatar : undefined,
     color: typeof value.color === 'string' ? value.color : defaultTeamColor,
+    ...(isRecord(value.featureLabels) ? { featureLabels: Object.fromEntries(Object.entries(value.featureLabels).filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].trim().length > 0 && entry[1].trim().length <= 120).map(([branch, label]) => [branch, label.trim()])) } : {}),
     ...(optionalTrimmedString(value.collaborationOwnerId) ? { collaborationOwnerId: optionalTrimmedString(value.collaborationOwnerId)! } : {}),
     ...(remoteLinks.length ? { remoteLinks } : {}),
     ...(isRecord(value.delegationHandoffs) ? { delegationHandoffs: Object.fromEntries(Object.entries(value.delegationHandoffs).flatMap(([id, entry]) => isRecord(entry) && optionalTrimmedString(entry.operationId) ? [[id, { operationId: optionalTrimmedString(entry.operationId)!, ...(optionalTrimmedString(entry.targetAgentId) ? { targetAgentId: optionalTrimmedString(entry.targetAgentId)! } : {}), ...(optionalTrimmedString(entry.remoteConnectionId) ? { remoteConnectionId: optionalTrimmedString(entry.remoteConnectionId)! } : {}) }]] : [])) } : {}),

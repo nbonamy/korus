@@ -77,6 +77,17 @@ export function useSplitWorkspace(options: {
     else focusedPane.value.agentId = agentId;
   }
 
+  function openAgents(agentIds: readonly string[]): void {
+    const available = new Set(options.agentIds());
+    const selected = [...new Set(agentIds)].filter(id => available.has(id)).slice(0, 4);
+    if (!selected.length) return;
+    layout.value = selected.length === 1 ? 'single' : selected.length === 2 ? '2-vertical' : '4-quadrant';
+    panes.value = Array.from({ length: paneCount(layout.value) }, (_, index) => ({ id: nextPaneId++, agentId: selected[index] ?? null }));
+    focusedPaneId.value = panes.value[0]!.id;
+    ratios.value = { columns: 0.5, rows: 0.5 };
+    options.selectAgent(selected[0]!);
+  }
+
   function focus(paneId: number): void {
     const pane = panes.value.find((candidate) => candidate.id === paneId);
     if (!pane) return;
@@ -150,6 +161,7 @@ export function useSplitWorkspace(options: {
     focus,
     select,
     setLayout,
+    openAgents,
     ratios,
     resize: (value: SplitRatios) => { ratios.value = value; },
   };

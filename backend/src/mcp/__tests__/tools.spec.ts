@@ -123,7 +123,7 @@ describe(`${product.name} MCP tool registration`, () => {
     const registration = mocks.registerTool.mock.calls.find(([name]) => name === 'create-agent');
     const definition = registration?.[1] as { description: string; inputSchema: { shape: Record<string, unknown> } } | undefined;
     expect(definition?.description).toContain(`${product.name} co-agent`);
-    expect(Object.keys(definition?.inputSchema.shape ?? {})).toStrictEqual([
+    expect(Object.keys(definition?.inputSchema.shape ?? {}).sort()).toStrictEqual([
       'requestId',
       'task',
       'name',
@@ -138,7 +138,9 @@ describe(`${product.name} MCP tool registration`, () => {
       'planMode',
       'startingContext',
       'instructions',
-    ]);
+      'targets',
+      'featureLabel',
+    ].sort());
   });
 
   it.each([

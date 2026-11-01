@@ -43,7 +43,10 @@ try {
   const runtime = runtimes.filter(r => r.isAvailable && r.name.startsWith('iOS ') && Number(r.version.split('.')[0]) >= 26)
     .sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }))[0];
   if (!runtime) throw new Error('An iOS 26+ simulator runtime is required.');
-  device = run('xcrun', ['simctl', 'create', 'Korus Project Picker Tests', 'com.apple.CoreSimulator.SimDeviceType.iPhone-17', runtime.identifier]);
+  const deviceType = runtime.supportedDeviceTypes.find(type => type.productFamily === 'iPhone' && !type.name.includes('Duo'))
+    ?? runtime.supportedDeviceTypes.find(type => type.productFamily === 'iPhone');
+  if (!deviceType) throw new Error('The simulator runtime must support an iPhone.');
+  device = run('xcrun', ['simctl', 'create', 'Korus Project Picker Tests', deviceType.identifier, runtime.identifier]);
   run('xcrun', ['simctl', 'boot', device]);
   run('xcrun', ['simctl', 'bootstatus', device, '-b']);
   console.log(`Native picker evidence: ${work}/results.xcresult`);

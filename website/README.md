@@ -119,9 +119,11 @@ The Skills capture shows the real Discover panel with its curated catalog in an
 isolated preview. It contains no private skill names, provider accounts, or
 repository data.
 
-The Activity view capture focuses on the sidebar so its priorities remain
-readable. It uses isolated Storefront demo agents, including a pending question,
-an unread result, and a running task; no private workspace or account data is shown.
+The Activity and Worktree captures focus on the sidebars so their grouping stays
+readable. Both use the current renderer with isolated Backend, Database, Frontend,
+and Mobile demo agents. Activity shows representative Needs input, Done, Working,
+and Idle states alongside a Mission. Worktree groups those repositories under
+Team invitations. No private workspace or account data is shown.
 
 The simulator card uses `assets/screens/simulator.svg`: an illustration of the
 simulator pane with an embedded, unaltered capture of iOS Settings. The surrounding
@@ -135,12 +137,27 @@ captions, and native controls, and it then stays on that film. Without
 JavaScript, the link opens the MP4 directly.
 
 The hero's **Watch Korus in action** button opens the live delegation, review,
-and merge walkthrough (`VuK3O0EHi14`) in a large native dialog. The YouTube
+and merge walkthrough (`O_2bpL8IXNM`) in a large native dialog. The YouTube
 privacy-enhanced embed loads only on click, with sound and captions requested;
 opening it pauses the inline films. Closing with Escape, the close button, or
 the backdrop removes the player and restores focus and page scrolling. The
 button links directly to YouTube without JavaScript, and the dialog keeps a
 YouTube link available if embedded playback is unavailable.
+
+The workspace feature block pairs Activity and Worktree views under **Choose how
+you want to focus**. The Activity screenshot shows priorities across the team;
+`assets/screens/worktree.webp` shows a feature spanning four repositories. The
+Worktree example includes a short real desktop recording with the Calm American voice, English captions, and a fixed full-window
+frame. It opens in the same large dialog, with sound and native video controls.
+The MP4 and VTT load only on click; the action opens the MP4 directly without
+JavaScript. The public YouTube version is <https://youtu.be/AyfZ28x41wY>.
+
+Keep the approved `multi-repo-feature.mp4` and `multi-repo-feature.vtt` under
+`videos/local/multi-repo-feature/` (override with `APP_FEATURE_FILM`). These are
+local recording masters, not rebuildable illustrations: preserve them with their
+raw recording, checked narration, and edit manifest. The website build requires
+both files and publishes content-hashed copies in `media/`. The matching YouTube
+thumbnail is `videos/assets/multi-repo-feature-thumbnail.png`.
 
 Feature-card films open from their rendered poster frame. No MP4 is requested
 until the visitor clicks; native controls provide seeking and fullscreen. Only one

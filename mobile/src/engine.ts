@@ -113,6 +113,8 @@ export type EngineEvent =
 
 /** What the transcript needs besides the conversation: the chat's own record, the names it can mention, and what an empty chat offers. */
 export type TranscriptContext = {
+  /** Selection counters belong to one engine page, which can restart independently. */
+  engineInstance?: string;
   generation: number;
   ready: boolean; agent: Agent | null; peers: { id: string; label: string }[]; history: CompanionHistoryState;
   /** An empty chat's engine and the ones it may switch to. */
@@ -177,6 +179,7 @@ export type EnginePort = { connector: CompanionConnector; imageCache?: ImageCach
 const effortsOf = (model: BackendModelOption) => (model.supportedReasoningEfforts ?? []).map((option) => option.reasoningEffort);
 
 export function createEngine(port: EnginePort) {
+  const engineInstance = crypto.randomUUID();
   const imageCache = port.imageCache ? new ConversationImageCache(port.imageCache) : undefined;
   const state = createCompanionState(port.connector, undefined, undefined, notification => { if (!disposed && (foreground || notification.kind === 'read')) port.post({ type: 'notification', notification }); });
   const startup = ref<EngineState['startup']>('loading');
@@ -401,7 +404,7 @@ export function createEngine(port: EnginePort) {
     return { frame: { ...frame, payload: { ...frame.payload, snapshot: { ...snapshot, messages } } } as CompanionConversation, key: shown.map((entry) => entry.id).join() };
   }
   const peers = computed(() => state.agents.value.map((agent) => ({ id: agent.id, label: agentDisplayName(agent) })));
-  const contextNow = (): TranscriptContext => ({ generation: state.conversationGeneration.value, ready: state.conversationReady.value, agent: state.agent.value, peers: peers.value, history: state.history.value, engines: engines() });
+  const contextNow = (): TranscriptContext => ({ engineInstance, generation: state.conversationGeneration.value, ready: state.conversationReady.value, agent: state.agent.value, peers: peers.value, history: state.history.value, engines: engines() });
 
   // Pace presentation work. Incremental hosts send every event since the last paint acknowledgment;
   // other hosts send the latest snapshot. Either payload subsumes older pending presentation work.

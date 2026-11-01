@@ -119,6 +119,7 @@
     :create-mission="createMission"
     :select-mission="selectMission"
     :delete-mission="deleteMission"
+    :feature-control="featureControl"
     :delete-repository-action="deleteRepository"
     :read-mission-artifact="readMissionArtifact"
     :execute-mission="executeMission"
@@ -373,6 +374,7 @@ const {
   createMission,
   selectMission,
   deleteMission,
+  featureControl,
   deleteRepository,
   readMissionArtifact,
   executeMission,

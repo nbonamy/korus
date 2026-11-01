@@ -1035,6 +1035,13 @@ export function useAppState() {
     await loadSourceRepositories();
   }
 
+  async function featureControl(input: import('@workspace/core/feature-groups').FeatureGroupRequest) {
+    if (!appApi?.featureControl) throw new Error('Feature operations unavailable.');
+    const result = await appApi.featureControl(input);
+    if (result.kind === 'updated') adoptBackgroundSnapshot(result.snapshot);
+    return result;
+  }
+
   async function deleteMission(input: import('@workspace/core/missions').DeleteMissionInput) {
     if (!appApi) throw new Error('Missions unavailable.');
     adoptNavigationSnapshot(await appApi.deleteMission(input));
@@ -1811,6 +1818,7 @@ export function useAppState() {
     createMission,
     selectMission,
     deleteMission,
+    featureControl,
     deleteRepository,
     readMissionArtifact,
     updateMission,

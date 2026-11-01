@@ -177,7 +177,7 @@ function loadOlder() {
   void handler('transcript').postMessage(JSON.stringify({ type: 'loadOlder', agentId: agent.value.id }));
 }
 
-type Context = { agentId: string; generation: number; ready: boolean; agent: Agent | null; peers: { id: string; label: string }[]; history: CompanionHistoryState; engines: { current: string; choices: string[] } | null };
+type Context = { engineInstance?: string; agentId: string; generation: number; ready: boolean; agent: Agent | null; peers: { id: string; label: string }[]; history: CompanionHistoryState; engines: { current: string; choices: string[] } | null };
 // The pane only needs the names of the agents a message may mention.
 const peerAgents = (peers: Context['peers'] = []) => peers.map((peer) => ({ id: peer.id, name: peer.label }) as Agent);
 let currentAgentId = '';
@@ -194,11 +194,20 @@ const replicas = new TranscriptReplicas();
 let generation = -1;
 let fileGeneration = -1;
 let presentation = 0;
+let engineInstance: string | undefined;
+function bindEngine(message: Context) {
+  if (message.engineInstance && message.engineInstance !== engineInstance) {
+    engineInstance = message.engineInstance;
+    generation = -1;
+    ++presentation;
+  }
+}
 window.companionTranscript = {
   closeFile: files.close,
   setImage,
   async setTransfer(json: string) {
     const message = JSON.parse(json) as Context & { identity: string; checkpoint: CompanionCheckpoint; frames: ProviderConversationFrame[] };
+    bindEngine(message);
     if (message.generation < generation) return null;
     generation = message.generation;
     if (!message.agent || message.frames.some(frame => frame.agentId !== message.agentId || frame.backend !== message.agent?.backend)) return { needsReset: true, identity: message.identity };
@@ -232,8 +241,9 @@ window.companionTranscript = {
     else pending.resolve(reply.chunk);
   },
   async setConversation(json) {
-    const revision = ++presentation;
     const message = JSON.parse(json) as Context & { frame: CompanionConversation | null };
+    bindEngine(message);
+    const revision = ++presentation;
     generation = message.generation ?? generation;
     if (!message.agent) replicas.clear();
     currentAgentId = message.agentId ?? message.agent?.id ?? '';
@@ -248,6 +258,7 @@ window.companionTranscript = {
   /** The chat's surroundings changed, not its conversation: a small update, applied only to the chat it was made for. */
   async setContext(json) {
     const message = JSON.parse(json) as Context;
+    if (message.engineInstance && message.engineInstance !== engineInstance) return null;
     if (message.agentId !== currentAgentId || (message.generation !== undefined && message.generation < generation)) return null;
     if (JSON.stringify(message.agent?.backendSession) !== JSON.stringify(agent.value?.backendSession)) return null;
     const revision = presentation;

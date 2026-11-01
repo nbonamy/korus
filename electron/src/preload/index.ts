@@ -130,6 +130,7 @@ const api: AppApi = {
   executeMission: (input) => ipc.invoke(ipcChannels.executeMission, input),
   createMission: (input) => ipc.invoke(ipcChannels.createMission, input),
   selectMission: (missionId) => ipc.invoke(ipcChannels.selectMission, missionId),
+  featureControl: (input) => ipc.invoke(ipcChannels.featureControl, input),
   deleteMission: (input) => ipc.invoke(ipcChannels.deleteMission, input),
   readMissionArtifact: (missionId, stage) => ipc.invoke(ipcChannels.readMissionArtifact, missionId, stage),
   updateMission: (input) => ipc.invoke(ipcChannels.updateMission, input),

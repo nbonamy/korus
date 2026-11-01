@@ -364,6 +364,12 @@ export class AppController {
       }
     });
 
+    ipc.handle(ipcChannels.featureControl, async (_event, input: import('@workspace/core/feature-groups').FeatureGroupRequest) => {
+      const result = await this.requireBackendClient().request<import('@workspace/core/feature-groups').FeatureGroupResult>(backendMethods.featureControl, { input });
+      if (result.kind === 'updated') this.adoptBackendSnapshot(result.snapshot);
+      return result;
+    });
+
     ipc.handle(ipcChannels.previewRepositoryDeletion, (_event, agentId: string) => this.requireBackendClient().request(backendMethods.repositoryDeletePreview, { agentId }));
     ipc.handle(ipcChannels.deleteRepository, async (_event, agentId: string, input: import('@workspace/core/contracts/workspace').DeleteRepositoryInput) =>
       this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.repositoryDelete, { agentId, input })));

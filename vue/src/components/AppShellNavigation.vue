@@ -46,6 +46,9 @@
       :mission-creation-pending="missionCreationPending"
       :phone-scope="phoneScope"
       @create-mission="$emit('create-mission')"
+      @open-feature="$emit('open-feature', $event)"
+      @rename-feature="$emit('rename-feature', $event)"
+      @delete-feature="$emit('delete-feature', $event)"
       @delete-repository="$emit('delete-repository', $event)"
       @delete-mission="$emit('delete-mission', $event)"
       @create-agent-in-mission-worktree="$emit('create-agent-in-mission-worktree', $event)"
@@ -70,6 +73,7 @@
       @create-agent-from-repository="openRepositorySessionSource"
       @create-agent-on-branch="createRepositorySessionOnBranch"
       @create-agent-worktree-in-repository="openRepositorySessionWorktree"
+      @create-feature-worktree="$emit('create-feature-worktree', $event)"
       @open-on-remote="$emit('open-on-remote', $event)"
       :remote-connections="snapshot.remoteConnections.connections"
       :list-repository-branches="listRepositorySessionBranches"
@@ -162,11 +166,15 @@ const emit = defineEmits<{
   'create-agent-from-repository': [payload: RepositorySessionPayload];
   'create-agent-on-branch': [payload: RepositorySessionPayload & { branch: SourceBranch }];
   'create-agent-worktree-in-repository': [payload: RepositorySessionPayload];
+  'create-feature-worktree': [repositories: import('./agent-sidebar-contracts').SidebarRepositoryTarget[]];
   'open-on-remote': [payload: OpenOnRemotePayload];
   'create-quick-chat': [];
   'create-mission': [];
   'delete-mission': [id: string];
   'create-agent-in-mission-worktree': [payload: { missionId: string; worktreePath: string }];
+  'open-feature': [agentIds: string[]];
+  'rename-feature': [feature: { branch: string; label: string }];
+  'delete-feature': [feature: { branch: string; label: string }];
   'delete-repository': [agentId: string];
   'select-mission': [id: string];
   'duplicate-agent': [agentId: string];

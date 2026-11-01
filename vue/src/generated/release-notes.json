@@ -1,7 +1,31 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.48.0",
+  "currentVersion": "0.48.4",
   "releases": [
+    {
+      "version": "0.48.4",
+      "releasedAt": "2026-11-01",
+      "sourceSha256": "7f689a9b44234c10f970b0dee2e226277e316b9a5f6615c276412d7ee005e157",
+      "markdown": "### Improvements and fixes\n\n- **Worktree view:** Create matching worktrees and agents across selected\n  repositories from the main group's **+** menu, with creation progress and\n  **Run in background** support."
+    },
+    {
+      "version": "0.48.3",
+      "releasedAt": "2026-10-31",
+      "sourceSha256": "1fa172175f18819bc2937a4b508b4b394ef2e5b828abcb04d4c8bae17688b788",
+      "markdown": "### Improvements and fixes\n\n- Keep Working details visible while an agent is active."
+    },
+    {
+      "version": "0.48.2",
+      "releasedAt": "2026-10-31",
+      "sourceSha256": "ba96e251fc91f8be2c7e3aa2398a23ce81e458fd840dbf49f3ed5c4e8eb88e37",
+      "markdown": "### Improvements and fixes\n\n- Show named agents without the repository prefix in Worktree view."
+    },
+    {
+      "version": "0.48.1",
+      "releasedAt": "2026-10-31",
+      "sourceSha256": "489a82313a22bcd33459cfbe75ead2aada6b84c1519a0801c0667cf64c499f5a",
+      "markdown": "### New features\n\n- **Cross-repository features:** Ask an agent to create matching worktrees and\n  agents across repositories.\n- **Worktree view:** Group agents by feature, rename feature groups, and open up\n  to four agents in split view.\n- **Feature cleanup:** Right-click a feature to delete its worktrees together,\n  and run cleanup in the background.\n\n### Improvements and fixes\n\n- Keep dismissed worktree setup errors dismissed when switching agents or\n  restarting.\n- Show matching branch and worktree icons and colors in Repository and Worktree\n  views."
+    },
     {
       "version": "0.48.0",
       "releasedAt": "2026-10-31",

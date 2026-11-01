@@ -271,7 +271,7 @@ describe('ConversationPane', () => {
 
   it('shows background worktree setup and lets users dismiss status without cancelling setup or hiding later failures', async () => {
     vi.useFakeTimers();
-    const wrapper = mountPane({ controller: controllerFor(messages), agent: { ...agent, worktreeInitialization: { state: 'running', command: 'npm ci' } } });
+    let wrapper = mountPane({ controller: controllerFor(messages), agent: { ...agent, worktreeInitialization: { state: 'running', command: 'npm ci' } } });
     try {
       const status = () => wrapper.find('.conversation-pane__initialization');
       expect(status().get('strong').text()).toBe('Initializing worktree');
@@ -297,6 +297,17 @@ describe('ConversationPane', () => {
       expect(status().exists()).toBe(false);
       expect(wrapper.props('agent')?.worktreeInitialization).toStrictEqual({ state: 'error', command: 'npm ci', error: 'Installation failed' });
       await wrapper.setProps({ agent: { ...agent, name: 'Renamed', worktreeInitialization: { state: 'error', command: 'npm ci', error: 'Installation failed' } } });
+      expect(status().exists()).toBe(false);
+      await wrapper.setProps({ agent: { ...agent, id: 'other-agent', worktreeInitialization: { state: 'error', command: 'npm ci', error: 'Other installation failed' } } });
+      expect(status().text()).toContain('Other installation failed');
+      await wrapper.setProps({ agent: { ...agent, worktreeInitialization: { state: 'error', command: 'npm ci', error: 'Installation failed' } } });
+      expect(status().exists()).toBe(false);
+      wrapper.unmount();
+      wrapper = mountPane({ controller: controllerFor(messages), agent: { ...agent, worktreeInitialization: { state: 'error', command: 'npm ci', error: 'Installation failed' } } });
+      expect(status().exists()).toBe(false);
+      wrapper.unmount();
+      wrapper = mountPane({ controller: controllerFor(messages), agent });
+      await wrapper.setProps({ agent: { ...agent, worktreeInitialization: { state: 'error', command: 'npm ci', error: 'Installation failed' } } });
       expect(status().exists()).toBe(false);
       await wrapper.setProps({ agent: { ...agent, worktreeInitialization: { state: 'running', command: 'npm ci' } } });
       expect(status().find('.app-spinner').exists()).toBe(true);

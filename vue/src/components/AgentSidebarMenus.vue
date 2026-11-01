@@ -28,6 +28,16 @@
       @close="contextMenuRepositoryAgentId = null"
     />
 
+    <AppContextMenu
+      v-if="contextMenuFeature"
+      :x="contextMenuPosition.x"
+      :y="contextMenuPosition.y"
+      :ariaLabel="t('features.actions')"
+      :items="featureMenuItems"
+      @select="featureAction"
+      @close="contextMenuFeature = null"
+    />
+
     <MissionContextMenu
       v-if="contextMenuMissionId"
       :x="contextMenuPosition.x"
@@ -67,6 +77,9 @@ const {
   t,
   repositoryMenuItems,
   deleteContextRepository,
+  contextMenuFeature,
+  featureMenuItems,
+  featureAction,
   contextMenuMissionId,
   deleteContextMission,
   contextMissionWorkspaces,
