@@ -185,6 +185,30 @@ services:
       - ./restore.sh:/ops/restore.sh:ro
       - ${TELEMETRY_BACKUP_DIRECTORY:?provide a private backup directory}:/backups:ro
 
+  auth:
+    <<: *hardening
+    image: ${TELEMETRY_IMAGE:?build the isolated telemetry image}
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    init: true
+    restart: unless-stopped
+    command: [auth]
+    environment:
+      TELEMETRY_CONSOLE_PASSWORD: ${TELEMETRY_CONSOLE_PASSWORD:?provide a strong private console password}
+      TELEMETRY_CONSOLE_ORIGIN: ${TELEMETRY_CONSOLE_ORIGIN:?provide the HTTPS console origin}
+      TELEMETRY_CONSOLE_ALLOW_LOOPBACK_HTTP: ${TELEMETRY_CONSOLE_ALLOW_LOOPBACK_HTTP:-0}
+    networks:
+      frontend:
+        ipv4_address: ${TELEMETRY_AUTH_IP:?provide an isolated internal auth address}
+    tmpfs: ["/tmp:size=8m,mode=1777"]
+    healthcheck:
+      test: [CMD, node, /opt/telemetry/container.mjs, check]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
   proxy:
     <<: *hardening
     image: nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951
@@ -200,7 +224,7 @@ services:
     environment:
       API_HOST: ${TELEMETRY_API_HOST:?provide the API virtual host}
       CONSOLE_HOST: ${TELEMETRY_CONSOLE_HOST:?provide the console virtual host}
-    secrets: [console_auth, edge_realip, read_access]
+    secrets: [edge_realip, read_access]
     volumes:
       - ./proxy.sh:/ops/proxy.sh:ro
       - ./nginx.conf.template:/ops/nginx.conf.template:ro
@@ -213,6 +237,7 @@ services:
     depends_on:
       collector: { condition: service_healthy }
       metrics: { condition: service_healthy }
+      auth: { condition: service_healthy }
     healthcheck:
       test: [CMD-SHELL, "nginx -t -c /tmp/nginx.conf >/dev/null 2>&1"]
       interval: 30s
@@ -238,10 +263,6 @@ secrets:
   ingest: { file: "${TELEMETRY_INGEST_FILE:?provide an external secret file}" }
   backup: { file: "${TELEMETRY_BACKUP_FILE:?provide an external secret file}" }
   read: { file: "${TELEMETRY_READ_FILE:?provide an external secret file}" }
-  console_auth:
-    {
-      file: "${TELEMETRY_CONSOLE_AUTH_FILE:?provide an external htpasswd file}",
-    }
   edge_realip:
     {
       file: "${TELEMETRY_EDGE_REALIP_FILE:?provide an external trusted TLS-edge configuration}",

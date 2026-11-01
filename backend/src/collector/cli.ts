@@ -3,6 +3,7 @@ import { isIP } from "node:net";
 import type { Server } from "node:http";
 import { z } from "zod";
 import { normalizedAddress } from "./admission";
+import { createConsoleAuthServer } from "./console-auth";
 import { createMetricsServer } from "./metrics-server";
 import { createCollectorServer } from "./server";
 import {
@@ -33,6 +34,15 @@ const readConfigSchema = z
   })
   .strict();
 
+const authConfigSchema = z
+  .object({
+    listenHost: z.string().refine((value) => isIP(value) !== 0),
+    listenPort: z.number().int().min(1024).max(65535),
+    consoleOrigin: z.string(),
+    allowInsecureLoopback: z.boolean().default(false),
+  })
+  .strict();
+
 /** Configuration and DB credentials are read at runtime, never bundled. DDL is
  * an explicit migrate command using a separately supplied migration role. */
 export async function runCollector(
@@ -42,6 +52,32 @@ export async function runCollector(
   let pool: ReturnType<typeof createTelemetryPool> | undefined;
   let server: Server | undefined;
   try {
+    if (args[0] === "auth" && args.length === 2) {
+      const config = authConfigSchema.parse(
+        JSON.parse(await readFile(args[1]!, "utf8")),
+      );
+      server = createConsoleAuthServer({
+        consoleOrigin: config.consoleOrigin,
+        password: env.TELEMETRY_CONSOLE_PASSWORD ?? "",
+        allowInsecureLoopback: config.allowInsecureLoopback,
+      });
+      await new Promise<void>((resolve, reject) => {
+        server!.once("error", reject);
+        server!.listen(config.listenPort, config.listenHost, () => {
+          server!.off("error", reject);
+          resolve();
+        });
+      });
+      server.on("error", () => {});
+      let closing: Promise<void> | undefined;
+      return {
+        close: () =>
+          (closing ??= new Promise<void>((resolve) => {
+            server!.close(() => resolve());
+            server!.closeAllConnections();
+          })),
+      };
+    }
     if (
       !env.TELEMETRY_DATABASE_URL ||
       !(

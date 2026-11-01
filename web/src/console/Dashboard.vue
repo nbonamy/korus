@@ -1,6 +1,12 @@
 <template>
   <div class="console-shell">
-    <ConsoleNavigation :product-name="productName" :page="page" />
+    <ConsoleNavigation
+      :product-name="productName"
+      :page="page"
+      :signing-out="signingOut"
+      :auth-error="authError"
+      @sign-out="emit('signOut')"
+    />
     <main :class="`page-${page}`">
       <header class="masthead">
         <div>
@@ -481,6 +487,8 @@ import {
 } from "./format";
 import { modelLabel } from "./model-label";
 import { useMetrics } from "./use-metrics";
+defineProps<{ signingOut?: boolean; authError?: string }>();
+const emit = defineEmits<{ sessionExpired: []; signOut: [] }>();
 const productName =
   typeof __PRODUCT_NAME__ === "undefined" ? "Usage console" : __PRODUCT_NAME__;
 const pageLabels = {
@@ -500,7 +508,7 @@ const page = ref<ConsolePage>(readPage());
 const pageTitle = computed(() => pageLabels[page.value]);
 const heading = ref<HTMLElement | null>(null);
 watch(page, async () => {
-  document.title = `${productName} · ${pageTitle.value}`;
+  document.title = `${productName} Console · ${pageTitle.value}`;
   await nextTick();
   heading.value?.focus();
 });
@@ -508,7 +516,7 @@ function navigate() {
   page.value = readPage();
 }
 onMounted(() => {
-  document.title = `${productName} · ${pageTitle.value}`;
+  document.title = `${productName} Console · ${pageTitle.value}`;
   window.addEventListener("hashchange", navigate);
 });
 onUnmounted(() => window.removeEventListener("hashchange", navigate));
@@ -523,7 +531,7 @@ const {
   error,
   load,
   recent,
-} = useMetrics();
+} = useMetrics(() => emit("sessionExpired"));
 const optionsItems = computed(() => [
   {
     id: "group-service-tiers",

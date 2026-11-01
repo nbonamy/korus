@@ -2,7 +2,7 @@ import { onMounted, onUnmounted, ref } from "vue";
 import type { TelemetryMetrics } from "@workspace/core/telemetry-metrics";
 import { completedDay, utcDay } from "./format";
 
-export function useMetrics() {
+export function useMetrics(onSessionExpired?: () => void) {
   const to = ref(completedDay());
   const from = ref(utcDay(Date.parse(to.value) - 29 * 86400000));
   const provider = ref(""),
@@ -44,7 +44,7 @@ export function useMetrics() {
     const timeout = setTimeout(() => active.abort(), 15000);
     try {
       // The console proxy owns viewer authentication and the private upstream
-      // token. No bearer/basic credential is constructed or persisted by JS.
+      // token. The HttpOnly session is sent only to the same origin.
       const response = await fetch(`/v1/telemetry/metrics?${params}`, {
         signal: active.signal,
         credentials: "same-origin",
@@ -52,6 +52,8 @@ export function useMetrics() {
         redirect: "error",
       });
       if (!response.ok) {
+        if (response.status === 401 && identity === request)
+          onSessionExpired?.();
         if (response.status === 401 || response.status === 403)
           throw new Error(
             "Private access required. Sign in through the console access gate, then refresh.",

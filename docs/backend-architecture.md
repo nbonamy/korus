@@ -1300,16 +1300,33 @@ JSON supplies `listenHost`, `listenPort`, `consoleOrigin` and `accessTokenFile`;
 Startup checks schema readiness without DDL. Both executable modes share bounded
 PostgreSQL timeouts and generic failures, with no access/error logger.
 
-The console proxy uses its existing server-side htpasswd gate for both static
-assets and `/v1/telemetry/metrics`. It replaces viewer authorization with a private
-service bearer token on the internal read hop. The API virtual host exposes only
-anonymous ingestion. The token and database credentials never enter browser
-assets, responses or image layers. Supply a distinct 32–256 character URL-safe
-random service token through `TELEMETRY_READ_ACCESS_FILE`, and the exact console
-origin (scheme, host and optional port, without trailing slash/path) through
-`TELEMETRY_CONSOLE_ORIGIN`. An absent Origin supports authenticated internal
-clients; any supplied Origin must exactly match. Browser reads use the protected
-console origin, without embedding an operator credential in JavaScript.
+The private console uses a single `admin` operator account. Its password comes
+from `TELEMETRY_CONSOLE_PASSWORD` in an operator-managed, owner-only `.env` file
+outside Git. Compose injects it only into the separate `auth` process, which has
+no database credential or database network. Passwords must be at least 16
+characters and at most 1,024 UTF-8 bytes; the process derives a salted scrypt hash
+at startup. No operator credential is baked into images or browser assets.
+
+The auth service keeps at most 128 opaque random sessions in memory for eight
+hours. Cookies are host-only, HttpOnly, SameSite=Strict and Secure under HTTPS.
+Logout revokes the session. Restarting auth invalidates all sessions; changing
+the private `.env` password requires recreating the auth container. Login and logout require the exact configured Origin. Login has a
+global ten-attempt/minute budget and at most two concurrent scrypt operations;
+rate state contains no IP addresses. Errors never echo credentials or cookies.
+
+The proxy checks sessions before serving console HTML or
+`/v1/telemetry/metrics`. Unauthenticated HTML redirects to `/login`; metrics return
+401 without a browser password challenge. The login document and its static
+assets are public. The proxy injects a separate private service bearer on the
+internal metrics hop, while the API virtual host remains anonymous ingestion
+only. Database credentials and the service token never enter browser assets or
+responses. Supply a distinct 32–256 character URL-safe random service token
+through `TELEMETRY_READ_ACCESS_FILE` and the exact HTTPS console origin (scheme,
+host and optional port, without trailing slash/path) through
+`TELEMETRY_CONSOLE_ORIGIN`. Internal metrics callers may omit Origin; any supplied
+Origin must exactly match. The explicit
+`TELEMETRY_CONSOLE_ALLOW_LOOPBACK_HTTP=1` option accepts HTTP only for a loopback
+console origin in isolated local tests; production leaves it unset or zero.
 
 The read endpoint accepts only inclusive `from`/`to` UTC days and optional canonical
 `provider`/`model` filters and a boolean `groupServiceTiers` option. It rejects unknown/duplicate filters, current/unclosed
@@ -1390,15 +1407,18 @@ external routes, TLS material or operator configuration are image layers.
 
 Copy `backend/telemetry-stack/operator.env.example` to an operator-managed location
 outside Git and replace every placeholder. Select a unique Compose project name,
-an unused private container subnet, and distinct collector/metrics/proxy addresses within
-it. Reserve all three addresses for this stack. Supply distinct random database-role
-passwords as newline-terminated secret files, a private dashboard htpasswd file,
-the reviewed console build directory, and a trusted-edge nginx include. Keep their
+an unused private container subnet, and distinct collector/metrics/auth/proxy addresses within
+it. Reserve all four addresses for this stack. Supply distinct random database-role
+passwords as newline-terminated secret files, the server-only console password
+in the private operator environment, the reviewed console build directory, and a
+trusted-edge nginx include. Keep their
 parent directory owner-only. Compose file-backed secrets retain host permissions:
 make the mounted files readable by their receiving container UID without opening
 the parent directory to other host users. The backup directory must be writable
 by the PostgreSQL image UID/GID (70:70), mode 0700, and reside on protected storage.
 Do not store these inputs, resolved Compose output, archives or inventories in Git.
+Resolved Compose output contains the runtime console password and must not be
+printed into shared logs.
 Ordinary Compose file secrets are bind mounts, not an encrypted secret store.
 
 Use `docker compose --env-file <external-env-file> -p <isolated-project> -f

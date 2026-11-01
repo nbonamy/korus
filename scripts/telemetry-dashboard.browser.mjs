@@ -19,30 +19,34 @@ export async function dashboardWorkflow({
     process.env.TELEMETRY_DASHBOARD_EVIDENCE ||
     (await mkdtemp(path.join(os.tmpdir(), "telemetry-dashboard-")));
   await mkdir(output, { recursive: true });
-  const origin = `http://console.invalid:${port}`;
+  const origin = `http://127.0.0.1:${port}`;
   const browser = await chromium.launch({
     headless: true,
-    args: [
-      "--no-proxy-server",
-      "--host-resolver-rules=MAP console.invalid 127.0.0.1",
-    ],
+    args: ["--no-proxy-server"],
   });
   try {
     const signedOut = await browser.newContext();
     const denied = await signedOut.request.get(
       `http://127.0.0.1:${port}/v1/telemetry/metrics?from=2026-10-18&to=2026-10-24`,
-      { headers: { Host: "console.invalid" } },
     );
     assert.equal(denied.status(), 401);
     assert.equal(
       (await denied.text()).includes("participatingInstalls"),
       false,
     );
+    assert.equal(denied.headers()["www-authenticate"], undefined);
+    const protectedHtml = await signedOut.request.get(origin, {
+      maxRedirects: 0,
+    });
+    assert.equal(protectedHtml.status(), 302);
+    assert.equal(
+      new URL(protectedHtml.headers().location, origin).pathname,
+      "/login",
+    );
     await signedOut.close();
     const context = await browser.newContext({
       viewport: { width: 1440, height: 1100 },
       hasTouch: true,
-      httpCredentials: { username: "viewer", password },
     });
     const page = await context.newPage();
     await page.clock.install({ time: new Date() });
@@ -65,7 +69,57 @@ export async function dashboardWorkflow({
         aggregateBodies.push(await response.text());
     });
     await page.goto(origin);
+    await page
+      .getByRole("heading", { level: 1, name: "Sign in", exact: true })
+      .waitFor();
+    assert.equal(
+      await page.getByLabel("Username", { exact: true }).inputValue(),
+      "admin",
+    );
+    await page
+      .getByLabel("Password", { exact: true })
+      .fill("incorrect-test-password");
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await page
+      .getByRole("alert")
+      .getByText("Incorrect username or password.", { exact: true })
+      .waitFor();
+    assert.equal(
+      await page.getByLabel("Password", { exact: true }).inputValue(),
+      "",
+    );
+    await page.screenshot({
+      path: path.join(output, "sign-in.png"),
+      fullPage: true,
+      animations: "disabled",
+    });
+    async function signIn() {
+      await page.getByLabel("Password", { exact: true }).fill(password);
+      await Promise.all([
+        page.waitForResponse(
+          (r) =>
+            r.url().endsWith("/auth/session") &&
+            r.request().method() === "POST" &&
+            r.status() === 204,
+        ),
+        page.getByRole("button", { name: "Sign in", exact: true }).click(),
+      ]);
+      await page
+        .getByRole("button", { name: "Sign out", exact: true })
+        .waitFor();
+    }
+    await signIn();
     await page.getByRole("region", { name: "Global activity" }).waitFor();
+    const sessionCookie = (await context.cookies()).find(
+      (cookie) => cookie.httpOnly,
+    );
+    assert.ok(sessionCookie);
+    assert.equal(sessionCookie.sameSite, "Strict");
+    assert.equal(await page.evaluate(() => document.cookie), "");
+    assert.equal(
+      await page.evaluate(() => localStorage.length + sessionStorage.length),
+      0,
+    );
     async function visit(name) {
       await page
         .getByRole("navigation", { name: "Analytics sections" })
@@ -572,8 +626,7 @@ export async function dashboardWorkflow({
     );
     await page.getByLabel("Refresh metrics").click();
     await page
-      .getByRole("alert")
-      .filter({ hasText: /Private access/ })
+      .getByRole("heading", { level: 1, name: "Sign in", exact: true })
       .waitFor();
     assert.equal(
       await page.getByLabel("Participating installs", { exact: true }).count(),
@@ -584,6 +637,29 @@ export async function dashboardWorkflow({
       fullPage: true,
       animations: "disabled",
     });
+    await page.unroute("**/v1/telemetry/metrics?**");
+    await signIn();
+    const currentCookie = (await context.cookies()).find(
+      (cookie) => cookie.httpOnly,
+    );
+    assert.ok(currentCookie);
+    await Promise.all([
+      page.waitForResponse(
+        (r) =>
+          r.url().endsWith("/auth/session") &&
+          r.request().method() === "DELETE" &&
+          r.status() === 204,
+      ),
+      page.getByRole("button", { name: "Sign out", exact: true }).click(),
+    ]);
+    await page
+      .getByRole("heading", { level: 1, name: "Sign in", exact: true })
+      .waitFor();
+    const revoked = await context.request.get(
+      `${origin}/v1/telemetry/metrics?from=2026-10-18&to=2026-10-24`,
+      { headers: { Cookie: `${currentCookie.name}=${currentCookie.value}` } },
+    );
+    assert.equal(revoked.status(), 401);
     assert.deepEqual(errors, []);
     assert.deepEqual(external, []);
     assert.equal(aggregateBodies.length > 5, true);

@@ -351,6 +351,9 @@ report independently of those filters. Models leads with ranked usage and offers
 stacked bars or lines over time. Performance compares model-day rates using the
 same model/tier identities, with five most-used variants selected initially.
 
+Sign-in, sign-out and expired-session recovery share the console identity.
+Reporting data and credentials are not kept in browser storage.
+
 The private proxy owns authentication. Browser code performs only same-origin
 aggregate reads, keeps no credentials or metrics in storage, discards stale filter
 responses and clears displayed data during reload or access failure. Activity

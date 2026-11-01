@@ -15,8 +15,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { request } from "node:http";
-import { createHash } from "node:crypto";
+import { request, createServer } from "node:http";
 import { build } from "esbuild";
 import { pathToFileURL } from "node:url";
 import { dashboardWorkflow } from "./telemetry-dashboard.browser.mjs";
@@ -88,6 +87,7 @@ test(
         )
       ).stdout.trim();
     let endpoint;
+    const authCanaries = [];
     let desktopProfile;
     try {
       for (const name of [
@@ -96,22 +96,13 @@ test(
         "ingest",
         "backup",
         "read",
-        "console_auth",
         "edge_realip",
         "read_access",
       ]) {
         const file = path.join(dir, name);
-        await writeFile(
-          file,
-          name === "edge_realip"
-            ? ""
-            : name === "console_auth"
-              ? `viewer:{SHA}${createHash("sha1").update(canary).digest("base64")}\n`
-              : canary,
-          {
-            mode: 0o444,
-          },
-        );
+        await writeFile(file, name === "edge_realip" ? "" : canary, {
+          mode: 0o444,
+        });
         env[`TELEMETRY_${name.toUpperCase()}_FILE`] = file;
       }
       await mkdir(path.join(dir, "backups"), { mode: 0o777 });
@@ -150,19 +141,26 @@ test(
           false,
         );
       }
+      const probe = createServer();
+      await new Promise((resolve) => probe.listen(0, "127.0.0.1", resolve));
+      const consolePort = probe.address().port;
+      await new Promise((resolve) => probe.close(resolve));
       Object.assign(env, {
+        TELEMETRY_CONSOLE_PASSWORD: canary,
+        TELEMETRY_CONSOLE_ALLOW_LOOPBACK_HTTP: "1",
         TELEMETRY_IMAGE: image,
         TELEMETRY_BACKUP_DIRECTORY: path.join(dir, "backups"),
         TELEMETRY_CONSOLE_DIRECTORY: path.join(dir, "console"),
         TELEMETRY_API_HOST: "api.invalid",
-        TELEMETRY_CONSOLE_HOST: "console.invalid",
-        TELEMETRY_CONSOLE_ORIGIN: "https://console.invalid",
+        TELEMETRY_CONSOLE_HOST: "127.0.0.1",
+        TELEMETRY_CONSOLE_ORIGIN: `http://127.0.0.1:${consolePort}`,
         TELEMETRY_BIND_ADDRESS: "127.0.0.1",
-        TELEMETRY_PORT: "0",
+        TELEMETRY_PORT: String(consolePort),
         TELEMETRY_PROXY_SUBNET: "172.29.253.0/24",
         TELEMETRY_PROXY_IP: "172.29.253.2",
         TELEMETRY_COLLECTOR_IP: "172.29.253.3",
         TELEMETRY_METRICS_IP: "172.29.253.4",
+        TELEMETRY_AUTH_IP: "172.29.253.5",
       });
       await t.test(
         "renders external inputs without exposing database ports or secrets and builds an isolated image",
@@ -175,6 +173,17 @@ test(
           assert.equal(rendered.networks.database.internal, true);
           assert.equal(rendered.networks.frontend.internal, true);
           assert.equal(rendered.networks.database.external, undefined);
+          assert.equal(
+            rendered.services.auth.environment.TELEMETRY_CONSOLE_PASSWORD,
+            canary,
+          );
+          assert.equal(rendered.services.auth.ports, undefined);
+          assert.deepEqual(Object.keys(rendered.services.auth.networks), [
+            "frontend",
+          ]);
+          // The operator explicitly supplies a runtime-only password environment;
+          // it must be present only on auth, never in any other runtime inputs.
+          delete rendered.services.auth.environment.TELEMETRY_CONSOLE_PASSWORD;
           assert.equal(JSON.stringify(rendered).includes(canary), false);
           for (const service of Object.values(rendered.services))
             assert.equal(service.logging.driver, "none");
@@ -324,63 +333,98 @@ test(
             ),
             "355",
           );
+          const consoleOrigin = `http://127.0.0.1:${port}`;
+          const anonymous = await http(`${consoleOrigin}/`);
+          assert.equal(anonymous.status, 302);
+          assert.equal(anonymous.headers.location, "/login");
+          assert.equal(anonymous.headers["www-authenticate"], undefined);
+          assert.equal((await http(`${consoleOrigin}/index.html`)).status, 302);
+          assert.equal((await http(`${consoleOrigin}/login`)).status, 200);
+          const session = `${consoleOrigin}/auth/session`;
+          assert.equal((await http(session)).status, 401);
+          const login = (username = "admin", origin = consoleOrigin) =>
+            http(session, {
+              method: "POST",
+              headers: { origin, "content-type": "application/json" },
+              body: JSON.stringify({ username, password: canary }),
+            });
           assert.equal(
-            (
-              await http(`http://127.0.0.1:${port}/`, {
-                headers: { host: "console.invalid" },
-              })
-            ).status,
-            401,
+            (await login("admin", "https://other.invalid")).status,
+            403,
+          );
+          authCanaries.push("SESSION_LOGIN_USER_CANARY");
+          assert.equal((await login(authCanaries[0])).status, 401);
+          const signedIn = await login();
+          assert.equal(signedIn.status, 204);
+          let cookie = signedIn.headers["set-cookie"][0].split(";")[0];
+          authCanaries.push(cookie);
+          assert.equal(
+            (await http(session, { headers: { cookie } })).status,
+            204,
           );
           assert.equal(
-            (
-              await http(`http://127.0.0.1:${port}/`, {
-                headers: {
-                  host: "console.invalid",
-                  authorization: `Basic ${Buffer.from(`viewer:${canary}`).toString("base64")}`,
-                },
-              })
-            ).status,
+            (await http(`${consoleOrigin}/`, { headers: { cookie } })).status,
             200,
           );
           const metricsPath = `/v1/telemetry/metrics?from=${day}&to=${day}`;
           for (const [headers, expected] of [
-            [{ host: "console.invalid" }, 401],
-            [
-              {
-                host: "console.invalid",
-                authorization: `Basic ${Buffer.from(`viewer:${canary}`).toString("base64")}`,
-              },
-              200,
-            ],
-            [
-              {
-                host: "console.invalid",
-                authorization: `Basic ${Buffer.from(`viewer:${canary}`).toString("base64")}`,
-                origin: "https://other.invalid",
-              },
-              403,
-            ],
+            [{}, 401],
+            [{ cookie }, 200],
+            [{ cookie, origin: "https://other.invalid" }, 403],
             [{ host: "api.invalid" }, 404],
-          ])
-            assert.equal(
-              (
-                await http(`http://127.0.0.1:${port}${metricsPath}`, {
-                  headers,
-                })
-              ).status,
-              expected,
-            );
+          ]) {
+            const response = await http(`${consoleOrigin}${metricsPath}`, {
+              headers,
+            });
+            assert.equal(response.status, expected);
+            assert.equal(response.headers["www-authenticate"], undefined);
+          }
+          assert.equal(
+            (
+              await http(session, {
+                method: "DELETE",
+                headers: { cookie, origin: "https://other.invalid" },
+              })
+            ).status,
+            403,
+          );
+          assert.equal(
+            (
+              await http(session, {
+                method: "DELETE",
+                headers: { cookie, origin: consoleOrigin },
+              })
+            ).status,
+            204,
+          );
+          assert.equal(
+            (
+              await http(`${consoleOrigin}${metricsPath}`, {
+                headers: { cookie },
+              })
+            ).status,
+            401,
+          );
+          const nextLogin = await login();
+          cookie = nextLogin.headers["set-cookie"][0].split(";")[0];
+          authCanaries.push(cookie);
           const script = await http(
             `http://127.0.0.1:${port}/assets/${builtFiles.find((f) => f.endsWith(".js"))}`,
             {
               headers: {
-                host: "console.invalid",
-                authorization: `Basic ${Buffer.from(`viewer:${canary}`).toString("base64")}`,
+                cookie,
               },
             },
           );
           assert.equal(script.status, 200);
+          assert.equal(
+            (
+              await http(
+                `http://127.0.0.1:${port}/assets/${builtFiles.find((f) => f.endsWith(".js"))}`,
+              )
+            ).status,
+            200,
+          );
           assert.equal(
             script.headers["content-type"],
             "application/javascript",
@@ -701,7 +745,8 @@ test(
           assert.equal(
             logged.includes(canary) ||
               logged.includes(id) ||
-              logged.includes("api.invalid"),
+              logged.includes("api.invalid") ||
+              authCanaries.some((value) => logged.includes(value)),
             false,
           );
           assert.equal(logged.trim(), "");

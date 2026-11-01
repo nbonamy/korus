@@ -7,106 +7,7 @@ import Dashboard from "../Dashboard.vue";
 // Rendered owner boundary: stale filter responses, revoked private access, old
 // dates rejected locally, unknowns displayed as zero, and exact tiny/large values.
 // Real SQL, proxy authentication and chart geometry live in the Compose browser workflow.
-const modelTotals = {
-  turns: "1",
-  inputTokens: "10",
-  cachedInputTokens: "5",
-  outputTokens: "2",
-  estimatedCostUsd: "0",
-  unknownInputGroups: "0",
-  unknownCachedInputGroups: "0",
-  unknownOutputGroups: "0",
-  unknownCostGroups: "0",
-  costCoverage: "complete",
-};
-const metrics = (turns = "7") => ({
-  range: { from: "2020-01-01", to: "2020-01-01", provider: null, model: null },
-  availability: {
-    firstDay: "2020-01-01",
-    lastDay: "2020-01-01",
-    lastReceivedAt: "2020-01-02T00:00:00Z",
-  },
-  overview: {
-    participatingInstalls: "6",
-    dau: "3",
-    wau: "4",
-    mau: "5",
-    calendarMonthActives: "4",
-  },
-  activity: [
-    { day: "2020-01-01", activeInstalls: "3", firstReportedInstalls: "1" },
-  ],
-  totals: {
-    performance: {
-      outputTokensPerSecond: "25",
-      timeToFirstOutputMs: "500",
-      speedTurns: "2",
-      ttftTurns: "2",
-    },
-    groups: "1",
-    turns,
-    inputTokens: "10",
-    unknownInputGroups: "0",
-    cachedInputTokens: "5",
-    unknownCachedInputGroups: "0",
-    outputTokens: "2",
-    unknownOutputGroups: "0",
-    totalTokens: "1250000000",
-    excludedTokenGroups: "0",
-    cacheInputTokens: "10",
-    cacheReadTokens: "5",
-    nonCacheReadTokens: "5",
-    cacheReadShare: 0.5,
-    excludedCacheGroups: "0",
-    estimatedCostUsd: "0.000000000123",
-    unknownCostGroups: "0",
-    costCoverage: "complete",
-  },
-  daily: [],
-  modelDaily: [
-    {
-      ...modelTotals,
-      day: "2020-01-01",
-      provider: "codex",
-      model: "gpt-6-sol",
-      serviceTier: "fast",
-      performance: {
-        outputTokensPerSecond: "40",
-        timeToFirstOutputMs: "200",
-        speedTurns: "1",
-        ttftTurns: "1",
-      },
-    },
-    {
-      ...modelTotals,
-      day: "2020-01-01",
-      provider: "codex",
-      model: "gpt-6-sol",
-      serviceTier: "standard",
-      performance: {
-        outputTokensPerSecond: "10",
-        timeToFirstOutputMs: "800",
-        speedTurns: "1",
-        ttftTurns: "1",
-      },
-    },
-  ],
-  weekly: [],
-  models: [
-    {
-      ...modelTotals,
-      provider: "codex",
-      model: "gpt-6-sol",
-      serviceTier: "fast",
-    },
-    {
-      ...modelTotals,
-      provider: "codex",
-      model: "gpt-6-sol",
-      serviceTier: "standard",
-    },
-  ],
-});
+import { metrics, modelTotals } from "./metrics-fixture";
 beforeEach(() => {
   vi.stubGlobal(
     "ResizeObserver",
@@ -136,6 +37,10 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   expect(wrapper.get('[role="status"]').text()).toContain("Loading");
   pending.shift()!(Response.json(metrics()));
   await flushPromises();
+  expect(wrapper.get(".brand").text()).toContain("Console");
+  expect(wrapper.get(".brand img").attributes("alt")).toBe("");
+  expect(wrapper.get(".navigation-group").text()).toBe("Reporting");
+  expect(document.title).toContain("Console · Overview");
   expect(wrapper.get('[aria-label="Turns"]').text()).toContain("7");
   expect(wrapper.get('[aria-label="Measured total tokens"]').text()).toContain(
     "1.3B",

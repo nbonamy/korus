@@ -1,6 +1,17 @@
 <template>
   <aside class="sidebar">
-    <a class="brand" href="#/overview">{{ productName }}</a>
+    <a
+      class="brand"
+      href="#/overview"
+      :aria-label="`${productName} Console home`"
+    >
+      <img :src="productIcon" alt="" width="36" height="36" />
+      <span class="brand-copy"
+        ><strong>{{ productName }}</strong
+        ><span>Console</span></span
+      >
+    </a>
+    <span class="navigation-group">Reporting</span>
     <nav aria-label="Analytics sections">
       <a
         v-for="item in sections"
@@ -25,13 +36,34 @@
         {{ item.label }}
       </a>
     </nav>
-    <div class="sidebar-footer">
-      <span>Private console</span>
+    <div class="sidebar-session">
+      <button
+        type="button"
+        class="sign-out-button"
+        aria-label="Sign out"
+        :disabled="signingOut"
+        @click="emit('signOut')"
+      >
+        <QuitIcon aria-hidden="true" /><span>{{
+          signingOut ? "Signing out…" : "Sign out"
+        }}</span>
+      </button>
+      <p v-if="authError" role="alert" class="sign-out-error">
+        {{ authError }}
+      </p>
     </div>
   </aside>
 </template>
 <script setup lang="ts">
-defineProps<{ productName: string; page: string }>();
+import { QuitIcon } from "../../../vue/src/shared/icons/app-icons";
+import productIcon from "../../../electron/assets/icon.svg";
+defineProps<{
+  productName: string;
+  page: string;
+  signingOut?: boolean;
+  authError?: string;
+}>();
+const emit = defineEmits<{ signOut: [] }>();
 const sections = [
   {
     id: "overview",

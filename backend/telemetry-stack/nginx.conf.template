@@ -50,9 +50,38 @@ http {
   server {
     listen 8080;
     server_name ${CONSOLE_HOST};
-    auth_basic "Private dashboard";
-    auth_basic_user_file /run/secrets/console_auth;
+    absolute_redirect off;
+    location = /_console_session_check {
+      internal;
+      set $auth http://auth:8080;
+      proxy_pass $auth/auth/session;
+      proxy_method GET;
+      proxy_pass_request_body off;
+      proxy_set_header Content-Length "";
+      proxy_set_header Cookie $http_cookie;
+      proxy_set_header Origin "";
+      proxy_set_header Authorization "";
+      proxy_set_header User-Agent "";
+      proxy_set_header X-Real-IP "";
+      proxy_set_header X-Forwarded-For "";
+      proxy_connect_timeout 2s;
+      proxy_read_timeout 5s;
+      proxy_next_upstream off;
+    }
+    location = /auth/session {
+      set $auth http://auth:8080;
+      proxy_pass $auth;
+      proxy_set_header Authorization "";
+      proxy_set_header User-Agent "";
+      proxy_set_header X-Real-IP "";
+      proxy_set_header X-Forwarded-For "";
+      proxy_request_buffering off;
+      proxy_connect_timeout 2s;
+      proxy_read_timeout 5s;
+      proxy_next_upstream off;
+    }
     location = /v1/telemetry/metrics {
+      auth_request /_console_session_check;
       if ($request_method != GET) { return 405; }
       set $metrics http://metrics:8080;
       proxy_pass $metrics;
@@ -68,6 +97,14 @@ http {
       proxy_next_upstream off;
     }
     root /srv/console;
-    location / { try_files $uri $uri/ /index.html; }
+    location = /login { try_files /index.html =404; add_header Cache-Control "no-store" always; }
+    location ^~ /assets/ { try_files $uri =404; }
+    location / {
+      auth_request /_console_session_check;
+      error_page 401 = @console_login;
+      add_header Cache-Control "no-store" always;
+      try_files $uri $uri/ /index.html;
+    }
+    location @console_login { return 302 /login; }
   }
 }

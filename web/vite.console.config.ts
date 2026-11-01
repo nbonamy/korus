@@ -26,7 +26,7 @@ export default defineConfig({
       transformIndexHtml: (html) =>
         html.replace(
           "<title>Usage console</title>",
-          `<title>${product.name} · Usage</title><style>${tokens}</style>`,
+          `<title>${product.name} Console</title><style>${tokens}</style>`,
         ),
     },
   ],
