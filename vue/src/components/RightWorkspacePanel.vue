@@ -359,7 +359,7 @@
         </div>
       </div>
 
-      <Transition name="right-workspace-files">
+      <PaneTransition>
         <div
           v-if="!contentOnly && fileExplorerVisible"
           class="right-workspace-panel__files-shell"
@@ -385,13 +385,15 @@
             @preview="emit('previewFile', $event)"
           />
         </div>
-      </Transition>
+      </PaneTransition>
     </div>
   </component>
 </template>
 
 <script setup lang="ts">
 import { appApi } from '../platform-api';
+import PaneTransition from '../shared/PaneTransition.vue';
+import { useCollapsiblePaneResize } from '../shared/use-collapsible-pane-resize';
 import type { AgentDirectoryInput, AgentDirectoryPage } from '@workspace/core/contracts/workspace';
 import type { SaveCanvasInput } from '@workspace/core/visualize-canvas';
 async function saveCanvas(agentId: string, input: SaveCanvasInput) {
@@ -670,7 +672,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateTabScrollState);
   tabResizeObserver?.disconnect();
-  stopFilesPaneResize();
 });
 
 function updateTabScrollState(): void {
@@ -705,16 +706,17 @@ function revealActiveTab(): void {
   updateTabScrollState();
 }
 
+const { start: startFilesResize } = useCollapsiblePaneResize();
 function startFilesPaneResize(event: PointerEvent): void {
-  event.preventDefault();
-  document.addEventListener('pointermove', handleFilesPaneResize);
-  document.addEventListener('pointerup', stopFilesPaneResize, { once: true });
-}
-
-function handleFilesPaneResize(event: PointerEvent): void {
   const body = bodyRoot.value;
   if (!body) return;
-  resizeFilesPane(body.getBoundingClientRect().right - event.clientX);
+  startFilesResize(event, {
+    minimum: 180,
+    width: visualFilesPaneWidth.value,
+    widthAt: move => body.getBoundingClientRect().right - move.clientX,
+    resize: resizeFilesPane,
+    setOpen: open => { if (props.filesPaneOpen !== open) emit('toggleFilesPane'); },
+  });
 }
 
 function resizeFilesPane(width: number): void {
@@ -722,10 +724,6 @@ function resizeFilesPane(width: number): void {
   const nextWidth = Math.round(Math.min(Math.max(width, 180), Math.max(180, bodyWidth - 160)));
   visualFilesPaneWidth.value = nextWidth;
   emit('resizeFilesPane', nextWidth);
-}
-
-function stopFilesPaneResize(): void {
-  document.removeEventListener('pointermove', handleFilesPaneResize);
 }
 
 function tabLabel(tab: RightWorkspaceTab): string {
@@ -1185,33 +1183,6 @@ function urlForTab(tab: RightWorkspaceTab): string {
   flex: 1 1 auto;
 }
 
-.right-workspace-files-enter-active,
-.right-workspace-files-leave-active {
-  transition:
-    flex-basis 180ms ease,
-    width 180ms ease,
-    max-width 180ms ease,
-    opacity 140ms ease,
-    transform 180ms ease;
-}
-
-.right-workspace-files-enter-from,
-.right-workspace-files-leave-to {
-  flex-basis: 0 !important;
-  width: 0 !important;
-  min-width: 0;
-  max-width: 0;
-  opacity: 0;
-  transform: translateX(8px);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .right-workspace-files-enter-active,
-  .right-workspace-files-leave-active {
-    transition-duration: 1ms;
-  }
-}
-
 .right-workspace-panel__files-resizer {
   position: relative;
   z-index: 1;
@@ -1219,6 +1190,7 @@ function urlForTab(tab: RightWorkspaceTab): string {
   margin-left: 0px;
   border-left: 0.75px solid var(--color-border);
   cursor: col-resize;
+  touch-action: none;
 }
 
 .right-workspace-panel__files-resizer:hover,

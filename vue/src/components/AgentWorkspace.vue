@@ -44,9 +44,8 @@
     </slot>
     </div>
     <WorkspacePreviewHost :dialog="previewDialog" :open="rightWorkspaceVisible" :title="previewTitle" @close="closePreview?.()">
+    <PaneTransition v-for="agent in snapshot.agents.filter(agent => !agent.sharedConversation)" :key="agent.id">
     <RightWorkspacePanel
-      v-for="agent in snapshot.agents.filter(agent => !agent.sharedConversation)"
-      :key="agent.id"
       v-show="!emptySplitPane && isRightWorkspaceVisible(agent.id)"
       class="app-shell__right-workspace"
       :content-only="previewDialog"
@@ -115,6 +114,7 @@
       @dragover="linkDrag.over"
       @drop="linkDrag.drop"
     />
+    </PaneTransition>
     </WorkspacePreviewHost>
     <WorkspaceLinkDropTarget
       v-if="linkDrag.draggedLink.value && !rightWorkspaceVisible"
@@ -184,6 +184,7 @@ import AgentEmptyState from './AgentEmptyState.vue';
 import AgentHeader from './AgentHeader.vue';
 import ConversationPane from './ConversationPane.vue';
 import RightWorkspacePanel from './RightWorkspacePanel.vue';
+import PaneTransition from '../shared/PaneTransition.vue';
 import WorkspacePreviewHost from './WorkspacePreviewHost.vue';
 import WorkspaceLinkDropTarget from './WorkspaceLinkDropTarget.vue';
 import { useWorkspaceLinkDrag } from './use-workspace-link-drag';

@@ -294,12 +294,12 @@ describe('RightWorkspacePanel', () => {
     expect(wrapper.get('.right-workspace-panel__files-shell').attributes('style')).toContain('width: 296px');
 
     await wrapper.get('[aria-label="Resize file explorer"]').trigger('pointerdown');
-    document.dispatchEvent(new MouseEvent('pointermove', { clientX: 180 }));
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 180 }));
     await wrapper.vm.$nextTick();
 
     expect(wrapper.emitted('resizeFilesPane')).toStrictEqual([[296], [320]]);
     expect(wrapper.get('.right-workspace-panel__files-shell').attributes('style')).toContain('width: 320px');
-    document.dispatchEvent(new MouseEvent('pointerup'));
+    window.dispatchEvent(new PointerEvent('pointerup'));
   });
 
   it('opens the dedicated Review pane from the add-tab menu', async () => {

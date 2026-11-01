@@ -510,17 +510,34 @@ describe('AppShell workspace and plans', () => {
     vi.spyOn(body, 'getBoundingClientRect').mockReturnValue({ right: 1200, width: 1200 } as DOMRect);
     await wrapper.get('.app-shell__right-workspace-resizer').trigger('pointerdown');
     expect(wrapper.find('.app-shell__right-workspace-resize-shield').exists()).toBe(true);
-    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 900 }));
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 900 }));
     await nextTick();
 
     const workspace = wrapper.findAll('.app-shell__right-workspace').find((panel) => panel.isVisible());
     expect((workspace?.element as HTMLElement).style.flexBasis).toBe('300px');
-    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 100 }));
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 100 }));
     await nextTick();
     expect((workspace?.element as HTMLElement).style.flexBasis).toBe('715px');
-    window.dispatchEvent(new Event('pointerup'));
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 975 }));
+    await nextTick();
+    expect((workspace?.element as HTMLElement).style.flexBasis).toBe('240px');
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 990 }));
+    await nextTick();
+    expect(workspace?.attributes('style')).toContain('display: none');
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 975 }));
+    await nextTick();
+    expect(workspace?.attributes('style')).toContain('display: none');
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 900 }));
+    await nextTick();
+    expect(workspace?.attributes('style')).not.toContain('display: none');
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 1100 }));
+    window.dispatchEvent(new PointerEvent('pointerup'));
     await nextTick();
     expect(wrapper.find('.app-shell__right-workspace-resize-shield').exists()).toBe(false);
+    await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+    expect(workspace?.attributes('style')).not.toContain('display: none');
+    expect((workspace?.element as HTMLElement).style.flexBasis).toBe('420px');
+    wrapper.unmount();
   });
 
   it('opens Files as a right-side explorer pane and keeps it open beside previews', async () => {
@@ -557,6 +574,27 @@ describe('AppShell workspace and plans', () => {
     await flushPromises();
     expect(wrapper.find('.right-workspace-panel__files-pane').exists()).toBe(true);
     expect(wrapper.find('.right-workspace-panel__open-file button').exists()).toBe(false);
+    const filesBody = wrapper.get('.right-workspace-panel__body').element;
+    vi.spyOn(filesBody, 'getBoundingClientRect').mockReturnValue({ right: 500, width: 500 } as DOMRect);
+    await wrapper.get('[aria-label="Resize file explorer"]').trigger('pointerdown');
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 340 }));
+    await nextTick();
+    expect(wrapper.get('.right-workspace-panel__files-shell').attributes('style')).toContain('width: 180px');
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 350 }));
+    await nextTick();
+    expect(wrapper.find('.right-workspace-panel__files-pane').exists()).toBe(false);
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 300 }));
+    await nextTick();
+    expect(wrapper.find('.right-workspace-panel__files-pane').exists()).toBe(true);
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 400 }));
+    window.dispatchEvent(new PointerEvent('pointercancel'));
+    await nextTick();
+    await wrapper.get('.right-workspace-panel__open-file button').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('.right-workspace-panel__files-shell').attributes('style')).toContain('width: 280px');
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 200 }));
+    await nextTick();
+    expect(wrapper.get('.right-workspace-panel__files-shell').attributes('style')).toContain('width: 280px');
     await wrapper.get('button[title="Preview README.md"]').trigger('click');
     await flushPromises();
 

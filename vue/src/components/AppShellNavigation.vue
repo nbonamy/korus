@@ -31,7 +31,7 @@
     @select-team="selectTeamFromRail"
     @toggle-speech-mute="$emit('toggle-speech-mute')"
   />
-  <Transition name="agent-sidebar">
+  <PaneTransition>
     <AgentSidebar
       ref="agentSidebar"
       v-if="showAgentSidebar"
@@ -89,6 +89,7 @@
       @reorder-repositories="$emit('reorder-repositories', $event)"
       @restart-agent="$emit('restart-agent', $event)"
       @resize-sidebar="setAgentSidebarWidth"
+      @start-sidebar-resize="$emit('start-sidebar-resize', $event)"
       @resume-session="openResumeSession"
       @select-agent="selectAgentFromShell"
       @start-work="handleStartWorkAction"
@@ -96,10 +97,11 @@
       @update-repository-icon="updateRepositoryIcon"
       @update-collapsed-repositories="updateCollapsedRepositories"
     />
-  </Transition>
+  </PaneTransition>
 </template>
 
 <script setup lang="ts">
+import PaneTransition from '../shared/PaneTransition.vue';
 import { missionAgentIds } from '@workspace/core/mission-attention';
 import { enabledAgentBackends } from '@workspace/core/agent-backends';
 import type {
@@ -198,6 +200,7 @@ const emit = defineEmits<{
   'reorder-repositories': [input: ReorderRepositoriesInput];
   'reorder-teams': [input: ReorderTeamsInput];
   'resize-sidebar': [width: number];
+  'start-sidebar-resize': [event: PointerEvent];
   'restart-agent': [agentId: string];
   'resume-session': [agentId: string];
   'select-agent': [agentId: string];
@@ -335,34 +338,3 @@ function updateRepositoryIcon(payload: {
   emit('update-repository-icon', payload);
 }
 </script>
-
-<style scoped>
-.agent-sidebar-enter-active,
-.agent-sidebar-leave-active {
-  overflow: hidden;
-  transition:
-    flex-basis 180ms ease,
-    width 180ms ease,
-    min-width 180ms ease,
-    max-width 180ms ease,
-    opacity 140ms ease,
-    transform 180ms ease;
-}
-
-.agent-sidebar-enter-from,
-.agent-sidebar-leave-to {
-  flex-basis: 0;
-  width: 0;
-  min-width: 0;
-  max-width: 0;
-  opacity: 0;
-  transform: translateX(-8px);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .agent-sidebar-enter-active,
-  .agent-sidebar-leave-active {
-    transition-duration: 1ms;
-  }
-}
-</style>

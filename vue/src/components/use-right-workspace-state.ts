@@ -1,6 +1,7 @@
 import { PRIMARY_BROWSER_ID } from '@workspace/core/contracts';
 import type { CodexConversationVisualization } from '@codex-app-sdk/vue';
-import { computed, onScopeDispose, reactive, ref, watch, watchEffect } from 'vue';
+import { computed, onScopeDispose, reactive, watch, watchEffect } from 'vue';
+import { useCollapsiblePaneResize } from '../shared/use-collapsible-pane-resize';
 import type { SidePanelGitDiffState, SidePanelImageState, SidePanelMarkdownState } from './side-panel';
 import {
   isRightWorkspaceBrowserTab,
@@ -64,8 +65,7 @@ export function useRightWorkspaceState(options: {
     // Invalidate pending reads as well as releasing completed images.
     for (const workspace of Object.values(workspaces)) workspace.imagePanels = {};
   });
-  const resizing = ref(false);
-  let stopActiveResize: (() => void) | null = null;
+  const { resizing, start: startPaneResize } = useCollapsiblePaneResize();
   const visible = computed(() => {
     const agentId = options.currentAgentId();
     return Boolean(agentId && workspaceFor(agentId).open);
@@ -173,32 +173,18 @@ export function useRightWorkspaceState(options: {
   }
 
   function startResize(event: PointerEvent): void {
-    event.preventDefault();
     const body = options.workspaceBody();
     const agentId = options.currentAgentId();
     if (!body || !agentId) return;
-    stopActiveResize?.();
-    resizing.value = true;
-    const updateWidth = (moveEvent: PointerEvent) => {
-      const bounds = body.getBoundingClientRect();
-      workspaceFor(agentId).width = constrainedRightWorkspaceWidth(bounds.right - moveEvent.clientX, bounds.width);
-    };
-    const stop = () => {
-      window.removeEventListener('pointermove', updateWidth);
-      window.removeEventListener('pointerup', stop);
-      window.removeEventListener('pointercancel', stop);
-      window.removeEventListener('blur', stop);
-      resizing.value = false;
-      stopActiveResize = null;
-    };
-    stopActiveResize = stop;
-    window.addEventListener('pointermove', updateWidth);
-    window.addEventListener('pointerup', stop, { once: true });
-    window.addEventListener('pointercancel', stop, { once: true });
-    window.addEventListener('blur', stop, { once: true });
+    const workspace = workspaceFor(agentId);
+    startPaneResize(event, {
+      minimum: 240,
+      width: workspace.width,
+      widthAt: move => body.getBoundingClientRect().right - move.clientX,
+      resize: width => { workspace.width = constrainedRightWorkspaceWidth(width, body.getBoundingClientRect().width); },
+      setOpen: open => { workspace.open = open; },
+    });
   }
-
-  onScopeDispose(() => stopActiveResize?.());
 
   return {
     closeTab,

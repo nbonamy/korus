@@ -8,7 +8,6 @@ import type { Agent, Team } from '@workspace/core/contracts';
 import {
   agents,
   clickPortaledMenuItem,
-  pointerEvent,
   portaledMenuItems,
   teams,
 } from './agent-sidebar-test-harness';
@@ -197,30 +196,6 @@ describe('AgentSidebar interactions', () => {
     expect(handle.attributes('aria-valuemin')).toBe('200');
     await handle.trigger('keydown', { key: 'ArrowLeft' });
     expect(wrapper.emitted('resize-sidebar')).toStrictEqual([[200]]);
-  });
-
-  it('emits clamped resize widths from the right border drag handle', async () => {
-    const wrapper = mount(AgentSidebar, {
-      props: {
-        agents,
-        activeAgentId: 'agent-dina',
-        teamName: `${product.name}`,
-        width: 260,
-        minWidth: 220,
-        maxWidth: 420,
-      },
-      global: {
-        components: { ElPopover },
-      },
-    });
-
-    const handle = wrapper.get('[aria-label="Resize agent sidebar"]');
-
-    handle.element.dispatchEvent(pointerEvent('pointerdown', 260));
-    handle.element.dispatchEvent(pointerEvent('pointermove', 500));
-    handle.element.dispatchEvent(pointerEvent('pointerup', 500));
-
-    expect(wrapper.emitted('resize-sidebar')).toStrictEqual([[420]]);
   });
 
   it('supports keyboard resizing from the right border handle', async () => {

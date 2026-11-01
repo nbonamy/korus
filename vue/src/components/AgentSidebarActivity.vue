@@ -260,10 +260,7 @@
       :aria-valuemax="maxWidth"
       :aria-valuenow="currentWidth"
       tabindex="0"
-      @pointerdown="onResizePointerDown"
-      @pointermove="onResizePointerMove"
-      @pointerup="onResizePointerEnd"
-      @pointercancel="onResizePointerEnd"
+      @pointerdown="emit('start-sidebar-resize', $event)"
       @keydown.left.prevent="emitResizedWidth(currentWidth - resizeStep)"
       @keydown.right.prevent="emitResizedWidth(currentWidth + resizeStep)"
     />
@@ -327,9 +324,6 @@ const {
   minWidth,
   maxWidth,
   currentWidth,
-  onResizePointerDown,
-  onResizePointerMove,
-  onResizePointerEnd,
   emitResizedWidth,
   resizeStep,
   sessionList,
