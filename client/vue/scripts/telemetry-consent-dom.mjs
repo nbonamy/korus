@@ -54,6 +54,7 @@ createApp({setup:()=>{
 `;
 const server = await createServer({
   configFile: false,
+  cacheDir: path.join(output, "vite-cache"),
   root: path.join(root, "client/vue"),
   plugins: [
     vue(),
@@ -79,7 +80,8 @@ const server = await createServer({
     },
   ],
   resolve: { alias: { "@workspace/core": path.join(root, "core/src") } },
-  server: { host: "127.0.0.1", port: 0 },
+  // This fixed fixture must not reload while the browser clock advances.
+  server: { host: "127.0.0.1", port: 0, hmr: false, ws: false },
 });
 let browser;
 try {
