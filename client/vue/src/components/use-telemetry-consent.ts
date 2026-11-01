@@ -1,10 +1,12 @@
-import { ref } from "vue";
+import { ref, type InjectionKey, type Ref } from "vue";
 import type { AppApi } from "@workspace/core/contracts";
 import type {
   TelemetryConsentAction,
   TelemetryConsentView,
 } from "@workspace/core/telemetry-consent";
 import { appApi } from "../platform-api";
+
+export const telemetryNoticeReadyKey: InjectionKey<Readonly<Ref<boolean>>> = Symbol("telemetryNoticeReady");
 
 // Only the dedicated desktop surfaces share this private view, never app-state.
 const stores = new WeakMap<AppApi, ReturnType<typeof createStore>>();

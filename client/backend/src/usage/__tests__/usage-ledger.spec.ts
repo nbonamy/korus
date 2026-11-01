@@ -11,8 +11,6 @@ it("projects incomplete groups as null, retains measured zero, and replaces late
   const ledger = new UsageLedger(":memory:", () => at);
   const input = {
     day: "2026-10-15",
-    eligibleFrom: at - 86400000,
-    eligibleUntil: null,
   };
   const base = {
     provider: "codex" as const,
@@ -83,10 +81,10 @@ it("projects incomplete groups as null, retains measured zero, and replaces late
       estimatedCostUsd: 0.000062,
     });
     expect(
-      ledger.projectDailyTelemetry({ ...input, eligibleFrom: at + 1 }),
+      ledger.projectDailyTelemetry({ day: "2026-10-16" }),
     ).toStrictEqual([]);
     expect(
-      ledger.projectDailyTelemetry({ ...input, eligibleUntil: at }),
+      ledger.projectDailyTelemetry({ day: "2026-10-14" }),
     ).toStrictEqual([]);
   } finally {
     await ledger.close();
@@ -370,7 +368,7 @@ it("projects additive measured performance from the existing ledger", async () =
       await ledger.observe({...base,phase:"started"}, {teamId:null,repository:null});
       await ledger.observe({...base,phase:"completed",tokens:{input:100,cacheRead:50,cacheWrite:null,output},timing:{activeMs,ttftMs}}, {teamId:null,repository:null});
     }
-    const rows = ledger.projectDailyTelemetry({day:"2026-10-15",eligibleFrom:at-86400000,eligibleUntil:null});
+    const rows = ledger.projectDailyTelemetry({day:"2026-10-15"});
     expect(rows).toHaveLength(2);
     expect(rows.map(row => [row.model, row.serviceTier, row.performance?.outputTokens])).toStrictEqual([["gpt-6-sol", "fast", 90], ["gpt-6-sol", "standard", 10]]);
   } finally { await ledger.close(); }

@@ -39,6 +39,8 @@ export type RosterData = {
 };
 
 export type SettingsData = {
+  /** Private local metadata; never projected into an app snapshot. */
+  telemetry?: unknown;
   settings: AppGeneralSettings;
   browserBookmarksByClient?: Record<string, BrowserBookmark[]>;
   theme: AppThemeSettings;

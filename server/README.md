@@ -2,8 +2,7 @@
 
 `backend/` owns hosted ingestion, authentication and reporting APIs. `frontend/`
 owns the private admin console. `deploy/` contains portable Docker services and
-`scripts/` owns image packaging and end-to-end server checks. The `web/` workspace
-is the separate local browser client and is not a server dependency.
+`scripts/` owns image packaging and end-to-end server checks. The mobile and Electron clients are independent of the hosted frontend.
 
 The server uses shared `@workspace/core` contracts and canonical UI primitives,
 product metadata and assets from the app repository. Those shared inputs must be
@@ -30,15 +29,19 @@ listener/routing configuration and TLS termination belong outside Git. PostgreSQ
 
 The versioned ingestion route accepts only JSON with the shared closed schema.
 Its byte cap applies before UTF-8 decoding or parsing, including chunked bodies.
-Only the last seven completed UTC reporting dates are accepted. This lateness
+Hourly reports are accepted for the current UTC hour and the preceding seven
+UTC dates. Legacy daily reports retain their completed-day contract. This lateness
 limit never deletes accepted history: `install_days`, `usage_daily` and the minimal
 `installs` registry have no age-based expiry. The registry preserves the reporting
 date of the first successfully committed submission, even when an older reporting
 date arrives later; it does not claim an installation date.
 
 Each replacement uses one PostgreSQL connection and transaction. The unique parent
-upsert locks the install/day before deleting children and inserting the complete
-replacement. This serializes concurrent processes as well as concurrent requests;
+upsert locks the install/day before replacing a single hourly bucket. The stored
+hour markers include empty activity reports. The first hourly report replaces
+legacy daily contributions; later legacy writes cannot overwrite hourly data.
+Daily metrics coalesce the hourly buckets before applying the existing aggregation.
+The same parent lock serializes concurrent processes as well as concurrent requests;
 removed groups disappear, including replacement with empty usage. The registry
 insert is in the same transaction. HTTP success follows commit. A lost
 acknowledgement can be retried without incrementing counts; a failed transaction
@@ -327,7 +330,7 @@ review the intended image and console build, supply the external inputs in
   a released app can offer active sharing. Recheck onboarding, first-upgrade and
   Settings policy links against that published version. Coordinate the separately
   approved endpoint activation and signed app release; opt-in still starts at the
-  next UTC day and missing consent remains off.
+  current UTC hour and an unset sharing choice remains off.
 
 Record production privacy verification, deployment, policy publication, signed app
 release and actual public availability as separate delivery evidence. A local

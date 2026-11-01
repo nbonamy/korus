@@ -84,3 +84,6 @@ function backendStateStore(): AppStateStore {
 
 export const loadBackendTasks = (): Promise<DelegatedTask[]> => backendStateStore().loadTasks();
 export const saveBackendTasks = (tasks: DelegatedTask[]): Promise<void> => backendStateStore().saveTasks(tasks);
+
+export const loadBackendTelemetrySettings = async () => backendStateStore().getTelemetrySettings();
+export const saveBackendTelemetrySettings = (snapshot: AppSnapshot, state: import('@workspace/core/telemetry-consent').TelemetryConsentState) => backendStateStore().saveTelemetrySettings(snapshot, state);

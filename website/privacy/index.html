@@ -227,7 +227,7 @@
         </li>
       </ul>
 
-      <h2 id="analytics">Local Analytics and optional daily sharing</h2>
+      <h2 id="analytics">Local Analytics and optional usage sharing</h2>
       <p>
         The desktop app keeps a local usage ledger for Analytics, including
         provider, model, workspace identifiers, token counts, timing, outcomes,
@@ -236,22 +236,21 @@
         <strong>Settings → Analytics → Clear</strong> deletes those local
         statistics, not conversations or reports already received by us.
       </p>
-      <h3 id="optional-sharing">Optional anonymous daily usage</h3>
+      <h3 id="optional-sharing">Optional anonymous hourly usage</h3>
       <p>
         Sharing is <strong>off by default</strong> for new and existing desktop
-        profiles. Onboarding and the first launch after upgrading offer
-        <strong>Share anonymous usage</strong> and <strong>Don't share</strong>.
-        Closing or dismissing the choice leaves sharing off without repeated
-        prompts. You can change your choice in
+        profiles. A panel above the composer offers <strong>Close</strong> to
+        enable sharing or <strong>Opt out</strong> to keep it off. Your choice
+        is saved. You can change your choice in
         <strong>Settings → Analytics</strong>. While sharing is off, the app
         makes no telemetry requests, including registration or health checks.
       </p>
       <p>
-        If you enable sharing, only usage from the next UTC day is eligible;
-        earlier history is never sent. Completed days when you opened or used
-        the desktop app in the foreground can produce a daily report, including
-        an empty usage report if you ran no turns. Reports can arrive late and
-        may be dropped after delivery failures. Remote teams and mobile
+        Reports contain hourly UTC aggregates of recent local usage, including
+        usage recorded before sharing was enabled. The app checks hourly and on
+        startup for unsent or updated buckets from the current UTC day and the
+        preceding seven days. Pending reports survive restarts. Reports can
+        arrive late or be dropped after delivery failures. Remote teams and mobile
         companions do not submit additional copies of their usage.
       </p>
       <p>Each report contains only these fields:</p>
@@ -262,8 +261,9 @@
           not derived from your account or computer.
         </li>
         <li>
-          <code>day</code>: the UTC reporting date, without activity timestamps.
+          <code>day</code>: the UTC reporting date.
         </li>
+        <li><code>hour</code>: the UTC reporting hour, from 0 to 23.</li>
         <li>
           <code>appVersion</code>: the numeric app release version, without
           local build suffixes.
@@ -273,7 +273,7 @@
           system version or architecture.
         </li>
         <li>
-          <code>usage</code>: daily groups containing only
+          <code>usage</code>: hourly groups containing only
           <code>provider</code> (the app driver: codex, claude, or antigravity),
           <code>model</code> (an allowed catalog ID or unknown, never a custom
           alias), <code>serviceTier</code> (standard, fast, ultrafast, flex, batch, scale, or unknown), <code>turns</code>, <code>inputTokens</code> (inclusive
@@ -286,8 +286,8 @@
           <code>generationMs</code> (summed active time after first output),
           <code>ttftMs</code> (summed active time before first output), and
           <code>ttftTurns</code> (turns with a first-output measurement).
-          These are daily totals, without per-turn timestamps or events.
-          Missing or incomplete measurements are null, not zero. A day without
+          These are hourly totals, without per-turn timestamps or events.
+          Missing or incomplete measurements are null, not zero. An active hour without
           usage has an empty group list.
         </li>
       </ul>
@@ -317,7 +317,7 @@
         notifications described elsewhere in this policy.
       </p>
       <p>
-        The random ID links your daily summaries. It is not linked to your
+        The random ID links your hourly summaries. It is not linked to your
         account, but the reports are not completely unlinkable: a stable ID and
         usage patterns can distinguish a participating profile. Copying a
         profile preserves its ID; reinstalling without its saved state creates
@@ -326,7 +326,7 @@
         is private and exposes aggregates rather than installation records.
       </p>
       <p>
-        Daily summaries and the minimal registry of random ID and first reported
+        Hourly summaries and the minimal registry of random ID and first reported
         day are kept indefinitely. The first reported day is not an installation
         date. Server backup copies rotate after seven days; this does not expire
         the history in the primary database or in newer backups.
@@ -335,17 +335,16 @@
         <strong>Show what would be sent</strong> in Settings → Analytics
         displays the exact local JSON body and lets you copy it. With sharing
         off, the preview is hypothetical and does not queue or send history. An
-        unfinished day is provisional. A sealed report preserves the same bytes
-        for delivery and retries; later usage corrections do not automatically
-        change it.
+        unfinished day is provisional. Each queued report preserves the same bytes
+        across retries. Later local corrections can replace an acknowledged hourly
+        bucket without adding its totals twice.
       </p>
       <p>
         <strong>Stop sharing</strong> cancels pending work and prevents future
         delivery. A report already transmitted cannot be recalled.
         <strong>Reset installation ID</strong> clears pending work, creates a
         new random ID, and turns sharing off. Sharing again requires a new
-        explicit choice and starts from the next UTC day without replaying old
-        usage. Stopping sharing, resetting the ID, clearing local statistics, or
+        explicit choice. Stopping sharing, resetting the ID, clearing local statistics, or
         uninstalling does not remotely delete reports already received or their
         backup copies. Contact us for privacy requests.
       </p>

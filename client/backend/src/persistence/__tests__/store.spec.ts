@@ -37,6 +37,29 @@ function snapshotWithCalendar(): AppSnapshot {
 }
 
 describe('AppStateStore', () => {
+  it('keeps private telemetry choices in settings across ordinary and concurrent saves without publishing them', async () => {
+    const store = new AppStateStore(home);
+    const snapshot = await store.load();
+    expect(store.getTelemetrySettings()).toBeUndefined();
+    const telemetry = { installId: 'd8b65ff5-179c-49b9-ac3a-f60a54a0f43f' };
+    await store.saveTelemetrySettings(snapshot, telemetry);
+    expect((await readJson('settings.json')).data.telemetry).toStrictEqual(telemetry);
+    snapshot.general.celebrationsEnabled = false;
+    await Promise.all([
+      store.save(snapshot),
+      store.saveTelemetrySettings(snapshot, { ...telemetry, enabled: true }),
+      store.save(snapshot),
+    ]);
+    const restarted = new AppStateStore(home);
+    const restored = await restarted.load();
+    expect(restored.general.celebrationsEnabled).toBe(false);
+    expect(restarted.getTelemetrySettings()).toStrictEqual({ ...telemetry, enabled: true });
+    expect(JSON.stringify(restored)).not.toContain(telemetry.installId);
+    await restarted.saveTelemetrySettings(restored, { ...telemetry, enabled: false });
+    expect((await readJson('settings.json')).data.telemetry).toStrictEqual({ ...telemetry, enabled: false });
+    expect(await exists('telemetry.json')).toBe(false);
+  });
+
   it('retains both sides of collaboration authority across disk restarts', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.remoteConnections.connections = [readyRemoteConnection()];

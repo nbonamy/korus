@@ -63,4 +63,11 @@ export const telemetryMigrations = [
       ALTER TABLE usage_daily DROP CONSTRAINT usage_daily_pkey;
       ALTER TABLE usage_daily ADD PRIMARY KEY (install_id,day,provider,model,service_tier);`,
   },
+  {
+    version: 5,
+    sql: `ALTER TABLE install_days ADD COLUMN reported_hours smallint[] NOT NULL DEFAULT '{}';
+      ALTER TABLE usage_daily ADD COLUMN report_hour smallint NOT NULL DEFAULT -1 CHECK(report_hour BETWEEN -1 AND 23);
+      ALTER TABLE usage_daily DROP CONSTRAINT usage_daily_pkey;
+      ALTER TABLE usage_daily ADD PRIMARY KEY(install_id,day,report_hour,provider,model,service_tier);`,
+  },
 ] as const;

@@ -1,3 +1,4 @@
+import type { TelemetryConsentState } from '@workspace/core/telemetry-consent';
 import { createHash } from 'node:crypto';
 import type { DelegatedTask } from '@workspace/core/delegated-task';
 import { tasksSchema } from './task-schema';
@@ -33,6 +34,24 @@ export type AppStateStoreOptions = {
 };
 
 export class AppStateStore {
+  private telemetrySettings: unknown;
+
+  getTelemetrySettings(): TelemetryConsentState | undefined {
+    if (this.telemetrySettings === undefined) return undefined;
+    const state = this.telemetrySettings as TelemetryConsentState;
+    if (!state || typeof state !== 'object' || Array.isArray(state)
+      || typeof state.installId !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(state.installId)
+      || (state.enabled !== undefined && typeof state.enabled !== 'boolean')) {
+      throw new Error('Telemetry settings are unavailable.');
+    }
+    return { installId: state.installId, ...(state.enabled !== undefined ? { enabled: state.enabled } : {}) };
+  }
+
+  saveTelemetrySettings(snapshot: AppSnapshot, state: TelemetryConsentState): Promise<void> {
+    this.telemetrySettings = { ...state };
+    return this.save(snapshot);
+  }
+
   private taskWrites: Promise<void> = Promise.resolve();
 
   async loadTasks(): Promise<DelegatedTask[]> {
@@ -130,6 +149,7 @@ export class AppStateStore {
       settings: parseData(settingsFile, settingsSchema, migrateData(settingsFile, settingsEnvelope.data, settingsEnvelope.schemaVersion, storeSchemaVersion, fileMigrations.settings)),
       visualizations: [],
     };
+    this.telemetrySettings = files.settings.telemetry;
     const unsupported = files.roster.agents.filter(agent => !isSupportedRosterAgent(agent));
     this.unsupportedRoster = unsupported.length ? files.roster : null;
     for (const agent of unsupported) {
@@ -178,7 +198,7 @@ export class AppStateStore {
     const { roster, settings, visualizations } = splitPersistedState(persistedStateFromSnapshot(projectClientSnapshot(snapshot, 'desktop')));
     const files = new Map<string, string>();
     for (const visualization of visualizations) files.set(visualizationPath(visualization), serializeStoreFile(visualization));
-    files.set(settingsFile, serializeStoreFile(settings));
+    files.set(settingsFile, serializeStoreFile({ ...settings, ...(this.telemetrySettings !== undefined ? { telemetry: this.telemetrySettings } : {}) }));
     files.set(rosterFile, serializeStoreFile(this.unsupportedRoster ? preserveUnsupportedAgents(roster, this.unsupportedRoster) : roster, rosterSchemaVersion));
     return files;
   }

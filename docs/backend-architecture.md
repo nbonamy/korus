@@ -1099,7 +1099,7 @@ Local Analytics queries may explicitly combine service tiers within a model.
 This sums the same token, timing and cost contributions; rates still use summed
 measurements and each request retains its tier-specific price.
 
-Daily telemetry retains canonical provider/model/tier groups using the same execution-start
+Hourly telemetry retains canonical provider/model/tier groups using the same execution-start
 and served-request attribution. Only closed tier labels are sent; missing or unrecognized
 tiers become unknown, and legacy reports remain valid as unknown-tier groups. Raw model
 IDs retain their pricing identity. The private console separates variants by default;
@@ -1121,9 +1121,7 @@ part of this path.
 ### Private daily payload projection
 
 The local telemetry preview drains pending ledger observations and uses a numeric
-projection of that same SQLite ledger. Its required half-open eligibility interval
-filters execution starts and request timestamps; a request whose parent started
-before eligibility is excluded even if the request itself is later. Tokens and
+projection of that same SQLite ledger for one UTC reporting day. Tokens and
 turns retain execution-start attribution; costs retain request-day/model
 attribution. Cost-only groups have zero execution tokens. Missing measurements in
 any contributing execution make that group's token fields null. Only complete
@@ -1132,47 +1130,45 @@ ledger cost coverage becomes a number; partial subtotals remain null.
 The shared wire allowlist contains canonical IDs from the embedded pricing catalog,
 independent of runtime/user model catalogs. Other IDs coalesce into `unknown`.
 The serializer rejects extra fields, constructs every wire field explicitly, sorts
-driver/model groups and returns immutable canonical JSON text. Its UTF-8 bytes are
+provider/model/tier groups and returns immutable canonical JSON text. Hourly
+reports include a UTC hour; daily previews and legacy reports omit it. Its UTF-8 bytes are
 the sealed-body representation shared by preview and delivery callers. Preview
 does not persist, queue, schedule or send; identity and consent owners must supply
-the eligible interval. The preview result carries only the body, never a ledger
+the UTC reporting bucket. The preview result carries only the body, never a ledger
 row, provider object or filesystem path. An unavailable ledger is an error, not an
 empty active day.
 
-The private per-profile `telemetry.json` is initialized before runtime services. A
-cryptographic UUID v4 exists independently from consent. Missing state is off;
-malformed, unreadable or unwritable state makes profile telemetry unavailable for
-that runtime without blocking normal startup. No uploader starts without loaded
-consent authority; a failed file is not overwritten to manufacture consent.
-Atomic owner-readable writes keep consent, the next-UTC-day eligibility boundary,
-and the first-notice marker separate. Decline,
-dismissal and reset consume the notice; reset replaces identity, clears eligibility
-and requires another affirmative choice. Repeated opt-in preserves its interval.
+The private `telemetry` section of `settings.json` contains an installation UUID
+and an optional `enabled` choice. Unset shows the notice without sending; false
+is off and true is on. The common settings writer preserves these fields across
+ordinary snapshot saves without projecting them into generic snapshots,
+coordination events or agent tools. Existing `telemetry.json` identities and
+choices are imported before retiring the old file. Invalid telemetry metadata
+makes sharing unavailable without blocking ordinary startup.
 
-Only explicit desktop operations return the credential-free consent view. Identity
-and consent never enter app settings, generic snapshots, coordination events or
-agent tools. The desktop bridge accepts an action or reporting day, never an
-identity or eligibility override. One shared panel supplies onboarding, upgrade
-and Settings copy. Companion clients do not expose these profile actions.
+Only explicit desktop operations return the credential-free sharing choice. The
+desktop bridge accepts an action or reporting day, never an identity override.
+The composer notice and Settings share the same consent authority. Reset replaces
+the identity and turns sharing off. Companion clients do not expose profile actions.
 
 The consent owner delegates transitions to `TelemetryDeliveryPort`; it does not
 send, schedule or manage a queue. One backend `TelemetryUploadService` per local
 installation runtime owns sealing, the private durable queue, telemetry HTTP,
-acknowledgements, retry timers and cancellation. It consumes only the local
-allowlisted ledger projection and synchronous `current()` consent authority. Web
-hosts do not instantiate it; remote ledgers and mobile companions cannot supply
-activity or reporting data. Electron signals observed open/focus/resume activity
-through the desktop-only protocol. During periodic maintenance and at UTC midnight
-the service also confirms foreground activity with the desktop. A disconnected
-client or background daemon cannot create active days or fill unobserved gaps.
+acknowledgements and cancellation. RuntimeScheduler flushes delivery on startup
+and every hour. It discovers reporting hours from the local ledger, including
+unsent history in the collector's accepted window. Electron also signals observed
+open/focus/resume activity, and scheduled uploads confirm foreground presence so
+an active hour without turns can report empty usage. Remote ledgers and mobile
+companions cannot supply local reporting data; an idle daemon cannot invent empty
+activity hours.
 
-Delivery state is bound to both UUID and eligibility interval. It retains at most
-the current day and seven completed days, including sealed bytes after success
-for exact preview and replay prevention. Queue writes are atomic and private;
+Delivery state is bound to the installation UUID. It retains at most
+hourly buckets for the current day and seven preceding days, including the last
+acknowledged bytes to skip unchanged totals. Queue writes are atomic and private;
 attempts are recorded before transport. Restart preserves frozen bodies and the
 six-attempt budget. A lost acknowledgement may cause identical physical retries;
-success never causes a fresh projection. Late ledger corrections do not alter a
-seal. Expired activity is discarded even when it ages out during a ledger read.
+pending reports retry their original bytes. After acknowledgment, a changed
+hourly projection replaces that bucket's totals; unchanged projections are skipped. Expired activity is discarded even when it ages out during a ledger read.
 Corrupt state fails closed rather than reconstructing already-sealed history.
 
 No configured `APP_TELEMETRY_ENDPOINT` means no requests, discovery or health
@@ -1183,10 +1179,10 @@ retry with bounded jittered backoff and a capped Retry-After; other responses en
 the report. Bodies and response contents never enter logs. App actions do not
 wait for telemetry work or present delivery failures.
 
-Disable/reset abort transport, cancel the timer and purge activity/pending work
+Disable/reset abort transport and purge activity/pending work
 without waiting for ledger reads or acknowledgement. Revocation becomes visible
 in memory as soon as requested, including while an earlier consent callback is
-pending. Every await before sending is followed by an authority/interval guard;
+pending. Every await before sending is followed by an authority guard;
 obsolete work cannot restore a purged report. Preview I/O does not hold the consent
 mutation lock, and obsolete preview results are rejected after a transition.
 Cancellation is requested even when saving consent fails. Failed user actions
@@ -1200,11 +1196,11 @@ and exact retry body. This proves local transport behavior, not production
 infrastructure privacy. Dependency/AST lint isolates telemetry callers from
 transport/timers and allows only runtime composition of the upload service.
 
-Profile preview resolves identity/eligibility inside the backend. Off and
-pre-interval previews are explicitly hypothetical and cannot enqueue history. An
-unfinished eligible UTC day is provisional. For an eligible completed day, a
-sealed report supplied by the delivery owner takes precedence and returns its body
-verbatim. Preview and copy preserve that text without parsing or reserialization.
+Profile preview resolves identity inside the backend. Previews while sharing is
+off are hypothetical and cannot enqueue history. An unfinished UTC day is
+provisional. For a completed day, a legacy daily report supplied by the delivery owner
+takes precedence and returns its body verbatim. Preview and copy preserve that
+text without parsing or reserialization.
 The repeatable `npm run test:telemetry-dom -w @workspace/vue` harness exercises real
 Vue/Element Plus controls with a synthetic desktop API and writes screenshots and
 DOM evidence outside Git; temporary-ledger workflows own persistence evidence.
@@ -1227,13 +1223,13 @@ The server-usage workflow compares persisted Claude/Codex measurements against
 macOS UTF-8 body without a trailing newline. Other platforms substitute only the
 coarse OS value. Repeat with
 `npm run test -w @workspace/backend -- usage/__tests__/server-usage.spec.ts`.
-It covers midnight attribution, model changes, interval exclusion, nulls and
+It covers UTC bucket attribution, model changes, nulls and
 content/local-dimension canaries without an endpoint. Architecture AST lint limits
 projection dependencies and rejects direct network/timer operations.
 
 Performance reuses the ledger's additive speed samples: measured output tokens,
 active generation milliseconds, summed time to first output, and their turn
-counts. Only daily provider/model/tier sums enter the optional closed performance
+counts. Only hourly provider/model/tier sums enter the optional closed performance
 object; no per-turn timing or timestamps are exported. Missing samples are
 unavailable, not zero. The read API divides the summed output by summed time and
 the summed first-output time by its measured-turn count. It never averages

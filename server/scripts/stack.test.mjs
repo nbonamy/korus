@@ -279,7 +279,7 @@ test(
           );
           // Old history is seeded via the migration owner, not backfilled by ingestion.
           await sql(
-            `INSERT INTO install_days VALUES ('${id}','${oldDay}','1.0.0','unknown',now()); INSERT INTO usage_daily(install_id,day,provider,model,turns,input_tokens,cached_input_tokens,output_tokens,estimated_cost_usd) VALUES ('${id}','${oldDay}','claude','unknown',1,200,100,30,0.25)`,
+            `INSERT INTO install_days(install_id,day,app_version,os,received_at) VALUES ('${id}','${oldDay}','1.0.0','unknown',now()); INSERT INTO usage_daily(install_id,day,provider,model,turns,input_tokens,cached_input_tokens,output_tokens,estimated_cost_usd) VALUES ('${id}','${oldDay}','claude','unknown',1,200,100,30,0.25)`,
           );
           assert.equal(
             await sql(

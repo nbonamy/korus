@@ -4,14 +4,16 @@ import { surfaceMessages } from './surface-messages';
 export const messages = {
   en: {
     telemetry: {
-      title: 'Anonymous daily sharing', on: 'Sharing is on', off: 'Sharing is off',
-      fields: 'Help improve {product} by sharing daily usage: a random installation ID, UTC reporting day, app version, operating system, and turns, token counts, estimated API-equivalent cost, output speed and time to first output by provider, model and service tier. Performance is shared only as daily timing totals and measured-turn counts.',
+      notice: 'Help improve {product} with anonymous usage and performance data. No conversation content is shared. Close to enable sharing.',
+      optOut: 'Opt out',
+      title: 'Anonymous usage sharing', on: 'Sharing is on', off: 'Sharing is off',
+      fields: 'Help improve {product} by sharing hourly usage: a random installation ID, UTC reporting day and hour, app version, operating system, and turns, token counts, estimated API-equivalent cost, output speed and time to first output by provider, model and service tier. Performance is shared only as hourly timing totals and measured-turn counts.',
       exclusions: 'No prompts or model responses are included. We exclude account details, device and machine identifiers, file paths, project, repository, branch and agent details. No IP addresses are stored by the telemetry service or its delivery infrastructure.',
-      identity: 'The random ID links your daily summaries; it is not linked to your account. Sharing is off until you explicitly choose it.',
-      retention: 'Daily summaries and the minimal installation registry are kept indefinitely. Server backup copies rotate after seven days.',
-      control: 'You can stop sharing or reset the ID in Settings. These actions stop future linkage but do not delete reports already received. Only usage from the next UTC day after enabling is eligible; earlier history is never sent.',
-      policy: 'Privacy policy', eligible: 'Eligible usage starts {day} at 00:00 UTC.',
-      share: 'Share anonymous usage', decline: "Don't share", stop: 'Stop sharing', reset: 'Reset installation ID',
+      identity: 'The random ID links your usage summaries; it is not linked to your account. Sharing is off until you explicitly choose it.',
+      retention: 'Usage summaries and the minimal installation registry are kept indefinitely. Server backup copies rotate after seven days.',
+      control: 'You can stop sharing or reset the ID in Settings. These actions stop future linkage but do not delete reports already received. Reports summarize recent local usage in hourly UTC buckets.',
+      policy: 'Privacy policy',
+      share: 'Share anonymous usage', stop: 'Stop sharing', reset: 'Reset installation ID',
       day: 'Reporting day (UTC)', preview: 'Show what would be sent', copy: 'Copy payload', copied: 'Payload copied',
       hypothetical: 'Hypothetical · local preview only; this does not queue or send history.',
       provisional: 'Provisional · this UTC day is unfinished; values may change before sealing.',

@@ -3,10 +3,6 @@
     class="app-shell"
     :class="{ 'app-shell--auth-gated': showOnboardingGate }"
   >
-    <TelemetryConsentNotice
-      v-if="appClientPlatform === 'desktop' && !currentAgent?.sharedConversation"
-      :ready="telemetryNoticeReady"
-    />
     <FirstRunOnboardingGate
       v-if="!currentAgent?.sharedConversation"
       @join-invite="emit('join-invite')"
@@ -728,7 +724,7 @@ import type { Mission, MissionStage, CreateMissionInput, DeleteMissionInput } fr
 import { missionCreatedWorkspaces, type MissionImplementationStartProgress } from '@workspace/core/mission-execution';
 import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
 import SettingsView from './SettingsView.vue';
-import TelemetryConsentNotice from './TelemetryConsentNotice.vue';
+import { telemetryNoticeReadyKey } from './use-telemetry-consent';
 import FirstRunOnboardingGate from './FirstRunOnboardingGate.vue';
 import CodexResourceSharingMigrationDialog from './CodexResourceSharingMigrationDialog.vue';
 import ModelFavoritesDialog from './ModelFavoritesDialog.vue';
@@ -1491,6 +1487,7 @@ const telemetryNoticeReady = computed(() => {
   const existingProfile = props.snapshot.general.providerOnboardingComplete || props.snapshot.agents.length > 0;
   return existingProfile ? !initialAuthenticationLoading.value : onboardingCompleteVisible.value || !realOnboardingGate.value;
 });
+provide(telemetryNoticeReadyKey, telemetryNoticeReady);
 // Debug previews project display state only; onboarding and live agents retain real connections.
 const debugMissingEngines = ref(false);
 const debugProviderUpgrades = ref(false);

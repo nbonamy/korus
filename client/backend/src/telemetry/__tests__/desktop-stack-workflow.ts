@@ -9,7 +9,8 @@ import { AppBackendServer } from "../../server";
 import { createTestSnapshot } from "../../__tests__/server-test-fixtures";
 import { UsageLedger } from "../../usage/usage-ledger";
 import { UsageService } from "../../usage/usage-service";
-import { TelemetryConsentService } from "../consent-service";
+import { openTelemetryConsent } from "./settings-fixture";
+import { RuntimeScheduler } from "../../scheduling/runtime-scheduler";
 import { TelemetryUploadService } from "../upload-service";
 
 // Real desktop-owned RPC → private profile/SQLite → sole uploader → local HTTP
@@ -25,6 +26,7 @@ export async function desktopStackWorkflow(endpoint: string) {
   const today = Math.floor(Date.now() / DAY) * DAY;
   let clock = today - 4 * DAY + 3600000;
   let uploader: TelemetryUploadService | undefined;
+  let scheduler: RuntimeScheduler | undefined;
   let loseAck = true;
   const attempts: { body: string; upstream: number; acknowledged: boolean }[] =
     [];
@@ -77,9 +79,8 @@ export async function desktopStackWorkflow(endpoint: string) {
   const ledger = new UsageLedger(path.join(dir, "usage.sqlite"), () => clock);
   await ledger.load();
   const usage = new UsageService(ledger, () => undefined);
-  const consentFile = path.join(dir, "telemetry.json");
   const deliveryFile = path.join(dir, "telemetry-delivery.json");
-  let consent = await TelemetryConsentService.open(consentFile, {
+  let consent = await openTelemetryConsent(dir, {
     now: () => clock,
     delivery: {
       consentChanged: (t) => uploader?.consentChanged(t) ?? Promise.resolve(),
@@ -123,6 +124,7 @@ export async function desktopStackWorkflow(endpoint: string) {
     throw error;
   };
   const open = async (configured = true) => {
+    scheduler?.stop();
     await uploader?.close();
     uploader = await TelemetryUploadService.open({
       file: deliveryFile,
@@ -140,25 +142,23 @@ export async function desktopStackWorkflow(endpoint: string) {
         return fetch(url, init);
       },
     });
-    uploader.start();
-    uploader.start();
+    scheduler = new RuntimeScheduler();
+    scheduler.register({id:'telemetry-upload',intervalMs:3600000,runOnStart:true,run:()=>uploader!.flush()});
+    scheduler.start();
+    scheduler.start();
   };
   try {
     await open();
-    assert.deepEqual(await rpc(backendMethods.telemetryConsentGet), {
-      enabled: false,
-      eligibleFrom: null,
-      noticePending: true,
-    });
+    assert.deepEqual(await rpc(backendMethods.telemetryConsentGet), {enabled:undefined});
     await activity();
     assert.equal(
       (await preview(new Date(clock).toISOString().slice(0, 10))).kind,
       "hypothetical",
     );
-    await change("dismiss");
+    await change("disable");
     await open();
     assert.equal(
-      (await rpc(backendMethods.telemetryConsentGet)).noticePending,
+      (await rpc(backendMethods.telemetryConsentGet)).enabled,
       false,
     );
     await change("disable"); // Explicit decline is also off.
@@ -166,18 +166,15 @@ export async function desktopStackWorkflow(endpoint: string) {
     assert.equal(transportUrls.length, 0);
     // Missing legacy telemetry state is the same fail-closed initialization as a
     // new profile, independently of the ordinary app's existing settings.
-    const legacy = await TelemetryConsentService.open(
-      path.join(dir, "legacy", "telemetry.json"),
+    const legacy = await openTelemetryConsent(
+      path.join(dir, "legacy"),
     );
     assert.deepEqual(await legacy.view(), {
-      enabled: false,
-      eligibleFrom: null,
-      noticePending: true,
+      enabled: undefined,
     });
     const enabled = await change("enable");
-    assert.equal(enabled.eligibleFrom, today - 3 * DAY);
-    await activity(); // Partial consent day must never appear remotely.
-    clock = enabled.eligibleFrom + 3600000;
+    assert.equal(enabled.enabled, true);
+    clock = today - 3 * DAY + 3600000;
     const reportDay = new Date(clock).toISOString().slice(0, 10);
     await Promise.all([activity(), activity(), activity()]); // Multiple windows.
     const canary = "PRIVATE_CONTENT_CANARY_57319";
@@ -221,7 +218,7 @@ export async function desktopStackWorkflow(endpoint: string) {
     );
     assert.equal((await preview(reportDay)).kind, "provisional");
     clock = today - 2 * DAY + 1000;
-    await activity(); // A separate eligible empty-use day.
+    await uploader!.flush();
     await until(async () =>
       assert.equal(
         (await store()).days.find((d: any) => d.day === reportDay)?.attempts,
@@ -230,8 +227,7 @@ export async function desktopStackWorkflow(endpoint: string) {
     );
     await until(async () => assert.equal(attempts.length, 1));
     assert.equal(attempts[0]!.upstream, 204);
-    const sealed = await preview(reportDay);
-    assert.equal(sealed.kind, "sealed");
+    const sealed = (await uploader!.sealedReport(reportDay,1))!;
     assert.equal(sealed.body, attempts[0]!.body);
     assert.equal(sealed.body.includes(canary), false);
     assert.deepEqual(JSON.parse(sealed.body).usage, [
@@ -258,7 +254,7 @@ export async function desktopStackWorkflow(endpoint: string) {
     );
     assert.equal(attempts.length, 2);
     assert.equal(attempts[1]!.body, sealed.body);
-    await open();
+    await activity(); // A separate empty-use hour, uploaded on the next flush.
     await Promise.all([activity(), activity()]);
     await pause(50);
     assert.equal(attempts.length, 2);
@@ -292,17 +288,16 @@ export async function desktopStackWorkflow(endpoint: string) {
     assert.deepEqual(
       resetBody.usage,
       [],
-      "the new interval must not replay old ledger usage",
+      "the new reporting day has no ledger usage",
     );
     assert.equal(transportUrls.length, 3);
     await change("reset");
     assert.deepEqual((await store()).days, []);
     // Reopen authoritative state from disk; identity/notice/off persist.
-    consent = await TelemetryConsentService.open(consentFile);
+    consent = await openTelemetryConsent(dir);
     assert.deepEqual(await consent.view(), {
       enabled: false,
-      eligibleFrom: null,
-      noticePending: false,
+
     });
     return {
       boundary:
@@ -321,6 +316,7 @@ export async function desktopStackWorkflow(endpoint: string) {
       attempts,
     };
   } finally {
+    scheduler?.stop();
     await uploader?.close();
     await server.close();
     receiver.closeAllConnections();

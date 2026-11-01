@@ -90,7 +90,7 @@ it("keeps service-tier performance and actual request prices separate across cor
       summary().rows.map(row => row.modelVariant));
     // Telemetry retains the same execution timing and served-request tier attribution.
     const project = () => ledger.projectDailyTelemetry({
-      day: '2026-10-15', eligibleFrom: Date.parse('2026-10-15T00:00:00Z'), eligibleUntil: null,
+      day: '2026-10-15',
     });
     const projected = [
       { provider: 'codex', model: 'gpt-6.1-sol', serviceTier: 'fast', turns: 2,
@@ -107,6 +107,9 @@ it("keeps service-tier performance and actual request prices separate across cor
         performance: { speedTurns: 1, outputTokens: 100, generationMs: 10000, ttftMs: 1000, ttftTurns: 1 } },
     ];
     expect(project()).toStrictEqual(projected);
+    expect(ledger.telemetryHours()).toStrictEqual([{day:'2026-10-15',hour:23}]);
+    expect(ledger.projectDailyTelemetry({day:'2026-10-15',hour:23})).toStrictEqual(projected);
+    expect(ledger.projectDailyTelemetry({day:'2026-10-15',hour:22})).toStrictEqual([]);
     const grouped = ledger.query({ group: 'model', groupServiceTiers: true });
     expect(grouped.rows).toMatchObject([{ label: 'gpt-6.1-sol', started: 5,
       tokens: { output: 500 }, speed: { turns: 5, outputTokens: 500, generationMs: 40000 }, cost: { usd: 0.0246 } }]);

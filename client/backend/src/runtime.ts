@@ -59,7 +59,7 @@ import { createTaskToolModuleProvider } from './mcp/task-tools';
 import { isRemoteCollaborationReply } from '@workspace/core/remote-collaboration';
 import { createImageGenerationToolModuleProvider } from './mcp/image-generation-tools';
 import { ImageGenerationService } from './image-generation-service';
-import { loadBackendTasks, saveBackendTasks } from './state';
+import { loadBackendTelemetrySettings, saveBackendTelemetrySettings, loadBackendTasks, saveBackendTasks } from './state';
 import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
 
 type DaemonClientRequest = <Result>(method: string, params?: unknown) => Promise<Result>;
@@ -86,7 +86,8 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   const embeddedBrowserAvailable = options.features?.embeddedBrowser !== false;
   const snapshot = await loadBackendSnapshot();
   let telemetryUpload: TelemetryUploadService | undefined;
-  const telemetryConsent = await TelemetryConsentService.open(path.join(backendHomeDir(), 'telemetry.json'), {
+  const telemetryConsent = await TelemetryConsentService.open({ load: loadBackendTelemetrySettings, save: state => saveBackendTelemetrySettings(snapshot, state) }, {
+    legacyFile: path.join(backendHomeDir(), 'telemetry.json'),
     delivery: {
       consentChanged: transition => telemetryUpload?.consentChanged(transition) ?? Promise.resolve(),
       sealedReport: day => telemetryUpload?.sealedReport(day) ?? Promise.resolve(null),
@@ -320,6 +321,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     run: () => automationRunner.runAll(),
   });
   scheduler.register({ id: 'provider-updates', intervalMs: 2_000, run: () => providerUpdates.tick() });
+  if (telemetryUpload) scheduler.register({ id: 'telemetry-upload', intervalMs: 60 * 60_000, runOnStart: true, run: () => telemetryUpload!.flush() });
   scheduler.register({ id: 'pricing-updates', intervalMs: 60_000, runOnStart: true, run: () => pricing.refresh() });
   const pullRequestMonitor = new PullRequestMonitor({
     getSnapshot: () => snapshot,
@@ -433,7 +435,6 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   await automationRunner.recoverInterruptedRuns();
   await tasks.recover();
   scheduler.start();
-  telemetryUpload?.start();
   void companion.control({ action: 'status' }).catch(() => warnMain('companion', 'identity or relay unavailable', {}));
   void server.initialize().catch((error) => warnMain('startup', 'backend initialization failed', {
     message: error instanceof Error ? error.message : String(error),

@@ -15,13 +15,6 @@
         >{{ t("telemetry.policy") }}</a
       >
     </p>
-    <p v-if="state?.eligibleFrom">
-      {{
-        t("telemetry.eligible", {
-          day: new Date(state.eligibleFrom).toISOString().slice(0, 10),
-        })
-      }}
-    </p>
     <p v-if="failed || previewError" role="alert">
       {{ t("telemetry.failed") }}
     </p>
@@ -35,16 +28,6 @@
         {{ t(state?.enabled ? "telemetry.stop" : "telemetry.share") }}
       </button>
       <button
-        v-if="notice"
-        class="app-button app-button--secondary"
-        type="button"
-        :disabled="busy || !state"
-        @click="choose('disable')"
-      >
-        {{ t("telemetry.decline") }}
-      </button>
-      <button
-        v-else
         class="app-button app-button--tertiary"
         type="button"
         :disabled="busy || !state"
@@ -105,8 +88,6 @@ import type {
 import { appApi, appPlatformActions } from "../platform-api";
 import { useTelemetryConsent } from "./use-telemetry-consent";
 
-defineProps<{ notice?: boolean }>();
-const emit = defineEmits<{ chosen: [] }>();
 const { t } = useI18n();
 const { state, busy, failed, load, change, retry } = useTelemetryConsent();
 const today = new Date().toISOString().slice(0, 10);
@@ -122,10 +103,10 @@ function clearPreview() {
   preview.value = null;
   copied.value = false;
 }
-watch(() => [state.value?.enabled, state.value?.eligibleFrom], clearPreview);
+watch(state, clearPreview);
 async function choose(action: TelemetryConsentAction) {
   clearPreview();
-  if (await change(action)) emit("chosen");
+  await change(action);
 }
 async function showPreview() {
   const expected = ++revision;

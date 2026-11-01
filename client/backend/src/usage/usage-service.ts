@@ -149,9 +149,12 @@ export class UsageService {
   async drain(): Promise<void> {
     await this.chain;
   }
-  /** Local-only, hypothetical export. Does not queue, persist or send a report.
-   * Identity and consent owners supply the interval; runtime supplies version/OS.
-   */
+  /** UTC buckets with local ledger observations inside the collector's accepted window. */
+  async telemetryHours() {
+    await this.drain();
+    return this.local.telemetryHours();
+  }
+  /** Local-only projection; the caller supplies identity and the UTC reporting bucket. */
   async previewTelemetry(
     input: TelemetryPreviewInput,
     version: string,
@@ -160,16 +163,16 @@ export class UsageService {
     if (!validTelemetryPreviewInput(input))
       throw new Error("Invalid telemetry preview.");
     await this.drain();
-    const { day, eligibleFrom, eligibleUntil } = input;
+    const { day, hour } = input;
     return serializeDailyTelemetry({
       installId: input.installId,
       day,
+      ...(hour !== undefined ? {hour} : {}),
       appVersion: normalizeTelemetryVersion(version),
       os: telemetryOs(platform),
       usage: this.local.projectDailyTelemetry({
         day,
-        eligibleFrom,
-        eligibleUntil,
+        ...(hour !== undefined ? {hour} : {}),
       }),
     });
   }

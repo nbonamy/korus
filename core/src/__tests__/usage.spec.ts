@@ -31,6 +31,7 @@ it("seals only the closed telemetry contract in canonical order and preserves nu
   expect(serializeDailyTelemetry(payload)).toStrictEqual({
     body: '{"installId":"d8b65ff5-179c-49b9-ac3a-f60a54a0f43f","day":"2026-10-15","appVersion":"0.44.0","os":"macos","usage":[{"provider":"codex","model":"gpt-6-sol","turns":1,"inputTokens":null,"cachedInputTokens":null,"outputTokens":null,"estimatedCostUsd":null}]}',
   });
+  expect(JSON.parse(serializeDailyTelemetry({...payload,hour:13}).body).hour).toBe(13);
   const zero = {
     ...group,
     provider: "claude" as const,
@@ -50,6 +51,10 @@ it("seals only the closed telemetry contract in canonical order and preserves nu
     serializeDailyTelemetry({ ...payload, usage: [zero, group] }).body,
   ).toBe(body);
   for (const patch of [
+    { hour: -1 },
+    { hour: 24 },
+    { hour: 1.5 },
+    { hour: "13" },
     { prompt: "CANARY" },
     { installId: "account" },
     { day: "2026-02-29" },

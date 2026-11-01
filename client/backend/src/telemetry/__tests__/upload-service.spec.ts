@@ -5,7 +5,9 @@ import os from "node:os";
 import { createServer, type Server } from "node:http";
 import { setTimeout as pause } from "node:timers/promises";
 import { TelemetryUploadService } from "../upload-service";
-import { TelemetryConsentService } from "../consent-service";
+import type { TelemetryConsentService } from "../consent-service";
+import { openTelemetryConsent } from "./settings-fixture";
+import { RuntimeScheduler } from "../../scheduling/runtime-scheduler";
 import { UsageLedger } from "../../usage/usage-ledger";
 import { UsageService } from "../../usage/usage-service";
 
@@ -16,6 +18,7 @@ const DAY = 86_400_000;
 const epoch = Date.parse("2026-10-10T12:00:00Z");
 let directory: string;
 let upload: TelemetryUploadService | undefined;
+let scheduler: RuntimeScheduler | undefined;
 let usage: UsageService;
 let consent: TelemetryConsentService;
 let clock: number;
@@ -62,18 +65,20 @@ async function open(
     foreground,
     ...(real ? {} : { fetch: fetcher }),
   });
-  upload.start();
+  scheduler?.stop();
+  scheduler = new RuntimeScheduler();
+  scheduler.register({id:"telemetry-upload",intervalMs:3600000,runOnStart:true,run:()=>upload!.flush()});
+  scheduler.start();
   return upload;
 }
-async function eligibleActivity() {
+async function activeHour() {
   await consent.change("enable");
-  await advance(DAY);
   await upload!.activity();
   return day();
 }
-async function pendingDay() {
-  const reporting = await eligibleActivity();
-  await advance(DAY);
+async function pendingHour() {
+  const reporting = await activeHour();
+  await advance(3600000);
   return reporting;
 }
 async function stored() {
@@ -89,8 +94,8 @@ beforeEach(async () => {
   const ledger = new UsageLedger(path.join(directory, "usage.sqlite"), now);
   await ledger.load();
   usage = new UsageService(ledger, () => undefined);
-  consent = await TelemetryConsentService.open(
-    path.join(directory, "consent.json"),
+  consent = await openTelemetryConsent(
+    directory,
     {
       now,
       delivery: {
@@ -105,6 +110,7 @@ beforeEach(async () => {
   foreground.mockReset().mockResolvedValue(false);
 });
 afterEach(async () => {
+  scheduler?.stop();
   await upload?.close();
   upload = undefined;
   await usage.close();
@@ -122,7 +128,7 @@ it("makes no telemetry requests off or without an endpoint, and never turns daem
   await upload!.activity();
   await advance(2 * DAY);
   await consent.preview(day(), usage, "1.2.3", "darwin");
-  await consent.change("dismiss");
+  await consent.change("disable");
   expect(fetcher).not.toHaveBeenCalled();
   await consent.change("enable");
   await advance(2 * DAY);
@@ -137,78 +143,91 @@ it("makes no telemetry requests off or without an endpoint, and never turns daem
   expect((await stored()).days).toStrictEqual([]);
 });
 
-it("seals empty active days once, previews exact bytes and never replays acknowledged days after restart", async () => {
+it("uploads new usage from today on the hourly scheduler without resending unchanged totals", async () => {
   await open();
-  // Before eligibility must not become a report.
-  await consent.change("enable");
+  await consent.change('enable');
   await upload!.activity();
-  await advance(DAY);
+  await eventually(() => expect(vi.getTimerCount()).toBe(1));
+  await advance(3600000);
+  await eventually(() => expect(fetcher).toHaveBeenCalledTimes(1));
+  expect(JSON.parse(fetcher.mock.calls[0]![1]!.body as string).day).toBe(day());
+  await upload!.flush();
+  usage.observe({provider:'codex',agentId:'a',sessionId:'s',turnId:'one',model:'gpt-6-sol',at:clock,phase:'started',tokens:{input:10,cacheRead:0,cacheWrite:null,output:4}});
+  await usage.drain();
+  await eventually(() => expect(vi.getTimerCount()).toBe(1));
+  await advance(3600000 - 1);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await advance(1);
+  await eventually(() => expect(fetcher).toHaveBeenCalledTimes(2));
+  expect(JSON.parse(fetcher.mock.calls[1]![1]!.body as string).usage[0]).toMatchObject({turns:1,inputTokens:10,outputTokens:4});
+  await upload!.flush();
+  await eventually(() => expect(vi.getTimerCount()).toBe(1));
+  await advance(3600000);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it("catches up after a 24-hour shutdown, seals exact bytes and never replays acknowledged days", async () => {
+  await open();
+  await consent.change("enable");
   const reporting = day();
   await Promise.all([
     upload!.activity(),
     upload!.activity(),
     upload!.activity(),
   ]);
+  scheduler!.stop();
+  await upload!.close();
   await advance(DAY);
+  expect(fetcher).not.toHaveBeenCalled();
+  await open(); // Startup flush catches the persisted active day immediately.
   await eventually(() => expect(fetcher).toHaveBeenCalledTimes(1));
   const body = fetcher.mock.calls[0]![1]!.body as string;
   expect(JSON.parse(body)).toStrictEqual({
     installId: consent.current().installId,
     day: reporting,
+    hour:12,
     appVersion: "1.2.3",
     os: "macos",
     usage: [],
   });
   expect(
-    await consent.preview(reporting, usage, "9.9.9", "linux"),
-  ).toStrictEqual({ kind: "sealed", body });
+    JSON.parse((await consent.preview(reporting, usage, "9.9.9", "linux")).body).usage,
+  ).toStrictEqual([]);
   await eventually(async () =>
     expect((await stored()).days[0].status).toBe("done"),
   );
   await upload!.close();
   await open();
-  upload!.start();
-  upload!.start();
-  await advance(60_000);
+  void upload!.flush();
+  void upload!.flush();
+  await advance(3600000);
   expect(fetcher).toHaveBeenCalledTimes(1);
-  expect(await upload!.sealedReport(reporting)).toStrictEqual({ body });
+  expect(await upload!.sealedReport(reporting,12)).toStrictEqual({ body });
 });
 
-it("records a day only on confirmed desktop foreground, including crossing midnight", async () => {
+it("records hourly foreground activity across midnight without inventing disconnected usage", async () => {
   await open();
-  await consent.change("enable");
-  await advance(DAY);
+  await consent.change('enable');
+  await eventually(() => expect(vi.getTimerCount()).toBe(1));
+  clock = Math.floor(clock / DAY) * DAY + 23 * 3600000;
+  vi.setSystemTime(clock);
   foreground.mockResolvedValue(true);
-  await advance(60_000);
-  const reporting = day();
-  await eventually(async () =>
-    expect(
-      (await stored()).days.map((row: { day: string }) => row.day),
-    ).toContain(reporting),
-  );
-  await eventually(() => expect(vi.getTimerCount()).toBe(1));
-  await advance(DAY);
-  await eventually(() => expect(fetcher).toHaveBeenCalledTimes(1));
-  expect(JSON.parse(fetcher.mock.calls[0]![1]!.body as string).day).toBe(
-    reporting,
-  );
-  await eventually(async () =>
-    expect(
-      (await stored()).days.some((row: { day: string }) => row.day === day()),
-    ).toBe(true),
-  );
-  foreground.mockRejectedValue(new Error("desktop disconnected"));
-  await eventually(() => expect(vi.getTimerCount()).toBe(1));
-  await advance(DAY);
+  await upload!.flush();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(JSON.parse(fetcher.mock.calls[0]![1]!.body as string)).toMatchObject({day:day(),hour:23});
+  await advance(3600000);
   await eventually(() => expect(fetcher).toHaveBeenCalledTimes(2));
-  await advance(DAY);
+  expect(JSON.parse(fetcher.mock.calls[1]![1]!.body as string)).toMatchObject({day:day(),hour:0});
+  foreground.mockRejectedValue(new Error('desktop disconnected'));
+  await eventually(() => expect(vi.getTimerCount()).toBe(1));
+  await advance(3600000);
   expect(fetcher).toHaveBeenCalledTimes(2);
 });
 
 it("persists frozen retries across restart and drops after six total attempts", async () => {
   fetcher.mockRejectedValue(new Error("lost acknowledgement"));
   await open();
-  const reporting = await pendingDay();
+  const reporting = await pendingHour();
   await eventually(() => expect(fetcher).toHaveBeenCalledTimes(1));
   const body = fetcher.mock.calls[0]![1]!.body;
   const state = consent.current();
@@ -222,21 +241,20 @@ it("persists frozen retries across restart and drops after six total attempts", 
     previous: state,
     current: state,
   });
-  expect(await upload!.sealedReport(reporting)).toStrictEqual({ body });
+  expect(await upload!.sealedReport(reporting,12)).toStrictEqual({ body });
   await eventually(async () =>
     expect((await stored()).days[0].attempts).toBe(1),
   );
   await upload!.close();
   await open();
-  await advance(59_000);
   expect(fetcher).toHaveBeenCalledTimes(1);
   let attempts = 1;
-  for (const delay of [1000, 15 * 60_000, 60 * 60_000, 6 * 60 * 60_000, DAY]) {
+  for (const delay of [60_000, 15 * 60_000, 60 * 60_000, 6 * 60 * 60_000, DAY]) {
     await eventually(async () =>
       expect((await stored()).days[0].nextAttemptAt).toBe(clock + delay),
     );
     await eventually(() => expect(vi.getTimerCount()).toBe(1));
-    await advance(delay);
+    await advance(Math.ceil(delay / 3600000) * 3600000);
     ++attempts;
     await eventually(() => expect(fetcher).toHaveBeenCalledTimes(attempts));
   }
@@ -244,7 +262,7 @@ it("persists frozen retries across restart and drops after six total attempts", 
   await advance(2 * DAY);
   expect(fetcher).toHaveBeenCalledTimes(6);
   for (const [, init] of fetcher.mock.calls) expect(init!.body).toBe(body);
-  expect(await upload!.sealedReport(reporting)).toStrictEqual({ body });
+  expect(await upload!.sealedReport(reporting,12)).toStrictEqual({ body });
 });
 
 it.each([
@@ -252,7 +270,7 @@ it.each([
   { status: 429, header: "99999999", wait: DAY },
   {
     status: 500,
-    header: new Date(epoch + 2 * DAY + 120_000).toUTCString(),
+    header: new Date(epoch + 3600000 + 120_000).toUTCString(),
     wait: 120_000,
   },
   { status: 503, header: "invalid", wait: 60_000 },
@@ -263,7 +281,7 @@ it.each([
       new Response(null, { status, headers: { "Retry-After": header } }),
     );
     await open();
-    await pendingDay();
+    await pendingHour();
     await eventually(() => expect(fetcher).toHaveBeenCalledTimes(1));
     await eventually(async () =>
       expect((await stored()).days[0].nextAttemptAt).toBe(clock + wait),
@@ -271,7 +289,7 @@ it.each([
     await eventually(() => expect(vi.getTimerCount()).toBe(1));
     await advance(wait - 1000);
     expect(fetcher).toHaveBeenCalledTimes(1);
-    await advance(1000);
+    await advance(Math.ceil(wait / 3600000) * 3600000 - wait + 1000);
     await eventually(() => expect(fetcher).toHaveBeenCalledTimes(2));
     const [, init] = fetcher.mock.calls[0]!;
     expect(init).toMatchObject({
@@ -294,7 +312,7 @@ it.each([400, 401, 403, 404, 302])(
       }),
     );
     await open();
-    await pendingDay();
+    await pendingHour();
     await eventually(() => expect(fetcher).toHaveBeenCalledTimes(1));
     await advance(2 * DAY);
     expect(fetcher).toHaveBeenCalledTimes(1);
@@ -314,7 +332,7 @@ it("aborts at ten seconds, on opt-out/reset, and on shutdown; never retries revo
       }),
   );
   await open();
-  await pendingDay();
+  await pendingHour();
   await eventually(() => expect(signals).toHaveLength(1));
   await advance(9999);
   expect(signals[0]!.aborted).toBe(false);
@@ -324,7 +342,7 @@ it("aborts at ten seconds, on opt-out/reset, and on shutdown; never retries revo
     expect((await stored()).days[0].nextAttemptAt).toBe(clock + 60_000),
   );
   await eventually(() => expect(vi.getTimerCount()).toBe(1));
-  await advance(60_000);
+  await advance(3600000);
   await eventually(() => expect(signals).toHaveLength(2));
   await consent.change("disable");
   expect(signals[1]!.aborted).toBe(true);
@@ -334,7 +352,7 @@ it("aborts at ten seconds, on opt-out/reset, and on shutdown; never retries revo
   expect(consent.current().installId).not.toBe(oldId);
   await advance(DAY);
   expect(fetcher).toHaveBeenCalledTimes(2);
-  await pendingDay();
+  await pendingHour();
   await eventually(() => expect(signals).toHaveLength(3));
   await upload!.close();
   expect(signals[2]!.aborted).toBe(true);
@@ -351,25 +369,25 @@ it("cannot export a seal completed after reset, and never makes consent wait for
     return original(...args);
   });
   await open();
-  await pendingDay();
+  await pendingHour();
   await eventually(() =>
     expect(usage.previewTelemetry).toHaveBeenCalledTimes(1),
   );
   await consent.change("reset");
   expect((await stored()).days).toStrictEqual([]);
   release();
-  await advance(60_000);
+  await advance(3600000);
   expect(fetcher).not.toHaveBeenCalled();
   expect((await stored()).days).toStrictEqual([]);
 });
 
 it("expires old markers, bounds storage and rejects corrupt or obsolete persisted delivery state", async () => {
   await open();
-  await eligibleActivity();
+  await activeHour();
   await upload!.close();
   clock += 8 * DAY;
   await open();
-  await advance(60_000);
+  await advance(3600000);
   expect(fetcher).not.toHaveBeenCalled();
   await eventually(async () => expect((await stored()).days).toStrictEqual([]));
   await upload!.close();
@@ -426,10 +444,9 @@ it("records a reproducible off/on loopback trace and sends exactly the sealed UT
   await upload!.activity();
   const reporting = day();
   clock += DAY;
-  await upload!.activity();
+  await upload!.flush();
   await eventually(() => expect(trace).toHaveLength(1));
-  const sealed = await consent.preview(reporting, usage, "1.2.3", "darwin");
-  expect(sealed.kind).toBe("sealed");
+  const sealed = (await upload!.sealedReport(reporting,12))!;
   expect(trace[0]!.body).toBe(sealed.body);
   await upload!.close();
   clock += 60_001;
@@ -473,7 +490,7 @@ it("does not send activity that expires while a ledger projection is in progress
     return original(...args);
   });
   await open();
-  await pendingDay();
+  await pendingHour();
   try {
     await eventually(() =>
       expect(usage.previewTelemetry).toHaveBeenCalledTimes(1),
@@ -488,11 +505,11 @@ it("does not send activity that expires while a ledger projection is in progress
   }
 });
 
-it("freezes real ledger measurements once even when a late provider correction arrives before retry", async () => {
+it("retries frozen hourly bytes before uploading a late provider correction", async () => {
   fetcher.mockResolvedValueOnce(new Response(null, { status: 503 }));
   const projection = vi.spyOn(usage, "previewTelemetry");
   await open();
-  const reporting = await eligibleActivity();
+  const reporting = await activeHour();
   const observation = {
     provider: "codex" as const,
     agentId: "PRIVATE_CANARY-agent",
@@ -520,7 +537,7 @@ it("freezes real ledger measurements once even when a late provider correction a
     },
     { teamId: "PRIVATE_CANARY", repository: "PRIVATE_CANARY/path/branch" },
   );
-  await advance(DAY);
+  await advance(3600000);
   await eventually(() => expect(fetcher).toHaveBeenCalledTimes(1));
   const body = fetcher.mock.calls[0]![1]!.body as string;
   expect(JSON.parse(body).usage).toStrictEqual([
@@ -556,17 +573,21 @@ it("freezes real ledger measurements once even when a late provider correction a
   // Persistence precedes arming the retry timer; wait for the owner to finish
   // scheduling before advancing its fake clock.
   await eventually(() => expect(vi.getTimerCount()).toBe(1));
-  await advance(60_000);
+  await advance(3600000);
   await eventually(() => expect(fetcher).toHaveBeenCalledTimes(2));
   expect(fetcher.mock.calls[1]![1]!.body).toBe(body);
   expect(projection).toHaveBeenCalledTimes(1);
-  expect(await upload!.sealedReport(reporting)).toStrictEqual({ body });
+  await eventually(() => expect(vi.getTimerCount()).toBe(1));
+  await advance(3600000);
+  await eventually(() => expect(fetcher).toHaveBeenCalledTimes(3));
+  expect(JSON.parse(fetcher.mock.calls[2]![1]!.body as string).usage[0].inputTokens).toBe(999);
+
 });
 
 it("bounds jitter and never schedules more than twenty-four hours between attempts", async () => {
   fetcher.mockResolvedValue(new Response(null, { status: 503 }));
   await open("https://collector.invalid/v1/telemetry/daily", false, () => 1);
-  await pendingDay();
+  await pendingHour();
   let attempts = 1;
   await eventually(() => expect(fetcher).toHaveBeenCalledTimes(attempts));
   for (const delay of [
@@ -580,19 +601,22 @@ it("bounds jitter and never schedules more than twenty-four hours between attemp
       expect((await stored()).days[0].nextAttemptAt).toBe(clock + delay),
     );
     await eventually(() => expect(vi.getTimerCount()).toBe(1));
-    await advance(delay);
+    await advance(Math.ceil(delay / 3600000) * 3600000);
     ++attempts;
     await eventually(() => expect(fetcher).toHaveBeenCalledTimes(attempts));
   }
 });
 
-it("requires fresh consent when an older opt-in did not include performance measurements", async () => {
-  const file = path.join(directory,"consent.json");
+it.each([true, false, undefined])("migrates a legacy sharing choice %s and installation ID into settings", async enabled => {
+  const legacy = path.join(directory, 'telemetry.json');
   const installId = consent.current().installId;
-  await writeFile(file,JSON.stringify({v:1,installId,enabled:true,eligibleFrom:epoch-12*3600000,noticeHandled:true}));
-  consent = await TelemetryConsentService.open(file,{now});
-  expect(await consent.view()).toStrictEqual({enabled:false,eligibleFrom:null,noticePending:true});
+  await rm(path.join(directory, 'settings.json'));
+  await rm(path.join(directory, 'roster.json'));
+  await writeFile(legacy, JSON.stringify({v:2,installId,enabled:enabled ?? false,eligibleFrom:null,noticeHandled:enabled !== undefined}));
+  consent = await openTelemetryConsent(directory, {now});
+  expect(await consent.view()).toStrictEqual({enabled});
   expect(consent.current().installId).toBe(installId);
-  await open();
-  expect(fetcher).not.toHaveBeenCalled();
+  const saved = JSON.parse(await readFile(path.join(directory, 'settings.json'), 'utf8'));
+  expect(saved.data.telemetry).toStrictEqual({installId,...(enabled !== undefined ? {enabled} : {})});
+  await expect(readFile(legacy)).rejects.toMatchObject({code:'ENOENT'});
 });

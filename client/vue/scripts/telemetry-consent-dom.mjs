@@ -15,29 +15,38 @@ const output =
   (await mkdtemp(path.join(os.tmpdir(), "telemetry-consent-dom-")));
 await mkdir(output, { recursive: true });
 const entry = `
-import {createApp,h,ref} from 'vue';
+import {createApp,h,provide,ref} from 'vue';
+import {createCodexConversationPaneController} from '@codex-app-sdk/vue';
+import '@codex-app-sdk/vue/styles.css';
 import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
 import '/src/styles/variables.css';
 import '/src/styles/base.css';
 import {i18n} from '/src/i18n/index.ts';
 import {configureAppClient} from '/src/platform-api.ts';
-import Notice from '/src/components/TelemetryConsentNotice.vue';
+import Conversation from '/src/components/ConversationPane.vue';
+import {telemetryNoticeReadyKey} from '/src/components/use-telemetry-consent.ts';
 import Panel from '/src/components/TelemetryConsentPanel.vue';
-let state={enabled:false,eligibleFrom:null,noticePending:true};
+let state=JSON.parse(sessionStorage.getItem('consent') || 'null') || {};
 const body='{"installId":"d8b65ff5-179c-49b9-ac3a-f60a54a0f43f","day":"2026-10-15","appVersion":"0.44.0","os":"unknown","usage":[]}';
-window.fixture={actions:[],copies:[],body};
+window.fixture={actions:[],copies:[],body,failNext:false};
 Object.defineProperty(navigator,'clipboard',{value:{writeText:async text=>window.fixture.copies.push(text)}});
 configureAppClient({platform:'desktop',api:{
   getTelemetryConsent:async()=>({...state}),
-  changeTelemetryConsent:async action=>{window.fixture.actions.push(action);state={enabled:action==='enable',eligibleFrom:action==='enable'?Date.UTC(2026,9,16):null,noticePending:false};return {...state}},
+  onEvent:()=>()=>{},
+  changeTelemetryConsent:async action=>{window.fixture.actions.push(action);if(window.fixture.failNext){window.fixture.failNext=false;throw Error('Save failed')}state={enabled:action==='enable'};sessionStorage.setItem('consent',JSON.stringify(state));return {...state}},
   previewTelemetryDay:async()=>({kind:'hypothetical',body}),
 }});
 const settings=ref(false);
-createApp({setup:()=>()=>h('main',{style:'padding:24px;max-width:760px;margin:auto'},[
-  h(Notice,{ready:true}),h('button',{onClick:()=>settings.value=!settings.value},'Settings'),
-  settings.value?h(Panel):null,
-])}).use(i18n).use(ElementPlus).mount('#app');
+const controller=createCodexConversationPaneController({state:()=>({identity:{conversationKey:'consent-fixture',messages:[]}})});
+createApp({setup:()=>{
+  provide(telemetryNoticeReadyKey,ref(true));
+  return ()=>h('main',{style:'padding:24px;max-width:760px;margin:auto'},[
+    h('div',{style:'height:540px;display:flex'},[h(Conversation,{controller,agent:null})]),
+    h('button',{onClick:()=>settings.value=!settings.value},'Settings'),
+    settings.value?h(Panel):null,
+  ]);
+}}).use(i18n).use(ElementPlus).mount('#app');
 `;
 const server = await createServer({
   configFile: false,
@@ -88,30 +97,47 @@ try {
     return route.continue();
   });
   await page.goto(`http://127.0.0.1:${address.port}/consent-dom`);
-  const notice = page.getByRole("dialog");
-  await notice
-    .getByRole("button", { name: "Share anonymous usage", exact: true })
-    .waitFor();
+  const notice = page.locator('.telemetry-notice');
+  await notice.getByRole('button', {name:'Close',exact:true}).waitFor();
   assert.deepEqual(await page.evaluate(() => window.fixture.actions), []);
+  assert.equal(await page.getByRole('dialog').count(), 0);
   const policyUrl = `${product.websiteUrl}/privacy/`;
-  assert.equal(
-    await notice
-      .getByRole("link", { name: "Privacy policy", exact: true })
-      .getAttribute("href"),
-    policyUrl,
-  );
-  await page.screenshot({
-    path: path.join(output, "notice.png"),
-    fullPage: true,
-    animations: "disabled",
-  });
-  await page.keyboard.press("Escape");
-  await notice.waitFor({ state: "hidden" });
-  assert.deepEqual(await page.evaluate(() => window.fixture.actions), [
-    "dismiss",
-  ]);
+  const geometry = [];
+  for (const width of [1000, 390]) {
+    await page.setViewportSize({width,height:900});
+    const bounds = await notice.boundingBox();
+    const composer = await page.locator('.chat-composer').boundingBox();
+    assert.ok(bounds && composer);
+    assert.ok(Math.abs(bounds.x - composer.x) <= 1, JSON.stringify({bounds,composer}));
+    assert.ok(Math.abs(bounds.width - composer.width) <= 1);
+    assert.ok(bounds.y + bounds.height + 8 <= composer.y, JSON.stringify({bounds,composer}));
+    const panelStyle = await notice.evaluate(element => {
+      const style = getComputedStyle(element);
+      return {bottomBorder:parseFloat(style.borderBottomWidth),bottomRadius:parseFloat(style.borderBottomLeftRadius)};
+    });
+    assert.ok(panelStyle.bottomBorder > 0 && panelStyle.bottomRadius > 0);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    geometry.push({width,notice:bounds,composer});
+    await page.screenshot({path:path.join(output,`notice-${width}.png`),fullPage:true,animations:'disabled'});
+  }
+  await page.evaluate(() => {window.fixture.failNext=true});
+  await notice.getByRole('button', {name:'Close',exact:true}).click();
+  await notice.getByRole('alert').waitFor();
+  await notice.getByRole('button', {name:'Close',exact:true}).click();
+  await notice.waitFor({state:'hidden'});
+  assert.deepEqual(await page.evaluate(() => window.fixture.actions), ['enable','enable']);
+  await page.reload();
+  await page.locator('.chat-composer').waitFor();
+  assert.equal(await notice.count(),0);
+  assert.deepEqual(await page.evaluate(() => window.fixture.actions), []);
+  // A fresh pending profile takes the independent opt-out path.
+  await page.evaluate(() => sessionStorage.removeItem('consent'));
+  await page.reload();
+  await notice.getByRole('button', {name:'Opt out',exact:true}).click();
+  await notice.waitFor({state:'hidden'});
+  assert.deepEqual(await page.evaluate(() => window.fixture.actions), ['disable']);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  const panel = page.getByRole("region", { name: "Anonymous daily sharing" });
+  const panel = page.getByRole("region", { name: "Anonymous usage sharing" });
   assert.equal(
     await panel
       .getByRole("link", { name: "Privacy policy", exact: true })
@@ -155,7 +181,7 @@ try {
     true,
   );
   assert.deepEqual(await page.evaluate(() => window.fixture.actions), [
-    "dismiss",
+    "disable",
     "enable",
     "disable",
     "reset",
@@ -167,7 +193,10 @@ try {
   assert.deepEqual(errors, []);
   const evidence = {
     workflow: "real Vue and Element Plus; synthetic desktop API",
-    actions: ["dismiss", "enable", "disable", "reset"],
+    actions: ["disable", "enable", "disable", "reset"],
+    geometry,
+    closeEnablesAndPersists: true,
+    failedCloseRetry: true,
     copy: "exact canonical body preserved",
     horizontalOverflow: false,
     telemetryOutboundRequests: 0,

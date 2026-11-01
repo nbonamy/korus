@@ -107,6 +107,7 @@
         </div>
       </template>
       <template #before-composer>
+        <TelemetryConsentNotice v-if="appClientPlatform === 'desktop' && keyboardActive" />
         <button v-if="agent && !backendChoices.includes(agent.backend)" class="app-button app-button--tertiary" type="button" @click="connectEngine">
           {{ t('engineConnection.required') }}
         </button>
@@ -146,6 +147,8 @@
 <script setup lang="ts">
 import { slicePromptContent, replacePromptContentRange } from '@codex-app-sdk/core/surface';
 import ConversationShareActivity from './ConversationShareActivity.vue';
+import TelemetryConsentNotice from './TelemetryConsentNotice.vue';
+import { appClientPlatform } from '../platform-api';
 import { supportsConversationSharing, conversationShareTarget, type GuestProposal } from '@workspace/core/conversation-sharing';
 import { useConversationShareActivity } from './use-conversation-share-activity';
 import { matchesShellShortcut } from '@workspace/core/keyboard-shortcuts';

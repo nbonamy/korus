@@ -5,8 +5,19 @@ WITH bounds AS (
  SELECT $1::date AS lo, $2::date AS hi
 ), days AS (
  SELECT d::date AS day FROM bounds, generate_series(lo::timestamp,hi::timestamp,interval '1 day') d
+), daily_usage AS (
+ SELECT install_id,day,provider,model,service_tier,
+ sum(turns)::bigint AS turns,
+ CASE WHEN bool_or(input_tokens IS NULL) THEN NULL ELSE sum(input_tokens)::bigint END AS input_tokens,
+ CASE WHEN bool_or(cached_input_tokens IS NULL) THEN NULL ELSE sum(cached_input_tokens)::bigint END AS cached_input_tokens,
+ CASE WHEN bool_or(output_tokens IS NULL) THEN NULL ELSE sum(output_tokens)::bigint END AS output_tokens,
+ CASE WHEN bool_or(estimated_cost_usd IS NULL) THEN NULL ELSE sum(estimated_cost_usd) END AS estimated_cost_usd,
+ sum(speed_turns)::bigint AS speed_turns,sum(speed_output_tokens)::bigint AS speed_output_tokens,
+ sum(generation_ms)::bigint AS generation_ms,sum(ttft_ms)::bigint AS ttft_ms,sum(ttft_turns)::bigint AS ttft_turns
+ FROM usage_daily, bounds WHERE day BETWEEN lo AND hi
+ GROUP BY install_id,day,provider,model,service_tier
 ), filtered AS (
- SELECT u.*, CASE WHEN $5::boolean THEN NULL::text ELSE u.service_tier END AS tier FROM usage_daily u, bounds
+ SELECT u.*, CASE WHEN $5::boolean THEN NULL::text ELSE u.service_tier END AS tier FROM daily_usage u, bounds
  WHERE u.day BETWEEN lo AND hi AND ($3::text IS NULL OR provider=$3)
  AND ($4::text IS NULL OR model=$4)
 ), keys AS (

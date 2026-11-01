@@ -106,21 +106,31 @@ export class TelemetryStore {
     let failed = false;
     try {
       await client.query("BEGIN");
-      await client.query(
+      const parent = await client.query<{reported_hours:number[]}>(
         `INSERT INTO install_days(install_id, day, app_version, os)
         VALUES ($1, $2, $3, $4) ON CONFLICT (install_id, day) DO UPDATE
-        SET app_version=EXCLUDED.app_version, os=EXCLUDED.os, received_at=clock_timestamp()`,
+        SET app_version=EXCLUDED.app_version, os=EXCLUDED.os, received_at=clock_timestamp() RETURNING reported_hours`,
         [payload.installId, payload.day, payload.appVersion, payload.os],
       );
+      if (payload.hour === undefined && parent.rows[0]!.reported_hours.length) {
+        // Preserve the finer-grained reports if an older desktop later sends a daily total.
+        await client.query('COMMIT');
+        return;
+      }
+      if (payload.hour !== undefined) {
+        await client.query(`UPDATE install_days SET reported_hours = ARRAY(
+          SELECT DISTINCT h FROM unnest(reported_hours || ARRAY[$3::smallint]) h ORDER BY h
+        ) WHERE install_id=$1 AND day=$2`, [payload.installId,payload.day,payload.hour]);
+      }
       await client.query(
-        "DELETE FROM usage_daily WHERE install_id=$1 AND day=$2",
-        [payload.installId, payload.day],
+        "DELETE FROM usage_daily WHERE install_id=$1 AND day=$2 AND (report_hour=-1 OR report_hour=$3)",
+        [payload.installId, payload.day, payload.hour ?? -1],
       );
       if (payload.usage.length) {
         const rows = payload.usage;
         await client.query(
-          `INSERT INTO usage_daily(install_id, day, provider, model, turns, input_tokens, cached_input_tokens, output_tokens, estimated_cost_usd, speed_turns, speed_output_tokens, generation_ms, ttft_ms, ttft_turns, service_tier)
-          SELECT $1::uuid, $2::date, * FROM unnest($3::text[], $4::text[], $5::bigint[], $6::bigint[], $7::bigint[], $8::bigint[], $9::numeric[], $10::bigint[], $11::bigint[], $12::bigint[], $13::bigint[], $14::bigint[], $15::text[])`,
+          `INSERT INTO usage_daily(install_id, day, provider, model, turns, input_tokens, cached_input_tokens, output_tokens, estimated_cost_usd, speed_turns, speed_output_tokens, generation_ms, ttft_ms, ttft_turns, service_tier, report_hour)
+          SELECT $1::uuid, $2::date, * FROM unnest($3::text[], $4::text[], $5::bigint[], $6::bigint[], $7::bigint[], $8::bigint[], $9::numeric[], $10::bigint[], $11::bigint[], $12::bigint[], $13::bigint[], $14::bigint[], $15::text[], $16::smallint[])`,
           [
             payload.installId,
             payload.day,
@@ -137,6 +147,7 @@ export class TelemetryStore {
             rows.map((r) => r.performance?.ttftMs ?? null),
             rows.map((r) => r.performance?.ttftTurns ?? null),
             rows.map((r) => r.serviceTier ?? "unknown"),
+            rows.map(() => payload.hour ?? -1),
           ],
         );
       }

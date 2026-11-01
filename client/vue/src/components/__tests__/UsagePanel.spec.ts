@@ -1060,17 +1060,17 @@ it("hides unavailable cost tooltip rows and empty days while retaining measured 
 // Regression: opening Analytics must never opt in; choices and copied preview
 // must follow backend authority, with no identity/interval authored by Vue.
 it('shares only after an explicit choice and preserves exact preview bytes when copied', async () => {
-  const state = {enabled:false,eligibleFrom:null as number|null,noticePending:false};
+  const state = {enabled:false};
   const body = '{"installId":"d8b65ff5-179c-49b9-ac3a-f60a54a0f43f","usage":[]}';
   const clipboard = vi.fn().mockResolvedValue(undefined);
   Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:clipboard}});
   const changeTelemetryConsent = vi.fn(async action => {
-    state.enabled = action === 'enable'; state.eligibleFrom = state.enabled ? 1792108800000 : null; return {...state};
+    state.enabled = action === 'enable'; return {...state};
   });
   const previewTelemetryDay = vi.fn().mockResolvedValue({kind:'hypothetical',body});
   setElectronTestClient({getTelemetryConsent:vi.fn(async()=>({...state})),changeTelemetryConsent,previewTelemetryDay});
   let wrapper = mount(UsagePanel); await flushPromises();
-  expect(wrapper.get('[aria-label="Anonymous daily sharing"]').text()).toContain('Sharing is off');
+  expect(wrapper.get('[aria-label="Anonymous usage sharing"]').text()).toContain('Sharing is off');
   expect(wrapper.find('input[type="checkbox"]:checked').exists()).toBe(false);
   expect(changeTelemetryConsent).not.toHaveBeenCalled();
   const button = (text:string) => wrapper.findAll('button').find(b=>b.text()===text)!;
@@ -1083,10 +1083,10 @@ it('shares only after an explicit choice and preserves exact preview bytes when 
   expect(wrapper.get('.telemetry-consent a').attributes('href')).toMatch(/\/privacy\/$/);
   await button('Share anonymous usage').trigger('click'); await flushPromises();
   expect(changeTelemetryConsent).toHaveBeenLastCalledWith('enable');
-  expect(wrapper.get('[aria-label="Anonymous daily sharing"]').text()).toContain('Sharing is on');
+  expect(wrapper.get('[aria-label="Anonymous usage sharing"]').text()).toContain('Sharing is on');
   expect(wrapper.find('.telemetry-preview').exists()).toBe(false);
   wrapper.unmount(); wrapper=mount(UsagePanel); await flushPromises();
-  expect(wrapper.get('[aria-label="Anonymous daily sharing"]').text()).toContain('Sharing is on');
+  expect(wrapper.get('[aria-label="Anonymous usage sharing"]').text()).toContain('Sharing is on');
   await button('Stop sharing').trigger('click'); await flushPromises();
   expect(changeTelemetryConsent).toHaveBeenLastCalledWith('disable');
   previewTelemetryDay.mockResolvedValueOnce({kind:'sealed',body});
@@ -1100,9 +1100,9 @@ it('shares only after an explicit choice and preserves exact preview bytes when 
   // A backend transition may persist before its delivery notification fails.
   // Refresh authority and retain a visible error so retry is possible.
   await button('Share anonymous usage').trigger('click'); await flushPromises();
-  changeTelemetryConsent.mockImplementationOnce(async()=>{state.enabled=false;state.eligibleFrom=null;throw Error('Cancellation failed');});
+  changeTelemetryConsent.mockImplementationOnce(async()=>{state.enabled=false;throw Error('Cancellation failed');});
   await button('Stop sharing').trigger('click');await flushPromises();
-  expect(wrapper.get('[aria-label="Anonymous daily sharing"]').text()).toContain('Sharing is off');
+  expect(wrapper.get('[aria-label="Anonymous usage sharing"]').text()).toContain('Sharing is off');
   expect(wrapper.find('.telemetry-consent [role="alert"]').exists()).toBe(true);
   const failedAttempts=changeTelemetryConsent.mock.calls.length;
   await button('Try again').trigger('click');await flushPromises();

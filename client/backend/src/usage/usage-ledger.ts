@@ -318,9 +318,21 @@ export class UsageLedger {
   /** Numeric-only projection. No local identifiers, arbitrary labels, per-turn timing or
    * provider objects leave this boundary. Reuses the ledger's pricing coverage.
    */
+  telemetryHours(): Array<{day:string;hour:number}> {
+    const db = this.open();
+    if (!db) throw new Error('Usage is unavailable.');
+    const today = Math.floor(this.now() / 86400000) * 86400000;
+    const rows = db.prepare(`SELECT DISTINCT CAST(at / 3600000 AS INTEGER) AS hour
+      FROM (SELECT started_at AS at FROM executions UNION ALL SELECT at FROM requests)
+      WHERE at >= ? AND at <= ? ORDER BY hour`).all(today - 7 * 86400000, this.now());
+    return rows.map(row => {
+      const date = new Date(Number(row.hour) * 3600000);
+      return {day:date.toISOString().slice(0,10),hour:date.getUTCHours()};
+    });
+  }
   projectDailyTelemetry(input: TelemetryProjectionInput): TelemetryUsage[] {
     if (!validTelemetryProjectionInput(input))
-      throw new Error("Invalid telemetry interval.");
+      throw new Error("Invalid telemetry day.");
     const summary = this.summarize({ from: input.day, to: input.day }, input);
     if (summary.available === false) throw new Error("Usage is unavailable.");
     return summary.rows
@@ -417,13 +429,11 @@ export class UsageLedger {
     if (db) {
       const requestRows = db
         .prepare(
-          "SELECT r.observation,e.* FROM requests r JOIN executions e USING(provider,session_id,turn_id) WHERE e.started_at>=? AND r.at>=? AND e.started_at>=? AND e.started_at<? AND (r.provider<>'claude' OR json_extract(r.observation,'$.model') IS NOT '<synthetic>') ORDER BY r.at,r.request_id",
+          "SELECT r.observation,e.* FROM requests r JOIN executions e USING(provider,session_id,turn_id) WHERE e.started_at>=? AND r.at>=? AND (r.provider<>'claude' OR json_extract(r.observation,'$.model') IS NOT '<synthetic>') ORDER BY r.at,r.request_id",
         )
         .all(
           this.now() - retention,
           this.now() - retention,
-          projection?.eligibleFrom ?? 0,
-          projection?.eligibleUntil ?? 8640000000000000,
         );
       const observedExecutions = new Set(
         requestRows.map((row) =>
@@ -432,12 +442,10 @@ export class UsageLedger {
       );
       const conditions = ["started_at>=?"],
         args: (string | number)[] = [this.now() - retention];
-      if (projection) {
-        conditions.push("started_at>=?", "started_at<?");
-        args.push(
-          projection.eligibleFrom,
-          projection.eligibleUntil ?? 8640000000000000,
-        );
+      if (projection?.hour !== undefined) {
+        const start = Date.parse(`${projection.day}T00:00:00Z`) + projection.hour * 3600000;
+        conditions.push('started_at>=?', 'started_at<?');
+        args.push(start, start + 3600000);
       }
       if (filter.from) {
         conditions.push("started_at>=?");
@@ -536,10 +544,7 @@ export class UsageLedger {
         const event = JSON.parse(String(row.observation)) as RequestObservation;
         const parent = this.decode(row);
         if (
-          (projection &&
-            (event.at < projection.eligibleFrom ||
-              (projection.eligibleUntil !== null &&
-                event.at >= projection.eligibleUntil))) ||
+          (projection?.hour !== undefined && Math.floor(event.at / 3600000) !== Math.floor(Date.parse(`${projection.day}T00:00:00Z`) / 3600000) + projection.hour) ||
           (filter.from && event.at < dayStart(filter.from, filter.timeZone)) ||
           (filter.to && event.at >= dayStart(nextDay(filter.to), filter.timeZone)) ||
           (filter.model && event.model !== filter.model) ||

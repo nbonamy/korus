@@ -45,18 +45,14 @@ export type TelemetryUsage = {
 export type DailyTelemetryPayload = {
   installId: string;
   day: string;
+  /** UTC hour; absent for legacy daily reports. */
+  hour?: number;
   appVersion: string;
   os: TelemetryOs;
   usage: TelemetryUsage[];
 };
-/** Half-open consent interval. Both execution start AND request timestamp must
- * be eligible. Callers must supply it explicitly, even for hypothetical previews.
- */
-export type TelemetryProjectionInput = {
-  day: string;
-  eligibleFrom: number;
-  eligibleUntil: number | null;
-};
+/** One UTC reporting day, optionally narrowed to an hour. */
+export type TelemetryProjectionInput = { day: string; hour?: number };
 export type TelemetryPreviewInput = TelemetryProjectionInput & {
   installId: string;
 };
@@ -97,26 +93,14 @@ const object = (
   !Array.isArray(value) &&
   Object.keys(value).length === keys.length &&
   Object.keys(value).every((k) => keys.includes(k));
-const timestamp = (value: unknown): value is number =>
-  Number.isSafeInteger(value) &&
-  (value as number) >= 0 &&
-  (value as number) <= 8640000000000000;
-export function validTelemetryProjectionInput(
-  value: unknown,
-): value is TelemetryProjectionInput {
-  return (
-    object(value, ["day", "eligibleFrom", "eligibleUntil"]) &&
-    isUtcDay(value.day) &&
-    timestamp(value.eligibleFrom) &&
-    (value.eligibleUntil === null ||
-      (timestamp(value.eligibleUntil) &&
-        value.eligibleUntil > value.eligibleFrom))
-  );
+export function validTelemetryProjectionInput(value: unknown): value is TelemetryProjectionInput {
+  return object(value, ["day", ...(value && typeof value === "object" && Object.hasOwn(value, "hour") ? ["hour"] : [])]) && isUtcDay(value.day)
+    && (!Object.hasOwn(value, "hour") || (Number.isInteger(value.hour) && (value.hour as number) >= 0 && (value.hour as number) <= 23));
 }
 export function validTelemetryPreviewInput(
   value: unknown,
 ): value is TelemetryPreviewInput {
-  if (!object(value, ["installId", "day", "eligibleFrom", "eligibleUntil"]))
+  if (!object(value, ["installId", "day", ...(value && typeof value === "object" && Object.hasOwn(value, "hour") ? ["hour"] : [])]))
     return false;
   const { installId, ...projection } = value;
   return validInstallId(installId) && validTelemetryProjectionInput(projection);
@@ -168,9 +152,9 @@ export function serializeDailyTelemetry(
   const count = (v: unknown) => Number.isSafeInteger(v) && (v as number) >= 0;
   const nullableCount = (v: unknown) => v === null || count(v);
   if (
-    !object(payload, ["installId", "day", "appVersion", "os", "usage"]) ||
+    !object(payload, ["installId", "day", "appVersion", "os", "usage", ...(payload && Object.hasOwn(payload, "hour") ? ["hour"] : [])]) ||
     !validInstallId(payload.installId) ||
-    !isUtcDay(payload.day) ||
+    !validTelemetryProjectionInput({day:payload.day,...(Object.hasOwn(payload,"hour") ? {hour:payload.hour} : {})}) ||
     typeof payload.appVersion !== "string" ||
     normalizeTelemetryVersion(payload.appVersion) !== payload.appVersion ||
     !["macos", "windows", "linux", "unknown"].includes(payload.os) ||
@@ -266,6 +250,7 @@ export function serializeDailyTelemetry(
   const body = JSON.stringify({
     installId: payload.installId,
     day: payload.day,
+    ...(payload.hour !== undefined ? {hour:payload.hour} : {}),
     appVersion: payload.appVersion,
     os: payload.os,
     usage,

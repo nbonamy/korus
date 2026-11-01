@@ -1,10 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile, rename, unlink } from "node:fs/promises";
-import path from "node:path";
+import { readFile, unlink } from "node:fs/promises";
 import type {
   TelemetryConsentAction,
   TelemetryConsentState,
-  TelemetryConsentTransition,
   TelemetryConsentView,
   TelemetryDeliveryPort,
   TelemetryProfilePreview,
@@ -12,12 +10,18 @@ import type {
 import { isUtcDay } from "@workspace/core/usage";
 import type { UsageService } from "../usage/usage-service";
 
+export type TelemetrySettingsStorage = {
+  load(): Promise<TelemetryConsentState | undefined>;
+  save(state: TelemetryConsentState): Promise<void>;
+};
+
 type Options = {
+  legacyFile?: string;
   now?: () => number;
   delivery?: TelemetryDeliveryPort;
 };
 const dayMs = 86400000;
-/** Private per-profile authority, initialized before runtime services. No shared
+/** Local sharing choice and identity, stored through the common settings writer. No shared
  * snapshot, generic settings event, provider access or delivery policy lives here.
  */
 export class TelemetryConsentService {
@@ -25,63 +29,31 @@ export class TelemetryConsentService {
   private pendingRevocations = 0;
   private authorityRevision = 0;
   private constructor(
-    private readonly file: string,
+    private readonly storage: TelemetrySettingsStorage,
     private state: TelemetryConsentState,
     private readonly options: Options,
   ) {}
-  static async open(
-    file: string,
-    options: Options = {},
-  ): Promise<TelemetryConsentService> {
-    let state: TelemetryConsentState;
-    try {
-      const saved = JSON.parse(await readFile(file, "utf8"));
-      if (
-        ![1, 2].includes(saved.v) ||
-        Object.keys(saved).sort().join(",") !==
-          "eligibleFrom,enabled,installId,noticeHandled,v" ||
-        !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
-          saved.installId,
-        ) ||
-        typeof saved.enabled !== "boolean" ||
-        typeof saved.noticeHandled !== "boolean" ||
-        (saved.enabled
-          ? !saved.noticeHandled ||
-            !Number.isSafeInteger(saved.eligibleFrom) ||
-            saved.eligibleFrom < 0 ||
-            saved.eligibleFrom % dayMs !== 0
-          : saved.eligibleFrom !== null)
-      )
-        throw new Error("Invalid telemetry state.");
-      const { v: _v, ...loaded } = saved;
-      state = loaded;
-      if (saved.v === 1) {
-        // The prior opt-in excluded performance. Expanded sharing needs consent.
-        if (state.enabled)
-          state = {
-            ...state,
-            enabled: false,
-            eligibleFrom: null,
-            noticeHandled: false,
-          };
-        const service = new TelemetryConsentService(file, state, options);
-        await service.persist(state);
-        return service;
+  static async open(storage: TelemetrySettingsStorage, options: Options = {}): Promise<TelemetryConsentService> {
+    let state = await storage.load();
+    if (!state) {
+      let legacy;
+      if (options.legacyFile) {
+        try { legacy = JSON.parse(await readFile(options.legacyFile, 'utf8')); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
       }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT")
-        throw new Error("Telemetry state is unavailable.");
-      state = {
-        installId: randomUUID(),
-        enabled: false,
-        eligibleFrom: null,
-        noticeHandled: false,
-      };
-      const service = new TelemetryConsentService(file, state, options);
-      await service.persist(state);
-      return service;
+      if (legacy && (![1, 2].includes(legacy.v) || typeof legacy.enabled !== 'boolean'
+        || typeof legacy.noticeHandled !== 'boolean'
+        || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(legacy.installId))) {
+        throw new Error('Telemetry state is unavailable.');
+      }
+      state = { installId: legacy?.installId ?? randomUUID(),
+        ...(legacy?.noticeHandled ? { enabled: legacy.enabled } : {}) };
+      await storage.save(state);
     }
-    return new TelemetryConsentService(file, state, options);
+    if (options.legacyFile) await unlink(options.legacyFile).catch(error => {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    });
+    return new TelemetryConsentService(storage, state, options);
   }
   private serial<T>(run: () => Promise<T>): Promise<T> {
     const next = this.operations.then(run);
@@ -93,7 +65,7 @@ export class TelemetryConsentService {
     return Object.freeze({
       ...this.state,
       ...(this.pendingRevocations
-        ? { enabled: false, eligibleFrom: null }
+        ? { enabled: false }
         : {}),
     });
   }
@@ -102,27 +74,18 @@ export class TelemetryConsentService {
     const state = this.current();
     return {
       enabled: state.enabled,
-      eligibleFrom: state.eligibleFrom,
-      noticePending: !state.noticeHandled,
     };
   }
   change(action: TelemetryConsentAction): Promise<TelemetryConsentView> {
-    const revokes = ["disable", "dismiss", "reset"].includes(action);
+    const revokes = ["disable", "reset"].includes(action);
     if (revokes) ++this.pendingRevocations;
     ++this.authorityRevision;
     return this.serial(async () => {
-      if (!["enable", "disable", "dismiss", "reset"].includes(action))
+      if (!["enable", "disable", "reset"].includes(action))
         throw new Error("Invalid telemetry action.");
       const previous = Object.freeze({ ...this.state });
-      const current = { ...previous, noticeHandled: true };
+      const current = { ...previous, enabled: action === "enable" };
       if (action === "reset") current.installId = randomUUID();
-      if (action === "enable" && !current.enabled) {
-        current.enabled = true;
-        current.eligibleFrom = (Math.floor(this.now() / dayMs) + 1) * dayMs;
-      } else if (action !== "enable") {
-        current.enabled = false;
-        current.eligibleFrom = null;
-      }
       if (
         action === "disable" ||
         JSON.stringify(current) !== JSON.stringify(previous)
@@ -135,12 +98,9 @@ export class TelemetryConsentService {
           this.state = current;
           saved = true;
         } finally {
-          if (
-            (!current.enabled || saved) &&
-            (action !== "dismiss" || previous.enabled)
-          ) {
+          if (!current.enabled || saved) {
             const transition = {
-              reason: action === "dismiss" ? ("disable" as const) : action,
+              reason: action,
               previous,
               current: Object.freeze({ ...current }),
             };
@@ -150,8 +110,6 @@ export class TelemetryConsentService {
       }
       return {
         enabled: current.enabled,
-        eligibleFrom: current.eligibleFrom,
-        noticePending: !current.noticeHandled,
       };
     }).finally(() => {
       if (revokes) --this.pendingRevocations;
@@ -176,11 +134,8 @@ export class TelemetryConsentService {
       throw new Error("Invalid telemetry day.");
     const state = this.current();
     const start = Date.parse(`${day}T00:00:00Z`);
-    const eligible =
-      state.enabled &&
-      state.eligibleFrom !== null &&
-      start >= state.eligibleFrom;
-    if (eligible && start + dayMs <= this.now()) {
+    const enabled = state.enabled === true;
+    if (enabled && start + dayMs <= this.now()) {
       const sealed = await this.options.delivery?.sealedReport(day);
       if (sealed) return finish({ kind: "sealed", body: sealed.body });
     }
@@ -188,32 +143,20 @@ export class TelemetryConsentService {
       {
         installId: state.installId,
         day,
-        eligibleFrom: eligible ? state.eligibleFrom! : start,
-        eligibleUntil: null,
       },
       version,
       platform,
     );
     return finish({
       kind:
-        eligible && start + dayMs > this.now() ? "provisional" : "hypothetical",
+        enabled && start + dayMs > this.now() ? "provisional" : "hypothetical",
       body: body.body,
     });
   }
   private now(): number {
     return this.options.now?.() ?? Date.now();
   }
-  private async persist(state: TelemetryConsentState): Promise<void> {
-    await mkdir(path.dirname(this.file), { recursive: true, mode: 0o700 });
-    const temporary = `${this.file}.${randomUUID()}.tmp`;
-    try {
-      await writeFile(temporary, JSON.stringify({ v: 2, ...state }), {
-        mode: 0o600,
-        flag: "wx",
-      });
-      await rename(temporary, this.file);
-    } finally {
-      await unlink(temporary).catch(() => undefined);
-    }
+  private persist(state: TelemetryConsentState): Promise<void> {
+    return this.storage.save(state);
   }
 }

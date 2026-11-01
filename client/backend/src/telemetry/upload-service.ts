@@ -17,9 +17,10 @@ import type { UsageService } from "../usage/usage-service";
 const DAY = 86_400_000;
 const BACKOFF = [60_000, 15 * 60_000, 60 * 60_000, 6 * 60 * 60_000, DAY];
 const MAX_BODY = 64 * 1024;
-type Binding = { installId: string; eligibleFrom: number };
+type Binding = { installId: string };
 type Report = {
   day: string;
+  hour?: number;
   body: string | null;
   status: "active" | "pending" | "done";
   attempts: number;
@@ -29,7 +30,7 @@ type Store = { v: 1; owner: Binding | null; days: Report[] };
 type Options = {
   file: string;
   consent(): Readonly<TelemetryConsentState>;
-  usage: Pick<UsageService, "previewTelemetry">;
+  usage: Pick<UsageService, "previewTelemetry" | "telemetryHours">;
   version: string;
   platform: string;
   /** Privately supplied; absent/invalid means no requests, including discovery. */
@@ -42,7 +43,7 @@ type Options = {
 };
 const startOfDay = (day: string) => Date.parse(`${day}T00:00:00Z`);
 const sameOwner = (a: Binding | null, b: Binding | null) =>
-  a?.installId === b?.installId && a?.eligibleFrom === b?.eligibleFrom;
+  a?.installId === b?.installId;
 const empty = (): Store => ({ v: 1, owner: null, days: [] });
 
 /** One instance per local installation runtime. This is the sole app-side owner
@@ -53,9 +54,7 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
   private store: Store = empty();
   private storage: Promise<void> = Promise.resolve();
   private working: Promise<void> | null = null;
-  private timer: ReturnType<typeof setTimeout> | null = null;
   private attempt: AbortController | null = null;
-  private started = false;
   private stopped = false;
   private invalid = false;
   private again = false;
@@ -84,7 +83,7 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
     const service = new TelemetryUploadService(options);
     try {
       const saved = await readFile(options.file);
-      if (saved.length > 8 * (MAX_BODY * 2 + 1024))
+      if (saved.length > 200 * (MAX_BODY * 2 + 1024))
         throw new Error("Oversized state");
       service.store = service.decode(JSON.parse(saved.toString("utf8")));
     } catch (error) {
@@ -100,11 +99,6 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
     }
     return service;
   }
-  start(): void {
-    if (this.started || this.stopped) return;
-    this.started = true;
-    this.wake();
-  }
   /** Records only this observed foreground/open instant. No foreground lease
    * survives disconnect, sleep or restart. Background time cannot fill gaps.
    */
@@ -115,7 +109,6 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
     } catch {
       /* telemetry never blocks an app action */
     }
-    this.wake();
   }
   async consentChanged(transition: TelemetryConsentTransition): Promise<void> {
     if (
@@ -123,12 +116,10 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
       !this.invalid &&
       sameOwner(this.store.owner, this.authority())
     ) {
-      this.wake();
       return;
     }
     ++this.generation;
     this.attempt?.abort();
-    this.clearTimer();
     this.invalid = false;
     this.store = { ...empty(), owner: this.authority() };
     // Cancellation/purge does not wait for a ledger read or HTTP acknowledgement.
@@ -137,18 +128,16 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
     } catch {
       this.invalid = true;
     }
-    this.wake();
   }
-  async sealedReport(day: string): Promise<SealedTelemetryBody | null> {
+  async sealedReport(day: string, hour?: number): Promise<SealedTelemetryBody | null> {
     if (this.invalid || !sameOwner(this.store.owner, this.authority()))
       return null;
-    const row = this.store.days.find((row) => row.day === day);
+    const row = this.store.days.find((row) => row.day === day && row.hour === hour);
     return row?.body ? Object.freeze({ body: row.body }) : null;
   }
   async close(): Promise<void> {
     this.stopped = true;
     ++this.generation;
-    this.clearTimer();
     this.attempt?.abort();
     await this.working;
     await this.storage;
@@ -158,8 +147,8 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
   }
   private authority(): Binding | null {
     const state = this.options.consent();
-    return state.enabled && state.eligibleFrom !== null
-      ? { installId: state.installId, eligibleFrom: state.eligibleFrom }
+    return state.enabled === true
+      ? { installId: state.installId }
       : null;
   }
   private valid(generation: number): boolean {
@@ -175,15 +164,16 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
     const owner = this.authority();
     if (
       !owner ||
-      !sameOwner(owner, this.store.owner) ||
-      this.now() < owner.eligibleFrom
+      !sameOwner(owner, this.store.owner)
     )
       return;
     const day = new Date(this.now()).toISOString().slice(0, 10);
-    if (this.store.days.some((row) => row.day === day)) return;
+    const hour = new Date(this.now()).getUTCHours();
+    if (this.store.days.some((row) => row.day === day && row.hour === hour)) return;
     this.prune();
     this.store.days.push({
       day,
+      hour,
       body: null,
       status: "active",
       attempts: 0,
@@ -200,31 +190,29 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
     );
     return before !== this.store.days.length;
   }
-  private wake(): void {
-    if (!this.started || this.stopped || this.invalid) return;
-    this.clearTimer();
+  /** Called on startup and hourly by the shared RuntimeScheduler. */
+  flush(): Promise<void> {
+    if (this.stopped || this.invalid) return Promise.resolve();
     if (this.working) {
       this.again = true;
-      return;
+      return this.working;
     }
-    this.working = this.run()
-      .catch(() => {
-        /* local failure stays non-disruptive; next maintenance may retry */
-      })
-      .finally(() => {
-        this.working = null;
-        if (this.again) {
-          this.again = false;
-          this.wake();
-        } else this.schedule();
-      });
+    this.working = (async () => {
+      do {
+        this.again = false;
+        await this.run();
+      } while (this.again && !this.stopped && !this.invalid);
+    })().catch(() => {
+      /* next scheduled flush retries local failures */
+    }).finally(() => { this.working = null; });
+    return this.working;
   }
   private reportEligible(row: Report): boolean {
     const today = Math.floor(this.now() / DAY) * DAY;
     return (
       this.store.days.includes(row) &&
       startOfDay(row.day) >= today - 7 * DAY &&
-      startOfDay(row.day) < today
+      startOfDay(row.day) <= today
     );
   }
   private async run(): Promise<void> {
@@ -239,15 +227,23 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
       /* no connected desktop */
     }
     if (!this.valid(generation)) return;
+    const hours = await this.options.usage.telemetryHours();
+    if (!this.valid(generation)) return;
+    for (const bucket of hours) {
+      if (!this.store.days.some(row => row.day === bucket.day && row.hour === bucket.hour)) {
+        this.store.days.push({...bucket,body:null,status:'active',attempts:0,nextAttemptAt:0});
+      }
+    }
+    await this.persist();
     for (const row of [...this.store.days].sort((a, b) =>
-      a.day.localeCompare(b.day),
+      a.day.localeCompare(b.day) || (a.hour ?? -1) - (b.hour ?? -1),
     )) {
       if (!this.valid(generation)) return;
-      if (startOfDay(row.day) + DAY > this.now() || row.status === "done")
-        continue;
-      if (row.status === "active") {
+      if (row.hour === undefined && row.status === 'done') continue;
+      if (row.hour === undefined && startOfDay(row.day) + DAY > this.now()) continue;
+      if (row.status !== 'pending') {
         const sealed = await this.options.usage.previewTelemetry(
-          { ...this.store.owner!, day: row.day, eligibleUntil: null },
+          { ...this.store.owner!, day: row.day, ...(row.hour !== undefined ? {hour:row.hour} : {}) },
           this.options.version,
           this.options.platform,
         );
@@ -262,8 +258,11 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
           await this.persist();
           continue;
         }
+        if (row.body === sealed.body) continue;
         row.body = sealed.body;
         row.status = "pending";
+        row.attempts = 0;
+        row.nextAttemptAt = 0;
         await this.persist();
       }
       if (
@@ -370,31 +369,6 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
       if (this.attempt === controller) this.attempt = null;
     }
   }
-  private clearTimer(): void {
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = null;
-  }
-  private schedule(): void {
-    if (this.stopped || !this.started || this.invalid || !this.authority())
-      return;
-    const next = this.store.days
-      .filter((row) => row.status === "pending" && this.endpoint)
-      .map((row) => row.nextAttemptAt);
-    const midnight = (Math.floor(this.now() / DAY) + 1) * DAY;
-    const delay = Math.max(
-      1,
-      Math.min(
-        60_000,
-        midnight - this.now(),
-        ...next.map((at) => at - this.now()),
-      ),
-    );
-    this.timer = setTimeout(() => {
-      this.timer = null;
-      this.wake();
-    }, delay);
-    this.timer.unref?.();
-  }
   private persist(): Promise<void> {
     const body = JSON.stringify(this.store);
     const run = this.storage.then(async () => {
@@ -422,15 +396,12 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
       !keys(value, ["v", "owner", "days"]) ||
       value.v !== 1 ||
       !Array.isArray(value.days) ||
-      value.days.length > 8
+      value.days.length > 200
     )
       throw new Error("Invalid state");
     if (
       value.owner !== null &&
-      (!keys(value.owner, ["installId", "eligibleFrom"]) ||
-        !Number.isSafeInteger(value.owner.eligibleFrom) ||
-        value.owner.eligibleFrom < 0 ||
-        value.owner.eligibleFrom % DAY !== 0 ||
+      (!(keys(value.owner, ["installId"]) || keys(value.owner, ["installId", "eligibleFrom"])) ||
         !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
           value.owner.installId,
         ))
@@ -440,10 +411,10 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
     for (const row of value.days) {
       if (
         !value.owner ||
-        !keys(row, ["day", "body", "status", "attempts", "nextAttemptAt"]) ||
+        !keys(row, ["day", "body", "status", "attempts", "nextAttemptAt", ...(Object.hasOwn(row, "hour") ? ["hour"] : [])]) ||
         !isUtcDay(row.day) ||
-        days.has(row.day) ||
-        startOfDay(row.day) < value.owner.eligibleFrom ||
+        (row.hour !== undefined && (!Number.isInteger(row.hour) || row.hour < 0 || row.hour > 23)) ||
+        days.has(`${row.day}/${row.hour ?? "daily"}`) ||
         !Number.isSafeInteger(row.attempts) ||
         row.attempts < 0 ||
         row.attempts > 6 ||
@@ -451,7 +422,7 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
         row.nextAttemptAt < 0
       )
         throw new Error("Invalid day");
-      days.add(row.day);
+      days.add(`${row.day}/${row.hour ?? "daily"}`);
       if (
         !["active", "pending", "done"].includes(row.status) ||
         (row.status === "active" &&
@@ -469,11 +440,12 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
         if (
           parsed.installId !== value.owner.installId ||
           parsed.day !== row.day ||
+          parsed.hour !== row.hour ||
           serializeDailyTelemetry(parsed).body !== row.body
         )
           throw new Error("Unsealed body");
       }
     }
-    return value;
+    return { ...value, owner: value.owner ? { installId: value.owner.installId } : null };
   }
 }

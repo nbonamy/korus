@@ -2,20 +2,16 @@ import type { SealedTelemetryBody } from "./telemetry";
 
 /** Returned only to the local desktop settings caller, never in shared state. */
 export type TelemetryConsentView = {
-  enabled: boolean;
-  eligibleFrom: number | null;
-  noticePending: boolean;
+  enabled?: boolean;
 };
-export type TelemetryConsentAction = "enable" | "disable" | "dismiss" | "reset";
+export type TelemetryConsentAction = "enable" | "disable" | "reset";
 export type TelemetryProfilePreview = SealedTelemetryBody & {
   kind: "hypothetical" | "provisional" | "sealed";
 };
 /** Backend-only authority passed directly to the delivery owner. Do not add to snapshots. */
 export type TelemetryConsentState = {
   installId: string;
-  enabled: boolean;
-  eligibleFrom: number | null;
-  noticeHandled: boolean;
+  enabled?: boolean;
 };
 export type TelemetryConsentTransition = {
   reason: "enable" | "disable" | "reset";

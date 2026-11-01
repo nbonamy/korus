@@ -348,7 +348,7 @@ target, archive the displaced conversation, then persist the new reference.
 | File | Content |
 | --- | --- |
 | `roster.json` | teams, agents, automations, missions, work assignments, review ledgers |
-| `settings.json` | preferences, theme, source folder, remote connections, work integrations |
+| `settings.json` | preferences, theme, source folder, remote connections, work integrations, private telemetry choice and identity |
 | `document-workspaces.json` | per-client, per-agent open tab references and transient Markdown backing bytes |
 | `tasks.json` | durable delegated tasks (additive; absent means none) |
 | `visualizations/<repo>-<hash>/<id>.json` | user content, one file per visualization |

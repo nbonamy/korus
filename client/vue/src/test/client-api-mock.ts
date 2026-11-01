@@ -174,7 +174,7 @@ export function createClientApiMock(
     markAgentRead: vi.fn().mockResolvedValue(undefined),
     selectAgent: unscripted('selectAgent'),
   getUsage: vi.fn().mockResolvedValue({recordedSince:0,retainedSince:0,rows:[]}),
-  getTelemetryConsent: vi.fn().mockResolvedValue({enabled:false,eligibleFrom:null,noticePending:false}),
+  getTelemetryConsent: vi.fn().mockResolvedValue({enabled:false}),
   changeTelemetryConsent: unscripted('changeTelemetryConsent'),
   previewTelemetryDay: unscripted('previewTelemetryDay'),
   clearUsage: unscripted('clearUsage'),

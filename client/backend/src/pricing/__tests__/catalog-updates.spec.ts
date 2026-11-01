@@ -78,7 +78,7 @@ it('reprices saved usage through the released usage/get contract, then keeps pri
   };
   const expected = (usd: number) => ({ usd, coverage: 'complete', requests: 1, pricedRequests: 1, unpricedRequests: 0, unknownRequestExecutions: 0, reasons: [] });
   const preview = () => usage.previewTelemetry({
-    installId: 'd8b65ff5-179c-49b9-ac3a-f60a54a0f43f', day: '2026-11-02', eligibleFrom: at, eligibleUntil: null,
+    installId: 'd8b65ff5-179c-49b9-ac3a-f60a54a0f43f', day: '2026-11-02',
   }, '1.2.3', 'linux');
   const body = (usd: number) => `{"installId":"d8b65ff5-179c-49b9-ac3a-f60a54a0f43f","day":"2026-11-02","appVersion":"1.2.3","os":"linux","usage":[{"provider":"codex","model":"gpt-6-sol","serviceTier":"fast","turns":1,"inputTokens":1000000,"cachedInputTokens":0,"outputTokens":0,"estimatedCostUsd":${usd}}]}`;
   expect(await cost()).toStrictEqual(expected(4));

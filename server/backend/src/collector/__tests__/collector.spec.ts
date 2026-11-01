@@ -20,6 +20,7 @@ import {
 } from "node:net";
 import pg from "pg";
 import type { DailyTelemetryPayload } from "@workspace/core/telemetry";
+import { metricsSql } from "../metrics";
 import { telemetryModels } from "@workspace/core/telemetry-models";
 import { createCollectorServer } from "../server";
 import { createTelemetryPool, TelemetryStore } from "../store";
@@ -257,6 +258,24 @@ describe("daily ingestion into disposable Postgres", () => {
     expect((await send(payload({ usage: [] }))).status).toBe(204);
     expect((await snapshot()).usage).toStrictEqual([]);
     expect((await snapshot()).days).toHaveLength(2);
+  });
+
+  it('replaces hourly buckets idempotently while preserving daily dashboard totals and legacy ingestion', async () => {
+    expect((await send()).status).toBe(204); // Older daily payload.
+    const hourly = (hour:number,input:number) => payload({hour,usage:[{...row,inputTokens:input,cachedInputTokens:0}]});
+    expect((await send(hourly(10,20))).status).toBe(204);
+    expect((await send(hourly(11,30))).status).toBe(204);
+    expect((await send(hourly(10,25))).status).toBe(204);
+    expect((await send(hourly(10,25))).status).toBe(204); // Lost acknowledgment.
+    expect((await send()).status).toBe(204); // Downgraded client cannot duplicate hourly usage.
+    const totals = (await pool.query(metricsSql,['2026-10-24','2026-10-24',null,null,false])).rows[0].metrics;
+    expect(totals.totals).toMatchObject({turns:'6',inputTokens:'55',groups:'1'});
+    expect(totals.activity).toStrictEqual([{day:'2026-10-24',activeInstalls:'1',firstReportedInstalls:'1'}]);
+    expect((await pool.query('SELECT report_hour FROM usage_daily ORDER BY report_hour')).rows).toStrictEqual([{report_hour:10},{report_hour:11}]);
+    expect((await send(payload({hour:10,usage:[]}))).status).toBe(204);
+    expect((await pool.query('SELECT sum(input_tokens) AS tokens FROM usage_daily')).rows[0].tokens).toBe('30');
+    expect((await send(payload({day:'2026-10-25',hour:12}))).status).toBe(204);
+    expect((await send(payload({day:'2026-10-25',hour:13}))).status).toBe(400);
   });
 
   it("serializes concurrent replacements across server instances without mixed child sets or inflated counts", async () => {
