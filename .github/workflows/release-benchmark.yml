@@ -212,6 +212,7 @@ jobs:
         persist-credentials: false
     - run: sudo apt-get update && sudo apt-get install -y rpm fakeroot libevdev-dev
       if: ${{ runner.os == 'Linux' }}
+      working-directory: ${{ github.workspace }}
     - uses: ./harness/.github/actions/ci-benchmark-setup
       with:
         ref: ${{ inputs.baseline_ref || '947552e70dbbc6b87c2a621048cfb021304b331e' }}
@@ -279,6 +280,7 @@ jobs:
         persist-credentials: false
     - run: sudo apt-get update && sudo apt-get install -y rpm fakeroot libevdev-dev
       if: ${{ runner.os == 'Linux' }}
+      working-directory: ${{ github.workspace }}
     - uses: ./harness/.github/actions/ci-benchmark-setup
       with:
         ref: ${{ github.sha }}
