@@ -144,7 +144,7 @@ function runtimeDaemonEnv(deps: RuntimeDaemonConfigDeps): NodeJS.ProcessEnv {
     ...(githubClientId ? { APP_GITHUB_CLIENT_ID: githubClientId } : {}),
     ...(gitlabClientId ? { APP_GITLAB_CLIENT_ID: gitlabClientId } : {}),
     ...(linearClientId ? { APP_LINEAR_CLIENT_ID: linearClientId } : {}),
-    ...(telemetryEndpoint ? { APP_TELEMETRY_ENDPOINT: telemetryEndpoint } : {}),
+    ...(telemetryEndpoint !== undefined ? { APP_TELEMETRY_ENDPOINT: telemetryEndpoint } : {}),
   };
 }
 

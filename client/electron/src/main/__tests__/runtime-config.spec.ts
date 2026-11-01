@@ -177,7 +177,7 @@ describe('runtime config', () => {
     const deps = { env: { APP_BACKEND_COMMAND: 'node', APP_TELEMETRY_ENDPOINT: configured }, homedir: () => '/test/home' };
     for (const command of [runtimeDaemonCommand(deps), runtimeDaemonServeCommand(deps)]) {
       expect(command).not.toBeNull();
-      if (configured?.trim()) expect(command!.env.APP_TELEMETRY_ENDPOINT).toBe(configured.trim());
+      if (configured !== undefined) expect(command!.env.APP_TELEMETRY_ENDPOINT).toBe(configured.trim());
       else expect(command!.env).not.toHaveProperty('APP_TELEMETRY_ENDPOINT');
     }
   });

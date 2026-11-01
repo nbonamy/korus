@@ -230,6 +230,7 @@ vi.mock('../connections/ssh-connections', () => ({
 }));
 
 vi.mock('../runtime-config', () => ({
+  configuredTelemetryEndpoint: (runtimeValue?: string) => runtimeValue,
   runtimeGitHubOAuthClientId: mocks.runtimeGitHubOAuthClientId,
 }));
 
@@ -425,6 +426,7 @@ describe('daemon runtime', () => {
   });
 
   it('owns exactly one local uploader and delegates consent, activity, sealed preview and shutdown', async () => {
+    vi.stubEnv('APP_TELEMETRY_ENDPOINT', 'https://runtime.example/v1/telemetry/daily');
     const directory = await mkdtemp(path.join(tmpdir(), 'runtime-local-services-'));
     mocks.backendHomeDir.mockReturnValue(directory);
     let runtime: Awaited<ReturnType<typeof createDaemonRuntime>> | undefined;
@@ -436,6 +438,7 @@ describe('daemon runtime', () => {
       await uploadTask.run();
       expect(mocks.uploadFlush).toHaveBeenCalledTimes(1);
       const input = mocks.uploadOpen.mock.calls[0]![0];
+      expect(input.endpoint).toBe('https://runtime.example/v1/telemetry/daily');
       const server = mocks.serverOptions[0] as { telemetryActivity: {activity(): Promise<void>}; telemetryConsent: import('../telemetry/consent-service').TelemetryConsentService };
       expect(input.consent()).toStrictEqual(server.telemetryConsent.current());
       await server.telemetryConsent.change('enable');
@@ -453,6 +456,7 @@ describe('daemon runtime', () => {
     } finally {
       await runtime?.stop();
       await rm(directory, { recursive: true, force: true });
+      vi.unstubAllEnvs();
     }
   });
 

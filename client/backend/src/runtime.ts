@@ -34,7 +34,7 @@ import { AutomationRunner } from './automations/runner';
 import { RuntimeScheduler } from './scheduling/runtime-scheduler';
 import { AppMcpService } from './mcp/service';
 import { HostedMcpGateway } from './mcp/hosted-mcp-gateway';
-import { runtimeGitHubOAuthClientId, runtimeGitLabOAuthClientId, runtimeLinearOAuthSettings } from './runtime-config';
+import { configuredTelemetryEndpoint, runtimeGitHubOAuthClientId, runtimeGitLabOAuthClientId, runtimeLinearOAuthSettings } from './runtime-config';
 import { loadRequirements } from './requirements';
 import { LinearWorkProviderDriver } from './work-integrations/linear-driver';
 import { AppBackendServer } from './server';
@@ -170,7 +170,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     telemetryUpload = await TelemetryUploadService.open({
       file: path.join(backendHomeDir(), 'telemetry-delivery.json'),
       consent: () => telemetryConsent.current(), usage, version: options.version, platform: process.platform,
-      endpoint: process.env.APP_TELEMETRY_ENDPOINT,
+      endpoint: configuredTelemetryEndpoint(process.env.APP_TELEMETRY_ENDPOINT),
       foreground: async () => (await options.requestClient<{ focused: boolean }>(backendMethods.clientFocusGet, {})).focused === true,
     });
   }

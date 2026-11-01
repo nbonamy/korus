@@ -314,9 +314,10 @@ review the intended image and console build, supply the external inputs in
   requests reveal no metrics, anonymous writes cannot read, and database/read
   services cannot be reached directly from the public network.
 - Verify HTTPS routing and exact console-origin rules using privately supplied
-  host configuration. The desktop's `APP_TELEMETRY_ENDPOINT` has no tracked
-  default; keep it absent until activation is approved. The console build uses a
-  relative authenticated route and contains no operator credential.
+  host configuration. Desktop releases embed the `APP_TELEMETRY_ENDPOINT` build
+  secret as a public default; keep it absent until activation is approved. A runtime
+  value overrides the bundled endpoint, and an explicitly blank value disables it.
+  The console build uses a relative authenticated route and contains no operator credential.
 - Inspect effective collector, PostgreSQL, proxy, TLS edge and every upstream
   CDN/WAF/security/access/crash-support logging path, including external copies
   and backups. Prove the telemetry route retains no connection IP, request

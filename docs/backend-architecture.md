@@ -1177,8 +1177,10 @@ pending reports retry their original bytes. After acknowledgment, a changed
 hourly projection replaces that bucket's totals; unchanged projections are skipped. Expired activity is discarded even when it ages out during a ledger read.
 Corrupt state fails closed rather than reconstructing already-sealed history.
 
-No configured `APP_TELEMETRY_ENDPOINT` means no requests, discovery or health
-checks. Its value is supplied outside Git; HTTPS is required except for explicit
+Desktop release builds embed `APP_TELEMETRY_ENDPOINT` from the build environment
+as a public fallback in the daemon bundle. A runtime value overrides it; an
+explicitly blank runtime value disables it. With neither a runtime value nor a
+bundled endpoint, there are no requests, discovery or health checks. Its value is supplied outside Git; HTTPS is required except for explicit
 loopback HTTP test receivers. Requests have a ten-second deadline, no credentials
 or provider headers, and no redirect following. Network failures, 408, 429 and 5xx
 retry with bounded jittered backoff and a capped Retry-After; other responses end

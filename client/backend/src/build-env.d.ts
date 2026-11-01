@@ -4,3 +4,5 @@ declare const __APP_LINEAR_CLIENT_ID__: string | undefined;
 declare const __APP_COMPANION_RELAY__: { origin: string; peerId: string } | undefined;
 
 declare const __APP_GITLAB_CLIENT_ID__: string | undefined;
+
+declare const __APP_TELEMETRY_ENDPOINT__: string | undefined;
