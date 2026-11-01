@@ -91,7 +91,8 @@ Rules of thumb:
   when they add product semantics.
 - Use `shared/use-collapsible-pane-resize` for collapsible pane drags. Keep the
   gesture owner mounted when its pane closes so the same drag can reopen it;
-  callers own visibility, width constraints and the restored width.
+  callers own visibility, width constraints and the restored width. Split dividers
+  configure the opposite pane on the same gesture rather than adding a second handler.
 
 ### Conversation Panes
 
@@ -170,6 +171,7 @@ runs independently of loaded tree nodes, so an unopened directory remains search
   Mission-owned workers stay out of the global agent sidebar.
   Conversation selection is remembered per Mission in client-local storage and
   falls back to the Mission lead when the selected worker is unavailable.
+  Pane zoom is also remembered per Mission in client-local storage.
   Mission previews reuse workspace surfaces inside a modal instead of consuming
   workspace columns. Agent Markdown requests share one replaceable pending request per Mission.
   Pending requests do not select an agent or alter the workspace layout. Native

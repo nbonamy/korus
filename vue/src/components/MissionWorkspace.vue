@@ -23,9 +23,10 @@
     <div
       ref="workspaceBody"
       class="mission-workspace__body workspace-body"
-      :class="{ 'mission-workspace__body--conversation-only': conversationOnly || expandedPane === 'conversation', 'mission-workspace__body--workbench-only': !conversationOnly && expandedPane === 'workbench', 'mission-workspace__body--resizing': chatResize }"
+      :class="{ 'mission-workspace__body--conversation-only': conversationOnly || expandedPane === 'conversation', 'mission-workspace__body--resizing': chatResize }"
       :style="chatWidth === null ? undefined : { '--mission-chat-width': `${chatWidth}px` }"
     >
+      <PaneTransition :enabled="workspaceWidth > 760">
       <main v-show="!conversationOnly && expandedPane !== 'conversation'" class="mission-workspace__workbench">
         <MissionStageRail :mission="mission" :viewed-stage="viewedStage" @view-stage="viewedStage = $event">
           <template #actions>
@@ -160,7 +161,9 @@
           </section>
         </div>
       </main>
+      </PaneTransition>
 
+      <PaneTransition :enabled="workspaceWidth > 760">
       <MissionConversationRail
         v-show="conversationOnly || expandedPane !== 'workbench'"
         v-model:selected-agent-id="conversationAgentId"
@@ -186,6 +189,7 @@
         </template>
         <template #conversation="{ agentId }"><slot name="conversation" :agent-id="agentId" /></template>
       </MissionConversationRail>
+      </PaneTransition>
       <div
         v-show="!conversationOnly && !expandedPane"
         class="mission-workspace__chat-resizer"
@@ -197,10 +201,6 @@
         :aria-valuenow="Math.round(effectiveChatWidth)"
         tabindex="0"
         @pointerdown="startChatResize"
-        @pointermove="moveChatResize"
-        @pointerup="endChatResize"
-        @pointercancel="endChatResize"
-        @lostpointercapture="stopChatResize"
         @keydown.left.prevent="resizeChat(effectiveChatWidth + 16)"
         @keydown.right.prevent="resizeChat(effectiveChatWidth - 16)"
         @keydown.home.prevent="resizeChat(300)"
@@ -264,6 +264,8 @@ import FormDialog from '../shared/dialog/FormDialog.vue';
 import MarkdownPanel from './MarkdownPanel.vue';
 import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import WorkspaceHeader from '../shared/WorkspaceHeader.vue';
+import PaneTransition from '../shared/PaneTransition.vue';
+import { useCollapsiblePaneResize } from '../shared/use-collapsible-pane-resize';
 import MissionCostMenu from './MissionCostMenu.vue';
 import MissionConversationRail from './MissionConversationRail.vue';
 import MissionImplementationBoard from './MissionImplementationBoard.vue';
@@ -302,7 +304,26 @@ const emit = defineEmits<{
   'open-worktree': [request: MissionWorkspaceOpenRequest];
 }>();
 const { t } = useI18n();
-const expandedPane = ref<'workbench' | 'conversation' | null>(null);
+type ExpandedPane = 'workbench' | 'conversation' | null;
+const zoomStorageKey = (id: string) => `app.missionExpandedPane.${id}`;
+function readExpandedPane(): ExpandedPane {
+  try {
+    const saved = window.localStorage.getItem(zoomStorageKey(props.mission.id));
+    return saved === 'workbench' || saved === 'conversation' ? saved : null;
+  } catch { return null; }
+}
+const paneZoom = ref<ExpandedPane>(readExpandedPane());
+const expandedPane = computed({
+  get: () => paneZoom.value,
+  set: (pane: ExpandedPane) => {
+    paneZoom.value = pane;
+    try {
+      const key = zoomStorageKey(props.mission.id);
+      if (pane) window.localStorage.setItem(key, pane);
+      else window.localStorage.removeItem(key);
+    } catch { /* Keep zoom available when local storage is unavailable. */ }
+  },
+});
 function togglePane(pane: 'workbench' | 'conversation'): void {
   stopChatResize();
   expandedPane.value = expandedPane.value === pane ? null : pane;
@@ -314,7 +335,7 @@ const chatWidth = ref<number | null>(readChatWidth());
 const maximumChatWidth = computed(() => Math.max(300, workspaceWidth.value - 360));
 const effectiveChatWidth = computed(() => Math.min(maximumChatWidth.value,
   Math.max(300, chatWidth.value ?? workspaceWidth.value * 0.4)));
-const chatResize = ref<{ pointerId: number; target: HTMLElement; x: number; width: number } | null>(null);
+const { resizing: chatResize, start: startPaneResize, stop: stopChatResize } = useCollapsiblePaneResize();
 let workspaceObserver: ResizeObserver | undefined;
 
 function readChatWidth(): number | null {
@@ -331,25 +352,21 @@ function resizeChat(width: number, save = true): void {
   }
 }
 function startChatResize(event: PointerEvent): void {
-  if (event.button !== 0 || !(event.currentTarget instanceof HTMLElement)) return;
-  event.preventDefault();
   workspaceWidth.value = workspaceBody.value?.getBoundingClientRect().width ?? 0;
-  chatResize.value = { pointerId: event.pointerId, target: event.currentTarget, x: event.clientX, width: effectiveChatWidth.value };
-  event.currentTarget.setPointerCapture?.(event.pointerId);
-}
-function moveChatResize(event: PointerEvent): void {
-  const drag = chatResize.value;
-  if (drag?.pointerId === event.pointerId) resizeChat(drag.width + drag.x - event.clientX, false);
-}
-function endChatResize(event: PointerEvent): void {
-  if (chatResize.value?.pointerId === event.pointerId) stopChatResize();
-}
-function stopChatResize(): void {
-  const drag = chatResize.value;
-  chatResize.value = null;
-  if (!drag) return;
-  if (drag.target.hasPointerCapture?.(drag.pointerId)) drag.target.releasePointerCapture(drag.pointerId);
-  if (chatWidth.value !== null) resizeChat(chatWidth.value);
+  const width = effectiveChatWidth.value;
+  const startX = event.clientX;
+  startPaneResize(event, {
+    minimum: 300,
+    width,
+    widthAt: move => width + startX - move.clientX,
+    resize: value => resizeChat(value, false),
+    setOpen: open => { expandedPane.value = open ? null : 'workbench'; },
+    opposite: {
+      maximum: maximumChatWidth.value,
+      setOpen: open => { expandedPane.value = open ? null : 'conversation'; },
+    },
+    onEnd: () => { if (chatWidth.value !== null) resizeChat(chatWidth.value); },
+  });
 }
 onMounted(() => {
   const measure = () => { workspaceWidth.value = workspaceBody.value?.getBoundingClientRect().width ?? 0; };
@@ -359,7 +376,11 @@ onMounted(() => {
     workspaceObserver.observe(workspaceBody.value);
   }
 });
-watch(() => [props.mission.id, props.conversationOnly], () => {
+watch(() => props.mission.id, () => {
+  stopChatResize();
+  paneZoom.value = readExpandedPane();
+});
+watch(() => props.conversationOnly, () => {
   stopChatResize();
   expandedPane.value = null;
 });

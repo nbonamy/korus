@@ -54,8 +54,15 @@
   --mission-chat-width: 40%;
   --mission-chat-size: clamp(300px, var(--mission-chat-width), calc(100% - 360px));
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--mission-chat-size);
+  display: flex;
+}
+
+.mission-workspace__body > :deep(.mission-conversation-rail) {
+  flex: 1 1 var(--mission-chat-size);
+}
+
+.mission-workspace__body--conversation-only > :deep(.mission-conversation-rail) {
+  display: flex;
 }
 
 .mission-workspace__body--resizing {
@@ -89,20 +96,6 @@
   background: var(--color-resize-handle-hover);
 }
 
-.mission-workspace__body--conversation-only {
-  display: flex;
-  flex-direction: column;
-}
-
-.mission-workspace__body--conversation-only :deep(.mission-conversation-rail) {
-  display: flex;
-  flex: 1;
-}
-
-.mission-workspace__body--workbench-only {
-  grid-template-columns: minmax(0, 1fr);
-}
-
 .mission-workspace__expand {
   flex: 0 0 auto;
   align-self: center;
@@ -122,6 +115,7 @@
 
 .mission-workspace__workbench {
   display: flex;
+  flex: 1 1 calc(100% - var(--mission-chat-size));
   min-width: 0;
   min-height: 0;
   flex-direction: column;
@@ -320,6 +314,7 @@
 
 @container (max-width: 760px) {
   .mission-workspace__body {
+    display: grid;
     grid-template-columns: minmax(0, 1fr);
   }
   .mission-workspace__chat-resizer {
@@ -334,8 +329,15 @@
     flex-direction: column;
   }
   .mission-workspace__workbench {
+    flex: 0 1 auto;
     min-height: auto;
     overflow: visible;
+  }
+  .mission-workspace__body > :deep(.mission-conversation-rail) {
+    flex: 0 1 auto;
+  }
+  .mission-workspace__body--conversation-only > :deep(.mission-conversation-rail) {
+    flex: 1;
   }
   .mission-workspace__workbench-scroll {
     overflow: visible;

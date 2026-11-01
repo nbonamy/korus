@@ -86,6 +86,9 @@ describe('MissionWorkspace', () => {
     const conversation = wrapper.get('.mission-conversation-rail');
     const conversationContent = wrapper.get('.conversation-slot').element;
     const divider = wrapper.get('[role="separator"]');
+    vi.spyOn(wrapper.get('.mission-workspace__body').element, 'getBoundingClientRect')
+      .mockReturnValue({ width: 1200 } as DOMRect);
+    const pointer = (type: string, clientX: number) => new PointerEvent(type, { bubbles: true, pointerId: 1, button: 0, clientX });
 
     for (const pane of ['workbench', 'conversation']) {
       const toggle = wrapper.get(`[aria-label="Expand ${pane}"]`);
@@ -103,11 +106,47 @@ describe('MissionWorkspace', () => {
       expect(wrapper.get('.mission-workspace__body').attributes('style')).toContain('--mission-chat-width: 420px');
       expect(wrapper.get('.conversation-slot').element).toBe(conversationContent);
       expect(wrapper.get(`[aria-label="Expand ${pane}"]`).attributes('aria-pressed')).toBe('false');
+
+      // Either end of the divider enters the same zoom state as its button.
+      const collapsedX = pane === 'workbench' ? 930 : 330;
+      divider.element.dispatchEvent(pointer('pointerdown', 780));
+      window.dispatchEvent(pointer('pointermove', collapsedX));
+      await flushPromises();
+      expect(workbench.isVisible()).toBe(pane === 'workbench');
+      expect(conversation.isVisible()).toBe(pane === 'conversation');
+      if (pane === 'workbench') {
+        await wrapper.setProps({ mission: { ...wrapper.props('mission'), revision: wrapper.props('mission').revision + 1 } });
+        expect(conversation.isVisible()).toBe(false);
+      }
+      window.dispatchEvent(pointer('pointermove', pane === 'workbench' ? 910 : 350));
+      await flushPromises();
+      expect(divider.isVisible()).toBe(false);
+      window.dispatchEvent(pointer('pointermove', 780));
+      await flushPromises();
+      expect(workbench.isVisible()).toBe(true);
+      expect(conversation.isVisible()).toBe(true);
+      window.dispatchEvent(pointer('pointermove', collapsedX));
+      window.dispatchEvent(pointer('pointerup', collapsedX));
+      await flushPromises();
+      await wrapper.get('[aria-label="Restore split view"]').trigger('click');
+      expect(wrapper.get('.mission-workspace__body').attributes('style')).toContain('--mission-chat-width: 420px');
+      expect(window.localStorage.getItem('app.missionChatWidth')).toBe('420');
+      expect(wrapper.get('.conversation-slot').element).toBe(conversationContent);
     }
+    divider.element.dispatchEvent(pointer('pointerdown', 780));
+    window.dispatchEvent(pointer('pointermove', 700));
+    window.dispatchEvent(pointer('pointerup', 700));
+    await flushPromises();
+    expect(window.localStorage.getItem('app.missionChatWidth')).toBe('500');
+    window.dispatchEvent(pointer('pointermove', 930));
+    await flushPromises();
+    expect(conversation.isVisible()).toBe(true);
   });
 
-  it('resets expansion when changing Missions or opening an external workspace preview', async () => {
-    const wrapper = mountWorkspace(missionWithRun('running'), { attachTo: document.body });
+  it('remembers zoom per Mission across navigation and remounts, with preview resetting the current layout', async () => {
+    const first = missionWithRun('running');
+    const second = missionWithRun('running');
+    let wrapper = mountWorkspace(first, { attachTo: document.body });
     await wrapper.get('[aria-label="Expand workbench"]').trigger('click');
     await wrapper.setProps({ conversationOnly: true });
     expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(false);
@@ -117,9 +156,23 @@ describe('MissionWorkspace', () => {
     expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(true);
     expect(wrapper.get('.mission-conversation-rail').isVisible()).toBe(true);
     await wrapper.get('[aria-label="Expand conversation"]').trigger('click');
-    await wrapper.setProps({ mission: missionWithRun('running') });
+    await wrapper.setProps({ mission: second });
     expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(true);
     expect(wrapper.get('.mission-conversation-rail').isVisible()).toBe(true);
+    await wrapper.get('[aria-label="Expand workbench"]').trigger('click');
+    await wrapper.setProps({ mission: first });
+    expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(false);
+    expect(wrapper.get('[aria-label="Restore split view"]').attributes('aria-pressed')).toBe('true');
+    wrapper.unmount();
+    wrapper = mountWorkspace(first, { attachTo: document.body });
+    expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(false);
+    await wrapper.get('[aria-label="Restore split view"]').trigger('click');
+    wrapper.unmount();
+    wrapper = mountWorkspace(first, { attachTo: document.body });
+    expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(true);
+    expect(wrapper.get('.mission-conversation-rail').isVisible()).toBe(true);
+    await wrapper.setProps({ mission: second });
+    expect(wrapper.get('.mission-conversation-rail').isVisible()).toBe(false);
   });
 
   it('remembers each mission conversation after reopening and falls back to the lead when its worker disappears', async () => {
