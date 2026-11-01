@@ -126,6 +126,7 @@
       @reorder-repositories="$emit('reorder-repositories', $event)"
       @reorder-teams="$emit('reorder-teams', $event)"
       @resize-sidebar="setAgentSidebarWidth"
+      @start-sidebar-resize="startAgentSidebarResize"
       @restart-agent="$emit('restart-agent', $event)"
       @resume-session="openResumeSession"
       @select-agent="selectAgentFromShell"
@@ -765,6 +766,7 @@ import { useRepositorySession } from './use-repository-session';
 import { useDocumentSaveAs } from './use-document-save-as';
 import { useDocumentWorkspaces } from './use-document-workspaces';
 import { useRightWorkspaceState } from './use-right-workspace-state';
+import { useCollapsiblePaneResize } from '../shared/use-collapsible-pane-resize';
 import type { RightWorkspaceTab } from './right-workspace';
 import { useImageAnnotation } from './use-image-annotation';
 import { useChatTextAnnotations } from './use-chat-text-annotations';
@@ -1169,6 +1171,18 @@ const codexResourceSharingBlocked = computed(() => props.snapshot.agents.some((a
 const agentSidebarMinWidth = 200;
 const agentSidebarMaxWidth = 420;
 const agentSidebarWidth = ref(260);
+const { start: startSidebarResize } = useCollapsiblePaneResize();
+function startAgentSidebarResize(event: PointerEvent): void {
+  const width = agentSidebarWidth.value;
+  const startX = event.clientX;
+  startSidebarResize(event, {
+    minimum: agentSidebarMinWidth,
+    width,
+    widthAt: move => width + move.clientX - startX,
+    resize: setAgentSidebarWidth,
+    setOpen: open => { if (open) expandSidebar(); else collapseSidebar(); },
+  });
+}
 const missionSurfaceStorageKey = 'app.activeMissionId';
 function rememberedMissionId(): string | null {
   try {

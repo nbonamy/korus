@@ -367,6 +367,20 @@ describe('ConversationPane', () => {
     await flushPromises();
     expect(removePromptDraft).toHaveBeenCalledTimes(1);
 
+    for (const keep of [true, false]) {
+      composerState.value = { text: 'Before ', selectionStart: 7, selectionEnd: 7 };
+      await nextTick();
+      await editor.trigger('keydown', { key: 'V', metaKey: true, shiftKey: true });
+      await nextTick();
+      await wrapper.get('.saved-prompt-draft-picker__text').trigger('click', { shiftKey: keep });
+      await flushPromises();
+      expect(composerState.value.text).toBe('Before then');
+      expect(composerState.value.content).toContainEqual(mention);
+      expect(removePromptDraft).toHaveBeenCalledTimes(keep ? 1 : 2);
+      expect(wrapper.find('.saved-prompt-draft-picker').exists()).toBe(false);
+      expect(document.activeElement).toBe(editor.element);
+    }
+
     await editor.trigger('keydown', { key: 'V', metaKey: true, shiftKey: true });
     await nextTick();
     expect(wrapper.find('.saved-prompt-draft-picker').exists()).toBe(true);

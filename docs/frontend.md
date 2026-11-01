@@ -89,6 +89,9 @@ Rules of thumb:
   state machine, reusable behavior or test seam; keep styles scoped unless a token,
   reset, shell rule or shared primitive is intentionally global; keep wrappers only
   when they add product semantics.
+- Use `shared/use-collapsible-pane-resize` for collapsible pane drags. Keep the
+  gesture owner mounted when its pane closes so the same drag can reopen it;
+  callers own visibility, width constraints and the restored width.
 
 ### Conversation Panes
 
@@ -191,6 +194,7 @@ Search by behavior first.
 | Local or remote host selection | `HostSelector` | `vue/src/components/` |
 | Repository image or emoji mark | `RepositoryIcon` (square, borderless avatar presentation) | `vue/src/components/` |
 | Reopen collapsed sidebar | `SidebarExpandButton` | `vue/src/shared/` |
+| Animate a pane collapsing or expanding | `PaneTransition` (wrap a single `v-if` or `v-show` pane) | `vue/src/shared/` |
 | Workspace header / body containment | `WorkspaceHeader`, `.workspace-header__title`, `.workspace-body` | `vue/src/shared/`, `styles/base.css` |
 | Dialog chrome and footer actions | `.app-dialog`, `.app-button` | `vue/src/styles/base.css` |
 | Form dialogs | `FormDialog` | `vue/src/shared/dialog/` |

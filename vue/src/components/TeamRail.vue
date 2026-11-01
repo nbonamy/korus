@@ -126,6 +126,7 @@
           :enabled-backends="enabledBackends"
           :backend-rate-limits="backendRateLimits"
           @open-settings="emit('open-settings')"
+          @open-analytics="emit('open-analytics')"
           @open-whats-new="emit('open-whats-new')"
           @quit="emit('quit')"
         />
@@ -183,6 +184,7 @@ const emit = defineEmits<{
   'edit-team': [teamId: string];
   'new-team': [];
   'open-settings': [];
+  'open-analytics': [];
   'open-whats-new': [];
   quit: [];
   'reorder-teams': [input: ReorderTeamsInput];

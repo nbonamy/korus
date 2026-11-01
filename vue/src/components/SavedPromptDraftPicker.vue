@@ -26,7 +26,7 @@
         :aria-current="index === activeIndex ? 'true' : undefined"
         @mouseenter="activeIndex = index"
       >
-        <button class="saved-prompt-draft-picker__text" type="button" :title="draft.text" @click="emit('select', { id: draft.id, keep: false })">
+        <button class="saved-prompt-draft-picker__text" type="button" :title="draft.text" @click="emit('select', { id: draft.id, keep: $event.shiftKey })">
           {{ preview(draft.text) }}
         </button>
         <button class="saved-prompt-draft-picker__action" type="button" :aria-label="t('chat.savedDrafts.delete')" :title="t('chat.savedDrafts.delete')" @click="emit('delete', draft.id)">

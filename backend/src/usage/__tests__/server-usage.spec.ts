@@ -363,6 +363,27 @@ it("queries provider observations through the app contract and unsubscribes on s
     observe({ ...event, phase: "started" });
     observe({ ...event, phase: "completed", tokens: { input: 10, output: 5, cacheRead: 0, cacheWrite: null, total: 15 } });
     expect(await call("usage/get", { filter: { group: "provider" } })).toMatchObject({ result: { rows: [{ label: "codex", started: 1, completed: 1, tokens: { total: 15 } }] } });
+    for (const serviceTier of ['normal', 'priority']) {
+      const turn = { ...event, turnId: serviceTier, model: 'gpt-6.1-sol', serviceTier };
+      observe({ ...turn, phase: 'started' });
+      observe({ ...turn, phase: 'completed', tokens: { input: 10, output: 100, cacheRead: 0, cacheWrite: null },
+        timing: { activeMs: serviceTier === 'priority' ? 6000 : 11000, ttftMs: 1000 } });
+    }
+    const result = await call('usage/get', { filter: { group: 'model' } });
+    expect(result).toMatchObject({ result: {
+      rows: [
+        { label: 'Unknown', modelVariant: { model: null, serviceTier: null }, started: 1 },
+        { key: '["gpt-6.1-sol","standard"]', label: 'gpt-6.1-sol', modelVariant: { model: 'gpt-6.1-sol', serviceTier: 'standard' },
+          started: 1, speed: { outputTokens: 100, generationMs: 10000 } },
+        { key: '["gpt-6.1-sol","fast"]', label: 'gpt-6.1-sol', modelVariant: { model: 'gpt-6.1-sol', serviceTier: 'fast' },
+          started: 1, speed: { outputTokens: 100, generationMs: 5000 } },
+      ],
+      daily: [{ groups: [
+        { modelVariant: { model: null, serviceTier: null } },
+        { modelVariant: { model: 'gpt-6.1-sol', serviceTier: 'standard' } },
+        { modelVariant: { model: 'gpt-6.1-sol', serviceTier: 'fast' } },
+      ] }],
+    } });
   } finally {
     await server.close();
     expect(unsubscribe).toHaveBeenCalledOnce();

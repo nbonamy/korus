@@ -50,6 +50,31 @@ export type UsageRecord = Omit<ExecutionObservation, "phase"> & {
   teamId: string | null;
   repository: string | null;
 };
+/** A model and recorded execution/served-request tier, without changing the provider model ID. */
+export type UsageModelVariant = { model: string | null; serviceTier: string | null };
+export function usageServiceTier(
+  provider: AgentBackend | ApiPricingProvider | null,
+  tier: string | null | undefined,
+): string | null {
+  if (tier == null) return null;
+  if (["normal", "default", "standard"].includes(tier)) return "standard";
+  return (provider === "codex" || provider === "openai") && tier === "priority" ? "fast" : tier;
+}
+/** Stable opaque identity; the provider's model ID remains unchanged for pricing. */
+export function usageModelVariantKey(variant: UsageModelVariant): string {
+  return JSON.stringify([variant.model, variant.serviceTier]);
+}
+export function requestUsageModelVariant(event: RequestObservation): UsageModelVariant {
+  const tier = event.apiProvider === "anthropic" && event.reportedServiceTier === "standard" && event.reportedMode === "fast"
+    ? "fast"
+    : event.reportedServiceTier
+      ?? (event.apiProvider === "openai" && event.reportedMode === "fast" ? "fast" : null)
+      ?? event.defaultServiceTier?.tier;
+  return {
+    model: event.model,
+    serviceTier: usageServiceTier(event.apiProvider ?? event.provider, tier),
+  };
+}
 export type UsageFilter = {
   from?: string;
   to?: string;
@@ -90,6 +115,8 @@ export type UsageSummary = {
     /** Same grouping as rows, retaining each day's observed contributions. */
     groups?: {
       label: string;
+      key?: string;
+      modelVariant?: UsageModelVariant;
       started: number;
       tokens: Consumption | null;
       measuredTurns: number;
@@ -101,6 +128,8 @@ export type UsageSummary = {
   retainedSince: number;
   rows: {
     label: string;
+    key?: string;
+    modelVariant?: UsageModelVariant;
     started: number;
     completed: number;
     failed: number;

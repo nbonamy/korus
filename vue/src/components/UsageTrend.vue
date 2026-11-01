@@ -173,6 +173,7 @@ import {
   niceScale,
   smoothPath,
   sortUsageValues,
+  usageRowKey,
   type UsageMeasure,
   type UsageSeries,
 } from "./usage-chart";
@@ -231,7 +232,7 @@ const observed = computed(() =>
   props.daily.some((row) =>
     row.groups?.some(
       (group) =>
-        props.series.some((series) => series.key === group.label) &&
+        props.series.some((series) => series.key === usageRowKey(group)) &&
         valueOf(group) !== null,
     ),
   ),
@@ -248,7 +249,7 @@ const values = computed(() => {
       row = days.get(day);
     let top = 0;
     const segments = props.series.flatMap((series) => {
-      const group = row?.groups?.find((group) => group.label === series.key);
+      const group = row?.groups?.find((group) => usageRowKey(group) === series.key);
       const value = group ? valueOf(group) : null;
       if (value == null || (!['cost', 'ratio'].includes(props.measure) && value === 0)) return [];
       top = isRate.value ? Math.max(top, value) : top + value;
@@ -330,7 +331,7 @@ const layers = computed(() => {
       if (observed !== undefined) return observed;
       // No activity in a priced day is zero; an explicitly unpriced group stays unknown.
       if (props.measure === "cost")
-        return series.value !== null && row.cost?.usd != null && !row.groups?.some(group => group.label === series.key) ? 0 : null;
+        return series.value !== null && row.cost?.usd != null && !row.groups?.some(group => usageRowKey(group) === series.key) ? 0 : null;
       return props.measure === "ratio" ? null : 0;
     });
     if (

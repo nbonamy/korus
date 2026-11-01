@@ -214,7 +214,6 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     '--agent-sidebar-min-width': `${minWidth.value}px`,
     '--agent-sidebar-max-width': `${maxWidth.value}px`,
   }));
-  let resizeStart: { pointerId: number; clientX: number; width: number } | null = null;
 
   function clampWidth(width: number): number {
     return Math.min(Math.max(Math.round(width), minWidth.value), maxWidth.value);
@@ -493,37 +492,6 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     contextMenuAgentId.value = null;
   }
 
-  function resizeHandle(event: PointerEvent): HTMLElement | null {
-    return event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-  }
-
-  function onResizePointerDown(event: PointerEvent): void {
-    event.preventDefault();
-    resizeStart = {
-      pointerId: event.pointerId,
-      clientX: event.clientX,
-      width: currentWidth.value,
-    };
-    resizeHandle(event)?.setPointerCapture?.(event.pointerId);
-  }
-
-  function onResizePointerMove(event: PointerEvent): void {
-    if (!resizeStart || event.pointerId !== resizeStart.pointerId) {
-      return;
-    }
-
-    emitResizedWidth(resizeStart.width + event.clientX - resizeStart.clientX);
-  }
-
-  function onResizePointerEnd(event: PointerEvent): void {
-    if (!resizeStart || event.pointerId !== resizeStart.pointerId) {
-      return;
-    }
-
-    resizeHandle(event)?.releasePointerCapture?.(event.pointerId);
-    resizeStart = null;
-  }
-
   return reactive({
     ...toRefs(props),
     sidebarStyle,
@@ -593,9 +561,6 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     minWidth,
     maxWidth,
     currentWidth,
-    onResizePointerDown,
-    onResizePointerMove,
-    onResizePointerEnd,
     emitResizedWidth,
     resizeStep,
     organizationMode,

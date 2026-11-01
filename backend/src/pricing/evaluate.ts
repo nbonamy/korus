@@ -138,7 +138,8 @@ export function priceRequest(
         ? "fast"
         : "standard"
       : null) ??
-    request.reportedServiceTier ??
+    (request.apiProvider === "openai" && request.reportedServiceTier === "fast"
+      ? "priority" : request.reportedServiceTier) ??
     mode?.service_tier ??
     request.defaultServiceTier?.tier ??
     null;
@@ -359,7 +360,7 @@ export function priceExecution(
       pricingContext: { context: null, region: claude ? "global" : null },
       requestedServiceTier: record.serviceTier ?? null,
       reportedServiceTier: tier,
-      reportedMode: record.serviceTier === "fast" ? "fast" : null,
+      reportedMode: claude && record.serviceTier === "fast" ? "fast" : null,
     },
     history,
     { ignoreContextPremiums: true },

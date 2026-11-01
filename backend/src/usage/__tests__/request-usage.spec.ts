@@ -57,6 +57,82 @@ async function start(ledger: UsageLedger, event = parent) {
   await ledger.observe(event, attribution);
 }
 
+it("keeps service-tier performance and actual request prices separate across corrections and restart", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'usage-model-tiers-'));
+  const file = path.join(dir, 'usage.sqlite');
+  let ledger = new UsageLedger(file, () => at + 60000);
+  const tokens = { input: 1000, output: 100, cacheRead: 500, cacheWrite: null, reasoning: 0, total: 1100 };
+  const event = { ...parent, provider: 'codex' as const, model: 'gpt-6.1-sol' };
+  const tiers = ['normal', 'fast', 'priority', 'ultrafast', null];
+  try {
+    await ledger.load();
+    for (const [index, serviceTier] of tiers.entries()) {
+      const turn = { ...event, turnId: String(index), serviceTier };
+      await ledger.observe(turn, attribution);
+      await ledger.observe({ ...turn, phase: 'completed', tokens, serviceTier: 'changed',
+        timing: { activeMs: serviceTier === 'fast' || serviceTier === 'priority' ? 6000 : 11000, ttftMs: 1000 } }, attribution);
+    }
+    expect(ledger.query().cost?.usd).toBe(0.0246);
+    const summary = () => ledger.query({ group: 'model' });
+    const variants = () => summary().rows.map(row => ({ ...row.modelVariant,
+      started: row.started, output: row.tokens?.output, speed: row.speed, usd: row.cost?.usd }));
+    expect(variants()).toStrictEqual([
+      { model: 'gpt-6.1-sol', serviceTier: 'standard', started: 1, output: 100,
+        speed: { turns: 1, outputTokens: 100, generationMs: 10000, ttftMs: 1000, ttftTurns: 1 }, usd: 0.00205 },
+      { model: 'gpt-6.1-sol', serviceTier: 'fast', started: 2, output: 200,
+        speed: { turns: 2, outputTokens: 200, generationMs: 10000, ttftMs: 2000, ttftTurns: 2 }, usd: 0.0082 },
+      { model: 'gpt-6.1-sol', serviceTier: 'ultrafast', started: 1, output: 100,
+        speed: { turns: 1, outputTokens: 100, generationMs: 10000, ttftMs: 1000, ttftTurns: 1 }, usd: 0.0123 },
+      { model: 'gpt-6.1-sol', serviceTier: null, started: 1, output: 100,
+        speed: { turns: 1, outputTokens: 100, generationMs: 10000, ttftMs: 1000, ttftTurns: 1 }, usd: 0.00205 },
+    ]);
+    expect(summary().daily?.[0]?.groups?.map(row => row.modelVariant)).toStrictEqual(
+      summary().rows.map(row => row.modelVariant));
+    // Service tiers remain local Analytics dimensions; telemetry combines the
+    // same execution and served-request evidence into one canonical model row.
+    const project = () => ledger.projectDailyTelemetry({
+      day: '2026-10-15', eligibleFrom: Date.parse('2026-10-15T00:00:00Z'), eligibleUntil: null,
+    });
+    const projected = [{ provider: 'codex', model: 'gpt-6.1-sol', turns: 5,
+      inputTokens: 5000, cachedInputTokens: 2500, outputTokens: 500, estimatedCostUsd: 0.0246,
+      performance: { speedTurns: 5, outputTokens: 500, generationMs: 40000, ttftMs: 5000, ttftTurns: 5 } }];
+    expect(project()).toStrictEqual(projected);
+    const served = (turnId: string, reportedServiceTier: string) => request({
+      provider: 'codex', model: 'gpt-6.1-sol', turnId, apiProvider: 'openai', requestedServiceTier: 'fast', reportedServiceTier,
+      cacheMode: 'implicit', pricingContext: { context: 1000, region: null },
+      tokens: { ...request().tokens, input: tokens.input, output: tokens.output, cacheRead: tokens.cacheRead,
+        cacheWrite: {}, reasoning: 0 },
+    });
+    // OpenAI's served fast alias uses the existing catalog multiplier exactly once.
+    expect(await ledger.observeRequest(served('2', 'fast'))).toBe(true);
+    expect(summary().cost?.usd).toBe(0.0246);
+    // A Fast selection can be served at standard rates: do not charge the requested tier.
+    expect(await ledger.observeRequest(served('1', 'default'))).toBe(true);
+    expect(variants().map(row => [row.serviceTier, row.usd])).toStrictEqual([
+      ['standard', 0.0041], ['fast', 0.0041], ['ultrafast', 0.0123], [null, 0.00205],
+    ]);
+    // Known local estimates can be summed, but these request-bearing turns do
+    // not establish complete request coverage, so the wire price stays unknown.
+    const partialProjection = projected.map(row => ({ ...row, estimatedCostUsd: null }));
+    expect(project()).toStrictEqual(partialProjection);
+    const persisted = summary();
+    await ledger.close();
+    ledger = new UsageLedger(file, () => at + 60000);
+    await ledger.load();
+    expect(summary()).toStrictEqual(persisted);
+    expect(project()).toStrictEqual(partialProjection);
+    await ledger.observe({ ...event, turnId: '0', phase: 'usage', serviceTier: 'fast',
+      tokens: { ...tokens, output: 200, total: 1200 } }, attribution);
+    expect(variants()[0]).toMatchObject({ serviceTier: 'standard', output: 200, usd: 0.0051 });
+    expect(summary().rows.reduce((sum, row) => sum + row.started, 0)).toBe(5);
+    expect(project()).toStrictEqual([{ ...partialProjection[0], outputTokens: 600,
+      performance: { ...projected[0]!.performance, outputTokens: 600 } }]);
+  } finally {
+    await ledger.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 it("prices Terra usage with its published input, cached input and output rates", async () => {
   const launched = Date.parse('2026-10-26T12:00:00Z');
   const ledger = new UsageLedger(':memory:', () => launched);
@@ -82,7 +158,7 @@ it("prices Codex execution counters with cached reads, normal missing tiers and 
     await start(ledger, { ...execution, turnId: 'priority', serviceTier: 'priority' });
     expect(ledger.query().cost).toStrictEqual({ usd: 0.75, coverage: 'complete', requests: 0,
       pricedRequests: 0, unpricedRequests: 0, pricedExecutions: 2, unknownRequestExecutions: 0, reasons: [] });
-    expect(ledger.query({ group: 'model', model: 'gpt-6-sol' }).rows[0]?.cost?.usd).toBe(0.75);
+    expect(ledger.query({ group: 'model', model: 'gpt-6-sol' }).rows.map(row => row.cost?.usd)).toStrictEqual([0.25, 0.5]);
     expect(ledger.query({ apiProvider: 'openai', group: 'apiProvider' }).rows[0]?.cost?.usd).toBe(0.75);
     expect(ledger.query({ apiProvider: 'google' }).cost?.usd).toBeNull();
     await ledger.observe({ ...execution, turnId: 'normal', phase: 'usage', tokens: { ...tokens, output: 2000 } }, attribution);

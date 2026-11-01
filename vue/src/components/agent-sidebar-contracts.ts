@@ -54,6 +54,7 @@ export type AgentSidebarEvents = {
   'reorder-agents': [payload: ReorderAgentsInput];
   'reorder-repositories': [payload: ReorderRepositoriesInput];
   'resize-sidebar': [width: number];
+  'start-sidebar-resize': [event: PointerEvent];
   'resume-session': [agentId: string];
   'restart-agent': [agentId: string];
   'select-agent': [agentId: string];

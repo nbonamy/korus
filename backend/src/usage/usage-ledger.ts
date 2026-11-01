@@ -15,6 +15,10 @@ import {
   type UsageSummary,
   type UsageCostReason,
   type Consumption,
+  type UsageModelVariant,
+  usageServiceTier,
+  usageModelVariantKey,
+  requestUsageModelVariant,
 } from "@workspace/core/usage";
 import { loadPricingHistory } from "../pricing/catalog";
 import type { PricingHistory } from "../pricing/schema";
@@ -472,21 +476,26 @@ export class UsageLedger {
           : null;
         if (filter.apiProvider && filter.apiProvider !== estimatedProvider)
           continue;
+        const modelVariant = !projection && filter.group === "model"
+          ? { model: record.model, serviceTier: usageServiceTier(record.provider, record.serviceTier) }
+          : undefined;
         const label = projection
           ? JSON.stringify([record.provider, telemetryModel(record.model)])
-          : filter.group
-            ? String(
-                filter.group === "apiProvider"
-                  ? "Unknown"
-                  : (record[filter.group] ?? "Unknown"),
-              )
-            : "All";
+          : modelVariant
+            ? usageModelVariantKey(modelVariant)
+            : filter.group
+              ? String(
+                  filter.group === "apiProvider"
+                    ? "Unknown"
+                    : (record[filter.group] ?? "Unknown"),
+                )
+              : "All";
         if (!filter.apiProvider) {
-          this.aggregate(rows, record, label);
+          this.aggregate(rows, record, label, modelVariant);
           this.aggregate(daily, record, dayOf(record.startedAt, filter.timeZone));
           const day = dayOf(record.startedAt, filter.timeZone);
           const groups = dailyGroups.get(day) ?? new Map<string, Bucket>();
-          this.aggregate(groups, record, label);
+          this.aggregate(groups, record, label, modelVariant);
           dailyGroups.set(day, groups);
         }
         if (executionEstimate) {
@@ -500,6 +509,7 @@ export class UsageLedger {
             cost,
             undefined,
             true,
+            modelVariant,
           );
         } else if (record.requestCoverage !== "complete")
           this.aggregateCost(
@@ -511,6 +521,8 @@ export class UsageLedger {
             null,
             cost,
             record.requestCoverageReason ?? undefined,
+            false,
+            modelVariant,
           );
       }
       for (const row of requestRows) {
@@ -530,10 +542,11 @@ export class UsageLedger {
           )
         )
           continue;
+        const modelVariant = !projection && filter.group === "model" ? requestUsageModelVariant(event) : undefined;
         const label = projection
           ? JSON.stringify([parent.provider, telemetryModel(event.model)])
-          : filter.group === "model"
-            ? (event.model ?? "Unknown")
+          : modelVariant
+            ? usageModelVariantKey(modelVariant)
             : filter.group === "apiProvider"
               ? (event.apiProvider ?? "Unknown")
               : filter.group
@@ -547,6 +560,9 @@ export class UsageLedger {
           label,
           priceRequest(event, this.prices),
           cost,
+          undefined,
+          false,
+          modelVariant,
         );
       }
     }
@@ -566,8 +582,10 @@ export class UsageLedger {
           cost: row.cost,
           ...(row.speed ? { speed: row.speed } : {}),
           groups: [...dailyGroups.get(day)!.values()].map(
-            ({ label, started, tokens, measuredTurns, speed, cost }) => ({
+            ({ label, key, modelVariant, started, tokens, measuredTurns, speed, cost }) => ({
               label,
+              ...(key ? { key } : {}),
+              ...(modelVariant ? { modelVariant } : {}),
               started,
               tokens,
               measuredTurns,
@@ -578,11 +596,12 @@ export class UsageLedger {
         })),
     };
   }
-  private bucket(rows: Map<string, Bucket>, label: string): Bucket {
+  private bucket(rows: Map<string, Bucket>, label: string, modelVariant?: UsageModelVariant): Bucket {
     let row = rows.get(label);
     if (!row) {
       row = {
-        label,
+        label: modelVariant ? modelVariant.model ?? "Unknown" : label,
+        ...(modelVariant ? { key: label, modelVariant } : {}),
         started: 0,
         completed: 0,
         failed: 0,
@@ -606,14 +625,15 @@ export class UsageLedger {
     total: NonNullable<UsageSummary["cost"]>,
     unknownReason?: UsageCostReason,
     execution = false,
+    modelVariant?: UsageModelVariant,
   ): void {
     const day = dayOf(at, this.zone);
     const groups = dailyGroups.get(day) ?? new Map<string, Bucket>();
     dailyGroups.set(day, groups);
     for (const bucket of [
-      this.bucket(rows, label),
+      this.bucket(rows, label, modelVariant),
       this.bucket(daily, day),
-      this.bucket(groups, label),
+      this.bucket(groups, label, modelVariant),
     ])
       addCost(bucket.cost!, price, unknownReason, execution);
     addCost(total, price, unknownReason, execution);
@@ -622,8 +642,9 @@ export class UsageLedger {
     rows: Map<string, Bucket>,
     record: UsageRecord,
     label: string,
+    modelVariant?: UsageModelVariant,
   ): void {
-    const row = this.bucket(rows, label);
+    const row = this.bucket(rows, label, modelVariant);
     row.started++;
     if (record.phase === "started") row.inProgress++;
     else row[record.phase]++;

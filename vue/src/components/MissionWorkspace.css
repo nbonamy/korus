@@ -99,6 +99,27 @@
   flex: 1;
 }
 
+.mission-workspace__body--workbench-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.mission-workspace__expand {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-inline: var(--space-2);
+}
+
+.mission-workspace__expand:hover,
+.mission-workspace__expand:focus-visible,
+.mission-workspace__expand[aria-pressed='true'] {
+  color: var(--color-text);
+  background: var(--color-surface-high);
+}
+
+.mission-workspace__expand:focus-visible {
+  outline: none;
+}
+
 .mission-workspace__workbench {
   display: flex;
   min-width: 0;

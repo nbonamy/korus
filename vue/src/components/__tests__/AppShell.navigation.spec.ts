@@ -145,15 +145,35 @@ describe('AppShell navigation and teams', () => {
 
     const resizeHandle = wrapper.get('[aria-label="Resize agent sidebar"]');
     resizeHandle.element.dispatchEvent(pointerEvent('pointerdown', 260));
-    resizeHandle.element.dispatchEvent(pointerEvent('pointermove', 320));
+    window.dispatchEvent(pointerEvent('pointermove', 320));
     await nextTick();
 
     expect(sidebar().attributes('style')).toContain('--agent-sidebar-width: 320px');
-    resizeHandle.element.dispatchEvent(pointerEvent('pointermove', 40));
-    resizeHandle.element.dispatchEvent(pointerEvent('pointerup', 40));
+    window.dispatchEvent(pointerEvent('pointermove', 500));
+    await nextTick();
+    expect(sidebar().attributes('style')).toContain('--agent-sidebar-width: 420px');
+    window.dispatchEvent(pointerEvent('pointermove', 180));
     await nextTick();
     expect(sidebar().attributes('style')).toContain('--agent-sidebar-width: 200px');
     expect(resizeHandle.attributes('aria-valuenow')).toBe('200');
+    window.dispatchEvent(pointerEvent('pointermove', 170));
+    await nextTick();
+    expect(wrapper.find('.agent-sidebar').exists()).toBe(false);
+    window.dispatchEvent(pointerEvent('pointermove', 180));
+    await nextTick();
+    expect(wrapper.find('.agent-sidebar').exists()).toBe(false);
+    window.dispatchEvent(pointerEvent('pointermove', 240));
+    await nextTick();
+    expect(sidebar().attributes('style')).toContain('--agent-sidebar-width: 240px');
+    window.dispatchEvent(pointerEvent('pointermove', 100));
+    window.dispatchEvent(pointerEvent('pointerup', 100));
+    await nextTick();
+    await wrapper.get('[aria-label="Show agent sidebar"]').trigger('click');
+    expect(sidebar().attributes('style')).toContain('--agent-sidebar-width: 260px');
+    window.dispatchEvent(pointerEvent('pointermove', 400));
+    await nextTick();
+    expect(sidebar().attributes('style')).toContain('--agent-sidebar-width: 260px');
+    wrapper.unmount();
   });
 
   it('resolves the active team from legacy agent membership when teamId is missing', () => {
