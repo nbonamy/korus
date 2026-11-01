@@ -165,6 +165,7 @@ export class AppController {
     if (!this.powerSourceListenersInstalled && powerMonitor) {
       powerMonitor.on('on-battery', this.handlePowerSourceChanged);
       powerMonitor.on('on-ac', this.handlePowerSourceChanged);
+      powerMonitor.on('resume', this.handleTelemetryActivity);
       this.powerSourceListenersInstalled = true;
     }
     this.autoUpdateService?.start();
@@ -545,6 +546,9 @@ export class AppController {
     });
 
     ipc.handle(ipcChannels.getUsage, (_event, filter) => this.requireBackendClient().request(backendMethods.usageGet,{filter}));
+    ipc.handle(ipcChannels.getTelemetryConsent, () => this.requireBackendClient().request(backendMethods.telemetryConsentGet));
+    ipc.handle(ipcChannels.changeTelemetryConsent, (_event, action) => this.requireBackendClient().request(backendMethods.telemetryConsentChange, {action}));
+    ipc.handle(ipcChannels.previewTelemetryDay, (_event, day) => this.requireBackendClient().request(backendMethods.telemetryProfilePreview, {day}));
     ipc.handle(ipcChannels.clearUsage, () => this.requireBackendClient().request(backendMethods.usageClear));
 
     ipc.handle(ipcChannels.updateSettings, async (_event, input: UpdateSettingsInput) => {
@@ -798,8 +802,9 @@ export class AppController {
       this.rendererReady = true;
       this.flushPendingDeepLinkCommands();
     });
-    this.mainWindow.on('focus', () => this.policyAwareSpokenAnnouncements.refresh());
+    this.mainWindow.on('focus', () => { this.policyAwareSpokenAnnouncements.refresh(); this.handleTelemetryActivity(); });
     this.mainWindow.on('blur', () => this.policyAwareSpokenAnnouncements.refresh());
+    this.handleTelemetryActivity();
   }
 
   openDeepLink(value: string): boolean {
@@ -826,6 +831,7 @@ export class AppController {
     if (this.powerSourceListenersInstalled && powerMonitor) {
       powerMonitor.removeListener('on-battery', this.handlePowerSourceChanged);
       powerMonitor.removeListener('on-ac', this.handlePowerSourceChanged);
+      powerMonitor.removeListener('resume', this.handleTelemetryActivity);
       this.powerSourceListenersInstalled = false;
     }
     this.autoUpdateService?.stop();
@@ -856,6 +862,12 @@ export class AppController {
     return preview.result;
   }
 
+  private readonly handleTelemetryActivity = (): void => {
+    if (this.shuttingDown || this.connectionState.status !== 'connected' || this.mainWindow?.isDestroyed() || this.mainWindow?.isFocused?.() !== true) return;
+    // Native lifecycle signal only. The backend owns day markers and all delivery.
+    void this.backendClient?.request(backendMethods.telemetryActivity).catch(() => undefined);
+  };
+
   private async initializeBackendClient(): Promise<void> {
     if (!this.backendClient) {
       return;
@@ -867,6 +879,7 @@ export class AppController {
       this.subscribeToBackendClient();
       await this.synchronizeBackendState();
       this.setConnectionState({ status: 'connected' });
+      this.handleTelemetryActivity();
       logMain('daemon', 'connected to backend', { version: health.version, pid: health.pid });
     } catch (error) {
       this.handleBackendDisconnect(error instanceof Error ? error : new Error(String(error)));
@@ -2042,6 +2055,7 @@ export class AppController {
       const snapshot = await this.synchronizeBackendState();
       this.reconnectAttempt = 0;
       this.setConnectionState({ status: 'connected' });
+      this.handleTelemetryActivity();
       this.emitSnapshotToRenderer(snapshot);
       logMain('daemon', 'reconnected to backend', { version: health.version, pid: health.pid });
     } catch (error) {

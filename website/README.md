@@ -29,6 +29,15 @@ it in the static artifact beside the landing page and guide.
 Keep the policy's contact links inside Cloudflare's `email_off` comments so
 the public email address remains accessible without JavaScript.
 
+Optional telemetry has a release gate: privately verify the collector, reverse
+proxy and every upstream delivery/security/access-log path retain no IP addresses
+or report content before publishing that promise or activating a sending endpoint.
+Local browser, container and fixture checks do not establish production privacy.
+Publish and verify the matching `/privacy/` policy and Analytics guide before the
+telemetry-enabled desktop release can offer opt-in. Website publication, endpoint
+activation and app release require their separate approved Ship actions; building
+these assets authorizes none of them.
+
 The public user guide lives in `website/docs/` and uses VitePress with a
 customized default theme. The navigation follows Getting started, Providers,
 Workflows, Features, Reference, and Troubleshooting. Internal engineering notes
@@ -515,16 +524,16 @@ OS shortcuts, explicit architecture choices, and responsive layout.
 
 The deploy helper first builds the landing page and generated documentation into
 `dist/website/`, then streams that artifact over SSH, provisions the Let’s Encrypt
-certificate if this is the first deploy, and installs the matching nginx site on `joshua`:
+certificate if this is the first deploy, and installs the matching nginx site on the operator-supplied SSH host:
 
 ```bash
-./website/deploy.sh
+APP_WEBSITE_HOST=<operator-ssh-host> ./website/deploy.sh
 ```
 
-Override `APP_WEBSITE_HOST`, `APP_WEBSITE_ROOT`, or `APP_NGINX_CONFIG` when needed. The remote account must be able to run `sudo install`, `sudo nginx -t`, and `sudo systemctl reload nginx`.
+Set `APP_WEBSITE_HOST` explicitly. Override `APP_WEBSITE_ROOT` or `APP_NGINX_CONFIG` when needed. The remote account must be able to run `sudo install`, `sudo nginx -t`, and `sudo systemctl reload nginx`.
 
 The domain and storage root come from `core/src/product.json`; nginx templates
-are rendered outside the public artifact. Joshua serves the website, downloads,
+are rendered outside the public artifact. The host serves the website, downloads,
 and releases from `/var/www/korus/{site,downloads,releases}`. Certificate renewal
 uses `/var/www/korus/site` as its webroot.
 

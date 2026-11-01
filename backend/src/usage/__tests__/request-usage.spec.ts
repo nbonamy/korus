@@ -88,6 +88,25 @@ it("keeps service-tier performance and actual request prices separate across cor
     ]);
     expect(summary().daily?.[0]?.groups?.map(row => row.modelVariant)).toStrictEqual(
       summary().rows.map(row => row.modelVariant));
+    // Telemetry retains the same execution timing and served-request tier attribution.
+    const project = () => ledger.projectDailyTelemetry({
+      day: '2026-10-15', eligibleFrom: Date.parse('2026-10-15T00:00:00Z'), eligibleUntil: null,
+    });
+    const projected = [
+      { provider: 'codex', model: 'gpt-6.1-sol', serviceTier: 'fast', turns: 2,
+        inputTokens: 2000, cachedInputTokens: 1000, outputTokens: 200, estimatedCostUsd: 0.0082,
+        performance: { speedTurns: 2, outputTokens: 200, generationMs: 10000, ttftMs: 2000, ttftTurns: 2 } },
+      { provider: 'codex', model: 'gpt-6.1-sol', serviceTier: 'standard', turns: 1,
+        inputTokens: 1000, cachedInputTokens: 500, outputTokens: 100, estimatedCostUsd: 0.00205,
+        performance: { speedTurns: 1, outputTokens: 100, generationMs: 10000, ttftMs: 1000, ttftTurns: 1 } },
+      { provider: 'codex', model: 'gpt-6.1-sol', serviceTier: 'ultrafast', turns: 1,
+        inputTokens: 1000, cachedInputTokens: 500, outputTokens: 100, estimatedCostUsd: 0.0123,
+        performance: { speedTurns: 1, outputTokens: 100, generationMs: 10000, ttftMs: 1000, ttftTurns: 1 } },
+      { provider: 'codex', model: 'gpt-6.1-sol', serviceTier: 'unknown', turns: 1,
+        inputTokens: 1000, cachedInputTokens: 500, outputTokens: 100, estimatedCostUsd: 0.00205,
+        performance: { speedTurns: 1, outputTokens: 100, generationMs: 10000, ttftMs: 1000, ttftTurns: 1 } },
+    ];
+    expect(project()).toStrictEqual(projected);
     const grouped = ledger.query({ group: 'model', groupServiceTiers: true });
     expect(grouped.rows).toMatchObject([{ label: 'gpt-6.1-sol', started: 5,
       tokens: { output: 500 }, speed: { turns: 5, outputTokens: 500, generationMs: 40000 }, cost: { usd: 0.0246 } }]);
@@ -106,16 +125,25 @@ it("keeps service-tier performance and actual request prices separate across cor
     expect(variants().map(row => [row.serviceTier, row.usd])).toStrictEqual([
       ['standard', 0.0041], ['fast', 0.0041], ['ultrafast', 0.0123], [null, 0.00205],
     ]);
+    // Fast execution coverage remains partial. The downgraded served request
+    // adds its known price to standard without moving execution timing.
+    const partialProjection = projected.map(row => ({ ...row, estimatedCostUsd: row.serviceTier === "fast" ? null : row.serviceTier === "standard" ? 0.0041 : row.estimatedCostUsd }));
+    expect(project()).toStrictEqual(partialProjection);
     expect(ledger.query({ group: 'model', groupServiceTiers: true }).cost).toStrictEqual(summary().cost);
     const persisted = summary();
     await ledger.close();
     ledger = new UsageLedger(file, () => at + 60000);
     await ledger.load();
     expect(summary()).toStrictEqual(persisted);
+    expect(project()).toStrictEqual(partialProjection);
     await ledger.observe({ ...event, turnId: '0', phase: 'usage', serviceTier: 'fast',
       tokens: { ...tokens, output: 200, total: 1200 } }, attribution);
     expect(variants()[0]).toMatchObject({ serviceTier: 'standard', output: 200, usd: 0.0051 });
     expect(summary().rows.reduce((sum, row) => sum + row.started, 0)).toBe(5);
+    expect(project()).toStrictEqual(partialProjection.map(row => row.serviceTier === 'standard'
+      ? { ...row, outputTokens: 200, estimatedCostUsd: 0.0051,
+          performance: { ...row.performance, outputTokens: 200 } }
+      : row));
   } finally {
     await ledger.close();
     await rm(dir, { recursive: true, force: true });

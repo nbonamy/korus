@@ -15,7 +15,46 @@ const directories = [
   "electron/src/main",
   "electron/src/preload",
   "mobile/src",
+  "vue/src",
+  "server/frontend/src",
+  "server/backend/src",
 ];
+
+test("collector stays independently runnable without importing the desktop or companion relay", async () => {
+  const good = await checkFixture({
+    "server/backend/src/app.ts":
+      "import { createCollectorServer } from './collector/server';",
+    "server/backend/src/collector/server.ts":
+      "import { createServer } from 'node:http'; import type { DailyTelemetryPayload } from '@workspace/core/telemetry'; import { TelemetryStore } from './store';",
+    "server/backend/src/collector/store.ts": "import pg from 'pg';",
+    "server/backend/src/collector/metrics.ts":
+      "import type { TelemetryMetrics } from '@workspace/core/telemetry-metrics'; import { isUtcDay } from '@workspace/core/usage'; import { telemetryModels } from '@workspace/core/telemetry-models';",
+  });
+  assert.equal(good.status, 0, good.stderr);
+  const bad = await checkFixture({
+    "backend/src/runtime.ts":
+      "import { createCollectorServer } from '../../server/backend/src/collector/server';",
+    "backend/src/companion/relay-main.ts": "import '../../../server/backend/src/collector/main';",
+    "server/backend/src/collector/server.ts":
+      "import { BackendServer } from '../../../../backend/src/server';",
+    "server/backend/src/collector/driver.ts":
+      "import type { AgentBackendDriver } from '../../../../backend/src/drivers/types';",
+    "server/backend/src/collector/private-settings.ts":
+      "import type { Settings } from '@workspace/core/types';",
+    "server/backend/src/collector/alias.ts":
+      "import { makeRuntime } from '@workspace/backend/runtime';",
+  });
+  assert.equal(bad.status, 1);
+  for (const file of [
+    "runtime.ts",
+    "companion/relay-main.ts",
+    "collector/server.ts",
+    "collector/driver.ts",
+    "collector/alias.ts",
+    "collector/private-settings.ts",
+  ])
+    assert.ok(bad.stderr.includes(file), bad.stderr);
+});
 
 async function checkFixture(files) {
   const root = await mkdtemp(path.join(tmpdir(), "app-architecture-"));
@@ -112,4 +151,109 @@ test("mobile code only receives app-owned contracts and browser-safe UI", async 
       rejected.stderr,
     );
   }
+});
+
+test("telemetry projection and serialization cannot import delivery code or call network/timer globals", async () => {
+  const accepted = await checkFixture({
+    "backend/src/usage/usage-ledger.ts":
+      "import { DatabaseSync } from 'node:sqlite';\nimport { serializeDailyTelemetry } from '@workspace/core/telemetry';\nimport { dayStart } from '@workspace/core/usage-time';\n",
+    "backend/src/usage/usage-service.ts":
+      "import { repositoryIdentityOf, resolveRepositoryRoots } from './repository-identity';\n",
+    "backend/src/telemetry/consent-service.ts":
+      "import { randomUUID } from 'node:crypto';\nimport type { TelemetryDeliveryPort } from '@workspace/core/telemetry-consent';\n",
+    "core/src/telemetry.ts": "const example = 'fetch()';\n",
+  });
+  assert.equal(accepted.status, 0, accepted.stderr);
+  const rejected = await checkFixture({
+    "backend/src/usage/usage-ledger.ts":
+      "import http from 'node:http';\nfetch('https://collector.invalid');\nsetTimeout(() => {}, 1);\n",
+    "backend/src/telemetry/consent-service.ts":
+      "import http from 'node:http';\nsetInterval(() => fetch('https://collector.invalid'), 1000);\n",
+    "core/src/telemetry.ts": "globalThis.fetch('https://collector.invalid');\n",
+    "backend/src/usage/telemetry-timer.ts":
+      "globalThis.setTimeout(() => {}, 1);\n",
+    "backend/src/usage/telemetry-preview.ts":
+      "import { sender } from '../telemetry/telemetry-upload-service';\n",
+  });
+  assert.equal(rejected.status, 1, rejected.stderr);
+  for (const file of [
+    "backend/src/usage/usage-ledger.ts",
+    "backend/src/telemetry/consent-service.ts",
+    "core/src/telemetry.ts",
+    "backend/src/usage/telemetry-timer.ts",
+    "backend/src/usage/telemetry-preview.ts",
+  ])
+    assert.ok(rejected.stderr.includes(file), rejected.stderr);
+});
+
+test("telemetry uploader ownership permits runtime composition and rejects alternate senders", async () => {
+  const accepted = await checkFixture({
+    "backend/src/runtime.ts":
+      "import { TelemetryUploadService } from './telemetry/upload-service';\nconst endpoint = process.env.APP_TELEMETRY_ENDPOINT;\n",
+    "electron/src/main/runtime-config.ts":
+      "const endpoint = env.APP_TELEMETRY_ENDPOINT; const config = { APP_TELEMETRY_ENDPOINT: endpoint };\n",
+    "backend/src/telemetry/upload-service.ts":
+      "import type { UsageService } from '../usage/usage-service';\nfetch(endpoint); setTimeout(wake, 1000);\n",
+    "electron/src/main/native.ts": "fetch(updateOrigin);\n",
+    "vue/src/components/TelemetryConsentPanel.vue":
+      '<script setup lang="ts">const example = "fetch()";</script>',
+  });
+  assert.equal(accepted.status, 0, accepted.stderr);
+  const rejected = await checkFixture({
+    "backend/src/telemetry/alternate.ts":
+      "import http from 'node:http';\nfetch(endpoint); setTimeout(send, 1000);\n",
+    "backend/src/claude/driver.ts":
+      "import { TelemetryUploadService } from '../telemetry/upload-service';\n",
+    "backend/src/codex/driver.ts":
+      "import type { DailyTelemetryPayload } from '@workspace/core/telemetry';\n",
+    "backend/src/telemetry/duplicate.ts":
+      "import { TelemetryUploadService } from './upload-service'; TelemetryUploadService.open({});\n",
+    "electron/src/main/app-controller.ts":
+      "class Controller { handleTelemetryActivity = () => fetch(endpoint); }\n",
+    "backend/src/server.ts":
+      "if (message.method === backendMethods.telemetryActivity) { fetch(endpoint); }\n",
+    "backend/src/telemetry/upload-service.ts":
+      "import { transport } from '../codex/transport';\n",
+    "electron/src/main/native.ts":
+      "const endpoint = process.env.APP_TELEMETRY_ENDPOINT;\n",
+    "electron/src/main/runtime-config.ts":
+      "fetch(env.APP_TELEMETRY_ENDPOINT);\n",
+    "vue/src/components/TelemetryConsentPanel.vue":
+      '<script setup lang="ts">fetch(endpoint); setTimeout(send, 1000);</script>',
+  });
+  assert.equal(rejected.status, 1, rejected.stderr);
+  for (const file of [
+    "backend/src/telemetry/alternate.ts",
+    "backend/src/claude/driver.ts",
+    "backend/src/codex/driver.ts",
+    "backend/src/telemetry/duplicate.ts",
+    "electron/src/main/app-controller.ts",
+    "backend/src/server.ts",
+    "backend/src/telemetry/upload-service.ts",
+    "electron/src/main/native.ts",
+    "electron/src/main/runtime-config.ts",
+    "vue/src/components/TelemetryConsentPanel.vue",
+  ])
+    assert.ok(rejected.stderr.includes(file), rejected.stderr);
+});
+
+test("private dashboard imports only browser-safe aggregate contracts", async () => {
+  const good = await checkFixture({
+    "server/frontend/src/view.ts":
+      "import {computed} from 'vue'; import {ElSelect} from 'element-plus'; import 'element-plus/es/components/select/style/css'; import type {TelemetryMetrics} from '@workspace/core/telemetry-metrics'; import {telemetryModels} from '@workspace/core/telemetry-models'; import './format';",
+  });
+  assert.equal(good.status, 0, good.stderr);
+  const bad = await checkFixture({
+    "server/frontend/src/database.ts":
+      "import fs from 'node:fs'; import pg from 'pg';",
+    "server/frontend/src/backend.ts":
+      "import {createMetricsServer} from '../../backend/src/collector/metrics-server';",
+    "server/frontend/src/identity.ts":
+      "import type {Settings} from '@workspace/core/contracts';",
+    "server/frontend/src/desktop.ts":
+      "import {state} from '@workspace/vue/app-state';",
+  });
+  assert.equal(bad.status, 1);
+  for (const name of ["database.ts", "backend.ts", "identity.ts", "desktop.ts"])
+    assert.ok(bad.stderr.includes(name), bad.stderr);
 });

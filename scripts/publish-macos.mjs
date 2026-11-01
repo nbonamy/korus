@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
-const HOST = process.env.APP_UPDATE_PUBLISH_HOST ?? 'joshua';
+const HOST = process.env.APP_UPDATE_PUBLISH_HOST;
 const REMOTE_ROOT = process.env.APP_UPDATE_REMOTE_ROOT ?? product.deploymentRoot;
 const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 const desktopVersion = packageJson.version;
@@ -31,6 +31,7 @@ export function readPublishedManifest({
   host = HOST,
   remoteManifest = REMOTE_RELEASE_MANIFEST,
 } = {}) {
+  if (!host) throw new Error('Set APP_UPDATE_PUBLISH_HOST to the operator SSH host.');
   const remoteCommand = `test -f ${shellQuote(remoteManifest)} && cat ${shellQuote(remoteManifest)} || true`;
   return parsePublishedManifest(execFileSyncImpl('ssh', [host, remoteCommand], { encoding: 'utf8' }));
 }

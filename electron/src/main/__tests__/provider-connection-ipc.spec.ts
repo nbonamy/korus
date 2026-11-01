@@ -25,6 +25,22 @@ vi.mock('electron', () => ({
 }));
 
 describe('provider sign-out IPC', () => {
+  it('routes desktop consent and preview through the typed preload without identity or interval input', async () => {
+    const state = { enabled:false,eligibleFrom:null,noticePending:true };
+    const request = vi.fn().mockResolvedValue(state);
+    const controller = new AppController(createInitialSnapshot(), createBackendClient({ request }), fakeAppLifecycle());
+    controller.registerIpcHandlers(); await import('../../preload/index');
+    const api = bridge.exposed.get('app') as AppApi;
+    expect(await api.getTelemetryConsent()).toStrictEqual(state);
+    expect(request).toHaveBeenLastCalledWith('telemetry/consent/get', undefined);
+    await api.changeTelemetryConsent('enable');
+    expect(request).toHaveBeenLastCalledWith('telemetry/consent/change',{action:'enable'});
+    const body = '{"usage":[]}'; request.mockResolvedValueOnce({kind:'hypothetical',body});
+    expect(await api.previewTelemetryDay('2026-10-15')).toStrictEqual({kind:'hypothetical',body});
+    expect(request).toHaveBeenLastCalledWith('telemetry/profile/preview',{day:'2026-10-15'});
+    request.mockRejectedValueOnce(new Error('Storage unavailable'));
+    await expect(api.changeTelemetryConsent('reset')).rejects.toThrow('Storage unavailable');
+  });
   it('resolves Design reference attachments through the native registry before daemon dispatch', async () => {
     const request = vi.fn().mockResolvedValue({ workspace: { isOpen: true } });
     const controller = new AppController(createInitialSnapshot(), createBackendClient({ request }), fakeAppLifecycle());

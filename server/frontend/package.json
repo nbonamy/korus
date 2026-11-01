@@ -1,0 +1,31 @@
+{
+  "name": "@workspace/server-frontend",
+  "version": "0.48.5",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite --host 127.0.0.1",
+    "typecheck": "vue-tsc --noEmit",
+    "lint": "npm run typecheck && stylelint 'src/**/*.{css,vue}'",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@workspace/core": "0.48.5",
+    "@workspace/vue": "0.48.5",
+    "element-plus": "^2.13.6",
+    "vue": "^3.5.35"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "@vitejs/plugin-vue": "^6.0.7",
+    "@vitest/coverage-v8": "4.1.8",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.8",
+    "vue-tsc": "^3.3.3",
+    "@vue/test-utils": "2.4.6",
+    "jsdom": "29.0.1"
+  }
+}

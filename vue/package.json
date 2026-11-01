@@ -25,6 +25,7 @@
     "lint:css": "stylelint 'src/**/*.{css,vue}'",
     "lint:i18n": "node scripts/check-i18n.mjs",
     "test": "vitest run",
+    "test:telemetry-dom": "node scripts/telemetry-consent-dom.mjs",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest watch"
   },

@@ -64,20 +64,30 @@ it('reprices saved usage through the released usage/get contract, then keeps pri
   cleanups.push(() => server.close());
   const at = Date.parse('2026-11-02T00:00:00Z');
   const parent = { provider: 'codex' as const, sessionId: 'saved-session', turnId: 'saved-turn', agentId: 'a', model: 'gpt-6-sol', at };
-  await ledger.observe({ ...parent, phase: 'started' }, { teamId: null, repository: null });
-  await ledger.observe({ ...parent, phase: 'completed', requestCoverage: 'complete' }, { teamId: null, repository: null });
-  await ledger.observeRequest({ ...parent, requestId: 'r', revision: 0, status: 'final', apiProvider: 'openai', reportedServiceTier: 'priority', requestedServiceTier: 'priority',
+  await ledger.observe({ ...parent, phase: 'started', serviceTier: 'priority' }, { teamId: null, repository: null });
+  await ledger.observe({ ...parent, phase: 'completed', serviceTier: 'priority', requestCoverage: 'complete',
+    tokens: { input: 1000000, output: 0, cacheRead: 0, cacheWrite: null, reasoning: 0, total: 1000000 } }, { teamId: null, repository: null });
+  const acceptedRequest = await ledger.observeRequest({ ...parent, requestId: 'r', revision: 0, status: 'final', apiProvider: 'openai', reportedServiceTier: 'priority', requestedServiceTier: 'priority',
     reportedMode: null, cacheMode: 'implicit', modality: 'text', pricingContext: { context: 1000, region: null },
     tokens: { input: 1000000, output: 0, cacheRead: 0, cacheWrite: {}, reasoning: 0, inputIncludesCacheRead: true, inputIncludesCacheWrite: true, outputIncludesReasoning: true } });
+  expect(acceptedRequest).toBe(true);
   // Request and cost decoding expectations match the shipped client; no new fields or negotiation.
   const cost = async () => {
     const response = await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'usage/get', params: {} });
     return (response as { result: { cost: unknown } }).result.cost;
   };
   const expected = (usd: number) => ({ usd, coverage: 'complete', requests: 1, pricedRequests: 1, unpricedRequests: 0, unknownRequestExecutions: 0, reasons: [] });
+  const preview = () => usage.previewTelemetry({
+    installId: 'd8b65ff5-179c-49b9-ac3a-f60a54a0f43f', day: '2026-11-02', eligibleFrom: at, eligibleUntil: null,
+  }, '1.2.3', 'linux');
+  const body = (usd: number) => `{"installId":"d8b65ff5-179c-49b9-ac3a-f60a54a0f43f","day":"2026-11-02","appVersion":"1.2.3","os":"linux","usage":[{"provider":"codex","model":"gpt-6-sol","serviceTier":"fast","turns":1,"inputTokens":1000000,"cachedInputTokens":0,"outputTokens":0,"estimatedCostUsd":${usd}}]}`;
   expect(await cost()).toStrictEqual(expected(4));
+  const sealed = await preview();
+  expect(Buffer.from(sealed.body, 'utf8')).toStrictEqual(Buffer.from(body(4), 'utf8'));
   await catalog.start(); await catalog.refresh();
   expect(await cost()).toStrictEqual(expected(8));
+  expect((await preview()).body).toBe(body(8));
+  expect(sealed.body).toBe(body(4)); // Existing sealed bytes retain their original estimate.
   expect(f.state.requests).toEqual(['/latest.json', `/${f.manifest.asset}`]);
   await catalog.refresh();
   expect(f.state.requests).toHaveLength(2);

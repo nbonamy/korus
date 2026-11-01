@@ -1,0 +1,28 @@
+{
+  "name": "@workspace/server-backend",
+  "version": "0.48.5",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "start": "node dist/collector.mjs",
+    "migrate": "node dist/collector.mjs migrate"
+  },
+  "dependencies": {
+    "@workspace/core": "0.48.5",
+    "pg": "8.23.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "@vitest/coverage-v8": "4.1.8",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.8",
+    "@types/pg": "8.23.1"
+  }
+}

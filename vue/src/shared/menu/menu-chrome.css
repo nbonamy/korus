@@ -1,0 +1,41 @@
+.app-icon-button {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.app-icon-button svg {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+.app-icon-button:hover:not(:disabled),
+.app-icon-button[aria-expanded='true'] {
+  color: var(--color-text);
+  background: var(--color-surface-low);
+}
+
+.app-icon-button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.app-icon-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.app-popover {
+  padding: var(--space-2) !important;
+  border-radius: var(--radius-xl) !important;
+  background-color: var(--color-menu-background) !important;
+  border-color: var(--color-border) !important;
+}

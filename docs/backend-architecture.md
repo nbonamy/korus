@@ -1026,7 +1026,9 @@ before the pricing service cancels pending downloads.
 
 Usage queries price retained measurements against one current catalog snapshot;
 cost totals are not persisted. New catalogs can correct historical estimates
-without rewriting usage. Event dates select the applicable historical price,
+without rewriting usage. Sealed telemetry bodies retain the estimates captured
+at sealing; refreshed prices affect new previews and future seals. Event dates
+select the applicable historical price,
 while source collection and catalog publication times describe discovery and
 delivery. An effective-date correction requires provider evidence; downloading
 newer data does not establish an earlier effective date. After editing history,
@@ -1099,9 +1101,15 @@ filtering. Execution performance uses its captured start tier, while request cos
 uses served evidence, including downgrades. OpenAI's served Fast alias resolves to
 the catalog's priority pricing rules without an additional multiplier. Retained
 ledgers regroup directly from stored tier evidence without rewriting records.
-Queries may explicitly group service tiers within a model. This sums the same
-token, timing and cost contributions; rates still use summed measurements and
-each request retains its tier-specific price.
+Local Analytics queries may explicitly combine service tiers within a model.
+This sums the same token, timing and cost contributions; rates still use summed
+measurements and each request retains its tier-specific price.
+
+Daily telemetry retains canonical provider/model/tier groups using the same execution-start
+and served-request attribution. Only closed tier labels are sent; missing or unrecognized
+tiers become unknown, and legacy reports remain valid as unknown-tier groups. Raw model
+IDs retain their pricing identity. The private console separates variants by default;
+its Group service tiers option combines them with weighted timing sums.
 
 The backend turn clock excludes waits for user input and in-flight tools, with
 parallel tool waits counted once. Speed combines provider-reported output tokens
@@ -1115,3 +1123,130 @@ summed generation time rather than averaging per-turn rates. Clearing statistics
 deletes the local measurements without changing provider history. Storage failures leave analytics unavailable without blocking
 provider work. No reporting endpoint, upload queue or hosted analytics service is
 part of this path.
+
+### Private daily payload projection
+
+The local telemetry preview drains pending ledger observations and uses a numeric
+projection of that same SQLite ledger. Its required half-open eligibility interval
+filters execution starts and request timestamps; a request whose parent started
+before eligibility is excluded even if the request itself is later. Tokens and
+turns retain execution-start attribution; costs retain request-day/model
+attribution. Cost-only groups have zero execution tokens. Missing measurements in
+any contributing execution make that group's token fields null. Only complete
+ledger cost coverage becomes a number; partial subtotals remain null.
+
+The shared wire allowlist contains canonical IDs from the embedded pricing catalog,
+independent of runtime/user model catalogs. Other IDs coalesce into `unknown`.
+The serializer rejects extra fields, constructs every wire field explicitly, sorts
+driver/model groups and returns immutable canonical JSON text. Its UTF-8 bytes are
+the sealed-body representation shared by preview and delivery callers. Preview
+does not persist, queue, schedule or send; identity and consent owners must supply
+the eligible interval. The preview result carries only the body, never a ledger
+row, provider object or filesystem path. An unavailable ledger is an error, not an
+empty active day.
+
+The private per-profile `telemetry.json` is initialized before runtime services. A
+cryptographic UUID v4 exists independently from consent. Missing state is off;
+malformed, unreadable or unwritable state makes profile telemetry unavailable for
+that runtime without blocking normal startup. No uploader starts without loaded
+consent authority; a failed file is not overwritten to manufacture consent.
+Atomic owner-readable writes keep consent, the next-UTC-day eligibility boundary,
+and the first-notice marker separate. Decline,
+dismissal and reset consume the notice; reset replaces identity, clears eligibility
+and requires another affirmative choice. Repeated opt-in preserves its interval.
+
+Only explicit desktop operations return the credential-free consent view. Identity
+and consent never enter app settings, generic snapshots, coordination events or
+agent tools. The desktop bridge accepts an action or reporting day, never an
+identity or eligibility override. One shared panel supplies onboarding, upgrade
+and Settings copy. Web and companion clients do not expose these profile actions.
+
+The consent owner delegates transitions to `TelemetryDeliveryPort`; it does not
+send, schedule or manage a queue. One backend `TelemetryUploadService` per local
+installation runtime owns sealing, the private durable queue, telemetry HTTP,
+acknowledgements, retry timers and cancellation. It consumes only the local
+allowlisted ledger projection and synchronous `current()` consent authority. Web
+hosts do not instantiate it; remote ledgers and mobile companions cannot supply
+activity or reporting data. Electron signals observed open/focus/resume activity
+through the desktop-only protocol. During periodic maintenance and at UTC midnight
+the service also confirms foreground activity with the desktop. A disconnected
+client or background daemon cannot create active days or fill unobserved gaps.
+
+Delivery state is bound to both UUID and eligibility interval. It retains at most
+the current day and seven completed days, including sealed bytes after success
+for exact preview and replay prevention. Queue writes are atomic and private;
+attempts are recorded before transport. Restart preserves frozen bodies and the
+six-attempt budget. A lost acknowledgement may cause identical physical retries;
+success never causes a fresh projection. Late ledger corrections do not alter a
+seal. Expired activity is discarded even when it ages out during a ledger read.
+Corrupt state fails closed rather than reconstructing already-sealed history.
+
+No configured `APP_TELEMETRY_ENDPOINT` means no requests, discovery or health
+checks. Its value is supplied outside Git; HTTPS is required except for explicit
+loopback HTTP test receivers. Requests have a ten-second deadline, no credentials
+or provider headers, and no redirect following. Network failures, 408, 429 and 5xx
+retry with bounded jittered backoff and a capped Retry-After; other responses end
+the report. Bodies and response contents never enter logs. App actions do not
+wait for telemetry work or present delivery failures.
+
+Disable/reset abort transport, cancel the timer and purge activity/pending work
+without waiting for ledger reads or acknowledgement. Revocation becomes visible
+in memory as soon as requested, including while an earlier consent callback is
+pending. Every await before sending is followed by an authority/interval guard;
+obsolete work cannot restore a purged report. Preview I/O does not hold the consent
+mutation lock, and obsolete preview results are rejected after a transition.
+Cancellation is requested even when saving consent fails. Failed user actions
+remain visible; durable opt-out still requires a successful local consent write.
+
+The uploader workflow uses temporary real SQLite/private files, fake time and a
+loopback HTTP receiver. Repeat with
+`npm run test -w @workspace/backend -- telemetry/__tests__/upload-service.spec.ts`.
+Set `TELEMETRY_TEST_EVIDENCE` to an untracked output file to retain the off/on trace
+and exact retry body. This proves local transport behavior, not production
+infrastructure privacy. Dependency/AST lint isolates telemetry callers from
+transport/timers and allows only runtime composition of the upload service.
+
+Profile preview resolves identity/eligibility inside the backend. Off and
+pre-interval previews are explicitly hypothetical and cannot enqueue history. An
+unfinished eligible UTC day is provisional. For an eligible completed day, a
+sealed report supplied by the delivery owner takes precedence and returns its body
+verbatim. Preview and copy preserve that text without parsing or reserialization.
+The repeatable `npm run test:telemetry-dom -w @workspace/vue` harness exercises real
+Vue/Element Plus controls with a synthetic desktop API and writes screenshots and
+DOM evidence outside Git; temporary-ledger workflows own persistence evidence.
+The consent no-IP-storage statement requires collector, proxy and upstream
+verification before release activation; a local fixture cannot establish it.
+
+Inclusive input includes cache reads and Claude cache creation. Cached input means
+reads only; output already includes reasoning. The input-minus-read remainder
+includes writes, so it is not an ordinary-rate fresh-input measurement. Claude's
+request observer retains write lifetimes, while execution totals collapse them.
+Codex execution cache-write counters, including a schema default of zero, do not
+establish inclusion semantics, write lifetime or independently billable request
+evidence. The projection uses existing ledger estimate coverage, including its
+execution fallbacks; it neither invents request evidence nor reprices usage. Its
+omitted cache-write categories prevent exact downstream repricing. Estimated USD
+is API-equivalent usage, not billing.
+
+The server-usage workflow compares persisted Claude/Codex measurements against
+`backend/src/usage/__tests__/fixtures/daily-telemetry.json`, the exact canonical
+macOS UTF-8 body without a trailing newline. Other platforms substitute only the
+coarse OS value. Repeat with
+`npm run test -w @workspace/backend -- usage/__tests__/server-usage.spec.ts`.
+It covers midnight attribution, model changes, interval exclusion, nulls and
+content/local-dimension canaries without an endpoint. Architecture AST lint limits
+projection dependencies and rejects direct network/timer operations.
+
+Performance reuses the ledger's additive speed samples: measured output tokens,
+active generation milliseconds, summed time to first output, and their turn
+counts. Only daily provider/model/tier sums enter the optional closed performance
+object; no per-turn timing or timestamps are exported. Missing samples are
+unavailable, not zero. The read API divides the summed output by summed time and
+the summed first-output time by its measured-turn count. It never averages
+per-install rates. Older reports remain valid without performance fields.
+The consent file's second format pauses an older enabled opt-in and presents the
+updated explanation before any expanded sharing. Existing declines stay declined.
+
+Hosted ingestion, authentication, reporting and deployment live under `server/`.
+See [the hosted server documentation](../server/README.md) for that independent
+process boundary. Desktop consent, projection and upload remain daemon-owned.

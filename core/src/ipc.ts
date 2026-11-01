@@ -3,6 +3,9 @@ import type { AppCommand, AppApi, MainToRendererEvent } from './contracts';
 export const ipcChannels = {
   browserExtensions: 'browser:extensions',
   getUsage: 'usage:get',
+  getTelemetryConsent: 'telemetry:consent:get',
+  changeTelemetryConsent: 'telemetry:consent:change',
+  previewTelemetryDay: 'telemetry:profile:preview',
   clearUsage: 'usage:clear',
   mobileSimulator: 'mobile:execute',
   mobileSimulatorView: 'mobile:view',

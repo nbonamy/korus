@@ -23,6 +23,13 @@
         <RefreshIcon :size="14" />{{ $t("analytics.refresh") }}
       </button>
     </template>
+    <FormSection
+      v-if="appClientPlatform === 'desktop'"
+      :title="$t('telemetry.title')"
+      class="analytics-sharing"
+    >
+      <TelemetryConsentPanel />
+    </FormSection>
     <UsageActivity
       v-if="activityLoaded"
       class="analytics-header"
@@ -96,6 +103,9 @@
   </SettingsPanelFrame>
 </template>
 <script setup lang="ts">
+import { appClientPlatform } from '../platform-api';
+import FormSection from '../shared/form/FormSection.vue';
+import TelemetryConsentPanel from './TelemetryConsentPanel.vue';
 import { RefreshIcon } from "../shared/icons/app-icons";
 import SettingsPanelFrame from "./SettingsPanelFrame.vue";
 import UsageActivity from "./UsageActivity.vue";
@@ -135,6 +145,12 @@ const {
 } = useUsageAnalytics();
 </script>
 <style scoped>
+.analytics-sharing {
+  margin-bottom: var(--space-12);
+}
+.analytics-sharing :deep(.telemetry-consent) {
+  padding: var(--space-6);
+}
 .analytics {
   font-variant-numeric: tabular-nums;
 }

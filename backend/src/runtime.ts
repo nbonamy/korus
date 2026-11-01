@@ -1,6 +1,8 @@
 import { DesignService } from './design-service';
 import { createDesignToolModuleProvider } from './mcp/design-tools';
 import { GuestJoins } from './sharing/guest-joins';
+import { TelemetryUploadService } from './telemetry/upload-service';
+import { TelemetryConsentService } from './telemetry/consent-service';
 import { UsageService } from './usage/usage-service';
 import { UsageLedger } from './usage/usage-ledger';
 import { PricingCatalog } from './pricing/catalog-updates';
@@ -83,6 +85,13 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   const computerUseAvailable = options.features?.computerUse !== false;
   const embeddedBrowserAvailable = options.features?.embeddedBrowser !== false;
   const snapshot = await loadBackendSnapshot();
+  let telemetryUpload: TelemetryUploadService | undefined;
+  const telemetryConsent = await TelemetryConsentService.open(path.join(backendHomeDir(), 'telemetry.json'), {
+    delivery: {
+      consentChanged: transition => telemetryUpload?.consentChanged(transition) ?? Promise.resolve(),
+      sealedReport: day => telemetryUpload?.sealedReport(day) ?? Promise.resolve(null),
+    },
+  }).catch(() => undefined); // Optional telemetry must never prevent normal startup.
   const savedTasks = await loadBackendTasks();
   await ensureBackendCodexHome();
   const providerSetup = new ProviderSetup(snapshot, () => saveBackendSnapshot(snapshot), async backend => {
@@ -156,6 +165,14 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   const usage = new UsageService(localUsage, id => snapshot.agents.find(a => a.id === id), undefined, undefined, () => snapshot.agents);
   // Turns saved before the repository was recorded carry a worktree folder; file them under their repository, once.
   void usage.migrateRepositories();
+  if (telemetryConsent && process.env.APP_HOST !== 'web') {
+    telemetryUpload = await TelemetryUploadService.open({
+      file: path.join(backendHomeDir(), 'telemetry-delivery.json'),
+      consent: () => telemetryConsent.current(), usage, version: options.version, platform: process.platform,
+      endpoint: process.env.APP_TELEMETRY_ENDPOINT,
+      foreground: async () => (await options.requestClient<{ focused: boolean }>(backendMethods.clientFocusGet, {})).focused === true,
+    });
+  }
   const mcpService: AppMcpService = new AppMcpService({
     getCollaborationAgents: () => server.collaborationAgents(),
     createRemoteWorker: (...args) => server.provisionRemoteWorker(...args),
@@ -344,6 +361,8 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     worktreeInitializationForFolder: folder => worktreeManager.getInitializationState(folder),
     requirements,
     usage,
+    telemetryConsent,
+    telemetryActivity: telemetryUpload,
     guestJoins: new GuestJoins({ directory: path.join(backendHomeDir(), 'guest-joins'), relay: relayFromEnvironment(process.env).relay ?? undefined }),
     conversationSharing: { directory: path.join(backendHomeDir(), 'conversation-shares'), endpoint: () => companion.shareEndpoint(), routing: { update: routes => companion.updateShareRoutes(routes), subscribe: listener => companion.onShareRoutingStatus(listener) } },
     companionControl: (input) => companion.control(input),
@@ -414,6 +433,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   await automationRunner.recoverInterruptedRuns();
   await tasks.recover();
   scheduler.start();
+  telemetryUpload?.start();
   void companion.control({ action: 'status' }).catch(() => warnMain('companion', 'identity or relay unavailable', {}));
   void server.initialize().catch((error) => warnMain('startup', 'backend initialization failed', {
     message: error instanceof Error ? error.message : String(error),
@@ -423,6 +443,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     server,
     async stop() {
       scheduler.stop();
+      await telemetryUpload?.close();
       await pricing.stop();
       await worktreeManager.close();
       await companion.stop();

@@ -59,6 +59,34 @@ afterEach(() => {
 });
 
 describe('AppShell authentication and conversation', () => {
+  it.each(['onboarding','upgrade','upgrade-disconnected','dismiss','enable'] as const)('offers explicit private sharing during %s and never nags after dismissal', async entry => {
+    let noticePending = true;
+    const getTelemetryConsent = vi.fn(async()=>({enabled:false,eligibleFrom:null,noticePending}));
+    const changeTelemetryConsent = vi.fn(async(action)=>{noticePending=false;return {enabled:action==='enable',eligibleFrom:action==='enable'?1792108800000:null,noticePending};});
+    setElectronTestClient({getTelemetryConsent,changeTelemetryConsent,previewTelemetryDay:vi.fn().mockResolvedValue({kind:'hypothetical',body:'{}'})});
+    if(entry==='onboarding') setFirstRunOnboardingStage('complete');
+    const snapshot=createInitialSnapshot();
+    snapshot.general.providerOnboardingComplete=true;
+    if(entry==='upgrade-disconnected') snapshot.providerConnections=[];
+    const wrapper=mountShell({snapshot}); await flushPromises();
+    try {
+      const notice=wrapper.get('[aria-label="Anonymous daily sharing"]');
+      expect(notice.text()).toContain('prompts or model responses');
+      expect(notice.text()).toContain('random installation ID');
+      expect(notice.text()).toContain('indefinitely');
+      expect(changeTelemetryConsent).not.toHaveBeenCalled();
+      if(entry==='dismiss') await wrapper.get('.agent-dialog-test-shell').trigger('keydown',{key:'Escape'});
+      else await notice.findAll('button').find(b=>b.text()===(entry==='enable'?'Share anonymous usage':"Don't share"))!.trigger('click');
+      await flushPromises();
+      expect(changeTelemetryConsent).toHaveBeenLastCalledWith(entry==='dismiss'?'dismiss':entry==='enable'?'enable':'disable');
+      expect(wrapper.find('[aria-label="Anonymous daily sharing"]').exists()).toBe(false);
+      wrapper.unmount();
+      const restarted=mountShell({snapshot});await flushPromises();
+      expect(restarted.find('[aria-label="Anonymous daily sharing"]').exists()).toBe(false);
+      restarted.unmount();
+    } finally { wrapper.unmount(); }
+  });
+
   it.each(['codex', 'claude'] as const)('warns before continuing without a separate, signed-out %s setup and offers Review first', async backend => {
     const snapshot = createEmptySnapshot();
     const connectedBackend = backend === 'codex' ? 'claude' : 'codex';

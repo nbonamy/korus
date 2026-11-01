@@ -28,6 +28,15 @@ import {
   type RequestPrice,
 } from "../pricing/evaluate";
 import { addCost, emptyCost } from "./cost";
+import {
+  telemetryModel,
+  telemetryServiceTier,
+  validTelemetryProjectionInput,
+  type TelemetryProjectionInput,
+  type TelemetryProvider,
+  type TelemetryModel,
+  type TelemetryUsage,
+} from "@workspace/core/telemetry";
 const retention = 365 * 86400000;
 type Bucket = UsageSummary["rows"][number];
 /** Statistics only. Provider conversation stores remain the sole owners of content. */
@@ -304,6 +313,59 @@ export class UsageLedger {
     ).run(provider, sessionId, turnId);
   }
   query(filter: UsageFilter = {}): UsageSummary {
+    return this.summarize(filter);
+  }
+  /** Numeric-only projection. No local identifiers, arbitrary labels, per-turn timing or
+   * provider objects leave this boundary. Reuses the ledger's pricing coverage.
+   */
+  projectDailyTelemetry(input: TelemetryProjectionInput): TelemetryUsage[] {
+    if (!validTelemetryProjectionInput(input))
+      throw new Error("Invalid telemetry interval.");
+    const summary = this.summarize({ from: input.day, to: input.day }, input);
+    if (summary.available === false) throw new Error("Usage is unavailable.");
+    return summary.rows
+      .map((row) => {
+        const [provider, model, serviceTier] = JSON.parse(row.label) as [
+          TelemetryProvider,
+          TelemetryModel,
+          TelemetryUsage["serviceTier"],
+        ];
+        const measured = row.measuredTurns === row.started;
+        return {
+          provider,
+          model,
+          serviceTier,
+          turns: row.started,
+          inputTokens: measured ? (row.tokens?.input ?? 0) : null,
+          cachedInputTokens: measured ? (row.tokens?.cacheRead ?? 0) : null,
+          outputTokens: measured ? (row.tokens?.output ?? 0) : null,
+          estimatedCostUsd:
+            row.cost?.coverage === "complete" ? row.cost.usd : null,
+          ...(row.speed ? {performance: {
+            speedTurns: row.speed.turns,
+            outputTokens: row.speed.outputTokens,
+            generationMs: row.speed.generationMs,
+            ttftMs: row.speed.ttftMs,
+            ttftTurns: row.speed.ttftTurns,
+          }} : {}),
+        };
+      })
+      .sort((a, b) =>
+        a.provider < b.provider
+          ? -1
+          : a.provider > b.provider
+            ? 1
+            : a.model < b.model
+              ? -1
+              : a.model > b.model
+                ? 1
+                : (a.serviceTier ?? "unknown").localeCompare(b.serviceTier ?? "unknown"),
+      );
+  }
+  private summarize(
+    filter: UsageFilter,
+    projection?: TelemetryProjectionInput,
+  ): UsageSummary {
     const prices = typeof this.prices === 'function' ? this.prices() : this.prices;
     if (
       !filter ||
@@ -355,9 +417,14 @@ export class UsageLedger {
     if (db) {
       const requestRows = db
         .prepare(
-          "SELECT r.observation,e.* FROM requests r JOIN executions e USING(provider,session_id,turn_id) WHERE e.started_at>=? AND r.at>=? AND (r.provider<>'claude' OR json_extract(r.observation,'$.model') IS NOT '<synthetic>') ORDER BY r.at,r.request_id",
+          "SELECT r.observation,e.* FROM requests r JOIN executions e USING(provider,session_id,turn_id) WHERE e.started_at>=? AND r.at>=? AND e.started_at>=? AND e.started_at<? AND (r.provider<>'claude' OR json_extract(r.observation,'$.model') IS NOT '<synthetic>') ORDER BY r.at,r.request_id",
         )
-        .all(this.now() - retention, this.now() - retention);
+        .all(
+          this.now() - retention,
+          this.now() - retention,
+          projection?.eligibleFrom ?? 0,
+          projection?.eligibleUntil ?? 8640000000000000,
+        );
       const observedExecutions = new Set(
         requestRows.map((row) =>
           JSON.stringify([row.provider, row.session_id, row.turn_id]),
@@ -365,6 +432,13 @@ export class UsageLedger {
       );
       const conditions = ["started_at>=?"],
         args: (string | number)[] = [this.now() - retention];
+      if (projection) {
+        conditions.push("started_at>=?", "started_at<?");
+        args.push(
+          projection.eligibleFrom,
+          projection.eligibleUntil ?? 8640000000000000,
+        );
+      }
       if (filter.from) {
         conditions.push("started_at>=?");
         args.push(dayStart(filter.from, filter.timeZone));
@@ -409,16 +483,20 @@ export class UsageLedger {
           : null;
         if (filter.apiProvider && filter.apiProvider !== estimatedProvider)
           continue;
-        const modelVariant = filter.group === "model" && !filter.groupServiceTiers
+        const modelVariant = !projection && filter.group === "model" && !filter.groupServiceTiers
           ? { model: record.model, serviceTier: usageServiceTier(record.provider, record.serviceTier) }
           : undefined;
-        const label = modelVariant ? usageModelVariantKey(modelVariant) : filter.group
-          ? String(
-              filter.group === "apiProvider"
-                ? "Unknown"
-                : (record[filter.group] ?? "Unknown"),
-            )
-          : "All";
+        const label = projection
+          ? JSON.stringify([record.provider, telemetryModel(record.model), telemetryServiceTier(usageServiceTier(record.provider, record.serviceTier))])
+          : modelVariant
+            ? usageModelVariantKey(modelVariant)
+            : filter.group
+              ? String(
+                  filter.group === "apiProvider"
+                    ? "Unknown"
+                    : (record[filter.group] ?? "Unknown"),
+                )
+              : "All";
         if (!filter.apiProvider) {
           this.aggregate(rows, record, label, modelVariant);
           this.aggregate(daily, record, dayOf(record.startedAt, filter.timeZone));
@@ -458,6 +536,10 @@ export class UsageLedger {
         const event = JSON.parse(String(row.observation)) as RequestObservation;
         const parent = this.decode(row);
         if (
+          (projection &&
+            (event.at < projection.eligibleFrom ||
+              (projection.eligibleUntil !== null &&
+                event.at >= projection.eligibleUntil))) ||
           (filter.from && event.at < dayStart(filter.from, filter.timeZone)) ||
           (filter.to && event.at >= dayStart(nextDay(filter.to), filter.timeZone)) ||
           (filter.model && event.model !== filter.model) ||
@@ -467,13 +549,18 @@ export class UsageLedger {
           )
         )
           continue;
-        const modelVariant = filter.group === "model" && !filter.groupServiceTiers ? requestUsageModelVariant(event) : undefined;
-        const label = modelVariant ? usageModelVariantKey(modelVariant) :
-          filter.group === "model" ? event.model ?? "Unknown" : filter.group === "apiProvider"
-              ? (event.apiProvider ?? "Unknown")
-              : filter.group
-                ? String(parent[filter.group] ?? "Unknown")
-                : "All";
+        const modelVariant = !projection && filter.group === "model" && !filter.groupServiceTiers ? requestUsageModelVariant(event) : undefined;
+        const label = projection
+          ? JSON.stringify([parent.provider, telemetryModel(event.model), telemetryServiceTier(requestUsageModelVariant(event).serviceTier)])
+          : modelVariant
+            ? usageModelVariantKey(modelVariant)
+            : filter.group === "model"
+              ? (event.model ?? "Unknown")
+              : filter.group === "apiProvider"
+                ? (event.apiProvider ?? "Unknown")
+                : filter.group
+                  ? String(parent[filter.group] ?? "Unknown")
+                  : "All";
         this.aggregateCost(
           rows,
           daily,

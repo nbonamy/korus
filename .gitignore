@@ -34,8 +34,9 @@ electron/.development-shell/
 electron/.mobile-simulator/
 electron/.mobile-simulator-artifacts/
 
-# Standalone companion relay bundle
+# Standalone service bundles
 backend/relay-dist/
+server/backend/dist/
 
 /certs/apns-keys.json
 

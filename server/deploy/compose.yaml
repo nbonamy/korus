@@ -1,0 +1,273 @@
+x-postgres: &postgres postgres:18.3-alpine@sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7
+x-hardening: &hardening
+  logging: { driver: none }
+  security_opt: [no-new-privileges:true]
+  mem_limit: 256m
+  cpus: 1
+  pids_limit: 64
+x-client: &client
+  <<: *hardening
+  init: true
+  image: *postgres
+  restart: "no"
+  read_only: true
+  cap_drop: [ALL]
+  user: "70:70"
+  networks: [database]
+  tmpfs: ["/tmp:size=16m,mode=1777"]
+  environment:
+    PGHOST: db
+    PGDATABASE: telemetry
+    PGCONNECT_TIMEOUT: "3"
+  depends_on:
+    db: { condition: service_healthy }
+
+services:
+  db:
+    <<: *hardening
+    image: *postgres
+    restart: unless-stopped
+    shm_size: 128m
+    mem_limit: 512m
+    pids_limit: 128
+    environment:
+      POSTGRES_DB: telemetry
+      POSTGRES_PASSWORD_FILE: /run/secrets/admin
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    secrets: [admin, migrate, ingest, backup, read]
+    volumes:
+      - database:/var/lib/postgresql
+      - ./init.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+    command:
+      [
+        postgres,
+        -c,
+        logging_collector=off,
+        -c,
+        log_statement=none,
+        -c,
+        log_min_messages=panic,
+        -c,
+        log_min_error_statement=panic,
+        -c,
+        log_error_verbosity=terse,
+        -c,
+        log_connections=off,
+        -c,
+        log_disconnections=off,
+        -c,
+        log_hostname=off,
+        -c,
+        log_duration=off,
+        -c,
+        log_min_duration_statement=-1,
+        -c,
+        log_parameter_max_length=0,
+        -c,
+        log_parameter_max_length_on_error=0,
+        -c,
+        shared_preload_libraries=,
+        -c,
+        max_connections=64,
+        -c,
+        password_encryption=scram-sha-256,
+      ]
+    networks: [database]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -q -U postgres -d telemetry"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+  migrate:
+    <<: *hardening
+    image: ${TELEMETRY_IMAGE:?provide the locally built collector image}
+    read_only: true
+    cap_drop: [ALL]
+    user: "10001:10001"
+    restart: "no"
+    networks: [database]
+    secrets: [migrate]
+    command: [migrate]
+    depends_on:
+      db: { condition: service_healthy }
+
+  grants:
+    <<: *client
+    entrypoint: [sh, /ops/grants.sh]
+    secrets: [migrate]
+    volumes: ["./grants.sh:/ops/grants.sh:ro"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      db: { condition: service_healthy }
+
+  collector:
+    <<: *hardening
+    image: ${TELEMETRY_IMAGE:?provide the locally built collector image}
+    read_only: true
+    init: true
+    restart: unless-stopped
+    user: "10001:10001"
+    cap_drop: [ALL]
+    secrets: [ingest]
+    environment:
+      TELEMETRY_PROXY_IP: ${TELEMETRY_PROXY_IP:?provide an isolated internal proxy address}
+    command: [serve]
+    networks:
+      database:
+      frontend:
+        ipv4_address: ${TELEMETRY_COLLECTOR_IP:?provide an isolated internal collector address}
+    tmpfs: ["/tmp:size=8m,mode=1777"]
+    depends_on:
+      grants: { condition: service_completed_successfully }
+      db: { condition: service_healthy, restart: true }
+    healthcheck:
+      test: [CMD, node, /opt/telemetry/container.mjs, check]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  metrics:
+    <<: *hardening
+    image: ${TELEMETRY_IMAGE:?build the isolated telemetry image}
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    init: true
+    restart: unless-stopped
+    secrets: [read, read_access]
+    environment:
+      TELEMETRY_PROXY_IP: ${TELEMETRY_PROXY_IP:?provide an isolated internal proxy address}
+      TELEMETRY_CONSOLE_ORIGIN: ${TELEMETRY_CONSOLE_ORIGIN:?provide the HTTPS console origin}
+    command: [read]
+    networks:
+      database:
+      frontend:
+        ipv4_address: ${TELEMETRY_METRICS_IP:?provide an isolated internal metrics address}
+    tmpfs: ["/tmp:size=8m,mode=1777"]
+    depends_on:
+      grants: { condition: service_completed_successfully }
+      db: { condition: service_healthy, restart: true }
+    healthcheck:
+      test: [CMD, node, /opt/telemetry/container.mjs, check]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  backup:
+    <<: *client
+    restart: unless-stopped
+    entrypoint: [sh, /ops/backup.sh]
+    command: [loop]
+    secrets: [backup]
+    volumes:
+      - ./backup.sh:/ops/backup.sh:ro
+      - ${TELEMETRY_BACKUP_DIRECTORY:?provide a private backup directory}:/backups
+    depends_on:
+      grants: { condition: service_completed_successfully }
+      db: { condition: service_healthy }
+    healthcheck:
+      test: [CMD, sh, /ops/backup.sh, check]
+      interval: 60s
+      timeout: 3s
+      retries: 2
+      start_period: 20s
+
+  restore:
+    <<: *client
+    profiles: [restore]
+    entrypoint: [sh, /ops/restore.sh]
+    secrets: [migrate]
+    volumes:
+      - ./restore.sh:/ops/restore.sh:ro
+      - ${TELEMETRY_BACKUP_DIRECTORY:?provide a private backup directory}:/backups:ro
+
+  auth:
+    <<: *hardening
+    image: ${TELEMETRY_IMAGE:?build the isolated telemetry image}
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    init: true
+    restart: unless-stopped
+    command: [auth]
+    environment:
+      BACKEND_ADMIN_PASSWORD: ${BACKEND_ADMIN_PASSWORD:?provide a strong private console password}
+      TELEMETRY_CONSOLE_ORIGIN: ${TELEMETRY_CONSOLE_ORIGIN:?provide the HTTPS console origin}
+      TELEMETRY_CONSOLE_ALLOW_LOOPBACK_HTTP: ${TELEMETRY_CONSOLE_ALLOW_LOOPBACK_HTTP:-0}
+    networks:
+      frontend:
+        ipv4_address: ${TELEMETRY_AUTH_IP:?provide an isolated internal auth address}
+    tmpfs: ["/tmp:size=8m,mode=1777"]
+    healthcheck:
+      test: [CMD, node, /opt/telemetry/container.mjs, check]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  proxy:
+    <<: *hardening
+    image: nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951
+    user: "101:101"
+    read_only: true
+    cap_drop: [ALL]
+    restart: unless-stopped
+    entrypoint: [sh, /ops/proxy.sh]
+    ports:
+      [
+        "${TELEMETRY_BIND_ADDRESS:?provide the private TLS-edge bind address}:${TELEMETRY_PORT:?provide the private TLS-edge port}:8080",
+      ]
+    environment:
+      API_HOST: ${TELEMETRY_API_HOST:?provide the API virtual host}
+      CONSOLE_HOST: ${TELEMETRY_CONSOLE_HOST:?provide the console virtual host}
+    secrets: [edge_realip, read_access]
+    volumes:
+      - ./proxy.sh:/ops/proxy.sh:ro
+      - ./nginx.conf.template:/ops/nginx.conf.template:ro
+      - ${TELEMETRY_CONSOLE_DIRECTORY:?provide the console build directory}:/srv/console:ro
+    tmpfs: ["/tmp:size=8m,mode=1777"]
+    networks:
+      frontend:
+        ipv4_address: ${TELEMETRY_PROXY_IP:?provide an isolated internal proxy address}
+      edge:
+    depends_on:
+      collector: { condition: service_healthy }
+      metrics: { condition: service_healthy }
+      auth: { condition: service_healthy }
+    healthcheck:
+      test: [CMD-SHELL, "nginx -t -c /tmp/nginx.conf >/dev/null 2>&1"]
+      interval: 30s
+      start_period: 5s
+      start_interval: 1s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  database:
+networks:
+  database: { internal: true }
+  frontend:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${TELEMETRY_PROXY_SUBNET:?provide an unused private container subnet}
+  edge:
+secrets:
+  admin: { file: "${TELEMETRY_ADMIN_FILE:?provide an external secret file}" }
+  migrate:
+    { file: "${TELEMETRY_MIGRATE_FILE:?provide an external secret file}" }
+  ingest: { file: "${TELEMETRY_INGEST_FILE:?provide an external secret file}" }
+  backup: { file: "${TELEMETRY_BACKUP_FILE:?provide an external secret file}" }
+  read: { file: "${TELEMETRY_READ_FILE:?provide an external secret file}" }
+  edge_realip:
+    {
+      file: "${TELEMETRY_EDGE_REALIP_FILE:?provide an external trusted TLS-edge configuration}",
+    }
+  read_access:
+    {
+      file: "${TELEMETRY_READ_ACCESS_FILE:?provide an external private service token file}",
+    }

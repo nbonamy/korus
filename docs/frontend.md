@@ -320,6 +320,45 @@ tokens (`--color-*`, `--diff-*`) applied as CSS custom properties on the documen
 root; syntax and diff highlighting share the theme source. VS Code theme import is a
 desired direction, not a requirement.
 
+## Private Usage Console
+
+`server/frontend/src` is a standalone Vue entry point for aggregate telemetry. It
+consumes browser-safe aggregate contracts and canonical UI primitives, never
+the desktop shell, provider protocols, identity state or filesystem. Dependency
+lint enforces that boundary. The console uses Element Plus controls with its own
+semantic theme. Desktop provider/model pickers assume app-owned provider catalogs,
+host state and localization, while the console filters aggregate reporting
+dimensions. Analytics options uses the canonical AppMenuButton and AppMenu with
+the same checked tier-grouping item, icons, focus behavior and shared menu chrome.
+`vue/src/shared/menu/menu-chrome.css` owns the shared icon-button and popover skin.
+Its SVG chart accepts aggregate series rather than local-ledger
+`UsageSummary` dimensions.
+
+The build copies semantic tokens from the app's light palette without external
+font imports. Charts use thin, bounded cubic curves with fading area fills,
+separate runs for missing values and markers only during inspection. One keyboard
+focus stop per chart supports Left/Right and Home/End. Compact token units,
+cent-rounded amounts and one-decimal percentages expose exact PostgreSQL values
+in floating date popovers on hover, tap or keyboard inspection. Additive charts
+show totals; speed and first-output rates are never summed. Coordinate conversion
+is bounded to safe finite values; exact out-of-range measurements remain in the
+popover. Line, bar and ranking charts share the soft gradient treatment.
+
+Hash routes separate the overview, activity, token, spend, model and performance reports without
+requiring proxy rewrite rules. Date and usage-filter state stays in the mounted
+console across page changes; browser history and direct report links select the
+report independently of those filters. Models leads with ranked usage and offers
+stacked bars or lines over time. Performance compares model-day rates using the
+same model/tier identities, with five most-used variants selected initially.
+
+Sign-in, sign-out and expired-session recovery share the console identity.
+Reporting data and credentials are not kept in browser storage.
+
+The private proxy owns authentication. Browser code performs only same-origin
+aggregate reads, keeps no credentials or metrics in storage, discards stale filter
+responses and clears displayed data during reload or access failure. Activity
+cards and series stay global; usage filters affect usage summaries and model rows.
+
 ## Editable Visualize Canvases
 
 Visualize imports Mermaid, SVG and image input into an Excalidraw canvas (read-only

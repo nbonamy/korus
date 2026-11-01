@@ -190,6 +190,7 @@ const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?
 };
 
 const desktopOnlyOperations = new Set([
+  'getTelemetryConsent', 'changeTelemetryConsent', 'previewTelemetryDay',
   'browserClearBrowsingData', 'browserExtensions', 'browserClearAnnotations', 'browserClose', 'browserGoBack', 'browserGoForward', 'browserNavigate',
   'browserOpen', 'browserReload', 'browserOpenDevTools', 'browserResolveAnnotation', 'browserCopyScreenshot', 'browserGetZoom', 'browserSetAnnotationMode', 'browserSetBounds', 'browserSetZoom',
   'browserSetVisible', 'browserViewportApplied', 'chooseAgentFolder', 'chooseSourceFolder',

@@ -131,6 +131,8 @@ export type AppBackendServerOptions = {
   browserExtensionPackages?: BrowserExtensionPackages;
   requirements?: Requirements;
   usage?:UsageService;
+  telemetryActivity?: import('@workspace/core/telemetry-consent').TelemetryActivityPort;
+  telemetryConsent?: import('./telemetry/consent-service').TelemetryConsentService;
   onPromptSource?: (agent: Agent, clientId: string) => (() => void) | undefined;
   conversationSharing?: ConversationSharingOptions;
   guestJoins?: GuestJoins;
@@ -1368,9 +1370,34 @@ export class AppBackendServer {
         return createAppRpcResult(message.id, await this.browserExtensionPackages.manage(clientId, requireRecord(params?.input) as import('@workspace/core/browser-extensions').BrowserExtensionPackageRequest));
       } catch (error) { return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, error instanceof Error ? error.message : 'Browser extension operation failed.'); }
     }
-    if ([backendMethods.usageGet,backendMethods.usageClear].some(method=>method===message.method)) {
+    if (message.method === backendMethods.telemetryActivity) {
+      if (clientId !== 'desktop' || (message.params !== undefined && !isRecord(message.params)) || (params && Object.keys(params).length) || !this.options.telemetryActivity) return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'Desktop activity unavailable.');
+      // App actions never wait for queue persistence, sealing or network delivery.
+      void this.options.telemetryActivity.activity().catch(() => undefined);
+      return createAppRpcResult(message.id, null);
+    }
+    if ([backendMethods.telemetryConsentGet, backendMethods.telemetryConsentChange, backendMethods.telemetryProfilePreview].some(method => method === message.method)) {
+      try {
+        const consent = this.options.telemetryConsent;
+        if (clientId !== 'desktop' || !consent) throw new Error('Desktop telemetry settings unavailable.');
+        if (message.method === backendMethods.telemetryConsentGet) {
+          if (params && Object.keys(params).length) throw new Error('Invalid settings read.');
+          return createAppRpcResult(message.id, await consent.view());
+        }
+        const key = message.method === backendMethods.telemetryConsentChange ? 'action' : 'day';
+        if (!params || Object.keys(params).length !== 1 || typeof params[key] !== 'string') throw new Error('Invalid telemetry operation.');
+        if (message.method === backendMethods.telemetryConsentChange) return createAppRpcResult(message.id, await consent.change(params.action as import('@workspace/core/telemetry-consent').TelemetryConsentAction));
+        if (!this.options.usage) throw new Error('Usage unavailable.');
+        return createAppRpcResult(message.id, await consent.preview(params.day as string, this.options.usage, this.options.version, process.platform));
+      } catch { return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'Telemetry settings are unavailable or invalid.'); }
+    }
+    if ([backendMethods.usageGet,backendMethods.usageClear,backendMethods.telemetryPreview].some(method=>method===message.method)) {
       try {
         const usage=this.options.usage;if(!usage) throw new Error('Usage is unavailable on this host.');
+        if(message.method===backendMethods.telemetryPreview) {
+          if (!params || Object.keys(params).length !== 1 || !('input' in params)) throw new Error('Invalid preview request.');
+          return createAppRpcResult(message.id, await usage.previewTelemetry(params.input as import('@workspace/core/telemetry').TelemetryPreviewInput, this.options.version, process.platform));
+        }
         if(message.method===backendMethods.usageClear) {if(params&&Object.keys(params).length)throw new Error('Invalid clear request.');await usage.clear();return createAppRpcResult(message.id,null);}
         if(message.method===backendMethods.usageGet) {await usage.drain();return createAppRpcResult(message.id,usage.local.query((params?.filter??{}) as UsageFilter));}
       } catch { return createAppRpcError(message.id,appRpcErrorCodes.invalidParams,'Usage request is unavailable or invalid.'); }

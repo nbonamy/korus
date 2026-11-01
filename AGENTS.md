@@ -116,6 +116,8 @@ docs only when an architecture, process, or reusable convention changes.
 - `docs/mcp.md`: the app-owned MCP server model: identity, enablement,
   collaboration, contextual tool families, Computer Use, hosted gateway.
 - `docs/custom-tools.md`: use when adding or presenting an MCP tool.
+- `server/README.md`: hosted backend, private admin console, Docker packaging
+  and deployment boundaries.
 - `docs/frontend.md`: renderer ownership, canonical UI, interaction and styling
   conventions, Visualize canvases. Read before editing UI.
 - `docs/testing.md`: testing principles, Test Value Gate, fixtures, coverage and
@@ -168,7 +170,7 @@ configuration. Enforce static architecture rules with lint, type, AST, or
 dependency tooling instead. Coverage is evidence of exercised behavior, never
 a reason to invent a test.
 
-Every workspace (core, backend, vue, electron, web) gates on exactly 85%
+Every workspace, including server/backend and server/frontend, gates on exactly 85%
 statement coverage. Lines, branches, and functions remain reported diagnostics
 without blocking thresholds. Do not lower the statement threshold or shrink
 the measured surface to land a change. Coverage does not replace meaningful

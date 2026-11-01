@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HOST="${APP_WEBSITE_HOST:-joshua}"
+HOST="${APP_WEBSITE_HOST:?Set APP_WEBSITE_HOST to the operator SSH host}"
 DOMAIN="$(node -p "new URL(require('$ROOT_DIR/../core/src/product.json').websiteUrl).hostname")"
 REMOTE_ROOT="${APP_WEBSITE_ROOT:-$(node -p "require('$ROOT_DIR/../core/src/product.json').deploymentRoot")}"
 NGINX_CONFIG="${APP_NGINX_CONFIG:-/etc/nginx/sites-available/$DOMAIN.conf}"

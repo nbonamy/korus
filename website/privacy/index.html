@@ -61,7 +61,7 @@
     </header>
     <main class="policy shell">
       <h1>Privacy policy</h1>
-      <p class="policy-date">Effective October 26, 2026</p>
+      <p class="policy-date">Effective October 27, 2026</p>
       <p>
         This policy covers __PRODUCT_NAME__ for macOS, Windows, and Linux, its
         iPhone and Android companion __PRODUCT_COMPANION_NAME__, and this
@@ -108,10 +108,10 @@
           href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement"
           >GitHub</a
         >, <a href="https://about.gitlab.com/privacy/">GitLab</a>,
-        <a href="https://linear.app/privacy">Linear</a>, and other
-        integrations receive the information needed for the actions you ask them
-        to perform. This can include account identifiers, repository content,
-        issues, pull requests, and merge requests.
+        <a href="https://linear.app/privacy">Linear</a>, and other integrations
+        receive the information needed for the actions you ask them to perform.
+        This can include account identifiers, repository content, issues, pull
+        requests, and merge requests.
       </p>
       <p>
         These services process information under their own terms, privacy
@@ -130,13 +130,13 @@
         them. Share invitations only with people you intend to give that access.
       </p>
       <p>
-        The owner computer keeps share authorizations and pending suggestions.
-        A collaborator's computer keeps its display name and saved connection
-        authorization. Conversation content is encrypted end to end between
-        the computers. The relay processes routing and connection metadata;
-        it cannot read the conversation content. The collaborator
-        relies on the configured relay to discover the owner on first connection
-        and saves that owner's identity for subsequent connections.
+        The owner computer keeps share authorizations and pending suggestions. A
+        collaborator's computer keeps its display name and saved connection
+        authorization. Conversation content is encrypted end to end between the
+        computers. The relay processes routing and connection metadata; it
+        cannot read the conversation content. The collaborator relies on the
+        configured relay to discover the owner on first connection and saves
+        that owner's identity for subsequent connections.
       </p>
       <p>
         Choose <strong>Stop sharing</strong> to revoke the invitation and end
@@ -227,15 +227,130 @@
         </li>
       </ul>
 
-      <h2 id="analytics">Usage statistics and diagnostics</h2>
+      <h2 id="analytics">Local Analytics and optional daily sharing</h2>
       <p>
-        The desktop app records local usage statistics such as provider, model,
-        workspace identifiers, token counts, timing, and outcomes. These
-        statistics do not contain conversation text and are not sent to a hosted
-        __PRODUCT_NAME__ analytics service. They are retained for up to one
-        year, subject to a record limit, and can be deleted in
-        <strong>Settings → Analytics → Clear</strong>.
+        The desktop app keeps a local usage ledger for Analytics, including
+        provider, model, workspace identifiers, token counts, timing, outcomes,
+        and estimated costs. It does not contain conversation text. Local
+        statistics are retained for up to one year, subject to a record limit.
+        <strong>Settings → Analytics → Clear</strong> deletes those local
+        statistics, not conversations or reports already received by us.
       </p>
+      <h3 id="optional-sharing">Optional anonymous daily usage</h3>
+      <p>
+        Sharing is <strong>off by default</strong> for new and existing desktop
+        profiles. Onboarding and the first launch after upgrading offer
+        <strong>Share anonymous usage</strong> and <strong>Don't share</strong>.
+        Closing or dismissing the choice leaves sharing off without repeated
+        prompts. You can change your choice in
+        <strong>Settings → Analytics</strong>. While sharing is off, the app
+        makes no telemetry requests, including registration or health checks.
+      </p>
+      <p>
+        If you enable sharing, only usage from the next UTC day is eligible;
+        earlier history is never sent. Completed days when you opened or used
+        the desktop app in the foreground can produce a daily report, including
+        an empty usage report if you ran no turns. Reports can arrive late and
+        may be dropped after delivery failures. Remote teams and mobile
+        companions do not submit additional copies of their usage.
+      </p>
+      <p>Each report contains only these fields:</p>
+      <ul>
+        <li>
+          <code>installId</code>: a cryptographically random UUID created for
+          each local desktop profile, independently of whether you share. It is
+          not derived from your account or computer.
+        </li>
+        <li>
+          <code>day</code>: the UTC reporting date, without activity timestamps.
+        </li>
+        <li>
+          <code>appVersion</code>: the numeric app release version, without
+          local build suffixes.
+        </li>
+        <li>
+          <code>os</code>: macos, windows, linux, or unknown, without operating
+          system version or architecture.
+        </li>
+        <li>
+          <code>usage</code>: daily groups containing only
+          <code>provider</code> (the app driver: codex, claude, or antigravity),
+          <code>model</code> (an allowed catalog ID or unknown, never a custom
+          alias), <code>serviceTier</code> (standard, fast, ultrafast, flex, batch, scale, or unknown), <code>turns</code>, <code>inputTokens</code> (inclusive
+          input), <code>cachedInputTokens</code> (cache reads),
+          <code>outputTokens</code>, and
+          <code>estimatedCostUsd</code> (estimated API-equivalent cost in USD).
+          An optional <code>performance</code> group contains
+          <code>speedTurns</code> (turns with measured output speed),
+          <code>outputTokens</code> (output from those measured turns),
+          <code>generationMs</code> (summed active time after first output),
+          <code>ttftMs</code> (summed active time before first output), and
+          <code>ttftTurns</code> (turns with a first-output measurement).
+          These are daily totals, without per-turn timestamps or events.
+          Missing or incomplete measurements are null, not zero. A day without
+          usage has an empty group list.
+        </li>
+      </ul>
+      <p>
+        Input includes cache reads and any recorded cache creation. Cache reads
+        are not added again to total tokens; reasoning already included in
+        output is not counted again. Cost uses complete estimates from the local
+        ledger; unavailable or partial group estimates are null. These are
+        API-equivalent estimates, not subscription charges, billed spend, or
+        invoices. Reports do not include cache-write categories or lifetimes and
+        cannot establish exact provider billing.
+      </p>
+      <p>
+        Reports exclude prompts, model responses, conversation and tool content,
+        attachments, file paths, project details, repository and branch names,
+        agent, team, session, turn and request names or identifiers, error text,
+        account details, email addresses, machine identifiers, device names,
+        exact activity timestamps, per-turn output speed, IP-address fields, and all
+        other free-form content. Custom model aliases are never sent.
+      </p>
+      <p>
+        No IP addresses are stored by the telemetry service or its delivery
+        infrastructure. Network services necessarily see a connection address
+        transiently to deliver a report; abuse limits use bounded temporary
+        state. This promise applies to the telemetry delivery path, not coding
+        providers, the website, mobile pairing, conversation sharing, or push
+        notifications described elsewhere in this policy.
+      </p>
+      <p>
+        The random ID links your daily summaries. It is not linked to your
+        account, but the reports are not completely unlinkable: a stable ID and
+        usage patterns can distinguish a participating profile. Copying a
+        profile preserves its ID; reinstalling without its saved state creates
+        another identity. Counts describe participating installation identities,
+        not people, accounts, paying customers, or all downloads. The dashboard
+        is private and exposes aggregates rather than installation records.
+      </p>
+      <p>
+        Daily summaries and the minimal registry of random ID and first reported
+        day are kept indefinitely. The first reported day is not an installation
+        date. Server backup copies rotate after seven days; this does not expire
+        the history in the primary database or in newer backups.
+      </p>
+      <p>
+        <strong>Show what would be sent</strong> in Settings → Analytics
+        displays the exact local JSON body and lets you copy it. With sharing
+        off, the preview is hypothetical and does not queue or send history. An
+        unfinished day is provisional. A sealed report preserves the same bytes
+        for delivery and retries; later usage corrections do not automatically
+        change it.
+      </p>
+      <p>
+        <strong>Stop sharing</strong> cancels pending work and prevents future
+        delivery. A report already transmitted cannot be recalled.
+        <strong>Reset installation ID</strong> clears pending work, creates a
+        new random ID, and turns sharing off. Sharing again requires a new
+        explicit choice and starts from the next UTC day without replaying old
+        usage. Stopping sharing, resetting the ID, clearing local statistics, or
+        uninstalling does not remotely delete reports already received or their
+        backup copies. Contact us for privacy requests.
+      </p>
+
+      <h2 id="diagnostics">Diagnostics and support</h2>
       <p>
         The apps may keep local diagnostic logs to troubleshoot errors. iPhone
         connection diagnostics are limited in size and contain connection events

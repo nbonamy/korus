@@ -6,6 +6,92 @@ import { expect, it } from "vitest";
 import { UsageLedger } from "../usage-ledger";
 import type { ExecutionObservation } from "@workspace/core/usage";
 
+it("projects incomplete groups as null, retains measured zero, and replaces late measurements before sealing", async () => {
+  const at = Date.parse("2026-10-15T12:00:00Z");
+  const ledger = new UsageLedger(":memory:", () => at);
+  const input = {
+    day: "2026-10-15",
+    eligibleFrom: at - 86400000,
+    eligibleUntil: null,
+  };
+  const base = {
+    provider: "codex" as const,
+    agentId: "agent",
+    sessionId: "s",
+    model: "gpt-6-sol",
+    at,
+  };
+  const attribution = { teamId: null, repository: null };
+  try {
+    await ledger.load();
+    for (const [turnId, tokens] of [
+      ["one", { input: 10, cacheRead: 5, cacheWrite: null, output: 2 }],
+      ["two", null],
+      ["zero", { input: 0, cacheRead: 0, cacheWrite: null, output: 0 }],
+    ] as const) {
+      await ledger.observe(
+        {
+          ...base,
+          turnId,
+          model: turnId === "zero" ? "gpt-5.6-sol" : base.model,
+          phase: "started",
+          tokens,
+        },
+        attribution,
+      );
+    }
+    expect(ledger.projectDailyTelemetry(input)).toStrictEqual([
+      {
+        provider: "codex",
+        model: "gpt-5.6-sol",
+        serviceTier: "unknown",
+        turns: 1,
+        inputTokens: 0,
+        cachedInputTokens: 0,
+        outputTokens: 0,
+        estimatedCostUsd: 0,
+      },
+      {
+        provider: "codex",
+        model: "gpt-6-sol",
+        serviceTier: "unknown",
+        turns: 2,
+        inputTokens: null,
+        cachedInputTokens: null,
+        outputTokens: null,
+        estimatedCostUsd: null,
+      },
+    ]);
+    await ledger.observe(
+      {
+        ...base,
+        turnId: "two",
+        phase: "usage",
+        tokens: { input: 10, cacheRead: 5, cacheWrite: null, output: 2 },
+      },
+      attribution,
+    );
+    // 10 input * 2 + 10 reads * .2 + 4 output * 10, per million.
+    expect(ledger.projectDailyTelemetry(input)[1]).toStrictEqual({
+      provider: "codex",
+      model: "gpt-6-sol",
+      serviceTier: "unknown",
+      turns: 2,
+      inputTokens: 20,
+      cachedInputTokens: 10,
+      outputTokens: 4,
+      estimatedCostUsd: 0.000062,
+    });
+    expect(
+      ledger.projectDailyTelemetry({ ...input, eligibleFrom: at + 1 }),
+    ).toStrictEqual([]);
+    expect(
+      ledger.projectDailyTelemetry({ ...input, eligibleUntil: at }),
+    ).toStrictEqual([]);
+  } finally {
+    await ledger.close();
+  }
+});
 it("persists turn-start effort and service tier without replacing them on later updates", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "usage-settings-"));
   const file = path.join(dir, "usage.sqlite"), at = Date.now();
@@ -272,4 +358,20 @@ it("counts a turn on the day it happened in the reader's timezone, for buckets a
   } finally {
     await ledger.close();
   }
+});
+
+it("projects additive measured performance from the existing ledger", async () => {
+  const at = Date.parse("2026-10-15T12:00Z");
+  const ledger = new UsageLedger(":memory:", () => at);
+  try {
+    await ledger.load();
+    for (const [turnId, serviceTier, output, activeMs, ttftMs] of [["a","normal",10,1100,100],["b","priority",90,3900,900]] as const) {
+      const base = {provider:"codex" as const,agentId:"a",sessionId:"s",turnId,model:"gpt-6-sol",at,serviceTier};
+      await ledger.observe({...base,phase:"started"}, {teamId:null,repository:null});
+      await ledger.observe({...base,phase:"completed",tokens:{input:100,cacheRead:50,cacheWrite:null,output},timing:{activeMs,ttftMs}}, {teamId:null,repository:null});
+    }
+    const rows = ledger.projectDailyTelemetry({day:"2026-10-15",eligibleFrom:at-86400000,eligibleUntil:null});
+    expect(rows).toHaveLength(2);
+    expect(rows.map(row => [row.model, row.serviceTier, row.performance?.outputTokens])).toStrictEqual([["gpt-6-sol", "fast", 90], ["gpt-6-sol", "standard", 10]]);
+  } finally { await ledger.close(); }
 });

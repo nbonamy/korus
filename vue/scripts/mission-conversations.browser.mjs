@@ -151,7 +151,7 @@ test('Mission workspace pairs horizontal workflow steps with persistent conversa
    assert.equal(await ticket.getAttribute('aria-pressed'), 'true');
    assert.equal(await page.locator('.mission-implementation__ticket[aria-pressed="true"]').count(), 1);
    await page.locator('.mission-workspace__workbench-scroll').evaluate(el => el.scrollTop = 0);
-   const stages = workflow.getByRole('button');
+   const stages = workflow.getByRole('list').getByRole('button');
    assert.equal(await stages.count(), 5);
    assert.equal(await stages.nth(3).isDisabled(), true, 'future stages remain unavailable');
    assert.equal(await stages.nth(4).isDisabled(), true);

@@ -106,7 +106,7 @@ function windowFixture() {
   return Object.assign(new EventEmitter(), {
     webContents: Object.assign(new EventEmitter(), { send: vi.fn(), reload: vi.fn() }),
     isDestroyed: vi.fn(() => false), isMinimized: vi.fn(() => false),
-    isFocused: () => true, restore: vi.fn(), show: vi.fn(), focus: vi.fn(),
+    isFocused: (): boolean => true, restore: vi.fn(), show: vi.fn(), focus: vi.fn(),
     setAutoHideMenuBar: vi.fn(), setMenuBarVisibility: vi.fn(),
   });
 }
@@ -173,6 +173,35 @@ afterEach(async () => {
 });
 
 describe('controller desktop lifecycle', () => {
+  it('delegates open, focus, wake and reconnect activity to the local backend without creating upload timers', async () => {
+    const { backend, window, controller, disconnect, state } = setup();
+    backend.request.mockImplementation(async (method: string) => {
+      if (method === backendMethods.telemetryActivity) return null;
+      if (method === backendMethods.snapshotGet) return state;
+      if (method === backendMethods.clientStateGet) return state.clientState;
+      throw Error('Unexpected method: ' + method);
+    });
+    controller.createWindow();
+    await controller.initialize();
+    const activityCalls = () => backend.request.mock.calls.filter(([method]) => method === backendMethods.telemetryActivity);
+    expect(activityCalls()).toHaveLength(1);
+    window.emit('focus');
+    powerMonitor.emit('resume');
+    await Promise.resolve();
+    expect(activityCalls()).toHaveLength(3);
+    vi.spyOn(window, 'isFocused').mockReturnValue(false);
+    powerMonitor.emit('resume');
+    expect(activityCalls()).toHaveLength(3);
+    vi.spyOn(window, 'isFocused').mockReturnValue(true);
+    disconnect();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(activityCalls()).toHaveLength(4);
+    for (const call of activityCalls()) expect(call).toStrictEqual([backendMethods.telemetryActivity]);
+    await controller.shutdown();
+    powerMonitor.emit('resume'); window.emit('focus');
+    expect(activityCalls()).toHaveLength(4);
+  });
+
   it('reads restored opaque image media through the native preview IPC without granting unknown tokens', async () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'korus-image-preview-'));
     try {
