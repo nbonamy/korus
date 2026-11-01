@@ -41,7 +41,11 @@ A selected issue supplies context for Requirements. A Linear team or project doe
 
 The stages run across the top of the Mission workbench, with the conversation beside the requirements, tickets, and implementation work. Drag the divider to resize the conversation. Select an earlier stage to inspect its accepted artifact; viewing approved requirements does not restart planning or move the workflow backward.
 
+Use **Expand workbench** to focus on the stage's artifacts, or **Expand conversation** to focus on the agent. **Restore split view** brings both back. Each Mission remembers its expanded pane when you return.
+
 Use the agent tabs to switch between the Mission lead and repository workers. Repository icons and ticket selection help identify whose conversation you are reading. Blue indicators mean input is needed; orange means work is running. Red unread dots appear on the lead. **⌘K** lists each Mission once and returns to its last selected agent. Mission documents open in a centered dialog; choose whether to open an agent's document request without leaving the workflow.
+
+In the composer's teammate mentions, Mission agents appear under their Mission's name, with the current Mission first. Choose **Mission lead** or the relevant repository worker to direct your message to the right teammate.
 
 To change accepted requirements or tickets, ask the Mission lead to return to the relevant stage. Stop active repository workers first. Completed work and tickets are preserved; revising a ticket makes that ticket eligible for implementation again, while unchanged completed tickets stay complete. Advancing through Requirements, Tickets, and Review still requires your approval.
 
