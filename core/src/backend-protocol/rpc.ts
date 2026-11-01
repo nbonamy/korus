@@ -73,6 +73,11 @@ export type AppSnapshotGetResult = {
 };
 
 export type AppBackendRequestMap = {
+  [backendMethods.telemetryActivity]: { params: undefined; result: null };
+  [backendMethods.telemetryConsentGet]: { params: undefined; result: import('../telemetry-consent').TelemetryConsentView };
+  [backendMethods.telemetryConsentChange]: { params: { action: import('../telemetry-consent').TelemetryConsentAction }; result: import('../telemetry-consent').TelemetryConsentView };
+  [backendMethods.telemetryProfilePreview]: { params: { day: string }; result: import('../telemetry-consent').TelemetryProfilePreview };
+  [backendMethods.telemetryPreview]: { params: { input: import('../telemetry').TelemetryPreviewInput }; result: import('../telemetry').SealedTelemetryBody };
   [backendMethods.agentConversationTurnHistoryLoad]: { params: { agentId: string; turnId: string }; result: void };
   [backendMethods.driverConversationTurnHistoryLoad]: { params: { agent: import('../contracts').Agent; turnId: string }; result: void };
   [backendMethods.agentRunProfilesGet]: { params: { agentId: string }; result: import('../run-profiles').RunProfileCatalog };

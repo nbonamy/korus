@@ -42,11 +42,11 @@ await fs.mkdir(path.join(main, 'res/drawable-nodpi'), { recursive: true });
 const escape = value => value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[c]);
 await fs.writeFile(path.join(main, 'assets/product.json'), JSON.stringify({ name: product.companionName, desktopName: product.name, relay, firebase, privacyUrl: new URL('/privacy/', product.websiteUrl).href }));
 await fs.writeFile(path.join(main, 'res/values/product.xml'), `<resources><string name="app_name">${escape(product.companionName)}</string></resources>\n`);
-await fs.copyFile(path.join(root, 'electron/assets/icon-square.png'), path.join(main, 'res/drawable-nodpi/app_icon.png'));
+await fs.copyFile(path.join(root, 'client/electron/assets/icon-square.png'), path.join(main, 'res/drawable-nodpi/app_icon.png'));
 await fs.rm(path.join(main, 'res/drawable/app_icon.png'), { force: true });
 // The canonical SVG owns the artwork and colors. Android owns its native mask,
 // safe-zone placement and monochrome layer; no separate copy of the brand paths.
-const svg = await fs.readFile(path.join(root, 'electron/assets/icon.svg'), 'utf8');
+const svg = await fs.readFile(path.join(root, 'client/electron/assets/icon.svg'), 'utf8');
 const attribute = (tag, name) => tag.match(new RegExp(`\\b${name}="([^"]+)"`))?.[1];
 const dimensions = attribute(svg, 'viewBox')?.split(/\s+/).map(Number);
 const mark = svg.match(/<g\s+transform="translate\(([-\d.]+)\s+([-\d.]+)\)"\s+fill="(#[\da-f]+)">([\s\S]*?)<\/g>/i);

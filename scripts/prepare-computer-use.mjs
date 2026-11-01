@@ -8,7 +8,7 @@ import dotenv from 'dotenv';
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 dotenv.config({ path: path.join(rootDir, '.env'), quiet: true });
 const configPath = path.join(rootDir, 'computer-use-release.json');
-const electronDir = path.join(rootDir, 'electron');
+const electronDir = path.join(rootDir, 'client/electron');
 const iconPath = path.join(electronDir, 'assets', 'icon.icns');
 const outputDir = path.join(electronDir, '.computer-use');
 const sourceBuildScript = path.resolve(rootDir, '..', 'computer-use', 'macos', 'scripts', 'build-app.sh');

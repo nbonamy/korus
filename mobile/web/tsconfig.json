@@ -3,7 +3,7 @@
   "compilerOptions": {
     "paths": {
       "@workspace/core/*": ["../../core/src/*"],
-      "@workspace/vue/*": ["../../vue/src/*"]
+      "@workspace/vue/*": ["../../client/vue/src/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.vue", "*.ts", "../src/**/*.ts"],

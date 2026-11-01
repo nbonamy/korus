@@ -196,7 +196,7 @@ Observed sanitized event sequence, milliseconds from probe start:
 1003 cleanup complete; gate calls []
 ```
 
-A subsequent read-only `claude auth status --json` check reported `loggedIn: false` both with the inherited default-home override and with that override removed. Only the boolean was retained. Korus normally removes an explicit default-home override because credential lookup differs; see `backend/src/claude/config-directory.ts`. No login was attempted.
+A subsequent read-only `claude auth status --json` check reported `loggedIn: false` both with the inherited default-home override and with that override removed. Only the boolean was retained. Korus normally removes an explicit default-home override because credential lookup differs; see `client/backend/src/claude/config-directory.ts`. No login was attempted.
 
 The result subtype alone is not evidence of model success. No gate ran, no second prompt was injected, no steering timing was measured. The query was closed in `finally`. No further authenticated probe was attempted during that initial pass; the authentication question was raised with Nicolas. He first chose to finish with runtime findings unproven, then signed in and requested continuation; see R3. Raw generated logs remain disposable scratch data, not repository fixtures.
 
@@ -336,11 +336,11 @@ Local source references are pinned by the Korus commit above; line numbers are n
 
 [C1]: ../../core/src/backend-capabilities.ts
 [C2]: ../../core/src/backend-driver.ts
-[C3]: ../../backend/src/driver-rpc.ts
-[C4]: ../../backend/src/claude/agent-sdk-transport.ts
-[C5]: ../../backend/src/claude/claude-conversation-host.ts
-[C6]: ../../backend/src/claude/transcript-history-adapter.ts
-[C7]: ../../backend/src/claude/claude-provider-catalog.ts
+[C3]: ../../client/backend/src/driver-rpc.ts
+[C4]: ../../client/backend/src/claude/agent-sdk-transport.ts
+[C5]: ../../client/backend/src/claude/claude-conversation-host.ts
+[C6]: ../../client/backend/src/claude/transcript-history-adapter.ts
+[C7]: ../../client/backend/src/claude/claude-provider-catalog.ts
 [C8]: ../../core/src/contracts/conversation.ts
 [S1]: https://github.com/Emanuele-web04/synara/blob/cb760d5b5eace10c3e823feb8dc5a39748f0c67e/apps/server/src/provider/Layers/ClaudeAdapter.ts#L7071
 [S2]: https://github.com/Emanuele-web04/synara/blob/cb760d5b5eace10c3e823feb8dc5a39748f0c67e/apps/server/src/provider/Layers/ClaudeAdapter.ts#L7268
@@ -368,4 +368,4 @@ Installed SDK evidence is version-specific (0.3.226), not a dependency on tracki
 - K3: `SDKActiveGoalMessage`, 2988–3002; `SDKMessage`, 4184; internal `StdoutMessage`, 7066.
 - K4: `Options.persistSession`, 1604–1610; fork option, 1519–1524; `resume`, `sessionId`, `resumeSessionAt`, `resumeDropsTurn`, 1825–1891; `Query.rewindFiles`, 2554–2566.
 
-Additional Korus navigation: transport active-turn guards 111–159, context reads 194–230, queue submission/result settlement 296–381, options 527–578, home alignment 823–834; host send guard 269–283, resume 473–499, event handling 565–631; history normalized turn construction 173–272; catalog capability override 36–40. Existing fake-SDK tests in `backend/src/claude/__tests__/agent-sdk-transport.spec.ts` cover multi-turn reuse, resume, overlap rejection and context reads; they were inspected, not executed or treated as live runtime proof.
+Additional Korus navigation: transport active-turn guards 111–159, context reads 194–230, queue submission/result settlement 296–381, options 527–578, home alignment 823–834; host send guard 269–283, resume 473–499, event handling 565–631; history normalized turn construction 173–272; catalog capability override 36–40. Existing fake-SDK tests in `client/backend/src/claude/__tests__/agent-sdk-transport.spec.ts` cover multi-turn reuse, resume, overlap rejection and context reads; they were inspected, not executed or treated as live runtime proof.

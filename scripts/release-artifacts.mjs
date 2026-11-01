@@ -49,6 +49,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === import.meta.filename) {
   const signed = process.platform === 'darwin';
   const task = process.platform + '-' + process.arch !== target ? Promise.reject(new Error('Incorrect native runner.'))
     : signed && (process.env.APP_SKIP_SIGNING === '1' || process.env.TEST) ? Promise.reject(new Error('Signed artifacts required.'))
-    : collectArtifacts({ source: 'electron/out/make', output: `out/release/${target}`, target });
+    : collectArtifacts({ source: 'client/electron/out/make', output: `out/release/${target}`, target });
   task.catch(error => { console.error(error.message); process.exitCode = 1; });
 }

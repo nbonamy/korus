@@ -18,6 +18,10 @@ export default defineConfig({
           .replaceAll(
             "__PRODUCT_COMPANION_APP_STORE_URL__",
             product.companionAppStoreUrl,
+          )
+          .replaceAll(
+            "__PRODUCT_PRIVACY_URL__",
+            `${product.websiteUrl}/privacy/`,
           );
       });
     },

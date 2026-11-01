@@ -2,7 +2,7 @@ import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import prettier from 'prettier';
 
-const sourceRoot = resolve('vue/src');
+const sourceRoot = resolve('client/vue/src');
 const checkOnly = process.argv.includes('--check');
 const styleBlockPattern = /(<style(?:\s[^>]*)?>)([\s\S]*?)(<\/style>)/g;
 

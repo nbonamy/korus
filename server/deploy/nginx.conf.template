@@ -1,0 +1,110 @@
+worker_processes 1;
+pid /tmp/nginx.pid;
+error_log /dev/null crit;
+events { worker_connections 128; }
+http {
+  include /etc/nginx/mime.types;
+  default_type application/octet-stream;
+  access_log off;
+  error_log /dev/null crit;
+  server_tokens off;
+  client_max_body_size 64k;
+  client_body_timeout 10s;
+  client_header_timeout 5s;
+  keepalive_timeout 5s;
+  # Bodies stay in bounded memory; no request/body/query cache or disk spill.
+  client_body_buffer_size 64k;
+  client_body_in_single_buffer on;
+  client_body_temp_path /tmp/body;
+  proxy_temp_path /tmp/proxy;
+  fastcgi_temp_path /tmp/fastcgi;
+  uwsgi_temp_path /tmp/uwsgi;
+  scgi_temp_path /tmp/scgi;
+  resolver 127.0.0.11 valid=10s ipv6=off;
+  proxy_cache off;
+  proxy_buffering off;
+  include /run/secrets/edge_realip;
+  server { listen 8080 default_server; server_name _; return 404; }
+  server {
+    listen 8080;
+    server_name ${API_HOST};
+    location = /v1/telemetry/daily {
+      if ($request_method != POST) { return 405; }
+      set $collector http://collector:8080;
+      proxy_pass $collector;
+      proxy_http_version 1.1;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For "";
+      proxy_set_header Authorization "";
+      proxy_set_header Cookie "";
+      proxy_set_header User-Agent "";
+      proxy_set_header Connection "";
+      proxy_request_buffering off;
+      proxy_connect_timeout 2s;
+      proxy_send_timeout 10s;
+      proxy_read_timeout 10s;
+      proxy_next_upstream off;
+    }
+    location / { return 404; }
+  }
+  server {
+    listen 8080;
+    server_name ${CONSOLE_HOST};
+    absolute_redirect off;
+    location = /_console_session_check {
+      internal;
+      set $auth http://auth:8080;
+      proxy_pass $auth/auth/session;
+      proxy_method GET;
+      proxy_pass_request_body off;
+      proxy_set_header Content-Length "";
+      proxy_set_header Cookie $http_cookie;
+      proxy_set_header Origin "";
+      proxy_set_header Authorization "";
+      proxy_set_header User-Agent "";
+      proxy_set_header X-Real-IP "";
+      proxy_set_header X-Forwarded-For "";
+      proxy_connect_timeout 2s;
+      proxy_read_timeout 5s;
+      proxy_next_upstream off;
+    }
+    location = /auth/session {
+      set $auth http://auth:8080;
+      proxy_pass $auth;
+      proxy_set_header Authorization "";
+      proxy_set_header User-Agent "";
+      proxy_set_header X-Real-IP "";
+      proxy_set_header X-Forwarded-For "";
+      proxy_request_buffering off;
+      proxy_connect_timeout 2s;
+      proxy_read_timeout 5s;
+      proxy_next_upstream off;
+    }
+    location = /v1/telemetry/metrics {
+      auth_request /_console_session_check;
+      if ($request_method != GET) { return 405; }
+      set $metrics http://metrics:8080;
+      proxy_pass $metrics;
+      proxy_http_version 1.1;
+      proxy_set_header Authorization "Bearer ${READ_TOKEN}";
+      proxy_set_header Cookie "";
+      proxy_set_header User-Agent "";
+      proxy_set_header X-Forwarded-For "";
+      proxy_set_header X-Real-IP "";
+      proxy_set_header Connection "";
+      proxy_connect_timeout 2s;
+      proxy_read_timeout 10s;
+      proxy_next_upstream off;
+    }
+    root /srv/console;
+    location = /login { try_files /index.html =404; add_header Cache-Control "no-store" always; }
+    location ^~ /assets/ { try_files $uri =404; }
+    location / {
+      auth_request /_console_session_check;
+      error_page 401 = @console_login;
+      add_header Cache-Control "no-store" always;
+      try_files $uri $uri/ /index.html;
+    }
+    location @console_login { return 302 /login; }
+  }
+}

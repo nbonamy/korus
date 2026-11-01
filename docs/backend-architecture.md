@@ -61,7 +61,7 @@ log and socket paths, npm scripts and launchd labels stay brand-neutral.
 
 ## Antigravity
 
-`backend/src/antigravity` owns installation and discovery of the ACP
+`client/backend/src/antigravity` owns installation and discovery of the ACP
 runtime/harness, OAuth observations, and the provider replica. The agy CLI is not
 the execution path. OAuth renewal stays native, background checks suppress login UI,
 and child environments sanitize Google credentials/projects with isolated
@@ -103,7 +103,7 @@ The qualified Google-hosted ACP 1.3.0 executable implements the v1-shaped wire
 contract while reporting protocol 2. Its bundled Python adapter is the evidence
 boundary; the public CLI, Python SDK and Gemini Interactions API are different
 interfaces. The [pinned public registry](https://github.com/agentclientprotocol/registry/blob/dc55a34900fdd60e5e97c1cbd7825c5a1df673fc/antigravity-acp/agent.json)
-identifies the distribution. [Fixture provenance](../backend/src/antigravity/__tests__/fixtures/usage-capability.json)
+identifies the distribution. [Fixture provenance](../client/backend/src/antigravity/__tests__/fixtures/usage-capability.json)
 records archive/executable hashes and source locations. These are source-derived
 wire fixtures with synthetic numbers and identities, not a live billing capture.
 
@@ -185,7 +185,6 @@ The protocol is transport-neutral JSON-RPC 2.0, one message per line.
 | stdio (`korusd --stdio`) | bundled local backend; same framing SSH uses |
 | Unix socket (`korusd serve`, `APP_HOME/daemon.sock`) | optional always-on single-host daemon |
 | SSH stdio | remote locations: noninteractive SSH with keepalives, an app-private Node runtime, and a version-checked socket bridge or one-shot backend |
-| WebSocket (web host) | browser, allowlisted operations only |
 
 - Electron's default `APP_BACKEND_MODE=auto` connects to a running local daemon,
   else starts the bundled stdio process. On reconnect it retries the same
@@ -545,7 +544,7 @@ pairs again instead of restoring a stale development connection. The first
 invitation turns mobile access on. An invalid or partial environment pair
 fails closed instead of silently selecting another relay.
 
-The host deployment templates under `backend/companion-relay/deploy` terminate TLS
+The host deployment templates under `client/backend/companion-relay/deploy` terminate TLS
 in nginx and keep relay and health listeners on loopback. Certbot uses the nginx
 ACME webroot and reloads nginx after successful renewal. Only published Cloudflare
 proxy ranges may supply the client address used for connection and request limits;
@@ -580,7 +579,7 @@ relay and the destination daemon read the JSON file named by
 `APP_COMPANION_PAIRING_CONFIG` at startup. The file contains `code` and `hostId`;
 when the variable is unset, no pairing configuration is read and ordinary
 invitation pairing works without a reusable code or operator repository.
-[the example](../backend/companion-relay/pairing.example.json) shows the format, with
+[the example](../client/backend/companion-relay/pairing.example.json) shows the format, with
 `hostId` replaced by the destination daemon's companion identity. Deployment codes,
 identities and service configuration belong in the operator's private inventory.
 Point both services to the same file so routing and approval use one definition.
@@ -808,16 +807,11 @@ so Launch Services retains its URL registration. Windows uses a current-user
 scheme registration that launches Node directly without a shell; Linux uses a
 private desktop entry and `xdg-mime`. The launcher fixes the profile, app path and
 backend executable so installed-app environment overrides cannot redirect it.
-The opt-in `electron/scripts/guest-desktop.runtime.mjs` workflow builds the
+The opt-in `client/electron/scripts/guest-desktop.runtime.mjs` workflow builds the
 worktree, uses an isolated encrypted relay with a stable test key, performs native
 URL delivery, and removes its temporary profile and registration. Its scripted
 provider transcript is not live-provider execution evidence.
 
-`npm run dev:web` is the web equivalent: it builds `daemon` once, watches the web
-server bundle (restarting server and daemon on change) and serves the client from Vite
-with HMR, proxying `/app` to the server. `CODEX_APP_SDK_SOURCE=1` links the sibling SDK
-sources for HMR, as in desktop dev. Use `APP_HOME` to keep it off your real state.
-`APP_BACKEND_MODE=in-process` exists for bisecting.
 
 Folder-changing provider actions are rejected while chats are active because they
 restart `daemon` and its provider processes; Electron closes hosted Browser panes
@@ -980,7 +974,7 @@ GitHub API and raw source files at one immutable revision. The collector verifie
 Git blob hashes, requires all three providers, validates pricing rules and the
 existing history, and atomically appends dated cost events only to models whose
 pricing content changes. Revision, comments and source links do not trigger events.
-`backend/src/pricing/history.json` is keyed by provider, then exact model ID; each
+`client/backend/src/pricing/history.json` is keyed by provider, then exact model ID; each
 model has shared metadata and a `cost` array. Each event retains rates, pricing
 rules and immutable source evidence. Removal records an event without erasing
 past prices; reappearance appends another event. The baseline is effective October
@@ -988,11 +982,16 @@ past prices; reappearance appends another event. The baseline is effective Octob
 entry for a newly listed model requires published pricing evidence.
 
 The pricing workflow runs daily and supports manual dispatch on `main`. It
-validates the collector and offline bundles before committing changed history
-with the repository's Actions token; unchanged prices produce no commit.
+validates the collector, publisher and offline bundles before committing changed
+history and its content-addressed manifest with the repository's Actions token;
+unchanged prices preserve the manifest revision and publication time.
 Concurrent pricing runs are serialized. If `main` advances during collection,
 the push fails rather than replacing newer repository changes. Bot pushes do not
 trigger the separate Quality workflow, so pricing validation runs before the push.
+The workflow publishes immutable versioned catalogs and then replaces the latest
+manifest on a dedicated, non-latest pricing prerelease. Pricing assets never use
+the app release tags or GitHub's latest app release. Publication retries reuse
+uploaded catalogs and cannot advance the manifest after a failed catalog upload.
 
 The catalog retains context predicates, service tiers, mode mappings, category-specific multipliers,
 cache reads, and cache-write lifetime maps. Missing rates remain absent; explicit
@@ -1009,9 +1008,25 @@ actually served tier. Each pricing event retains its source revision, collection
 time and blob hash; model metadata retains the source path and documentation
 links for coverage diagnosis. Removal events reference the revision that omits
 the model and have no source blob.
-The catalog is statically embedded in the standalone daemon bundle, which is also
-copied into desktop resources. Builds and runtime catalog reads require no pricing
-network calls.
+The daemon embeds a catalog and matching manifest for offline startup. Its pricing
+service loads a validated local cache. `RuntimeScheduler` runs its due check at
+startup and once per minute; the persisted timestamp limits public manifest
+requests to once every 24 hours across restarts. Network access never blocks
+startup or analytics queries. Schema validation, a bounded download and a content
+digest precede atomic cache replacement. The newest compatible publication wins
+between cache and bundle; failed checks retain usable prices and their check time
+survives restart. The common scheduler owns the timer; shutdown stops scheduling
+before the pricing service cancels pending downloads.
+
+Usage queries price retained measurements against one current catalog snapshot;
+cost totals are not persisted. New catalogs can correct historical estimates
+without rewriting usage. Sealed telemetry bodies retain the estimates captured
+at sealing; refreshed prices affect new previews and future seals. Event dates
+select the applicable historical price,
+while source collection and catalog publication times describe discovery and
+delivery. An effective-date correction requires provider evidence; downloading
+newer data does not establish an earlier effective date. After editing history,
+`node scripts/pricing-release.mjs` prepares its matching bundled manifest and assets.
 
 ### Execution measurements
 
@@ -1070,6 +1085,26 @@ Unknown legacy coverage keeps its retained execution attribution. Clearing,
 execution deletion and retention also delete request evidence. The standalone and
 desktop resource bundles calculate these costs from embedded prices offline.
 
+Model grouping uses the raw model ID and normalized service tier together.
+Normal, default and standard tiers share a standard variant; OpenAI priority and
+fast share a Fast variant. Anthropic's reported Fast inference mode distinguishes
+its Fast variant from standard capacity. Missing tiers remain a separate unknown
+variant. Each tier-separated model row and daily group exposes an opaque `key` and a
+`modelVariant` descriptor; the raw model ID remains unchanged for pricing and
+filtering. Execution performance uses its captured start tier, while request cost
+uses served evidence, including downgrades. OpenAI's served Fast alias resolves to
+the catalog's priority pricing rules without an additional multiplier. Retained
+ledgers regroup directly from stored tier evidence without rewriting records.
+Local Analytics queries may explicitly combine service tiers within a model.
+This sums the same token, timing and cost contributions; rates still use summed
+measurements and each request retains its tier-specific price.
+
+Hourly telemetry retains canonical provider/model/tier groups using the same execution-start
+and served-request attribution. Only closed tier labels are sent; missing or unrecognized
+tiers become unknown, and legacy reports remain valid as unknown-tier groups. Raw model
+IDs retain their pricing identity. The private console separates variants by default;
+its Group service tiers option combines them with weighted timing sums.
+
 The backend turn clock excludes waits for user input and in-flight tools, with
 parallel tool waits counted once. Speed combines provider-reported output tokens
 with measured working time after the first generated output. A turn without both
@@ -1082,3 +1117,144 @@ summed generation time rather than averaging per-turn rates. Clearing statistics
 deletes the local measurements without changing provider history. Storage failures leave analytics unavailable without blocking
 provider work. No reporting endpoint, upload queue or hosted analytics service is
 part of this path.
+
+### Private daily payload projection
+
+The local telemetry preview drains pending ledger observations and uses a numeric
+projection of that same SQLite ledger for one UTC reporting day. Tokens and
+turns retain execution-start attribution; costs retain request-day/model
+attribution. Cost-only groups have zero execution tokens. Missing measurements in
+any contributing execution make that group's token fields null. Only complete
+ledger cost coverage becomes a number; partial subtotals remain null.
+
+The shared wire allowlist contains canonical IDs from the embedded pricing catalog,
+independent of runtime/user model catalogs. Other IDs coalesce into `unknown`.
+The serializer rejects extra fields, constructs every wire field explicitly, sorts
+provider/model/tier groups and returns immutable canonical JSON text. Hourly
+reports include a UTC hour; daily previews and legacy reports omit it. Its UTF-8 bytes are
+the sealed-body representation shared by preview and delivery callers. Preview
+does not persist, queue, schedule or send; identity and consent owners must supply
+the UTC reporting bucket. The preview result carries only the body, never a ledger
+row, provider object or filesystem path. An unavailable ledger is an error, not an
+empty active day.
+
+The private `telemetry` section of `settings.json` contains an installation UUID,
+an optional `enabled` choice, and the latest `enabledAt` timestamp. Unset shows
+the notice without sending; false
+is off and true is on. The common settings writer preserves these fields across
+ordinary snapshot saves without projecting them into generic snapshots,
+coordination events or agent tools. Existing `telemetry.json` identities and
+choices are imported before retiring the old file. Each off-to-on transition sets
+`enabledAt`; repeated enable calls and restarts preserve it. Automatic reports
+start with the next full UTC hour. The partial hour and time while sharing was off
+are excluded. Existing enabled settings without a timestamp start a fresh window
+when loaded. Explicit historical backfills are separate from enabling sharing.
+Invalid telemetry metadata makes sharing unavailable without blocking ordinary startup.
+
+Only explicit desktop operations return the credential-free sharing choice. The
+desktop bridge accepts an action or reporting day, never an identity override.
+The conversation-top notice uses the backend consent authority. Its one-minute
+foreground timer starts only when the notice is eligible, pauses while hidden or
+unfocused, and retains its elapsed time across pane changes in the renderer session.
+Timeout persists the enabled setting through the same desktop operation as an
+explicit enable, while retaining the notice for the rest of that session until
+dismissed. Saved settings suppress the notice on later starts; failed automatic
+writes retain an error without repeated automatic attempts. Reset replaces
+the identity and turns sharing off. Companion clients do not expose profile actions.
+
+The consent owner delegates transitions to `TelemetryDeliveryPort`; it does not
+send, schedule or manage a queue. One backend `TelemetryUploadService` per local
+installation runtime owns sealing, the private durable queue, telemetry HTTP,
+acknowledgements and cancellation. RuntimeScheduler flushes delivery on startup
+and every hour. It discovers reporting hours from the local ledger, including
+all unsent retained history inside the current sharing window. Electron also signals observed
+open/focus/resume activity, and scheduled uploads confirm foreground presence so
+an active hour without turns can report empty usage. Remote ledgers and mobile
+companions cannot supply local reporting data; an idle daemon cannot invent empty
+activity hours.
+
+Delivery state is bound to the installation UUID. It retains the local ledger's
+year of hourly buckets, with a 10,000-bucket bound. Frozen pending bodies survive
+until delivery finishes; older acknowledgements keep a digest for unchanged-total
+comparison. Discovery never reconstructs zero totals from expired source data.
+Each flush sends at most ten reports, prioritizing the current hour before older
+unsent history. A persisted 30-attempt rolling-hour budget survives restart, and
+a 429 pauses the whole backlog. A bounded rotating scan checks acknowledged
+buckets for late corrections. Queue writes are atomic and private;
+attempts are recorded before transport. Restart preserves frozen bodies and the
+six-attempt budget. A lost acknowledgement may cause identical physical retries;
+pending reports retry their original bytes. After acknowledgment, a changed
+hourly projection replaces that bucket's totals; unchanged projections are skipped.
+Corrupt state fails closed rather than reconstructing already-sealed history.
+
+Desktop release builds embed `APP_TELEMETRY_ENDPOINT` from the build environment
+as a public fallback in the daemon bundle. A runtime value overrides it; an
+explicitly blank runtime value disables it. With neither a runtime value nor a
+bundled endpoint, there are no requests, discovery or health checks. Its value is supplied outside Git; HTTPS is required except for explicit
+loopback HTTP test receivers. Requests have a ten-second deadline, no credentials
+or provider headers, and no redirect following. Network failures, 408, 429 and 5xx
+retry with bounded jittered backoff and a capped Retry-After; other responses end
+the report. Bodies and response contents never enter logs. App actions do not
+wait for telemetry work or present delivery failures.
+
+Disable/reset abort transport and purge activity/pending work
+without waiting for ledger reads or acknowledgement. Revocation becomes visible
+in memory as soon as requested, including while an earlier consent callback is
+pending. Every await before sending is followed by an authority guard;
+obsolete work cannot restore a purged report. Preview I/O does not hold the consent
+mutation lock, and obsolete preview results are rejected after a transition.
+Cancellation is requested even when saving consent fails. Failed user actions
+remain visible; durable opt-out still requires a successful local consent write.
+
+The uploader workflow uses temporary real SQLite/private files, fake time and a
+loopback HTTP receiver. Repeat with
+`npm run test -w @workspace/backend -- telemetry/__tests__/upload-service.spec.ts`.
+Set `TELEMETRY_TEST_EVIDENCE` to an untracked output file to retain the off/on trace
+and exact retry body. This proves local transport behavior, not production
+infrastructure privacy. Dependency/AST lint isolates telemetry callers from
+transport/timers and allows only runtime composition of the upload service.
+
+Profile preview resolves identity inside the backend. Previews while sharing is
+off are hypothetical and cannot enqueue history. An unfinished UTC day is
+provisional. For a completed day, a legacy daily report supplied by the delivery owner
+takes precedence and returns its body verbatim. Preview and copy preserve that
+text without parsing or reserialization.
+The repeatable `npm run test:telemetry-dom -w @workspace/vue` harness exercises real
+Vue/Element Plus controls with a synthetic desktop API and writes screenshots and
+DOM evidence outside Git; temporary-ledger workflows own persistence evidence.
+The consent no-IP-storage statement requires collector, proxy and upstream
+verification before release activation; a local fixture cannot establish it.
+
+Inclusive input includes cache reads and Claude cache creation. Cached input means
+reads only; output already includes reasoning. The input-minus-read remainder
+includes writes, so it is not an ordinary-rate fresh-input measurement. Claude's
+request observer retains write lifetimes, while execution totals collapse them.
+Codex execution cache-write counters, including a schema default of zero, do not
+establish inclusion semantics, write lifetime or independently billable request
+evidence. The projection uses existing ledger estimate coverage, including its
+execution fallbacks; it neither invents request evidence nor reprices usage. Its
+omitted cache-write categories prevent exact downstream repricing. Estimated USD
+is API-equivalent usage, not billing.
+
+The server-usage workflow compares persisted Claude/Codex measurements against
+`client/backend/src/usage/__tests__/fixtures/daily-telemetry.json`, the exact canonical
+macOS UTF-8 body without a trailing newline. Other platforms substitute only the
+coarse OS value. Repeat with
+`npm run test -w @workspace/backend -- usage/__tests__/server-usage.spec.ts`.
+It covers UTC bucket attribution, model changes, nulls and
+content/local-dimension canaries without an endpoint. Architecture AST lint limits
+projection dependencies and rejects direct network/timer operations.
+
+Performance reuses the ledger's additive speed samples: measured output tokens,
+active generation milliseconds, summed time to first output, and their turn
+counts. Only hourly provider/model/tier sums enter the optional closed performance
+object; no per-turn timing or timestamps are exported. Missing samples are
+unavailable, not zero. The read API divides the summed output by summed time and
+the summed first-output time by its measured-turn count. It never averages
+per-install rates. Older reports remain valid without performance fields.
+The consent file's second format pauses an older enabled opt-in and presents the
+updated explanation before any expanded sharing. Existing declines stay declined.
+
+Hosted ingestion, authentication, reporting and deployment live under `server/`.
+See [the hosted server documentation](../server/README.md) for that independent
+process boundary. Desktop consent, projection and upload remain daemon-owned.

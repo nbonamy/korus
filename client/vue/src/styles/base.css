@@ -1,0 +1,457 @@
+@import "../shared/menu/menu-chrome.css";
+
+* {
+  box-sizing: border-box;
+}
+
+.workspace-body {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  box-shadow: var(--shadow-content-edge);
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+/* Keep the Windows window edge visible without coloring its native title bar. */
+.window-edge {
+  display: none;
+}
+
+html[data-platform='windows'] .window-edge {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  pointer-events: none;
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--color-border);
+}
+
+/* codex-app-sdk 0.1.0 incorrectly hides its dark/system theme host. */
+html[data-codex-theme] {
+  display: block;
+}
+
+body {
+  overflow: hidden;
+  background: var(--color-window-background);
+  font-family: var(--font-family-base);
+  font-size: var(--app-ui-font-size, var(--font-size-15));
+  line-height: var(--line-height-20);
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  outline: none;
+}
+
+button,
+[role='button'],
+.app-menu,
+.agent-header,
+.app-dialog__header,
+.app-form-dialog__header {
+  user-select: none;
+}
+
+.el-overlay {
+  -webkit-app-region: no-drag;
+}
+
+.el-dialog {
+  max-width: calc(100vw - var(--space-16));
+  text-align: left;
+}
+
+.app-dialog.el-dialog {
+  overflow: visible;
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-lowest);
+  box-shadow: var(--shadow-lg);
+}
+
+.app-dialog .el-dialog__header {
+  padding: var(--space-8) var(--space-12) var(--space-4);
+}
+
+.app-dialog .el-dialog__body {
+  padding: 0 var(--space-12) var(--space-8);
+}
+
+.app-dialog .el-dialog__body:last-child {
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+}
+
+.app-dialog .el-dialog__footer {
+  text-align: right;
+  padding: var(--space-8) var(--space-12);
+  border-top: 1px solid var(--color-border);
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+  background: var(--color-surface-lowest);
+}
+
+.app-dialog--compact.el-dialog {
+  padding: 0;
+}
+
+.app-dialog--compact .el-dialog__header,
+.app-dialog--compact .el-dialog__body {
+  padding: 0;
+}
+
+.app-dialog--compact .el-dialog__footer {
+  padding: var(--space-6) var(--space-8);
+}
+
+.app-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+}
+
+.app-dialog__header--centered {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: center;
+  text-align: center;
+}
+
+.app-form-dialog__header {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+  margin-bottom: var(--space-4);
+}
+
+.app-dialog__title {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--font-size-20);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-28);
+}
+
+.app-dialog__subtitle {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-13);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-18);
+}
+
+.app-dialog__icon-button {
+  display: grid;
+  place-items: center;
+  width: var(--space-12);
+  height: var(--space-12);
+  padding: 0;
+  border: 0;
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.app-dialog__icon-button svg {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+}
+
+.app-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.app-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  min-height: var(--space-16);
+  padding: 0 var(--space-8);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-13);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-18);
+  cursor: pointer;
+}
+
+.app-button--small {
+  min-height: var(--space-12);
+  padding: 0 var(--space-6);
+  font-size: var(--font-size-12);
+}
+
+/* Icons placed in a button follow the button's text size; zero specificity so a component can still override. */
+:where(.app-button > svg) {
+  flex: 0 0 auto;
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+.app-button--primary {
+  border-color: var(--color-primary);
+  color: var(--color-on-primary);
+  background: var(--color-primary);
+}
+
+.app-button--primary:hover:not(:disabled) {
+  border-color: var(--color-secondary);
+  color: var(--color-on-secondary);
+  background: var(--color-secondary);
+}
+
+.app-button--secondary {
+  border-color: var(--color-border);
+  color: var(--color-primary);
+  background: transparent;
+}
+
+.app-button--secondary:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  background: var(--color-primary-container);
+}
+
+.app-button--neutral {
+  border-color: var(--color-border);
+  color: var(--color-text);
+  background: var(--color-surface-lowest);
+}
+
+.app-button--neutral:hover:not(:disabled) {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-high);
+}
+
+.app-button--tertiary {
+  color: var(--color-text-muted);
+  background: transparent;
+}
+
+.app-button--tertiary:hover:not(:disabled) {
+  color: var(--color-text);
+  /* background: var(--color-surface-low); */
+}
+
+.app-button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.app-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.app-button[aria-busy='true']::before {
+  width: var(--space-4);
+  height: var(--space-4);
+  border: 2px solid currentcolor;
+  border-top-color: transparent;
+  border-radius: var(--radius-full);
+  content: '';
+  animation: app-spin 800ms linear infinite;
+}
+
+@keyframes app-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* The one loading ring. Colour follows the text; add --primary for a standalone, branded spinner. */
+.app-spinner {
+  --app-spinner-size: 16px;
+  --app-spinner-width: 2px;
+  display: inline-block;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: var(--app-spinner-size);
+  height: var(--app-spinner-size);
+  border: var(--app-spinner-width) solid color-mix(in srgb, currentcolor 25%, transparent);
+  border-top-color: currentcolor;
+  border-radius: var(--radius-full);
+  animation: app-spin 800ms linear infinite;
+}
+
+.app-spinner--sm {
+  --app-spinner-size: 12px;
+}
+
+.app-spinner--lg {
+  --app-spinner-size: 20px;
+  --app-spinner-width: 3px;
+}
+
+.app-spinner--xl {
+  --app-spinner-size: 40px;
+  --app-spinner-width: 3px;
+}
+
+.app-spinner--primary {
+  color: var(--color-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-button[aria-busy='true']::before,
+  .app-spinner {
+    animation: none;
+  }
+}
+
+.app-form-dialog {
+  display: grid;
+  gap: var(--space-8);
+}
+
+.app-form-dialog__field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.app-form-dialog__field-heading {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.app-form-dialog__label {
+  color: var(--color-text);
+  font-size: var(--font-size-15);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-22);
+}
+
+.app-section-label {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-12);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-16);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.app-form-dialog__heading-separator {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-12);
+  line-height: var(--line-height-18);
+}
+
+.app-form-dialog__help {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-13);
+  line-height: var(--line-height-18);
+}
+
+.app-form-dialog__footer {
+  justify-content: space-between;
+}
+
+.app-form-dialog__footer-left,
+.app-form-dialog__footer-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.app-form-dialog__footer-actions {
+  margin-left: auto;
+}
+
+.app-form-dialog__control {
+  min-height: 44px;
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+}
+
+.app-form-dialog__input-control {
+  display: flex;
+  align-items: center;
+}
+
+.app-form-dialog__input-control:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+
+.app-form-dialog__control .el-select {
+  width: 100%;
+  font-size: var(--font-size-14);
+  font-weight: var(--font-weight-regular);
+}
+
+.app-form-dialog__control .el-select__wrapper {
+  min-height: 42px;
+  padding: 0 var(--space-6);
+  border-radius: calc(var(--radius-lg) - 1px);
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-form-dialog__control .el-select__wrapper:hover,
+.app-form-dialog__control .el-select__wrapper.is-focused {
+  box-shadow: none;
+}
+
+.app-form-dialog__control .el-select__placeholder,
+.app-form-dialog__control .el-select__selected-item {
+  color: var(--color-text);
+  font-weight: var(--font-weight-regular);
+}
+
+.app-form-dialog__text-input {
+  width: 100%;
+  min-width: 0;
+  padding: 0 var(--space-6);
+  border: 0;
+  color: var(--color-text);
+  background: transparent;
+  font: inherit;
+  font-size: var(--font-size-14);
+  line-height: var(--line-height-20);
+  outline: none;
+}
+
+.app-form-dialog__text-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.app-form-dialog__button-control {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-6);
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.app-form-dialog__button-control:hover:not(:disabled) {
+  border-color: var(--color-primary);
+}
+
+.app-form-dialog__button-control:disabled {
+  cursor: default;
+  opacity: 0.72;
+}

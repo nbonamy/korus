@@ -30,6 +30,11 @@ implementation identifiers, package names, filenames, and CSS brand-neutral;
 read product metadata for visible names, instructions, paths, and packaging.
 Authored documentation may use the product name.
 
+Client workspaces live under `client/`: `backend` owns the local daemon,
+`electron` owns desktop main, preload and renderer, and `vue` owns shared Vue UI.
+`core`, `mobile`, `native`, `server` and `website` remain separate root areas.
+Root `npm run dev` launches the Electron app.
+
 Preserve the product and process boundaries:
 
 - Electron main is the desktop adapter. It owns windows, preload IPC, native
@@ -116,6 +121,8 @@ docs only when an architecture, process, or reusable convention changes.
 - `docs/mcp.md`: the app-owned MCP server model: identity, enablement,
   collaboration, contextual tool families, Computer Use, hosted gateway.
 - `docs/custom-tools.md`: use when adding or presenting an MCP tool.
+- `server/README.md`: hosted backend, private admin console, Docker packaging
+  and deployment boundaries.
 - `docs/frontend.md`: renderer ownership, canonical UI, interaction and styling
   conventions, Visualize canvases. Read before editing UI.
 - `docs/testing.md`: testing principles, Test Value Gate, fixtures, coverage and
@@ -168,7 +175,7 @@ configuration. Enforce static architecture rules with lint, type, AST, or
 dependency tooling instead. Coverage is evidence of exercised behavior, never
 a reason to invent a test.
 
-Every workspace (core, backend, vue, electron, web) gates on exactly 85%
+Every workspace, including server/backend and server/frontend, gates on exactly 85%
 statement coverage. Lines, branches, and functions remain reported diagnostics
 without blocking thresholds. Do not lower the statement threshold or shrink
 the measured surface to land a change. Coverage does not replace meaningful
@@ -222,7 +229,7 @@ commit, or push work. Curate it only when Nicolas explicitly invokes
   restart the installed app and its owned daemon, or inspect the guarded update.
 - `korus-frontend-dev`: Vue, Element Plus, app shell, chat rendering,
   artifact panes, design tokens, themes, and frontend tests.
-- `korus-live-preview`: isolated, parallel-safe, branch-faithful web
+- `korus-live-preview`: isolated, parallel-safe, branch-faithful Electron
   previews with seeded state for interactively dogfooding any Korus feature.
 - `korus-testing-coverage`: Vitest, component isolation, IPC contracts,
   fake Codex transports, coverage triage, and verification gates.

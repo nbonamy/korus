@@ -1,7 +1,7 @@
 # Claude Code Integration
 
 Korus drives Claude through the official `@anthropic-ai/claude-agent-sdk`, only from
-`daemon` (`backend/src/claude/`). The SDK launches Claude Code with its native
+`daemon` (`client/backend/src/claude/`). The SDK launches Claude Code with its native
 settings, skills, hooks and project instructions; Korus never calls the Messages API
 or replaces Claude Code with a generic model loop. Read this before changing
 Claude sessions, history, permissions or capabilities. Dated runtime evidence and

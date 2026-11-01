@@ -11,11 +11,45 @@ desktop app: no server/API integration gates). Fakes sit at ownership boundaries
 | App controller / state routing | unified backend fake |
 | Real Codex driver | typed Codex SDK surface (never the real SDK against a fake app-server; that boundary belongs to the SDK repo) |
 | Real Claude driver | fake Claude SDK query |
-| Mounted UI / `App` | `vue/src/test/client-api-mock.ts` + `backend-fixture.ts` |
+| Mounted UI / `App` | `client/vue/src/test/client-api-mock.ts` + `backend-fixture.ts` |
 
 Korus tests its adapter translations and product behavior, not either SDK. Wire
 framing, decoding and lifecycle tests for its own process/socket transports remain.
 Real provider smoke tests are opt-in and never part of the normal gate.
+
+The independently runnable telemetry collector in `server/backend` is a separate
+hosted boundary. Its workflows exercise actual HTTP and disposable real PostgreSQL, never
+SQLite or a database fake. Docker must be running for hosted backend test/coverage gates;
+the fixture starts and removes its own temporary container and never contacts an
+operator database. Private read workflows execute the seeded SQL through the
+HTTP gate and real Postgres, checking global activity independently of usage
+filters, incomplete coverage, retained history and exact aggregate strings.
+Collector build tests inspect generated artifacts for external
+configuration canaries, rather than asserting production source text. Backend
+probe modules resolve dependencies from their owning workspace so nested and
+hoisted npm installations work without requiring transitive dependencies at the
+repository root. The telemetry-stack script workflow also builds an isolated image
+and exercises real Compose services, persistent volumes, role grants, proxy routing
+and backup/restore.
+It runs in the normal script test gate and requires local Docker; it never uses an
+operator environment file or database. After installing npm dependencies, run
+`npx playwright install --with-deps chromium` before `npm test` or
+`npm run test:scripts`. This installs the browser revision matching the locked
+Playwright package and, on Linux, its system libraries (which require elevated
+package-manager access). Both Quality and desktop-release quality jobs provision
+these dependencies explicitly; a system browser or an existing browser cache is
+not a prerequisite.
+
+The same Compose workflow builds `server/frontend/src` with operator-secret canaries
+and runs a real browser through the authenticated console proxy and aggregate
+service against the executable Postgres seed. Set
+`TELEMETRY_DASHBOARD_EVIDENCE=<external-directory>` when running
+`node --test server/scripts/stack.test.mjs` to retain desktop/mobile charts,
+loading/empty/failure/access states, geometry and exact aggregate response evidence.
+It checks global-card filter scope, old retained history, corrected groups, missing
+spend gaps, keyboard inspection and absence of external browser requests or raw
+identities. The rendered `server/frontend` workflow covers request races and exact
+small/large measurements through the same production console component.
 
 Mission screenshot fixtures use reserved synthetic sessions. The daemon rebuilds
 their conversations from the persisted fixture identity and rejects provider
@@ -37,7 +71,8 @@ If a system must be tested in isolation, write down all the ways it could fail
 first. If a test cannot be run or a change is truly untestable or docs-only, say
 so explicitly and name what to run next.
 
-All six workspaces (`core`, `backend`, `vue`, `electron`, `web`, `mobile`) gate on exactly
+All seven workspaces (`core`, `client/backend`, `client/vue`, `client/electron`, `mobile`,
+`server/backend`, `server/frontend`) gate on exactly
 **85% statements**; lines, branches and functions are diagnostics. Never lower the
 threshold or shrink includes/exclusions to land a change. Coverage is evidence of
 exercised behavior, not a reason to invent a test. Leave no broad untested areas
@@ -180,12 +215,12 @@ compatibility evidence. Desktop-only changes need no mobile compatibility fixtur
 
 ## Fixtures
 
-Scripted, never simulators: `backend/src/codex/__tests__/sdk-surface-fixture.ts`
+Scripted, never simulators: `client/backend/src/codex/__tests__/sdk-surface-fixture.ts`
 (typed SDK methods, per-conversation snapshots, explicit events; tests supply the
 provider's resulting state, so the fixture must not grow a reducer),
-`backend/src/claude/__tests__/sdk-query-fixture.ts` (independently controlled query
+`client/backend/src/claude/__tests__/sdk-query-fixture.ts` (independently controlled query
 iterators; inputs, permissions and failures observable at the SDK boundary), and
-`vue/src/test/client-api-mock.ts` (exhaustive typed `AppApi` fake with production
+`client/vue/src/test/client-api-mock.ts` (exhaustive typed `AppApi` fake with production
 initialization, disposable subscriptions, I/O-free defaults, and throwing
 consequential operations unless scripted). Per-test overrides merge into the complete
 fake; use `stubLegacyElectronTestWindow` only to test missing-method compatibility,
@@ -272,16 +307,18 @@ reload) and screenshot checks for shell, sidebars, composer, artifact panes, dif
 and theme switching apply once the
 chosen desktop tool is configured.
 
-The Design acceptance smoke runs the built web shell and an isolated daemon:
-`npm run build:web && node scripts/verify-design-workspace.mjs [output-directory]`.
+The Design acceptance smoke runs the built Electron shell and an isolated daemon:
+`npm run build:backend && node scripts/verify-design-workspace.mjs [output-directory]`.
 It copies existing local Codex authentication only to pass shell onboarding, submits
 no model turns, and removes its temporary profile afterward. Deterministic authored
 content exercises user edits, targeted batches, stale-write rejection, reload,
 iframe isolation, Play, recovery, shared-canvas navigation, inspector toggling,
 alternatives, layer/layout editing, drag/resize conflicts, prototype navigation with
 form-state recovery, live tweak previews, stale-tweak recovery, and offline HTML
-playback. The output directory
+playback. Native pointer input inside a scaled artboard maps frame-local DOM
+bounds through the rendered iframe bounds so pointer coordinates follow CSS
+scaling in Electron. Selection and gesture checks still use real mouse
+input and verify saved state. The output directory
 retains a JSON check report, document, handoff, HTML and screenshots. Add `--live`
 to exercise the configured provider with an open-ended brief and verify three
-directions with tradeoffs and generated controls; this consumes provider usage. Native capture requires
-separate desktop verification.
+directions with tradeoffs and generated controls; this consumes provider usage. Screenshots capture the Electron renderer.

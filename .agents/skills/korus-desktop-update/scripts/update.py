@@ -448,7 +448,7 @@ def build_candidate(args):
     arch = {'arm64': 'arm64', 'x86_64': 'x64'}.get(platform.machine())
     if not arch:
         raise RuntimeError('Unsupported macOS architecture.')
-    return args.repo / 'electron/out' / (args.product['name'] + '-darwin-' + arch) / (args.product['name'] + '.app')
+    return args.repo / 'client/electron/out' / (args.product['name'] + '-darwin-' + arch) / (args.product['name'] + '.app')
 
 
 def workflow(args):

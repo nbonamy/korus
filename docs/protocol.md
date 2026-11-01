@@ -1,7 +1,7 @@
 # Backend Protocol
 
-The app-owned JSON-RPC 2.0 protocol between clients (Electron main, the web
-adapter, SSH peers) and `daemon`, one JSON message per line over stdio, the local
+The app-owned JSON-RPC 2.0 protocol between clients (Electron main, companion
+clients, SSH peers) and `daemon`, one JSON message per line over stdio, the local
 Unix socket and SSH stdio. Provider protocols (Codex app-server, Claude stream
 messages, Antigravity ACP, MCP) never cross it.
 
@@ -132,8 +132,7 @@ framing keeps each transport's own error and reconnect policy.
 ## Attachments
 
 Local desktop registry resolution is the trusted ingestion boundary; renderer paths
-are never provider input. Web prompts reject attachments until trusted upload exists;
-remote prompts reject them before forwarding until trusted transfer exists.
+are never provider input. Remote prompts reject them before forwarding until trusted transfer exists.
 
 ## Ownership
 

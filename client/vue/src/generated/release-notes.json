@@ -1,0 +1,630 @@
+{
+  "schemaVersion": 2,
+  "currentVersion": "0.49.0",
+  "releases": [
+    {
+      "version": "0.49.0",
+      "releasedAt": "2026-11-01",
+      "sourceSha256": "ae658f6ce03112dda0f0f6b95ee36f478cf7af7779c7dd2af40b0dea73aeb52a",
+      "markdown": "### New features\n\n- **Anonymous usage sharing:** Share new hourly usage and performance summaries\n  without conversation content. Sharing starts after one foreground minute unless\n  canceled; change it in **Settings → General → Advanced**.\n- **Model pricing:** Refresh API cost estimates with background pricing updates\n  between app releases.\n- **Mission mentions:** Find teammates in sections named after their Mission,\n  with the current Mission listed first and simpler lead and repository labels.\n\n### Improvements and fixes\n\n- Preview images up to 25 MB and show file-type icons while file previews load.\n- Keep invitation access in the app menu and through links instead of first-run\n  setup.\n- Recognize `KORUS_HOME` as an alias for `APP_HOME` for custom app data folders.\n\n### Compatibility\n\n- Remove the standalone web host; desktop and mobile clients remain available."
+    },
+    {
+      "version": "0.48.5",
+      "releasedAt": "2026-11-01",
+      "sourceSha256": "b4a44ae2fcdfa54a01184e757b3217f5a1153b4baea1bf8a729afb1e9171c88d",
+      "markdown": "### Improvements and fixes\n\n- **Analytics:** Compare usage, estimated costs, and performance by model and\n  service tier, or group tiers together.\n- Open Analytics directly from the account menu.\n- **Missions:** Expand either the workbench or conversation, restore the split\n  view, and remember the expanded pane for each Mission.\n- Keep repository delivery buttons visible in narrow Mission panes.\n- Collapse and reopen agent and artifact sidebars by dragging their dividers.\n- Keep saved drafts when recalling them with Shift-click."
+    },
+    {
+      "version": "0.48.4",
+      "releasedAt": "2026-11-01",
+      "sourceSha256": "7f689a9b44234c10f970b0dee2e226277e316b9a5f6615c276412d7ee005e157",
+      "markdown": "### Improvements and fixes\n\n- **Worktree view:** Create matching worktrees and agents across selected\n  repositories from the main group's **+** menu, with creation progress and\n  **Run in background** support."
+    },
+    {
+      "version": "0.48.3",
+      "releasedAt": "2026-10-31",
+      "sourceSha256": "1fa172175f18819bc2937a4b508b4b394ef2e5b828abcb04d4c8bae17688b788",
+      "markdown": "### Improvements and fixes\n\n- Keep Working details visible while an agent is active."
+    },
+    {
+      "version": "0.48.2",
+      "releasedAt": "2026-10-31",
+      "sourceSha256": "ba96e251fc91f8be2c7e3aa2398a23ce81e458fd840dbf49f3ed5c4e8eb88e37",
+      "markdown": "### Improvements and fixes\n\n- Show named agents without the repository prefix in Worktree view."
+    },
+    {
+      "version": "0.48.1",
+      "releasedAt": "2026-10-31",
+      "sourceSha256": "489a82313a22bcd33459cfbe75ead2aada6b84c1519a0801c0667cf64c499f5a",
+      "markdown": "### New features\n\n- **Cross-repository features:** Ask an agent to create matching worktrees and\n  agents across repositories.\n- **Worktree view:** Group agents by feature, rename feature groups, and open up\n  to four agents in split view.\n- **Feature cleanup:** Right-click a feature to delete its worktrees together,\n  and run cleanup in the background.\n\n### Improvements and fixes\n\n- Keep dismissed worktree setup errors dismissed when switching agents or\n  restarting.\n- Show matching branch and worktree icons and colors in Repository and Worktree\n  views."
+    },
+    {
+      "version": "0.48.0",
+      "releasedAt": "2026-10-31",
+      "sourceSha256": "8ae419e875caf7b6c3a5e5485aa86422a07a55e8d9633712d8fe6c2e07d189c5",
+      "markdown": "### New features\n\n- **Design:** Explore website and app interfaces with `/design`, the composer’s\n  **+** menu, or the command palette. Compare proposals, refine them with comments\n  and controls, and send your chosen direction for coding.\n- **Background pruning:** Use **Run in background** to keep working while cleanup\n  finishes, then see how many items were pruned.\n\n### Improvements and fixes\n\n- **Missions:** Follow stages across the top and resize the conversation beside\n  the requirements, tickets, and implementation work. Agent tabs show blue when\n  input is needed and orange while working; red unread dots appear only on the lead.\n- Revisit approved Mission requirements without restarting planning, reuse\n  available workers during parallel implementation, and recover failed workers\n  that still need to commit their changes.\n- Review interactive plans and Mission requirements without separate answer\n  confirmation switches or extra warnings before **Revise** and **Approve**.\n- Mark worktrees with uncommitted changes in red and exclude Git-ignored files\n  from prune counts.\n- Automatically close merge-conflict handoff dialogs after five seconds, with\n  an animated countdown on **Close**.\n- Keep **Working** details folded while loading and show a spinner until they\n  are ready to expand.\n- Dismiss proposed-work and review actions as soon as a prompt is submitted,\n  without flickering back while the request is accepted.\n- Keep unread dots clear of truncated names in the agent sidebar."
+    },
+    {
+      "version": "0.47.2",
+      "releasedAt": "2026-10-30",
+      "sourceSha256": "bc56c698a38bcffa7c50317d74c7363baa928250e9a9fdac92db52dfa8560b36",
+      "markdown": "### Improvements and fixes\n\n- **Missions:** Identify agents with clearer tabs and repository icons, see which\n  ticket is selected, and notice when the conversation switches agents.\n- Open Mission documents in a centered dialog without hiding the workflow;\n  choose whether to open documents requested by agents.\n- Give new Mission leads their own names instead of inheriting the initiating\n  agent’s name.\n- Start delegated agents in Plan mode when requested, keeping the composer’s\n  Plan indicator synchronized through plan review.\n- Keep focus in the current conversation when agent creation runs in the\n  background, and dismiss failed worktree setup notifications.\n- Keep split-pane headers beneath dialogs and hide redundant team activity\n  indicators while viewing Cockpit.\n- Show proposed-work actions only for agents on the repository’s default branch.\n- Fix **Update from main** in the web app.\n- Restore historical screenshots inside Working details and keep images sharp\n  without enlarging low-resolution thumbnails.\n- Keep tall image previews compact and browse assistant images in fullscreen\n  with arrow buttons or the Left and Right keys.\n- Dictate answers to agent questions and review the transcript before continuing.\n- Press Enter to fill a suggested follow-up, then Enter again to send it.\n- Improve Computer Use text entry with clipboard paste and animate the physical\n  pointer when clicking."
+    },
+    {
+      "version": "0.47.1",
+      "releasedAt": "2026-10-30",
+      "sourceSha256": "f0cc15775d5f37341febe330bafbe66ba23ea94d585dc06c381826b8f3e23dfd",
+      "markdown": "### New features\n\n- **Team-aware Quick Chats:** Ask about your team’s projects, with clarification\n  when several projects could match.\n- **Mobile code reviews:** Choose a reviewer and speed, inspect and discuss\n  findings, and run follow-up rounds on iOS and Android.\n- **Reviewer consultation:** Choose whether independent reviewers should discuss\n  findings with the original conversation in Settings → Workflows.\n\n### Improvements and fixes\n\n- Open Claude conversations faster, scroll back to messages from before\n  compaction, and expand each turn’s Working details on demand.\n- Keep historical Working details accessible and remove empty details toggles\n  when a turn has no Working content.\n- Choose normal, fast, or ultrafast processing from the model picker’s speed\n  control when supported by the provider, with clearer active-speed indicators.\n- Restore keyboard focus after selecting or dismissing nested menus."
+    },
+    {
+      "version": "0.47.0",
+      "releasedAt": "2026-10-29",
+      "sourceSha256": "bfa54e1ae53a559f4ce7de082ae0b2781bbbc24f6259a081ceb31846d3058efc",
+      "markdown": "### New features\n\n- **Remote agents in any team:** Mix local and SSH-hosted agents in the same team,\n  with Host selectors and connection indicators.\n- **Cockpit:** See activity across all teams in a shared sidebar with clearer\n  status sections and Mission progress.\n- **Repository commands:** Discover and pin commands from package.json, Makefiles\n  and Justfiles, then run, stop and inspect their output from the workspace.\n- **Guest write access:** See connected guest names and enable writing\n  individually. Guests remain read-only by default.\n- **Mission stage backtracking:** Return to earlier stages to add or revise\n  tickets, preserving completed work and rerunning changed tickets.\n- **Missions in Command-K:** Open each Mission through one entry and return to\n  its last selected agent.\n- **Implement:** Turn proposed work into implementation in the current conversation.\n- **Review last commit:** Review the latest commit alongside the existing\n  uncommitted-change and branch options.\n- **Faster Visualize:** Bare `/visualize` asks one question with three proposals\n  and Other; specific requests generate directly.\n- **Codex history summaries:** Open historical conversations with prompts and\n  final answers first, then use **View details** to load a turn's Working content.\n\n### Improvements and fixes\n\n- Retry remaining Mission Review findings after partial fixes, retaining\n  completed fixes and their evidence across restarts.\n- Restore historical tool images and load images and large content on demand,\n  with cached previews and correct image proportions.\n- Improve visualization rendering, canvas saving and retries, image sharpness\n  and narrow-pane controls.\n- Keep the Cost chart continuous and GitHub activity visible while changing\n  Analytics filters.\n- Place duplicated, forked and independent review agents directly below their\n  source conversation.\n- Keep Backlog ticket details available while work is in progress, using a\n  document action.\n- Use lighter Command-K typography, consistent icons, compact creation controls\n  and an inline merge recipient selector.\n- Keep queued prompts and Backlog actions within narrow layouts.\n- Remove the artificial review deadline and keep branch reviews focused on\n  their changes when behind main.\n- Preserve shared-conversation metadata across restarts and show SSH connection\n  health independently of provider state.\n- Clear stale work and review suggestions at the next turn, and exclude hidden\n  Mission workers from Dock and team unread badges."
+    },
+    {
+      "version": "0.46.0",
+      "releasedAt": "2026-10-28",
+      "sourceSha256": "a7ac698c1db31dabf9b9c5f130b351df58bf2c0a3acb2401787fc0146b1a0899",
+      "markdown": "### New features\n\n- **SSH environments:** Connect to a remote host, install Korus and selected coding\n  agents, and manage sign-in and updates from compact rows in Settings.\n- **Code annotations:** Select lines in source and diff previews to add comments\n  to your conversation.\n- **Parallel Missions:** Opt in to running independent tickets with separate\n  agents in the same repository worktree. Shared files can still cause conflicts.\n- **Mission worktree agents:** Right-click a Mission to start an agent in one of\n  its repository worktrees.\n- **Proposed work:** Turn a discussed feature into a delegated agent or Mission,\n  or discard the suggestion directly from the composer.\n- **Mission instructions:** Add your own instructions for Mission leads in\n  Settings → Workflows.\n- **Background worktree setup:** Start working while dependencies initialize,\n  with the current command and completion shown above the conversation.\n- **Resume on startup:** Automatically resume interrupted agents when Korus\n  starts, with an option to turn this off in Settings.\n- **Review and automation models:** Choose the provider, model, reasoning effort,\n  and service tier with the shared model selector.\n- **Delegated goals:** Give delegated agents a goal to track while they work.\n- **Mobile file previews:** Open files from conversations on iOS and Android,\n  with navigation between changes in diff previews.\n\n### Improvements and fixes\n\n- Remember the selected Mission agent and return to the lead if it is unavailable.\n- Restore Mission navigation after visiting Settings, open conversation links in\n  the workspace, and allow hiding the Mission workbench beside the chat.\n- Let Mission workers compact context naturally between tickets and clarify\n  that each completed ticket requires a local commit.\n- Keep Mission requirements in the Mission UI instead of opening duplicate documents.\n- Show all eligible conversations in the automation editor, including Mission\n  source conversations.\n- Ask for a source folder before creating or cloning a repository.\n- Restore older Claude conversation history and supported Claude cost estimates.\n- Keep Codex agents marked as working during retries and after intermediate answers.\n- Preserve skill, plugin, and custom mention pills after reloading conversations,\n  and keep suggestion menus open when typing resumes.\n- Restore Goal controls for Claude conversations and keep selected plugins out\n  of the attachment list.\n- Resolve unanswered asynchronous questions when a new turn starts and prevent\n  duplicate approval and question notifications after reload.\n- Keep the sharing control visible while sharing is active and restore mobile\n  send-menu interactions."
+    },
+    {
+      "version": "0.45.1",
+      "releasedAt": "2026-10-27",
+      "sourceSha256": "e0ef4cff0bddfecf92c8c6eab9cde1ca6b053fc13935d4b0269524505000ddba",
+      "markdown": "### Improvements and fixes\n\n- **Analytics by repository:** Compare usage across repositories, with worktrees\n  grouped under their repository and separate entries for Missions and Quick Chats.\n- Count Analytics activity and date ranges in your local timezone.\n- Keep Analytics charts steady while you read; refresh on demand or when returning\n  to the screen."
+    },
+    {
+      "version": "0.45.0",
+      "releasedAt": "2026-10-27",
+      "sourceSha256": "ae2a3e49a7e1728f40012280b755980c87eca1711256f7e2f805bf8ab85a0ce7",
+      "markdown": "### New features\n\n- **Backlog shortcuts:** Jump to assigned issues, PRs awaiting your review, your\n  own PRs, and work inside or outside your repositories, including organizations\n  you administer.\n- **PR feedback:** Start an agent to check your pull requests for unresolved\n  review comments and summarize what needs attention.\n- **Usage menus:** See tokens and cost from the chat menu, or a Mission breakdown\n  by lead, repository, and total.\n- **Implementation models:** Choose the provider, model, reasoning effort, and\n  service tier when starting Mission implementation or assigning work.\n- **iPhone Duo simulator:** Embed the foldable simulator, switch between folded\n  and unfolded layouts, and see a loading indicator while the device changes shape.\n- **Mission handoffs:** The lead receives an update when all tickets are implemented\n  and when repository agents finish review fixes.\n- **Mobile reviews:** Read the final verdict and finish a Mission review from\n  your phone.\n- **Mobile diffs:** Filter changed files by code, tests, documentation, or other\n  file types.\n\n### Improvements and fixes\n\n- Show Mission activity consistently on desktop and mobile, with notifications\n  only for blocking questions and approvals.\n- Include the repository and branch in notifications for unnamed agents.\n- Show costs for more models and remove synthetic Claude entries from Analytics.\n- Sort chart legends and tooltips by their displayed values, highest first.\n- Keep the startup loading screen visible while the background service reconnects.\n- Fix Quick Open missing tracked files inside ignored folders.\n- Keep agents beside the conversation on wide iOS and Android screens.\n- Recover saved mobile pairing after unlocking the phone, and preserve reasoning\n  effort when switching models.\n- Refresh syntax highlighting in conversation code blocks.\n- **Codex 0.164.0:** Update compatibility with the latest supported Codex CLI.\n  Some older conversations remain readable and accept new messages, but individual\n  turns can no longer be edited, retried, or deleted."
+    },
+    {
+      "version": "0.44.0",
+      "releasedAt": "2026-10-26",
+      "sourceSha256": "ea6e6ba559710c9ec6023e1997d7dbde45474265299829cd0f6c17040b82f4f1",
+      "markdown": "### New features\n\n- **Composer mentions:** Pick skills, agents, plugins, and files from suggestions\n  to insert reference chips that stay intact in drafts, queued prompts, and edited\n  messages. Typed or pasted `$skill` and `@name` remain plain text.\n- **Mission and agent models:** Ask for a specific provider, model, reasoning\n  effort, or service tier when starting a Mission or creating an agent.\n- **Diff summaries for agents:** Ask an agent to break down added and removed\n  lines by code, tests, documentation, and other files in a working tree, branch,\n  or commit.\n\n### Improvements and fixes\n\n- Move **Commits** below the file-type breakdown in the diff menu."
+    },
+    {
+      "version": "0.43.0",
+      "releasedAt": "2026-10-26",
+      "sourceSha256": "d208148825c37528a6cd851f6b253457b5d16fbc12cba404c3cce2d0a1184f86",
+      "markdown": "### New features\n\n- **Conversation sharing:** Invite collaborators with a link or code to follow a\n  conversation and suggest prompts for you to edit and send. Works across agent\n  providers; stop sharing to revoke access.\n- **Start a Mission from chat:** Use `/mission` or **+ → Mission** to turn your\n  conversation into a Mission brief.\n- **Delete repository:** Remove a local repository, its linked worktrees, and all\n  associated agents across teams from the sidebar, with typed-name confirmation.\n- **Changes by file type:** See code, tests, documentation, and other changes\n  separately, including the last turn. Click a category to open its review.\n\n### Improvements and fixes\n\n- Keep Mission finding-reporting tools available across stage changes and open\n  the correct Mission lead when launching a review from mobile.\n- Remove older completed Claude tasks from the execution plan while keeping\n  unfinished work visible.\n- Use compact, automatically focused inputs for joining conversations, renaming\n  agents, and continuing on a branch.\n- Open the worktree setup guide directly from Settings."
+    },
+    {
+      "version": "0.42.0",
+      "releasedAt": "2026-10-25",
+      "sourceSha256": "3e3acc467d5d434d2e18a1d6504bba1a99aab13f631825de13c0875ca034838f",
+      "markdown": "### New features\n\n- Connect GitLab.com alongside GitHub, using a direct connection or an existing\n  GitLab CLI login. Discover and clone projects from desktop and mobile, browse\n  issues and merge requests, and start agent work or Missions from them.\n- Create draft GitLab merge requests and follow them through merge or closure\n  and worktree cleanup. Direct GitLab connections also make the official GitLab\n  MCP tools available to agents.\n- Compare estimated API costs in Analytics, with USD trends and breakdowns by\n  provider or model. Estimates use available usage and historical model prices;\n  usage without enough pricing evidence stays unavailable rather than counting\n  as free. Explore input/output token ratios alongside token totals.\n- Follow missions from the mobile apps: see each mission's stage and ticket\n  progress, open the agent working on a ticket or the one leading the mission and talk\n  to it, then return to the mission. Accept a finished ticket and move a completed\n  implementation on to review from the phone, then read the review's findings,\n  choose which to fix, and launch remediation. Shipping stays on the desktop.\n- Close every artifact tab at once from the workspace tab menu.\n\n### Improvements and fixes\n\n- Keep Mission delivery and worktree cleanup in sync: merging marks the repository\n  as shipped, closes agents from a removed worktree, and remembers that the\n  worktree no longer needs deleting when the Mission is removed.\n- Restore the live Working timer for Codex turns when the provider omits a start\n  timestamp, and retain it through subsequent updates.\n- Clear Claude's completed execution plan when the next turn starts, while keeping\n  unfinished tasks visible.\n- Clone GitHub and GitLab repositories over SSH first, with an HTTPS fallback and\n  clearer authentication failures.\n- Match repository work by its full remote identity, keeping projects with the\n  same name separate and showing work from the repository's own provider.\n- Recover phone connections faster after relay interruptions and let users open\n  their saved connections from the unreachable-computer screen.\n- Display conversation images on mobile when their Markdown paths use angle brackets."
+    },
+    {
+      "version": "0.41.1",
+      "releasedAt": "2026-10-24",
+      "sourceSha256": "d34209b63a0aa911e5da76d310b36d36ccb3c16dcc1e724e29de15f633fb4108",
+      "markdown": "### New features\n\n- Expand the artifact pane to fill the workspace, then restore its previous\n  width without losing conversation drafts.\n- Open detached developer tools for the current in-app browser tab from its menu.\n\n### Improvements and fixes\n\n- Group Claude's tool work under Working and Done disclosures, keeping the final\n  response separate from progress updates.\n- Show elapsed time while agents work and after a turn finishes. Restored Claude\n  conversations retain turn durations when valid timing is available.\n- Keep Add project and Quick chat beside each other in the Activity sidebar."
+    },
+    {
+      "version": "0.41.0",
+      "releasedAt": "2026-10-24",
+      "sourceSha256": "eae92e2ed8cd685fe35169bf4bcdfc384645eecdc030ff74ce0d9d3cb2f3521c",
+      "markdown": "### New features\n\n- Install Bitwarden and 1Password in the in-app browser from Settings. Open your\n  vault from the browser toolbar, and update, disable, reinstall or remove each\n  extension independently.\n- Save custom review instructions in Settings > Workflows. They accompany every\n  review agent, including automatic reviews and fresh rounds.\n- Track output speed over time in Analytics, with a separate line for each model.\n- Select Image Gen from the skill picker in Claude and other non-Codex agents.\n- The mobile companion remembers multiple computers, supports renaming and\n  forgetting saved connections, and uses your computer's name when pairing.\n- Browse agents across all teams and create teams from the mobile sidebar.\n\n### Improvements and fixes\n\n- All agents share browser accounts, cookies and extensions. Existing per-agent\n  website sessions are not migrated; sign in again after upgrading.\n- Clear browsing data across agents without removing extensions or their saved data.\n- Accept a suggested follow-up in an empty composer with Right Arrow or Space,\n  as well as Tab. Accepting the suggestion fills the draft without sending it.\n- Mobile composers offer follow-up suggestions, and mobile Settings groups account,\n  preference and app information more clearly.\n- Dismiss stale mobile questions without retry errors.\n- Suppress phone alerts for the exact conversation being viewed in the focused\n  desktop window."
+    },
+    {
+      "version": "0.40.0",
+      "releasedAt": "2026-10-23",
+      "sourceSha256": "998289f3fc0047b3009024177579f2d4150c5973d3efa3c90435cbc74764437b",
+      "markdown": "### New features\n\n- Install and manage coding-agent skills from Settings. Discover curated skills\n  and packs, install from GitHub or skills.sh, and sync skills across configured\n  agents. Browse existing installations, read skill documents, refresh managed\n  packs, and delete personal skills with confirmation while protecting system skills.\n- Featured skills include Cloudflare's Security audit, Vercel's Web design\n  guidelines, Impeccable, Matt Pocock's skills, Superpowers, and pstack.\n- Automatically resume conversations after a usage limit resets. A compact\n  composer drawer shows the reset time and a saved Auto-resume toggle, enabled\n  by default. Pending resumes survive restarts and cancel when you send a prompt\n  or start a different conversation.\n\n### Improvements and fixes\n\n- Completed execution plans stay closed after a restart and clear when the next\n  turn starts.\n- Sending a message shows \"other agent\" while the recipient's name is unknown."
+    },
+    {
+      "version": "0.39.3",
+      "releasedAt": "2026-10-23",
+      "sourceSha256": "55fcb0d9c360ac5bb93c8b8a2f0c1562e7679f26e32f29369a8297cb28d34f4b",
+      "markdown": "### Improvements and fixes\n\n- Claude Code's native task lists appear in the execution-plan panel, with live\n  progress updates and restored progress when reopening a conversation.\n- Worktree deletion shows its progress without a stale close-confirmation title.\n  Agents without a custom name use their normal display name when confirming closure."
+    },
+    {
+      "version": "0.39.2",
+      "releasedAt": "2026-10-23",
+      "sourceSha256": "935119742b4b3261b114bdf4bbf84bc2bb58b64325d2d3865a1ba2d2fda54981",
+      "markdown": "### New features\n\n- Run project and worktree creation, Mission startup, and worktree deletion in\n  the background while continuing to use Korus.\n- Filter the GitHub backlog by issues or pull requests, and choose Assigned to me\n  directly from the assignee filter.\n\n### Improvements and fixes\n\n- Closing an agent with worktree cleanup immediately removes it from the roster\n  and selects another teammate from the same repository when available. Failed\n  cleanup restores the agent for retry without replacing your current selection.\n- Concurrent worktree creation in the same repository avoids Git lock conflicts.\n- Recent backlog sorting uses repository timestamps when issue activity is\n  unavailable, instead of falling back to alphabetical order.\n- Starting work uses a more compact dialog, with provider and source choices\n  alongside repository selection.\n- Menus consistently indicate the current selection across backlog views,\n  repository sorting, and conversation layouts."
+    },
+    {
+      "version": "0.39.1",
+      "releasedAt": "2026-10-22",
+      "sourceSha256": "13f0e4320514bdfeb0645a9314ce32ca3ee83787ba2a05b912c40151833a91a5",
+      "markdown": "### Improvements and fixes\n\n- The file explorer shows workspace folders reliably in large projects. Folders\n  load on expansion, and large listings offer Load more instead of silently\n  omitting entries.\n- Search finds files in unopened folders, with pagination for large result sets.\n- Refresh the explorer to discover newly created files while keeping folders open."
+    },
+    {
+      "version": "0.39.0",
+      "releasedAt": "2026-10-22",
+      "sourceSha256": "f96216ca16511d5f247909db89dee4561d007a4085f2c51dc8d65bf0ce25320d",
+      "markdown": "### New features\n\n- Resize conversation panes with draggable dividers or keyboard controls. Team\n  layouts, assigned agents, focused panes, and split sizes persist across restarts.\n- Include read-only diagrams in interactive plans and comment on each diagram.\n- Review Mission requirements with annotations and question answers, regardless\n  of the interactive-plan workflow setting.\n- Choose the implementation provider, model, and reasoning effort in a Start\n  implementation dialog, independently of the Mission lead's provider.\n\n### Improvements and fixes\n\n- Mission stage handoffs wait for the lead's active turn to finish, preventing\n  approved requirements from leaving Tickets queued and the lead stuck working.\n- Mission workers retain their ticket assignments and receive actionable errors\n  when submitting results, allowing corrections after a failed submission.\n- Agent names remain visible in narrow conversation headers while repository\n  and branch details truncate first.\n- Question cards fill the conversation width and resize with the sidebar and pane.\n- Concurrent operations on a new Codex agent share conversation initialization,\n  preventing missing-rollout errors when starting work from an issue.\n- Quitting the desktop app uses the native shutdown sequence reliably.\n- Reading a conversation clears its mobile notification. Read events stay silent,\n  and later alerts replace earlier notifications for the same conversation.\n- Merge-report recipients follow the sidebar's manual agent order.\n- Browse files directly from an empty file pane, and open local Markdown links\n  in workspace tabs without replacing the app."
+    },
+    {
+      "version": "0.38.0",
+      "releasedAt": "2026-10-22",
+      "sourceSha256": "7ac8ff54466313d119c65e2a7095cca96bc88c98087af2e07852f53e8050a935",
+      "markdown": "### New features\n\n- Claude and other non-Codex agents can generate images through Codex and display\n  the results inline in their replies.\n- Send merge reports to another agent in the same repository when a branch has\n  no originating agent. Reporting stays off until you choose a recipient.\n- Configure the models available from each provider with an administrator-managed\n  `requirements.json` file, shared by desktop and mobile.\n- Connect native Android companions with encrypted pairing and push notifications.\n- On mobile, open existing projects from the connected host, duplicate agents,\n  and rename agents from their conversation.\n\n### Improvements and fixes\n\n- Large mobile conversations, including image-heavy histories, transfer with\n  compression instead of failing at the uncompressed response limit.\n- Mobile conversations retain loaded history, drafts, attachments, and streaming\n  replies across refreshes and reconnects, catching up without reloading the\n  whole conversation. Slow conversation requests no longer disconnect the session.\n- Mobile recovery is more reliable after brief backgrounding, with quieter\n  connection indicators and clearer conversation-loading feedback.\n- Restarting a Claude agent clears its old conversation, and newly forked\n  conversations display their inherited history immediately.\n- Review agents receive the full skill instructions and explicit errors for\n  unsupported finding-update fields, preventing fixes from going unrecorded.\n- Tool activity titles use readable names without MCP prefixes, underscores,\n  or hyphens; shell commands keep their original text."
+    },
+    {
+      "version": "0.37.1",
+      "releasedAt": "2026-10-16",
+      "sourceSha256": "015234e50fb9e9ca85487bb8e74291ba2e3d3aba2eb8bb7d2aa11852ca03099a",
+      "markdown": "### Improvements and fixes\n\n- Creating and editing automations saves correctly without an object-cloning error.\n- Analytics records token usage and output speed for the first turn in new Codex\n  conversations. Previously unmeasured turns remain unchanged.\n- Git diff controls use the same background as the other header controls."
+    },
+    {
+      "version": "0.37.0",
+      "releasedAt": "2026-10-16",
+      "sourceSha256": "5eb3bece1513cbdb5e8c8de3e970755f8c70498f41431f016f6b722231c599ec",
+      "markdown": "### New features\n\n- Get started with your existing Codex and Claude CLI sign-ins and settings.\n  New setups reuse your CLI configuration by default; saved choices and existing\n  conversations stay intact. Separate setups remain available with their own sign-in.\n- Use an authenticated GitHub CLI for repositories, backlog, and pull requests\n  without signing in again. Direct GitHub access remains available, and canceling\n  or disconnecting it preserves available CLI access. Hosted GitHub MCP requires\n  a direct connection.\n\n### Improvements and fixes\n\n- Onboarding highlights separate setups that still need sign-in and warns before\n  continuing without connecting them.\n- GitHub and Linear connection flows load independently.\n- Switching Codex configurations refreshes plugin availability, avoiding\n  tool startup failures such as `node_repl`.\n- Independent review threads use `👀 <thread name>`, or the branch name when\n  the source thread has no custom name."
+    },
+    {
+      "version": "0.36.3",
+      "releasedAt": "2026-10-16",
+      "sourceSha256": "f29710548ae2bf30e9eb16c3045c1497ddc643177b66609e0fa150fc7afcb828",
+      "markdown": "### New features\n\n- Choose the provider, model, and reasoning effort when launching backlog work.\n  Start an individual ticket directly from its play button, and follow worktree\n  creation progress for single or multiple agents.\n\n### Improvements and fixes\n\n- Activity view shortcuts follow the visible agent order. Hold Command to show\n  shortcut numbers in place of other indicators. Needs input, Done, and Working\n  sections put the longest-waiting agents first.\n- Ticket details stay vertically centered at a fixed viewport-relative height,\n  with a pinned header and scrollable description.\n- New Mission workers inherit the main Mission agent's provider, model,\n  reasoning effort, and speed setting. Same-provider delegated helpers also\n  preserve the creator's speed setting."
+    },
+    {
+      "version": "0.36.2",
+      "releasedAt": "2026-10-16",
+      "sourceSha256": "0b9ba1f51a8d16cce91682468ddfd5e754c70bf9a9f9ca06b9038615a4ff2dcc",
+      "markdown": "### Improvements\n\n- Sort Idle agents in Activity view by repository order or recent activity.\n  Each team remembers its choice, and agents animate into the new order."
+    },
+    {
+      "version": "0.36.1",
+      "releasedAt": "2026-10-16",
+      "sourceSha256": "41dcdfa6c0e509a461d065599affac6d289d4161b0d783003073f1510c72410f",
+      "markdown": "### New features\n\n- View Claude's native subagents from the conversation header and open their\n  individual threads, including background progress and completed work after a\n  reload.\n- Use Claude without a separate CLI installation through Korus's bundled\n  runtime. On macOS, Codex can also use the runtime included with ChatGPT when\n  no standalone CLI is available. Installed CLIs still take precedence.\n\n### Improvements and fixes\n\n- The Activity sidebar has a Done section, elapsed-time indicators, and\n  independently scrollable sections with a Show more control. Unread dots take\n  priority over elapsed times.\n- Analytics uses shared provider, date, and grouping controls across its charts.\n  The activity overview stays independent of those filters.\n- Repository image icons save correctly, with a square crop preview and subtly\n  rounded corners in the sidebar, conversation header, and Cockpit.\n- Dark and system appearance stay consistent across native window chrome,\n  provider icons, button hovers, and the conversation background. Switching from\n  Dark to System follows the operating system again."
+    },
+    {
+      "version": "0.36.0",
+      "releasedAt": "2026-10-15",
+      "sourceSha256": "9d4254a8a875b42876b01dde82e56f8d42e23e911c37649262f5f3449f4a0f22",
+      "markdown": "### New features\n\n- Organize the agent sidebar by Activity, with Needs input, Recently active,\n  Working, and Idle sections. Agents animate between sections, and each team\n  remembers your organization choice.\n- Explore local usage statistics in Settings → Analytics, with token activity,\n  usage trends, provider and model breakdowns, and comparisons of time to first\n  token and output speed. Keep up to a year of statistics and clear them at any\n  time.\n- Use Fast mode for supported Claude models from the existing speed selector.\n- Delegating agents can close their own idle workers while preserving their\n  worktrees and branches.\n\n### Improvements and fixes\n\n- Recently active agents show unread indicators, and idle agents are ordered by\n  their latest activity.\n- The browser annotation Send button keeps its primary styling and stays on one\n  line in narrow panels."
+    },
+    {
+      "version": "0.35.1",
+      "releasedAt": "2026-10-15",
+      "sourceSha256": "0a2f4a44998ec4942c9c6936ee29fcc62b96ea5dfa2a992ef56aad948e03bd7f",
+      "markdown": "### New features\n\n- Check remaining Codex and Claude usage and reset times from mobile Settings.\n- Create projects from your phone using a new repository, GitHub, or a repository\n  URL. Browse GitHub branches or create a new branch in its own worktree.\n\n### Improvements and fixes\n\n- Mobile reconnects silently after brief interruptions and app switching, keeping\n  your conversation visible. A Reconnect action appears after five seconds if\n  recovery takes longer.\n- Relay connections recover more reliably during active use.\n- Push notifications open the correct conversation, including while reconnecting.\n- Send image-only prompts from your phone, open image links, and view images\n  returned by tools. Image previews stay stable as conversations update and reload.\n- Project creation and worktree cleanup use consistent mobile sheets with clear\n  progress, searchable repository and branch lists, and simpler navigation.\n- Worktree cleanup only offers to delete the matching remote branch, protecting\n  main and other inherited upstream branches on desktop and mobile."
+    },
+    {
+      "version": "0.35.0",
+      "releasedAt": "2026-10-14",
+      "sourceSha256": "a07441ca3a75127b30f9885e0ad3907216b97fa7f8b880d5b0185655fa1205dc",
+      "markdown": "### New features\n\n- Pair Korus Mobile for iPhone from Settings → Connections to follow your\n  agents, send prompts, and respond to questions and approvals away from your\n  desktop, without a VPN or router configuration.\n- Manage paired phones individually and revoke access from the desktop.\n- Open Git log from the Git menu to browse the current branch's history,\n  search commit messages, and inspect changed files and historical diffs inline.\n\n### Improvements and fixes\n\n- The command palette includes simulator and review workspace actions.\n- Delegate from the composer's + menu immediately using saved settings;\n  add task details after `/delegate` when needed.\n- Clear an agent's name directly from its text field.\n- Long Claude conversations load in bounded pages, with oversized content\n  available on demand. Unread activity stays synchronized across desktop and phone.\n- Conversations keep their reading position while scrolling, and completed\n  tool-only replies show their message actions.\n- Simulator views recover cleanly when apps restart or a view ends.\n- Mobile conversations load large histories reliably, retain visible content\n  while reconnecting, and offer recovery when rendering fails.\n- The mobile unlock screen matches the connecting screen without layout jumps,\n  with a five-minute grace period when returning from another app."
+    },
+    {
+      "version": "0.34.0",
+      "releasedAt": "2026-10-13",
+      "sourceSha256": "38aef8b95d247a4dd23649911674f59432c981aca497a6f07f1d6ee45782025c",
+      "markdown": "### New features\n\n- Find contextual actions in the command palette with Cmd/Ctrl+Shift+P,\n  and browse a searchable keyboard shortcut reference from the View menu.\n- Branch current changes into a new worktree with an idle agent, preserving\n  staged and unstaged work and moving untracked files without creating a commit.\n- Favorite GitHub repositories and Linear sources in Backlog, with saved\n  per-provider ordering and drag-and-drop reordering.\n- Choose a fresh handoff or a native Codex/Claude conversation fork when\n  delegating work, with reusable instructions and per-task overrides.\n- Review plans with inline choices and section comments. Confirm your answers,\n  request revisions, and approve implementation with feedback preserved on reload.\n- Switch automatic reviews to manual while the current turn continues, or\n  stop a review while keeping its findings for later.\n- Save, search, rename, and reopen named bookmarks in the built-in browser.\n- Navigate Markdown documents with an optional heading outline.\n- Install the Antigravity runtime directly from provider setup.\n- View Codex credits and banked resets in Settings, and redeem an available\n  reset with explicit confirmation.\n\n### Improvements and fixes\n\n- Simulator video reconnects automatically after pauses without losing the\n  device attachment or replaying interrupted gestures.\n- Merge cleanup is enabled by default and remembers your worktree and branch\n  deletion choices.\n- Additional fields in saved workspace data no longer prevent startup.\n- Delegation instructions stay attached to the correct turn when queued or\n  overlapping turns complete. Favorites saves preserve other providers' ordering.\n- Selected review findings and delegated tasks use concise visible prompts,\n  keeping supporting context out of the conversation's main text.\n- Workflow guidance loads on demand to keep agent context smaller."
+    },
+    {
+      "version": "0.33.0",
+      "releasedAt": "2026-10-09",
+      "sourceSha256": "8995cd37e0cf98f0b08e03371b878fcdadd9029d77e35f034cb316d698dbefef",
+      "markdown": "### New features\n\n- Use Antigravity alongside Codex and Claude Code, with provider setup,\n  streaming conversations, history, approvals, planning, and code reviews.\n- Commit changes from completed reviews before finishing the review or starting\n  another round.\n- Choose a backend, model, and reasoning effort when starting backlog work,\n  with branch-safe reuse of existing agents.\n\n### Improvements and fixes\n\n- Codex and Claude Code detection, execution, and upgrades use the same runtime\n  selection, avoiding mismatches between nvm installations.\n- Merge cleanup deletes both the local branch and its matching origin branch.\n  Newer remote work is preserved, and cleanup failures remain visible without\n  treating a successful merge as failed.\n- Review setup uses consistent headings and shows additional instructions only\n  when supplied, as a compact read-only preview.\n- Issue descriptions render as Markdown. Start work dialogs stay within the\n  window, use standard provisioning progress, and preserve permission defaults.\n- Preserve saved agent records for providers unsupported by the current build."
+    },
+    {
+      "version": "0.32.0",
+      "releasedAt": "2026-10-09",
+      "sourceSha256": "976d02295d5372da480fa6d392e751bd6cf0fa837e1820e441dbe0d4e641b390",
+      "markdown": "### New features\n\n- Choose how Git pulls and updates from the base branch: merge, rebase, or\n  fast-forward only. Pull can also follow your existing Git configuration.\n- Prune a repository from the Git menu, with local branches, remote branches,\n  and linked worktrees in one place. Merged, unused local branches are selected\n  by default; remote branches are opt-in. Review unmerged work and files before\n  confirming their deletion.\n- Check installed Codex and Claude Code versions and upgrade supported\n  installations from Settings. Upgrades wait for busy agents to finish.\n- Add instructions after `/review` to focus the reviewer on what matters to you.\n\n### Improvements and fixes\n\n- Git menu actions are grouped for easier scanning.\n- Claude and simulator tool activity shows clearer, action-specific labels.\n- Delegated agents receive explicit implementation approval in their handoff,\n  avoiding redundant confirmation requests.\n- The built-in browser recovers from failed page loads and opens `about:blank`\n  without an error.\n- Dialog content stays left-aligned while footer actions remain right-aligned."
+    },
+    {
+      "version": "0.31.0",
+      "releasedAt": "2026-10-08",
+      "sourceSha256": "31569fb601aa6ba9d70a49e59b1e40aa1d692aefbd28f74d76e685bb3d8d1fb8",
+      "markdown": "### New features\n\n- Open iOS simulators and Android emulators beside a conversation, with live\n  device screens, touch input, rotation, and hardware controls. Agents can attach\n  to a local simulator, inspect its screen, and interact with your app.\n- See words appear as you speak with live on-device dictation on supported Macs.\n  Dictation replaces the waveform with text, responds sooner, and preserves\n  your draft when you stop or cancel.\n- Agents can switch the built-in browser between device presets and custom\n  viewport dimensions to check responsive layouts.\n- Recently active Cockpit cards show the first line of the agent's latest\n  response, including Codex summaries when available, with activity time as\n  the fallback.\n\n### Improvements and fixes\n\n- Korus detects your installed Codex and Claude Code through PATH. Welcome and\n  Settings offer official installation links and a refresh control when an\n  engine is missing. Codex is no longer bundled or installed automatically.\n- Question and approval cards have a clearer, more consistent layout. Selecting\n  a suggested answer advances the question without an extra confirmation click.\n- Opening an existing folder goes straight to the workspace, and repository\n  indicators recognize its actual default branch.\n- Claude agents reliably show their working status, with simpler tool labels.\n- Review findings accept uppercase priority labels instead of rejecting them."
+    },
+    {
+      "version": "0.30.0",
+      "releasedAt": "2026-10-07",
+      "sourceSha256": "656b2abc9c7886e2f9ea9eff5fd51c6da8aa6ad7df54b75bac7d55bde54ecbd5",
+      "markdown": "### New features\n\n- Open documents and browser tabs return after restarting Korus, with each\n  agent's selected tab, pane visibility, and widths restored. Unsaved documents\n  remain available until their tabs are closed.\n- Save an unsaved document to a Markdown file from its tab, with the agent's\n  repository as the default destination. Closing the saved tab keeps the file.\n- Choose Queue or Steer as the default follow-up behavior in General settings.\n  While an agent is working, Enter and the send button use that choice;\n  Cmd/Ctrl+Enter uses the other action.\n\n### Improvements and fixes\n\n- Settings have clearer sections, more consistent controls, and easier-to-scan\n  engine status and remote connections. Background service controls live in\n  the Advanced section.\n- Voice settings have a dedicated page with selectable voice tiles and\n  individual previews.\n- Automation editing uses a more compact layout with weekday buttons and a\n  clearer next-run preview.\n- Dark-theme settings controls use consistent container colors.\n- Late tool results no longer cause new assistant activity to appear above\n  the conversation's compaction divider."
+    },
+    {
+      "version": "0.29.0",
+      "releasedAt": "2026-10-07",
+      "sourceSha256": "5238c59c2d3c8e08ade362611f017d648f7279116c92ac2c7329bd0666ab8200",
+      "markdown": "### New features\n\n- Interactive HTML previews in assistant messages support charts, small tools,\n  and other visual explanations directly in the conversation. Resize previews,\n  inspect their source, or copy and download the HTML.\n- Pull the current branch's upstream from the Git menu. If the pull produces\n  conflicts, the agent receives a request to resolve them.\n- Revert uncommitted changes from the Git menu, with confirmation and an option\n  to include unversioned files, off by default.\n- Enable or disable automations directly from the automation list.\n- Windows and Linux Help menus include About Korus and Check for Updates.\n  Platforms without automatic updates open the latest release downloads.\n\n### Improvements and fixes\n\n- Celebration effects are chosen randomly by Korus, without consecutive repeats.\n- The model picker lists models directly, with supported reasoning efforts in\n  each model's submenu. Selecting a model preserves a compatible effort;\n  choosing an effort selects both together.\n- A quieter team rail, consistent navigation states and headers, and lighter\n  menu typography improve navigation. The sidebar shows the selected team's\n  name, and teams named Korus use the app logo.\n- Cockpit cards show provider icons when multiple backends are enabled. Idle\n  sidebar indicators stay hidden until the individual agent is hovered.\n- Image annotations are preserved when sending a prompt. Measurement\n  annotations can be submitted without a comment.\n- Delegated agents display explicit model selections correctly and use their\n  provider's saved permissions before the first prompt.\n- Agents load Korus's HTML, Visualize, Computer Use, and Mission guidance on\n  demand through a shared tool, without needing filesystem access to skills.\n- Automation storage is protected against overwrites by incompatible older\n  builds. Removing a target conversation disables its schedules and marks\n  abandoned runs as failed instead of leaving them stuck.\n- Local SDK development resolves transcription helpers from the selected SDK\n  checkout instead of a hard-coded root dependency path."
+    },
+    {
+      "version": "0.28.1",
+      "releasedAt": "2026-10-06",
+      "sourceSha256": "6c29e4bfe3d7083177cc62559e20e91e9c3279c2448e1ffb27c75631cb9b0d6b",
+      "markdown": "### Improvements and fixes\n\n- Press Tab in an empty composer to accept a suggested follow-up prompt, ready\n  to edit or send. Accepting a suggestion does not send it automatically.\n- Composer placeholders use a lighter color to distinguish suggestions from\n  your draft."
+    },
+    {
+      "version": "0.28.0",
+      "releasedAt": "2026-10-06",
+      "sourceSha256": "a7877ff4d73d0bc1873e9575f91d2104bf5a042a553c18ea0d5c686188abb5d5",
+      "markdown": "### New features\n\n- Automations send recurring prompts to an existing agent or Quick Chat, or\n  start a fresh Quick Chat each time. Existing conversations keep their model\n  and permissions; new chats can use a provider, model, and reasoning effort\n  of your choice.\n- Schedule daily, weekday, weekly, or custom recurrences with a next-run\n  preview. Calendar schedules follow your local timezone across daylight\n  saving changes; interval schedules remain available.\n- Ask an agent to create an automation directly from chat, including requests\n  such as \"every day at 8 AM.\" Scheduled work runs while the owning Korus\n  daemon is running.\n\n### Improvements and fixes\n\n- The automation editor groups conversation, schedule, and model settings in\n  compact sections. Agent choices include their repository, long chat titles\n  truncate, and the automation list adapts to smaller windows.\n- AppShots captures a specific window of the frontmost app, keeping its\n  screenshot and accessibility context aligned.\n- The macOS AppShots hotkey no longer requires Input Monitoring permission.\n\n### Compatibility\n\n- Scheduled prompts replace repository-based automation loops. Existing loop\n  definitions are not migrated and must be recreated; their agents and\n  worktrees are preserved."
+    },
+    {
+      "version": "0.27.2",
+      "releasedAt": "2026-10-06",
+      "sourceSha256": "e40b8446d2818dab4d4c7d18c2d75109e9b61fe81509b3580b4332ac4d404514",
+      "markdown": "### New features\n\n- Agents suggest useful follow-up prompts in the empty composer after finishing\n  a turn. Suggestions stay with their conversation without changing your draft\n  or sending anything automatically.\n\n### Improvements and fixes\n\n- A redesigned macOS installer lets you double-click Korus to install and launch\n  it. Installations requiring administrator access are handed off to Finder\n  without changing the existing app.\n- Website download links follow the latest stable release for each platform."
+    },
+    {
+      "version": "0.27.1",
+      "releasedAt": "2026-10-06",
+      "sourceSha256": "9d53fe8ec3eb00f44be225d0d3a1c9a554918130aba520c73ffbafc3f5f42249",
+      "markdown": "### New features\n\n- Ask a project thread to launch an automatic review. Korus starts an independent\n  reviewer using the thread's provider, model, and effort by default, without\n  changing saved review preferences. This requires an explicit request; local\n  commits remain off unless requested.\n- Desktop distribution now includes Windows x64 installers and Linux x64/ARM64\n  packages alongside macOS ARM64. GitHub prereleases are manual downloads;\n  macOS and installed Windows copies receive automatic updates from stable\n  GitHub releases. Windows installers are unsigned; Linux and portable Windows\n  use manual package updates.\n\n### Improvements and fixes\n\n- Packaged apps include a private Node runtime, so desktop startup no longer\n  requires a system Node installation. Korus waits for workspace state before\n  showing onboarding, avoiding a false welcome screen while connecting.\n- Claude authentication failures now update connection settings and finish the\n  failed turn with a useful error. Retrying after an external login rechecks\n  authentication instead of relying on a stale disconnected state.\n- Codex can now see attached file paths, with attachment chips preserved when\n  reopening conversation history.\n- Claude tool searches show the search query and progress, and all providers\n  use the same Korus collaboration-tool namespace.\n- Restored native window controls and menu access during onboarding. Windows\n  gains a subtle window border and more reliable Codex setup; Linux gains\n  corrected packaged icons, native dependencies, and window startup behavior.\n- The website offers platform-aware download choices, explicit Linux\n  architecture selection, and narrated workflow videos with shared playback\n  controls."
+    },
+    {
+      "version": "0.27.0",
+      "releasedAt": "2026-10-05",
+      "sourceSha256": "6cb6579d66134da43f13e5d2328de9c67c9bbcb6557d86c9cc58cbf119c02cf4",
+      "markdown": "### New features\n\n- Automatic code review can now review, fix, and verify findings over multiple\n  rounds with an independent Codex or Claude reviewer. Configure the priority\n  threshold and round limit; Korus reports fixed and remaining findings back\n  to the original conversation. Local commits after each fix round are optional\n  and off by default. Enabling them includes existing reviewed working changes;\n  automatic review never pushes or merges.\n- Choose the independent reviewer's provider, model, and reasoning effort.\n  Korus remembers these selections and automatic-review settings. Current-thread\n  reviews keep the working agent's model and remain available in manual mode.\n- Completed reviews save a report with findings, priorities, verification\n  evidence, and round session references. Handoffs show a concise outcome in\n  chat while keeping detailed results in context.\n\n### Improvements and fixes\n\n- Reviewers must explicitly confirm their finding count before a round can\n  finish, preventing an unfinished inspection from appearing clean. Claude\n  reviewers can access the review tools and inherit the configured approval\n  defaults. Retrying a failed review preserves its settings.\n- Claude file-edit approvals now describe the requested action and show the\n  before/after text or replacement contents. The sidebar's Input state clears\n  after the last pending approval is resolved, and review tools have clearer\n  activity labels.\n- Conversations recover missed completion events after reconnecting instead of\n  remaining stuck on Thinking. Completed Codex turns without an assistant\n  message show Empty response, and conversation history loading indicators stay\n  synchronized.\n- Pasting text into the Codex composer now preserves native undo and redo.\n- Mission workspaces now share chat's header, sidebar control, surface styling,\n  and shadow, with aligned workflow and conversation subheaders. The agent\n  sidebar keeps a usable minimum width, and long project names truncate without\n  displacing their icons.\n- Opening Review from the command or composer menu clears the conversation's\n  ready-for-review flag.\n- The website's review preview now illustrates findings and fix selection, and\n  responsive cards no longer overlap at narrower widths."
+    },
+    {
+      "version": "0.26.2",
+      "releasedAt": "2026-10-05",
+      "sourceSha256": "92cf0a7e8478020b416919ba5b9badce2052386ad085ab7adcd375912bf374a5",
+      "markdown": "### Improvements\n\n- Remote engine settings now use compact, single-line rows for accounts,\n  connection actions, and enable toggles, with host actions kept at the top.\n- New installations use `/<` as the default team's name and avatar. Existing\n  team names are unchanged."
+    },
+    {
+      "version": "0.26.1",
+      "releasedAt": "2026-10-04",
+      "sourceSha256": "3a3587fd201dd5db9431af2aa8caf57eb018847c3461ba399a6f55227248483f",
+      "markdown": "### Improvements\n\n- Refreshed the team rail with a clock icon for Automations and a compact,\n  outlined Korus logo for the menu.\n- The background daemon now identifies itself as `korusd` and includes a\n  matching executable launcher. Existing daemon version output remains\n  recognized during upgrades."
+    },
+    {
+      "version": "0.26.0",
+      "releasedAt": "2026-10-04",
+      "sourceSha256": "d282d2cbefde128e4283a14262828d645ce5c9315e8916d6cf48e8c930af2124",
+      "markdown": "### New features\n\n- Codex Claw is now Korus, with a new macOS icon and a refreshed website and\n  guides at meetkorus.dev. Desktop downloads and update checks now use the new\n  domain.\n- Connect Linear in Settings and use team or project issues alongside GitHub\n  as a backlog source. Start agents, plan Missions, and configure automations\n  against an explicitly chosen code repository. Agents can access Linear's\n  issue tools without treating a Linear project as a Git repository.\n- Use `/delegate` or its `/worktree` alias to hand a task to a new teammate in\n  a dedicated worktree while keeping the original conversation open. The\n  current agent prepares the handoff; detailed instructions stay out of the\n  visible chat prompt. Delegation does not automatically merge the work.\n- Delegated tasks can save structured results, wait for workers, and cancel\n  assigned work. Saved outcomes survive restarts and are delivered back to\n  the parent without treating completion as permission to merge or advance\n  a Mission.\n- Claude conversations now support steering during active work, native forks\n  from completed turns, and native goals. Steering is delivered at tool or\n  response boundaries rather than immediately interrupting generation; forks\n  currently require an idle conversation in the same folder.\n- Open Review, Delegate, and Visualize directly from the composer's + menu,\n  with grouped actions and Goal mode above Plan mode.\n- Mission shipping now offers Update from the base branch and checks for new\n  base commits before merging, so branch updates and conflict resolution can\n  happen in the worktree before delivery.\n\n### Improvements and fixes\n\n- Plain text entered in the in-app browser address bar now runs a Google\n  search. Normal navigation redirects no longer surface an aborted-load error.\n  Unsupported chat file previews, including videos, download instead of\n  opening an empty sidebar pane.\n- Closing a dirty worktree now offers an explicit confirmation to discard\n  uncommitted changes, including untracked files, rather than refusing deletion.\n- Existing review contexts reopen after reconnecting or restarting. Mission\n  review reruns no longer fail on an empty previous artifact; Mission workers\n  retain their tools and can receive a new ticket assignment, and queued work\n  no longer causes a false Mission failure.\n- Chat panes keep a 480px minimum width beside artifacts. Open In menus escape\n  clipped panes, engine icons disappear when leaving the sidebar, and the\n  text-selection action is labeled Annotate.\n- Codex startup and reconnect use asynchronous runtime discovery, avoiding\n  blocking shell probes. Idle notifications no longer falsely mark turns as\n  interrupted, and late completions do not clear newer work. Conversation\n  lists avoid duplicate entries, and failing SDK listeners no longer reject\n  unrelated requests.\n- Chat Markdown is only reparsed when its text changes, reducing repeated\n  rendering work while responses stream.\n- Retrying an initial backend connection failure now restores event updates.\n  Structured secrets and prompt content are redacted from diagnostic logs.\n\n### Upgrade notes\n\n- Korus uses `~/.korus` instead of `~/.codex-claw`; existing data is not migrated\n  automatically. To retain an earlier setup, copy it while the app is closed\n  and update saved absolute paths, including separate provider homes.\n- The desktop app is now `Korus.app`, the daemon is `korusd`, and configuration\n  environment variables use the `APP_` prefix instead of `CODEX_CLAW_`."
+    },
+    {
+      "version": "0.25.2",
+      "releasedAt": "2026-10-03",
+      "sourceSha256": "ef8b09ab1da913790e50fec236afca2cb8f84bcf8ff0dac66e8a1e4cba4bba65",
+      "markdown": "### Fixes\n\n- The sidebar's Input label now clears when a Codex question or approval is\n  answered, returning to Working or Idle without waiting for another activity\n  update. It remains visible if another request still needs a response."
+    },
+    {
+      "version": "0.25.1",
+      "releasedAt": "2026-10-03",
+      "sourceSha256": "ae15ac2e9b8d6bc7f07f87781543375b2e6fc7f0e1a4acc026973a69116a321a",
+      "markdown": "### New features\n\n- Use Hand off from an agent's context menu or the Agent menu to continue its\n  work with a new Codex or Claude agent in the same workspace. Choose the\n  engine and model, optionally add instructions, and let the current agent\n  write a handoff note before Korus closes it and starts its replacement.\n  Hand off is available for idle workspace agents after pending work is resolved.\n- Identify each agent's engine by hovering over the sidebar or focusing it\n  with the keyboard. Icons appear beside the right-aligned status without\n  reserving space when hidden, and are omitted when only one engine is enabled.\n\n### Improvements and fixes\n\n- Disconnect in Settings now signs out of Codex or Claude in the configured\n  home, including on SSH hosts, instead of only disabling the engine.\n  Reconnecting opens the sign-in flow. The separate enable toggle preserves\n  sign-in, and the Codex-only Log out action has been removed from the user menu.\n- Selecting an agent focuses its composer, including after a cold conversation\n  finishes loading. Clicking controls in another split pane keeps their focus.\n- Merging a worktree no longer reports failure just because its remote-tracking\n  branch is behind. If branch or worktree cleanup cannot finish, Korus reports\n  the successful merge separately from the cleanup warning."
+    },
+    {
+      "version": "0.25.0",
+      "releasedAt": "2026-10-03",
+      "sourceSha256": "9ca2c478489e6f2b8a658ec7313719570dda9696a907246e6c597c1ef7077705",
+      "markdown": "### New features\n\n- Work with two agents side by side or stacked, or four agents in a grid.\n  Split panes replace attached-agent sidebar tabs. Each team keeps its layout\n  while switching teams, and one shared artifact sidebar follows the focused\n  agent without closing when that agent has no open tabs.\n- Use Codex, Claude Code, or both. Setup detects installed engines, offers\n  installation and sign-in, and lets each engine use a separate Korus home or\n  its existing setup. New setups separate chats while reusing existing skills.\n  Engine pickers appear only when more than one engine is available.\n- Manage each engine's account, conversation location, skill sharing, and\n  enabled status in Settings, with engine connection controls on SSH hosts too.\n  Changing conversation location requires explicit acknowledgment before\n  removing that engine's local agents and Quick Chats from Korus.\n- See Codex and Claude subscription usage together in the user menu, including\n  remaining allowance and reset times. API-billed Claude accounts have no\n  subscription quota row.\n- Drag supported file and web links from conversations into the sidebar to\n  open their content in a new tab.\n- Model, reasoning-effort, service-tier, and approval or permission choices\n  become defaults for new agents and Quick Chats using the same engine,\n  without changing existing agents.\n- Agents waiting for a response or approval show a prominent blue Input label\n  in the sidebar.\n\n### Improvements and fixes\n\n- Codex and Claude tool approvals use a consistent card in the composer,\n  preserving the draft, attachments, and caret when the request is resolved.\n- Free-text Other answers to agent questions are immediately editable and grow\n  as you type.\n- Split composers no longer steal focus or selection from one another during\n  background updates.\n- For engines without steering, including Claude Code, the steering shortcut\n  sends through the normal queue path and the queue shelf's Steer action is\n  disabled.\n- Fixed Codex Device Pairing in Settings so Allow connections reaches the\n  backend instead of silently remaining off.\n- Engine connection checks are cached for the session and refreshed by explicit\n  connection or setup actions. Startup returns to setup when no engine is\n  available, and Korus prevents disabling the last active engine.\n- Claude authentication, saved conversations, skills, plans, and personalized\n  instructions follow the configured Claude home. Codex personalization also\n  follows its selected home.\n- Repository skills no longer disappear when a global catalog refresh arrives;\n  skill updates stay scoped to their engine and folder. Exact skill aliases\n  rank ahead of substring matches.\n- Composer action menus respect the app's theme colors.\n\n### Upgrade notes\n\n- App state migrates automatically from `state.json` to separate roster,\n  settings, and visualization files after creating a verified backup. Older\n  Korus builds cannot open the migrated state directly; downgrading requires\n  restoring the pre-migration backup.\n- Closing a Quick Chat now deletes its provider session, with archive as a\n  fallback when deletion is unavailable. Closing a regular agent still archives\n  its conversation."
+    },
+    {
+      "version": "0.24.1",
+      "releasedAt": "2026-09-27",
+      "sourceSha256": "2928bc848a5d7766cbf396609f34e9300b639e2940d879cf4ff144a6fe75fc04",
+      "markdown": "### Improvements and fixes\n\n- Fixed an application freeze when attaching an agent whose conversation had\n  not yet been opened since launch."
+    },
+    {
+      "version": "0.24.0",
+      "releasedAt": "2026-09-27",
+      "sourceSha256": "6ede9f106ce5a70c7b48e0cc5244e05e9c8acc297c33936c063fe65d8bad2426",
+      "markdown": "### New features\n\n- Attach another agent to the current agent from its context menu to open its\n  conversation and composer in a sidebar tab. Its files, diffs, and reviews open\n  alongside it; selecting the attached agent returns to its containing workspace.\n- Attached conversations have a collapsible header with status and Git stats\n  in compact mode, and Git and Open In controls when expanded.\n\n### Improvements and fixes\n\n- Agents can move between teams while working or waiting for input without\n  interrupting their session. Moving either agent breaks its sidebar attachment,\n  and failed moves now show an error message.\n- Sending a prompt resumes following the conversation as replies stream in.\n  Scrolling away pauses following, and the jump-to-bottom button reflects the\n  actual scroll position.\n- Enter now submits typed answers to agent questions; Shift+Enter inserts a\n  newline.\n- Escape no longer interrupts a conversation pane that has been removed.\n- Model selector submenu text is more compact.\n- Independent review handoffs no longer request a redundant summary of fixes\n  already shown to the user."
+    },
+    {
+      "version": "0.23.3",
+      "releasedAt": "2026-09-26",
+      "sourceSha256": "c8119b8bda97aea655e78817688d8711b8b7ebce59e8813143839e6533d5a254",
+      "markdown": "### Improvements and fixes\n\n- Cmd+Enter now submits typed answers to agent questions, while Enter still\n  inserts a newline."
+    },
+    {
+      "version": "0.23.2",
+      "releasedAt": "2026-09-26",
+      "sourceSha256": "568055e59ff8b74d7fc4a93a6ebe955ae02b9c2203dd04b1a57cd4cb21613883",
+      "markdown": "### Improvements and fixes\n\n- Model, reasoning-effort, and service-tier choices now persist across restarts\n  and stay selected when an older thread reports its settings. Queued prompts\n  keep the choices captured when they were submitted.\n- The model submenu closes after a model is selected."
+    },
+    {
+      "version": "0.23.1",
+      "releasedAt": "2026-09-26",
+      "sourceSha256": "9d9aad887b5eaa00746930865f16438dac2898a5af436b897f1b643c9f96777f",
+      "markdown": "### Improvements and fixes\n\n- Empty-composer Send stays disabled instead of sending an implicit “continue.”\n- Remote team actions distinguish connecting to an existing team, disconnecting\n  it locally without confirmation, and deleting it on the host. Deleting the\n  host’s last team now offers to disconnect instead."
+    },
+    {
+      "version": "0.23.0",
+      "releasedAt": "2026-09-26",
+      "sourceSha256": "eb8fa73b0ee17e24304b30ba85464e72fbb85f78ce7fd12ad5a3200e543635ff",
+      "markdown": "### New features\n\n- Goal mode can now be toggled from the composer menu. Goal and Plan modes are\n  mutually exclusive, whichever entry point activates them.\n- Changed-file headers in Git diffs can open the full file directly in a\n  workspace tab.\n\n### Improvements and fixes\n\n- App, composer, model, and suggestion menus now use consistent spacing,\n  typography, icon emphasis, and selected-state treatment.\n- The backend selector above an empty composer now uses the full shelf row.\n- Go to Agent now shows each repository's chosen icon, falls back to the\n  branch or worktree glyph, and uses the chat icon for Quick Chats.\n- Added and removed line backgrounds now extend across the full horizontally\n  scrolled Git diff."
+    },
+    {
+      "version": "0.22.1",
+      "releasedAt": "2026-09-26",
+      "sourceSha256": "893090fb7b6f95e677e0c16ba1ba294830bba801bcb8e94aa4ce12c56706550f",
+      "markdown": "### Improvements and fixes\n\n- Quick Chats can preview absolute file links such as shared memory and\n  instruction files even though they do not have a project workspace.\n- Claude Code keeps live tool calls and the following answer in one message\n  when conversation history refreshes during generation.\n- Saved-draft actions remain available through their keyboard shortcuts and\n  the Edit menu without duplicating them in the composer menu."
+    },
+    {
+      "version": "0.22.0",
+      "releasedAt": "2026-09-26",
+      "sourceSha256": "1d7c0bcf4de04936ec88a03990108ddf12d1d9a125200aa2f325ce757b5a2236",
+      "markdown": "### New features\n\n- Choose Codex or Claude Code across agent creation flows, including worktrees,\n  work items, projects, and repository URLs. Fresh chats can switch before the\n  first prompt, and independent reviews can use a different backend. The\n  selector stays hidden when only one backend is enabled.\n- Save a prompt or selected text for later with ⇧⌘X, then search and restore\n  persistent drafts with ⇧⌘V.\n- SSH connections can install Claude Code and show its sign-in status with\n  guided authentication steps in Settings.\n- Reviewers can add, correct, or retract structured findings across turns\n  while a review remains open.\n- The new Agent menu groups edit, duplicate, fork, compact, compress, resume,\n  and restart actions in the same order as the agent context menu.\n\n### Improvements and fixes\n\n- An empty, idle composer can send “continue”; a restored interrupted turn\n  resumes through its dedicated action without adding a user prompt.\n- Git diff menu statistics align with the main indicator, and the selected\n  scope is easier to distinguish.\n- Repository URL acquisition accepts SSH addresses and keeps the selected\n  backend through agent creation.\n- Remote Codex sign-in distinguishes unavailable status from a required\n  sign-in, and Claude settings stay in sync with remote hosts.\n- Independent reviews with no remediated findings now say that no code changes\n  were made."
+    },
+    {
+      "version": "0.21.1",
+      "releasedAt": "2026-09-25",
+      "sourceSha256": "3bd0b270e24b194c27c24e9c9e2397407021734f947b1eff9b4e3f63e8d931d2",
+      "markdown": "### New features\n\n- The in-app browser now offers page zoom controls and a device toolbar with\n  responsive, phone, tablet, desktop, and custom viewport sizes.\n- Capture the visible browser page or a selected area directly to the clipboard.\n\n### Improvements and fixes\n\n- Code reviews end with a short, natural summary while keeping the detailed\n  findings in the Review pane. After an independent review, the original agent\n  receives a concise, programmatic list of remediated findings."
+    },
+    {
+      "version": "0.21.0",
+      "releasedAt": "2026-09-25",
+      "sourceSha256": "9e9a23f0200a4ca8e9250d7858a9f8c697dcc938964fd00b148cedb96a7bb3c4",
+      "markdown": "### New features\n\n- Visualize diagrams now open on a persistent canvas. Edit supported Mermaid\n  shapes, annotate selected elements for the agent, and export the canvas as a\n  PNG. SVG and generated-image diagrams remain image elements on the canvas.\n- Visualize diagrams now belong to their Git repository instead of the agent\n  that created them. Agents in linked worktrees share diagrams and editable\n  canvases, which remain available after a worktree agent is removed.\n- Browser tabs can copy their current URL or open it in the system browser.\n  The address bar also offers an open-external action on hover or focus.\n\n### Improvements and fixes\n\n- Creating a project from a Quick Chat now shows progress through folder\n  creation, agent setup, and the first prompt.\n- In-app browser pages remain visible beneath Korus menus and dialogs instead\n  of disappearing when an overlay opens. The empty browser surface is white\n  and no longer shows a loading message.\n- Tool-opened browser pages now keep the requested URL in the address bar,\n  and resizing the workspace no longer stalls when the pointer crosses the\n  embedded browser.\n- Workspace tab labels collapse before their close buttons, keeping the close\n  action available until tabs reach icon-only width.\n- Selecting `/goal` opens a composer mode for the objective rather than sending\n  an empty goal immediately. Slash-menu keyboard selection now distinguishes\n  Tab completion from Enter activation.\n- The conversation shows “Working” when hidden Korus tool activity is the only\n  visible sign of an active turn, and skill reads show the skill name instead\n  of `SKILL.md`."
+    },
+    {
+      "version": "0.20.7",
+      "releasedAt": "2026-09-24",
+      "sourceSha256": "ae7c067239cfb3fb6a213eb7a3e8d4fbd9e7dd0e60b46b9cab9b6dc7f8cff99a",
+      "markdown": "### New features\n\n- Turn a Quick Chat into a project on request. Codex Korus creates the\n  folder and a project agent, hands over the conversation's decisions, and\n  keeps the original Quick Chat available.\n\n### Improvements and fixes\n\n- Projects can use ordinary folders without Git. New projects start with an\n  empty folder, and folder agents stay separate from Quick chats.\n- Quick Chats can access Korus tools, including project creation.\n- Codex Korus uses its own Computer Use tools instead of the bundled alternative;\n  older Computer Use calls also have readable activity labels.\n- Workspace tabs keep a stable height when labels appear or collapse, and\n  multi-target tool titles display their overflow count consistently."
+    },
+    {
+      "version": "0.20.6",
+      "releasedAt": "2026-09-24",
+      "sourceSha256": "d47842e505e508012a110fca4cfd1f973eee68acbcdd0423154315bd35e80f98",
+      "markdown": "### Improvements and fixes\n\n- Single free-text questions now use a compact input-and-send layout. In\n  multi-question cards, the primary action follows Back in the footer."
+    },
+    {
+      "version": "0.20.5",
+      "releasedAt": "2026-09-24",
+      "sourceSha256": "4f761d76d0557cad8e59c8a1cf7bf7a035b0247605b6cc331a1d3045753c7bd7",
+      "markdown": "### Improvements and fixes\n\n- File tabs can copy either an absolute or a repository-relative path. Their\n  tooltips wait longer, and the conversation keeps a readable width beside the\n  workspace.\n- The Git indicator says “No changes” when the selected diff is empty, and\n  weekly usage limits show a live time-to-reset countdown.\n- Visualize is available from an empty workspace, even before a diagram session\n  exists, and opens the same flow as `/visualize`.\n- Completed work can offer review at the handoff, while status updates and\n  turn-completion calls no longer clutter conversation or execution previews.\n- App and chat controls no longer select their labels when clicked. Completed\n  earlier turns no longer retain a stale streaming indicator."
+    },
+    {
+      "version": "0.20.4",
+      "releasedAt": "2026-09-24",
+      "sourceSha256": "ad37164b6623d567cd8976519a3e811906192756b43cf99aac795c3690e05bce",
+      "markdown": "### New features\n\n- Right-click workspace tabs to copy a file path, close that tab, or close the\n  other tabs.\n\n### Improvements and fixes\n\n- Workspace tabs shrink to icons before scrolling is needed, with navigation\n  controls for overflow and a full-title tooltip on hover.\n- Browser menus and tab menus now appear above the native browser view instead\n  of being hidden behind it."
+    },
+    {
+      "version": "0.20.3",
+      "releasedAt": "2026-09-23",
+      "sourceSha256": "22800e5b08e8da76d1094d3888cdbcc9b9afd9b01d2d5c9d84a43b7aaccfb4c9",
+      "markdown": "### Improvements and fixes\n\n- Removed the Command-R shortcut for Restart Agent to prevent accidental restarts;\n  the action remains available from the menu.\n- Increased the backend event buffer to reduce the chance of losing a large\n  conversation update during a burst. Recovery from a fully saturated buffer\n  remains a separate issue."
+    },
+    {
+      "version": "0.20.2",
+      "releasedAt": "2026-09-23",
+      "sourceSha256": "2e93d954ba636036aa72613f60d2f12e278cdf93a7bb8c994a2441f83fa4d6d1",
+      "markdown": "### Improvements and fixes\n\n- Codex blocking questions now use the conversation composer instead of a narrow\n  inline tool card. Answering restores the composer and leaves the completed\n  answer in the transcript.\n- Asynchronous questions return the normal composer after their turn and remain\n  available through a Pending question control. They can be reopened or\n  dismissed, and a new prompt no longer revives an obsolete question.\n- Question responses still reach their conversation if a request event was\n  missed, and review invitations clear when the user submits a new prompt\n  without clearing other proposed actions."
+    },
+    {
+      "version": "0.20.1",
+      "releasedAt": "2026-09-23",
+      "sourceSha256": "0976c96b4c3d7dbbb93ffa93c5b83e8e1435681e1407ad0aa76461efa2efde5f",
+      "markdown": "### New features\n\n- Start a Mission from an open GitHub issue in any repository represented by its\n  team. The issue picker opens on the first available repository, and the issue\n  details become the Mission's starting context.\n\n### Improvements and fixes\n\n- Missions now belong to their team. Closing a team also removes its Missions\n  and workers while leaving Mission worktrees on disk, with the effect stated\n  in the confirmation dialog.\n- Restarting Codex Korus restores the selected Mission workspace instead of\n  showing its lead as an ordinary agent thread."
+    },
+    {
+      "version": "0.20.0",
+      "releasedAt": "2026-09-22",
+      "sourceSha256": "ed47f6b952dc69caf8c574be470c4165dc9d96015aea24eeb18798f035a6bef5",
+      "markdown": "### New features\n\n- Missions guide work from requirements and tickets through implementation,\n  Review, and Ship in a dedicated workspace. Stage artifacts, agent progress,\n  repository worktrees, and delivery actions stay together. Mission Review\n  presents selectable findings, repository-specific fixes, a Changes tab, and\n  a fresh review run; shipping does not require fixing every finding.\n- The new Review pane can review uncommitted or branch changes with the current\n  agent or an independent reviewer. Triage findings, discuss them in chat,\n  apply selected fixes as a batch, and run another round that remembers skipped\n  findings and checks accepted fixes for regressions.\n- `/visualize` opens a persistent diagram workspace beside the conversation.\n  Agents can suggest, create, edit, and delete Mermaid, SVG, or generated-image\n  visualizations; thumbnails, zoom, and pan make them easy to inspect.\n- Agents can propose moving implementation into a dedicated worktree through\n  an inline action that the user can accept or dismiss. Co-agents inherit the\n  originating model and reasoning effort unless explicitly changed.\n- Worktree branches can be updated with the latest base-branch changes before\n  merging, with progress and a conflict-resolution handoff to the agent.\n\n### Improvements and fixes\n\n- The Git diff indicator now defaults to uncommitted changes, remembers its\n  selected mode per agent, and changes mode without opening the diff pane.\n- Manual worktree creation uses the same staged progress experience as agent\n  creation. Merge and cleanup report retained folders without losing the\n  completed work, and shared worktrees are not offered for deletion while\n  another agent still uses them.\n- Agent status clears at turn completion, and status, announcements,\n  celebrations, and proposed actions can complete together with fewer tool\n  steps. Review invitations appear when uncommitted work is ready for review.\n- Generated images remain visible outside collapsed assistant work and can be\n  copied directly. Codex questions now use an in-conversation answer composer\n  with simpler choices and an explicit cancel action.\n- Visualize tools remain discoverable throughout an agent session while their\n  actions still require the matching open pane. Long-running backend requests\n  use operation-specific timeouts to avoid premature failures."
+    },
+    {
+      "version": "0.19.5",
+      "releasedAt": "2026-09-18",
+      "sourceSha256": "516b0b14cb99dd90bfcb330dd34f512b22b94d1324481111a9fada637a66e7ed",
+      "markdown": "### Improvements and fixes\n\n- File links in conversations can now preview files anywhere on the agent's\n  local or remote host, including shared instructions and other resources\n  outside the repository.\n- `/compact` is passed through to Codex instead of opening Korus's retired\n  session-compression dialog. Slash-command suggestions now appear only when\n  `/` is the first character in the prompt.\n- Delegation instructions now distinguish engine-native subagents from separate\n  Korus co-agents, asking for clarification when a request is ambiguous.\n- The selected agent row preserves the sidebar's translucent background."
+    },
+    {
+      "version": "0.19.4",
+      "releasedAt": "2026-09-18",
+      "sourceSha256": "f828326ea6a4b60d58fed038cfcf18d677055e48e7d229c5b50d73f252cf47bd",
+      "markdown": "### New features\n\n- Select text in a conversation, add a comment, and carry it into the next\n  prompt as a compact, removable annotation. Annotation drafts stay with their\n  agent across navigation, survive failed submissions, and keep their detailed\n  context out of the visible user message.\n\n### Improvements and fixes\n\n- Agent creation, navigation, announcements, and celebrations now respect the\n  initiating or receiving client instead of leaking shared selection state\n  across desktop, web, or remote clients.\n- Plan reviews, queued prompts, approvals, and questions remain scoped to the\n  correct agent and conversation. Replayed plans no longer create duplicate\n  reviews, and cancelled Claude permission requests clear promptly.\n- Interrupted and failed Codex work groups are labeled as stopped or failed\n  instead of appearing completed."
+    },
+    {
+      "version": "0.19.3",
+      "releasedAt": "2026-09-15",
+      "sourceSha256": "eddb9dc2013eb6973ab590ebbe98f0bc64aaebeaf15a4f4f78435e53289f3ad4",
+      "markdown": "### Improvements and fixes\n\n- Plan Review now opens reliably for plans returned through Codex Plan mode.\n  Implement Plan closes the review before submitting exactly one implementation\n  prompt, and the footer actions use the standard priority and ordering.\n- Live Codex execution plans once again appear in the conversation mini panel.\n  The right-workspace add menu no longer includes the redundant Backlog entry."
+    },
+    {
+      "version": "0.19.2",
+      "releasedAt": "2026-09-15",
+      "sourceSha256": "710d287c206434ad82338a39984a413f206ef7ac3ed36f5e6cdc937307622b6a",
+      "markdown": "### New features\n\n- Press Command-K to search and jump to any agent across teams. Results show\n  repository and team context, prioritize unread agents and then recent\n  activity, and switch teams automatically when needed.\n- Remote teams can now create Git projects, browse existing folders, and clone\n  GitHub repositories directly on their devbox. Connection settings detect\n  mismatched Korus and Codex versions, upgrade both managed runtimes together,\n  and support ChatGPT device-code sign-in without moving tokens through Korus.\n- Personalization settings can edit the global developer instructions used by\n  Codex or Claude, with an explicit option to replace both. Git settings now\n  accept custom guidance for generated commit messages and pull request titles\n  and descriptions.\n\n### Improvements and fixes\n\n- Codex conversations use reasoning summaries as activity labels and correctly\n  reopen a completed work group when an asynchronous answer resumes the turn.\n  Codex memory support is enabled for new app-server sessions.\n- Queued prompts are delivered only once when turn completion and idle events\n  arrive together.\n- Remote folder selection is more compact and direct, while longer remote\n  discovery, authentication, prompt, and repository operations have enough\n  time to finish without spurious request timeouts.\n- Active-team rail indicators now pulse by brightness without fading, and Git\n  worktree initialization is grouped with the rest of the Git settings."
+    },
+    {
+      "version": "0.19.1",
+      "releasedAt": "2026-09-14",
+      "sourceSha256": "2c54369e71b514e5d1104b2dd184988969b473c4e71592fc7872d0a6d5104de6",
+      "markdown": "- Computer Use actions can now observe their settled result in the same call, wait for expected text, and type, replace, or submit directly into a targeted field without foregrounding the app.\n- Computer Use now recovers cleanly from lost observations without repeating delivered actions, returns more compact contextual state, and opts into screenshots only when visual context is useful."
+    },
+    {
+      "version": "0.19.0",
+      "releasedAt": "2026-09-14",
+      "sourceSha256": "524e44831ea5962e9ec655dad231f14c2c8fe55aba544083de9b7a82b2ce59cc",
+      "markdown": "### New features\n\n- Backlog and Agents now have separate global rail entries. Backlog remains the\n  operator inbox for connected work, while the new agent Cockpit shows every\n  agent grouped by team or ranked by current and recent activity, with quick\n  prompts available directly from each card.\n- Codex agents can ask non-blocking questions inline while continuing to work.\n  Option and free-text answers stay attached to the question and restore with\n  conversation history.\n- Computer Use is upgraded to v2.0.1 with explicit window selection, stable\n  element observations and state diffs, combined accessibility and screenshot\n  capture, plus keyboard shortcuts, drag, paste, text selection, secondary\n  actions, and right or middle clicks.\n\n### Improvements and fixes\n\n- Returning to a previously viewed conversation now restores its rendered\n  history and scroll position across agent and team switches.\n- Cockpit Recent mode prioritizes agents currently working before idle agents,\n  and persisted activity times keep its ordering meaningful after restart.\n  Team icons show active work without overriding unread indicators.\n- Asynchronous questions and active-turn state now reconcile correctly after a\n  restart. Optional questions no longer leave agents waiting for input, and\n  graceful SDK shutdown gives provider history time to flush.\n- Context-compaction markers now settle cleanly and retain their position among\n  surrounding activity. Duplicate skill mentions are suppressed, and composer\n  menu chevrons align consistently.\n- Refined the Cockpit layout menu, title hierarchy, and Backlog rail icon for a\n  denser, quieter workspace."
+    },
+    {
+      "version": "0.18.0",
+      "releasedAt": "2026-09-13",
+      "sourceSha256": "be67e96c5f8c80d22efa6935faf24d46cf45a06f635ca2fc2806ba1bb26984cf",
+      "markdown": "### New features\n\n- Connected GitHub accounts now give Codex and Claude agents access to\n  GitHub's hosted MCP tools through Korus-managed, automatically refreshed\n  credentials. Korus avoids duplicate GitHub tool surfaces while preserving the\n  ChatGPT connector as a fallback when its own GitHub connection is unavailable.\n- Create an empty Git-backed project directly from the Add Project menu.\n- Choose which changes to review from the agent header: the current branch,\n  all uncommitted work, unstaged or staged changes, the latest turn, or an\n  individual recent commit.\n\n### Improvements and fixes\n\n- Switching teams now updates immediately and shows the selected conversation's\n  loading state instead of blocking navigation or briefly appearing empty.\n- Git statistics refresh while an active agent edits files, and Git reviews now\n  load reliably without clone errors or hiding valid branch and commit diffs.\n- Assistant activity keeps its original order around final responses, and\n  generated media produced during a turn stays grouped with its collapsible\n  work details."
+    },
+    {
+      "version": "0.17.0",
+      "releasedAt": "2026-09-08",
+      "sourceSha256": "b567230a25849b17d3da1c76de4025529b071b18709b4a824c75eea751cc01fa",
+      "markdown": "### New features\n\n- Compress Session starts a fresh conversation with a condensed handoff of\n  completed work, key decisions, and next steps. The original conversation is\n  archived, and the new session keeps the agent's model and reasoning settings.\n- Closing or restarting a Codex agent now archives its retired session. Resume\n  Session searches both active and archived conversations in the agent's folder\n  and restores archived sessions when selected.\n- Save favorite model, reasoning-effort, and speed combinations directly from\n  the model menu. Favorites can be reordered or removed in a dedicated dialog.\n- The bundled Codex runtime now includes GPT-6-Astra where available to your\n  account.\n\n### Improvements and fixes\n\n- Codex conversations now group assistant work by turn, with clearer separation\n  between intermediate activity and the final response.\n- Improved conversation loading after restart, with automatic retries for\n  transient failures and a visible Retry screen when history cannot be loaded.\n  Missing optional skill metadata no longer prevents conversations from loading.\n- Editing, deleting, retrying, and forking conversation turns now use the\n  provider's authoritative history. Long rollback operations have more time to\n  finish, and action failures remain visible without discarding the session.\n- Fixed first-prompt and Thinking indicator flicker during new conversation\n  creation, duplicate user messages, and duplicate compaction indicators.\n- Restored queued prompts above the composer, cancellation, and follow-up\n  actions. Model selection keeps the menu open to choose reasoning effort, and\n  favorites correctly apply Fast mode.\n- Merge now checks that branches include the latest target-branch commit\n  before merging. Squash-merge cleanup no longer prevents a\n  requested push, and merge and pull-request dialogs warn about uncommitted work.\n- Automated work selection now considers eligible items across the configured\n  repositories before creating agents and isolated worktrees. Completed workers\n  remain available for review or continuation.\n- Spoken acknowledgments can be limited to dictated prompts, and acknowledgments\n  that will not play are labeled as skipped. Celebrations only play for the\n  selected agent.\n- Agent headers avoid repeating unnamed agents' branch names and show their\n  repository context immediately after creation. Update badges no longer appear\n  while merely checking for updates.\n- Removed the obsolete Bench, legacy backlog and issue-creation screens, and\n  Prepare Work flow. Temporarily hidden the unstable current-turn diff summary\n  above the composer."
+    },
+    {
+      "version": "0.16.0",
+      "releasedAt": "2026-09-03",
+      "sourceSha256": "4a3ee1ba6bf7416940731c8f13a9eda63173337e36966af7b8820aa7b0132c9b",
+      "markdown": "### New features\n\n- Agents can now speak a brief acknowledgment when work starts and an optional\n  completion cue through on-device neural voices on macOS. Voice, agent scope,\n  foreground-only behavior, previews, and a global mute shortcut are available\n  in Settings.\n- Delegated Git work can now report back to its parent agent when creating a\n  pull request or merging directly. Korus asks the worker for a final handoff,\n  shows the handoff phase in progress, and lets the operation continue in the\n  background.\n- Korus now tracks pull requests created for agents and flags them when they are\n  merged or closed, with guided cleanup for the agent, worktree, and local\n  branch while preserving work from unmerged pull requests.\n\n### Improvements and fixes\n\n- Repository and agent drag-and-drop are now distinct: repositories move with\n  all their agents, while agents can only be reordered inside their repository.\n- The active sidebar session is easier to distinguish from other sessions.\n- Agent celebrations now respect the celebration setting and vary their visual\n  effect instead of always showing confetti.\n- Rolling back a long, paginated Codex conversation now uses the current Codex\n  revert protocol and refreshes the retained history correctly."
+    },
+    {
+      "version": "0.15.2",
+      "releasedAt": "2026-09-02",
+      "sourceSha256": "30a48edffd8be8d1c03bdb62669fa195663f09143b41605fd6d69d510af22b73",
+      "markdown": "### Improvements and fixes\n\n- Composer chips and rendered mentions now align cleanly with the surrounding\n  text.\n- The empty right workspace no longer shows a redundant Backlog shortcut;\n  repository work remains available from the new-tab menu."
+    },
+    {
+      "version": "0.15.1",
+      "releasedAt": "2026-09-02",
+      "sourceSha256": "9145e9bde499bf6225a3eb17adacd9e013346e72494ca7910006a71d0f933b93",
+      "markdown": "### Improvements and fixes\n\n- Resumed goals now continue running across restarts, remain visibly marked as\n  working between turns, and leave the composer shelf once complete.\n- Korus agents now receive explicit guidance for single-call worktree\n  delegation, persistent Markdown presentation, and meaningful celebrations,\n  making those existing workflows more reliable to invoke."
+    },
+    {
+      "version": "0.15.0",
+      "releasedAt": "2026-09-02",
+      "sourceSha256": "e90cfc0928d3ebe25972ae240bdc3244b42e6c99cc19408899b7eee4ee80ccdd",
+      "markdown": "### New features\n\n- Agents can now delegate work as one complete handoff: create an isolated\n  worktree, start another agent with initial instructions, and show staged\n  setup progress while the agent gets ready.\n- New worktrees can now initialize before an agent starts. Repository-owned\n  `.agents/worktree` scripts take precedence, while Auto-detect can copy local\n  environment files and restore Node.js, Python, and Go dependencies. Settings\n  can limit initialization to repository instructions or disable it entirely.\n\n### Improvements and fixes\n\n- Work assignment and worktree creation now use clearer new-agent and\n  existing-agent choices, allow branch names to be edited, and offer to reuse\n  an existing worktree instead of surfacing a raw Git error.\n- Cockpit repository rows now link directly to GitHub instead of showing an\n  ambiguous agent-launch control.\n- Closing an agent now gives linked-worktree cleanup enough time to finish\n  without timing out.\n- Plain code blocks now preserve their original line breaks when no syntax\n  highlighter is available."
+    },
+    {
+      "version": "0.14.3",
+      "releasedAt": "2026-09-02",
+      "sourceSha256": "a74df4a74315df7e466fb808b07ea36958fd9a8c340c959c7d7bb2f025526373",
+      "markdown": "### Improvements and fixes\n\n- Agents are now explicitly prompted to celebrate releases, hard fixes, major\n  features, migrations, and genuine breakthroughs, making configured visual\n  celebrations more reliable after meaningful accomplishments."
+    },
+    {
+      "version": "0.14.2",
+      "releasedAt": "2026-09-01",
+      "sourceSha256": "785b4df99bb993a7908b7acd1d86faca4cf592d1e9217c4ddc91ad801651c721",
+      "markdown": "### New features\n\n- Starting work from an issue or pull request now shows a staged preparation\n  view while Codex Korus creates the branch or isolated worktree, starts the\n  session, and hands over the work context.\n- Inline conversation images now open or focus a reusable image workspace tab,\n  while the explicit maximize control opens the stock fullscreen viewer.\n\n### Improvements and fixes\n\n- Older conversation history now prefetches as the transcript reaches the top,\n  avoids duplicate requests, and preserves the visible scroll position as\n  earlier messages arrive.\n- Initial ChatGPT connection now uses a smooth edge-to-edge progress indicator."
+    },
+    {
+      "version": "0.14.1",
+      "releasedAt": "2026-09-01",
+      "sourceSha256": "e2cb3eef82aa4ced1a28a78ec48c051c2880acf81d5c891f608c5ddc727f8c2f",
+      "markdown": "### Improvements and fixes\n\n- Update checks now show live checking and downloading progress in the header\n  before an update is ready to install."
+    },
+    {
+      "version": "0.14.0",
+      "releasedAt": "2026-09-01",
+      "sourceSha256": "d43a853b944d74de5aaefd0312af08b85ab46a198b50b8d027ea253e7733e556",
+      "markdown": "### New features\n\n- Loops are now Automations throughout Codex Korus, with existing saved loops,\n  execution history, and work assignments migrated automatically.\n- GitHub can now be connected directly from first-run onboarding or the\n  repository picker through a secure browser authorization flow.\n- Experimental Linux x64 builds now bundle the matching Codex runtime while\n  keeping macOS-only Computer Use and Appshots features disabled.\n\n### Improvements and fixes\n\n- First-run setup now provides a consistent ChatGPT and optional GitHub\n  onboarding experience, ending with a single celebratory completion screen.\n- Generated images now render through an app-scoped local-media protocol,\n  restoring image previews without exposing arbitrary local files.\n- Long and restored conversations now omit unnecessary historical tool\n  payloads, reducing synchronization size while preserving the genuine latest\n  messages when older history loads.\n- The GitHub repository picker now keeps a stable height across loading, empty,\n  filtered, and populated states."
+    },
+    {
+      "version": "0.13.0",
+      "releasedAt": "2026-08-30",
+      "sourceSha256": "3bbb12bcb9493bafb5a8a869b597bef9e66906689b3418b498a0abef8431b101",
+      "markdown": "### New features\n\n- Computer Use now provides an on-demand operating guide and semantic\n  Accessibility targeting for dialogs and native menus, including safe menu\n  dismissal without moving the physical pointer.\n\n### Improvements and fixes\n\n- Computer Use now bundles helper 0.3.0 with absolute screenshot coordinate\n  metadata, a guarded physical-click fallback for Electron controls, and\n  automatic virtual-cursor cleanup after inactivity.\n- Form dialogs now share one compact, labels-above-fields layout, while the\n  legacy File → New Agent action and Command-T shortcut have been removed in\n  favor of contextual repository and session entry points.\n- Team rail avatars and the new-team control now use a consistent square shape,\n  with a cleaner focus ring and a clearer unread indicator.\n- Agents created through MCP now use repository identity instead of accepting a\n  separate agent avatar; custom names remain optional."
+    },
+    {
+      "version": "0.12.0",
+      "releasedAt": "2026-08-30",
+      "sourceSha256": "796fde84357196f68aeeaba6d18877dd0af1ba5ab697bbcde7ce7a83734a43c9",
+      "markdown": "### New features\n\n- Sessions is now organized around repositories, branches, worktrees, and chats,\n  with collapsible repository groups, persistent custom repository icons, and\n  compact controls for starting work where it belongs.\n- Projects can now be added from a local folder, a GitHub repository, or a\n  repository URL, then opened from a branch, pull request, or issue without\n  leaving Korus.\n- Repository work can now continue in an existing session on a branch or start\n  in a new isolated session and worktree, with branch-aware worktree creation\n  and assignment directly from the Sessions workflow.\n- Workspace-free Quick Chats now provide persistent conversations for work that\n  does not belong to a repository.\n- Team agents can now be mentioned in prompts with stable `@` suggestions, and\n  agents can trigger optional, user-controlled celebration effects for the\n  moments that deserve them.\n\n### Improvements and fixes\n\n- Long conversations now synchronize with bounded snapshot and transcript\n  payloads, keep retry progress out of durable history, and use Codex 0.151.0's\n  stable image-aware compaction support to reclaim substantially more context.\n- Fast mode now remains enabled for a conversation after Korus restarts.\n- Agent editing is now limited to an optional display name, while unnamed\n  sessions consistently use their branch or conversation title.\n- ChatGPT integrations now offer to quit an already-running normal instance\n  before relaunching it with Korus's isolated Codex home.\n- Cockpit now shows unread indicators for teams containing unread sessions,\n  native Edit menu actions are restored, subagent conversations recover from\n  oversized-history failures, and recalled prompts no longer depend on browser\n  text selection."
+    },
+    {
+      "version": "0.11.1",
+      "releasedAt": "2026-08-14",
+      "sourceSha256": "acbc05bb729b8e1aaa6dd045af60cb86801e4ef2b8e954bb3a50ed6797a530c8",
+      "markdown": "### Improvements and fixes\n\n- Closing an agent now preserves its provider conversation in history instead\n  of archiving the Codex thread.\n- Completed assignments whose source work item remains open now return to\n  Backlog, keeping Cockpit counts and available work consistent."
+    },
+    {
+      "version": "0.11.0",
+      "releasedAt": "2026-08-14",
+      "sourceSha256": "e615a7a1bb19029e418cb8d0d9c44492c2086c7a5c14a226bef2a18c07db6aef",
+      "markdown": "### New features\n\n- Cockpit is now a cross-repository backlog-first operator inbox, with\n  repository navigation, All/Backlog/WIP/Focus views, an Assigned to me\n  default, and true paginated GitHub results.\n- Multiple issues can be selected and launched together into a chosen team;\n  each item gets its own automatically named background agent and isolated\n  worktree without additional setup dialogs.\n\n### Improvements and fixes\n\n- Repository recency now follows open issue and pull-request activity, Cockpit\n  automatically falls back to the most useful non-empty view, and completed or\n  orphaned assignments no longer distort active-work counts."
+    },
+    {
+      "version": "0.10.2",
+      "releasedAt": "2026-08-12",
+      "sourceSha256": "e1bd04b14fce6dd61815254a57696532b3790d44fd26a23d03a8f6278deb3675",
+      "markdown": "### Improvements and fixes\n\n- Repository backlog assignments now stay attached to their agents and are\n  grouped as in progress, blocked, ready for review, or completed; agents can\n  update that lifecycle with a visible note, while users can jump to the owner\n  or clear the assignment and optionally close its agent.\n- Closing an agent that uses a linked worktree now offers safe cleanup of the\n  worktree and local branch, with an explicit option to delete the tracked\n  remote branch; backlog work also reuses existing branches and worktrees when\n  possible.\n- Queued prompts can now be edited directly in the composer, including\n  atomically steering the revised prompt with Command/Ctrl+Enter.\n- Backlog issue and pull-request links now open directly in the system browser,\n  duplicated work starts in the background without stealing focus, and action\n  popovers remain open until dismissed with a click."
+    },
+    {
+      "version": "0.10.1",
+      "releasedAt": "2026-08-12",
+      "sourceSha256": "012010f18bfae2beeeb90a66bfb9669b2befe2de8ea07e8508a4ab67359490bb",
+      "markdown": "### New features\n\n- Agent responses can now open interactive visualizations in a dedicated,\n  sandboxed workspace tab."
+    },
+    {
+      "version": "0.10.0",
+      "releasedAt": "2026-08-12",
+      "sourceSha256": "46eb51b31f265b79752774c93f1d77cc52c831f9e1157ecf2e7b177e57dc4f83",
+      "markdown": "### New features\n\n- A new repository Backlog workspace lets you browse, search, and filter GitHub\n  issues and pull requests, then prefill a custom prompt or dispatch focused\n  investigate, fix, feedback, and review actions to the current agent or an\n  isolated duplicate; work can stay in the current folder or use a new\n  worktree, while pull requests check out their actual head branch.\n\n### Improvements and fixes\n\n- Conversation titles now stay aligned with Korus agent names, including agent\n  renames, and closing an agent archives its Codex conversation.\n- Git status refreshes are now limited to meaningful active-agent and Git\n  lifecycle events, avoiding redundant background requests and stale results.\n- Long code lines in conversations now wrap instead of overflowing the message\n  pane."
+    },
+    {
+      "version": "0.9.1",
+      "releasedAt": "2026-08-11",
+      "sourceSha256": "f0274637af83e42f7c88e48acfcfc7f397306ecb4c308571663fa775ba1d6059",
+      "markdown": "### New features\n\n- The Git workflow menu can now create and switch to a branch in the current\n  folder or a new worktree, automatically keeping the agent attached to the\n  resulting workspace.\n- Commit and pull-request dialogs can now ask Codex to draft concise messages\n  from the selected changes without creating a visible conversation.\n- Previously submitted prompts can now be recalled from the composer for quick\n  reuse or editing.\n\n### Improvements and fixes\n\n- Settings are now organized around Codex and Claude Code, with clearer plugin\n  ownership and Codex Device Pairing labels.\n- Git dialogs and other app dialogs now use consistent compact actions,\n  repository context, progress feedback, and completion states."
+    },
+    {
+      "version": "0.9.0",
+      "releasedAt": "2026-08-11",
+      "sourceSha256": "bc77fc5d5d0a161755c22236b3ef029808141d61b3b8db2dc2ee33a5f13888cb",
+      "markdown": "### New features\n\n- The agent header now provides a complete Git workflow for committing selected\n  staged, unstaged, or untracked changes, pushing branches, creating draft pull\n  requests, and merging or squashing branches with safe worktree cleanup and\n  visible progress, success, and retry states.\n- Experimental Claude Code agents can now be enabled from General → Advanced,\n  using the installed Claude Code runtime with its own model, effort, permission,\n  attachment, context-usage, compaction, tool-detail, and conversation-history\n  support.\n- Agent workspaces now include a searchable file browser and Command-P quick\n  open, while workspace-local files can open safely in the in-app browser.\n- Image workspace tabs now support native trackpad pinch-to-zoom around the\n  pointer.\n\n### Improvements and fixes\n\n- Long conversations now prefetch older history before reaching the top and\n  preserve chronological placement without briefly showing stale content at the\n  bottom; restored local Markdown images also render again.\n- Git workflow refreshes no longer spend GitHub API quota checking for pull\n  requests, and rate-limit failures now report when creation can be retried.\n- New Codex conversations retain their workspace classification when opened in\n  ChatGPT, plugin skills use friendly plugin-qualified names, and narrow\n  tool-call rows truncate cleanly instead of overflowing."
+    },
+    {
+      "version": "0.8.1",
+      "releasedAt": "2026-08-09",
+      "sourceSha256": "3cc26fc63b9ae2ca88553d8bd061b0cf65740d1e3b14e7ced64a68a909d19fc9",
+      "markdown": "### Improvements and fixes\n\n- What’s New now lets you browse notes from every previous Codex Korus release."
+    },
+    {
+      "version": "0.8.0",
+      "releasedAt": "2026-08-09",
+      "sourceSha256": "9f6492716f9cab639b23643edd2b2d9ac2363c83435a3c2f7cc2c86235eb38ea",
+      "markdown": "### New features\n\n- Subagents are now visible from the agent header, with live and completed\n  workers grouped in a compact menu and each conversation opening in its own\n  workspace tab.\n\n### Improvements and fixes\n\n- Prompts submitted remotely now appear in the conversation without requiring\n  a reload.\n- File and diff previews, including Review, now scroll horizontally when long\n  lines extend beyond the workspace pane."
+    },
+    {
+      "version": "0.7.0",
+      "releasedAt": "2026-08-09",
+      "sourceSha256": "d9157be1b73a18dde2719a3f647c57d9ff0fb0b9abeb4b195e401183a331dc1b",
+      "markdown": "### New features\n\n- Agents and project files can now be opened directly in installed editors,\n  Finder, or terminals, with each agent remembering its preferred application.\n- Unread agent activity is now visible in the agent list, team rail, and macOS\n  Dock badge so completed work and requests are easier to locate.\n- Every composer image can now keep its own saved annotation draft, be reopened\n  for edits, and submit grouped feedback for multiple images in one prompt.\n- Code blocks in conversations now include a dedicated copy action.\n\n### Improvements and fixes\n\n- Image annotation now keeps the in-app browser behind its modal, uses explicit\n  Clear, Cancel, and counted Save actions, and supports Command+Enter to save.\n- The selected agent now remains active after reconnecting to the backend, and\n  the Chrome plugin configuration is restored correctly at startup.\n- Unread Dock badges no longer retain stale counts, and Command-number hints\n  disappear as soon as a real Command shortcut is used.\n- Generated images now use the correct tool presentation and support reliable\n  fullscreen viewing and downloads, while pasted images retain their previews.\n- Empty completed responses now show a clear fallback, and interrupted or\n  restored turns no longer leave tool activity displayed as running forever."
+    },
+    {
+      "version": "0.6.1",
+      "releasedAt": "2026-08-07",
+      "sourceSha256": "c55b0ae7a7b3dd8b19287c41228e949986cd3c50be4948dc2f0c0bd7217893cb",
+      "markdown": "### New features\n\n- Codex Korus now shares ChatGPT's installed skills and plugins by default,\n  explicitly asks existing installs before migrating their resource folders,\n  and provides a General → Advanced setting for fresh or copied isolation.\n- The prompt composer now grows with longer messages until twelve lines are\n  visible, then scrolls internally.\n- Pressing Escape twice within two seconds now interrupts an active response,\n  even when the composer does not have focus.\n\n### Improvements and fixes\n\n- Changing skills and plugin sharing now keeps the desktop app open while a\n  blocking reconnect screen safely restarts the backend and refreshes\n  conversations, resource catalogs, and workspace state.\n- Dialogs now use consistent body padding without double-spacing forms,\n  including the create and edit forms for teams and agents.\n- Computer Use activity now identifies the target app, control, coordinates,\n  window, or display, including dedicated presentation for screenshots and\n  Screen Recording permission requests.\n- Absolute file links outside an agent repository now open as read-only tabs in\n  that agent's sidebar workspace.\n- Passive Computer Use checks, app discovery, permission requests, and\n  screenshots no longer display the blue virtual cursor over the desktop."
+    },
+    {
+      "version": "0.6.0",
+      "releasedAt": "2026-08-06",
+      "sourceSha256": "4dad13be4f836ffc87b7638dd31eb6ed7612f0fbd1cdb6ad43212525148ccc54",
+      "markdown": "### New features\n\n- Codex Korus now bundles its local Codex app-server executable, while remote\n  agents continue using the Codex installation on their remote host.\n- Existing Codex conversations can now be forked into a new agent from the\n  agent menu or from a specific user or assistant message.\n- Image annotation now lets you mark up a composer image with arrows,\n  rectangles, numbered comments, zoom, color inspection, and Retina-aware\n  measurements, then send the annotated image and feedback together.\n- Appshots capture the frontmost macOS window directly into the active agent\n  with a configurable dual-Command, dual-Option, or dual-Shift hotkey and an\n  optional confirmation sound.\n- Computer Use can now capture a target application window or macOS display as\n  an image, with Screen Recording permission surfaced in Settings.\n- Clicking an image in a conversation now opens it in a dedicated per-agent\n  workspace tab.\n\n### Improvements and fixes\n\n- Execution plans now keep a stable Task list heading and show the model's\n  plan-update title as a separate, full-width block below the header.\n- Duplicated and forked agents now appear directly below their source agent.\n- Conversations now open with less initial history while older turns remain\n  available on demand.\n- Historical image attachments render previews again, and selected attachments\n  stay contained within the composer.\n- Web searches now use their own tool presentation, while new SDK tool kinds\n  keep their intended identity instead of falling back to a generic tool.\n- Message actions are disabled while an agent is busy, controlled composer\n  caret movement is preserved, and user-message presentation is more\n  consistent."
+    },
+    {
+      "version": "0.5.1",
+      "releasedAt": "2026-08-04",
+      "sourceSha256": "d8e2ecbeccbdc435108dac564eba0ce7cc60d75bb742bc43d4eda6b6ecede902",
+      "markdown": "### Improvements and fixes\n\n- Dialog close buttons now sit closer to the top-right corner, and dialogs\n  without footers keep their rounded bottom corners."
+    },
+    {
+      "version": "0.5.0",
+      "releasedAt": "2026-08-04",
+      "sourceSha256": "53daa0d8865efdc2c794193097a8ae07337845146b420880a8bb51bd527b9146",
+      "markdown": "### New features\n\n- Added an in-app What’s New dialog, available from the native Help menu and\n  lower-left account menu, with release notes verified during release packaging.\n\n### Improvements and fixes\n\n- Long conversations now load progressively, keep only recent messages mounted\n  until you scroll upward, and use less memory across long sessions.\n- Large conversations no longer retransmit and redraw their full transcript for\n  routine agent selection, prompt, status, or background-state updates.\n- Mobile remote access can keep a plugged-in Mac awake, with streamlined\n  connection, pairing, and device controls in Settings.\n- Added keyboard shortcuts for opening Settings and compacting the active\n  agent's context.\n- Holding Command now reveals numbered shortcuts for the first nine agents in\n  the active team, and Command+1 through Command+9 switches directly to them.\n- Inactive agent transcripts now remain warm for 15 minutes before they are\n  eligible for eviction.\n- Conversations now preserve submitted `/review` commands and open external\n  links correctly, while Git status is analyzed when an agent is first shown.\n- Restored conversations no longer briefly show a stale execution plan while\n  their message history is loading."
+    },
+    {
+      "version": "0.4.0",
+      "releasedAt": "2026-08-03",
+      "sourceSha256": "0b619a87757a7df66c9f77e98bba582313e7edc5c800dadbe74157762e66e710",
+      "markdown": "### New features\n\n- Turn-aware file links now open edit targets in their own diff tabs, while\n  read and create targets continue to open source tabs.\n- Agent workspaces retain per-turn diff tabs and fall back to the current Git\n  review when a link has no usable turn context.\n- Added a Plugins settings page with opt-in Computer Use and Chrome controls,\n  ChatGPT handoff, and a catalog of common integrations.\n- Markdown previews now open as tabs in the right sidebar.\n- Chrome availability stays in sync with ChatGPT.\n- Execution plans can be dismissed and reopened from the agent header.\n- Browser and plan annotations now support voice recording and transcription.\n\n### Improvements and fixes\n\n- Browser annotations now dismiss on outside click and immediately resume\n  element selection while annotation mode remains active.\n- Plan reviews now support compact inline comments, batch refinement, clear\n  confirmation, and a locked review state while a revised plan is generated;\n  they now open as agent workspace tabs instead of replacing the sidebar.\n- Fixed macOS voice transcription in development builds by resolving the\n  bundled Apple Speech helper from the linked SDK assets."
+    },
+    {
+      "version": "0.3.1",
+      "releasedAt": "2026-08-02",
+      "sourceSha256": "5c68abaa4dd962610ec13009660340fd8bcc514ced5e6a85fdcf0036f1228d81",
+      "markdown": "### New features\n\n- Added macOS update checks, a Codex Korus menu action, a downloaded-update\n  badge, and install-and-relaunch flow.\n- Added the signed desktop release publishing workflow and update feed.\n- Added live file activity in conversations and clickable file targets for\n  reads, edits, and creates.\n- Published the Codex Korus landing page with release downloads and product\n  documentation.\n\n### Improvements and fixes\n\n- Computer Use MCP tools are hidden until explicitly enabled, while plugin\n  settings persist across launches and apply to new and resumed conversations.\n- Refined Plugins and Integrations settings cards, banners, spacing, and\n  dialog presentation.\n\n- Update checks now run at startup and once per hour in packaged builds.\n- Git review now includes untracked files and keeps the change statistics\n  visible alongside long filenames.\n- File activity no longer opens files unexpectedly; explicit file targets remain\n  available from the conversation.\n- Preserved conversation workspace context while navigating between agents.\n- Refined exploration labels and made right-sidebar resize affordances subtler."
+    },
+    {
+      "version": "0.3.0",
+      "releasedAt": "2026-08-02",
+      "sourceSha256": "818b2426a9dbd97eb324531b788d402f185c431cb8e62602b0002ccad8c883d2",
+      "markdown": "### New features\n\n- In-app browser with agent-specific tabs, annotations, and tools that continue\n  working while another agent is selected.\n- Native macOS Computer Use tools for agents to inspect and operate desktop\n  applications.\n- Git workspace review, source previews, streamlined agent setup, compact agent\n  lists, and a refined native macOS shell.\n- ChatGPT authentication, mobile device pairing, Fast mode, and clearer Korus\n  tool presentation.\n- Per-agent drafts, attachments, queues, model settings, and side-panel state.\n- Prompt automation through the `codex-Korus://` deep-link protocol.\n- Sender labels and cleaner message bubbles for agent-to-agent collaboration.\n\n### Improvements and fixes\n\n- Made agent switching immediate and kept the interface responsive with several\n  agents streaming concurrently.\n- Reduced conversation rendering, catalog loading, snapshot processing, and\n  long-session memory overhead; inactive transcripts now unload safely after\n  five minutes and reload on demand.\n- Prevented backend event-stream overload and output-backpressure crashes.\n- Stabilized queued and steered prompt submission, attachments, compaction\n  state, background-agent selection, and app-server reconnection.\n- Preserved live tool calls, drafts, queues, and conversation state across agent\n  switches and background activity.\n- Fixed GitHub token refresh, device pairing, Fast mode hydration, catalog\n  flicker, status clearing, and tool presentation regressions."
+    },
+    {
+      "version": "0.2.0",
+      "releasedAt": "2026-06-18",
+      "sourceSha256": "189aefdab9a65613b56b51e138c50e7b2f91485f1f3384f29d9c5742c288ff6e",
+      "markdown": "### New features\n\n- Always-on background agents through the `Korusd` daemon, including automatic\n  daemon upgrades when the desktop app is updated.\n- SSH connections to remote Korus instances with remote teams, agents, loops,\n  and work integrations.\n- Conversation history and resume, source and Git diff previews, agent Git\n  statistics, and repository worktree selection.\n- System permission controls and sleep prevention while agents are working.\n\n### Improvements and fixes\n\n- Made agent and team state survive desktop restarts while background work\n  continues in the daemon.\n- Improved remote connection recovery, conversation hydration, agent restart\n  behavior, and packaged runtime discovery.\n- Fixed direct teammate delivery, GitHub authentication in packaged builds,\n  snapshot consistency, and scoped file previews."
+    },
+    {
+      "version": "0.1.0",
+      "releasedAt": "2026-06-05",
+      "sourceSha256": "7ecb0ab1dc72fbb8a2dc4c5673f5e5741c795e237941d3e0705613b7f3dcf68d",
+      "markdown": "### New features\n\n- Native Codex conversations with streaming messages, tools, approvals,\n  questions, plans, goals, context usage, queues, steering, and interruption.\n- Teams, multiple agents, Bench templates, agent messaging, avatars, themes,\n  settings, keyboard shortcuts, file mentions, skills, and dictation.\n- Claude CLI conversations and transcript hydration behind a provider-neutral\n  backend contract.\n- Cockpit, GitHub backlog connections, work assignments, automation loops,\n  Markdown previews, and source worktree creation.\n\n### Improvements and fixes\n\n- Stabilized thread persistence, status updates, tool ordering, user-input\n  handling, compaction, message actions, native menus, and packaged Codex paths."
+    }
+  ]
+}

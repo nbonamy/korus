@@ -8,7 +8,7 @@ reusable convention or canonical component changes.
 ## Working Method
 
 1. Inspect the nearest component and its colocated tests.
-2. Search `vue/src/shared/` and `vue/src/components/` by interaction and product
+2. Search `client/vue/src/shared/` and `client/vue/src/components/` by interaction and product
    concept before creating markup or CSS (historical names do not prove a component
    is single-use).
 3. Choose the narrowest owner: component, renderer state, composable, view model,
@@ -46,7 +46,7 @@ weight and predictable geometry over decorative cards or explanatory copy.
   Owner and guest suggestions use the SDK's `composer-drawers` slot and shared
   drawer components, including the queued-prompt layout; the daemon owns
   proposal state and authorship, while the renderer owns the editable owner draft.
-- **`vue/src/app-state.ts`:** renderer state shared across surfaces, the replica of
+- **`client/vue/src/app-state.ts`:** renderer state shared across surfaces, the replica of
   server-authored app state, and the registry of per-agent provider replicas. It
   routes provider frames to the matching provider reducer and never interprets or
   rebuilds transcripts. It delegates catalogs, authorization, unread policy, history
@@ -64,8 +64,8 @@ weight and predictable geometry over decorative cards or explanatory copy.
   groups. Labels come from persisted team metadata. Opening a group assigns only
   its members to the existing split layout, capped at four in sidebar order; a
   three-agent group keeps the fourth pane empty. Cockpit stays in Activity view.
-- **Product components** (`vue/src/components/`) represent one product concept with
-  typed props and semantic emits. **Shared primitives** (`vue/src/shared/`) are
+- **Product components** (`client/vue/src/components/`) represent one product concept with
+  typed props and semantic emits. **Shared primitives** (`client/vue/src/shared/`) are
   domain-neutral with isolated tests and never import product components, stores,
   views or backend clients.
 - **SDK surfaces** own conversation, composer, message, tool, approval, attachment,
@@ -89,6 +89,10 @@ Rules of thumb:
   state machine, reusable behavior or test seam; keep styles scoped unless a token,
   reset, shell rule or shared primitive is intentionally global; keep wrappers only
   when they add product semantics.
+- Use `shared/use-collapsible-pane-resize` for collapsible pane drags. Keep the
+  gesture owner mounted when its pane closes so the same drag can reopen it;
+  callers own visibility, width constraints and the restored width. Split dividers
+  configure the opposite pane on the same gesture rather than adding a second handler.
 
 ### Conversation Panes
 
@@ -167,6 +171,7 @@ runs independently of loaded tree nodes, so an unopened directory remains search
   Mission-owned workers stay out of the global agent sidebar.
   Conversation selection is remembered per Mission in client-local storage and
   falls back to the Mission lead when the selected worker is unavailable.
+  Pane zoom is also remembered per Mission in client-local storage.
   Mission previews reuse workspace surfaces inside a modal instead of consuming
   workspace columns. Agent Markdown requests share one replaceable pending request per Mission.
   Pending requests do not select an agent or alter the workspace layout. Native
@@ -183,28 +188,30 @@ Search by behavior first.
 
 | Need | Use | Location |
 | --- | --- | --- |
-| Action, checkbox/radio, separator, submenu rows | `AppMenu` | `vue/src/shared/menu/` |
-| Pointer-positioned context menu | `AppContextMenu` | `vue/src/shared/menu/` |
-| Application launcher and icons | `OpenInControl` | `vue/src/shared/` |
-| Product glyphs (incl. GitHub) | app icon catalog | `vue/src/shared/icons/app-icons.ts` |
-| Remote host status, standalone globe or branch badge, with a host tooltip | `RemoteHostIndicator` | `vue/src/components/` |
-| Local or remote host selection | `HostSelector` | `vue/src/components/` |
-| Repository image or emoji mark | `RepositoryIcon` (square, borderless avatar presentation) | `vue/src/components/` |
-| Reopen collapsed sidebar | `SidebarExpandButton` | `vue/src/shared/` |
-| Workspace header / body containment | `WorkspaceHeader`, `.workspace-header__title`, `.workspace-body` | `vue/src/shared/`, `styles/base.css` |
-| Dialog chrome and footer actions | `.app-dialog`, `.app-button` | `vue/src/styles/base.css` |
-| Form dialogs | `FormDialog` | `vue/src/shared/dialog/` |
-| Form structure: card, label-left rows, label-above fields | `FormSection`, `FormRow`, `FormField` | `vue/src/shared/form/` |
-| Single-line text with an inline clear action | `ClearableTextInput` | `vue/src/shared/form/` |
-| Command palettes | `QuickOpenDialog` | `vue/src/shared/` |
-| Voice multiline input | `VoiceTextarea` | `vue/src/shared/` |
-| Emoji, grapheme or cropped-image identity | `IdentityPicker` (product component despite its path; keep new product dependencies out of `shared/`) | `vue/src/shared/identity/` |
-| Enabled coding backend picker | `BackendSelector` (consumes the choices `AppShell` provides once through `backend-selection`; hides a single choice unless explicit provider identity is needed; dialogs never read backend settings) | `vue/src/components/` |
-| New-work provider, model and effort picker | `BackendModelSelector` (icon-only provider tabs in fixed order, cascading model → effort menu, owning-host catalog cached per provider and host with stale-response protection; the saved or provider default model and effort are selected explicitly, never a blank "default") | `vue/src/components/` |
-| Settings structure | `SettingsPanelFrame`, `SettingsTextareaField` (compose `FormSection`/`FormRow`) | `vue/src/components/` |
-| Dense structured data | `AppDataList` | `vue/src/components/` |
-| Operation feedback | `GitOperationFeedback` | `vue/src/components/` |
-| Worktree provisioning progress | `WorkspaceProvisioningProgressDialog` | `vue/src/components/` |
+| Action, checkbox/radio, separator, submenu rows | `AppMenu` | `client/vue/src/shared/menu/` |
+| Pointer-positioned context menu | `AppContextMenu` | `client/vue/src/shared/menu/` |
+| Application launcher and icons | `OpenInControl` | `client/vue/src/shared/` |
+| Product glyphs (incl. GitHub) | app icon catalog | `client/vue/src/shared/icons/app-icons.ts` |
+| Remote host status, standalone globe or branch badge, with a host tooltip | `RemoteHostIndicator` | `client/vue/src/components/` |
+| Local or remote host selection | `HostSelector` | `client/vue/src/components/` |
+| Repository image or emoji mark | `RepositoryIcon` (square, borderless avatar presentation) | `client/vue/src/components/` |
+| Reopen collapsed sidebar | `SidebarExpandButton` | `client/vue/src/shared/` |
+| Foreground-only UI timeout | `useForegroundTimeout` | `client/vue/src/shared/use-foreground-timeout.ts` |
+| Animate a pane collapsing or expanding | `PaneTransition` (wrap a single `v-if` or `v-show` pane) | `client/vue/src/shared/` |
+| Workspace header / body containment | `WorkspaceHeader`, `.workspace-header__title`, `.workspace-body` | `client/vue/src/shared/`, `styles/base.css` |
+| Dialog chrome and footer actions | `.app-dialog`, `.app-button` (add `.app-button--small` for compact actions) | `client/vue/src/styles/base.css` |
+| Form dialogs | `FormDialog` | `client/vue/src/shared/dialog/` |
+| Form structure: card, label-left rows, label-above fields | `FormSection`, `FormRow`, `FormField` | `client/vue/src/shared/form/` |
+| Single-line text with an inline clear action | `ClearableTextInput` | `client/vue/src/shared/form/` |
+| Command palettes | `QuickOpenDialog` | `client/vue/src/shared/` |
+| Voice multiline input | `VoiceTextarea` | `client/vue/src/shared/` |
+| Emoji, grapheme or cropped-image identity | `IdentityPicker` (product component despite its path; keep new product dependencies out of `shared/`) | `client/vue/src/shared/identity/` |
+| Enabled coding backend picker | `BackendSelector` (consumes the choices `AppShell` provides once through `backend-selection`; hides a single choice unless explicit provider identity is needed; dialogs never read backend settings) | `client/vue/src/components/` |
+| New-work provider, model and effort picker | `BackendModelSelector` (icon-only provider tabs in fixed order, cascading model → effort menu, owning-host catalog cached per provider and host with stale-response protection; the saved or provider default model and effort are selected explicitly, never a blank "default") | `client/vue/src/components/` |
+| Settings structure | `SettingsPanelFrame`, `SettingsTextareaField` (compose `FormSection`/`FormRow`) | `client/vue/src/components/` |
+| Dense structured data | `AppDataList` | `client/vue/src/components/` |
+| Operation feedback | `GitOperationFeedback` | `client/vue/src/components/` |
+| Worktree provisioning progress | `WorkspaceProvisioningProgressDialog` | `client/vue/src/components/` |
 
 Use the globe to identify a remote host and the network icon for actions that
 connect to one.
@@ -302,7 +309,7 @@ return to the form with its inputs preserved.
 - Every icon-only control has an accessible name; keep native keyboard behavior,
   visible focus and predictable focus return; one semantic target per action, no
   nested interactives.
-- Short, concrete labels. Reusable copy lives in `vue/src/i18n/messages.ts` (use
+- Short, concrete labels. Reusable copy lives in `client/vue/src/i18n/messages.ts` (use
   `vue-i18n` for dynamic labels). Backend and IPC send app-owned error and status
   descriptors that only the rendering client localizes; raw backend, provider, Git
   or shell text stays diagnostic detail.
@@ -313,6 +320,45 @@ Components never import fixed colors. Themes are `ThemeDefinition`s of semantic
 tokens (`--color-*`, `--diff-*`) applied as CSS custom properties on the document
 root; syntax and diff highlighting share the theme source. VS Code theme import is a
 desired direction, not a requirement.
+
+## Private Usage Console
+
+`server/frontend/src` is a standalone Vue entry point for aggregate telemetry. It
+consumes browser-safe aggregate contracts and canonical UI primitives, never
+the desktop shell, provider protocols, identity state or filesystem. Dependency
+lint enforces that boundary. The console uses Element Plus controls with its own
+semantic theme. Desktop provider/model pickers assume app-owned provider catalogs,
+host state and localization, while the console filters aggregate reporting
+dimensions. Analytics options uses the canonical AppMenuButton and AppMenu with
+the same checked tier-grouping item, icons, focus behavior and shared menu chrome.
+`client/vue/src/shared/menu/menu-chrome.css` owns the shared icon-button and popover skin.
+Its SVG chart accepts aggregate series rather than local-ledger
+`UsageSummary` dimensions.
+
+The build copies semantic tokens from the app's light palette without external
+font imports. Charts use thin, bounded cubic curves with fading area fills,
+separate runs for missing values and markers only during inspection. One keyboard
+focus stop per chart supports Left/Right and Home/End. Compact token units,
+cent-rounded amounts and one-decimal percentages expose exact PostgreSQL values
+in floating date popovers on hover, tap or keyboard inspection. Additive charts
+show totals; speed and first-output rates are never summed. Coordinate conversion
+is bounded to safe finite values; exact out-of-range measurements remain in the
+popover. Line, bar and ranking charts share the soft gradient treatment.
+
+Hash routes separate the overview, activity, token, spend, model and performance reports without
+requiring proxy rewrite rules. Date and usage-filter state stays in the mounted
+console across page changes; browser history and direct report links select the
+report independently of those filters. Models leads with ranked usage and offers
+stacked bars or lines over time. Performance compares model-day rates using the
+same model/tier identities, with five most-used variants selected initially.
+
+Sign-in, sign-out and expired-session recovery share the console identity.
+Reporting data and credentials are not kept in browser storage.
+
+The private proxy owns authentication. Browser code performs only same-origin
+aggregate reads, keeps no credentials or metrics in storage, discards stale filter
+responses and clears displayed data during reload or access failure. Activity
+cards and series stay global; usage filters affect usage summaries and model rows.
 
 ## Editable Visualize Canvases
 

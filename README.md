@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="vue/assets/icon.png" width="112" height="112" alt="Korus app icon" />
+  <img src="client/vue/assets/icon.png" width="112" height="112" alt="Korus app icon" />
 </p>
 
 <h1 align="center">Korus</h1>
@@ -249,7 +249,7 @@ approval on the desktop, which grants it every team and prompt sending.
 
 Relay operators build the standalone artifact with
 `npm run build:relay -w @workspace/backend`. Container packaging lives in
-`backend/companion-relay/`: supply a reviewed Node image pinned by digest, a valid
+`client/backend/companion-relay/`: supply a reviewed Node image pinned by digest, a valid
 public TLS certificate, a persistent identity volume and admitted laptop PeerIds.
 The compose configuration maps outbound-facing WSS port 443 to the container's
 8443 listener. Health checks remain inside the container. Relay deployment and

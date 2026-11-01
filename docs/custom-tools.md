@@ -35,7 +35,7 @@ effect is observable, and live and restored rows render the same meaning.
 ## Registration
 
 Tool families are self-contained modules resolved per authenticated request;
-`backend/src/mcp/tools.ts` only composes the modules its providers return. A
+`client/backend/src/mcp/tools.ts` only composes the modules its providers return. A
 contextual family (such as Visualize) is an `AppMcpToolModuleProvider` whose
 `resolve` returns a module only for an agent in that context, attached via
 `AppMcpServiceOptions.toolModuleProviders`. Never add a family-specific branch to
@@ -48,7 +48,7 @@ generic proposal flags).
   parameter descriptions explain inputs, not workflows. Multi-step procedures
   belong in bundled skills, reached by a short trigger in the owning tool or
   assignment. Keep identity, authorization and turn-lifecycle essentials in
-  `backend/src/mcp/agent-prompts.ts`; task prompts supply actual scope, state and
+  `client/backend/src/mcp/agent-prompts.ts`; task prompts supply actual scope, state and
   delivery authority rather than repeating the procedure.
 - Caller identity comes from the agent-scoped URL; never add an agent ID to a schema.
 - Wrap handlers in `loggedToolResult()`; raise deliberate domain errors with
@@ -71,7 +71,7 @@ transcript.
 Return results with `structuredToolResult()` (stable keys such as `success`,
 `kind`, `message`). Korus does not persist arbitrary tool input and output, since
 provider payloads can contain large output, screenshots, file content or secrets.
-`backend/src/codex/codex-surface-adapter.ts` projects an **allowlist** of
+`client/backend/src/codex/codex-surface-adapter.ts` projects an **allowlist** of
 presentation-safe keys before messages enter state. To surface a new value: use a
 small scalar or bounded object, add only that key to the projection, add a
 real-shape adapter regression proving it survives live and hydrated history, and
@@ -80,7 +80,7 @@ provider field would reach durable snapshots before anyone classified it.
 
 ## Tool-Row Presentation
 
-`vue/src/tool-presentation.ts` (recognized tools, icons), `tool-title-presenter.ts`
+`client/vue/src/tool-presentation.ts` (recognized tools, icons), `tool-title-presenter.ts`
 (phase-aware titles and targets) and `i18n/messages.ts` (running, completed, failed
 strings). A visible tool needs a `TOOL_KEYS` entry, a semantic icon group and all
 three lifecycle strings ("Creating / Created / Failed creating worktree
@@ -113,9 +113,9 @@ guaranteed: the result confirms `requested`, not `displayed`.
 ## Tests
 
 One focused test per seam crossed: registration/schema/routing
-(`backend/src/mcp/__tests__/tools.spec.ts`), domain behavior
+(`client/backend/src/mcp/__tests__/tools.spec.ts`), domain behavior
 (`agent-coordinator.spec.ts`), snapshot mutation, events and client effects
 (`service.spec.ts`), bounded projection (`codex-surface-adapter.spec.ts`), durable
 reducers (`core/src/__tests__`), titles and icons
-(`vue/src/__tests__/tool-title-presenter.spec.ts`, `tool-presentation.spec.ts`), and
+(`client/vue/src/__tests__/tool-title-presenter.spec.ts`, `tool-presentation.spec.ts`), and
 component or app-state tests for visible effects. Start with the smallest red test.

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Agent } from '@workspace/core/contracts';
-import { codexConversationSnapshot, codexTextMessage } from '../../../vue/src/test/codex-conversation-fixtures';
+import { codexConversationSnapshot, codexTextMessage } from '../../../client/vue/src/test/codex-conversation-fixtures';
 import { createDemoConnector } from '../demo-connector';
 import type { CompanionConversation, CompanionWorkspace } from '../companion-port';
 import { createEngine, type EngineEvent } from '../engine';

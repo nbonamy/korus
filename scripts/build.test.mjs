@@ -19,7 +19,7 @@ for (const script of ['build.mjs', 'build-sdk.mjs']) {
       mkdirSync(sdkRoot);
       writeFileSync(path.join(sdkRoot, 'package.json'), '{}');
       const overrides = {};
-      for (const [workspace, name] of [['backend', 'backend'], ['backend', 'core'], ['electron', 'electron'], ['vue', 'vue'], ['web', 'web']]) {
+      for (const [workspace, name] of [['client/backend', 'backend'], ['client/backend', 'core'], ['client/electron', 'electron'], ['client/vue', 'vue']]) {
         mkdirSync(path.join(root, workspace), { recursive: true });
         writeFileSync(path.join(root, workspace, 'package.json'), '{}');
         overrides[`@codex-app-sdk/${name}`] = `file:./sdk checkout/packages/${name}`;

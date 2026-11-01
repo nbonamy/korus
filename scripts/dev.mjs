@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const backendBundle = path.join(rootDir, 'backend/dist/daemon.mjs');
+const backendBundle = path.join(rootDir, 'client/backend/dist/daemon.mjs');
 const children = new Set();
 let shuttingDown = false;
 
@@ -43,7 +43,7 @@ const electronDev = start('npm', ['run', 'start:electron'], {
     APP_BACKEND_COMMAND: process.execPath,
     APP_BACKEND_ARGS: `${backendBundle},--stdio`,
     APP_BACKEND_WATCH_FILE: '',
-    APP_ASSETS_PATH: path.join(rootDir, 'electron', 'assets'),
+    APP_ASSETS_PATH: path.join(rootDir, 'client/electron', 'assets'),
     CODEX_APP_SDK_ASSETS_PATH: sdkAssets,
   },
 });
@@ -55,7 +55,7 @@ function sdkAssetsPath() {
   }
   // SDK exports do not expose assets/package.json. Follow the backend
   // workspace's Node search order, supporting both nested and hoisted installs.
-  const require = createRequire(path.join(rootDir, 'backend/package.json'));
+  const require = createRequire(path.join(rootDir, 'client/backend/package.json'));
   const packageName = '@codex-app-sdk/backend';
   const packageRoot = (require.resolve.paths(packageName) ?? [])
     .map((directory) => path.join(directory, packageName))

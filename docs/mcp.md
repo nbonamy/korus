@@ -5,7 +5,7 @@ credentialed access to provider-hosted MCP servers. They are app surfaces, not
 Codex-specific: every provider gets the same endpoints through session-local
 configuration, and each driver translates only that into its native launch
 contract. Tool schemas and descriptions are the reference for individual tools
-(`backend/src/mcp/`); this document records the model around them. To add a tool,
+(`client/backend/src/mcp/`); this document records the model around them. To add a tool,
 read [custom-tools.md](custom-tools.md).
 
 ## Boundary

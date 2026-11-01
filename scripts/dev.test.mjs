@@ -20,15 +20,15 @@ for (const scenario of [
       copyFileSync(new URL('./dev.mjs', import.meta.url), path.join(root, 'scripts/dev.mjs'));
       mkdirSync(path.join(root, 'node_modules'), { recursive: true });
       symlinkSync(fileURLToPath(new URL('../node_modules/dotenv', import.meta.url)), path.join(root, 'node_modules/dotenv'), process.platform === 'win32' ? 'junction' : 'dir');
-      const installedPackage = path.join(root, scenario.hoisted ? '' : 'backend', 'node_modules/@codex-app-sdk/backend');
+      const installedPackage = path.join(root, scenario.hoisted ? '' : 'client/backend', 'node_modules/@codex-app-sdk/backend');
       const localAssets = path.join(temp, 'codex-app-sdk/packages/backend/assets');
-      for (const directory of [path.join(installedPackage, 'assets'), localAssets, path.join(root, 'backend/dist')]) {
+      for (const directory of [path.join(installedPackage, 'assets'), localAssets, path.join(root, 'client/backend/dist')]) {
         mkdirSync(directory, { recursive: true });
       }
       writeFileSync(path.join(installedPackage, 'package.json'), '{"name":"@codex-app-sdk/backend"}');
       writeFileSync(path.join(installedPackage, 'assets/apple-speechanalyzer-cli'), 'installed helper');
       writeFileSync(path.join(localAssets, 'apple-speechanalyzer-cli'), 'local helper');
-      writeFileSync(path.join(root, 'backend/dist/daemon.mjs'), '');
+      writeFileSync(path.join(root, 'client/backend/dist/daemon.mjs'), '');
       if (scenario.dotenv) writeFileSync(path.join(root, '.env'), `CODEX_APP_SDK_SOURCE=${scenario.dotenv}\n`);
       const trace = path.join(temp, 'trace.json');
       const npmCli = path.join(temp, 'npm cli.cjs');

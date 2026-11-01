@@ -4,10 +4,10 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse } from 'smol-toml';
 import { z } from 'zod';
-import { pricingBaselineDate, pricingHistorySchema, sourcePricingSchema } from '../backend/src/pricing/schema.ts';
+import { pricingBaselineDate, pricingHistorySchema, sourcePricingSchema } from '../client/backend/src/pricing/schema.ts';
 
 const providers = ['openai', 'anthropic', 'google'];
-const defaultOutput = fileURLToPath(new URL('../backend/src/pricing/history.json', import.meta.url));
+const defaultOutput = fileURLToPath(new URL('../client/backend/src/pricing/history.json', import.meta.url));
 const sha = z.string().regex(/^[a-f0-9]{40}$/);
 const commitSchema = z.object({ sha, commit: z.object({ tree: z.object({ sha }) }) });
 const treeSchema = z.object({

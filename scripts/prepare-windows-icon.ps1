@@ -1,9 +1,9 @@
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 $root = Split-Path $PSScriptRoot -Parent
-$destination = Join-Path $root 'electron/.icons'
+$destination = Join-Path $root 'client/electron/.icons'
 New-Item -ItemType Directory -Force -Path $destination | Out-Null
-$source = [System.Drawing.Image]::FromFile((Join-Path $root 'electron/assets/icon.png'))
+$source = [System.Drawing.Image]::FromFile((Join-Path $root 'client/electron/assets/icon.png'))
 $bitmap = New-Object System.Drawing.Bitmap 256, 256
 $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
 $png = New-Object System.IO.MemoryStream

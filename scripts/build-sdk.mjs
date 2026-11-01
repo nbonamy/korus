@@ -6,11 +6,10 @@ import { fileURLToPath } from 'node:url';
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const rootPackageJson = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
 const sdkDependencies = [
-  ['backend', '@codex-app-sdk/backend'],
-  ['backend', '@codex-app-sdk/core'],
-  ['electron', '@codex-app-sdk/electron'],
-  ['vue', '@codex-app-sdk/vue'],
-  ['web', '@codex-app-sdk/web'],
+  ['client/backend', '@codex-app-sdk/backend'],
+  ['client/backend', '@codex-app-sdk/core'],
+  ['client/electron', '@codex-app-sdk/electron'],
+  ['client/vue', '@codex-app-sdk/vue'],
 ].map(([directory, packageName]) => {
   const packagePath = path.join(rootDir, directory, 'package.json');
   const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8'));

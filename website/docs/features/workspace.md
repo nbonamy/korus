@@ -186,7 +186,21 @@ Cost estimates use recorded usage and historical model prices. Totals and shares
 
 Statistics cover recorded activity in Korus rather than importing earlier provider history; different providers may report different token details. Check your provider's account page for remaining quota and billing.
 
-Statistics stay local, are retained for up to a year, and do not include conversation text. **Refresh** reloads the view. **Clear** asks for confirmation before deleting recorded statistics; it does not delete conversations, change provider quotas, or stop agents. See [Analytics privacy](../troubleshooting/faq#does-korus-upload-my-analytics) for the distinction from provider access.
+The local ledger is retained for up to a year, subject to a record limit, and does not include conversation text. **Refresh** reloads the view. **Clear** asks for confirmation before deleting local statistics; it does not delete conversations, change provider quotas, stop agents, disable sharing, or remotely delete accepted reports.
+
+### Choose whether to share usage
+
+Anonymous usage sharing starts off. A panel at the top of the conversation offers **Close** to enable sharing immediately or **Cancel** to keep it off. Without a response, sharing turns on after one minute while the app is visible and focused; the panel stays until dismissed. The saved setting suppresses the panel on subsequent starts. You can change it with **Share anonymous telemetry data** in **Settings → General → Advanced**. With sharing off, the app makes no telemetry requests.
+
+Sharing sends hourly summaries containing only a random installation ID, UTC reporting day and hour, numeric app version, coarse operating system, and turns, inclusive input, cache-read input, output, and nullable estimated API-equivalent USD cost by driver and allowed catalog model. When measured, groups also include output tokens and active generation time for speed measurements, summed time to first output, and the corresponding measured-turn counts. These are hourly aggregates, never per-turn timing events. No prompts, model responses, tool content, paths, project/repository/branch or agent details, account details, device identifiers, custom model aliases, or IP-address fields are included. No IP addresses are stored by the telemetry service or its delivery infrastructure; other services have separate data flows described in the [privacy policy](__PRODUCT_PRIVACY_URL__#optional-sharing).
+
+The random ID links your hourly reports without being linked to your account; reports are not completely unlinkable. Usage summaries and the minimal ID/first-reported-day registry are kept indefinitely. Server backup copies rotate after seven days. A private dashboard displays aggregates about participating installation identities, not all downloads or people.
+
+Uploads run hourly and on startup. They send unsent or updated UTC-hour buckets from the local ledger across the retained local history, starting with the next full UTC hour after enabling sharing. Re-enabling starts a new window; usage recorded while sharing was off is excluded. Foreground-active hours can report empty usage if you ran no turns. Pending reports survive restarts; retries preserve their original bytes and acknowledged updates replace the earlier bucket. Reports can arrive late or be dropped after delivery failures. Remote teams and mobile companions do not submit duplicate reports.
+
+Input includes cache reads and recorded cache creation. Total tokens add inclusive input and output, without adding cache reads or reasoning twice. Missing or incomplete measurements remain unknown. Costs are API-equivalent estimates from complete ledger evidence, not billed spend or subscription charges.
+
+Clearing local statistics or uninstalling does not remotely delete reports already received or their backup copies. See [Analytics privacy](../troubleshooting/faq#does-korus-upload-my-analytics) for the distinction from provider access.
 
 ## Review before delivery
 

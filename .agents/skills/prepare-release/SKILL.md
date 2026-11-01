@@ -79,7 +79,7 @@ The lockfile-only command above refreshes app-version metadata after SDK
 installation; npm remains the sole lockfile writer. CI validates the clean
 install with the Node/npm versions declared in the release workflow. Only CHANGELOG.md,
 the six package manifests, package-lock.json, and
-vue/src/generated/release-notes.json may change unless Nicolas explicitly includes
+client/vue/src/generated/release-notes.json may change unless Nicolas explicitly includes
 another change in the release commit. When resuming preparation, reuse completed
 audit and verification results whose inputs have not changed.
 

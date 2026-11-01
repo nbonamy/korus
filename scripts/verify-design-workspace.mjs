@@ -1,28 +1,30 @@
-// Repeatable real-shell smoke: npm run build:web && node scripts/verify-design-workspace.mjs [output-directory]
+// Repeatable real-shell smoke: npm run build:backend && node scripts/verify-design-workspace.mjs [output-directory]
 // Deterministic by default. --live also checks generation with a real configured provider.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { access, copyFile, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
-import { chromium } from 'playwright';
+import { chromium, _electron as electron } from 'playwright';
+import { createRequire } from 'node:module';
+import { build as buildClient } from 'vite';
 import product from '../core/src/product.json' with { type: 'json' };
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const electronExecutable = createRequire(new URL('../client/electron/package.json', import.meta.url))('electron');
 const output = path.resolve(process.argv.slice(2).find(value => !value.startsWith('--')) ?? path.join(os.tmpdir(), 'korus-design-evidence'));
 const live = process.argv.includes('--live');
 const home = await mkdtemp(path.join(os.tmpdir(), 'korus-design-smoke-'));
-let host, daemon, browser, socket;
+let desktop, daemon, browser, page;
 const checks = [];
 const record = name => { checks.push(name); console.log(`Passed: ${name}`); };
 try {
   await mkdir(output, { recursive: true });
   await rm(path.join(output, 'acceptance.json'), { force: true });
-  await readFile(path.join(root, 'web/dist/server/index.js'));
+  await readFile(path.join(root, 'client/backend/dist/daemon.mjs'));
   await build({ stdin: { resolveDir: root, contents: `import {createInitialSnapshot} from './core/src/snapshot';export default createInitialSnapshot();` }, bundle: true, platform: 'node', format: 'esm', outfile: path.join(home, 'seed.mjs') });
   const { default: snapshot } = await import(path.join(home, 'seed.mjs'));
   snapshot.general.providerOnboardingComplete = true;
@@ -34,47 +36,39 @@ try {
   try { await copyFile(path.join(os.homedir(), product.homeDirectory, 'codex-home/auth.json'), path.join(home, 'codex-home/auth.json')); }
   catch { throw new Error('This real-shell smoke needs existing local Codex authentication for onboarding. No model turns are submitted.'); }
   await chmod(path.join(home, 'codex-home/auth.json'), 0o600);
-  const allocator = net.createServer();
-  allocator.listen(0, '127.0.0.1'); await once(allocator, 'listening');
-  const port = allocator.address().port;
-  await new Promise(resolve => allocator.close(resolve));
-  daemon = spawn(process.execPath, [path.join(root, 'backend/dist/daemon.mjs'), 'serve'], { cwd: root, stdio: 'ignore', env: { ...process.env, APP_HOME: home, APP_HOST: 'web' } });
+  daemon = spawn(process.execPath, [path.join(root, 'client/backend/dist/daemon.mjs'), 'serve'], { cwd: root, stdio: 'ignore', env: { ...process.env, APP_HOME: home, APP_BACKEND_SOCKET: path.join(home, 'daemon.sock'), APP_HOST: 'desktop' } });
   for (let attempt = 0; ; attempt++) {
     if (daemon.exitCode !== null) throw new Error('Isolated daemon exited during startup.');
     if (await access(path.join(home, 'daemon.sock')).then(() => true).catch(() => false)) break;
     if (attempt > 240) throw new Error('Isolated daemon did not start.');
     await new Promise(resolve => setTimeout(resolve, 250));
   }
-  host = spawn(process.execPath, [path.join(root, 'web/dist/server/index.js')], {
-    cwd: root, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, APP_HOME: home, HOST: '127.0.0.1', PORT: String(port), APP_BACKEND_COMMAND: process.execPath, APP_BACKEND_ARGS: `${path.join(root, 'backend/dist/daemon.mjs')},connect` },
+  const shared = { ssr: { noExternal: true }, logLevel: 'error', define: { MAIN_WINDOW_VITE_DEV_SERVER_URL: 'undefined', MAIN_WINDOW_VITE_NAME: JSON.stringify('main_window') } };
+  await buildClient({ ...shared, configFile: path.join(root, 'client/electron/vite.main.config.ts'), build: { ssr: path.join(root, 'client/electron/src/main/index.ts'), outDir: path.join(root, 'client/electron/.vite/build'), emptyOutDir: true, rollupOptions: { external: ['electron', 'autolib'], output: { format: 'cjs', entryFileNames: 'main.js' } } } });
+  await buildClient({ ...shared, configFile: path.join(root, 'client/electron/vite.preload.config.ts'), build: { ssr: path.join(root, 'client/electron/src/preload/index.ts'), outDir: path.join(root, 'client/electron/.vite/build'), emptyOutDir: false, rollupOptions: { external: ['electron'], output: { format: 'cjs', entryFileNames: 'preload.js' } } } });
+  await buildClient({ configFile: path.join(root, 'client/electron/vite.renderer.config.ts'), logLevel: 'error', base: './' });
+  desktop = await electron.launch({ executablePath: electronExecutable,
+    args: [path.join(root, 'client/electron'), `--user-data-dir=${path.join(home, 'electron')}`],
+    cwd: root,
+    env: { ...process.env, NODE_ENV: 'development', APP_HOME: home, APP_BACKEND_MODE: 'bundled',
+      APP_BACKEND_SOCKET: path.join(home, 'daemon.sock'), APP_BACKEND_COMMAND: process.execPath,
+      APP_BACKEND_ARGS: `${path.join(root, 'client/backend/dist/daemon.mjs')},--stdio`, APP_BACKEND_WATCH_FILE: '',
+      APP_ASSETS_PATH: path.join(root, 'client/electron/assets'), CODEX_APP_SDK_SOURCE: '0',
+      CODEX_APP_SDK_ASSETS_PATH: path.join(root, 'node_modules/@codex-app-sdk/backend/assets') },
   });
-  let hostOutput = '';
-  host.stderr.on('data', data => { hostOutput = (hostOutput + data).slice(-2000); });
-  host.stdout.on('data', data => { hostOutput = (hostOutput + data).slice(-2000); });
-  const url = `http://127.0.0.1:${port}`;
-  for (let attempt = 0; ; attempt++) {
-    if (host.exitCode !== null) throw new Error(`Smoke host exited during startup: ${hostOutput}`);
-    if (await fetch(`${url}/health`).then(r => r.ok).catch(() => false)) break;
-    if (attempt > 240) throw new Error('Smoke host did not start.');
-    await new Promise(resolve => setTimeout(resolve, 250));
-  }
-  socket = new WebSocket(`ws://127.0.0.1:${port}/app?clientId=design-smoke`);
-  await once(socket, 'open');
-  let nextId = 0;
-  const pending = new Map();
-  socket.addEventListener('message', event => {
-    const response = JSON.parse(event.data);
-    if (response.type !== 'response') return;
-    const entry = pending.get(response.id); if (!entry) return;
-    pending.delete(response.id); clearTimeout(entry.timeout);
-    response.ok ? entry.resolve(response.result) : entry.reject(new Error(response.error));
-  });
-  const invoke = (operation, ...args) => new Promise((resolve, reject) => {
-    const id = `smoke-${++nextId}`;
-    const timeout = setTimeout(() => { pending.delete(id); reject(new Error(`Timed out: ${operation}`)); }, 20_000);
-    pending.set(id, { resolve, reject, timeout });
-    socket.send(JSON.stringify({ version: 1, type: 'request', id, operation, args }));
-  });
+  page = await desktop.firstWindow();
+  await (await desktop.browserWindow(page)).evaluate(window => window.setContentSize(1440, 1000));
+  await page.bringToFront();
+  browser = await chromium.launch({ headless: true });
+  await page.waitForFunction(() => typeof window.app?.getSnapshot === 'function');
+  await page.locator('.app-shell:not(.app-shell--auth-gated)').waitFor({ state: 'visible', timeout: 60_000 });
+  const sharingNotice = page.getByRole('dialog', { name: 'Anonymous daily sharing', exact: true });
+  await sharingNotice.getByRole('button', { name: "Don't share", exact: true }).click();
+  await sharingNotice.waitFor({ state: 'hidden' });
+  await page.waitForLoadState('networkidle');
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  page.on('pageerror', error => console.error(`Renderer error: ${error.message}`));
+  const invoke = (operation, ...args) => page.evaluate(({ operation, args }) => window.app[operation](...args), { operation, args });
   const agentId = snapshot.agents[0].id;
   const design = request => invoke('design', agentId, request);
   const waitSelection = async nodeId => {
@@ -93,10 +87,6 @@ try {
     { id: 'toggle', tag: 'button', text: 'Show details', toggleTargetId: 'details' },
     { id: 'details', tag: 'p', text: 'Prototype interaction works.', attributes: { hidden: '' } },
   ] } }, { id: 'mobile', title: 'Mobile', width: 375, height: 640, root: { id: 'mobile-root', tag: 'main', children: [{ id: 'mobile-heading', tag: 'h1', text: 'A second artboard' }] } }] } });
-  browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-  page.on('pageerror', error => console.error(`Browser error: ${error.message}`));
-  await page.goto(url);
   await page.locator('.design-panel').waitFor({ state: 'visible', timeout: 60_000 });
   await page.locator('.design-canvas').waitFor({ state: 'visible' });
   assert.equal(await page.locator('.design-canvas iframe').count(), 2);
@@ -126,7 +116,41 @@ try {
   await composer.fill('');
   record('Composer + and command palette reopen the owning saved Design without submitting or consuming the conversation draft.');
 
+  const settleLayout = () => page.evaluate(async () => {
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await Promise.all(document.getAnimations().filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => undefined)));
+  });
+  // Electron's frame locator geometry omits the iframe's CSS zoom transform.
+  // Resolve local DOM bounds through the rendered iframe before sending native input.
+  const artboardBounds = async locator => {
+    const element = await locator.elementHandle();
+    assert.ok(element);
+    const owner = await element.ownerFrame();
+    assert.ok(owner && owner !== page.mainFrame());
+    const iframe = await owner.frameElement();
+    const outer = await iframe.boundingBox();
+    assert.ok(outer);
+    const local = await locator.evaluate(node => node.getBoundingClientRect().toJSON());
+    const viewport = await owner.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+    return { x: outer.x + local.x * outer.width / viewport.width, y: outer.y + local.y * outer.height / viewport.height,
+      width: local.width * outer.width / viewport.width, height: local.height * outer.height / viewport.height };
+  };
+  const clickArtboard = async (locator, clickCount = 1) => {
+    await locator.waitFor({ state: 'visible' });
+    const owner = await (await locator.elementHandle()).ownerFrame();
+    const iframe = await owner.frameElement();
+    await iframe.scrollIntoViewIfNeeded();
+    await locator.scrollIntoViewIfNeeded();
+    await settleLayout();
+    const rect = await artboardBounds(locator);
+    const clip = await iframe.evaluate(node => node.closest('.design-canvas').getBoundingClientRect().toJSON());
+    const left = Math.max(rect.x, clip.x), right = Math.min(rect.x + rect.width, clip.right);
+    const top = Math.max(rect.y, clip.y), bottom = Math.min(rect.y + rect.height, clip.bottom);
+    assert.ok(right > left && bottom > top, 'The artboard target must be visible inside the canvas.');
+    await page.mouse.click((left + right) / 2, (top + bottom) / 2, { clickCount });
+  };
   const assertToolbar = async () => {
+    await settleLayout();
     const geometry = await page.locator('.design-panel').evaluate(panel => {
       const panelBounds = panel.getBoundingClientRect();
       const title = panel.querySelector('.design-canvas__document h2');
@@ -195,16 +219,17 @@ try {
   assert.equal(await frame.locator('#mobile-heading').textContent(), 'A second artboard');
   await page.getByRole('button', { name: 'Artboard', exact: true }).click();
   await page.getByRole('menuitemradio', { name: 'Desktop', exact: true }).click();
+  await settleLayout();
   const peerHeading = page.frameLocator('.design-canvas iframe[title="Mobile"]').locator('#mobile-heading');
   await peerHeading.scrollIntoViewIfNeeded();
-  const peerBefore = await peerHeading.boundingBox();
-  await peerHeading.click();
+  const peerBefore = await artboardBounds(peerHeading);
+  await clickArtboard(peerHeading);
   await page.waitForFunction(() => document.querySelector('textarea[aria-label="Text"]')?.value === 'A second artboard');
-  const peerAfter = await peerHeading.boundingBox();
+  const peerAfter = await artboardBounds(peerHeading);
   assert.ok(Math.abs(peerBefore.width - peerAfter.width) < 2, 'Selecting another direction must preserve the shared canvas zoom.');
   await page.getByRole('button', { name: 'Edit Desktop', exact: true }).click();
   record('Full artboards share one canvas; inspector toggling preserves drafts and cross-artboard selection preserves zoom.');
-  await frame.locator('#headline').click();
+  await clickArtboard(frame.locator('#headline'));
   await page.getByRole('textbox', { name: 'Text', exact: true }).fill('Written by the user');
   await page.getByRole('button', { name: 'Hide inspector', exact: true }).click();
   await page.getByRole('button', { name: 'Show inspector', exact: true }).click();
@@ -237,7 +262,7 @@ try {
   assert.deepEqual(isolation, { parentBlocked: true, app: 'undefined', require: 'undefined' });
   record('The opaque-origin artboard cannot read the parent or access app/Node APIs.');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
-  await frame.locator('#toggle').click();
+  await clickArtboard(frame.locator('#toggle'));
   await frame.locator('#details').waitFor({ state: 'visible' });
   record('Play toggled a declared interaction without document mutation.');
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
@@ -400,7 +425,7 @@ try {
     await page.waitForFunction(() => document.querySelector('button[data-action="play"]')?.disabled, undefined, { timeout: 5000 });
     if (release) await page.mouse.up();
   };
-  const bounds = async id => { const rect = await frame.locator(`#${id}`).boundingBox(); assert.ok(rect); return rect; };
+  const bounds = async id => { const rect = await artboardBounds(frame.locator(`#${id}`)); assert.ok(rect); return rect; };
   const gestureState = async () => (await design({ type: 'read' })).workspace.document;
   const waitRevision = async revision => page.waitForFunction(value => document.querySelector('.design-panel')?.dataset.revision === `${value}`, revision, { timeout: 15_000 });
   await frame.locator('#card-a').waitFor({ state: 'visible' });
@@ -410,13 +435,13 @@ try {
   await drag({ x: firstCard.x + 6, y: firstCard.y + 6 }, { x: lastCard.x + lastCard.width - 5, y: lastCard.y + 6 });
   await waitRevision(++gestureRevision);
   assert.deepEqual((await gestureState()).content.artboards.at(-1).root.children.map(node => node.id), ['card-b', 'card-c', 'card-a', 'chip']);
-  await frame.locator('#chip').click();
+  await clickArtboard(frame.locator('#chip'));
   await frame.getByRole('button', { name: 'Resize width and height', exact: true }).waitFor({ state: 'visible' });
   const chip = await bounds('chip');
   const scale = chip.width / 120;
   await drag({ x: chip.x + 10, y: chip.y + 10 }, { x: chip.x + 10 + 60 * scale, y: chip.y + 10 + 40 * scale });
   await waitRevision(++gestureRevision);
-  const resized = await frame.getByRole('button', { name: 'Resize width and height', exact: true }).boundingBox();
+  const resized = await artboardBounds(frame.getByRole('button', { name: 'Resize width and height', exact: true }));
   assert.ok(resized);
   await drag({ x: resized.x + resized.width / 2, y: resized.y + resized.height / 2 }, { x: resized.x + resized.width / 2 + 60 * scale, y: resized.y + resized.height / 2 + 30 * scale });
   await waitRevision(++gestureRevision);
@@ -437,7 +462,7 @@ try {
   await page.getByRole('button', { name: 'Apply my canvas edit', exact: true }).click();
   await waitRevision(++gestureRevision);
   assert.equal(await frame.locator('#card-text-b').textContent(), 'Changed during the drag');
-  await frame.locator('#card-text-b').dblclick();
+  await clickArtboard(frame.locator('#card-text-b'), 2);
   await frame.locator('#card-text-b[contenteditable="true"]').fill('Direct text edit');
   await page.locator('.design-canvas__document h2').click();
   await waitRevision(++gestureRevision);
@@ -456,7 +481,7 @@ try {
   await page.getByRole('button', { name: 'Apply my canvas edit', exact: true }).waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Discard draft and reload', exact: true }).click();
   await frame.locator('#removed-during-drag').waitFor({ state: 'detached' });
-  await frame.locator('#card-text-b').click();
+  await clickArtboard(frame.locator('#card-text-b'));
   await page.getByRole('textbox', { name: 'Text', exact: true }).waitFor({ state: 'visible' });
   await page.screenshot({ path: path.join(output, 'gestures.png') });
   const gestureExport = await design({ type: 'export', artboardId: 'gestures' });
@@ -495,15 +520,15 @@ try {
   const checkout = page.frameLocator('iframe[title="Checkout"]');
   const confirmation = page.frameLocator('iframe[title="Confirmation"]');
   await checkout.getByRole('textbox', { name: 'Workspace name', exact: true }).fill('My team');
-  await checkout.getByRole('button', { name: 'Show help', exact: true }).click();
+  await clickArtboard(checkout.getByRole('button', { name: 'Show help', exact: true }));
   assert.equal(await checkout.locator('#checkout-help').isVisible(), true);
-  await checkout.getByRole('button', { name: 'Hide help', exact: true }).click();
+  await clickArtboard(checkout.getByRole('button', { name: 'Hide help', exact: true }));
   assert.equal(await checkout.locator('#checkout-help').isVisible(), false);
-  await checkout.locator('#continue-label').click();
+  await clickArtboard(checkout.locator('#continue-label'));
   await confirmation.getByRole('heading', { name: 'Ready to build', exact: true }).waitFor({ state: 'visible' });
   assert.equal(await page.locator('iframe[title="Checkout"]').isVisible(), false);
   await page.screenshot({ path: path.join(output, 'prototype-flow.png') });
-  await confirmation.getByRole('button', { name: 'Back to workspace', exact: true }).click();
+  await clickArtboard(confirmation.getByRole('button', { name: 'Back to workspace', exact: true }));
   assert.equal(await checkout.getByRole('textbox', { name: 'Workspace name', exact: true }).inputValue(), 'My team');
   assert.deepEqual((await design({ type: 'read' })).workspace, beforePlay, 'Play navigation must not mutate saved selection or authored content.');
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
@@ -572,12 +597,12 @@ try {
   await writeFile(path.join(output, 'tweaks.html'), tweaksExport.html);
   await writeFile(path.join(output, 'tweaks.json'), JSON.stringify(tweaksExport.workspace, null, 2));
   record('Generated controls preview live, reject concurrent stale writes, preserve agent refinements, and save chosen values through reload and undo.');
-  await checkout.locator('#checkout-title').click();
+  await clickArtboard(checkout.locator('#checkout-title'));
   await page.getByRole('tab', { name: 'Code', exact: true }).click();
   const source = page.getByRole('region', { name: 'Design code', exact: true });
   await source.getByText(/Agent refinement/).waitFor({ state: 'visible' });
   assert.match(await source.textContent(), /font-weight:700/);
-  await browser.contexts()[0].grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await source.getByRole('button', { name: 'Copy HTML', exact: true }).click();
   await page.getByRole('status').filter({ hasText: 'Copied' }).waitFor({ state: 'visible' });
   const copiedHtml = await page.evaluate(() => navigator.clipboard.readText());
@@ -808,16 +833,23 @@ try {
   }
   await writeFile(path.join(output, 'acceptance.json'), JSON.stringify({ passed: true, fixtureGeneration: true, liveGeneration: live, checks }, null, 2));
   await rm(path.join(output, 'failure.png'), { force: true });
+  await rm(path.join(output, 'failure-state.json'), { force: true });
   console.log(`Design acceptance passed (${checks.length} checks). Artifacts: ${output}`);
 } catch (error) {
   await writeFile(path.join(output, 'acceptance.json'), JSON.stringify({ passed: false, checks, error: String(error) }, null, 2));
-  const page = browser?.contexts()[0]?.pages()[0];
-  if (page) await page.screenshot({ path: path.join(output, 'failure.png') }).catch(() => undefined);
+  if (page) {
+    await page.screenshot({ path: path.join(output, 'failure.png') }).catch(() => undefined);
+    const state = await page.evaluate(async () => {
+      const snapshot = await window.app.getSnapshot();
+      return { panels: [...document.querySelectorAll('.design-panel')].map(panel => ({revision:panel.dataset.revision,alert:panel.querySelector('[role="alert"]')?.textContent,artboards:[...panel.querySelectorAll('iframe')].map(frame=>frame.title),layers:panel.querySelector('.design-layers')?.textContent})),
+        workspaces: snapshot.agents.filter(agent=>agent.designWorkspace?.document).map(agent=>({agentId:agent.id,revision:agent.designWorkspace.document.revision,selectedArtboardId:agent.designWorkspace.selectedArtboardId,selectedNodeId:agent.designWorkspace.selectedNodeId,artboards:agent.designWorkspace.document.content.artboards.map(board=>board.id)})) };
+    }).catch(error => ({error:String(error)}));
+    await writeFile(path.join(output, 'failure-state.json'), JSON.stringify(state,null,2));
+  }
   throw error;
 } finally {
-  socket?.close();
-  await browser?.close();
-  if (host && host.exitCode === null) { host.kill('SIGTERM'); await Promise.race([once(host, 'exit'), new Promise(resolve => setTimeout(resolve, 5000))]); if (host.exitCode === null) host.kill('SIGKILL'); }
+  await Promise.race([browser?.close(), new Promise(resolve => setTimeout(resolve, 5000))]);
+  await desktop?.close();
   if (daemon && daemon.exitCode === null) { daemon.kill('SIGTERM'); await Promise.race([once(daemon, 'exit'), new Promise(resolve => setTimeout(resolve, 5000))]); if (daemon.exitCode === null) daemon.kill('SIGKILL'); }
   await rm(home, { recursive: true, force: true });
 }

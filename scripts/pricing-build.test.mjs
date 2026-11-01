@@ -6,12 +6,14 @@ import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pricingHistorySchema } from '../client/backend/src/pricing/schema.ts';
+import { createPricingManifest } from '../client/backend/src/pricing/release-format.ts';
 
-test('standalone and desktop resource bundles load the checked-in pricing catalog offline', async () => {
+test('standalone and desktop resource bundles price saved usage from bundled and cached catalogs offline', async () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
   const temp = await mkdtemp(path.join(os.tmpdir(), 'pricing-build-'));
   try {
-    await mkdir(path.join(temp, 'backend'), { recursive: true });
+    await mkdir(path.join(temp, 'client/backend'), { recursive: true });
     await mkdir(path.join(temp, 'scripts'));
     for (const name of ['core', 'node_modules']) {
       await symlink(path.join(root, name), path.join(temp, name), process.platform === 'win32' ? 'junction' : 'dir');
@@ -22,9 +24,9 @@ import http from 'node:http'; import https from 'node:https'; import net from 'n
 const fail = () => { throw new Error('Network is disabled'); };
 globalThis.fetch = fail; http.request = fail; https.request = fail; net.connect = fail; net.createConnection = fail;
 `);
-    const config = path.join(root, 'backend/vite.config.ts');
+    const config = path.join(root, 'client/backend/vite.config.ts');
     await writeFile(path.join(temp, 'build.mjs'), `import { build } from 'vite';
-await build({ configFile: ${JSON.stringify(config)}, logLevel: 'silent', build: { outDir: ${JSON.stringify(path.join(temp, 'backend/dist'))}, sourcemap: false } });
+await build({ configFile: ${JSON.stringify(config)}, logLevel: 'silent', build: { outDir: ${JSON.stringify(path.join(temp, 'client/backend/dist'))}, sourcemap: false } });
 `);
     const run = (args, options = {}) => {
       const result = spawnSync(process.execPath, ['--import', path.join(temp, 'offline.mjs'), ...args], {
@@ -37,8 +39,8 @@ await build({ configFile: ${JSON.stringify(config)}, logLevel: 'silent', build: 
     run([path.join(temp, 'build.mjs')]);
     run([path.join(temp, 'scripts/package-backend.mjs')]);
     const results = [];
-    const expected = JSON.parse(await readFile(path.join(root, 'backend/src/pricing/history.json'), 'utf8'));
-    for (const bundle of ['backend/dist/daemon.mjs', 'electron/resources/daemon/daemon.mjs']) {
+    const expected = JSON.parse(await readFile(path.join(root, 'client/backend/src/pricing/history.json'), 'utf8'));
+    for (const bundle of ['client/backend/dist/daemon.mjs', 'client/electron/resources/daemon/daemon.mjs']) {
       const url = pathToFileURL(path.join(temp, bundle)).href;
       const output = run(['--input-type=module', '-e', `
 const { loadPricingHistory } = await import(${JSON.stringify(url)});
@@ -64,7 +66,7 @@ console.log(JSON.stringify(history));
         db.prepare('INSERT INTO executions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run('codex', 's', 't', 'a', 'gpt-6-sol', null, null, null, null, 'completed', at, at, null, null, null, 'complete');
         db.prepare('INSERT INTO requests VALUES(?,?,?,?,?,?,?,?)').run('codex', 's', 't', 'r', at, 0, 'final', JSON.stringify(observation));
       } finally { db.close(); }
-      const response = await new Promise((resolve, reject) => {
+      const query = () => new Promise((resolve, reject) => {
         const child = spawn(process.execPath, ['--import', path.join(temp, 'offline.mjs'), '--input-type=module', '-e', `const { main } = await import(${JSON.stringify(url)}); await main(['--stdio']);`], {
           cwd: temp, env: { ...process.env, APP_HOME: home, CODEX_APP_SDK_SOURCE: '0' }, stdio: ['pipe', 'pipe', 'pipe'],
         });
@@ -87,7 +89,19 @@ console.log(JSON.stringify(history));
         });
         child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'usage/get', params: {} }) + '\n');
       });
+      const response = await query();
       assert.deepEqual(response.result.cost, { usd: .003, coverage: 'complete', requests: 1, pricedRequests: 1, unpricedRequests: 0, unknownRequestExecutions: 0, reasons: [] });
+      const cachedHistory = pricingHistorySchema.parse(structuredClone(expected));
+      const rates = cachedHistory.openai['gpt-6-sol'].cost.at(-1).rates.text;
+      rates.input.price *= 2; rates.output.price *= 2;
+      const cachedManifest = createPricingManifest(cachedHistory, new Date().toISOString());
+      await mkdir(path.join(home, 'pricing'), { recursive: true });
+      await writeFile(path.join(home, 'pricing/catalog.json'), JSON.stringify({ schemaVersion: 1, checkedAt: Date.now(), catalog: { manifest: cachedManifest, history: cachedHistory } }));
+      const refreshed = await query();
+      assert.deepEqual(refreshed.result.cost, { ...response.result.cost, usd: .006 });
+      // The independent released usage/get request still works after a damaged cache.
+      await writeFile(path.join(home, 'pricing/catalog.json'), '{');
+      assert.deepEqual((await query()).result.cost, response.result.cost);
 
     }
     assert.deepEqual(results[0], results[1]);

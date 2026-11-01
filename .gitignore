@@ -12,13 +12,13 @@ coverage/
 .app-dev/
 __pycache__/
 .release/
-electron/.computer-use-artifacts/
-electron/.tts/
-electron/.icons/
-electron/.runtime-cache/
+client/electron/.computer-use-artifacts/
+client/electron/.tts/
+client/electron/.icons/
+client/electron/.runtime-cache/
 # Temporary Codex installer staging and recovery directories
-/electron/resources/.codex-*/
-/electron/resources/codex/
+/client/electron/resources/.codex-*/
+/client/electron/resources/codex/
 native/**/.build/
 
 # Rebuild promo video renders with the Remotion project in videos/remotion/.
@@ -28,14 +28,15 @@ native/**/.build/
 /videos/local/
 
 # Generated Linux development startup identity
-electron/.development-shell/
+client/electron/.development-shell/
 
 # Verified native simulator build resources
-electron/.mobile-simulator/
-electron/.mobile-simulator-artifacts/
+client/electron/.mobile-simulator/
+client/electron/.mobile-simulator-artifacts/
 
-# Standalone companion relay bundle
-backend/relay-dist/
+# Standalone service bundles
+client/backend/relay-dist/
+server/backend/dist/
 
 /certs/apns-keys.json
 
