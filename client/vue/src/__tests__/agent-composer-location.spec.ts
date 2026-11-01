@@ -12,22 +12,31 @@ describe('composer catalog locations', () => {
     const model = (id: string) => ({
       id, model: id, displayName: id, isDefault: id.endsWith('default'),
       defaultReasoningEffort: 'medium',
+      serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }],
       supportedReasoningEfforts: [{ reasoningEffort: 'medium', description: 'Medium' }, { reasoningEffort: 'high', description: 'High' }],
     });
     stubElectronTestWindow({ app: {
-      listBackendModels: vi.fn(async () => [model('shared-default'), model('guest-high')]),
+      listBackendModels: vi.fn(async () => [model('shared-default'), model('guest-high'), { ...model('guest-other'), serviceTiers: [{ id: 'other', name: 'Other', description: '' }], defaultServiceTier: 'other' }]),
     } });
     const composer = createAgentComposerState({ getSnapshot: () => snapshot });
     await composer.loadModels(hostId);
     await composer.loadModels(guestId);
     const originalHostModel = composer.selectedModelId.value;
 
+    composer.selectServiceTierForAgent(guestId, 'fast');
     composer.selectModelForAgent(guestId, 'guest-high');
     composer.selectReasoningEffortForAgent(guestId, 'high');
 
     expect(composer.selectedModelId.value).toBe(originalHostModel);
-    expect(composer.resolvePromptOptions(guestId, 'review this')).toMatchObject({ selection: { model: 'guest-high', reasoningEffort: 'high' } });
-    expect(composer.resolvePromptOptions(hostId, 'continue')).toMatchObject({ selection: { model: 'shared-default' } });
+    expect(composer.resolvePromptOptions(guestId, 'review this')).toMatchObject({ selection: { model: 'guest-high', reasoningEffort: 'high', serviceTier: 'fast' } });
+    expect(composer.resolvePromptOptions(hostId, 'continue')).toMatchObject({ selection: { model: 'shared-default', serviceTier: null } });
+
+    composer.selectModelForAgent(guestId, 'guest-other');
+    expect(composer.resolvePromptOptions(guestId, 'fallback')).toMatchObject({ selection: { model: 'guest-other', serviceTier: 'other' } });
+    composer.selectServiceTierForAgent(guestId, null);
+    composer.selectModelForAgent(guestId, 'guest-high');
+    composer.selectModelForAgent(guestId, 'guest-other');
+    expect(composer.resolvePromptOptions(guestId, 'standard')).toMatchObject({ selection: { model: 'guest-other', serviceTier: null } });
   });
 
   it('keeps a fresh backend switch isolated from an outstanding old-provider catalog', async () => {
