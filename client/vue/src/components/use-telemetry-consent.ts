@@ -14,6 +14,10 @@ function createStore(api: AppApi) {
   const state = ref<TelemetryConsentView | null>(null);
   const busy = ref(false);
   const failed = ref(false);
+  const noticeVisible = ref(false);
+  const noticeRemainingMs = ref(60_000);
+  const automaticAttempted = ref(false);
+  let initialized = false;
   let revision = 0;
   async function load() {
     if (busy.value) return;
@@ -21,6 +25,11 @@ function createStore(api: AppApi) {
     try {
       const next = await api.getTelemetryConsent();
       if (expected === revision) {
+        if (!initialized) {
+          noticeVisible.value = next.enabled === undefined;
+          initialized = true;
+        }
+        if (next.enabled === false) noticeVisible.value = false;
         state.value = next;
         failed.value = false;
       }
@@ -28,7 +37,7 @@ function createStore(api: AppApi) {
       if (expected === revision) failed.value = true;
     }
   }
-  async function change(action: TelemetryConsentAction): Promise<boolean> {
+  async function change(action: TelemetryConsentAction, keepNotice = false): Promise<boolean> {
     if (busy.value) return false;
     busy.value = true;
     failed.value = false;
@@ -37,6 +46,7 @@ function createStore(api: AppApi) {
       const next = await api.changeTelemetryConsent(action);
       ++revision;
       state.value = next;
+      if (!keepNotice) noticeVisible.value = false;
       return true;
     } catch {
       // Persistence can succeed even when the delivery owner's cancellation fails.
@@ -53,7 +63,12 @@ function createStore(api: AppApi) {
       busy.value = false;
     }
   }
-  return { state, busy, failed, load, change };
+  async function enableAutomatically() {
+    if (automaticAttempted.value || busy.value || !noticeVisible.value || state.value?.enabled !== undefined) return;
+    automaticAttempted.value = true;
+    await change('enable', true);
+  }
+  return { state, busy, failed, load, change, noticeVisible, noticeRemainingMs, automaticAttempted, enableAutomatically };
 }
 export function useTelemetryConsent() {
   if (!appApi) throw new Error("Desktop settings unavailable.");

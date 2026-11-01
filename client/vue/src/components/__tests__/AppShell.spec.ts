@@ -59,7 +59,7 @@ afterEach(() => {
 });
 
 describe('AppShell authentication and conversation', () => {
-  it.each(['codex', 'claude'] as const)('offers a compact sharing choice above the %s composer and remembers it', async backend => {
+  it.each(['codex', 'claude'] as const)('offers a compact sharing choice at the top of the %s conversation and remembers it', async backend => {
     let enabled: boolean | undefined;
     const getTelemetryConsent = vi.fn(async () => ({ enabled }));
     const changeTelemetryConsent = vi.fn(async action => {
@@ -78,10 +78,10 @@ describe('AppShell authentication and conversation', () => {
     try {
       const notice = wrapper.get('.conversation-pane [aria-label="Anonymous usage sharing"]');
       expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
-      expect(notice.findAll('button').map(button => button.text())).toEqual(['Opt out', 'Close']);
+      expect(notice.findAll('button').map(button => button.text())).toEqual(['Cancel', 'Close']);
       expect(notice.find('input').exists()).toBe(false);
       expect(changeTelemetryConsent).not.toHaveBeenCalled();
-      const action = backend === 'codex' ? 'Close' : 'Opt out';
+      const action = backend === 'codex' ? 'Close' : 'Cancel';
       await notice.findAll('button').find(button => button.text() === action)!.trigger('click');
       await flushPromises();
       expect(changeTelemetryConsent).toHaveBeenLastCalledWith(backend === 'codex' ? 'enable' : 'disable');

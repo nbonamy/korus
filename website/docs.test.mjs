@@ -93,7 +93,11 @@ test("the public privacy URL has a standalone policy and a discoverable contact"
       .map((node) => node.textContent)
       .join(" ")
       .replace(/\s+/g, " ");
-    assert.match(sharingText, /off by default/i);
+    assert.match(sharingText, /sharing starts off/i);
+    assert.match(
+      sharingText,
+      /sharing turns on after one minute while the app is visible and focused/i,
+    );
     assert.match(sharingText, /prompts.*model responses/i);
     assert.match(sharingText, /indefinitely/);
     assert.match(sharingText, /seven days/);
@@ -111,7 +115,7 @@ test("the public privacy URL has a standalone policy and a discoverable contact"
           ),
           `${path} links to the complete disclosure`,
         );
-        assert.match(content.textContent, /off by default/i);
+        assert.match(content.textContent, /sharing starts off/i);
         assert.match(content.textContent, /indefinitely/);
         assert.match(content.textContent, /seven days/);
       } finally {

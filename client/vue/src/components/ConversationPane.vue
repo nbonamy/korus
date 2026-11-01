@@ -1,5 +1,6 @@
 <template>
   <div class="conversation-pane" :data-conversation-agent-id="agent?.id" @keydown.capture="handleDraftShortcut" @focusin.capture="handleDraftFocusIn">
+    <TelemetryConsentNotice v-if="appClientPlatform === 'desktop' && keyboardActive" />
     <WorktreeInitializationIndicator :agent="agent" />
     <div v-if="agent?.handoff?.phase === 'failed'" class="conversation-pane__handoff" role="status">
       <p>{{ agent.handoff.error }}</p>
@@ -107,7 +108,6 @@
         </div>
       </template>
       <template #before-composer>
-        <TelemetryConsentNotice v-if="appClientPlatform === 'desktop' && keyboardActive" />
         <button v-if="agent && !backendChoices.includes(agent.backend)" class="app-button app-button--tertiary" type="button" @click="connectEngine">
           {{ t('engineConnection.required') }}
         </button>

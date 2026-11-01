@@ -5,7 +5,6 @@ export const messages = {
   en: {
     telemetry: {
       notice: 'Help improve {product} with anonymous usage and performance data. No conversation content is shared.',
-      optOut: 'Opt out',
       share: 'Share anonymous telemetry data',
       title: 'Anonymous usage sharing',
       failed: 'Could not load or save sharing settings. Try again.',

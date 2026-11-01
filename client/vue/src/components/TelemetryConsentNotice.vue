@@ -1,6 +1,6 @@
 <template>
   <section
-    v-if="shellReady && state && state.enabled === undefined"
+    v-if="shellReady && noticeVisible"
     class="telemetry-notice"
     :aria-label="t('telemetry.title')"
   >
@@ -8,7 +8,7 @@
       <p>{{ t('telemetry.notice', { product: product.name }) }}</p>
       <div class="telemetry-notice__actions">
         <button class="app-button app-button--small app-button--tertiary" type="button" :disabled="busy" @click="change('disable')">
-          {{ t('telemetry.optOut') }}
+          {{ t('common.cancel') }}
         </button>
         <button class="app-button app-button--small app-button--primary" type="button" :disabled="busy" @click="change('enable')">
           {{ t('common.close') }}
@@ -19,21 +19,66 @@
   </section>
 </template>
 <script setup lang="ts">
-import { inject, onMounted, ref } from 'vue';
+import { inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { product } from '@workspace/core/product';
 import { telemetryNoticeReadyKey, useTelemetryConsent } from './use-telemetry-consent';
 const shellReady = inject(telemetryNoticeReadyKey, ref(false));
 const { t } = useI18n();
-const { state, busy, failed, load, change } = useTelemetryConsent();
-onMounted(load);
+const { state, busy, failed, load, change, noticeVisible, noticeRemainingMs, automaticAttempted, enableAutomatically } = useTelemetryConsent();
+let timer: ReturnType<typeof setTimeout> | undefined;
+let startedAt: number | undefined;
+function pauseTimer() {
+  if (timer !== undefined) clearTimeout(timer);
+  timer = undefined;
+  if (startedAt !== undefined) {
+    noticeRemainingMs.value = Math.max(0, noticeRemainingMs.value - (performance.now() - startedAt));
+    startedAt = undefined;
+  }
+}
+function updateTimer() {
+  pauseTimer();
+  if (!shellReady.value || !noticeVisible.value || state.value?.enabled !== undefined || busy.value || automaticAttempted.value || document.visibilityState !== 'visible' || !document.hasFocus()) return;
+  startedAt = performance.now();
+  timer = setTimeout(() => {
+    timer = undefined;
+    startedAt = undefined;
+    noticeRemainingMs.value = 0;
+    void enableAutomatically();
+  }, noticeRemainingMs.value);
+}
+watch([shellReady, noticeVisible, state, busy, automaticAttempted], updateTimer);
+onMounted(() => {
+  document.addEventListener('visibilitychange', updateTimer);
+  window.addEventListener('focus', updateTimer);
+  window.addEventListener('blur', updateTimer);
+  void load();
+  updateTimer();
+});
+onBeforeUnmount(() => {
+  pauseTimer();
+  document.removeEventListener('visibilitychange', updateTimer);
+  window.removeEventListener('focus', updateTimer);
+  window.removeEventListener('blur', updateTimer);
+});
 </script>
 <style scoped>
+/* Keep the attached notice above the header shadow across workspace boundaries. */
+:global(.workspace-body:has(.telemetry-notice)) {
+  z-index: auto;
+}
 .telemetry-notice {
-  width: 100%;
-  margin-bottom: var(--space-6);
+  position: relative;
+  z-index: 6;
+  flex: 0 0 auto;
+  /* Match the SDK composer footer, including its reserved scrollbar gutter. */
+  width: calc(100% - var(--space-16) * 2 - var(--space-4));
+  max-width: var(--codex-conversation-content-width, 860px);
+  align-self: center;
+  margin: 0 var(--space-4) var(--space-6) 0;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+  box-shadow: var(--shadow-sm);
   background: var(--color-surface-lowest);
 }
 .telemetry-notice__content {

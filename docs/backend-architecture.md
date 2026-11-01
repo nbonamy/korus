@@ -1148,7 +1148,13 @@ makes sharing unavailable without blocking ordinary startup.
 
 Only explicit desktop operations return the credential-free sharing choice. The
 desktop bridge accepts an action or reporting day, never an identity override.
-The composer notice uses the backend consent authority. Reset replaces
+The conversation-top notice uses the backend consent authority. Its one-minute
+foreground timer starts only when the notice is eligible, pauses while hidden or
+unfocused, and retains its elapsed time across pane changes in the renderer session.
+Timeout persists the enabled setting through the same desktop operation as an
+explicit enable, while retaining the notice for the rest of that session until
+dismissed. Saved settings suppress the notice on later starts; failed automatic
+writes retain an error without repeated automatic attempts. Reset replaces
 the identity and turns sharing off. Companion clients do not expose profile actions.
 
 The consent owner delegates transitions to `TelemetryDeliveryPort`; it does not

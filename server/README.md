@@ -329,8 +329,9 @@ review the intended image and console build, supply the external inputs in
 - Publish and verify the approved privacy policy and Analytics guidance before
   a released app can offer active sharing. Recheck onboarding, first-upgrade and
   Settings policy links against that published version. Coordinate the separately
-  approved endpoint activation and signed app release; opt-in still starts at the
-  current UTC hour and an unset sharing choice remains off.
+  approved endpoint activation and signed app release. An unset choice remains off
+  until the desktop notice enables sharing after one foreground minute, the user
+  closes it, or the General settings toggle enables it. Saved opt-outs stay off.
 
 Record production privacy verification, deployment, policy publication, signed app
 release and actual public availability as separate delivery evidence. A local
