@@ -34,7 +34,11 @@ describe('app startup', () => {
     const wrapper = mountStartup(api);
     try {
       await flushPromises();
-      await wrapper.get('button[aria-label="Join with invite…"]').trigger('click'); await flushPromises();
+      expect(wrapper.find('button[aria-label="Join with invite…"]').exists()).toBe(false);
+      await wrapper.findAll('button').find(button => button.attributes('aria-label') === 'Add project')!.trigger('click');
+      await flushPromises();
+      const invite = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(item => item.textContent?.includes('Join with invite'))!;
+      invite.click(); await flushPromises();
       const invitation = wrapper.get<HTMLInputElement>('#guest-invitation');
       expect(invitation.element.tagName).toBe('INPUT');
       expect(invitation.attributes('aria-label')).toBe('Invitation or share link');

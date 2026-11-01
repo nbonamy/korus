@@ -72,13 +72,12 @@ try {
   deliver(alias + '?unexpected=1'); await page.getByText('This invitation is invalid.').waitFor();
   deliver(); await page.getByRole('heading', { name: 'Join conversation', exact: true }).waitFor();
   console.log('Checking keyboard join and warm duplicate delivery…');
-  // Both OS-delivered URLs and UUID invitations enter the same join flow.
+  // Onboarding has no invitation shortcut; native links still open the join flow.
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await page.getByRole('button', { name: 'Join with invite…', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Invitation or share link' }).fill(await readFile(path.join(ownerHome, 'invitation.txt'), 'utf8'));
-  await page.getByRole('button', { name: 'Join conversation', exact: true }).click();
+  assert.equal(await page.getByRole('button', { name: 'Join with invite…', exact: true }).count(), 0);
+  deliver();
   await page.getByRole('textbox', { name: 'Display name' }).waitFor();
-  observations.scenarios.push('UUID invitation pasted through Join with invite; short link accepted on warm OS open');
+  observations.scenarios.push('no onboarding invitation shortcut; short link accepted on warm OS open');
   await page.getByRole('textbox', { name: 'Display name' }).fill('Synthetic Guest'); await page.keyboard.press('Enter');
   await page.getByText('Synthetic history from before sharing.', { exact: false }).waitFor();
   assert.equal(await page.locator('[contenteditable="true"]').count(), 1); assert.equal(await page.getByRole('button', { name: 'Share', exact: true }).count(), 0);

@@ -1,6 +1,7 @@
 import { flushPromises, shallowMount } from '@vue/test-utils';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { setElectronTestClient } from '../../test/client';
 import FirstRunOnboardingGate from '../FirstRunOnboardingGate.vue';
 
 function mountGate(overrides: Partial<InstanceType<typeof FirstRunOnboardingGate>['$props']> = {}) {
@@ -32,6 +33,7 @@ function mountGate(overrides: Partial<InstanceType<typeof FirstRunOnboardingGate
 }
 
 describe('FirstRunOnboardingGate', () => {
+  beforeEach(() => setElectronTestClient({}));
   it('keeps the default login environment unset instead of falling back to an explicit home', async () => {
     const wrapper = mountGate({
       claudeDialogVisible: true,
@@ -51,6 +53,7 @@ describe('FirstRunOnboardingGate', () => {
       showLoginLanding: true,
     });
     const landing = wrapper.getComponent({ name: 'CodexLoginLanding' });
+    expect(wrapper.find('[aria-label="Join with invite…"]').exists()).toBe(false);
 
     landing.vm.$emit('login');
     landing.vm.$emit('cancel');
@@ -63,6 +66,7 @@ describe('FirstRunOnboardingGate', () => {
   it('routes the optional repository step and completion state', async () => {
     const wrapper = mountGate({ repositoriesOnboardingVisible: true });
     const github = wrapper.getComponent({ name: 'RepositoryOnboardingLanding' });
+    expect(wrapper.find('[aria-label="Join with invite…"]').exists()).toBe(false);
 
     github.vm.$emit('continue');
     expect(wrapper.emitted('complete')).toStrictEqual([[]]);
@@ -71,6 +75,7 @@ describe('FirstRunOnboardingGate', () => {
       repositoriesOnboardingVisible: false,
       onboardingCompleteVisible: true,
     });
+    expect(wrapper.find('[aria-label="Join with invite…"]').exists()).toBe(false);
     wrapper.getComponent({ name: 'OnboardingCompleteLanding' }).vm.$emit('complete');
     expect(wrapper.emitted('finish')).toStrictEqual([[]]);
   });

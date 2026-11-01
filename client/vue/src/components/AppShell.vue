@@ -5,7 +5,6 @@
   >
     <FirstRunOnboardingGate
       v-if="!currentAgent?.sharedConversation"
-      @join-invite="emit('join-invite')"
       :provider-setup="displayProviderSetup"
       :allow-setup-reset="settingsVisible"
       :customized-setup="customizedSetup"
@@ -3634,7 +3633,7 @@ watch(() => props.fileActivity, (activity) => {
   background: var(--color-shell-window);
 }
 
-.app-shell--auth-gated > :not(.codex-login):not(.repositories-onboarding):not(.onboarding-complete):not(.first-run-guests) {
+.app-shell--auth-gated > :not(.codex-login):not(.repositories-onboarding):not(.onboarding-complete) {
   visibility: hidden;
 }
 
