@@ -1,6 +1,6 @@
 ---
 name: korus-delegation
-description: Delegate work to Korus co-agents, manage durable assignments, or turn a Quick Chat into a project.
+description: Create Korus co-agents, manage durable assignments, or turn a Quick Chat into a project. Not needed for messages to existing teammates.
 ---
 
 # Delegation
