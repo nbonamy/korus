@@ -1165,8 +1165,11 @@ the identity and turns sharing off. Companion clients do not expose profile acti
 The consent owner delegates transitions to `TelemetryDeliveryPort`; it does not
 send, schedule or manage a queue. One backend `TelemetryUploadService` per local
 installation runtime owns sealing, the private durable queue, telemetry HTTP,
-acknowledgements and cancellation. RuntimeScheduler flushes delivery on startup
-and every hour. It discovers reporting hours from the local ledger, including
+acknowledgements and cancellation. RuntimeScheduler checks delivery each minute.
+Each installation uploads at the UTC minute given by its UUID modulo 60, once
+per hour; startup respects the same slot. The stable slot spreads clients across
+the hour independently of local timezone and restarts. It discovers reporting
+hours from the local ledger, including
 all unsent retained history inside the current sharing window. Electron also signals observed
 open/focus/resume activity, and scheduled uploads confirm foreground presence so
 an active hour without turns can report empty usage. Remote ledgers and mobile

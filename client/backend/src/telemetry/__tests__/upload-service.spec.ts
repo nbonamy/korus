@@ -10,6 +10,7 @@ import { openTelemetryConsent } from "./settings-fixture";
 import { RuntimeScheduler } from "../../scheduling/runtime-scheduler";
 import { UsageLedger } from "../../usage/usage-ledger";
 import { UsageService } from "../../usage/usage-service";
+import { AppStateStore } from "../../persistence/store";
 
 // Owner boundary: real private files + ledger + consent; only time and transport
 // are controlled. Risks: replay, duplicate owners, pre-consent/daemon activity,
@@ -121,6 +122,52 @@ afterEach(async () => {
   }
   await rm(directory, { recursive: true, force: true });
   vi.useRealTimers();
+});
+
+it.each([
+  ['00000000-0000-4000-8000-000000000030', 0],
+  ['00000000-0000-4000-8000-00000000002f', 59],
+] as const)("uploads at UUID minute %s/%i, keeping its slot across restart", async (installId, minute) => {
+  const store = new AppStateStore(directory);
+  await store.saveTelemetrySettings(await store.load(), {installId, enabled:true, enabledAt:epoch-3600000});
+  consent = await openTelemetryConsent(directory, {now});
+  usage.observe({provider:'codex', agentId:'a', sessionId:'s', turnId:'first', model:'gpt-6-sol', phase:'started', at:clock});
+  await usage.drain();
+  const start = async () => {
+    upload = await TelemetryUploadService.open({
+      file:path.join(directory,'delivery.json'), consent:()=>consent.current(), usage,
+      version:'1.2.3', platform:'darwin', endpoint:'https://collector.invalid/v1/telemetry/daily',
+      now, foreground, fetch:fetcher,
+    });
+    scheduler = new RuntimeScheduler();
+    scheduler.register({id:'telemetry-upload',intervalMs:60000,runOnStart:true,run:()=>upload!.tick()});
+    scheduler.start();
+  };
+  await start();
+  if (minute) {
+    await advance(minute*60000-1);
+    expect(fetcher).not.toHaveBeenCalled();
+    await advance(1);
+  } else await advance(0);
+  await eventually(()=>expect(fetcher).toHaveBeenCalledTimes(1));
+  await upload!.tick();
+  await upload!.tick();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await eventually(async()=>expect((await stored()).days[0].status).toBe('done'));
+  await advance(60000);
+  scheduler!.stop();
+  await upload!.close();
+  usage.observe({provider:'codex', agentId:'a', sessionId:'s', turnId:'second', model:'gpt-6-sol', phase:'started', at:clock});
+  await usage.drain();
+  await start();
+  await advance(59*60000-1);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await advance(1);
+  await eventually(()=>expect(fetcher).toHaveBeenCalledTimes(2));
+  expect(JSON.parse(fetcher.mock.calls[1]![1]!.body as string).usage[0].turns).toBe(minute===59 ? 1 : 2);
+  await consent.change('disable');
+  await advance(3600000);
+  expect(fetcher).toHaveBeenCalledTimes(2);
 });
 
 it("makes no telemetry requests off or without an endpoint, and never turns daemon time into activity", async () => {
