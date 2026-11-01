@@ -12,8 +12,8 @@
   },
   "scripts": {
     "build": "tsc --noEmit",
-    "typecheck": "tsc --noEmit",
-    "lint": "tsc --noEmit",
+    "typecheck": "node ../scripts/ci-typecheck.mjs plain --noEmit",
+    "lint": "node ../scripts/ci-typecheck.mjs plain --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest watch"

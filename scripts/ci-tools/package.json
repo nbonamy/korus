@@ -1,0 +1,9 @@
+{
+  "name": "ci-benchmark-tools",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "bun": "1.4.4",
+    "typescript-native-bridge": "6.0.3-bridge.19.tsgo.7.0.2"
+  }
+}

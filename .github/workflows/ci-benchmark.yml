@@ -1,0 +1,284 @@
+name: CI benchmark
+run-name: CI benchmark ${{ inputs.variant || 'compare' }} ${{ github.sha }}
+'on':
+  workflow_dispatch:
+    inputs:
+      variant:
+        type: choice
+        options:
+        - compare
+        - baseline
+        - optimized
+        default: compare
+        required: true
+        description: Baseline or optimized pipeline
+      baseline_ref:
+        type: string
+        default: 947552e70dbbc6b87c2a621048cfb021304b331e
+        required: true
+        description: Frozen baseline commit SHA
+  push:
+    branches:
+    - ci/optimization-benchmark
+permissions:
+  contents: read
+concurrency:
+  group: ci-optimization-benchmark-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: source
+        shell: bash
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+      CI_BENCH_FAST: '0'
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        path: harness
+        persist-credentials: false
+    - uses: ./harness/.github/actions/ci-benchmark-setup
+      with:
+        ref: ${{ inputs.baseline_ref || '947552e70dbbc6b87c2a621048cfb021304b331e' }}
+        label: baseline-quality
+        node: 26.12.1
+        npm: 10.9.4
+        ignore-scripts: 'false'
+        tools: 'false'
+    - run: python ../harness/scripts/ci-benchmark.py run --label baseline-quality --output benchmark-results -- bash -eo pipefail
+        -c 'npm run release-notes:check && npm run lint && npm run test:coverage --workspaces -- --maxWorkers=2 && npm run
+        test:scripts && node scripts/coverage-badge.mjs generate'
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: always()
+      with:
+        name: baseline-quality
+        path: 'source/benchmark-results/
+
+          source/core/coverage/
+
+          source/backend/coverage/
+
+          source/vue/coverage/
+
+          source/electron/coverage/
+
+          source/web/coverage/
+
+          source/mobile/coverage/'
+        if-no-files-found: error
+        retention-days: 14
+    if: ${{ (github.event_name == 'push' || inputs.variant == 'compare' || inputs.variant == 'baseline') }}
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: source
+        shell: bash
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+      CI_BENCH_FAST: '1'
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        path: harness
+        persist-credentials: false
+    - uses: ./harness/.github/actions/ci-benchmark-setup
+      with:
+        ref: ${{ github.sha }}
+        label: optimized-coverage-${{ matrix.workspace }}
+        node: 26.12.1
+        npm: 10.9.4
+        ignore-scripts: 'false'
+        tools: 'false'
+    - run: python ../harness/scripts/ci-benchmark.py run --label optimized-coverage-${{ matrix.workspace }} --output benchmark-results
+        -- npm run test:coverage --workspace ${{ matrix.workspace }} -- --maxWorkers=2
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: always()
+      with:
+        name: optimized-coverage-${{ matrix.workspace }}
+        path: 'source/benchmark-results/
+
+          source/${{ matrix.workspace }}/coverage/'
+        if-no-files-found: error
+        retention-days: 14
+    if: ${{ (github.event_name == 'push' || inputs.variant == 'compare' || inputs.variant == 'optimized') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        workspace:
+        - core
+        - backend
+        - vue
+        - electron
+        - web
+        - mobile
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: source
+        shell: bash
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+      CI_BENCH_FAST: '1'
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        path: harness
+        persist-credentials: false
+    - uses: ./harness/.github/actions/ci-benchmark-setup
+      with:
+        ref: ${{ github.sha }}
+        label: optimized-checks
+        node: 26.12.1
+        npm: 10.9.4
+        ignore-scripts: 'false'
+        tools: 'true'
+    - run: python ../harness/scripts/ci-benchmark.py run --label optimized-checks --output benchmark-results -- bash -eo pipefail
+        -c 'npm run release-notes:check && npm run lint && npm run test:scripts'
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: always()
+      with:
+        name: optimized-checks
+        path: source/benchmark-results/
+        if-no-files-found: error
+        retention-days: 14
+    if: ${{ (github.event_name == 'push' || inputs.variant == 'compare' || inputs.variant == 'optimized') }}
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: source
+        shell: bash
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+      CI_BENCH_FAST: '1'
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        path: harness
+        persist-credentials: false
+    - uses: ./harness/.github/actions/ci-benchmark-setup
+      with:
+        ref: ${{ github.sha }}
+        label: optimized-parity
+        node: 26.12.1
+        npm: 10.9.4
+        ignore-scripts: 'false'
+        tools: 'true'
+    - run: python ../harness/scripts/ci-benchmark.py run --label optimized-parity --output benchmark-results -- python scripts/ci-parity.py
+        --repo korus --output benchmark-results/parity
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: always()
+      with:
+        name: optimized-parity
+        path: source/benchmark-results/
+        if-no-files-found: error
+        retention-days: 14
+    if: ${{ (github.event_name == 'push' || inputs.variant == 'compare' || inputs.variant == 'optimized') }}
+  baseline-result:
+    if: ${{ always() && (github.event_name == 'push' || inputs.variant == 'compare' || inputs.variant == 'baseline') }}
+    needs:
+    - baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        path: harness
+        persist-credentials: false
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      with:
+        python-version: '3.12'
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        pattern: baseline-quality*
+        path: results
+    - name: Require every expected successful result
+      env:
+        CI_BENCH_NEEDS: ${{ toJSON(needs) }}
+      run: python harness/scripts/ci-benchmark.py aggregate --input results --expect baseline-quality
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: always()
+      with:
+        name: baseline-quality-summary
+        path: results/summary.json
+        if-no-files-found: error
+  optimized-result:
+    if: ${{ always() && (github.event_name == 'push' || inputs.variant == 'compare' || inputs.variant == 'optimized') }}
+    needs:
+    - coverage
+    - checks
+    - parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        path: harness
+        persist-credentials: false
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      with:
+        python-version: '3.12'
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        pattern: optimized-*
+        path: results
+    - name: Require every expected successful result
+      env:
+        CI_BENCH_NEEDS: ${{ toJSON(needs) }}
+      run: python harness/scripts/ci-benchmark.py aggregate --input results --expect optimized-coverage-core --expect optimized-coverage-backend
+        --expect optimized-coverage-vue --expect optimized-coverage-electron --expect optimized-coverage-web --expect optimized-coverage-mobile
+        --expect optimized-checks --expect optimized-parity
+    - run: "python - <<'PY'\nimport pathlib,shutil,json\nroot=pathlib.Path(\"results/badge\")\nroot.mkdir()\nworkspaces=json.loads(pathlib.Path(\"\
+        harness/package.json\").read_text())[\"workspaces\"]\n(root/\"package.json\").write_text(json.dumps({\"workspaces\"\
+        :workspaces}))\nfor ws in workspaces:\n source=pathlib.Path(\"results\")/(\"optimized-coverage-\"+ws)/ws/\"coverage/coverage-final.json\"\
+        \n target=root/ws/\"coverage/coverage-final.json\"\n target.parent.mkdir(parents=True);shutil.copyfile(source,target)\n\
+        PY\ncd results/badge\nnode ../../harness/scripts/coverage-badge.mjs generate"
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: always()
+      with:
+        name: optimized-quality-summary
+        path: results/summary.json
+        if-no-files-found: error
+  comparison:
+    if: ${{ always() && (github.event_name == 'push' || inputs.variant == 'compare') }}
+    needs:
+    - baseline-result
+    - optimized-result
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        path: harness
+        persist-credentials: false
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      with:
+        python-version: '3.12'
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        pattern: baseline-*
+        path: results
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        pattern: optimized-*
+        path: results
+    - name: Require identical product test counts and coverage file sets
+      env:
+        CI_BENCH_NEEDS: ${{ toJSON(needs) }}
+      run: python harness/scripts/ci-benchmark.py compare --input results
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: always()
+      with:
+        name: benchmark-comparison
+        path: results/comparison.json
+        if-no-files-found: error
+        retention-days: 14
