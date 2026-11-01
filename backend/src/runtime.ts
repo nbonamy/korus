@@ -5,6 +5,7 @@ import { TelemetryUploadService } from './telemetry/upload-service';
 import { TelemetryConsentService } from './telemetry/consent-service';
 import { UsageService } from './usage/usage-service';
 import { UsageLedger } from './usage/usage-ledger';
+import { PricingCatalog } from './pricing/catalog-updates';
 import { PromptRejectedError } from './agents/prompt-rejected';
 import { quickChatTeamInstructions } from './agents/quick-chat-context';
 import { createMobileSimulatorToolModuleProvider } from './mcp/mobile-simulator-tools';
@@ -157,8 +158,10 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     publish: () => server?.emitEvent({ type: 'snapshot.updated', payload: snapshot }),
   });
   const documents = new DocumentWorkspaceService(path.join(backendHomeDir(), "document-workspaces.json"));
-  const localUsage = new UsageLedger(path.join(backendHomeDir(), 'usage.sqlite'));
+  const pricing = new PricingCatalog({ cacheFile: path.join(backendHomeDir(), 'pricing/catalog.json') });
+  const localUsage = new UsageLedger(path.join(backendHomeDir(), 'usage.sqlite'), Date.now, () => pricing.history);
   await localUsage.load();
+  await pricing.start();
   const usage = new UsageService(localUsage, id => snapshot.agents.find(a => a.id === id), undefined, undefined, () => snapshot.agents);
   // Turns saved before the repository was recorded carry a worktree folder; file them under their repository, once.
   void usage.migrateRepositories();
@@ -439,6 +442,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     server,
     async stop() {
       await telemetryUpload?.close();
+      await pricing.stop();
       await worktreeManager.close();
       await companion.stop();
       tasks.close();

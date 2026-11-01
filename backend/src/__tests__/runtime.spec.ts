@@ -52,6 +52,8 @@ const mocks = vi.hoisted(() => ({
   backendCodexHomeDir: vi.fn(() => '/tmp/codex-home'),
   backendHomeDir: vi.fn(() => '/tmp/runtime-test-home'),
   backendProviderTokensFilePath: vi.fn(),
+  pricingStart: vi.fn(),
+  pricingStop: vi.fn(),
   mcpStart: vi.fn(),
   mcpStop: vi.fn(),
   mcpHostedServerUrls: vi.fn(),
@@ -82,6 +84,15 @@ const mocks = vi.hoisted(() => ({
   runtimeGitHubOAuthClientId: vi.fn(),
   warnMain: vi.fn(),
 }));
+
+vi.mock('../pricing/catalog-updates', async () => {
+  const { loadPricingHistory } = await import('../pricing/catalog');
+  return { PricingCatalog: class {
+    history = loadPricingHistory();
+    start = mocks.pricingStart;
+    stop = mocks.pricingStop;
+  } };
+});
 
 vi.mock('@workspace/core/agent-chat-service', () => ({
   sendAgentPrompt: mocks.sendAgentPrompt,
@@ -413,22 +424,32 @@ describe('daemon runtime', () => {
   });
 
   it('owns exactly one local uploader and delegates consent, activity, sealed preview and shutdown', async () => {
-    const runtime = await createDaemonRuntime({ emitEvent, requestClient, version: '1.2.3' });
-    expect(mocks.uploadOpen).toHaveBeenCalledTimes(1);
-    expect(mocks.uploadStart).toHaveBeenCalledTimes(1);
-    const input = mocks.uploadOpen.mock.calls[0]![0];
-    const server = mocks.serverOptions[0] as { telemetryActivity: {activity(): Promise<void>}; telemetryConsent: import('../telemetry/consent-service').TelemetryConsentService };
-    expect(input.consent()).toStrictEqual(server.telemetryConsent.current());
-    await server.telemetryConsent.change('enable');
-    expect(mocks.uploadConsentChanged).toHaveBeenCalledWith(expect.objectContaining({ reason: 'enable' }));
-    await server.telemetryActivity.activity();
-    expect(mocks.uploadActivity).toHaveBeenCalledExactlyOnceWith();
-    requestClient.mockResolvedValueOnce({ focused: true });
-    expect(await input.foreground()).toBe(true);
-    expect(requestClient).toHaveBeenLastCalledWith(backendMethods.clientFocusGet, {});
-    await runtime.stop();
-    expect(mocks.uploadClose).toHaveBeenCalledTimes(1);
-    await server.telemetryConsent.change('reset');
+    const directory = await mkdtemp(path.join(tmpdir(), 'runtime-local-services-'));
+    mocks.backendHomeDir.mockReturnValue(directory);
+    let runtime: Awaited<ReturnType<typeof createDaemonRuntime>> | undefined;
+    try {
+      runtime = await createDaemonRuntime({ emitEvent, requestClient, version: '1.2.3' });
+      expect(mocks.uploadOpen).toHaveBeenCalledTimes(1);
+      expect(mocks.uploadStart).toHaveBeenCalledTimes(1);
+      const input = mocks.uploadOpen.mock.calls[0]![0];
+      const server = mocks.serverOptions[0] as { telemetryActivity: {activity(): Promise<void>}; telemetryConsent: import('../telemetry/consent-service').TelemetryConsentService };
+      expect(input.consent()).toStrictEqual(server.telemetryConsent.current());
+      await server.telemetryConsent.change('enable');
+      expect(mocks.uploadConsentChanged).toHaveBeenCalledWith(expect.objectContaining({ reason: 'enable' }));
+      await server.telemetryActivity.activity();
+      expect(mocks.uploadActivity).toHaveBeenCalledExactlyOnceWith();
+      requestClient.mockResolvedValueOnce({ focused: true });
+      expect(await input.foreground()).toBe(true);
+      expect(requestClient).toHaveBeenLastCalledWith(backendMethods.clientFocusGet, {});
+      await runtime.stop();
+      runtime = undefined;
+      expect(mocks.uploadClose).toHaveBeenCalledTimes(1);
+      expect(mocks.pricingStop).toHaveBeenCalledOnce();
+      await server.telemetryConsent.change('reset');
+    } finally {
+      await runtime?.stop();
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it('constructs the runtime services and forwards client-owned operations', async () => {
@@ -438,6 +459,7 @@ describe('daemon runtime', () => {
     expect(mocks.initializeProviderSetup).toHaveBeenCalledOnce();
     expect(mocks.ensureBackendCodexHome).toHaveBeenCalledOnce();
     expect(mocks.mcpStart).toHaveBeenCalledOnce();
+    expect(mocks.pricingStart).toHaveBeenCalledOnce();
     expect(mocks.createDefaultBackendDrivers).toHaveBeenCalledWith(expect.objectContaining({
       appMcpServerUrl: 'http://127.0.0.1:4242/mcp',
       generalSettings: mocks.snapshot.general,
@@ -790,6 +812,7 @@ describe('daemon runtime', () => {
     expect(mocks.warnMain).toHaveBeenCalledWith('runtime-scheduler', 'task failed', { taskId: 'pull-request-monitor', message: 'github string failure' });
 
     await runtime.stop();
+    expect(mocks.pricingStop).toHaveBeenCalledOnce();
     expect(mocks.schedulerStop).toHaveBeenCalledOnce();
     expect(mocks.serverClose).toHaveBeenCalledOnce();
     expect(mocks.mcpStop).toHaveBeenCalledOnce();
