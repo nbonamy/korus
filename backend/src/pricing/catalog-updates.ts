@@ -15,7 +15,6 @@ type Options = { cacheFile: string; bundled?: Catalog; baseUrl?: string; now?: (
 export class PricingCatalog {
   private active: Catalog;
   private checkedAt = 0;
-  private timer: ReturnType<typeof setTimeout> | undefined;
   private pending: Promise<void> | undefined;
   private stopped = false;
   private readonly abort = new AbortController();
@@ -37,17 +36,15 @@ export class PricingCatalog {
       if (Date.parse(cached.manifest.publishedAt) > Date.parse(this.active.manifest.publishedAt)) this.active = cached;
       if (Number.isFinite(saved.checkedAt) && saved.checkedAt > 0 && saved.checkedAt <= this.now()) this.checkedAt = saved.checkedAt;
     } catch { /* Missing, corrupt or incompatible cache leaves bundled pricing usable. */ }
-    // Network availability never delays daemon startup or an analytics query.
-    void this.refresh();
   }
 
   refresh(): Promise<void> {
     if (this.pending) return this.pending;
     if (this.stopped) return Promise.resolve();
     if (this.checkedAt > this.now()) this.checkedAt = 0;
-    if (this.checkedAt && this.now() - this.checkedAt < day) { this.schedule(); return Promise.resolve(); }
+    if (this.checkedAt && this.now() - this.checkedAt < day) return Promise.resolve();
     this.checkedAt = this.now();
-    this.pending = this.check().finally(() => { this.pending = undefined; this.schedule(); });
+    this.pending = this.check().finally(() => { this.pending = undefined; });
     return this.pending;
   }
 
@@ -107,16 +104,8 @@ export class PricingCatalog {
     } finally { await rm(temporary, { force: true }); }
   }
 
-  private schedule(): void {
-    clearTimeout(this.timer);
-    if (!this.stopped) {
-      this.timer = setTimeout(() => { void this.refresh(); }, Math.max(1, this.checkedAt + day - this.now()));
-      this.timer.unref();
-    }
-  }
   async stop(): Promise<void> {
     this.stopped = true;
-    clearTimeout(this.timer);
     this.abort.abort();
     await this.pending;
   }

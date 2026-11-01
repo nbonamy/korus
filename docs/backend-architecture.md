@@ -1015,12 +1015,14 @@ time and blob hash; model metadata retains the source path and documentation
 links for coverage diagnosis. Removal events reference the revision that omits
 the model and have no source blob.
 The daemon embeds a catalog and matching manifest for offline startup. Its pricing
-service loads a validated local cache, then checks the public pricing manifest
-every 24 hours, including an overdue check at startup. Network access never blocks
+service loads a validated local cache. `RuntimeScheduler` runs its due check at
+startup and once per minute; the persisted timestamp limits public manifest
+requests to once every 24 hours across restarts. Network access never blocks
 startup or analytics queries. Schema validation, a bounded download and a content
 digest precede atomic cache replacement. The newest compatible publication wins
 between cache and bundle; failed checks retain usable prices and their check time
-survives restart. Shutdown cancels pending downloads and the refresh timer.
+survives restart. The common scheduler owns the timer; shutdown stops scheduling
+before the pricing service cancels pending downloads.
 
 Usage queries price retained measurements against one current catalog snapshot;
 cost totals are not persisted. New catalogs can correct historical estimates
