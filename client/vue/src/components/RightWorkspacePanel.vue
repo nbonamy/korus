@@ -50,8 +50,9 @@
                   <FileTextIcon v-else-if="tab === 'plan'" aria-hidden="true" />
                   <IconLego v-else-if="isRightWorkspaceSubagentTab(tab)" aria-hidden="true" />
                   <FileDiffIcon v-else-if="diffPanel(tab)" aria-hidden="true" />
-                  <PhotoIcon v-else-if="imagePanel(tab)" aria-hidden="true" />
-                  <FileTextIcon v-else-if="filePanel(tab)?.kind === 'markdown'" aria-hidden="true" />
+                  <PhotoIcon v-else-if="imagePanel(tab) || fileIcon(tab) === 'image'" aria-hidden="true" />
+                  <FileDiffIcon v-else-if="fileIcon(tab) === 'diff'" aria-hidden="true" />
+                  <FileTextIcon v-else-if="fileIcon(tab) === 'markdown'" aria-hidden="true" />
                   <CodeIcon v-else aria-hidden="true" />
                   <span>{{ tabLabel(tab) }}</span>
                 </button>
@@ -440,6 +441,8 @@ import SourcePreviewPanel from './SourcePreviewPanel.vue';
 import SubagentPanel from './SubagentPanel.vue';
 import type { SidePanelGitDiffState, SidePanelMarkdownState, SidePanelSourceState } from './side-panel';
 import {
+  fileTabIcon,
+  type FileTabIcon,
   isRightWorkspaceBrowserTab,
   type RightWorkspaceBrowserPanel,
   type RightWorkspaceBrowserTab,
@@ -867,6 +870,12 @@ function relativeFilePathForTab(tab: RightWorkspaceTab): string | null {
   if (!isAbsoluteFilePath(folder)) return null;
   const normalizedPath = filePath.replace(/\\/gu, '/');
   return normalizedPath.startsWith(`${folder}/`) ? normalizedPath.slice(folder.length + 1) : null;
+}
+
+function fileIcon(tab: RightWorkspaceTab): FileTabIcon | undefined {
+  const panel = filePanel(tab);
+  if (!panel) return undefined;
+  return fileTabIcon(panel.path ?? (isRightWorkspaceFileTab(tab) ? decodeURIComponent(tab.slice('file:'.length)) : undefined), panel.kind);
 }
 
 function imagePanel(tab: RightWorkspaceTab): RightWorkspaceImagePanel | undefined {

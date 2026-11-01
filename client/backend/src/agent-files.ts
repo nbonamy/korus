@@ -9,6 +9,8 @@ const execFileAsync = promisify(execFile);
 const DEFAULT_AGENT_FILE_LIMIT = 20_000;
 const DEFAULT_AGENT_FILE_DEPTH = 8;
 const DEFAULT_AGENT_FILE_READ_BYTES = 2 * 1024 * 1024;
+// An image costs the window nothing beyond its bytes, unlike text, which is syntax highlighted line by line.
+const IMAGE_PREVIEW_BYTES = 25 * 1024 * 1024;
 
 export const skippedDirectoryNames = new Set([
   '.git',
@@ -132,12 +134,13 @@ export async function previewAgentFolderFile(
     throw new Error(`Path is not a file: ${resolvedPath.previewPath}`);
   }
 
-  if (fileStat.size > (options.maxBytes ?? DEFAULT_AGENT_FILE_READ_BYTES)) {
+  const mimeType = imageMimeType(resolvedPath.previewPath);
+  const limit = options.maxBytes ?? (mimeType ? IMAGE_PREVIEW_BYTES : DEFAULT_AGENT_FILE_READ_BYTES);
+  if (fileStat.size > limit) {
     return { path: resolvedPath.previewPath, size: fileStat.size, kind: 'tooLarge' };
   }
 
   const buffer = await readFile(resolvedPath.absolutePath);
-  const mimeType = imageMimeType(resolvedPath.previewPath);
   if (mimeType) {
     return {
       path: resolvedPath.previewPath,

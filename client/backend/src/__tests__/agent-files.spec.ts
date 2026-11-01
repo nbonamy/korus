@@ -119,6 +119,19 @@ describe('listAgentFolderFiles', () => {
     await expect(listAgentFolderFiles(folder, { maxFiles: 1 })).resolves.toHaveLength(1);
   });
 
+  it('previews a large image as an image: only text is held to the text limit', async () => {
+    const folder = await createTempFolder();
+    const png = Buffer.alloc(3 * 1024 * 1024, 7);
+    await writeFile(path.join(folder, 'screenshot.png'), png);
+    const result = await previewAgentFolderFile(folder, 'screenshot.png');
+    expect(result).toMatchObject({ path: 'screenshot.png', size: png.length, kind: 'image', mimeType: 'image/png' });
+    expect((result as { dataUrl?: string }).dataUrl).toBe(`data:image/png;base64,${png.toString('base64')}`);
+    await writeFile(path.join(folder, 'huge.png'), Buffer.alloc(26 * 1024 * 1024, 7));
+    await expect(previewAgentFolderFile(folder, 'huge.png')).resolves.toMatchObject({ kind: 'tooLarge' });
+    await writeFile(path.join(folder, 'big.log'), 'x'.repeat(3 * 1024 * 1024));
+    await expect(previewAgentFolderFile(folder, 'big.log')).resolves.toMatchObject({ kind: 'tooLarge' });
+  });
+
   it('reads text files inside an agent folder', async () => {
     const folder = await createTempFolder();
     await writeFile(path.join(folder, 'README.md'), '# Read me\n', 'utf8');

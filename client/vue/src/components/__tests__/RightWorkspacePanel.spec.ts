@@ -180,6 +180,16 @@ describe('RightWorkspacePanel', () => {
     expect(wrapper.get('.git-diff-preview-panel__file-header').attributes('aria-expanded')).toBe('true');
   });
 
+  it.each([
+    ['screenshot.png', 'photo'], ['photo.JPG', 'photo'], ['notes.md', 'file-text'], ['change.patch', 'file-diff'], ['src/app.ts', 'code'],
+  ])('picks the icon of the file %s from its name, even while it loads or cannot be previewed', (file, icon) => {
+    const fileTab = rightWorkspaceFileTab(file);
+    const wrapper = mountPanel([fileTab], fileTab, {
+      [fileTab]: { kind: 'source', title: file, subtitle: file, path: file, content: 'Preview unavailable', language: null, state: 'idle', error: null },
+    });
+    expect(wrapper.get('[role="tab"] svg').classes()).toContain(`tabler-icon-${icon}`);
+  });
+
   it('shows a tab title tooltip when the label may be compressed', async () => {
     const fileTab = rightWorkspaceFileTab('src/long-file-name.ts');
     const wrapper = mountPanel([fileTab], fileTab, {

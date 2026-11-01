@@ -37,6 +37,17 @@ export function rightWorkspaceMarkdownTab(identifier: string): RightWorkspaceFil
   return `file:markdown:${encodeURIComponent(identifier)}`;
 }
 
+export type FileTabIcon = 'image' | 'markdown' | 'diff' | 'code';
+
+/** Which icon a file's tab wears, judged by the file's name so it is right while the preview loads or is unavailable. */
+export function fileTabIcon(filePath: string | undefined, panelKind?: 'markdown' | 'source'): FileTabIcon {
+  const extension = /\.([a-z0-9]+)$/iu.exec((filePath ?? '').split('#')[0]?.split('?')[0] ?? '')?.[1]?.toLowerCase();
+  if (extension && ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(extension)) return 'image';
+  if (extension && ['md', 'markdown', 'mdown', 'mkdn'].includes(extension)) return 'markdown';
+  if (extension && ['diff', 'patch'].includes(extension)) return 'diff';
+  return panelKind === 'markdown' ? 'markdown' : 'code';
+}
+
 export function isRightWorkspaceFileTab(tab: RightWorkspaceTab): tab is RightWorkspaceFileTab {
   return tab.startsWith('file:');
 }
