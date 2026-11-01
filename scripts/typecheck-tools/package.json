@@ -1,5 +1,5 @@
 {
-  "name": "ci-benchmark-tools",
+  "name": "typecheck-tools",
   "private": true,
   "version": "1.0.0",
   "dependencies": {

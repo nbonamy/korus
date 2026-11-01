@@ -20,8 +20,8 @@
   },
   "scripts": {
     "build": "vue-tsc --noEmit",
-    "typecheck": "node ../scripts/ci-typecheck.mjs vue --noEmit",
-    "lint": "node ../scripts/ci-typecheck.mjs vue --noEmit && npm run lint:css && npm run lint:i18n",
+    "typecheck": "node ../scripts/typecheck.mjs vue --noEmit",
+    "lint": "node ../scripts/typecheck.mjs vue --noEmit && npm run lint:css && npm run lint:i18n",
     "lint:css": "stylelint 'src/**/*.{css,vue}'",
     "lint:i18n": "node scripts/check-i18n.mjs",
     "test": "vitest run",

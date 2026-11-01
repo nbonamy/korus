@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "node ../scripts/ci-typecheck.mjs plain --noEmit && node ../scripts/ci-typecheck.mjs vue --noEmit -p web/tsconfig.json",
+    "typecheck": "node ../scripts/typecheck.mjs plain --noEmit && node ../scripts/typecheck.mjs vue --noEmit -p web/tsconfig.json",
     "lint": "npm run typecheck",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",

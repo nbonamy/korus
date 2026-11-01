@@ -44,6 +44,23 @@ exercised behavior, not a reason to invent a test. Leave no broad untested areas
 around IPC, protocol adapters, persistence, reducers, agent status, tool rendering,
 approvals, diffs, filesystem, git or teams.
 
+## Type checking
+
+The shared no-emit checker uses repository-pinned Bun for TypeScript and Native
+Bridge through the installed Vue code generator for SFCs. The tools are installed
+in `scripts/typecheck-tools` so their compiler executables cannot replace stock
+TypeScript in the application's dependency tree. Dependency installation prepares
+the tools; an install with lifecycle scripts disabled needs `npm run setup:tools`.
+
+`npm run typecheck:stock` runs the same workspace checks with stock TypeScript.
+Declaration generation and build commands retain stock TypeScript. Tests run on
+Node, and Vue tests retain isolated VM workers.
+
+Quality checks every workspace independently and requires all coverage and lint
+jobs before publishing the aggregate result or coverage badge. Desktop release
+checks independently require every workspace's ordinary tests before platform
+builds. A failed, cancelled or skipped required job blocks the aggregate gate.
+
 ## Principles
 
 - Test behavior, not implementation: assert what users see, what IPC emits, what

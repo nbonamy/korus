@@ -1,0 +1,22 @@
+name: Set up Korus
+description: Install the reference Node toolchain and locked development dependencies.
+inputs:
+  cache:
+    default: 'true'
+    description: Reuse the npm download cache
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      with:
+        node-version-file: .nvmrc
+        cache: ${{ inputs.cache == 'true' && 'npm' || '' }}
+        cache-dependency-path: |
+          package-lock.json
+          scripts/typecheck-tools/package-lock.json
+    - run: npm install --global npm@10.9.4
+      shell: bash
+    - run: npm ci --no-audit --no-fund
+      shell: bash
+    - run: node node_modules/electron/install.js
+      shell: bash

@@ -7,7 +7,7 @@
     "build": "vite build && vite build --config vite.server.config.ts && tsc --noEmit -p tsconfig.server.json",
     "dev": "npm run dev:web --prefix ..",
     "start": "node dist/server/index.js",
-    "typecheck": "node ../scripts/ci-typecheck.mjs vue --noEmit -p tsconfig.json && node ../scripts/ci-typecheck.mjs plain --noEmit -p tsconfig.server.json",
+    "typecheck": "node ../scripts/typecheck.mjs vue --noEmit -p tsconfig.json && node ../scripts/typecheck.mjs plain --noEmit -p tsconfig.server.json",
     "lint": "npm run typecheck",
     "test": "vitest run --config vitest.config.ts",
     "test:coverage": "vitest run --coverage --config vitest.config.ts"
