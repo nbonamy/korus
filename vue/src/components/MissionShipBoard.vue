@@ -129,12 +129,15 @@ async function recordDelivery(repositoryPath: string, result: { kind: 'pullReque
 <style scoped>
 .mission-ship {
   display: flex;
+  min-width: 0;
   flex-direction: column;
   gap: var(--space-6);
+  container: mission-ship / inline-size;
 }
 
 .mission-ship__summary {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-4);
 }
@@ -176,6 +179,7 @@ async function recordDelivery(repositoryPath: string, result: { kind: 'pullReque
 
 .mission-ship__card {
   display: grid;
+  min-width: 0;
   gap: var(--space-4);
   padding: var(--space-6);
   border: 1px solid var(--color-border);
@@ -197,7 +201,7 @@ async function recordDelivery(repositoryPath: string, result: { kind: 'pullReque
 
 .mission-ship__repository {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-4);
   min-width: 0;
@@ -282,5 +286,19 @@ async function recordDelivery(repositoryPath: string, result: { kind: 'pullReque
 .mission-ship__debug {
   color: var(--color-text-muted);
   font-size: var(--font-size-12);
+}
+
+@container mission-ship (max-width: 560px) {
+  .mission-ship__card-header,
+  .mission-ship__actions,
+  .mission-ship__actions :deep(.git-workflow-control--delivery) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .mission-ship__status,
+  .mission-ship__actions > :deep(.open-in-control) {
+    align-self: flex-start;
+  }
 }
 </style>
