@@ -14,6 +14,9 @@ test(`resolves the token file from the ${product.name} home`, () => {
     providerTokensFilePath({ APP_HOME: ' /tmp/app-home ' }, '/Users/test'),
     '/tmp/app-home/provider-tokens.json',
   );
+  assert.equal(providerTokensFilePath({ KORUS_HOME: ' /tmp/alias ' }, '/Users/test'), '/tmp/alias/provider-tokens.json');
+  assert.equal(providerTokensFilePath({ APP_HOME: ' ', KORUS_HOME: '/tmp/alias' }, '/Users/test'), '/tmp/alias/provider-tokens.json');
+  assert.equal(providerTokensFilePath({ APP_HOME: '/tmp/primary', KORUS_HOME: '/tmp/alias' }, '/Users/test'), '/tmp/primary/provider-tokens.json');
   assert.equal(providerTokensFilePath({}, '/Users/test'), `/Users/test/${product.homeDirectory}/provider-tokens.json`);
 });
 

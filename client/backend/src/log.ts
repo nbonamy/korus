@@ -1,3 +1,4 @@
+import { configuredAppHome } from '@workspace/core/app-home';
 import { product } from '@workspace/core/product';
 import { appendFileSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -46,7 +47,7 @@ export function backendLogFilePath(): string {
 }
 
 export function backendLogDirectoryPath(): string {
-  const home = process.env.APP_HOME?.trim() || path.join(homedir(), product.homeDirectory);
+  const home = configuredAppHome(process.env) || path.join(homedir(), product.homeDirectory);
   return path.join(home, 'logs');
 }
 

@@ -1,3 +1,4 @@
+import { configuredAppHome } from '../core/src/app-home.ts';
 import product from '../core/src/product.json' with { type: 'json' };
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -9,7 +10,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 const DEFAULT_GITHUB_MCP_URL = 'https://api.githubcopilot.com/mcp/';
 
 export function providerTokensFilePath(env = process.env, home = homedir()) {
-  const configuredHome = env.APP_HOME?.trim();
+  const configuredHome = configuredAppHome(env);
   return path.join(configuredHome || path.join(home, `${product.homeDirectory}`), 'provider-tokens.json');
 }
 

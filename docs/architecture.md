@@ -342,8 +342,9 @@ target, archive the displaced conversation, then persist the new reference.
 
 ## State
 
-`daemon` persists versioned JSON under the backend home (`~/.korus`, override
-`APP_HOME`; Electron never passes its data directory):
+`daemon` persists versioned JSON under the backend home (`~/.korus`).
+`APP_HOME` overrides it, with `KORUS_HOME` as an alias when `APP_HOME` is unset or
+blank. Electron never passes its data directory.
 
 | File | Content |
 | --- | --- |

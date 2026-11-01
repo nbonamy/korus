@@ -13,7 +13,11 @@ describe('backend state loading', () => {
   beforeEach(async () => {
     tempDir = await mkdtemp(path.join(os.tmpdir(), 'daemon-state-'));
     homeDir = path.join(tempDir, 'home');
+    vi.stubEnv('HOME', tempDir);
+    vi.stubEnv('USERPROFILE', tempDir);
+    expect(os.homedir()).toBe(tempDir);
     vi.stubEnv('APP_HOME', homeDir);
+    vi.stubEnv('KORUS_HOME', '');
   });
 
   afterEach(async () => {
@@ -27,7 +31,9 @@ describe('backend state loading', () => {
     expect(backendHomeDir()).toBe(path.join(os.homedir(), product.homeDirectory));
   });
 
-  it('uses APP_HOME as the only backend home override', () => {
+  it.each(['primary', 'alias', 'blank primary'] as const)('resolves the backend home and derived paths using %s', mode => {
+    vi.stubEnv('APP_HOME', mode === 'primary' ? homeDir : mode === 'alias' ? undefined : '   ');
+    vi.stubEnv('KORUS_HOME', mode === 'primary' ? '/unused-alias' : ` ${homeDir} `);
     expect(backendHomeDir()).toBe(homeDir);
     expect(backendCodexHomeDir()).toBe(path.join(homeDir, 'codex-home'));
     expect(backendLegacyStateFilePath()).toBe(path.join(homeDir, 'state.json'));
@@ -79,7 +85,9 @@ describe('backend state loading', () => {
     });
   });
 
-  it('saves backend snapshots into the versioned roster and settings files', async () => {
+  it('saves backend snapshots into the alias home’s versioned roster and settings files', async () => {
+    vi.stubEnv('APP_HOME', '');
+    vi.stubEnv('KORUS_HOME', homeDir);
     const snapshot = await loadBackendSnapshot();
     await saveBackendSnapshot(snapshot);
 

@@ -1,5 +1,5 @@
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -10,6 +10,9 @@ beforeEach(async () => {
   vi.resetModules();
   tempDir = await mkdtemp(path.join(tmpdir(), 'agent-workspace-log-'));
   vi.stubEnv('APP_HOME', tempDir);
+  vi.stubEnv('HOME', tempDir);
+  vi.stubEnv('USERPROFILE', tempDir);
+  expect(homedir()).toBe(tempDir);
   vi.stubEnv('NODE_ENV', 'development');
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 });
@@ -32,7 +35,9 @@ afterEach(async () => {
 });
 
 describe('backend logging', () => {
-  it('writes structured backend logs under APP_HOME and mirrors warn+ to stderr', async () => {
+  it.each(['APP_HOME', 'KORUS_HOME'])('writes structured backend logs under %s and mirrors warn+ to stderr', async homeEnv => {
+    vi.stubEnv('APP_HOME', homeEnv === 'APP_HOME' ? tempDir! : '');
+    vi.stubEnv('KORUS_HOME', homeEnv === 'KORUS_HOME' ? tempDir! : '/unused-alias');
     const { backendLogFilePath, flushBackendLogs, logMain, warnMain } = await import('../log');
 
     logMain('mcp-http', 'listening', {

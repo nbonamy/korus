@@ -18,7 +18,7 @@ export { loadPricingHistory } from './pricing/catalog';
 export async function main(argv = process.argv.slice(2)): Promise<void> {
   process.title = product.daemonName;
   if (argv.includes('--state-dir')) {
-    process.stderr.write(`Unsupported option: --state-dir. Set APP_HOME to override ~/${product.homeDirectory}.
+    process.stderr.write(`Unsupported option: --state-dir. Set APP_HOME (or KORUS_HOME) to override ~/${product.homeDirectory}.
 `);
     process.exitCode = 1;
     return;
@@ -50,7 +50,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   }
 
   process.stderr.write(`Usage: ${product.daemonName} --stdio | serve | connect | companion-relay <config-file> | --version
-Set APP_HOME to override ~/${product.homeDirectory}.
+Set APP_HOME (or KORUS_HOME) to override ~/${product.homeDirectory}.
 `);
   process.exitCode = 1;
 }

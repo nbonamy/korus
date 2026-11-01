@@ -1,3 +1,4 @@
+import { configuredAppHome } from '@workspace/core/app-home';
 import { product } from '@workspace/core/product';
 import path from 'node:path';
 import { mkdir, rm } from 'node:fs/promises';
@@ -7,12 +8,11 @@ import type { DelegatedTask } from '@workspace/core/delegated-task';
 import { AppStateStore } from './persistence/store';
 import { logMain } from './log';
 
-const APP_HOME_ENV = 'APP_HOME';
 let store: AppStateStore | null = null;
 let storeHome: string | null = null;
 
 export function backendHomeDir(): string {
-  const configured = process.env[APP_HOME_ENV]?.trim();
+  const configured = configuredAppHome(process.env);
   return configured || path.join(homedir(), product.homeDirectory);
 }
 

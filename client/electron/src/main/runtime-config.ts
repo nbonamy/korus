@@ -1,3 +1,4 @@
+import { configuredAppHome } from '@workspace/core/app-home';
 import { product } from '@workspace/core/product';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -64,12 +65,12 @@ export function runtimeDaemonSocketPath(deps: RuntimeDaemonConfigDeps = {}): str
   if (configured) {
     return configured;
   }
-  return path.join(env.APP_HOME?.trim() || path.join((deps.homedir ?? homedir)(), `${product.homeDirectory}`), 'daemon.sock');
+  return path.join(runtimeDaemonHome(deps), 'daemon.sock');
 }
 
 export function runtimeDaemonHome(deps: RuntimeDaemonConfigDeps = {}): string {
   const env = deps.env ?? process.env;
-  return env.APP_HOME?.trim() || path.join((deps.homedir ?? homedir)(), `${product.homeDirectory}`);
+  return configuredAppHome(env) || path.join((deps.homedir ?? homedir)(), `${product.homeDirectory}`);
 }
 
 export function runtimeDaemonWatchFile(deps: RuntimeDaemonConfigDeps = {}): string | null {

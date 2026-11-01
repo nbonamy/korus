@@ -218,10 +218,17 @@ describe('runtime config', () => {
     expect(runtimeDaemonBackendMode({ env: { APP_BACKEND_MODE: 'nope' } })).toBe('auto');
   });
 
-  it('resolves the local daemon socket path from APP_HOME or an explicit socket override', async () => {
-    const { runtimeDaemonSocketPath } = await import('../runtime-config');
+  it('resolves the daemon home and socket from either home variable, preserving primary and socket overrides', async () => {
+    const { runtimeDaemonSocketPath, runtimeDaemonHome, runtimeDaemonCommand } = await import('../runtime-config');
 
     expect(runtimeDaemonSocketPath({ env: { APP_HOME: '/tmp/agent-workspace' } })).toBe('/tmp/agent-workspace/daemon.sock');
     expect(runtimeDaemonSocketPath({ env: { APP_BACKEND_SOCKET: '/tmp/custom.sock' } })).toBe('/tmp/custom.sock');
+    for (const APP_HOME of [undefined, '   ']) {
+      const env = { APP_HOME, KORUS_HOME: ' /tmp/alias-home ', APP_BACKEND_COMMAND: 'node' };
+      expect(runtimeDaemonHome({ env })).toBe('/tmp/alias-home');
+      expect(runtimeDaemonSocketPath({ env })).toBe('/tmp/alias-home/daemon.sock');
+      expect(runtimeDaemonCommand({ env })?.env.APP_HOME).toBe('/tmp/alias-home');
+    }
+    expect(runtimeDaemonHome({ env: { APP_HOME: '/tmp/primary', KORUS_HOME: '/tmp/alias' } })).toBe('/tmp/primary');
   });
 });

@@ -1,3 +1,4 @@
+import { configuredAppHome } from '../core/src/app-home.ts';
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -58,7 +59,7 @@ async function main() {
   }
   const endpoint = relayEndpoint(process.env, readIfPresent(path.join(root, '.env')));
   const product = JSON.parse(readFileSync(path.join(root, 'core/src/product.json'), 'utf8'));
-  const home = process.env.APP_HOME?.trim() || path.join(homedir(), product.homeDirectory);
+  const home = configuredAppHome(process.env) || path.join(homedir(), product.homeDirectory);
   const hostIds = await relayHostIds(process.env, readIfPresent(path.join(home, 'companion/state.json')));
 
   // Always rebuilt: a stale bundle would silently run an old protocol.
