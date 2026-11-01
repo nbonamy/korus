@@ -22,7 +22,8 @@ run-name: Release benchmark ${{ inputs.variant || 'compare' }} ${{ github.sha }}
     - ci/optimization-benchmark
     paths-ignore:
     - '.github/workflows/vue-test-benchmark.yml'
-    - 'scripts/ci-vue-test-*'
+    - 'scripts/ci-vue-*'
+    - '.github/workflows/vue-v5-benchmark.yml'
     - '.github/workflows/ci-benchmark.yml'
     - '.github/workflows/release-benchmark.yml'
 permissions:

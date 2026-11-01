@@ -1,0 +1,232 @@
+[
+  {
+    "file": "src/components/__tests__/use-work-item-routing.spec.ts",
+    "before": "useWorkItemRouting preserves the source host 'remote-dev' and selection when duplicating repository work",
+    "after": "useWorkItemRouting preserves the source host remote-dev and selection when duplicating repository work"
+  },
+  {
+    "file": "src/components/__tests__/use-work-item-routing.spec.ts",
+    "before": "useWorkItemRouting preserves the source host 'remote-dev' and selection when duplicating repository work",
+    "after": "useWorkItemRouting preserves the source host remote-dev and selection when duplicating repository work"
+  },
+  {
+    "file": "src/__tests__/work-provider-state.spec.ts",
+    "before": "work provider authorization state surfaces a 'notConfigured' connection result instead of silently treating it as success",
+    "after": "work provider authorization state surfaces a notConfigured connection result instead of silently treating it as success"
+  },
+  {
+    "file": "src/__tests__/work-provider-state.spec.ts",
+    "before": "work provider authorization state surfaces a 'error' connection result instead of silently treating it as success",
+    "after": "work provider authorization state surfaces a error connection result instead of silently treating it as success"
+  },
+  {
+    "file": "src/components/__tests__/AgentHeader.spec.ts",
+    "before": "AgentHeader renders the inline status detail for { type: 'working', detail: 'Getting stats...' }",
+    "after": "AgentHeader renders the inline status detail for { type: 'working', \u2026(1) }"
+  },
+  {
+    "file": "src/components/__tests__/AgentHeader.spec.ts",
+    "before": "AgentHeader renders the inline status detail for { type: 'awaitingInput', detail: 'Approval needed' }",
+    "after": "AgentHeader renders the inline status detail for { type: 'awaitingInput', \u2026(1) }"
+  },
+  {
+    "file": "src/components/__tests__/AgentHeader.spec.ts",
+    "before": "AgentHeader renders the inline status detail for { type: 'error', message: 'Tool failed' }",
+    "after": "AgentHeader renders the inline status detail for { type: 'error', \u2026(1) }"
+  },
+  {
+    "file": "src/components/__tests__/AppShell.commands.spec.ts",
+    "before": "AppShell dialogs and commands submits /'delegate' as a Korus command for 'codex'",
+    "after": "AppShell dialogs and commands submits /delegate as a Korus command for codex"
+  },
+  {
+    "file": "src/components/__tests__/AppShell.commands.spec.ts",
+    "before": "AppShell dialogs and commands submits /'worktree' as a Korus command for 'claude'",
+    "after": "AppShell dialogs and commands submits /worktree as a Korus command for claude"
+  },
+  {
+    "file": "src/components/__tests__/AppShell.missions.spec.ts",
+    "before": "AppShell missions lists Mission worktrees and maps 'Keep worktrees' to the explicit cleanup choice",
+    "after": "AppShell missions lists Mission worktrees and maps Keep worktrees to the explicit cleanup choice"
+  },
+  {
+    "file": "src/components/__tests__/AppShell.missions.spec.ts",
+    "before": "AppShell missions lists Mission worktrees and maps 'Delete mission and worktrees' to the explicit cleanup choice",
+    "after": "AppShell missions lists Mission worktrees and maps Delete mission and worktrees to the explicit cleanup choice"
+  },
+  {
+    "file": "src/components/__tests__/AppShell.work-routing.spec.ts",
+    "before": "AppShell work routing reopens 'gitlab' work from the selected checkout identity on host undefined",
+    "after": "AppShell work routing reopens gitlab work from the selected checkout identity on host undefined"
+  },
+  {
+    "file": "src/components/__tests__/AppShell.work-routing.spec.ts",
+    "before": "AppShell work routing reopens 'github' work from the selected checkout identity on host undefined",
+    "after": "AppShell work routing reopens github work from the selected checkout identity on host undefined"
+  },
+  {
+    "file": "src/components/__tests__/AppShell.work-routing.spec.ts",
+    "before": "AppShell work routing reopens 'gitlab' work from the selected checkout identity on host 'connection-devbox'",
+    "after": "AppShell work routing reopens gitlab work from the selected checkout identity on host connection-devbox"
+  },
+  {
+    "file": "src/components/__tests__/CodeReviewPanel.spec.ts",
+    "before": "CodeReviewPanel retries a 'paused' review without changing its mode or commit choice (undefined)",
+    "after": "CodeReviewPanel retries a paused review without changing its mode or commit choice (undefined)"
+  },
+  {
+    "file": "src/components/__tests__/CodeReviewPanel.spec.ts",
+    "before": "CodeReviewPanel retries a 'paused' review without changing its mode or commit choice (false)",
+    "after": "CodeReviewPanel retries a paused review without changing its mode or commit choice (false)"
+  },
+  {
+    "file": "src/components/__tests__/CodeReviewPanel.spec.ts",
+    "before": "CodeReviewPanel retries a 'paused' review without changing its mode or commit choice (true)",
+    "after": "CodeReviewPanel retries a paused review without changing its mode or commit choice (true)"
+  },
+  {
+    "file": "src/components/__tests__/CodeReviewPanel.spec.ts",
+    "before": "CodeReviewPanel retries a 'manual' review without changing its mode or commit choice (true)",
+    "after": "CodeReviewPanel retries a manual review without changing its mode or commit choice (true)"
+  },
+  {
+    "file": "src/components/__tests__/CodexLoginLanding.spec.ts",
+    "before": "CodexLoginLanding keeps 'codex' checking feedback below the button for { updatingProvider: 'codex' }",
+    "after": "CodexLoginLanding keeps codex checking feedback below the button for { updatingProvider: 'codex' }"
+  },
+  {
+    "file": "src/components/__tests__/CodexLoginLanding.spec.ts",
+    "before": "CodexLoginLanding keeps 'claude' checking feedback below the button for { updatingProvider: 'claude' }",
+    "after": "CodexLoginLanding keeps claude checking feedback below the button for { updatingProvider: 'claude' }"
+  },
+  {
+    "file": "src/components/__tests__/CodexLoginLanding.spec.ts",
+    "before": "CodexLoginLanding keeps 'claude' checking feedback below the button for { claudeLoading: true }",
+    "after": "CodexLoginLanding keeps claude checking feedback below the button for { claudeLoading: true }"
+  },
+  {
+    "file": "src/components/__tests__/FeatureGroupDialog.spec.ts",
+    "before": "feature group confirmation reports deletion 'success' after 'background button' without affecting a newly opened dialog",
+    "after": "feature group confirmation reports deletion success after background button without affecting a newly opened dialog"
+  },
+  {
+    "file": "src/components/__tests__/FeatureGroupDialog.spec.ts",
+    "before": "feature group confirmation reports deletion 'error' after 'background button' without affecting a newly opened dialog",
+    "after": "feature group confirmation reports deletion error after background button without affecting a newly opened dialog"
+  },
+  {
+    "file": "src/components/__tests__/FeatureGroupDialog.spec.ts",
+    "before": "feature group confirmation reports deletion 'error' after 'navigation' without affecting a newly opened dialog",
+    "after": "feature group confirmation reports deletion error after navigation without affecting a newly opened dialog"
+  },
+  {
+    "file": "src/components/__tests__/GitPruneDialog.spec.ts",
+    "before": "GitPruneDialog reports background 'success' after the closed dialog unmounts",
+    "after": "GitPruneDialog reports background success after the closed dialog unmounts"
+  },
+  {
+    "file": "src/components/__tests__/GitPruneDialog.spec.ts",
+    "before": "GitPruneDialog reports background 'warning' after the closed dialog unmounts",
+    "after": "GitPruneDialog reports background warning after the closed dialog unmounts"
+  },
+  {
+    "file": "src/components/__tests__/GitPruneDialog.spec.ts",
+    "before": "GitPruneDialog reports background 'error' after the closed dialog unmounts",
+    "after": "GitPruneDialog reports background error after the closed dialog unmounts"
+  },
+  {
+    "file": "src/components/__tests__/GitPruneDialog.spec.ts",
+    "before": "GitPruneDialog lets users select a 'inUse' worktree and requires confirmation before force deletion",
+    "after": "GitPruneDialog lets users select a inUse worktree and requires confirmation before force deletion"
+  },
+  {
+    "file": "src/components/__tests__/GitPruneDialog.spec.ts",
+    "before": "GitPruneDialog lets users select a 'changes' worktree and requires confirmation before force deletion",
+    "after": "GitPruneDialog lets users select a changes worktree and requires confirmation before force deletion"
+  },
+  {
+    "file": "src/components/__tests__/GitPruneDialog.spec.ts",
+    "before": "GitPruneDialog lets users select a 'locked' worktree and requires confirmation before force deletion",
+    "after": "GitPruneDialog lets users select a locked worktree and requires confirmation before force deletion"
+  },
+  {
+    "file": "src/components/__tests__/GitWorkflowControl.spec.ts",
+    "before": "GitWorkflowControl shows a non-blocking 'worktreeFolderRetained' warning after a successful merge",
+    "after": "GitWorkflowControl shows a non-blocking worktreeFolderRetained warning after a successful merge"
+  },
+  {
+    "file": "src/components/__tests__/GitWorkflowControl.spec.ts",
+    "before": "GitWorkflowControl shows a non-blocking 'branchRetained' warning after a successful merge",
+    "after": "GitWorkflowControl shows a non-blocking branchRetained warning after a successful merge"
+  },
+  {
+    "file": "src/components/__tests__/GitWorkflowControl.spec.ts",
+    "before": "GitWorkflowControl shows a non-blocking 'branchRetained' warning after a successful merge",
+    "after": "GitWorkflowControl shows a non-blocking branchRetained warning after a successful merge"
+  },
+  {
+    "file": "src/components/__tests__/ProviderUpdateRow.spec.ts",
+    "before": "provider update controls keeps 'waiting' feedback with the version instead of adding a third line",
+    "after": "provider update controls keeps waiting feedback with the version instead of adding a third line"
+  },
+  {
+    "file": "src/components/__tests__/ProviderUpdateRow.spec.ts",
+    "before": "provider update controls keeps 'upgrading' feedback with the version instead of adding a third line",
+    "after": "provider update controls keeps upgrading feedback with the version instead of adding a third line"
+  },
+  {
+    "file": "src/components/__tests__/ProviderUpdateRow.spec.ts",
+    "before": "provider update controls keeps 'error' feedback with the version instead of adding a third line",
+    "after": "provider update controls keeps error feedback with the version instead of adding a third line"
+  },
+  {
+    "file": "src/components/__tests__/UsagePanel.spec.ts",
+    "before": "distinguishes 'zero' costs without diagnostic copy",
+    "after": "distinguishes zero costs without diagnostic copy"
+  },
+  {
+    "file": "src/components/__tests__/UsagePanel.spec.ts",
+    "before": "distinguishes 'tiny' costs without diagnostic copy",
+    "after": "distinguishes tiny costs without diagnostic copy"
+  },
+  {
+    "file": "src/components/__tests__/UsagePanel.spec.ts",
+    "before": "distinguishes 'rounded total' costs without diagnostic copy",
+    "after": "distinguishes rounded total costs without diagnostic copy"
+  },
+  {
+    "file": "src/components/__tests__/UsagePanel.spec.ts",
+    "before": "distinguishes 'rounded amount' costs without diagnostic copy",
+    "after": "distinguishes rounded amount costs without diagnostic copy"
+  },
+  {
+    "file": "src/components/__tests__/UsagePanel.spec.ts",
+    "before": "distinguishes 'rounded cents' costs without diagnostic copy",
+    "after": "distinguishes rounded cents costs without diagnostic copy"
+  },
+  {
+    "file": "src/components/__tests__/UsagePanel.spec.ts",
+    "before": "distinguishes 'partial' costs without diagnostic copy",
+    "after": "distinguishes partial costs without diagnostic copy"
+  },
+  {
+    "file": "src/components/__tests__/UsagePanel.spec.ts",
+    "before": "distinguishes 'unavailable' costs without diagnostic copy",
+    "after": "distinguishes unavailable costs without diagnostic copy"
+  },
+  {
+    "file": "src/components/__tests__/UsagePanel.spec.ts",
+    "before": "distinguishes 'older backend' costs without diagnostic copy",
+    "after": "distinguishes older backend costs without diagnostic copy"
+  },
+  {
+    "file": "src/components/__tests__/UsagePanel.spec.ts",
+    "before": "compares only complete, nonzero-baseline cost periods ('50%')",
+    "after": "compares only complete, nonzero-baseline cost periods (50%)"
+  },
+  {
+    "file": "src/components/__tests__/UsagePanel.spec.ts",
+    "before": "compares only complete, nonzero-baseline cost periods ('100%')",
+    "after": "compares only complete, nonzero-baseline cost periods (100%)"
+  }
+]
