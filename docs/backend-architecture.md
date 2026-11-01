@@ -988,11 +988,16 @@ past prices; reappearance appends another event. The baseline is effective Octob
 entry for a newly listed model requires published pricing evidence.
 
 The pricing workflow runs daily and supports manual dispatch on `main`. It
-validates the collector and offline bundles before committing changed history
-with the repository's Actions token; unchanged prices produce no commit.
+validates the collector, publisher and offline bundles before committing changed
+history and its content-addressed manifest with the repository's Actions token;
+unchanged prices preserve the manifest revision and publication time.
 Concurrent pricing runs are serialized. If `main` advances during collection,
 the push fails rather than replacing newer repository changes. Bot pushes do not
 trigger the separate Quality workflow, so pricing validation runs before the push.
+The workflow publishes immutable versioned catalogs and then replaces the latest
+manifest on a dedicated, non-latest pricing prerelease. Pricing assets never use
+the app release tags or GitHub's latest app release. Publication retries reuse
+uploaded catalogs and cannot advance the manifest after a failed catalog upload.
 
 The catalog retains context predicates, service tiers, mode mappings, category-specific multipliers,
 cache reads, and cache-write lifetime maps. Missing rates remain absent; explicit
@@ -1009,9 +1014,21 @@ actually served tier. Each pricing event retains its source revision, collection
 time and blob hash; model metadata retains the source path and documentation
 links for coverage diagnosis. Removal events reference the revision that omits
 the model and have no source blob.
-The catalog is statically embedded in the standalone daemon bundle, which is also
-copied into desktop resources. Builds and runtime catalog reads require no pricing
-network calls.
+The daemon embeds a catalog and matching manifest for offline startup. Its pricing
+service loads a validated local cache, then checks the public pricing manifest
+every 24 hours, including an overdue check at startup. Network access never blocks
+startup or analytics queries. Schema validation, a bounded download and a content
+digest precede atomic cache replacement. The newest compatible publication wins
+between cache and bundle; failed checks retain usable prices and their check time
+survives restart. Shutdown cancels pending downloads and the refresh timer.
+
+Usage queries price retained measurements against one current catalog snapshot;
+cost totals are not persisted. New catalogs can correct historical estimates
+without rewriting usage. Event dates select the applicable historical price,
+while source collection and catalog publication times describe discovery and
+delivery. An effective-date correction requires provider evidence; downloading
+newer data does not establish an earlier effective date. After editing history,
+`node scripts/pricing-release.mjs` prepares its matching bundled manifest and assets.
 
 ### Execution measurements
 

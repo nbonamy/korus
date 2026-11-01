@@ -39,7 +39,7 @@ export class UsageLedger {
   constructor(
     private readonly file: string,
     private readonly now: () => number = Date.now,
-    private readonly prices: PricingHistory = loadPricingHistory(),
+    private readonly prices: PricingHistory | (() => PricingHistory) = loadPricingHistory(),
   ) {
     this.since = now();
   }
@@ -304,6 +304,7 @@ export class UsageLedger {
     ).run(provider, sessionId, turnId);
   }
   query(filter: UsageFilter = {}): UsageSummary {
+    const prices = typeof this.prices === 'function' ? this.prices() : this.prices;
     if (
       !filter ||
       typeof filter !== "object" ||
@@ -433,7 +434,7 @@ export class UsageLedger {
             dailyGroups,
             record.startedAt,
             filter.group === "apiProvider" ? estimatedProvider! : label,
-            priceExecution(record, this.prices),
+            priceExecution(record, prices),
             cost,
             undefined,
             true,
@@ -479,7 +480,7 @@ export class UsageLedger {
           dailyGroups,
           event.at,
           label,
-          priceRequest(event, this.prices),
+          priceRequest(event, prices),
           cost,
           undefined,
           false,

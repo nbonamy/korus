@@ -52,6 +52,8 @@ const mocks = vi.hoisted(() => ({
   backendCodexHomeDir: vi.fn(() => '/tmp/codex-home'),
   backendHomeDir: vi.fn(() => '/tmp/runtime-test-home'),
   backendProviderTokensFilePath: vi.fn(),
+  pricingStart: vi.fn(),
+  pricingStop: vi.fn(),
   mcpStart: vi.fn(),
   mcpStop: vi.fn(),
   mcpHostedServerUrls: vi.fn(),
@@ -79,6 +81,15 @@ const mocks = vi.hoisted(() => ({
   runtimeGitHubOAuthClientId: vi.fn(),
   warnMain: vi.fn(),
 }));
+
+vi.mock('../pricing/catalog-updates', async () => {
+  const { loadPricingHistory } = await import('../pricing/catalog');
+  return { PricingCatalog: class {
+    history = loadPricingHistory();
+    start = mocks.pricingStart;
+    stop = mocks.pricingStop;
+  } };
+});
 
 vi.mock('@workspace/core/agent-chat-service', () => ({
   sendAgentPrompt: mocks.sendAgentPrompt,
@@ -369,6 +380,7 @@ describe('daemon runtime', () => {
     expect(mocks.initializeProviderSetup).toHaveBeenCalledOnce();
     expect(mocks.ensureBackendCodexHome).toHaveBeenCalledOnce();
     expect(mocks.mcpStart).toHaveBeenCalledOnce();
+    expect(mocks.pricingStart).toHaveBeenCalledOnce();
     expect(mocks.createDefaultBackendDrivers).toHaveBeenCalledWith(expect.objectContaining({
       appMcpServerUrl: 'http://127.0.0.1:4242/mcp',
       generalSettings: mocks.snapshot.general,
@@ -721,6 +733,7 @@ describe('daemon runtime', () => {
     expect(mocks.warnMain).toHaveBeenCalledWith('runtime-scheduler', 'task failed', { taskId: 'pull-request-monitor', message: 'github string failure' });
 
     await runtime.stop();
+    expect(mocks.pricingStop).toHaveBeenCalledOnce();
     expect(mocks.schedulerStop).toHaveBeenCalledOnce();
     expect(mocks.serverClose).toHaveBeenCalledOnce();
     expect(mocks.mcpStop).toHaveBeenCalledOnce();

@@ -27,16 +27,18 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm install --global npm@10.9.4
+      - run: npm install --global npm@11.20.0
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Validate pricing collector
-        run: node --test scripts/update-pricing.test.mjs
+        run: node --test scripts/update-pricing.test.mjs scripts/pricing-release.test.mjs
       - run: npm run pricing:update
+      - name: Prepare versioned pricing assets
+        run: node scripts/pricing-release.mjs
       - name: Verify offline pricing bundles
         run: node --test scripts/pricing-build.test.mjs
       - name: Commit changed pricing
         run: |
-          git add -- backend/src/pricing/history.json
+          git add -- backend/src/pricing/history.json backend/src/pricing/manifest.json
           if git diff --cached --quiet; then
             echo 'Pricing is unchanged.'
             exit 0
@@ -46,3 +48,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'chore: update model pricing'
           git push origin HEAD:main
+      - name: Publish independent pricing feed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/pricing-release.mjs --publish

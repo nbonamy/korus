@@ -6,8 +6,10 @@ import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pricingHistorySchema } from '../backend/src/pricing/schema.ts';
+import { createPricingManifest } from '../backend/src/pricing/release-format.ts';
 
-test('standalone and desktop resource bundles load the checked-in pricing catalog offline', async () => {
+test('standalone and desktop resource bundles price saved usage from bundled and cached catalogs offline', async () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
   const temp = await mkdtemp(path.join(os.tmpdir(), 'pricing-build-'));
   try {
@@ -64,7 +66,7 @@ console.log(JSON.stringify(history));
         db.prepare('INSERT INTO executions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run('codex', 's', 't', 'a', 'gpt-6-sol', null, null, null, null, 'completed', at, at, null, null, null, 'complete');
         db.prepare('INSERT INTO requests VALUES(?,?,?,?,?,?,?,?)').run('codex', 's', 't', 'r', at, 0, 'final', JSON.stringify(observation));
       } finally { db.close(); }
-      const response = await new Promise((resolve, reject) => {
+      const query = () => new Promise((resolve, reject) => {
         const child = spawn(process.execPath, ['--import', path.join(temp, 'offline.mjs'), '--input-type=module', '-e', `const { main } = await import(${JSON.stringify(url)}); await main(['--stdio']);`], {
           cwd: temp, env: { ...process.env, APP_HOME: home, CODEX_APP_SDK_SOURCE: '0' }, stdio: ['pipe', 'pipe', 'pipe'],
         });
@@ -87,7 +89,19 @@ console.log(JSON.stringify(history));
         });
         child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'usage/get', params: {} }) + '\n');
       });
+      const response = await query();
       assert.deepEqual(response.result.cost, { usd: .003, coverage: 'complete', requests: 1, pricedRequests: 1, unpricedRequests: 0, unknownRequestExecutions: 0, reasons: [] });
+      const cachedHistory = pricingHistorySchema.parse(structuredClone(expected));
+      const rates = cachedHistory.openai['gpt-6-sol'].cost.at(-1).rates.text;
+      rates.input.price *= 2; rates.output.price *= 2;
+      const cachedManifest = createPricingManifest(cachedHistory, new Date().toISOString());
+      await mkdir(path.join(home, 'pricing'), { recursive: true });
+      await writeFile(path.join(home, 'pricing/catalog.json'), JSON.stringify({ schemaVersion: 1, checkedAt: Date.now(), catalog: { manifest: cachedManifest, history: cachedHistory } }));
+      const refreshed = await query();
+      assert.deepEqual(refreshed.result.cost, { ...response.result.cost, usd: .006 });
+      // The independent released usage/get request still works after a damaged cache.
+      await writeFile(path.join(home, 'pricing/catalog.json'), '{');
+      assert.deepEqual((await query()).result.cost, response.result.cost);
 
     }
     assert.deepEqual(results[0], results[1]);
