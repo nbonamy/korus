@@ -6,6 +6,7 @@ import { createServer, request as httpRequest } from "node:http";
 import { afterEach, expect, it } from "vitest";
 import { createConsoleAuthServer } from "../console-auth";
 import { runCollector } from "../cli";
+import { createDiagnostics } from "../diagnostics";
 
 // HTTP owner boundary: credential/CSRF bypass, fixation/tampering, expiry/logout,
 // unbounded sessions/hash work/bodies, unsafe HTTP and secrets in responses.
@@ -232,4 +233,45 @@ it("starts the standalone auth role from external files without database credent
   expect((await fetch(`http://127.0.0.1:${port}/auth/session`)).status).toBe(
     401,
   );
+});
+
+it("diagnoses internal auth failures without credentials and survives a failed log sink", async () => {
+  const lines: string[] = [];
+  let fail = false,
+    outputUnavailable = false;
+  const f = await fixture({
+    now: () => {
+      if (fail) throw new Error("private-error-canary");
+      return 0;
+    },
+    diagnostics: createDiagnostics("auth", (line) => {
+      if (outputUnavailable) throw new Error("private-output-canary");
+      lines.push(line);
+    }),
+  });
+  fail = true;
+  const response = await f.call("POST", "", { username: "admin", password });
+  expect(response.status).toBe(503);
+  expect(await response.json()).toStrictEqual({ error: "unavailable" });
+  expect(lines.map((line) => JSON.parse(line))).toStrictEqual([
+    {
+      timestamp: expect.any(String),
+      service: "auth",
+      level: "error",
+      event: "operation_failed",
+      operation: "auth_session",
+      reason: "unexpected_error",
+      message: expect.any(String),
+      locations: expect.arrayContaining([
+        expect.stringMatching(/^console-auth\.ts:\d+:\d+$/),
+      ]),
+    },
+  ]);
+  expect(lines.join("")).not.toMatch(/canary|password|admin|console\.invalid/);
+  outputUnavailable = true;
+  expect(
+    (await f.call("POST", "", { username: "admin", password })).status,
+  ).toBe(503);
+  fail = false;
+  expect((await f.login()).cookie).toBeTruthy();
 });

@@ -7,6 +7,7 @@ import type { Server } from "node:http";
 import { createTelemetryPool, TelemetryStore } from "../store";
 import { createMetricsServer } from "../metrics-server";
 import { metricsSql } from "../metrics";
+import { createDiagnostics } from "../diagnostics";
 import { disposablePostgres } from "./postgres";
 
 // Owner HTTP + real Postgres: access/origin bypass, usage filters changing DAU,
@@ -17,6 +18,7 @@ let pool: ReturnType<typeof createTelemetryPool>;
 let server: Server;
 let base: string;
 let seed: string;
+const diagnostics: string[] = [];
 const token = "synthetic-private-access-token-32-bytes";
 const origin = "https://console.invalid";
 const range = "from=2026-10-18&to=2026-10-24";
@@ -40,6 +42,9 @@ beforeAll(async () => {
   );
   server = createMetricsServer({
     pool,
+    diagnostics: createDiagnostics("metrics", (line) => {
+      diagnostics.push(line);
+    }),
     accessToken: token,
     consoleOrigin: origin,
     now: () => Date.parse("2026-10-25T12:00Z"),
@@ -48,6 +53,7 @@ beforeAll(async () => {
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 }, 120000);
 beforeEach(async () => {
+  diagnostics.length = 0;
   await pool.query("TRUNCATE usage_daily,install_days,installs");
   await pool.query(seed);
 });
@@ -292,6 +298,18 @@ it("bounds concurrent reads and database waits with generic recoverable failures
     expect(timed.status).toBe(503);
     expect(await timed.json()).toStrictEqual({ error: "unavailable" });
     expect(Date.now() - start).toBeLessThan(5000);
+    expect(diagnostics.map((line) => JSON.parse(line))).toStrictEqual([
+      {
+        timestamp: expect.any(String),
+        level: "error",
+        service: "metrics",
+        event: "operation_failed",
+        operation: "metrics_read",
+        reason: "database_lock_timeout",
+        code: "55P03",
+        message: expect.any(String),
+      },
+    ]);
   } finally {
     await lock.query("ROLLBACK");
     lock.release();
@@ -324,6 +342,21 @@ it("uses a read-only database role and bounds failures without exposing SQL or c
     const r = await get();
     expect(r.status).toBe(503);
     expect(await r.json()).toStrictEqual({ error: "unavailable" });
+    expect(diagnostics.map((line) => JSON.parse(line))).toStrictEqual([
+      {
+        timestamp: expect.any(String),
+        level: "error",
+        service: "metrics",
+        event: "operation_failed",
+        operation: "metrics_read",
+        reason: "database_schema_missing",
+        code: "42P01",
+        message: expect.any(String),
+      },
+    ]);
+    expect(diagnostics.join("")).not.toMatch(
+      /temporarily_unavailable|synthetic-private|console\.invalid|SELECT/,
+    );
   } finally {
     await pool.query(
       "ALTER TABLE temporarily_unavailable RENAME TO usage_daily",

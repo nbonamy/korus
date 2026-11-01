@@ -6,6 +6,7 @@ import type {
   TelemetryModel,
 } from "@workspace/core/telemetry";
 import { telemetryMigrations } from "./migrations";
+import type { Diagnostics } from "./diagnostics";
 
 // PostgreSQL returns bigint/numeric as strings. Keep them exact at the SQL seam;
 // aggregate API owners must explicitly convert only bounded results.
@@ -29,7 +30,10 @@ export type UsageDailyRow = {
   estimated_cost_usd: string | null;
 };
 
-export function createTelemetryPool(connectionString: string) {
+export function createTelemetryPool(
+  connectionString: string,
+  diagnostics?: Diagnostics,
+) {
   const pool = new pg.Pool({
     connectionString,
     max: 20,
@@ -48,9 +52,9 @@ export function createTelemetryPool(connectionString: string) {
           : pg.types.getTypeParser(oid, format),
     },
   });
-  // Idle disconnects are recoverable. Never log PostgreSQL errors: they may carry
-  // SQL parameters, identifiers, addresses or operator configuration.
-  pool.on("error", () => {});
+  // Idle disconnects are recoverable. Emit only classified causes; raw PostgreSQL
+  // errors may carry SQL parameters, addresses or operator configuration.
+  pool.on("error", (error) => diagnostics?.failure("database_pool", error));
   // Checked-out clients can emit a second connection error after the active
   // query rejects. Handle it too, without replacing that query's rejection.
   pool.on("connect", (client) => {

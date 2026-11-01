@@ -21,6 +21,10 @@ afterAll(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 it("runs explicit migrations and serves independently with supplied runtime configuration", async () => {
+  const lines: string[] = [];
+  const log = (line: string) => {
+    lines.push(line);
+  };
   const config = path.join(directory, "operator.json");
   // Reserve then release a disposable listener; no repository-local host config.
   const probe = createServer();
@@ -36,12 +40,12 @@ it("runs explicit migrations and serves independently with supplied runtime conf
     }),
   );
   const env = { TELEMETRY_DATABASE_URL: database.url };
-  await expect(runCollector(["serve", config], env)).rejects.toThrow(
+  await expect(runCollector(["serve", config], env, log)).rejects.toThrow(
     "Collector startup failed.",
   );
-  expect(await runCollector(["migrate"], env)).toBeUndefined();
-  expect(await runCollector(["migrate"], env)).toBeUndefined();
-  const collector = await runCollector(["serve", config], env);
+  expect(await runCollector(["migrate"], env, log)).toBeUndefined();
+  expect(await runCollector(["migrate"], env, log)).toBeUndefined();
+  const collector = await runCollector(["serve", config], env, log);
   try {
     const now = Date.now();
     const response = await fetch(
@@ -79,7 +83,7 @@ it("runs explicit migrations and serves independently with supplied runtime conf
         accessTokenFile: accessFile,
       }),
     );
-    const reader = await runCollector(["read", readConfig], env);
+    const reader = await runCollector(["read", readConfig], env, log);
     const day = new Date(now - 86_400_000).toISOString().slice(0, 10);
     const readUrl = `http://127.0.0.1:${readPort}/v1/telemetry/metrics?from=${day}&to=${day}`;
     try {
@@ -97,13 +101,46 @@ it("runs explicit migrations and serves independently with supplied runtime conf
     } finally {
       await reader?.close();
     }
-    await expect(runCollector(["serve", config], env)).rejects.toThrow(
+    await expect(runCollector(["serve", config], env, log)).rejects.toThrow(
       "Collector startup failed.",
     );
   } finally {
     await collector?.close();
     await collector?.close();
   }
+  const events = lines.map((line) => JSON.parse(line));
+  expect(
+    events.filter((entry) => entry.event === "startup_failed"),
+  ).toStrictEqual([
+    {
+      timestamp: expect.any(String),
+      level: "error",
+      service: "collector",
+      event: "startup_failed",
+      operation: "database_readiness",
+      reason: "database_schema_missing",
+      code: "42P01",
+      message: expect.any(String),
+    },
+    {
+      timestamp: expect.any(String),
+      level: "error",
+      service: "collector",
+      event: "startup_failed",
+      operation: "listen",
+      reason: "address_in_use",
+      code: "EADDRINUSE",
+      message: expect.any(String),
+    },
+  ]);
+  expect(
+    events
+      .filter((entry) => entry.event === "stopped")
+      .map((entry) => entry.service),
+  ).toStrictEqual(["metrics", "collector"]);
+  expect(lines.join("")).not.toMatch(
+    /d8b65ff5|synthetic-service-token|console\.invalid|postgresql|SELECT/,
+  );
 });
 it("rejects malformed/missing operator settings and keeps errors generic", async () => {
   const config = path.join(directory, "bad.json");

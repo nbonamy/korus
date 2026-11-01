@@ -23,6 +23,7 @@ import type { DailyTelemetryPayload } from "@workspace/core/telemetry";
 import { metricsSql } from "../metrics";
 import { telemetryModels } from "@workspace/core/telemetry-models";
 import { createCollectorServer } from "../server";
+import { createDiagnostics } from "../diagnostics";
 import { createTelemetryPool, TelemetryStore } from "../store";
 import { disposablePostgres } from "./postgres";
 
@@ -60,6 +61,7 @@ let server: Server;
 let admin: pg.Client;
 let clock: number;
 let source = 0;
+const diagnostics: string[] = [];
 const consoles = [
   vi.spyOn(console, "error"),
   vi.spyOn(console, "warn"),
@@ -69,6 +71,9 @@ const consoles = [
 async function listen(trustedProxies: string[] = ["127.0.0.1"]) {
   server = createCollectorServer({
     store: new TelemetryStore(pool),
+    diagnostics: createDiagnostics("collector", (line) => {
+      diagnostics.push(line);
+    }),
     now: () => clock,
     trustedProxies,
   });
@@ -157,6 +162,7 @@ beforeAll(async () => {
   database = await disposablePostgres();
 }, 120_000);
 beforeEach(async () => {
+  diagnostics.length = 0;
   clock = epoch;
   source = 0;
   pool = createTelemetryPool(database.url);
@@ -385,6 +391,31 @@ describe("daily ingestion into disposable Postgres", () => {
     }
     expect(await snapshot()).toStrictEqual(prior);
     expect((await send()).status).toBe(204);
+    expect(diagnostics.map((line) => JSON.parse(line))).toStrictEqual([
+      {
+        timestamp: expect.any(String),
+        level: "error",
+        service: "collector",
+        event: "operation_failed",
+        operation: "telemetry_write",
+        reason: "database_exception",
+        code: "P0001",
+        message: expect.any(String),
+      },
+      {
+        timestamp: expect.any(String),
+        level: "error",
+        service: "collector",
+        event: "operation_failed",
+        operation: "telemetry_write",
+        reason: "database_lock_timeout",
+        code: "55P03",
+        message: expect.any(String),
+      },
+    ]);
+    expect(diagnostics.join("")).not.toMatch(
+      /private-canary|d8b65ff5|192\.0|INSERT|usage_daily/,
+    );
   }, 10_000);
 
   it("does not create a second logical day when a client loses its acknowledgement", async () => {

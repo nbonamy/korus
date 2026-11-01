@@ -9,6 +9,7 @@ import {
 } from "@workspace/core/telemetry";
 import { CollectorAdmission, normalizedAddress } from "./admission";
 import type { TelemetryStore } from "./store";
+import type { Diagnostics } from "./diagnostics";
 
 const DAY = 86_400_000;
 const MAX_BODY = 65536;
@@ -16,6 +17,7 @@ type Options = {
   store: TelemetryStore;
   trustedProxies?: readonly string[];
   now?: () => number;
+  diagnostics?: Diagnostics;
 };
 class Rejection extends Error {
   constructor(
@@ -46,9 +48,10 @@ export function createCollectorServer(options: Options) {
       keepAliveTimeout: 1000,
     },
     (request, response) => {
-      void handle(request, response).catch(() =>
-        reply(response, 503, "unavailable", 1),
-      );
+      void handle(request, response).catch((error) => {
+        options.diagnostics?.failure("request", error);
+        reply(response, 503, "unavailable", 1);
+      });
     },
   );
   server.maxHeadersCount = 32;
@@ -62,6 +65,7 @@ export function createCollectorServer(options: Options) {
 
   async function handle(request: IncomingMessage, response: ServerResponse) {
     let entered = false;
+    let operation: "request" | "telemetry_write" = "request";
     try {
       if (request.method !== "POST" || request.url !== "/v1/telemetry/daily")
         throw new Rejection(404, "not_found");
@@ -109,12 +113,16 @@ export function createCollectorServer(options: Options) {
         throw new Rejection(400, "invalid");
       const installRetry = admission.install(payload.installId, now());
       if (installRetry) throw new Rejection(429, "limited", installRetry);
+      operation = "telemetry_write";
       await options.store.replace(payload);
       reply(response, 204);
     } catch (error) {
       if (error instanceof Rejection)
         reply(response, error.status, error.code, error.retry);
-      else reply(response, 503, "unavailable", 1);
+      else {
+        options.diagnostics?.failure(operation, error);
+        reply(response, 503, "unavailable", 1);
+      }
     } finally {
       if (entered) admission.leave();
       request.resume();

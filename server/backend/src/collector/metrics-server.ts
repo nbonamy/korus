@@ -3,6 +3,7 @@ import { timingSafeEqual, createHash } from "node:crypto";
 import type pg from "pg";
 import type { TelemetryMetrics } from "@workspace/core/telemetry-metrics";
 import { metricsFilter, metricsSql } from "./metrics";
+import type { Diagnostics } from "./diagnostics";
 
 /** Separate read-only process, pool and operator gate. No ingestion or arbitrary
  * SQL route. The console proxy authenticates viewers and injects this private
@@ -13,6 +14,7 @@ export function createMetricsServer(options: {
   accessToken: string;
   consoleOrigin: string;
   now?: () => number;
+  diagnostics?: Diagnostics;
 }) {
   const origin = new URL(options.consoleOrigin);
   if (
@@ -35,6 +37,7 @@ export function createMetricsServer(options: {
       connectionsCheckingInterval: 1000,
     },
     (req, res) => {
+      let operation: "request" | "metrics_read" = "request";
       const reply = (status: number, body: unknown) => {
         if (res.destroyed || res.writableEnded) return;
         res.writeHead(status, {
@@ -81,6 +84,7 @@ export function createMetricsServer(options: {
           return;
         }
         active++;
+        operation = "metrics_read";
         try {
           // Read-only even when an operator accidentally supplies a privileged role.
           // A single statement provides snapshot consistency during replacements.
@@ -99,7 +103,10 @@ export function createMetricsServer(options: {
           active--;
         }
       })()
-        .catch(() => reply(503, { error: "unavailable" }))
+        .catch((error) => {
+          options.diagnostics?.failure(operation, error);
+          reply(503, { error: "unavailable" });
+        })
         .finally(() => req.resume());
     },
   );

@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { isIP, createConnection } from "node:net";
 
+process.stdout.on("error", () => {});
 try {
   const action = process.argv[2];
   if (action === "check") {
@@ -82,7 +83,35 @@ try {
       await import(bundle.href);
     }
   }
-} catch {
-  process.stderr.write("Collector configuration failed.\n");
+} catch (error) {
+  const code = error && typeof error === "object" ? error.code : undefined;
+  const cause =
+    code === "ENOENT"
+      ? {
+          reason: "file_missing",
+          code,
+          message: "Required operator file does not exist.",
+        }
+      : code === "EACCES"
+        ? {
+            reason: "permission_denied",
+            code,
+            message: "Permission denied reading an operator file.",
+          }
+        : {
+            reason: "invalid_configuration",
+            message:
+              "Container bootstrap configuration or secret file is invalid or unavailable.",
+          };
+  process.stdout.write(
+    JSON.stringify({
+      timestamp: new Date().toISOString(),
+      level: "error",
+      service: "server",
+      event: "startup_failed",
+      operation: "configuration",
+      ...cause,
+    }) + "\n",
+  );
   process.exitCode = 1;
 }

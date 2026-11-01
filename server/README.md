@@ -60,11 +60,18 @@ transactions discard their connection after bounded rollback. Limit responses ha
 a bounded `Retry-After`. Random UUIDs and anonymous rate limits do not authenticate
 installations or establish trustworthy downloads.
 
-The collector has no request/access logger. Parser, PostgreSQL and startup errors
-are discarded in favor of fixed responses/messages; their causes, SQL parameters,
-request headers and bodies are never printed. Connection failure remains a
-retryable generic response and does not terminate the process. Database logging,
-reverse-proxy logs and upstream infrastructure are separate operator boundaries:
+The collector has no request/access logger. Application failures emit JSON lines
+with a timestamp, service, operation, recognized error code and an authored cause
+and description. Database lock deadlines, missing migrations, permission failures,
+connection failures and listener conflicts remain distinguishable without printing
+raw error messages, stacks, SQL, parameters, addresses, installation identifiers,
+request headers or bodies. Unknown errors identify the failed operation with an
+`unexpected_error` cause and bounded application filename/line positions when
+available; full stack traces and host paths remain excluded. Expected
+invalid/unauthorized requests are not logged.
+HTTP failures retain generic responses; recoverable database errors do not terminate
+the process. Database logging, reverse-proxy logs and upstream infrastructure are
+separate operator boundaries:
 they must also suppress addresses, identifiers, query parameters and bodies before
 the production no-IP-retention promise is verified. A local test cannot establish
 that deployment guarantee.
@@ -85,7 +92,7 @@ using `telemetry_read`, never the ingestion pool or desktop runtime. Its runtime
 JSON supplies `listenHost`, `listenPort`, `consoleOrigin` and `accessTokenFile`;
 `TELEMETRY_DATABASE_URL` supplies the read-only database connection outside Git.
 Startup checks schema readiness without DDL. Both executable modes share bounded
-PostgreSQL timeouts and generic failures, with no access/error logger.
+PostgreSQL timeouts, generic HTTP failures and the same privacy-safe diagnostics.
 
 The private console uses a single `admin` operator account. Its password comes
 from `BACKEND_ADMIN_PASSWORD` in an operator-managed, owner-only `.env` file
@@ -240,14 +247,22 @@ frontend networks under a separate SELECT-only role; its console route keeps
 server-side viewer authentication. The ingestion proxy rejects every other API
 route.
 
-There are no access logs, persisted container stdout/stderr logs, request caches
-or disk-buffered ingestion bodies. PostgreSQL statement/parameter/connection logs
-and extensions are disabled; nginx access/error logging is disabled globally.
-Health checks use configuration/readiness only and produce no request records.
-The database and backups intentionally contain installation UUIDs and numeric
-rollups, never source addresses or conversation content. Container log suppression
-trades diagnostic detail for privacy: monitor health/exit state, backup freshness,
-disk capacity and bounded aggregate counters without exporting request details.
+The collector, metrics, auth and migration containers retain application diagnostics
+through Docker's local logging driver, rotating three files of up to 5 MB per
+service. Nonblocking delivery uses a bounded buffer; records may be dropped under
+output pressure. Inspect them with `docker compose` using the same private operator
+inputs and project name, followed by `logs --tail 100 collector metrics auth migrate`.
+These records cover individual application failures and lifecycle events, without
+periodic request summaries. PostgreSQL, nginx and backup/grant infrastructure logs
+remain disabled. There are no access logs, request caches or disk-buffered ingestion
+bodies. PostgreSQL statement/parameter/connection logs and extensions are disabled;
+nginx access/error logging is disabled globally. Health checks use
+configuration/readiness only and produce no request records. The database and
+backups intentionally contain installation UUIDs and numeric rollups, never source
+addresses or conversation content. Monitor health/exit state, backup freshness and
+disk capacity alongside application diagnostics. Set `TELEMETRY_LOGGING_EVIDENCE`
+to an external JSON file when running `node --test server/scripts/stack.test.mjs`
+to retain the sanitized records from its real database-failure probe.
 Do not enable packet capture, debug logs, SQL audit extensions or request tracing
 on this route in production.
 

@@ -14,7 +14,7 @@ import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-test("standalone collector bundles without operator secrets and emits only a generic startup failure", async () => {
+test("standalone collector bundles without operator secrets and emits a structured safe startup failure", async () => {
   const root = fileURLToPath(new URL("../../", import.meta.url));
   const temp = await mkdtemp(path.join(os.tmpdir(), "collector-build-"));
   try {
@@ -55,8 +55,48 @@ test("standalone collector bundles without operator secrets and emits only a gen
       env: { ...process.env, TELEMETRY_DATABASE_URL: canary },
     });
     assert.equal(run.status, 1, run.stderr);
-    assert.equal(run.stdout, "");
-    assert.equal(run.stderr, "Collector startup failed.\n");
+    assert.equal(run.stderr, "");
+    assert.deepEqual(JSON.parse(run.stdout), {
+      timestamp: JSON.parse(run.stdout).timestamp,
+      level: "error",
+      service: "collector",
+      event: "startup_failed",
+      operation: "configuration",
+      reason: "file_missing",
+      code: "ENOENT",
+      message: "Required operator file does not exist.",
+    });
+    assert.equal(
+      Number.isNaN(Date.parse(JSON.parse(run.stdout).timestamp)),
+      false,
+    );
+    // The executable must suppress Node's raw dump on an unexpected fatal error.
+    const fault = path.join(temp, "fatal.mjs");
+    await writeFile(
+      fault,
+      `process.on('beforeExit', () => { throw new Error(${JSON.stringify(canary)}); });`,
+    );
+    const fatal = spawnSync(
+      process.execPath,
+      ["--import", fault, bundle, "serve", canary],
+      {
+        cwd: os.tmpdir(),
+        encoding: "utf8",
+        timeout: 10_000,
+        env: { ...process.env, TELEMETRY_DATABASE_URL: canary },
+      },
+    );
+    assert.equal(fatal.status, 1);
+    assert.equal(fatal.stderr, "");
+    const fatalEntry = fatal.stdout
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+      .at(-1);
+    assert.equal(fatalEntry.event, "process_failed");
+    assert.equal(fatalEntry.operation, "process");
+    assert.equal(fatalEntry.reason, "unexpected_error");
+    assert.equal(fatal.stdout.includes(canary), false);
   } finally {
     await rm(temp, { recursive: true, force: true });
   }

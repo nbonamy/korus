@@ -185,8 +185,19 @@ test(
           // it must be present only on auth, never in any other runtime inputs.
           delete rendered.services.auth.environment.BACKEND_ADMIN_PASSWORD;
           assert.equal(JSON.stringify(rendered).includes(canary), false);
-          for (const service of Object.values(rendered.services))
-            assert.equal(service.logging.driver, "none");
+          for (const [name, service] of Object.entries(rendered.services)) {
+            if (["collector", "metrics", "auth", "migrate"].includes(name)) {
+              assert.deepEqual(service.logging, {
+                driver: "local",
+                options: {
+                  "max-size": "5m",
+                  "max-file": "3",
+                  mode: "non-blocking",
+                  "max-buffer-size": "1m",
+                },
+              });
+            } else assert.equal(service.logging.driver, "none");
+          }
           await run(process.execPath, [
             path.join(root, "server/scripts/package.mjs"),
             image,
@@ -741,6 +752,44 @@ test(
       await t.test(
         "persists no request canaries in container logs",
         async () => {
+          await sql(
+            "CREATE FUNCTION logging_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION '" +
+              canary +
+              "'; END $$; CREATE TRIGGER logging_failure BEFORE INSERT ON usage_daily FOR EACH ROW EXECUTE FUNCTION logging_failure()",
+          );
+          try {
+            assert.equal(
+              (
+                await http(endpoint, {
+                  method: "POST",
+                  headers: {
+                    host: "api.invalid",
+                    "content-type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    installId: id,
+                    day,
+                    appVersion: "1.2.3",
+                    os: "unknown",
+                    usage: [
+                      {
+                        provider: "codex",
+                        model: "unknown",
+                        turns: 1,
+                        inputTokens: null,
+                        cachedInputTokens: null,
+                        outputTokens: null,
+                        estimatedCostUsd: null,
+                      },
+                    ],
+                  }),
+                })
+              ).status,
+              503,
+            );
+          } finally {
+            await sql("DROP FUNCTION logging_failure() CASCADE");
+          }
           const logged = (await compose("logs", "--no-color")).stdout;
           assert.equal(
             logged.includes(canary) ||
@@ -749,7 +798,46 @@ test(
               authCanaries.some((value) => logged.includes(value)),
             false,
           );
-          assert.equal(logged.trim(), "");
+          assert.match(logged, /"event":"ready"/);
+          const records = (
+            await compose(
+              "logs",
+              "--no-color",
+              "--no-log-prefix",
+              "collector",
+              "metrics",
+              "auth",
+              "migrate",
+            )
+          ).stdout
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line));
+          assert.ok(
+            records.some((entry) => entry.event === "operation_failed"),
+          );
+          if (process.env.TELEMETRY_LOGGING_EVIDENCE)
+            await writeFile(
+              process.env.TELEMETRY_LOGGING_EVIDENCE,
+              JSON.stringify(records, null, 2) + "\n",
+            );
+          for (const record of records) {
+            assert.ok(
+              Object.keys(record).every((key) =>
+                [
+                  "timestamp",
+                  "level",
+                  "service",
+                  "event",
+                  "operation",
+                  "reason",
+                  "code",
+                  "message",
+                  "locations",
+                ].includes(key),
+              ),
+            );
+          }
         },
       );
     } finally {

@@ -7,6 +7,11 @@ import { createConsoleAuthServer } from "./console-auth";
 import { createMetricsServer } from "./metrics-server";
 import { createCollectorServer } from "./server";
 import {
+  createDiagnostics,
+  diagnosticService,
+  type DiagnosticSink,
+} from "./diagnostics";
+import {
   createTelemetryPool,
   TelemetryStore,
   type InstallRow,
@@ -48,19 +53,24 @@ const authConfigSchema = z
 export async function runCollector(
   args: string[],
   env: NodeJS.ProcessEnv = process.env,
+  sink?: DiagnosticSink,
 ): Promise<{ close(): Promise<void> } | undefined> {
   let pool: ReturnType<typeof createTelemetryPool> | undefined;
   let server: Server | undefined;
+  const diagnostics = createDiagnostics(diagnosticService(args[0]), sink);
+  let operation: Parameters<typeof diagnostics.failure>[0] = "configuration";
   try {
     if (args[0] === "auth" && args.length === 2) {
       const config = authConfigSchema.parse(
         JSON.parse(await readFile(args[1]!, "utf8")),
       );
       server = createConsoleAuthServer({
+        diagnostics,
         consoleOrigin: config.consoleOrigin,
         password: env.BACKEND_ADMIN_PASSWORD ?? "",
         allowInsecureLoopback: config.allowInsecureLoopback,
       });
+      operation = "listen";
       await new Promise<void>((resolve, reject) => {
         server!.once("error", reject);
         server!.listen(config.listenPort, config.listenHost, () => {
@@ -68,13 +78,16 @@ export async function runCollector(
           resolve();
         });
       });
-      server.on("error", () => {});
+      server.on("error", (error) => diagnostics.failure("listen", error));
+      diagnostics.info("ready");
       let closing: Promise<void> | undefined;
       return {
         close: () =>
           (closing ??= new Promise<void>((resolve) => {
             server!.close(() => resolve());
             server!.closeAllConnections();
+          }).then(() => {
+            diagnostics.info("stopped");
           })),
       };
     }
@@ -92,11 +105,14 @@ export async function runCollector(
             JSON.parse(await readFile(args[1]!, "utf8")),
           )
         : undefined;
-    pool = createTelemetryPool(env.TELEMETRY_DATABASE_URL);
+    operation = "database_readiness";
+    pool = createTelemetryPool(env.TELEMETRY_DATABASE_URL, diagnostics);
     const store = new TelemetryStore(pool);
     if (!config) {
+      operation = "migration";
       await store.migrate();
       await pool.end();
+      diagnostics.info("migration_complete");
       return;
     }
     // Fail before accepting requests when migrations/readiness are missing. This
@@ -108,9 +124,11 @@ export async function runCollector(
       pool.query<InstallDayRow>("SELECT * FROM install_days LIMIT 0"),
       pool.query<UsageDailyRow>("SELECT * FROM usage_daily LIMIT 0"),
     ]);
+    operation = "credentials";
     server =
       "accessTokenFile" in config
         ? createMetricsServer({
+            diagnostics,
             pool,
             accessToken: (
               await readFile(config.accessTokenFile, "utf8")
@@ -118,9 +136,11 @@ export async function runCollector(
             consoleOrigin: config.consoleOrigin,
           })
         : createCollectorServer({
+            diagnostics,
             store,
             trustedProxies: config.trustedProxies,
           });
+    operation = "listen";
     await new Promise<void>((resolve, reject) => {
       server!.once("error", reject);
       server!.listen(config.listenPort, config.listenHost, () => {
@@ -128,9 +148,8 @@ export async function runCollector(
         resolve();
       });
     });
-    // There is no runtime access/error logger. Listener faults must not emit
-    // addresses or unhandled error objects to a process supervisor.
-    server.on("error", () => {});
+    server.on("error", (error) => diagnostics.failure("listen", error));
+    diagnostics.info("ready");
     let closing: Promise<void> | undefined;
     return {
       close: () =>
@@ -140,13 +159,18 @@ export async function runCollector(
             server!.closeAllConnections();
           });
           await pool!.end();
-        })()),
+          diagnostics.info("stopped");
+        })().catch((error) => {
+          diagnostics.failure("shutdown", error);
+          throw new Error("Collector shutdown failed.");
+        })),
     };
-  } catch {
+  } catch (error) {
+    diagnostics.failure(operation, error, "startup_failed");
     server?.closeAllConnections();
     server?.close();
     await pool?.end().catch(() => {});
-    // Error causes can contain URL/password/SQL/input. Deliberately discard them.
+    // The caller receives no raw error, even when its logger is unavailable.
     throw new Error("Collector startup failed.");
   }
 }

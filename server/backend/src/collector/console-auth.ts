@@ -8,6 +8,7 @@ import {
 } from "node:crypto";
 import { promisify } from "node:util";
 import { z } from "zod";
+import type { Diagnostics } from "./diagnostics";
 
 const loginSchema = z
   .object({
@@ -32,6 +33,7 @@ export function createConsoleAuthServer(options: {
   allowInsecureLoopback?: boolean;
   now?: () => number;
   maxSessions?: number;
+  diagnostics?: Diagnostics;
 }) {
   let secure: boolean;
   let expectedPassword: Buffer;
@@ -202,9 +204,11 @@ export function createConsoleAuthServer(options: {
         sessions.set(digest(id).toString("hex"), now() + TTL);
         reply(204, cookie(id, false));
       })()
-        .catch((error) =>
-          reply(error instanceof Rejection ? error.status : 503),
-        )
+        .catch((error) => {
+          if (!(error instanceof Rejection))
+            options.diagnostics?.failure("auth_session", error);
+          reply(error instanceof Rejection ? error.status : 503);
+        })
         .finally(() => request.resume());
     },
   );

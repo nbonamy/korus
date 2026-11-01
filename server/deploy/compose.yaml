@@ -5,6 +5,13 @@ x-hardening: &hardening
   mem_limit: 256m
   cpus: 1
   pids_limit: 64
+x-diagnostics: &diagnostics
+  driver: local
+  options:
+    max-size: "5m"
+    max-file: "3"
+    mode: non-blocking
+    max-buffer-size: "1m"
 x-client: &client
   <<: *hardening
   init: true
@@ -82,6 +89,7 @@ services:
 
   migrate:
     <<: *hardening
+    logging: *diagnostics
     image: ${TELEMETRY_IMAGE:?provide the locally built collector image}
     read_only: true
     cap_drop: [ALL]
@@ -104,6 +112,7 @@ services:
 
   collector:
     <<: *hardening
+    logging: *diagnostics
     image: ${TELEMETRY_IMAGE:?provide the locally built collector image}
     read_only: true
     init: true
@@ -131,6 +140,7 @@ services:
 
   metrics:
     <<: *hardening
+    logging: *diagnostics
     image: ${TELEMETRY_IMAGE:?build the isolated telemetry image}
     user: "10001:10001"
     read_only: true
@@ -187,6 +197,7 @@ services:
 
   auth:
     <<: *hardening
+    logging: *diagnostics
     image: ${TELEMETRY_IMAGE:?build the isolated telemetry image}
     user: "10001:10001"
     read_only: true
