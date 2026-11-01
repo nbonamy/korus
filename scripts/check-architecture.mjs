@@ -11,7 +11,8 @@ const areas = [
   ["electron/src/preload", "preload"],
   ["mobile/src", "mobile"],
   ["vue/src", "renderer"],
-  ["web/src/console", "console"],
+  ["server/frontend/src", "console"],
+  ["server/backend/src", "server-backend"],
 ];
 
 const violations = [];
@@ -173,7 +174,7 @@ function checkTelemetryCalls(node, file) {
 
 function forbiddenImport(area, file, specifier) {
   const relative = path.relative(root, file).split(path.sep).join("/");
-  const collector = path.join(root, "backend/src/collector");
+  const hostedBackend = path.join(root, "server/backend/src");
   const target = specifier.startsWith(".")
     ? path.resolve(path.dirname(file), specifier)
     : null;
@@ -191,19 +192,19 @@ function forbiddenImport(area, file, specifier) {
         "element-plus/es/components/segmented/style/css",
         "element-plus/es/components/popover/style/css",
         "element-plus/es/components/tooltip/style/css",
-        "../../../vue/src/shared/menu/AppMenuButton.vue",
-        "../../../vue/src/shared/form/FormField.vue",
-        "../../../vue/src/shared/icons/app-icons",
-        "../../../vue/src/shared/menu/menu-chrome.css",
+        "@workspace/vue/shared/menu/AppMenuButton.vue",
+        "@workspace/vue/shared/form/FormField.vue",
+        "@workspace/vue/shared/icons/app-icons",
+        "@workspace/vue/shared/menu/menu-chrome.css",
         "../../../electron/assets/icon.svg",
         "@workspace/core/telemetry-metrics",
         "@workspace/core/telemetry-models",
       ].includes(specifier) ||
-      (target && isWithin(path.join(root, "web/src/console"), target))
+      (target && isWithin(path.join(root, "server/frontend/src"), target))
     )
   )
     return "private dashboard consumes browser-safe aggregate contracts only";
-  if (isWithin(collector, file)) {
+  if (isWithin(hostedBackend, file)) {
     if (
       !(
         specifier.startsWith("node:") ||
@@ -215,13 +216,14 @@ function forbiddenImport(area, file, specifier) {
           "@workspace/core/telemetry-models",
           "@workspace/core/usage",
         ].includes(specifier) ||
-        (target && isWithin(collector, target))
+        (target && isWithin(hostedBackend, target))
       )
     )
       return "collector must run independently from the daemon, providers and relay";
   } else if (
-    (target && isWithin(collector, target)) ||
-    specifier.includes("/collector/")
+    (target && isWithin(hostedBackend, target)) ||
+    specifier.includes("/collector/") ||
+    specifier.startsWith("@workspace/server-backend")
   ) {
     return "collector cannot be embedded in desktop, daemon or relay runtimes";
   }

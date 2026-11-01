@@ -17,9 +17,9 @@ Korus tests its adapter translations and product behavior, not either SDK. Wire
 framing, decoding and lifecycle tests for its own process/socket transports remain.
 Real provider smoke tests are opt-in and never part of the normal gate.
 
-The independently runnable telemetry collector is a separate hosted boundary.
-Its backend workflows exercise actual HTTP and disposable real PostgreSQL, never
-SQLite or a database fake. Docker must be running for backend test/coverage gates;
+The independently runnable telemetry collector in `server/backend` is a separate
+hosted boundary. Its workflows exercise actual HTTP and disposable real PostgreSQL, never
+SQLite or a database fake. Docker must be running for hosted backend test/coverage gates;
 the fixture starts and removes its own temporary container and never contacts an
 operator database. Private read workflows execute the seeded SQL through the
 HTTP gate and real Postgres, checking global activity independently of usage
@@ -40,15 +40,15 @@ package-manager access). Both Quality and desktop-release quality jobs provision
 these dependencies explicitly; a system browser or an existing browser cache is
 not a prerequisite.
 
-The same Compose workflow builds `web/src/console` with operator-secret canaries
+The same Compose workflow builds `server/frontend/src` with operator-secret canaries
 and runs a real browser through the authenticated console proxy and aggregate
 service against the executable Postgres seed. Set
 `TELEMETRY_DASHBOARD_EVIDENCE=<external-directory>` when running
-`node --test scripts/telemetry-stack.test.mjs` to retain desktop/mobile charts,
+`node --test server/scripts/stack.test.mjs` to retain desktop/mobile charts,
 loading/empty/failure/access states, geometry and exact aggregate response evidence.
 It checks global-card filter scope, old retained history, corrected groups, missing
 spend gaps, keyboard inspection and absence of external browser requests or raw
-identities. The small rendered web workflow covers request races and exact
+identities. The rendered `server/frontend` workflow covers request races and exact
 small/large measurements through the same production console component.
 
 Mission screenshot fixtures use reserved synthetic sessions. The daemon rebuilds
@@ -71,7 +71,8 @@ If a system must be tested in isolation, write down all the ways it could fail
 first. If a test cannot be run or a change is truly untestable or docs-only, say
 so explicitly and name what to run next.
 
-All six workspaces (`core`, `backend`, `vue`, `electron`, `web`, `mobile`) gate on exactly
+All eight workspaces (`core`, `backend`, `vue`, `electron`, `web`, `mobile`,
+`server/backend`, `server/frontend`) gate on exactly
 **85% statements**; lines, branches and functions are diagnostics. Never lower the
 threshold or shrink includes/exclusions to land a change. Coverage is evidence of
 exercised behavior, not a reason to invent a test. Leave no broad untested areas

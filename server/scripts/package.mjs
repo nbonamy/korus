@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 // A temporary allowlisted build context excludes the repository, .env, operator
 // files and node_modules. Docker never receives the checkout as build context.
-const root = fileURLToPath(new URL("../", import.meta.url));
+const root = fileURLToPath(new URL("../../", import.meta.url));
 const tag = process.argv[2];
 if (process.argv.length !== 3 || !tag || tag.startsWith("-"))
   throw new Error("Supply one local image tag.");
@@ -20,17 +20,17 @@ try {
       path.join(root, "node_modules/vite/bin/vite.js"),
       "build",
       "--config",
-      "backend/vite.collector.config.ts",
+      "server/backend/vite.config.ts",
     ],
     { cwd: root },
   );
   await copyFile(
-    path.join(root, "backend/collector-dist/collector.mjs"),
+    path.join(root, "server/backend/dist/collector.mjs"),
     path.join(context, "collector.mjs"),
   );
   for (const name of ["Dockerfile", "container.mjs"])
     await copyFile(
-      path.join(root, "backend/telemetry-stack", name),
+      path.join(root, "server/deploy", name),
       path.join(context, name),
     );
   await exec("docker", ["build", "--tag", tag, context], {

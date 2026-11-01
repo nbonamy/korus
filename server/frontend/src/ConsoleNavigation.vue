@@ -55,7 +55,7 @@
   </aside>
 </template>
 <script setup lang="ts">
-import { QuitIcon } from "../../../vue/src/shared/icons/app-icons";
+import { QuitIcon } from "@workspace/vue/shared/icons/app-icons";
 import productIcon from "../../../electron/assets/icon.svg";
 defineProps<{
   productName: string;

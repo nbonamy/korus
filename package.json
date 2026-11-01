@@ -30,7 +30,8 @@
     "stylelint-config-recommended-vue": "^1.6.1",
     "typescript": "^6.0.3",
     "vitepress": "1.6.4",
-    "zod": "4.4.3"
+    "zod": "4.4.3",
+    "vitest": "4.1.8"
   },
   "workspaces": [
     "core",
@@ -38,7 +39,9 @@
     "vue",
     "electron",
     "web",
-    "mobile"
+    "mobile",
+    "server/backend",
+    "server/frontend"
   ],
   "scripts": {
     "postinstall": "node scripts/patch-relay-timers.mjs && node scripts/patch-cross-zip.mjs",
@@ -90,13 +93,13 @@
     "start:electron": "npm run start -w @workspace/electron",
     "start:web": "npm run start -w @workspace/web",
     "test": "npm run test --workspaces && npm run test:scripts",
-    "test:ai": "npm run test --workspaces -- --silent --reporter=../scripts/vitest-ai-reporter.ts && npm run test:scripts",
+    "test:ai": "node scripts/test-ai.mjs",
     "test:coverage": "npm run test:coverage --workspaces",
     "test:coverage:electron": "npm run test:coverage -w @workspace/electron",
     "test:coverage:web": "npm run test:coverage -w @workspace/web",
     "test:electron": "npm run test -w @workspace/electron",
     "test:integration": "npm test -w @workspace/backend -- sdk-boundary driver-capability-boundary server-conversation-requests server-client-isolation-regressions && npm test -w @workspace/vue -- backend-boundary",
-    "test:scripts": "node --test scripts/*.test.mjs vue/scripts/*.test.mjs",
+    "test:scripts": "node --test scripts/*.test.mjs server/scripts/*.test.mjs vue/scripts/*.test.mjs",
     "test:watch:electron": "npm run test:watch -w @workspace/electron",
     "test:web": "npm run test -w @workspace/web",
     "test:website": "node --test website/site.test.mjs",
@@ -107,7 +110,8 @@
     "typecheck:web": "npm run typecheck -w @workspace/web",
     "verify:github-mcp-token": "node scripts/verify-github-mcp-token.mjs",
     "prepare:mobile-simulator": "node scripts/prepare-mobile-simulator.mjs",
-    "build:console": "npm run build:console -w @workspace/web"
+    "build:console": "npm run build -w @workspace/server-frontend",
+    "build:server": "npm run build -w @workspace/server-backend && npm run build -w @workspace/server-frontend"
   },
   "allowScripts": {
     "electron-winstaller@5.4.4": true

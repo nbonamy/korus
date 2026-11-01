@@ -12,12 +12,15 @@
         "website/script.js",
         "website/docs/.vitepress/config.mts",
         "website/docs/.vitepress/theme/index.mts",
-        "vite.sdk-aliases.ts"
+        "vite.sdk-aliases.ts",
+        "server/scripts/**/*.mjs",
+        "server/deploy/container.mjs"
       ],
       "project": [
         "scripts/**/*.mjs",
         "website/**/*.{js,mjs,mts}",
-        "*.ts"
+        "*.ts",
+        "server/scripts/**/*.mjs"
       ],
       "stylelint": {
         "config": [
@@ -45,13 +48,11 @@
     "backend": {
       "entry": [
         "src/daemon.ts",
-        "src/collector/main.ts",
         "src/companion/relay-main.ts",
         "src/sharing/guest-probe.ts",
         "src/companion/__tests__/live-harness.ts",
         "src/companion/__tests__/desktop-guest-owner.ts",
-        "src/telemetry/__tests__/desktop-stack-workflow.ts",
-        "telemetry-stack/container.mjs"
+        "src/telemetry/__tests__/desktop-stack-workflow.ts"
       ]
     },
     "mobile": {
@@ -72,6 +73,11 @@
     "vue": {
       "entry": [
         "scripts/*.browser.mjs"
+      ]
+    },
+    "server/backend": {
+      "entry": [
+        "src/collector/main.ts"
       ]
     }
   }

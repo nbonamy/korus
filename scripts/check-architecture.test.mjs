@@ -16,29 +16,32 @@ const directories = [
   "electron/src/preload",
   "mobile/src",
   "vue/src",
-  "web/src/console",
+  "server/frontend/src",
+  "server/backend/src",
 ];
 
 test("collector stays independently runnable without importing the desktop or companion relay", async () => {
   const good = await checkFixture({
-    "backend/src/collector/server.ts":
+    "server/backend/src/app.ts":
+      "import { createCollectorServer } from './collector/server';",
+    "server/backend/src/collector/server.ts":
       "import { createServer } from 'node:http'; import type { DailyTelemetryPayload } from '@workspace/core/telemetry'; import { TelemetryStore } from './store';",
-    "backend/src/collector/store.ts": "import pg from 'pg';",
-    "backend/src/collector/metrics.ts":
+    "server/backend/src/collector/store.ts": "import pg from 'pg';",
+    "server/backend/src/collector/metrics.ts":
       "import type { TelemetryMetrics } from '@workspace/core/telemetry-metrics'; import { isUtcDay } from '@workspace/core/usage'; import { telemetryModels } from '@workspace/core/telemetry-models';",
   });
   assert.equal(good.status, 0, good.stderr);
   const bad = await checkFixture({
     "backend/src/runtime.ts":
-      "import { createCollectorServer } from './collector/server';",
-    "backend/src/companion/relay-main.ts": "import '../collector/main';",
-    "backend/src/collector/server.ts":
-      "import { BackendServer } from '../server';",
-    "backend/src/collector/driver.ts":
-      "import type { AgentBackendDriver } from '../drivers/types';",
-    "backend/src/collector/private-settings.ts":
+      "import { createCollectorServer } from '../../server/backend/src/collector/server';",
+    "backend/src/companion/relay-main.ts": "import '../../../server/backend/src/collector/main';",
+    "server/backend/src/collector/server.ts":
+      "import { BackendServer } from '../../../../backend/src/server';",
+    "server/backend/src/collector/driver.ts":
+      "import type { AgentBackendDriver } from '../../../../backend/src/drivers/types';",
+    "server/backend/src/collector/private-settings.ts":
       "import type { Settings } from '@workspace/core/types';",
-    "backend/src/collector/alias.ts":
+    "server/backend/src/collector/alias.ts":
       "import { makeRuntime } from '@workspace/backend/runtime';",
   });
   assert.equal(bad.status, 1);
@@ -236,18 +239,18 @@ test("telemetry uploader ownership permits runtime composition and rejects alter
 
 test("private dashboard imports only browser-safe aggregate contracts", async () => {
   const good = await checkFixture({
-    "web/src/console/view.ts":
+    "server/frontend/src/view.ts":
       "import {computed} from 'vue'; import {ElSelect} from 'element-plus'; import 'element-plus/es/components/select/style/css'; import type {TelemetryMetrics} from '@workspace/core/telemetry-metrics'; import {telemetryModels} from '@workspace/core/telemetry-models'; import './format';",
   });
   assert.equal(good.status, 0, good.stderr);
   const bad = await checkFixture({
-    "web/src/console/database.ts":
+    "server/frontend/src/database.ts":
       "import fs from 'node:fs'; import pg from 'pg';",
-    "web/src/console/backend.ts":
-      "import {createMetricsServer} from '../../../backend/src/collector/metrics-server';",
-    "web/src/console/identity.ts":
+    "server/frontend/src/backend.ts":
+      "import {createMetricsServer} from '../../backend/src/collector/metrics-server';",
+    "server/frontend/src/identity.ts":
       "import type {Settings} from '@workspace/core/contracts';",
-    "web/src/console/desktop.ts":
+    "server/frontend/src/desktop.ts":
       "import {state} from '@workspace/vue/app-state';",
   });
   assert.equal(bad.status, 1);

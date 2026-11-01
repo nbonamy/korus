@@ -15,18 +15,18 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 test("standalone collector bundles without operator secrets and emits only a generic startup failure", async () => {
-  const root = fileURLToPath(new URL("../", import.meta.url));
+  const root = fileURLToPath(new URL("../../", import.meta.url));
   const temp = await mkdtemp(path.join(os.tmpdir(), "collector-build-"));
   try {
-    await mkdir(path.join(temp, "backend"));
+    await mkdir(path.join(temp, "server/backend"), { recursive: true });
     await copyFile(
-      path.join(root, "backend/vite.collector.config.ts"),
-      path.join(temp, "backend/vite.collector.config.ts"),
+      path.join(root, "server/backend/vite.config.ts"),
+      path.join(temp, "server/backend/vite.config.ts"),
     );
     const link = process.platform === "win32" ? "junction" : "dir";
     await symlink(
-      path.join(root, "backend/src"),
-      path.join(temp, "backend/src"),
+      path.join(root, "server/backend/src"),
+      path.join(temp, "server/backend/src"),
       link,
     );
     for (const name of ["core", "node_modules"])
@@ -38,7 +38,7 @@ test("standalone collector bundles without operator secrets and emits only a gen
     );
     await writeFile(
       path.join(temp, "build.mjs"),
-      `import { build } from 'vite'; await build({ configFile: ${JSON.stringify(path.join(temp, "backend/vite.collector.config.ts"))}, logLevel: 'silent' });`,
+      `import { build } from 'vite'; await build({ configFile: ${JSON.stringify(path.join(temp, "server/backend/vite.config.ts"))}, logLevel: 'silent' });`,
     );
     const build = spawnSync(process.execPath, [path.join(temp, "build.mjs")], {
       cwd: temp,
@@ -46,7 +46,7 @@ test("standalone collector bundles without operator secrets and emits only a gen
       timeout: 60_000,
     });
     assert.equal(build.status, 0, build.stderr);
-    const bundle = path.join(temp, "backend/collector-dist/collector.mjs");
+    const bundle = path.join(temp, "server/backend/dist/collector.mjs");
     assert.equal((await readFile(bundle, "utf8")).includes(canary), false);
     const run = spawnSync(process.execPath, [bundle, "serve", canary], {
       cwd: os.tmpdir(),

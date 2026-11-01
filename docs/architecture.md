@@ -17,6 +17,12 @@ metadata; the scheduler is provider-neutral. Manual prompts, replacement
 conversations and closed agents cancel pending continuation. Desktop clients show
 the same pending state above the composer; closing a client does not cancel it.
 
+The hosted services are separate from the app runtime: `server/backend` owns the
+collector, admin authentication and aggregate APIs; `server/frontend` owns the
+private admin console. `server/deploy` and `server/scripts` own their portable
+runtime and packaging. The local browser app remains in `web`; removing it does
+not remove hosted services. See [the hosted server](../server/README.md).
+
 ## Process Model
 
 ```mermaid

@@ -36,7 +36,7 @@ electron/.mobile-simulator-artifacts/
 
 # Standalone service bundles
 backend/relay-dist/
-backend/collector-dist/
+server/backend/dist/
 
 /certs/apns-keys.json
 

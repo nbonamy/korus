@@ -322,7 +322,7 @@ desired direction, not a requirement.
 
 ## Private Usage Console
 
-`web/src/console` is a standalone Vue entry point for aggregate telemetry. It
+`server/frontend/src` is a standalone Vue entry point for aggregate telemetry. It
 consumes browser-safe aggregate contracts and canonical UI primitives, never
 the desktop shell, provider protocols, identity state or filesystem. Dependency
 lint enforces that boundary. The console uses Element Plus controls with its own

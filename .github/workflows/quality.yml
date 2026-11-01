@@ -51,6 +51,8 @@ jobs:
             vue/coverage/
             electron/coverage/
             web/coverage/
+            server/backend/coverage/
+            server/frontend/coverage/
             mobile/coverage/
           retention-days: 14
           if-no-files-found: warn

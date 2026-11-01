@@ -4,8 +4,6 @@
     "src/client/**/*.ts",
     "src/client/**/*.vue",
     "src/protocol.ts",
-    "src/browser-client.ts",
-    "src/console/**/*.ts",
-    "src/console/**/*.vue"
+    "src/browser-client.ts"
   ]
 }

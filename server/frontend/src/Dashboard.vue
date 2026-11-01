@@ -468,11 +468,11 @@ import {
   ElSegmented,
   ElTooltip,
 } from "element-plus";
-import AppMenuButton from "../../../vue/src/shared/menu/AppMenuButton.vue";
+import AppMenuButton from "@workspace/vue/shared/menu/AppMenuButton.vue";
 import {
   BoltIcon,
   DotsVerticalIcon,
-} from "../../../vue/src/shared/icons/app-icons";
+} from "@workspace/vue/shared/icons/app-icons";
 import ModelsReport from "./ModelsReport.vue";
 import MetricChart from "./MetricChart.vue";
 import PerformanceReport from "./PerformanceReport.vue";

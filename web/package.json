@@ -4,21 +4,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build && vite build --config vite.server.config.ts && tsc --noEmit -p tsconfig.server.json && npm run build:console",
+    "build": "vite build && vite build --config vite.server.config.ts && tsc --noEmit -p tsconfig.server.json",
     "dev": "npm run dev:web --prefix ..",
     "start": "node dist/server/index.js",
     "typecheck": "vue-tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json",
-    "lint": "npm run typecheck && npm run lint:console",
+    "lint": "npm run typecheck",
     "test": "vitest run --config vitest.config.ts",
-    "test:coverage": "vitest run --coverage --config vitest.config.ts",
-    "build:console": "vite build --config vite.console.config.ts",
-    "lint:console": "stylelint 'src/console/**/*.{css,vue}'"
+    "test:coverage": "vitest run --coverage --config vitest.config.ts"
   },
   "dependencies": {
     "@codex-app-sdk/web": "0.19.5",
     "@workspace/core": "0.48.5",
     "@workspace/vue": "0.48.5",
-    "element-plus": "^2.13.6",
     "express": "^5.1.0",
     "vue": "^3.5.35",
     "ws": "^8.18.0"
@@ -32,8 +29,6 @@
     "typescript": "^6.0.3",
     "vite": "^8.0.16",
     "vitest": "^4.1.8",
-    "vue-tsc": "^3.3.3",
-    "@vue/test-utils": "2.4.6",
-    "jsdom": "29.0.1"
+    "vue-tsc": "^3.3.3"
   }
 }

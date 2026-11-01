@@ -18,7 +18,7 @@ import { test } from "node:test";
 import { request, createServer } from "node:http";
 import { build } from "esbuild";
 import { pathToFileURL } from "node:url";
-import { dashboardWorkflow } from "./telemetry-dashboard.browser.mjs";
+import { dashboardWorkflow } from "./dashboard.browser.mjs";
 const http = (url, options = {}) =>
   new Promise((resolve, reject) => {
     const req = request(url, { ...options, timeout: 15000 }, (res) => {
@@ -33,8 +33,8 @@ const http = (url, options = {}) =>
   });
 
 const exec = promisify(execFile);
-const root = fileURLToPath(new URL("../", import.meta.url));
-const stack = path.join(root, "backend/telemetry-stack");
+const root = fileURLToPath(new URL("../../", import.meta.url));
+const stack = path.join(root, "server/deploy");
 const day = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 const oldDay = "2020-01-01";
 const id = "d8b65ff5-179c-49b9-ac3a-f60a54a0f43f";
@@ -114,7 +114,7 @@ test(
           path.join(root, "node_modules/vite/bin/vite.js"),
           "build",
           "--config",
-          "web/vite.console.config.ts",
+          "server/frontend/vite.config.ts",
           "--outDir",
           path.join(dir, "console"),
         ],
@@ -188,7 +188,7 @@ test(
           for (const service of Object.values(rendered.services))
             assert.equal(service.logging.driver, "none");
           await run(process.execPath, [
-            path.join(root, "scripts/package-telemetry.mjs"),
+            path.join(root, "server/scripts/package.mjs"),
             image,
           ]);
           const inspection = (await run("docker", ["image", "inspect", image]))
@@ -685,7 +685,7 @@ test(
           const seed = await readFile(
             path.join(
               root,
-              "backend/src/collector/__tests__/fixtures/metrics-seed.sql",
+              "server/backend/src/collector/__tests__/fixtures/metrics-seed.sql",
             ),
             "utf8",
           );

@@ -3,12 +3,12 @@ import path from "node:path";
 
 export default defineConfig({
   resolve: {
-    alias: { "@workspace/core": path.resolve(__dirname, "../core/src") },
+    alias: { "@workspace/core": path.resolve(__dirname, "../../core/src") },
   },
   ssr: { noExternal: true },
   build: {
     ssr: path.resolve(__dirname, "src/collector/main.ts"),
-    outDir: path.resolve(__dirname, "collector-dist"),
+    outDir: path.resolve(__dirname, "dist"),
     emptyOutDir: true,
     sourcemap: true,
     rollupOptions: {
