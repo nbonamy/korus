@@ -547,11 +547,16 @@ test(
             "telemetry_migrate",
             "telemetry_restore",
           );
-          const bytes = await readFile(path.join(dir, "backups", archive));
-          await writeFile(
-            path.join(dir, "backups", "broken.dump"),
-            bytes.subarray(0, Math.floor(bytes.length * 0.8)),
-            { mode: 0o644 },
+          // Archives belong to the backup container's UID, not the Linux host
+          // runner. Keep them private while creating the corrupt-restore fixture.
+          await compose(
+            "run", "--rm", "--entrypoint", "sh", "backup", "-eu", "-c",
+            'umask 077; size=$(wc -c < "$1"); head -c "$((size * 4 / 5))" "$1" > /backups/broken.dump',
+            "sh", `/backups/${archive}`,
+          );
+          assert.equal(
+            (await stat(path.join(dir, "backups", "broken.dump"))).mode & 0o077,
+            0,
           );
           await assert.rejects(
             compose(
