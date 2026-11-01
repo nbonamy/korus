@@ -327,6 +327,7 @@ export const messages = {
       missionLeadWelcome: 'Welcome to your new mission',
       missionLeadWelcomeDescription: 'Your mission lead will help shape the brief and guide the work through delivery.',
       resizeChat: 'Resize mission chat',
+      expandWorkbench: 'Expand workbench', expandConversation: 'Expand conversation', restoreSplitView: 'Restore split view',
       approveAndContinue: 'Approve and continue', reviewInConversation: 'Review the artifact or ask for changes in chat.',
       approveTickets: 'Implement', startImplementation: 'Start implementation', startImplementationAction: 'Start',
       parallelImplementation: 'Allow parallel agents in the same repository',

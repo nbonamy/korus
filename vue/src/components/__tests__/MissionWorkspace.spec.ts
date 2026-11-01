@@ -39,6 +39,7 @@ function missionWithRun(status: MissionRun['status'], proposal = false): Mission
 }
 
 function mountWorkspace(mission: Mission, options: {
+  attachTo?: HTMLElement;
   models?: BackendModelOption[] | Partial<Record<Agent['backend'], BackendModelOption[]>>;
   agents?: Agent[];
   executeMission?: (input: MissionExecutionInput) => Promise<void>;
@@ -49,6 +50,7 @@ function mountWorkspace(mission: Mission, options: {
   implementationStartProgress?: MissionImplementationStartProgress;
 } = {}) {
   return mount(MissionWorkspace, {
+    attachTo: options.attachTo,
     global: options.models ? { components: { ElPopover, ElTabs, ElTabPane }, stubs: { ElDialog }, provide: {
       [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']),
       [backendModelCatalogKey as symbol]: { listModels: vi.fn(async (_agentId: string, backend: Agent['backend']) => Array.isArray(options.models) ? options.models : options.models?.[backend] ?? []) },
@@ -77,6 +79,49 @@ const ticketDialogText = () => openTicketDialog()?.textContent ?? '';
 const inTicketDialog = (selector: string) => openTicketDialog()?.querySelector<HTMLElement>(selector) ?? null;
 
 describe('MissionWorkspace', () => {
+  it('expands either pane and restores the split without remounting content or losing its width', async () => {
+    window.localStorage.setItem('app.missionChatWidth', '420');
+    const wrapper = mountWorkspace(missionWithRun('awaitingReview', true), { attachTo: document.body });
+    const workbench = wrapper.get('.mission-workspace__workbench');
+    const conversation = wrapper.get('.mission-conversation-rail');
+    const conversationContent = wrapper.get('.conversation-slot').element;
+    const divider = wrapper.get('[role="separator"]');
+
+    for (const pane of ['workbench', 'conversation']) {
+      const toggle = wrapper.get(`[aria-label="Expand ${pane}"]`);
+      await toggle.trigger('click');
+      expect(workbench.isVisible()).toBe(pane === 'workbench');
+      expect(conversation.isVisible()).toBe(pane === 'conversation');
+      expect(divider.isVisible()).toBe(false);
+      expect(wrapper.get('[aria-label="Restore split view"]').attributes('aria-pressed')).toBe('true');
+      expect(wrapper.get('.conversation-slot').element).toBe(conversationContent);
+
+      await wrapper.get('[aria-label="Restore split view"]').trigger('click');
+      expect(workbench.isVisible()).toBe(true);
+      expect(conversation.isVisible()).toBe(true);
+      expect(divider.isVisible()).toBe(true);
+      expect(wrapper.get('.mission-workspace__body').attributes('style')).toContain('--mission-chat-width: 420px');
+      expect(wrapper.get('.conversation-slot').element).toBe(conversationContent);
+      expect(wrapper.get(`[aria-label="Expand ${pane}"]`).attributes('aria-pressed')).toBe('false');
+    }
+  });
+
+  it('resets expansion when changing Missions or opening an external workspace preview', async () => {
+    const wrapper = mountWorkspace(missionWithRun('running'), { attachTo: document.body });
+    await wrapper.get('[aria-label="Expand workbench"]').trigger('click');
+    await wrapper.setProps({ conversationOnly: true });
+    expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(false);
+    expect(wrapper.get('.mission-conversation-rail').isVisible()).toBe(true);
+    expect(wrapper.find('[aria-label="Restore split view"]').exists()).toBe(false);
+    await wrapper.setProps({ conversationOnly: false });
+    expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(true);
+    expect(wrapper.get('.mission-conversation-rail').isVisible()).toBe(true);
+    await wrapper.get('[aria-label="Expand conversation"]').trigger('click');
+    await wrapper.setProps({ mission: missionWithRun('running') });
+    expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(true);
+    expect(wrapper.get('.mission-conversation-rail').isVisible()).toBe(true);
+  });
+
   it('remembers each mission conversation after reopening and falls back to the lead when its worker disappears', async () => {
     const snapshot = createInitialSnapshot();
     const leadId = snapshot.agents[0]!.id;
@@ -269,7 +314,7 @@ describe('MissionWorkspace', () => {
     expect(wrapper.get('.mission-workspace__identity').text()).toBe(mission.outcome);
     expect(getComputedStyle(wrapper.get('.mission-workspace__header').element).boxShadow).toBe('var(--shadow-content-edge)');
     expect(getComputedStyle(wrapper.get('.mission-workspace__body').element).boxShadow).toBe('var(--shadow-content-edge)');
-    expect(wrapper.get('[aria-label="Workflow progress"]').findAll('button')).toHaveLength(5);
+    expect(wrapper.get('[aria-label="Workflow progress"]').findAll('ol button')).toHaveLength(5);
     expect(wrapper.get('[aria-current="step"]').text()).toContain('Requirements');
     expect(wrapper.get('.mission-workspace__stage-loading h3').text()).toBe('Welcome to your new mission');
     expect(wrapper.get('.mission-workspace__stage-loading').attributes()).toMatchObject({
@@ -885,7 +930,7 @@ describe('MissionWorkspace', () => {
     expect(wrapper.find('[aria-label="Accepted artifact"]').exists()).toBe(false);
     expect(wrapper.get('.code-review-slot').text()).toContain('agent-dina');
     expect(wrapper.get('.code-review-slot').text()).toContain('Acceptance verified');
-    const stages = wrapper.get('[aria-label="Workflow progress"]').findAll('button');
+    const stages = wrapper.get('[aria-label="Workflow progress"]').findAll('ol button');
     expect(stages.every(stage => stage.attributes('aria-label')?.includes('Complete'))).toBe(true);
     expect(stages.every(stage => !stage.text().includes('Complete'))).toBe(true);
   });
@@ -915,7 +960,7 @@ describe('MissionWorkspace', () => {
     await flushPromises();
 
     expect(wrapper.get('[role="alert"]').text()).toBe('Worker unavailable');
-    expect(wrapper.get('[aria-label="Workflow progress"]').findAll('button')).toHaveLength(5);
+    expect(wrapper.get('[aria-label="Workflow progress"]').findAll('ol button')).toHaveLength(5);
     expect(wrapper.find('.conversation-slot').exists()).toBe(true);
   });
 });

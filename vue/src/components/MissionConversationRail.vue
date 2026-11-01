@@ -39,6 +39,7 @@
           <h2>{{ headerTitle }}</h2>
         </div>
       </header>
+      <slot name="actions" />
     </div>
     <div v-if="displayedAgentId" class="mission-conversation-rail__conversation">
       <slot name="conversation" :agent-id="displayedAgentId" />
@@ -180,8 +181,9 @@ function conversationKey(run: Conversation['run']): string {
   display: flex;
   height: var(--workbench-subheader-height);
   flex: 0 0 auto;
-  flex-direction: column;
-  background: var(--color-surface-lowest);
+  align-items: center;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-low);
 }
 
 .mission-conversation-rail__navigation > header {
@@ -191,7 +193,6 @@ function conversationKey(run: Conversation['run']): string {
   align-items: center;
   gap: var(--space-4);
   padding: 0 var(--space-8);
-  border-bottom: 1px solid var(--color-border);
 }
 
 .mission-conversation-rail__heading {
@@ -227,10 +228,20 @@ function conversationKey(run: Conversation['run']): string {
 }
 
 .mission-conversation-rail__switcher {
-  --el-tabs-header-height: var(--workbench-subheader-height);
-  flex: 0 0 auto;
+  --el-tabs-header-height: calc(var(--workbench-subheader-height) - 1px);
+  min-width: 0;
+  flex: 1;
   border: 0;
   box-shadow: none;
+}
+
+.mission-conversation-rail__switcher :deep(.el-tabs__header) {
+  border-bottom: 0;
+  background: var(--color-surface-low);
+}
+
+.mission-conversation-rail__switcher :deep(.el-tabs__nav-wrap) {
+  margin-bottom: 0;
 }
 
 .mission-conversation-rail__switcher :deep(.el-tabs__content) {
@@ -238,12 +249,13 @@ function conversationKey(run: Conversation['run']): string {
 }
 
 .mission-conversation-rail__switcher :deep(.el-tabs__header .el-tabs__item.is-top) {
+  margin-top: 0;
   padding: 0 var(--space-8);
+  border-bottom: 0;
   color: var(--color-text-muted);
 }
 
 .mission-conversation-rail__switcher :deep(.el-tabs__header .el-tabs__item.is-active) {
-  border-bottom-color: var(--color-border);
   color: var(--color-primary);
   background-color: var(--color-surface-lowest);
 }

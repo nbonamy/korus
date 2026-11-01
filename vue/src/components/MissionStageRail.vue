@@ -23,6 +23,7 @@
         </button>
       </li>
     </ol>
+    <slot name="actions" />
   </nav>
 </template>
 

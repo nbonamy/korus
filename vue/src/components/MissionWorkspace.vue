@@ -23,11 +23,25 @@
     <div
       ref="workspaceBody"
       class="mission-workspace__body workspace-body"
-      :class="{ 'mission-workspace__body--conversation-only': conversationOnly, 'mission-workspace__body--resizing': chatResize }"
+      :class="{ 'mission-workspace__body--conversation-only': conversationOnly || expandedPane === 'conversation', 'mission-workspace__body--workbench-only': !conversationOnly && expandedPane === 'workbench', 'mission-workspace__body--resizing': chatResize }"
       :style="chatWidth === null ? undefined : { '--mission-chat-width': `${chatWidth}px` }"
     >
-      <main v-show="!conversationOnly" class="mission-workspace__workbench">
-        <MissionStageRail :mission="mission" :viewed-stage="viewedStage" @view-stage="viewedStage = $event" />
+      <main v-show="!conversationOnly && expandedPane !== 'conversation'" class="mission-workspace__workbench">
+        <MissionStageRail :mission="mission" :viewed-stage="viewedStage" @view-stage="viewedStage = $event">
+          <template #actions>
+            <button
+              class="app-icon-button mission-workspace__expand"
+              type="button"
+              :aria-label="t(expandedPane === 'workbench' ? 'missions.restoreSplitView' : 'missions.expandWorkbench')"
+              :title="t(expandedPane === 'workbench' ? 'missions.restoreSplitView' : 'missions.expandWorkbench')"
+              :aria-pressed="expandedPane === 'workbench'"
+              @click="togglePane('workbench')"
+            >
+              <ArrowsDiagonalMinimize2Icon v-if="expandedPane === 'workbench'" aria-hidden="true" />
+              <ArrowsDiagonalIcon v-else aria-hidden="true" />
+            </button>
+          </template>
+        </MissionStageRail>
         <header v-if="viewedStage !== 'requirements'" class="mission-workspace__stage-header">
           <div class="mission-workspace__stage-heading">
             <h2>{{ stageHeadingTitle }}</h2>
@@ -148,6 +162,7 @@
       </main>
 
       <MissionConversationRail
+        v-show="conversationOnly || expandedPane !== 'workbench'"
         v-model:selected-agent-id="conversationAgentId"
         :mission="mission"
         :agents="agents"
@@ -155,10 +170,24 @@
         :unread-agent-ids="unreadAgentIds"
         @open-conversation="emit('open-conversation', $event)"
       >
+        <template #actions>
+          <button
+            v-if="!conversationOnly"
+            class="app-icon-button mission-workspace__expand"
+            type="button"
+            :aria-label="t(expandedPane === 'conversation' ? 'missions.restoreSplitView' : 'missions.expandConversation')"
+            :title="t(expandedPane === 'conversation' ? 'missions.restoreSplitView' : 'missions.expandConversation')"
+            :aria-pressed="expandedPane === 'conversation'"
+            @click="togglePane('conversation')"
+          >
+            <ArrowsDiagonalMinimize2Icon v-if="expandedPane === 'conversation'" aria-hidden="true" />
+            <ArrowsDiagonalIcon v-else aria-hidden="true" />
+          </button>
+        </template>
         <template #conversation="{ agentId }"><slot name="conversation" :agent-id="agentId" /></template>
       </MissionConversationRail>
       <div
-        v-show="!conversationOnly"
+        v-show="!conversationOnly && !expandedPane"
         class="mission-workspace__chat-resizer"
         role="separator"
         :aria-label="t('missions.resizeChat')"
@@ -229,7 +258,7 @@ import type { Agent, OpenInApplicationCatalog } from '@workspace/core/contracts'
 import type { Mission, MissionArtifacts, MissionReviewFinding, MissionStage } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
 import { missionImplementationBusy, pendingMissionRun, type MissionArtifactReadResult, type MissionExecutionInput, type MissionImplementationStartProgress } from '@workspace/core/mission-execution';
-import { ArrowRightIcon, CheckIcon, FileTextIcon, PlayerPlayIcon, TargetArrowIcon } from '../shared/icons/app-icons';
+import { ArrowRightIcon, ArrowsDiagonalIcon, ArrowsDiagonalMinimize2Icon, CheckIcon, FileTextIcon, PlayerPlayIcon, TargetArrowIcon } from '../shared/icons/app-icons';
 import BackendModelSelector from './BackendModelSelector.vue';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import MarkdownPanel from './MarkdownPanel.vue';
@@ -273,6 +302,11 @@ const emit = defineEmits<{
   'open-worktree': [request: MissionWorkspaceOpenRequest];
 }>();
 const { t } = useI18n();
+const expandedPane = ref<'workbench' | 'conversation' | null>(null);
+function togglePane(pane: 'workbench' | 'conversation'): void {
+  stopChatResize();
+  expandedPane.value = expandedPane.value === pane ? null : pane;
+}
 const workspaceBody = useTemplateRef<HTMLElement>('workspaceBody');
 const workspaceWidth = ref(0);
 const chatWidthStorageKey = 'app.missionChatWidth';
@@ -325,7 +359,10 @@ onMounted(() => {
     workspaceObserver.observe(workspaceBody.value);
   }
 });
-watch(() => props.conversationOnly, stopChatResize);
+watch(() => [props.mission.id, props.conversationOnly], () => {
+  stopChatResize();
+  expandedPane.value = null;
+});
 onBeforeUnmount(() => { stopChatResize(); workspaceObserver?.disconnect(); });
 const busy = ref(false);
 const error = ref('');
