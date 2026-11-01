@@ -739,7 +739,7 @@ describe('ConversationPane', () => {
     expect(wrapper.find('.conversation-pane__surface').exists()).toBe(true);
   });
 
-  it('renders persisted agent mentions with the app-owned bot treatment', () => {
+  it.each(['agents', 'mission:infinite-scrolling'])('renders persisted agent mentions with the app-owned bot treatment (%s)', (groupId) => {
     const controller = createCodexConversationPaneController({
       state: {
         identity: {
@@ -750,7 +750,7 @@ describe('ConversationPane', () => {
             status: 'complete',
             createdAt: '2026-08-18T00:00:00.000Z',
             parts: [{ type: 'text', text: 'Ask Dina to review this.' }],
-            metadata: { promptContent: [{ type: 'text', text: 'Ask ' }, { type: 'mention', kind: 'custom', groupId: 'agents', id: agent.id, value: `agent:${agent.id}`, label: 'Dina' }, { type: 'text', text: ' to review this.' }] },
+            metadata: { promptContent: [{ type: 'text', text: 'Ask ' }, { type: 'mention', kind: 'custom', groupId, id: agent.id, value: `agent:${agent.id}`, label: 'Dina' }, { type: 'text', text: ' to review this.' }] },
           }],
         },
         catalogs: { mentionGroups: [] },

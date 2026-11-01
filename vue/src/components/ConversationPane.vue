@@ -48,16 +48,16 @@
           class="conversation-pane__message-header"
         >{{ collaborationMessageLabel(message.id) }}</span>
       </template>
-      <template #suggestion-item="{ group, item }">
+      <template #suggestion-item="{ item }">
         <AgentMention
-          v-if="group.id === agentMentionGroupId"
+          v-if="item.value.startsWith('agent:')"
           :label="item.label"
           surface="menu"
         />
       </template>
-      <template #mention="{ group, item, surface: mentionSurface }">
+      <template #mention="{ item, surface: mentionSurface }">
         <AgentMention
-          v-if="group.id === agentMentionGroupId"
+          v-if="item.value.startsWith('agent:')"
           :label="item.label"
           :surface="mentionSurface"
         />
@@ -211,7 +211,6 @@ async function selectBackend(backend: Agent['backend']): Promise<void> {
 }
 
 const { t, te } = useI18n();
-const agentMentionGroupId = 'agents';
 const surface = ref<{ focusComposer(): void; $el: HTMLElement } | null>(null);
 provideCodexChatTranslate((key, params) => te(key)
   ? t(key, params ?? {})

@@ -656,7 +656,7 @@ import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { defaultTeamColor } from '@workspace/core/team-colors';
-import { projectAgentMentionLabels } from '@workspace/core/workspace-sidebar';
+import { agentMentionGroups as projectAgentMentionGroups } from './agent-mention-groups';
 import { appApi, appHostCapabilities, appClientPlatform, appPlatformActions } from '../platform-api';
 import { codeReviewSettingsKey, useCodeReviewSettings } from './code-review-settings';
 import AgentDialog from './AgentDialog.vue';
@@ -1777,20 +1777,16 @@ const activeTeamAgents = computed(() => {
 const missionOwnedAgentIds = computed(() => new Set((props.snapshot.missions ?? []).flatMap(missionAgentIds)));
 const workspaceAgents = computed(() => (cockpitScope.value ? props.snapshot.agents : activeTeamAgents.value)
   .filter(agent => !missionOwnedAgentIds.value.has(agent.id)));
-const agentMentionGroups = computed<readonly CodexComposerMentionGroup[]>(() => {
-  if (activeTeamAgents.value.length === 0) return [];
-  return [{
-    id: 'agents',
-    label: translate('surface.appShell.agents'),
-    placement: 'before',
-    items: projectAgentMentionLabels(activeTeamAgents.value, t('sidebar.quickChats')).map(({ agentId, label }) => ({
-      id: agentId,
-      value: `agent:${agentId}`,
-      label,
-      payload: { agentId },
-    })),
-  }];
-});
+const agentMentionGroups = computed<readonly CodexComposerMentionGroup[]>(() => projectAgentMentionGroups({
+  agents: activeTeamAgents.value,
+  missions: (props.snapshot.missions ?? []).filter(mission => mission.teamId === activeTeam.value?.id),
+  activeMissionId: activeSurface.value === 'mission' ? selectedMissionId.value : null,
+  agentsLabel: translate('surface.appShell.agents'),
+  missionLabel: t('chat.composerActions.mission'),
+  quickChatsLabel: t('sidebar.quickChats'),
+  leadLabel: t('missions.missionLead'),
+  builderLabel: t('missions.builder'),
+}));
 const unreadTeamIds = computed(() => {
   const unreadAgentIdSet = new Set(navigationUnreadAgentIds(props.snapshot.missions ?? [], props.unreadAgentIds ?? []));
   return props.snapshot.teams
