@@ -15,7 +15,6 @@ function createStore(api: AppApi) {
   const busy = ref(false);
   const failed = ref(false);
   let revision = 0;
-  let failedAction: TelemetryConsentAction | null = null;
   async function load() {
     if (busy.value) return;
     const expected = ++revision;
@@ -38,7 +37,6 @@ function createStore(api: AppApi) {
       const next = await api.changeTelemetryConsent(action);
       ++revision;
       state.value = next;
-      failedAction = null;
       return true;
     } catch {
       // Persistence can succeed even when the delivery owner's cancellation fails.
@@ -49,18 +47,13 @@ function createStore(api: AppApi) {
         /* retain last view */
       }
       ++revision;
-      failedAction = action;
       failed.value = true;
       return false;
     } finally {
       busy.value = false;
     }
   }
-  async function retry() {
-    if (failedAction) await change(failedAction);
-    else await load();
-  }
-  return { state, busy, failed, load, change, retry };
+  return { state, busy, failed, load, change };
 }
 export function useTelemetryConsent() {
   if (!appApi) throw new Error("Desktop settings unavailable.");

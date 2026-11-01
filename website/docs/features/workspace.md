@@ -190,7 +190,7 @@ The local ledger is retained for up to a year, subject to a record limit, and do
 
 ### Choose whether to share usage
 
-Anonymous usage sharing is **off by default** for new and existing profiles. A panel above the composer offers **Close** to enable sharing or **Opt out** to keep it off. Your choice is saved. You can change your choice in **Settings → Analytics**. With sharing off, the app makes no telemetry requests.
+Anonymous usage sharing is **off by default** for new and existing profiles. A panel above the composer offers **Close** to enable sharing or **Opt out** to keep it off. Your choice is saved. You can change it with **Share anonymous telemetry data** in **Settings → General → Advanced**. With sharing off, the app makes no telemetry requests.
 
 Sharing sends hourly summaries containing only a random installation ID, UTC reporting day and hour, numeric app version, coarse operating system, and turns, inclusive input, cache-read input, output, and nullable estimated API-equivalent USD cost by driver and allowed catalog model. When measured, groups also include output tokens and active generation time for speed measurements, summed time to first output, and the corresponding measured-turn counts. These are hourly aggregates, never per-turn timing events. No prompts, model responses, tool content, paths, project/repository/branch or agent details, account details, device identifiers, custom model aliases, or IP-address fields are included. No IP addresses are stored by the telemetry service or its delivery infrastructure; other services have separate data flows described in the [privacy policy](__PRODUCT_PRIVACY_URL__#optional-sharing).
 
@@ -198,11 +198,9 @@ The random ID links your hourly reports without being linked to your account; re
 
 Uploads run hourly and on startup. They send unsent or updated UTC-hour buckets from the local ledger for the current day and preceding seven days, including usage recorded before sharing was enabled. Foreground-active hours can report empty usage if you ran no turns. Pending reports survive restarts; retries preserve their original bytes and acknowledged updates replace the earlier bucket. Reports can arrive late or be dropped after delivery failures. Remote teams and mobile companions do not submit duplicate reports.
 
-Choose **Show what would be sent** for a date and **Copy payload** to inspect the exact JSON locally. **Hypothetical** means a local-only preview while sharing is off; it does not queue history. **Provisional** means an unfinished day whose measurements may change. Hourly retries preserve the exact queued body. Acknowledged buckets can be replaced when later measurements change their totals.
-
 Input includes cache reads and recorded cache creation. Total tokens add inclusive input and output, without adding cache reads or reasoning twice. Missing or incomplete measurements remain unknown. Costs are API-equivalent estimates from complete ledger evidence, not billed spend or subscription charges.
 
-**Stop sharing** clears pending work and prevents future delivery; an already transmitted report cannot be recalled. **Reset installation ID** also creates a new random ID and turns sharing off. Sharing again requires an explicit choice. Stopping, resetting, clearing local statistics, or uninstalling does not remotely delete reports already received or their backup copies. See [Analytics privacy](../troubleshooting/faq#does-korus-upload-my-analytics) for the distinction from provider access.
+Clearing local statistics or uninstalling does not remotely delete reports already received or their backup copies. See [Analytics privacy](../troubleshooting/faq#does-korus-upload-my-analytics) for the distinction from provider access.
 
 ## Review before delivery
 

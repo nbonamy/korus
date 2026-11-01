@@ -241,8 +241,9 @@
         Sharing is <strong>off by default</strong> for new and existing desktop
         profiles. A panel above the composer offers <strong>Close</strong> to
         enable sharing or <strong>Opt out</strong> to keep it off. Your choice
-        is saved. You can change your choice in
-        <strong>Settings → Analytics</strong>. While sharing is off, the app
+        is saved. You can change it with <strong>Share anonymous telemetry data</strong>
+        in <strong>Settings → General → Advanced</strong>. Turning sharing off cancels
+        pending uploads and prevents future delivery. While sharing is off, the app
         makes no telemetry requests, including registration or health checks.
       </p>
       <p>
@@ -332,21 +333,11 @@
         the history in the primary database or in newer backups.
       </p>
       <p>
-        <strong>Show what would be sent</strong> in Settings → Analytics
-        displays the exact local JSON body and lets you copy it. With sharing
-        off, the preview is hypothetical and does not queue or send history. An
-        unfinished day is provisional. Each queued report preserves the same bytes
-        across retries. Later local corrections can replace an acknowledged hourly
-        bucket without adding its totals twice.
-      </p>
-      <p>
-        <strong>Stop sharing</strong> cancels pending work and prevents future
-        delivery. A report already transmitted cannot be recalled.
-        <strong>Reset installation ID</strong> clears pending work, creates a
-        new random ID, and turns sharing off. Sharing again requires a new
-        explicit choice. Stopping sharing, resetting the ID, clearing local statistics, or
-        uninstalling does not remotely delete reports already received or their
-        backup copies. Contact us for privacy requests.
+        Each queued report preserves the same bytes across retries. Later local
+        corrections can replace an acknowledged hourly bucket without adding its
+        totals twice. Clearing local statistics or uninstalling does not remotely
+        delete reports already received or their backup copies. Contact us for
+        privacy requests.
       </p>
 
       <h2 id="diagnostics">Diagnostics and support</h2>

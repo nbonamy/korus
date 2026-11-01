@@ -1148,7 +1148,7 @@ makes sharing unavailable without blocking ordinary startup.
 
 Only explicit desktop operations return the credential-free sharing choice. The
 desktop bridge accepts an action or reporting day, never an identity override.
-The composer notice and Settings share the same consent authority. Reset replaces
+The composer notice uses the backend consent authority. Reset replaces
 the identity and turns sharing off. Companion clients do not expose profile actions.
 
 The consent owner delegates transitions to `TelemetryDeliveryPort`; it does not

@@ -194,6 +194,12 @@ button,
   cursor: pointer;
 }
 
+.app-button--small {
+  min-height: var(--space-12);
+  padding: 0 var(--space-6);
+  font-size: var(--font-size-12);
+}
+
 /* Icons placed in a button follow the button's text size; zero specificity so a component can still override. */
 :where(.app-button > svg) {
   flex: 0 0 auto;

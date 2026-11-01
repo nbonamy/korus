@@ -4,21 +4,11 @@ import { surfaceMessages } from './surface-messages';
 export const messages = {
   en: {
     telemetry: {
-      notice: 'Help improve {product} with anonymous usage and performance data. No conversation content is shared. Close to enable sharing.',
+      notice: 'Help improve {product} with anonymous usage and performance data. No conversation content is shared.',
       optOut: 'Opt out',
-      title: 'Anonymous usage sharing', on: 'Sharing is on', off: 'Sharing is off',
-      fields: 'Help improve {product} by sharing hourly usage: a random installation ID, UTC reporting day and hour, app version, operating system, and turns, token counts, estimated API-equivalent cost, output speed and time to first output by provider, model and service tier. Performance is shared only as hourly timing totals and measured-turn counts.',
-      exclusions: 'No prompts or model responses are included. We exclude account details, device and machine identifiers, file paths, project, repository, branch and agent details. No IP addresses are stored by the telemetry service or its delivery infrastructure.',
-      identity: 'The random ID links your usage summaries; it is not linked to your account. Sharing is off until you explicitly choose it.',
-      retention: 'Usage summaries and the minimal installation registry are kept indefinitely. Server backup copies rotate after seven days.',
-      control: 'You can stop sharing or reset the ID in Settings. These actions stop future linkage but do not delete reports already received. Reports summarize recent local usage in hourly UTC buckets.',
-      policy: 'Privacy policy',
-      share: 'Share anonymous usage', stop: 'Stop sharing', reset: 'Reset installation ID',
-      day: 'Reporting day (UTC)', preview: 'Show what would be sent', copy: 'Copy payload', copied: 'Payload copied',
-      hypothetical: 'Hypothetical · local preview only; this does not queue or send history.',
-      provisional: 'Provisional · this UTC day is unfinished; values may change before sealing.',
-      sealed: 'Sealed · these exact bytes are used for delivery and retries.',
-      failed: 'Could not load or save sharing settings or preview. Try again.',
+      share: 'Share anonymous telemetry data',
+      title: 'Anonymous usage sharing',
+      failed: 'Could not load or save sharing settings. Try again.',
     },
     design: {
       buildThis: 'Build this', sendForCoding: 'Send for coding', sentForCoding: 'Sent for coding', reviewComment: 'Comment on this proposal', buildHelp: 'Your agent will implement this direction and its linked screens using the saved design and your comments.',

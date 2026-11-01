@@ -1,6 +1,6 @@
 import { product } from '@workspace/core/product';
 import { flushPromises, mount } from '@vue/test-utils';
-import { ElMessageBox, ElSegmented } from 'element-plus';
+import { ElMessageBox, ElSegmented, ElSwitch } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DaemonStatus, SystemPermissionsStatus } from '@workspace/core/contracts';
 import { defaultGeneralSettings } from '@workspace/core/settings';
@@ -27,6 +27,41 @@ describe('SettingsGeneralPanel', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('changes anonymous telemetry sharing from Advanced and restores the saved choice', async () => {
+    let state = { enabled: false };
+    const changeTelemetryConsent = vi.fn(async (action: string) => {
+      state = { enabled: action === 'enable' };
+      return { ...state };
+    });
+    setElectronTestClient({ getTelemetryConsent: vi.fn(async () => ({ ...state })), changeTelemetryConsent });
+    const mountGeneral = () => mount(SettingsGeneralPanel, { props: { settings: defaultGeneralSettings }, global: { stubs: { ElSwitch: false }, components: { ElSwitch } } });
+    let wrapper = mountGeneral();
+    await flushPromises();
+    const control = () => wrapper.get('section[aria-labelledby="settings-general-advanced-title"] input[aria-label="Share anonymous telemetry data"]');
+    try {
+      expect((control().element as HTMLInputElement).checked).toBe(false);
+      expect(changeTelemetryConsent).not.toHaveBeenCalled();
+      await control().setValue(true);
+      await flushPromises();
+      expect(changeTelemetryConsent).toHaveBeenLastCalledWith('enable');
+      wrapper.unmount();
+      wrapper = mountGeneral();
+      await flushPromises();
+      expect((control().element as HTMLInputElement).checked).toBe(true);
+      changeTelemetryConsent.mockRejectedValueOnce(Error('Save failed'));
+      await control().setValue(false);
+      await flushPromises();
+      expect(wrapper.text()).toContain('Could not load or save sharing settings');
+      expect((control().element as HTMLInputElement).checked).toBe(true);
+      await control().setValue(false);
+      await flushPromises();
+      expect(changeTelemetryConsent).toHaveBeenLastCalledWith('disable');
+      expect((control().element as HTMLInputElement).checked).toBe(false);
+    } finally {
+      wrapper.unmount();
+    }
   });
 
   it('updates the prevent sleep setting', async () => {

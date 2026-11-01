@@ -25,17 +25,15 @@ import '/src/styles/base.css';
 import {i18n} from '/src/i18n/index.ts';
 import {configureAppClient} from '/src/platform-api.ts';
 import Conversation from '/src/components/ConversationPane.vue';
+import General from '/src/components/SettingsGeneralPanel.vue';
+import {defaultGeneralSettings} from '@workspace/core/settings';
 import {telemetryNoticeReadyKey} from '/src/components/use-telemetry-consent.ts';
-import Panel from '/src/components/TelemetryConsentPanel.vue';
 let state=JSON.parse(sessionStorage.getItem('consent') || 'null') || {};
-const body='{"installId":"d8b65ff5-179c-49b9-ac3a-f60a54a0f43f","day":"2026-10-15","appVersion":"0.44.0","os":"unknown","usage":[]}';
-window.fixture={actions:[],copies:[],body,failNext:false};
-Object.defineProperty(navigator,'clipboard',{value:{writeText:async text=>window.fixture.copies.push(text)}});
+window.fixture={actions:[],failNext:false};
 configureAppClient({platform:'desktop',api:{
   getTelemetryConsent:async()=>({...state}),
   onEvent:()=>()=>{},
   changeTelemetryConsent:async action=>{window.fixture.actions.push(action);if(window.fixture.failNext){window.fixture.failNext=false;throw Error('Save failed')}state={enabled:action==='enable'};sessionStorage.setItem('consent',JSON.stringify(state));return {...state}},
-  previewTelemetryDay:async()=>({kind:'hypothetical',body}),
 }});
 const settings=ref(false);
 const controller=createCodexConversationPaneController({state:()=>({identity:{conversationKey:'consent-fixture',messages:[]}})});
@@ -44,7 +42,7 @@ createApp({setup:()=>{
   return ()=>h('main',{style:'padding:24px;max-width:760px;margin:auto'},[
     h('div',{style:'height:540px;display:flex'},[h(Conversation,{controller,agent:null})]),
     h('button',{onClick:()=>settings.value=!settings.value},'Settings'),
-    settings.value?h(Panel):null,
+    settings.value?h(General,{settings:defaultGeneralSettings,getSystemPermissions:async()=>({platform:'linux',accessibility:{required:false,trusted:true},screenRecording:{required:false,trusted:true}})}):null,
   ]);
 }}).use(i18n).use(ElementPlus).mount('#app');
 `;
@@ -99,6 +97,22 @@ try {
   await page.goto(`http://127.0.0.1:${address.port}/consent-dom`);
   const notice = page.locator('.telemetry-notice');
   await notice.getByRole('button', {name:'Close',exact:true}).waitFor();
+  const buttonColors = await notice.evaluate(element => {
+    const buttons = element.querySelectorAll('button');
+    const probe = document.createElement('span');
+    element.append(probe);
+    const resolve = token => { probe.style.color = `var(${token})`; return getComputedStyle(probe).color; };
+    const colors = {
+      tertiary: getComputedStyle(buttons[0]).color,
+      primary: getComputedStyle(buttons[1]).backgroundColor,
+      expectedTertiary: resolve('--color-text-muted'),
+      expectedPrimary: resolve('--color-primary'),
+    };
+    probe.remove();
+    return colors;
+  });
+  assert.equal(buttonColors.tertiary, buttonColors.expectedTertiary);
+  assert.equal(buttonColors.primary, buttonColors.expectedPrimary);
   assert.deepEqual(await page.evaluate(() => window.fixture.actions), []);
   assert.equal(await page.getByRole('dialog').count(), 0);
   const policyUrl = `${product.websiteUrl}/privacy/`;
@@ -117,6 +131,10 @@ try {
     });
     assert.ok(panelStyle.bottomBorder > 0 && panelStyle.bottomRadius > 0);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    for (const button of await notice.getByRole('button').all()) {
+      const bounds = await button.boundingBox();
+      assert.ok(bounds && bounds.height <= 24, JSON.stringify(bounds));
+    }
     geometry.push({width,notice:bounds,composer});
     await page.screenshot({path:path.join(output,`notice-${width}.png`),fullPage:true,animations:'disabled'});
   }
@@ -136,56 +154,23 @@ try {
   await notice.getByRole('button', {name:'Opt out',exact:true}).click();
   await notice.waitFor({state:'hidden'});
   assert.deepEqual(await page.evaluate(() => window.fixture.actions), ['disable']);
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  const panel = page.getByRole("region", { name: "Anonymous usage sharing" });
-  assert.equal(
-    await panel
-      .getByRole("link", { name: "Privacy policy", exact: true })
-      .getAttribute("href"),
-    policyUrl,
-  );
-  await panel
-    .getByRole("button", { name: "Show what would be sent", exact: true })
-    .click();
-  await panel.locator("pre").waitFor();
-  const body = await page.evaluate(() => window.fixture.body);
-  assert.equal(await panel.locator("pre").textContent(), body);
-  await panel
-    .getByRole("button", { name: "Copy payload", exact: true })
-    .click();
-  assert.deepEqual(await page.evaluate(() => window.fixture.copies), [body]);
-  await panel
-    .getByRole("button", { name: "Share anonymous usage", exact: true })
-    .click();
-  await panel
-    .getByRole("button", { name: "Stop sharing", exact: true })
-    .waitFor();
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await panel
-    .getByRole("button", { name: "Stop sharing", exact: true })
-    .click();
-  await panel
-    .getByRole("button", { name: "Reset installation ID", exact: true })
-    .click();
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({
-    path: path.join(output, "settings-mobile.png"),
-    fullPage: true,
-    animations: "disabled",
-  });
-  assert.equal(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-    true,
-  );
-  assert.deepEqual(await page.evaluate(() => window.fixture.actions), [
-    "disable",
-    "enable",
-    "disable",
-    "reset",
-  ]);
+  await page.getByRole('button', {name:'Settings',exact:true}).click();
+  const advanced = page.locator('section[aria-labelledby="settings-general-advanced-title"]');
+  const sharing = advanced.getByRole('switch', {name:'Share anonymous telemetry data',exact:true});
+  const sharingControl = sharing.locator('..');
+  await sharingControl.waitFor();
+  assert.equal(await sharing.isChecked(), false);
+  await sharingControl.click();
+  await page.waitForFunction(() => window.fixture.actions.at(-1) === 'enable');
+  assert.equal(await sharing.isChecked(), true);
+  await page.getByRole('button', {name:'Settings',exact:true}).click();
+  await page.getByRole('button', {name:'Settings',exact:true}).click();
+  assert.equal(await sharing.isChecked(), true);
+  await page.setViewportSize({width:1000,height:1100});
+  await advanced.screenshot({path:path.join(output,'general-advanced.png')});
+  await sharingControl.click();
+  await page.waitForFunction(() => window.fixture.actions.at(-1) === 'disable');
+  assert.equal(await sharing.isChecked(), false);
   assert.ok(
     outbound.every((type) => type === "stylesheet"),
     JSON.stringify(outbound),
@@ -193,11 +178,11 @@ try {
   assert.deepEqual(errors, []);
   const evidence = {
     workflow: "real Vue and Element Plus; synthetic desktop API",
-    actions: ["disable", "enable", "disable", "reset"],
+    actions: ["enable", "enable", "disable", "enable", "disable"],
+    generalAdvancedToggle: true,
     geometry,
     closeEnablesAndPersists: true,
     failedCloseRetry: true,
-    copy: "exact canonical body preserved",
     horizontalOverflow: false,
     telemetryOutboundRequests: 0,
     blockedExternalStylesheets: outbound.length,

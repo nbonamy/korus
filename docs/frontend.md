@@ -198,7 +198,7 @@ Search by behavior first.
 | Reopen collapsed sidebar | `SidebarExpandButton` | `client/vue/src/shared/` |
 | Animate a pane collapsing or expanding | `PaneTransition` (wrap a single `v-if` or `v-show` pane) | `client/vue/src/shared/` |
 | Workspace header / body containment | `WorkspaceHeader`, `.workspace-header__title`, `.workspace-body` | `client/vue/src/shared/`, `styles/base.css` |
-| Dialog chrome and footer actions | `.app-dialog`, `.app-button` | `client/vue/src/styles/base.css` |
+| Dialog chrome and footer actions | `.app-dialog`, `.app-button` (add `.app-button--small` for compact actions) | `client/vue/src/styles/base.css` |
 | Form dialogs | `FormDialog` | `client/vue/src/shared/dialog/` |
 | Form structure: card, label-left rows, label-above fields | `FormSection`, `FormRow`, `FormField` | `client/vue/src/shared/form/` |
 | Single-line text with an inline clear action | `ClearableTextInput` | `client/vue/src/shared/form/` |
