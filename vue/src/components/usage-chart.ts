@@ -145,6 +145,19 @@ function repositoryLabels(paths: string[]): Map<string, string> {
     return [value, (names.get(name) ?? 0) > 1 && segments.length > 1 ? segments.slice(-2).join("/") : name];
   }));
 }
+export const usageRowKey = (row: { key?: string; label: string }): string => row.key ?? row.label;
+export function modelUsageLabel(row: Pick<UsageSummary["rows"][number], "label" | "modelVariant">): string {
+  if (!row.modelVariant) return row.label === "Unknown" ? translate("analytics.unknownModel") : row.label;
+  const { model, serviceTier } = row.modelVariant;
+  const name = model ?? translate("analytics.unknownModel");
+  if (serviceTier === "standard") return name;
+  const tiers: Record<string, string> = {
+    fast: translate("analytics.fastTier"),
+    ultrafast: translate("analytics.ultrafastTier"),
+    flex: translate("analytics.flexTier"),
+  };
+  return `${name} · ${serviceTier === null ? translate("analytics.unknownServiceTier") : tiers[serviceTier] ?? serviceTier}`;
+}
 export function chartSeries(
   summary: UsageSummary | undefined,
   measure: UsageMeasure | "speed",
@@ -154,9 +167,9 @@ export function chartSeries(
   return sortUsageValues((summary?.rows ?? [])
     .map((row) => {
       return {
-        key: row.label,
+        key: usageRowKey(row),
         label:
-          row.label === "Unknown"
+          group === "model" ? modelUsageLabel(row) : row.label === "Unknown"
             ? translate(group === "repository" ? "analytics.unknownRepository" : "analytics.unknownModel")
             : repositoryNames
               ? row.label === missionsRepositoryKey ? translate("analytics.missions") : repositoryNames.get(row.label)!
@@ -164,7 +177,7 @@ export function chartSeries(
                 ["claude", "codex", "antigravity"].includes(row.label)
               ? backendDisplayName(row.label as AgentBackend)
               : row.label,
-        color: seriesColor(row.label, group),
+        color: seriesColor(row.label === "Unknown" ? row.label : usageRowKey(row), group),
         value: chartValue(row, measure),
         turns: row.started,
         tokens: row.tokens?.total ?? null,

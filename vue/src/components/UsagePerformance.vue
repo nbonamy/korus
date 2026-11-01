@@ -45,7 +45,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="row in ttftRanking" :key="row.label">
+          <tr v-for="row in ttftRanking" :key="row.key">
             <td class="model-cell">
               <i class="rank-dot" :style="{ background: row.color }" />{{
                 row.label
@@ -88,7 +88,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="row in speedRanking" :key="row.label">
+          <tr v-for="row in speedRanking" :key="row.key">
             <td class="model-cell">
               <i class="rank-dot" :style="{ background: row.color }" />{{
                 row.label
@@ -128,6 +128,8 @@ import {
   sumSpeed,
   sortUsageValues,
   tokensPerSecond,
+  modelUsageLabel,
+  usageRowKey,
 } from "./usage-chart";
 
 const props = defineProps<{
@@ -140,7 +142,7 @@ const speedSeries = computed(() =>
     props.summary.daily?.some((day) =>
       day.groups?.some(
         (group) =>
-          group.label === series.key && tokensPerSecond(group.speed) !== null,
+          usageRowKey(group) === series.key && tokensPerSecond(group.speed) !== null,
       ),
     ),
   ),
@@ -160,10 +162,8 @@ const relativeWidth = (value: number | null, maximum: number): number =>
     : Number(((value / maximum) * 100).toFixed(1));
 const rows = computed(() => {
   return props.summary.rows.map((row) => ({
-    label:
-      row.label === "Unknown"
-        ? translate("analytics.unknownModel")
-        : row.label,
+    key: usageRowKey(row),
+    label: modelUsageLabel(row),
     color: providerColorForModel(row.label),
     ttft: averageTtftSeconds(row.speed),
     speed: tokensPerSecond(row.speed),

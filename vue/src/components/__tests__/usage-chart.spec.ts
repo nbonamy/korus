@@ -1,4 +1,5 @@
 import { expect, it } from "vitest";
+import type { UsageSummary } from "@workspace/core/usage";
 import {
   activityWindow,
   browserTimeZone,
@@ -54,6 +55,12 @@ it("keeps an entity's colour across filters and groups models by provider hue", 
   expect(models.find((s) => s.key === "Unknown")!.color).toContain(
     "--color-text-muted",
   );
+  const unknown: UsageSummary = summary(['Unknown']);
+  unknown.rows[0]!.key = '[null,"fast"]';
+  unknown.rows[0]!.modelVariant = { model: null, serviceTier: 'fast' };
+  expect(chartSeries(unknown, 'turns', 'model')[0]).toMatchObject({
+    key: '[null,"fast"]', label: 'Unknown model · fast', color: 'var(--color-text-muted)',
+  });
 });
 it("draws a smooth path that never overshoots its points", () => {
   const path = smoothPath([

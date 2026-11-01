@@ -67,11 +67,13 @@ const chooseProvider = async (wrapper: ReturnType<typeof mount>, value: string) 
     .getComponent({ name: "ElSelect" })
     .vm.$emit("update:modelValue", value);
 
-it("plots daily model output rates without stacking or treating missing measurements as zero", async () => {
+it("plots service-tier model rates without stacking or treating missing measurements as zero", async () => {
   const day = (offset: number) =>
     shiftDay(localDay(), -offset);
   const row = (label: string, outputTokens: number, generationMs: number) => ({
-    label,
+    label: "gpt-6.1-sol",
+    key: label,
+    modelVariant: { model: "gpt-6.1-sol", serviceTier: label === "sonnet" ? "standard" : "fast" },
     started: 2,
     completed: 2,
     failed: 0,
@@ -119,17 +121,19 @@ it("plots daily model output rates without stacking or treating missing measurem
       .findAll('[role="tab"]')
       .find((tab) => tab.text() === "Model performance")!
       .trigger("click");
+    expect(getUsage).toHaveBeenCalledWith(expect.objectContaining({ group: "model" }));
+    expect(wrapper.get('[aria-label="Output Speed"] tbody').text()).toContain("gpt-6.1-sol · fast");
     const chart = wrapper.get('svg[aria-label="Output speed over time"]');
-    expect(wrapper.findAll('.chart-legend span').map(row => row.text())).toStrictEqual(['sonnet', 'gpt-6-luna']);
-    const sonnet = chart.get(`[aria-label="${day(2)} · sonnet: 25 tokens/s"]`);
-    const gpt = chart.get(`[aria-label="${day(2)} · gpt-6-luna: 25 tokens/s"]`);
+    expect(wrapper.findAll('.chart-legend span').map(row => row.text())).toStrictEqual(['gpt-6.1-sol', 'gpt-6.1-sol · fast']);
+    const sonnet = chart.get(`[aria-label="${day(2)} · gpt-6.1-sol: 25 tokens/s"]`);
+    const gpt = chart.get(`[aria-label="${day(2)} · gpt-6.1-sol · fast: 25 tokens/s"]`);
     expect(sonnet.attributes("cy")).toBe(gpt.attributes("cy"));
     expect(chart.findAll("circle")).toHaveLength(3);
     await sonnet.trigger("focus");
     expect(wrapper.get(".chart-tooltip").text()).toContain("25 tokens/s");
     expect(wrapper.get(".chart-tooltip").text()).not.toContain("Total");
-    expect(wrapper.findAll('.chart-tooltip .tooltip-name').map(row => row.text())).toStrictEqual(['gpt-6-luna', 'sonnet']);
-    const latest = chart.get(`[aria-label="${day(0)} · sonnet: 50 tokens/s"]`);
+    expect(wrapper.findAll('.chart-tooltip .tooltip-name').map(row => row.text())).toStrictEqual(['gpt-6.1-sol', 'gpt-6.1-sol · fast']);
+    const latest = chart.get(`[aria-label="${day(0)} · gpt-6.1-sol: 50 tokens/s"]`);
     chart.element.dispatchEvent(
       new MouseEvent("pointermove", {
         clientX:
