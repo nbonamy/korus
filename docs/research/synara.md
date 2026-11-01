@@ -114,14 +114,14 @@ Defer adding a long list of runtimes, recreating an IDE, or a wholesale event-so
 [S17]: https://www.trysynara.com/docs/features/ios-simulator
 [S18]: https://www.trysynara.com/docs/workflows/headless-server
 [S19]: https://github.com/Emanuele-web04/synara/blob/cb760d5b5eace10c3e823feb8dc5a39748f0c67e/.github/workflows/ci.yml
-[C1]: ../../backend/src/driver-rpc.ts
+[C1]: ../../client/backend/src/driver-rpc.ts
 [C2]: ../codex.md#lifecycle
 [C3]: ../codex.md
 [C4]: ../../core/src/backend-capabilities.ts
 [C5]: ../architecture.md#product-model
-[C6]: ../../backend/src/persistence/store.ts
-[C7]: ../../vue/src/components/SourcePreviewPanel.vue
-[C8]: ../../backend/src/connections/remote-team-service.ts
+[C6]: ../../client/backend/src/persistence/store.ts
+[C7]: ../../client/vue/src/components/SourcePreviewPanel.vue
+[C8]: ../../client/backend/src/connections/remote-team-service.ts
 [C9]: ../../README.md
 [C10]: ../mcp.md
 
@@ -132,7 +132,7 @@ Additional implementation evidence:
 - [Synara import handlers](https://github.com/Emanuele-web04/synara/blob/cb760d5b5eace10c3e823feb8dc5a39748f0c67e/apps/server/src/orchestration/projectImportRoute.ts), [PR auto-fix server gate](https://github.com/Emanuele-web04/synara/blob/cb760d5b5eace10c3e823feb8dc5a39748f0c67e/apps/server/src/pullRequestAutoFix/Layers/PullRequestAutoFixService.ts#L86), and [Hubs server gate](https://github.com/Emanuele-web04/synara/blob/cb760d5b5eace10c3e823feb8dc5a39748f0c67e/apps/server/src/projectAgent/groupsBetaGate.ts).
 - [Synara Codex-home overlays](https://github.com/Emanuele-web04/synara/blob/cb760d5b5eace10c3e823feb8dc5a39748f0c67e/apps/server/src/codexProcessEnv.ts#L2474), [provider contract](https://github.com/Emanuele-web04/synara/blob/cb760d5b5eace10c3e823feb8dc5a39748f0c67e/apps/server/src/provider/Services/ProviderAdapter.ts#L83), and [architecture](https://github.com/Emanuele-web04/synara/blob/cb760d5b5eace10c3e823feb8dc5a39748f0c67e/.docs/architecture.md#L96).
 - [Synara headless server](https://www.trysynara.com/docs/workflows/headless-server), [iOS Simulator](https://www.trysynara.com/docs/features/ios-simulator), [Computer Use limits](https://www.trysynara.com/docs/features/computer-use), and [External MCP permissions](https://www.trysynara.com/docs/workflows/external-mcp).
-- [Korus Missions](../../core/src/missions.ts), [Visualize service](../../backend/src/visualize-service.ts), [Claude transport](../../backend/src/claude/agent-sdk-transport.ts), and [website copy](../../website/index.html).
+- [Korus Missions](../../core/src/missions.ts), [Visualize service](../../client/backend/src/visualize-service.ts), [Claude transport](../../client/backend/src/claude/agent-sdk-transport.ts), and [website copy](../../website/index.html).
 
 ## Verification
 

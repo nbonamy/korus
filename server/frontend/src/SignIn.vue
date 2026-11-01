@@ -67,7 +67,7 @@
 import { ref, onMounted, onUnmounted, nextTick } from "vue";
 import { ElInput, ElButton } from "element-plus";
 import FormField from "@workspace/vue/shared/form/FormField.vue";
-import productIcon from "../../../electron/assets/icon.svg";
+import productIcon from "../../../client/electron/assets/icon.svg";
 import { sessionRequest } from "./session";
 const props = withDefaults(defineProps<{ checkSession?: boolean }>(), {
   checkSession: true,

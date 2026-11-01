@@ -25,7 +25,7 @@ test('a native development target launches its fixed app/profile with the URL in
     const link = `${target.scheme}://share?v=1&synthetic=spaces%20and%20%26%22#credential=REDACTED`;
     execFileSync(process.execPath, [target.launcher, link], { env: { ...process.env, APP_HOME: 'WRONG', APP_BACKEND_ARGS: 'WRONG', ELECTRON_RUN_AS_NODE: '1', APP_DEV_LINK_TEST_WAIT: '1' } });
     const actual = JSON.parse(await readFile(observed, 'utf8'));
-    assert.deepEqual(actual, { argv: [`--user-data-dir=${path.join(home, 'electron')}`, link], home, scheme: target.scheme, backend: `${path.join(root, 'backend/dist/daemon.mjs')},--stdio` });
+    assert.deepEqual(actual, { argv: [`--user-data-dir=${path.join(home, 'electron')}`, link], home, scheme: target.scheme, backend: `${path.join(root, 'client/backend/dist/daemon.mjs')},--stdio` });
     await assert.rejects(() => createDevelopmentLinkTarget({ ...options, home: '' }), /profile/);
     await createDevelopmentLinkTarget({ ...options, platform: 'linux', environment: { XDG_DATA_HOME: path.join(directory, 'xdg') } });
     assert(commands.some(([exe, args]) => exe === 'xdg-mime' && args.includes(`x-scheme-handler/${target.scheme}`)));

@@ -19,7 +19,7 @@ try {
   if (!existsSync(path.join(ios, 'Web/transcript.html'))) throw new Error('Run npm run build:web -w @workspace/mobile first.');
   mkdirSync(app);
   cpSync(path.join(ios, 'Web'), path.join(app, 'Web'), { recursive: true });
-  cpSync(path.join(root, 'electron/assets/icon.png'), path.join(app, 'icon.png'));
+  cpSync(path.join(root, 'client/electron/assets/icon.png'), path.join(app, 'icon.png'));
   writeFileSync(path.join(app, 'Info.plist'), `<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict>
     <key>CFBundleIdentifier</key><string>${identifier}</string><key>CFBundleName</key><string>Transcript tests</string>
     <key>CFBundleExecutable</key><string>TranscriptTests</string><key>CFBundlePackageType</key><string>APPL</string>
@@ -73,7 +73,7 @@ try {
   const resumeApp = path.join(scratch, 'ResumeTests.app');
   const resumeId = 'dev.korus.resumetests';
   mkdirSync(resumeApp);
-  cpSync(path.join(root, 'electron/assets/icon.png'), path.join(resumeApp, 'icon.png'));
+  cpSync(path.join(root, 'client/electron/assets/icon.png'), path.join(resumeApp, 'icon.png'));
   writeFileSync(path.join(resumeApp, 'Info.plist'), readFileSync(path.join(app, 'Info.plist'), 'utf8')
     .replaceAll(identifier, resumeId).replaceAll('TranscriptTests', 'ResumeTests'));
   const resumeSources = ['Tests/AppResume/AppResumeProbe.swift', 'Sources/Conversation/StreamBackgroundExecution.swift', 'Sources/CompanionApp.swift', 'Sources/Lock/AppLockWindow.swift', 'Sources/Views/LockView.swift', 'Sources/Views/StartupView.swift'];

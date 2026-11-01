@@ -14,12 +14,12 @@ test('stages the verified distribution, runtime resources and licenses and rejec
     fs.mkdirSync(path.join(source, 'Resources/Swift'), { recursive: true });
     fs.writeFileSync(path.join(source, 'idb_companion'), 'native companion');
     fs.writeFileSync(path.join(source, 'Resources/SimulatorFrameworkBridge-iOS'), 'simulator bridge');
-    const cache = path.join(root, 'electron/.mobile-simulator-artifacts/1.2.3');
+    const cache = path.join(root, 'client/electron/.mobile-simulator-artifacts/1.2.3');
     fs.mkdirSync(cache, { recursive: true });
     const archive = path.join(cache, 'companion.tar.gz');
     execFileSync('tar', ['-czf', archive, '-C', source, '.']);
     fs.writeFileSync(path.join(root, 'mobile-simulator-release.json'), JSON.stringify({ version: '1.2.3', platform: 'darwin', arch: 'arm64', sha256: createHash('sha256').update(fs.readFileSync(archive)).digest('hex') }));
-    const resources = path.join(root, 'electron/resources/mobile-simulator');
+    const resources = path.join(root, 'client/electron/resources/mobile-simulator');
     fs.mkdirSync(resources, { recursive: true });
     for (const name of ['LICENSE', 'THIRD_PARTY_NOTICES.txt', 'idb.proto']) fs.writeFileSync(path.join(resources, name), name);
     const output = await prepareMobileSimulator({ root, platform: 'darwin', arch: 'arm64' });
@@ -42,7 +42,7 @@ test('rejects a bad download before caching or preparing it', async () => {
   try {
     fs.writeFileSync(path.join(root, 'mobile-simulator-release.json'), JSON.stringify({ version: '1.2.3', platform: 'darwin', arch: 'arm64', sha256: '0'.repeat(64), url: `http://127.0.0.1:${server.address().port}/companion.tar.gz` }));
     await assert.rejects(prepareMobileSimulator({ root, platform: 'darwin', arch: 'arm64' }), /checksum mismatch/);
-    assert.equal(fs.existsSync(path.join(root, 'electron/.mobile-simulator-artifacts/1.2.3/companion.tar.gz')), false);
-    assert.equal(fs.existsSync(path.join(root, 'electron/.mobile-simulator/mobile-simulator')), false);
+    assert.equal(fs.existsSync(path.join(root, 'client/electron/.mobile-simulator-artifacts/1.2.3/companion.tar.gz')), false);
+    assert.equal(fs.existsSync(path.join(root, 'client/electron/.mobile-simulator/mobile-simulator')), false);
   } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); fs.rmSync(root, { recursive: true, force: true }); }
 });

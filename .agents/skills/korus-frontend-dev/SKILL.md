@@ -36,14 +36,14 @@ Before creating or styling a picker, menu, dialog, list, popover, settings
 layout, button pattern, operation state, or icon control:
 
 1. Read `docs/frontend.md` through **Canonical UI primitives**.
-2. Search `vue/src/shared/` and `vue/src/components/` for the interaction and
+2. Search `client/vue/src/shared/` and `client/vue/src/components/` for the interaction and
    product concept, including existing wrappers and tests.
 3. Reuse or extend the canonical primitive. A product wrapper may configure
    copy, slots, placement, and domain events; it must delegate the shared
    interaction and visual behavior.
 4. If no primitive fits, put a genuinely reusable primitive under
-   `vue/src/shared/`, add it to the inventory, and cover its public behavior in
-   an isolated test. Keep one-off product composition in `vue/src/components/`.
+   `client/vue/src/shared/`, add it to the inventory, and cover its public behavior in
+   an isolated test. Keep one-off product composition in `client/vue/src/components/`.
 
 The audit is complete when the implementation imports the matching primitive,
 or the handoff identifies the concrete contract mismatch that required a new

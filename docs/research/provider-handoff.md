@@ -26,7 +26,7 @@ These decisions supersede the initial research suggestion of selecting transcrip
 | Delegate to another agent on the same branch | Existing `create-agent` with the current folder and no worktree creation; source remains |
 | Delegate to another agent on a worktree | Existing Delegate to worktree flag and `create-agent` with `createWorktree: true`; source remains |
 
-The current [delegation flag](../../backend/src/agents/agent-thread-flag-service.ts) already prompts the source to write a self-contained brief and call `create-agent`. The [MCP creation path](../../backend/src/mcp/service.ts) supports backend/model selection, optional worktree creation, the caller's team, and initial-send acceptance. Therefore note authorship and provider-selectable delegation are existing concepts; closing the source and preserving a durable replacement relationship are the missing product behavior.
+The current [delegation flag](../../client/backend/src/agents/agent-thread-flag-service.ts) already prompts the source to write a self-contained brief and call `create-agent`. The [MCP creation path](../../client/backend/src/mcp/service.ts) supports backend/model selection, optional worktree creation, the caller's team, and initial-send acceptance. Therefore note authorship and provider-selectable delegation are existing concepts; closing the source and preserving a durable replacement relationship are the missing product behavior.
 
 A **fork** duplicates a provider-native conversation while retaining the source. **Resume/session migration** attaches an existing provider-native session. Neither transfers Codex-native state into Claude or vice versa. Handoff passes ordinary text and keeps each provider's transcript, history implementation, and reducer intact. See [Codex ownership](../codex.md), [driver contract](../../core/src/backend-driver.ts), and [agent operations](../../core/src/agent-manager.ts).
 
@@ -60,18 +60,18 @@ The note is normal application data in the private roster and client snapshot, n
 | Owner | Contract/responsibility |
 | --- | --- |
 | [AgentHandoffInput / AgentHandoff](../../core/src/agent-handoff.ts) | App-owned request, durable metadata, input limits, product eligibility |
-| [AgentHandoffDialog](../../vue/src/components/AgentHandoffDialog.vue) | Provider/model selection, optional note-writing instructions, progress/error and saved note; no provider protocol logic |
-| [Context menu](../../vue/src/components/AgentContextMenu.vue), [Agent menu](../../electron/src/main/app-menu.ts), AppShell command routing | Open the same interaction; no header action/flag |
+| [AgentHandoffDialog](../../client/vue/src/components/AgentHandoffDialog.vue) | Provider/model selection, optional note-writing instructions, progress/error and saved note; no provider protocol logic |
+| [Context menu](../../client/vue/src/components/AgentContextMenu.vue), [Agent menu](../../client/electron/src/main/app-menu.ts), AppShell command routing | Open the same interaction; no header action/flag |
 | [Protocol](../../core/src/backend-protocol/methods.ts), preload, Electron controller, web operations | `agent/handoff/start` with `{ agentId, input }`; bounded extended request timeout; owning-host routing |
-| [AgentHandoffService](../../backend/src/agents/agent-handoff-service.ts) | Serialize one operation by source/operation ID, validate, persist, retire source, create target, transfer product relationships, start once |
-| [Handoff note capture](../../backend/src/agents/handoff-note.ts) | Observe accepted turn ID, require successful completion, read final assistant text through the provider-owned history boundary |
-| [Driver RPC](../../backend/src/driver-rpc.ts) | Optional driver `assertHandoffReady`, exposed as `driver/handoff/check`; unsupported implementations fail closed |
-| [Codex driver/adapter](../../backend/src/codex/codex-surface-adapter.ts) | SDK-owned active turn, busy, queued prompts, approvals, client requests; archive through SDK before releasing the Korus attachment |
-| [Claude host](../../backend/src/claude/claude-conversation-host.ts) | Active turn/pending permission readiness; live replica read preserves accepted-turn identity; await session release |
-| [Claude SDK transport](../../backend/src/claude/agent-sdk-transport.ts) | Close only the source query, then await public iterator cleanup where exposed; no global process restart |
-| [Prompt manager](../../backend/src/agents/agent-prompt-manager.ts), [send hooks](../../core/src/agent-chat-service.ts), server product routing | Suspend source prompt admission/drain during handoff; internal handoff sends use a backend-only hook |
-| [Historical read allowlist](../../backend/src/agents/agent-conversation-service.ts) | Permit the retained source reference through the target, including cross-provider historical DTO reads |
-| [State persistence](../../backend/src/state-persistence.ts), [field policy](../../backend/src/persistence/agent-fields.ts), [store](../../backend/src/persistence/store.ts) | Round-trip additive metadata in the existing roster; recover interruption without automatic provider replay |
+| [AgentHandoffService](../../client/backend/src/agents/agent-handoff-service.ts) | Serialize one operation by source/operation ID, validate, persist, retire source, create target, transfer product relationships, start once |
+| [Handoff note capture](../../client/backend/src/agents/handoff-note.ts) | Observe accepted turn ID, require successful completion, read final assistant text through the provider-owned history boundary |
+| [Driver RPC](../../client/backend/src/driver-rpc.ts) | Optional driver `assertHandoffReady`, exposed as `driver/handoff/check`; unsupported implementations fail closed |
+| [Codex driver/adapter](../../client/backend/src/codex/codex-surface-adapter.ts) | SDK-owned active turn, busy, queued prompts, approvals, client requests; archive through SDK before releasing the Korus attachment |
+| [Claude host](../../client/backend/src/claude/claude-conversation-host.ts) | Active turn/pending permission readiness; live replica read preserves accepted-turn identity; await session release |
+| [Claude SDK transport](../../client/backend/src/claude/agent-sdk-transport.ts) | Close only the source query, then await public iterator cleanup where exposed; no global process restart |
+| [Prompt manager](../../client/backend/src/agents/agent-prompt-manager.ts), [send hooks](../../core/src/agent-chat-service.ts), server product routing | Suspend source prompt admission/drain during handoff; internal handoff sends use a backend-only hook |
+| [Historical read allowlist](../../client/backend/src/agents/agent-conversation-service.ts) | Permit the retained source reference through the target, including cross-provider historical DTO reads |
+| [State persistence](../../client/backend/src/state-persistence.ts), [field policy](../../client/backend/src/persistence/agent-fields.ts), [store](../../client/backend/src/persistence/store.ts) | Round-trip additive metadata in the existing roster; recover interruption without automatic provider replay |
 
 There is no new global transcript reducer, no SDK capability flip, no transcript impersonation, and no universal handoff/delegation framework.
 
@@ -101,7 +101,7 @@ A retirement failure keeps the source roster entry and its saved note. A post-re
 
 Repeated requests with the same source/operation identity do not create another target or replay a prompt. Reusing an ID with changed inputs is rejected. A failed operation requires explicit user inspection; reopening Hand off is a new operation. On startup, incomplete records become failed with an explanation and no automatic send. In an uncertain target-send window, inspect provider history before manually sending the note. The target session ID can be unknown if acceptance reached the provider but never reached durable local storage.
 
-Persistence metadata is additive and optional inside the existing agent entity, so schema version 1 is retained. Older writers may discard it; downgrade is not lossless recovery of a handoff record. This does not add a new provider session format, a shared durable workspace lease, or a guarantee of power-loss atomicity across all application files. See [schemas](../../backend/src/persistence/schema.ts) and [layout](../../backend/src/persistence/layout.ts).
+Persistence metadata is additive and optional inside the existing agent entity, so schema version 1 is retained. Older writers may discard it; downgrade is not lossless recovery of a handoff record. This does not add a new provider session format, a shared durable workspace lease, or a guarantee of power-loss atomicity across all application files. See [schemas](../../client/backend/src/persistence/schema.ts) and [layout](../../client/backend/src/persistence/layout.ts).
 
 ## Rejected complexity
 

@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { updatePricing } from './update-pricing.mjs';
-import { pricingHistorySchema } from '../backend/src/pricing/schema.ts';
+import { pricingHistorySchema } from '../client/backend/src/pricing/schema.ts';
 
 // HTTP-boundary failures: lost context/tier/cache rules; missing vs zero; mixed
 // revisions; ordering/metadata churn; lost same-day updates; partial responses;

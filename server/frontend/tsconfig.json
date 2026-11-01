@@ -7,7 +7,7 @@
   "compilerOptions": {
     "paths": {
       "@workspace/vue/*": [
-        "../../vue/src/*"
+        "../../client/vue/src/*"
       ]
     }
   }

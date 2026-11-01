@@ -11,7 +11,7 @@ if (process.platform !== 'darwin') {
 }
 
 const packageDir = path.join(rootDir, 'native', 'tts-helper');
-const destinationDir = path.join(rootDir, 'electron', '.tts');
+const destinationDir = path.join(rootDir, 'client/electron', '.tts');
 const destination = path.join(destinationDir, 'app-tts-helper');
 const buildResult = spawnSync('swift', [
   'build',

@@ -7,7 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@workspace/core": path.resolve(__dirname, "../../core/src"),
-      "@workspace/vue": path.resolve(__dirname, "../../vue/src"),
+      "@workspace/vue": path.resolve(__dirname, "../../client/vue/src"),
     },
   },
   test: {

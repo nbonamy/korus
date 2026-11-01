@@ -4,7 +4,7 @@ import path from 'node:path';
 
 // cross-zip 4.0.1 uses recursive rmdir before Windows ZIP creation, removed in
 // Node 26. Repair only Forge's installed dependency, without changing global fs.
-const require = createRequire(new URL('../electron/package.json', import.meta.url));
+const require = createRequire(new URL('../client/electron/package.json', import.meta.url));
 const makerRequire = createRequire(require.resolve('@electron-forge/maker-zip'));
 const file = makerRequire.resolve('cross-zip');
 const { version } = JSON.parse(await readFile(path.join(path.dirname(file), 'package.json'), 'utf8'));

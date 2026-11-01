@@ -18,7 +18,7 @@ export default defineConfig({
       '@libp2p/crypto/keys': path.resolve(__dirname, '../src/apple-crypto/keys.ts'),
     }),
     '@workspace/core': path.resolve(__dirname, '../../core/src'),
-    '@workspace/vue': path.resolve(__dirname, '../../vue/src'),
+    '@workspace/vue': path.resolve(__dirname, '../../client/vue/src'),
     ...(useSdkSources ? sdkSourceAliases : {}),
   } },
   server: { fs: { allow: [path.resolve(__dirname, '../..'), ...(useSdkSources ? [sdkSourceRoot] : [])] } },

@@ -11,7 +11,7 @@ export async function prepareMobileSimulator({ root = path.resolve(import.meta.d
   // The simulator is optional: hosts without a pinned companion build without it.
   if (arch !== release.arch || platform !== release.platform) return null;
   if (!/^\d+\.\d+\.\d+$/.test(release.version) || !/^[a-f0-9]{64}$/.test(release.sha256)) throw new Error('Invalid mobile simulator release pin.');
-  const cache = path.join(root, 'electron/.mobile-simulator-artifacts', release.version);
+  const cache = path.join(root, 'client/electron/.mobile-simulator-artifacts', release.version);
   fs.mkdirSync(cache, { recursive: true });
   const archive = path.join(cache, 'companion.tar.gz');
   if (!fs.existsSync(archive)) {
@@ -23,13 +23,13 @@ export async function prepareMobileSimulator({ root = path.resolve(import.meta.d
   }
   if (createHash('sha256').update(fs.readFileSync(archive)).digest('hex') !== release.sha256) throw new Error('Mobile simulator companion checksum mismatch.');
   const staging = fs.mkdtempSync(path.join(cache, 'stage-'));
-  const output = path.join(root, 'electron/.mobile-simulator/mobile-simulator');
+  const output = path.join(root, 'client/electron/.mobile-simulator/mobile-simulator');
   try {
     execFileSync('tar', ['-xzf', archive, '-C', staging], { stdio: 'pipe' });
     for (const required of ['idb_companion', 'Resources/SimulatorFrameworkBridge-iOS', 'Resources/Swift']) {
       if (!fs.existsSync(path.join(staging, required))) throw new Error(`Incomplete mobile simulator companion: ${required}.`);
     }
-    fs.cpSync(path.join(root, 'electron/resources/mobile-simulator'), staging, { recursive: true });
+    fs.cpSync(path.join(root, 'client/electron/resources/mobile-simulator'), staging, { recursive: true });
     fs.copyFileSync(path.join(root, 'mobile-simulator-release.json'), path.join(staging, 'release.json'));
     fs.mkdirSync(path.dirname(output), { recursive: true });
     fs.rmSync(output, { recursive: true, force: true });

@@ -211,7 +211,7 @@ class WorkflowTest(unittest.TestCase):
         self.product = {'name': 'Korus', 'appId': 'com.nabocorp.korus', 'daemonName': 'korusd', 'homeDirectory': '.korus'}
         (self.repo / 'core/src/product.json').write_text(json.dumps(self.product))
         self.target = self.app('Applications/Korus.app', 'old')
-        self.candidate = self.app('checkout/electron/out/Korus-darwin-arm64/Korus.app', 'new')
+        self.candidate = self.app('checkout/client/electron/out/Korus-darwin-arm64/Korus.app', 'new')
         self.home = self.root / 'profile'
         self.home.mkdir()
         (self.home / 'settings.json').write_text('keep this profile')

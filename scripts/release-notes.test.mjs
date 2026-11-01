@@ -9,14 +9,14 @@ test('release validation includes every declared workspace and its locked core d
   const root = mkdtempSync(path.join(tmpdir(), 'release-workspaces-'));
   const writeJson = (file, value) => writeFileSync(path.join(root, file), JSON.stringify(value));
   const manifest = { version: '1.2.3', dependencies: { '@workspace/core': '1.2.3' } };
-  const workspaces = ['core', 'backend', 'vue', 'electron', 'web', 'service'];
+  const workspaces = ['core', 'client/backend', 'client/vue', 'client/electron', 'service'];
   const lockfile = {
     version: '1.2.3',
     packages: { '': { version: '1.2.3' }, ...Object.fromEntries(workspaces.map((workspace) => [workspace, manifest])) },
   };
   try {
     for (const workspace of workspaces) {
-      mkdirSync(path.join(root, workspace));
+      mkdirSync(path.join(root, workspace), { recursive: true });
       writeJson(`${workspace}/package.json`, manifest);
     }
     writeJson('package.json', { version: '1.2.3', workspaces });

@@ -13,7 +13,7 @@ test('prepares reproducible pricing assets and publishes them only to a non-late
   const historyPath = path.join(directory, 'history.json');
   const manifestPath = path.join(directory, 'manifest.json');
   const outputDir = path.join(directory, 'assets');
-  await writeFile(historyPath, await readFile(new URL('../backend/src/pricing/history.json', import.meta.url)));
+  await writeFile(historyPath, await readFile(new URL('../client/backend/src/pricing/history.json', import.meta.url)));
   const options = { historyPath, manifestPath, outputDir, now: new Date('2026-11-01T00:00:00Z') };
   const first = await preparePricing(options);
   assert.match(first.version, /^[a-f0-9]{64}$/);

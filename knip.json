@@ -28,7 +28,7 @@
         ]
       }
     },
-    "electron": {
+    "client/electron": {
       "entry": [
         "forge.config.ts",
         "vite.*.config.ts",
@@ -40,12 +40,7 @@
         "scripts/*.mjs"
       ]
     },
-    "web": {
-      "entry": [
-        "src/server/index.ts"
-      ]
-    },
-    "backend": {
+    "client/backend": {
       "entry": [
         "src/daemon.ts",
         "src/companion/relay-main.ts",
@@ -70,7 +65,7 @@
         "scripts/*.mjs"
       ]
     },
-    "vue": {
+    "client/vue": {
       "entry": [
         "scripts/*.browser.mjs"
       ]

@@ -5,7 +5,7 @@ import "./downloads.test.mjs";
 import { fileURLToPath } from "node:url";
 
 // Reuse the renderer workspace's declared DOM test dependency.
-const require = createRequire(new URL("../vue/package.json", import.meta.url));
+const require = createRequire(new URL("../client/vue/package.json", import.meta.url));
 const { JSDOM } = require("jsdom");
 
 test("visitors can navigate the page and reach the desktop download", async () => {

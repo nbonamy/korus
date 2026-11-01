@@ -6,11 +6,11 @@ import { builtinModules } from "node:module";
 const root = process.cwd();
 const areas = [
   ["core/src", "core"],
-  ["backend/src", "backend"],
-  ["electron/src/main", "electron-main"],
-  ["electron/src/preload", "preload"],
+  ["client/backend/src", "backend"],
+  ["client/electron/src/main", "electron-main"],
+  ["client/electron/src/preload", "preload"],
   ["mobile/src", "mobile"],
-  ["vue/src", "renderer"],
+  ["client/vue/src", "renderer"],
   ["server/frontend/src", "console"],
   ["server/backend/src", "server-backend"],
 ];
@@ -65,8 +65,8 @@ for (const [directory, area] of areas) {
         ts.isPropertyAccessExpression(node) &&
         node.name.text === "APP_TELEMETRY_ENDPOINT" &&
         ![
-          "backend/src/runtime.ts",
-          "electron/src/main/runtime-config.ts",
+          "client/backend/src/runtime.ts",
+          "client/electron/src/main/runtime-config.ts",
         ].includes(path.relative(root, file).split(path.sep).join("/"))
       )
         violations.push(
@@ -196,7 +196,7 @@ function forbiddenImport(area, file, specifier) {
         "@workspace/vue/shared/form/FormField.vue",
         "@workspace/vue/shared/icons/app-icons",
         "@workspace/vue/shared/menu/menu-chrome.css",
-        "../../../electron/assets/icon.svg",
+        "../../../client/electron/assets/icon.svg",
         "@workspace/core/telemetry-metrics",
         "@workspace/core/telemetry-models",
       ].includes(specifier) ||
@@ -228,7 +228,7 @@ function forbiddenImport(area, file, specifier) {
     return "collector cannot be embedded in desktop, daemon or relay runtimes";
   }
   if (
-    /^backend\/src\/(codex|claude|antigravity|pricing)\//.test(relative) &&
+    /^client\/backend\/src\/(codex|claude|antigravity|pricing)\//.test(relative) &&
     specifier.includes("telemetry")
   )
     return "provider and pricing code cannot depend on telemetry";
@@ -238,12 +238,12 @@ function forbiddenImport(area, file, specifier) {
         path
           .resolve(path.dirname(file), specifier)
           .replace(/\.[cm]?[jt]s$/, "") ===
-          path.join(root, "backend/src/telemetry/upload-service"))) &&
-    relative !== "backend/src/runtime.ts"
+          path.join(root, "client/backend/src/telemetry/upload-service"))) &&
+    relative !== "client/backend/src/runtime.ts"
   )
     return "only local runtime composes TelemetryUploadService";
   if (
-    relative === "backend/src/telemetry/upload-service.ts" &&
+    relative === "client/backend/src/telemetry/upload-service.ts" &&
     ![
       "node:crypto",
       "node:fs/promises",
@@ -323,7 +323,7 @@ function forbiddenImport(area, file, specifier) {
     ];
     const forbiddenSource =
       specifier.startsWith(".") &&
-      ["backend", "electron", "web"].some((directory) =>
+      ["client/backend", "client/electron"].some((directory) =>
         isWithin(
           path.join(root, directory),
           path.resolve(path.dirname(file), specifier),
@@ -370,7 +370,7 @@ function forbiddenImport(area, file, specifier) {
     ].some((name) => isPackage(specifier, name)) ||
       (specifier.startsWith(".") &&
         isWithin(
-          path.join(root, "backend", "src"),
+          path.join(root, "client/backend", "src"),
           path.resolve(path.dirname(file), specifier),
         )))
   ) {
@@ -390,8 +390,8 @@ function forbiddenImport(area, file, specifier) {
 function isTelemetryCaller(file) {
   const relative = path.relative(root, file).split(path.sep).join("/");
   return (
-    relative === "electron/src/main/runtime-config.ts" ||
-    (relative !== "backend/src/telemetry/upload-service.ts" &&
+    relative === "client/electron/src/main/runtime-config.ts" ||
+    (relative !== "client/backend/src/telemetry/upload-service.ts" &&
       /telemetry/i.test(relative))
   );
 }
@@ -399,7 +399,7 @@ function isTelemetryCaller(file) {
 function isTelemetryConsent(file) {
   return (
     path.relative(root, file).split(path.sep).join("/") ===
-    "backend/src/telemetry/consent-service.ts"
+    "client/backend/src/telemetry/consent-service.ts"
   );
 }
 
@@ -409,9 +409,9 @@ function isTelemetryProjection(file) {
     [
       "core/src/telemetry.ts",
       "core/src/telemetry-models.ts",
-      "backend/src/usage/usage-ledger.ts",
-      "backend/src/usage/usage-service.ts",
-    ].includes(relative) || relative.startsWith("backend/src/usage/telemetry")
+      "client/backend/src/usage/usage-ledger.ts",
+      "client/backend/src/usage/usage-service.ts",
+    ].includes(relative) || relative.startsWith("client/backend/src/usage/telemetry")
   );
 }
 

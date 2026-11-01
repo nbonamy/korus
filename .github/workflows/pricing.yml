@@ -38,7 +38,7 @@ jobs:
         run: node --test scripts/pricing-build.test.mjs
       - name: Commit changed pricing
         run: |
-          git add -- backend/src/pricing/history.json backend/src/pricing/manifest.json
+          git add -- client/backend/src/pricing/history.json client/backend/src/pricing/manifest.json
           if git diff --cached --quiet; then
             echo 'Pricing is unchanged.'
             exit 0

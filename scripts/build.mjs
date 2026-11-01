@@ -36,7 +36,7 @@ function requireReleaseSigningConfiguration() {
 }
 
 function findPackagedApp() {
-  const outDirectory = path.resolve('electron/out');
+  const outDirectory = path.resolve('client/electron/out');
   const appDirectory = fs.readdirSync(outDirectory, { withFileTypes: true })
     .find((entry) => entry.isDirectory() && entry.name.startsWith(`${product.name}-darwin-`));
   if (!appDirectory) {

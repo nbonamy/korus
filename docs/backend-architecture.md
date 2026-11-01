@@ -61,7 +61,7 @@ log and socket paths, npm scripts and launchd labels stay brand-neutral.
 
 ## Antigravity
 
-`backend/src/antigravity` owns installation and discovery of the ACP
+`client/backend/src/antigravity` owns installation and discovery of the ACP
 runtime/harness, OAuth observations, and the provider replica. The agy CLI is not
 the execution path. OAuth renewal stays native, background checks suppress login UI,
 and child environments sanitize Google credentials/projects with isolated
@@ -103,7 +103,7 @@ The qualified Google-hosted ACP 1.3.0 executable implements the v1-shaped wire
 contract while reporting protocol 2. Its bundled Python adapter is the evidence
 boundary; the public CLI, Python SDK and Gemini Interactions API are different
 interfaces. The [pinned public registry](https://github.com/agentclientprotocol/registry/blob/dc55a34900fdd60e5e97c1cbd7825c5a1df673fc/antigravity-acp/agent.json)
-identifies the distribution. [Fixture provenance](../backend/src/antigravity/__tests__/fixtures/usage-capability.json)
+identifies the distribution. [Fixture provenance](../client/backend/src/antigravity/__tests__/fixtures/usage-capability.json)
 records archive/executable hashes and source locations. These are source-derived
 wire fixtures with synthetic numbers and identities, not a live billing capture.
 
@@ -185,7 +185,6 @@ The protocol is transport-neutral JSON-RPC 2.0, one message per line.
 | stdio (`korusd --stdio`) | bundled local backend; same framing SSH uses |
 | Unix socket (`korusd serve`, `APP_HOME/daemon.sock`) | optional always-on single-host daemon |
 | SSH stdio | remote locations: noninteractive SSH with keepalives, an app-private Node runtime, and a version-checked socket bridge or one-shot backend |
-| WebSocket (web host) | browser, allowlisted operations only |
 
 - Electron's default `APP_BACKEND_MODE=auto` connects to a running local daemon,
   else starts the bundled stdio process. On reconnect it retries the same
@@ -545,7 +544,7 @@ pairs again instead of restoring a stale development connection. The first
 invitation turns mobile access on. An invalid or partial environment pair
 fails closed instead of silently selecting another relay.
 
-The host deployment templates under `backend/companion-relay/deploy` terminate TLS
+The host deployment templates under `client/backend/companion-relay/deploy` terminate TLS
 in nginx and keep relay and health listeners on loopback. Certbot uses the nginx
 ACME webroot and reloads nginx after successful renewal. Only published Cloudflare
 proxy ranges may supply the client address used for connection and request limits;
@@ -580,7 +579,7 @@ relay and the destination daemon read the JSON file named by
 `APP_COMPANION_PAIRING_CONFIG` at startup. The file contains `code` and `hostId`;
 when the variable is unset, no pairing configuration is read and ordinary
 invitation pairing works without a reusable code or operator repository.
-[the example](../backend/companion-relay/pairing.example.json) shows the format, with
+[the example](../client/backend/companion-relay/pairing.example.json) shows the format, with
 `hostId` replaced by the destination daemon's companion identity. Deployment codes,
 identities and service configuration belong in the operator's private inventory.
 Point both services to the same file so routing and approval use one definition.
@@ -808,16 +807,11 @@ so Launch Services retains its URL registration. Windows uses a current-user
 scheme registration that launches Node directly without a shell; Linux uses a
 private desktop entry and `xdg-mime`. The launcher fixes the profile, app path and
 backend executable so installed-app environment overrides cannot redirect it.
-The opt-in `electron/scripts/guest-desktop.runtime.mjs` workflow builds the
+The opt-in `client/electron/scripts/guest-desktop.runtime.mjs` workflow builds the
 worktree, uses an isolated encrypted relay with a stable test key, performs native
 URL delivery, and removes its temporary profile and registration. Its scripted
 provider transcript is not live-provider execution evidence.
 
-`npm run dev:web` is the web equivalent: it builds `daemon` once, watches the web
-server bundle (restarting server and daemon on change) and serves the client from Vite
-with HMR, proxying `/app` to the server. `CODEX_APP_SDK_SOURCE=1` links the sibling SDK
-sources for HMR, as in desktop dev. Use `APP_HOME` to keep it off your real state.
-`APP_BACKEND_MODE=in-process` exists for bisecting.
 
 Folder-changing provider actions are rejected while chats are active because they
 restart `daemon` and its provider processes; Electron closes hosted Browser panes
@@ -980,7 +974,7 @@ GitHub API and raw source files at one immutable revision. The collector verifie
 Git blob hashes, requires all three providers, validates pricing rules and the
 existing history, and atomically appends dated cost events only to models whose
 pricing content changes. Revision, comments and source links do not trigger events.
-`backend/src/pricing/history.json` is keyed by provider, then exact model ID; each
+`client/backend/src/pricing/history.json` is keyed by provider, then exact model ID; each
 model has shared metadata and a `cost` array. Each event retains rates, pricing
 rules and immutable source evidence. Removal records an event without erasing
 past prices; reappearance appends another event. The baseline is effective October
@@ -1159,7 +1153,7 @@ Only explicit desktop operations return the credential-free consent view. Identi
 and consent never enter app settings, generic snapshots, coordination events or
 agent tools. The desktop bridge accepts an action or reporting day, never an
 identity or eligibility override. One shared panel supplies onboarding, upgrade
-and Settings copy. Web and companion clients do not expose these profile actions.
+and Settings copy. Companion clients do not expose these profile actions.
 
 The consent owner delegates transitions to `TelemetryDeliveryPort`; it does not
 send, schedule or manage a queue. One backend `TelemetryUploadService` per local
@@ -1229,7 +1223,7 @@ omitted cache-write categories prevent exact downstream repricing. Estimated USD
 is API-equivalent usage, not billing.
 
 The server-usage workflow compares persisted Claude/Codex measurements against
-`backend/src/usage/__tests__/fixtures/daily-telemetry.json`, the exact canonical
+`client/backend/src/usage/__tests__/fixtures/daily-telemetry.json`, the exact canonical
 macOS UTF-8 body without a trailing newline. Other platforms substitute only the
 coarse OS value. Repeat with
 `npm run test -w @workspace/backend -- usage/__tests__/server-usage.spec.ts`.

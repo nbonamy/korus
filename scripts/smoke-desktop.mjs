@@ -9,7 +9,7 @@ import nodeRelease from '../node-runtime-release.json' with { type: 'json' };
 import { checkPackagedDaemon } from './packaged-daemon-check.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
-const app = path.join(root, 'electron/out', `${product.name}-${process.platform}-${process.arch}`);
+const app = path.join(root, 'client/electron/out', `${product.name}-${process.platform}-${process.arch}`);
 const resources = process.platform === 'darwin' ? path.join(app, `${product.name}.app/Contents/Resources`) : path.join(app, 'resources');
 const node = path.join(resources, 'runtime', process.platform === 'win32' ? 'node.exe' : 'node');
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'app-smoke-'));

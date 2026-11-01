@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {},
+  "include": [
+    "forge.config.ts",
+    "vite.*.config.ts",
+    "vitest.config.ts",
+    "src/**/*.ts",
+    "../../core/src/**/*.ts"
+  ],
+  "references": []
+}

@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const backendDistDir = path.join(rootDir, 'backend/dist');
-const resourcesDir = path.join(rootDir, 'electron/resources/daemon');
+const backendDistDir = path.join(rootDir, 'client/backend/dist');
+const resourcesDir = path.join(rootDir, 'client/electron/resources/daemon');
 const backendBundle = path.join(backendDistDir, 'daemon.mjs');
 const backendSourceMap = path.join(backendDistDir, 'daemon.mjs.map');
 

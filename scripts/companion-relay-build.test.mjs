@@ -11,21 +11,21 @@ test('a built daemon carries only public relay settings from .env into a clean r
   const root = fileURLToPath(new URL('../', import.meta.url));
   const directoryLink = process.platform === 'win32' ? 'junction' : 'dir';
   try {
-    await mkdir(path.join(temp, 'backend'));
-    await copyFile(path.join(root, 'backend/vite.config.ts'), path.join(temp, 'backend/vite.config.ts'));
+    await mkdir(path.join(temp, 'client/backend'), { recursive: true });
+    await copyFile(path.join(root, 'client/backend/vite.config.ts'), path.join(temp, 'client/backend/vite.config.ts'));
     await copyFile(path.join(root, 'vite.sdk-aliases.ts'), path.join(temp, 'vite.sdk-aliases.ts'));
     for (const name of ['core', 'node_modules']) await symlink(path.join(root, name), path.join(temp, name), directoryLink);
     const secret = 'BUILD_SECRET_CANARY_DO_NOT_SHIP_81524';
     await writeFile(path.join(temp, '.env'), `APP_COMPANION_RELAY_URL=wss://packaged.example\nAPP_COMPANION_RELAY_PEER_ID=12D3KooWKgzKeaxarcdmiyzTLSu2fmxxY6Nkj4CZKfvQGspLMG5S\nAPPLE_PASSWORD=${secret}\nAPP_COMPANION_APNS_PRIVATE_KEY=${secret}\n`);
-    const manager = pathToFileURL(path.join(root, 'backend/src/companion/manager.ts')).href;
-    const entry = path.join(temp, 'backend/probe.mjs');
+    const manager = pathToFileURL(path.join(root, 'client/backend/src/companion/manager.ts')).href;
+    const entry = path.join(temp, 'client/backend/probe.mjs');
     await writeFile(entry, `import { CompanionManager } from ${JSON.stringify(manager)};
 const manager = new CompanionManager(process.argv[2], { request: async () => { throw new Error('Unexpected backend access'); } });
 try { const { status } = await manager.control({ action: 'status' }); console.log(JSON.stringify({ configured: status.configured, relayOrigin: status.relayOrigin })); }
 finally { await manager.stop(); }
 `);
     await writeFile(path.join(temp, 'build.mjs'), `import { build } from 'vite';
-await build({ configFile: ${JSON.stringify(path.join(temp, 'backend/vite.config.ts'))}, logLevel: 'silent', build: { ssr: ${JSON.stringify(entry)}, outDir: ${JSON.stringify(path.join(temp, 'dist'))}, sourcemap: false } });
+await build({ configFile: ${JSON.stringify(path.join(temp, 'client/backend/vite.config.ts'))}, logLevel: 'silent', build: { ssr: ${JSON.stringify(entry)}, outDir: ${JSON.stringify(path.join(temp, 'dist'))}, sourcemap: false } });
 `);
     const env = { ...process.env, CODEX_APP_SDK_SOURCE: '0' };
     delete env.APP_COMPANION_RELAY_URL;

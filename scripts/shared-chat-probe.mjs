@@ -32,13 +32,13 @@ try {
     };
   else {
     // Resolve external packages from the backend workspace, including nested SDK installs.
-    const workspace = path.join(root, "backend/.app-dev");
+    const workspace = path.join(root, "client/backend/.app-dev");
     await mkdir(workspace, { recursive: true });
     directory = await mkdtemp(path.join(workspace, "shared-chat-probe-"));
     const bundle = path.join(directory, "probe.mjs");
     await build({
       absWorkingDir: root,
-      entryPoints: ["backend/src/sharing/guest-probe.ts"],
+      entryPoints: ["client/backend/src/sharing/guest-probe.ts"],
       outfile: bundle,
       platform: "node",
       target: "node26",

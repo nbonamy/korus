@@ -83,7 +83,7 @@ and system UI typography. Films keep charcoal title cards and a quiet accent pal
 green and red communicate success and defects. Shared film branding comes
 from `videos/product.mjs`, including the closing URL from product metadata.
 
-All Korus marks use the exact geometry in `electron/assets/icon.svg`. The
+All Korus marks use the exact geometry in `client/electron/assets/icon.svg`. The
 website and Vue branding PNGs share a rounded web presentation; desktop icons
 remain full-square. Composite the canonical vector into thumbnails, the social
 card, and the channel banner rather than asking image generation to redraw it.

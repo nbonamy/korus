@@ -3,8 +3,8 @@ import { mkdir, readFile, rename, writeFile, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { pricingHistorySchema } from '../backend/src/pricing/schema.ts';
-import { createPricingManifest, encodePricingHistory, pricingManifestSchema, pricingReleaseTag } from '../backend/src/pricing/release-format.ts';
+import { pricingHistorySchema } from '../client/backend/src/pricing/schema.ts';
+import { createPricingManifest, encodePricingHistory, pricingManifestSchema, pricingReleaseTag } from '../client/backend/src/pricing/release-format.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 async function atomicWrite(file, content) {
@@ -12,7 +12,7 @@ async function atomicWrite(file, content) {
   try { await writeFile(temporary, content); await rename(temporary, file); }
   finally { await rm(temporary, { force: true }); }
 }
-export async function preparePricing({ historyPath = path.join(root, 'backend/src/pricing/history.json'), manifestPath = path.join(root, 'backend/src/pricing/manifest.json'), outputDir = path.join(root, '.app-dev/pricing-release'), now = new Date() } = {}) {
+export async function preparePricing({ historyPath = path.join(root, 'client/backend/src/pricing/history.json'), manifestPath = path.join(root, 'client/backend/src/pricing/manifest.json'), outputDir = path.join(root, '.app-dev/pricing-release'), now = new Date() } = {}) {
   const history = pricingHistorySchema.parse(JSON.parse(await readFile(historyPath, 'utf8')));
   let manifest = createPricingManifest(history, now.toISOString());
   try {

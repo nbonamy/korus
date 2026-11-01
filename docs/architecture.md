@@ -1,6 +1,6 @@
 # Architecture
 
-Korus is a desktop (and local web) app for coordinating teams of coding agents
+Korus is a desktop and mobile app for coordinating teams of coding agents
 with native conversation and artifact rendering. It does not embed a terminal.
 Provider runtimes (Codex app-server, Claude Agent SDK) run behind `daemon`; every
 client renders app-owned state and provider-owned conversation frames.
@@ -20,15 +20,13 @@ the same pending state above the composer; closing a client does not cancel it.
 The hosted services are separate from the app runtime: `server/backend` owns the
 collector, admin authentication and aggregate APIs; `server/frontend` owns the
 private admin console. `server/deploy` and `server/scripts` own their portable
-runtime and packaging. The local browser app remains in `web`; removing it does
-not remove hosted services. See [the hosted server](../server/README.md).
+runtime and packaging. See [the hosted server](../server/README.md).
 
 ## Process Model
 
 ```mermaid
 flowchart LR
   UI["@workspace/vue UI"] <--> Preload <--> Main["Electron main"] <--> D["daemon"]
-  Browser["Web browser"] <--> Web["Express + WebSocket adapter"] <--> D
   D <--> State["APP_HOME state"]
   D <--> P["Codex app-server / Claude Agent SDK"]
   D <--> Git["git, files, MCP server"]
@@ -55,9 +53,6 @@ the local desktop to show UI or use an OS affordance belongs in Electron main.
 - The renderer owns visual state. It never talks to a provider, spawns tools,
   reads local files, or imports provider protocol types.
 - Preload is a small typed bridge and the only renderer path to Electron.
-- Web is a local, single-user host: loopback only, fixed identity, an allowlist of
-  product operations, and a `daemon` runtime without Computer Use or browser MCP
-  tools. It is not a public-deployment foundation.
 
 The local mobile simulator host owns device attachments and native command execution
 in Electron. Its pane and provider-independent MCP tool share that authority;
@@ -76,9 +71,9 @@ desktop preference cannot enable a tool the host does not provide.
 | Package | Owns | May depend on |
 | --- | --- | --- |
 | `core` | contracts, protocol types, pure reducers/policy, client ports; no Node, Electron or Vue | none |
-| `backend` | `daemon`, provider drivers, MCP, persistence, git/files, automations, work providers | `core` |
-| `vue` | reusable product shell, receives a typed `AppClient` at bootstrap | `core` |
-| `electron`, `web` | host composition roots | `core`, `vue`; start a built `daemon` artifact, never import backend sources |
+| `client/backend` | `daemon`, provider drivers, MCP, persistence, git/files, automations, work providers | `core` |
+| `client/vue` | reusable product shell, receives a typed `AppClient` at bootstrap | `core` |
+| `client/electron` | desktop host composition root | `core`, `vue`; start a built `daemon` artifact, never import backend sources |
 | `mobile` | native mobile shells, companion engine, and shared Vue transcript | `core`, `vue`; no Electron, provider process or backend filesystem authority |
 
 Cross-package imports use package names, never deep relative paths. `core` stays
@@ -295,8 +290,7 @@ an approved phone can read every team and send prompts. The relay carries
 conversation ciphertext, connection metadata and optional push attention metadata;
 its leased host registrations, temporary claimed-device routes and traffic bounds
 constrain routing. Endpoint authorization constrains app methods and location/team/agent/session
-targets. Local revocation persists before closing device connections. The local web,
-MCP and daemon socket transports retain their existing exposure boundaries.
+targets. Local revocation persists before closing device connections. MCP and daemon socket transports retain their own exposure boundaries.
 Native Debug builds may use WS for their configured relay on local Wi-Fi without
 a TLS certificate; Noise and pairing still apply. Release builds require WSS
 outside loopback, and saved pairings cannot enable the development exception.
@@ -306,7 +300,7 @@ outside loopback, and saved pairings cannot enable the development exception.
 Provider conversations stay provider-owned end to end. Codex messages, turns,
 optimistic submissions, history, queues and mutations belong to `codex-app-sdk`;
 Claude's normalized transcript belongs to the Claude conversation host in
-`backend/src/claude/`. Korus stores the provider session reference, transports
+`client/backend/src/claude/`. Korus stores the provider session reference, transports
 frames inside an app-owned envelope (agent, provider, revision), invokes SDK
 operations, and adds coordination metadata.
 
@@ -332,7 +326,7 @@ Every backend-dependent feature enters through the app seam:
 1. Define an app-owned contract for behavior outside the transcript.
 2. Add or extend an optional `AgentBackendDriver` method or capability behind
    `daemon`. Optional methods are the parity boundary.
-3. Keep provider details in `backend/src/codex/*` or `backend/src/claude/*`.
+3. Keep provider details in `client/backend/src/codex/*` or `client/backend/src/claude/*`.
 4. Route renderer requests through preload, `BackendClient` and the app-owned
    protocol ([protocol.md](protocol.md)). Renderers may branch on capabilities or
    empty data, never on provider protocol types.
@@ -374,7 +368,7 @@ Rules:
   subagent data across ordinary saves; it never converts them to another provider.
   Known engine kinds still require valid provider data.
 - Bump the version only for breaking changes, with a typed step in
-  `backend/src/persistence/migrations.ts`. Additive optional fields and
+  `client/backend/src/persistence/migrations.ts`. Additive optional fields and
   backward-compatible defaults need no migration even if an older build drops them.
 - Roster schema 4 protects prompt-target automations, nested execution selections
   and mixed-host team links from incompatible readers. Older rosters receive a

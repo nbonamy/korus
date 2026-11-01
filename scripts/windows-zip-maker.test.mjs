@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 
-const require = createRequire(new URL('../electron/package.json', import.meta.url));
+const require = createRequire(new URL('../client/electron/package.json', import.meta.url));
 const { MakerZIP } = require('@electron-forge/maker-zip');
 const extract = require('extract-zip');
 

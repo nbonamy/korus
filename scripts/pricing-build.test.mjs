@@ -6,14 +6,14 @@ import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { pricingHistorySchema } from '../backend/src/pricing/schema.ts';
-import { createPricingManifest } from '../backend/src/pricing/release-format.ts';
+import { pricingHistorySchema } from '../client/backend/src/pricing/schema.ts';
+import { createPricingManifest } from '../client/backend/src/pricing/release-format.ts';
 
 test('standalone and desktop resource bundles price saved usage from bundled and cached catalogs offline', async () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
   const temp = await mkdtemp(path.join(os.tmpdir(), 'pricing-build-'));
   try {
-    await mkdir(path.join(temp, 'backend'), { recursive: true });
+    await mkdir(path.join(temp, 'client/backend'), { recursive: true });
     await mkdir(path.join(temp, 'scripts'));
     for (const name of ['core', 'node_modules']) {
       await symlink(path.join(root, name), path.join(temp, name), process.platform === 'win32' ? 'junction' : 'dir');
@@ -24,9 +24,9 @@ import http from 'node:http'; import https from 'node:https'; import net from 'n
 const fail = () => { throw new Error('Network is disabled'); };
 globalThis.fetch = fail; http.request = fail; https.request = fail; net.connect = fail; net.createConnection = fail;
 `);
-    const config = path.join(root, 'backend/vite.config.ts');
+    const config = path.join(root, 'client/backend/vite.config.ts');
     await writeFile(path.join(temp, 'build.mjs'), `import { build } from 'vite';
-await build({ configFile: ${JSON.stringify(config)}, logLevel: 'silent', build: { outDir: ${JSON.stringify(path.join(temp, 'backend/dist'))}, sourcemap: false } });
+await build({ configFile: ${JSON.stringify(config)}, logLevel: 'silent', build: { outDir: ${JSON.stringify(path.join(temp, 'client/backend/dist'))}, sourcemap: false } });
 `);
     const run = (args, options = {}) => {
       const result = spawnSync(process.execPath, ['--import', path.join(temp, 'offline.mjs'), ...args], {
@@ -39,8 +39,8 @@ await build({ configFile: ${JSON.stringify(config)}, logLevel: 'silent', build: 
     run([path.join(temp, 'build.mjs')]);
     run([path.join(temp, 'scripts/package-backend.mjs')]);
     const results = [];
-    const expected = JSON.parse(await readFile(path.join(root, 'backend/src/pricing/history.json'), 'utf8'));
-    for (const bundle of ['backend/dist/daemon.mjs', 'electron/resources/daemon/daemon.mjs']) {
+    const expected = JSON.parse(await readFile(path.join(root, 'client/backend/src/pricing/history.json'), 'utf8'));
+    for (const bundle of ['client/backend/dist/daemon.mjs', 'client/electron/resources/daemon/daemon.mjs']) {
       const url = pathToFileURL(path.join(temp, bundle)).href;
       const output = run(['--input-type=module', '-e', `
 const { loadPricingHistory } = await import(${JSON.stringify(url)});

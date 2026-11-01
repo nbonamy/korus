@@ -62,7 +62,7 @@ async function main() {
   const hostIds = await relayHostIds(process.env, readIfPresent(path.join(home, 'companion/state.json')));
 
   // Always rebuilt: a stale bundle would silently run an old protocol.
-  const bundle = path.join(root, 'backend/relay-dist/relay.mjs');
+  const bundle = path.join(root, 'client/backend/relay-dist/relay.mjs');
   const npm = process.env.npm_execpath;
   execFileSync(npm ? process.execPath : 'npm', npm ? [npm, 'run', 'build:relay', '-w', '@workspace/backend'] : ['run', 'build:relay', '-w', '@workspace/backend'], { cwd: root, stdio: 'inherit' });
 

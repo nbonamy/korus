@@ -47,10 +47,9 @@ jobs:
           name: coverage-${{ github.sha }}
           path: |
             core/coverage/
-            backend/coverage/
-            vue/coverage/
-            electron/coverage/
-            web/coverage/
+            client/backend/coverage/
+            client/vue/coverage/
+            client/electron/coverage/
             server/backend/coverage/
             server/frontend/coverage/
             mobile/coverage/

@@ -18,14 +18,14 @@ export async function createDevelopmentLinkTarget({ root = rootDirectory, home, 
   root = path.resolve(root); home = path.resolve(home); directory ??= path.join(home, 'native-url');
   const suffix = createHash('sha256').update(JSON.stringify([root, home])).digest('hex').slice(0, 12);
   const scheme = `${product.protocolScheme}-dev-${suffix}`; const id = `${product.appId}.development.${suffix}`;
-  executable ??= createRequire(import.meta.url)('electron'); appPath ??= path.join(root, 'electron');
+  executable ??= createRequire(import.meta.url)('electron'); appPath ??= path.join(root, 'client/electron');
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const launcher = path.join(directory, 'launch.mjs');
   const configuration = path.join(directory, 'target.json');
   const config = { executable, appPath, home, scheme, electronArgs, environment: { ...environment,
     NODE_ENV: 'development', APP_HOME: home, APP_DEV_PROTOCOL_SCHEME: scheme,
-    APP_BACKEND_MODE: 'bundled', APP_BACKEND_SOCKET: path.join(home, 'daemon.sock'), APP_BACKEND_COMMAND: process.execPath, APP_BACKEND_ARGS: `${path.join(root, 'backend/dist/daemon.mjs')},--stdio`, APP_BACKEND_WATCH_FILE: '',
-    APP_ASSETS_PATH: path.join(root, 'electron/assets'), CODEX_APP_SDK_ASSETS_PATH: path.join(root, 'node_modules/@codex-app-sdk/backend/assets'),
+    APP_BACKEND_MODE: 'bundled', APP_BACKEND_SOCKET: path.join(home, 'daemon.sock'), APP_BACKEND_COMMAND: process.execPath, APP_BACKEND_ARGS: `${path.join(root, 'client/backend/dist/daemon.mjs')},--stdio`, APP_BACKEND_WATCH_FILE: '',
+    APP_ASSETS_PATH: path.join(root, 'client/electron/assets'), CODEX_APP_SDK_ASSETS_PATH: path.join(root, 'node_modules/@codex-app-sdk/backend/assets'),
   } };
   await writeFile(configuration, JSON.stringify(config), { mode: 0o600 });
   await writeFile(launcher, `import {spawn} from 'node:child_process';

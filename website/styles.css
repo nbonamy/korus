@@ -1,5 +1,5 @@
 /* Korus website — product-led look.
-   Colors, radii and type follow the app (vue/src/styles/variables.css):
+   Colors, radii and type follow the app (client/vue/src/styles/variables.css):
    neutral surfaces, one blue primary, status colors, system UI font. */
 :root {
   --ink: #0d0d0d;

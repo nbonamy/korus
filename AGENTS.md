@@ -30,6 +30,11 @@ implementation identifiers, package names, filenames, and CSS brand-neutral;
 read product metadata for visible names, instructions, paths, and packaging.
 Authored documentation may use the product name.
 
+Client workspaces live under `client/`: `backend` owns the local daemon,
+`electron` owns desktop main, preload and renderer, and `vue` owns shared Vue UI.
+`core`, `mobile`, `native`, `server` and `website` remain separate root areas.
+Root `npm run dev` launches the Electron app.
+
 Preserve the product and process boundaries:
 
 - Electron main is the desktop adapter. It owns windows, preload IPC, native
@@ -224,7 +229,7 @@ commit, or push work. Curate it only when Nicolas explicitly invokes
   restart the installed app and its owned daemon, or inspect the guarded update.
 - `korus-frontend-dev`: Vue, Element Plus, app shell, chat rendering,
   artifact panes, design tokens, themes, and frontend tests.
-- `korus-live-preview`: isolated, parallel-safe, branch-faithful web
+- `korus-live-preview`: isolated, parallel-safe, branch-faithful Electron
   previews with seeded state for interactively dogfooding any Korus feature.
 - `korus-testing-coverage`: Vitest, component isolation, IPC contracts,
   fake Codex transports, coverage triage, and verification gates.

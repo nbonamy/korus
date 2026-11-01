@@ -6,7 +6,7 @@ const product = JSON.parse(
   readFileSync(path.resolve(__dirname, "../../core/src/product.json"), "utf8"),
 ) as { name: string };
 const tokens = readFileSync(
-  path.resolve(__dirname, "../../vue/src/styles/variables.css"),
+  path.resolve(__dirname, "../../client/vue/src/styles/variables.css"),
   "utf8",
 )
   .split("\n")
