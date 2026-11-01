@@ -151,7 +151,7 @@
         @pointermove.stop
         @pointerdown.stop
       >
-        <strong class="tooltip-day" :title="`${days[active]} UTC`">{{
+        <strong class="tooltip-day" :title="days[active]">{{
           tooltipDay
         }}</strong>
         <ul>

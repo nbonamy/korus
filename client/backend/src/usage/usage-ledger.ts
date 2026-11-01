@@ -321,19 +321,18 @@ export class UsageLedger {
   telemetryHours(): Array<{day:string;hour:number}> {
     const db = this.open();
     if (!db) throw new Error('Usage is unavailable.');
-    const today = Math.floor(this.now() / 86400000) * 86400000;
     const rows = db.prepare(`SELECT DISTINCT CAST(at / 3600000 AS INTEGER) AS hour
       FROM (SELECT started_at AS at FROM executions UNION ALL SELECT at FROM requests)
-      WHERE at >= ? AND at <= ? ORDER BY hour`).all(today - 7 * 86400000, this.now());
+      WHERE at <= ? ORDER BY hour`).all(this.now());
     return rows.map(row => {
       const date = new Date(Number(row.hour) * 3600000);
       return {day:date.toISOString().slice(0,10),hour:date.getUTCHours()};
     });
   }
-  projectDailyTelemetry(input: TelemetryProjectionInput): TelemetryUsage[] {
-    if (!validTelemetryProjectionInput(input))
+  projectDailyTelemetry(input: TelemetryProjectionInput, from = 0): TelemetryUsage[] {
+    if (!validTelemetryProjectionInput(input) || !Number.isSafeInteger(from) || from < 0)
       throw new Error("Invalid telemetry day.");
-    const summary = this.summarize({ from: input.day, to: input.day }, input);
+    const summary = this.summarize({ from: input.day, to: input.day }, input, from);
     if (summary.available === false) throw new Error("Usage is unavailable.");
     return summary.rows
       .map((row) => {
@@ -377,6 +376,7 @@ export class UsageLedger {
   private summarize(
     filter: UsageFilter,
     projection?: TelemetryProjectionInput,
+    from = 0,
   ): UsageSummary {
     const prices = typeof this.prices === 'function' ? this.prices() : this.prices;
     if (
@@ -432,8 +432,8 @@ export class UsageLedger {
           "SELECT r.observation,e.* FROM requests r JOIN executions e USING(provider,session_id,turn_id) WHERE e.started_at>=? AND r.at>=? AND (r.provider<>'claude' OR json_extract(r.observation,'$.model') IS NOT '<synthetic>') ORDER BY r.at,r.request_id",
         )
         .all(
-          this.now() - retention,
-          this.now() - retention,
+          Math.max(this.now() - retention, from),
+          Math.max(this.now() - retention, from),
         );
       const observedExecutions = new Set(
         requestRows.map((row) =>
@@ -441,7 +441,7 @@ export class UsageLedger {
         ),
       );
       const conditions = ["started_at>=?"],
-        args: (string | number)[] = [this.now() - retention];
+        args: (string | number)[] = [Math.max(this.now() - retention, from)];
       if (projection?.hour !== undefined) {
         const start = Date.parse(`${projection.day}T00:00:00Z`) + projection.hour * 3600000;
         conditions.push('started_at>=?', 'started_at<?');

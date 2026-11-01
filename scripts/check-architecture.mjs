@@ -198,6 +198,7 @@ function forbiddenImport(area, file, specifier) {
         "@workspace/vue/shared/menu/menu-chrome.css",
         "../../../client/electron/assets/icon.svg",
         "@workspace/core/telemetry-metrics",
+        "@workspace/core/usage-time",
         "@workspace/core/telemetry-models",
       ].includes(specifier) ||
       (target && isWithin(path.join(root, "server/frontend/src"), target))
@@ -213,6 +214,7 @@ function forbiddenImport(area, file, specifier) {
           "zod",
           "@workspace/core/telemetry",
           "@workspace/core/telemetry-metrics",
+          "@workspace/core/usage-time",
           "@workspace/core/telemetry-models",
           "@workspace/core/usage",
         ].includes(specifier) ||

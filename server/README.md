@@ -29,11 +29,11 @@ listener/routing configuration and TLS termination belong outside Git. PostgreSQ
 
 The versioned ingestion route accepts only JSON with the shared closed schema.
 Its byte cap applies before UTF-8 decoding or parsing, including chunked bodies.
-Hourly reports are accepted for the current UTC hour and the preceding seven
-UTC dates. Legacy daily reports retain their completed-day contract. This lateness
-limit never deletes accepted history: `install_days`, `usage_daily` and the minimal
+Hourly reports are accepted for any historical UTC hour through the current hour.
+Legacy daily reports retain their completed-day contract. There is no historical
+upload cutoff: `install_days`, `usage_daily` and the minimal
 `installs` registry have no age-based expiry. The registry preserves the reporting
-date of the first successfully committed submission, even when an older reporting
+bucket of the first successfully committed submission, even when an older reporting
 date arrives later; it does not claim an installation date.
 
 Each replacement uses one PostgreSQL connection and transaction. The unique parent
@@ -115,10 +115,11 @@ Origin must exactly match. The explicit
 `TELEMETRY_CONSOLE_ALLOW_LOOPBACK_HTTP=1` option accepts HTTP only for a loopback
 console origin in isolated local tests; production leaves it unset or zero.
 
-The read endpoint accepts only inclusive `from`/`to` UTC days and optional canonical
-`provider`/`model` filters and a boolean `groupServiceTiers` option. It rejects unknown/duplicate filters, current/unclosed
-days and ranges longer than 3,660 days instead of clipping results. Older retained
-ranges remain available; the ingestion lateness window never applies to reads.
+The read endpoint accepts inclusive `from`/`to` calendar days, an optional IANA
+`timeZone` (UTC when omitted), canonical `provider`/`model` filters and a boolean
+`groupServiceTiers` option. The console supplies the viewer browser timezone. It rejects unknown/duplicate filters, current/unclosed
+viewer days and ranges longer than 3,660 days instead of clipping results. Older retained
+ranges remain available.
 At most four aggregate statements execute concurrently; excess work receives 429
 with a one-second Retry-After. Database lock/statement deadlines yield generic 503
 responses. Responses are not cached and contain no installation-level records.
@@ -127,7 +128,7 @@ responses. Responses are not cached and contain no installation-level records.
 range's end day and global activity, independent of usage filters: cumulative
 participating identities through that day, DAU, distinct trailing-seven WAU,
 distinct trailing-30 MAU, and distinct calendar-month-to-date activity. Daily first
-reports use the registry's first reported day. Empty-usage days contribute to
+reports use the registry's first reported bucket. Empty-usage days contribute to
 activity; multiple models cannot multiply it. Availability and last receipt time
 are global so the console can explain delayed completed-day reporting.
 
@@ -138,7 +139,11 @@ subtotals include unknown-group counts; input plus output totals use only comple
 pairs and expose excluded groups. Cache share and its non-cache-read remainder
 use only complete input/cache-read pairs, with zero denominators returning null.
 That remainder can include cache creation; it is not a fresh-input pricing claim.
-Weekly buckets start Monday UTC and include only selected days. Additive token
+Hourly usage, activity and first-report buckets are assigned to viewer days by
+their UTC hour start, including across daylight-saving changes. Legacy date-only
+reports and first-report records retain their original date; no hour is inferred.
+Fractional-offset zones use the hour-start day because finer timing is unavailable.
+Weekly buckets start Monday in the viewer calendar and include only selected days. Additive token
 charts use paired input/output subtotals so their stacks match complete token
 totals even when some groups are incomplete. Known complete
 cost groups sum without repricing; all-unknown and empty buckets have null cost,
@@ -151,8 +156,8 @@ unavailable.
 The executable seed is
 `server/backend/src/collector/__tests__/fixtures/metrics-seed.sql`. Apply it only to a
 migrated disposable database. The owner workflow prepares the exact API SQL with
-`PREPARE dashboard_example(date,date,text,text,boolean) AS <metrics.sql>`, then executes
-`EXECUTE dashboard_example('2026-10-18','2026-10-24',NULL,NULL,false)`. Expected global
+`PREPARE dashboard_example(date,date,text,text,boolean,text) AS <metrics.sql>`, then executes
+`EXECUTE dashboard_example('2026-10-18','2026-10-24',NULL,NULL,false,'UTC')`. Expected global
 cards are 6 participating identities, DAU 3, WAU 4, MAU 5 and calendar-month actives
 4. Complete token pairs total 660, measured cache share is 0.55, and known cost is
 1.5 USD with two unknown groups. The 2020 seed contributes another 1,100 tokens.

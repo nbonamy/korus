@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -17,7 +17,11 @@ import type { UsageService } from "../usage/usage-service";
 const DAY = 86_400_000;
 const BACKOFF = [60_000, 15 * 60_000, 60 * 60_000, 6 * 60 * 60_000, DAY];
 const MAX_BODY = 64 * 1024;
-type Binding = { installId: string };
+const MAX_REPORTS = 10_000; // More than a full year of retained hourly buckets.
+const MAX_PROJECTIONS = 100;
+const HOUR = 3_600_000;
+const fingerprint = (body: string) => createHash("sha256").update(body).digest("hex");
+type Binding = { installId: string; enabledAt?: number };
 type Report = {
   day: string;
   hour?: number;
@@ -25,8 +29,10 @@ type Report = {
   status: "active" | "pending" | "done";
   attempts: number;
   nextAttemptAt: number;
+  checkedAt?: number;
+  digest?: string;
 };
-type Store = { v: 1; owner: Binding | null; days: Report[] };
+type Store = { v: 1; owner: Binding | null; days: Report[]; attempts?: number[]; retryAt?: number };
 type Options = {
   file: string;
   consent(): Readonly<TelemetryConsentState>;
@@ -43,7 +49,7 @@ type Options = {
 };
 const startOfDay = (day: string) => Date.parse(`${day}T00:00:00Z`);
 const sameOwner = (a: Binding | null, b: Binding | null) =>
-  a?.installId === b?.installId;
+  a?.installId === b?.installId && a?.enabledAt === b?.enabledAt;
 const empty = (): Store => ({ v: 1, owner: null, days: [] });
 
 /** One instance per local installation runtime. This is the sole app-side owner
@@ -83,7 +89,7 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
     const service = new TelemetryUploadService(options);
     try {
       const saved = await readFile(options.file);
-      if (saved.length > 200 * (MAX_BODY * 2 + 1024))
+      if (saved.length > 40 * 1024 * 1024)
         throw new Error("Oversized state");
       service.store = service.decode(JSON.parse(saved.toString("utf8")));
     } catch (error) {
@@ -147,8 +153,8 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
   }
   private authority(): Binding | null {
     const state = this.options.consent();
-    return state.enabled === true
-      ? { installId: state.installId }
+    return state.enabled === true && state.enabledAt !== undefined
+      ? { installId: state.installId, enabledAt: state.enabledAt }
       : null;
   }
   private valid(generation: number): boolean {
@@ -169,8 +175,10 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
       return;
     const day = new Date(this.now()).toISOString().slice(0, 10);
     const hour = new Date(this.now()).getUTCHours();
+    if (!this.bucketEligible({day,hour})) return;
     if (this.store.days.some((row) => row.day === day && row.hour === hour)) return;
     this.prune();
+    if (this.store.days.length >= MAX_REPORTS) return;
     this.store.days.push({
       day,
       hour,
@@ -184,10 +192,17 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
   private prune(): boolean {
     const before = this.store.days.length;
     const today = Math.floor(this.now() / DAY) * DAY;
-    this.store.days = this.store.days.filter(
-      (row) =>
-        startOfDay(row.day) >= today - 7 * DAY && startOfDay(row.day) <= today,
+    this.store.days = this.store.days.filter(row =>
+      startOfDay(row.day) <= today &&
+      (startOfDay(row.day) >= today - 365 * DAY || row.status === "pending"),
     );
+    // Keep frozen pending bytes; old acknowledgements need only a comparison hash.
+    for (const row of this.store.days) {
+      if (row.status === "done" && row.body && startOfDay(row.day) < today - 7 * DAY) {
+        row.digest = fingerprint(row.body);
+        row.body = null;
+      }
+    }
     return before !== this.store.days.length;
   }
   /** Called on startup and hourly by the shared RuntimeScheduler. */
@@ -207,11 +222,15 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
     }).finally(() => { this.working = null; });
     return this.working;
   }
+  private bucketEligible(row: {day:string;hour?:number}): boolean {
+    const from = this.store.owner?.enabledAt;
+    return from !== undefined && startOfDay(row.day) + (row.hour ?? 0) * HOUR >= Math.ceil(from / HOUR) * HOUR;
+  }
   private reportEligible(row: Report): boolean {
     const today = Math.floor(this.now() / DAY) * DAY;
     return (
       this.store.days.includes(row) &&
-      startOfDay(row.day) >= today - 7 * DAY &&
+      this.bucketEligible(row) &&
       startOfDay(row.day) <= today
     );
   }
@@ -229,23 +248,43 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
     if (!this.valid(generation)) return;
     const hours = await this.options.usage.telemetryHours();
     if (!this.valid(generation)) return;
+    const observed = new Set(hours.map(bucket => `${bucket.day}/${bucket.hour}`));
     for (const bucket of hours) {
-      if (!this.store.days.some(row => row.day === bucket.day && row.hour === bucket.hour)) {
+      if (this.store.days.length < MAX_REPORTS && this.bucketEligible(bucket) && !this.store.days.some(row => row.day === bucket.day && row.hour === bucket.hour)) {
         this.store.days.push({...bucket,body:null,status:'active',attempts:0,nextAttemptAt:0});
       }
     }
     await this.persist();
+    let projections = 0;
+    let pending = this.store.days.filter(row => row.status === "pending").length;
+    let sent = 0;
+    const currentHour = Math.floor(this.now() / HOUR) * HOUR;
+    const priority = (row: Report) => {
+      if (row.hour !== undefined && startOfDay(row.day) + row.hour * HOUR === currentHour) return 0;
+      return row.status === "done" ? 2 : 1;
+    };
     for (const row of [...this.store.days].sort((a, b) =>
+      priority(a) - priority(b) ||
+      (a.status === "done" && b.status === "done" ? (a.checkedAt ?? 0) - (b.checkedAt ?? 0) : 0) ||
       a.day.localeCompare(b.day) || (a.hour ?? -1) - (b.hour ?? -1),
     )) {
       if (!this.valid(generation)) return;
       if (row.hour === undefined && row.status === 'done') continue;
       if (row.hour === undefined && startOfDay(row.day) + DAY > this.now()) continue;
+      if (sent >= 10) break; // Match the collector source burst allowance.
+      this.store.attempts = (this.store.attempts ?? []).filter(at => at > this.now() - HOUR);
+      if ((this.store.retryAt ?? 0) > this.now() || this.store.attempts.length >= 30 || this.store.attempts.filter(at => at > this.now() - 10_000).length >= 10) break;
       if (row.status !== 'pending') {
+        if (pending >= 200) continue;
+        // A missing retained source bucket is not evidence of zero usage.
+        if (row.status === "done" && !observed.has(`${row.day}/${row.hour}`)) continue;
+        if (++projections > MAX_PROJECTIONS) break;
+        row.checkedAt = this.now();
         const sealed = await this.options.usage.previewTelemetry(
-          { ...this.store.owner!, day: row.day, ...(row.hour !== undefined ? {hour:row.hour} : {}) },
+          { installId: this.store.owner!.installId, day: row.day, ...(row.hour !== undefined ? {hour:row.hour} : {}) },
           this.options.version,
           this.options.platform,
+          Math.ceil(this.store.owner!.enabledAt! / HOUR) * HOUR,
         );
         if (!this.valid(generation)) return;
         if (!this.reportEligible(row)) {
@@ -258,9 +297,11 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
           await this.persist();
           continue;
         }
-        if (row.body === sealed.body) continue;
+        if (row.body === sealed.body || row.digest === fingerprint(sealed.body)) continue;
+        delete row.digest;
         row.body = sealed.body;
         row.status = "pending";
+        ++pending;
         row.attempts = 0;
         row.nextAttemptAt = 0;
         await this.persist();
@@ -274,11 +315,14 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
         continue;
       if (row.attempts >= 6) {
         row.status = "done";
+        --pending;
         await this.persist();
         continue;
       }
       // Consume the attempt durably BEFORE transport. A crash/lost ACK can retry
       // these same bytes, but cannot exceed the total persisted attempt budget.
+      ++sent;
+      this.store.attempts.push(this.now());
       ++row.attempts;
       row.nextAttemptAt = this.now() + this.delay(row.attempts);
       await this.persist();
@@ -290,12 +334,15 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
       }
       const result = await this.send(row.body!);
       if (!this.valid(generation)) return;
-      if (result.done || row.attempts >= 6) row.status = "done";
+      if (result.done || row.attempts >= 6) { row.status = "done"; --pending; }
       else
         row.nextAttemptAt =
           this.now() + Math.max(this.delay(row.attempts), result.retryAfter);
+      if (result.limited) this.store.retryAt = this.now() + Math.max(60_000, result.retryAfter);
       await this.persist();
+      if (result.limited) break;
     }
+    await this.persist();
   }
   private delay(attempt: number): number {
     const random = Math.min(
@@ -312,7 +359,7 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
   }
   private async send(
     body: string,
-  ): Promise<{ done: boolean; retryAfter: number }> {
+  ): Promise<{ done: boolean; retryAfter: number; limited?: boolean }> {
     const controller = new AbortController();
     this.attempt = controller;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -360,7 +407,7 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
         : 0;
       // Response content is not part of the contract; never read/log/store it.
       void response.body?.cancel().catch(() => undefined);
-      return { done: !retry, retryAfter };
+      return { done: !retry, retryAfter, limited: response.status === 429 };
     } catch {
       return { done: false, retryAfter: 0 };
     } finally {
@@ -393,15 +440,18 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
       typeof object === "object" &&
       Object.keys(object).sort().join(",") === names.sort().join(",");
     if (
-      !keys(value, ["v", "owner", "days"]) ||
+      !keys(value, ["v", "owner", "days", ...(Object.hasOwn(value,"attempts") ? ["attempts"] : []), ...(Object.hasOwn(value,"retryAt") ? ["retryAt"] : [])]) ||
       value.v !== 1 ||
       !Array.isArray(value.days) ||
-      value.days.length > 200
+      value.days.length > MAX_REPORTS ||
+      (value.attempts !== undefined && (!Array.isArray(value.attempts) || value.attempts.length > 30 || value.attempts.some(at => !Number.isSafeInteger(at) || at < 0))) ||
+      (value.retryAt !== undefined && (!Number.isSafeInteger(value.retryAt) || value.retryAt < 0))
     )
       throw new Error("Invalid state");
     if (
       value.owner !== null &&
-      (!(keys(value.owner, ["installId"]) || keys(value.owner, ["installId", "eligibleFrom"])) ||
+      (!(keys(value.owner, ["installId"]) || keys(value.owner, ["installId", "eligibleFrom"]) || keys(value.owner, ["installId", "enabledAt"])) ||
+        (value.owner.enabledAt !== undefined && (!Number.isSafeInteger(value.owner.enabledAt) || value.owner.enabledAt < 0)) ||
         !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
           value.owner.installId,
         ))
@@ -411,8 +461,10 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
     for (const row of value.days) {
       if (
         !value.owner ||
-        !keys(row, ["day", "body", "status", "attempts", "nextAttemptAt", ...(Object.hasOwn(row, "hour") ? ["hour"] : [])]) ||
+        !keys(row, ["day", "body", "status", "attempts", "nextAttemptAt", ...(Object.hasOwn(row, "hour") ? ["hour"] : []), ...(Object.hasOwn(row,"checkedAt") ? ["checkedAt"] : []), ...(Object.hasOwn(row,"digest") ? ["digest"] : [])]) ||
         !isUtcDay(row.day) ||
+        (row.checkedAt !== undefined && (!Number.isSafeInteger(row.checkedAt) || row.checkedAt < 0)) ||
+        (row.digest !== undefined && (row.status !== "done" || row.body !== null || !/^[a-f0-9]{64}$/.test(row.digest))) ||
         (row.hour !== undefined && (!Number.isInteger(row.hour) || row.hour < 0 || row.hour > 23)) ||
         days.has(`${row.day}/${row.hour ?? "daily"}`) ||
         !Number.isSafeInteger(row.attempts) ||
@@ -446,6 +498,6 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
           throw new Error("Unsealed body");
       }
     }
-    return { ...value, owner: value.owner ? { installId: value.owner.installId } : null };
+    return { ...value, owner: value.owner ? { installId: value.owner.installId, ...(value.owner.enabledAt !== undefined ? {enabledAt:value.owner.enabledAt} : {}) } : null };
   }
 }

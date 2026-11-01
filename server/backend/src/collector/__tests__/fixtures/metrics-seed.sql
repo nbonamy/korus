@@ -1,5 +1,5 @@
 -- Synthetic identities; fixture only, never an operator database.
-INSERT INTO installs VALUES
+INSERT INTO installs(install_id,first_reported_day) VALUES
  ('00000000-0000-4000-8000-000000000001','2020-01-01'),
  ('00000000-0000-4000-8000-000000000002','2026-09-30'),
  ('00000000-0000-4000-8000-000000000003','2026-10-24'),

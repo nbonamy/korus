@@ -172,6 +172,7 @@ export async function desktopStackWorkflow(endpoint: string) {
     assert.deepEqual(await legacy.view(), {
       enabled: undefined,
     });
+    clock = today - 3 * DAY;
     const enabled = await change("enable");
     assert.equal(enabled.enabled, true);
     clock = today - 3 * DAY + 3600000;

@@ -70,4 +70,8 @@ export const telemetryMigrations = [
       ALTER TABLE usage_daily DROP CONSTRAINT usage_daily_pkey;
       ALTER TABLE usage_daily ADD PRIMARY KEY(install_id,day,report_hour,provider,model,service_tier);`,
   },
+  {
+    version: 6,
+    sql: `ALTER TABLE installs ADD COLUMN first_reported_hour smallint CHECK(first_reported_hour BETWEEN 0 AND 23);`,
+  },
 ] as const;

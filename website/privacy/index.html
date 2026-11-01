@@ -250,10 +250,11 @@
         makes no telemetry requests, including registration or health checks.
       </p>
       <p>
-        Reports contain hourly UTC aggregates of recent local usage, including
-        usage recorded before sharing was enabled. The app checks hourly and on
-        startup for unsent or updated buckets from the current UTC day and the
-        preceding seven days. Pending reports survive restarts. Reports can
+        Reports contain hourly UTC aggregates of local usage, starting with the
+        next full UTC hour after sharing is enabled. Re-enabling starts a new
+        window; usage recorded while sharing was off is excluded. The app checks
+        hourly and on startup for unsent or updated buckets within that sharing
+        window. Pending reports survive restarts. Reports can
         arrive late or be dropped after delivery failures. Remote teams and mobile
         companions do not submit additional copies of their usage.
       </p>

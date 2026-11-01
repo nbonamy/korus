@@ -1,12 +1,27 @@
--- Parameters: inclusive from/to UTC dates, nullable canonical provider/model, boolean combine-service-tiers.
+-- Parameters: inclusive viewer dates, nullable canonical provider/model, boolean combine-service-tiers, IANA timezone.
 -- All counts/decimals are text to preserve exact PostgreSQL sums in JSON.
 -- One statement means all sections observe the same committed snapshot.
 WITH bounds AS (
  SELECT $1::date AS lo, $2::date AS hi
 ), days AS (
  SELECT d::date AS day FROM bounds, generate_series(lo::timestamp,hi::timestamp,interval '1 day') d
+), local_activity AS (
+ SELECT i.install_id,
+ CASE WHEN h IS NULL THEN i.day ELSE
+ ((i.day::timestamp + h * interval '1 hour') AT TIME ZONE 'UTC' AT TIME ZONE $6::text)::date END AS day,
+ max(i.received_at) AS received_at
+ FROM install_days i LEFT JOIN LATERAL unnest(i.reported_hours) h ON true
+ GROUP BY i.install_id,2
+), local_installs AS (
+ SELECT install_id,CASE WHEN first_reported_hour IS NULL THEN first_reported_day ELSE
+ ((first_reported_day::timestamp + first_reported_hour * interval '1 hour') AT TIME ZONE 'UTC' AT TIME ZONE $6::text)::date END AS first_reported_day
+ FROM installs
+), local_usage AS (
+ SELECT u.*,CASE WHEN report_hour=-1 THEN day ELSE
+ ((day::timestamp + report_hour * interval '1 hour') AT TIME ZONE 'UTC' AT TIME ZONE $6::text)::date END AS local_day
+ FROM usage_daily u,bounds WHERE day BETWEEN lo-1 AND hi+1
 ), daily_usage AS (
- SELECT install_id,day,provider,model,service_tier,
+ SELECT install_id,local_day AS day,provider,model,service_tier,
  sum(turns)::bigint AS turns,
  CASE WHEN bool_or(input_tokens IS NULL) THEN NULL ELSE sum(input_tokens)::bigint END AS input_tokens,
  CASE WHEN bool_or(cached_input_tokens IS NULL) THEN NULL ELSE sum(cached_input_tokens)::bigint END AS cached_input_tokens,
@@ -14,8 +29,8 @@ WITH bounds AS (
  CASE WHEN bool_or(estimated_cost_usd IS NULL) THEN NULL ELSE sum(estimated_cost_usd) END AS estimated_cost_usd,
  sum(speed_turns)::bigint AS speed_turns,sum(speed_output_tokens)::bigint AS speed_output_tokens,
  sum(generation_ms)::bigint AS generation_ms,sum(ttft_ms)::bigint AS ttft_ms,sum(ttft_turns)::bigint AS ttft_turns
- FROM usage_daily, bounds WHERE day BETWEEN lo AND hi
- GROUP BY install_id,day,provider,model,service_tier
+ FROM local_usage, bounds WHERE local_day BETWEEN lo AND hi
+ GROUP BY install_id,local_day,provider,model,service_tier
 ), filtered AS (
  SELECT u.*, CASE WHEN $5::boolean THEN NULL::text ELSE u.service_tier END AS tier FROM daily_usage u, bounds
  WHERE u.day BETWEEN lo AND hi AND ($3::text IS NULL OR provider=$3)
@@ -89,18 +104,18 @@ WITH bounds AS (
  ) AS value FROM stats s
 )
 SELECT jsonb_build_object(
- 'range',jsonb_build_object('from',$1::text,'to',$2::text,'provider',$3::text,'model',$4::text,'groupServiceTiers',$5::boolean),
- 'availability',(SELECT jsonb_build_object('firstDay',min(day),'lastDay',max(day),'lastReceivedAt',max(received_at)) FROM install_days),
+ 'range',jsonb_build_object('from',$1::text,'to',$2::text,'provider',$3::text,'model',$4::text,'groupServiceTiers',$5::boolean,'timeZone',$6::text),
+ 'availability',(SELECT jsonb_build_object('firstDay',min(day),'lastDay',max(day),'lastReceivedAt',max(received_at)) FROM local_activity),
  'overview',(SELECT jsonb_build_object(
- 'participatingInstalls',(SELECT count(*)::text FROM installs WHERE first_reported_day<=hi),
- 'dau',(SELECT count(*)::text FROM install_days WHERE day=hi),
- 'wau',(SELECT count(DISTINCT install_id)::text FROM install_days WHERE day BETWEEN hi-6 AND hi),
- 'mau',(SELECT count(DISTINCT install_id)::text FROM install_days WHERE day BETWEEN hi-29 AND hi),
- 'calendarMonthActives',(SELECT count(DISTINCT install_id)::text FROM install_days WHERE day BETWEEN date_trunc('month',hi::timestamp)::date AND hi)
+ 'participatingInstalls',(SELECT count(*)::text FROM local_installs WHERE first_reported_day<=hi),
+ 'dau',(SELECT count(*)::text FROM local_activity WHERE day=hi),
+ 'wau',(SELECT count(DISTINCT install_id)::text FROM local_activity WHERE day BETWEEN hi-6 AND hi),
+ 'mau',(SELECT count(DISTINCT install_id)::text FROM local_activity WHERE day BETWEEN hi-29 AND hi),
+ 'calendarMonthActives',(SELECT count(DISTINCT install_id)::text FROM local_activity WHERE day BETWEEN date_trunc('month',hi::timestamp)::date AND hi)
  ) FROM bounds),
  'activity',(SELECT jsonb_agg(jsonb_build_object('day',d.day,
- 'activeInstalls',(SELECT count(*)::text FROM install_days i WHERE i.day=d.day),
- 'firstReportedInstalls',(SELECT count(*)::text FROM installs i WHERE i.first_reported_day=d.day)) ORDER BY d.day) FROM days d),
+ 'activeInstalls',(SELECT count(*)::text FROM local_activity i WHERE i.day=d.day),
+ 'firstReportedInstalls',(SELECT count(*)::text FROM local_installs i WHERE i.first_reported_day=d.day)) ORDER BY d.day) FROM days d),
  'totals',(SELECT value FROM summaries WHERE kind='total'),
  'daily',(SELECT jsonb_agg(value||jsonb_build_object('day',bucket) ORDER BY bucket) FROM summaries WHERE kind='daily'),
  'weekly',(SELECT jsonb_agg(value||jsonb_build_object('week',bucket) ORDER BY bucket) FROM summaries WHERE kind='weekly'),

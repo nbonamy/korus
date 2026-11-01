@@ -45,9 +45,11 @@ export type TelemetryMetricsFilter = {
   provider: TelemetryProvider | null;
   model: TelemetryModel | null;
   groupServiceTiers?: boolean;
+  /** IANA viewer timezone; omitted requests retain UTC semantics. */
+  timeZone?: string;
 };
 /** Global cards use the inclusive range end, regardless of usage filters.
- * Weekly buckets start Monday UTC and contain only the selected range's days.
+ * Weekly buckets start Monday in the viewer timezone and contain only the selected range's days.
  * Calendar month actives are month-to-range-end, not trailing 30 days.
  */
 export type TelemetryMetrics = {

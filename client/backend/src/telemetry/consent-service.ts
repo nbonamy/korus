@@ -50,6 +50,11 @@ export class TelemetryConsentService {
         ...(legacy?.noticeHandled ? { enabled: legacy.enabled } : {}) };
       await storage.save(state);
     }
+    if (state.enabled === true && state.enabledAt === undefined) {
+      // An existing saved choice never grants permission to backfill all local history.
+      state = { ...state, enabledAt: options.now?.() ?? Date.now() };
+      await storage.save(state);
+    }
     if (options.legacyFile) await unlink(options.legacyFile).catch(error => {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     });
@@ -85,6 +90,7 @@ export class TelemetryConsentService {
         throw new Error("Invalid telemetry action.");
       const previous = Object.freeze({ ...this.state });
       const current = { ...previous, enabled: action === "enable" };
+      if (action === "enable" && previous.enabled !== true) current.enabledAt = this.now();
       if (action === "reset") current.installId = randomUUID();
       if (
         action === "disable" ||
@@ -135,7 +141,7 @@ export class TelemetryConsentService {
     const state = this.current();
     const start = Date.parse(`${day}T00:00:00Z`);
     const enabled = state.enabled === true;
-    if (enabled && start + dayMs <= this.now()) {
+    if (enabled && state.enabledAt !== undefined && start + dayMs > Math.ceil(state.enabledAt / 3600000) * 3600000 && start + dayMs <= this.now()) {
       const sealed = await this.options.delivery?.sealedReport(day);
       if (sealed) return finish({ kind: "sealed", body: sealed.body });
     }
@@ -146,6 +152,7 @@ export class TelemetryConsentService {
       },
       version,
       platform,
+      enabled && state.enabledAt !== undefined ? Math.ceil(state.enabledAt / 3600000) * 3600000 : 0,
     );
     return finish({
       kind:

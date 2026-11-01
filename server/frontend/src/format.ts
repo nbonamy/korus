@@ -1,3 +1,4 @@
+import { dayOf } from "@workspace/core/usage-time";
 /** Display formatting never changes the exact aggregate values received. */
 export function count(value: string | null): string {
   if (value === null) return "Unavailable";
@@ -77,7 +78,9 @@ export const exactMeasurement = (value: string | null, measure: Measure) =>
         : String(Number(value) * 100) + "%"
       : count(value);
 export const utcDay = (at: number) => new Date(at).toISOString().slice(0, 10);
-export const completedDay = () => utcDay(Date.now() - 86400000);
+export const viewerTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+export const completedDay = (timeZone = viewerTimeZone()) =>
+  utcDay(Date.parse(dayOf(Date.now(),timeZone)) - 86400000);
 export function plotValue(value: string | null) {
   if (value === null) return null;
   const number = Number(value);

@@ -103,7 +103,7 @@ export async function runCollector(
     // reads no install records and never creates schema under the ingestion role.
     await Promise.all([
       pool.query<InstallRow>(
-        "SELECT install_id, first_reported_day FROM installs LIMIT 0",
+        "SELECT install_id, first_reported_day, first_reported_hour FROM installs LIMIT 0",
       ),
       pool.query<InstallDayRow>("SELECT * FROM install_days LIMIT 0"),
       pool.query<UsageDailyRow>("SELECT * FROM usage_daily LIMIT 0"),

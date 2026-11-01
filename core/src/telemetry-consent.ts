@@ -12,6 +12,8 @@ export type TelemetryProfilePreview = SealedTelemetryBody & {
 export type TelemetryConsentState = {
   installId: string;
   enabled?: boolean;
+  /** Start of the latest sharing window; private, never a report field. */
+  enabledAt?: number;
 };
 export type TelemetryConsentTransition = {
   reason: "enable" | "disable" | "reset";

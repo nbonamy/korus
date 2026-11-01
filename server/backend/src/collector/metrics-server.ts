@@ -92,6 +92,7 @@ export function createMetricsServer(options: {
             filter.provider,
             filter.model,
             filter.groupServiceTiers ?? false,
+            filter.timeZone ?? "UTC",
           ]);
           reply(200, result.rows[0]!.metrics);
         } finally {

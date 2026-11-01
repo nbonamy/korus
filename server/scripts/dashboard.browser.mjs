@@ -47,6 +47,7 @@ export async function dashboardWorkflow({
     const context = await browser.newContext({
       viewport: { width: 1440, height: 1100 },
       hasTouch: true,
+      timezoneId: "UTC",
     });
     const page = await context.newPage();
     await page.clock.install({ time: new Date() });
@@ -131,7 +132,7 @@ export async function dashboardWorkflow({
     }
     // Reports are separate, addressable pages; changing page preserves the range.
     const initialFrom = await page
-      .getByLabel("From UTC day", { exact: true })
+      .getByLabel("From day", { exact: true })
       .inputValue();
     await visit("Tokens");
     await page
@@ -154,7 +155,7 @@ export async function dashboardWorkflow({
       0,
     );
     assert.equal(
-      await page.getByLabel("From UTC day", { exact: true }).inputValue(),
+      await page.getByLabel("From day", { exact: true }).inputValue(),
       initialFrom,
     );
     await page.goBack();
@@ -185,9 +186,9 @@ export async function dashboardWorkflow({
       await page.getByRole("option", { name, exact: true }).click();
     }
     async function range(from, to) {
-      await page.getByLabel("From UTC day", { exact: true }).fill(from);
-      await page.getByLabel("To UTC day", { exact: true }).fill(to);
-      await page.getByLabel("To UTC day", { exact: true }).press("Tab");
+      await page.getByLabel("From day", { exact: true }).fill(from);
+      await page.getByLabel("To day", { exact: true }).fill(to);
+      await page.getByLabel("To day", { exact: true }).press("Tab");
       await Promise.all([
         page.waitForResponse(
           (r) =>
@@ -340,13 +341,13 @@ export async function dashboardWorkflow({
     await page.keyboard.press("Home");
     assert.equal(
       await weekly.locator(".tooltip-day").getAttribute("title"),
-      "2026-10-12 UTC",
+      "2026-10-12",
     );
     assert.equal(await weekly.locator(".tooltip-total b").innerText(), "110");
     await page.keyboard.press("End");
     assert.equal(
       await weekly.locator(".tooltip-day").getAttribute("title"),
-      "2026-10-19 UTC",
+      "2026-10-19",
     );
     assert.equal(await weekly.locator(".tooltip-total b").innerText(), "550");
     assert.equal(await page.getByText("View data", { exact: true }).count(), 0);
@@ -590,6 +591,38 @@ export async function dashboardWorkflow({
       fullPage: true,
       animations: "disabled",
     });
+    // A second authenticated viewer reads the same UTC buckets in Chicago.
+    await sql("TRUNCATE usage_daily,install_days,installs");
+    const localId = "10000000-0000-4000-8000-000000000001";
+    await sql(`INSERT INTO installs(install_id,first_reported_day,first_reported_hour) VALUES ('${localId}','2026-10-24',4);
+      INSERT INTO install_days(install_id,day,app_version,os,reported_hours) VALUES
+      ('${localId}','2026-10-24','1.0.0','macos',ARRAY[4,5]::smallint[]),
+      ('${localId}','2026-10-25','1.0.0','macos',ARRAY[4]::smallint[]);
+      INSERT INTO usage_daily(install_id,day,report_hour,provider,model,turns,input_tokens,cached_input_tokens,output_tokens,estimated_cost_usd) VALUES
+      ('${localId}','2026-10-24',4,'codex','unknown',1,10,0,0,0),
+      ('${localId}','2026-10-24',5,'codex','unknown',1,20,0,0,0),
+      ('${localId}','2026-10-25',4,'codex','unknown',1,30,0,0,0)`);
+    const localContext = await browser.newContext({timezoneId:"America/Chicago",storageState:await context.storageState()});
+    try {
+      const localPage=await localContext.newPage();
+      localPage.on("pageerror",error=>errors.push(error.message));
+      await localPage.goto(origin);
+      await localPage.getByLabel("From day",{exact:true}).fill("2026-10-24");
+      await localPage.getByLabel("To day",{exact:true}).fill("2026-10-24");
+      await localPage.getByLabel("To day",{exact:true}).press("Tab");
+      const [response] = await Promise.all([
+        localPage.waitForResponse(r=>r.url().includes("from=2026-10-24&to=2026-10-24") && r.status()===200),
+        localPage.getByRole("button",{name:"Apply range",exact:true}).click(),
+      ]);
+      assert.equal(new URL(response.url()).searchParams.get("timeZone"),"America/Chicago");
+      const localMetrics=await response.json();
+      assert.equal(localMetrics.totals.totalTokens,"50");
+      assert.equal(localMetrics.overview.dau,"1");
+      await localPage.getByLabel("Measured total tokens",{exact:true}).getByText("50",{exact:true}).waitFor();
+      assert.match(await localPage.locator(".freshness").innerText(),/America\/Chicago/);
+      await localPage.screenshot({path:path.join(output,"viewer-timezone.png"),fullPage:true});
+      await writeFile(path.join(output,"viewer-timezone.json"),JSON.stringify(localMetrics,null,2));
+    } finally {await localContext.close();}
     // Failure injection only after the complete real end-to-end path above.
     let release;
     await page.route("**/v1/telemetry/metrics?**", async (route) => {

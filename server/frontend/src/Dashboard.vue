@@ -59,7 +59,7 @@
               format="YYYY-MM-DD"
               value-format="YYYY-MM-DD"
               :clearable="false"
-              aria-label="From UTC day"
+              aria-label="From day"
               :disabled-date="futureDay"
             />
             <span class="date-separator" aria-hidden="true">to</span>
@@ -70,7 +70,7 @@
               format="YYYY-MM-DD"
               value-format="YYYY-MM-DD"
               :clearable="false"
-              aria-label="To UTC day"
+              aria-label="To day"
               :disabled-date="futureDay"
             />
             <ElButton native-type="submit">Apply range</ElButton>
@@ -147,7 +147,7 @@
         <template v-if="data"
           >Latest report
           {{ data.availability.lastDay ?? "not available" }}</template
-        ><template v-else>Completed daily reports</template><span>· UTC</span>
+        ><template v-else>Completed daily reports</template><span>· {{ timeZone }}</span>
       </p>
       <p v-if="loading" role="status" class="state panel">Loading metrics…</p>
       <p v-else-if="error" role="alert" class="state panel">{{ error }}</p>
@@ -159,7 +159,7 @@
         >
           <div class="section-heading">
             <h2>Installations</h2>
-            <span class="muted">As of {{ data.range.to }} UTC</span>
+            <span class="muted">As of {{ data.range.to }} {{ timeZone }}</span>
           </div>
           <dl class="cards">
             <div class="panel" aria-label="Participating installs">
@@ -170,7 +170,7 @@
             <div class="panel" aria-label="Daily active installs">
               <dt>Daily active</dt>
               <dd>{{ count(data.overview.dau) }}</dd>
-              <small>{{ data.range.to }} UTC</small>
+              <small>{{ data.range.to }} {{ timeZone }}</small>
             </div>
             <div class="panel" aria-label="Weekly active installs">
               <dt>Weekly active</dt>
@@ -261,7 +261,7 @@
           v-if="page === 'overview' || page === 'activity'"
           id="activity"
           title="Daily activity"
-          description="Active and newly reporting installations · daily, UTC."
+          description="Active and newly reporting installations · daily."
           :days="data.activity.map((row) => row.day)"
           :series="[
             {
@@ -284,7 +284,7 @@
             v-if="page !== 'spend'"
             id="tokens"
             title="Weekly tokens"
-            description="Input and output · weekly, UTC."
+            description="Input and output · weekly."
             :days="data.weekly.map((row) => row.week)"
             :series="[
               {
@@ -521,6 +521,7 @@ onMounted(() => {
 });
 onUnmounted(() => window.removeEventListener("hashchange", navigate));
 const {
+  timeZone,
   from,
   to,
   provider,

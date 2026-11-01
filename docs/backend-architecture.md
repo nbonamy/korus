@@ -1138,13 +1138,18 @@ the UTC reporting bucket. The preview result carries only the body, never a ledg
 row, provider object or filesystem path. An unavailable ledger is an error, not an
 empty active day.
 
-The private `telemetry` section of `settings.json` contains an installation UUID
-and an optional `enabled` choice. Unset shows the notice without sending; false
+The private `telemetry` section of `settings.json` contains an installation UUID,
+an optional `enabled` choice, and the latest `enabledAt` timestamp. Unset shows
+the notice without sending; false
 is off and true is on. The common settings writer preserves these fields across
 ordinary snapshot saves without projecting them into generic snapshots,
 coordination events or agent tools. Existing `telemetry.json` identities and
-choices are imported before retiring the old file. Invalid telemetry metadata
-makes sharing unavailable without blocking ordinary startup.
+choices are imported before retiring the old file. Each off-to-on transition sets
+`enabledAt`; repeated enable calls and restarts preserve it. Automatic reports
+start with the next full UTC hour. The partial hour and time while sharing was off
+are excluded. Existing enabled settings without a timestamp start a fresh window
+when loaded. Explicit historical backfills are separate from enabling sharing.
+Invalid telemetry metadata makes sharing unavailable without blocking ordinary startup.
 
 Only explicit desktop operations return the credential-free sharing choice. The
 desktop bridge accepts an action or reporting day, never an identity override.
@@ -1162,19 +1167,24 @@ send, schedule or manage a queue. One backend `TelemetryUploadService` per local
 installation runtime owns sealing, the private durable queue, telemetry HTTP,
 acknowledgements and cancellation. RuntimeScheduler flushes delivery on startup
 and every hour. It discovers reporting hours from the local ledger, including
-unsent history in the collector's accepted window. Electron also signals observed
+all unsent retained history inside the current sharing window. Electron also signals observed
 open/focus/resume activity, and scheduled uploads confirm foreground presence so
 an active hour without turns can report empty usage. Remote ledgers and mobile
 companions cannot supply local reporting data; an idle daemon cannot invent empty
 activity hours.
 
-Delivery state is bound to the installation UUID. It retains at most
-hourly buckets for the current day and seven preceding days, including the last
-acknowledged bytes to skip unchanged totals. Queue writes are atomic and private;
+Delivery state is bound to the installation UUID. It retains the local ledger's
+year of hourly buckets, with a 10,000-bucket bound. Frozen pending bodies survive
+until delivery finishes; older acknowledgements keep a digest for unchanged-total
+comparison. Discovery never reconstructs zero totals from expired source data.
+Each flush sends at most ten reports, prioritizing the current hour before older
+unsent history. A persisted 30-attempt rolling-hour budget survives restart, and
+a 429 pauses the whole backlog. A bounded rotating scan checks acknowledged
+buckets for late corrections. Queue writes are atomic and private;
 attempts are recorded before transport. Restart preserves frozen bodies and the
 six-attempt budget. A lost acknowledgement may cause identical physical retries;
 pending reports retry their original bytes. After acknowledgment, a changed
-hourly projection replaces that bucket's totals; unchanged projections are skipped. Expired activity is discarded even when it ages out during a ledger read.
+hourly projection replaces that bucket's totals; unchanged projections are skipped.
 Corrupt state fails closed rather than reconstructing already-sealed history.
 
 Desktop release builds embed `APP_TELEMETRY_ENDPOINT` from the build environment

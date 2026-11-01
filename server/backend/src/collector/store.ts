@@ -154,8 +154,8 @@ export class TelemetryStore {
       // First successfully reported reporting day, not install time. A later
       // arrival for an earlier reporting date must not rewrite this registry.
       await client.query(
-        "INSERT INTO installs(install_id, first_reported_day) VALUES ($1, $2) ON CONFLICT (install_id) DO NOTHING",
-        [payload.installId, payload.day],
+        "INSERT INTO installs(install_id, first_reported_day, first_reported_hour) VALUES ($1, $2, $3) ON CONFLICT (install_id) DO NOTHING",
+        [payload.installId, payload.day, payload.hour ?? null],
       );
       await client.query("COMMIT");
     } catch (error) {

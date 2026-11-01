@@ -149,7 +149,7 @@ export class UsageService {
   async drain(): Promise<void> {
     await this.chain;
   }
-  /** UTC buckets with local ledger observations inside the collector's accepted window. */
+  /** Retained UTC buckets with local ledger observations. */
   async telemetryHours() {
     await this.drain();
     return this.local.telemetryHours();
@@ -159,6 +159,7 @@ export class UsageService {
     input: TelemetryPreviewInput,
     version: string,
     platform: string,
+    from = 0,
   ): Promise<SealedTelemetryBody> {
     if (!validTelemetryPreviewInput(input))
       throw new Error("Invalid telemetry preview.");
@@ -173,7 +174,7 @@ export class UsageService {
       usage: this.local.projectDailyTelemetry({
         day,
         ...(hour !== undefined ? {hour} : {}),
-      }),
+      }, from),
     });
   }
   async close(): Promise<void> {

@@ -74,6 +74,9 @@ it("requires private access and exact configured origins; rejects invalid and un
     "from=2026-02-30&to=2026-10-24",
     "from=2026-10-24&to=2026-10-18",
     range + "&sql=select+*",
+    range + "&timeZone=Invalid/Zone",
+    range + "&timeZone=UTC&timeZone=UTC",
+    range + "&timeZone=%2B05:00",
     range + "&provider=custom",
     range + "&model=alias",
     range + "&groupServiceTiers=yes",
@@ -168,11 +171,11 @@ it("agrees with executable SQL across global activity, complete token pairs, spe
   let executable;
   try {
     await sqlClient.query(
-      `PREPARE dashboard_example(date,date,text,text,boolean) AS ${metricsSql}`,
+      `PREPARE dashboard_example(date,date,text,text,boolean,text) AS ${metricsSql}`,
     );
     executable = (
       await sqlClient.query(
-        "EXECUTE dashboard_example('2026-10-18','2026-10-24',NULL,NULL,false)",
+        "EXECUTE dashboard_example('2026-10-18','2026-10-24',NULL,NULL,false,'UTC')",
       )
     ).rows[0].metrics;
     await sqlClient.query("DEALLOCATE dashboard_example");
@@ -309,6 +312,7 @@ it("uses a read-only database role and bounds failures without exposing SQL or c
       null,
       null,
       false,
+      "UTC",
     ]);
     expect(result.rows[0].metrics.overview.dau).toBe("3");
     await expect(read.query("DELETE FROM installs")).rejects.toThrow();
@@ -491,4 +495,88 @@ it("weights performance by measured output/time, preserves missing samples and r
     "ultrafast",
     "unknown",
   ]);
+});
+
+it("groups hourly usage and distinct activity into viewer days across midnight and DST, preserving legacy dates", async () => {
+  await pool.query("TRUNCATE usage_daily,install_days,installs");
+  const store = new TelemetryStore(pool);
+  const id = "10000000-0000-4000-8000-000000000001";
+  const put = (day: string, hour: number | undefined, tokens: number) =>
+    store.replace({
+      installId: id,
+      day,
+      ...(hour === undefined ? {} : { hour }),
+      appVersion: "1.0.0",
+      os: "macos",
+      usage: [
+        {
+          provider: "codex",
+          model: "unknown",
+          turns: 1,
+          inputTokens: tokens,
+          cachedInputTokens: 0,
+          outputTokens: 0,
+          estimatedCostUsd: 0,
+        },
+      ],
+    });
+  // The first report is just before Chicago midnight; a later UTC day still belongs to the same local day.
+  await put("2026-10-24", 4, 10);
+  await put("2026-10-24", 5, 20);
+  await put("2026-10-25", 4, 30);
+  let result = await get(
+    "from=2026-10-23&to=2026-10-24&timeZone=America%2FChicago",
+  );
+  expect(result.status).toBe(200);
+  const local = (await result.json()) as TelemetryMetrics;
+  expect(local.range.timeZone).toBe("America/Chicago");
+  expect(local.daily.map((row) => [row.day, row.inputTokens])).toStrictEqual([
+    ["2026-10-23", "10"],
+    ["2026-10-24", "50"],
+  ]);
+  expect(local.activity).toStrictEqual([
+    { day: "2026-10-23", activeInstalls: "1", firstReportedInstalls: "1" },
+    { day: "2026-10-24", activeInstalls: "1", firstReportedInstalls: "0" },
+  ]);
+  expect(local.overview).toMatchObject({
+    dau: "1",
+    wau: "1",
+    participatingInstalls: "1",
+  });
+  expect(local.availability).toMatchObject({
+    firstDay: "2026-10-23",
+    lastDay: "2026-10-24",
+  });
+  const utc = (await (
+    await get("from=2026-10-23&to=2026-10-24")
+  ).json()) as TelemetryMetrics;
+  expect(utc.totals.inputTokens).toBe("30");
+  for (const [day, next, hours] of [
+    ["2026-03-08", "2026-03-09", [7, 8]], // spring-forward skips 02:00
+    ["2025-11-02", "2025-11-03", [6, 7]], // fall-back repeats 01:00
+  ] as const) {
+    await put(day, hours[0], 11);
+    await put(day, hours[1], 12);
+    await put(next, 4, 13);
+    const data = (await (
+      await get(`from=${day}&to=${day}&timeZone=America%2FChicago`)
+    ).json()) as TelemetryMetrics;
+    expect(data.totals.inputTokens).toBe("36");
+    expect(data.activity[0]!.activeInstalls).toBe("1");
+  }
+  await put("2020-01-01", undefined, 40); // No hour exists to reinterpret legacy reporting dates.
+  result = await get(
+    "from=2020-01-01&to=2020-01-01&timeZone=America%2FChicago",
+  );
+  expect(((await result.json()) as TelemetryMetrics).totals.inputTokens).toBe(
+    "40",
+  );
+  expect(
+    (await get("from=2026-10-25&to=2026-10-25&timeZone=Pacific%2FKiritimati"))
+      .status,
+  ).toBe(200);
+  expect(
+    (await get("from=2026-10-25&to=2026-10-25&timeZone=America%2FChicago"))
+      .status,
+  ).toBe(400);
 });

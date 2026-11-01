@@ -353,6 +353,7 @@ it("aborts at ten seconds, on opt-out/reset, and on shutdown; never retries revo
   await advance(DAY);
   expect(fetcher).toHaveBeenCalledTimes(2);
   await pendingHour();
+  await upload!.activity();void upload!.flush();
   await eventually(() => expect(signals).toHaveLength(3));
   await upload!.close();
   expect(signals[2]!.aborted).toBe(true);
@@ -381,15 +382,16 @@ it("cannot export a seal completed after reset, and never makes consent wait for
   expect((await stored()).days).toStrictEqual([]);
 });
 
-it("expires old markers, bounds storage and rejects corrupt or obsolete persisted delivery state", async () => {
+it("keeps historical markers and rejects corrupt persisted delivery state", async () => {
   await open();
   await activeHour();
   await upload!.close();
   clock += 8 * DAY;
   await open();
   await advance(3600000);
-  expect(fetcher).not.toHaveBeenCalled();
-  await eventually(async () => expect((await stored()).days).toStrictEqual([]));
+  await eventually(() => expect(fetcher).toHaveBeenCalledTimes(1));
+  await eventually(async () => expect((await stored()).days[0].status).toBe("done"));
+  fetcher.mockClear();
   await upload!.close();
   await open("");
   for (let i = 0; i < 10; i++) {
@@ -397,7 +399,7 @@ it("expires old markers, bounds storage and rejects corrupt or obsolete persiste
     await advance(DAY);
   }
   await upload!.activity();
-  expect((await stored()).days).toHaveLength(8);
+  expect((await stored()).days).toHaveLength(12);
   expect(fetcher).not.toHaveBeenCalled();
   await upload!.close();
   await writeFile(
@@ -479,7 +481,7 @@ it("records a reproducible off/on loopback trace and sends exactly the sealed UT
   }
 });
 
-it("does not send activity that expires while a ledger projection is in progress", async () => {
+it("keeps old activity eligible while a ledger projection is in progress", async () => {
   let release!: () => void;
   const blocked = new Promise<void>((resolve) => {
     release = resolve;
@@ -498,8 +500,7 @@ it("does not send activity that expires while a ledger projection is in progress
     clock += 8 * DAY;
     vi.setSystemTime(clock);
     release();
-    await eventually(() => expect(vi.getTimerCount()).toBe(1));
-    expect(fetcher).not.toHaveBeenCalled();
+    await eventually(() => expect(fetcher).toHaveBeenCalledTimes(1));
   } finally {
     release();
   }
@@ -617,6 +618,167 @@ it.each([true, false, undefined])("migrates a legacy sharing choice %s and insta
   expect(await consent.view()).toStrictEqual({enabled});
   expect(consent.current().installId).toBe(installId);
   const saved = JSON.parse(await readFile(path.join(directory, 'settings.json'), 'utf8'));
-  expect(saved.data.telemetry).toStrictEqual({installId,...(enabled !== undefined ? {enabled} : {})});
+  expect(saved.data.telemetry).toStrictEqual({installId,...(enabled !== undefined ? {enabled} : {}),...(enabled === true ? {enabledAt:clock} : {})});
   await expect(readFile(legacy)).rejects.toMatchObject({code:'ENOENT'});
+});
+
+it("catches up more than 200 historical hours with a persisted request budget and silent network failures", async () => {
+  // A long-enabled profile catches up after shutdown, without a seven-day cutoff.
+  const present = clock;
+  clock -= 501 * 3600000;
+  vi.setSystemTime(clock);
+  await consent.change("enable");
+  clock = present;
+  vi.setSystemTime(clock);
+  // More history than the previous queue limit; all observations stay in a private temp ledger.
+  for (let i = 0; i < 225; i++) {
+    await usage.local.observe(
+      {
+        provider: "codex",
+        agentId: "a",
+        sessionId: "s",
+        turnId: String(i),
+        model: "unknown",
+        at: clock - (500 - i) * 3600000,
+        phase: "started",
+        tokens: { input: 1, output: 1, cacheRead: 0, cacheWrite: null },
+      },
+      { teamId: null, repository: null },
+    );
+  }
+  fetcher.mockRejectedValueOnce(new Error("PRIVATE_NETWORK_ERROR"));
+  await open();
+  await expect(upload!.flush()).resolves.toBeUndefined();
+  expect(fetcher).toHaveBeenCalledTimes(10); // Respect source burst admission.
+  expect((await stored()).days).toHaveLength(225);
+  scheduler!.stop();
+  await upload!.close();
+  await open();
+  await upload!.flush();
+  expect(fetcher).toHaveBeenCalledTimes(10); // Restart also preserves the source burst budget.
+  clock += 10_000;
+  vi.setSystemTime(clock);
+  await upload!.flush();
+  clock += 10_000;
+  vi.setSystemTime(clock);
+  await upload!.flush();
+  await upload!.close();
+  await open();
+  await upload!.flush();
+  expect(fetcher).toHaveBeenCalledTimes(30); // Restart cannot reset admission.
+  fetcher.mockResolvedValueOnce(
+    new Response(null, { status: 429, headers: { "Retry-After": "3600" } }),
+  );
+  await advance(3600000);
+  await eventually(() => expect(fetcher).toHaveBeenCalledTimes(31));
+  await upload!.flush();
+  expect(fetcher).toHaveBeenCalledTimes(31); // One 429 pauses the whole backlog.
+  scheduler!.stop();
+  for (let i = 0; i < 24; i++) {
+    clock += 3600000;
+    vi.setSystemTime(clock);
+    await upload!.flush();
+  }
+  expect(
+    new Set(
+      fetcher.mock.calls.map((call) => {
+        const p = JSON.parse(call[1]!.body as string);
+        return `${p.day}/${p.hour}`;
+      }),
+    ).size,
+  ).toBe(225);
+  expect(
+    (await stored()).days.every(
+      (row: { status: string }) => row.status === "done",
+    ),
+  ).toBe(true);
+  const sent = fetcher.mock.calls.length;
+  clock += 366 * DAY;
+  vi.setSystemTime(clock);
+  await usage.local.load();
+  await upload!.flush();
+  expect(fetcher).toHaveBeenCalledTimes(sent); // Retention must not overwrite old server totals with empty projections.
+});
+
+it("starts a new sharing window on re-enable and never uploads the disabled interval, including after restart", async () => {
+  const observe = async (turnId: string, at: number, input: number) => {
+    expect(
+      await usage.local.observe(
+        {
+          provider: "codex",
+          agentId: "a",
+          sessionId: "s",
+          turnId,
+          model: "unknown",
+          at,
+          phase: "started",
+          tokens: { input, cacheRead: 0, cacheWrite: null, output: 0 },
+        },
+        { teamId: null, repository: null },
+      ),
+    ).toBe(true);
+  };
+  await observe("before-consent", clock - 3600000, 999);
+  await open();
+  await consent.change("enable");
+  await observe("shared", clock, 10);
+  await upload!.flush();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(
+    JSON.parse(fetcher.mock.calls[0]![1]!.body as string).usage[0].inputTokens,
+  ).toBe(10);
+  await consent.change("disable");
+  scheduler!.stop();
+  clock += 3600000;
+  vi.setSystemTime(clock);
+  await observe("disabled", clock, 999);
+  clock += 3600000;
+  vi.setSystemTime(clock);
+  await consent.change("enable");
+  const enabled = consent.current();
+  await upload!.close();
+  consent = await openTelemetryConsent(directory, {
+    now,
+    delivery: {
+      consentChanged: (t) => upload?.consentChanged(t) ?? Promise.resolve(),
+      sealedReport: (d) => upload?.sealedReport(d) ?? Promise.resolve(null),
+    },
+  });
+  expect(consent.current()).toStrictEqual(enabled);
+  await open();
+  await upload!.flush();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await observe("shared-again", clock, 20);
+  clock += 60_000;
+  vi.setSystemTime(clock);
+  await consent.change("enable"); // Idempotent, does not move the boundary.
+  expect(consent.current()).toStrictEqual(enabled);
+  await upload!.flush();
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(
+    JSON.parse(fetcher.mock.calls[1]![1]!.body as string).usage[0].inputTokens,
+  ).toBe(20);
+  const preview = await consent.preview(day(), usage, "1.2.3", "darwin");
+  expect(JSON.parse(preview.body).usage[0].inputTokens).toBe(20);
+});
+
+it("waits for a complete reporting hour after a mid-hour enable instead of rewriting earlier shared totals", async () => {
+  await open();
+  await consent.change("enable");
+  await upload!.activity();
+  await upload!.flush();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await consent.change("disable");
+  clock += 15 * 60_000;
+  vi.setSystemTime(clock);
+  await consent.change("enable");
+  await upload!.activity();
+  await upload!.flush();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  clock += 45 * 60_000;
+  vi.setSystemTime(clock);
+  await upload!.activity();
+  await upload!.flush();
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(JSON.parse(fetcher.mock.calls[1]![1]!.body as string).hour).toBe(13);
 });

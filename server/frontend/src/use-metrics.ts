@@ -1,9 +1,10 @@
 import { onMounted, onUnmounted, ref } from "vue";
 import type { TelemetryMetrics } from "@workspace/core/telemetry-metrics";
-import { completedDay, utcDay } from "./format";
+import { completedDay, utcDay, viewerTimeZone } from "./format";
 
 export function useMetrics(onSessionExpired?: () => void) {
-  const to = ref(completedDay());
+  const timeZone = viewerTimeZone();
+  const to = ref(completedDay(timeZone));
   const from = ref(utcDay(Date.parse(to.value) - 29 * 86400000));
   const provider = ref(""),
     model = ref("");
@@ -28,14 +29,14 @@ export function useMetrics(onSessionExpired?: () => void) {
       !validDay(to.value) ||
       span < 0 ||
       span > 3659 ||
-      to.value > completedDay()
+      to.value > completedDay(timeZone)
     ) {
       error.value =
-        "Choose completed UTC days in order, up to 3,660 days per range.";
+        "Choose completed days in order, up to 3,660 days per range.";
       loading.value = false;
       return;
     }
-    const params = new URLSearchParams({ from: from.value, to: to.value });
+    const params = new URLSearchParams({ from: from.value, to: to.value, timeZone });
     if (provider.value) params.set("provider", provider.value);
     if (model.value) params.set("model", model.value);
     if (groupServiceTiers.value) params.set("groupServiceTiers", "true");
@@ -82,7 +83,7 @@ export function useMetrics(onSessionExpired?: () => void) {
     }
   }
   function recent(days: number) {
-    to.value = completedDay();
+    to.value = completedDay(timeZone);
     from.value = utcDay(Date.parse(to.value) - (days - 1) * 86400000);
     void load();
   }
@@ -92,6 +93,7 @@ export function useMetrics(onSessionExpired?: () => void) {
     controller?.abort();
   });
   return {
+    timeZone,
     from,
     to,
     provider,

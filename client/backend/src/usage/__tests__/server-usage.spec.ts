@@ -565,7 +565,7 @@ it("owns private consent across upgrade, restart, opt-out and reset while delega
 
 it("delegates purge/cancellation and serves sealed bytes only while sharing is enabled", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "telemetry-delivery-port-"));
-  let now = Date.parse("2026-10-15T23:59:59Z");
+  let now = Date.parse("2026-10-15T00:00:00Z");
   let consent!: TelemetryConsentService;
   const changes: unknown[] = [];
   // The delivery owner is a boundary fake; no scheduler, transport or real queue.
@@ -618,11 +618,12 @@ it("delegates purge/cancellation and serves sealed bytes only while sharing is e
     expect(consent.current()).toMatchObject({
       ...reset,
       enabled: true,
+      enabledAt: now,
     });
     expect(
       await consent.preview("2026-10-16", usage, "0.44.0", "darwin"),
-    ).toMatchObject({ kind: "sealed" });
-    expect(sealedReport).toHaveBeenCalled();
+    ).toMatchObject({ kind: "hypothetical" });
+    expect(sealedReport).not.toHaveBeenCalled();
   } finally {
     await usage.close();
     await rm(dir, { recursive: true, force: true });

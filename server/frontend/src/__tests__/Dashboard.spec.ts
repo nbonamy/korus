@@ -55,7 +55,7 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
     wrapper
       .get('[aria-label="Recent ranges"]')
       .element.compareDocumentPosition(
-        wrapper.get('input[aria-label="From UTC day"]').element,
+        wrapper.get('input[aria-label="From day"]').element,
       ) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   expect(wrapper.get('[aria-label="Recent ranges"]').text()).toBe("7d30d90d");
@@ -134,10 +134,10 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   expect(wrapper.get('[aria-label="Known estimated spend"]').text()).toContain(
     "<$0.01",
   );
-  await wrapper.get('input[aria-label="From UTC day"]').setValue("2020-01-01");
-  await wrapper.get('input[aria-label="To UTC day"]').setValue("2020-01-01");
-  await wrapper.get('input[aria-label="From UTC day"]').trigger("change");
-  await wrapper.get('input[aria-label="To UTC day"]').trigger("change");
+  await wrapper.get('input[aria-label="From day"]').setValue("2020-01-01");
+  await wrapper.get('input[aria-label="To day"]').setValue("2020-01-01");
+  await wrapper.get('input[aria-label="From day"]').trigger("change");
+  await wrapper.get('input[aria-label="To day"]').trigger("change");
   await wrapper.get('form[aria-label="Reporting range"]').trigger("submit");
   expect(String(fetcher.mock.calls.at(-1)?.[0])).toContain(
     "from=2020-01-01&to=2020-01-01",
@@ -232,12 +232,60 @@ it("shows recoverable failures without echoing remote diagnostics and bounds dat
   await flushPromises();
   expect(wrapper.get('[role="alert"]').text()).toContain("unavailable");
   expect(wrapper.text()).not.toContain("SECRET");
-  await wrapper.get('input[aria-label="From UTC day"]').setValue("2000-01-01");
-  await wrapper.get('input[aria-label="To UTC day"]').setValue("2026-01-01");
-  await wrapper.get('input[aria-label="From UTC day"]').trigger("change");
-  await wrapper.get('input[aria-label="To UTC day"]').trigger("change");
+  await wrapper.get('input[aria-label="From day"]').setValue("2000-01-01");
+  await wrapper.get('input[aria-label="To day"]').setValue("2026-01-01");
+  await wrapper.get('input[aria-label="From day"]').trigger("change");
+  await wrapper.get('input[aria-label="To day"]').trigger("change");
   await wrapper.get('form[aria-label="Reporting range"]').trigger("submit");
   expect(wrapper.get('[role="alert"]').text()).toContain("3,660");
   expect(fetcher).toHaveBeenCalledTimes(1);
   wrapper.unmount();
+});
+
+it("requests and labels browser-local completed days at midnight and across DST", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  const fetcher = vi.fn(async (_url: string) => Response.json(metrics()));
+  vi.stubGlobal("fetch", fetcher);
+  try {
+    for (const [zone, now, to, from] of [
+      ["America/Chicago", "2026-11-01T03:00:00Z", "2026-10-30", "2026-10-01"],
+      [
+        "Pacific/Kiritimati",
+        "2026-11-01T12:00:00Z",
+        "2026-11-01",
+        "2026-10-03",
+      ],
+      ["America/Chicago", "2026-03-09T04:30:00Z", "2026-03-07", "2026-02-06"],
+    ]) {
+      vi.stubEnv("TZ", zone!);
+      vi.setSystemTime(new Date(now!));
+      const wrapper = mount(Dashboard, {
+        global: { components: { ElPopover, ElSwitch } },
+      });
+      await flushPromises();
+      const params = new URL(
+        fetcher.mock.calls.at(-1)![0]!,
+        "https://console.invalid",
+      ).searchParams;
+      expect(params.get("timeZone")).toBe(zone);
+      expect(params.get("to")).toBe(to);
+      expect(params.get("from")).toBe(from);
+      expect(wrapper.get(".freshness").text()).toContain(zone!);
+      await wrapper
+        .get('[aria-label="Recent ranges"]')
+        .findAll("input")[0]!
+        .trigger("click");
+      await flushPromises();
+      expect(
+        new URL(
+          fetcher.mock.calls.at(-1)![0]!,
+          "https://console.invalid",
+        ).searchParams.get("to"),
+      ).toBe(to);
+      wrapper.unmount();
+    }
+  } finally {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+  }
 });

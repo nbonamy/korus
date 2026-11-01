@@ -299,7 +299,7 @@ test(
           );
           await assert.rejects(
             sql(
-              "INSERT INTO installs VALUES (gen_random_uuid(),current_date)",
+              "INSERT INTO installs(install_id,first_reported_day) VALUES (gen_random_uuid(),current_date)",
               "telemetry_read",
             ),
           );

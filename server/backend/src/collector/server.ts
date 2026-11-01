@@ -105,7 +105,7 @@ export function createCollectorServer(options: Options) {
       }
       const day = Date.parse(payload.day + "T00:00:00Z");
       const today = Math.floor(now() / DAY) * DAY;
-      if (day < today - 7 * DAY || (payload.hour === undefined ? day >= today : day + payload.hour * 3600000 > now()))
+      if ((payload.hour === undefined ? day >= today : day + payload.hour * 3600000 > now()))
         throw new Rejection(400, "invalid");
       const installRetry = admission.install(payload.installId, now());
       if (installRetry) throw new Rejection(429, "limited", installRetry);

@@ -66,7 +66,7 @@
       </div>
       <MetricChart
         title="Model usage over time"
-        description="Reported usage by model · daily, UTC."
+        description="Reported usage by model · daily."
         :days="days"
         :series="series"
         :measure="measure === 'turns' ? 'count' : 'tokens'"

@@ -41,10 +41,11 @@ export class AppStateStore {
     const state = this.telemetrySettings as TelemetryConsentState;
     if (!state || typeof state !== 'object' || Array.isArray(state)
       || typeof state.installId !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(state.installId)
-      || (state.enabled !== undefined && typeof state.enabled !== 'boolean')) {
+      || (state.enabled !== undefined && typeof state.enabled !== 'boolean')
+      || (state.enabledAt !== undefined && (!Number.isSafeInteger(state.enabledAt) || state.enabledAt < 0))) {
       throw new Error('Telemetry settings are unavailable.');
     }
-    return { installId: state.installId, ...(state.enabled !== undefined ? { enabled: state.enabled } : {}) };
+    return { installId: state.installId, ...(state.enabled !== undefined ? { enabled: state.enabled } : {}), ...(state.enabledAt !== undefined ? {enabledAt:state.enabledAt} : {}) };
   }
 
   saveTelemetrySettings(snapshot: AppSnapshot, state: TelemetryConsentState): Promise<void> {

@@ -268,7 +268,7 @@ describe("daily ingestion into disposable Postgres", () => {
     expect((await send(hourly(10,25))).status).toBe(204);
     expect((await send(hourly(10,25))).status).toBe(204); // Lost acknowledgment.
     expect((await send()).status).toBe(204); // Downgraded client cannot duplicate hourly usage.
-    const totals = (await pool.query(metricsSql,['2026-10-24','2026-10-24',null,null,false])).rows[0].metrics;
+    const totals = (await pool.query(metricsSql,['2026-10-24','2026-10-24',null,null,false,'UTC'])).rows[0].metrics;
     expect(totals.totals).toMatchObject({turns:'6',inputTokens:'55',groups:'1'});
     expect(totals.activity).toStrictEqual([{day:'2026-10-24',activeInstalls:'1',firstReportedInstalls:'1'}]);
     expect((await pool.query('SELECT report_hour FROM usage_daily ORDER BY report_hour')).rows).toStrictEqual([{report_hour:10},{report_hour:11}]);
@@ -551,9 +551,11 @@ describe("daily ingestion into disposable Postgres", () => {
     ).toBe(204);
   });
 
-  it("accepts only the last seven completed UTC reporting dates and never expires stored history", async () => {
+  it("accepts historical reporting dates without an age cutoff and rejects future or unfinished daily reports", async () => {
     expect((await send(payload({ day: "2026-10-18" }))).status).toBe(204);
-    for (const day of ["2026-10-17", "2026-10-25", "2026-10-26"])
+    expect((await send(payload({ day: "2020-01-01", hour: 4 }))).status).toBe(204);
+    expect((await send(payload({ day: "2026-10-17" }))).status).toBe(204);
+    for (const day of ["2026-10-25", "2026-10-26"])
       expect((await send(payload({ day }))).status).toBe(400);
     clock += 800 * DAY;
     expect(
