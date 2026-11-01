@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.48.3",
+  "currentVersion": "0.48.4",
   "releases": [
+    {
+      "version": "0.48.4",
+      "releasedAt": "2026-11-01",
+      "sourceSha256": "7f689a9b44234c10f970b0dee2e226277e316b9a5f6615c276412d7ee005e157",
+      "markdown": "### Improvements and fixes\n\n- **Worktree view:** Create matching worktrees and agents across selected\n  repositories from the main group's **+** menu, with creation progress and\n  **Run in background** support."
+    },
     {
       "version": "0.48.3",
       "releasedAt": "2026-10-31",

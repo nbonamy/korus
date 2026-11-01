@@ -4,6 +4,14 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.48.4] - 2026-11-01
+
+### Improvements and fixes
+
+- **Worktree view:** Create matching worktrees and agents across selected
+  repositories from the main group's **+** menu, with creation progress and
+  **Run in background** support.
+
 ## [0.48.3] - 2026-10-31
 
 ### Improvements and fixes
