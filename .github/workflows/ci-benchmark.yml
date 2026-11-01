@@ -20,6 +20,11 @@ run-name: CI benchmark ${{ inputs.variant || 'compare' }} ${{ github.sha }}
   push:
     branches:
     - ci/optimization-benchmark
+    paths-ignore:
+    - '.github/workflows/vue-test-benchmark.yml'
+    - 'scripts/ci-vue-test-*'
+    - '.github/workflows/ci-benchmark.yml'
+    - '.github/workflows/release-benchmark.yml'
 permissions:
   contents: read
 concurrency:
