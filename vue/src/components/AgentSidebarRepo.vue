@@ -190,6 +190,18 @@
                 <OpenFeatureIcon aria-hidden="true" />
               </button>
             </el-tooltip>
+            <AppMenuButton
+              v-if="group.protected && !phoneScope"
+              :ariaLabel="t('features.newWorktree')"
+              :items="[{ id: 'new-worktree', type: 'action', label: t('sidebar.newWorktree'), icon: GitForkIcon }]"
+              @select="emit('create-feature-worktree', featureRepositoryTargets)"
+            >
+              <template #trigger="{ attrs }">
+                <button v-bind="attrs" type="button" :aria-label="t('features.newWorktree')" :title="t('features.newWorktree')">
+                  <PlusIcon aria-hidden="true" />
+                </button>
+              </template>
+            </AppMenuButton>
           </span>
           <span v-else-if="group.kind === 'repository'" class="agent-sidebar__workspace-actions">
             <button
@@ -360,6 +372,7 @@ const {
   missionStatusLabel,
   missionDotStatus,
   workspaceGroups,
+  featureRepositoryTargets,
   clientRepositoryOrderUpdate,
   openWorkspaceMenu,
   isWorkspaceCollapsed,

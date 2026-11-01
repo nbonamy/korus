@@ -57,6 +57,9 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     quickChatsLabel: t('sidebar.chats'),
     unreadAgentIds: props.unreadAgentIds,
   }).sort((left, right) => Number(right.kind === 'quickChats') - Number(left.kind === 'quickChats')));
+  const featureRepositoryTargets = computed(() => repositoryGroups.value
+    .filter(group => group.kind === 'repository' && group.repositoryRoot && group.sessions.length)
+    .map(sectionTarget));
   const organization = useAgentSidebarOrganization({
     activityOnly: () => props.allTeams ?? false,
     teamId: () => props.teamId, agents: () => props.agents, repositoryGroups: () => repositoryGroups.value,
@@ -538,6 +541,7 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     missionStatusLabel,
     missionDotStatus,
     workspaceGroups,
+    featureRepositoryTargets,
     clientRepositoryOrderUpdate,
     openWorkspaceMenu,
     isWorkspaceCollapsed,

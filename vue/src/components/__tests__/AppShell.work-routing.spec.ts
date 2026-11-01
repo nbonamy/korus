@@ -46,6 +46,85 @@ afterEach(() => {
 });
 
 describe('AppShell work routing', () => {
+  it('creates a shared worktree and idle agent in each selected repository using its default branch', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const createAgent = vi.fn().mockResolvedValue(undefined);
+    const listSourceBranches = vi.fn(async (path: string) => [{ name: path === '/src/api' ? 'main' : 'trunk', isDefault: true }]);
+    let finishFirst!: (worktree: { name: string; path: string }) => void;
+    const createSourceWorktree = vi.fn(async (input: { repoPath: string; branchName: string }) => ({ name: input.branchName, path: input.repoPath + '-search' }))
+      .mockImplementationOnce(() => new Promise(resolve => { finishFirst = resolve; }));
+    const wrapper = mountShell({ snapshot, createAgent, listSourceBranches, createSourceWorktree });
+    try {
+      wrapper.getComponent({ name: 'AgentSidebar' }).vm.$emit('create-feature-worktree', [
+        { agentId: 'api', repositoryName: 'api', repositoryRoot: '/src/api' },
+        { agentId: 'web', repositoryName: 'web', repositoryRoot: '/src/web' },
+      ]);
+      await flushPromises();
+      const dialog = wrapper.getComponent({ name: 'FeatureWorktreeDialog' });
+      const picker = dialog.getComponent({ name: 'ElSelect' });
+      expect(picker.props('modelValue')).toStrictEqual(['/src/api', '/src/web']);
+      await dialog.get('input#feature-worktree-branch').setValue('feature/search');
+      await dialog.findAll('button').find(button => button.text() === 'Create')!.trigger('click');
+      await flushPromises();
+      const progress = wrapper.getComponent({ name: 'WorkspaceProvisioningProgressDialog' });
+      expect(progress.props('operation')).toMatchObject({ mode: 'batch', progress: [
+        { repositoryName: 'api', state: 'running', createWorktree: true },
+        { repositoryName: 'web', state: 'running', createWorktree: true },
+      ] });
+      expect(dialog.getComponent({ name: 'FormDialog' }).props('modelValue')).toBe(false);
+      await progress.findAll('button').find(button => button.text() === 'Run in background')!.trigger('click');
+      expect(progress.props('operation')).toBeNull();
+      finishFirst({ name: 'feature/search', path: '/src/api-search' });
+      await flushPromises();
+      expect(createAgent).toHaveBeenCalledTimes(2);
+      expect(createSourceWorktree.mock.calls).toStrictEqual([
+        [{ repoPath: '/src/api', branchName: 'feature/search', baseBranch: 'main', requireNewBranch: true }],
+        [{ repoPath: '/src/web', branchName: 'feature/search', baseBranch: 'trunk', requireNewBranch: true }],
+      ]);
+      expect(createAgent).toHaveBeenNthCalledWith(1, expect.objectContaining({
+        name: null, folder: '/src/api-search', teamId: snapshot.activeTeamId,
+      }), { select: false });
+      expect(createAgent).toHaveBeenNthCalledWith(2, expect.objectContaining({
+        name: null, folder: '/src/web-search', teamId: snapshot.activeTeamId,
+      }), { select: false });
+      expect(progress.props('operation')).toBeNull();
+      expect(wrapper.findComponent({ name: 'FeatureWorktreeDialog' }).exists()).toBe(false);
+    } finally { wrapper.unmount(); }
+  });
+
+  it('retries only failed repositories after partial worktree creation', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const createAgent = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('Branch already exists')).mockResolvedValueOnce(undefined);
+    const createSourceWorktree = vi.fn(async (input: { repoPath: string; branchName: string }) => ({ name: input.branchName, path: input.repoPath + '-search' }));
+    const wrapper = mountShell({ snapshot, createAgent, createSourceWorktree, listSourceBranches: vi.fn().mockResolvedValue([{ name: 'main', isDefault: true }]) });
+    try {
+      wrapper.getComponent({ name: 'AgentSidebar' }).vm.$emit('create-feature-worktree', [
+        { agentId: 'api', repositoryName: 'api', repositoryRoot: '/src/api' },
+        { agentId: 'web', repositoryName: 'web', repositoryRoot: '/src/web' },
+      ]);
+      await flushPromises();
+      const dialog = wrapper.getComponent({ name: 'FeatureWorktreeDialog' });
+      await dialog.get('input#feature-worktree-branch').setValue('feature/search');
+      await dialog.findAll('button').find(button => button.text() === 'Create')!.trigger('click');
+      await flushPromises();
+      const progress = wrapper.getComponent({ name: 'WorkspaceProvisioningProgressDialog' });
+      expect(progress.props('operation')).toMatchObject({ mode: 'batch', progress: [
+        { state: 'success' }, { state: 'error', error: 'Branch already exists' },
+      ] });
+      await progress.findAll('button').find(button => button.text() === 'Close')!.trigger('click');
+      await flushPromises();
+      expect(dialog.text()).toContain('web');
+      expect(dialog.text()).toContain('Branch already exists');
+      expect(createAgent).toHaveBeenCalledTimes(2);
+      await dialog.findAll('button').find(button => button.text() === 'Retry')!.trigger('click');
+      await flushPromises();
+      expect(createAgent).toHaveBeenCalledTimes(3);
+      expect(createAgent.mock.calls[2]![0]).toMatchObject({ folder: '/src/web-search' });
+      expect(createSourceWorktree).toHaveBeenCalledTimes(2);
+    } finally { wrapper.unmount(); }
+  });
   it('requests default-branch resolution on the selected host when opening remotely', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];

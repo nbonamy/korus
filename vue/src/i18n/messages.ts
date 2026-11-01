@@ -545,6 +545,8 @@ export const messages = {
     },
     features: {
       rename: 'Rename', renameTitle: 'Rename feature', label: 'Label', actions: 'Feature actions',
+      newWorktree: 'New worktree', repositories: 'Repositories', branch: 'New branch', retry: 'Retry',
+      noBackend: 'No agent backend is available.', defaultBranchUnavailable: 'Default branch not found.', creationFailed: 'Could not create the agent.',
       open: 'Open feature in split view', openLimited: 'Open the first 4 of {count} agents in split view',
       deleteTitle: 'Delete {feature}?', deleteDescription: 'Remove this feature’s agents and delete the listed worktrees and local branches. Uncommitted changes in these worktrees will be discarded.',
       deleteAction: 'Delete feature and worktrees', worktrees: 'Worktrees to delete',

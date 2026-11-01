@@ -281,6 +281,25 @@ describe('AgentSidebar sessions', () => {
     } finally { wrapper.unmount(); localStorage.removeItem('app:agentOrganization:feature-actions'); }
   });
 
+  it('offers new worktrees from the default branch group for all team repositories', async () => {
+    localStorage.setItem('app:agentOrganization:feature-create', 'worktree');
+    const wrapper = mount(AgentSidebar, { attachTo: document.body,
+      props: { agents, teamId: 'feature-create', teamName: 'Team', activeAgentId: agents[0]!.id } });
+    try {
+      const main = wrapper.findAll('[data-group-kind="worktree"]').find(section => section.get('header strong').text() === 'main')!;
+      await main.get('button[aria-label="New worktree"]').trigger('click');
+      await flushPromises();
+      const items = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+      expect(items.map(item => item.textContent?.trim())).toStrictEqual(['New worktree…']);
+      items[0]!.click();
+      await flushPromises();
+      expect(wrapper.emitted('create-feature-worktree')?.[0]?.[0]).toMatchObject([
+        { repositoryName: 'id8', repositoryRoot: '~/src/id8' },
+        { repositoryName: 'multi-llm-ts', repositoryRoot: '~/src/multi-llm-ts' },
+      ]);
+    } finally { wrapper.unmount(); }
+  });
+
   it('organizes live activity in priority order, ages recent work, and restores each team’s client-local choice', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-10-15T12:00:00Z'));

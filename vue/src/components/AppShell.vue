@@ -100,6 +100,7 @@
       @create-agent-from-repository="openRepositorySessionSource"
       @create-agent-on-branch="createRepositorySessionOnBranch"
       @create-agent-worktree-in-repository="openRepositorySessionWorktree"
+      @create-feature-worktree="openFeatureWorktreeDialog"
       @open-on-remote="openOnRemote"
       @create-quick-chat="createQuickChat"
       @duplicate-agent="$emit('duplicate-agent', $event)"
@@ -586,6 +587,16 @@
       @close="repositoryDeletionAgentId = null"
     />
     <FeatureGroupDialog v-if="featureDialog && activeTeam" :key="`${activeTeam.id}:${featureDialog.branch}:${featureDialog.mode}`" :feature="{ ...featureDialog, teamId: activeTeam.id }" :mode="featureDialog.mode" :request="featureControl" @close="featureDialog = null" />
+    <FeatureWorktreeDialog
+      v-if="featureWorktreeRequest"
+      :repositories="featureWorktreeRequest.repositories"
+      :team-id="featureWorktreeRequest.teamId"
+      :create-agent="createAgent"
+      :create-worktree="createSourceWorktree"
+      :list-branches="listSourceBranches"
+      :backend-for-host="featureWorktreeBackend"
+      @close="featureWorktreeRequest = null"
+    />
     <MissionDeleteDialog
       :visible="missionDeleteTarget !== null"
       :mission="missionDeleteTarget"
@@ -698,6 +709,8 @@ import MissionWorkspace from './MissionWorkspace.vue';
 import MissionDocumentRequest from './MissionDocumentRequest.vue';
 import { useMissionDocuments } from './use-mission-documents';
 import FeatureGroupDialog from './FeatureGroupDialog.vue';
+import FeatureWorktreeDialog from './FeatureWorktreeDialog.vue';
+import type { SidebarRepositoryTarget } from './agent-sidebar-contracts';
 import MissionDeleteDialog from './MissionDeleteDialog.vue';
 import RepositoryDeleteDialog from './RepositoryDeleteDialog.vue';
 import type { DeleteRepositoryInput } from '@workspace/core/contracts/workspace';
@@ -1310,6 +1323,13 @@ async function loadRepositoryDeletionPreview(agentId: string) {
 }
 
 const featureDialog = ref<{ branch: string; label: string; mode: 'rename' | 'delete' } | null>(null);
+const featureWorktreeRequest = ref<{ teamId: string; repositories: SidebarRepositoryTarget[] } | null>(null);
+function openFeatureWorktreeDialog(repositories: SidebarRepositoryTarget[]): void {
+  if (activeTeam.value) featureWorktreeRequest.value = { teamId: activeTeam.value.id, repositories };
+}
+function featureWorktreeBackend(remoteConnectionId?: string): import('@workspace/core/contracts').AgentBackend | undefined {
+  return preferredBackendChoices(props.snapshot, remoteConnectionId)[0];
+}
 function showFeatureDialog(mode: 'rename' | 'delete', feature: { branch: string; label: string }): void {
   if (activeTeam.value) featureDialog.value = { ...feature, mode };
 }
