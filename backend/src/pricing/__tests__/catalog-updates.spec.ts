@@ -6,6 +6,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { loadPricingHistory } from '../catalog';
 import { createPricingManifest, encodePricingHistory } from '../release-format';
 import { PricingCatalog } from '../catalog-updates';
+import { RuntimeScheduler } from '../../scheduling/runtime-scheduler';
 import { UsageLedger } from '../../usage/usage-ledger';
 import { UsageService } from '../../usage/usage-service';
 import { AppBackendServer } from '../../server';
@@ -50,7 +51,7 @@ async function fixture() {
     cleanups.push(() => catalog.stop());
     return catalog;
   };
-  return { directory, state, bundled, updated, manifest, open, cacheFile, advance: () => { now += day; } };
+  return { directory, state, bundled, updated, manifest, open, cacheFile, advance: (elapsed = day) => { now += elapsed; } };
 }
 
 it('reprices saved usage through the released usage/get contract, then keeps prices offline across restart', async () => {
@@ -124,22 +125,40 @@ it('retains the last valid cache on corrupt, incompatible, oversized or older re
   expect(restored.history).toStrictEqual(f.bundled.history);
 });
 
-it('refreshes on the daily timer, coalesces overlapping checks and cancels scheduling on shutdown', async () => {
+it('uses the shared scheduler without resetting the persisted daily deadline on restart', async () => {
   const f = await fixture();
+  const downloads = vi.spyOn(globalThis, 'fetch');
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  const schedulers: RuntimeScheduler[] = [];
+  const schedule = (catalog: PricingCatalog) => {
+    const scheduler = new RuntimeScheduler();
+    scheduler.register({ id: 'pricing-updates', intervalMs: 60000, runOnStart: true, run: () => catalog.refresh() });
+    schedulers.push(scheduler); scheduler.start(); return scheduler;
+  };
   const catalog = f.open();
+  let restarted: PricingCatalog | undefined;
   try {
-    await catalog.start();
+    await catalog.start(); const first = schedule(catalog);
     await Promise.all([catalog.refresh(), catalog.refresh()]);
     expect(f.state.requests).toHaveLength(2);
-    f.advance();
-    await vi.advanceTimersByTimeAsync(day);
-    await catalog.refresh();
-    expect(f.state.requests).toHaveLength(3); // Same revision only downloads the manifest.
-    await catalog.stop();
+    first.stop(); await catalog.stop();
+    f.advance(day / 2); await vi.advanceTimersByTimeAsync(day / 2);
+    restarted = f.open(); await restarted.start(); const second = schedule(restarted);
+    await restarted.refresh();
+    f.advance(day / 2 - 60000); await vi.advanceTimersByTimeAsync(day / 2 - 60000);
+    expect(f.state.requests).toHaveLength(2);
+    f.advance(60000); await vi.advanceTimersByTimeAsync(60000);
+    await vi.waitFor(() => expect(f.state.requests).toHaveLength(3));
+    await restarted.refresh();
+    // Stopping the shared scheduler alone must stop periodic network activity.
+    second.stop();
     f.advance(); await vi.advanceTimersByTimeAsync(day);
+    expect(downloads).toHaveBeenCalledTimes(3);
     expect(f.state.requests).toHaveLength(3);
-  } finally { await catalog.stop(); vi.useRealTimers(); }
+  } finally {
+    for (const scheduler of schedulers) scheduler.stop();
+    await catalog.stop(); await restarted?.stop(); downloads.mockRestore(); vi.useRealTimers();
+  }
 });
 
 it('starts offline immediately and aborts an unfinished download on shutdown', async () => {
@@ -147,9 +166,10 @@ it('starts offline immediately and aborts an unfinished download on shutdown', a
   const catalog = f.open();
   await catalog.start();
   expect(catalog.history).toStrictEqual(f.bundled.history);
+  const refresh = catalog.refresh();
   await vi.waitFor(() => expect(f.state.requests).toEqual(['/latest.json']));
   await catalog.stop();
-  await catalog.refresh();
+  await refresh; await catalog.refresh();
   expect(f.state.requests).toHaveLength(1);
   expect(catalog.history).toStrictEqual(f.bundled.history);
 });

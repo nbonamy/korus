@@ -303,6 +303,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     run: () => automationRunner.runAll(),
   });
   scheduler.register({ id: 'provider-updates', intervalMs: 2_000, run: () => providerUpdates.tick() });
+  scheduler.register({ id: 'pricing-updates', intervalMs: 60_000, runOnStart: true, run: () => pricing.refresh() });
   const pullRequestMonitor = new PullRequestMonitor({
     getSnapshot: () => snapshot,
     notifySnapshotUpdated: () => server.emitEvent({
@@ -421,11 +422,11 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   return {
     server,
     async stop() {
+      scheduler.stop();
       await pricing.stop();
       await worktreeManager.close();
       await companion.stop();
       tasks.close();
-      scheduler.stop();
       await server.close();
       workIntegrations.close();
       await mcpService.stop();

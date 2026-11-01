@@ -52,6 +52,7 @@ const mocks = vi.hoisted(() => ({
   backendCodexHomeDir: vi.fn(() => '/tmp/codex-home'),
   backendHomeDir: vi.fn(() => '/tmp/runtime-test-home'),
   backendProviderTokensFilePath: vi.fn(),
+  pricingRefresh: vi.fn(),
   pricingStart: vi.fn(),
   pricingStop: vi.fn(),
   mcpStart: vi.fn(),
@@ -87,6 +88,7 @@ vi.mock('../pricing/catalog-updates', async () => {
   return { PricingCatalog: class {
     history = loadPricingHistory();
     start = mocks.pricingStart;
+    refresh = mocks.pricingRefresh;
     stop = mocks.pricingStop;
   } };
 });
@@ -391,8 +393,11 @@ describe('daemon runtime', () => {
     expect(mocks.schedulerTasks).toEqual([
       expect.objectContaining({ id: 'automations', intervalMs: 60_000, runOnStart: true }),
       expect.objectContaining({ id: 'provider-updates', intervalMs: 2_000 }),
+      expect.objectContaining({ id: 'pricing-updates', intervalMs: 60_000, runOnStart: true }),
       expect.objectContaining({ id: 'pull-request-monitor', intervalMs: 300_000, runOnStart: true }),
     ]);
+    await (mocks.schedulerTasks.find(task => (task as SchedulerTask).id === 'pricing-updates') as SchedulerTask).run();
+    expect(mocks.pricingRefresh).toHaveBeenCalledOnce();
     expect(mocks.mcpSetDriverRpc).toHaveBeenCalledOnce();
     expect(mocks.mcpSetEventSink).toHaveBeenCalledOnce();
 
