@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.49.0",
+  "currentVersion": "0.49.1",
   "releases": [
+    {
+      "version": "0.49.1",
+      "releasedAt": "2026-11-01",
+      "sourceSha256": "7fdc7dbb874e2a71be6a187c0ade850775919a3e3908176fa2aec26d4bb952b8",
+      "markdown": "### Improvements and fixes\n\n- **Anonymous usage sharing:** Keep measured token totals and known estimated\n  costs when other usage measurements are missing.\n- **Background uploads:** Spread hourly usage uploads across installations with\n  a consistent schedule."
+    },
     {
       "version": "0.49.0",
       "releasedAt": "2026-11-01",

@@ -884,8 +884,8 @@ above, not an editor or CLI installation alone.
 ## GitHub desktop releases
 
 `npm run prerelease` (or, for an explicitly approved stable release, `npm run
-latest`) is the only release command. It requires a clean checkout of the default
-branch whose HEAD is pushed, creates the remote `v<version>` tag at HEAD (reusing
+latest`) is the only release command. It requires committed desktop inputs on the
+default branch whose HEAD is pushed, creates the remote `v<version>` tag at HEAD (reusing
 one already at HEAD, refusing one elsewhere or an already published release),
 dispatches **one** workflow from that tag, and watches it to completion, printing
 one line per job state change. Never move a release tag.
@@ -894,10 +894,15 @@ one line per job state change. Never move a release tag.
   builds, publish. Because it is dispatched from the tag, the workflow, scripts and
   app source all come from the same immutable commit; a release-tooling fix means a
   new version.
+- Uncommitted server, website, mobile, engineering documentation and console-only
+  telemetry metrics contracts produce a warning rather than blocking desktop
+  releases. They remain untouched and are excluded from the remote tag. Desktop,
+  other shared source, dependency/lock files and build/release tooling must be
+  committed. Renames cannot hide a changed desktop input in an unrelated area.
 - Release tests run on Linux; macOS-only signing cleanup tests gate the macOS
   build. Publishing requires both the release test gate and every native build.
 - The independent Quality workflow runs on branch pushes, PRs and manual dispatch.
-  It excludes tag pushes, retains coverage reports and enforces the five 85%
+  It excludes tag pushes, retains coverage reports and enforces every workspace's 85%
   statement gates. Release tests run without coverage and have no dependency on
   the Quality workflow.
 - Only the final job has contents-write permission. It requires every platform to

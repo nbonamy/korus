@@ -9,7 +9,7 @@ Treat changelog curation as a deliberate release operation. Ordinary work must
 not add entries incrementally; reconstruct `## Unreleased` from committed Git
 history when this skill is explicitly invoked.
 
-## 1. Require clean release inputs
+## 1. Inspect release inputs
 
 Before any mutation, inspect Korus's starting diff:
 
@@ -17,11 +17,13 @@ Before any mutation, inspect Korus's starting diff:
 git status --short
 ```
 
-For a standalone audit, abort if the command returns any entry. When called by
-`prepare-release`, allow only the dependency-only package manifest/lockfile diff
-that its SDK preflight created from a clean worktree. Record and preserve that
-exact starting diff; any other pre-existing change blocks the audit. Do not
-stash, discard, stage, commit, or absorb unrelated changes.
+Apply the desktop-input boundary in `../prepare-release/SKILL.md`: unrelated
+server, website, mobile and documentation work is warning-only and stays outside
+the audit. Audit committed histories, not those unfinished changes. Record their
+paths and preserve them without requiring their owner to stop or commit.
+Uncommitted desktop release inputs block the audit, except the dependency-only
+manifest/lockfile refresh recorded by `prepare-release`. Do not stash, discard,
+stage, commit, or absorb unrelated work.
 
 Confirm Korus's branch/upstream without pulling or switching branches. Resolve
 `<sdk-version>` from the backend workspace's SDK dependency and its matching
@@ -171,8 +173,9 @@ git diff --check
 git status --short
 ```
 
-Only `CHANGELOG.md` may change during the audit; any recorded SDK dependency
-refresh must remain unchanged. The SDK repository is read-only during this
+The audit itself changes only `CHANGELOG.md`; any recorded SDK dependency refresh
+must remain unchanged. Unrelated work may continue outside the audit and must not
+be absorbed. The SDK repository is read-only during this
 skill. Recheck that the locked SDK version/provenance did not change during the
 audit and review the complete changelog diff.
 

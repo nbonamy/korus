@@ -44,7 +44,17 @@ export async function release(command, { gh, git, version, wait = delay, log = c
   const publish = command !== 'build';
   const tag = `v${version}`;
   if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('A plain package.json release version is required.');
-  if (git(['status', '--porcelain'])) throw new Error('Commit release changes before releasing.');
+  // CI builds the remote commit, not this checkout. Independent work can remain
+  // dirty, but desktop inputs (including shared build/dependency files) must ship.
+  const changes = [...new Set([
+    ...git(['diff', '--no-renames', '--name-only', '-z', 'HEAD']).split('\0'),
+    ...git(['ls-files', '--others', '--exclude-standard', '-z']).split('\0'),
+  ])].filter(Boolean);
+  const unrelated = file => ['server/', 'website/', 'mobile/', 'docs/'].some(prefix => file.startsWith(prefix))
+    || file === 'core/src/telemetry-metrics.ts'; // Private console contract only.
+  const blocking = changes.filter(file => !unrelated(file));
+  if (blocking.length) throw new Error(`Commit desktop release changes before releasing: ${blocking.map(file => JSON.stringify(file)).join(', ')}`);
+  if (changes.length) log(`Warning: uncommitted non-desktop changes are excluded from the released tag: ${changes.map(file => JSON.stringify(file)).join(', ')}`);
   const head = git(['rev-parse', 'HEAD']);
   const branch = git(['rev-parse', '--abbrev-ref', 'HEAD']);
   const defaultBranch = JSON.parse(gh(['api', `repos/${product.repository}`])).default_branch;
