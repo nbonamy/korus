@@ -1122,6 +1122,15 @@ describe('AppShell work routing', () => {
     expect(wrapper.text()).toContain(`${product.name} Light`);
 
     await wrapper.findComponent({ name: 'ElSelect' }).vm.$emit('update:modelValue', 'github-dark');
+
+    await wrapper.get('[aria-label="Cockpit"]').trigger('click');
+    const menuItems = wrapper.findAll('.settings-menu__actions [role="menuitem"]');
+    expect(menuItems.slice(0, 2).map(item => item.get('.app-menu__label').text())).toStrictEqual(['Settings', 'Analytics']);
+    await menuItems[1]!.trigger('click');
+    await flushPromises();
+    expect(wrapper.get('#usage-title').text()).toBe('Analytics');
+    expect(wrapper.find('.agent-sidebar').exists()).toBe(false);
+
     await wrapper.findAll('button').find((button) => button.text() === 'Quit')?.trigger('click');
 
     expect(updateSettings).toHaveBeenCalledWith({ theme: { id: 'github-dark' } });

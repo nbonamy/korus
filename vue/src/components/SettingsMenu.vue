@@ -57,7 +57,7 @@ import { computed, ref, watch } from 'vue';
 import type { AccountRateLimitWindow, AccountRateLimits, AgentBackend, AppSnapshot, CodexAccount } from '@workspace/core/contracts';
 import AppMenu from '../shared/menu/AppMenu.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
-import { BrandSpeedTest, ProductMarkIcon, QuitIcon, SettingsIcon, SparklesIcon } from '../shared/icons/app-icons';
+import { BrandSpeedTest, ChartBarIcon, ProductMarkIcon, QuitIcon, SettingsIcon, SparklesIcon } from '../shared/icons/app-icons';
 import { appHostCapabilities, appApi } from '../platform-api';
 import { supportsSubscriptionQuota } from '@workspace/core/agent-backends';
 
@@ -74,6 +74,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   'open-settings': [];
+  'open-analytics': [];
   'open-whats-new': [];
   quit: [];
 }>();
@@ -107,6 +108,12 @@ const menuItems = computed<AppMenuItem[]>(() => [
     label: translate('surface.settingsMenu.settings'),
     icon: SettingsIcon,
     value: '⌘,',
+  },
+  {
+    id: 'open-analytics',
+    type: 'action',
+    label: translate('analytics.title'),
+    icon: ChartBarIcon,
   },
   {
     id: 'open-whats-new',
@@ -194,6 +201,8 @@ function selectMenuItem(itemId: string): void {
 
   if (itemId === 'open-settings') {
     emit('open-settings');
+  } else if (itemId === 'open-analytics') {
+    emit('open-analytics');
   } else if (itemId === 'open-whats-new') {
     emit('open-whats-new');
   } else if (itemId === 'quit') {

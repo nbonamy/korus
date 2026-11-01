@@ -21,6 +21,7 @@
     @edit-team="openEditTeam"
     @new-team="openNewTeam"
     @open-settings="openSettings"
+    @open-analytics="emit('open-settings', 'usage')"
     @open-whats-new="openWhatsNew"
     @quit="quit"
     @reorder-teams="$emit('reorder-teams', $event)"
@@ -117,6 +118,7 @@ import type {
 import { computed, ref, toRefs } from 'vue';
 import AgentSidebar from './AgentSidebar.vue';
 import TeamRail from './TeamRail.vue';
+import type { SettingsTab } from './settings-tabs';
 
 type RepositorySessionPayload = {
   agentId: string;
@@ -189,7 +191,7 @@ const emit = defineEmits<{
   'open-backlog': [];
   'open-cockpit': [];
   'open-in': [payload: { agentId: string; application: OpenInApplication }];
-  'open-settings': [];
+  'open-settings': [tab?: SettingsTab];
   'open-whats-new': [];
   quit: [];
   'reorder-agents': [input: ReorderAgentsInput];
