@@ -144,10 +144,10 @@
       </div>
       <p class="freshness">
         <span class="status-dot" aria-hidden="true" />
-        <template v-if="data"
-          >Latest report
-          {{ data.availability.lastDay ?? "not available" }}</template
-        ><template v-else>Completed daily reports</template><span>· {{ timeZone }}</span>
+        <template v-if="data?.availability.lastDay"
+          >Latest report {{ data.availability.lastDay }} ·
+        </template>
+        <span>{{ timeZone }}</span>
       </p>
       <p v-if="loading" role="status" class="state panel">Loading metrics…</p>
       <p v-else-if="error" role="alert" class="state panel">{{ error }}</p>
@@ -165,22 +165,18 @@
             <div class="panel" aria-label="Participating installs">
               <dt>Participating installs</dt>
               <dd>{{ count(data.overview.participatingInstalls) }}</dd>
-              <small>Opted-in installations</small>
             </div>
             <div class="panel" aria-label="Daily active installs">
               <dt>Daily active</dt>
               <dd>{{ count(data.overview.dau) }}</dd>
-              <small>{{ data.range.to }} {{ timeZone }}</small>
             </div>
             <div class="panel" aria-label="Weekly active installs">
               <dt>Weekly active</dt>
               <dd>{{ count(data.overview.wau) }}</dd>
-              <small>Last 7 days</small>
             </div>
             <div class="panel" aria-label="Monthly active installs">
               <dt>Monthly active</dt>
               <dd>{{ count(data.overview.mau) }}</dd>
-              <small>Last 30 days</small>
             </div>
           </dl>
         </section>
@@ -195,7 +191,6 @@
           class="section-heading usage-heading"
         >
           <h2>Usage</h2>
-          <span class="muted">Selected range · provider and model filters</span>
         </div>
         <dl
           v-if="!['activity', 'performance', 'models'].includes(page)"
@@ -204,7 +199,6 @@
           <div class="panel" aria-label="Turns">
             <dt>Turns</dt>
             <dd>{{ count(data.totals.turns) }}</dd>
-            <small>Selected range</small>
           </div>
           <div
             v-if="page !== 'spend'"
@@ -215,13 +209,9 @@
             <dd :title="count(data.totals.totalTokens)">
               {{ tokens(data.totals.totalTokens) }}
             </dd>
-            <small
-              >Input + output<template
-                v-if="usageCoverage(data.totals)"
-              >
-                · {{ usageCoverage(data.totals) }}</template
-              ></small
-            >
+            <small v-if="usageCoverage(data.totals)">{{
+              usageCoverage(data.totals)
+            }}</small>
           </div>
           <div
             v-if="page !== 'tokens'"
@@ -232,10 +222,7 @@
             <dd :title="exactMoney(data.totals.estimatedCostUsd)">
               {{ money(data.totals.estimatedCostUsd) }}
             </dd>
-            <small
-              >API-equivalent · {{ data.totals.costCoverage
-              }}</small
-            >
+            <small v-if="data.totals.costCoverage === 'partial'">partial</small>
           </div>
           <div
             v-if="page === 'overview' || page === 'tokens'"
@@ -244,20 +231,15 @@
           >
             <dt>Cache-read share</dt>
             <dd>{{ percent(data.totals.cacheReadShare) }}</dd>
-            <small
-              >Share of measured input<template
-                v-if="usageCoverage(data.totals)"
-              >
-                · {{ usageCoverage(data.totals) }}</template
-              ></small
-            >
+            <small v-if="usageCoverage(data.totals)">{{
+              usageCoverage(data.totals)
+            }}</small>
           </div>
         </dl>
         <MetricChart
           v-if="page === 'overview' || page === 'activity'"
           id="activity"
           title="Daily activity"
-          description="Active and newly reporting installations · daily."
           :days="data.activity.map((row) => row.day)"
           :series="[
             {
@@ -280,7 +262,6 @@
             v-if="page !== 'spend'"
             id="tokens"
             title="Weekly tokens"
-            description="Input and output · weekly."
             :days="data.weekly.map((row) => row.week)"
             :series="[
               {
@@ -289,17 +270,10 @@
               },
               {
                 label: 'Output',
-                values: data.weekly.map(
-                  (row) => row.outputTokens,
-                ),
+                values: data.weekly.map((row) => row.outputTokens),
               },
             ]"
-            :notes="
-              data.weekly.map(
-                (row) =>
-                  usageCoverage(row),
-              )
-            "
+            :notes="data.weekly.map((row) => usageCoverage(row))"
             measure="tokens"
             variant="stacked"
           />
@@ -307,7 +281,6 @@
             v-if="page !== 'tokens'"
             id="spend"
             title="Daily estimated spend"
-            description="API-equivalent USD · gaps indicate unavailable estimates."
             :days="data.daily.map((row) => row.day)"
             :series="[
               {
@@ -316,9 +289,8 @@
               },
             ]"
             :notes="
-              data.daily.map(
-                (row) =>
-                  row.costCoverage === 'partial' ? 'Partial estimate; some costs unavailable' : row.costCoverage,
+              data.daily.map((row) =>
+                row.costCoverage === 'partial' ? 'Partial estimate' : '',
               )
             "
             measure="usd"
@@ -327,7 +299,6 @@
           <MetricChart
             v-if="page === 'tokens'"
             title="Cache-read share"
-            description="Cached reads as a share of measured input · daily."
             :days="data.daily.map((row) => row.day)"
             :series="[
               {
@@ -339,17 +310,12 @@
                 ),
               },
             ]"
-            :notes="
-              data.daily.map(
-                (row) => usageCoverage(row),
-              )
-            "
+            :notes="data.daily.map((row) => usageCoverage(row))"
             measure="ratio"
           />
           <MetricChart
             v-if="page === 'tokens'"
             title="Measured input"
-            description="Cached and non-cache-read input · weekly."
             :days="data.weekly.map((row) => row.week)"
             :series="[
               {
@@ -361,11 +327,7 @@
                 values: data.weekly.map((row) => row.nonCacheReadTokens),
               },
             ]"
-            :notes="
-              data.weekly.map(
-                (row) => usageCoverage(row),
-              )
-            "
+            :notes="data.weekly.map((row) => usageCoverage(row))"
             measure="tokens"
             variant="stacked"
           />
@@ -413,29 +375,25 @@
                     <span class="provider">{{ row.provider }}</span
                     ><span>{{ modelLabel(row) }}</span>
                   </th>
-                  <td>{{ count(row.turns) }}</td>
+                  <td>
+                    {{ count(row.turns)
+                    }}<small v-if="usageCoverage(row)">{{
+                      usageCoverage(row)
+                    }}</small>
+                  </td>
                   <td :title="count(row.inputTokens)">
-                    {{ tokens(row.inputTokens)
-                    }}<small v-if="usageCoverage(row)"
-                      >{{ usageCoverage(row) || "Partial measurements" }}</small
-                    >
+                    {{ tokens(row.inputTokens) }}
                   </td>
                   <td :title="count(row.cachedInputTokens)">
-                    {{ tokens(row.cachedInputTokens)
-                    }}<small v-if="usageCoverage(row)"
-                      >{{ usageCoverage(row) || "Partial measurements" }}</small
-                    >
+                    {{ tokens(row.cachedInputTokens) }}
                   </td>
                   <td :title="count(row.outputTokens)">
-                    {{ tokens(row.outputTokens)
-                    }}<small v-if="usageCoverage(row)"
-                      >{{ usageCoverage(row) || "Partial measurements" }}</small
-                    >
+                    {{ tokens(row.outputTokens) }}
                   </td>
                   <td :title="exactMoney(row.estimatedCostUsd)">
                     {{ money(row.estimatedCostUsd)
-                    }}<small
-                      >{{ row.costCoverage }}</small
+                    }}<small v-if="row.costCoverage === 'partial'"
+                      >partial</small
                     >
                   </td>
                 </tr>

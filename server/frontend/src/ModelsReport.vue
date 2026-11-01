@@ -66,7 +66,6 @@
       </div>
       <MetricChart
         title="Model usage over time"
-        description="Reported usage by model · daily."
         :days="days"
         :series="series"
         :measure="measure === 'turns' ? 'count' : 'tokens'"
@@ -117,7 +116,8 @@ const total = computed(() =>
 const incomplete = (row: ModelRow) =>
   measure.value === "turns"
     ? false
-    : (row.unmeasuredTurns !== undefined && row.unmeasuredTurns !== "0") || (row[
+    : (row.unmeasuredTurns !== undefined && row.unmeasuredTurns !== "0") ||
+      (row[
         measure.value === "totalTokens"
           ? "excludedTokenGroups"
           : measure.value === "inputTokens"

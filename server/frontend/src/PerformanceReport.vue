@@ -14,14 +14,12 @@
     <div class="chart-grid">
       <MetricChart
         title="Output speed"
-        description="Higher is faster · measured output per active second."
         :days="days"
         :series="speedSeries"
         measure="rate"
       />
       <MetricChart
         title="Time to first output"
-        description="Lower is faster · average active time before first output."
         :days="days"
         :series="ttftSeries"
         measure="milliseconds"
@@ -30,7 +28,7 @@
     <p v-if="!selected.length" class="muted performance-note">
       Choose models to compare.
     </p>
-    <div class="section-heading usage-heading"><h2>All filtered usage</h2></div>
+    <div class="section-heading usage-heading"><h2>Summary</h2></div>
     <dl class="cards performance-totals">
       <div class="panel" aria-label="Output speed summary">
         <dt>Output speed</dt>
@@ -85,7 +83,7 @@
       >
         <table>
           <caption class="sr-only">
-            App-observed model performance and measurement coverage
+            Model performance
           </caption>
           <thead>
             <tr>
@@ -127,11 +125,6 @@
         </table>
       </div>
     </section>
-    <p class="performance-note muted">
-      Observed in Korus, not a provider benchmark. Tool execution and waits for
-      your input are excluded. Rates use total measured output and time. Missing
-      samples are not zero.
-    </p>
   </section>
 </template>
 <script setup lang="ts">

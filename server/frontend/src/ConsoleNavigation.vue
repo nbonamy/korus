@@ -11,7 +11,6 @@
         ><span>Console</span></span
       >
     </a>
-    <span class="navigation-group">Reporting</span>
     <nav aria-label="Analytics sections">
       <a
         v-for="item in sections"

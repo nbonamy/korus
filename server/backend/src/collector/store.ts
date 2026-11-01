@@ -2,8 +2,6 @@ import pg from "pg";
 import type {
   DailyTelemetryPayload,
   TelemetryOs,
-  TelemetryProvider,
-  TelemetryModel,
 } from "@workspace/core/telemetry";
 import { telemetryMigrations } from "./migrations";
 import type { Diagnostics } from "./diagnostics";
@@ -17,17 +15,6 @@ export type InstallDayRow = {
   app_version: string;
   os: TelemetryOs;
   received_at: Date;
-};
-export type UsageDailyRow = {
-  install_id: string;
-  day: string;
-  provider: TelemetryProvider;
-  model: TelemetryModel;
-  turns: string;
-  input_tokens: string | null;
-  cached_input_tokens: string | null;
-  output_tokens: string | null;
-  estimated_cost_usd: string | null;
 };
 
 export function createTelemetryPool(

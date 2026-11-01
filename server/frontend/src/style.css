@@ -89,16 +89,10 @@ a {
   color: var(--color-text-muted);
   line-height: 1.2;
 }
-.navigation-group {
-  margin: 32px 12px 10px;
-  color: var(--color-text-muted);
-  font-size: 11px;
-  font-weight: 600;
-}
 .sidebar nav {
   display: grid;
   gap: 4px;
-  margin-top: 0;
+  margin-top: 28px;
 }
 .section-link {
   display: flex;
@@ -314,11 +308,6 @@ small {
 .overview-section {
   margin-bottom: 16px;
 }
-.chart-description {
-  font-size: 11px;
-  line-height: 1.5;
-  margin: 6px 0 14px;
-}
 .chart {
   margin-bottom: 16px;
   scroll-margin-top: 24px;
@@ -508,9 +497,6 @@ footer {
   }
   .brand-copy strong {
     font-size: 20px;
-  }
-  .navigation-group {
-    display: none;
   }
   .sidebar nav {
     display: flex;

@@ -4,7 +4,6 @@
       <h2>{{ title }}</h2>
       <slot />
     </header>
-    <p class="muted chart-description">{{ description }}</p>
     <ul class="legend" v-if="series.length > 1" aria-label="Series">
       <li v-for="(item, i) in series" :key="item.label">
         <i
@@ -173,8 +172,7 @@
       </output>
     </div>
     <p v-if="outsideRange" class="muted">
-      Some values exceed chart precision. Exact values remain available in the
-      popup.
+      Chart limit exceeded. Inspect exact values.
     </p>
   </section>
 </template>
@@ -194,7 +192,6 @@ import {
 } from "./format";
 const props = defineProps<{
   title: string;
-  description: string;
   days: string[];
   series: {
     label: string;

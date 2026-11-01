@@ -36,20 +36,41 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   await flushPromises();
   expect(wrapper.get('[role="status"]').text()).toContain("Loading");
   const initial = metrics();
-  pending.shift()!(Response.json({...initial,totals:{...initial.totals,measuredTurns:'5',unmeasuredTurns:'2',excludedTokenGroups:'1',excludedCacheGroups:'1',unknownCostGroups:'1',costCoverage:'partial'}}));
+  pending.shift()!(
+    Response.json({
+      ...initial,
+      totals: {
+        ...initial.totals,
+        measuredTurns: "5",
+        unmeasuredTurns: "2",
+        excludedTokenGroups: "1",
+        excludedCacheGroups: "1",
+        unknownCostGroups: "1",
+        costCoverage: "partial",
+      },
+    }),
+  );
   await flushPromises();
   expect(wrapper.get(".brand").text()).toContain("Console");
   expect(wrapper.get(".brand img").attributes("alt")).toBe("");
-  expect(wrapper.get(".navigation-group").text()).toBe("Reporting");
+  expect(wrapper.text()).not.toMatch(
+    /Selected range|Opted-in installations|API-equivalent/,
+  );
   expect(document.title).toContain("Console · Overview");
   expect(wrapper.get('[aria-label="Turns"]').text()).toContain("7");
   expect(wrapper.get('[aria-label="Measured total tokens"]').text()).toContain(
     "1.3B",
   );
-  expect(wrapper.get('[aria-label="Measured total tokens"]').text()).toContain('2 turns missing usage');
-  expect(wrapper.get('[aria-label="Measured cache-read share"]').text()).toContain('2 turns missing usage');
-  expect(wrapper.text()).not.toContain('groups excluded');
-  expect(wrapper.get('[aria-label="Known estimated spend"]').text()).toContain('partial');
+  expect(wrapper.get('[aria-label="Measured total tokens"]').text()).toContain(
+    "2 turns missing usage",
+  );
+  expect(
+    wrapper.get('[aria-label="Measured cache-read share"]').text(),
+  ).toContain("2 turns missing usage");
+  expect(wrapper.text()).not.toContain("groups excluded");
+  expect(wrapper.get('[aria-label="Known estimated spend"]').text()).toContain(
+    "partial",
+  );
   expect(
     wrapper.get('[aria-label="Measured total tokens"] dd').attributes("title"),
   ).toBe("1,250,000,000");
@@ -109,6 +130,9 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   window.dispatchEvent(new HashChangeEvent("hashchange"));
   await flushPromises();
   expect(wrapper.get("h1").text()).toBe("Performance");
+  expect(wrapper.text()).not.toMatch(
+    /provider benchmark|Higher is faster|Lower is faster|Missing samples are not zero/,
+  );
   const speedChart = wrapper.get('[aria-label="Output speed"]');
   expect(speedChart.get('[aria-label="Series"]').text()).toContain(
     "gpt-6-sol · Fast",
