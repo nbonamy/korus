@@ -264,7 +264,7 @@ export async function dashboardWorkflow({
       ["Weekly active installs", "4"],
       ["Monthly active installs", "5"],
       ["Turns", "7"],
-      ["Measured total tokens", "660"],
+      ["Measured total tokens", "700"],
       ["Known estimated spend", "$1.50"],
       ["Measured cache-read share", "55.0%"],
     ])
@@ -282,7 +282,7 @@ export async function dashboardWorkflow({
       await page
         .getByLabel("Known estimated spend", { exact: true })
         .innerText(),
-      /2 unknown/,
+      /partial/,
     );
     const cost = page.getByRole("region", {
       name: "Daily estimated spend",
@@ -349,7 +349,7 @@ export async function dashboardWorkflow({
       await weekly.locator(".tooltip-day").getAttribute("title"),
       "2026-10-19",
     );
-    assert.equal(await weekly.locator(".tooltip-total b").innerText(), "550");
+    assert.equal(await weekly.locator(".tooltip-total b").innerText(), "590");
     assert.equal(await page.getByText("View data", { exact: true }).count(), 0);
     assert.equal(
       await page.getByText("About the data", { exact: true }).count(),
@@ -496,7 +496,7 @@ export async function dashboardWorkflow({
     await page.setViewportSize({ width: 390, height: 844 });
     await page
       .getByLabel("Measured total tokens", { exact: true })
-      .getByText("660", { exact: true })
+      .getByText("700", { exact: true })
       .waitFor();
     const geometry = await page.evaluate(() => ({
       viewport: innerWidth,
@@ -726,7 +726,7 @@ export async function dashboardWorkflow({
               }
             : null,
           cards: { participating: 6, dau: 3, wau: 4, mau: 5 },
-          tokens: 660,
+          tokens: 700,
           knownCostUsd: 1.5,
           unknownCostGroups: 2,
           cacheReadShare: 0.55,

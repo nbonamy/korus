@@ -133,8 +133,8 @@ export class TelemetryStore {
       if (payload.usage.length) {
         const rows = payload.usage;
         await client.query(
-          `INSERT INTO usage_daily(install_id, day, provider, model, turns, input_tokens, cached_input_tokens, output_tokens, estimated_cost_usd, speed_turns, speed_output_tokens, generation_ms, ttft_ms, ttft_turns, service_tier, report_hour)
-          SELECT $1::uuid, $2::date, * FROM unnest($3::text[], $4::text[], $5::bigint[], $6::bigint[], $7::bigint[], $8::bigint[], $9::numeric[], $10::bigint[], $11::bigint[], $12::bigint[], $13::bigint[], $14::bigint[], $15::text[], $16::smallint[])`,
+          `INSERT INTO usage_daily(install_id, day, provider, model, turns, input_tokens, cached_input_tokens, output_tokens, estimated_cost_usd, speed_turns, speed_output_tokens, generation_ms, ttft_ms, ttft_turns, service_tier, report_hour, measured_turns, cost_coverage)
+          SELECT $1::uuid, $2::date, * FROM unnest($3::text[], $4::text[], $5::bigint[], $6::bigint[], $7::bigint[], $8::bigint[], $9::numeric[], $10::bigint[], $11::bigint[], $12::bigint[], $13::bigint[], $14::bigint[], $15::text[], $16::smallint[], $17::bigint[], $18::text[])`,
           [
             payload.installId,
             payload.day,
@@ -152,6 +152,8 @@ export class TelemetryStore {
             rows.map((r) => r.performance?.ttftTurns ?? null),
             rows.map((r) => r.serviceTier ?? "unknown"),
             rows.map(() => payload.hour ?? -1),
+            rows.map(r => r.measuredTurns ?? null),
+            rows.map(r => r.costCoverage ?? null),
           ],
         );
       }

@@ -74,4 +74,14 @@ export const telemetryMigrations = [
     version: 6,
     sql: `ALTER TABLE installs ADD COLUMN first_reported_hour smallint CHECK(first_reported_hour BETWEEN 0 AND 23);`,
   },
+  {
+    version: 7,
+    sql: `ALTER TABLE usage_daily
+      ADD COLUMN measured_turns bigint CHECK (measured_turns BETWEEN 0 AND turns),
+      ADD COLUMN cost_coverage text CHECK (cost_coverage IN ('complete','partial','unavailable')),
+      ADD CONSTRAINT measured_token_coverage CHECK (measured_turns IS NULL OR measured_turns=0 OR
+        (input_tokens IS NOT NULL AND cached_input_tokens IS NOT NULL AND output_tokens IS NOT NULL)),
+      ADD CONSTRAINT measured_cost_coverage CHECK (cost_coverage IS NULL OR
+        ((cost_coverage='unavailable') = (estimated_cost_usd IS NULL)));`,
+  },
 ] as const;

@@ -6,7 +6,7 @@ import type { TelemetryMetricsFilter } from "@workspace/core/telemetry-metrics";
 
 export const metricsSql = sql;
 /** Explicit ten-year bound. Wider requests fail; totals never silently truncate.
- * Historical ranges have no ingestion-age limit. Only completed viewer days count.
+ * Historical ranges have no ingestion-age limit. The current viewer day includes reports received so far.
  */
 export function metricsFilter(
   params: URLSearchParams,
@@ -29,7 +29,7 @@ export function metricsFilter(
     !isUtcDay(from) ||
     !isUtcDay(to) ||
     from > to ||
-    to >= today ||
+    to > today ||
     Date.parse(to) - Date.parse(from) > 3659 * 86400000
   )
     return null;

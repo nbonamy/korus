@@ -35,7 +35,8 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   });
   await flushPromises();
   expect(wrapper.get('[role="status"]').text()).toContain("Loading");
-  pending.shift()!(Response.json(metrics()));
+  const initial = metrics();
+  pending.shift()!(Response.json({...initial,totals:{...initial.totals,measuredTurns:'5',unmeasuredTurns:'2',excludedTokenGroups:'1',excludedCacheGroups:'1',unknownCostGroups:'1',costCoverage:'partial'}}));
   await flushPromises();
   expect(wrapper.get(".brand").text()).toContain("Console");
   expect(wrapper.get(".brand img").attributes("alt")).toBe("");
@@ -45,6 +46,10 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   expect(wrapper.get('[aria-label="Measured total tokens"]').text()).toContain(
     "1.3B",
   );
+  expect(wrapper.get('[aria-label="Measured total tokens"]').text()).toContain('2 turns missing usage');
+  expect(wrapper.get('[aria-label="Measured cache-read share"]').text()).toContain('2 turns missing usage');
+  expect(wrapper.text()).not.toContain('groups excluded');
+  expect(wrapper.get('[aria-label="Known estimated spend"]').text()).toContain('partial');
   expect(
     wrapper.get('[aria-label="Measured total tokens"] dd').attributes("title"),
   ).toBe("1,250,000,000");
@@ -242,20 +247,20 @@ it("shows recoverable failures without echoing remote diagnostics and bounds dat
   wrapper.unmount();
 });
 
-it("requests and labels browser-local completed days at midnight and across DST", async () => {
+it("requests and labels browser-local days including today at midnight and across DST", async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
   const fetcher = vi.fn(async (_url: string) => Response.json(metrics()));
   vi.stubGlobal("fetch", fetcher);
   try {
     for (const [zone, now, to, from] of [
-      ["America/Chicago", "2026-11-01T03:00:00Z", "2026-10-30", "2026-10-01"],
+      ["America/Chicago", "2026-11-01T03:00:00Z", "2026-10-31", "2026-10-02"],
       [
         "Pacific/Kiritimati",
         "2026-11-01T12:00:00Z",
-        "2026-11-01",
-        "2026-10-03",
+        "2026-11-02",
+        "2026-10-04",
       ],
-      ["America/Chicago", "2026-03-09T04:30:00Z", "2026-03-07", "2026-02-06"],
+      ["America/Chicago", "2026-03-09T04:30:00Z", "2026-03-08", "2026-02-07"],
     ]) {
       vi.stubEnv("TZ", zone!);
       vi.setSystemTime(new Date(now!));

@@ -217,10 +217,9 @@
             </dd>
             <small
               >Input + output<template
-                v-if="data.totals.excludedTokenGroups !== '0'"
+                v-if="usageCoverage(data.totals)"
               >
-                · {{ count(data.totals.excludedTokenGroups) }} groups
-                excluded</template
+                · {{ usageCoverage(data.totals) }}</template
               ></small
             >
           </div>
@@ -235,9 +234,7 @@
             </dd>
             <small
               >API-equivalent · {{ data.totals.costCoverage
-              }}<template v-if="data.totals.unknownCostGroups !== '0'">
-                · {{ count(data.totals.unknownCostGroups) }} unknown</template
-              ></small
+              }}</small
             >
           </div>
           <div
@@ -249,10 +246,9 @@
             <dd>{{ percent(data.totals.cacheReadShare) }}</dd>
             <small
               >Share of measured input<template
-                v-if="data.totals.excludedCacheGroups !== '0'"
+                v-if="usageCoverage(data.totals)"
               >
-                · {{ count(data.totals.excludedCacheGroups) }} groups
-                excluded</template
+                · {{ usageCoverage(data.totals) }}</template
               ></small
             >
           </div>
@@ -289,19 +285,19 @@
             :series="[
               {
                 label: 'Inclusive input',
-                values: data.weekly.map((row) => row.pairedInputTokens ?? null),
+                values: data.weekly.map((row) => row.inputTokens),
               },
               {
                 label: 'Output',
                 values: data.weekly.map(
-                  (row) => row.pairedOutputTokens ?? null,
+                  (row) => row.outputTokens,
                 ),
               },
             ]"
             :notes="
               data.weekly.map(
                 (row) =>
-                  `${count(row.excludedTokenGroups)} incomplete token groups; ${count(row.unknownInputGroups)} unknown input; ${count(row.unknownOutputGroups)} unknown output`,
+                  usageCoverage(row),
               )
             "
             measure="tokens"
@@ -322,7 +318,7 @@
             :notes="
               data.daily.map(
                 (row) =>
-                  `${row.costCoverage}; ${count(row.unknownCostGroups)} unknown groups`,
+                  row.costCoverage === 'partial' ? 'Partial estimate; some costs unavailable' : row.costCoverage,
               )
             "
             measure="usd"
@@ -345,7 +341,7 @@
             ]"
             :notes="
               data.daily.map(
-                (row) => `${count(row.excludedCacheGroups)} excluded groups`,
+                (row) => usageCoverage(row),
               )
             "
             measure="ratio"
@@ -367,7 +363,7 @@
             ]"
             :notes="
               data.weekly.map(
-                (row) => `${count(row.excludedCacheGroups)} excluded groups`,
+                (row) => usageCoverage(row),
               )
             "
             measure="tokens"
@@ -420,29 +416,26 @@
                   <td>{{ count(row.turns) }}</td>
                   <td :title="count(row.inputTokens)">
                     {{ tokens(row.inputTokens)
-                    }}<small v-if="row.unknownInputGroups !== '0'"
-                      >{{ count(row.unknownInputGroups) }} unknown groups</small
+                    }}<small v-if="usageCoverage(row)"
+                      >{{ usageCoverage(row) || "Partial measurements" }}</small
                     >
                   </td>
                   <td :title="count(row.cachedInputTokens)">
                     {{ tokens(row.cachedInputTokens)
-                    }}<small v-if="row.unknownCachedInputGroups !== '0'"
-                      >{{ count(row.unknownCachedInputGroups) }} unknown
-                      groups</small
+                    }}<small v-if="usageCoverage(row)"
+                      >{{ usageCoverage(row) || "Partial measurements" }}</small
                     >
                   </td>
                   <td :title="count(row.outputTokens)">
                     {{ tokens(row.outputTokens)
-                    }}<small v-if="row.unknownOutputGroups !== '0'"
-                      >{{ count(row.unknownOutputGroups) }} unknown
-                      groups</small
+                    }}<small v-if="usageCoverage(row)"
+                      >{{ usageCoverage(row) || "Partial measurements" }}</small
                     >
                   </td>
                   <td :title="exactMoney(row.estimatedCostUsd)">
                     {{ money(row.estimatedCostUsd)
                     }}<small
-                      >{{ row.costCoverage }} ·
-                      {{ count(row.unknownCostGroups) }} unknown</small
+                      >{{ row.costCoverage }}</small
                     >
                   </td>
                 </tr>
@@ -483,7 +476,8 @@ import {
   money,
   exactMoney,
   percent,
-  completedDay,
+  currentDay,
+  usageCoverage,
 } from "./format";
 import { modelLabel } from "./model-label";
 import { useMetrics } from "./use-metrics";
@@ -548,11 +542,11 @@ function toggleServiceTiers() {
 }
 const selectedRange = computed(() => {
   const days = (Date.parse(to.value) - Date.parse(from.value)) / 86400000 + 1;
-  return to.value === completedDay() && [7, 30, 90].includes(days)
+  return to.value === currentDay() && [7, 30, 90].includes(days)
     ? days
     : undefined;
 });
 const futureDay = (date: Date) =>
   date.getFullYear() * 10000 + (date.getMonth() + 1) * 100 + date.getDate() >
-  Number(completedDay().replaceAll("-", ""));
+  Number(currentDay().replaceAll("-", ""));
 </script>

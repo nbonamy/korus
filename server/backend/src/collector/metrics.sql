@@ -23,10 +23,17 @@ WITH bounds AS (
 ), daily_usage AS (
  SELECT install_id,local_day AS day,provider,model,service_tier,
  sum(turns)::bigint AS turns,
- CASE WHEN bool_or(input_tokens IS NULL) THEN NULL ELSE sum(input_tokens)::bigint END AS input_tokens,
- CASE WHEN bool_or(cached_input_tokens IS NULL) THEN NULL ELSE sum(cached_input_tokens)::bigint END AS cached_input_tokens,
- CASE WHEN bool_or(output_tokens IS NULL) THEN NULL ELSE sum(output_tokens)::bigint END AS output_tokens,
- CASE WHEN bool_or(estimated_cost_usd IS NULL) THEN NULL ELSE sum(estimated_cost_usd) END AS estimated_cost_usd,
+ sum(input_tokens)::bigint AS input_tokens,
+ sum(cached_input_tokens)::bigint AS cached_input_tokens,
+ sum(output_tokens)::bigint AS output_tokens,
+ sum(estimated_cost_usd) AS estimated_cost_usd,
+ sum(input_tokens) FILTER (WHERE output_tokens IS NOT NULL) AS paired_input,
+ sum(output_tokens) FILTER (WHERE input_tokens IS NOT NULL) AS paired_output,
+ sum(input_tokens) FILTER (WHERE cached_input_tokens IS NOT NULL) AS cache_input,
+ sum(cached_input_tokens) FILTER (WHERE input_tokens IS NOT NULL) AS cache_read,
+ sum(input_tokens::numeric-cached_input_tokens) AS non_cache_read,
+ sum(coalesce(measured_turns,CASE WHEN input_tokens IS NOT NULL AND cached_input_tokens IS NOT NULL AND output_tokens IS NOT NULL THEN turns ELSE 0 END))::bigint AS measured_turns,
+ bool_or(coalesce(cost_coverage,CASE WHEN estimated_cost_usd IS NULL THEN 'unavailable' ELSE 'complete' END)<>'complete') AS cost_incomplete,
  sum(speed_turns)::bigint AS speed_turns,sum(speed_output_tokens)::bigint AS speed_output_tokens,
  sum(generation_ms)::bigint AS generation_ms,sum(ttft_ms)::bigint AS ttft_ms,sum(ttft_turns)::bigint AS ttft_turns
  FROM local_usage, bounds WHERE local_day BETWEEN lo AND hi
@@ -47,11 +54,14 @@ WITH bounds AS (
  SELECT k.kind,k.bucket,k.provider AS group_provider,k.model AS group_model,k.tier AS group_tier,
  NULL::uuid AS install_id,NULL::bigint AS turns,NULL::bigint AS input_tokens,
  NULL::bigint AS cached_input_tokens,NULL::bigint AS output_tokens,NULL::numeric AS estimated_cost_usd,
+ NULL::bigint AS measured_turns,NULL::boolean AS cost_incomplete,
+ NULL::numeric AS paired_input,NULL::numeric AS paired_output,
+ NULL::numeric AS cache_input,NULL::numeric AS cache_read,NULL::numeric AS non_cache_read,
  NULL::bigint AS speed_turns,NULL::bigint AS speed_output_tokens,NULL::bigint AS generation_ms,NULL::bigint AS ttft_ms,NULL::bigint AS ttft_turns
  FROM keys k
  UNION ALL
  SELECT k.kind,k.bucket,k.provider,k.model,k.tier,u.install_id,u.turns,u.input_tokens,
- u.cached_input_tokens,u.output_tokens,u.estimated_cost_usd,
+ u.cached_input_tokens,u.output_tokens,u.estimated_cost_usd,u.measured_turns,u.cost_incomplete,u.paired_input,u.paired_output,u.cache_input,u.cache_read,u.non_cache_read,
  u.speed_turns,u.speed_output_tokens,u.generation_ms,u.ttft_ms,u.ttft_turns
  FROM filtered u CROSS JOIN LATERAL (VALUES
  ('daily',u.day,NULL::text,NULL::text,NULL::text),
@@ -63,6 +73,7 @@ WITH bounds AS (
 ), stats AS (
  SELECT u.kind,u.bucket,u.group_provider AS provider,u.group_model AS model,u.group_tier AS tier,
  count(u.install_id) AS groups,coalesce(sum(u.turns),0) AS turns,
+ coalesce(sum(u.measured_turns),0) AS measured_turns,coalesce(sum(u.turns-u.measured_turns),0) AS unmeasured_turns,
  coalesce(sum(u.speed_turns),0) AS speed_turns, coalesce(sum(u.ttft_turns),0) AS ttft_turns,
  round(1000*sum(u.speed_output_tokens)::numeric/nullif(sum(u.generation_ms),0),6) AS output_speed,
  round(sum(u.ttft_ms)::numeric/nullif(sum(u.ttft_turns),0),3) AS ttft_average,
@@ -72,21 +83,22 @@ WITH bounds AS (
  count(u.install_id) FILTER (WHERE u.cached_input_tokens IS NULL) AS unknown_cached,
  sum(u.output_tokens) AS output_tokens,
  count(u.install_id) FILTER (WHERE u.output_tokens IS NULL) AS unknown_output,
- sum(u.input_tokens::numeric+u.output_tokens) AS total_tokens,
- sum(u.input_tokens) FILTER (WHERE u.output_tokens IS NOT NULL) AS paired_input,
- sum(u.output_tokens) FILTER (WHERE u.input_tokens IS NOT NULL) AS paired_output,
- count(u.install_id) FILTER (WHERE u.input_tokens IS NULL OR u.output_tokens IS NULL) AS excluded_tokens,
- sum(u.input_tokens) FILTER (WHERE u.cached_input_tokens IS NOT NULL) AS cache_input,
- sum(u.cached_input_tokens) FILTER (WHERE u.input_tokens IS NOT NULL) AS cache_read,
- sum(u.input_tokens::numeric-u.cached_input_tokens) AS non_cache_read,
+ sum(coalesce(u.input_tokens::numeric,0)+coalesce(u.output_tokens,0)) FILTER (WHERE u.input_tokens IS NOT NULL OR u.output_tokens IS NOT NULL) AS total_tokens,
+ sum(u.paired_input) AS paired_input,
+ sum(u.paired_output) AS paired_output,
+ count(u.install_id) FILTER (WHERE u.input_tokens IS NULL OR u.output_tokens IS NULL OR u.measured_turns<u.turns) AS excluded_tokens,
+ sum(u.cache_input) AS cache_input,
+ sum(u.cache_read) AS cache_read,
+ sum(u.non_cache_read) AS non_cache_read,
  sum(u.estimated_cost_usd) AS cost,
- count(u.install_id) FILTER (WHERE u.estimated_cost_usd IS NULL) AS unknown_cost,
- count(u.install_id) FILTER (WHERE u.input_tokens IS NULL OR u.cached_input_tokens IS NULL) AS excluded_cache
+ count(u.install_id) FILTER (WHERE u.cost_incomplete) AS unknown_cost,
+ count(u.install_id) FILTER (WHERE u.input_tokens IS NULL OR u.cached_input_tokens IS NULL OR u.measured_turns<u.turns) AS excluded_cache
  FROM expanded u
  GROUP BY u.kind,u.bucket,u.group_provider,u.group_model,u.group_tier
 ), summaries AS (
  SELECT kind,bucket,provider,model,tier,jsonb_build_object(
  'groups',groups::text,'turns',turns::text,
+ 'measuredTurns',measured_turns::text,'unmeasuredTurns',unmeasured_turns::text,
  'performance',jsonb_build_object('outputTokensPerSecond',trim_scale(output_speed)::text,
  'timeToFirstOutputMs',trim_scale(ttft_average)::text,'speedTurns',speed_turns::text,'ttftTurns',ttft_turns::text),
  'inputTokens',input_tokens::text,'unknownInputGroups',unknown_input::text,
@@ -99,7 +111,7 @@ WITH bounds AS (
  'cacheReadShare',(cache_read/nullif(cache_input,0))::double precision,
  'excludedCacheGroups',excluded_cache::text,
  'estimatedCostUsd',trim_scale(cost)::text,'unknownCostGroups',unknown_cost::text,
- 'costCoverage',CASE WHEN groups=0 THEN 'empty' WHEN unknown_cost=groups THEN 'unavailable'
+ 'costCoverage',CASE WHEN groups=0 THEN 'empty' WHEN cost IS NULL THEN 'unavailable'
  WHEN unknown_cost>0 THEN 'partial' ELSE 'complete' END
  ) AS value FROM stats s
 )
@@ -123,7 +135,7 @@ SELECT jsonb_build_object(
  'day',bucket,'provider',provider,'model',model,'serviceTier',tier,
  'turns',value->'turns','totalTokens',value->'totalTokens','inputTokens',value->'inputTokens','outputTokens',value->'outputTokens',
  'unknownInputGroups',value->'unknownInputGroups','unknownOutputGroups',value->'unknownOutputGroups',
- 'excludedTokenGroups',value->'excludedTokenGroups','performance',value->'performance'
+ 'excludedTokenGroups',value->'excludedTokenGroups','measuredTurns',value->'measuredTurns','unmeasuredTurns',value->'unmeasuredTurns','performance',value->'performance'
  ) ORDER BY bucket,provider,model,tier) FROM summaries WHERE kind='modelDaily'),'[]'::jsonb),
  'models',coalesce((SELECT jsonb_agg(value||jsonb_build_object('provider',provider,'model',model,'serviceTier',tier) ORDER BY provider,model,tier) FROM summaries WHERE kind='model'),'[]'::jsonb)
 ) AS metrics;

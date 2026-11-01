@@ -117,7 +117,7 @@ const total = computed(() =>
 const incomplete = (row: ModelRow) =>
   measure.value === "turns"
     ? false
-    : (row[
+    : (row.unmeasuredTurns !== undefined && row.unmeasuredTurns !== "0") || (row[
         measure.value === "totalTokens"
           ? "excludedTokenGroups"
           : measure.value === "inputTokens"

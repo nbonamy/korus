@@ -16,7 +16,6 @@ import {
   TelemetryStore,
   type InstallRow,
   type InstallDayRow,
-  type UsageDailyRow,
 } from "./store";
 
 const configSchema = z
@@ -122,7 +121,9 @@ export async function runCollector(
         "SELECT install_id, first_reported_day, first_reported_hour FROM installs LIMIT 0",
       ),
       pool.query<InstallDayRow>("SELECT * FROM install_days LIMIT 0"),
-      pool.query<UsageDailyRow>("SELECT * FROM usage_daily LIMIT 0"),
+      pool.query(
+        "SELECT measured_turns, cost_coverage FROM usage_daily LIMIT 0",
+      ),
     ]);
     operation = "credentials";
     server =

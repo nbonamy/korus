@@ -6,6 +6,7 @@ import path from "node:path";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { runCollector } from "../cli";
+import { createTelemetryPool } from "../store";
 import { disposablePostgres } from "./postgres";
 
 // Separate executable ownership: explicit external config, no automatic DDL in
@@ -45,6 +46,21 @@ it("runs explicit migrations and serves independently with supplied runtime conf
   );
   expect(await runCollector(["migrate"], env, log)).toBeUndefined();
   expect(await runCollector(["migrate"], env, log)).toBeUndefined();
+  const admin = createTelemetryPool(database.url);
+  try {
+    // A deployed v6 database has tables but cannot accept coverage-aware writes.
+    await admin.query(`ALTER TABLE usage_daily DROP COLUMN measured_turns, DROP COLUMN cost_coverage;
+      DELETE FROM telemetry_migrations WHERE version=7`);
+    await expect(
+      (async () => {
+        const stale = await runCollector(["serve", config], env, log);
+        await stale?.close();
+      })(),
+    ).rejects.toThrow("Collector startup failed.");
+    expect(await runCollector(["migrate"], env, log)).toBeUndefined();
+  } finally {
+    await admin.end();
+  }
   const collector = await runCollector(["serve", config], env, log);
   try {
     const now = Date.now();
@@ -120,6 +136,16 @@ it("runs explicit migrations and serves independently with supplied runtime conf
       operation: "database_readiness",
       reason: "database_schema_missing",
       code: "42P01",
+      message: expect.any(String),
+    },
+    {
+      timestamp: expect.any(String),
+      level: "error",
+      service: "collector",
+      event: "startup_failed",
+      operation: "database_readiness",
+      reason: "database_schema_mismatch",
+      code: "42703",
       message: expect.any(String),
     },
     {

@@ -6,7 +6,7 @@ import type {
 
 /** Exact nonnegative decimal strings; convert for plotting only after checking
  * the display range. Unknown measurements remain null, with excluded counts.
- * Totals are known subtotals; totalTokens uses complete input/output pairs and
+ * Totals retain all known subtotals; coverage counts missing turn measurements and
  * cache share uses complete input/cache-read pairs. Never add cache reads again.
  */
 export type TelemetryPerformanceMetrics = {
@@ -19,6 +19,8 @@ export type TelemetryMetricTotals = {
   performance?: TelemetryPerformanceMetrics;
   groups: string;
   turns: string;
+  measuredTurns?: string;
+  unmeasuredTurns?: string;
   inputTokens: string | null;
   unknownInputGroups: string;
   cachedInputTokens: string | null;

@@ -9,6 +9,7 @@ import { createMetricsServer } from "../metrics-server";
 import { metricsSql } from "../metrics";
 import { createDiagnostics } from "../diagnostics";
 import { disposablePostgres } from "./postgres";
+import { createCollectorServer } from "../server";
 
 // Owner HTTP + real Postgres: access/origin bypass, usage filters changing DAU,
 // duplicate model inflation, boundary windows, unknown-as-zero, cache double
@@ -63,6 +64,35 @@ afterAll(async () => {
   await pool?.end();
   await db?.stop();
 });
+it('retains measured subtotals through hourly ingestion, daily coalescing and idempotent corrections', async () => {
+  await pool.query('TRUNCATE usage_daily,install_days,installs');
+  const collector = createCollectorServer({store:new TelemetryStore(pool), now:()=>Date.parse('2026-10-25T12:00Z')});
+  await new Promise<void>(r=>collector.listen(0,'127.0.0.1',r));
+  const url = `http://127.0.0.1:${(collector.address() as AddressInfo).port}/v1/telemetry/daily`;
+  const payload = {installId:'00000000-0000-4000-8000-000000000001',day:'2026-10-24',hour:12,appVersion:'0.49.1',os:'macos',usage:[{
+    provider:'codex',model:'gpt-6-sol',serviceTier:'fast',turns:2,measuredTurns:1,
+    inputTokens:100,cachedInputTokens:80,outputTokens:20,estimatedCostUsd:0.5,costCoverage:'partial',
+  }]};
+  const send = async (body:unknown) => fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  try {
+    expect((await send(payload)).status).toBe(204);
+    // An unknown legacy hour cannot erase the measured hour for the same model/day.
+    const {measuredTurns,costCoverage,...legacy} = payload.usage[0];
+    expect((await send({...payload,hour:13,usage:[{...legacy,turns:1,inputTokens:null,cachedInputTokens:5,outputTokens:10,estimatedCostUsd:null}]})).status).toBe(204);
+    expect((await send(payload)).status).toBe(204);
+    let result = await (await get()).json() as TelemetryMetrics;
+    expect(result.totals).toMatchObject({turns:'3',measuredTurns:'1',unmeasuredTurns:'2',totalTokens:'130',inputTokens:'100',outputTokens:'30',pairedInputTokens:'100',pairedOutputTokens:'20',cacheReadShare:0.8,estimatedCostUsd:'0.5',costCoverage:'partial',unknownCostGroups:'1'});
+    expect(result.daily.at(-1)).toMatchObject(result.totals);
+    expect(result.weekly.at(-1)).toMatchObject(result.totals);
+    expect(result.models[0]).toMatchObject(result.totals);
+    const corrected = {...payload,usage:[{...payload.usage[0],measuredTurns:2,inputTokens:200,cachedInputTokens:160,outputTokens:40,estimatedCostUsd:1,costCoverage:'complete'}]};
+    expect((await send(corrected)).status).toBe(204);
+    result = await (await get()).json() as TelemetryMetrics;
+    expect(result.totals).toMatchObject({turns:'3',measuredTurns:'2',unmeasuredTurns:'1',totalTokens:'250',estimatedCostUsd:'1',costCoverage:'partial'});
+    expect((await send({...payload,usage:[{...payload.usage[0],measuredTurns:3}]})).status).toBe(400);
+    expect(((await (await get()).json()) as TelemetryMetrics).totals).toStrictEqual(result.totals);
+  } finally { collector.closeAllConnections(); await new Promise<void>(r=>collector.close(()=>r())); }
+});
 it("requires private access and exact configured origins; rejects invalid and unbounded browser filters", async () => {
   for (const headers of [
     {},
@@ -88,7 +118,7 @@ it("requires private access and exact configured origins; rejects invalid and un
     range + "&groupServiceTiers=yes",
     range + "&groupServiceTiers=true&groupServiceTiers=false",
     range + "&from=2026-10-18",
-    "from=2020-01-01&to=2026-10-25",
+    "from=2020-01-01&to=2026-10-26",
     "from=2000-01-01&to=2026-10-24",
     range + "&provider=%27%3Bdrop+table+installs",
   ]) {
@@ -105,7 +135,7 @@ it("requires private access and exact configured origins; rejects invalid and un
   });
   expect(foreign.status).toBe(404);
 });
-it("agrees with executable SQL across global activity, complete token pairs, spend gaps and old history", async () => {
+it("agrees with executable SQL across global activity, known token subtotals, spend gaps and old history", async () => {
   const r = await get();
   expect(r.status).toBe(200);
   const body = (await r.json()) as TelemetryMetrics;
@@ -135,13 +165,15 @@ it("agrees with executable SQL across global activity, complete token pairs, spe
     },
     groups: "5",
     turns: "7",
+    measuredTurns: "6",
+    unmeasuredTurns: "1",
     inputTokens: "600",
     unknownInputGroups: "1",
     cachedInputTokens: "340",
     unknownCachedInputGroups: "0",
     outputTokens: "100",
     unknownOutputGroups: "0",
-    totalTokens: "660",
+    totalTokens: "700",
     pairedInputTokens: "600",
     pairedOutputTokens: "60",
     excludedTokenGroups: "1",
@@ -162,7 +194,7 @@ it("agrees with executable SQL across global activity, complete token pairs, spe
   ]);
   expect(body.weekly.map((w) => [w.week, w.totalTokens])).toStrictEqual([
     ["2026-10-12", "110"],
-    ["2026-10-19", "550"],
+    ["2026-10-19", "590"],
   ]);
   expect(body.daily[2].estimatedCostUsd).toBeNull();
   expect(body.daily[2].costCoverage).toBe("empty");
@@ -201,7 +233,7 @@ it("agrees with executable SQL across global activity, complete token pairs, spe
     await get("from=2020-01-01&to=2026-10-24")
   ).json()) as TelemetryMetrics;
   expect(long.activity).toHaveLength(2489);
-  expect(long.totals.totalTokens).toBe("1760");
+  expect(long.totals.totalTokens).toBe("1800");
   if (process.env.TELEMETRY_METRICS_EVIDENCE)
     await writeFile(
       process.env.TELEMETRY_METRICS_EVIDENCE,
@@ -611,5 +643,9 @@ it("groups hourly usage and distinct activity into viewer days across midnight a
   expect(
     (await get("from=2026-10-25&to=2026-10-25&timeZone=America%2FChicago"))
       .status,
-  ).toBe(400);
+  ).toBe(200);
+  await put("2026-10-25", 11, 17);
+  const current = await (await get("from=2026-10-25&to=2026-10-25&timeZone=America%2FChicago")).json() as TelemetryMetrics;
+  expect(current.totals.inputTokens).toBe("17");
+  expect((await get("from=2026-10-26&to=2026-10-26&timeZone=America%2FChicago")).status).toBe(400);
 });
