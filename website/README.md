@@ -524,16 +524,16 @@ OS shortcuts, explicit architecture choices, and responsive layout.
 
 The deploy helper first builds the landing page and generated documentation into
 `dist/website/`, then streams that artifact over SSH, provisions the Let’s Encrypt
-certificate if this is the first deploy, and installs the matching nginx site on `joshua`:
+certificate if this is the first deploy, and installs the matching nginx site on the operator-supplied SSH host:
 
 ```bash
-./website/deploy.sh
+APP_WEBSITE_HOST=<operator-ssh-host> ./website/deploy.sh
 ```
 
-Override `APP_WEBSITE_HOST`, `APP_WEBSITE_ROOT`, or `APP_NGINX_CONFIG` when needed. The remote account must be able to run `sudo install`, `sudo nginx -t`, and `sudo systemctl reload nginx`.
+Set `APP_WEBSITE_HOST` explicitly. Override `APP_WEBSITE_ROOT` or `APP_NGINX_CONFIG` when needed. The remote account must be able to run `sudo install`, `sudo nginx -t`, and `sudo systemctl reload nginx`.
 
 The domain and storage root come from `core/src/product.json`; nginx templates
-are rendered outside the public artifact. Joshua serves the website, downloads,
+are rendered outside the public artifact. The host serves the website, downloads,
 and releases from `/var/www/korus/{site,downloads,releases}`. Certificate renewal
 uses `/var/www/korus/site` as its webroot.
 

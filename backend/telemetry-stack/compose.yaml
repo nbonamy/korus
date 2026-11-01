@@ -195,7 +195,7 @@ services:
     restart: unless-stopped
     command: [auth]
     environment:
-      TELEMETRY_CONSOLE_PASSWORD: ${TELEMETRY_CONSOLE_PASSWORD:?provide a strong private console password}
+      BACKEND_ADMIN_PASSWORD: ${BACKEND_ADMIN_PASSWORD:?provide a strong private console password}
       TELEMETRY_CONSOLE_ORIGIN: ${TELEMETRY_CONSOLE_ORIGIN:?provide the HTTPS console origin}
       TELEMETRY_CONSOLE_ALLOW_LOOPBACK_HTTP: ${TELEMETRY_CONSOLE_ALLOW_LOOPBACK_HTTP:-0}
     networks:

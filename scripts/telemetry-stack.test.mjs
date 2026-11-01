@@ -146,7 +146,7 @@ test(
       const consolePort = probe.address().port;
       await new Promise((resolve) => probe.close(resolve));
       Object.assign(env, {
-        TELEMETRY_CONSOLE_PASSWORD: canary,
+        BACKEND_ADMIN_PASSWORD: canary,
         TELEMETRY_CONSOLE_ALLOW_LOOPBACK_HTTP: "1",
         TELEMETRY_IMAGE: image,
         TELEMETRY_BACKUP_DIRECTORY: path.join(dir, "backups"),
@@ -174,7 +174,7 @@ test(
           assert.equal(rendered.networks.frontend.internal, true);
           assert.equal(rendered.networks.database.external, undefined);
           assert.equal(
-            rendered.services.auth.environment.TELEMETRY_CONSOLE_PASSWORD,
+            rendered.services.auth.environment.BACKEND_ADMIN_PASSWORD,
             canary,
           );
           assert.equal(rendered.services.auth.ports, undefined);
@@ -183,7 +183,7 @@ test(
           ]);
           // The operator explicitly supplies a runtime-only password environment;
           // it must be present only on auth, never in any other runtime inputs.
-          delete rendered.services.auth.environment.TELEMETRY_CONSOLE_PASSWORD;
+          delete rendered.services.auth.environment.BACKEND_ADMIN_PASSWORD;
           assert.equal(JSON.stringify(rendered).includes(canary), false);
           for (const service of Object.values(rendered.services))
             assert.equal(service.logging.driver, "none");

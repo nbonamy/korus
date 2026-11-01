@@ -226,7 +226,7 @@ it("starts the standalone auth role from external files without database credent
     "Collector startup failed.",
   );
   const runtime = await runCollector(["auth", config], {
-    TELEMETRY_CONSOLE_PASSWORD: password,
+    BACKEND_ADMIN_PASSWORD: password,
   });
   cleanup.push(() => runtime!.close());
   expect((await fetch(`http://127.0.0.1:${port}/auth/session`)).status).toBe(

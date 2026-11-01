@@ -58,7 +58,7 @@ export async function runCollector(
       );
       server = createConsoleAuthServer({
         consoleOrigin: config.consoleOrigin,
-        password: env.TELEMETRY_CONSOLE_PASSWORD ?? "",
+        password: env.BACKEND_ADMIN_PASSWORD ?? "",
         allowInsecureLoopback: config.allowInsecureLoopback,
       });
       await new Promise<void>((resolve, reject) => {

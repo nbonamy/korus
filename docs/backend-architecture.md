@@ -1301,7 +1301,7 @@ Startup checks schema readiness without DDL. Both executable modes share bounded
 PostgreSQL timeouts and generic failures, with no access/error logger.
 
 The private console uses a single `admin` operator account. Its password comes
-from `TELEMETRY_CONSOLE_PASSWORD` in an operator-managed, owner-only `.env` file
+from `BACKEND_ADMIN_PASSWORD` in an operator-managed, owner-only `.env` file
 outside Git. Compose injects it only into the separate `auth` process, which has
 no database credential or database network. Passwords must be at least 16
 characters and at most 1,024 UTF-8 bytes; the process derives a salted scrypt hash
@@ -1435,7 +1435,7 @@ all consumers. Schema upgrades require rerunning migrations and grants explicitl
 with the new image before restarting ingestion; `up` reruns completed jobs.
 
 The proxy accepts only the ingestion route on the configured API host and serves
-the separate console host behind server-side basic authentication. This is an
+the separate console host behind server-side session authentication. This is an
 internal HTTP hop, never a public cleartext listener. The external HTTPS edge must
 preserve the virtual host and securely convey client addresses. Its private nginx
 include must trust only the actual TLS-edge peer ranges using `set_real_ip_from`,
