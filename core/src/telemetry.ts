@@ -4,6 +4,13 @@ import { telemetryModels } from "./telemetry-models";
 export type TelemetryProvider = "codex" | "claude" | "antigravity";
 export type TelemetryModel = (typeof telemetryModels)[number] | "unknown";
 export type TelemetryOs = "macos" | "windows" | "linux" | "unknown";
+export type TelemetryPerformance = {
+  speedTurns: number;
+  outputTokens: number;
+  generationMs: number;
+  ttftMs: number;
+  ttftTurns: number;
+};
 export type TelemetryUsage = {
   provider: TelemetryProvider;
   model: TelemetryModel;
@@ -12,6 +19,8 @@ export type TelemetryUsage = {
   cachedInputTokens: number | null;
   outputTokens: number | null;
   estimatedCostUsd: number | null;
+  /** Absent in older reports or when no timing was measured. */
+  performance?: TelemetryPerformance;
 };
 export type DailyTelemetryPayload = {
   installId: string;
@@ -100,6 +109,36 @@ function validInstallId(value: unknown): value is string {
     )
   );
 }
+export function validTelemetryPerformance(
+  value: unknown,
+  turns: number,
+): value is TelemetryPerformance {
+  if (
+    !object(value, [
+      "speedTurns",
+      "outputTokens",
+      "generationMs",
+      "ttftMs",
+      "ttftTurns",
+    ])
+  )
+    return false;
+  if (
+    !Object.values(value).every(
+      (v) => Number.isSafeInteger(v) && (v as number) >= 0,
+    )
+  )
+    return false;
+  const p = value as TelemetryPerformance;
+  return (
+    p.speedTurns <= p.ttftTurns &&
+    p.ttftTurns <= turns &&
+    (p.speedTurns > 0
+      ? p.outputTokens > 0 && p.generationMs > 0
+      : p.outputTokens === 0 && p.generationMs === 0) &&
+    (p.ttftTurns > 0 || p.ttftMs === 0)
+  );
+}
 /** Closed, bounded wire contract. Construct explicit fields after validation so
  * no spread of a ledger/provider object can leak local metadata into the body.
  */
@@ -131,6 +170,7 @@ export function serializeDailyTelemetry(
           "cachedInputTokens",
           "outputTokens",
           "estimatedCostUsd",
+          ...(Object.hasOwn(row, "performance") ? ["performance"] : []),
         ]) ||
         !["codex", "claude", "antigravity"].includes(row.provider) ||
         (row.model !== "unknown" && !models.has(row.model)) ||
@@ -149,6 +189,11 @@ export function serializeDailyTelemetry(
           ))
       )
         throw new Error("Invalid telemetry usage.");
+      if (
+        row.performance !== undefined &&
+        !validTelemetryPerformance(row.performance, row.turns)
+      )
+        throw new Error("Invalid telemetry performance.");
       const key = row.provider + "/" + row.model;
       if (groups.has(key)) throw new Error("Duplicate telemetry group.");
       groups.add(key);
@@ -160,6 +205,17 @@ export function serializeDailyTelemetry(
         cachedInputTokens: row.cachedInputTokens,
         outputTokens: row.outputTokens,
         estimatedCostUsd: row.estimatedCostUsd,
+        ...(row.performance
+          ? {
+              performance: {
+                speedTurns: row.performance.speedTurns,
+                outputTokens: row.performance.outputTokens,
+                generationMs: row.performance.generationMs,
+                ttftMs: row.performance.ttftMs,
+                ttftTurns: row.performance.ttftTurns,
+              },
+            }
+          : {}),
       };
     })
     .sort((a, b) =>

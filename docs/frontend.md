@@ -319,18 +319,25 @@ desired direction, not a requirement.
 `web/src/console` is a standalone Vue entry point for aggregate telemetry. It
 consumes only the shared aggregate contract and canonical model catalog, never
 the desktop shell, provider protocols, identity state or filesystem. Dependency
-lint enforces that boundary. The console uses native browser controls: desktop
-pickers and form wrappers assume app-owned platform state and localization, while
-this separately hosted surface has neither. Its SVG chart accepts aggregate
-series rather than local-ledger `UsageSummary` dimensions.
+lint enforces that boundary. The console uses Element Plus controls with its own
+semantic theme. Desktop provider/model pickers assume app-owned provider catalogs,
+host state and localization, while the console filters aggregate reporting
+dimensions. Its SVG chart accepts aggregate series rather than local-ledger
+`UsageSummary` dimensions.
 
 The build copies semantic tokens from the app's light palette without external
 font imports. Charts use thin, bounded cubic curves with fading area fills,
 separate runs for missing values and markers only during inspection. One keyboard
-focus stop per chart supports Left/Right and Home/End; expandable tables preserve
-exact PostgreSQL decimal strings. Coordinate conversion is bounded to safe finite
-values; out-of-range measurements remain available in the exact table. Tables
+focus stop per chart supports Left/Right and Home/End. Compact token units,
+cent-rounded amounts and one-decimal percentages expose exact PostgreSQL values
+on hover. Coordinate conversion is bounded to safe finite values; out-of-range
+measurements remain available in the data table. Tables
 render on expansion so long retained-history ranges do not populate hidden rows.
+
+Hash routes separate the overview, activity, token, spend, model and performance reports without
+requiring proxy rewrite rules. Date and usage-filter state stays in the mounted
+console across page changes; browser history and direct report links select the
+report independently of those filters.
 
 The private proxy owns authentication. Browser code performs only same-origin
 aggregate reads, keeps no credentials or metrics in storage, discards stale filter

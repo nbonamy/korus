@@ -5,7 +5,14 @@ import type { TelemetryModel, TelemetryProvider } from "./telemetry";
  * Totals are known subtotals; totalTokens uses complete input/output pairs and
  * cache share uses complete input/cache-read pairs. Never add cache reads again.
  */
+export type TelemetryPerformanceMetrics = {
+  outputTokensPerSecond: string | null;
+  timeToFirstOutputMs: string | null;
+  speedTurns: string;
+  ttftTurns: string;
+};
 export type TelemetryMetricTotals = {
+  performance?: TelemetryPerformanceMetrics;
   groups: string;
   turns: string;
   inputTokens: string | null;

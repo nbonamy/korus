@@ -66,9 +66,74 @@ export async function dashboardWorkflow({
     });
     await page.goto(origin);
     await page.getByRole("region", { name: "Global activity" }).waitFor();
+    async function visit(name) {
+      await page
+        .getByRole("navigation", { name: "Analytics sections" })
+        .getByRole("link", { name, exact: true })
+        .click();
+      await page
+        .getByRole("heading", { level: 1, name, exact: true })
+        .waitFor();
+    }
+    // Reports are separate, addressable pages; changing page preserves the range.
+    const initialFrom = await page
+      .getByLabel("From UTC day", { exact: true })
+      .inputValue();
+    await visit("Tokens");
+    await page
+      .getByRole("region", { name: "Weekly tokens", exact: true })
+      .waitFor();
+    assert.equal(
+      await page
+        .getByRole("region", { name: "Daily activity", exact: true })
+        .count(),
+      0,
+    );
+    await visit("Models");
+    await page
+      .getByRole("region", { name: "Provider and model", exact: true })
+      .waitFor();
+    assert.equal(
+      await page
+        .getByRole("region", { name: "Weekly tokens", exact: true })
+        .count(),
+      0,
+    );
+    assert.equal(
+      await page.getByLabel("From UTC day", { exact: true }).inputValue(),
+      initialFrom,
+    );
+    await page.goBack();
+    await page
+      .getByRole("heading", { level: 1, name: "Tokens", exact: true })
+      .waitFor();
+    await page.goForward();
+    await page
+      .getByRole("heading", { level: 1, name: "Models", exact: true })
+      .waitFor();
+    await page.reload();
+    await page
+      .getByRole("heading", { level: 1, name: "Models", exact: true })
+      .waitFor();
+    await visit("Overview");
+    const providerLabels = {
+      "": "All providers",
+      codex: "Codex",
+      claude: "Claude",
+      antigravity: "Antigravity",
+    };
+    async function select(label, value) {
+      await page
+        .getByRole("combobox", { name: label, exact: true })
+        .press("ArrowDown");
+      const name =
+        label === "Provider" ? providerLabels[value] : value || "All models";
+      await page.getByRole("option", { name, exact: true }).click();
+    }
     async function range(from, to) {
       await page.getByLabel("From UTC day", { exact: true }).fill(from);
       await page.getByLabel("To UTC day", { exact: true }).fill(to);
+      await page.getByLabel("To UTC day", { exact: true }).press("Tab");
       await Promise.all([
         page.waitForResponse(
           (r) =>
@@ -96,6 +161,16 @@ export async function dashboardWorkflow({
         path: path.join(output, "desktop-profile.png"),
         fullPage: true,
       });
+      await visit("Performance");
+      assert.match(
+        await page.getByLabel("Output speed summary").innerText(),
+        /20.0 tok\/s/,
+      );
+      assert.match(
+        await page.getByLabel("Time to first output summary").innerText(),
+        /0.3 s/,
+      );
+      await visit("Overview");
       await replaceProfile();
       await Promise.all([
         page.waitForResponse(
@@ -112,6 +187,7 @@ export async function dashboardWorkflow({
         .getByLabel("Participating installs", { exact: true })
         .getByText("1", { exact: true })
         .waitFor();
+      await visit("Models");
       const table = await page
         .getByRole("region", { name: "Provider and model", exact: true })
         .innerText();
@@ -122,6 +198,7 @@ export async function dashboardWorkflow({
         fullPage: true,
       });
     }
+    await visit("Overview");
     await sql("TRUNCATE usage_daily,install_days,installs");
     await sql(seed);
     await page.clock.setFixedTime(new Date("2026-10-25T12:00:00Z"));
@@ -133,8 +210,8 @@ export async function dashboardWorkflow({
       ["Monthly active installs", "5"],
       ["Turns", "7"],
       ["Measured total tokens", "660"],
-      ["Known estimated spend", "$1.5"],
-      ["Measured cache-read share", "55%"],
+      ["Known estimated spend", "$1.50"],
+      ["Measured cache-read share", "55.0%"],
     ])
       assert.equal(
         (await page.getByLabel(label, { exact: true }).innerText()).includes(
@@ -239,7 +316,9 @@ export async function dashboardWorkflow({
       name: "Provider and model",
       exact: true,
     });
+    await visit("Models");
     assert.match(await models.innerText(), /claude-sonnet-4-6/);
+    await visit("Overview");
     await page.screenshot({
       path: path.join(output, "desktop.png"),
       fullPage: true,
@@ -249,7 +328,7 @@ export async function dashboardWorkflow({
       page.waitForResponse(
         (r) => r.url().includes("provider=codex") && r.status() === 200,
       ),
-      page.getByLabel("Provider", { exact: true }).selectOption("codex"),
+      select("Provider", "codex"),
     ]);
     await page
       .getByLabel("Measured total tokens", { exact: true })
@@ -264,9 +343,7 @@ export async function dashboardWorkflow({
         (r) =>
           r.url().includes("model=claude-sonnet-4-6") && r.status() === 200,
       ),
-      page
-        .getByLabel("Model", { exact: true })
-        .selectOption("claude-sonnet-4-6"),
+      select("Model", "claude-sonnet-4-6"),
     ]);
     await page
       .getByText("No usage for this selection.", { exact: true })
@@ -275,7 +352,7 @@ export async function dashboardWorkflow({
       page.waitForResponse(
         (r) => r.url().includes("provider=claude") && r.status() === 200,
       ),
-      page.getByLabel("Provider", { exact: true }).selectOption("claude"),
+      select("Provider", "claude"),
     ]);
     await page
       .getByLabel("Measured total tokens", { exact: true })
@@ -292,13 +369,13 @@ export async function dashboardWorkflow({
           r.url().includes("/metrics") &&
           r.status() === 200,
       ),
-      page.getByLabel("Model", { exact: true }).selectOption(""),
+      select("Model", ""),
     ]);
     await Promise.all([
       page.waitForResponse(
         (r) => r.url().includes("provider=antigravity") && r.status() === 200,
       ),
-      page.getByLabel("Provider", { exact: true }).selectOption("antigravity"),
+      select("Provider", "antigravity"),
     ]);
     await page
       .getByLabel("Measured cache-read share", { exact: true })
@@ -311,14 +388,14 @@ export async function dashboardWorkflow({
           r.url().includes("/metrics") &&
           r.status() === 200,
       ),
-      page.getByLabel("Provider", { exact: true }).selectOption(""),
+      select("Provider", ""),
     ]);
     await range("2020-01-01", "2020-01-01");
     assert.match(
       await page
         .getByLabel("Measured total tokens", { exact: true })
         .innerText(),
-      /1,100/,
+      /1.1K/,
     );
     await range("2026-10-18", "2026-10-24");
     // A complete replacement changes usage totals, never install/activity cards.
@@ -355,7 +432,7 @@ export async function dashboardWorkflow({
     const geometry = await page.evaluate(() => ({
       viewport: innerWidth,
       page: document.documentElement.scrollWidth,
-      charts: [...document.querySelectorAll("svg")].map((el) => ({
+      charts: [...document.querySelectorAll('svg[role="img"]')].map((el) => ({
         width: el.getBoundingClientRect().width,
         height: el.getBoundingClientRect().height,
       })),
@@ -392,6 +469,32 @@ export async function dashboardWorkflow({
       fullPage: true,
       animations: "disabled",
     });
+    await sql(
+      "UPDATE usage_daily SET speed_turns=2,speed_output_tokens=30,generation_ms=1000,ttft_ms=1000,ttft_turns=2 WHERE provider='codex' AND day='2026-10-24'",
+    );
+    await page.getByLabel("Refresh metrics").click();
+    await page.getByLabel("Measured total tokens", { exact: true }).waitFor();
+    await visit("Performance");
+    assert.match(
+      await page.getByLabel("Output speed summary").innerText(),
+      /30.0 tok\/s/,
+    );
+    assert.match(
+      await page.getByLabel("Time to first output summary").innerText(),
+      /0.5 s/,
+    );
+    assert.match(
+      await page
+        .getByRole("region", { name: "Performance by model", exact: true })
+        .innerText(),
+      /Unavailable/,
+    );
+    await page.screenshot({
+      path: path.join(output, "performance.png"),
+      fullPage: true,
+      animations: "disabled",
+    });
+    await visit("Overview");
     await range("2026-10-20", "2026-10-20");
     await page
       .getByText("No usage for this selection.", { exact: true })

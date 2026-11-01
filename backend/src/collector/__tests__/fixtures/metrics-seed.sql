@@ -18,7 +18,7 @@ INSERT INTO install_days(install_id,day,app_version,os,received_at) VALUES
  ('00000000-0000-4000-8000-000000000004','2026-10-18','1.0.0','linux','2026-10-25Z'),
  ('00000000-0000-4000-8000-000000000005','2026-09-25','1.0.0','linux','2026-10-25Z'),
  ('00000000-0000-4000-8000-000000000006','2026-09-24','1.0.0','linux','2026-10-25Z');
-INSERT INTO usage_daily VALUES
+INSERT INTO usage_daily(install_id,day,provider,model,turns,input_tokens,cached_input_tokens,output_tokens,estimated_cost_usd) VALUES
  ('00000000-0000-4000-8000-000000000001','2020-01-01','codex','unknown',1,1000,800,100,2),
  ('00000000-0000-4000-8000-000000000001','2026-10-18','codex','unknown',1,100,80,10,0),
  ('00000000-0000-4000-8000-000000000001','2026-10-19','claude','claude-sonnet-4-6',2,200,50,20,1.5),

@@ -237,7 +237,7 @@ test("telemetry uploader ownership permits runtime composition and rejects alter
 test("private dashboard imports only browser-safe aggregate contracts", async () => {
   const good = await checkFixture({
     "web/src/console/view.ts":
-      "import {computed} from 'vue'; import type {TelemetryMetrics} from '@workspace/core/telemetry-metrics'; import {telemetryModels} from '@workspace/core/telemetry-models'; import './format';",
+      "import {computed} from 'vue'; import {ElSelect} from 'element-plus'; import 'element-plus/es/components/select/style/css'; import type {TelemetryMetrics} from '@workspace/core/telemetry-metrics'; import {telemetryModels} from '@workspace/core/telemetry-models'; import './format';",
   });
   assert.equal(good.status, 0, good.stderr);
   const bad = await checkFixture({

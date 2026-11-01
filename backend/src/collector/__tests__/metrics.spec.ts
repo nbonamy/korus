@@ -116,6 +116,12 @@ it("agrees with executable SQL across global activity, complete token pairs, spe
     { day: "2026-10-24", activeInstalls: "3", firstReportedInstalls: "1" },
   ]);
   expect(body.totals).toStrictEqual({
+    performance: {
+      outputTokensPerSecond: null,
+      timeToFirstOutputMs: null,
+      speedTurns: "0",
+      ttftTurns: "0",
+    },
     groups: "5",
     turns: "7",
     inputTokens: "600",
@@ -355,5 +361,72 @@ it("returns explicit empty aggregates and the full accepted range without clippi
     firstDay: null,
     lastDay: null,
     lastReceivedAt: null,
+  });
+});
+
+it("weights performance by measured output/time, preserves missing samples and replaces samples idempotently", async () => {
+  await pool.query("TRUNCATE usage_daily,install_days,installs");
+  const store = new TelemetryStore(pool);
+  const payload = (
+    id: string,
+    performance?: {
+      speedTurns: number;
+      outputTokens: number;
+      generationMs: number;
+      ttftMs: number;
+      ttftTurns: number;
+    },
+  ) => ({
+    installId: `00000000-0000-4000-8000-00000000000${id}`,
+    day: "2026-10-24",
+    appVersion: "1.0.0",
+    os: "macos" as const,
+    usage: [
+      {
+        provider: "codex" as const,
+        model: "gpt-6-sol" as const,
+        turns: id === "1" ? 2 : 1,
+        inputTokens: 1000,
+        cachedInputTokens: 500,
+        outputTokens: 100,
+        estimatedCostUsd: null,
+        ...(performance ? { performance } : {}),
+      },
+    ],
+  });
+  const first = payload("1", {
+    speedTurns: 2,
+    outputTokens: 100,
+    generationMs: 4000,
+    ttftMs: 1000,
+    ttftTurns: 2,
+  });
+  await store.replace(first);
+  await store.replace(
+    payload("2", {
+      speedTurns: 1,
+      outputTokens: 100,
+      generationMs: 1000,
+      ttftMs: 3000,
+      ttftTurns: 1,
+    }),
+  );
+  await store.replace(payload("3"));
+  await store.replace(first);
+  let metrics = (await (await get()).json()) as TelemetryMetrics;
+  expect(metrics.models).toHaveLength(1);
+  expect(metrics.totals.performance).toStrictEqual({
+    outputTokensPerSecond: "40",
+    timeToFirstOutputMs: "1333.333",
+    speedTurns: "3",
+    ttftTurns: "3",
+  });
+  await store.replace(payload("1"));
+  metrics = (await (await get()).json()) as TelemetryMetrics;
+  expect(metrics.totals.performance).toStrictEqual({
+    outputTokensPerSecond: "100",
+    timeToFirstOutputMs: "3000",
+    speedTurns: "1",
+    ttftTurns: "1",
   });
 });

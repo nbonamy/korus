@@ -356,3 +356,21 @@ it("counts a turn on the day it happened in the reader's timezone, for buckets a
     await ledger.close();
   }
 });
+
+it("projects additive measured performance from the existing ledger", async () => {
+  const at = Date.parse("2026-10-15T12:00Z");
+  const ledger = new UsageLedger(":memory:", () => at);
+  try {
+    await ledger.load();
+    for (const [turnId, serviceTier, output, activeMs, ttftMs] of [["a","normal",10,1100,100],["b","normal",90,3900,900]] as const) {
+      const base = {provider:"codex" as const,agentId:"a",sessionId:"s",turnId,model:"gpt-6-sol",at,serviceTier};
+      await ledger.observe({...base,phase:"started"}, {teamId:null,repository:null});
+      await ledger.observe({...base,phase:"completed",tokens:{input:100,cacheRead:50,cacheWrite:null,output},timing:{activeMs,ttftMs}}, {teamId:null,repository:null});
+    }
+    const rows = ledger.projectDailyTelemetry({day:"2026-10-15",eligibleFrom:at-86400000,eligibleUntil:null});
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.model).toBe("gpt-6-sol");
+    expect(rows[0]?.performance).toStrictEqual({speedTurns:2,outputTokens:100,generationMs:4000,ttftMs:1000,ttftTurns:2});
+    expect(rows[0]).not.toHaveProperty("serviceTier");
+  } finally { await ledger.close(); }
+});

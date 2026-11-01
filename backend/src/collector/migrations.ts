@@ -38,4 +38,21 @@ export const telemetryMigrations = [
     version: 2,
     sql: `CREATE INDEX installs_first_reported_day ON installs(first_reported_day);`,
   },
+  {
+    version: 3,
+    sql: `ALTER TABLE usage_daily
+      ADD COLUMN speed_turns bigint,
+      ADD COLUMN speed_output_tokens bigint,
+      ADD COLUMN generation_ms bigint,
+      ADD COLUMN ttft_ms bigint,
+      ADD COLUMN ttft_turns bigint,
+      ADD CONSTRAINT performance_samples CHECK (
+        (speed_turns IS NULL AND speed_output_tokens IS NULL AND generation_ms IS NULL AND ttft_ms IS NULL AND ttft_turns IS NULL)
+        OR (speed_turns IS NOT NULL AND speed_output_tokens IS NOT NULL AND generation_ms IS NOT NULL AND ttft_ms IS NOT NULL AND ttft_turns IS NOT NULL
+          AND speed_turns BETWEEN 0 AND turns AND ttft_turns BETWEEN speed_turns AND turns
+          AND speed_output_tokens BETWEEN 0 AND 9007199254740991 AND generation_ms BETWEEN 0 AND 9007199254740991 AND ttft_ms BETWEEN 0 AND 9007199254740991
+          AND ((speed_turns=0 AND speed_output_tokens=0 AND generation_ms=0) OR (speed_turns>0 AND speed_output_tokens>0 AND generation_ms>0))
+          AND (ttft_turns>0 OR ttft_ms=0))
+      );`,
+  },
 ] as const;

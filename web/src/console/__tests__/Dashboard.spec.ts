@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { mount, flushPromises } from "@vue/test-utils";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import Dashboard from "../Dashboard.vue";
 
 // Rendered owner boundary: stale filter responses, revoked private access, old
@@ -24,6 +24,12 @@ const metrics = (turns = "7") => ({
     { day: "2020-01-01", activeInstalls: "3", firstReportedInstalls: "1" },
   ],
   totals: {
+    performance: {
+      outputTokensPerSecond: "25",
+      timeToFirstOutputMs: "500",
+      speedTurns: "2",
+      ttftTurns: "2",
+    },
     groups: "1",
     turns,
     inputTokens: "10",
@@ -32,7 +38,7 @@ const metrics = (turns = "7") => ({
     unknownCachedInputGroups: "0",
     outputTokens: "2",
     unknownOutputGroups: "0",
-    totalTokens: "12",
+    totalTokens: "1250000000",
     excludedTokenGroups: "0",
     cacheInputTokens: "10",
     cacheReadTokens: "5",
@@ -47,7 +53,20 @@ const metrics = (turns = "7") => ({
   weekly: [],
   models: [],
 });
-afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  document.body.innerHTML = "";
+});
 it("uses validated old ranges and keeps exact measurements while rejecting stale loads and revoked access", async () => {
   const pending: ((response: Response) => void)[] = [];
   const fetcher = vi.fn(
@@ -55,22 +74,68 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
       new Promise<Response>((resolve) => pending.push(resolve)),
   );
   vi.stubGlobal("fetch", fetcher);
-  const wrapper = mount(Dashboard);
+  const wrapper = mount(Dashboard, { attachTo: document.body });
   await flushPromises();
   expect(wrapper.get('[role="status"]').text()).toContain("Loading");
   pending.shift()!(Response.json(metrics()));
   await flushPromises();
   expect(wrapper.get('[aria-label="Turns"]').text()).toContain("7");
+  expect(wrapper.get('[aria-label="Measured total tokens"]').text()).toContain(
+    "1.3B",
+  );
+  expect(
+    wrapper.get('[aria-label="Measured total tokens"] dd').attributes("title"),
+  ).toBe("1,250,000,000");
+  // A report has its own URL and content; page changes preserve the loaded data.
+  const navigation = wrapper.get('nav[aria-label="Analytics sections"]');
+  window.location.hash = "#/models";
+  window.dispatchEvent(new HashChangeEvent("hashchange"));
+  await flushPromises();
+  expect(navigation.get('a[href="#/models"]').attributes("aria-current")).toBe(
+    "page",
+  );
+  expect(wrapper.get("h1").text()).toBe("Models");
+  expect(wrapper.find('[aria-label="Provider and model"]').exists()).toBe(true);
+  expect(wrapper.find('[aria-label="Daily activity"]').exists()).toBe(false);
+  window.location.hash = "#/performance";
+  window.dispatchEvent(new HashChangeEvent("hashchange"));
+  await flushPromises();
+  expect(wrapper.get("h1").text()).toBe("Performance");
+  expect(wrapper.get('[aria-label="Output speed summary"]').text()).toContain(
+    "25.0 tok/s",
+  );
+  expect(
+    wrapper.get('[aria-label="Time to first output summary"]').text(),
+  ).toContain("0.5 s");
+  window.location.hash = "#/overview";
+  window.dispatchEvent(new HashChangeEvent("hashchange"));
+  await flushPromises();
+  expect(wrapper.get("h1").text()).toBe("Overview");
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(
+    (
+      wrapper.findAll('[role="radiogroup"] input')[1]!
+        .element as HTMLInputElement
+    ).checked,
+  ).toBe(true);
   expect(wrapper.get('[aria-label="Known estimated spend"]').text()).toContain(
-    "$0.000000000123",
+    "<$0.01",
   );
   await wrapper.get('input[aria-label="From UTC day"]').setValue("2020-01-01");
   await wrapper.get('input[aria-label="To UTC day"]').setValue("2020-01-01");
+  await wrapper.get('input[aria-label="From UTC day"]').trigger("change");
+  await wrapper.get('input[aria-label="To UTC day"]').trigger("change");
   await wrapper.get('form[aria-label="Reporting range"]').trigger("submit");
   expect(String(fetcher.mock.calls.at(-1)?.[0])).toContain(
     "from=2020-01-01&to=2020-01-01",
   );
-  await wrapper.get('select[aria-label="Provider"]').setValue("codex");
+  await wrapper.get('[aria-label="Provider"]').trigger("click");
+  await flushPromises();
+  const option = [...document.querySelectorAll('[role="option"]')].find(
+    (item) => item.textContent?.trim() === "Codex",
+  ) as HTMLElement;
+  option.click();
+  await flushPromises();
   expect(pending).toHaveLength(2);
   pending.pop()!(Response.json(metrics("45035996273704955")));
   await flushPromises();
@@ -94,12 +159,14 @@ it("shows recoverable failures without echoing remote diagnostics and bounds dat
     .fn()
     .mockResolvedValue(new Response("SECRET SQL diagnostic", { status: 503 }));
   vi.stubGlobal("fetch", fetcher);
-  const wrapper = mount(Dashboard);
+  const wrapper = mount(Dashboard, { attachTo: document.body });
   await flushPromises();
   expect(wrapper.get('[role="alert"]').text()).toContain("unavailable");
   expect(wrapper.text()).not.toContain("SECRET");
   await wrapper.get('input[aria-label="From UTC day"]').setValue("2000-01-01");
   await wrapper.get('input[aria-label="To UTC day"]').setValue("2026-01-01");
+  await wrapper.get('input[aria-label="From UTC day"]').trigger("change");
+  await wrapper.get('input[aria-label="To UTC day"]').trigger("change");
   await wrapper.get('form[aria-label="Reporting range"]').trigger("submit");
   expect(wrapper.get('[role="alert"]').text()).toContain("3,660");
   expect(fetcher).toHaveBeenCalledTimes(1);

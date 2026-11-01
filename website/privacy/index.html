@@ -280,6 +280,13 @@
           input), <code>cachedInputTokens</code> (cache reads),
           <code>outputTokens</code>, and
           <code>estimatedCostUsd</code> (estimated API-equivalent cost in USD).
+          An optional <code>performance</code> group contains
+          <code>speedTurns</code> (turns with measured output speed),
+          <code>outputTokens</code> (output from those measured turns),
+          <code>generationMs</code> (summed active time after first output),
+          <code>ttftMs</code> (summed active time before first output), and
+          <code>ttftTurns</code> (turns with a first-output measurement).
+          These are daily totals, without per-turn timestamps or events.
           Missing or incomplete measurements are null, not zero. A day without
           usage has an empty group list.
         </li>

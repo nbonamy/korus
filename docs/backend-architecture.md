@@ -1196,6 +1196,16 @@ It covers midnight attribution, model changes, interval exclusion, nulls and
 content/local-dimension canaries without an endpoint. Architecture AST lint limits
 projection dependencies and rejects direct network/timer operations.
 
+Performance reuses the ledger's additive speed samples: measured output tokens,
+active generation milliseconds, summed time to first output, and their turn
+counts. Only daily provider/model sums enter the optional closed performance
+object; no per-turn timing or timestamps are exported. Missing samples are
+unavailable, not zero. The read API divides the summed output by summed time and
+the summed first-output time by its measured-turn count. It never averages
+per-install rates. Older reports remain valid without performance fields.
+The consent file's second format pauses an older enabled opt-in and presents the
+updated explanation before any expanded sharing. Existing declines stay declined.
+
 ### Hosted daily collector
 
 `backend/src/collector` is an independently bundled Node service. It imports the

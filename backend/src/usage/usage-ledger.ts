@@ -310,7 +310,7 @@ export class UsageLedger {
   query(filter: UsageFilter = {}): UsageSummary {
     return this.summarize(filter);
   }
-  /** Numeric-only projection. No local identifiers, arbitrary labels, timing or
+  /** Numeric-only projection. No local identifiers, arbitrary labels, per-turn timing or
    * provider objects leave this boundary. Reuses the ledger's pricing coverage.
    */
   projectDailyTelemetry(input: TelemetryProjectionInput): TelemetryUsage[] {
@@ -334,6 +334,13 @@ export class UsageLedger {
           outputTokens: measured ? (row.tokens?.output ?? 0) : null,
           estimatedCostUsd:
             row.cost?.coverage === "complete" ? row.cost.usd : null,
+          ...(row.speed ? {performance: {
+            speedTurns: row.speed.turns,
+            outputTokens: row.speed.outputTokens,
+            generationMs: row.speed.generationMs,
+            ttftMs: row.speed.ttftMs,
+            ttftTurns: row.speed.ttftTurns,
+          }} : {}),
         };
       })
       .sort((a, b) =>

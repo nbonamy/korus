@@ -162,3 +162,46 @@ it("validates request measurements without accepting content, unsafe counts or a
   ])
     expect(validRequestObservation({ ...value, ...patch })).toBe(false);
 });
+
+it("seals only additive performance samples, rejecting content and inconsistent counts", () => {
+  const performance = {
+    speedTurns: 2,
+    outputTokens: 100,
+    generationMs: 4000,
+    ttftMs: 1000,
+    ttftTurns: 2,
+  };
+  const row = {
+    provider: "codex" as const,
+    model: "gpt-6-sol" as const,
+    turns: 3,
+    inputTokens: 1000,
+    cachedInputTokens: 500,
+    outputTokens: 100,
+    estimatedCostUsd: null,
+    performance,
+  };
+  const payload = {
+    installId: "d8b65ff5-179c-49b9-ac3a-f60a54a0f43f",
+    day: "2026-10-15",
+    appVersion: "1.0.0",
+    os: "macos" as const,
+    usage: [row],
+  };
+  expect(
+    JSON.parse(serializeDailyTelemetry(payload).body).usage[0].performance,
+  ).toStrictEqual(performance);
+  for (const invalid of [
+    { ...performance, prompt: "CANARY" },
+    { ...performance, speedTurns: 4 },
+    { ...performance, generationMs: 0 },
+    { ...performance, ttftTurns: 0 },
+    { ...performance, ttftMs: -1 },
+  ])
+    expect(() =>
+      serializeDailyTelemetry({
+        ...payload,
+        usage: [{ ...row, performance: invalid }],
+      }),
+    ).toThrow();
+});

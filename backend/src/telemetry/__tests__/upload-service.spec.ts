@@ -584,3 +584,14 @@ it("bounds jitter and never schedules more than twenty-four hours between attemp
     await eventually(() => expect(fetcher).toHaveBeenCalledTimes(attempts));
   }
 });
+
+it("requires fresh consent when an older opt-in did not include performance measurements", async () => {
+  const file = path.join(directory,"consent.json");
+  const installId = consent.current().installId;
+  await writeFile(file,JSON.stringify({v:1,installId,enabled:true,eligibleFrom:epoch-12*3600000,noticeHandled:true}));
+  consent = await TelemetryConsentService.open(file,{now});
+  expect(await consent.view()).toStrictEqual({enabled:false,eligibleFrom:null,noticePending:true});
+  expect(consent.current().installId).toBe(installId);
+  await open();
+  expect(fetcher).not.toHaveBeenCalled();
+});

@@ -107,14 +107,17 @@
     <output class="chart-inspection" role="status" aria-live="polite"
       ><template v-if="active !== null && days[active]"
         ><strong>{{ days[active] }} UTC</strong
-        ><span v-for="item in series" :key="item.label"
+        ><span
+          v-for="item in series"
+          :key="item.label"
+          :title="exactMeasurement(item.values[active] ?? null, measure)"
           >{{ item.label }}:
           {{ measurement(item.values[active] ?? null, measure)
           }}<template v-if="notes?.[active]">
             · {{ notes[active] }}</template
           ></span
         ></template
-      ><span v-else class="muted"
+      ><span v-else class="sr-only"
         >Hover, tap or use arrow keys to inspect.</span
       ></output
     >
@@ -140,7 +143,7 @@
             <tr>
               <th scope="col">
                 {{
-                  measure === "count" && title === "Weekly tokens"
+                  measure === "tokens" && title === "Weekly tokens"
                     ? "Week starting"
                     : "Day"
                 }}
@@ -154,7 +157,11 @@
           <tbody>
             <tr v-for="(day, index) in days" :key="day">
               <th scope="row">{{ day }}</th>
-              <td v-for="item in series" :key="item.label">
+              <td
+                v-for="item in series"
+                :key="item.label"
+                :title="exactMeasurement(item.values[index] ?? null, measure)"
+              >
                 {{ measurement(item.values[index] ?? null, measure) }}
               </td>
               <td v-if="notes">{{ notes[index] }}</td>
@@ -167,7 +174,17 @@
 </template>
 <script setup lang="ts">
 import { computed, ref, useId, watch } from "vue";
-import { measurement, plotValue, type Measure } from "./format";
+import {
+  measurement,
+  exactMeasurement,
+  tokens,
+  rate,
+  duration,
+  money,
+  percent,
+  plotValue,
+  type Measure,
+} from "./format";
 const props = defineProps<{
   title: string;
   description: string;
@@ -181,7 +198,7 @@ const id = useId(),
   width = ref(640),
   active = ref<number | null>(null),
   expanded = ref(false);
-const height = 260,
+const height = 220,
   left = 72,
   right = 16,
   baseline = height - 32;
@@ -263,16 +280,15 @@ const outsideRange = computed(() =>
   ),
 );
 function axis(value: number) {
-  if (props.measure === "ratio")
-    return new Intl.NumberFormat("en-US", {
-      style: "percent",
-      maximumSignificantDigits: 3,
-    }).format(value);
-  const formatted = new Intl.NumberFormat("en-US", {
+  if (props.measure === "rate") return rate(String(value));
+  if (props.measure === "milliseconds") return duration(String(value));
+  if (props.measure === "ratio") return percent(value);
+  if (props.measure === "usd") return money(value.toFixed(2));
+  if (props.measure === "tokens") return tokens(String(Math.round(value)));
+  return new Intl.NumberFormat("en-US", {
     notation: value >= 1000 ? "compact" : "standard",
     maximumSignificantDigits: 3,
   }).format(value);
-  return props.measure === "usd" ? `$${formatted}` : formatted;
 }
 function key(event: KeyboardEvent) {
   if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;

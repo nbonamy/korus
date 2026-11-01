@@ -37,7 +37,7 @@ export class TelemetryConsentService {
     try {
       const saved = JSON.parse(await readFile(file, "utf8"));
       if (
-        saved.v !== 1 ||
+        ![1, 2].includes(saved.v) ||
         Object.keys(saved).sort().join(",") !==
           "eligibleFrom,enabled,installId,noticeHandled,v" ||
         !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
@@ -55,6 +55,19 @@ export class TelemetryConsentService {
         throw new Error("Invalid telemetry state.");
       const { v: _v, ...loaded } = saved;
       state = loaded;
+      if (saved.v === 1) {
+        // The prior opt-in excluded performance. Expanded sharing needs consent.
+        if (state.enabled)
+          state = {
+            ...state,
+            enabled: false,
+            eligibleFrom: null,
+            noticeHandled: false,
+          };
+        const service = new TelemetryConsentService(file, state, options);
+        await service.persist(state);
+        return service;
+      }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT")
         throw new Error("Telemetry state is unavailable.");
@@ -194,7 +207,7 @@ export class TelemetryConsentService {
     await mkdir(path.dirname(this.file), { recursive: true, mode: 0o700 });
     const temporary = `${this.file}.${randomUUID()}.tmp`;
     try {
-      await writeFile(temporary, JSON.stringify({ v: 1, ...state }), {
+      await writeFile(temporary, JSON.stringify({ v: 2, ...state }), {
         mode: 0o600,
         flag: "wx",
       });

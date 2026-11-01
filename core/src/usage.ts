@@ -19,7 +19,7 @@ export type ExecutionObservation = {
   /** Measured by the backend, never by a driver. */
   timing?: ExecutionTiming | null;
 };
-/** Time a turn really spent working: wall time minus waits for the user, split at the first generated output. */
+/** Time a turn really spent working: wall time minus waits for the user and tools, split at the first generated output. */
 export type ExecutionTiming = { activeMs: number; ttftMs: number | null };
 export function validExecutionTiming(value: unknown): value is ExecutionTiming {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;

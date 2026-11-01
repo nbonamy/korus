@@ -5,7 +5,7 @@ export const messages = {
   en: {
     telemetry: {
       title: 'Anonymous daily sharing', on: 'Sharing is on', off: 'Sharing is off',
-      fields: 'Help improve {product} by sharing daily usage: a random installation ID, UTC reporting day, app version, operating system, and turns, token counts and estimated API-equivalent cost by provider and model.',
+      fields: 'Help improve {product} by sharing daily usage: a random installation ID, UTC reporting day, app version, operating system, and turns, token counts, estimated API-equivalent cost, output speed and time to first output by provider and model. Performance is shared only as daily timing totals and measured-turn counts.',
       exclusions: 'No prompts or model responses are included. We exclude account details, device and machine identifiers, file paths, project, repository, branch and agent details. No IP addresses are stored by the telemetry service or its delivery infrastructure.',
       identity: 'The random ID links your daily summaries; it is not linked to your account. Sharing is off until you explicitly choose it.',
       retention: 'Daily summaries and the minimal installation registry are kept indefinitely. Server backup copies rotate after seven days.',

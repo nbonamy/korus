@@ -182,6 +182,12 @@ function forbiddenImport(area, file, specifier) {
     !(
       [
         "vue",
+        "element-plus",
+        "element-plus/es/components/button/style/css",
+        "element-plus/es/components/date-picker/style/css",
+        "element-plus/es/components/select/style/css",
+        "element-plus/es/components/option/style/css",
+        "element-plus/es/components/segmented/style/css",
         "@workspace/core/telemetry-metrics",
         "@workspace/core/telemetry-models",
       ].includes(specifier) ||

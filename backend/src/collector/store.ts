@@ -119,8 +119,8 @@ export class TelemetryStore {
       if (payload.usage.length) {
         const rows = payload.usage;
         await client.query(
-          `INSERT INTO usage_daily(install_id, day, provider, model, turns, input_tokens, cached_input_tokens, output_tokens, estimated_cost_usd)
-          SELECT $1::uuid, $2::date, * FROM unnest($3::text[], $4::text[], $5::bigint[], $6::bigint[], $7::bigint[], $8::bigint[], $9::numeric[])`,
+          `INSERT INTO usage_daily(install_id, day, provider, model, turns, input_tokens, cached_input_tokens, output_tokens, estimated_cost_usd, speed_turns, speed_output_tokens, generation_ms, ttft_ms, ttft_turns)
+          SELECT $1::uuid, $2::date, * FROM unnest($3::text[], $4::text[], $5::bigint[], $6::bigint[], $7::bigint[], $8::bigint[], $9::numeric[], $10::bigint[], $11::bigint[], $12::bigint[], $13::bigint[], $14::bigint[])`,
           [
             payload.installId,
             payload.day,
@@ -131,6 +131,11 @@ export class TelemetryStore {
             rows.map((r) => r.cachedInputTokens),
             rows.map((r) => r.outputTokens),
             rows.map((r) => r.estimatedCostUsd),
+            rows.map((r) => r.performance?.speedTurns ?? null),
+            rows.map((r) => r.performance?.outputTokens ?? null),
+            rows.map((r) => r.performance?.generationMs ?? null),
+            rows.map((r) => r.performance?.ttftMs ?? null),
+            rows.map((r) => r.performance?.ttftTurns ?? null),
           ],
         );
       }

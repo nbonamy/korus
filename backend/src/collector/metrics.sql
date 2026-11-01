@@ -19,11 +19,13 @@ WITH bounds AS (
  -- range-days x usage-rows join when querying years of retained history.
  SELECT k.kind,k.bucket,k.provider AS group_provider,k.model AS group_model,
  NULL::uuid AS install_id,NULL::bigint AS turns,NULL::bigint AS input_tokens,
- NULL::bigint AS cached_input_tokens,NULL::bigint AS output_tokens,NULL::numeric AS estimated_cost_usd
+ NULL::bigint AS cached_input_tokens,NULL::bigint AS output_tokens,NULL::numeric AS estimated_cost_usd,
+ NULL::bigint AS speed_turns,NULL::bigint AS speed_output_tokens,NULL::bigint AS generation_ms,NULL::bigint AS ttft_ms,NULL::bigint AS ttft_turns
  FROM keys k
  UNION ALL
  SELECT k.kind,k.bucket,k.provider,k.model,u.install_id,u.turns,u.input_tokens,
- u.cached_input_tokens,u.output_tokens,u.estimated_cost_usd
+ u.cached_input_tokens,u.output_tokens,u.estimated_cost_usd,
+ u.speed_turns,u.speed_output_tokens,u.generation_ms,u.ttft_ms,u.ttft_turns
  FROM filtered u CROSS JOIN LATERAL (VALUES
  ('daily',u.day,NULL::text,NULL::text),
  ('weekly',date_trunc('week',u.day::timestamp)::date,NULL::text,NULL::text),
@@ -33,6 +35,9 @@ WITH bounds AS (
 ), stats AS (
  SELECT u.kind,u.bucket,u.group_provider AS provider,u.group_model AS model,
  count(u.install_id) AS groups,coalesce(sum(u.turns),0) AS turns,
+ coalesce(sum(u.speed_turns),0) AS speed_turns, coalesce(sum(u.ttft_turns),0) AS ttft_turns,
+ round(1000*sum(u.speed_output_tokens)::numeric/nullif(sum(u.generation_ms),0),6) AS output_speed,
+ round(sum(u.ttft_ms)::numeric/nullif(sum(u.ttft_turns),0),3) AS ttft_average,
  sum(u.input_tokens) AS input_tokens,
  count(u.install_id) FILTER (WHERE u.input_tokens IS NULL) AS unknown_input,
  sum(u.cached_input_tokens) AS cached_input_tokens,
@@ -52,6 +57,8 @@ WITH bounds AS (
 ), summaries AS (
  SELECT kind,bucket,provider,model,jsonb_build_object(
  'groups',groups::text,'turns',turns::text,
+ 'performance',jsonb_build_object('outputTokensPerSecond',trim_scale(output_speed)::text,
+ 'timeToFirstOutputMs',trim_scale(ttft_average)::text,'speedTurns',speed_turns::text,'ttftTurns',ttft_turns::text),
  'inputTokens',input_tokens::text,'unknownInputGroups',unknown_input::text,
  'cachedInputTokens',cached_input_tokens::text,'unknownCachedInputGroups',unknown_cached::text,
  'outputTokens',output_tokens::text,'unknownOutputGroups',unknown_output::text,

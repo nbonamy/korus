@@ -205,6 +205,7 @@ export async function desktopStackWorkflow(endpoint: string) {
           turnId: canary,
           model: `${canary}-alias`,
           phase: "completed",
+          timing: { activeMs: 1300, ttftMs: 300 },
           at: clock,
           tokens: {
             input: 100,
@@ -242,6 +243,7 @@ export async function desktopStackWorkflow(endpoint: string) {
         cachedInputTokens: 80,
         outputTokens: 20,
         estimatedCostUsd: null,
+        performance: { speedTurns: 1, outputTokens: 20, generationMs: 1000, ttftMs: 300, ttftTurns: 1 },
       },
     ]);
     await uploader!.close();
