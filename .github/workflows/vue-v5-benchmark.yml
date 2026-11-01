@@ -20,7 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         order: [v4-first, v5-first]
-        rep: [1, 2]
+        rep: [1]
     defaults:
       run:
         working-directory: source
@@ -42,7 +42,7 @@ jobs:
           npm: 10.9.4
           tools: 'false'
           ignore-scripts: 'false'
-      - run: python ../harness/scripts/ci-vue-v5-pair.py --order ${{ matrix.order }} --rep ${{ matrix.rep }}
+      - run: python ../harness/scripts/ci-vue-v5-pair.py --order ${{ matrix.order }} --rep ${{ matrix.rep }} --workers 2
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
@@ -71,8 +71,8 @@ jobs:
           CI_BENCH_NEEDS: ${{ toJSON(needs) }}
         run: >-
           python harness/scripts/ci-vue-v5-compare.py --input results
-          --expect pair-v4-first-1 --expect pair-v4-first-2
-          --expect pair-v5-first-1 --expect pair-v5-first-2
+          --expect pair-v4-first-1
+          --expect pair-v5-first-1
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:

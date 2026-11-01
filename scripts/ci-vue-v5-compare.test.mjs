@@ -29,6 +29,7 @@ test('paired runner comparison retains every baseline coverage location and test
  async function write(files){for(const[version,entries]of Object.entries(files))for(const[name,data]of Object.entries(entries)){const file=path.join(root,'pair-a',version,name);await fs.mkdir(path.dirname(file),{recursive:true});await fs.writeFile(file,JSON.stringify(data));}}
  const run=()=>spawnSync('python3',[cli,'--input',root,'--expect','pair-a','--title-map',titleMap],{encoding:'utf8',env:{...process.env,CI_BENCH_NEEDS:'{"pairs":{"result":"success"}}'}});
  await write(await evidence());assert.equal(run().status,0,'coverage superset must pass');
+ const two=await evidence();for(const version of ['v4','v5-fixed'])two[version]['source.json'].workers=2;await write(two);assert.equal(run().status,0,'matching two-worker CI reference must pass');
  for(const[name,mutate]of[
   ['dropped statement',d=>delete d['coverage/coverage-final.json']['/runner/source/vue/owner.ts'].statementMap[0]],
   ['dropped function',d=>d['coverage/coverage-final.json']['/runner/source/vue/owner.ts'].fnMap={}],
@@ -38,6 +39,7 @@ test('paired runner comparison retains every baseline coverage location and test
   ['dropped test',d=>d['tests.json'].testResults[0].assertionResults=[]],
   ['changed test location',d=>d['tests.json'].testResults[0].assertionResults[0].location.line=99],
   ['changed source',d=>d['source.json'].sha='different'],
+  ['different worker count',d=>d['source.json'].workers=2],
   ['lost isolation',d=>d['source.json'].isolate=false],
   ['failed command',d=>d['metric-vue-v5-fixed.json'].exit_code=1],
   ['coverage below gate',d=>d['coverage/coverage-final.json']['/runner/source/vue/owner.ts'].s={0:0,1:0}],

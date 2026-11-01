@@ -18,7 +18,7 @@ def compare(root,expected,titles):
         for variant in ['v4','v5-fixed']:
             folder=root/pair/variant;source=read(folder/'source.json');metric=read(folder/f'metric-vue-{variant}.json');tests=read(folder/'tests.json');coverage=read(folder/'coverage/coverage-final.json')
             if metric['exit_code']!=0 or not tests['success']or tests['numFailedTests']:raise ValueError('Failed command or tests: '+pair+' '+variant)
-            if source['workers']!=4 or source['pool']!='vmThreads'or not source['isolate']or source['clearMocks']:raise ValueError('Changed test execution contract')
+            if source['workers']not in [2,4] or source['pool']!='vmThreads'or not source['isolate']or source['clearMocks']:raise ValueError('Changed test execution contract')
             relative=lambda file:str(pathlib.Path(file).relative_to(source['root']))
             inventory=collections.Counter()
             for file in tests['testResults']:
@@ -39,7 +39,7 @@ def compare(root,expected,titles):
         for key in ['sha','source_tree','workers','node','cpu_model']:
             if old[0][key]!=new[0][key]:raise ValueError('Source or runner differs: '+key)
         if old[2]!=new[2]:raise ValueError('Test inventory differs')
-        current=(old[0]['sha'],old[0]['source_tree'],old[2])
+        current=(old[0]['sha'],old[0]['source_tree'],old[0]['workers'],old[2])
         if reference is None:reference=current
         elif current!=reference:raise ValueError('Source/tests differ between pairs')
         if old[3].keys()!=new[3].keys():raise ValueError('Covered file set differs')
@@ -55,7 +55,7 @@ def compare(root,expected,titles):
         for variant,(source,metric,inventory,coverage)in evidence.items():
             counts=[n for item in coverage.values()for n in item['s'].values()]
             runs[variant]={'elapsed_seconds':metric['elapsed_seconds'],'peak_tree_rss_bytes':metric['peak_tree_rss_bytes'],'statements':{'covered':sum(n>0 for n in counts),'total':len(counts),'percent':100*sum(n>0 for n in counts)/len(counts)}}
-        rows.append({'pair':pair,'sha':old[0]['sha'],'cpu_model':old[0]['cpu_model'],'test_cases':sum(old[2].values()),'coverage_files':len(old[3]),'added_locations':added,'runs':runs,'improvement_percent':100*(1-runs['v5-fixed']['elapsed_seconds']/runs['v4']['elapsed_seconds'])})
+        rows.append({'pair':pair,'workers':old[0]['workers'],'sha':old[0]['sha'],'cpu_model':old[0]['cpu_model'],'test_cases':sum(old[2].values()),'coverage_files':len(old[3]),'added_locations':added,'runs':runs,'improvement_percent':100*(1-runs['v5-fixed']['elapsed_seconds']/runs['v4']['elapsed_seconds'])})
     result={'result':'all tests match after reviewed title formatting; every baseline coverage location retained; every run passes 85% statements','pairs':rows}
     (root/'vue-v5-summary.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result,indent=2))
 

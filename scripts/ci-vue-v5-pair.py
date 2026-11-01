@@ -1,7 +1,7 @@
 """Run immutable Vue sources under both toolchains on one runner, sequentially."""
 import argparse,hashlib,json,os,pathlib,subprocess,sys
 H=pathlib.Path(__file__).resolve().parent
-p=argparse.ArgumentParser();p.add_argument('--order',choices=['v4-first','v5-first'],required=True);p.add_argument('--rep',choices=['1','2'],required=True);a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--order',choices=['v4-first','v5-first'],required=True);p.add_argument('--rep',choices=['1','2'],required=True);p.add_argument('--workers',type=int,choices=[2,4],default=4);a=p.parse_args()
 root=pathlib.Path.cwd().resolve();delta=json.loads((H/'ci-vue-v5-lock-delta.json').read_text())
 def output(cmd):return subprocess.check_output(cmd,text=True).strip()
 def run(cmd):subprocess.run(cmd,check=True)
@@ -18,7 +18,7 @@ def metadata(variant):
     info=json.loads(output(['node','--input-type=module','-e',"import os from 'node:os';import{createRequire}from'node:module';const r=createRequire(process.cwd()+'/vue/package.json');console.log(JSON.stringify({node:process.version,cpu_model:os.cpus()[0].model,logical_cpus:os.cpus().length,memory_bytes:os.totalmem(),vitest:r('vitest/package.json').version,coverage:r('@vitest/coverage-v8/package.json').version,vite:r('vite/package.json').version}))"]))
     expected='4.1.8'if variant=='v4'else'5.0.5'
     if info['vitest']!=expected or info['coverage']!=expected or info['vite']!='8.0.16':raise ValueError('Unexpected toolchain versions: '+str(info))
-    return {**info,'sha':delta['base_sha'],'source_tree':output(['git','rev-parse','HEAD^{tree}']),'root':str(root),'variant':variant,'workers':4,'pool':'vmThreads','isolate':True,'clearMocks':False,'lockfile_sha256':hashlib.sha256((root/'package-lock.json').read_bytes()).hexdigest()}
+    return {**info,'sha':delta['base_sha'],'source_tree':output(['git','rev-parse','HEAD^{tree}']),'root':str(root),'variant':variant,'workers':a.workers,'pool':'vmThreads','isolate':True,'clearMocks':False,'lockfile_sha256':hashlib.sha256((root/'package-lock.json').read_bytes()).hexdigest()}
 try:
     for variant in (['v4','v5-fixed']if a.order=='v4-first'else['v5-fixed','v4']):
         folder=pair/variant;folder.mkdir(exist_ok=True)
@@ -38,7 +38,7 @@ try:
             for name,data in files.items():(root/name).write_bytes(data)
             sample('vue-v4-install',folder,['npm','ci','--no-audit','--no-fund']);state='v4'
         (folder/'source.json').write_text(json.dumps(metadata(variant),indent=2)+'\n')
-        sample('vue-'+variant,folder,['npm','run','test:coverage','--workspace','vue','--','--maxWorkers=4','--includeTaskLocation','--silent=passed-only','--reporter=default','--reporter=json','--outputFile.json='+str(folder/'tests.json'),'--coverage.reportsDirectory='+str(folder/'coverage')])
+        sample('vue-'+variant,folder,['npm','run','test:coverage','--workspace','vue','--','--maxWorkers='+str(a.workers),'--includeTaskLocation','--silent=passed-only','--reporter=default','--reporter=json','--outputFile.json='+str(folder/'tests.json'),'--coverage.reportsDirectory='+str(folder/'coverage')])
         # Compiler compatibility is an independent gate, excluded from timings.
         with(folder/'typecheck.log').open('w')as log:subprocess.run(['npm','run','typecheck','--workspace','vue'],stdout=log,stderr=subprocess.STDOUT,check=True)
 finally:
