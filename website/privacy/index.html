@@ -276,7 +276,7 @@
           <code>usage</code>: daily groups containing only
           <code>provider</code> (the app driver: codex, claude, or antigravity),
           <code>model</code> (an allowed catalog ID or unknown, never a custom
-          alias), <code>turns</code>, <code>inputTokens</code> (inclusive
+          alias), <code>serviceTier</code> (standard, fast, ultrafast, flex, batch, scale, or unknown), <code>turns</code>, <code>inputTokens</code> (inclusive
           input), <code>cachedInputTokens</code> (cache reads),
           <code>outputTokens</code>, and
           <code>estimatedCostUsd</code> (estimated API-equivalent cost in USD).
@@ -305,7 +305,7 @@
         attachments, file paths, project details, repository and branch names,
         agent, team, session, turn and request names or identifiers, error text,
         account details, email addresses, machine identifiers, device names,
-        exact activity timestamps, output speed, IP-address fields, and all
+        exact activity timestamps, per-turn output speed, IP-address fields, and all
         other free-form content. Custom model aliases are never sent.
       </p>
       <p>

@@ -188,6 +188,11 @@ function forbiddenImport(area, file, specifier) {
         "element-plus/es/components/select/style/css",
         "element-plus/es/components/option/style/css",
         "element-plus/es/components/segmented/style/css",
+        "element-plus/es/components/popover/style/css",
+        "element-plus/es/components/tooltip/style/css",
+        "../../../vue/src/shared/menu/AppMenuButton.vue",
+        "../../../vue/src/shared/icons/app-icons",
+        "../../../vue/src/shared/menu/menu-chrome.css",
         "@workspace/core/telemetry-metrics",
         "@workspace/core/telemetry-models",
       ].includes(specifier) ||

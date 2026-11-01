@@ -34,39 +34,41 @@
           aria-label="Reporting range"
           @submit.prevent="load"
         >
-          <ElDatePicker
-            v-model="from"
-            class="range-date"
-            type="date"
-            format="YYYY-MM-DD"
-            value-format="YYYY-MM-DD"
-            :clearable="false"
-            aria-label="From UTC day"
-            :disabled-date="futureDay"
-          />
-          <span class="date-separator" aria-hidden="true">to</span>
-          <ElDatePicker
-            v-model="to"
-            class="range-date"
-            type="date"
-            format="YYYY-MM-DD"
-            value-format="YYYY-MM-DD"
-            :clearable="false"
-            aria-label="To UTC day"
-            :disabled-date="futureDay"
-          />
-          <ElButton native-type="submit">Apply range</ElButton>
           <ElSegmented
             class="presets"
             :model-value="selectedRange"
             :options="[
-              { label: '7 days', value: 7 },
-              { label: '30 days', value: 30 },
-              { label: '90 days', value: 90 },
+              { label: '7d', value: 7 },
+              { label: '30d', value: 30 },
+              { label: '90d', value: 90 },
             ]"
             aria-label="Recent ranges"
             @change="recent(Number($event))"
           />
+          <div class="date-range-fields">
+            <ElDatePicker
+              v-model="from"
+              class="range-date"
+              type="date"
+              format="YYYY-MM-DD"
+              value-format="YYYY-MM-DD"
+              :clearable="false"
+              aria-label="From UTC day"
+              :disabled-date="futureDay"
+            />
+            <span class="date-separator" aria-hidden="true">to</span>
+            <ElDatePicker
+              v-model="to"
+              class="range-date"
+              type="date"
+              format="YYYY-MM-DD"
+              value-format="YYYY-MM-DD"
+              :clearable="false"
+              aria-label="To UTC day"
+              :disabled-date="futureDay"
+            />
+            <ElButton native-type="submit">Apply range</ElButton>
+          </div>
         </form>
         <section
           v-show="page !== 'activity'"
@@ -112,6 +114,26 @@
               :value="item"
             />
           </ElSelect>
+          <AppMenuButton
+            ariaLabel="Analytics options"
+            :items="optionsItems"
+            @select="toggleServiceTiers"
+          >
+            <template #trigger="{ attrs }">
+              <ElTooltip content="Analytics options" placement="top">
+                <span class="console-options-tooltip">
+                  <button
+                    v-bind="attrs"
+                    type="button"
+                    class="app-icon-button console-options-trigger"
+                    aria-label="Analytics options"
+                  >
+                    <DotsVerticalIcon aria-hidden="true" />
+                  </button>
+                </span>
+              </ElTooltip>
+            </template>
+          </AppMenuButton>
         </section>
       </div>
       <p class="freshness">
@@ -163,14 +185,14 @@
           No usage for this selection.
         </p>
         <div
-          v-if="page !== 'activity' && page !== 'performance'"
+          v-if="!['activity', 'performance', 'models'].includes(page)"
           class="section-heading usage-heading"
         >
           <h2>Usage</h2>
           <span class="muted">Selected range · provider and model filters</span>
         </div>
         <dl
-          v-if="page !== 'activity' && page !== 'performance'"
+          v-if="!['activity', 'performance', 'models'].includes(page)"
           class="cards usage-totals"
         >
           <div class="panel" aria-label="Turns">
@@ -260,16 +282,14 @@
             :days="data.weekly.map((row) => row.week)"
             :series="[
               {
-                label: 'Total tokens',
-                values: data.weekly.map((row) => row.totalTokens),
-              },
-              {
                 label: 'Inclusive input',
-                values: data.weekly.map((row) => row.inputTokens),
+                values: data.weekly.map((row) => row.pairedInputTokens ?? null),
               },
               {
                 label: 'Output',
-                values: data.weekly.map((row) => row.outputTokens),
+                values: data.weekly.map(
+                  (row) => row.pairedOutputTokens ?? null,
+                ),
               },
             ]"
             :notes="
@@ -279,6 +299,7 @@
               )
             "
             measure="tokens"
+            variant="stacked"
           />
           <MetricChart
             v-if="page !== 'tokens'"
@@ -299,6 +320,7 @@
               )
             "
             measure="usd"
+            variant="bar"
           />
           <MetricChart
             v-if="page === 'tokens'"
@@ -343,8 +365,10 @@
               )
             "
             measure="tokens"
+            variant="stacked"
           />
         </div>
+        <ModelsReport v-if="page === 'models'" :data="data" />
         <PerformanceReport v-if="page === 'performance'" :data="data" />
         <section
           v-if="page === 'models'"
@@ -354,7 +378,10 @@
         >
           <header class="panel-heading">
             <h2>Provider and model</h2>
-            <span class="muted">{{ data.models.length }} models</span>
+            <span class="muted"
+              >{{ data.models.length }}
+              {{ data.range.groupServiceTiers ? "models" : "variants" }}</span
+            >
           </header>
           <div
             class="table-scroll"
@@ -378,11 +405,11 @@
               <tbody>
                 <tr
                   v-for="row in data.models"
-                  :key="`${row.provider}/${row.model}`"
+                  :key="`${row.provider}/${row.model}/${row.serviceTier}`"
                 >
                   <th scope="row">
                     <span class="provider">{{ row.provider }}</span
-                    ><span>{{ row.model }}</span>
+                    ><span>{{ modelLabel(row) }}</span>
                   </th>
                   <td>{{ count(row.turns) }}</td>
                   <td :title="count(row.inputTokens)">
@@ -420,47 +447,6 @@
             </table>
           </div>
         </section>
-        <footer id="about-data" class="muted">
-          <details>
-            <summary>About the data</summary>
-            <div class="report-notes">
-              <p>
-                Only opted-in installations are counted, not people or
-                downloads. Activity is global; provider and model filters apply
-                only to usage.
-              </p>
-              <p>
-                Calendar month to {{ data.range.to }}:
-                {{ count(data.overview.calendarMonthActives) }} active
-                installations. Resetting or reinstalling without local state
-                creates another identity.
-              </p>
-              <p>
-                Reports cover completed UTC days and may arrive late. Last
-                received: {{ received }}.
-                {{
-                  data.availability.firstDay
-                    ? `History from ${data.availability.firstDay}.`
-                    : "No reports received."
-                }}
-              </p>
-              <p>
-                Input includes cache reads. Token totals use complete
-                input/output pairs. Weeks start Monday; partial weeks contain
-                only selected days. Cache share uses complete input/cache pairs;
-                zero input or missing measurements are unavailable.
-                Non-cache-read input can include cache creation and is not a
-                pricing category.
-              </p>
-              <p>
-                Spend estimates use API prices, not subscription charges or
-                invoices. Unknown measurements are excluded from known subtotals
-                and shown as gaps when unavailable. Exact values and coverage
-                are available in each chart’s data table.
-              </p>
-            </div>
-          </details>
-        </footer>
       </template>
     </main>
   </div>
@@ -474,7 +460,14 @@ import {
   ElSelect,
   ElOption,
   ElSegmented,
+  ElTooltip,
 } from "element-plus";
+import AppMenuButton from "../../../vue/src/shared/menu/AppMenuButton.vue";
+import {
+  BoltIcon,
+  DotsVerticalIcon,
+} from "../../../vue/src/shared/icons/app-icons";
+import ModelsReport from "./ModelsReport.vue";
 import MetricChart from "./MetricChart.vue";
 import PerformanceReport from "./PerformanceReport.vue";
 import ConsoleNavigation from "./ConsoleNavigation.vue";
@@ -486,6 +479,7 @@ import {
   percent,
   completedDay,
 } from "./format";
+import { modelLabel } from "./model-label";
 import { useMetrics } from "./use-metrics";
 const productName =
   typeof __PRODUCT_NAME__ === "undefined" ? "Usage console" : __PRODUCT_NAME__;
@@ -518,8 +512,31 @@ onMounted(() => {
   window.addEventListener("hashchange", navigate);
 });
 onUnmounted(() => window.removeEventListener("hashchange", navigate));
-const { from, to, provider, model, data, loading, error, load, recent } =
-  useMetrics();
+const {
+  from,
+  to,
+  provider,
+  model,
+  groupServiceTiers,
+  data,
+  loading,
+  error,
+  load,
+  recent,
+} = useMetrics();
+const optionsItems = computed(() => [
+  {
+    id: "group-service-tiers",
+    type: "checkbox" as const,
+    label: "Group service tiers",
+    icon: BoltIcon,
+    checked: groupServiceTiers.value,
+  },
+]);
+function toggleServiceTiers() {
+  groupServiceTiers.value = !groupServiceTiers.value;
+  void load();
+}
 const selectedRange = computed(() => {
   const days = (Date.parse(to.value) - Date.parse(from.value)) / 86400000 + 1;
   return to.value === completedDay() && [7, 30, 90].includes(days)
@@ -529,12 +546,4 @@ const selectedRange = computed(() => {
 const futureDay = (date: Date) =>
   date.getFullYear() * 10000 + (date.getMonth() + 1) * 100 + date.getDate() >
   Number(completedDay().replaceAll("-", ""));
-const received = computed(() =>
-  data.value?.availability.lastReceivedAt
-    ? new Date(data.value.availability.lastReceivedAt)
-        .toISOString()
-        .replace("T", " ")
-        .replace(".000Z", " UTC")
-    : "none",
-);
 </script>

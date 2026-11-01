@@ -7,6 +7,7 @@ export function useMetrics() {
   const from = ref(utcDay(Date.parse(to.value) - 29 * 86400000));
   const provider = ref(""),
     model = ref("");
+  const groupServiceTiers = ref(false);
   const data = ref<TelemetryMetrics | null>(null),
     loading = ref(false),
     error = ref("");
@@ -37,6 +38,7 @@ export function useMetrics() {
     const params = new URLSearchParams({ from: from.value, to: to.value });
     if (provider.value) params.set("provider", provider.value);
     if (model.value) params.set("model", model.value);
+    if (groupServiceTiers.value) params.set("groupServiceTiers", "true");
     const active = (controller = new AbortController());
     loading.value = true;
     const timeout = setTimeout(() => active.abort(), 15000);
@@ -87,5 +89,16 @@ export function useMetrics() {
     request++;
     controller?.abort();
   });
-  return { from, to, provider, model, data, loading, error, load, recent };
+  return {
+    from,
+    to,
+    provider,
+    model,
+    groupServiceTiers,
+    data,
+    loading,
+    error,
+    load,
+    recent,
+  };
 }

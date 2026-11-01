@@ -1,5 +1,36 @@
 <template>
   <section aria-label="Model performance">
+    <div class="comparison-controls performance-controls">
+      <ModelComparisonControl v-model="selected" :choices="choices" />
+    </div>
+    <p
+      v-if="
+        !data.totals.performance || data.totals.performance.ttftTurns === '0'
+      "
+      class="performance-note muted"
+    >
+      No performance measurements for this selection yet.
+    </p>
+    <div class="chart-grid">
+      <MetricChart
+        title="Output speed"
+        description="Higher is faster · measured output per active second."
+        :days="days"
+        :series="speedSeries"
+        measure="rate"
+      />
+      <MetricChart
+        title="Time to first output"
+        description="Lower is faster · average active time before first output."
+        :days="days"
+        :series="ttftSeries"
+        measure="milliseconds"
+      />
+    </div>
+    <p v-if="!selected.length" class="muted performance-note">
+      Choose models to compare.
+    </p>
+    <div class="section-heading usage-heading"><h2>All filtered usage</h2></div>
     <dl class="cards performance-totals">
       <div class="panel" aria-label="Output speed summary">
         <dt>Output speed</dt>
@@ -39,60 +70,13 @@
         >
       </div>
     </dl>
-    <p
-      v-if="
-        !data.totals.performance || data.totals.performance.ttftTurns === '0'
-      "
-      class="performance-note muted"
-    >
-      No performance measurements for this selection yet.
-    </p>
-    <div class="chart-grid">
-      <MetricChart
-        title="Output speed"
-        description="Measured output ÷ active time after first output."
-        :days="data.daily.map((row) => row.day)"
-        :series="[
-          {
-            label: 'Output speed',
-            values: data.daily.map(
-              (row) => row.performance?.outputTokensPerSecond ?? null,
-            ),
-          },
-        ]"
-        measure="rate"
-        :notes="
-          data.daily.map(
-            (row) =>
-              `${count(row.performance?.speedTurns ?? '0')} measured turns`,
-          )
-        "
-      />
-      <MetricChart
-        title="Time to first output"
-        description="Average active time before the first generated output."
-        :days="data.daily.map((row) => row.day)"
-        :series="[
-          {
-            label: 'Time to first output',
-            values: data.daily.map(
-              (row) => row.performance?.timeToFirstOutputMs ?? null,
-            ),
-          },
-        ]"
-        measure="milliseconds"
-        :notes="
-          data.daily.map(
-            (row) =>
-              `${count(row.performance?.ttftTurns ?? '0')} measured turns`,
-          )
-        "
-      />
-    </div>
     <section class="panel model-panel" aria-label="Performance by model">
       <header class="panel-heading">
         <h2>Performance by model</h2>
-        <span class="muted">{{ data.models.length }} models</span>
+        <span class="muted"
+          >{{ data.models.length }}
+          {{ data.range.groupServiceTiers ? "models" : "variants" }}</span
+        >
       </header>
       <div
         class="table-scroll"
@@ -115,11 +99,11 @@
           <tbody>
             <tr
               v-for="row in data.models"
-              :key="`${row.provider}/${row.model}`"
+              :key="`${row.provider}/${row.model}/${row.serviceTier}`"
             >
               <th scope="row">
                 <span class="provider">{{ row.provider }}</span
-                >{{ row.model }}
+                >{{ modelLabel(row) }}
               </th>
               <td>
                 {{ rate(row.performance?.outputTokensPerSecond ?? null) }}
@@ -151,10 +135,35 @@
   </section>
 </template>
 <script setup lang="ts">
+import { computed, toRef } from "vue";
+import ModelComparisonControl from "./ModelComparisonControl.vue";
+import {
+  comparisonLabel,
+  modelKey,
+  useModelComparison,
+} from "./use-model-comparison";
 import type { TelemetryMetrics } from "@workspace/core/telemetry-metrics";
+import { modelLabel } from "./model-label";
 import MetricChart from "./MetricChart.vue";
 import { count, rate, duration, percent } from "./format";
-defineProps<{ data: TelemetryMetrics }>();
+const props = defineProps<{ data: TelemetryMetrics }>();
+const { choices, selected, compared, days, daily, color, dash } =
+  useModelComparison(toRef(props, "data"));
+const performanceSeries = (
+  field: "outputTokensPerSecond" | "timeToFirstOutputMs",
+) =>
+  compared.value.map((row) => ({
+    label: comparisonLabel(row),
+    color: color(row),
+    dash: dash(row),
+    values: days.value.map(
+      (day) =>
+        daily.value.get(`${day}/${modelKey(row)}`)?.performance?.[field] ??
+        null,
+    ),
+  }));
+const speedSeries = computed(() => performanceSeries("outputTokensPerSecond"));
+const ttftSeries = computed(() => performanceSeries("timeToFirstOutputMs"));
 </script>
 <style scoped>
 .performance-totals {

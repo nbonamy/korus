@@ -76,6 +76,8 @@ it("requires private access and exact configured origins; rejects invalid and un
     range + "&sql=select+*",
     range + "&provider=custom",
     range + "&model=alias",
+    range + "&groupServiceTiers=yes",
+    range + "&groupServiceTiers=true&groupServiceTiers=false",
     range + "&from=2026-10-18",
     "from=2020-01-01&to=2026-10-25",
     "from=2000-01-01&to=2026-10-24",
@@ -131,6 +133,8 @@ it("agrees with executable SQL across global activity, complete token pairs, spe
     outputTokens: "100",
     unknownOutputGroups: "0",
     totalTokens: "660",
+    pairedInputTokens: "600",
+    pairedOutputTokens: "60",
     excludedTokenGroups: "1",
     cacheInputTokens: "600",
     cacheReadTokens: "330",
@@ -164,11 +168,11 @@ it("agrees with executable SQL across global activity, complete token pairs, spe
   let executable;
   try {
     await sqlClient.query(
-      `PREPARE dashboard_example(date,date,text,text) AS ${metricsSql}`,
+      `PREPARE dashboard_example(date,date,text,text,boolean) AS ${metricsSql}`,
     );
     executable = (
       await sqlClient.query(
-        "EXECUTE dashboard_example('2026-10-18','2026-10-24',NULL,NULL)",
+        "EXECUTE dashboard_example('2026-10-18','2026-10-24',NULL,NULL,false)",
       )
     ).rows[0].metrics;
     await sqlClient.query("DEALLOCATE dashboard_example");
@@ -236,6 +240,7 @@ it("filters only usage, preserves nulls and replaces removed groups without infl
       {
         provider: "codex",
         model: "unknown",
+        serviceTier: "standard",
         turns: 1,
         inputTokens: 10,
         cachedInputTokens: 5,
@@ -303,6 +308,7 @@ it("uses a read-only database role and bounds failures without exposing SQL or c
       "2026-10-24",
       null,
       null,
+      false,
     ]);
     expect(result.rows[0].metrics.overview.dau).toBe("3");
     await expect(read.query("DELETE FROM installs")).rejects.toThrow();
@@ -385,6 +391,12 @@ it("weights performance by measured output/time, preserves missing samples and r
       {
         provider: "codex" as const,
         model: "gpt-6-sol" as const,
+        serviceTier:
+          id === "1"
+            ? ("standard" as const)
+            : id === "2"
+              ? ("fast" as const)
+              : ("unknown" as const),
         turns: id === "1" ? 2 : 1,
         inputTokens: 1000,
         cachedInputTokens: 500,
@@ -414,7 +426,36 @@ it("weights performance by measured output/time, preserves missing samples and r
   await store.replace(payload("3"));
   await store.replace(first);
   let metrics = (await (await get()).json()) as TelemetryMetrics;
-  expect(metrics.models).toHaveLength(1);
+  expect(metrics.models.map((row) => row.serviceTier)).toStrictEqual([
+    "fast",
+    "standard",
+    "unknown",
+  ]);
+  const grouped = (await (
+    await get(range + "&groupServiceTiers=true")
+  ).json()) as TelemetryMetrics;
+  expect(grouped.models).toHaveLength(1);
+  expect(grouped.models[0].performance).toStrictEqual(
+    metrics.totals.performance,
+  );
+  expect(grouped.models[0].serviceTier).toBeNull();
+  expect(
+    metrics.modelDaily?.map((row) => [
+      row.day,
+      row.serviceTier,
+      row.performance?.outputTokensPerSecond,
+    ]),
+  ).toStrictEqual([
+    ["2026-10-24", "fast", "100"],
+    ["2026-10-24", "standard", "25"],
+    ["2026-10-24", "unknown", null],
+  ]);
+  expect(grouped.modelDaily).toHaveLength(1);
+  expect(grouped.modelDaily?.[0].performance).toStrictEqual(
+    grouped.totals.performance,
+  );
+  expect(grouped.totals).toStrictEqual(metrics.totals);
+  expect(grouped.overview).toStrictEqual(metrics.overview);
   expect(metrics.totals.performance).toStrictEqual({
     outputTokensPerSecond: "40",
     timeToFirstOutputMs: "1333.333",
@@ -429,4 +470,25 @@ it("weights performance by measured output/time, preserves missing samples and r
     speedTurns: "1",
     ttftTurns: "1",
   });
+  const variants = {
+    ...first,
+    usage: [
+      first.usage[0],
+      { ...first.usage[0], serviceTier: "fast" as const },
+      { ...first.usage[0], serviceTier: "ultrafast" as const },
+    ],
+  };
+  await store.replace(variants);
+  const once = (await (await get()).json()) as TelemetryMetrics;
+  await store.replace(variants);
+  expect((await (await get()).json()) as TelemetryMetrics).toMatchObject({
+    totals: once.totals,
+    models: once.models,
+  });
+  expect(once.models.map((row) => row.serviceTier)).toStrictEqual([
+    "fast",
+    "standard",
+    "ultrafast",
+    "unknown",
+  ]);
 });

@@ -55,4 +55,12 @@ export const telemetryMigrations = [
           AND (ttft_turns>0 OR ttft_ms=0))
       );`,
   },
+  {
+    version: 4,
+    sql: `ALTER TABLE usage_daily
+      ADD COLUMN service_tier text NOT NULL DEFAULT 'unknown'
+        CHECK (service_tier IN ('standard','fast','ultrafast','flex','batch','scale','unknown'));
+      ALTER TABLE usage_daily DROP CONSTRAINT usage_daily_pkey;
+      ALTER TABLE usage_daily ADD PRIMARY KEY (install_id,day,provider,model,service_tier);`,
+  },
 ] as const;

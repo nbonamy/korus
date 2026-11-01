@@ -1,11 +1,24 @@
 // @vitest-environment jsdom
 import { mount, flushPromises } from "@vue/test-utils";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { ElPopover, ElSwitch } from "element-plus";
 import Dashboard from "../Dashboard.vue";
 
 // Rendered owner boundary: stale filter responses, revoked private access, old
 // dates rejected locally, unknowns displayed as zero, and exact tiny/large values.
 // Real SQL, proxy authentication and chart geometry live in the Compose browser workflow.
+const modelTotals = {
+  turns: "1",
+  inputTokens: "10",
+  cachedInputTokens: "5",
+  outputTokens: "2",
+  estimatedCostUsd: "0",
+  unknownInputGroups: "0",
+  unknownCachedInputGroups: "0",
+  unknownOutputGroups: "0",
+  unknownCostGroups: "0",
+  costCoverage: "complete",
+};
 const metrics = (turns = "7") => ({
   range: { from: "2020-01-01", to: "2020-01-01", provider: null, model: null },
   availability: {
@@ -50,8 +63,49 @@ const metrics = (turns = "7") => ({
     costCoverage: "complete",
   },
   daily: [],
+  modelDaily: [
+    {
+      ...modelTotals,
+      day: "2020-01-01",
+      provider: "codex",
+      model: "gpt-6-sol",
+      serviceTier: "fast",
+      performance: {
+        outputTokensPerSecond: "40",
+        timeToFirstOutputMs: "200",
+        speedTurns: "1",
+        ttftTurns: "1",
+      },
+    },
+    {
+      ...modelTotals,
+      day: "2020-01-01",
+      provider: "codex",
+      model: "gpt-6-sol",
+      serviceTier: "standard",
+      performance: {
+        outputTokensPerSecond: "10",
+        timeToFirstOutputMs: "800",
+        speedTurns: "1",
+        ttftTurns: "1",
+      },
+    },
+  ],
   weekly: [],
-  models: [],
+  models: [
+    {
+      ...modelTotals,
+      provider: "codex",
+      model: "gpt-6-sol",
+      serviceTier: "fast",
+    },
+    {
+      ...modelTotals,
+      provider: "codex",
+      model: "gpt-6-sol",
+      serviceTier: "standard",
+    },
+  ],
 });
 beforeEach(() => {
   vi.stubGlobal(
@@ -74,7 +128,10 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
       new Promise<Response>((resolve) => pending.push(resolve)),
   );
   vi.stubGlobal("fetch", fetcher);
-  const wrapper = mount(Dashboard, { attachTo: document.body });
+  const wrapper = mount(Dashboard, {
+    attachTo: document.body,
+    global: { components: { ElPopover, ElSwitch } },
+  });
   await flushPromises();
   expect(wrapper.get('[role="status"]').text()).toContain("Loading");
   pending.shift()!(Response.json(metrics()));
@@ -86,8 +143,35 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   expect(
     wrapper.get('[aria-label="Measured total tokens"] dd').attributes("title"),
   ).toBe("1,250,000,000");
+  expect(
+    wrapper.findAll('[aria-label="Daily activity"] path[fill^="url("]'),
+  ).toHaveLength(2);
+  expect(
+    wrapper
+      .get('[aria-label="Recent ranges"]')
+      .element.compareDocumentPosition(
+        wrapper.get('input[aria-label="From UTC day"]').element,
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(wrapper.get('[aria-label="Recent ranges"]').text()).toBe("7d30d90d");
+  expect(wrapper.text()).not.toContain("About the data");
+  expect(wrapper.text()).not.toContain("View data");
+  await wrapper
+    .get('[aria-label="Daily activity"] svg[role="img"]')
+    .trigger("focus");
+  expect(
+    wrapper.get('[aria-label="Daily activity"] [role="status"]').text(),
+  ).toContain("Active installs");
   // A report has its own URL and content; page changes preserve the loaded data.
   const navigation = wrapper.get('nav[aria-label="Analytics sections"]');
+  expect(navigation.findAll("a").map((a) => a.text())).toStrictEqual([
+    "Overview",
+    "Activity",
+    "Models",
+    "Tokens",
+    "Spend",
+    "Performance",
+  ]);
   window.location.hash = "#/models";
   window.dispatchEvent(new HashChangeEvent("hashchange"));
   await flushPromises();
@@ -95,12 +179,36 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
     "page",
   );
   expect(wrapper.get("h1").text()).toBe("Models");
+  const popularity = wrapper.get('[aria-label="Most used models"]');
+  expect(popularity.text()).toContain("50.0%");
+  expect(popularity.findAll('[role="listitem"]')).toHaveLength(2);
+  await wrapper
+    .findAll("label")
+    .find((label) => label.text() === "Over time")!
+    .trigger("click");
+  await flushPromises();
+  expect(
+    wrapper.find('[aria-label="Model usage over time"] rect').exists(),
+  ).toBe(true);
+
+  expect(wrapper.get("tbody").text()).toContain("Fast");
+  expect(wrapper.get("tbody").text()).toContain("gpt-6-sol");
   expect(wrapper.find('[aria-label="Provider and model"]').exists()).toBe(true);
   expect(wrapper.find('[aria-label="Daily activity"]').exists()).toBe(false);
   window.location.hash = "#/performance";
   window.dispatchEvent(new HashChangeEvent("hashchange"));
   await flushPromises();
   expect(wrapper.get("h1").text()).toBe("Performance");
+  const speedChart = wrapper.get('[aria-label="Output speed"]');
+  expect(speedChart.get('[aria-label="Series"]').text()).toContain(
+    "gpt-6-sol · Fast",
+  );
+  expect(speedChart.findAll(".chart-line")).toHaveLength(2);
+  expect(speedChart.findAll('path[fill^="url("]')).toHaveLength(2);
+  await speedChart.get('svg[role="img"]').trigger("focus");
+  expect(speedChart.text()).toContain("40.0 tok/s");
+  expect(speedChart.text()).toContain("10.0 tok/s");
+
   expect(wrapper.get('[aria-label="Output speed summary"]').text()).toContain(
     "25.0 tok/s",
   );
@@ -145,6 +253,59 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   pending.shift()!(Response.json(metrics("999")));
   await flushPromises();
   expect(wrapper.get('[aria-label="Turns"]').text()).not.toContain("999");
+  const optionsButton = wrapper.get('button[aria-label="Analytics options"]');
+  expect(optionsButton.attributes("aria-haspopup")).toBe("menu");
+  await optionsButton.trigger("click");
+  await flushPromises();
+  await vi.waitFor(() =>
+    expect(optionsButton.attributes("aria-expanded")).toBe("true"),
+  );
+  const tierOption = document.querySelector(
+    '[role="menuitemcheckbox"]',
+  ) as HTMLButtonElement;
+  expect(tierOption.textContent).toContain("Group service tiers");
+  expect(tierOption.getAttribute("aria-checked")).toBe("false");
+  tierOption.click();
+  await flushPromises();
+  expect(optionsButton.attributes("aria-expanded")).toBe("false");
+  expect(String(fetcher.mock.calls.at(-1)?.[0])).toContain(
+    "groupServiceTiers=true",
+  );
+  pending.shift()!(
+    Response.json({
+      ...metrics(),
+      models: [
+        {
+          ...modelTotals,
+          provider: "codex",
+          model: "gpt-6-sol",
+          serviceTier: null,
+        },
+      ],
+    }),
+  );
+  await flushPromises();
+  window.location.hash = "#/models";
+  window.dispatchEvent(new HashChangeEvent("hashchange"));
+  await flushPromises();
+  expect(wrapper.get("tbody").text()).not.toContain("Fast");
+  await optionsButton.trigger("click");
+  await vi.waitFor(() =>
+    expect(optionsButton.attributes("aria-expanded")).toBe("true"),
+  );
+  await flushPromises();
+  expect(
+    document
+      .querySelector('[role="menuitemcheckbox"]')
+      ?.getAttribute("aria-checked"),
+  ).toBe("true");
+  document
+    .querySelector('[role="menuitemcheckbox"]')
+    ?.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    );
+  await flushPromises();
+  expect(optionsButton.attributes("aria-expanded")).toBe("false");
   await wrapper.get('button[aria-label="Refresh metrics"]').trigger("click");
   pending.shift()!(new Response("", { status: 401 }));
   await flushPromises();
@@ -159,7 +320,10 @@ it("shows recoverable failures without echoing remote diagnostics and bounds dat
     .fn()
     .mockResolvedValue(new Response("SECRET SQL diagnostic", { status: 503 }));
   vi.stubGlobal("fetch", fetcher);
-  const wrapper = mount(Dashboard, { attachTo: document.body });
+  const wrapper = mount(Dashboard, {
+    attachTo: document.body,
+    global: { components: { ElPopover, ElSwitch } },
+  });
   await flushPromises();
   expect(wrapper.get('[role="alert"]').text()).toContain("unavailable");
   expect(wrapper.text()).not.toContain("SECRET");

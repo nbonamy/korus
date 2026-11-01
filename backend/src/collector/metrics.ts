@@ -11,7 +11,7 @@ export function metricsFilter(
   params: URLSearchParams,
   now: number,
 ): TelemetryMetricsFilter | null {
-  const keys = ["from", "to", "provider", "model"];
+  const keys = ["from", "to", "provider", "model", "groupServiceTiers"];
   if (
     [...params.keys()].some((k) => !keys.includes(k)) ||
     keys.some((k) => params.getAll(k).length > 1)
@@ -40,5 +40,14 @@ export function metricsFilter(
     !(telemetryModels as readonly string[]).includes(model)
   )
     return null;
-  return { from, to, provider, model } as TelemetryMetricsFilter;
+  const grouping = params.get("groupServiceTiers");
+  if (grouping !== null && grouping !== "true" && grouping !== "false")
+    return null;
+  return {
+    from,
+    to,
+    provider,
+    model,
+    groupServiceTiers: grouping === "true",
+  } as TelemetryMetricsFilter;
 }

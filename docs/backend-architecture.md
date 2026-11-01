@@ -1084,8 +1084,11 @@ Local Analytics queries may explicitly combine service tiers within a model.
 This sums the same token, timing and cost contributions; rates still use summed
 measurements and each request retains its tier-specific price.
 
-Daily telemetry combines tiers into canonical provider/model groups; local variant
-keys and service-tier metadata are excluded from its payload.
+Daily telemetry retains canonical provider/model/tier groups using the same execution-start
+and served-request attribution. Only closed tier labels are sent; missing or unrecognized
+tiers become unknown, and legacy reports remain valid as unknown-tier groups. Raw model
+IDs retain their pricing identity. The private console separates variants by default;
+its Group service tiers option combines them with weighted timing sums.
 
 The backend turn clock excludes waits for user input and in-flight tools, with
 parallel tool waits counted once. Speed combines provider-reported output tokens
@@ -1215,7 +1218,7 @@ projection dependencies and rejects direct network/timer operations.
 
 Performance reuses the ledger's additive speed samples: measured output tokens,
 active generation milliseconds, summed time to first output, and their turn
-counts. Only daily provider/model sums enter the optional closed performance
+counts. Only daily provider/model/tier sums enter the optional closed performance
 object; no per-turn timing or timestamps are exported. Missing samples are
 unavailable, not zero. The read API divides the summed output by summed time and
 the summed first-output time by its measured-turn count. It never averages
@@ -1309,7 +1312,7 @@ clients; any supplied Origin must exactly match. Browser reads use the protected
 console origin, without embedding an operator credential in JavaScript.
 
 The read endpoint accepts only inclusive `from`/`to` UTC days and optional canonical
-`provider`/`model` filters. It rejects unknown/duplicate filters, current/unclosed
+`provider`/`model` filters and a boolean `groupServiceTiers` option. It rejects unknown/duplicate filters, current/unclosed
 days and ranges longer than 3,660 days instead of clipping results. Older retained
 ranges remain available; the ingestion lateness window never applies to reads.
 At most four aggregate statements execute concurrently; excess work receives 429
@@ -1331,16 +1334,21 @@ subtotals include unknown-group counts; input plus output totals use only comple
 pairs and expose excluded groups. Cache share and its non-cache-read remainder
 use only complete input/cache-read pairs, with zero denominators returning null.
 That remainder can include cache creation; it is not a fresh-input pricing claim.
-Weekly buckets start Monday UTC and include only selected days. Known complete
+Weekly buckets start Monday UTC and include only selected days. Additive token
+charts use paired input/output subtotals so their stacks match complete token
+totals even when some groups are incomplete. Known complete
 cost groups sum without repricing; all-unknown and empty buckets have null cost,
 with explicit complete/partial/unavailable/empty coverage. Missing spend is never
-zero. Usage model rows are ordered by provider/model and expose aggregates only.
+zero. Usage model rows are ordered by provider/model/tier and expose aggregates only.
+Sparse model-day series retain the same grouping and weighted timing arithmetic
+for model usage trends and performance comparisons; absent timing samples remain
+unavailable.
 
 The executable seed is
 `backend/src/collector/__tests__/fixtures/metrics-seed.sql`. Apply it only to a
 migrated disposable database. The owner workflow prepares the exact API SQL with
-`PREPARE dashboard_example(date,date,text,text) AS <metrics.sql>`, then executes
-`EXECUTE dashboard_example('2026-10-18','2026-10-24',NULL,NULL)`. Expected global
+`PREPARE dashboard_example(date,date,text,text,boolean) AS <metrics.sql>`, then executes
+`EXECUTE dashboard_example('2026-10-18','2026-10-24',NULL,NULL,false)`. Expected global
 cards are 6 participating identities, DAU 3, WAU 4, MAU 5 and calendar-month actives
 4. Complete token pairs total 660, measured cache share is 0.55, and known cost is
 1.5 USD with two unknown groups. The 2020 seed contributes another 1,100 tokens.

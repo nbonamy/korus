@@ -227,6 +227,7 @@ it("previews exact local UTF-8 telemetry from persisted provider measurements wi
         {
           provider: "claude",
           model: "claude-opus-4-6",
+          serviceTier: "standard",
           turns: 0,
           inputTokens: 0,
           cachedInputTokens: 0,

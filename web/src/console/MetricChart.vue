@@ -10,12 +10,18 @@
         <i
           :style="{
             borderColor: color(i),
-            borderStyle: i ? 'dashed' : 'solid',
+            borderStyle: item.dash ? 'dashed' : 'solid',
           }"
         />{{ item.label }}
       </li>
     </ul>
-    <div ref="stage" class="chart-stage">
+    <div
+      ref="stage"
+      class="chart-stage"
+      @pointermove="track"
+      @pointerdown="track"
+      @pointerleave="$event.pointerType !== 'touch' && (active = null)"
+    >
       <svg
         :viewBox="`0 0 ${width} ${height}`"
         :width="width"
@@ -26,9 +32,6 @@
         @keydown="key"
         @focus="active ??= 0"
         @blur="active = null"
-        @pointermove="track"
-        @pointerdown="track"
-        @pointerleave="$event.pointerType !== 'touch' && (active = null)"
       >
         <defs>
           <linearGradient
@@ -40,8 +43,16 @@
             y1="0"
             y2="1"
           >
-            <stop offset="0" :stop-color="color(i)" stop-opacity="0.18" />
-            <stop offset="1" :stop-color="color(i)" stop-opacity="0" />
+            <stop
+              offset="0"
+              :stop-color="color(i)"
+              :stop-opacity="variant && variant !== 'line' ? 0.9 : 0.18"
+            />
+            <stop
+              offset="1"
+              :stop-color="color(i)"
+              :stop-opacity="variant && variant !== 'line' ? 0.35 : 0"
+            />
           </linearGradient>
         </defs>
         <g v-for="ratio in [0, 0.25, 0.5, 0.75, 1]" :key="ratio" class="grid">
@@ -55,7 +66,11 @@
             {{ axis(max * ratio) }}
           </text>
         </g>
-        <template v-for="(layer, i) in layers" :key="i">
+        <template
+          v-if="!variant || variant === 'line'"
+          v-for="(layer, i) in layers"
+          :key="i"
+        >
           <g v-for="(run, j) in layer" :key="j">
             <path
               :d="`${line(run)} L${run.at(-1)!.x} ${baseline} L${run[0]!.x} ${baseline}Z`"
@@ -65,10 +80,31 @@
               class="chart-line"
               :d="line(run)"
               :stroke="color(i)"
-              :stroke-dasharray="i ? '5 3' : undefined"
+              :stroke-dasharray="series[i]?.dash"
             />
           </g>
         </template>
+        <g v-if="variant === 'bar' || variant === 'stacked'">
+          <rect
+            v-for="(bar, index) in bars"
+            :key="index"
+            :x="bar.x"
+            :y="bar.y"
+            :width="bar.width"
+            :height="bar.height"
+            :fill="`url(#${id}-${bar.series})`"
+          >
+            <title>
+              {{ days[bar.day] }} · {{ series[bar.series]!.label }}:
+              {{
+                exactMeasurement(
+                  series[bar.series]!.values[bar.day] ?? null,
+                  measure,
+                )
+              }}
+            </title>
+          </rect>
+        </g>
         <g v-for="index in ticks" :key="index" class="date-label">
           <text
             :x="x(index)"
@@ -94,7 +130,10 @@
           />
           <template v-for="(item, i) in series" :key="i">
             <circle
-              v-if="plotValue(item.values[active] ?? null) !== null"
+              v-if="
+                (!variant || variant === 'line') &&
+                plotValue(item.values[active] ?? null) !== null
+              "
               :cx="x(active)"
               :cy="y(plotValue(item.values[active]!)!)"
               r="3"
@@ -103,78 +142,46 @@
           </template>
         </g>
       </svg>
-    </div>
-    <output class="chart-inspection" role="status" aria-live="polite"
-      ><template v-if="active !== null && days[active]"
-        ><strong>{{ days[active] }} UTC</strong
-        ><span
-          v-for="item in series"
-          :key="item.label"
-          :title="exactMeasurement(item.values[active] ?? null, measure)"
-          >{{ item.label }}:
-          {{ measurement(item.values[active] ?? null, measure)
-          }}<template v-if="notes?.[active]">
-            · {{ notes[active] }}</template
-          ></span
-        ></template
-      ><span v-else class="sr-only"
-        >Hover, tap or use arrow keys to inspect.</span
-      ></output
-    >
-    <p v-if="outsideRange" class="muted">
-      Some values exceed chart precision. Exact values are in the data table.
-    </p>
-    <details @toggle="expanded = ($event.target as HTMLDetailsElement).open">
-      <summary>View data</summary>
-      <div
-        v-if="expanded"
-        class="table-scroll"
-        tabindex="0"
-        :aria-label="`${title} data`"
+      <output
+        v-if="active !== null && days[active]"
+        class="chart-tooltip"
+        role="status"
+        aria-live="polite"
+        :style="tooltipStyle"
+        @pointermove.stop
+        @pointerdown.stop
       >
-        <table>
-          <caption>
-            {{
-              title
-            }}
-            · UTC
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">
-                {{
-                  measure === "tokens" && title === "Weekly tokens"
-                    ? "Week starting"
-                    : "Day"
-                }}
-              </th>
-              <th v-for="item in series" :key="item.label" scope="col">
-                {{ item.label }}
-              </th>
-              <th v-if="notes" scope="col">Coverage</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(day, index) in days" :key="day">
-              <th scope="row">{{ day }}</th>
-              <td
-                v-for="item in series"
-                :key="item.label"
-                :title="exactMeasurement(item.values[index] ?? null, measure)"
-              >
-                {{ measurement(item.values[index] ?? null, measure) }}
-              </td>
-              <td v-if="notes">{{ notes[index] }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </details>
+        <strong class="tooltip-day" :title="`${days[active]} UTC`">{{
+          tooltipDay
+        }}</strong>
+        <ul>
+          <li v-for="item in tooltipRows" :key="item.label">
+            <i :style="{ background: item.color }" aria-hidden="true" />
+            <span class="tooltip-name">{{ item.label }}</span>
+            <b :title="exactMeasurement(item.value, measure)">{{
+              measurement(item.value, measure)
+            }}</b>
+          </li>
+        </ul>
+        <div v-if="tooltipTotal !== null" class="tooltip-total">
+          <span>{{ totalLabel ?? "Total" }}</span
+          ><b :title="count(tooltipTotal)">{{
+            measurement(tooltipTotal, measure)
+          }}</b>
+        </div>
+        <p v-if="notes?.[active]" class="tooltip-note">{{ notes[active] }}</p>
+      </output>
+    </div>
+    <p v-if="outsideRange" class="muted">
+      Some values exceed chart precision. Exact values remain available in the
+      popup.
+    </p>
   </section>
 </template>
 <script setup lang="ts">
-import { computed, ref, useId, watch } from "vue";
+import { computed, ref, useId, watch, onMounted, onUnmounted } from "vue";
 import {
+  count,
   measurement,
   exactMeasurement,
   tokens,
@@ -189,21 +196,27 @@ const props = defineProps<{
   title: string;
   description: string;
   days: string[];
-  series: { label: string; values: (string | null)[] }[];
+  series: {
+    label: string;
+    values: (string | null)[];
+    color?: string;
+    dash?: string;
+  }[];
+  variant?: "line" | "bar" | "stacked";
   measure: Measure;
   notes?: string[];
+  totalLabel?: string;
 }>();
 const id = useId(),
   stage = ref<HTMLElement | null>(null),
   width = ref(640),
-  active = ref<number | null>(null),
-  expanded = ref(false);
+  active = ref<number | null>(null);
 const height = 220,
   left = 72,
   right = 16,
   baseline = height - 32;
 const color = (i: number) =>
-  ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)"][i % 3];
+  props.series[i]?.color ?? `var(--chart-${(i % 8) + 1})`;
 watch(
   stage,
   (element, _, cleanup) => {
@@ -217,18 +230,120 @@ watch(
   },
   { flush: "post" },
 );
+const sums = computed(() =>
+  props.days.map((_, index) =>
+    props.series.reduce(
+      (sum, item) => sum + (plotValue(item.values[index] ?? null) ?? 0),
+      0,
+    ),
+  ),
+);
 const max = computed(
   () =>
-    Math.max(
-      0,
-      ...props.series.flatMap((s) => s.values.map((v) => plotValue(v) ?? 0)),
-    ) || 1,
+    (props.variant === "stacked"
+      ? sums.value.filter((v) => v <= Number.MAX_SAFE_INTEGER)
+      : props.series.flatMap((s) => s.values.map((v) => plotValue(v) ?? 0))
+    ).reduce((max, value) => Math.max(max, value), 0) || 1,
+);
+const band = computed(
+  () => (width.value - left - right) / Math.max(props.days.length, 1),
 );
 const x = (index: number) =>
-  props.days.length < 2
-    ? left + (width.value - left - right) / 2
-    : left + (index * (width.value - left - right)) / (props.days.length - 1);
+  props.variant && props.variant !== "line"
+    ? left + band.value * (index + 0.5)
+    : props.days.length < 2
+      ? left + (width.value - left - right) / 2
+      : left + (index * (width.value - left - right)) / (props.days.length - 1);
 const y = (value: number) => baseline - (value / max.value) * (baseline - 16);
+const bars = computed(() =>
+  props.days.flatMap((_, day) => {
+    let base = 0;
+    if (
+      props.variant === "stacked" &&
+      sums.value[day]! > Number.MAX_SAFE_INTEGER
+    )
+      return [];
+    return props.series.flatMap((item, series) => {
+      const value = plotValue(item.values[day] ?? null);
+      if (value === null) return [];
+      const stacked = props.variant === "stacked";
+      const width = Math.max(
+        0.1,
+        (band.value * 0.75) / (stacked ? 1 : Math.max(props.series.length, 1)),
+      );
+      const bottom = stacked ? base : 0;
+      base += value;
+      return [
+        {
+          day,
+          series,
+          x: x(day) - band.value * 0.375 + (stacked ? 0 : series * width),
+          y: y(bottom + value),
+          width,
+          height: y(bottom) - y(bottom + value),
+        },
+      ];
+    });
+  }),
+);
+const tooltipStyle = computed(() => {
+  const popupWidth = Math.min(340, width.value - 16),
+    point = x(active.value ?? 0);
+  return {
+    width: `${popupWidth}px`,
+    left: `${Math.max(8, Math.min(width.value - popupWidth - 8, point > width.value * 0.6 ? point - popupWidth - 16 : point + 16))}px`,
+    top: "8px",
+  };
+});
+const tooltipDay = computed(() =>
+  active.value === null || !props.days[active.value]
+    ? ""
+    : new Intl.DateTimeFormat("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        timeZone: "UTC",
+      }).format(new Date(`${props.days[active.value]}T00:00:00Z`)),
+);
+const tooltipRows = computed(() =>
+  props.series
+    .map((item, index) => ({
+      label: item.label,
+      color: color(index),
+      value: active.value === null ? null : (item.values[active.value] ?? null),
+    }))
+    .sort((a, b) =>
+      a.value === null
+        ? b.value === null
+          ? 0
+          : 1
+        : b.value === null
+          ? -1
+          : props.measure === "milliseconds"
+            ? Number(a.value) - Number(b.value)
+            : Number(b.value) - Number(a.value),
+    ),
+);
+const tooltipTotal = computed(() => {
+  if (
+    !(props.totalLabel || props.variant === "stacked") ||
+    props.series.length < 2 ||
+    !["count", "tokens"].includes(props.measure)
+  )
+    return null;
+  const known = tooltipRows.value.filter(
+    (row) => row.value !== null && /^\d+$/.test(row.value),
+  );
+  return known.length
+    ? known.reduce((total, row) => total + BigInt(row.value!), 0n).toString()
+    : null;
+});
+function dismissOutside(event: PointerEvent) {
+  if (event.target instanceof Node && !stage.value?.contains(event.target))
+    active.value = null;
+}
+onMounted(() => document.addEventListener("pointerdown", dismissOutside));
+onUnmounted(() => document.removeEventListener("pointerdown", dismissOutside));
 type Point = { x: number; y: number };
 const layers = computed(() =>
   props.series.map((item) => {
@@ -274,10 +389,13 @@ const ticks = computed(() =>
         ]),
       ],
 );
-const outsideRange = computed(() =>
-  props.series.some((item) =>
-    item.values.some((value) => value !== null && plotValue(value) === null),
-  ),
+const outsideRange = computed(
+  () =>
+    (props.variant === "stacked" &&
+      sums.value.some((v) => v > Number.MAX_SAFE_INTEGER)) ||
+    props.series.some((item) =>
+      item.values.some((value) => value !== null && plotValue(value) === null),
+    ),
 );
 function axis(value: number) {
   if (props.measure === "rate") return rate(String(value));
@@ -291,6 +409,10 @@ function axis(value: number) {
   }).format(value);
 }
 function key(event: KeyboardEvent) {
+  if (event.key === "Escape") {
+    active.value = null;
+    return;
+  }
   if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
   event.preventDefault();
   active.value =
@@ -312,11 +434,16 @@ function track(event: PointerEvent) {
     0,
     Math.min(
       props.days.length - 1,
-      Math.round(
-        ((((event.clientX - box.left) * width.value) / box.width - left) /
-          (width.value - left - right)) *
-          (props.days.length - 1),
-      ),
+      props.variant && props.variant !== "line"
+        ? Math.floor(
+            (((event.clientX - box.left) * width.value) / box.width - left) /
+              band.value,
+          )
+        : Math.round(
+            ((((event.clientX - box.left) * width.value) / box.width - left) /
+              (width.value - left - right)) *
+              (props.days.length - 1),
+          ),
     ),
   );
 }

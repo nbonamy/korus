@@ -238,6 +238,7 @@ export async function desktopStackWorkflow(endpoint: string) {
       {
         provider: "codex",
         model: "unknown",
+        serviceTier: "unknown",
         turns: 1,
         inputTokens: 100,
         cachedInputTokens: 80,

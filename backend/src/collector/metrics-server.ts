@@ -91,6 +91,7 @@ export function createMetricsServer(options: {
             filter.to,
             filter.provider,
             filter.model,
+            filter.groupServiceTiers ?? false,
           ]);
           reply(200, result.rows[0]!.metrics);
         } finally {

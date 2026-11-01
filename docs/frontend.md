@@ -323,12 +323,15 @@ desired direction, not a requirement.
 ## Private Usage Console
 
 `web/src/console` is a standalone Vue entry point for aggregate telemetry. It
-consumes only the shared aggregate contract and canonical model catalog, never
+consumes browser-safe aggregate contracts and canonical UI primitives, never
 the desktop shell, provider protocols, identity state or filesystem. Dependency
 lint enforces that boundary. The console uses Element Plus controls with its own
 semantic theme. Desktop provider/model pickers assume app-owned provider catalogs,
 host state and localization, while the console filters aggregate reporting
-dimensions. Its SVG chart accepts aggregate series rather than local-ledger
+dimensions. Analytics options uses the canonical AppMenuButton and AppMenu with
+the same checked tier-grouping item, icons, focus behavior and shared menu chrome.
+`vue/src/shared/menu/menu-chrome.css` owns the shared icon-button and popover skin.
+Its SVG chart accepts aggregate series rather than local-ledger
 `UsageSummary` dimensions.
 
 The build copies semantic tokens from the app's light palette without external
@@ -336,14 +339,17 @@ font imports. Charts use thin, bounded cubic curves with fading area fills,
 separate runs for missing values and markers only during inspection. One keyboard
 focus stop per chart supports Left/Right and Home/End. Compact token units,
 cent-rounded amounts and one-decimal percentages expose exact PostgreSQL values
-on hover. Coordinate conversion is bounded to safe finite values; out-of-range
-measurements remain available in the data table. Tables
-render on expansion so long retained-history ranges do not populate hidden rows.
+in floating date popovers on hover, tap or keyboard inspection. Additive charts
+show totals; speed and first-output rates are never summed. Coordinate conversion
+is bounded to safe finite values; exact out-of-range measurements remain in the
+popover. Line, bar and ranking charts share the soft gradient treatment.
 
 Hash routes separate the overview, activity, token, spend, model and performance reports without
 requiring proxy rewrite rules. Date and usage-filter state stays in the mounted
 console across page changes; browser history and direct report links select the
-report independently of those filters.
+report independently of those filters. Models leads with ranked usage and offers
+stacked bars or lines over time. Performance compares model-day rates using the
+same model/tier identities, with five most-used variants selected initially.
 
 The private proxy owns authentication. Browser code performs only same-origin
 aggregate reads, keeps no credentials or metrics in storage, discards stale filter

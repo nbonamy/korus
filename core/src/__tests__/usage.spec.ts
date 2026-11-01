@@ -191,6 +191,32 @@ it("seals only additive performance samples, rejecting content and inconsistent 
   expect(
     JSON.parse(serializeDailyTelemetry(payload).body).usage[0].performance,
   ).toStrictEqual(performance);
+  const variants = {
+    ...payload,
+    usage: [
+      { ...row, serviceTier: "standard" as const },
+      { ...row, serviceTier: "fast" as const },
+      { ...row, serviceTier: "ultrafast" as const },
+      { ...row, serviceTier: "unknown" as const },
+    ],
+  };
+  expect(
+    JSON.parse(serializeDailyTelemetry(variants).body).usage.map(
+      (r: { serviceTier: string }) => r.serviceTier,
+    ),
+  ).toStrictEqual(["fast", "standard", "ultrafast", "unknown"]);
+  expect(() =>
+    serializeDailyTelemetry({
+      ...payload,
+      usage: [{ ...row, serviceTier: "PRIVATE TIER" as "fast" }],
+    }),
+  ).toThrow();
+  expect(() =>
+    serializeDailyTelemetry({
+      ...payload,
+      usage: [row, { ...row, serviceTier: "unknown" as const }],
+    }),
+  ).toThrow();
   for (const invalid of [
     { ...performance, prompt: "CANARY" },
     { ...performance, speedTurns: 4 },

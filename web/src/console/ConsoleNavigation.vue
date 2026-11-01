@@ -40,6 +40,11 @@ const sections = [
   },
   { id: "activity", label: "Activity", icon: "M3 12h4l3-8 4 16 3-8h4" },
   {
+    id: "models",
+    label: "Models",
+    icon: "M4 4h16v16H4zM4 9h16M9 9v11M4 14h16",
+  },
+  {
     id: "tokens",
     label: "Tokens",
     icon: "M4 20V10h4v10M10 20V4h4v16M16 20v-7h4v7",
@@ -53,11 +58,6 @@ const sections = [
     id: "performance",
     label: "Performance",
     icon: "M4 17a9 9 0 1 1 16 0M12 12l5-5M6 17h12",
-  },
-  {
-    id: "models",
-    label: "Models",
-    icon: "M4 4h16v16H4zM4 9h16M9 9v11M4 14h16",
   },
 ];
 </script>

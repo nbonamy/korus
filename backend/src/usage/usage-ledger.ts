@@ -30,6 +30,7 @@ import {
 import { addCost, emptyCost } from "./cost";
 import {
   telemetryModel,
+  telemetryServiceTier,
   validTelemetryProjectionInput,
   type TelemetryProjectionInput,
   type TelemetryProvider,
@@ -324,14 +325,16 @@ export class UsageLedger {
     if (summary.available === false) throw new Error("Usage is unavailable.");
     return summary.rows
       .map((row) => {
-        const [provider, model] = JSON.parse(row.label) as [
+        const [provider, model, serviceTier] = JSON.parse(row.label) as [
           TelemetryProvider,
           TelemetryModel,
+          TelemetryUsage["serviceTier"],
         ];
         const measured = row.measuredTurns === row.started;
         return {
           provider,
           model,
+          serviceTier,
           turns: row.started,
           inputTokens: measured ? (row.tokens?.input ?? 0) : null,
           cachedInputTokens: measured ? (row.tokens?.cacheRead ?? 0) : null,
@@ -356,7 +359,7 @@ export class UsageLedger {
               ? -1
               : a.model > b.model
                 ? 1
-                : 0,
+                : (a.serviceTier ?? "unknown").localeCompare(b.serviceTier ?? "unknown"),
       );
   }
   private summarize(
@@ -483,7 +486,7 @@ export class UsageLedger {
           ? { model: record.model, serviceTier: usageServiceTier(record.provider, record.serviceTier) }
           : undefined;
         const label = projection
-          ? JSON.stringify([record.provider, telemetryModel(record.model)])
+          ? JSON.stringify([record.provider, telemetryModel(record.model), telemetryServiceTier(usageServiceTier(record.provider, record.serviceTier))])
           : modelVariant
             ? usageModelVariantKey(modelVariant)
             : filter.group
@@ -547,7 +550,7 @@ export class UsageLedger {
           continue;
         const modelVariant = !projection && filter.group === "model" && !filter.groupServiceTiers ? requestUsageModelVariant(event) : undefined;
         const label = projection
-          ? JSON.stringify([parent.provider, telemetryModel(event.model)])
+          ? JSON.stringify([parent.provider, telemetryModel(event.model), telemetryServiceTier(requestUsageModelVariant(event).serviceTier)])
           : modelVariant
             ? usageModelVariantKey(modelVariant)
             : filter.group === "model"

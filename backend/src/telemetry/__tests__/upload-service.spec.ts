@@ -527,6 +527,7 @@ it("freezes real ledger measurements once even when a late provider correction a
     {
       provider: "codex",
       model: "unknown",
+      serviceTier: "unknown",
       turns: 1,
       inputTokens: 100,
       cachedInputTokens: 60,

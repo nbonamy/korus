@@ -44,6 +44,7 @@ it("projects incomplete groups as null, retains measured zero, and replaces late
       {
         provider: "codex",
         model: "gpt-5.6-sol",
+        serviceTier: "unknown",
         turns: 1,
         inputTokens: 0,
         cachedInputTokens: 0,
@@ -53,6 +54,7 @@ it("projects incomplete groups as null, retains measured zero, and replaces late
       {
         provider: "codex",
         model: "gpt-6-sol",
+        serviceTier: "unknown",
         turns: 2,
         inputTokens: null,
         cachedInputTokens: null,
@@ -73,6 +75,7 @@ it("projects incomplete groups as null, retains measured zero, and replaces late
     expect(ledger.projectDailyTelemetry(input)[1]).toStrictEqual({
       provider: "codex",
       model: "gpt-6-sol",
+      serviceTier: "unknown",
       turns: 2,
       inputTokens: 20,
       cachedInputTokens: 10,
@@ -362,15 +365,13 @@ it("projects additive measured performance from the existing ledger", async () =
   const ledger = new UsageLedger(":memory:", () => at);
   try {
     await ledger.load();
-    for (const [turnId, serviceTier, output, activeMs, ttftMs] of [["a","normal",10,1100,100],["b","normal",90,3900,900]] as const) {
+    for (const [turnId, serviceTier, output, activeMs, ttftMs] of [["a","normal",10,1100,100],["b","priority",90,3900,900]] as const) {
       const base = {provider:"codex" as const,agentId:"a",sessionId:"s",turnId,model:"gpt-6-sol",at,serviceTier};
       await ledger.observe({...base,phase:"started"}, {teamId:null,repository:null});
       await ledger.observe({...base,phase:"completed",tokens:{input:100,cacheRead:50,cacheWrite:null,output},timing:{activeMs,ttftMs}}, {teamId:null,repository:null});
     }
     const rows = ledger.projectDailyTelemetry({day:"2026-10-15",eligibleFrom:at-86400000,eligibleUntil:null});
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.model).toBe("gpt-6-sol");
-    expect(rows[0]?.performance).toStrictEqual({speedTurns:2,outputTokens:100,generationMs:4000,ttftMs:1000,ttftTurns:2});
-    expect(rows[0]).not.toHaveProperty("serviceTier");
+    expect(rows).toHaveLength(2);
+    expect(rows.map(row => [row.model, row.serviceTier, row.performance?.outputTokens])).toStrictEqual([["gpt-6-sol", "fast", 90], ["gpt-6-sol", "standard", 10]]);
   } finally { await ledger.close(); }
 });

@@ -233,12 +233,13 @@ export async function dashboardWorkflow({
       name: "Daily estimated spend",
       exact: true,
     });
+    assert.equal(await cost.locator("rect").count(), 3);
     const gapHasPaint = await cost.getByRole("img").evaluate((svg) => {
       const labels = [...svg.querySelectorAll(".date-label text")];
       const first = Number(labels[0].getAttribute("x"));
       const last = Number(labels.at(-1).getAttribute("x"));
       // Probe the unmeasured interior days; both the line and its area must be absent.
-      const paths = [...svg.querySelectorAll("path")];
+      const paths = [...svg.querySelectorAll("path,rect")];
       return [2.5, 3.5, 4.5].some((day) => {
         const x = first + ((last - first) * day) / 6;
         for (let y = 0; y < svg.viewBox.baseVal.height; y += 0.5) {
@@ -270,21 +271,34 @@ export async function dashboardWorkflow({
     await page.keyboard.press("End");
     assert.match(
       await cost.getByRole("status").innerText(),
-      /2026-10-24.*\$0.*partial/is,
+      /Oct 24.*\$0.*partial/is,
     );
     await page.keyboard.press("ArrowLeft");
     assert.match(
       await cost.getByRole("status").innerText(),
-      /2026-10-23.*Unavailable/is,
+      /Oct 23.*Unavailable/is,
     );
     const weekly = page.getByRole("region", {
       name: "Weekly tokens",
       exact: true,
     });
-    await weekly.getByText("View data", { exact: true }).click();
-    assert.match(
-      await weekly.getByRole("table").innerText(),
-      /2026-10-12[\s\S]*110[\s\S]*2026-10-19[\s\S]*550/,
+    await weekly.getByRole("img").focus();
+    await page.keyboard.press("Home");
+    assert.equal(
+      await weekly.locator(".tooltip-day").getAttribute("title"),
+      "2026-10-12 UTC",
+    );
+    assert.equal(await weekly.locator(".tooltip-total b").innerText(), "110");
+    await page.keyboard.press("End");
+    assert.equal(
+      await weekly.locator(".tooltip-day").getAttribute("title"),
+      "2026-10-19 UTC",
+    );
+    assert.equal(await weekly.locator(".tooltip-total b").innerText(), "550");
+    assert.equal(await page.getByText("View data", { exact: true }).count(), 0);
+    assert.equal(
+      await page.getByText("About the data", { exact: true }).count(),
+      0,
     );
     const chartBounds = await page
       .locator("path.chart-line")
@@ -462,7 +476,7 @@ export async function dashboardWorkflow({
         .getByRole("region", { name: "Daily activity", exact: true })
         .getByRole("status")
         .innerText(),
-      /2026-10-24/,
+      /Oct 24/,
     );
     await page.screenshot({
       path: path.join(output, "mobile.png"),
@@ -488,6 +502,24 @@ export async function dashboardWorkflow({
         .getByRole("region", { name: "Performance by model", exact: true })
         .innerText(),
       /Unavailable/,
+    );
+    const speedChart = page.getByRole("region", {
+      name: "Output speed",
+      exact: true,
+    });
+    assert.match(
+      await speedChart.getByRole("list", { name: "Series" }).innerText(),
+      /Codex/,
+    );
+    await speedChart.getByRole("img").focus();
+    await page.keyboard.press("End");
+    assert.match(
+      await speedChart.getByRole("status").innerText(),
+      /30.0 tok\/s/,
+    );
+    assert.equal(
+      (await speedChart.locator('path[fill^="url("]').count()) > 0,
+      true,
     );
     await page.screenshot({
       path: path.join(output, "performance.png"),

@@ -25,3 +25,5 @@ INSERT INTO usage_daily(install_id,day,provider,model,turns,input_tokens,cached_
  ('00000000-0000-4000-8000-000000000001','2026-10-24','codex','unknown',3,300,200,30,NULL),
  ('00000000-0000-4000-8000-000000000001','2026-10-24','claude','unknown',1,NULL,10,40,NULL),
  ('00000000-0000-4000-8000-000000000003','2026-10-24','antigravity','unknown',0,0,0,0,0);
+
+UPDATE usage_daily SET service_tier = CASE provider WHEN 'codex' THEN 'standard' WHEN 'claude' THEN 'fast' ELSE 'unknown' END;

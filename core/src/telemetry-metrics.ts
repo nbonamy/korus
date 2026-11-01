@@ -1,4 +1,8 @@
-import type { TelemetryModel, TelemetryProvider } from "./telemetry";
+import type {
+  TelemetryModel,
+  TelemetryProvider,
+  TelemetryServiceTier,
+} from "./telemetry";
 
 /** Exact nonnegative decimal strings; convert for plotting only after checking
  * the display range. Unknown measurements remain null, with excluded counts.
@@ -22,6 +26,9 @@ export type TelemetryMetricTotals = {
   outputTokens: string | null;
   unknownOutputGroups: string;
   totalTokens: string | null;
+  /** Complete input/output pairs used by additive token charts. */
+  pairedInputTokens?: string | null;
+  pairedOutputTokens?: string | null;
   excludedTokenGroups: string;
   cacheInputTokens: string | null;
   cacheReadTokens: string | null;
@@ -37,6 +44,7 @@ export type TelemetryMetricsFilter = {
   to: string;
   provider: TelemetryProvider | null;
   model: TelemetryModel | null;
+  groupServiceTiers?: boolean;
 };
 /** Global cards use the inclusive range end, regardless of usage filters.
  * Weekly buckets start Monday UTC and contain only the selected range's days.
@@ -64,8 +72,27 @@ export type TelemetryMetrics = {
   totals: TelemetryMetricTotals;
   daily: (TelemetryMetricTotals & { day: string })[];
   weekly: (TelemetryMetricTotals & { week: string })[];
+  /** Sparse UTC-day series. Absent timings remain missing, never interpolated. */
+  modelDaily?: (Pick<
+    TelemetryMetricTotals,
+    | "turns"
+    | "totalTokens"
+    | "inputTokens"
+    | "outputTokens"
+    | "unknownInputGroups"
+    | "unknownOutputGroups"
+    | "excludedTokenGroups"
+    | "performance"
+  > & {
+    day: string;
+    provider: TelemetryProvider;
+    model: TelemetryModel;
+    serviceTier?: TelemetryServiceTier | null;
+  })[];
   models: (TelemetryMetricTotals & {
     provider: TelemetryProvider;
     model: TelemetryModel;
+    /** Null when variants are explicitly combined. Legacy rows are unknown. */
+    serviceTier?: TelemetryServiceTier | null;
   })[];
 };

@@ -3,6 +3,24 @@ import { telemetryModels } from "./telemetry-models";
 
 export type TelemetryProvider = "codex" | "claude" | "antigravity";
 export type TelemetryModel = (typeof telemetryModels)[number] | "unknown";
+export const telemetryServiceTiers = [
+  "standard",
+  "fast",
+  "ultrafast",
+  "flex",
+  "batch",
+  "scale",
+  "unknown",
+] as const;
+export type TelemetryServiceTier = (typeof telemetryServiceTiers)[number];
+/** Never export arbitrary provider labels. Missing/unrecognized evidence stays unknown. */
+export function telemetryServiceTier(
+  value: string | null,
+): TelemetryServiceTier {
+  return (telemetryServiceTiers as readonly string[]).includes(value ?? "")
+    ? (value as TelemetryServiceTier)
+    : "unknown";
+}
 export type TelemetryOs = "macos" | "windows" | "linux" | "unknown";
 export type TelemetryPerformance = {
   speedTurns: number;
@@ -14,6 +32,8 @@ export type TelemetryPerformance = {
 export type TelemetryUsage = {
   provider: TelemetryProvider;
   model: TelemetryModel;
+  /** Absent legacy reports have unknown served tier. */
+  serviceTier?: TelemetryServiceTier;
   turns: number;
   inputTokens: number | null;
   cachedInputTokens: number | null;
@@ -170,10 +190,15 @@ export function serializeDailyTelemetry(
           "cachedInputTokens",
           "outputTokens",
           "estimatedCostUsd",
+          ...(Object.hasOwn(row, "serviceTier") ? ["serviceTier"] : []),
           ...(Object.hasOwn(row, "performance") ? ["performance"] : []),
         ]) ||
         !["codex", "claude", "antigravity"].includes(row.provider) ||
         (row.model !== "unknown" && !models.has(row.model)) ||
+        (Object.hasOwn(row, "serviceTier") &&
+          !(telemetryServiceTiers as readonly unknown[]).includes(
+            row.serviceTier,
+          )) ||
         !count(row.turns) ||
         ![row.inputTokens, row.cachedInputTokens, row.outputTokens].every(
           nullableCount,
@@ -194,12 +219,19 @@ export function serializeDailyTelemetry(
         !validTelemetryPerformance(row.performance, row.turns)
       )
         throw new Error("Invalid telemetry performance.");
-      const key = row.provider + "/" + row.model;
+      const key = JSON.stringify([
+        row.provider,
+        row.model,
+        row.serviceTier ?? "unknown",
+      ]);
       if (groups.has(key)) throw new Error("Duplicate telemetry group.");
       groups.add(key);
       return {
         provider: row.provider,
         model: row.model,
+        ...(row.serviceTier !== undefined
+          ? { serviceTier: row.serviceTier }
+          : {}),
         turns: row.turns,
         inputTokens: row.inputTokens,
         cachedInputTokens: row.cachedInputTokens,
@@ -227,7 +259,9 @@ export function serializeDailyTelemetry(
             ? -1
             : a.model > b.model
               ? 1
-              : 0,
+              : (a.serviceTier ?? "unknown").localeCompare(
+                  b.serviceTier ?? "unknown",
+                ),
     );
   const body = JSON.stringify({
     installId: payload.installId,
