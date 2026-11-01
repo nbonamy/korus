@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.48.4",
+  "currentVersion": "0.48.5",
   "releases": [
+    {
+      "version": "0.48.5",
+      "releasedAt": "2026-11-01",
+      "sourceSha256": "b4a44ae2fcdfa54a01184e757b3217f5a1153b4baea1bf8a729afb1e9171c88d",
+      "markdown": "### Improvements and fixes\n\n- **Analytics:** Compare usage, estimated costs, and performance by model and\n  service tier, or group tiers together.\n- Open Analytics directly from the account menu.\n- **Missions:** Expand either the workbench or conversation, restore the split\n  view, and remember the expanded pane for each Mission.\n- Keep repository delivery buttons visible in narrow Mission panes.\n- Collapse and reopen agent and artifact sidebars by dragging their dividers.\n- Keep saved drafts when recalling them with Shift-click."
+    },
     {
       "version": "0.48.4",
       "releasedAt": "2026-11-01",

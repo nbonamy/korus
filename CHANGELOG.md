@@ -4,6 +4,19 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.48.5] - 2026-11-01
+
+### Improvements and fixes
+
+- **Analytics:** Compare usage, estimated costs, and performance by model and
+  service tier, or group tiers together.
+- Open Analytics directly from the account menu.
+- **Missions:** Expand either the workbench or conversation, restore the split
+  view, and remember the expanded pane for each Mission.
+- Keep repository delivery buttons visible in narrow Mission panes.
+- Collapse and reopen agent and artifact sidebars by dragging their dividers.
+- Keep saved drafts when recalling them with Shift-click.
+
 ## [0.48.4] - 2026-11-01
 
 ### Improvements and fixes

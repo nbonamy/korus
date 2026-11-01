@@ -24,6 +24,73 @@ function representGitHubRepository(agent: ReturnType<typeof createInitialSnapsho
 }
 
 describe('AppShell missions', () => {
+  it('groups teammate mentions by Mission, prioritizes the open Mission, and keeps stable targets', async () => {
+    const snapshot = createInitialSnapshot();
+    const ordinary = snapshot.agents[0]!;
+    const team = snapshot.teams[0]!;
+    const addAgent = (id: string) => {
+      const agent = { ...ordinary, id, name: `Agent · Very long generated Mission name · ${id}` };
+      snapshot.agents.push(agent);
+      team.agentIds.push(id);
+      return agent;
+    };
+    const olderLead = addAgent('older-lead');
+    const lead = addAgent('current-lead');
+    const app = addAgent('app-worker');
+    const sdk = addAgent('sdk-worker');
+    const previousLead = addAgent('previous-stage-lead');
+    const older = createMission(snapshot, { outcome: 'Refresh the website', workflowType: 'shapeAndShipFeature', teamId: team.id, orchestratorMemberId: ordinary.id });
+    prepareMissionLead(older, olderLead.id);
+    const mission = createMission(snapshot, { outcome: 'Ship infinite scrolling', workflowType: 'shapeAndShipFeature', teamId: team.id, orchestratorMemberId: ordinary.id });
+    mission.stage = 'implementation';
+    prepareMissionLead(mission, previousLead.id);
+    mission.execution!.runs.push({ ...mission.execution!.runs[0]!, id: 'latest-lead-run', stage: 'tickets', workerId: lead.id });
+    for (const [index, agent] of [app, sdk].entries()) {
+      mission.execution!.runs.push({ ...mission.execution!.runs[0]!, id: agent.id, stage: 'implementation', workerId: agent.id, repositoryPath: `/repos/${index === 0 ? 'korus' : 'sdk'}`, ticketIndex: index });
+    }
+    const sendPromptAction = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mountShell({ snapshot, realConversationPane: true, sendPromptAction });
+    const groups = () => conversationControllerState(wrapper).catalogs!.mentionGroups!;
+    try {
+      expect(groups().map(group => group.label)).toEqual(['Agents', `Mission • ${older.outcome}`, `Mission • ${mission.outcome}`]);
+      expect(groups()[0]!.items.map(item => item.id)).not.toContain(lead.id);
+      expect(groups()[2]!.items.map(item => item.label)).toEqual(['Mission lead', 'korus', 'sdk']);
+      expect(groups().flatMap(group => group.items).some(item => item.id === previousLead.id)).toBe(false);
+      wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', mission.id);
+      await wrapper.setProps({ activeAgent: lead });
+      await flushPromises();
+      expect(groups().map(group => group.label)).toEqual([`Mission • ${mission.outcome}`, 'Agents', `Mission • ${older.outcome}`]);
+      const editor = wrapper.get<HTMLElement>('.mission-conversation-rail .chat-rich-text-editor');
+      editor.element.textContent = '@';
+      await editor.trigger('input');
+      await flushPromises();
+      expect(wrapper.findAll('.chat-composer-at-menu__section').map(section => section.text()).slice(0, 3))
+        .toEqual([`Mission • ${mission.outcome}`, 'Agents', `Mission • ${older.outcome}`]);
+      expect(wrapper.findAll('.agent-mention--menu').slice(0, 3).map(item => item.text()))
+        .toEqual(['Mission lead', 'korus', 'sdk']);
+      expect(groups()[0]!.items[1]).toMatchObject({ id: app.id, value: `agent:${app.id}`, payload: { agentId: app.id } });
+      // The Mission heading remains searchable even though its agents have compact labels.
+      editor.element.textContent = '@infinite';
+      await editor.trigger('input');
+      await flushPromises();
+      expect(wrapper.findAll('.agent-mention--menu').map(item => item.text())).toEqual(['Mission lead', 'korus', 'sdk']);
+      await wrapper.findAll('.chat-composer-at-menu__item')[1]!.trigger('mousedown');
+      await editor.trigger('keydown', { key: 'Enter' });
+      await flushPromises();
+      expect(sendPromptAction).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ content: expect.arrayContaining([
+        expect.objectContaining({ type: 'mention', kind: 'custom', groupId: `mission:${mission.id}`, id: app.id, value: `agent:${app.id}`, label: 'korus' }),
+      ]) }));
+      wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', older.id);
+      await wrapper.setProps({ activeAgent: olderLead });
+      await flushPromises();
+      expect(groups()[0]!.label).toBe(`Mission • ${older.outcome}`);
+      wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('select-agent', ordinary.id);
+      await wrapper.setProps({ activeAgent: ordinary });
+      await flushPromises();
+      expect(groups().map(group => group.label)).toEqual(['Agents', `Mission • ${older.outcome}`, `Mission • ${mission.outcome}`]);
+    } finally { wrapper.unmount(); }
+  });
+
   it.each(['README.md', '/workspace/mission/README.md', '/tmp/telemetry-merge3-evidence.json'])('opens a rendered Mission document link in a dialog without hiding the Mission (%s)', async target => {
     const evidence = target.endsWith('.json');
     const path = evidence ? target : 'README.md';

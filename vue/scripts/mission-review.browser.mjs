@@ -45,6 +45,7 @@ test('Mission review keeps actions visible and applies the implementation model 
           import { createMission } from '/core/src/missions.ts';
           import { applyMissionDebugFixture } from '/backend/src/mission-debug-fixtures.ts';
           import MissionWorkspace from '/vue/src/components/MissionWorkspace.vue';
+          import MissionShipBoard from '/vue/src/components/MissionShipBoard.vue';
           const snapshot = createInitialSnapshot();
           const mission = createMission(snapshot, { outcome: 'Review a long Mission brief', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0].id, orchestratorMemberId: snapshot.agents[0].id });
           applyMissionDebugFixture(snapshot, mission.id, 'requirements');
@@ -55,7 +56,30 @@ test('Mission review keeps actions visible and applies the implementation model 
             run.proposal.tickets = [{ title: 'Implement checkout', repositoryPath: '/repo', done: false }];
             snapshot.agents.find(agent => agent.id === run.workerId).backendDefaults = { kind: 'codex', model: 'planner', reasoningEffort: 'high' };
           }
-          const app = createApp({ render: () => h(MissionWorkspace, { mission, agents: snapshot.agents, executeMission: async input => { window.lastApproval = input; } }, { conversation: () => h('p', 'Fixture conversation') }) });
+          const delivery = new URLSearchParams(location.search).has('delivery');
+          const worker = snapshot.agents[0];
+          const branch = 'mission/measure-korus-usage-privately-with-an-opt-in-dashboard-and-evidence';
+          const workflow = { repository: 'owner/korus', folder: '/repos/korus-mission', isLinkedWorktree: true,
+            baseBranch: 'main', branch, detached: false, remote: 'origin', remoteUrl: 'git@github.com:owner/korus.git',
+            upstream: null, ahead: 1, behind: 0, files: [], stagedFiles: [], unstagedFiles: [], githubConnected: true,
+            stagedAddedLines: 0, stagedRemovedLines: 0, unstagedAddedLines: 0, unstagedRemovedLines: 0,
+            untrackedAddedLines: 0, untrackedRemovedLines: 0 };
+          if (delivery) {
+            mission.stage = 'ship';
+            mission.execution.debugFixture = false;
+            mission.execution.workspaces = [{ repositoryPath: '/repos/korus', path: workflow.folder, branch }];
+            mission.execution.deliveries = [{ repositoryPath: '/repos/korus', agentId: worker.id, status: 'pending' }];
+          }
+          const app = createApp({ render: () => delivery
+            ? h('main', { class: 'delivery-layout-fixture', style: 'width:960px;margin:24px' }, [
+                h('h2', 'Repository delivery'),
+                h(MissionShipBoard, { mission, agents: snapshot.agents, gitStatuses: {},
+                  getWorkflow: async () => workflow, mergeBranch: async () => workflow,
+                  createPullRequest: async () => workflow, updateFromBase: async () => ({ workflow, baseBranch: 'main', branch, conflicts: [] }),
+                  openInAvailable: true, openInApplications: { defaultApplication: 'vscode', applications: [{ id: 'vscode', label: 'VS Code' }] },
+                }),
+              ])
+            : h(MissionWorkspace, { mission, agents: snapshot.agents, executeMission: async input => { window.lastApproval = input; } }, { conversation: () => h('p', 'Fixture conversation') }) });
           app.provide(backendChoicesKey, computed(() => ['codex', 'claude']));
           app.provide(backendModelCatalogKey, { listModels: async () => [
             { id: 'planner', model: 'planner', displayName: 'Planner', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'High' }] },
@@ -154,6 +178,33 @@ test('Mission review keeps actions visible and applies the implementation model 
       await page.screenshot({ path: path.join(process.env.MISSION_REVIEW_ARTIFACTS, 'implementation-model.png') });
       await writeFile(path.join(process.env.MISSION_REVIEW_ARTIFACTS, 'implementation-model.json'), JSON.stringify(approval, null, 2));
     }
+    await page.goto(`${server.resolvedUrls.local[0]}mission-review-layout?delivery`);
+    const deliveryButtons = page.locator('.git-workflow-control__delivery-action');
+    await deliveryButtons.first().waitFor();
+    const deliveryMeasurements = [];
+    for (const { viewport, pane } of [{ viewport: 1440, pane: 960 }, { viewport: 1440, pane: 440 }, { viewport: 320, pane: 272 }]) {
+      await page.setViewportSize({ width: viewport, height: 800 });
+      await page.locator('.delivery-layout-fixture').evaluate((element, width) => { element.style.width = width + 'px'; }, pane);
+      const layout = await page.locator('.mission-ship__card').evaluate(card => ({
+        card: card.getBoundingClientRect().toJSON(),
+        clientWidth: card.clientWidth, scrollWidth: card.scrollWidth,
+        controls: [...card.querySelectorAll('header button, .mission-ship__status, .mission-ship__actions button')].map(element => ({
+          text: element.textContent.trim(), bounds: element.getBoundingClientRect().toJSON(),
+        })),
+        actions: [...card.querySelectorAll('.git-workflow-control__delivery-action')].map(element => element.getBoundingClientRect().toJSON()),
+      }));
+      deliveryMeasurements.push({ viewport, pane, ...layout });
+      assert.ok(layout.scrollWidth <= layout.clientWidth + 1, 'the delivery card must not overflow horizontally');
+      for (const { text, bounds } of layout.controls) assert.ok(bounds.left >= layout.card.left && bounds.right <= layout.card.right + 1,
+        text + ' must stay inside the delivery card');
+      assert.equal(layout.actions.length, 3);
+      if (pane <= 440) {
+        for (let index = 1; index < layout.actions.length; index++) assert.ok(layout.actions[index].top >= layout.actions[index - 1].bottom,
+          'delivery actions must stack in a narrow pane even in a wide window');
+      } else assert.ok(layout.actions.every(bounds => Math.abs(bounds.top - layout.actions[0].top) <= 1), 'wide delivery cards retain one action row');
+      if (process.env.MISSION_REVIEW_ARTIFACTS) await page.screenshot({ path: path.join(process.env.MISSION_REVIEW_ARTIFACTS, 'delivery-' + pane + '.png'), fullPage: true });
+    }
+    if (process.env.MISSION_REVIEW_ARTIFACTS) await writeFile(path.join(process.env.MISSION_REVIEW_ARTIFACTS, 'delivery-layout.json'), JSON.stringify(deliveryMeasurements, null, 2));
     if (process.env.MISSION_REVIEW_ARTIFACTS) await writeFile(path.join(process.env.MISSION_REVIEW_ARTIFACTS, 'measurements.json'), JSON.stringify(measurements, null, 2));
   } finally {
     await browser?.close();
