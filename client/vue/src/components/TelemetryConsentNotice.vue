@@ -19,48 +19,20 @@
   </section>
 </template>
 <script setup lang="ts">
-import { inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { inject, onMounted, ref } from 'vue';
+import { useForegroundTimeout } from '../shared/use-foreground-timeout';
 import { useI18n } from 'vue-i18n';
 import { product } from '@workspace/core/product';
 import { telemetryNoticeReadyKey, useTelemetryConsent } from './use-telemetry-consent';
 const shellReady = inject(telemetryNoticeReadyKey, ref(false));
 const { t } = useI18n();
 const { state, busy, failed, load, change, noticeVisible, noticeRemainingMs, automaticAttempted, enableAutomatically } = useTelemetryConsent();
-let timer: ReturnType<typeof setTimeout> | undefined;
-let startedAt: number | undefined;
-function pauseTimer() {
-  if (timer !== undefined) clearTimeout(timer);
-  timer = undefined;
-  if (startedAt !== undefined) {
-    noticeRemainingMs.value = Math.max(0, noticeRemainingMs.value - (performance.now() - startedAt));
-    startedAt = undefined;
-  }
-}
-function updateTimer() {
-  pauseTimer();
-  if (!shellReady.value || !noticeVisible.value || state.value?.enabled !== undefined || busy.value || automaticAttempted.value || document.visibilityState !== 'visible' || !document.hasFocus()) return;
-  startedAt = performance.now();
-  timer = setTimeout(() => {
-    timer = undefined;
-    startedAt = undefined;
-    noticeRemainingMs.value = 0;
-    void enableAutomatically();
-  }, noticeRemainingMs.value);
-}
-watch([shellReady, noticeVisible, state, busy, automaticAttempted], updateTimer);
-onMounted(() => {
-  document.addEventListener('visibilitychange', updateTimer);
-  window.addEventListener('focus', updateTimer);
-  window.addEventListener('blur', updateTimer);
-  void load();
-  updateTimer();
-});
-onBeforeUnmount(() => {
-  pauseTimer();
-  document.removeEventListener('visibilitychange', updateTimer);
-  window.removeEventListener('focus', updateTimer);
-  window.removeEventListener('blur', updateTimer);
-});
+useForegroundTimeout(
+  () => shellReady.value && noticeVisible.value && state.value?.enabled === undefined && !busy.value && !automaticAttempted.value,
+  noticeRemainingMs,
+  enableAutomatically,
+);
+onMounted(load);
 </script>
 <style scoped>
 /* Keep the attached notice above the header shadow across workspace boundaries. */

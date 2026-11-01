@@ -196,6 +196,7 @@ Search by behavior first.
 | Local or remote host selection | `HostSelector` | `client/vue/src/components/` |
 | Repository image or emoji mark | `RepositoryIcon` (square, borderless avatar presentation) | `client/vue/src/components/` |
 | Reopen collapsed sidebar | `SidebarExpandButton` | `client/vue/src/shared/` |
+| Foreground-only UI timeout | `useForegroundTimeout` | `client/vue/src/shared/use-foreground-timeout.ts` |
 | Animate a pane collapsing or expanding | `PaneTransition` (wrap a single `v-if` or `v-show` pane) | `client/vue/src/shared/` |
 | Workspace header / body containment | `WorkspaceHeader`, `.workspace-header__title`, `.workspace-body` | `client/vue/src/shared/`, `styles/base.css` |
 | Dialog chrome and footer actions | `.app-dialog`, `.app-button` (add `.app-button--small` for compact actions) | `client/vue/src/styles/base.css` |
