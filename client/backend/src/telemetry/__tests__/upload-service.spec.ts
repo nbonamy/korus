@@ -598,6 +598,7 @@ it("retries frozen hourly bytes before uploading a late provider correction", as
       cachedInputTokens: 60,
       outputTokens: 12,
       estimatedCostUsd: null,
+      measuredTurns: 1, costCoverage: "unavailable",
     },
   ]);
   expect(body).not.toContain("PRIVATE_CANARY");

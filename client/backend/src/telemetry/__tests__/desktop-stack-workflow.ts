@@ -241,6 +241,8 @@ export async function desktopStackWorkflow(endpoint: string) {
         cachedInputTokens: 80,
         outputTokens: 20,
         estimatedCostUsd: null,
+        measuredTurns: 1,
+        costCoverage: "unavailable",
         performance: { speedTurns: 1, outputTokens: 20, generationMs: 1000, ttftMs: 300, ttftTurns: 1 },
       },
     ]);

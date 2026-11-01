@@ -1123,9 +1123,10 @@ part of this path.
 The local telemetry preview drains pending ledger observations and uses a numeric
 projection of that same SQLite ledger for one UTC reporting day. Tokens and
 turns retain execution-start attribution; costs retain request-day/model
-attribution. Cost-only groups have zero execution tokens. Missing measurements in
-any contributing execution make that group's token fields null. Only complete
-ledger cost coverage becomes a number; partial subtotals remain null.
+attribution. Cost-only groups have zero execution tokens. Token fields retain
+known subtotals with a measured-turn count; an entirely unmeasured group remains
+null. Estimated costs retain the known subtotal with separate complete, partial
+or unavailable coverage. Missing measurements never erase measured contributions.
 
 The shared wire allowlist contains canonical IDs from the embedded pricing catalog,
 independent of runtime/user model catalogs. Other IDs coalesce into `unknown`.

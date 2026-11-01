@@ -80,7 +80,7 @@ it('reprices saved usage through the released usage/get contract, then keeps pri
   const preview = () => usage.previewTelemetry({
     installId: 'd8b65ff5-179c-49b9-ac3a-f60a54a0f43f', day: '2026-11-02',
   }, '1.2.3', 'linux');
-  const body = (usd: number) => `{"installId":"d8b65ff5-179c-49b9-ac3a-f60a54a0f43f","day":"2026-11-02","appVersion":"1.2.3","os":"linux","usage":[{"provider":"codex","model":"gpt-6-sol","serviceTier":"fast","turns":1,"inputTokens":1000000,"cachedInputTokens":0,"outputTokens":0,"estimatedCostUsd":${usd}}]}`;
+  const body = (usd: number) => `{"installId":"d8b65ff5-179c-49b9-ac3a-f60a54a0f43f","day":"2026-11-02","appVersion":"1.2.3","os":"linux","usage":[{"provider":"codex","model":"gpt-6-sol","serviceTier":"fast","turns":1,"inputTokens":1000000,"cachedInputTokens":0,"outputTokens":0,"estimatedCostUsd":${usd},"measuredTurns":1,"costCoverage":"complete"}]}`;
   expect(await cost()).toStrictEqual(expected(4));
   const sealed = await preview();
   expect(Buffer.from(sealed.body, 'utf8')).toStrictEqual(Buffer.from(body(4), 'utf8'));

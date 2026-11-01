@@ -39,6 +39,10 @@ export type TelemetryUsage = {
   cachedInputTokens: number | null;
   outputTokens: number | null;
   estimatedCostUsd: number | null;
+  /** Known token subtotals cover this many turns; absent legacy values are inferred. */
+  measuredTurns?: number;
+  /** Coverage of the known cost subtotal, independently of token coverage. */
+  costCoverage?: "complete" | "partial" | "unavailable";
   /** Absent in older reports or when no timing was measured. */
   performance?: TelemetryPerformance;
 };
@@ -174,6 +178,8 @@ export function serializeDailyTelemetry(
           "cachedInputTokens",
           "outputTokens",
           "estimatedCostUsd",
+          ...(Object.hasOwn(row, "measuredTurns") ? ["measuredTurns"] : []),
+          ...(Object.hasOwn(row, "costCoverage") ? ["costCoverage"] : []),
           ...(Object.hasOwn(row, "serviceTier") ? ["serviceTier"] : []),
           ...(Object.hasOwn(row, "performance") ? ["performance"] : []),
         ]) ||
@@ -198,6 +204,14 @@ export function serializeDailyTelemetry(
           ))
       )
         throw new Error("Invalid telemetry usage.");
+      if (Object.hasOwn(row, "measuredTurns") &&
+        (!count(row.measuredTurns) || row.measuredTurns! > row.turns ||
+          (row.measuredTurns! > 0 && [row.inputTokens,row.cachedInputTokens,row.outputTokens].some(value=>value===null))))
+        throw new Error("Invalid telemetry coverage.");
+      if (Object.hasOwn(row, "costCoverage") &&
+        (!["complete","partial","unavailable"].includes(row.costCoverage!) ||
+          (row.costCoverage === "unavailable") !== (row.estimatedCostUsd === null)))
+        throw new Error("Invalid telemetry coverage.");
       if (
         row.performance !== undefined &&
         !validTelemetryPerformance(row.performance, row.turns)
@@ -221,6 +235,8 @@ export function serializeDailyTelemetry(
         cachedInputTokens: row.cachedInputTokens,
         outputTokens: row.outputTokens,
         estimatedCostUsd: row.estimatedCostUsd,
+        ...(row.measuredTurns !== undefined ? {measuredTurns:row.measuredTurns} : {}),
+        ...(row.costCoverage !== undefined ? {costCoverage:row.costCoverage} : {}),
         ...(row.performance
           ? {
               performance: {

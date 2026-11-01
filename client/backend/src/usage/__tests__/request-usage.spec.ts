@@ -93,16 +93,16 @@ it("keeps service-tier performance and actual request prices separate across cor
       day: '2026-10-15',
     });
     const projected = [
-      { provider: 'codex', model: 'gpt-6.1-sol', serviceTier: 'fast', turns: 2,
+      { provider: 'codex', model: 'gpt-6.1-sol', serviceTier: 'fast', turns: 2, measuredTurns: 2, costCoverage: "complete",
         inputTokens: 2000, cachedInputTokens: 1000, outputTokens: 200, estimatedCostUsd: 0.0082,
         performance: { speedTurns: 2, outputTokens: 200, generationMs: 10000, ttftMs: 2000, ttftTurns: 2 } },
-      { provider: 'codex', model: 'gpt-6.1-sol', serviceTier: 'standard', turns: 1,
+      { provider: 'codex', model: 'gpt-6.1-sol', serviceTier: 'standard', turns: 1, measuredTurns: 1, costCoverage: "complete",
         inputTokens: 1000, cachedInputTokens: 500, outputTokens: 100, estimatedCostUsd: 0.00205,
         performance: { speedTurns: 1, outputTokens: 100, generationMs: 10000, ttftMs: 1000, ttftTurns: 1 } },
-      { provider: 'codex', model: 'gpt-6.1-sol', serviceTier: 'ultrafast', turns: 1,
+      { provider: 'codex', model: 'gpt-6.1-sol', serviceTier: 'ultrafast', turns: 1, measuredTurns: 1, costCoverage: "complete",
         inputTokens: 1000, cachedInputTokens: 500, outputTokens: 100, estimatedCostUsd: 0.0123,
         performance: { speedTurns: 1, outputTokens: 100, generationMs: 10000, ttftMs: 1000, ttftTurns: 1 } },
-      { provider: 'codex', model: 'gpt-6.1-sol', serviceTier: 'unknown', turns: 1,
+      { provider: 'codex', model: 'gpt-6.1-sol', serviceTier: 'unknown', turns: 1, measuredTurns: 1, costCoverage: "complete",
         inputTokens: 1000, cachedInputTokens: 500, outputTokens: 100, estimatedCostUsd: 0.00205,
         performance: { speedTurns: 1, outputTokens: 100, generationMs: 10000, ttftMs: 1000, ttftTurns: 1 } },
     ];
@@ -130,7 +130,7 @@ it("keeps service-tier performance and actual request prices separate across cor
     ]);
     // Fast execution coverage remains partial. The downgraded served request
     // adds its known price to standard without moving execution timing.
-    const partialProjection = projected.map(row => ({ ...row, estimatedCostUsd: row.serviceTier === "fast" ? null : row.serviceTier === "standard" ? 0.0041 : row.estimatedCostUsd }));
+    const partialProjection = projected.map(row => ({ ...row, estimatedCostUsd: row.serviceTier === "fast" ? 0.0041 : row.serviceTier === "standard" ? 0.0041 : row.estimatedCostUsd, costCoverage: row.serviceTier === "fast" ? "partial" : row.costCoverage }));
     expect(project()).toStrictEqual(partialProjection);
     expect(ledger.query({ group: 'model', groupServiceTiers: true }).cost).toStrictEqual(summary().cost);
     const persisted = summary();
