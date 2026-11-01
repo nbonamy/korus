@@ -97,6 +97,10 @@ it("keeps service-tier performance and actual request prices separate across cor
       inputTokens: 5000, cachedInputTokens: 2500, outputTokens: 500, estimatedCostUsd: 0.0246,
       performance: { speedTurns: 5, outputTokens: 500, generationMs: 40000, ttftMs: 5000, ttftTurns: 5 } }];
     expect(project()).toStrictEqual(projected);
+    const grouped = ledger.query({ group: 'model', groupServiceTiers: true });
+    expect(grouped.rows).toMatchObject([{ label: 'gpt-6.1-sol', started: 5,
+      tokens: { output: 500 }, speed: { turns: 5, outputTokens: 500, generationMs: 40000 }, cost: { usd: 0.0246 } }]);
+    expect(grouped.rows).toHaveLength(1);
     const served = (turnId: string, reportedServiceTier: string) => request({
       provider: 'codex', model: 'gpt-6.1-sol', turnId, apiProvider: 'openai', requestedServiceTier: 'fast', reportedServiceTier,
       cacheMode: 'implicit', pricingContext: { context: 1000, region: null },
@@ -115,6 +119,7 @@ it("keeps service-tier performance and actual request prices separate across cor
     // not establish complete request coverage, so the wire price stays unknown.
     const partialProjection = projected.map(row => ({ ...row, estimatedCostUsd: null }));
     expect(project()).toStrictEqual(partialProjection);
+    expect(ledger.query({ group: 'model', groupServiceTiers: true }).cost).toStrictEqual(summary().cost);
     const persisted = summary();
     await ledger.close();
     ledger = new UsageLedger(file, () => at + 60000);

@@ -84,6 +84,8 @@ export type UsageFilter = {
   repository?: string;
   agentId?: string;
   apiProvider?: ApiPricingProvider;
+  /** Combine service tiers within each model; separate variants by default. */
+  groupServiceTiers?: boolean;
   /** IANA timezone in which days start and end; UTC when absent. Storage is unaffected. */
   timeZone?: string;
   group?:

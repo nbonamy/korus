@@ -35,6 +35,7 @@ export function useUsageAnalytics() {
   const view = ref<UsageView>("usage");
   const measure = ref<UsageMeasure>("total");
   const grouping = ref<UsageGrouping>("model");
+  const groupServiceTiers = ref(false);
   const filter = ref({
     from: shiftDay(today(), -6),
     to: today(),
@@ -134,7 +135,7 @@ export function useUsageAnalytics() {
       const days = periodDays.value;
       const [provider, model, previous, repository] = await Promise.all([
         appApi!.getUsage({ ...query, group: "provider" }),
-        appApi!.getUsage({ ...query, group: "model" }),
+        appApi!.getUsage({ ...query, group: "model", ...(groupServiceTiers.value ? { groupServiceTiers: true } : {}) }),
         appApi!
           .getUsage({
             ...query,
@@ -177,6 +178,7 @@ export function useUsageAnalytics() {
   watch(grouping, (next) => {
     if (next === "repository" && !projections.value?.repository) void loadProjections(true);
   });
+  watch(groupServiceTiers, () => void loadProjections(true));
   function setProvider(provider: string): void {
     filter.value.provider = provider;
     void loadProjections();
@@ -228,6 +230,7 @@ export function useUsageAnalytics() {
     view,
     measure,
     grouping,
+    groupServiceTiers,
     filter,
     projections,
     busy,

@@ -112,14 +112,16 @@ it("plots service-tier model rates without stacking or treating missing measurem
       },
     ],
   };
-  const getUsage = vi.fn(async () => summary);
+  const grouped = { ...summary, rows: [{ ...row('grouped', 550, 18000), key: 'gpt-6.1-sol',
+    modelVariant: undefined, started: 22 }], daily: [] };
+  const getUsage = vi.fn(async (filter?: { groupServiceTiers?: boolean }) => filter?.groupServiceTiers ? grouped : summary);
   setElectronTestClient({ getUsage });
   const wrapper = mount(UsagePanel);
   try {
     await flushPromises();
     await wrapper
       .findAll('[role="tab"]')
-      .find((tab) => tab.text() === "Model performance")!
+      .find((tab) => tab.text() === "Performance")!
       .trigger("click");
     expect(getUsage).toHaveBeenCalledWith(expect.objectContaining({ group: "model" }));
     expect(wrapper.get('[aria-label="Output Speed"] tbody').text()).toContain("gpt-6.1-sol · fast");
@@ -150,6 +152,26 @@ it("plots service-tier model rates without stacking or treating missing measurem
         .findAll("path.edge")
         .every((path) => !path.attributes("d")?.includes("C")),
     ).toBe(true);
+    await wrapper.get('[aria-label="Analytics options"]').trigger('click');
+    const toggle = () => document.body.querySelector<HTMLElement>('[role="menu"][aria-label="Analytics options"] [role="menuitemcheckbox"]')!;
+    expect(toggle().textContent).toContain('Group service tiers');
+    expect(toggle().getAttribute('aria-checked')).toBe('false');
+    expect(toggle().querySelector('.tabler-icon-bolt')).not.toBeNull();
+    toggle().click();
+    await flushPromises();
+    expect(getUsage).toHaveBeenCalledWith(expect.objectContaining({ group: 'model', groupServiceTiers: true }));
+    expect(wrapper.get('[aria-label="Output Speed"] tbody').text()).toContain('30.6');
+    expect(wrapper.get('[aria-label="Output Speed"] tbody').text()).not.toContain(' · fast');
+    await wrapper.get('#usage-tab-usage').trigger('click');
+    expect(wrapper.get('[aria-label="Usage breakdown"] tbody').findAll('tr')).toHaveLength(1);
+    await wrapper.get('#usage-tab-performance').trigger('click');
+    await wrapper.get('[aria-label="Analytics options"]').trigger('click');
+    expect(toggle().getAttribute('aria-checked')).toBe('true');
+    expect(toggle().querySelector('.tabler-icon-check')).not.toBeNull();
+    expect(toggle().querySelector('.tabler-icon-bolt')).toBeNull();
+    toggle().click();
+    await flushPromises();
+    expect(wrapper.get('[aria-label="Output Speed"] tbody').text()).toContain(' · fast');
     await chooseProvider(wrapper, "claude");
     await flushPromises();
     expect(getUsage).toHaveBeenCalledWith(
@@ -295,7 +317,7 @@ it("opens on total tokens by provider and regroups every chart from one toolbar 
   expect(getUsage).toHaveBeenCalledTimes(4); // Both projections, the activity window and the comparison period load once; chart controls do not fetch or mix periods.
   await wrapper
     .findAll('[role="tab"]')
-    .find((t) => t.text() === "Model performance")!
+    .find((t) => t.text() === "Performance")!
     .trigger("click");
   await flushPromises();
   // 100 provider-reported tokens over 4 working seconds after the first token.
@@ -364,7 +386,7 @@ it("scales model behavior bars by value and uses each model provider color", asy
   await flushPromises();
   await wrapper
     .findAll('[role="tab"]')
-    .find((tab) => tab.text() === "Model performance")!
+    .find((tab) => tab.text() === "Performance")!
     .trigger("click");
   await flushPromises();
 
@@ -450,7 +472,7 @@ it("keeps TTFT available and shows N/A when speed is unavailable", async () => {
   await flushPromises();
   await wrapper
     .findAll('[role="tab"]')
-    .find((t) => t.text() === "Model performance")!
+    .find((t) => t.text() === "Performance")!
     .trigger("click");
   await flushPromises();
   const ttft = wrapper.get('[aria-label="Time to First Token (TTFT)"]');
@@ -634,8 +656,9 @@ it("keeps the activity grid mounted and cached across date/provider loads and fa
     await flushPromises();
     const activity = wrapper.get(".usage-activity").element;
     const activityCalls = () => getUsage.mock.calls.filter(([filter]) => filter.from === window.from);
+    expect(wrapper.get('.usage-filters [role="radiogroup"]').findAll('.el-segmented__item-label').map(item => item.text())).toStrictEqual(['7d', '30d', '90d']);
     delay = true;
-    await choose(wrapper, '.usage-filters [role="radiogroup"]', "30 days");
+    await choose(wrapper, '.usage-filters [role="radiogroup"]', "30d");
     expect(wrapper.get(".usage-activity").element).toBe(activity);
     await chooseProvider(wrapper, "claude");
     expect(wrapper.get(".usage-activity").element).toBe(activity);

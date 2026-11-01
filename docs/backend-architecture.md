@@ -1074,12 +1074,16 @@ Model grouping uses the raw model ID and normalized service tier together.
 Normal, default and standard tiers share a standard variant; OpenAI priority and
 fast share a Fast variant. Anthropic's reported Fast inference mode distinguishes
 its Fast variant from standard capacity. Missing tiers remain a separate unknown
-variant. Each model row and daily group exposes an opaque `key` and a
+variant. Each tier-separated model row and daily group exposes an opaque `key` and a
 `modelVariant` descriptor; the raw model ID remains unchanged for pricing and
 filtering. Execution performance uses its captured start tier, while request cost
 uses served evidence, including downgrades. OpenAI's served Fast alias resolves to
 the catalog's priority pricing rules without an additional multiplier. Retained
 ledgers regroup directly from stored tier evidence without rewriting records.
+Local Analytics queries may explicitly combine service tiers within a model.
+This sums the same token, timing and cost contributions; rates still use summed
+measurements and each request retains its tier-specific price.
+
 Daily telemetry combines tiers into canonical provider/model groups; local variant
 keys and service-tier metadata are excluded from its payload.
 

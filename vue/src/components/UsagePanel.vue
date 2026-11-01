@@ -38,6 +38,7 @@
     <UsageToolbar
       v-model:view="view"
       v-model:grouping="grouping"
+      v-model:group-service-tiers="groupServiceTiers"
       :filter="filter"
       :selected-period="selectedPeriod"
       :date-label="dateLabel"
@@ -120,6 +121,7 @@ const {
   view,
   measure,
   grouping,
+  groupServiceTiers,
   filter,
   projections,
   busy,

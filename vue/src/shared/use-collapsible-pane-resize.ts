@@ -11,25 +11,32 @@ export function useCollapsiblePaneResize() {
     widthAt: (event: PointerEvent) => number;
     resize: (width: number) => void;
     setOpen: (open: boolean) => void;
+    opposite?: { maximum: number; setOpen: (open: boolean) => void };
+    onEnd?: () => void;
   }): void {
     if (event.button !== 0) return;
     event.preventDefault();
     stopActive?.();
     resizing.value = true;
-    const collapseThreshold = pane.minimum - 24;
-    let collapsed = false;
+    let collapsed: 'pane' | 'opposite' | null = null;
     const move = (event: PointerEvent) => {
       if (event.pointerId !== pointerId) return;
       const width = pane.widthAt(event);
-      if (!collapsed && width < collapseThreshold) {
-        collapsed = true;
-        pane.resize(pane.width);
-        pane.setOpen(false);
-      } else if (width >= (collapsed ? pane.minimum : collapseThreshold)) {
-        if (collapsed) pane.setOpen(true);
-        collapsed = false;
-        pane.resize(width);
+      const maximum = pane.opposite?.maximum ?? Infinity;
+      const next = width < (collapsed === 'pane' ? pane.minimum : pane.minimum - 24) ? 'pane'
+        : width > (collapsed === 'opposite' ? maximum : maximum + 24) ? 'opposite'
+        : null;
+      if (next !== collapsed) {
+        if (collapsed === 'pane') pane.setOpen(true);
+        if (collapsed === 'opposite') pane.opposite?.setOpen(true);
+        collapsed = next;
+        if (next) {
+          pane.resize(pane.width);
+          if (next === 'pane') pane.setOpen(false);
+          else pane.opposite?.setOpen(false);
+        }
       }
+      if (!collapsed) pane.resize(width);
     };
     const pointerId = event.pointerId;
     const stop = () => {
@@ -39,6 +46,7 @@ export function useCollapsiblePaneResize() {
       window.removeEventListener('blur', stop);
       resizing.value = false;
       stopActive = undefined;
+      pane.onEnd?.();
     };
     const end = (event: PointerEvent) => {
       if (event.pointerId === pointerId) stop();
@@ -51,5 +59,5 @@ export function useCollapsiblePaneResize() {
   }
 
   onScopeDispose(() => stopActive?.());
-  return { resizing, start };
+  return { resizing, start, stop: () => stopActive?.() };
 }
