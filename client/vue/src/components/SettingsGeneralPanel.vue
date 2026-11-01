@@ -200,21 +200,7 @@
           </span>
         </template>
       </FormRow>
-      <FormRow
-        v-if="appClientPlatform === 'desktop'"
-        as="label"
-        :title="$t('telemetry.share')"
-        :error="telemetryFailed ? $t('telemetry.failed') : null"
-      >
-        <template #control>
-          <el-switch
-            :model-value="telemetryState?.enabled === true"
-            :disabled="telemetryBusy || !telemetryState"
-            :aria-label="$t('telemetry.share')"
-            @update:model-value="changeTelemetry($event ? 'enable' : 'disable')"
-          />
-        </template>
-      </FormRow>
+      <TelemetrySharingSetting v-if="appClientPlatform === 'desktop' && appApi" />
     </FormSection>
   </SettingsPanelFrame>
 </template>
@@ -231,9 +217,7 @@ import FormRow from '../shared/form/FormRow.vue';
 import FormSection from '../shared/form/FormSection.vue';
 import { Circle, ShieldCheckIcon } from '../shared/icons/app-icons';
 import { appHostCapabilities, appClientPlatform, appApi } from '../platform-api';
-import { useTelemetryConsent } from './use-telemetry-consent';
-
-const { state: telemetryState, busy: telemetryBusy, failed: telemetryFailed, load: loadTelemetry, change: changeTelemetry } = useTelemetryConsent();
+import TelemetrySharingSetting from './TelemetrySharingSetting.vue';
 
 const defaultPermissionsStatus: SystemPermissionsStatus = {
   platform: 'unknown',
@@ -347,7 +331,6 @@ const screenRecordingDescription = computed(() => {
 });
 
 onMounted(() => {
-  if (appClientPlatform === 'desktop') void loadTelemetry();
   if (appHostCapabilities.systemPermissions) void loadPermissions();
 });
 

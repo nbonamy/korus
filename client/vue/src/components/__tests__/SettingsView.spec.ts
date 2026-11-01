@@ -621,6 +621,7 @@ describe('SettingsView', () => {
     expect(wrapper.text()).not.toContain(`Keep ${product.name} ready in the background`);
     expect(wrapper.text()).not.toContain('System permissions');
     expect(wrapper.text()).not.toContain('Codex executable');
+    expect(wrapper.text()).not.toContain('Share anonymous telemetry data');
   });
 });
 
