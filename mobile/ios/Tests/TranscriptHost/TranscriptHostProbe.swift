@@ -67,11 +67,11 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
     func transferChecks() async {
         var applied = 0
         var resets = 0
-        func transfer(_ includeFrame: Bool) -> String {
+        func transfer(_ includeFrame: Bool, generation: Int = 1, engineInstance: String = "native-engine") -> String {
             let agent: [String: Any] = ["id": "transcript-probe", "teamId": "test-team", "name": "Cached conversation", "backend": "claude", "backendSession": ["kind": "claude", "sessionId": "probe-session"], "status": ["type": "idle"]]
             let snapshot: [String: Any] = ["agentId": "transcript-probe", "sessionId": "probe-session", "messages": [["id": "cached-answer", "agentId": "transcript-probe", "role": "assistant", "status": "complete", "parts": [["type": "text", "text": "Retained native conversation"]]]], "turns": [], "turnIds": [], "activeTurnId": NSNull(), "busy": false, "historyLoading": false, "historyState": ["hasOlder": false, "loadingOlder": false], "answeredClientRequestIds": [], "contextUsage": NSNull(), "plan": NSNull(), "error": NSNull()]
             let frame: [String: Any] = ["type": "claude.conversationSnapshotChanged", "agentId": "transcript-probe", "backend": "claude", "payload": ["revision": 1, "snapshot": snapshot]]
-            let message: [String: Any] = ["identity": "native-cached", "checkpoint": ["epoch": "native-epoch", "revision": 1], "agentId": "transcript-probe", "agent": agent, "generation": 1, "ready": true, "peers": [], "frames": includeFrame ? [frame] : []]
+            let message: [String: Any] = ["engineInstance": engineInstance, "identity": "native-cached", "checkpoint": ["epoch": "native-epoch", "revision": 1], "agentId": "transcript-probe", "agent": agent, "generation": generation, "ready": true, "peers": [], "frames": includeFrame ? [frame] : []]
             return String(data: try! JSONSerialization.data(withJSONObject: message), encoding: .utf8)!
         }
         host.onTransferApplied = { identity, checkpoint in if identity == "native-cached" && checkpoint["revision"] as? Int == 1 { applied += 1 } }
@@ -88,9 +88,19 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
         await wait { applied == 2 }
         let visible = await js("document.body.textContent.includes('Retained native conversation')") as? Bool ?? false
         check(applied == 2 && visible, "cached native selection paints without retransmitting the conversation")
+        host.submit(.transfer, transfer(false, generation: 50))
+        await wait { applied == 3 }
+        select()
+        host.submit(.transfer, transfer(true, engineInstance: "restarted-native-engine"))
+        await wait { !self.loading.isLoading }
+        check(!loading.isLoading && applied == 4 && lastReceipt?.generation == 1,
+              "first restored conversation clears native loading after an independent engine restart")
+        host.submit(.transfer, transfer(false, engineInstance: "restarted-native-engine"))
+        await wait { applied == 5 }
+        let beforeReload = applied
         host.retry()
-        await wait({ applied >= 3 }, milliseconds: 6000)
-        check(resets == 1 && applied >= 3, "reloaded WebView requests and paints a fresh baseline instead of accepting an absent cache")
+        await wait({ applied > beforeReload }, milliseconds: 6000)
+        check(resets == 1 && applied > beforeReload, "reloaded WebView requests and paints a fresh baseline instead of accepting an absent cache")
         host.onTransferApplied = nil
         host.onNeedsReset = nil
     }
