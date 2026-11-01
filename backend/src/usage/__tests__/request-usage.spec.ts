@@ -88,6 +88,10 @@ it("keeps service-tier performance and actual request prices separate across cor
     ]);
     expect(summary().daily?.[0]?.groups?.map(row => row.modelVariant)).toStrictEqual(
       summary().rows.map(row => row.modelVariant));
+    const grouped = ledger.query({ group: 'model', groupServiceTiers: true });
+    expect(grouped.rows).toMatchObject([{ label: 'gpt-6.1-sol', started: 5,
+      tokens: { output: 500 }, speed: { turns: 5, outputTokens: 500, generationMs: 40000 }, cost: { usd: 0.0246 } }]);
+    expect(grouped.rows).toHaveLength(1);
     const served = (turnId: string, reportedServiceTier: string) => request({
       provider: 'codex', model: 'gpt-6.1-sol', turnId, apiProvider: 'openai', requestedServiceTier: 'fast', reportedServiceTier,
       cacheMode: 'implicit', pricingContext: { context: 1000, region: null },
@@ -102,6 +106,7 @@ it("keeps service-tier performance and actual request prices separate across cor
     expect(variants().map(row => [row.serviceTier, row.usd])).toStrictEqual([
       ['standard', 0.0041], ['fast', 0.0041], ['ultrafast', 0.0123], [null, 0.00205],
     ]);
+    expect(ledger.query({ group: 'model', groupServiceTiers: true }).cost).toStrictEqual(summary().cost);
     const persisted = summary();
     await ledger.close();
     ledger = new UsageLedger(file, () => at + 60000);

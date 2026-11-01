@@ -321,10 +321,13 @@ export class UsageLedger {
             "agentId",
             "group",
             "timeZone",
+            "groupServiceTiers",
           ].includes(k),
       ) ||
-      Object.values(filter).some(
-        (v) => typeof v !== "string" || v.length > 4096,
+      Object.entries(filter).some(
+        ([key, value]) => key === "groupServiceTiers"
+          ? typeof value !== "boolean"
+          : typeof value !== "string" || value.length > 4096,
       ) ||
       (filter.group &&
         ![
@@ -405,7 +408,7 @@ export class UsageLedger {
           : null;
         if (filter.apiProvider && filter.apiProvider !== estimatedProvider)
           continue;
-        const modelVariant = filter.group === "model"
+        const modelVariant = filter.group === "model" && !filter.groupServiceTiers
           ? { model: record.model, serviceTier: usageServiceTier(record.provider, record.serviceTier) }
           : undefined;
         const label = modelVariant ? usageModelVariantKey(modelVariant) : filter.group
@@ -463,9 +466,9 @@ export class UsageLedger {
           )
         )
           continue;
-        const modelVariant = filter.group === "model" ? requestUsageModelVariant(event) : undefined;
+        const modelVariant = filter.group === "model" && !filter.groupServiceTiers ? requestUsageModelVariant(event) : undefined;
         const label = modelVariant ? usageModelVariantKey(modelVariant) :
-          filter.group === "apiProvider"
+          filter.group === "model" ? event.model ?? "Unknown" : filter.group === "apiProvider"
               ? (event.apiProvider ?? "Unknown")
               : filter.group
                 ? String(parent[filter.group] ?? "Unknown")

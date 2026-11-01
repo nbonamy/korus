@@ -103,6 +103,14 @@ it("queries provider observations through the app contract and unsubscribes on s
         { modelVariant: { model: 'gpt-6.1-sol', serviceTier: 'fast' } },
       ] }],
     } });
+    expect(await call('usage/get', { filter: { group: 'model', groupServiceTiers: true } })).toMatchObject({ result: {
+      rows: [
+        { label: 'Unknown', started: 1 },
+        { label: 'gpt-6.1-sol', started: 2, speed: { outputTokens: 200, generationMs: 15000 } },
+      ],
+      daily: [{ groups: [{ label: 'Unknown' }, { label: 'gpt-6.1-sol', started: 2 }] }],
+    } });
+    expect(await call('usage/get', { filter: { group: 'model', groupServiceTiers: 'true' } })).toHaveProperty('error');
   } finally {
     await server.close();
     expect(unsubscribe).toHaveBeenCalledOnce();

@@ -82,6 +82,19 @@
           @update:model-value="emit('update:grouping', $event)"
         />
       </div>
+      <AppMenuButton
+        :ariaLabel="$t('analytics.options')"
+        :items="menuItems"
+        @select="emit('update:groupServiceTiers', !groupServiceTiers)"
+      >
+        <template #trigger="{ attrs }">
+          <el-tooltip :content="$t('analytics.options')" placement="top">
+            <button v-bind="attrs" class="app-icon-button usage-options" type="button" :aria-label="$t('analytics.options')">
+              <DotsVerticalIcon aria-hidden="true" />
+            </button>
+          </el-tooltip>
+        </template>
+      </AppMenuButton>
     </div>
   </div>
 </template>
@@ -89,12 +102,16 @@
 import { computed } from "vue";
 import { backendDisplayName } from "@workspace/core/backend-driver";
 import { translate } from "../i18n";
+import AppMenuButton from "../shared/menu/AppMenuButton.vue";
+import type { AppMenuItem } from "../shared/menu/app-menu";
+import { BoltIcon, DotsVerticalIcon } from "../shared/icons/app-icons";
 import UsageToggle from "./UsageToggle.vue";
 import { groupingOptions, type UsageGrouping } from "./usage-chart";
 import type { UsageView } from "./use-usage-analytics";
-defineProps<{
+const props = defineProps<{
   view: UsageView;
   grouping: UsageGrouping;
+  groupServiceTiers: boolean;
   filter: { from: string; to: string; provider: string };
   selectedPeriod: number | null;
   dateLabel: string;
@@ -102,10 +119,14 @@ defineProps<{
 const emit = defineEmits<{
   "update:view": [view: UsageView];
   "update:grouping": [grouping: UsageGrouping];
+  "update:groupServiceTiers": [value: boolean];
   "update:provider": [provider: string];
   range: [days: number];
   date: [key: "from" | "to", value: string];
 }>();
+const menuItems = computed<AppMenuItem[]>(() => [{
+  id: 'group-service-tiers', type: 'checkbox', label: translate('analytics.groupServiceTiers'), icon: BoltIcon, checked: props.groupServiceTiers,
+}]);
 const providers = [
   ["codex", 1],
   ["claude", 2],
@@ -172,6 +193,9 @@ const providerOptions = computed<
 }
 .usage-date {
   white-space: nowrap;
+}
+.usage-options {
+  border: 1px solid var(--color-border);
 }
 .usage-provider {
   width: 160px;
