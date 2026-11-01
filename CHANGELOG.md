@@ -4,6 +4,29 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.49.0] - 2026-11-01
+
+### New features
+
+- **Anonymous usage sharing:** Share new hourly usage and performance summaries
+  without conversation content. Sharing starts after one foreground minute unless
+  canceled; change it in **Settings → General → Advanced**.
+- **Model pricing:** Refresh API cost estimates with background pricing updates
+  between app releases.
+- **Mission mentions:** Find teammates in sections named after their Mission,
+  with the current Mission listed first and simpler lead and repository labels.
+
+### Improvements and fixes
+
+- Preview images up to 25 MB and show file-type icons while file previews load.
+- Keep invitation access in the app menu and through links instead of first-run
+  setup.
+- Recognize `KORUS_HOME` as an alias for `APP_HOME` for custom app data folders.
+
+### Compatibility
+
+- Remove the standalone web host; desktop and mobile clients remain available.
+
 ## [0.48.5] - 2026-11-01
 
 ### Improvements and fixes

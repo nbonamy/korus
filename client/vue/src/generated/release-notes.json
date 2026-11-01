@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.48.5",
+  "currentVersion": "0.49.0",
   "releases": [
+    {
+      "version": "0.49.0",
+      "releasedAt": "2026-11-01",
+      "sourceSha256": "ae658f6ce03112dda0f0f6b95ee36f478cf7af7779c7dd2af40b0dea73aeb52a",
+      "markdown": "### New features\n\n- **Anonymous usage sharing:** Share new hourly usage and performance summaries\n  without conversation content. Sharing starts after one foreground minute unless\n  canceled; change it in **Settings → General → Advanced**.\n- **Model pricing:** Refresh API cost estimates with background pricing updates\n  between app releases.\n- **Mission mentions:** Find teammates in sections named after their Mission,\n  with the current Mission listed first and simpler lead and repository labels.\n\n### Improvements and fixes\n\n- Preview images up to 25 MB and show file-type icons while file previews load.\n- Keep invitation access in the app menu and through links instead of first-run\n  setup.\n- Recognize `KORUS_HOME` as an alias for `APP_HOME` for custom app data folders.\n\n### Compatibility\n\n- Remove the standalone web host; desktop and mobile clients remain available."
+    },
     {
       "version": "0.48.5",
       "releasedAt": "2026-11-01",
