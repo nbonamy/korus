@@ -82,6 +82,13 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
       await page.locator('.git-review-panel__toolbar .el-segmented__item').filter({ hasText: /^Map$/ }).click();
     };
     assert.equal(await page.locator('.git-review-panel__toolbar').getByRole('radio', { name: 'Files', exact: true }).isChecked(), true);
+    const filesRadio = page.getByRole('radio', { name: 'Files', exact: true });
+    const mapRadio = page.getByRole('radio', { name: 'Map', exact: true });
+    await filesRadio.focus();
+    await page.keyboard.press('ArrowRight');
+    assert.equal(await mapRadio.isChecked(), true);
+    await page.keyboard.press('ArrowLeft');
+    assert.equal(await filesRadio.isChecked(), true);
     await page.getByRole('button', { name: 'Choose repository diff', exact: true }).click();
     const menuColors = await page.locator('.app-menu__color-dot').evaluateAll(dots => dots.map(dot => getComputedStyle(dot).backgroundColor));
     assert.equal(menuColors.length, 4);
@@ -137,6 +144,9 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
       assert.ok(geometry.scrollWidth <= geometry.width + 1, 'the pane must not scroll horizontally');
       const header = await page.locator('.git-review-panel__toolbar').evaluate(element => ({ width: element.clientWidth, scrollWidth: element.scrollWidth }));
       assert.ok(header.scrollWidth <= header.width + 1, 'header controls must fit the sidebar width');
+      const selectorBounds = await page.locator('.git-diff-view-toggle').boundingBox();
+      const headerBounds = await page.locator('.git-review-panel__toolbar').boundingBox();
+      assert.ok(Math.abs(selectorBounds.x + selectorBounds.width / 2 - headerBounds.x - headerBounds.width / 2) < 1, 'the labeled view selector must stay centered in the pane');
       assert.equal(await page.locator('.git-review-panel__toolbar').getByRole('radio', { name: 'Map', exact: true }).isChecked(), true);
       assert.equal(geometry.tiles.length, 200);
       for (const { rect } of geometry.tiles) {

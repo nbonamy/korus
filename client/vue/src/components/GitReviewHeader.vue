@@ -12,30 +12,29 @@
         </div>
       </div>
 
-      <div class="git-review-panel__stats" :aria-label="$t('surface.gitReviewPanel.diffStatistics')">
-        <span class="git-review-panel__added">+{{ summary.addedLines }}</span>
-        <span class="git-review-panel__removed">-{{ summary.removedLines }}</span>
-      </div>
-
+      <GitDiffViewToggle :model-value="view" @update:model-value="emit('update:view', $event)" />
       <div class="git-review-panel__controls">
-        <GitDiffViewToggle :model-value="view" @update:model-value="emit('update:view', $event)" />
-      <div class="git-review-panel__actions">
-        <button type="button" :aria-label="$t('surface.gitReviewPanel.refreshRepositoryDiff')" :title="$t('surface.gitReviewPanel.refresh')" @click="emit('refresh')">
-          <RefreshIcon aria-hidden="true" />
-        </button>
-        <AppMenuButton :ariaLabel="$t('surface.gitReviewPanel.reviewOptions')" :items="menuItems" @select="emit('selectMenuItem', $event)">
-          <template #trigger="{ attrs }">
-            <button
-              v-bind="attrs"
-              type="button"
-              :aria-label="$t('surface.gitReviewPanel.reviewOptions')"
-              :title="$t('surface.gitReviewPanel.reviewOptions')"
-            >
-              <DotsVerticalIcon aria-hidden="true" />
-            </button>
-          </template>
-        </AppMenuButton>
-      </div>
+        <div class="git-review-panel__stats" :aria-label="$t('surface.gitReviewPanel.diffStatistics')">
+          <span class="git-review-panel__added">+{{ summary.addedLines }}</span>
+          <span class="git-review-panel__removed">-{{ summary.removedLines }}</span>
+        </div>
+        <div class="git-review-panel__actions">
+          <button type="button" :aria-label="$t('surface.gitReviewPanel.refreshRepositoryDiff')" :title="$t('surface.gitReviewPanel.refresh')" @click="emit('refresh')">
+            <RefreshIcon aria-hidden="true" />
+          </button>
+          <AppMenuButton :ariaLabel="$t('surface.gitReviewPanel.reviewOptions')" :items="menuItems" @select="emit('selectMenuItem', $event)">
+            <template #trigger="{ attrs }">
+              <button
+                v-bind="attrs"
+                type="button"
+                :aria-label="$t('surface.gitReviewPanel.reviewOptions')"
+                :title="$t('surface.gitReviewPanel.reviewOptions')"
+              >
+                <DotsVerticalIcon aria-hidden="true" />
+              </button>
+            </template>
+          </AppMenuButton>
+        </div>
       </div>
     </header>
 </template>
@@ -52,8 +51,8 @@ const emit = defineEmits<{ refresh: []; selectMenuItem: [id: string]; 'update:vi
 
 <style scoped>
 .git-review-panel__toolbar {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   flex: 0 0 auto;
   align-items: center;
   gap: var(--space-4) var(--space-6);
@@ -61,10 +60,9 @@ const emit = defineEmits<{ refresh: []; selectMenuItem: [id: string]; 'update:vi
   padding: var(--space-4) var(--space-6);
   border-bottom: 1px solid var(--color-border);
 }
-.git-review-panel__controls { display: flex; align-items: center; gap: var(--space-4); margin-left: auto; }
+.git-review-panel__controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; justify-self: end; gap: var(--space-2); max-width: 100%; }
 
 .git-review-panel__summary {
-  flex: 1 1 100px;
   min-width: 0;
   display: grid;
   gap: var(--space-1);
@@ -115,7 +113,7 @@ const emit = defineEmits<{ refresh: []; selectMenuItem: [id: string]; 'update:vi
 .git-review-panel__stats {
   gap: var(--space-2);
   font-family: var(--font-family-mono);
-  font-size: var(--font-size-12);
+  font-size: var(--font-size-13);
   line-height: var(--line-height-16);
   font-weight: var(--font-weight-semibold);
   font-variant-numeric: tabular-nums;
@@ -156,5 +154,10 @@ const emit = defineEmits<{ refresh: []; selectMenuItem: [id: string]; 'update:vi
 .git-review-panel__actions svg {
   width: var(--icon-md);
   height: var(--icon-md);
+}
+@container (max-width: 420px) {
+  .git-review-panel__toolbar { grid-template-columns: minmax(0, 1fr) auto; }
+  .git-review-panel__toolbar > .git-diff-view-toggle { grid-column: 1 / -1; grid-row: 2; }
+  .git-review-panel__controls { grid-column: 2; grid-row: 1; }
 }
 </style>

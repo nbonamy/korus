@@ -51,7 +51,9 @@ function leaveTooltip(event: PointerEvent): void {
   if (document.activeElement !== event.currentTarget) clearTooltip();
 }
 watch(visible, () => { focusIndex.value = 0; clearTooltip(); });
-watch(() => layout.value.size, clearTooltip);
+watch([() => layout.value.size.width, () => layout.value.size.height], () => {
+  if (document.activeElement !== tooltipTarget.value) clearTooltip();
+});
 async function navigate(event: KeyboardEvent): Promise<void> {
   if (event.key === 'Escape') { clearTooltip(); return; }
   if (!['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;

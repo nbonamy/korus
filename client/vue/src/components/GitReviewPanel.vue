@@ -145,6 +145,7 @@ function fileBasename(path: string): string {
 
 <style scoped>
 .git-review-panel {
+  container-type: inline-size;
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;

@@ -1,12 +1,10 @@
 <template>
-  <el-segmented v-model="view" class="git-diff-view-toggle" :options="options" :aria-label="$t('surface.diffTreemap.view')" size="small">
+  <el-segmented v-model="view" class="git-diff-view-toggle" :options="options" :aria-label="$t('surface.diffTreemap.view')">
     <template #default="{ item }">
-      <el-tooltip :content="item.label" placement="top" :show-after="500">
-        <span class="git-diff-view-toggle__option">
-          <component :is="item.value === 'map' ? ChartTreemapIcon : FileDiffIcon" aria-hidden="true" />
-          <span class="git-diff-view-toggle__label">{{ item.label }}</span>
-        </span>
-      </el-tooltip>
+      <span class="git-diff-view-toggle__option">
+        <component :is="item.value === 'map' ? ChartTreemapIcon : FileDiffIcon" aria-hidden="true" />
+        <span>{{ item.label }}</span>
+      </span>
     </template>
   </el-segmented>
 </template>
@@ -25,18 +23,12 @@ const options = computed(() => [
 <style scoped>
 .git-diff-view-toggle {
   --el-segmented-padding: var(--space-1);
-  --el-segmented-bg-color: transparent;
-  --el-segmented-item-selected-bg-color: var(--color-primary);
-  --el-segmented-item-selected-color: var(--color-on-primary);
-  flex: 0 0 auto;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  --el-segmented-bg-color: color-mix(in srgb, var(--color-text) 6%, transparent);
+  justify-self: center;
+  font-weight: var(--font-weight-semibold);
 }
-.git-diff-view-toggle :deep(.el-segmented__item),
-.git-diff-view-toggle :deep(.el-segmented__item-selected) { border-radius: var(--radius-sm); }
-.git-diff-view-toggle :deep(.el-segmented__item-selected) { box-shadow: none; }
 .git-diff-view-toggle :deep(.el-segmented__item) { padding: var(--space-2) var(--space-6); }
-.git-diff-view-toggle__option { display: grid; place-items: center; min-width: var(--icon-md); min-height: var(--icon-md); }
+.git-diff-view-toggle :deep(.el-segmented__item-selected) { box-shadow: var(--shadow-sm); }
+.git-diff-view-toggle__option { display: flex; align-items: center; gap: var(--space-3); }
 .git-diff-view-toggle__option svg { width: var(--icon-md); height: var(--icon-md); }
-.git-diff-view-toggle__label { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 </style>
