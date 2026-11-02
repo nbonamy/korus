@@ -55,12 +55,6 @@ export function modelValue(
     .padStart(9, "0");
   return `${scaled.slice(0, -8)}.${scaled.slice(-8)}`;
 }
-export const rankModels = (rows: readonly ModelRow[], measure: ModelMeasure) =>
-  [...rows].sort(
-    (a, b) =>
-      descending(modelValue(a, measure), modelValue(b, measure)) ||
-      modelKey(a).localeCompare(modelKey(b)),
-  );
 export function useModelComparison(data: Ref<TelemetryMetrics>) {
   const choices = computed(() =>
     [...data.value.models].sort(

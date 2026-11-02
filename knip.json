@@ -74,6 +74,12 @@
       "entry": [
         "src/collector/main.ts"
       ]
+    },
+    "server/frontend": {
+      "entry": [
+        "src/main.ts",
+        "src/__tests__/report-fixture.ts"
+      ]
     }
   }
 }
