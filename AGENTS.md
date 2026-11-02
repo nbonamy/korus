@@ -1,17 +1,18 @@
 # AGENTS.md
 
+This file is the high-level guide for the whole repository. Each area has its own
+`AGENTS.md` with the rules that only apply there; the nearest one applies in
+addition to this file. Read the area file before changing code in that area.
+
 ## Overview
 
 This repository is **Korus**, an Electron desktop app for coordinating
-teams of coding agents with native conversation and artifact rendering.
+teams of coding agents with native conversation and artifact rendering, plus the
+mobile companion, a hosted telemetry collector and the public website.
 
-- Electron + Electron Forge desktop app.
-- TypeScript across main, preload, renderer, shared contracts, and tests.
-- Vue 3 with TypeScript and Element Plus for the renderer.
-- Vitest for unit, component, contract, and desktop workflow tests.
-- Codex and Claude Code are supported through provider drivers in `daemon`.
-  Electron and the renderer use app-owned contracts rather than talking
-  directly to either provider runtime.
+Stack: TypeScript across main, preload, renderer, shared contracts and tests; Vue 3
+and Element Plus for UI; Electron and Electron Forge for the desktop app; Vitest for
+unit, component, contract and workflow tests.
 
 Core product surfaces:
 
@@ -23,61 +24,40 @@ Core product surfaces:
 - **Artifacts**: document, plan, diff, git, and file panes beside the active
   conversation.
 
-## Architecture
+## Repository Map
+
+| Area | What it owns | Guide |
+| --- | --- | --- |
+| `core/` | Platform-neutral product contracts, the backend protocol and state primitives shared by every other area. | [core/AGENTS.md](core/AGENTS.md) |
+| `client/` | The desktop product: `backend` (the local daemon), `electron` (main, preload, packaging) and `vue` (shared Vue UI). | [client/AGENTS.md](client/AGENTS.md) |
+| `mobile/` | The iOS and Android companion apps and their shared engine. | [mobile/AGENTS.md](mobile/AGENTS.md) |
+| `native/` | Native helper binaries shipped with the desktop app. | [native/AGENTS.md](native/AGENTS.md) |
+| `server/` | The hosted telemetry collector and the private admin console. | [server/AGENTS.md](server/AGENTS.md) |
+| `website/` | The public landing page, privacy policy and VitePress user guide. | [website/AGENTS.md](website/AGENTS.md) |
+| `videos/` | Scripted product films. | [videos/AGENTS.md](videos/AGENTS.md) |
+| `docs/` | Internal engineering notes (current-state reference). | see the Documentation Map |
+| `scripts/` | Repository tooling, including the architecture lint. | |
+| `plans/` | Saved implementation plans. | see Plans |
+
+`core/`, `client/*`, `mobile/` and `server/*` are npm workspaces; `native/` and
+`website/` are not. Root `npm run dev` launches the Electron app.
+
+## Architecture At A Glance
 
 `core/src/product.json` owns product branding and external identity. Keep
 implementation identifiers, package names, filenames, and CSS brand-neutral;
 read product metadata for visible names, instructions, paths, and packaging.
 Authored documentation may use the product name.
 
-Client workspaces live under `client/`: `backend` owns the local daemon,
-`electron` owns desktop main, preload and renderer, and `vue` owns shared Vue UI.
-`core`, `mobile`, `native`, `server` and `website` remain separate root areas.
-Root `npm run dev` launches the Electron app.
+The areas are isolated from each other on purpose, and `npm run lint:architecture`
+enforces it. Shared inputs flow through `core`; nothing imports across runtime
+boundaries, for example the mobile app and the hosted collector never import
+the desktop daemon, and the renderer never imports backend protocol types.
 
-Preserve the product and process boundaries:
-
-- Electron main is the desktop adapter. It owns windows, preload IPC, native
-  dialogs, app lifecycle, packaged resource resolution, and the stdio client
-  used to reach `daemon`.
-- `daemon` owns backend process lifecycle beyond the Electron-to-backend stdio
-  process, backend drivers, provider protocols, approvals, server requests,
-  app persistence, backend-owned filesystem access, git, automations, and agent
-  runtime state.
-- Renderer owns visual state and interactions. It must not talk directly to
-  Codex app-server or any future backend process, spawn tools, read arbitrary
-  local files, or depend on backend protocol types.
-- Preload exposes a small typed IPC bridge. Keep it boring and explicit.
-- Coordination events become app-owned before reaching renderer state.
-  Provider conversation traffic keeps its provider-native snapshot/event inside
-  an app-owned routing envelope.
-- Provider conversations stay provider-owned end to end. For Codex,
-  `codex-app-sdk` owns the conversation snapshot/reducer, optimistic messages,
-  history, turn mutations, queues, and generic conversation UI. Korus stores the
-  thread reference, transports SDK snapshots/events, invokes SDK operations,
-  and adds Korus-specific coordination metadata. When generic Codex conversation
-  behavior is missing or wrong, fix it in the SDK and consume that fix here.
-- Codex-specific product policy belongs in the Codex driver/adapter; generic
-  Codex conversation behavior belongs in `codex-app-sdk`, not in Korus
-  renderer state or wrappers.
-- Backend-dependent Korus product features must enter through app-owned
-  contracts and the backend protocol first. Add or extend an optional driver
-  method or capability behind `daemon`, route Electron through
-  `BackendClient`, and keep renderer components free of Codex/Claude
-  protocol branches.
-- `RendererMessage` remains an app-owned DTO where Korus explicitly needs one,
-  including the normalized Claude host and cross-provider historical reads. It
-  is not a live Codex transcript model.
-- Future provider support should arrive through provider hosts behind `daemon`,
-  app-owned capability seams, and provider-owned conversation replicas—not a
-  new global Korus transcript reducer.
-- Theme support must use semantic tokens and CSS variables. Do not hard-code
-  product colors inside components.
-
-Development uses installed `codex-app-sdk` packages by default. Set
-`CODEX_APP_SDK_SOURCE=1` to link the sibling `../codex-app-sdk` source instead;
-set `CODEX_APP_SDK_SOURCE_ROOT` to use another checkout. Source linking does not
-require rebuilding, releasing or reinstalling the SDK during development.
+On the desktop, Electron main is the adapter, `daemon` (`client/backend`) owns
+backends, providers, persistence and filesystem access, and the renderer owns
+visual state. The ownership rules and the Codex and Claude provider boundaries
+are in [client/AGENTS.md](client/AGENTS.md) and [docs/architecture.md](docs/architecture.md).
 
 ## Mobile API Compatibility
 
@@ -96,51 +76,28 @@ and tests of only the newest client are insufficient. See
 
 ## Documentation Map
 
-Keep `AGENTS.md` high-level. Before changing a feature area, read the relevant
-doc. Docs are reference for the current state: ownership, invariants, gotchas
-and the reasons behind them. They do not restate what code, types, scripts or
-config already say (method catalogs, type listings, command tables, tool
-schemas), do not walk through UI behavior (specify that in tests), and carry no
-dates, "now/no longer/previously" narrative, or decision history (that is git
+Keep every `AGENTS.md` high-level. Before changing a feature area, read the
+relevant doc. Docs are reference for the current state: ownership, invariants,
+gotchas and the reasons behind them. They do not restate what code, types,
+scripts or config already say (method catalogs, type listings, command tables,
+tool schemas), do not walk through UI behavior (specify that in tests), and carry
+no dates, "now/no longer/previously" narrative, or decision history (that is git
 history). Fix a stale doc in place rather than appending a correction. Update
 docs only when an architecture, process, or reusable convention changes.
+
+Cross-cutting docs:
 
 - `docs/architecture.md`: process model and ownership rules, conversation
   ownership, backend seam, persistence, remote teams, worktrees, durable tasks,
   Missions, code review, work providers.
-- `docs/backend-architecture.md`: `daemon` design rules, transports, runtime
-  packaging, GitHub desktop releases, auto-update, security. Read its companion
-  gateway and relay invariants before changing or reviewing mobile access.
 - `docs/protocol.md`: app-owned JSON-RPC conventions, synchronization, and
   lifecycles; the method catalog itself is in `core/src/backend-protocol/`.
-- `docs/codex.md`: read before changing Codex conversation state, rendering,
-  actions, history, or transport; SDK/Korus ownership boundary.
-- `docs/claude.md`: Claude Agent SDK integration, homes, history, capabilities.
-- `docs/research/claude-capabilities.md`: read before adding Claude steering,
-  forks, goals, turn mutations, or context controls; dated runtime evidence.
-- `docs/mcp.md`: the app-owned MCP server model: identity, enablement,
-  collaboration, contextual tool families, Computer Use, hosted gateway.
-- `docs/custom-tools.md`: use when adding or presenting an MCP tool.
-- `server/README.md`: hosted backend, private admin console, Docker packaging
-  and deployment boundaries.
-- `docs/frontend.md`: renderer ownership, canonical UI, interaction and styling
-  conventions, Visualize canvases. Read before editing UI.
 - `docs/testing.md`: testing principles, Test Value Gate, fixtures, coverage and
   gates. Read before editing code.
-- `docs/agent-provider-selection.md`: how Codex or Claude is chosen for new work.
-- `docs/agent-isolation.md`: unimplemented design note on shared-checkout
-  warnings.
-- `docs/research/provider-handoff.md`: read when designing cross-provider
-  continuation; dated evidence.
-- `docs/research/synara.md`: competitive analysis; dated source evidence, not a
-  roadmap.
-- `docs/codex.png`: visual reference for the target shell.
-- `website/README.md`: read before changing the public VitePress guide in
-  `website/docs/` or the website build and deployment. Public user guides are
-  separate from the internal engineering notes in `docs/`.
 
-When a new doc is needed, discuss it with Nicolas first. If approved, add it
-under `docs/` and link it here.
+Each area file lists the other docs that belong to it. When a new doc is needed,
+discuss it with Nicolas first. If approved, add it under `docs/` and link it from
+the area that owns it.
 
 ## Quality
 
@@ -183,32 +140,17 @@ behavioral/regression tests or verification at the owning runtime boundary.
 Quality CI enforces coverage on every branch push. Release CI independently
 requires the full test suite without coverage; it does not wait for Quality CI.
 
-Before editing code, read `docs/testing.md`. Before editing UI, also read
-`docs/frontend.md`.
+Before editing code, read `docs/testing.md`. The quality gate is `npm run lint`
+plus `npm test`. When scripts exist, run the relevant focused tests while
+iterating and the relevant build/test gate before handoff.
 
 ## Build
 
 Use the Node 26 reference toolchain for development, tests, and builds. Read
 `.nvmrc` for the exact Node version and `package.json` for the npm version.
-
-The app builds through Electron Forge. Keep build outputs, generated protocol
-bindings, copied id8 renderer code, and packaged resources clearly separated
-from source code.
-
-Electron packaging signs and notarizes macOS builds by default. This can take a
-long time and should be reserved for explicit release/signing work. For normal
-agent verification that needs Forge packaging, set
-`APP_SKIP_SIGNING=1` so Forge skips macOS app signing, notarization, and
-bundled helper signing:
-
-```bash
-APP_SKIP_SIGNING=1 npm run package
-APP_SKIP_SIGNING=1 npm run build
-```
-
-When scripts exist, run the relevant focused tests while iterating and the
-relevant build/test gate before handoff. Do not invent server/API integration
-gates for this project; Korus is a desktop app.
+Keep build outputs, generated bindings, and packaged resources clearly separated
+from source code. Packaging and signing are described in
+[client/AGENTS.md](client/AGENTS.md).
 
 ## Project Skills
 
