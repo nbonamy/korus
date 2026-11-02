@@ -1,12 +1,12 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.50.3",
+  "currentVersion": "0.50.4",
   "releases": [
     {
-      "version": "0.50.3",
+      "version": "0.50.4",
       "releasedAt": "2026-11-02",
-      "sourceSha256": "c1debf751786a76545229bce879ad143a0c28f092acbd50d652f0b0d72232e4b",
-      "markdown": "### Improvements and fixes\n\n- **Editable visualizations:** Create native Excalidraw diagrams and add or edit canvas elements with your agents.\n- **File actions:** Open local binary files in their default app, or right-click conversation file links to open, reveal or download them.\n- **Git diff:** See the changed-file count beside added and deleted lines.\n- **Analytics activity:** Switch between daily and weekly activity, with total usage, peak day, longest turn and longest streak at a glance.\n- Initialize Git when creating a project, so it supports repository actions without a remote.\n- Preserve conversation history when the app starts or reconnects.\n- Make plain web URLs clickable in your messages.\n- Draw image annotation rectangles with straight edges.\n- Make execution plans easier to scan with consistent checklist indicators.\n- Improve Claude Code compatibility with subscription usage limits.\n- Show a dismissible GitHub star reminder after five prompts."
+      "sourceSha256": "1491576f6a91cd8a3b385f1efd103a8d9abed7ce622ef37a0bde3343f090e2df",
+      "markdown": "### Improvements and fixes\n\n- Restore selected skill, plugin and teammate references as pills when recalling a prompt.\n- **Editable visualizations:** Create native Excalidraw diagrams and add or edit canvas elements with your agents.\n- **File actions:** Open local binary files in their default app, or right-click conversation file links to open, reveal or download them.\n- **Git diff:** See the changed-file count beside added and deleted lines.\n- **Analytics activity:** Switch between daily and weekly activity, with total usage, peak day, longest turn and longest streak at a glance.\n- Initialize Git when creating a project, so it supports repository actions without a remote.\n- Preserve conversation history when the app starts or reconnects.\n- Make plain web URLs clickable in your messages.\n- Draw image annotation rectangles with straight edges.\n- Make execution plans easier to scan with consistent checklist indicators.\n- Improve Claude Code compatibility with subscription usage limits.\n- Show a dismissible GitHub star reminder after five prompts."
     },
     {
       "version": "0.50.2",

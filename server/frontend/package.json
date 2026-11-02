@@ -1,6 +1,6 @@
 {
   "name": "@workspace/server-frontend",
-  "version": "0.50.3",
+  "version": "0.50.4",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,7 +12,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@workspace/core": "0.50.3",
+    "@workspace/core": "0.50.4",
     "chart.js": "4.6.1",
     "element-plus": "^2.13.6",
     "vue": "^3.5.35",

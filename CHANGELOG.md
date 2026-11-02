@@ -4,10 +4,11 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
-## [0.50.3] - 2026-11-02
+## [0.50.4] - 2026-11-02
 
 ### Improvements and fixes
 
+- Restore selected skill, plugin and teammate references as pills when recalling a prompt.
 - **Editable visualizations:** Create native Excalidraw diagrams and add or edit canvas elements with your agents.
 - **File actions:** Open local binary files in their default app, or right-click conversation file links to open, reveal or download them.
 - **Git diff:** See the changed-file count beside added and deleted lines.
