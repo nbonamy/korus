@@ -428,6 +428,93 @@ it("opens on total tokens by provider and regroups every chart from one toolbar 
     totals.findAll(".usage-stat__unit").map((unit) => unit.text()),
   ).toStrictEqual(["s", "tokens/s"]);
   expect(totals.text()).not.toContain("Timed turns");
+
+  // Refreshing the same dashboard keeps compact values consistent across its views.
+  const total = 19_223_027;
+  const largeRow = {
+    label: "gpt-6-luna",
+    started: total,
+    completed: total,
+    failed: 0,
+    interrupted: 0,
+    inProgress: 0,
+    measuredTurns: 1,
+    tokens: {
+      total,
+      input: 19_000_000,
+      output: 223_027,
+      cacheRead: 0,
+      cacheWrite: null,
+      reasoning: null as number | null,
+    },
+    speed: {
+      turns: 1,
+      outputTokens: 1_234_567,
+      generationMs: 1_000,
+      ttftMs: 1_234_500,
+      ttftTurns: 1,
+    },
+  };
+  const refreshed = (rows: typeof largeRow[]) => ({
+    recordedSince: 0,
+    retainedSince: 0,
+    rows,
+    daily: [{
+      day: localDay(),
+      started: total,
+      measuredTurns: 1,
+      tokens: rows[0]!.tokens,
+      groups: rows,
+    }],
+  });
+  getUsage.mockResolvedValue(refreshed([largeRow]));
+  await wrapper.get('[aria-label="Refresh"]').trigger("click");
+  await flushPromises();
+  expect(
+    wrapper.findAll(".usage-stat__value").map((value) => value.text()),
+  ).toStrictEqual(["1.2K", "1.2M"]);
+  expect(
+    wrapper.get('[aria-label="Time to First Token (TTFT)"] tbody tr')
+      .findAll("td").map((cell) => cell.text()),
+  ).toStrictEqual(["gpt-6-luna", "1.2K"]);
+  expect(
+    wrapper.get('[aria-label="Output Speed"] tbody tr')
+      .findAll("td").map((cell) => cell.text()),
+  ).toStrictEqual(["gpt-6-luna", "1.2M"]);
+  await wrapper.get("#usage-tab-usage").trigger("click");
+  expect(wrapper.get(".hero-number strong").text()).toBe("19.2M");
+  expect(
+    wrapper.get('[aria-label="Usage breakdown"] tbody tr')
+      .findAll("td").map((cell) => cell.text()),
+  ).toStrictEqual(["gpt-6-luna", "19.2M", "19.2M", "Unavailable", "100%"]);
+
+  // Parent-relative counters must not be counted a second time in the token stack.
+  const mixedRow = {
+    ...largeRow,
+    tokens: { total: 140, input: 100, output: 40, cacheRead: 60, cacheWrite: null, reasoning: 10 },
+  };
+  getUsage.mockResolvedValue(refreshed([mixedRow]));
+  await wrapper.get('[aria-label="Refresh"]').trigger("click");
+  await flushPromises();
+  expect(
+    wrapper.findAll(".mix-bar > span")
+      .map((part) => (part.element as HTMLElement).style.flexGrow),
+  ).toStrictEqual(["100", "40"]);
+  expect(wrapper.findAll(".mix-legend li").map((part) => part.text()))
+    .toStrictEqual([
+      "Input tokens71.4%",
+      "Cache read (% of input)60%",
+      "Output tokens28.6%",
+      "Reasoning (% of output)25%",
+    ]);
+  getUsage.mockResolvedValue(refreshed([{
+    ...mixedRow,
+    tokens: { ...mixedRow.tokens, cacheRead: 0, reasoning: null },
+  }]));
+  await wrapper.get('[aria-label="Refresh"]').trigger("click");
+  await flushPromises();
+  expect(wrapper.findAll(".mix-legend li").map((part) => part.text()))
+    .toStrictEqual(["Input tokens71.4%", "Output tokens28.6%"]);
   wrapper.unmount();
 });
 
