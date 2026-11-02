@@ -4,6 +4,13 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.50.2] - 2026-11-01
+
+### Improvements and fixes
+
+- Keep Codex token totals accurate when resuming conversations, including compaction usage.
+- Stop counting executions interrupted by an app restart as still in progress.
+
 ## [0.50.1] - 2026-11-01
 
 ### Improvements and fixes

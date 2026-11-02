@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.50.1",
+  "currentVersion": "0.50.2",
   "releases": [
+    {
+      "version": "0.50.2",
+      "releasedAt": "2026-11-01",
+      "sourceSha256": "ca87b0ba37343c682f1dfb499b78a8852b094f51b1191843cc09858d3b4b946a",
+      "markdown": "### Improvements and fixes\n\n- Keep Codex token totals accurate when resuming conversations, including compaction usage.\n- Stop counting executions interrupted by an app restart as still in progress."
+    },
     {
       "version": "0.50.1",
       "releasedAt": "2026-11-01",
