@@ -126,7 +126,7 @@ import {
 import ReportGrouping from "./ReportGrouping.vue";
 const props = defineProps<{ data: TelemetryMetrics }>();
 const grouping = defineModel<Grouping>("grouping", { default: "model" });
-const { groups, days, value } = useReportGroups(
+const { groups, days, value, observed } = useReportGroups(
   () => props.data,
   () => grouping.value,
 );
@@ -196,6 +196,7 @@ const series = computed(() =>
     label: row.label,
     color: row.color,
     values: days.value.map((day) => value(row, day, measure.value)),
+    observed: days.value.map((day) => observed(row, day)),
   })),
 );
 </script>

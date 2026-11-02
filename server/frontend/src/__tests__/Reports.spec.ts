@@ -61,6 +61,7 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
         day: days[0]!,
         provider: "claude",
         model: "claude-sonnet-5-5",
+        serviceTier: "standard",
         estimatedCostUsd: null,
       },
       {
@@ -68,6 +69,7 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
         day: days.at(-1)!,
         provider: "claude",
         model: "claude-sonnet-5-5",
+        serviceTier: "standard",
         estimatedCostUsd: "0",
       },
     ],
@@ -269,8 +271,12 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
     expect(spendChart.get(".tooltip-total").text()).toBe("Total$0.30");
     await spendChart.get("canvas").trigger("keydown", { key: "End" });
     expect(spendChart.get('[role="status"]').text()).toContain("Claude$0.00");
-    expect(spendChart.get('[role="status"]').text()).toContain("Codex$0.00");
+    expect(spendChart.get('[role="status"]').text()).not.toContain("Codex");
     expect(spendChart.get(".tooltip-total").text()).toBe("Total$0.00");
+    await spendChart.get("canvas").trigger("keydown", { key: "Home" });
+    await spendChart.get("canvas").trigger("keydown", { key: "ArrowRight" });
+    expect(spendChart.get('[role="status"]').text()).toContain("Unavailable");
+    expect(spendChart.find(".tooltip-total").exists()).toBe(false);
     await wrapper
       .get('[aria-label="Spend grouping"]')
       .findAll("label")
@@ -373,6 +379,10 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
     const modelChart = wrapper.get('[aria-label="Model usage over time"]');
     await modelChart.get("canvas").trigger("keydown", { key: "Home" });
     expect(modelChart.get('[role="status"]').text()).toContain("$0.20");
+    await modelChart.get("canvas").trigger("keydown", { key: "End" });
+    expect(
+      modelChart.findAll(".tooltip-name").map((row) => row.text()),
+    ).toEqual(["Claude / claude-sonnet-5-5"]);
     await wrapper
       .findAll("label")
       .find((label) => label.text() === "Trend")!

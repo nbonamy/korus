@@ -444,7 +444,7 @@ export async function dashboardWorkflow({
     });
     assert.equal(await cost.locator("canvas").count(), 1);
     // Known zeroes remain inspectable; missing dates have no observations.
-    assert.equal(await cost.locator(".chart-observation").count(), 7);
+    assert.equal(await cost.locator(".chart-observation").count(), 3);
     await cost.getByRole("img").focus();
     await page.keyboard.press("End");
     assert.match(await cost.getByRole("status").innerText(), /Oct 24.*\$0/is);
