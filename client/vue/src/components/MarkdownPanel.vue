@@ -71,9 +71,12 @@
 
 <script setup lang="ts">
 import { renderMarkdown } from '@codex-app-sdk/vue';
+import { renderMermaidSVG } from 'beautiful-mermaid';
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, useId, watch } from 'vue';
+import { translate } from '../i18n';
 import { ListIcon } from '../shared/icons/app-icons';
 import { collectMarkdownHeadings, type MarkdownHeading } from './markdown-outline';
+import { sanitizeSvg } from './visualization-svg';
 
 const props = withDefaults(defineProps<{
   content: string;
@@ -93,7 +96,38 @@ const documentRoot = ref<HTMLElement | null>(null);
 const headings = shallowRef<MarkdownHeading[]>([]);
 const activeHeading = ref<string | null>(null);
 const outlineOpen = ref(false);
-const renderedMarkdown = computed(() => props.state === 'idle' && props.content.trim() ? renderMarkdown(props.content) : '');
+const renderedMarkdown = computed(() => {
+  if (props.state !== 'idle' || !props.content.trim()) return '';
+  const document = new DOMParser().parseFromString(renderMarkdown(props.content), 'text/html');
+  let diagramIndex = 0;
+  for (const code of document.querySelectorAll('pre > code.language-mermaid')) {
+    try {
+      const diagram = document.createElement('div');
+      diagram.className = 'markdown-panel__diagram';
+      const prefix = `${documentId}-diagram-${diagramIndex++}-`;
+      diagram.innerHTML = sanitizeSvg(renderMermaidSVG(code.textContent ?? '', {
+        transparent: true,
+        bg: 'var(--color-shell-main)',
+        fg: 'var(--color-text)',
+      }));
+      const svg = diagram.firstElementChild!;
+      // Keep SVG definitions and styles local when a document has several diagrams.
+      for (const element of svg.querySelectorAll('[id]')) element.id = prefix + element.id;
+      for (const element of svg.querySelectorAll('*')) {
+        for (const attribute of [...element.attributes]) {
+          if (attribute.value.includes('url(#')) element.setAttribute(attribute.name, attribute.value.replaceAll('url(#', `url(#${prefix}`));
+        }
+      }
+      for (const style of svg.querySelectorAll('style')) style.textContent = `@scope (.markdown-panel__diagram) { ${style.textContent} }`;
+      svg.setAttribute('role', 'img');
+      svg.setAttribute('aria-label', translate('visualize.kind.mermaid'));
+      code.parentElement!.replaceWith(diagram);
+    } catch {
+      // Keep invalid or unsupported diagrams readable as ordinary fenced code.
+    }
+  }
+  return document.body.innerHTML;
+});
 let resizeObserver: ResizeObserver | undefined;
 
 function openLink(event: MouseEvent): void {
@@ -298,5 +332,12 @@ onBeforeUnmount(() => {
 
 .markdown-panel__empty--error {
   color: var(--color-error);
+}
+
+.markdown-panel__content :deep(.markdown-panel__diagram svg) {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: var(--space-8) auto;
 }
 </style>
