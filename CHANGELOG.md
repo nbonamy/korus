@@ -4,6 +4,22 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.50.3] - 2026-11-02
+
+### Improvements and fixes
+
+- **Editable visualizations:** Create native Excalidraw diagrams and add or edit canvas elements with your agents.
+- **File actions:** Open local binary files in their default app, or right-click conversation file links to open, reveal or download them.
+- **Git diff:** See the changed-file count beside added and deleted lines.
+- **Analytics activity:** Switch between daily and weekly activity, with total usage, peak day, longest turn and longest streak at a glance.
+- Initialize Git when creating a project, so it supports repository actions without a remote.
+- Preserve conversation history when the app starts or reconnects.
+- Make plain web URLs clickable in your messages.
+- Draw image annotation rectangles with straight edges.
+- Make execution plans easier to scan with consistent checklist indicators.
+- Improve Claude Code compatibility with subscription usage limits.
+- Show a dismissible GitHub star reminder after five prompts.
+
 ## [0.50.2] - 2026-11-01
 
 ### Improvements and fixes
