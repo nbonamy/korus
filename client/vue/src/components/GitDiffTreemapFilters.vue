@@ -1,13 +1,23 @@
 <template>
     <div class="diff-treemap__filters" :aria-label="$t('surface.diffTreemap.filterByType')">
-      <button type="button" :aria-pressed="modelValue === null" @click="emit('update:modelValue', null)">
-        <i class="diff-treemap__all-dot" aria-hidden="true" />{{ $t('surface.diffTreemap.all') }} <span>{{ total }}</span>
-      </button>
-      <button v-for="kind in fileKinds" :key="kind" type="button" :aria-pressed="modelValue === kind"
-        :disabled="counts[kind] === 0" @click="emit('update:modelValue', kind)">
-        <i :style="{ background: fileKindColor[kind] }" aria-hidden="true" />
-        {{ kind === 'docs' ? $t('surface.diffTreemap.docs') : fileKindLabel(kind) }} <span>{{ counts[kind] }}</span>
-      </button>
+      <div class="diff-treemap__filter-items">
+        <el-tooltip :content="`${$t('surface.diffTreemap.all')} · ${total}`" placement="top">
+          <span class="diff-treemap__filter-target">
+            <button type="button" :aria-label="`${$t('surface.diffTreemap.all')} · ${total}`" :aria-pressed="modelValue === null" @click="emit('update:modelValue', null)">
+              <i class="diff-treemap__all-dot" aria-hidden="true" /><span class="diff-treemap__filter-label">{{ $t('surface.diffTreemap.all') }}</span><span class="diff-treemap__filter-count">{{ total }}</span>
+            </button>
+          </span>
+        </el-tooltip>
+        <el-tooltip v-for="kind in fileKinds" :key="kind" :content="`${fileKindLabel(kind)} · ${counts[kind]}`" placement="top">
+          <span class="diff-treemap__filter-target">
+            <button type="button" :aria-label="`${fileKindLabel(kind)} · ${counts[kind]}`" :aria-pressed="modelValue === kind"
+              :disabled="counts[kind] === 0" @click="emit('update:modelValue', kind)">
+              <i :style="{ background: fileKindColor[kind] }" aria-hidden="true" />
+              <span class="diff-treemap__filter-label">{{ kind === 'docs' ? $t('surface.diffTreemap.docs') : fileKindLabel(kind) }}</span><span class="diff-treemap__filter-count">{{ counts[kind] }}</span>
+            </button>
+          </span>
+        </el-tooltip>
+      </div>
     </div>
 </template>
 
@@ -19,7 +29,9 @@ const emit = defineEmits<{ 'update:modelValue': [kind: FileKind | null] }>();
 </script>
 
 <style scoped>
-.diff-treemap__filters { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.diff-treemap__filters { container: diff-map-filters / inline-size; }
+.diff-treemap__filter-items { display: flex; flex-wrap: nowrap; gap: var(--space-3); }
+.diff-treemap__filter-target { display: inline-flex; }
 .diff-treemap__filters button {
   display: inline-flex;
   align-items: center;
@@ -31,13 +43,20 @@ const emit = defineEmits<{ 'update:modelValue': [kind: FileKind | null] }>();
   background: var(--color-surface-lowest);
   color: var(--color-text);
   font: inherit;
+  white-space: nowrap;
   cursor: pointer;
 }
 .diff-treemap__filters button[aria-pressed="true"] { border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-border)); background: var(--color-primary-container); color: var(--color-primary); font-weight: var(--font-weight-semibold); }
 .diff-treemap__filters button:disabled { opacity: 0.45; cursor: default; }
-.diff-treemap__filters button span { color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
+.diff-treemap__filter-count { color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
 .diff-treemap__filters i { width: 9px; height: 9px; flex: 0 0 auto; border-radius: var(--radius-full); }
 .diff-treemap__all-dot { background: var(--color-primary); }
 .diff-treemap__filters button:hover:not(:disabled) { border-color: var(--color-primary); }
-.diff-treemap__filters button[aria-pressed="true"] span { color: inherit; }
+.diff-treemap__filters button[aria-pressed="true"] .diff-treemap__filter-count { color: inherit; }
+@container diff-map-filters (max-width: 420px) {
+  .diff-treemap__filter-count { display: none; }
+}
+@container diff-map-filters (max-width: 340px) {
+  .diff-treemap__filter-label { display: none; }
+}
 </style>

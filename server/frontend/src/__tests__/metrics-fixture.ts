@@ -1,14 +1,23 @@
+import type {TelemetryMetrics} from '@workspace/core/telemetry-metrics';
 export const modelTotals = {
   turns: "1",
   inputTokens: "10",
   cachedInputTokens: "5",
   outputTokens: "2",
+  totalTokens:"12",
+  cacheInputTokens:"10",
+  cacheReadTokens:"5",
+  nonCacheReadTokens:"5",
+  cacheReadShare:.5,
+  excludedTokenGroups:"0",
+  excludedCacheGroups:"0",
+  groups:"1",
   estimatedCostUsd: "0",
   unknownInputGroups: "0",
   unknownCachedInputGroups: "0",
   unknownOutputGroups: "0",
   unknownCostGroups: "0",
-  costCoverage: "complete",
+  costCoverage: "complete" as const,
 };
 export const metrics = (turns = "7") => ({
   range: { from: "2020-01-01", to: "2020-01-01", provider: null, model: null },
@@ -51,7 +60,7 @@ export const metrics = (turns = "7") => ({
     excludedCacheGroups: "0",
     estimatedCostUsd: "0.000000000123",
     unknownCostGroups: "0",
-    costCoverage: "complete",
+    costCoverage: "complete" as const,
   },
   daily: [],
   modelDaily: [
@@ -97,4 +106,4 @@ export const metrics = (turns = "7") => ({
       serviceTier: "standard",
     },
   ],
-});
+} satisfies TelemetryMetrics);

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { LineElement } from "chart.js";
 import {
   buildAnalyticsChart,
   type AnalyticsChartSpec,
@@ -71,8 +72,8 @@ describe("shared Chart.js configuration", () => {
     ]);
     expect(result.options.scales?.y).toMatchObject({ stacked: true });
     expect(result.data.datasets.map((row) => row.fill)).toStrictEqual([
-      "origin",
-      "-1",
+      false,
+      false,
     ]);
   });
   it("supports grouped and stacked bars without changing category identity", () => {
@@ -233,6 +234,67 @@ it("creates quantity gradients from the rendered layer bounds and keeps bars sol
       context,
     ),
   ).toBe("#2274df");
+});
+
+// The browser pixel regression owns seamless geometry. This drawing-boundary
+// workflow protects curved painting, visibility and switching back to unfilled rates.
+it("paints only visible stacked layers and stops painting when the measure changes to a rate", () => {
+  const fill = vi.fn(),
+    bezierCurveTo = vi.fn();
+  const ctx = {
+    save: vi.fn(),
+    restore: vi.fn(),
+    beginPath: vi.fn(),
+    closePath: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    rect: vi.fn(),
+    clip: vi.fn(),
+    fill,
+    bezierCurveTo,
+  };
+  const line = (offset: number) =>
+    new LineElement({
+      points: [
+        { x: 0, y: 100 + offset },
+        { x: 100, y: 180 + offset },
+        { x: 200, y: 80 + offset },
+      ],
+      options: {
+        cubicInterpolationMode: "monotone",
+        capBezierPoints: false,
+        spanGaps: false,
+        backgroundColor: "#00f",
+      },
+    });
+  let visible = [{ dataset: line(0) }, { dataset: line(-30) }];
+  const chart = {
+    ctx,
+    chartArea: { left: 0, top: 0, right: 200, bottom: 300 },
+    scales: { y: { getBasePixel: () => 300 } },
+    getSortedVisibleDatasetMetas: () => visible,
+  };
+  const config = buildAnalyticsChart({ ...make("usd"), stacked: true }, theme);
+  const draw = (settings: typeof config.options.plugins) => {
+    for (const plugin of config.plugins)
+      plugin.beforeDatasetsDraw?.call(
+        {} as never,
+        chart as never,
+        {} as never,
+        (settings as Record<string, unknown>)?.[plugin.id] ?? {},
+      );
+  };
+  draw(config.options.plugins);
+  expect(fill).toHaveBeenCalledTimes(2);
+  expect(bezierCurveTo).toHaveBeenCalled();
+  fill.mockClear();
+  visible = visible.slice(0, 1);
+  draw(config.options.plugins);
+  expect(fill).toHaveBeenCalledOnce();
+  fill.mockClear();
+  const rates = buildAnalyticsChart(make("rate"), theme);
+  draw(rates.options.plugins);
+  expect(fill).not.toHaveBeenCalled();
 });
 
 import { seriesColor, providerColorForModel } from "../analytics-palette";

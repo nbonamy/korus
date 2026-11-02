@@ -85,6 +85,7 @@ it('retains measured subtotals through hourly ingestion, daily coalescing and id
     expect(result.daily.at(-1)).toMatchObject(result.totals);
     expect(result.weekly.at(-1)).toMatchObject(result.totals);
     expect(result.models[0]).toMatchObject(result.totals);
+    expect(result.modelDaily?.[0]).toMatchObject({provider:'codex',estimatedCostUsd:'0.5'});
     const corrected = {...payload,usage:[{...payload.usage[0],measuredTurns:2,inputTokens:200,cachedInputTokens:160,outputTokens:40,estimatedCostUsd:1,costCoverage:'complete'}]};
     expect((await send(corrected)).status).toBe(204);
     result = await (await get()).json() as TelemetryMetrics;

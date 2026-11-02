@@ -42,6 +42,20 @@ WITH bounds AS (
  SELECT u.*, CASE WHEN $5::boolean THEN NULL::text ELSE u.service_tier END AS tier FROM daily_usage u, bounds
  WHERE u.day BETWEEN lo AND hi AND ($3::text IS NULL OR provider=$3)
  AND ($4::text IS NULL OR model=$4)
+), weekly_users AS (
+ SELECT install_id,sum(turns) AS turns,
+ sum(coalesce(input_tokens::numeric,0)+coalesce(output_tokens,0))
+   FILTER (WHERE input_tokens IS NOT NULL OR output_tokens IS NOT NULL) AS total_tokens,
+ sum(estimated_cost_usd) AS cost
+ FROM filtered,bounds WHERE day>=hi-6
+ GROUP BY install_id HAVING sum(turns)>0
+), weekly_leaders AS (
+ SELECT row_number() OVER (ORDER BY turns DESC,total_tokens DESC NULLS LAST,cost DESC NULLS LAST,install_id) AS rank,
+ turns,total_tokens,cost,
+ round(turns/nullif(sum(turns) OVER (),0),6) AS turn_share
+ FROM weekly_users
+ ORDER BY turns DESC,total_tokens DESC NULLS LAST,cost DESC NULLS LAST,install_id
+ LIMIT 10
 ), keys AS (
  SELECT 'daily' AS kind, day AS bucket, NULL::text AS provider, NULL::text AS model, NULL::text AS tier FROM days
  UNION ALL SELECT DISTINCT 'weekly',date_trunc('week',day::timestamp)::date,NULL,NULL,NULL FROM days
@@ -134,11 +148,16 @@ SELECT jsonb_build_object(
  'activity',(SELECT jsonb_agg(jsonb_build_object('day',d.day,
  'activeInstalls',(SELECT count(*)::text FROM local_activity i WHERE i.day=d.day),
  'firstReportedInstalls',(SELECT count(*)::text FROM local_installs i WHERE i.first_reported_day=d.day)) ORDER BY d.day) FROM days d),
+ 'weeklyTopUsers',coalesce((SELECT jsonb_agg(jsonb_build_object(
+ 'rank',rank,'turns',turns::text,'totalTokens',total_tokens::text,
+ 'estimatedCostUsd',trim_scale(cost)::text,'turnShare',trim_scale(turn_share)::text
+ ) ORDER BY rank) FROM weekly_leaders),'[]'::jsonb),
  'totals',(SELECT value FROM summaries WHERE kind='total'),
  'daily',(SELECT jsonb_agg(value||jsonb_build_object('day',bucket) ORDER BY bucket) FROM summaries WHERE kind='daily'),
  'weekly',(SELECT jsonb_agg(value||jsonb_build_object('week',bucket) ORDER BY bucket) FROM summaries WHERE kind='weekly'),
  'modelDaily',coalesce((SELECT jsonb_agg(jsonb_build_object(
  'day',bucket,'provider',provider,'model',model,'serviceTier',tier,
+ 'estimatedCostUsd',value->'estimatedCostUsd',
  'turns',value->'turns','totalTokens',value->'totalTokens','inputTokens',value->'inputTokens','outputTokens',value->'outputTokens',
  'unknownInputGroups',value->'unknownInputGroups','unknownOutputGroups',value->'unknownOutputGroups',
  'excludedTokenGroups',value->'excludedTokenGroups','measuredTurns',value->'measuredTurns','unmeasuredTurns',value->'unmeasuredTurns','performance',value->'performance'

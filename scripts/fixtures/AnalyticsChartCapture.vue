@@ -23,6 +23,7 @@
         :series="serverSeries"
         :measure="serverMeasure"
         :variant="variant"
+        :stacked="scene === 'stacked'"
         :hide-legend="isRate"
         :subtitle="unit"
       />
@@ -53,7 +54,7 @@ const desktopMeasure =
       ratio: "ratio",
       speed: "speed",
       latency: "speed",
-      stacked: "total",
+      stacked: "cost",
       share: "total",
     } as const
   )[scene as "speed"] ?? "speed";
@@ -68,11 +69,10 @@ const serverMeasure =
       ratio: "ratio",
       speed: "rate",
       latency: "milliseconds",
-      stacked: "tokens",
+      stacked: "usd",
     } as const
   )[scene as "speed"] ?? "rate";
-const variant =
-  scene === "stacked" ? "stacked" : scene === "spend" ? "bar" : "line";
+const variant = scene === "spend" ? "bar" : "line";
 const isRate = ["speed", "ratio", "latency"].includes(scene);
 const unit =
   scene === "speed" ? "tokens/s" : scene === "latency" ? "s" : undefined;
@@ -134,7 +134,7 @@ const rows = models.map(([model, tier], index) => ({
 const daily = days.map((day, dayIndex) => {
   const groups = rows.flatMap((row, index) => {
     const rate = speeds[index]![dayIndex];
-    if (rate === null) return [];
+    if (rate === null && scene !== "stacked") return [];
     const input =
       scene === "ratio"
         ? 90 + dayIndex * 0.8 + index * 0.25
@@ -160,7 +160,12 @@ const daily = days.map((day, dayIndex) => {
           ttftTurns: 1,
         },
         cost: {
-          usd: dayIndex === 2 ? 0 : 0.05 + dayIndex * 0.17 + index * 0.1,
+          usd:
+            scene === "stacked" && rate === null
+              ? null
+              : dayIndex === 2
+                ? 0
+                : 0.05 + dayIndex * 0.17 + index * 0.1,
         },
       },
     ];
@@ -177,7 +182,7 @@ const daily = days.map((day, dayIndex) => {
       total: groups.reduce((n, g) => n + g.tokens.total, 0),
     },
     groups,
-    cost: { usd: groups.reduce((n, g) => n + g.cost.usd, 0) },
+    cost: { usd: groups.reduce((n, g) => n + (g.cost.usd ?? 0), 0) },
   };
 });
 const summary = { rows, daily, recordedSince: 0, retainedSince: 0 };
@@ -190,13 +195,14 @@ const serverSeries = computed(() =>
     color: series.color,
     values: daily.map((row) => {
       const group = row.groups.find((group) => group.key === series.key);
-      if (!group) return null;
+      if (!group)
+        return ["speed", "ratio", "latency"].includes(scene) ? null : "0";
       const value =
         scene === "speed"
           ? group.speed.outputTokens / (group.speed.generationMs / 1000)
           : scene === "latency"
             ? group.speed.ttftMs / group.speed.ttftTurns
-            : scene === "spend"
+            : ["spend", "stacked"].includes(scene)
               ? group.cost.usd
               : scene === "ratio"
                 ? group.tokens.input / group.tokens.total
@@ -207,7 +213,7 @@ const serverSeries = computed(() =>
                     : scene === "output"
                       ? group.tokens.output
                       : group.tokens.total;
-      return String(value);
+      return value === null ? null : String(value);
     }),
   })),
 );

@@ -535,12 +535,10 @@ export const surfaceMessages = {
     "files": "Files",
     "map": "Map",
     "docs": "Docs",
-    "backToMap": "Back to change map",
     "filterByType": "Filter by file type",
     "all": "All",
     "noLineChanges": "No line changes in these files.",
-    "filesWithoutLines": "Files without line changes ({count})",
-    "areaLegend": "Area = additions + deletions"
+    "filesWithoutLines": "Files without line changes ({count})"
   },
   "gitReviewPanel": {
     "gitHubReview": "GitHub review",

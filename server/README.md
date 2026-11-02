@@ -145,7 +145,11 @@ come from nonzero recorded usage within the selected date/provider scope,
 independently of the selected model.
 At most four aggregate statements execute concurrently; excess work receives 429
 with a one-second Retry-After. Database lock/statement deadlines yield generic 503
-responses. Responses are not cached and contain no installation-level records.
+responses. Responses are not cached. The weekly top-ten ranking contains usage totals and
+turn shares for anonymous installations in the final seven selected days, ranked
+by turns. Ranks apply only within the response; installation identifiers never
+leave the read service. Shares use all turns in the same filtered weekly scope,
+including installations outside the top ten.
 
 `core/src/telemetry-metrics.ts` is the browser-safe read contract. Cards use the
 range's end day and global activity, independent of usage filters: cumulative
@@ -191,6 +195,12 @@ Run `TELEMETRY_METRICS_EVIDENCE=<external-evidence-file> npm run test -w
 @workspace/server-backend -- src/collector/__tests__/metrics.spec.ts` to record repeatable
 aggregate JSON while verifying SQL/API parity, private access, corrections,
 unknowns, exact large integers and bounded database failure against real Postgres.
+
+Run `npm run dev:console` from the repository root, or `npm run dev` in
+`server/frontend`, for the loopback console with Vue hot reload on port 58191.
+Its `/auth` and `/v1` requests proxy to a private local upstream on port 58192;
+`TELEMETRY_CONSOLE_DEV_UPSTREAM` can select another operator-managed upstream.
+Authentication and data access stay in that upstream, outside browser assets.
 
 Build the portable private console with `npm run build:console`. The static
 artifact is `server/frontend/dist`; supply its absolute directory privately through
@@ -280,7 +290,7 @@ configuration/readiness only and produce no request records. The database and
 backups intentionally contain installation UUIDs and numeric rollups, never source
 addresses or conversation content. Monitor health/exit state, backup freshness and
 disk capacity alongside application diagnostics. Set `TELEMETRY_LOGGING_EVIDENCE`
-to an external JSON file when running `node --test server/scripts/stack.test.mjs`
+to an external JSON file when running `npm run test:server:infrastructure`
 to retain the sanitized records from its real database-failure probe.
 Do not enable packet capture, debug logs, SQL audit extensions or request tracing
 on this route in production.
@@ -320,13 +330,18 @@ counts/aggregates and oldest retained days before any separately authorized
 recovery cutover. Reapply grants before serving a recovered database; restoration
 must not resurrect expired backup copies in other storage.
 
-`node --test server/scripts/stack.test.mjs` builds the real isolated image and
+`npm run test:server:infrastructure` builds the real isolated image and
 exercises the disposable Compose stack, role denials, HTTP through nginx,
 restart/recreation persistence, exact expiry boundaries, failed dumps and isolated
 restore including old history. It removes its containers, networks and volumes.
 Set `TELEMETRY_STACK_EVIDENCE` to an untracked output file for sanitized results.
 
-The same workflow connects an isolated desktop-owned profile through the real
+Run `npm run test:server:e2e` for the console browser workflow in
+`server/test/e2e/console.test.mjs`. It starts a disposable local stack without
+database restart, backup-expiry or restore exercises. Its fixture uses synthetic
+credentials and never reads an operator environment or connects to a deployed host.
+
+The console workflow connects an isolated desktop-owned profile through the real
 settings/activity RPC, SQLite ledger and `TelemetryUploadService` to that stack.
 Its local fault receiver forwards canonical bytes and discards an acknowledgement
 after commit. Restart and repeated window notifications must preserve one logical

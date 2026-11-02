@@ -10,6 +10,7 @@
     <div ref="stage" class="chart-stage">
       <div class="chart-canvas">
         <VueChart
+          :key="configuration.type"
           ref="chart"
           :type="configuration.type"
           :data="chartData"
@@ -27,7 +28,9 @@
         <template v-for="(day, index) in days" :key="day"
           ><template v-for="item in series" :key="item.label">
             <button
-              v-if="item.values[index] != null"
+              v-if="
+                item.values[index] != null && item.observed?.[index] !== false
+              "
               class="chart-observation"
               tabindex="-1"
               :aria-label="`${day} · ${item.label}: ${measurement(item.values[index]!, measure)}`"
@@ -51,7 +54,9 @@
         <ul>
           <li v-for="item in tooltipRows" :key="item.label">
             <i :style="{ background: item.color }" aria-hidden="true" />
-            <span class="tooltip-name">{{ item.label }}</span>
+            <span class="tooltip-name" :title="item.label">{{
+              item.label
+            }}</span>
             <b :title="exactMeasurement(item.value, measure)">{{
               measurement(item.value, measure)
             }}</b>
@@ -60,7 +65,7 @@
         <p v-if="!tooltipRows.length">Unavailable</p>
         <div v-if="tooltipTotal !== null" class="tooltip-total">
           <span>{{ totalLabel ?? "Total" }}</span
-          ><b :title="count(tooltipTotal)">{{
+          ><b :title="exactMeasurement(tooltipTotal, measure)">{{
             measurement(tooltipTotal, measure)
           }}</b>
         </div>
@@ -68,13 +73,13 @@
     </div>
     <ul
       class="legend"
-      v-if="!hideLegend && series.length > 1"
+      v-if="!hideLegend && legendItems.length > 1"
       aria-label="Series"
     >
-      <li v-for="(item, i) in series" :key="item.label">
+      <li v-for="item in legendItems" :key="item.label">
         <i
           :style="{
-            background: color(i),
+            background: item.color,
           }"
         />{{ item.label }}
       </li>
@@ -106,7 +111,8 @@ import {
   buildAnalyticsChart,
   analyticsDay,
 } from "@workspace/core/analytics-chart";
-import { count, measurement, exactMeasurement, type Measure } from "./format";
+import { measurement, exactMeasurement, type Measure } from "./format";
+import { addAmounts } from "./report-data";
 import { readAnalyticsTheme } from "./analytics-theme";
 ChartJS.register(
   CategoryScale,
@@ -129,9 +135,14 @@ const props = defineProps<{
     values: (string | null)[];
     color?: string;
     dash?: string;
+    order?: number;
+    /** False for zeroes supplied only to keep the plotted stack continuous. */
+    observed?: boolean[];
   }[];
   variant?: "line" | "bar" | "stacked";
+  stacked?: boolean;
   measure: Measure;
+  area?: "gradient" | "solid" | "none";
   totalLabel?: string;
   hideLegend?: boolean;
 }>();
@@ -141,6 +152,15 @@ const stage = ref<HTMLElement | null>(null),
   theme = ref(readAnalyticsTheme());
 const color = (index: number) =>
   props.series[index]?.color ?? `var(--chart-${(index % 8) + 1})`;
+const legendItems = computed(() =>
+  props.series.flatMap((row, index) =>
+    row.values.some(
+      (value, day) => value != null && row.observed?.[day] !== false,
+    )
+      ? [{ label: row.label, color: color(index) }]
+      : [],
+  ),
+);
 const interaction = {
   index: null as number | null,
   renderedWidth: () =>
@@ -156,7 +176,9 @@ const configuration = computed(() =>
       })),
       measure: props.measure,
       variant: props.variant,
+      stacked: props.stacked,
       legend: false,
+      area: props.area,
     },
     theme.value,
     (index) => (active.value = index),
@@ -185,8 +207,9 @@ const tooltipRows = computed(() =>
       label: row.label,
       color: color(index),
       value: active.value === null ? null : (row.values[active.value] ?? null),
+      observed: active.value !== null && row.observed?.[active.value] !== false,
     }))
-    .filter((row) => row.value !== null)
+    .filter((row) => row.value !== null && row.observed)
     .sort((a, b) =>
       props.measure === "milliseconds"
         ? Number(a.value) - Number(b.value)
@@ -195,21 +218,16 @@ const tooltipRows = computed(() =>
 );
 const tooltipTotal = computed(() => {
   if (
-    !(props.totalLabel || props.variant === "stacked") ||
+    !(props.totalLabel || props.stacked || props.variant === "stacked") ||
     props.series.length < 2 ||
-    !["count", "tokens"].includes(props.measure)
+    !["count", "tokens", "usd"].includes(props.measure)
   )
     return null;
-  const values = tooltipRows.value.filter(
-    (row) => row.value !== null && /^\d+$/.test(row.value),
-  );
-  return values.length
-    ? values.reduce((sum, row) => sum + BigInt(row.value!), 0n).toString()
-    : null;
+  return addAmounts(tooltipRows.value.map((row) => row.value));
 });
 const tooltipStyle = computed(() => {
   const width = chart.value?.chart?.width ?? 640,
-    popupWidth = Math.min(340, width - 16),
+    popupWidth = Math.min(480, width - 16),
     point =
       chart.value?.chart?.scales.x?.getPixelForValue(active.value ?? 0) ?? 16;
   return {

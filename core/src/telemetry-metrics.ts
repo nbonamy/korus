@@ -75,6 +75,17 @@ export type TelemetryMetrics = {
     activeInstalls: string;
     firstReportedInstalls: string;
   }[];
+  /** Top ten anonymous installations by turns in the final seven selected days.
+   * Ranks are local to this response; no installation identifier is exposed.
+   * turnShare is a decimal fraction of all turns in that same scope.
+   */
+  weeklyTopUsers?: {
+    rank: number;
+    turns: string;
+    totalTokens: string | null;
+    estimatedCostUsd: string | null;
+    turnShare: string;
+  }[];
   totals: TelemetryMetricTotals;
   daily: (TelemetryMetricTotals & { day: string })[];
   weekly: (TelemetryMetricTotals & { week: string })[];
@@ -91,6 +102,7 @@ export type TelemetryMetrics = {
     | "performance"
   > & {
     day: string;
+    estimatedCostUsd?: string | null;
     provider: TelemetryProvider;
     model: TelemetryModel;
     serviceTier?: TelemetryServiceTier | null;

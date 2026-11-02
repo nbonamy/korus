@@ -54,6 +54,13 @@ export const duration = (value: string | null) =>
   value === null
     ? "Unavailable"
     : `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(Number(value) / 1000)} s`;
+export const performanceNumber = (
+  value: string | null,
+  measure: "rate" | "milliseconds",
+) =>
+  measure === "rate"
+    ? rate(value).replace(/ tokens\/s$/, "")
+    : duration(value).replace(/ s$/, "");
 export type Measure =
   | "count"
   | "tokens"

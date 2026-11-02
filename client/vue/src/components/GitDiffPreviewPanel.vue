@@ -26,10 +26,6 @@
       v-else-if="files.length"
       class="git-diff-preview-panel__files"
     >
-      <button v-if="focusedFilePath" class="git-diff-preview-panel__map-back" type="button"
-        :aria-label="$t('surface.diffTreemap.backToMap')" @click="emit('update:view', 'map')">
-        <ChevronLeftIcon aria-hidden="true" />{{ $t('surface.diffTreemap.changeMap') }}
-      </button>
       <div
         v-for="group in groups"
         :key="group.kind ?? 'all'"
@@ -175,7 +171,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { IconBrandJavascript, IconBrandTypescript, IconBrandVue, IconFileCode, IconPlus } from '@tabler/icons-vue';
 import parseGitDiff, { type AnyChunk, type AnyFileChange, type Chunk } from 'parse-git-diff';
 import { translate } from '../i18n';
-import { ChevronDown, ChevronLeftIcon, ChevronRightIcon, FileArrowRightIcon } from '../shared/icons/app-icons';
+import { ChevronDown, ChevronRightIcon, FileArrowRightIcon } from '../shared/icons/app-icons';
 import { classifyFile, fileKinds, type FileKind } from '@workspace/core/file-kind';
 import { fileKindColor, fileKindCount, fileKindLabel } from './file-kind-presentation';
 import GitDiffTreemap from './GitDiffTreemap.vue';
@@ -537,20 +533,6 @@ function mapLine(line: Chunk['changes'][number]): DiffLineView {
 }
 
 .git-diff-preview-panel--map { display: flex; flex-direction: column; }
-
-.git-diff-preview-panel__map-back {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-6);
-  border: 0;
-  border-bottom: 1px solid var(--color-border);
-  color: var(--color-primary);
-  background: var(--color-surface-lowest);
-  font-family: var(--font-family-ui);
-  cursor: pointer;
-}
-.git-diff-preview-panel__map-back svg { width: var(--icon-sm); height: var(--icon-sm); }
 
 .git-diff-preview-panel__files {
   display: grid;

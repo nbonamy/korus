@@ -8,7 +8,7 @@ describe('SettingsClaudeCodePanel', () => {
     const setEnabled = vi.fn().mockResolvedValue(undefined);
     const wrapper = mount(SettingsClaudeCodePanel, { props: { setEnabled, home: { homePath: '/app/claude-home', isolated: true, shareSkills: true } }, global: { components: { ElSwitch } } });
     expect(wrapper.get('.engine-hero__copy strong').text()).toBe('Claude Code');
-    expect(wrapper.findAll('.engine-hero__details .form-row__copy strong').map(row => row.text())).toEqual(['Version', 'Location', 'Enable engine']);
+    expect(wrapper.findAll('.engine-hero__details .form-row__copy strong').map(row => row.text())).toEqual(['Version', 'Location', 'Enable Claude Code']);
     await wrapper.get('button').trigger('click');
     expect(wrapper.emitted('connect')).toHaveLength(1);
     await wrapper.setProps({ connected: true, authentication: { kind: 'claude', connected: true, state: { loggedIn: true, account: { type: 'subscription', email: 'user@example.com', subscription: 'max' } } } });

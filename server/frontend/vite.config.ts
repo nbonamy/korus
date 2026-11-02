@@ -34,5 +34,14 @@ export default defineConfig({
   resolve: {
     alias: { "@workspace/core": path.resolve(__dirname, "../../core/src") },
   },
+  server: {
+    host: "127.0.0.1",
+    port: 58191,
+    strictPort: true,
+    proxy: {
+      "/auth": { target: process.env.TELEMETRY_CONSOLE_DEV_UPSTREAM ?? "http://127.0.0.1:58192", changeOrigin: true },
+      "/v1": { target: process.env.TELEMETRY_CONSOLE_DEV_UPSTREAM ?? "http://127.0.0.1:58192", changeOrigin: true },
+    },
+  },
   build: { outDir: path.resolve(__dirname, "dist"), emptyOutDir: true },
 });

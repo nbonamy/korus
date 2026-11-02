@@ -14,11 +14,10 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { test } from "node:test";
 import { request, createServer } from "node:http";
 import { build } from "esbuild";
 import { pathToFileURL } from "node:url";
-import { dashboardWorkflow } from "./dashboard.browser.mjs";
+import { dashboardWorkflow } from "./console-workflow.mjs";
 const http = (url, options = {}) =>
   new Promise((resolve, reject) => {
     const req = request(url, { ...options, timeout: 15000 }, (res) => {
@@ -33,7 +32,7 @@ const http = (url, options = {}) =>
   });
 
 const exec = promisify(execFile);
-const root = fileURLToPath(new URL("../../", import.meta.url));
+const root = fileURLToPath(new URL("../../../../", import.meta.url));
 const stack = path.join(root, "server/deploy");
 const day = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 const oldDay = "2020-01-01";
@@ -42,278 +41,292 @@ const id = "d8b65ff5-179c-49b9-ac3a-f60a54a0f43f";
 // Owning operations boundary: broken readiness, overprivileged ingestion,
 // disposable storage, failed/expired backup, unsafe restore, proxy logging and
 // accidentally baked operator inputs must fail through real Compose/HTTP/SQL.
-test(
-  "isolated telemetry Compose preserves history, expires backup copies and restores exact metrics",
-  { timeout: 300000 },
-  async (t) => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "telemetry-stack-"));
-    const project = `telemetry-test-${process.pid}`;
-    const image = `telemetry-test:${process.pid}`;
-    const canary = "SENTINEL_OPERATOR_SECRET_847295012345";
-    const env = { ...process.env };
-    const run = (cmd, args, extra = {}) =>
-      exec(cmd, args, {
-        cwd: root,
-        env,
-        timeout: 120000,
-        maxBuffer: 4000000,
-        ...extra,
-      });
-    const compose = (...args) =>
-      run("docker", [
-        "compose",
-        "-p",
-        project,
-        "-f",
-        path.join(stack, "compose.yaml"),
-        ...args,
-      ]);
-    const sql = async (query, role = "telemetry_migrate") =>
-      (
-        await compose(
-          "exec",
-          "-T",
-          "db",
-          "psql",
-          "-U",
-          role,
-          "-d",
-          "telemetry",
-          "-At",
-          "-v",
-          "ON_ERROR_STOP=1",
-          "-c",
-          query,
-        )
-      ).stdout.trim();
-    let endpoint;
-    const authCanaries = [];
-    let desktopProfile;
-    try {
-      for (const name of [
-        "admin",
-        "migrate",
-        "ingest",
-        "backup",
-        "read",
-        "edge_realip",
-        "read_access",
-      ]) {
-        const file = path.join(dir, name);
-        await writeFile(file, name === "edge_realip" ? "" : canary, {
-          mode: 0o444,
-        });
-        env[`TELEMETRY_${name.toUpperCase()}_FILE`] = file;
-      }
-      await mkdir(path.join(dir, "backups"), { mode: 0o777 });
-      await chmod(path.join(dir, "backups"), 0o777);
-      await mkdir(path.join(dir, "console"));
-      await run(
-        process.execPath,
-        [
-          path.join(root, "node_modules/vite/bin/vite.js"),
-          "build",
-          "--config",
-          "server/frontend/vite.config.ts",
-          "--outDir",
-          path.join(dir, "console"),
-        ],
-        {
-          env: {
-            ...env,
-            VITE_OPERATOR_SECRET: canary,
-            TELEMETRY_DATABASE_URL: canary,
-            TELEMETRY_READ_ACCESS: canary,
-          },
-        },
+export async function telemetryStackWorkflow(
+  t,
+  { infrastructure = false } = {},
+) {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "telemetry-stack-"));
+  const project = `telemetry-test-${process.pid}`;
+  const image = `telemetry-test:${process.pid}`;
+  const canary = "SENTINEL_OPERATOR_SECRET_847295012345";
+  const env = { ...process.env };
+  const readiness = path.join(dir, "readiness.json");
+  const run = (cmd, args, extra = {}) =>
+    exec(cmd, args, {
+      cwd: root,
+      env,
+      timeout: 120000,
+      maxBuffer: 4000000,
+      ...extra,
+    });
+  const compose = (...args) =>
+    run("docker", [
+      "compose",
+      "-p",
+      project,
+      "-f",
+      path.join(stack, "compose.yaml"),
+      ...(!infrastructure ? ["-f", readiness] : []),
+      ...args,
+    ]);
+  const sql = async (query, role = "telemetry_migrate") =>
+    (
+      await compose(
+        "exec",
+        "-T",
+        "db",
+        "psql",
+        "-U",
+        role,
+        "-d",
+        "telemetry",
+        "-At",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-c",
+        query,
+      )
+    ).stdout.trim();
+  let endpoint;
+  const authCanaries = [];
+  let desktopProfile;
+  try {
+    if (!infrastructure)
+      await writeFile(
+        readiness,
+        JSON.stringify({
+          services: Object.fromEntries(
+            ["db", "collector", "metrics", "auth", "backup", "proxy"].map(
+              (name) => [name, { healthcheck: { start_interval: "250ms" } }],
+            ),
+          ),
+        }),
       );
-      const builtFiles = await readdir(path.join(dir, "console/assets"));
-      for (const file of builtFiles) {
-        const contents = await readFile(
-          path.join(dir, "console/assets", file),
-          "utf8",
+    for (const name of [
+      "admin",
+      "migrate",
+      "ingest",
+      "backup",
+      "read",
+      "edge_realip",
+      "read_access",
+    ]) {
+      const file = path.join(dir, name);
+      await writeFile(file, name === "edge_realip" ? "" : canary, {
+        mode: 0o444,
+      });
+      env[`TELEMETRY_${name.toUpperCase()}_FILE`] = file;
+    }
+    await mkdir(path.join(dir, "backups"), { mode: 0o777 });
+    await chmod(path.join(dir, "backups"), 0o777);
+    await mkdir(path.join(dir, "console"));
+    await run(
+      process.execPath,
+      [
+        path.join(root, "node_modules/vite/bin/vite.js"),
+        "build",
+        "--config",
+        "server/frontend/vite.config.ts",
+        "--outDir",
+        path.join(dir, "console"),
+      ],
+      {
+        env: {
+          ...env,
+          VITE_OPERATOR_SECRET: canary,
+          TELEMETRY_DATABASE_URL: canary,
+          TELEMETRY_READ_ACCESS: canary,
+        },
+      },
+    );
+    const builtFiles = await readdir(path.join(dir, "console/assets"));
+    for (const file of builtFiles) {
+      const contents = await readFile(
+        path.join(dir, "console/assets", file),
+        "utf8",
+      );
+      assert.equal(
+        contents.includes(canary) ||
+          contents.includes(dir) ||
+          contents.includes("api.invalid") ||
+          contents.includes("console.invalid"),
+        false,
+      );
+    }
+    const probe = createServer();
+    await new Promise((resolve) => probe.listen(0, "127.0.0.1", resolve));
+    const consolePort = probe.address().port;
+    await new Promise((resolve) => probe.close(resolve));
+    Object.assign(env, {
+      BACKEND_ADMIN_PASSWORD: canary,
+      TELEMETRY_CONSOLE_ALLOW_LOOPBACK_HTTP: "1",
+      TELEMETRY_IMAGE: image,
+      TELEMETRY_BACKUP_DIRECTORY: path.join(dir, "backups"),
+      TELEMETRY_CONSOLE_DIRECTORY: path.join(dir, "console"),
+      TELEMETRY_API_HOST: "api.invalid",
+      TELEMETRY_CONSOLE_HOST: "127.0.0.1",
+      TELEMETRY_CONSOLE_ORIGIN: `http://127.0.0.1:${consolePort}`,
+      TELEMETRY_BIND_ADDRESS: "127.0.0.1",
+      TELEMETRY_PORT: String(consolePort),
+      TELEMETRY_PROXY_SUBNET: "172.29.253.0/24",
+      TELEMETRY_PROXY_IP: "172.29.253.2",
+      TELEMETRY_COLLECTOR_IP: "172.29.253.3",
+      TELEMETRY_METRICS_IP: "172.29.253.4",
+      TELEMETRY_AUTH_IP: "172.29.253.5",
+    });
+    await t.test(
+      "renders external inputs without exposing database ports or secrets and builds an isolated image",
+      async () => {
+        const rendered = JSON.parse(
+          (await compose("config", "--format", "json")).stdout,
         );
+        assert.equal(rendered.services.db.ports, undefined);
+        assert.equal(rendered.services.collector.ports, undefined);
+        assert.equal(rendered.networks.database.internal, true);
+        assert.equal(rendered.networks.frontend.internal, true);
+        assert.equal(rendered.networks.database.external, undefined);
         assert.equal(
-          contents.includes(canary) ||
-            contents.includes(dir) ||
-            contents.includes("api.invalid") ||
-            contents.includes("console.invalid"),
+          rendered.services.auth.environment.BACKEND_ADMIN_PASSWORD,
+          canary,
+        );
+        assert.equal(rendered.services.auth.ports, undefined);
+        assert.deepEqual(Object.keys(rendered.services.auth.networks), [
+          "frontend",
+        ]);
+        // The operator explicitly supplies a runtime-only password environment;
+        // it must be present only on auth, never in any other runtime inputs.
+        delete rendered.services.auth.environment.BACKEND_ADMIN_PASSWORD;
+        assert.equal(JSON.stringify(rendered).includes(canary), false);
+        for (const [name, service] of Object.entries(rendered.services)) {
+          if (["collector", "metrics", "auth", "migrate"].includes(name)) {
+            assert.deepEqual(service.logging, {
+              driver: "local",
+              options: {
+                "max-size": "5m",
+                "max-file": "3",
+                mode: "non-blocking",
+                "max-buffer-size": "1m",
+              },
+            });
+          } else assert.equal(service.logging.driver, "none");
+        }
+        await run(process.execPath, [
+          path.join(root, "server/scripts/package.mjs"),
+          image,
+        ]);
+        const inspection = (await run("docker", ["image", "inspect", image]))
+          .stdout;
+        const files = (
+          await run("docker", [
+            "run",
+            "--rm",
+            "--entrypoint",
+            "sh",
+            image,
+            "-c",
+            "env; cat /opt/telemetry/*",
+          ])
+        ).stdout;
+        assert.equal(
+          inspection.includes(canary) ||
+            files.includes(canary) ||
+            files.includes(dir) ||
+            files.includes("api.invalid") ||
+            files.includes("console.invalid"),
           false,
         );
-      }
-      const probe = createServer();
-      await new Promise((resolve) => probe.listen(0, "127.0.0.1", resolve));
-      const consolePort = probe.address().port;
-      await new Promise((resolve) => probe.close(resolve));
-      Object.assign(env, {
-        BACKEND_ADMIN_PASSWORD: canary,
-        TELEMETRY_CONSOLE_ALLOW_LOOPBACK_HTTP: "1",
-        TELEMETRY_IMAGE: image,
-        TELEMETRY_BACKUP_DIRECTORY: path.join(dir, "backups"),
-        TELEMETRY_CONSOLE_DIRECTORY: path.join(dir, "console"),
-        TELEMETRY_API_HOST: "api.invalid",
-        TELEMETRY_CONSOLE_HOST: "127.0.0.1",
-        TELEMETRY_CONSOLE_ORIGIN: `http://127.0.0.1:${consolePort}`,
-        TELEMETRY_BIND_ADDRESS: "127.0.0.1",
-        TELEMETRY_PORT: String(consolePort),
-        TELEMETRY_PROXY_SUBNET: "172.29.253.0/24",
-        TELEMETRY_PROXY_IP: "172.29.253.2",
-        TELEMETRY_COLLECTOR_IP: "172.29.253.3",
-        TELEMETRY_METRICS_IP: "172.29.253.4",
-        TELEMETRY_AUTH_IP: "172.29.253.5",
-      });
-      await t.test(
-        "renders external inputs without exposing database ports or secrets and builds an isolated image",
-        async () => {
-          const rendered = JSON.parse(
-            (await compose("config", "--format", "json")).stdout,
-          );
-          assert.equal(rendered.services.db.ports, undefined);
-          assert.equal(rendered.services.collector.ports, undefined);
-          assert.equal(rendered.networks.database.internal, true);
-          assert.equal(rendered.networks.frontend.internal, true);
-          assert.equal(rendered.networks.database.external, undefined);
-          assert.equal(
-            rendered.services.auth.environment.BACKEND_ADMIN_PASSWORD,
-            canary,
-          );
-          assert.equal(rendered.services.auth.ports, undefined);
-          assert.deepEqual(Object.keys(rendered.services.auth.networks), [
-            "frontend",
-          ]);
-          // The operator explicitly supplies a runtime-only password environment;
-          // it must be present only on auth, never in any other runtime inputs.
-          delete rendered.services.auth.environment.BACKEND_ADMIN_PASSWORD;
-          assert.equal(JSON.stringify(rendered).includes(canary), false);
-          for (const [name, service] of Object.entries(rendered.services)) {
-            if (["collector", "metrics", "auth", "migrate"].includes(name)) {
-              assert.deepEqual(service.logging, {
-                driver: "local",
-                options: {
-                  "max-size": "5m",
-                  "max-file": "3",
-                  mode: "non-blocking",
-                  "max-buffer-size": "1m",
-                },
-              });
-            } else assert.equal(service.logging.driver, "none");
-          }
-          await run(process.execPath, [
-            path.join(root, "server/scripts/package.mjs"),
-            image,
-          ]);
-          const inspection = (await run("docker", ["image", "inspect", image]))
-            .stdout;
-          const files = (
-            await run("docker", [
-              "run",
-              "--rm",
-              "--entrypoint",
-              "sh",
-              image,
-              "-c",
-              "env; cat /opt/telemetry/*",
-            ])
-          ).stdout;
-          assert.equal(
-            inspection.includes(canary) ||
-              files.includes(canary) ||
-              files.includes(dir) ||
-              files.includes("api.invalid") ||
-              files.includes("console.invalid"),
-            false,
-          );
-          assert.deepEqual(
-            JSON.parse(
-              (
-                await run("docker", [
-                  "run",
-                  "--rm",
-                  "--entrypoint",
-                  "node",
-                  image,
-                  "-e",
-                  "console.log(JSON.stringify(require('fs').readdirSync('/opt/telemetry').sort()))",
-                ])
-              ).stdout,
-            ),
-            ["collector.mjs", "container.mjs"],
-          );
-        },
-      );
-      await t.test(
-        "starts after migrations with private roles, accepts HTTP and survives database restart",
-        async () => {
-          await compose("up", "-d", "--wait", "--wait-timeout", "90");
-          const port = (await compose("port", "proxy", "8080")).stdout
-            .trim()
-            .split(":")
-            .at(-1);
-          endpoint = `http://127.0.0.1:${port}/v1/telemetry/daily`;
-          const body = {
-            installId: id,
-            day,
-            appVersion: "1.2.3",
-            os: "unknown",
-            usage: [
-              {
-                provider: "codex",
-                model: "unknown",
-                turns: 2,
-                inputTokens: 100,
-                cachedInputTokens: 50,
-                outputTokens: 25,
-                estimatedCostUsd: null,
-              },
-            ],
-          };
-          const post = () =>
-            http(endpoint, {
-              method: "POST",
-              headers: {
-                host: "api.invalid",
-                "content-type": "application/json",
-                "user-agent": canary,
-                "x-real-ip": canary,
-              },
-              body: JSON.stringify(body),
-            });
-          assert.equal((await post()).status, 204);
-          assert.deepEqual(
-            JSON.parse(
-              await sql(
-                "SELECT json_build_array(current_setting('log_statement'),current_setting('log_min_error_statement'),current_setting('log_min_messages'),current_setting('log_connections'),current_setting('log_disconnections'),current_setting('log_parameter_max_length_on_error'))",
-                "postgres",
-              ),
-            ),
-            ["none", "panic", "panic", "off", "off", "0"],
-          );
-          // Old history is seeded via the migration owner, not backfilled by ingestion.
-          await sql(
-            `INSERT INTO install_days(install_id,day,app_version,os,received_at) VALUES ('${id}','${oldDay}','1.0.0','unknown',now()); INSERT INTO usage_daily(install_id,day,provider,model,turns,input_tokens,cached_input_tokens,output_tokens,estimated_cost_usd) VALUES ('${id}','${oldDay}','claude','unknown',1,200,100,30,0.25)`,
-          );
-          assert.equal(
+        assert.deepEqual(
+          JSON.parse(
+            (
+              await run("docker", [
+                "run",
+                "--rm",
+                "--entrypoint",
+                "node",
+                image,
+                "-e",
+                "console.log(JSON.stringify(require('fs').readdirSync('/opt/telemetry').sort()))",
+              ])
+            ).stdout,
+          ),
+          ["collector.mjs", "container.mjs"],
+        );
+      },
+    );
+    await t.test(
+      "starts private services and checks roles, HTTP and access gates",
+      async () => {
+        await compose("up", "-d", "--wait", "--wait-timeout", "90");
+        const port = (await compose("port", "proxy", "8080")).stdout
+          .trim()
+          .split(":")
+          .at(-1);
+        endpoint = `http://127.0.0.1:${port}/v1/telemetry/daily`;
+        const body = {
+          installId: id,
+          day,
+          appVersion: "1.2.3",
+          os: "unknown",
+          usage: [
+            {
+              provider: "codex",
+              model: "unknown",
+              turns: 2,
+              inputTokens: 100,
+              cachedInputTokens: 50,
+              outputTokens: 25,
+              estimatedCostUsd: null,
+            },
+          ],
+        };
+        const post = () =>
+          http(endpoint, {
+            method: "POST",
+            headers: {
+              host: "api.invalid",
+              "content-type": "application/json",
+              "user-agent": canary,
+              "x-real-ip": canary,
+            },
+            body: JSON.stringify(body),
+          });
+        assert.equal((await post()).status, 204);
+        assert.deepEqual(
+          JSON.parse(
             await sql(
-              "SELECT bool_and(NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication) FROM pg_roles WHERE rolname IN ('telemetry_migrate','telemetry_ingest','telemetry_backup','telemetry_read')",
+              "SELECT json_build_array(current_setting('log_statement'),current_setting('log_min_error_statement'),current_setting('log_min_messages'),current_setting('log_connections'),current_setting('log_disconnections'),current_setting('log_parameter_max_length_on_error'))",
+              "postgres",
             ),
-            "t",
-          );
-          for (const query of [
-            "CREATE TABLE forbidden(x int)",
-            "DELETE FROM install_days",
-            "UPDATE installs SET first_reported_day=current_date",
-            "SELECT * FROM telemetry_migrations",
-          ])
-            await assert.rejects(sql(query, "telemetry_ingest"));
-          await assert.rejects(
-            sql("DELETE FROM usage_daily", "telemetry_backup"),
-          );
-          await assert.rejects(
-            sql(
-              "INSERT INTO installs(install_id,first_reported_day) VALUES (gen_random_uuid(),current_date)",
-              "telemetry_read",
-            ),
-          );
+          ),
+          ["none", "panic", "panic", "off", "off", "0"],
+        );
+        // Old history is seeded via the migration owner, not backfilled by ingestion.
+        await sql(
+          `INSERT INTO install_days(install_id,day,app_version,os,received_at) VALUES ('${id}','${oldDay}','1.0.0','unknown',now()); INSERT INTO usage_daily(install_id,day,provider,model,turns,input_tokens,cached_input_tokens,output_tokens,estimated_cost_usd) VALUES ('${id}','${oldDay}','claude','unknown',1,200,100,30,0.25)`,
+        );
+        assert.equal(
+          await sql(
+            "SELECT bool_and(NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication) FROM pg_roles WHERE rolname IN ('telemetry_migrate','telemetry_ingest','telemetry_backup','telemetry_read')",
+          ),
+          "t",
+        );
+        for (const query of [
+          "CREATE TABLE forbidden(x int)",
+          "DELETE FROM install_days",
+          "UPDATE installs SET first_reported_day=current_date",
+          "SELECT * FROM telemetry_migrations",
+        ])
+          await assert.rejects(sql(query, "telemetry_ingest"));
+        await assert.rejects(
+          sql("DELETE FROM usage_daily", "telemetry_backup"),
+        );
+        await assert.rejects(
+          sql(
+            "INSERT INTO installs(install_id,first_reported_day) VALUES (gen_random_uuid(),current_date)",
+            "telemetry_read",
+          ),
+        );
+        if (infrastructure) {
           const databaseId = (await compose("ps", "-q", "db")).stdout.trim();
           const collectorId = (
             await compose("ps", "-q", "collector")
@@ -344,126 +357,124 @@ test(
             ),
             "355",
           );
-          const consoleOrigin = `http://127.0.0.1:${port}`;
-          const anonymous = await http(`${consoleOrigin}/`);
-          assert.equal(anonymous.status, 302);
-          assert.equal(anonymous.headers.location, "/login");
-          assert.equal(anonymous.headers["www-authenticate"], undefined);
-          assert.equal((await http(`${consoleOrigin}/index.html`)).status, 302);
-          assert.equal((await http(`${consoleOrigin}/login`)).status, 200);
-          const session = `${consoleOrigin}/auth/session`;
-          assert.equal((await http(session)).status, 401);
-          const login = (username = "admin", origin = consoleOrigin) =>
-            http(session, {
-              method: "POST",
-              headers: { origin, "content-type": "application/json" },
-              body: JSON.stringify({ username, password: canary }),
-            });
-          assert.equal(
-            (await login("admin", "https://other.invalid")).status,
-            403,
-          );
-          authCanaries.push("SESSION_LOGIN_USER_CANARY");
-          assert.equal((await login(authCanaries[0])).status, 401);
-          const signedIn = await login();
-          assert.equal(signedIn.status, 204);
-          let cookie = signedIn.headers["set-cookie"][0].split(";")[0];
-          authCanaries.push(cookie);
-          assert.equal(
-            (await http(session, { headers: { cookie } })).status,
-            204,
-          );
-          assert.equal(
-            (await http(`${consoleOrigin}/`, { headers: { cookie } })).status,
-            200,
-          );
-          const metricsPath = `/v1/telemetry/metrics?from=${day}&to=${day}`;
-          for (const [headers, expected] of [
-            [{}, 401],
-            [{ cookie }, 200],
-            [{ cookie, origin: "https://other.invalid" }, 403],
-            [{ host: "api.invalid" }, 404],
-          ]) {
-            const response = await http(`${consoleOrigin}${metricsPath}`, {
-              headers,
-            });
-            assert.equal(response.status, expected);
-            assert.equal(response.headers["www-authenticate"], undefined);
-          }
-          assert.equal(
-            (
-              await http(session, {
-                method: "DELETE",
-                headers: { cookie, origin: "https://other.invalid" },
-              })
-            ).status,
-            403,
-          );
-          assert.equal(
-            (
-              await http(session, {
-                method: "DELETE",
-                headers: { cookie, origin: consoleOrigin },
-              })
-            ).status,
-            204,
-          );
-          assert.equal(
-            (
-              await http(`${consoleOrigin}${metricsPath}`, {
-                headers: { cookie },
-              })
-            ).status,
-            401,
-          );
-          const nextLogin = await login();
-          cookie = nextLogin.headers["set-cookie"][0].split(";")[0];
-          authCanaries.push(cookie);
-          const script = await http(
-            `http://127.0.0.1:${port}/assets/${builtFiles.find((f) => f.endsWith(".js"))}`,
-            {
-              headers: {
-                cookie,
-              },
+        }
+        const consoleOrigin = `http://127.0.0.1:${port}`;
+        const anonymous = await http(`${consoleOrigin}/`);
+        assert.equal(anonymous.status, 302);
+        assert.equal(anonymous.headers.location, "/login");
+        assert.equal(anonymous.headers["www-authenticate"], undefined);
+        assert.equal((await http(`${consoleOrigin}/index.html`)).status, 302);
+        assert.equal((await http(`${consoleOrigin}/login`)).status, 200);
+        const session = `${consoleOrigin}/auth/session`;
+        assert.equal((await http(session)).status, 401);
+        const login = (username = "admin", origin = consoleOrigin) =>
+          http(session, {
+            method: "POST",
+            headers: { origin, "content-type": "application/json" },
+            body: JSON.stringify({ username, password: canary }),
+          });
+        assert.equal(
+          (await login("admin", "https://other.invalid")).status,
+          403,
+        );
+        authCanaries.push("SESSION_LOGIN_USER_CANARY");
+        assert.equal((await login(authCanaries[0])).status, 401);
+        const signedIn = await login();
+        assert.equal(signedIn.status, 204);
+        let cookie = signedIn.headers["set-cookie"][0].split(";")[0];
+        authCanaries.push(cookie);
+        assert.equal(
+          (await http(session, { headers: { cookie } })).status,
+          204,
+        );
+        assert.equal(
+          (await http(`${consoleOrigin}/`, { headers: { cookie } })).status,
+          200,
+        );
+        const metricsPath = `/v1/telemetry/metrics?from=${day}&to=${day}`;
+        for (const [headers, expected] of [
+          [{}, 401],
+          [{ cookie }, 200],
+          [{ cookie, origin: "https://other.invalid" }, 403],
+          [{ host: "api.invalid" }, 404],
+        ]) {
+          const response = await http(`${consoleOrigin}${metricsPath}`, {
+            headers,
+          });
+          assert.equal(response.status, expected);
+          assert.equal(response.headers["www-authenticate"], undefined);
+        }
+        assert.equal(
+          (
+            await http(session, {
+              method: "DELETE",
+              headers: { cookie, origin: "https://other.invalid" },
+            })
+          ).status,
+          403,
+        );
+        assert.equal(
+          (
+            await http(session, {
+              method: "DELETE",
+              headers: { cookie, origin: consoleOrigin },
+            })
+          ).status,
+          204,
+        );
+        assert.equal(
+          (
+            await http(`${consoleOrigin}${metricsPath}`, {
+              headers: { cookie },
+            })
+          ).status,
+          401,
+        );
+        const nextLogin = await login();
+        cookie = nextLogin.headers["set-cookie"][0].split(";")[0];
+        authCanaries.push(cookie);
+        const script = await http(
+          `http://127.0.0.1:${port}/assets/${builtFiles.find((f) => f.endsWith(".js"))}`,
+          {
+            headers: {
+              cookie,
             },
-          );
-          assert.equal(script.status, 200);
-          assert.equal(
-            (
-              await http(
-                `http://127.0.0.1:${port}/assets/${builtFiles.find((f) => f.endsWith(".js"))}`,
-              )
-            ).status,
-            200,
-          );
-          assert.equal(
-            script.headers["content-type"],
-            "application/javascript",
-          );
-          assert.equal(
-            (
-              await http(endpoint, {
-                method: "POST",
-                headers: {
-                  host: "api.invalid",
-                  "content-type": "application/json",
-                },
-                body: JSON.stringify({ ...body, prompt: canary }),
-              })
-            ).status,
-            400,
-          );
-          assert.equal(
-            (
-              await http(
-                endpoint.replace("/v1/telemetry/daily", `/${canary}`),
-                { headers: { host: "api.invalid" } },
-              )
-            ).status,
-            404,
-          );
-        },
-      );
+          },
+        );
+        assert.equal(script.status, 200);
+        assert.equal(
+          (
+            await http(
+              `http://127.0.0.1:${port}/assets/${builtFiles.find((f) => f.endsWith(".js"))}`,
+            )
+          ).status,
+          200,
+        );
+        assert.equal(script.headers["content-type"], "application/javascript");
+        assert.equal(
+          (
+            await http(endpoint, {
+              method: "POST",
+              headers: {
+                host: "api.invalid",
+                "content-type": "application/json",
+              },
+              body: JSON.stringify({ ...body, prompt: canary }),
+            })
+          ).status,
+          400,
+        );
+        assert.equal(
+          (
+            await http(endpoint.replace("/v1/telemetry/daily", `/${canary}`), {
+              headers: { host: "api.invalid" },
+            })
+          ).status,
+          404,
+        );
+      },
+    );
+    if (infrastructure)
       await t.test(
         "writes atomic custom backups, expires exactly seven days and preserves live old history",
         async () => {
@@ -529,6 +540,7 @@ test(
           await compose("run", "--rm", "backup", "once");
         },
       );
+    if (infrastructure)
       await t.test(
         "restores a backup into a separate disposable database without changing primary records",
         async () => {
@@ -550,9 +562,16 @@ test(
           // Archives belong to the backup container's UID, not the Linux host
           // runner. Keep them private while creating the corrupt-restore fixture.
           await compose(
-            "run", "--rm", "--entrypoint", "sh", "backup", "-eu", "-c",
+            "run",
+            "--rm",
+            "--entrypoint",
+            "sh",
+            "backup",
+            "-eu",
+            "-c",
             'umask 077; size=$(wc -c < "$1"); head -c "$((size * 4 / 5))" "$1" > /backups/broken.dump',
-            "sh", `/backups/${archive}`,
+            "sh",
+            `/backups/${archive}`,
           );
           assert.equal(
             (await stat(path.join(dir, "backups", "broken.dump"))).mode & 0o077,
@@ -641,6 +660,7 @@ test(
             );
         },
       );
+    if (!infrastructure)
       await t.test(
         "connects a private desktop profile through lost acknowledgements and restarts to the real collector",
         async () => {
@@ -690,6 +710,7 @@ test(
           }
         },
       );
+    if (!infrastructure)
       await t.test(
         "renders the private dashboard from the desktop profile and seeded Postgres on desktop and mobile",
         async () => {
@@ -754,6 +775,7 @@ test(
           });
         },
       );
+    if (infrastructure)
       await t.test(
         "persists no request canaries in container logs",
         async () => {
@@ -845,10 +867,9 @@ test(
           }
         },
       );
-    } finally {
-      await compose("down", "--volumes", "--remove-orphans").catch(() => {});
-      await run("docker", ["image", "rm", image]).catch(() => {});
-      await rm(dir, { recursive: true, force: true });
-    }
-  },
-);
+  } finally {
+    await compose("down", "--volumes", "--remove-orphans").catch(() => {});
+    await run("docker", ["image", "rm", image]).catch(() => {});
+    await rm(dir, { recursive: true, force: true });
+  }
+}

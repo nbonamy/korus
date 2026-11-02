@@ -233,24 +233,41 @@ label {
   flex-wrap: wrap;
   gap: 8px;
 }
-.presets.el-segmented {
-  --el-segmented-bg-color: var(--color-surface-lowest);
-  --el-segmented-color: var(--color-text);
-  --el-segmented-item-selected-color: var(--color-on-primary-container);
-  --el-segmented-item-selected-bg-color: var(--color-primary-container);
-  --el-segmented-item-hover-color: var(--color-text);
-  --el-segmented-item-hover-bg-color: var(--color-surface-low);
-  height: 34px;
-  min-width: 132px;
+.el-segmented {
   flex-shrink: 0;
-  padding: 3px;
-  border: 1px solid var(--color-border);
-  border-radius: 5px;
-  font-size: 12px;
+  max-width: 100%;
+  --el-segmented-padding: var(--space-2);
+  --el-segmented-bg-color: var(--color-surface-high);
+  --el-segmented-color: var(--color-text-muted);
+  --el-segmented-item-selected-color: var(--color-text);
+  --el-segmented-item-selected-bg-color: var(--color-surface-lowest);
+  --el-segmented-item-selected-disabled-bg-color: var(--color-surface-low);
+  --el-segmented-item-hover-color: var(--color-text);
+  --el-segmented-item-hover-bg-color: transparent;
+  --el-segmented-item-active-bg-color: transparent;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-13);
 }
-.presets .el-segmented__item {
-  padding: 0 10px;
-  border-radius: 3px;
+
+.el-segmented__item,
+.el-segmented__item-selected {
+  border-radius: var(--radius-full);
+}
+
+.el-segmented__item-selected {
+  box-shadow: var(--shadow-md);
+}
+
+.el-segmented__item {
+  padding: 0 var(--space-8);
+}
+
+.el-segmented__item-label {
+  overflow: visible;
+  text-overflow: clip;
+}
+.presets.el-segmented {
+  min-width: 132px;
 }
 .freshness {
   display: flex;
@@ -328,7 +345,8 @@ small {
 .legend {
   display: flex;
   gap: 8px 16px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
   padding: 0;
   margin: 12px 0 0;
   list-style: none;
@@ -337,6 +355,8 @@ small {
 }
 .legend li {
   display: flex;
+  flex: 0 0 auto;
+  white-space: nowrap;
   align-items: center;
   gap: 6px;
 }
@@ -625,9 +645,11 @@ footer {
 .model-ranking {
   list-style: none;
   padding: 0;
+  padding-inline-end: 20px;
   margin: 20px 0 0;
   max-height: 480px;
   overflow: auto;
+  scrollbar-gutter: stable;
 }
 .model-ranking li {
   display: grid;
@@ -656,6 +678,15 @@ footer {
 .model-trend > .comparison-controls {
   margin: 16px 0;
 }
+.model-trend > .chart {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.model-trend > .chart > .panel-heading {
+  display: none;
+}
 @media (max-width: 768px) {
   .model-ranking li {
     grid-template-columns: minmax(0, 1fr) 72px 50px;
@@ -669,6 +700,7 @@ footer {
 .chart-tooltip {
   position: absolute;
   z-index: 2;
+  min-width: 160px;
   padding: 8px 12px;
   border: 1px solid var(--color-border);
   border-radius: var(--console-radius);
@@ -680,13 +712,13 @@ footer {
 }
 .tooltip-day {
   display: block;
-  margin-bottom: 10px;
+  margin-bottom: var(--space-2);
   color: var(--color-text-muted);
   font-weight: 400;
 }
 .chart-tooltip ul {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 0;
   margin: 0;
   list-style: none;
@@ -695,14 +727,18 @@ footer {
 .tooltip-total {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
 }
 .tooltip-name {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   color: var(--color-text-muted);
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .chart-tooltip b {
+  flex-shrink: 0;
   white-space: nowrap;
   font-weight: 650;
 }
@@ -722,6 +758,15 @@ footer {
 .model-comparison-select .el-select__wrapper {
   height: auto;
   min-height: 34px;
+}
+
+.el-popover.console-options-menu {
+  padding: var(--space-2) !important;
+  border-radius: var(--radius-xl) !important;
+  background-color: var(--color-menu-background);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-menu);
+  font-size: var(--font-size-13);
 }
 
 .console-options-trigger {

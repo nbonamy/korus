@@ -28,10 +28,11 @@ Collector build tests inspect generated artifacts for external
 configuration canaries, rather than asserting production source text. Backend
 probe modules resolve dependencies from their owning workspace so nested and
 hoisted npm installations work without requiring transitive dependencies at the
-repository root. The telemetry-stack script workflow also builds an isolated image
+repository root. The server infrastructure E2E workflow also builds an isolated image
 and exercises real Compose services, persistent volumes, role grants, proxy routing
 and backup/restore.
-It runs in the normal script test gate and requires local Docker; it never uses an
+Run it separately with `npm run test:server:infrastructure`; CI retains this gate.
+It requires local Docker and never uses an
 operator environment file or database. After installing npm dependencies, run
 `npx playwright install --with-deps chromium` before `npm test` or
 `npm run test:scripts`. This installs the browser revision matching the locked
@@ -40,13 +41,15 @@ package-manager access). Both Quality and desktop-release quality jobs provision
 these dependencies explicitly; a system browser or an existing browser cache is
 not a prerequisite.
 
-The same Compose workflow builds `server/frontend/src` with operator-secret canaries
+The independently runnable console E2E test at `server/test/e2e/console.test.mjs`
+builds `server/frontend/src` with operator-secret canaries
 and runs a real browser through the authenticated console proxy and aggregate
 service against the executable Postgres seed. Set
 `TELEMETRY_DASHBOARD_EVIDENCE=<external-directory>` when running
-`node --test server/scripts/stack.test.mjs` to retain desktop/mobile charts,
+`npm run test:server:e2e` to retain desktop/mobile charts,
 loading/empty/failure/access states, geometry and exact aggregate response evidence.
-It checks global-card filter scope, old retained history, corrected groups, missing
+The console test runs in `test:scripts` without database restart, backup-expiry
+or restore exercises. It checks global-card filter scope, old retained history, corrected groups, missing
 spend gaps, keyboard inspection and absence of external browser requests or raw
 identities. The rendered `server/frontend` workflow covers request races and exact
 small/large measurements through the same production console component.
