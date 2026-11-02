@@ -4,6 +4,25 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.50.0] - 2026-11-01
+
+### New features
+
+- **Change map:** Switch to **Map** in Changes to spot the most changed files,
+  filter by file type, and open a file's diff.
+- **Mermaid diagrams:** View diagrams in Markdown documents and Mission dialogs,
+  with theme support and readable source when a diagram cannot render.
+
+### Improvements and fixes
+
+- Keep the selected service tier when switching to a model that supports it.
+- Accept suggested follow-ups without inserting ordinary composer placeholder text.
+- Restore saved Changes panes without getting stuck loading.
+- **Analytics:** Show precise cost totals in tooltips and omit entries without
+  data from performance tooltips and chart legends.
+- Name provider enable switches explicitly in Settings.
+- Show the worktree setup dismiss button only on errors, in place of the spinner.
+
 ## [0.49.1] - 2026-11-01
 
 ### Improvements and fixes

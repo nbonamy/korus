@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.49.1",
+  "currentVersion": "0.50.0",
   "releases": [
+    {
+      "version": "0.50.0",
+      "releasedAt": "2026-11-01",
+      "sourceSha256": "a0058a015e73500f6eb78fa4d8c392d884e092e268d3565665825548604beea7",
+      "markdown": "### New features\n\n- **Change map:** Switch to **Map** in Changes to spot the most changed files,\n  filter by file type, and open a file's diff.\n- **Mermaid diagrams:** View diagrams in Markdown documents and Mission dialogs,\n  with theme support and readable source when a diagram cannot render.\n\n### Improvements and fixes\n\n- Keep the selected service tier when switching to a model that supports it.\n- Accept suggested follow-ups without inserting ordinary composer placeholder text.\n- Restore saved Changes panes without getting stuck loading.\n- **Analytics:** Show precise cost totals in tooltips and omit entries without\n  data from performance tooltips and chart legends.\n- Name provider enable switches explicitly in Settings.\n- Show the worktree setup dismiss button only on errors, in place of the spinner."
+    },
     {
       "version": "0.49.1",
       "releasedAt": "2026-11-01",
