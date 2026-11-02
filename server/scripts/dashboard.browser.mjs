@@ -693,8 +693,8 @@ export async function dashboardWorkflow({
       /30.0 tok\/s/,
     );
     assert.equal(
-      (await speedChart.locator('path[fill^="url("]').count()) > 0,
-      true,
+      await speedChart.locator('path[fill^="url("]').count(),
+      0,
     );
     await page.screenshot({
       path: path.join(output, "performance.png"),

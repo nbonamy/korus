@@ -72,6 +72,7 @@
         >
           <g v-for="(run, j) in layer" :key="j">
             <path
+              v-if="measure === 'count' || measure === 'tokens' || measure === 'usd'"
               :d="`${line(run)} L${run.at(-1)!.x} ${baseline} L${run[0]!.x} ${baseline}Z`"
               :fill="`url(#${id}-${i})`"
             />

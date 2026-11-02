@@ -156,7 +156,12 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
     "gpt-6-sol · Fast",
   );
   expect(speedChart.findAll(".chart-line")).toHaveLength(2);
-  expect(speedChart.findAll('path[fill^="url("]')).toHaveLength(2);
+  expect(speedChart.findAll('path[fill^="url("]')).toHaveLength(0);
+  expect(
+    wrapper
+      .get('[aria-label="Time to first output"]')
+      .findAll('path[fill^="url("]'),
+  ).toHaveLength(0);
   await speedChart.get('svg[role="img"]').trigger("focus");
   expect(speedChart.text()).toContain("40.0 tok/s");
   expect(speedChart.text()).toContain("10.0 tok/s");
@@ -167,6 +172,11 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   expect(
     wrapper.get('[aria-label="Time to first output summary"]').text(),
   ).toContain("0.5 s");
+  await router.push("/tokens");
+  await flushPromises();
+  expect(
+    wrapper.get('[aria-label="Cache-read share"]').findAll('path[fill^="url("]'),
+  ).toHaveLength(0);
   await router.push("/overview");
   await flushPromises();
   expect(wrapper.get("h1").text()).toBe("Overview");
