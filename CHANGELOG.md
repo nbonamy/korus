@@ -10,6 +10,7 @@ All notable Korus changes are recorded here.
 
 - Refresh the workspace file list when opening Quick Open so newly created files appear.
 - Refresh Git status when Claude shell commands finish.
+- **Analytics:** Compare turns, tokens and estimated cost per day in one row.
 
 ## [0.50.0] - 2026-11-01
 
