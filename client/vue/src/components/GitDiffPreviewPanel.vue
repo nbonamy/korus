@@ -121,10 +121,11 @@
               v-for="(line, index) in chunk.lines"
               :key="`${chunk.key}-${index}`"
               class="git-diff-preview-panel__line"
-              :class="`git-diff-preview-panel__line--${line.kind}`"
+              :class="[`git-diff-preview-panel__line--${line.kind}`, { 'git-diff-preview-panel__line--focused': isFocusedLine(file.fullPath, codeLine(line), line.kind === 'deleted' ? 'old' : 'new') }]"
               :data-code-line="codeLine(line)"
               :data-code-side="codeLine(line) ? (line.kind === 'deleted' ? 'old' : 'new') : undefined"
               :data-code-prefix="codeLine(line) ? line.marker : undefined"
+              :data-viz-focus="isFocusedLine(file.fullPath, codeLine(line), line.kind === 'deleted' ? 'old' : 'new') || undefined"
             >
               <button
                 v-if="annotatable && codeLine(line)"
@@ -304,9 +305,16 @@ const files = computed(() => props.fileKindFilter
   : parsed.value.files);
 const parseError = computed(() => parsed.value.error);
 const mapKind = ref<FileKind | null>(null);
-const focusedFilePath = ref<string | null>(null);
-const displayedFiles = computed(() => focusedFilePath.value ? files.value.filter(file => file.fullPath === focusedFilePath.value) : files.value);
-watch(() => props.view, view => { if (view === 'map') focusedFilePath.value = null; });
+const focusedFilePaths = ref<string[] | null>(null);
+const focusedLocation = ref<import('@workspace/core/git-diff-viz').DiffVizLocation>();
+watch(() => props.diff, () => { focusedLocation.value = undefined; });
+function isFocusedLine(path: string, line: string | undefined, side: 'old' | 'new'): boolean {
+  const location = focusedLocation.value;
+  const number = Number(line);
+  return Boolean(location && location.path === path && (location.side ?? 'new') === side && Number.isFinite(number) && number >= location.line && number <= (location.endLine ?? location.line));
+}
+const displayedFiles = computed(() => focusedFilePaths.value ? files.value.filter(file => focusedFilePaths.value!.includes(file.fullPath)) : files.value);
+watch(() => props.view, view => { if (view === 'map') focusedFilePaths.value = null; });
 const groups = computed<Array<{ kind: FileKind | null; files: DiffFileView[]; addedLines: number; removedLines: number }>>(() => {
   if (!props.groupByKind) return [{ kind: null, files: displayedFiles.value, addedLines: 0, removedLines: 0 }];
   return fileKinds
@@ -325,7 +333,7 @@ const collapsedFileKeys = ref(new Set<string>());
 const isAllExpanded = computed(() => collapsedFileKeys.value.size === 0);
 
 watch(files, (nextFiles) => {
-  if (!nextFiles.some(file => file.fullPath === focusedFilePath.value)) focusedFilePath.value = null;
+  if (focusedFilePaths.value && !nextFiles.some(file => focusedFilePaths.value!.includes(file.fullPath))) focusedFilePaths.value = null;
   const nextFileKeys = new Set(nextFiles.map((file) => file.key));
   collapsedFileKeys.value = new Set([...collapsedFileKeys.value].filter((key) => nextFileKeys.has(key)));
 });
@@ -346,7 +354,7 @@ let appliedFocusSequence = 0;
 watch([() => props.focusSequence, files], () => {
   if (!props.focusKind || !props.focusSequence || props.focusSequence === appliedFocusSequence || files.value.length === 0) return;
   appliedFocusSequence = props.focusSequence;
-  focusedFilePath.value = null;
+  focusedFilePaths.value = null;
   collapsedFileKeys.value = new Set();
   collapsedGroups.value = new Set(fileKinds.filter(kind => kind !== props.focusKind));
 }, { immediate: true });
@@ -378,15 +386,22 @@ function toggleFile(fileKey: string): void {
   collapsedFileKeys.value = nextCollapsedKeys;
 }
 
-async function showFileDiff(path: string): Promise<void> {
-  focusedFilePath.value = path;
-  collapsedFileKeys.value = new Set(files.value.filter(file => file.fullPath !== path).map(file => file.key));
-  collapsedGroups.value = new Set(fileKinds.filter(kind => kind !== classifyFile(path)));
+async function showFileDiff(path: string): Promise<void> { await showFiles([path]); }
+
+async function showFiles(paths: string[], location?: import('@workspace/core/git-diff-viz').DiffVizLocation): Promise<void> {
+  focusedFilePaths.value = paths;
+  focusedLocation.value = location;
+  collapsedFileKeys.value = new Set(files.value.filter(file => !paths.includes(file.fullPath)).map(file => file.key));
+  collapsedGroups.value = new Set(fileKinds.filter(kind => !paths.some(path => classifyFile(path) === kind)));
   emit('update:view', 'diff');
   await nextTick();
-  [...(surface.value?.querySelectorAll<HTMLElement>('[data-code-path]') ?? [])]
-    .find(element => element.dataset.codePath === path)?.scrollIntoView?.({ block: 'start' });
+  const file = [...(surface.value?.querySelectorAll<HTMLElement>('[data-code-path]') ?? [])]
+    .find(element => location ? element.dataset.codePath === location.path : paths.includes(element.dataset.codePath ?? ''));
+  const row = location ? [...(file?.querySelectorAll<HTMLElement>('[data-code-line]') ?? [])].find(element => element.dataset.codeLine === String(location.line) && element.dataset.codeSide === (location.side ?? 'new')) : undefined;
+  (row ?? file)?.scrollIntoView?.({ block: 'center' });
 }
+
+defineExpose({ showFiles });
 
 function mapFile(file: AnyFileChange, fileIndex: number): DiffFileView {
   const title = file.type === 'RenamedFile'
@@ -767,6 +782,10 @@ function mapLine(line: Chunk['changes'][number]): DiffLineView {
 
 .git-diff-preview-panel__line--deleted {
   background: var(--color-error-container);
+}
+
+.git-diff-preview-panel__line--focused {
+  box-shadow: inset 3px 0 var(--color-primary);
 }
 
 .git-diff-preview-panel__line--message {

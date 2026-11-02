@@ -97,6 +97,7 @@ rl.on('line',line=>{
  } else if(v.method==='session/prompt') {
    promptId=v.id;
    const text=v.params.prompt[0].text;
+   fs.writeFileSync(require('node:path').join(process.cwd(),'fixture-prompt.json'),JSON.stringify(v.params.prompt));
    if(text.startsWith('usage-fixture:')) {
      const fixture=usageFixture();
      for(const item of fixture.updates) update(item);
@@ -383,6 +384,22 @@ describe('Antigravity native session', () => {
     expect(JSON.parse(await readFile(path.join(root, 'permission-response.json'), 'utf8')).result).toStrictEqual({ outcome: { outcome: 'cancelled' } });
   });
 
+  it('automatically admits read-only Git inspection and denies mutation in a utility session', async () => {
+    const { session, changed } = await open(undefined, { tools: 'read-only' });
+    for (const [command, allowed] of [
+      ['git status --short', true],
+      ['git diff --no-ext-diff --no-textconv --stat HEAD', true],
+      ['git reset --hard', false],
+      ['git diff --no-ext-diff --no-textconv --output=source.ts', false],
+      ['git status; touch source.ts', false],
+    ] as const) {
+      const fixture = mcpPermission('inspect');
+      await session.prompt(`permission-fixture:${JSON.stringify({ ...fixture, toolCall: { toolCallId: 'git-inspect', kind: 'execute', rawInput: { CommandLine: command, Cwd: root } } })}`).completion;
+      expect(JSON.parse(await readFile(path.join(root, 'permission-response.json'), 'utf8')).result).toStrictEqual({ outcome: allowed ? { outcome: 'selected', optionId: 'native-once-42' } : { outcome: 'cancelled' } });
+    }
+    expect(changed.mock.calls.map(([event]) => event.type)).not.toContain('request.created');
+  });
+
   it('does not authorize a Korus MCP request arriving after cancellation', async () => {
     const { session, changed } = await open(undefined, { mcpServers: [sessionMcpServer('http://127.0.0.1:1/mcp')] });
     const turn = session.prompt(`cancel-permission-fixture:${JSON.stringify(mcpPermission('finish_turn'))}`);
@@ -402,7 +419,9 @@ describe('Antigravity native session', () => {
     const events: BackendEvent[] = [];
     host.onEvent(event => events.push(event));
     try {
-      const result = await host.generateText(agent, { cwd: root, prompt: 'utility-fixture', outputSchema: { type: 'string' } });
+      const file=path.resolve(import.meta.dirname,'../../../../electron/assets/viz/reference.png');
+      const result = await host.generateText(agent, { cwd: root, prompt: 'utility-fixture', outputSchema: { type: 'string' },attachments:[{type:'image',path:file,mimeType:'image/png'}] });
+      expect(JSON.parse(await readFile(path.join(root,'fixture-prompt.json'),'utf8'))).toEqual([expect.objectContaining({type:'text'}),{type:'image',mimeType:'image/png',data:(await readFile(file)).toString('base64')}]);
       expect(result.text).toBe('Tools denied; text result.');
       expect(JSON.parse(await readFile(path.join(root, 'fixture-model.json'), 'utf8'))).toMatchObject({ configId: 'model', value: 'quick-lite' });
       expect(JSON.parse(await readFile(path.join(root, 'fixture-initialize.json'), 'utf8')).clientCapabilities.fs).toEqual({ readTextFile: false, writeTextFile: false });
@@ -410,17 +429,24 @@ describe('Antigravity native session', () => {
       await expect(readFile(path.join(root, 'unwanted-write'))).rejects.toMatchObject({ code: 'ENOENT' });
       expect(events).toEqual([]);
       expect(agent.backendSession).toBeUndefined();
+      await host.generateText(agent, {cwd:root,prompt:'utility-fixture',complexity:'normal'});
+      expect(JSON.parse(await readFile(path.join(root,'fixture-model.json'),'utf8'))).toMatchObject({value:'quick'});
+      await host.generateText(agent, {cwd:root,prompt:'utility-fixture',complexity:'normal',tools:true});
+      expect(JSON.parse(await readFile(path.join(root, 'fixture-initialize.json'), 'utf8')).clientCapabilities.fs).toEqual({ readTextFile: true, writeTextFile: false });
+      await expect(readFile(path.join(root, 'unwanted-write'))).rejects.toMatchObject({ code: 'ENOENT' });
+      await host.generateText(agent, {cwd:root,prompt:'utility-fixture',complexity:'complex'});
+      expect(JSON.parse(await readFile(path.join(root,'fixture-model.json'),'utf8'))).toMatchObject({value:'heavy'});
     } finally { await host.close(); }
   });
   it('keeps utility generation sessions out of history and stores no prompt text for them', async () => {
     await writeFile(path.join(root, 'usage-fixture.json'), JSON.stringify({ configuration: { models: {
-      currentModelId: 'heavy', availableModels: [{ modelId: 'heavy', name: 'Gemini Pro' }, { modelId: 'quick', name: 'Gemini Flash' }],
+      currentModelId: 'heavy', availableModels: [{ modelId: 'heavy', name: 'Gemini Pro' }, { modelId: 'quick', name: 'Gemini Flash' }, {modelId:'quick-lite',name:'Gemini Flash Lite'}],
     } } }));
     const host = new AntigravityHost();
     const agent: Agent = { id: 'utility', name: 'Utility', folder: root, backend: 'antigravity', createdAt: '', updatedAt: '', status: { type: 'idle' } };
     try {
       await host.generateText(agent, { cwd: root, prompt: 'utility-fixture-diff' });
-      expect(JSON.parse(await readFile(path.join(root, 'fixture-model.json'), 'utf8'))).toMatchObject({ configId: 'model', value: 'quick' });
+      expect(JSON.parse(await readFile(path.join(root, 'fixture-model.json'), 'utf8'))).toMatchObject({ configId: 'model', value: 'quick-lite' });
       const generated = (await readFile(path.join(root, 'home', 'catalog.json'), 'utf8')).trim().split('\n').map(line => JSON.parse(line).sessionId as string);
       expect(generated).toHaveLength(1);
       const sessionDirectory = path.join(root, 'home', 'korus-sessions', encodeURIComponent(generated[0]!));

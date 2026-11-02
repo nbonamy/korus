@@ -36,6 +36,7 @@ import {
 } from './transport';
 import { claudeMessageSessionId, type ClaudeSdkMessage } from './protocol';
 import { claudeConfigDirectoryOverride } from './config-directory';
+import { readOnlyWorkspaceTool } from '../agents/utility-workspace-tools';
 
 export type ClaudeAgentSdkTransportOptions = {
   command?: string;
@@ -322,19 +323,25 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
     if (this.closing) throw new Error('Claude transport is closed.');
     const prompt = new AsyncPushQueue<SDKUserMessage>();
     const sessionId = this.createSessionId();
+    const inspect = input.tools === true;
+    const canUseTool: CanUseTool = inspect ? async (name, args) => {
+      const updatedInput = await readOnlyWorkspaceTool(name, args, input.cwd);
+      return updatedInput ? { behavior: 'allow', updatedInput } : { behavior: 'deny', message: 'This utility only inspects Git and source in its working folder.' };
+    } : denyInspectionToolUse;
     const runtime = this.createQuery({
       prompt,
       options: {
-        ...claudeQueryOptions({ cwd: input.cwd, prompt: input.prompt, appendSystemPrompt: input.developerInstructions, ...selection }, sessionId, null, denyInspectionToolUse, this.options),
+        ...claudeQueryOptions({ cwd: input.cwd, prompt: input.prompt, appendSystemPrompt: input.developerInstructions, ...selection }, sessionId, null, canUseTool, this.options),
         persistSession: false,
-        tools: [],
+        tools: inspect ? ['Read', 'Glob', 'Grep', 'Bash'] : [],
+        ...(inspect ? { settingSources: [], permissionMode: 'default' as const } : {}),
         mcpServers: {},
         ...(input.outputSchema ? { outputFormat: { type: 'json_schema' as const, schema: input.outputSchema as Record<string, unknown> } } : {}),
       },
     });
     this.inspectionQueries.add(runtime);
     try {
-      prompt.push({ type: 'user', session_id: sessionId, parent_tool_use_id: null, message: { role: 'user', content: input.prompt } });
+      prompt.push({ ...await claudeUserMessage(input.prompt, input.attachments), session_id: sessionId });
       for await (const message of runtime) {
         if (message.type !== 'result') continue;
         if (message.subtype !== 'success' || message.is_error) throw new Error('Claude text generation failed.');

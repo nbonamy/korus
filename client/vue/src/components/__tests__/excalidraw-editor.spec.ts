@@ -22,6 +22,16 @@ import { isCanvasDocument } from '@workspace/core/visualize-canvas';
 import { importVisualization, mountCanvas } from '../excalidraw-editor';
 const base: Visualization = { id: 'v', title: 'Diagram', content: { kind: 'mermaid', source: '' }, createdAt: '', updatedAt: '' };
 describe('canvas imports', () => {
+  it('renders app-owned native colors without Excalidraw inverting the palette in dark mode', () => {
+    const fonts = Object.assign(new EventTarget(), { ready: Promise.resolve() });
+    Object.defineProperty(document, 'fonts', { configurable: true, value: fonts });
+    vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+    vi.stubGlobal('requestAnimationFrame', vi.fn());
+    document.documentElement.classList.add('dark');
+    const editor = mountCanvas(document.createElement('div'), { elements: [], files: {}, selectedElementIds: [], preview: '' }, vi.fn(), vi.fn(), vi.fn(), { nativeColors: true });
+    try { expect(root.render.mock.calls.at(-1)![0].props.children.props.initialData.appState).toMatchObject({ theme: 'light', viewBackgroundColor: 'transparent' }); }
+    finally { editor.dispose(); document.documentElement.classList.remove('dark'); }
+  });
   it('imports converter image files as persistable canvas documents', async () => {
     const image = { id: 'image', type: 'image', x: 0, y: 0, width: 120, height: 60, fileId: 'asset' };
     convert.mockResolvedValueOnce({ elements: [image], files: { asset: { id: 'asset', mimeType: 'image/svg+xml', dataURL: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60" viewBox="0 0 1200 600"><text>Fallback diagram</text></svg>') } } });

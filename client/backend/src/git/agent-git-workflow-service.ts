@@ -31,6 +31,8 @@ import type { BranchCurrentWorkService } from './branch-current-work-service';
 import type { BranchWorkInput, BranchWorkPreview, BranchWorkResult } from '@workspace/core/branch-current-work';
 import type { AgentGitService } from './agent-git-service';
 import { warnMain } from '../log';
+import { generateDiffViz } from './generate-diff-viz';
+import { changedFilePaths } from '@workspace/core/file-diff';
 
 export type AgentGitRequest = {
   method: AgentGitBackendMethod;
@@ -261,6 +263,18 @@ export class AgentGitWorkflowService {
     const folder = requireAgentFolder(agent);
     const input = requireRecord(params.input);
     const kind = requireString(input.kind, 'kind');
+    if (kind === 'viz') {
+      const mode = input.mode ?? this.options.getSnapshot().general.diffVisualizationMode ?? 'polished';
+      if (mode !== 'fast' && mode !== 'polished') throw new Error('Invalid diff visualization style.');
+      const target = parseGitDiffTarget(input.target);
+      if (target.type === 'turn') throw new Error('Choose a branch, commit or working-tree comparison for Viz. A conversation turn is not a Git revision.');
+      const scopes = input.scopes === undefined ? undefined : requireStringArray(input.scopes, 'scopes');
+      if (scopes?.some(scope => !['staged', 'unstaged', 'untracked'].includes(scope))) throw new Error('Invalid Git visualization scope.');
+      const selected = await this.getDiff(agent, target);
+      const patch = scopes && selected.sections.length ? selected.sections.filter(section => scopes.includes(section.scope)).map(section => section.diff).join('\n') : selected.diff;
+      const diagram = await generateDiffViz({ target: selected.target, ...(scopes ? { scopes: scopes as import('@workspace/core/contracts').AgentGitDiffScope[] } : {}), paths: changedFilePaths(patch), diff: patch }, folder, request => this.options.driverRequest(agent, backendMethods.driverTextGenerate, { agent, ...request }), mode);
+      return { kind, diagram };
+    }
     if (kind === 'commit') {
       const source = await this.options.git.commitMessageContext(folder, {
         includeUnstaged: input.includeUnstaged === true,

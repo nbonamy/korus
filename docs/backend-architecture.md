@@ -48,11 +48,25 @@ log and socket paths, npm scripts and launchd labels stay brand-neutral.
 - Agent creation (protocol, MCP delegation, independent review) goes through one
   `AgentCreationService`; callers only adapt their input.
 - Short text utilities use `driver/text/generate` with the initiating agent's
-  provider, prompt, optional instructions and output schema. `utilityTextModel`
-  owns the lightweight model policy: Luna, Haiku, or Gemini Flash-Lite/Flash,
-  resolved from that provider's catalog. A missing lightweight model is an error;
-  utilities never switch providers, send a conversation prompt or change the
-  agent's selected model. Provider hosts own isolated generation and cleanup.
+  provider, prompt, optional instructions and output schema. Callers declare task
+  complexity instead of provider model IDs; omission retains the simple tier.
+  `utilityTextModel` resolves the tier from that provider's native catalog. A
+  missing model is an error; utilities never switch providers, send a conversation
+  prompt or change the agent's selected model. Provider hosts own isolated
+  generation and cleanup. A separate tools flag opts inspection utilities into
+  read-only workspace inspection; omission disables workspace-tool access. This
+  policy does not control provider-configured tools unrelated to the workspace.
+  Diff visualization supplies the agent's working folder and selected Git scope,
+  including section filters. The model retrieves focused evidence through tools;
+  patch contents are not embedded in its prompt. Native shapes own their component
+  and review metadata; navigation stays limited to files and line ranges present
+  in the selected comparison. Role icons resolve to app-owned assets in the
+  renderer, so generated output cannot introduce external image or SVG sources.
+  Polished Viz attaches an app-owned PNG composition reference from the runtime
+  assets root. Forge ships it outside `app.asar`; standalone daemon staging and
+  SSH installation carry the same file beside the daemon. Utility image inputs
+  are host-resolved absolute paths, validated as bounded image attachments before
+  provider dispatch, and do not enable workspace tools.
 - Repository acquisition and branch-to-agent setup share daemon-owned modules
   across desktop and companion adapters. Access adapters may revalidate a grant
   before each write, but do not duplicate checkout selection or clone-reuse rules.

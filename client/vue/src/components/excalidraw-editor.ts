@@ -31,7 +31,7 @@ export async function importVisualization(visualization: Visualization, imageSou
     const files: BinaryFiles = {};
     for (const [id, file] of Object.entries(result.files ?? {})) {
       files[id] = file.mimeType === 'image/svg+xml'
-        ? { ...file, created: Date.now(), mimeType: 'image/png', dataURL: (await rasterize(file.dataURL)).dataURL as typeof file.dataURL }
+        ? { ...file, created: Date.now(), mimeType: 'image/png', dataURL: (await rasterizeCanvasImage(file.dataURL)).dataURL as typeof file.dataURL }
         : { ...file, created: Date.now() };
     }
     return { elements: convertToExcalidrawElements(result.elements, { regenerateIds: false }) as unknown as CanvasElement[], files, selectedElementIds: [], preview: '' };
@@ -39,7 +39,7 @@ export async function importVisualization(visualization: Visualization, imageSou
   const source = visualization.content.kind === 'svg'
     ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(sanitizeSvg(visualization.content.source))}`
     : imageSource;
-  const image = await rasterize(source);
+  const image = await rasterizeCanvasImage(source);
   const id = `image-${visualization.id}`;
   const elements = convertToExcalidrawElements([{ type: 'image', x: 0, y: 0, width: image.width, height: image.height, fileId: id as FileId }]);
   return {
@@ -48,7 +48,7 @@ export async function importVisualization(visualization: Visualization, imageSou
     selectedElementIds: [], preview: '',
   };
 }
-async function rasterize(source: string): Promise<{ dataURL: string; width: number; height: number }> {
+export async function rasterizeCanvasImage(source: string): Promise<{ dataURL: string; width: number; height: number }> {
   if (!source.startsWith('data:image/')) throw new Error('Image is not available.');
   // SVG is always decoded, sanitized and re-encoded before the browser sees it.
   if (source.startsWith('data:image/svg+xml')) {
@@ -94,7 +94,7 @@ function restoreSceneElements(elements: readonly ExcalidrawElement[]) {
     };
   });
 }
-export function mountCanvas(host: HTMLElement, scene: CanvasScene, onChange: (scene: CanvasScene) => void, onError: (error: Error) => void, onViewportChange: () => void = () => {}) {
+export function mountCanvas(host: HTMLElement, scene: CanvasScene, onChange: (scene: CanvasScene) => void, onError: (error: Error) => void, onViewportChange: () => void = () => {}, presentation: { nativeColors?: boolean } = {}) {
   const root = createRoot(host);
   let api: ExcalidrawImperativeAPI | undefined;
   let current = scene;
@@ -112,7 +112,7 @@ export function mountCanvas(host: HTMLElement, scene: CanvasScene, onChange: (sc
       initialFitPending = false;
     });
   };
-  const theme = () => document.documentElement.classList.contains('dark') ? 'dark' as const : 'light' as const;
+  const theme = () => !presentation.nativeColors && document.documentElement.classList.contains('dark') ? 'dark' as const : 'light' as const;
   const syncControlStyle = () => requestAnimationFrame(() => {
     if (disposed) return;
     const container = host.querySelector('.excalidraw');
@@ -160,7 +160,7 @@ export function mountCanvas(host: HTMLElement, scene: CanvasScene, onChange: (sc
     requestAnimationFrame(onViewportChange);
   };
   root.render(createElement(CanvasErrorBoundary, { onError, children: createElement(Excalidraw, {
-    initialData: { elements: elements(scene), files: scene.files as BinaryFiles, appState: { selectedElementIds: {}, theme: theme(), viewModeEnabled: true, activeTool: { type: 'hand', customType: null, locked: false, lastActiveTool: null } }, scrollToContent: true },
+    initialData: { elements: elements(scene), files: scene.files as BinaryFiles, appState: { selectedElementIds: {}, theme: theme(), ...(presentation.nativeColors ? { viewBackgroundColor: 'transparent' } : {}), viewModeEnabled: true, activeTool: { type: 'hand', customType: null, locked: false, lastActiveTool: null } }, scrollToContent: true },
     excalidrawAPI: (value: ExcalidrawImperativeAPI) => {
       api = value;
       unsubscribeScroll = value.onScrollChange(onViewportChange);

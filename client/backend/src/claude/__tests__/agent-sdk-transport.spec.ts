@@ -2,7 +2,7 @@ import { product } from '@workspace/core/product';
 import type {
   PermissionResult,
 } from '@anthropic-ai/claude-agent-sdk';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -138,6 +138,43 @@ describe('ClaudeAgentSdkTransport', () => {
     await expect(result).resolves.toEqual({ text: '{"ids":["1"]}' });
     expect(harness.runtimes[0]?.close).toHaveBeenCalledOnce();
     await transport.close();
+  });
+
+  it('attaches a reference image to isolated utilities without enabling workspace tools', async () => {
+    const file=path.resolve(import.meta.dirname,'../../../../electron/assets/viz/reference.png');
+    const harness=createQueryHarness();
+    const transport=new ClaudeAgentSdkTransport({createQuery:harness.createQuery});
+    try {
+      const result=transport.generateText({cwd:'/tmp',prompt:'Read this reference',attachments:[{type:'image',path:file,mimeType:'image/png'}]});
+      await vi.waitFor(()=>expect(harness.inputs).toHaveLength(1));
+      expect(harness.inputs[0].message.content).toEqual([{type:'text',text:'Read this reference'},{type:'image',source:{type:'base64',media_type:'image/png',data:(await readFile(file)).toString('base64')}}]);
+      expect(harness.inputs[0].session_id).toBeTruthy();
+      expect(harness.options[0]).toMatchObject({tools:[],persistSession:false});
+      harness.emit({type:'result',subtype:'success',session_id:'reference',is_error:false,result:'Read'} as ClaudeSdkMessage);
+      await expect(result).resolves.toEqual({text:'Read'});
+    } finally {await transport.close();}
+  });
+
+  it('lets repository utilities inspect Git and source without enabling writes or altering conversation permissions', async () => {
+    const folder = await mkdtemp(path.join(os.tmpdir(), 'utility-inspection-'));
+    const harness = createQueryHarness();
+    const transport = new ClaudeAgentSdkTransport({ createQuery: harness.createQuery });
+    try {
+      await writeFile(path.join(folder, 'source.ts'), 'export const value = 1');
+      const result = transport.generateText({ cwd: folder, prompt: 'Inspect the uncommitted scope', tools: true });
+      await vi.waitFor(() => expect(harness.options).toHaveLength(1));
+      expect(harness.options[0]).toMatchObject({ persistSession: false, tools: ['Read', 'Glob', 'Grep', 'Bash'], mcpServers: {} });
+      const permission = (tool: string, input: Record<string, unknown>) => harness.options[0]!.canUseTool!(tool, input, { signal: new AbortController().signal, toolUseID: 'inspect', requestId: 'inspect' });
+      expect(await permission('Bash', { command: 'git diff --stat HEAD' })).toMatchObject({ behavior: 'allow', updatedInput: { command: expect.stringContaining('--no-ext-diff --no-textconv') } });
+      expect(await permission('Read', { file_path: path.join(folder, 'source.ts') })).toMatchObject({ behavior: 'allow' });
+      for (const [tool, input] of [
+        ['Bash', { command: 'git reset --hard' }], ['Bash', { command: 'git diff --output=source.ts' }],
+        ['Bash', { command: 'git status; touch source.ts' }], ['Bash', { command: 'git -c diff.external=evil diff' }],
+        ['Read', { file_path: '/etc/passwd' }], ['Edit', { file_path: path.join(folder, 'source.ts') }],
+      ] as const) expect(await permission(tool, input)).toMatchObject({ behavior: 'deny' });
+      harness.emit({ type: 'result', subtype: 'success', session_id: 'inspection', is_error: false, result: 'done' } as ClaudeSdkMessage);
+      await expect(result).resolves.toEqual({ text: 'done' });
+    } finally { await transport.close(); await rm(folder, { recursive: true, force: true }); }
   });
 
   it('deletes a review-owned SDK session from the workspace store', async () => {

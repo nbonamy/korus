@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentBackendDriver } from '@workspace/core/backend-driver';
 import type { Agent } from '@workspace/core/contracts';
@@ -49,6 +50,19 @@ describe('unified driver capability boundary', () => {
     await expect(rpc.handle(method, { agent, ...params })).rejects.toThrow(/not support/i);
     expect(driver.sendPrompt).not.toHaveBeenCalled();
     expect(driver.interrupt).not.toHaveBeenCalled();
+  });
+
+  it('validates and forwards image-only utility attachments before provider execution', async () => {
+    const {driver,rpc}=fixture();
+    driver.generateText=vi.fn().mockResolvedValue({text:'ok'});
+    const image=path.resolve(import.meta.dirname,'../../../electron/assets/viz/reference.png');
+    const request={agent,cwd:'/repo',prompt:'Inspect',attachments:[{type:'image',path:image,mimeType:'image/png'}]};
+    await expect(rpc.handle(backendMethods.driverTextGenerate,request)).resolves.toEqual({text:'ok'});
+    expect(driver.generateText).toHaveBeenCalledWith(agent,expect.objectContaining({attachments:request.attachments}));
+    for(const attachments of [[{type:'file',path:image}],[{type:'image',path:'relative.png'}],[{type:'image',path:image,mimeType:'image/jpeg'}],Array(5).fill({type:'image',path:image})]) {
+      await expect(rpc.handle(backendMethods.driverTextGenerate,{...request,attachments})).rejects.toThrow(/image|attachment/i);
+    }
+    expect(driver.generateText).toHaveBeenCalledTimes(1);
   });
 
   it('distinguishes legitimately empty catalogs and unsupported archival from failed commands', async () => {

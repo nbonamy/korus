@@ -45,8 +45,8 @@ import { DotsVerticalIcon, GitHubIcon, GitLabIcon, RefreshIcon } from '../shared
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import GitDiffViewToggle from './GitDiffViewToggle.vue';
-defineProps<{ repositoryName: string; gitStatus?: AgentGitStatus | null; summary: { addedLines: number; removedLines: number }; menuItems: AppMenuItem[]; view: 'diff' | 'map' }>();
-const emit = defineEmits<{ refresh: []; selectMenuItem: [id: string]; 'update:view': [view: 'diff' | 'map'] }>();
+defineProps<{ repositoryName: string; gitStatus?: AgentGitStatus | null; summary: { addedLines: number; removedLines: number }; menuItems: AppMenuItem[]; view: 'diff' | 'viz' | 'map' }>();
+const emit = defineEmits<{ refresh: []; selectMenuItem: [id: string]; 'update:view': [view: 'diff' | 'viz' | 'map'] }>();
 </script>
 
 <style scoped>

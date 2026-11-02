@@ -56,18 +56,24 @@ describe(`Codex SDK → ${product.name} backend controls`, () => {
     const { driver, surface } = setup();
     surface.listModels.mockResolvedValue([
       { id: 'luna', model: 'gpt-6.1-luna', displayName: 'Luna', supportedReasoningEfforts: [{ reasoningEffort: 'low', description: '' }] },
-      { id: 'sol', model: 'gpt-6.1-sol', displayName: 'Sol', isDefault: true },
+      { id: 'sol', model: 'gpt-6.1-sol', displayName: 'Sol', isDefault: true, supportedReasoningEfforts: [{reasoningEffort:'low',description:''}, {reasoningEffort:'medium',description:''}, {reasoningEffort:'high',description:''}] },
+      { id: 'astra', model: 'gpt-6-astra', displayName: 'Astra', supportedReasoningEfforts: [{reasoningEffort:'high',description:''}] },
     ]);
     surface.generateText.mockResolvedValue({ text: 'feat: ship' });
     const agent = { ...sdkAgent(), backendDefaults: { kind: 'codex' as const, model: 'model', reasoningEffort: 'high', serviceTier: 'fast' } };
     await expect(driver.generateText(agent, { prompt: 'draft', cwd: '/repo', developerInstructions: 'Keep short', outputSchema: { type: 'object' } })).resolves.toStrictEqual({ text: 'feat: ship' });
     expect(surface.generateText).toHaveBeenCalledWith('draft', { cwd: '/repo', developerInstructions: 'Keep short', model: 'gpt-6.1-luna', reasoningEffort: 'low', serviceTier: null, outputSchema: { type: 'object' } });
+    const attachments=[{type:'image' as const,path:'/assets/viz/reference.png',mimeType:'image/png'}];
+    await driver.generateText(agent, { prompt: 'impact', cwd: '/repo', complexity: 'normal', tools: true, attachments });
+    expect(surface.generateText).toHaveBeenLastCalledWith('impact', expect.objectContaining({model:'gpt-6.1-sol',reasoningEffort:'medium',tools:'read-only',attachments}));
+    await driver.generateText(agent, { prompt: 'analysis', cwd: '/repo', complexity: 'complex' });
+    expect(surface.generateText).toHaveBeenLastCalledWith('analysis', expect.objectContaining({model:'gpt-6-astra',reasoningEffort:'high'}));
     expect(agent.backendDefaults).toStrictEqual({ kind: 'codex', model: 'model', reasoningEffort: 'high', serviceTier: 'fast' });
     expect(surface.createConversation).not.toHaveBeenCalled();
     expect(surface.conversation).not.toHaveBeenCalled();
     surface.listModels.mockResolvedValue([{ id: 'sol', model: 'gpt-6.1-sol', displayName: 'Sol' }]);
     await expect(driver.generateText(agent, { cwd: '/repo', prompt: 'draft' })).rejects.toThrow(/lightweight/i);
-    expect(surface.generateText).toHaveBeenCalledOnce();
+    expect(surface.generateText).toHaveBeenCalledTimes(3);
   });
 
   it('delegates account lifecycle and device-login identity without handling credentials', async () => {

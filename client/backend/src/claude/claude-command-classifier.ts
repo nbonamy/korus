@@ -135,7 +135,7 @@ function operandsOf(args: string[], spec: FlagSpec, patternFlags: ReadonlySet<st
 const SHELL_SYNTAX = /[|&;<>()`$\\\n\r]/u;
 const SHELL_GLOB = /[*?[\]{}~!#]/u;
 
-function tokenize(command: string): string[] | null {
+export function tokenize(command: string): string[] | null {
   const tokens: string[] = [];
   let current = '';
   let started = false;

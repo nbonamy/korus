@@ -151,15 +151,17 @@ export class AntigravityHost implements AgentBackendDriver {
 
   async generateText(agent: Agent, input: BackendTextGenerationInput): Promise<{ text: string }> {
     if (this.closed) throw new Error('Antigravity host is closed.');
-    const session = await this.openSession({ agentId: `generation-${randomUUID()}`, cwd: input.cwd, mcpServers: [], tools: false, ephemeral: true, changed: () => {}, usage: event => this.observeUsage({ ...event, agentId: agent.id }) });
+    const inspect = input.tools === true;
+    const session = await this.openSession({ agentId: `generation-${randomUUID()}`, cwd: input.cwd, mcpServers: [], tools: inspect ? 'read-only' : false, ephemeral: true, changed: () => {}, usage: event => this.observeUsage({ ...event, agentId: agent.id }) });
     this.auxiliary.add(session);
     try {
       if (this.closed) throw new Error('Antigravity host is closed.');
-      const selection = utilityTextModel(this.backend, antigravityModels(session.configuration.models));
+      const selection = utilityTextModel(this.backend, antigravityModels(session.configuration.models), input.complexity);
       await session.setModel(selection.model);
       await session.setMode('default');
-      const turn = session.prompt([input.developerInstructions, 'Return only the requested text. Do not call tools.',
-        input.outputSchema ? `Return JSON matching this schema: ${JSON.stringify(input.outputSchema)}` : '', input.prompt].filter(Boolean).join('\n\n'));
+      const prompt = [input.developerInstructions, inspect ? 'Inspect the working folder with read-only Git and source tools. Use simple Git commands without shell operators. For git diff, show or log, include --no-ext-diff --no-textconv. Never write files or modify Git state. Return only the requested final text.' : 'Return only the requested text. Do not call tools.',
+        input.outputSchema ? `Return JSON matching this schema: ${JSON.stringify(input.outputSchema)}` : '', input.prompt].filter(Boolean).join('\n\n');
+      const turn = session.prompt(prompt, [{type:'text',text:prompt}, ...await acpAttachments(input.attachments ?? [])]);
       await turn.completion;
       if (session.snapshot.turns[0]?.status !== 'completed') throw new Error(session.snapshot.error ?? 'Antigravity text generation failed.');
       const text = session.snapshot.messages.filter(message => message.role === 'assistant')

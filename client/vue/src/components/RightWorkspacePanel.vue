@@ -186,6 +186,7 @@
       :agent="agent"
       :git-status="gitStatus"
       :panel="gitPanel"
+      :visible="visible !== false && activeTab === 'review'"
       @open-file="emit('previewFile', $event)"
       @refresh="emit('refreshGitDiff', gitPanel.target)"
       @annotate="emit('annotateCode', $event)"

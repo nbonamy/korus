@@ -15,6 +15,8 @@ await assertFile(backendBundle);
 await assertFile(path.join(backendDistDir, product.daemonName));
 await assertSelfContainedBackendBundle(backendBundle);
 await mkdir(resourcesDir, { recursive: true });
+await mkdir(path.join(resourcesDir,'viz'),{recursive:true});
+await copyFile(path.join(backendDistDir,'viz/reference.png'),path.join(resourcesDir,'viz/reference.png'));
 await copyFile(backendBundle, path.join(resourcesDir, 'daemon.mjs'));
 await copyFile(path.join(backendDistDir, product.daemonName), path.join(resourcesDir, product.daemonName));
 await chmod(path.join(resourcesDir, product.daemonName), 0o755);

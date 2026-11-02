@@ -12,11 +12,12 @@ import { AcpPromptJournal } from './prompt-journal';
 import type { RendererMessagePart } from '@workspace/core/contracts';
 import type { ExecutionObservation } from '@workspace/core/usage';
 import { product } from '@workspace/core/product';
+import { readOnlyGitCommand } from '../agents/utility-workspace-tools';
 
 type SessionOptions = {
   agentId: string; cwd: string; home?: string; sessionId?: string;
   mcpServers: unknown[];
-  tools?: boolean;
+  tools?: boolean | 'read-only';
   /** Not a user conversation: persist no prompts and hide it from history. */
   ephemeral?: boolean;
   changed(event: AntigravityConversationEvent): void;
@@ -45,7 +46,7 @@ export class AcpSession {
   static async open(options: SessionOptions): Promise<AcpSession> {
     const session = new AcpSession(options);
     try {
-      session.runtime = await AcpRuntime.open({ cwd: options.cwd, home: options.home, filesystem: options.tools !== false,
+      session.runtime = await AcpRuntime.open({ cwd: options.cwd, home: options.home, filesystem: options.tools === 'read-only' ? 'read-only' : options.tools !== false,
         onRequest: (method, params) => session.request(method, params),
         onNotification: (method, params) => session.notification(method, params),
         onClose: error => session.closed(error),
@@ -211,6 +212,21 @@ export class AcpSession {
     if (method === 'session/request_permission') {
       if (!this.active) throw new Error('Antigravity permission request has no active turn.');
       if (this.interrupted) return { outcome: { outcome: 'cancelled' } };
+      if (this.options.tools === 'read-only') {
+        const call = record(params.toolCall) ? params.toolCall : {};
+        const input = record(call.rawInput) ? call.rawInput : {};
+        const command = input.CommandLine ?? input.command;
+        const cwd = input.Cwd ?? input.cwd;
+        const read = ['read', 'search'].includes(String(call.kind));
+        // Native command permissions cannot rewrite tool input; require diff-driver safeguards explicitly.
+        const safeCommand = readOnlyGitCommand(command);
+        const diffCommand = safeCommand && /\b(?:diff|show|log) --no-ext-diff/u.test(safeCommand);
+        const git = call.kind === 'execute' && safeCommand
+          && typeof command === 'string' && (!diffCommand || (/--no-ext-diff\b/u.test(command) && /--no-textconv\b/u.test(command)))
+          && (cwd === undefined || cwd === this.options.cwd);
+        const option = (read || git) && Array.isArray(params.options) ? params.options.find(value => record(value) && value.kind === 'allow_once') : undefined;
+        return record(option) && typeof option.optionId === 'string' ? { outcome: { outcome: 'selected', optionId: option.optionId } } : { outcome: { outcome: 'cancelled' } };
+      }
       const sessionHasKorusMcp = this.options.mcpServers.some(server => record(server) && server.name === product.mcpServerName);
       const pending = permissionRequest(params, sessionHasKorusMcp);
       if (pending.automaticResponse) return pending.automaticResponse;
@@ -220,6 +236,7 @@ export class AcpSession {
       });
     }
     if (!this.active) throw new Error('Antigravity file request has no active turn.');
+    if (this.options.tools === 'read-only' && method !== 'fs/read_text_file') throw new Error('This utility only reads its working folder.');
     const result = await handleAcpFileRequest(method, params, [this.options.cwd,
       path.join(this.options.home ?? antigravityHome(), 'antigravity-acp', 'brain', this.sessionId)]);
     if (method === 'fs/write_text_file' && typeof params.path === 'string' && /^(?:PLAN|implementation_plan)\.md$/i.test(path.basename(params.path)) && typeof params.content === 'string') this.planMarkdown = params.content;

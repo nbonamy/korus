@@ -1,3 +1,4 @@
+import { utilityImageAttachments } from './agents/utility-image-attachments';
 import type { ExecutionObservation, RequestObservation } from '@workspace/core/usage';
 import { assertPromptSession, requireExpectedSessionId, requirePromptText } from './prompt-input';
 import { product } from '@workspace/core/product';
@@ -9,7 +10,7 @@ import { expandWorktreeDelegationCommand } from './agents/worktree-delegation';
 import { handoffInProgress } from '@workspace/core/agent-handoff';
 import { isAgentRequestResponse } from '@workspace/core/agent-request';
 import type { AgentBackendDriver, BackendEvent, BackendSendResult } from '@workspace/core/backend-driver';
-import { unsupportedBackendFeature } from '@workspace/core/backend-driver';
+import { unsupportedBackendFeature, utilityTaskComplexities, type UtilityTaskComplexity } from '@workspace/core/backend-driver';
 import type { Agent, AgentBackend, AppGeneralSettings, AppPluginSettings, BackendSession, ConversationListInput, ConversationResumeTarget, CreateSourceWorktreeInput, DevicePairingSession, SendPromptOptions } from '@workspace/core/contracts';
 import { stat } from 'node:fs/promises';
 import { listAgentFolderFiles, previewAgentFolderFile, readAgentFolderFileChunk } from './agent-files';
@@ -302,9 +303,14 @@ export class BackendDriverRpc {
         const record = requireRecord(params);
         const driver = this.requireDriver(agent.backend);
         if (!driver.generateText) throw unsupportedBackendFeature(agent, 'ephemeral text generation');
+        if (record.complexity !== undefined && !utilityTaskComplexities.includes(record.complexity as UtilityTaskComplexity)) throw new Error('Invalid utility task complexity.');
+        if (record.tools !== undefined && typeof record.tools !== 'boolean') throw new Error('Invalid utility tool flag.');
         return driver.generateText(agent, {
           prompt: requireString(record.prompt, 'prompt'),
           cwd: requireString(record.cwd, 'cwd'),
+          ...(record.complexity !== undefined ? { complexity: record.complexity as UtilityTaskComplexity } : {}),
+          ...(typeof record.tools === 'boolean' ? { tools: record.tools } : {}),
+          ...(record.attachments !== undefined ? {attachments:await utilityImageAttachments(record.attachments)} : {}),
           ...(typeof record.developerInstructions === 'string' ? { developerInstructions: record.developerInstructions } : {}),
           ...(record.outputSchema !== undefined ? { outputSchema: record.outputSchema as never } : {}),
         });

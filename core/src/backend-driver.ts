@@ -18,6 +18,7 @@ import type {
   DevicePairingStatus,
   PairedDevice,
   RendererMessage,
+  PromptAttachment,
   SendPromptOptions,
   ThreadGoal
 } from './contracts';
@@ -77,11 +78,19 @@ export type BackendPermissionModeResult = {
 
 export type BackendJsonValue = null | boolean | number | string | BackendJsonValue[] | { [key: string]: BackendJsonValue };
 
+export const utilityTaskComplexities = ['simple', 'normal', 'complex'] as const;
+export type UtilityTaskComplexity = typeof utilityTaskComplexities[number];
 export type BackendTextGenerationInput = {
   prompt: string;
   cwd: string;
+  /** Omitted keeps legacy utilities on the simple tier. */
+  complexity?: UtilityTaskComplexity;
+  /** Isolated inspection utilities may use read-only Git and source tools. */
+  tools?: boolean;
   developerInstructions?: string;
   outputSchema?: BackendJsonValue;
+  /** Image paths resolved and authorized by the owning host; independent of workspace tools. */
+  attachments?: readonly Extract<PromptAttachment, { type: 'image' }>[];
 };
 
 export type BackendTextGenerationResult = {

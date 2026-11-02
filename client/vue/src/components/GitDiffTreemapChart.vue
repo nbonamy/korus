@@ -22,6 +22,8 @@ let theme: ReturnType<typeof readAnalyticsTheme>;
 
 function background(raw: TreemapDataPoint | undefined, ctx: CanvasRenderingContext2D): CanvasGradient | string {
   if (!raw?._data) return 'transparent';
+  // A view switch can mount the chart before its hidden parent becomes measurable.
+  if (![raw.x, raw.y, raw.w, raw.h].every(Number.isFinite)) return 'transparent';
   const file = raw._data as MapFile;
   const color = resolveChartColor(fileKindColor[file.kind], theme.tokens);
   const surface = resolveChartColor(theme.surface, theme.tokens);

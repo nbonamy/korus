@@ -27,7 +27,7 @@ export class AcpRuntime {
     home?: string;
     interactive?: boolean;
     signal?: AbortSignal;
-    filesystem?: boolean;
+    filesystem?: boolean | 'read-only';
     onRequest: ConstructorParameters<typeof AcpConnection>[0]['onRequest'];
     onNotification: ConstructorParameters<typeof AcpConnection>[0]['onNotification'];
     onClose: ConstructorParameters<typeof AcpConnection>[0]['onClose'];
@@ -55,7 +55,7 @@ export class AcpRuntime {
       const initialization = await instance.connection.request('initialize', {
         protocolVersion: 2,
         clientInfo: { name: product.mcpServerName, title: product.name, version: '1' },
-        clientCapabilities: { fs: { readTextFile: options.filesystem !== false, writeTextFile: options.filesystem !== false }, terminal: false },
+        clientCapabilities: { fs: { readTextFile: options.filesystem !== false, writeTextFile: options.filesystem !== false && options.filesystem !== 'read-only' }, terminal: false },
       });
       if (!record(initialization) || initialization.protocolVersion !== 2 || !record(initialization.agentInfo)
         || initialization.agentInfo.version !== acpVersion || initialization.agentInfo.name !== 'antigravity-acp') {

@@ -365,11 +365,13 @@ export class CodexSurfaceAgentAdapter {
   }
 
   async generateText(_agent: Agent, input: BackendTextGenerationInput): Promise<BackendTextGenerationResult> {
-    const selection = utilityTextModel('codex', await this.listModels());
+    const selection = utilityTextModel('codex', await this.listModels(), input.complexity);
     return this.surface.generateText(input.prompt, {
       cwd: expandHome(input.cwd),
       ...selection,
       serviceTier: null,
+      ...(input.tools === true ? { tools: 'read-only' as const } : {}),
+      ...(input.attachments ? { attachments: input.attachments } : {}),
       ...(input.developerInstructions ? { developerInstructions: input.developerInstructions } : {}),
       ...(input.outputSchema ? { outputSchema: input.outputSchema } : {}),
     });

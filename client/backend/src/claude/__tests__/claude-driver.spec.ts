@@ -30,13 +30,17 @@ describe('ClaudeBackendDriver', () => {
   it('uses Haiku for utility drafts without changing the selected model or starting a conversation turn', async () => {
     const transport = createFakeTransport();
     const generateText = vi.fn().mockResolvedValue({ text: 'feat: improve drafts' });
-    const discoverModels = vi.fn().mockResolvedValue([{ value: 'haiku', displayName: 'Haiku', supportsEffort: true, supportedEffortLevels: ['low', 'high'] }]);
+    const discoverModels = vi.fn().mockResolvedValue(['haiku','sonnet','opus'].map(value=>({value,displayName:value,supportsEffort:true,supportedEffortLevels:['low','medium','high']})));
     const driver = new ClaudeBackendDriver({ ...transport, generateText, discoverModels });
     const selected = { ...agent, backendDefaults: { kind: 'claude' as const, model: 'opus', reasoningEffort: 'high' } };
     const input = { cwd: '/repo', prompt: 'Write a draft' };
     try {
       await expect(driver.generateText(selected, input)).resolves.toStrictEqual({ text: 'feat: improve drafts' });
       expect(generateText).toHaveBeenCalledExactlyOnceWith(input, { model: 'haiku', effort: 'low' });
+      await driver.generateText(selected, {...input,complexity:'normal'});
+      expect(generateText).toHaveBeenLastCalledWith({...input,complexity:'normal'}, {model:'sonnet',effort:'medium'});
+      await driver.generateText(selected, {...input,complexity:'complex'});
+      expect(generateText).toHaveBeenLastCalledWith({...input,complexity:'complex'}, {model:'opus',effort:'high'});
       expect(transport.startTurn).not.toHaveBeenCalled();
       expect(selected.backendDefaults).toStrictEqual({ kind: 'claude', model: 'opus', reasoningEffort: 'high' });
     } finally { await driver.close(); }
