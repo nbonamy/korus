@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -143,12 +143,20 @@ describe('repository run profiles', () => {
     const input = { profileId: p.id, command: p.command, cwd: repo };
     const run = await service.start(agent, repo, input);
     await waitFor(async () => (await service.get(agent, repo)).runs[0].output.includes('ready'));
-    const stopping = service.stop(agent, run.id);
-    try { await expect(service.start(agent, repo, input)).rejects.toThrow(/already running/); }
-    finally { await stopping; }
-    expect(await service.stop(agent, run.id)).toMatchObject({ state: 'stopped' });
-    const restarted = await service.start(agent, repo, input);
-    await service.stop(agent, restarted.id);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const stopping = service.stop(agent, run.id);
+      try { await expect(service.start(agent, repo, input)).rejects.toThrow(/already running/); }
+      finally { await vi.advanceTimersByTimeAsync(1500); await stopping; }
+      expect(await service.stop(agent, run.id)).toMatchObject({ state: 'stopped' });
+      const restarted = await service.start(agent, repo, input);
+      vi.useRealTimers();
+      await waitFor(async () => (await service.get(agent, repo)).runs.find(item => item.id === restarted.id)!.output.includes('ready'));
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      const stopRestarted = service.stop(agent, restarted.id);
+      await vi.advanceTimersByTimeAsync(1500);
+      await stopRestarted;
+    } finally { vi.useRealTimers(); }
   });
 
   it('redacts inherited credentials even when output arrives in separate chunks', async () => {
