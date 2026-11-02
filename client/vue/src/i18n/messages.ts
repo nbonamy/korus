@@ -262,7 +262,7 @@ export const messages = {
     engineConnection: {
       title: 'Account', connect: 'Connect', connected: 'Connected', update: 'Update', actions: '{name} actions', refreshStatus: 'Refresh status',
       disconnect: 'Disconnect', disconnected: 'Disconnected', apiKey: 'API key', subscription: 'Claude subscription', amazonBedrock: 'Amazon Bedrock',
-      enabled: 'Enable engine', waiting: 'Waiting for sign-in', connectedDisabled: 'Connected · disabled',
+      enabled: 'Enable {name}', waiting: 'Waiting for sign-in', connectedDisabled: 'Connected · disabled',
       updateFailedTitle: 'Engine status unchanged',
       lastEngineTitle: `${product.name} needs an active engine`,
       lastEngine: 'To turn this engine off, first connect or enable another one.',

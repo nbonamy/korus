@@ -18,7 +18,7 @@
         <el-button v-else size="small" :disabled="busy || saving" @click="emit('connect')">
           {{ $t('engineConnection.connect') }}
         </el-button>
-        <el-switch v-if="!overflow" :model-value="connected && enabled !== false" :loading="saving" :disabled="!connected || busy || saving || pending" :aria-label="`${$t('engineConnection.enabled')} · ${title ?? $t('engineConnection.title')}`" @update:model-value="toggle" />
+        <el-switch v-if="!overflow" :model-value="connected && enabled !== false" :loading="saving" :disabled="!connected || busy || saving || pending" :aria-label="enabledLabel" @update:model-value="toggle" />
       </template>
       <template #copy>
         <span v-if="overflow && version" class="settings-engine-connection__version" :title="version">{{ version }}</span>
@@ -47,9 +47,9 @@
     </div>
     <div class="engine-hero__details">
       <slot />
-      <FormRow :title="$t('engineConnection.enabled')">
+      <FormRow :title="enabledLabel">
         <template #control>
-          <el-switch :model-value="connected && enabled !== false" :loading="saving" :disabled="!connected || busy || saving || pending" :aria-label="$t('engineConnection.enabled')" @update:model-value="toggle" />
+          <el-switch :model-value="connected && enabled !== false" :loading="saving" :disabled="!connected || busy || saving || pending" :aria-label="enabledLabel" @update:model-value="toggle" />
         </template>
       </FormRow>
     </div>
@@ -72,6 +72,7 @@ import { DotsVerticalIcon, RefreshIcon, QuitIcon } from '../shared/icons/app-ico
 const props = withDefaults(defineProps<{ backend?: AgentBackend; installed?: boolean; compact?: boolean; installable?: boolean; overflow?: boolean; version?: string; updateAvailable?: boolean; updateBusy?: boolean; menuItems?: AppMenuItem[]; title?: string; connected?: boolean; enabled?: boolean; busy?: boolean; pending?: boolean; error?: string | null; authentication?: ProviderAuthentication; setEnabled?: (enabled: boolean) => unknown }>(), { enabled: true, installed: true });
 const emit = defineEmits<{ connect: []; disconnect: []; cancel: []; refresh: []; install: []; upgrade: []; 'menu-select': [id: string] }>();
 const { t } = useI18n();
+const enabledLabel = computed(() => t('engineConnection.enabled', { name: props.title ?? t('engineConnection.title') }));
 const saving = ref(false);
 const overflowItems = computed<AppMenuItem[]>(() => {
   const disabled = props.busy || saving.value || props.updateBusy;
