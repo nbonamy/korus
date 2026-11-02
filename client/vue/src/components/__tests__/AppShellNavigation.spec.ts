@@ -6,10 +6,10 @@ import { createTeamInSnapshot } from '@workspace/core/team-manager';
 import { describe, expect, it, vi } from 'vitest';
 import AppShellNavigation from '../AppShellNavigation.vue';
 
-function mountNavigation(snapshot = createInitialSnapshot(), renderSidebar = false) {
+function mountNavigation(snapshot = createInitialSnapshot(), renderSidebar = false, realTransition = false) {
   const activeTeam = snapshot.teams[0] ?? null;
   return shallowMount(AppShellNavigation, {
-    global: { stubs: { AgentSidebar: !renderSidebar, AgentSidebarRepo: !renderSidebar, AgentSidebarActivity: !renderSidebar } },
+    global: { stubs: { AgentSidebar: !renderSidebar, AgentSidebarRepo: !renderSidebar, AgentSidebarActivity: !renderSidebar, ...(realTransition ? { PaneTransition: false, transition: false } : {}) } },
     props: {
       activeTeam,
       activeTeamAgents: snapshot.agents,
@@ -37,6 +37,23 @@ function mountNavigation(snapshot = createInitialSnapshot(), renderSidebar = fal
 }
 
 describe('AppShellNavigation', () => {
+  it('keeps the sidebar in place when switching between the cockpit and a team', async () => {
+    const wrapper = mountNavigation(createInitialSnapshot(), true, true);
+    const animating = () => wrapper.findAll('[class*="pane-collapse"]').length;
+    expect(wrapper.find('.agent-sidebar').exists()).toBe(true);
+    expect(animating()).toBe(0);
+    // The cockpit lists agents by activity while teams default to repositories: a different sidebar variant.
+    await wrapper.setProps({ cockpitVisible: true });
+    expect(wrapper.find('.agent-sidebar').exists()).toBe(true);
+    expect(animating()).toBe(0);
+    await wrapper.setProps({ cockpitVisible: false });
+    expect(animating()).toBe(0);
+    // Collapsing and expanding the sidebar itself still animates.
+    await wrapper.setProps({ showAgentSidebar: false });
+    await wrapper.setProps({ showAgentSidebar: true });
+    expect(animating()).toBeGreaterThan(0);
+  });
+
   it('forwards team-rail navigation as semantic shell actions', () => {
     const wrapper = mountNavigation();
     const rail = wrapper.getComponent({ name: 'TeamRail' });
