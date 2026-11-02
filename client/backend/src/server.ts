@@ -4330,13 +4330,46 @@ export class AppBackendServer {
         });
       }
     }
-    if (event.agentId && shouldRefreshGitStatusForEvent(fullEvent)) {
+    const commandFinished = this.trackCommandItems(fullEvent);
+    if (event.agentId && (commandFinished || shouldRefreshGitStatusForEvent(fullEvent))) {
       if (providerConversationEventView(fullEvent).type === 'turn.completed') {
         void this.agentWorkspaces.refreshGitStatus(event.agentId);
       } else {
         this.agentWorkspaces.scheduleGitStatusRefresh(event.agentId);
       }
     }
+  }
+
+  /** Command tool calls that have started and not finished, by agent. */
+  private readonly runningCommandItems = new Map<string, Set<string>>();
+
+  /**
+   * Claude announces a command as an item with its kind and finishes it with a bare status update, so the
+   * finish only means "a command ended" if the start was seen. True when this event is such a finish.
+   */
+  private trackCommandItems(event: BackendPublishedEvent): boolean {
+    const agentId = event.agentId;
+    const view = providerConversationEventView(event);
+    if (!agentId) return false;
+    if (view.type === 'turn.completed') {
+      this.runningCommandItems.delete(agentId);
+      return false;
+    }
+    if (!isRecord(view.payload)) return false;
+    if (view.type === 'item.started' && isRecord(view.payload.toolPart)) {
+      const { id, kind } = view.payload.toolPart;
+      if (typeof id !== 'string' || (kind !== 'command' && kind !== 'fileChange')) return false;
+      const ids = this.runningCommandItems.get(agentId) ?? new Set<string>();
+      ids.add(id);
+      // A tool that never reports back must not accumulate forever.
+      while (ids.size > 256) ids.delete(ids.values().next().value!);
+      this.runningCommandItems.set(agentId, ids);
+      return false;
+    }
+    if (view.type === 'item.updated' && typeof view.payload.itemId === 'string' && (view.payload.status === 'completed' || view.payload.status === 'failed')) {
+      return this.runningCommandItems.get(agentId)?.delete(view.payload.itemId) ?? false;
+    }
+    return false;
   }
 
   private nextMainEvent(event: BackendEvent): BackendPublishedEvent {

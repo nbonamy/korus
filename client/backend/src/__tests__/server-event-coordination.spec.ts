@@ -185,6 +185,66 @@ describe('AppBackendServer', () => {
     await server.close();
   });
 
+  it('refreshes git status when a Claude shell command finishes, because its completion carries no tool kind', async () => {
+    vi.useFakeTimers();
+    const snapshot = createTestSnapshot();
+    snapshot.teams[0]!.agentIds = ['agent-dina'];
+    snapshot.activeAgentId = 'agent-dina';
+    snapshot.agents = [{
+      id: 'agent-dina', teamId: 'team-test', name: 'Dina', folder: '/Users/nbonamy/src/agent-workspace',
+      backend: 'codex', status: { type: 'working' }, backendSession: { kind: 'codex', threadId: 'thread-dina' },
+      createdAt: '2026-06-13T00:00:00.000Z', updatedAt: '2026-06-13T00:00:00.000Z',
+    }];
+    let emitEvent: (event: BackendEvent) => void = () => undefined;
+    const getGitStatus = vi.fn().mockResolvedValue({
+      folder: '/Users/nbonamy/src/agent-workspace', branch: 'main', ahead: 0, behind: 0, changedFiles: 1,
+      addedLines: 5, removedLines: 0, hasUntracked: true, state: 'dirty', updatedAt: '2026-06-13T00:00:01.000Z',
+    });
+    const driver: AgentBackendDriver = {
+      backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }), getCapabilities: () => codexBackendCapabilities,
+      sendPrompt: async () => ({ backendSession: { kind: 'codex', threadId: 'thread-test' } }),
+      interrupt: async () => ({ backendSession: { kind: 'codex', threadId: 'thread-test' } }),
+      respondToAgentRequest: async () => undefined,
+      onEvent: (listener) => { emitEvent = listener; return () => undefined; },
+      close: async () => undefined,
+    };
+    const server = new AppBackendServer({
+      version: 'test-version', pid: 123, snapshot, driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
+      agentGitService: { status: getGitStatus } as unknown as AgentGitService,
+    });
+    const frame = (type: string, payload: unknown) => emitEvent(codexConversationEvent('agent-dina', 'thread-dina', 'turn-test', type, payload));
+    const started = (id: string, kind: string) => frame('item.started', { toolPart: { type: 'tool', id, title: id, kind, status: 'running' } });
+    const finished = (id: string, status = 'completed') => frame('item.updated', { itemId: id, status, output: '', body: '' });
+
+    // A Bash or python3 call: started as a command, finished by a bare status update.
+    started('python', 'command');
+    await vi.advanceTimersByTimeAsync(500);
+    expect(getGitStatus).not.toHaveBeenCalled();
+    finished('python');
+    await vi.advanceTimersByTimeAsync(500);
+    expect(getGitStatus).toHaveBeenCalledOnce();
+    getGitStatus.mockClear();
+
+    // A failed command may still have changed files, and a status update that is not a finish changes nothing.
+    started('failing', 'command');
+    frame('item.updated', { itemId: 'failing', statusText: 'Preparing tool input...' });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(getGitStatus).not.toHaveBeenCalled();
+    finished('failing', 'failed');
+    await vi.advanceTimersByTimeAsync(500);
+    expect(getGitStatus).toHaveBeenCalledOnce();
+    getGitStatus.mockClear();
+
+    // Tools that cannot touch the workspace, and finishes of items never seen starting, stay quiet; one finish refreshes once.
+    started('search', 'webSearch');
+    finished('search');
+    finished('never-started');
+    finished('python');
+    await vi.advanceTimersByTimeAsync(500);
+    expect(getGitStatus).not.toHaveBeenCalled();
+    await server.close();
+  });
+
   it('owns client request response routing', async () => {
     const snapshot = createTestSnapshot();
     snapshot.teams[0]!.agentIds = ['agent-dina'];
