@@ -4,7 +4,7 @@
       <h2>{{ title }}</h2>
       <slot />
     </header>
-    <ul class="legend" v-if="series.length > 1" aria-label="Series">
+    <ul class="legend" v-if="!hideLegend && series.length > 1" aria-label="Series">
       <li v-for="(item, i) in series" :key="item.label">
         <i
           :style="{
@@ -163,6 +163,7 @@
             }}</b>
           </li>
         </ul>
+        <p v-if="!tooltipRows.length">Unavailable</p>
         <div v-if="tooltipTotal !== null" class="tooltip-total">
           <span>{{ totalLabel ?? "Total" }}</span
           ><b :title="count(tooltipTotal)">{{
@@ -202,6 +203,7 @@ const props = defineProps<{
   variant?: "line" | "bar" | "stacked";
   measure: Measure;
   totalLabel?: string;
+  hideLegend?: boolean;
 }>();
 const id = useId(),
   stage = ref<HTMLElement | null>(null),
@@ -308,6 +310,7 @@ const tooltipRows = computed(() =>
       color: color(index),
       value: active.value === null ? null : (item.values[active.value] ?? null),
     }))
+    .filter((item) => item.value !== null)
     .sort((a, b) =>
       a.value === null
         ? b.value === null

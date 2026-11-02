@@ -47,6 +47,11 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   await flushPromises();
   expect(wrapper.get('[role="status"]').text()).toContain("Loading");
   const initial = { ...metrics(), availableModels: ["gpt-6-sol", "unknown"] };
+  initial.modelDaily.push({
+    ...initial.modelDaily[0]!,
+    day: "2020-01-02",
+    performance: { ...initial.modelDaily[0]!.performance, outputTokensPerSecond: "0" },
+  });
   pending.shift()!(
     Response.json({
       ...initial,
@@ -152,9 +157,7 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
     /provider benchmark|Higher is faster|Lower is faster|Missing samples are not zero/,
   );
   const speedChart = wrapper.get('[aria-label="Output speed"]');
-  expect(speedChart.get('[aria-label="Series"]').text()).toContain(
-    "gpt-6-sol · Fast",
-  );
+  expect(speedChart.find('[aria-label="Series"]').exists()).toBe(false);
   expect(speedChart.findAll(".chart-line")).toHaveLength(2);
   expect(speedChart.findAll('path[fill^="url("]')).toHaveLength(0);
   expect(
@@ -165,6 +168,12 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   await speedChart.get('svg[role="img"]').trigger("focus");
   expect(speedChart.text()).toContain("40.0 tok/s");
   expect(speedChart.text()).toContain("10.0 tok/s");
+  await speedChart.get('svg[role="img"]').trigger("keydown", { key: "End" });
+  const speedTooltip = speedChart.get('[role="status"]');
+  expect(speedTooltip.findAll("li")).toHaveLength(1);
+  expect(speedTooltip.text()).toContain("gpt-6-sol · Fast");
+  expect(speedTooltip.text()).toContain("0.0 tok/s");
+  expect(speedTooltip.text()).not.toContain("Unavailable");
 
   expect(wrapper.get('[aria-label="Output speed summary"]').text()).toContain(
     "25.0 tok/s",

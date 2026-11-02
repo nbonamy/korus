@@ -682,16 +682,14 @@ export async function dashboardWorkflow({
       name: "Output speed",
       exact: true,
     });
-    assert.match(
-      await speedChart.getByRole("list", { name: "Series" }).innerText(),
-      /Codex/,
-    );
+    assert.equal(await speedChart.getByRole("list", { name: "Series" }).count(), 0);
     await speedChart.getByRole("img").focus();
     await page.keyboard.press("End");
     assert.match(
       await speedChart.getByRole("status").innerText(),
       /30.0 tok\/s/,
     );
+    assert.equal((await speedChart.getByRole("status").innerText()).includes("Unavailable"), false);
     assert.equal(
       await speedChart.locator('path[fill^="url("]').count(),
       0,

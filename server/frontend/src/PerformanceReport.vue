@@ -14,12 +14,14 @@
         :days="days"
         :series="speedSeries"
         measure="rate"
+        hide-legend
       />
       <MetricChart
         title="Time to first output"
         :days="days"
         :series="ttftSeries"
         measure="milliseconds"
+        hide-legend
       />
     </div>
     <div class="section-heading usage-heading"><h2>Summary</h2></div>
