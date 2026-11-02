@@ -4,7 +4,7 @@
         :style="style"
         :aria-label="`${file.fullPath}: +${file.addedLines} -${file.removedLines}`"
         @click="emit('select', file.fullPath)">
-        <span v-if="canLabel" class="diff-treemap__label" :class="{ 'diff-treemap__label--wrap': canWrapName }">
+        <span v-if="canLabel" class="diff-treemap__label">
           <strong class="diff-treemap__name">{{ file.name }}</strong>
           <GitDiffLineStats v-if="canShowStats" :added-lines="file.addedLines" :removed-lines="file.removedLines" />
         </span>
@@ -27,7 +27,6 @@ const style = computed(() => {
   return { left: `${rect.x / size.width * 100}%`, top: `${rect.y / size.height * 100}%`, width: `${rect.width / size.width * 100}%`, height: `${rect.height / size.height * 100}%`, '--diff-treemap-file-color': fileKindColor[file.kind] };
 });
 const canLabel = computed(() => props.rect.width >= 64 && props.rect.height >= 36);
-const canWrapName = computed(() => props.rect.width >= 88 && props.rect.height >= 82);
 const canShowStats = computed(() => {
   const { file, rect } = props;
   const statsWidth = (String(file.addedLines).length + String(file.removedLines).length + 2) * 7.5 + 24;
@@ -44,7 +43,7 @@ const canShowStats = computed(() => {
   min-height: 0;
   padding: 0;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--color-text);
   font: inherit;
@@ -59,5 +58,4 @@ const canShowStats = computed(() => {
 .diff-treemap__name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--font-weight-semibold); }
 .diff-treemap__ratio { position: absolute; inset: auto 2px 2px; height: 4px; overflow: hidden; border-radius: 0; background: var(--color-error); }
 .diff-treemap__ratio > span { display: block; height: 100%; background: var(--color-success); }
-.diff-treemap__label--wrap .diff-treemap__name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; overflow-wrap: anywhere; }
 </style>

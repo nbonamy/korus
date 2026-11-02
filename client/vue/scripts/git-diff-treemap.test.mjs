@@ -94,7 +94,7 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
     assert.equal(menuColors.length, 4);
     await page.keyboard.press('Escape');
     await toggleMap();
-    const filterColors = await page.locator('.diff-treemap__filters button:not(:first-child) i').evaluateAll(dots => dots.map(dot => getComputedStyle(dot).backgroundColor));
+    const filterColors = await page.locator('.diff-treemap__filters button i').evaluateAll(dots => dots.slice(1).map(dot => getComputedStyle(dot).backgroundColor));
     assert.deepEqual(filterColors, menuColors, 'the map filters and header menu must use identical file-type colors');
     const tiles = page.locator('[data-diff-map-path]');
     await tiles.first().waitFor();
@@ -142,6 +142,15 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
       });
       measurements.push(geometry);
       assert.ok(geometry.scrollWidth <= geometry.width + 1, 'the pane must not scroll horizontally');
+      const filters = await page.locator('.diff-treemap__filters button').evaluateAll(buttons => buttons.map(button => ({
+        top: button.getBoundingClientRect().top,
+        labelVisible: button.querySelector('.diff-treemap__filter-label').getBoundingClientRect().width > 0,
+        countVisible: button.querySelector('.diff-treemap__filter-count').getBoundingClientRect().width > 0,
+      })));
+      assert.ok(filters.every(filter => Math.abs(filter.top - filters[0].top) < 1), 'type filters must stay on one row');
+      if (width >= 460) assert.ok(filters.every(filter => filter.labelVisible && filter.countVisible), 'panes with sufficient space retain labels and counts');
+      if (width === 280) assert.ok(filters.every(filter => !filter.labelVisible && !filter.countVisible), 'narrow panes retain compact category controls');
+      assert.ok(await page.locator('.diff-treemap__name').evaluateAll(names => names.every(name => getComputedStyle(name).whiteSpace === 'nowrap')), 'filenames must stay on one line');
       const header = await page.locator('.git-review-panel__toolbar').evaluate(element => ({ width: element.clientWidth, scrollWidth: element.scrollWidth }));
       assert.ok(header.scrollWidth <= header.width + 1, 'header controls must fit the sidebar width');
       const selectorBounds = await page.locator('.git-diff-view-toggle').boundingBox();
@@ -188,7 +197,9 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
     assert.equal(await tiles.last().evaluate(element => element === document.activeElement), true);
     await page.keyboard.press('Escape');
     await tooltip.waitFor({ state: 'hidden' });
-    await page.getByRole('button', { name: 'Code', exact: false }).filter({ hasText: 'Code' }).click();
+    await page.locator('.diff-treemap__filter-target').nth(1).hover();
+    await page.getByRole('tooltip').filter({ hasText: /^Code · 141$/ }).waitFor({ state: 'visible' });
+    await page.getByRole('button', { name: /^Code ·/ }).click();
     assert.equal(await tiles.count(), 140);
     assert.ok((await tiles.evaluateAll(elements => elements.map(element => element.dataset.diffMapPath))).every(name => name.startsWith('src/')));
     await page.screenshot({ path: path.join(output, 'code-280.png') });
@@ -201,7 +212,7 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
     assert.equal(await matching.first().locator('.git-diff-preview-panel__file-header').getAttribute('aria-expanded'), 'true');
     assert.ok(await matching.first().locator('.git-diff-preview-panel__chunks').isVisible());
     assert.ok((await matching.first().boundingBox()).y < 740, 'clicking a tile must reveal its diff in the pane');
-    await page.getByRole('button', { name: 'Back to change map', exact: true }).click();
+    await toggleMap();
     assert.equal(await tiles.count(), 140, 'returning to the map must preserve the file-type filter');
     await page.getByRole('button', { name: /^All / }).click();
     await page.getByText('Files without line changes', { exact: false }).click();

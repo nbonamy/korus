@@ -58,7 +58,8 @@ onMounted(() => {
     type: 'treemap',
     data: { datasets: [{
       data: [], tree: props.files.map(file => ({ ...file })), key: 'weight',
-      spacing: 0, borderWidth: 1, borderRadius: 0,
+      spacing: 0, borderWidth: 1,
+      borderRadius: () => Number.parseFloat(theme.tokens['--radius-md'] ?? '6'),
       borderColor: () => resolveChartColor(theme.surface, theme.tokens),
       backgroundColor: context => background(context.raw, context.chart.ctx),
       labels: { display: false }, captions: { display: false },

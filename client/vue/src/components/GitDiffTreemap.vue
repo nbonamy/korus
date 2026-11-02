@@ -14,7 +14,6 @@
       <summary>{{ $t('surface.diffTreemap.filesWithoutLines', { count: withoutLines.length }) }}</summary>
       <button v-for="file in withoutLines" :key="file.fullPath" type="button" @click="emit('select', file.fullPath)">{{ file.fullPath }}</button>
     </details>
-    <footer>{{ $t('surface.diffTreemap.areaLegend') }}</footer>
     <GitDiffTreemapTooltip :target="tooltipTarget" :file="hovered" />
   </section>
 </template>
@@ -83,5 +82,4 @@ async function navigate(event: KeyboardEvent): Promise<void> {
 .diff-treemap__without-lines summary { cursor: pointer; }
 .diff-treemap__without-lines button { display: block; max-width: 100%; padding: var(--space-2) 0; overflow-wrap: anywhere; border: 0; color: var(--color-text); background: transparent; font: inherit; text-align: left; cursor: pointer; }
 .diff-treemap__empty { flex: 1; padding: var(--space-6); color: var(--color-text-muted); }
-.diff-treemap footer { flex: 0 0 auto; color: var(--color-text-muted); }
 </style>
