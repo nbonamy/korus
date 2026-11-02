@@ -52,6 +52,9 @@ it.each(["unmeasured", "partial", "unavailable"])(
     });
     const wrapper = mount(UsagePanel);
     await flushPromises();
+    expect(wrapper.findAll(".usage-stat__value")[1]!.text()).toBe(
+      state === "partial" ? "1.4" : "N/A",
+    );
     expect(
       wrapper.findAll(".activity-totals dd").map((value) => value.text()),
     ).toStrictEqual(state === "partial" ? ["10", "10"] : ["N/A", "N/A"]);
