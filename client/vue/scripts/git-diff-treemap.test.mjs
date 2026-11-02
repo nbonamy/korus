@@ -75,6 +75,9 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
     browser = await chromium.launch();
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     page.setDefaultTimeout(10_000);
+    // Remote font stylesheets must not hold this local rendering workflow open.
+    const origin = new URL(server.resolvedUrls.local[0]).origin;
+    await page.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`${server.resolvedUrls.local[0]}diff-map`);
