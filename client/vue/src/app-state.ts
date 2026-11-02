@@ -39,6 +39,7 @@ import { appHostCapabilities, appApi } from './platform-api';
 import { createWorkProviderState, isRemoteAutomationLocation } from './work-provider-state';
 import { createAgentComposerState, type AgentComposerConfiguration } from './agent-composer-state';
 import { createAgentUnreadState } from './agent-unread-state';
+import { recordSentPrompt } from './github-star-prompt';
 import { createAgentThreadFlagState } from './agent-thread-flag-state';
 import { createAgentHistoryState } from './agent-history-state';
 import { createSourceRepositoryState } from './source-repository-state';
@@ -686,6 +687,7 @@ export function useAppState() {
     await submitWithClearedThreadFlags(agentId, () => options
       ? api.steerPrompt!(agentId, trimmed, options)
       : api.steerPrompt!(agentId, trimmed));
+    recordSentPrompt();
   }
 
   async function interruptActiveAgent(): Promise<void> {
@@ -845,6 +847,7 @@ export function useAppState() {
       await submitWithClearedThreadFlags(agentId, () => options
         ? api.sendPrompt(agentId, prompt, options)
         : api.sendPrompt(agentId, prompt));
+      recordSentPrompt();
     } finally {
       markAgentSending(agentId, false);
     }

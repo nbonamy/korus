@@ -3,6 +3,12 @@ import { surfaceMessages } from './surface-messages';
 
 export const messages = {
   en: {
+    githubStar: {
+      title: 'Support the project',
+      notice: 'Enjoying {product}?',
+      action: 'Star on GitHub',
+      dismiss: 'Dismiss star reminder',
+    },
     telemetry: {
       notice: 'Help improve {product} with anonymous usage and performance data. No conversation content is shared.',
       share: 'Share anonymous telemetry data',

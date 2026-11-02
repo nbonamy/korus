@@ -83,6 +83,7 @@
         </el-tooltip>
       </template>
       <template #composer-drawers>
+        <GithubStarPrompt v-if="appClientPlatform === 'desktop' && keyboardActive" />
         <slot name="composer-drawers" />
         <ConversationShareActivity v-if="shareProposals.length" :proposals="shareProposals" owner :disabled="shareBusy || movingSuggestion" :edit-disabled="!canMoveSuggestion" :failed="shareFailed" @edit="moveSuggestion" @delete="dismissSuggestion" />
       </template>
@@ -148,6 +149,7 @@
 import { slicePromptContent, replacePromptContentRange } from '@codex-app-sdk/core/surface';
 import ConversationShareActivity from './ConversationShareActivity.vue';
 import TelemetryConsentNotice from './TelemetryConsentNotice.vue';
+import GithubStarPrompt from './GithubStarPrompt.vue';
 import { appClientPlatform } from '../platform-api';
 import { supportsConversationSharing, conversationShareTarget, type GuestProposal } from '@workspace/core/conversation-sharing';
 import { useConversationShareActivity } from './use-conversation-share-activity';
