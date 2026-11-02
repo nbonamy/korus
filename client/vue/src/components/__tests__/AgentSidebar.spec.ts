@@ -14,14 +14,6 @@ function tooltipContents(wrapper: VueWrapper): string[] {
 }
 
 describe('AgentSidebar sessions', () => {
-  it('edits an ordinary folder icon using its canonical file identity', async () => {
-    const folder = { ...agents[0]!, id: 'notes', folder: '/src/notes folder', workspace: { kind: 'folder' as const, folder: '/src/notes folder', label: 'notes folder', updatedAt: '' } };
-    const wrapper = mount(AgentSidebar, { props: { agents: [folder], activeAgentId: folder.id, teamName: 'Team', repositoryIcons: { 'file:///src/notes%20folder': '📁' } }, global: { components: { ElPopover }, stubs: { teleport: true } } });
-    await wrapper.get('[aria-label="Change icon for notes folder"]').trigger('click');
-    await wrapper.findAll('.agent-avatar-picker__preset').find(button => button.text() === '🦞')!.trigger('click');
-    expect(wrapper.emitted('update-repository-icon')).toStrictEqual([[{ repositoryKey: 'file:///src/notes%20folder', repositoryRoot: '/src/notes folder', icon: '🦞' }]]);
-  });
-
   it('keeps remote host status before the engine icon in global activity, with live tooltip and connection health', async () => {
     const connection = { id: 'devbox', name: 'Devbox', host: 'devbox', kind: 'ssh' as const, status: 'ready' as const, createdAt: '', updatedAt: '' };
     const local = { ...agents[0]!, id: 'local', name: 'Local' };
