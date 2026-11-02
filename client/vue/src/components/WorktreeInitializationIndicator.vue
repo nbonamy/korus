@@ -2,13 +2,13 @@
     <div v-if="visibleWorktreeInitialization" class="conversation-pane__initialization" role="status" aria-live="polite">
       <span v-if="visibleWorktreeInitialization.state === 'running'" class="app-spinner app-spinner--sm" aria-hidden="true" />
       <span v-else-if="visibleWorktreeInitialization.state === 'complete'" class="conversation-pane__initialization-check" aria-hidden="true"><IconCheck /></span>
+      <button v-else class="app-icon-button" type="button" :aria-label="t('common.close')" :title="t('common.close')" @click="dismissInitialization">
+        <X aria-hidden="true" />
+      </button>
       <div>
         <strong>{{ t(visibleWorktreeInitialization.state === 'running' ? 'worktreeInitialization.running' : visibleWorktreeInitialization.state === 'complete' ? 'worktreeInitialization.complete' : 'worktreeInitialization.failed') }}</strong>
         <small :title="visibleWorktreeInitialization.error ?? visibleWorktreeInitialization.command ?? initializationCommand">{{ visibleWorktreeInitialization.error ?? visibleWorktreeInitialization.command ?? (initializationCommand || t('worktreeInitialization.preparing')) }}</small>
       </div>
-      <button class="app-icon-button" type="button" :aria-label="t('common.close')" :title="t('common.close')" @click="dismissInitialization">
-        <X aria-hidden="true" />
-      </button>
     </div>
 </template>
 

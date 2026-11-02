@@ -269,7 +269,7 @@ describe('ConversationPane', () => {
     expect(getComputedStyle(pane.element).overflow).toBe('hidden');
   });
 
-  it('shows background worktree setup and lets users dismiss status without cancelling setup or hiding later failures', async () => {
+  it('shows worktree setup until completion and keeps dismissed failures hidden until retry', async () => {
     vi.useFakeTimers();
     let wrapper = mountPane({ controller: controllerFor(messages), agent: { ...agent, worktreeInitialization: { state: 'running', command: 'npm ci' } } });
     try {
@@ -277,6 +277,7 @@ describe('ConversationPane', () => {
       expect(status().get('strong').text()).toBe('Initializing worktree');
       expect(status().get('small').text()).toBe('npm ci');
       expect(status().find('.app-spinner').exists()).toBe(true);
+      expect(status().find('button[aria-label="Close"]').exists()).toBe(false);
       await vi.advanceTimersByTimeAsync(75_000);
       expect(status().find('.app-spinner').exists()).toBe(true);
       await wrapper.setProps({ agent: { ...agent, worktreeInitialization: { state: 'complete' } } });
@@ -284,6 +285,7 @@ describe('ConversationPane', () => {
       expect(status().get('small').text()).toBe('npm ci');
       expect(status().find('.conversation-pane__initialization-check svg').exists()).toBe(true);
       expect(status().find('.app-spinner').exists()).toBe(false);
+      expect(status().find('button[aria-label="Close"]').exists()).toBe(false);
       await vi.advanceTimersByTimeAsync(999);
       expect(status().exists()).toBe(true);
       await vi.advanceTimersByTimeAsync(1);
@@ -293,6 +295,7 @@ describe('ConversationPane', () => {
       await wrapper.setProps({ agent: { ...agent, worktreeInitialization: { state: 'error', command: 'npm ci', error: 'Installation failed' } } });
       expect(status().text()).toContain('Installation failed');
       expect(status().find('.app-spinner').exists()).toBe(false);
+      expect(status().findAll('button[aria-label="Close"]')).toHaveLength(1);
       await status().get('button[aria-label="Close"]').trigger('click');
       expect(status().exists()).toBe(false);
       expect(wrapper.props('agent')?.worktreeInitialization).toStrictEqual({ state: 'error', command: 'npm ci', error: 'Installation failed' });
@@ -311,9 +314,9 @@ describe('ConversationPane', () => {
       expect(status().exists()).toBe(false);
       await wrapper.setProps({ agent: { ...agent, worktreeInitialization: { state: 'running', command: 'npm ci' } } });
       expect(status().find('.app-spinner').exists()).toBe(true);
-      await status().get('button[aria-label="Close"]').trigger('click');
+      expect(status().find('button[aria-label="Close"]').exists()).toBe(false);
       await wrapper.setProps({ agent: { ...agent, worktreeInitialization: { state: 'running', command: 'npm run build' } } });
-      expect(status().exists()).toBe(false);
+      expect(status().get('small').text()).toBe('npm run build');
       await wrapper.setProps({ agent: { ...agent, worktreeInitialization: { state: 'error', command: 'npm run build', error: 'Build failed' } } });
       expect(status().text()).toContain('Build failed');
     } finally { wrapper.unmount(); vi.useRealTimers(); }
