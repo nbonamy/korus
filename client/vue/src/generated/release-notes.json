@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.50.4",
+  "currentVersion": "0.50.5",
   "releases": [
+    {
+      "version": "0.50.5",
+      "releasedAt": "2026-11-02",
+      "sourceSha256": "7f7861b3d62e1fea839c7e1734e1ffcd5adf4637207e513569a56a668f617e24",
+      "markdown": "### Improvements and fixes\n\n- Preserve your selected Codex model, reasoning effort and service tier when reopening or refreshing a conversation.\n- Default new OpenAI conversations to 6.1 Sol with High effort while preserving explicit model choices."
+    },
     {
       "version": "0.50.4",
       "releasedAt": "2026-11-02",

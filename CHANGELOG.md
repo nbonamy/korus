@@ -4,6 +4,13 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.50.5] - 2026-11-02
+
+### Improvements and fixes
+
+- Preserve your selected Codex model, reasoning effort and service tier when reopening or refreshing a conversation.
+- Default new OpenAI conversations to 6.1 Sol with High effort while preserving explicit model choices.
+
 ## [0.50.4] - 2026-11-02
 
 ### Improvements and fixes
