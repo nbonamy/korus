@@ -94,6 +94,8 @@ export function useUsageAnalytics() {
       })) ?? null,
   );
 
+  const longestTurnMs = computed(() => activity.value?.longestTurnMs ?? null);
+
   // A newer request, a clear or unmount makes older responses stale.
   let generation = 0;
   let activityGeneration = 0;
@@ -245,6 +247,7 @@ export function useUsageAnalytics() {
     shareSeries,
     shareMeasure,
     activityDays,
+    longestTurnMs,
     activityLoaded,
     load,
     setRange,

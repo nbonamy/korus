@@ -52,11 +52,19 @@ it.each(["unmeasured", "partial", "unavailable"])(
     });
     const wrapper = mount(UsagePanel);
     await flushPromises();
-    expect(wrapper.findAll(".usage-stat__value")[1]!.text()).toBe(
+    expect(
+      wrapper
+        .get('[aria-label="Analytics totals"]')
+        .findAll(".usage-stat__value")[1]!
+        .text(),
+    ).toBe(
       state === "partial" ? "1.4" : "N/A",
     );
     expect(
-      wrapper.findAll(".activity-totals dd").map((value) => value.text()),
+      wrapper
+        .findAll(".activity-stats .usage-stat__value")
+        .slice(0, 2)
+        .map((value) => value.text()),
     ).toStrictEqual(state === "partial" ? ["10", "10"] : ["N/A", "N/A"]);
     await wrapper
       .findAll(".activity-cell:not(.activity-cell--future)")
@@ -471,7 +479,10 @@ it("opens on total tokens by provider and regroups every chart from one toolbar 
   await wrapper.get('[aria-label="Refresh"]').trigger("click");
   await flushPromises();
   expect(
-    wrapper.findAll(".usage-stat__value").map((value) => value.text()),
+    wrapper
+      .get('[aria-label="Analytics totals"]')
+      .findAll(".usage-stat__value")
+      .map((value) => value.text()),
   ).toStrictEqual(["1.2K", "1.2M"]);
   expect(
     wrapper.get('[aria-label="Time to First Token (TTFT)"] tbody tr')

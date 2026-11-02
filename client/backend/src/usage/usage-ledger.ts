@@ -431,6 +431,7 @@ export class UsageLedger {
       daily = new Map<string, Bucket>(),
       dailyGroups = new Map<string, Map<string, Bucket>>(),
       cost = emptyCost();
+    let longestTurnMs = 0;
     if (db) {
       const requestRows = db
         .prepare(
@@ -511,6 +512,8 @@ export class UsageLedger {
                 )
               : "All";
         if (!filter.apiProvider) {
+          const turnMs = record.timing?.activeMs ?? record.durationMs;
+          if (record.phase === "completed" && turnMs !== undefined && turnMs > longestTurnMs) longestTurnMs = turnMs;
           this.aggregate(rows, record, label, modelVariant);
           this.aggregate(daily, record, dayOf(record.startedAt, filter.timeZone));
           const day = dayOf(record.startedAt, filter.timeZone);
@@ -587,6 +590,7 @@ export class UsageLedger {
     }
     return {
       cost,
+      ...(longestTurnMs > 0 ? { longestTurnMs } : {}),
       recordedSince: this.since,
       retainedSince: Math.max(this.since, this.now() - retention),
       ...(this.available ? {} : { available: false }),

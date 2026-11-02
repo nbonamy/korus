@@ -126,6 +126,8 @@ export type UsageSummary = {
       cost?: UsageCost;
     }[];
   }[];
+  /** Longest completed turn in the queried range, using active time when measured. */
+  longestTurnMs?: number;
   recordedSince: number;
   retainedSince: number;
   rows: {

@@ -27,6 +27,7 @@
       v-if="activityLoaded"
       class="analytics-header"
       :days="activityDays"
+      :longest-turn-ms="longestTurnMs"
     />
     <UsageToolbar
       v-model:view="view"
@@ -126,6 +127,7 @@ const {
   shareSeries,
   shareMeasure,
   activityDays,
+  longestTurnMs,
   activityLoaded,
   load,
   setRange,

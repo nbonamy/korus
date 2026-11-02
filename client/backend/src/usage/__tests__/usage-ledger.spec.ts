@@ -388,3 +388,18 @@ it("projects additive measured performance from the existing ledger", async () =
     expect(rows.map(row => [row.model, row.serviceTier, row.performance?.outputTokens])).toStrictEqual([["gpt-6-sol", "fast", 90], ["gpt-6-sol", "standard", 10]]);
   } finally { await ledger.close(); }
 });
+
+it("reports the longest completed turn, preferring active time over wall-clock duration", async () => {
+  const at = Date.parse("2026-10-15T12:00Z");
+  const ledger = new UsageLedger(":memory:", () => at);
+  try {
+    await ledger.load();
+    expect(ledger.query({}).longestTurnMs).toBeUndefined();
+    for (const [turnId, durationMs, timing] of [["a", 90000, { activeMs: 4000, ttftMs: 100 }], ["b", 3000, undefined], ["c", 2000, undefined]] as const) {
+      const base = { provider: "codex" as const, agentId: "a", sessionId: "s", turnId, model: "gpt-6-sol", at };
+      await ledger.observe({ ...base, phase: "started" }, { teamId: null, repository: null });
+      await ledger.observe({ ...base, phase: "completed", durationMs, ...(timing ? { timing } : {}) }, { teamId: null, repository: null });
+    }
+    expect(ledger.query({}).longestTurnMs).toBe(4000);
+  } finally { await ledger.close(); }
+});
