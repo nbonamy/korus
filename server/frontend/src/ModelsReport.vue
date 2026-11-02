@@ -41,10 +41,9 @@
               background: `linear-gradient(90deg, ${color(row)}, color-mix(in srgb, ${color(row)} 55%, var(--color-surface-lowest)))`,
             }"
         /></span>
-        <strong :title="count(row[measure])"
-          >{{ measure === "turns" ? count(row[measure]) : tokens(row[measure])
-          }}<small v-if="incomplete(row)">Partial</small></strong
-        >
+        <strong :title="count(row[measure])">{{
+          measure === "turns" ? count(row[measure]) : tokens(row[measure])
+        }}</strong>
         <span class="muted">{{
           row[measure] === null || !total
             ? "—"
@@ -66,7 +65,6 @@
       </div>
       <MetricChart
         title="Model usage over time"
-        description="Reported usage by model · daily."
         :days="days"
         :series="series"
         :measure="measure === 'turns' ? 'count' : 'tokens'"
@@ -97,7 +95,7 @@ import {
   type ModelRow,
 } from "./use-model-comparison";
 const props = defineProps<{ data: TelemetryMetrics }>();
-const { choices, selected, compared, days, daily, color, dash, reportedDays } =
+const { choices, selected, compared, days, daily, color, reportedDays } =
   useModelComparison(toRef(props, "data"));
 const measure = ref<"turns" | "totalTokens" | "inputTokens" | "outputTokens">(
   "turns",
@@ -114,16 +112,6 @@ const ranked = computed(() =>
 const total = computed(() =>
   ranked.value.reduce((sum, row) => sum + BigInt(row[measure.value] ?? 0), 0n),
 );
-const incomplete = (row: ModelRow) =>
-  measure.value === "turns"
-    ? false
-    : (row[
-        measure.value === "totalTokens"
-          ? "excludedTokenGroups"
-          : measure.value === "inputTokens"
-            ? "unknownInputGroups"
-            : "unknownOutputGroups"
-      ] ?? "0") !== "0";
 const barWidth = (row: ModelRow) => {
   const n = plotValue(row[measure.value]);
   const max = plotValue(ranked.value[0]?.[measure.value] ?? null);
@@ -133,7 +121,6 @@ const series = computed(() =>
   compared.value.map((row) => ({
     label: comparisonLabel(row),
     color: color(row),
-    dash: dash(row),
     values: days.value.map((day) => {
       const entry = daily.value.get(`${day}/${modelKey(row)}`);
       return entry

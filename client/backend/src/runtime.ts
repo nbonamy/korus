@@ -321,7 +321,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     run: () => automationRunner.runAll(),
   });
   scheduler.register({ id: 'provider-updates', intervalMs: 2_000, run: () => providerUpdates.tick() });
-  if (telemetryUpload) scheduler.register({ id: 'telemetry-upload', intervalMs: 60 * 60_000, runOnStart: true, run: () => telemetryUpload!.flush() });
+  if (telemetryUpload) scheduler.register({ id: 'telemetry-upload', intervalMs: 60_000, runOnStart: true, run: () => telemetryUpload!.tick() });
   scheduler.register({ id: 'pricing-updates', intervalMs: 60_000, runOnStart: true, run: () => pricing.refresh() });
   const pullRequestMonitor = new PullRequestMonitor({
     getSnapshot: () => snapshot,

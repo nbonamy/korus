@@ -10,9 +10,31 @@ commands, required environments/secrets, target limitations, and recovery.
 The build source is an immutable remote tag. Dependencies
 come from published packages and `package-lock.json`, never a live sibling SDK.
 
+## Desktop release scope
+
+Inspect the starting worktree and distinguish desktop release inputs from unrelated
+work. Uncommitted server, website, mobile and engineering-documentation changes
+are warning-only: explain that they are excluded from the release tag and continue
+without requiring their owner to commit, or asking for confirmation. Preserve
+their files and staging state; do not stash, discard or absorb them.
+
+Require desktop source, shared runtime contracts, native desktop resources, root
+dependency/lock files and build/release tooling to be committed before dispatch.
+Classify shared files by their actual consumers; a console-only contract is not a
+desktop input merely because it lives in `core`. Unknown/shared changes need a
+targeted dependency check, not a blanket clean-worktree rule. The release command
+recognizes the known independent areas and defaults other paths to desktop scope.
+
+If a release metadata file also contains another owner's edits, stage only the
+reviewed release hunks or coordinate that overlapping file. Independent work may
+continue during preparation. Coordinate real server compatibility dependencies
+when a desktop change needs them; unrelated dirty server files alone are not a
+deployment dependency. Builds use the pushed commit, never the local dirty files.
+
 ## Publish and consume the SDK first
 
-1. Require a clean Korus worktree. Preserve existing changes and stop if dirty.
+1. Apply the desktop release scope above. Record unrelated changes and warn;
+   resolve uncommitted desktop inputs before preparing release metadata.
 2. Identify the latest completed `codex-app-sdk` changes intended for this release.
    Compare their source commit with npm's published version and `gitHead`; the
    currently locked version or a working local SDK build is not proof they ship.
@@ -45,7 +67,7 @@ come from published packages and `package-lock.json`, never a live sibling SDK.
 ## Audit and confirm version and channel
 
 1. Read and execute `../update-changelog/SKILL.md`, passing the recorded SDK
-   dependency refresh as its only allowed pre-existing diff. Require audited
+   dependency refresh and the unrelated paths excluded by the desktop scope. Require audited
    user-visible outcomes, app/SDK baselines, the locked SDK release's Git provenance,
    and an exact semantic-version recommendation. Stop if the audit recommends no release.
 2. Present the evidence and recommendation before Korus version edits. An explicit
@@ -64,7 +86,7 @@ asked for local-only preparation, stop before pushing and hand him the command.
 ## Freeze and check release metadata locally
 
 Move reviewed Unreleased notes under `## [<version>] - YYYY-MM-DD`. Update
-the root and five workspace package versions and internal `@workspace/*`
+the root and declared workspace package versions and internal `@workspace/*`
 dependencies together using `apply_patch`. Then run:
 
 ```bash
@@ -77,14 +99,15 @@ git status --short
 
 The lockfile-only command above refreshes app-version metadata after SDK
 installation; npm remains the sole lockfile writer. CI validates the clean
-install with the Node/npm versions declared in the release workflow. Only CHANGELOG.md,
-the six package manifests, package-lock.json, and
-client/vue/src/generated/release-notes.json may change unless Nicolas explicitly includes
-another change in the release commit. When resuming preparation, reuse completed
+install with the Node/npm versions declared in the release workflow. Preparation
+edits only CHANGELOG.md, the root and declared workspace package manifests,
+package-lock.json, and client/vue/src/generated/release-notes.json unless Nicolas
+explicitly includes another change in the release commit. Unrelated dirty files
+may remain and must not enter that commit. When resuming preparation, reuse completed
 audit and verification results whose inputs have not changed.
 
 The independent Quality workflow owns lint/typechecks, the full test suite under
-coverage, script tests, and the five 85% statement gates against published SDK
+coverage, script tests, and every workspace's 85% statement gate against published SDK
 packages. It runs on branch pushes, PRs and manual dispatch, excluding tag pushes,
 and retains coverage reports. Releases run ordinary workspace and script tests
 without coverage before builds and publication. The
@@ -107,7 +130,8 @@ exactly one command for the confirmed channel:
 - Prerelease: `npm run prerelease`
 - Stable/latest: `npm run latest`
 
-It requires the clean, pushed default branch, creates the missing remote
+It requires committed desktop inputs on the pushed default branch, warns about
+unrelated uncommitted work, creates the missing remote
 `v<version>` tag at HEAD, dispatches one GitHub workflow from that tag (quality →
 four platform builds → publish) and watches it. The final job stages the
 installers on a draft and publishes the channel. The independent Quality workflow

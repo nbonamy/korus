@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#272b2f" />
+      <stop offset="1" stop-color="#040507" />
+    </linearGradient>
+  </defs>
+  <!-- Full-bleed background: macOS supplies its own icon mask. -->
+  <path fill="url(#background)" d="M0 0h1024v1024H0z" />
+  <g transform="translate(-20 0)" fill="#fafafa">
+    <!-- 15-degree slash, with horizontal ends aligned to the chevron. -->
+    <path d="M432 244h90q24 0 18 22L398 762q-5 18-23 18h-87q-20 0-14-22l140-496q5-18 18-18Z" />
+    <path d="M738 252q16-16 32 0l34 34q16 16 0 32L626 512l178 194q16 16 0 32l-34 34q-16 16-32 0L498 540q-24-28 0-56Z" />
+  </g>
+</svg>

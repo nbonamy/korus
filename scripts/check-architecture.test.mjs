@@ -240,7 +240,7 @@ test("telemetry uploader ownership permits runtime composition and rejects alter
 test("private dashboard imports only browser-safe aggregate contracts", async () => {
   const good = await checkFixture({
     "server/frontend/src/view.ts":
-      "import {dayOf} from '@workspace/core/usage-time'; import {computed} from 'vue'; import {ElSelect} from 'element-plus'; import 'element-plus/es/components/select/style/css'; import type {TelemetryMetrics} from '@workspace/core/telemetry-metrics'; import {telemetryModels} from '@workspace/core/telemetry-models'; import './format';",
+      "import {dayOf} from '@workspace/core/usage-time'; import {computed} from 'vue'; import {createRouter} from 'vue-router'; import {ElSelect} from 'element-plus'; import 'element-plus/es/components/select/style/css'; import type {TelemetryMetrics} from '@workspace/core/telemetry-metrics'; import {telemetryModels} from '@workspace/core/telemetry-models'; import './format';",
   });
   assert.equal(good.status, 0, good.stderr);
   const bad = await checkFixture({
@@ -252,8 +252,9 @@ test("private dashboard imports only browser-safe aggregate contracts", async ()
       "import type {Settings} from '@workspace/core/contracts';",
     "server/frontend/src/desktop.ts":
       "import {state} from '@workspace/vue/app-state';",
+    "server/frontend/src/client-widget.ts": "import FormField from '@workspace/vue/shared/form/FormField.vue';",
   });
   assert.equal(bad.status, 1);
-  for (const name of ["database.ts", "backend.ts", "identity.ts", "desktop.ts"])
+  for (const name of ["database.ts", "backend.ts", "identity.ts", "desktop.ts", "client-widget.ts"])
     assert.ok(bad.stderr.includes(name), bad.stderr);
 });

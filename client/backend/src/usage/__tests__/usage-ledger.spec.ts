@@ -6,7 +6,7 @@ import { expect, it } from "vitest";
 import { UsageLedger } from "../usage-ledger";
 import type { ExecutionObservation } from "@workspace/core/usage";
 
-it("projects incomplete groups as null, retains measured zero, and replaces late measurements before sealing", async () => {
+it("retains known token and cost subtotals with coverage and replaces late measurements before sealing", async () => {
   const at = Date.parse("2026-10-15T12:00:00Z");
   const ledger = new UsageLedger(":memory:", () => at);
   const input = {
@@ -48,16 +48,18 @@ it("projects incomplete groups as null, retains measured zero, and replaces late
         cachedInputTokens: 0,
         outputTokens: 0,
         estimatedCostUsd: 0,
+        measuredTurns: 1, costCoverage: "complete",
       },
       {
         provider: "codex",
         model: "gpt-6-sol",
         serviceTier: "unknown",
         turns: 2,
-        inputTokens: null,
-        cachedInputTokens: null,
-        outputTokens: null,
-        estimatedCostUsd: null,
+        inputTokens: 10,
+        cachedInputTokens: 5,
+        outputTokens: 2,
+        estimatedCostUsd: 0.000031,
+        measuredTurns: 1, costCoverage: "partial",
       },
     ]);
     await ledger.observe(
@@ -79,6 +81,7 @@ it("projects incomplete groups as null, retains measured zero, and replaces late
       cachedInputTokens: 10,
       outputTokens: 4,
       estimatedCostUsd: 0.000062,
+      measuredTurns: 2, costCoverage: "complete",
     });
     expect(
       ledger.projectDailyTelemetry({ day: "2026-10-16" }),

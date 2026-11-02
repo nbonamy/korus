@@ -629,21 +629,37 @@ describe('AppShell missions', () => {
     expect(selectMission).toHaveBeenLastCalledWith(null);
   });
 
-  it('asks for the outcome in the empty mission conversation', async () => {
+  it('keeps the empty mission hint inert and accepts a suggested follow-up', async () => {
     const snapshot = createInitialSnapshot();
     const mission = createMission(snapshot, { outcome: 'New mission', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
     mission.execution!.runs.push({
       id: 'mission-run-requirements', stage: 'requirements', memberId: snapshot.agents[0]!.id,
       workerId: snapshot.agents[0]!.id, status: 'running', skills: [], feedback: '', startedAt: '2026-09-19T00:00:00.000Z',
     });
-    const wrapper = mountShell({ snapshot });
+    const sendPromptAction = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mountShell({ snapshot, realConversationPane: true, sendPromptAction });
 
     await wrapper.findComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', mission.id);
+    await flushPromises();
 
     const conversation = wrapper.getComponent({ name: 'ConversationPane' });
     expect(conversation.props('emptyHeadline')).toBe('What do you want to build?');
     expect(conversation.props('emptySubhead')).toBe('');
-    expect(conversationControllerState(wrapper).composer?.placeholder).toBe('Describe what you want to build…');
+    const editor = wrapper.get('.mission-conversation-rail .chat-rich-text-editor');
+    expect(editor.attributes('data-placeholder')).toBe('Describe what you want to build…');
+    await editor.trigger('keydown', { key: 'Enter' });
+    expect(editor.text()).toBe('');
+    expect(sendPromptAction).not.toHaveBeenCalled();
+    const agent = { ...snapshot.agents[0]!, suggestedPrompt: 'Build the agreed feature' };
+    await wrapper.setProps({ activeAgent: agent, snapshot: { ...snapshot, agents: snapshot.agents.map(item => item.id === agent.id ? agent : item) } });
+    expect(editor.attributes('data-placeholder')).toBe('Build the agreed feature');
+    await editor.trigger('keydown', { key: 'Enter' });
+    expect(editor.text()).toBe('Build the agreed feature');
+    expect(sendPromptAction).not.toHaveBeenCalled();
+    await editor.trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+    expect(sendPromptAction).toHaveBeenCalledWith('Build the agreed feature', undefined);
+    wrapper.unmount();
   });
 
   it.each([

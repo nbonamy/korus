@@ -70,6 +70,8 @@ export {
   IconInfoCircle as InfoCircleIcon,
   IconList as ListIcon,
   IconChartBar as ChartBarIcon,
+  IconChartTreemap as ChartTreemapIcon,
+  IconChevronLeft as ChevronLeftIcon,
   IconListDetails as ListDetailsIcon,
   IconLogs as LogsIcon,
   IconMenu2 as MenuIcon,

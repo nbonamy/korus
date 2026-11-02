@@ -1,14 +1,15 @@
 import { onMounted, onUnmounted, ref } from "vue";
 import type { TelemetryMetrics } from "@workspace/core/telemetry-metrics";
-import { completedDay, utcDay, viewerTimeZone } from "./format";
+import { currentDay, utcDay, viewerTimeZone } from "./format";
 
 export function useMetrics(onSessionExpired?: () => void) {
   const timeZone = viewerTimeZone();
-  const to = ref(completedDay(timeZone));
+  const to = ref(currentDay(timeZone));
   const from = ref(utcDay(Date.parse(to.value) - 29 * 86400000));
   const provider = ref(""),
     model = ref("");
   const groupServiceTiers = ref(false);
+  const availableModels = ref<string[]>([]);
   const data = ref<TelemetryMetrics | null>(null),
     loading = ref(false),
     error = ref("");
@@ -29,14 +30,17 @@ export function useMetrics(onSessionExpired?: () => void) {
       !validDay(to.value) ||
       span < 0 ||
       span > 3659 ||
-      to.value > completedDay(timeZone)
+      to.value > currentDay(timeZone)
     ) {
-      error.value =
-        "Choose completed days in order, up to 3,660 days per range.";
+      error.value = "Choose days in order, up to 3,660 days per range.";
       loading.value = false;
       return;
     }
-    const params = new URLSearchParams({ from: from.value, to: to.value, timeZone });
+    const params = new URLSearchParams({
+      from: from.value,
+      to: to.value,
+      timeZone,
+    });
     if (provider.value) params.set("provider", provider.value);
     if (model.value) params.set("model", model.value);
     if (groupServiceTiers.value) params.set("groupServiceTiers", "true");
@@ -68,7 +72,25 @@ export function useMetrics(onSessionExpired?: () => void) {
         );
       }
       const result = (await response.json()) as TelemetryMetrics;
-      if (identity === request) data.value = result;
+      if (identity === request) {
+        availableModels.value =
+          result.availableModels ??
+          [
+            ...new Set(
+              result.models
+                .filter(
+                  (row) =>
+                    row.turns !== "0" ||
+                    (row.totalTokens !== null && row.totalTokens !== "0"),
+                )
+                .map((row) => row.model),
+            ),
+          ].sort();
+        if (model.value && !availableModels.value.includes(model.value)) {
+          model.value = "";
+          await load();
+        } else data.value = result;
+      }
     } catch (cause) {
       if (identity === request)
         error.value =
@@ -83,7 +105,7 @@ export function useMetrics(onSessionExpired?: () => void) {
     }
   }
   function recent(days: number) {
-    to.value = completedDay(timeZone);
+    to.value = currentDay(timeZone);
     from.value = utcDay(Date.parse(to.value) - (days - 1) * 86400000);
     void load();
   }
@@ -98,6 +120,7 @@ export function useMetrics(onSessionExpired?: () => void) {
     to,
     provider,
     model,
+    availableModels,
     groupServiceTiers,
     data,
     loading,

@@ -4,6 +4,10 @@
 owns the private admin console. `deploy/` contains portable Docker services and
 `scripts/` owns image packaging and end-to-end server checks. The mobile and Electron clients are independent of the hosted frontend.
 
+The console owns its Vue controls, theme and assets, and imports no client code.
+Chart.js/vue-chartjs render analytics using the pure configuration and palette in
+core, shared with desktop. Each renderer adapts its own data and accessible tooltips.
+
 The server uses shared `@workspace/core` contracts and canonical UI primitives,
 product metadata and assets from the app repository. Those shared inputs must be
 packaged or transferred explicitly when extracting this directory into another
@@ -40,7 +44,10 @@ Each replacement uses one PostgreSQL connection and transaction. The unique pare
 upsert locks the install/day before replacing a single hourly bucket. The stored
 hour markers include empty activity reports. The first hourly report replaces
 legacy daily contributions; later legacy writes cannot overwrite hourly data.
-Daily metrics coalesce the hourly buckets before applying the existing aggregation.
+Daily metrics sum the known hourly contributions before aggregation. Optional
+measured-turn counts and cost coverage distinguish partial subtotals from complete
+totals; legacy reports infer coverage from their existing nullable measurements.
+Missing hours or groups never erase measured contributions from other hours.
 The same parent lock serializes concurrent processes as well as concurrent requests;
 removed groups disappear, including replacement with empty usage. The registry
 insert is in the same transaction. HTTP success follows commit. A lost
@@ -108,6 +115,12 @@ the private `.env` password requires recreating the auth container. Login and lo
 global ten-attempt/minute budget and at most two concurrent scrypt operations;
 rate state contains no IP addresses. Errors never echo credentials or cookies.
 
+The console uses Vue Router history routes. Authentication guards resolve the
+server session before rendering login or protected reports; an unavailable
+authentication service produces a retryable state. Login return paths are
+limited to the console report routes. The proxy also enforces authentication on
+direct report URLs.
+
 The proxy checks sessions before serving console HTML or
 `/v1/telemetry/metrics`. Unauthenticated HTML redirects to `/login`; metrics return
 401 without a browser password challenge. The login document and its static
@@ -124,9 +137,12 @@ console origin in isolated local tests; production leaves it unset or zero.
 
 The read endpoint accepts inclusive `from`/`to` calendar days, an optional IANA
 `timeZone` (UTC when omitted), canonical `provider`/`model` filters and a boolean
-`groupServiceTiers` option. The console supplies the viewer browser timezone. It rejects unknown/duplicate filters, current/unclosed
-viewer days and ranges longer than 3,660 days instead of clipping results. Older retained
-ranges remain available.
+`groupServiceTiers` option. The console supplies the viewer browser timezone and
+includes today by default, using reports received so far. It rejects
+unknown/duplicate filters, future viewer days and ranges longer than 3,660 days
+instead of clipping results. Older retained ranges remain available. Model choices
+come from nonzero recorded usage within the selected date/provider scope,
+independently of the selected model.
 At most four aggregate statements execute concurrently; excess work receives 429
 with a one-second Retry-After. Database lock/statement deadlines yield generic 503
 responses. Responses are not cached and contain no installation-level records.
@@ -137,23 +153,26 @@ participating identities through that day, DAU, distinct trailing-seven WAU,
 distinct trailing-30 MAU, and distinct calendar-month-to-date activity. Daily first
 reports use the registry's first reported bucket. Empty-usage days contribute to
 activity; multiple models cannot multiply it. Availability and last receipt time
-are global so the console can explain delayed completed-day reporting.
+are global so the console can show the latest received reporting day.
 
 The single statement in `server/backend/src/collector/metrics.sql` supplies every API
 section from one committed snapshot. All counts and decimal costs are exact
 strings, including sums beyond JavaScript's safe integer range. Known token
-subtotals include unknown-group counts; input plus output totals use only complete
-pairs and expose excluded groups. Cache share and its non-cache-read remainder
-use only complete input/cache-read pairs, with zero denominators returning null.
+subtotals include measured and unmeasured turn counts; input plus output totals
+retain every known contribution. Legacy reports infer measured turns from their
+nullable token fields. Cache share and its non-cache-read remainder use only
+matched input/cache-read pairs from the same hourly or legacy daily report, with
+zero denominators returning null.
 That remainder can include cache creation; it is not a fresh-input pricing claim.
 Hourly usage, activity and first-report buckets are assigned to viewer days by
 their UTC hour start, including across daylight-saving changes. Legacy date-only
 reports and first-report records retain their original date; no hour is inferred.
 Fractional-offset zones use the hour-start day because finer timing is unavailable.
-Weekly buckets start Monday in the viewer calendar and include only selected days. Additive token
-charts use paired input/output subtotals so their stacks match complete token
-totals even when some groups are incomplete. Known complete
-cost groups sum without repricing; all-unknown and empty buckets have null cost,
+Weekly buckets start Monday in the viewer calendar and include only selected days.
+Token charts stack known input and output contributions, matching the known token
+total even when coverage is partial. Known cost subtotals sum without repricing;
+explicit cost coverage preserves partial estimates through hourly and daily
+aggregation. All-unknown and empty buckets have null cost,
 with explicit complete/partial/unavailable/empty coverage. Missing spend is never
 zero. Usage model rows are ordered by provider/model/tier and expose aggregates only.
 Sparse model-day series retain the same grouping and weighted timing arithmetic
@@ -166,7 +185,7 @@ migrated disposable database. The owner workflow prepares the exact API SQL with
 `PREPARE dashboard_example(date,date,text,text,boolean,text) AS <metrics.sql>`, then executes
 `EXECUTE dashboard_example('2026-10-18','2026-10-24',NULL,NULL,false,'UTC')`. Expected global
 cards are 6 participating identities, DAU 3, WAU 4, MAU 5 and calendar-month actives
-4. Complete token pairs total 660, measured cache share is 0.55, and known cost is
+4. Known input plus output totals 700 tokens, measured cache share is 0.55, and known cost is
 1.5 USD with two unknown groups. The 2020 seed contributes another 1,100 tokens.
 Run `TELEMETRY_METRICS_EVIDENCE=<external-evidence-file> npm run test -w
 @workspace/server-backend -- src/collector/__tests__/metrics.spec.ts` to record repeatable

@@ -884,8 +884,8 @@ above, not an editor or CLI installation alone.
 ## GitHub desktop releases
 
 `npm run prerelease` (or, for an explicitly approved stable release, `npm run
-latest`) is the only release command. It requires a clean checkout of the default
-branch whose HEAD is pushed, creates the remote `v<version>` tag at HEAD (reusing
+latest`) is the only release command. It requires committed desktop inputs on the
+default branch whose HEAD is pushed, creates the remote `v<version>` tag at HEAD (reusing
 one already at HEAD, refusing one elsewhere or an already published release),
 dispatches **one** workflow from that tag, and watches it to completion, printing
 one line per job state change. Never move a release tag.
@@ -894,10 +894,15 @@ one line per job state change. Never move a release tag.
   builds, publish. Because it is dispatched from the tag, the workflow, scripts and
   app source all come from the same immutable commit; a release-tooling fix means a
   new version.
+- Uncommitted server, website, mobile, engineering documentation and console-only
+  telemetry metrics contracts produce a warning rather than blocking desktop
+  releases. They remain untouched and are excluded from the remote tag. Desktop,
+  other shared source, dependency/lock files and build/release tooling must be
+  committed. Renames cannot hide a changed desktop input in an unrelated area.
 - Release tests run on Linux; macOS-only signing cleanup tests gate the macOS
   build. Publishing requires both the release test gate and every native build.
 - The independent Quality workflow runs on branch pushes, PRs and manual dispatch.
-  It excludes tag pushes, retains coverage reports and enforces the five 85%
+  It excludes tag pushes, retains coverage reports and enforces every workspace's 85%
   statement gates. Release tests run without coverage and have no dependency on
   the Quality workflow.
 - Only the final job has contents-write permission. It requires every platform to
@@ -1123,9 +1128,10 @@ part of this path.
 The local telemetry preview drains pending ledger observations and uses a numeric
 projection of that same SQLite ledger for one UTC reporting day. Tokens and
 turns retain execution-start attribution; costs retain request-day/model
-attribution. Cost-only groups have zero execution tokens. Missing measurements in
-any contributing execution make that group's token fields null. Only complete
-ledger cost coverage becomes a number; partial subtotals remain null.
+attribution. Cost-only groups have zero execution tokens. Token fields retain
+known subtotals with a measured-turn count; an entirely unmeasured group remains
+null. Estimated costs retain the known subtotal with separate complete, partial
+or unavailable coverage. Missing measurements never erase measured contributions.
 
 The shared wire allowlist contains canonical IDs from the embedded pricing catalog,
 independent of runtime/user model catalogs. Other IDs coalesce into `unknown`.
@@ -1165,8 +1171,11 @@ the identity and turns sharing off. Companion clients do not expose profile acti
 The consent owner delegates transitions to `TelemetryDeliveryPort`; it does not
 send, schedule or manage a queue. One backend `TelemetryUploadService` per local
 installation runtime owns sealing, the private durable queue, telemetry HTTP,
-acknowledgements and cancellation. RuntimeScheduler flushes delivery on startup
-and every hour. It discovers reporting hours from the local ledger, including
+acknowledgements and cancellation. RuntimeScheduler checks delivery each minute.
+Each installation uploads at the UTC minute given by its UUID modulo 60, once
+per hour; startup respects the same slot. The stable slot spreads clients across
+the hour independently of local timezone and restarts. It discovers reporting
+hours from the local ledger, including
 all unsent retained history inside the current sharing window. Electron also signals observed
 open/focus/resume activity, and scheduled uploads confirm foreground presence so
 an active hour without turns can report empty usage. Remote ledgers and mobile

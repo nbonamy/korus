@@ -185,7 +185,7 @@ export function createAgentComposerState(options: {
     if (!model) return;
     selectedModelId.value = model.id;
     selectedReasoningEffort.value = defaultReasoningEffort(model);
-    selectedServiceTier.value = defaultServiceTier(model);
+    selectedServiceTier.value = serviceTierForModel(model, selectedServiceTier.value);
     rememberSelection();
   }
 
@@ -196,7 +196,7 @@ export function createAgentComposerState(options: {
     if (!model) return;
     current.selectedModelId = model.id;
     current.selectedReasoningEffort = defaultReasoningEffort(model);
-    current.selectedServiceTier = defaultServiceTier(model);
+    current.selectedServiceTier = serviceTierForModel(model, current.selectedServiceTier);
     rememberSelectionForAgent(agentId, model, current.selectedReasoningEffort, current.selectedServiceTier);
   }
 
@@ -711,6 +711,12 @@ function modelMatchesSelection(model: BackendModelOption, selection: string | nu
 
 function defaultReasoningEffort(model: BackendModelOption): ReasoningEffort | null {
   return model.defaultReasoningEffort || model.supportedReasoningEfforts?.[0]?.reasoningEffort || null;
+}
+
+function serviceTierForModel(model: BackendModelOption, serviceTier: string | null): string | null {
+  return serviceTier === null || model.serviceTiers?.some((tier) => tier.id === serviceTier)
+    ? serviceTier
+    : defaultServiceTier(model);
 }
 
 function defaultServiceTier(model: BackendModelOption): string | null {

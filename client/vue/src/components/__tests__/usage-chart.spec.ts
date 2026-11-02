@@ -9,7 +9,6 @@ import {
   chartSeries,
   groupingOptions,
   niceScale,
-  smoothPath,
   sumSpeed,
   tokensPerSecond,
   measureFormat,
@@ -55,31 +54,16 @@ it("keeps an entity's colour across filters and groups models by provider hue", 
   expect(models.find((s) => s.key === "Unknown")!.color).toContain(
     "--color-text-muted",
   );
-  const unknown: UsageSummary = summary(['Unknown']);
+  const unknown: UsageSummary = summary(["Unknown"]);
   unknown.rows[0]!.key = '[null,"fast"]';
-  unknown.rows[0]!.modelVariant = { model: null, serviceTier: 'fast' };
-  expect(chartSeries(unknown, 'turns', 'model')[0]).toMatchObject({
-    key: '[null,"fast"]', label: 'Unknown model · fast', color: 'var(--color-text-muted)',
+  unknown.rows[0]!.modelVariant = { model: null, serviceTier: "fast" };
+  expect(chartSeries(unknown, "turns", "model")[0]).toMatchObject({
+    key: '[null,"fast"]',
+    label: "Unknown model · fast",
+    color: "var(--color-text-muted)",
   });
 });
-it("draws a smooth path that never overshoots its points", () => {
-  const path = smoothPath([
-    { x: 0, y: 10 },
-    { x: 10, y: 0 },
-    { x: 20, y: 0 },
-    { x: 30, y: 10 },
-  ]);
-  expect(path.startsWith("M0 10C")).toBe(true);
-  const ys = [...path.matchAll(/C([\d. -]+)/g)].flatMap((m) =>
-    m[1]!
-      .trim()
-      .split(" ")
-      .map(Number)
-      .filter((_, i) => i % 2 === 1),
-  );
-  expect(Math.min(...ys)).toBeGreaterThanOrEqual(0);
-  expect(smoothPath([])).toBe("");
-});
+
 it("weights speed and time to first token by the turns they were measured on", () => {
   const speed = sumSpeed([
     {
@@ -117,11 +101,19 @@ it("drops the cents from headline and axis figures once they reach $10, and keep
 
 it("names repositories by their folder, tells same-named ones apart, and names the two kinds of work that have none", () => {
   const series = chartSeries(
-    summary(["/src/korus", "/work/api", "/home/api", "Unknown", "korus:missions"]),
+    summary([
+      "/src/korus",
+      "/work/api",
+      "/home/api",
+      "Unknown",
+      "korus:missions",
+    ]),
     "turns",
     "repository",
   );
-  expect(Object.fromEntries(series.map((entry) => [entry.key, entry.label]))).toStrictEqual({
+  expect(
+    Object.fromEntries(series.map((entry) => [entry.key, entry.label])),
+  ).toStrictEqual({
     "/src/korus": "korus",
     "/work/api": "work/api",
     "/home/api": "home/api",
@@ -129,8 +121,16 @@ it("names repositories by their folder, tells same-named ones apart, and names t
     "korus:missions": "Missions",
   });
   // Repositories never borrow a provider's colour: those hues mean Codex, Claude and Antigravity.
-  expect(series.filter((entry) => entry.key !== "Unknown").every((entry) => !/--chart-[123]\)/.test(entry.color))).toBe(true);
-  expect(groupingOptions().map((option) => option.value)).toStrictEqual(["provider", "model", "repository"]);
+  expect(
+    series
+      .filter((entry) => entry.key !== "Unknown")
+      .every((entry) => !/--chart-[123]\)/.test(entry.color)),
+  ).toBe(true);
+  expect(groupingOptions().map((option) => option.value)).toStrictEqual([
+    "provider",
+    "model",
+    "repository",
+  ]);
 });
 
 it("works out today and the activity window from the reader's own calendar, not UTC", () => {

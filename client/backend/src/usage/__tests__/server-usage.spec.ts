@@ -230,6 +230,7 @@ it("previews exact local UTF-8 telemetry from persisted provider measurements wi
           cachedInputTokens: 0,
           outputTokens: 0,
           estimatedCostUsd: 0.05175,
+          measuredTurns: 0, costCoverage: "complete",
         },
       ]);
       expect(

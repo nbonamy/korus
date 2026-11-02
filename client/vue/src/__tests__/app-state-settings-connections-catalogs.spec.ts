@@ -272,9 +272,23 @@ describe('useAppState', () => {
 
     const state = useAppState();
     await state.loadSnapshot();
-    state.selectModel('sol-id');
-    state.selectReasoningEffort('high');
     state.selectServiceTier('fast');
+    const agent = persisted.agents[0]!;
+    const controller = createCodexConversationPaneController({
+      state: agentConversationState(() => state.agentConversationFor(agent.id)!),
+      actions: { updateSettings: settings => {
+        if (settings.modelId !== undefined) state.selectModel(settings.modelId);
+        if (settings.reasoningEffort !== undefined) state.selectReasoningEffort(settings.reasoningEffort);
+      } },
+    });
+    const wrapper = mount(ConversationPane, { props: { agent, controller } });
+    try {
+      await wrapper.get('button[aria-label="Model and reasoning"]').trigger('click');
+      await wrapper.findAll('[role="menuitem"]').find(item => item.text().startsWith('sol'))!.trigger('click');
+      expect(wrapper.get('.chat-model-selector').classes()).toContain('chat-model-selector--accelerated');
+      expect(wrapper.get('.chat-model-selector__label').text()).toContain('sol');
+    } finally { wrapper.unmount(); }
+    state.selectReasoningEffort('high');
     await vi.waitFor(() => expect(updateAgent).toHaveBeenCalledTimes(1));
     listeners[0]?.({
       seq: 1, agentId: persisted.agents[0]!.id, backend: 'codex', threadId: 'thread-1',
@@ -509,7 +523,7 @@ describe('useAppState', () => {
     state.selectReasoningEffort('low');
     await state.sendPrompt('use the selected model');
 
-    expect(sendPrompt).toHaveBeenCalledWith('agent-dina', 'use the selected model', { planMode: false, selection: { model: 'gpt-5.1-codex-fast', reasoningEffort: 'low', serviceTier: 'fast' } });
+    expect(sendPrompt).toHaveBeenCalledWith('agent-dina', 'use the selected model', { planMode: false, selection: { model: 'gpt-5.1-codex-fast', reasoningEffort: 'low', serviceTier: null } });
   });
 
   it('loads active agent skills and includes dollar-selected skills in prompt options', async () => {

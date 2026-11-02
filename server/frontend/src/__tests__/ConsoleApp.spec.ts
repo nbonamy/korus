@@ -1,8 +1,22 @@
 // @vitest-environment jsdom
 import { mount, flushPromises } from "@vue/test-utils";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
+vi.mock("vue-chartjs", async () => {
+  const { defineComponent, h } = await import("vue");
+  return {
+    Chart: defineComponent({
+      props: ["data", "options", "plugins", "type"],
+      setup(_props, { attrs }) {
+        return () => h("canvas", attrs);
+      },
+    }),
+  };
+});
 import { ElPopover, ElSwitch } from "element-plus";
 import ConsoleApp from "../ConsoleApp.vue";
+import { createConsoleSession } from "../console-session";
+import { createConsoleRouter } from "../router";
+import { createWebHistory } from "vue-router";
 import { metrics } from "./metrics-fixture";
 // Public rendered boundary: no reports before sign-in, generic credential errors,
 // no password/token persistence, expiry purges, logout failure and recovery.
@@ -26,11 +40,71 @@ afterEach(() => {
   window.history.replaceState({}, "", "/");
   vi.unstubAllGlobals();
 });
-const render = () =>
-  mount(ConsoleApp, {
+const render = () => {
+  const session = createConsoleSession(),
+    router = createConsoleRouter(session, createWebHistory());
+  return mount(ConsoleApp, {
+    props: { session },
     attachTo: document.body,
-    global: { components: { ElPopover, ElSwitch } },
+    global: { plugins: [router], components: { ElPopover, ElSwitch } },
   });
+};
+it("does not render login or protected data before the session check finishes", async () => {
+  for (const [path, status, heading] of [
+    ["/login?redirect=/models", 204, "Models"],
+    ["/models", 204, "Models"],
+    ["/models", 401, "Sign in"],
+  ] as const) {
+    window.history.replaceState({}, "", path);
+    let resolve!: (response: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        url === "/auth/session"
+          ? new Promise<Response>((done) => {
+              resolve = done;
+            })
+          : Promise.resolve(Response.json(metrics())),
+      ),
+    );
+    const wrapper = render();
+    await flushPromises();
+    expect(wrapper.find('input[type="password"]').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="Provider and model"]').exists()).toBe(
+      false,
+    );
+    resolve(new Response(null, { status }));
+    await flushPromises();
+    expect(wrapper.get("h1").text()).toBe(heading);
+    wrapper.unmount();
+  }
+});
+it("recovers session-check outages without presenting login and rejects external return targets", async () => {
+  window.history.replaceState(
+    {},
+    "",
+    "/login?redirect=https://external.invalid",
+  );
+  let unavailable = true;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) =>
+      url === "/auth/session"
+        ? new Response(null, { status: unavailable ? 503 : 204 })
+        : Response.json(metrics()),
+    ),
+  );
+  const wrapper = render();
+  await flushPromises();
+  expect(wrapper.find('input[type="password"]').exists()).toBe(false);
+  expect(wrapper.get('[role="alert"]').text()).toContain("Could not check");
+  unavailable = false;
+  await wrapper.get("button").trigger("click");
+  await flushPromises();
+  expect(window.location.pathname).toBe("/overview");
+  expect(wrapper.get("h1").text()).toBe("Overview");
+  wrapper.unmount();
+});
 it("signs in through the server, clears credentials and handles logout failure before successful revocation", async () => {
   const requests: { url: string; init: RequestInit }[] = [];
   const responses = [
@@ -67,8 +141,8 @@ it("signs in through the server, clears credentials and handles logout failure b
   await password.setValue("synthetic-test-password");
   await wrapper.get("form").trigger("submit");
   await flushPromises();
-  expect(window.location.pathname).toBe("/");
-  expect(window.location.hash).toBe("#/models");
+  expect(window.location.pathname).toBe("/models");
+  expect(window.location.hash).toBe("");
   expect(wrapper.get("h1").text()).toBe("Models");
   expect(JSON.parse(requests[2]!.init.body as string)).toStrictEqual({
     username: "admin",

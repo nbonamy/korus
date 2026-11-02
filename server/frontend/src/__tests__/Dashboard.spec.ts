@@ -1,8 +1,33 @@
 // @vitest-environment jsdom
 import { mount, flushPromises } from "@vue/test-utils";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+vi.mock("vue-chartjs", async () => {
+  const { defineComponent, h } = await import("vue");
+  return {
+    Chart: defineComponent({
+      props: ["data", "options", "plugins", "type"],
+      setup(_props, { attrs }) {
+        return () => h("canvas", attrs);
+      },
+    }),
+  };
+});
 import { ElPopover, ElSwitch } from "element-plus";
-import Dashboard from "../Dashboard.vue";
+import { RouterView, createMemoryHistory } from "vue-router";
+import { createConsoleRouter } from "../router";
+import { createConsoleSession } from "../console-session";
+async function renderDashboard() {
+  const session = createConsoleSession();
+  session.authenticate();
+  const router = createConsoleRouter(session, createMemoryHistory());
+  await router.push("/overview");
+  await router.isReady();
+  const wrapper = mount(RouterView, {
+    attachTo: document.body,
+    global: { plugins: [router], components: { ElPopover, ElSwitch } },
+  });
+  return { wrapper, router };
+}
 
 // Rendered owner boundary: stale filter responses, revoked private access, old
 // dates rejected locally, unknowns displayed as zero, and exact tiny/large values.
@@ -29,28 +54,68 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
       new Promise<Response>((resolve) => pending.push(resolve)),
   );
   vi.stubGlobal("fetch", fetcher);
-  const wrapper = mount(Dashboard, {
-    attachTo: document.body,
-    global: { components: { ElPopover, ElSwitch } },
-  });
+  const { wrapper, router } = await renderDashboard();
   await flushPromises();
   expect(wrapper.get('[role="status"]').text()).toContain("Loading");
-  pending.shift()!(Response.json(metrics()));
+  const initial = { ...metrics(), availableModels: ["gpt-6-sol", "unknown"] };
+  initial.modelDaily[0]!.performance.outputTokensPerSecond = "47";
+  initial.modelDaily.push({
+    ...initial.modelDaily[0]!,
+    day: "2020-01-02",
+    performance: {
+      ...initial.modelDaily[0]!.performance,
+      outputTokensPerSecond: "0",
+    },
+  });
+  pending.shift()!(
+    Response.json({
+      ...initial,
+      totals: {
+        ...initial.totals,
+        measuredTurns: "5",
+        unmeasuredTurns: "2",
+        excludedTokenGroups: "1",
+        excludedCacheGroups: "1",
+        unknownCostGroups: "1",
+        costCoverage: "partial",
+      },
+    }),
+  );
   await flushPromises();
   expect(wrapper.get(".brand").text()).toContain("Console");
   expect(wrapper.get(".brand img").attributes("alt")).toBe("");
-  expect(wrapper.get(".navigation-group").text()).toBe("Reporting");
+  expect(wrapper.text()).not.toMatch(
+    /Selected range|Opted-in installations|API-equivalent/,
+  );
   expect(document.title).toContain("Console · Overview");
+  await wrapper.get('[aria-label="Model"]').trigger("click");
+  await flushPromises();
+  expect(
+    [
+      ...document
+        .getElementById(
+          wrapper.get('[aria-label="Model"]').attributes("aria-controls")!,
+        )!
+        .querySelectorAll('[role="option"]'),
+    ].map((option) => option.textContent?.trim()),
+  ).toStrictEqual(["All models", "gpt-6-sol", "Unknown model"]);
+  await wrapper
+    .get('[aria-label="Model"]')
+    .trigger("keydown", { key: "Escape" });
+  await flushPromises();
+
   expect(wrapper.get('[aria-label="Turns"]').text()).toContain("7");
   expect(wrapper.get('[aria-label="Measured total tokens"]').text()).toContain(
     "1.3B",
   );
+  expect(wrapper.text()).not.toMatch(/turns missing usage|partial/i);
+  expect(wrapper.text()).not.toContain("groups excluded");
   expect(
     wrapper.get('[aria-label="Measured total tokens"] dd').attributes("title"),
   ).toBe("1,250,000,000");
   expect(
-    wrapper.findAll('[aria-label="Daily activity"] path[fill^="url("]'),
-  ).toHaveLength(2);
+    wrapper.find('[aria-label="Daily activity"] canvas[role="img"]').exists(),
+  ).toBe(true);
   expect(
     wrapper
       .get('[aria-label="Recent ranges"]')
@@ -62,7 +127,7 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   expect(wrapper.text()).not.toContain("About the data");
   expect(wrapper.text()).not.toContain("View data");
   await wrapper
-    .get('[aria-label="Daily activity"] svg[role="img"]')
+    .get('[aria-label="Daily activity"] canvas[role="img"]')
     .trigger("focus");
   expect(
     wrapper.get('[aria-label="Daily activity"] [role="status"]').text(),
@@ -77,10 +142,9 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
     "Spend",
     "Performance",
   ]);
-  window.location.hash = "#/models";
-  window.dispatchEvent(new HashChangeEvent("hashchange"));
+  await router.push("/models");
   await flushPromises();
-  expect(navigation.get('a[href="#/models"]').attributes("aria-current")).toBe(
+  expect(navigation.get('a[href="/models"]').attributes("aria-current")).toBe(
     "page",
   );
   expect(wrapper.get("h1").text()).toBe("Models");
@@ -93,35 +157,48 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
     .trigger("click");
   await flushPromises();
   expect(
-    wrapper.find('[aria-label="Model usage over time"] rect').exists(),
+    wrapper.find('canvas[aria-label^="Model usage over time"]').exists(),
   ).toBe(true);
 
-  expect(wrapper.get("tbody").text()).toContain("Fast");
+  expect(wrapper.get("tbody").text()).toContain("fast");
   expect(wrapper.get("tbody").text()).toContain("gpt-6-sol");
   expect(wrapper.find('[aria-label="Provider and model"]').exists()).toBe(true);
   expect(wrapper.find('[aria-label="Daily activity"]').exists()).toBe(false);
-  window.location.hash = "#/performance";
-  window.dispatchEvent(new HashChangeEvent("hashchange"));
+  await router.push("/performance");
   await flushPromises();
   expect(wrapper.get("h1").text()).toBe("Performance");
-  const speedChart = wrapper.get('[aria-label="Output speed"]');
-  expect(speedChart.get('[aria-label="Series"]').text()).toContain(
-    "gpt-6-sol · Fast",
+  expect(wrapper.find('[aria-label="Compare models"]').exists()).toBe(false);
+  expect(wrapper.text()).not.toMatch(
+    /provider benchmark|Higher is faster|Lower is faster|Missing samples are not zero/,
   );
-  expect(speedChart.findAll(".chart-line")).toHaveLength(2);
-  expect(speedChart.findAll('path[fill^="url("]')).toHaveLength(2);
-  await speedChart.get('svg[role="img"]').trigger("focus");
-  expect(speedChart.text()).toContain("40.0 tok/s");
-  expect(speedChart.text()).toContain("10.0 tok/s");
+  const speedChart = wrapper.get('[aria-label="Output speed over time"]');
+  expect(speedChart.find('[aria-label="Series"]').exists()).toBe(false);
+  expect(speedChart.find('canvas[role="img"]').exists()).toBe(true);
+  expect(speedChart.findAll(".chart-observation")).toHaveLength(3);
+  await speedChart.get('canvas[role="img"]').trigger("focus");
+  expect(speedChart.text()).toContain("47 tokens/s");
+  expect(speedChart.text()).toContain("10 tokens/s");
+  await speedChart.get('canvas[role="img"]').trigger("keydown", { key: "End" });
+  const speedTooltip = speedChart.get('[role="status"]');
+  expect(speedTooltip.findAll("li")).toHaveLength(1);
+  expect(speedTooltip.text()).toContain("gpt-6-sol · fast");
+  expect(speedTooltip.text()).toContain("0 tokens/s");
+  expect(speedTooltip.text()).not.toContain("Unavailable");
 
   expect(wrapper.get('[aria-label="Output speed summary"]').text()).toContain(
-    "25.0 tok/s",
+    "25 tokens/s",
   );
   expect(
     wrapper.get('[aria-label="Time to first output summary"]').text(),
   ).toContain("0.5 s");
-  window.location.hash = "#/overview";
-  window.dispatchEvent(new HashChangeEvent("hashchange"));
+  await router.push("/tokens");
+  await flushPromises();
+  expect(
+    wrapper
+      .get('[aria-label="Cache-read share"]')
+      .findAll('path[fill^="url("]'),
+  ).toHaveLength(0);
+  await router.push("/overview");
   await flushPromises();
   expect(wrapper.get("h1").text()).toBe("Overview");
   expect(fetcher).toHaveBeenCalledTimes(1);
@@ -190,10 +267,9 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
     }),
   );
   await flushPromises();
-  window.location.hash = "#/models";
-  window.dispatchEvent(new HashChangeEvent("hashchange"));
+  await router.push("/models");
   await flushPromises();
-  expect(wrapper.get("tbody").text()).not.toContain("Fast");
+  expect(wrapper.get("tbody").text()).not.toContain("fast");
   await optionsButton.trigger("click");
   await vi.waitFor(() =>
     expect(optionsButton.attributes("aria-expanded")).toBe("true"),
@@ -225,10 +301,7 @@ it("shows recoverable failures without echoing remote diagnostics and bounds dat
     .fn()
     .mockResolvedValue(new Response("SECRET SQL diagnostic", { status: 503 }));
   vi.stubGlobal("fetch", fetcher);
-  const wrapper = mount(Dashboard, {
-    attachTo: document.body,
-    global: { components: { ElPopover, ElSwitch } },
-  });
+  const { wrapper } = await renderDashboard();
   await flushPromises();
   expect(wrapper.get('[role="alert"]').text()).toContain("unavailable");
   expect(wrapper.text()).not.toContain("SECRET");
@@ -242,26 +315,24 @@ it("shows recoverable failures without echoing remote diagnostics and bounds dat
   wrapper.unmount();
 });
 
-it("requests and labels browser-local completed days at midnight and across DST", async () => {
+it("requests and labels browser-local days including today at midnight and across DST", async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
   const fetcher = vi.fn(async (_url: string) => Response.json(metrics()));
   vi.stubGlobal("fetch", fetcher);
   try {
     for (const [zone, now, to, from] of [
-      ["America/Chicago", "2026-11-01T03:00:00Z", "2026-10-30", "2026-10-01"],
+      ["America/Chicago", "2026-11-01T03:00:00Z", "2026-10-31", "2026-10-02"],
       [
         "Pacific/Kiritimati",
         "2026-11-01T12:00:00Z",
-        "2026-11-01",
-        "2026-10-03",
+        "2026-11-02",
+        "2026-10-04",
       ],
-      ["America/Chicago", "2026-03-09T04:30:00Z", "2026-03-07", "2026-02-06"],
+      ["America/Chicago", "2026-03-09T04:30:00Z", "2026-03-08", "2026-02-07"],
     ]) {
       vi.stubEnv("TZ", zone!);
       vi.setSystemTime(new Date(now!));
-      const wrapper = mount(Dashboard, {
-        global: { components: { ElPopover, ElSwitch } },
-      });
+      const { wrapper } = await renderDashboard();
       await flushPromises();
       const params = new URL(
         fetcher.mock.calls.at(-1)![0]!,
@@ -288,4 +359,55 @@ it("requests and labels browser-local completed days at midnight and across DST"
     vi.useRealTimers();
     vi.unstubAllEnvs();
   }
+});
+
+it("uses model facets from real data and clears selections absent from a new scope", async () => {
+  const requested: string[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) => {
+      requested.push(url);
+      const selected = new URL(url, "https://console.invalid").searchParams;
+      return Response.json({
+        ...metrics(),
+        availableModels:
+          selected.get("provider") === "claude"
+            ? ["unknown"]
+            : ["gpt-6-sol", "unknown"],
+      });
+    }),
+  );
+  const { wrapper } = await renderDashboard();
+  await flushPromises();
+  await wrapper.get('[aria-label="Model"]').trigger("click");
+  await flushPromises();
+  (
+    Array.from(document.querySelectorAll('[role="option"]')).find(
+      (o) => o.textContent?.trim() === "gpt-6-sol",
+    ) as HTMLElement
+  ).click();
+  await flushPromises();
+  expect(requested.at(-1)).toContain("model=gpt-6-sol");
+  await wrapper.get('[aria-label="Model"]').trigger("click");
+  await flushPromises();
+  expect(document.body.textContent).toContain("Unknown model");
+  await wrapper
+    .get('[aria-label="Model"]')
+    .trigger("keydown", { key: "Escape" });
+  await flushPromises();
+  await wrapper.get('[aria-label="Provider"]').trigger("click");
+  await flushPromises();
+  (
+    Array.from(document.querySelectorAll('[role="option"]')).find(
+      (o) => o.textContent?.trim() === "Claude",
+    ) as HTMLElement
+  ).click();
+  await flushPromises();
+  expect(requested.at(-1)).toContain("provider=claude");
+  expect(
+    new URL(requested.at(-1)!, "https://console.invalid").searchParams.has(
+      "model",
+    ),
+  ).toBe(false);
+  wrapper.unmount();
 });

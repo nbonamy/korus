@@ -2077,6 +2077,14 @@ const workspacePreviews = useWorkspacePreviews({
   previewAgentFile: (agentId, filePath) => props.previewAgentFile(agentId, filePath),
   workspaceFor: rightWorkspaceFor,
 });
+// Restored tabs retain references, so load the diff when its workspace becomes visible.
+watch(
+  () => Object.entries(rightWorkspaces).find(([agentId, workspace]) => workspace.activeTab === 'review'
+    && !workspace.gitReviewPanel && isPresentedWorkspaceVisible(agentId)
+    && props.snapshot.agents.some(agent => agent.id === agentId && agent.folder))?.[0],
+  agentId => { if (agentId) void workspacePreviews.openAgentGitDiff(agentId); },
+  { immediate: true },
+);
 const {
   handleFileActivity,
   openAgentGitDiff: openAgentGitDiffForAgent,
@@ -2450,8 +2458,9 @@ const conversationPaneState: CodexConversationPaneState = {
       if (activeSurface.value === 'mission' && selectedMission.value?.stage === 'requirements' && conversationMessages.value.length === 0) {
         return t('missions.describeWhatYouWantToBuild');
       }
-      return currentAgent.value.suggestedPrompt || translate('surface.appShell.askForFollowUpChanges');
+      return translate('surface.appShell.askForFollowUpChanges');
     },
+    get suggestedPrompt() { return currentAgent.value?.suggestedPrompt ?? undefined; },
     get approvalPreset() { return props.approvalPreset; },
     get leadingMenuItems() { return [...permissionModeMenuItems.value, ...conversationCommandMenuItems()]; },
     get modelMenuItems() { return modelFavoriteMenuItems.value; },

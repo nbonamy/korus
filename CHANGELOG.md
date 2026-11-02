@@ -4,6 +4,15 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.49.1] - 2026-11-01
+
+### Improvements and fixes
+
+- **Anonymous usage sharing:** Keep measured token totals and known estimated
+  costs when other usage measurements are missing.
+- **Background uploads:** Spread hourly usage uploads across installations with
+  a consistent schedule.
+
 ## [0.49.0] - 2026-11-01
 
 ### New features

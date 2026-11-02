@@ -323,30 +323,22 @@ desired direction, not a requirement.
 
 ## Private Usage Console
 
-`server/frontend/src` is a standalone Vue entry point for aggregate telemetry. It
-consumes browser-safe aggregate contracts and canonical UI primitives, never
-the desktop shell, provider protocols, identity state or filesystem. Dependency
-lint enforces that boundary. The console uses Element Plus controls with its own
-semantic theme. Desktop provider/model pickers assume app-owned provider catalogs,
-host state and localization, while the console filters aggregate reporting
-dimensions. Analytics options uses the canonical AppMenuButton and AppMenu with
-the same checked tier-grouping item, icons, focus behavior and shared menu chrome.
-`client/vue/src/shared/menu/menu-chrome.css` owns the shared icon-button and popover skin.
-Its SVG chart accepts aggregate series rather than local-ledger
-`UsageSummary` dimensions.
+`server/frontend/src` is a standalone Vue entry point for aggregate telemetry.
+It imports browser-safe contracts and chart policy from core, with no dependency
+on client code. The console owns its controls, assets and semantic theme.
+Dependency lint enforces that boundary.
 
-The build copies semantic tokens from the app's light palette without external
-font imports. Charts use thin, bounded cubic curves with fading area fills,
-separate runs for missing values and markers only during inspection. One keyboard
-focus stop per chart supports Left/Right and Home/End. Compact token units,
-cent-rounded amounts and one-decimal percentages expose exact PostgreSQL values
-in floating date popovers on hover, tap or keyboard inspection. Additive charts
-show totals; speed and first-output rates are never summed. Coordinate conversion
-is bounded to safe finite values; exact out-of-range measurements remain in the
-popover. Line, bar and ranking charts share the soft gradient treatment.
+Desktop and console analytics use Chart.js through vue-chartjs. Core owns the
+browser-neutral chart configuration, numeric bounds, scales and provider/model
+palette; each renderer supplies its own aggregate adapter, theme tokens and
+accessible tooltips. Quantities use stacked areas or bars. Rates and ratios use
+unfilled lines with points, preserving gaps for missing measurements. Keyboard
+inspection supports Left/Right and Home/End. Exact PostgreSQL values remain in
+console tooltips even when their magnitude exceeds safe canvas coordinates.
 
-Hash routes separate the overview, activity, token, spend, model and performance reports without
-requiring proxy rewrite rules. Date and usage-filter state stays in the mounted
+Vue Router history routes separate login and the report pages. Authentication
+resolves before protected pages render, including on reload and direct links.
+Date and usage-filter state stays in the mounted
 console across page changes; browser history and direct report links select the
 report independently of those filters. Models leads with ranked usage and offers
 stacked bars or lines over time. Performance compares model-day rates using the

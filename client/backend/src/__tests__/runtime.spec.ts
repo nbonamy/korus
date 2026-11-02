@@ -74,7 +74,7 @@ const mocks = vi.hoisted(() => ({
   automationRunAll: vi.fn(),
   serverEmitEvent: vi.fn(),
   serverClose: vi.fn(),
-  uploadOpen: vi.fn(), uploadFlush: vi.fn(), uploadClose: vi.fn(), uploadActivity: vi.fn(),
+  uploadOpen: vi.fn(), uploadFlush: vi.fn(), uploadTick: vi.fn(), uploadClose: vi.fn(), uploadActivity: vi.fn(),
   uploadConsentChanged: vi.fn(), uploadSealedReport: vi.fn(),
   telemetryWriteFailure: false,
   remoteCollaborationCall: vi.fn(),
@@ -314,7 +314,7 @@ describe('daemon runtime', () => {
     mocks.saveBackendTelemetrySettings.mockImplementation(async () => {
       if (mocks.telemetryWriteFailure) throw new Error('Settings are unwritable');
     });
-    mocks.uploadOpen.mockResolvedValue({ flush: mocks.uploadFlush, close: mocks.uploadClose, activity: mocks.uploadActivity, consentChanged: mocks.uploadConsentChanged, sealedReport: mocks.uploadSealedReport });
+    mocks.uploadOpen.mockResolvedValue({ flush: mocks.uploadFlush, tick: mocks.uploadTick, close: mocks.uploadClose, activity: mocks.uploadActivity, consentChanged: mocks.uploadConsentChanged, sealedReport: mocks.uploadSealedReport });
     mocks.serverEmitEvent.mockReset();
     mocks.useRealDriverRpc = false;
     mocks.collaborationAgents.mockImplementation((snapshot: AppSnapshot) => snapshot.agents);
@@ -434,9 +434,10 @@ describe('daemon runtime', () => {
       runtime = await createDaemonRuntime({ emitEvent, requestClient, version: '1.2.3' });
       expect(mocks.uploadOpen).toHaveBeenCalledTimes(1);
       const uploadTask = (mocks.schedulerTasks as SchedulerTask[]).find(task => task.id === 'telemetry-upload')!;
-      expect(uploadTask).toMatchObject({intervalMs:3600000,runOnStart:true});
+      expect(uploadTask).toMatchObject({intervalMs:60000,runOnStart:true});
       await uploadTask.run();
-      expect(mocks.uploadFlush).toHaveBeenCalledTimes(1);
+      expect(mocks.uploadTick).toHaveBeenCalledTimes(1);
+      expect(mocks.uploadFlush).not.toHaveBeenCalled();
       const input = mocks.uploadOpen.mock.calls[0]![0];
       expect(input.endpoint).toBe('https://runtime.example/v1/telemetry/daily');
       const server = mocks.serverOptions[0] as { telemetryActivity: {activity(): Promise<void>}; telemetryConsent: import('../telemetry/consent-service').TelemetryConsentService };
@@ -478,7 +479,7 @@ describe('daemon runtime', () => {
     expect(mocks.schedulerTasks).toEqual([
       expect.objectContaining({ id: 'automations', intervalMs: 60_000, runOnStart: true }),
       expect.objectContaining({ id: 'provider-updates', intervalMs: 2_000 }),
-      expect.objectContaining({ id: 'telemetry-upload', intervalMs: 3600000, runOnStart: true }),
+      expect.objectContaining({ id: 'telemetry-upload', intervalMs: 60000, runOnStart: true }),
       expect.objectContaining({ id: 'pricing-updates', intervalMs: 60_000, runOnStart: true }),
       expect.objectContaining({ id: 'pull-request-monitor', intervalMs: 300_000, runOnStart: true }),
     ]);

@@ -341,17 +341,17 @@ export class UsageLedger {
           TelemetryModel,
           TelemetryUsage["serviceTier"],
         ];
-        const measured = row.measuredTurns === row.started;
         return {
           provider,
           model,
           serviceTier,
           turns: row.started,
-          inputTokens: measured ? (row.tokens?.input ?? 0) : null,
-          cachedInputTokens: measured ? (row.tokens?.cacheRead ?? 0) : null,
-          outputTokens: measured ? (row.tokens?.output ?? 0) : null,
-          estimatedCostUsd:
-            row.cost?.coverage === "complete" ? row.cost.usd : null,
+          inputTokens: row.tokens?.input ?? (row.started === 0 ? 0 : null),
+          cachedInputTokens: row.tokens?.cacheRead ?? (row.started === 0 ? 0 : null),
+          outputTokens: row.tokens?.output ?? (row.started === 0 ? 0 : null),
+          estimatedCostUsd: row.cost?.usd ?? null,
+          measuredTurns: row.measuredTurns,
+          costCoverage: row.cost?.coverage ?? "unavailable",
           ...(row.speed ? {performance: {
             speedTurns: row.speed.turns,
             outputTokens: row.speed.outputTokens,

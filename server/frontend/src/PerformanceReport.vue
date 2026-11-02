@@ -1,8 +1,5 @@
 <template>
   <section aria-label="Model performance">
-    <div class="comparison-controls performance-controls">
-      <ModelComparisonControl v-model="selected" :choices="choices" />
-    </div>
     <p
       v-if="
         !data.totals.performance || data.totals.performance.ttftTurns === '0'
@@ -13,24 +10,23 @@
     </p>
     <div class="chart-grid">
       <MetricChart
-        title="Output speed"
-        description="Higher is faster · measured output per active second."
+        title="Output speed over time"
+        subtitle="tokens/s"
         :days="days"
         :series="speedSeries"
         measure="rate"
+        hide-legend
       />
       <MetricChart
         title="Time to first output"
-        description="Lower is faster · average active time before first output."
+        subtitle="s"
         :days="days"
         :series="ttftSeries"
         measure="milliseconds"
+        hide-legend
       />
     </div>
-    <p v-if="!selected.length" class="muted performance-note">
-      Choose models to compare.
-    </p>
-    <div class="section-heading usage-heading"><h2>All filtered usage</h2></div>
+    <div class="section-heading usage-heading"><h2>Summary</h2></div>
     <dl class="cards performance-totals">
       <div class="panel" aria-label="Output speed summary">
         <dt>Output speed</dt>
@@ -85,7 +81,7 @@
       >
         <table>
           <caption class="sr-only">
-            App-observed model performance and measurement coverage
+            Model performance
           </caption>
           <thead>
             <tr>
@@ -127,35 +123,29 @@
         </table>
       </div>
     </section>
-    <p class="performance-note muted">
-      Observed in Korus, not a provider benchmark. Tool execution and waits for
-      your input are excluded. Rates use total measured output and time. Missing
-      samples are not zero.
-    </p>
   </section>
 </template>
 <script setup lang="ts">
 import { computed, toRef } from "vue";
-import ModelComparisonControl from "./ModelComparisonControl.vue";
-import {
-  comparisonLabel,
-  modelKey,
-  useModelComparison,
-} from "./use-model-comparison";
+import { modelKey, useModelComparison } from "./use-model-comparison";
 import type { TelemetryMetrics } from "@workspace/core/telemetry-metrics";
 import { modelLabel } from "./model-label";
 import MetricChart from "./MetricChart.vue";
 import { count, rate, duration, percent } from "./format";
 const props = defineProps<{ data: TelemetryMetrics }>();
-const { choices, selected, compared, days, daily, color, dash } =
-  useModelComparison(toRef(props, "data"));
+const { choices, days, daily, color } = useModelComparison(
+  toRef(props, "data"),
+);
 const performanceSeries = (
   field: "outputTokensPerSecond" | "timeToFirstOutputMs",
 ) =>
-  compared.value.map((row) => ({
-    label: comparisonLabel(row),
+  choices.value.map((row) => ({
+    label:
+      choices.value.filter((item) => modelLabel(item) === modelLabel(row))
+        .length > 1
+        ? `${modelLabel(row)} (${row.provider})`
+        : modelLabel(row),
     color: color(row),
-    dash: dash(row),
     values: days.value.map(
       (day) =>
         daily.value.get(`${day}/${modelKey(row)}`)?.performance?.[field] ??
@@ -166,13 +156,10 @@ const speedSeries = computed(() => performanceSeries("outputTokensPerSecond"));
 const ttftSeries = computed(() => performanceSeries("timeToFirstOutputMs"));
 </script>
 <style scoped>
+.chart-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
 .performance-totals {
   margin-bottom: 16px;
-}
-.performance-note {
-  font-size: 11px;
-  line-height: 1.6;
-  margin: 14px 0;
-  max-width: 90ch;
 }
 </style>

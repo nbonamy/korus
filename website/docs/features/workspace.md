@@ -42,6 +42,8 @@ When available, **Open In** opens the selected project file in a detected editor
 
 Clicking a file link in chat downloads the file when it is binary or too large to preview. Previewable text and images still open in the workspace. This fallback applies to chat file links; a missing or unreadable file still reports an error.
 
+Image previews support files up to 25 MB. File tabs show an icon for the file type while the preview loads.
+
 Open **Changes** or press **⌘G** to inspect Git diffs. The agent header's diff selector lets you choose the scope:
 
 | Scope | What it shows |
@@ -158,6 +160,8 @@ In a split conversation layout, the artifact sidebar follows the focused agent.
 
 Drag the dividers to resize conversation panes, or focus a divider and use the arrow keys. Each team keeps its pane assignments, focused pane, and sizes across restarts.
 
+Drag an agent or artifact sidebar's divider closed to give the conversation more room. Drag it open again when you need the sidebar.
+
 Project creation, new worktrees, Mission startup, and worktree deletion show progress in one dialog. Choose **Run in background** to keep working while the operation continues; check its final result before depending on the new folder or cleanup.
 
 ## Continue from your phone
@@ -174,7 +178,7 @@ Use the mobile sidebar to browse one team or **All teams**, switch between repos
 
 ## Understand usage and performance
 
-Open **Settings → Analytics** to see usage recorded by Korus:
+Open **Settings → Analytics**, or choose **Analytics** from the account menu, to see usage recorded by Korus:
 
 - **Token activity** shows the past year across providers. This overview stays independent of the filters below it.
 - **Usage** shows token totals, input and output, usage share, and trends. Choose **Cost** for estimated API costs in USD, or **Tokens → Ratio** for the input-token share. Choose a provider, a 7-, 30-, or 90-day window or custom dates, and group the results by provider, model, or repository. Repository totals combine worktrees, with separate entries for Missions and Quick Chats.
@@ -182,7 +186,9 @@ Open **Settings → Analytics** to see usage recorded by Korus:
 
 The **Output speed over time** chart plots a separate line for each model. Use the date and provider filters to compare how measured generation speed changes across your work.
 
-Cost estimates use recorded usage and historical model prices. Totals and shares include priced usage only; **Unavailable** means there is not enough pricing evidence, rather than that the work was free. These are API-price estimates, not your subscription charges or an invoice. The calculations stay on your computer.
+Model comparisons separate service tiers, so you can compare the same model at different speeds and estimated costs. Open **Analytics options → Group service tiers** to combine a model's tiers in usage and performance results. Missing tier information is shown as **Unknown tier**.
+
+Cost estimates use recorded usage and historical model prices. Korus checks for pricing updates in the background, independently of app updates, and keeps its last valid prices when offline. The calculations stay on your computer; pricing downloads do not upload your usage. Totals and shares include priced usage only; **Unavailable** means there is not enough pricing evidence, rather than that the work was free. These are API-price estimates, not your subscription charges or an invoice.
 
 Statistics cover recorded activity in Korus rather than importing earlier provider history; different providers may report different token details. Check your provider's account page for remaining quota and billing.
 

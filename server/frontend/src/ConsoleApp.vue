@@ -1,42 +1,61 @@
 <template>
-  <SignIn
-    v-if="login"
-    :check-session="checkSession"
-    @authenticated="showConsole"
-  />
-  <Dashboard
-    v-else
-    :signing-out="signingOut"
-    :auth-error="error"
-    @session-expired="showLogin"
-    @sign-out="signOut"
-  />
+  <main v-if="session.status.value === 'unavailable'" class="sign-in-page">
+    <div role="alert">
+      Could not check your session. <ElButton @click="retry">Retry</ElButton>
+    </div>
+  </main>
+  <main
+    v-else-if="waiting"
+    class="sign-in-page"
+    role="status"
+    aria-label="Loading console"
+  >
+    Loading…
+  </main>
+  <RouterView v-else v-slot="{ Component }">
+    <component
+      :is="Component"
+      :signing-out="signingOut"
+      :auth-error="error"
+      @authenticated="authenticated"
+      @session-expired="expired"
+      @sign-out="signOut"
+    />
+  </RouterView>
 </template>
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
-import SignIn from "./SignIn.vue";
-import Dashboard from "./Dashboard.vue";
+import { computed, ref, onUnmounted } from "vue";
+import { RouterView, useRoute, useRouter } from "vue-router";
+import { ElButton } from "element-plus";
 import { sessionRequest } from "./session";
-const isLogin = () => window.location.pathname.replace(/\/+$/, "") === "/login";
-const login = ref(isLogin()),
-  checkSession = ref(true),
-  signingOut = ref(false),
+import { loginDestination } from "./router";
+import type { ConsoleSession } from "./console-session";
+const props = defineProps<{ session: ConsoleSession }>();
+const route = useRoute(),
+  router = useRouter();
+const signingOut = ref(false),
   error = ref("");
 const controller = new AbortController();
-function showConsole() {
+const waiting = computed(
+  () =>
+    ["unknown", "checking"].includes(props.session.status.value) ||
+    (route.meta.requiresAuth && props.session.status.value !== "authenticated"),
+);
+async function authenticated() {
   error.value = "";
-  window.history.replaceState({}, "", `/${window.location.hash}`);
-  login.value = false;
+  props.session.authenticate();
+  await router.replace(loginDestination(route));
 }
-function showLogin() {
+async function expired() {
   error.value = "";
-  checkSession.value = false;
-  window.history.replaceState({}, "", `/login${window.location.hash}`);
-  login.value = true;
+  props.session.expire();
+  await router.replace({ name: "login", query: { redirect: route.path } });
 }
-function navigate() {
-  checkSession.value = true;
-  login.value = isLogin();
+async function retry() {
+  const status = await props.session.check(true);
+  if (status === "authenticated" && route.name === "login")
+    await router.replace(loginDestination(route));
+  else if (status === "anonymous" && route.meta.requiresAuth) await expired();
 }
 async function signOut() {
   if (signingOut.value) return;
@@ -45,7 +64,7 @@ async function signOut() {
   try {
     const response = await sessionRequest("DELETE", controller.signal);
     if (!controller.signal.aborted) {
-      if (response.status === 204 || response.status === 401) showLogin();
+      if (response.status === 204 || response.status === 401) await expired();
       else error.value = "Could not sign out. Try again.";
     }
   } catch {
@@ -55,9 +74,8 @@ async function signOut() {
     signingOut.value = false;
   }
 }
-onMounted(() => window.addEventListener("popstate", navigate));
 onUnmounted(() => {
   controller.abort();
-  window.removeEventListener("popstate", navigate);
+  props.session.dispose();
 });
 </script>

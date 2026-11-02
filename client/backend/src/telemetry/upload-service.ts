@@ -65,6 +65,7 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
   private invalid = false;
   private again = false;
   private generation = 0;
+  private scheduledBucket: string | undefined;
   private readonly endpoint: string | null;
   private constructor(private readonly options: Options) {
     let endpoint: URL | undefined;
@@ -205,7 +206,20 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
     }
     return before !== this.store.days.length;
   }
-  /** Called on startup and hourly by the shared RuntimeScheduler. */
+  /** The common scheduler checks each minute; UUID modulo 60 spreads clients
+   * across the hour without changing their slot on restart or using local time. */
+  tick(): Promise<void> {
+    if (!this.valid(this.generation)) return Promise.resolve();
+    const owner = this.authority()!;
+    const now = this.now();
+    const minute = Number(BigInt(`0x${owner.installId.replaceAll('-', '')}`) % 60n);
+    if (Math.floor(now / 60_000) % 60 !== minute) return Promise.resolve();
+    const bucket = `${owner.installId}:${owner.enabledAt}:${Math.floor(now / HOUR)}`;
+    if (this.scheduledBucket === bucket) return this.working ?? Promise.resolve();
+    this.scheduledBucket = bucket;
+    return this.flush();
+  }
+  /** Runs delivery within a scheduled slot or an explicit maintenance flush. */
   flush(): Promise<void> {
     if (this.stopped || this.invalid) return Promise.resolve();
     if (this.working) {

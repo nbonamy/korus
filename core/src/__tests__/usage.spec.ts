@@ -50,7 +50,17 @@ it("seals only the closed telemetry contract in canonical order and preserves nu
   expect(
     serializeDailyTelemetry({ ...payload, usage: [zero, group] }).body,
   ).toBe(body);
+  const partial = {...zero, turns:2, inputTokens:10, cachedInputTokens:5, outputTokens:2,
+    estimatedCostUsd:0.1, measuredTurns:1, costCoverage:'partial' as const};
+  expect(JSON.parse(serializeDailyTelemetry({...payload,usage:[partial]}).body).usage).toStrictEqual([partial]);
   for (const patch of [
+    { usage: [{...partial, measuredTurns:3}] },
+    { usage: [{...partial, measuredTurns:-1}] },
+    { usage: [{...partial, measuredTurns:1.5}] },
+    { usage: [{...partial, inputTokens:null}] },
+    { usage: [{...partial, costCoverage:'invented'}] },
+    { usage: [{...partial, costCoverage:'unavailable'}] },
+    { usage: [{...partial, estimatedCostUsd:null}] },
     { hour: -1 },
     { hour: 24 },
     { hour: 1.5 },

@@ -2,7 +2,6 @@
   <div class="console-shell">
     <ConsoleNavigation
       :product-name="productName"
-      :page="page"
       :signing-out="signingOut"
       :auth-error="authError"
       @sign-out="emit('signOut')"
@@ -112,42 +111,22 @@
             @change="load"
           >
             <ElOption label="All models" value="" />
-            <ElOption label="Unknown model" value="unknown" />
             <ElOption
-              v-for="item in telemetryModels"
+              v-for="item in availableModels"
               :key="item"
-              :label="item"
+              :label="item === 'unknown' ? 'Unknown model' : item"
               :value="item"
             />
           </ElSelect>
-          <AppMenuButton
-            ariaLabel="Analytics options"
-            :items="optionsItems"
-            @select="toggleServiceTiers"
-          >
-            <template #trigger="{ attrs }">
-              <ElTooltip content="Analytics options" placement="top">
-                <span class="console-options-tooltip">
-                  <button
-                    v-bind="attrs"
-                    type="button"
-                    class="app-icon-button console-options-trigger"
-                    aria-label="Analytics options"
-                  >
-                    <DotsVerticalIcon aria-hidden="true" />
-                  </button>
-                </span>
-              </ElTooltip>
-            </template>
-          </AppMenuButton>
+          <ConsoleOptions v-model="groupServiceTiers" @change="load" />
         </section>
       </div>
       <p class="freshness">
         <span class="status-dot" aria-hidden="true" />
-        <template v-if="data"
-          >Latest report
-          {{ data.availability.lastDay ?? "not available" }}</template
-        ><template v-else>Completed daily reports</template><span>· {{ timeZone }}</span>
+        <template v-if="data?.availability.lastDay"
+          >Latest report {{ data.availability.lastDay }} ·
+        </template>
+        <span>{{ timeZone }}</span>
       </p>
       <p v-if="loading" role="status" class="state panel">Loading metrics…</p>
       <p v-else-if="error" role="alert" class="state panel">{{ error }}</p>
@@ -165,22 +144,18 @@
             <div class="panel" aria-label="Participating installs">
               <dt>Participating installs</dt>
               <dd>{{ count(data.overview.participatingInstalls) }}</dd>
-              <small>Opted-in installations</small>
             </div>
             <div class="panel" aria-label="Daily active installs">
               <dt>Daily active</dt>
               <dd>{{ count(data.overview.dau) }}</dd>
-              <small>{{ data.range.to }} {{ timeZone }}</small>
             </div>
             <div class="panel" aria-label="Weekly active installs">
               <dt>Weekly active</dt>
               <dd>{{ count(data.overview.wau) }}</dd>
-              <small>Last 7 days</small>
             </div>
             <div class="panel" aria-label="Monthly active installs">
               <dt>Monthly active</dt>
               <dd>{{ count(data.overview.mau) }}</dd>
-              <small>Last 30 days</small>
             </div>
           </dl>
         </section>
@@ -195,7 +170,6 @@
           class="section-heading usage-heading"
         >
           <h2>Usage</h2>
-          <span class="muted">Selected range · provider and model filters</span>
         </div>
         <dl
           v-if="!['activity', 'performance', 'models'].includes(page)"
@@ -204,7 +178,6 @@
           <div class="panel" aria-label="Turns">
             <dt>Turns</dt>
             <dd>{{ count(data.totals.turns) }}</dd>
-            <small>Selected range</small>
           </div>
           <div
             v-if="page !== 'spend'"
@@ -215,14 +188,6 @@
             <dd :title="count(data.totals.totalTokens)">
               {{ tokens(data.totals.totalTokens) }}
             </dd>
-            <small
-              >Input + output<template
-                v-if="data.totals.excludedTokenGroups !== '0'"
-              >
-                · {{ count(data.totals.excludedTokenGroups) }} groups
-                excluded</template
-              ></small
-            >
           </div>
           <div
             v-if="page !== 'tokens'"
@@ -233,12 +198,6 @@
             <dd :title="exactMoney(data.totals.estimatedCostUsd)">
               {{ money(data.totals.estimatedCostUsd) }}
             </dd>
-            <small
-              >API-equivalent · {{ data.totals.costCoverage
-              }}<template v-if="data.totals.unknownCostGroups !== '0'">
-                · {{ count(data.totals.unknownCostGroups) }} unknown</template
-              ></small
-            >
           </div>
           <div
             v-if="page === 'overview' || page === 'tokens'"
@@ -247,21 +206,12 @@
           >
             <dt>Cache-read share</dt>
             <dd>{{ percent(data.totals.cacheReadShare) }}</dd>
-            <small
-              >Share of measured input<template
-                v-if="data.totals.excludedCacheGroups !== '0'"
-              >
-                · {{ count(data.totals.excludedCacheGroups) }} groups
-                excluded</template
-              ></small
-            >
           </div>
         </dl>
         <MetricChart
           v-if="page === 'overview' || page === 'activity'"
           id="activity"
           title="Daily activity"
-          description="Active and newly reporting installations · daily."
           :days="data.activity.map((row) => row.day)"
           :series="[
             {
@@ -284,26 +234,17 @@
             v-if="page !== 'spend'"
             id="tokens"
             title="Weekly tokens"
-            description="Input and output · weekly."
             :days="data.weekly.map((row) => row.week)"
             :series="[
               {
                 label: 'Inclusive input',
-                values: data.weekly.map((row) => row.pairedInputTokens ?? null),
+                values: data.weekly.map((row) => row.inputTokens),
               },
               {
                 label: 'Output',
-                values: data.weekly.map(
-                  (row) => row.pairedOutputTokens ?? null,
-                ),
+                values: data.weekly.map((row) => row.outputTokens),
               },
             ]"
-            :notes="
-              data.weekly.map(
-                (row) =>
-                  `${count(row.excludedTokenGroups)} incomplete token groups; ${count(row.unknownInputGroups)} unknown input; ${count(row.unknownOutputGroups)} unknown output`,
-              )
-            "
             measure="tokens"
             variant="stacked"
           />
@@ -311,7 +252,6 @@
             v-if="page !== 'tokens'"
             id="spend"
             title="Daily estimated spend"
-            description="API-equivalent USD · gaps indicate unavailable estimates."
             :days="data.daily.map((row) => row.day)"
             :series="[
               {
@@ -319,19 +259,12 @@
                 values: data.daily.map((row) => row.estimatedCostUsd),
               },
             ]"
-            :notes="
-              data.daily.map(
-                (row) =>
-                  `${row.costCoverage}; ${count(row.unknownCostGroups)} unknown groups`,
-              )
-            "
             measure="usd"
             variant="bar"
           />
           <MetricChart
             v-if="page === 'tokens'"
             title="Cache-read share"
-            description="Cached reads as a share of measured input · daily."
             :days="data.daily.map((row) => row.day)"
             :series="[
               {
@@ -343,17 +276,11 @@
                 ),
               },
             ]"
-            :notes="
-              data.daily.map(
-                (row) => `${count(row.excludedCacheGroups)} excluded groups`,
-              )
-            "
             measure="ratio"
           />
           <MetricChart
             v-if="page === 'tokens'"
             title="Measured input"
-            description="Cached and non-cache-read input · weekly."
             :days="data.weekly.map((row) => row.week)"
             :series="[
               {
@@ -365,11 +292,6 @@
                 values: data.weekly.map((row) => row.nonCacheReadTokens),
               },
             ]"
-            :notes="
-              data.weekly.map(
-                (row) => `${count(row.excludedCacheGroups)} excluded groups`,
-              )
-            "
             measure="tokens"
             variant="stacked"
           />
@@ -417,33 +339,20 @@
                     <span class="provider">{{ row.provider }}</span
                     ><span>{{ modelLabel(row) }}</span>
                   </th>
-                  <td>{{ count(row.turns) }}</td>
+                  <td>
+                    {{ count(row.turns) }}
+                  </td>
                   <td :title="count(row.inputTokens)">
-                    {{ tokens(row.inputTokens)
-                    }}<small v-if="row.unknownInputGroups !== '0'"
-                      >{{ count(row.unknownInputGroups) }} unknown groups</small
-                    >
+                    {{ tokens(row.inputTokens) }}
                   </td>
                   <td :title="count(row.cachedInputTokens)">
-                    {{ tokens(row.cachedInputTokens)
-                    }}<small v-if="row.unknownCachedInputGroups !== '0'"
-                      >{{ count(row.unknownCachedInputGroups) }} unknown
-                      groups</small
-                    >
+                    {{ tokens(row.cachedInputTokens) }}
                   </td>
                   <td :title="count(row.outputTokens)">
-                    {{ tokens(row.outputTokens)
-                    }}<small v-if="row.unknownOutputGroups !== '0'"
-                      >{{ count(row.unknownOutputGroups) }} unknown
-                      groups</small
-                    >
+                    {{ tokens(row.outputTokens) }}
                   </td>
                   <td :title="exactMoney(row.estimatedCostUsd)">
-                    {{ money(row.estimatedCostUsd)
-                    }}<small
-                      >{{ row.costCoverage }} ·
-                      {{ count(row.unknownCostGroups) }} unknown</small
-                    >
+                    {{ money(row.estimatedCostUsd) }}
                   </td>
                 </tr>
                 <tr v-if="!data.models.length">
@@ -458,21 +367,15 @@
   </div>
 </template>
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, watch, nextTick } from "vue";
-import { telemetryModels } from "@workspace/core/telemetry-models";
+import { computed, ref, onMounted, watch, nextTick } from "vue";
 import {
   ElButton,
   ElDatePicker,
   ElSelect,
   ElOption,
   ElSegmented,
-  ElTooltip,
 } from "element-plus";
-import AppMenuButton from "@workspace/vue/shared/menu/AppMenuButton.vue";
-import {
-  BoltIcon,
-  DotsVerticalIcon,
-} from "@workspace/vue/shared/icons/app-icons";
+import ConsoleOptions from "./ConsoleOptions.vue";
 import ModelsReport from "./ModelsReport.vue";
 import MetricChart from "./MetricChart.vue";
 import PerformanceReport from "./PerformanceReport.vue";
@@ -483,49 +386,44 @@ import {
   money,
   exactMoney,
   percent,
-  completedDay,
+  currentDay,
 } from "./format";
+import { consolePages, type ConsolePage } from "./console-pages";
 import { modelLabel } from "./model-label";
 import { useMetrics } from "./use-metrics";
-defineProps<{ signingOut?: boolean; authError?: string }>();
+const props = withDefaults(
+  defineProps<{
+    page?: ConsolePage;
+    signingOut?: boolean;
+    authError?: string;
+  }>(),
+  { page: "overview" },
+);
 const emit = defineEmits<{ sessionExpired: []; signOut: [] }>();
 const productName =
   typeof __PRODUCT_NAME__ === "undefined" ? "Usage console" : __PRODUCT_NAME__;
-const pageLabels = {
-  overview: "Overview",
-  activity: "Activity",
-  tokens: "Tokens",
-  spend: "Spend",
-  models: "Models",
-  performance: "Performance",
-} as const;
-type ConsolePage = keyof typeof pageLabels;
-function readPage(): ConsolePage {
-  const route = window.location.hash.slice(2);
-  return Object.hasOwn(pageLabels, route) ? (route as ConsolePage) : "overview";
-}
-const page = ref<ConsolePage>(readPage());
-const pageTitle = computed(() => pageLabels[page.value]);
+const pageTitle = computed(
+  () => consolePages.find((page) => page.id === props.page)!.label,
+);
 const heading = ref<HTMLElement | null>(null);
-watch(page, async () => {
-  document.title = `${productName} Console · ${pageTitle.value}`;
-  await nextTick();
-  heading.value?.focus();
-});
-function navigate() {
-  page.value = readPage();
-}
+watch(
+  () => props.page,
+  async () => {
+    document.title = `${productName} Console · ${pageTitle.value}`;
+    await nextTick();
+    heading.value?.focus();
+  },
+);
 onMounted(() => {
   document.title = `${productName} Console · ${pageTitle.value}`;
-  window.addEventListener("hashchange", navigate);
 });
-onUnmounted(() => window.removeEventListener("hashchange", navigate));
 const {
   timeZone,
   from,
   to,
   provider,
   model,
+  availableModels,
   groupServiceTiers,
   data,
   loading,
@@ -533,26 +431,13 @@ const {
   load,
   recent,
 } = useMetrics(() => emit("sessionExpired"));
-const optionsItems = computed(() => [
-  {
-    id: "group-service-tiers",
-    type: "checkbox" as const,
-    label: "Group service tiers",
-    icon: BoltIcon,
-    checked: groupServiceTiers.value,
-  },
-]);
-function toggleServiceTiers() {
-  groupServiceTiers.value = !groupServiceTiers.value;
-  void load();
-}
 const selectedRange = computed(() => {
   const days = (Date.parse(to.value) - Date.parse(from.value)) / 86400000 + 1;
-  return to.value === completedDay() && [7, 30, 90].includes(days)
+  return to.value === currentDay() && [7, 30, 90].includes(days)
     ? days
     : undefined;
 });
 const futureDay = (date: Date) =>
   date.getFullYear() * 10000 + (date.getMonth() + 1) * 100 + date.getDate() >
-  Number(completedDay().replaceAll("-", ""));
+  Number(currentDay().replaceAll("-", ""));
 </script>

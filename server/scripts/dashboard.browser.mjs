@@ -43,6 +43,16 @@ export async function dashboardWorkflow({
       new URL(protectedHtml.headers().location, origin).pathname,
       "/login",
     );
+    const protectedReport = await signedOut.request.get(origin + "/models", {
+      maxRedirects: 0,
+    });
+    assert.equal(protectedReport.status(), 302);
+    assert.equal(
+      new URL(protectedReport.headers().location, origin).searchParams.get(
+        "redirect",
+      ),
+      "/models",
+    );
     await signedOut.close();
     const context = await browser.newContext({
       viewport: { width: 1440, height: 1100 },
@@ -50,7 +60,8 @@ export async function dashboardWorkflow({
       timezoneId: "UTC",
     });
     const page = await context.newPage();
-    await page.clock.install({ time: new Date() });
+    // Fix calendar dates while keeping canvas animation frames and resize timers real.
+    await page.clock.setFixedTime(new Date());
     const errors = [],
       external = [],
       aggregateBodies = [];
@@ -62,13 +73,24 @@ export async function dashboardWorkflow({
       }
       return route.continue();
     });
-    page.on("response", async (response) => {
+    const responseReads = [];
+    page.on("response", (response) => {
       if (
         response.url().includes("/v1/telemetry/metrics") &&
         response.status() === 200
       )
-        aggregateBodies.push(await response.text());
+        responseReads.push(
+          response.text().then((body) => {
+            aggregateBodies.push(body);
+          }),
+        );
     });
+    async function finishMetricsRead() {
+      await page
+        .getByText("Loading metrics…", { exact: true })
+        .waitFor({ state: "hidden" });
+      await Promise.all(responseReads);
+    }
     await page.goto(origin);
     await page
       .getByRole("heading", { level: 1, name: "Sign in", exact: true })
@@ -111,6 +133,59 @@ export async function dashboardWorkflow({
     }
     await signIn();
     await page.getByRole("region", { name: "Global activity" }).waitFor();
+    await page.addInitScript(() => {
+      window.__loginFormRendered = false;
+      new MutationObserver(() => {
+        if (document.querySelector('form[aria-label="Console sign in"]'))
+          window.__loginFormRendered = true;
+      }).observe(document, { subtree: true, childList: true });
+    });
+    await page.route("**/auth/session", async (route) => {
+      if (route.request().method() === "GET")
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      await route.continue();
+    });
+    await finishMetricsRead();
+    for (const target of [
+      "/overview",
+      "/login?redirect=/overview",
+      "/#/tokens",
+      "/models",
+    ]) {
+      await page.goto(origin + target);
+      await page
+        .getByRole("heading", {
+          level: 1,
+          name:
+            target === "/models"
+              ? "Models"
+              : target === "/#/tokens"
+                ? "Tokens"
+                : "Overview",
+          exact: true,
+        })
+        .waitFor();
+      assert.equal(
+        await page.evaluate(() => window.__loginFormRendered),
+        false,
+      );
+      await finishMetricsRead();
+    }
+    await page.reload();
+    await page
+      .getByRole("heading", { level: 1, name: "Models", exact: true })
+      .waitFor();
+    assert.equal(await page.evaluate(() => window.__loginFormRendered), false);
+    await finishMetricsRead();
+    await page.screenshot({
+      path: path.join(output, "authenticated-reload.png"),
+      fullPage: true,
+    });
+    await page.goto(origin + "/overview");
+    await page
+      .getByRole("heading", { level: 1, name: "Overview", exact: true })
+      .waitFor();
+
     const sessionCookie = (await context.cookies()).find(
       (cookie) => cookie.httpOnly,
     );
@@ -130,6 +205,12 @@ export async function dashboardWorkflow({
         .getByRole("heading", { level: 1, name, exact: true })
         .waitFor();
     }
+    await visit("Performance");
+    assert.equal(
+      await page.getByLabel("Compare models", { exact: true }).count(),
+      0,
+    );
+    await visit("Overview");
     // Reports are separate, addressable pages; changing page preserves the range.
     const initialFrom = await page
       .getByLabel("From day", { exact: true })
@@ -182,7 +263,11 @@ export async function dashboardWorkflow({
         .getByRole("combobox", { name: label, exact: true })
         .press("ArrowDown");
       const name =
-        label === "Provider" ? providerLabels[value] : value || "All models";
+        label === "Provider"
+          ? providerLabels[value]
+          : value === "unknown"
+            ? "Unknown model"
+            : value || "All models";
       await page.getByRole("option", { name, exact: true }).click();
     }
     async function range(from, to) {
@@ -219,7 +304,7 @@ export async function dashboardWorkflow({
       await visit("Performance");
       assert.match(
         await page.getByLabel("Output speed summary").innerText(),
-        /20.0 tok\/s/,
+        /20 tokens\/s/,
       );
       assert.match(
         await page.getByLabel("Time to first output summary").innerText(),
@@ -258,13 +343,44 @@ export async function dashboardWorkflow({
     await sql(seed);
     await page.clock.setFixedTime(new Date("2026-10-25T12:00:00Z"));
     await range("2026-10-18", "2026-10-24");
+    await page
+      .getByRole("combobox", { name: "Model", exact: true })
+      .press("ArrowDown");
+    assert.deepEqual(
+      await page
+        .getByRole("listbox", { name: "Model", exact: true })
+        .getByRole("option")
+        .allTextContents(),
+      ["All models", "claude-sonnet-4-6", "Unknown model"],
+    );
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes("model=unknown") && r.status() === 200,
+      ),
+      page.getByRole("option", { name: "Unknown model", exact: true }).click(),
+    ]);
+    await page
+      .getByRole("combobox", { name: "Model", exact: true })
+      .press("ArrowDown");
+    await page
+      .getByRole("option", { name: "claude-sonnet-4-6", exact: true })
+      .waitFor();
+    await Promise.all([
+      page.waitForResponse(
+        (r) =>
+          r.url().includes("/v1/telemetry/metrics?") &&
+          !new URL(r.url()).searchParams.has("model") &&
+          r.status() === 200,
+      ),
+      page.getByRole("option", { name: "All models", exact: true }).click(),
+    ]);
     for (const [label, value] of [
       ["Participating installs", "6"],
       ["Daily active installs", "3"],
       ["Weekly active installs", "4"],
       ["Monthly active installs", "5"],
       ["Turns", "7"],
-      ["Measured total tokens", "660"],
+      ["Measured total tokens", "700"],
       ["Known estimated spend", "$1.50"],
       ["Measured cache-read share", "55.0%"],
     ])
@@ -282,52 +398,18 @@ export async function dashboardWorkflow({
       await page
         .getByLabel("Known estimated spend", { exact: true })
         .innerText(),
-      /2 unknown/,
+      /^Estimated spend\s+\$1\.50$/,
     );
     const cost = page.getByRole("region", {
       name: "Daily estimated spend",
       exact: true,
     });
-    assert.equal(await cost.locator("rect").count(), 3);
-    const gapHasPaint = await cost.getByRole("img").evaluate((svg) => {
-      const labels = [...svg.querySelectorAll(".date-label text")];
-      const first = Number(labels[0].getAttribute("x"));
-      const last = Number(labels.at(-1).getAttribute("x"));
-      // Probe the unmeasured interior days; both the line and its area must be absent.
-      const paths = [...svg.querySelectorAll("path,rect")];
-      return [2.5, 3.5, 4.5].some((day) => {
-        const x = first + ((last - first) * day) / 6;
-        for (let y = 0; y < svg.viewBox.baseVal.height; y += 0.5) {
-          const point = new DOMPoint(x, y);
-          if (
-            paths.some(
-              (p) =>
-                (getComputedStyle(p).fill !== "none" &&
-                  p.isPointInFill(point)) ||
-                p.isPointInStroke(point),
-            )
-          )
-            return true;
-        }
-        return false;
-      });
-    });
-    assert.equal(
-      gapHasPaint,
-      false,
-      "unmeasured spend dates must contain no curve or area",
-    );
-    assert.equal(
-      await cost.locator("circle").count(),
-      0,
-      "no persistent point markers",
-    );
+    assert.equal(await cost.locator("canvas").count(), 1);
+    // Known zeroes remain inspectable; missing dates have no observations.
+    assert.equal(await cost.locator(".chart-observation").count(), 3);
     await cost.getByRole("img").focus();
     await page.keyboard.press("End");
-    assert.match(
-      await cost.getByRole("status").innerText(),
-      /Oct 24.*\$0.*partial/is,
-    );
+    assert.match(await cost.getByRole("status").innerText(), /Oct 24.*\$0/is);
     await page.keyboard.press("ArrowLeft");
     assert.match(
       await cost.getByRole("status").innerText(),
@@ -349,37 +431,23 @@ export async function dashboardWorkflow({
       await weekly.locator(".tooltip-day").getAttribute("title"),
       "2026-10-19",
     );
-    assert.equal(await weekly.locator(".tooltip-total b").innerText(), "550");
+    assert.equal(await weekly.locator(".tooltip-total b").innerText(), "590");
     assert.equal(await page.getByText("View data", { exact: true }).count(), 0);
     assert.equal(
       await page.getByText("About the data", { exact: true }).count(),
       0,
     );
     const chartBounds = await page
-      .locator("path.chart-line")
-      .evaluateAll((paths) =>
-        paths.map((p) => {
-          const box = p.getBBox();
-          const grid = [
-            ...p.ownerSVGElement.querySelectorAll(".grid line"),
-          ].map((line) => Number(line.getAttribute("y1")));
-          return {
-            plotTop: Math.min(...grid),
-            plotBottom: Math.max(...grid),
-            top: box.y,
-            bottom: box.y + box.height,
-            stroke: getComputedStyle(p).strokeWidth,
-          };
-        }),
+      .locator('canvas[role="img"]')
+      .evaluateAll((charts) =>
+        charts.map((chart) => ({
+          width: chart.getBoundingClientRect().width,
+          height: chart.getBoundingClientRect().height,
+        })),
       );
-    assert.equal(
-      chartBounds.every(
-        (b) =>
-          b.top >= b.plotTop - 0.01 &&
-          b.bottom <= b.plotBottom + 0.01 &&
-          b.stroke === "1.5px",
-      ),
-      true,
+    assert.ok(chartBounds.length > 0);
+    assert.ok(
+      chartBounds.every((chart) => chart.width > 0 && chart.height === 300),
     );
     const models = page.getByRole("region", {
       name: "Provider and model",
@@ -393,6 +461,27 @@ export async function dashboardWorkflow({
       fullPage: true,
       animations: "disabled",
     });
+    for (const name of [
+      "Activity",
+      "Models",
+      "Tokens",
+      "Spend",
+      "Performance",
+    ]) {
+      await visit(name);
+      assert.equal(
+        /turns? missing usage|partial estimate|^partial$/im.test(
+          await page.locator("main").innerText(),
+        ),
+        false,
+      );
+      await page.screenshot({
+        path: path.join(output, `${name.toLowerCase()}-report.png`),
+        fullPage: true,
+        animations: "disabled",
+      });
+    }
+    await visit("Overview");
     await Promise.all([
       page.waitForResponse(
         (r) => r.url().includes("provider=codex") && r.status() === 200,
@@ -407,16 +496,19 @@ export async function dashboardWorkflow({
       await page.getByRole("region", { name: "Global activity" }).innerText(),
       global,
     );
-    await Promise.all([
-      page.waitForResponse(
-        (r) =>
-          r.url().includes("model=claude-sonnet-4-6") && r.status() === 200,
-      ),
-      select("Model", "claude-sonnet-4-6"),
-    ]);
-    await page
-      .getByText("No usage for this selection.", { exact: true })
-      .waitFor();
+    const modelControl = page.getByRole("combobox", {
+      name: "Model",
+      exact: true,
+    });
+    await modelControl.press("ArrowDown");
+    assert.deepEqual(
+      await page
+        .getByRole("listbox", { name: "Model", exact: true })
+        .getByRole("option")
+        .allTextContents(),
+      ["All models", "Unknown model"],
+    );
+    await modelControl.press("Escape");
     await Promise.all([
       page.waitForResponse(
         (r) => r.url().includes("provider=claude") && r.status() === 200,
@@ -425,7 +517,7 @@ export async function dashboardWorkflow({
     ]);
     await page
       .getByLabel("Measured total tokens", { exact: true })
-      .getByText("220", { exact: true })
+      .getByText("260", { exact: true })
       .waitFor();
     assert.equal(
       await page.getByRole("region", { name: "Global activity" }).innerText(),
@@ -434,12 +526,28 @@ export async function dashboardWorkflow({
     await Promise.all([
       page.waitForResponse(
         (r) =>
-          !r.url().includes("model=") &&
-          r.url().includes("/metrics") &&
+          r.url().includes("model=claude-sonnet-4-6") && r.status() === 200,
+      ),
+      select("Model", "claude-sonnet-4-6"),
+    ]);
+    await page
+      .getByLabel("Measured total tokens", { exact: true })
+      .getByText("220", { exact: true })
+      .waitFor();
+    // This Claude model has no Codex usage: changing provider clears it and refetches.
+    await Promise.all([
+      page.waitForResponse(
+        (r) =>
+          r.url().includes("provider=codex") &&
+          !new URL(r.url()).searchParams.has("model") &&
           r.status() === 200,
       ),
-      select("Model", ""),
+      select("Provider", "codex"),
     ]);
+    await page
+      .getByLabel("Measured total tokens", { exact: true })
+      .getByText("440", { exact: true })
+      .waitFor();
     await Promise.all([
       page.waitForResponse(
         (r) => r.url().includes("provider=antigravity") && r.status() === 200,
@@ -496,15 +604,17 @@ export async function dashboardWorkflow({
     await page.setViewportSize({ width: 390, height: 844 });
     await page
       .getByLabel("Measured total tokens", { exact: true })
-      .getByText("660", { exact: true })
+      .getByText("700", { exact: true })
       .waitFor();
     const geometry = await page.evaluate(() => ({
       viewport: innerWidth,
       page: document.documentElement.scrollWidth,
-      charts: [...document.querySelectorAll('svg[role="img"]')].map((el) => ({
-        width: el.getBoundingClientRect().width,
-        height: el.getBoundingClientRect().height,
-      })),
+      charts: [...document.querySelectorAll('canvas[role="img"]')].map(
+        (el) => ({
+          width: el.getBoundingClientRect().width,
+          height: el.getBoundingClientRect().height,
+        }),
+      ),
     }));
     assert.equal(
       geometry.page <= geometry.viewport,
@@ -526,6 +636,11 @@ export async function dashboardWorkflow({
       mobileBox.x + mobileBox.width - 18,
       mobileBox.y + 45,
     );
+    // Chart.js dispatches pointer inspection on the next animation frame.
+    await page
+      .getByRole("region", { name: "Daily activity", exact: true })
+      .locator('.tooltip-day[title="2026-10-24"]')
+      .waitFor();
     assert.match(
       await page
         .getByRole("region", { name: "Daily activity", exact: true })
@@ -546,7 +661,7 @@ export async function dashboardWorkflow({
     await visit("Performance");
     assert.match(
       await page.getByLabel("Output speed summary").innerText(),
-      /30.0 tok\/s/,
+      /30 tokens\/s/,
     );
     assert.match(
       await page.getByLabel("Time to first output summary").innerText(),
@@ -559,23 +674,26 @@ export async function dashboardWorkflow({
       /Unavailable/,
     );
     const speedChart = page.getByRole("region", {
-      name: "Output speed",
+      name: "Output speed over time",
       exact: true,
     });
-    assert.match(
-      await speedChart.getByRole("list", { name: "Series" }).innerText(),
-      /Codex/,
+    assert.equal(
+      await speedChart.getByRole("list", { name: "Series" }).count(),
+      0,
     );
     await speedChart.getByRole("img").focus();
     await page.keyboard.press("End");
     assert.match(
       await speedChart.getByRole("status").innerText(),
-      /30.0 tok\/s/,
+      /30 tokens\/s/,
     );
     assert.equal(
-      (await speedChart.locator('path[fill^="url("]').count()) > 0,
-      true,
+      (await speedChart.getByRole("status").innerText()).includes(
+        "Unavailable",
+      ),
+      false,
     );
+    assert.equal(await speedChart.locator("canvas").count(), 1);
     await page.screenshot({
       path: path.join(output, "performance.png"),
       fullPage: true,
@@ -602,27 +720,55 @@ export async function dashboardWorkflow({
       ('${localId}','2026-10-24',4,'codex','unknown',1,10,0,0,0),
       ('${localId}','2026-10-24',5,'codex','unknown',1,20,0,0,0),
       ('${localId}','2026-10-25',4,'codex','unknown',1,30,0,0,0)`);
-    const localContext = await browser.newContext({timezoneId:"America/Chicago",storageState:await context.storageState()});
+    const localContext = await browser.newContext({
+      timezoneId: "America/Chicago",
+      storageState: await context.storageState(),
+    });
     try {
-      const localPage=await localContext.newPage();
-      localPage.on("pageerror",error=>errors.push(error.message));
+      const localPage = await localContext.newPage();
+      localPage.on("pageerror", (error) => errors.push(error.message));
       await localPage.goto(origin);
-      await localPage.getByLabel("From day",{exact:true}).fill("2026-10-24");
-      await localPage.getByLabel("To day",{exact:true}).fill("2026-10-24");
-      await localPage.getByLabel("To day",{exact:true}).press("Tab");
+      await localPage
+        .getByLabel("From day", { exact: true })
+        .fill("2026-10-24");
+      await localPage.getByLabel("To day", { exact: true }).fill("2026-10-24");
+      await localPage.getByLabel("To day", { exact: true }).press("Tab");
       const [response] = await Promise.all([
-        localPage.waitForResponse(r=>r.url().includes("from=2026-10-24&to=2026-10-24") && r.status()===200),
-        localPage.getByRole("button",{name:"Apply range",exact:true}).click(),
+        localPage.waitForResponse(
+          (r) =>
+            r.url().includes("from=2026-10-24&to=2026-10-24") &&
+            r.status() === 200,
+        ),
+        localPage
+          .getByRole("button", { name: "Apply range", exact: true })
+          .click(),
       ]);
-      assert.equal(new URL(response.url()).searchParams.get("timeZone"),"America/Chicago");
-      const localMetrics=await response.json();
-      assert.equal(localMetrics.totals.totalTokens,"50");
-      assert.equal(localMetrics.overview.dau,"1");
-      await localPage.getByLabel("Measured total tokens",{exact:true}).getByText("50",{exact:true}).waitFor();
-      assert.match(await localPage.locator(".freshness").innerText(),/America\/Chicago/);
-      await localPage.screenshot({path:path.join(output,"viewer-timezone.png"),fullPage:true});
-      await writeFile(path.join(output,"viewer-timezone.json"),JSON.stringify(localMetrics,null,2));
-    } finally {await localContext.close();}
+      assert.equal(
+        new URL(response.url()).searchParams.get("timeZone"),
+        "America/Chicago",
+      );
+      const localMetrics = await response.json();
+      assert.equal(localMetrics.totals.totalTokens, "50");
+      assert.equal(localMetrics.overview.dau, "1");
+      await localPage
+        .getByLabel("Measured total tokens", { exact: true })
+        .getByText("50", { exact: true })
+        .waitFor();
+      assert.match(
+        await localPage.locator(".freshness").innerText(),
+        /America\/Chicago/,
+      );
+      await localPage.screenshot({
+        path: path.join(output, "viewer-timezone.png"),
+        fullPage: true,
+      });
+      await writeFile(
+        path.join(output, "viewer-timezone.json"),
+        JSON.stringify(localMetrics, null, 2),
+      );
+    } finally {
+      await localContext.close();
+    }
     // Failure injection only after the complete real end-to-end path above.
     let release;
     await page.route("**/v1/telemetry/metrics?**", async (route) => {
@@ -672,6 +818,7 @@ export async function dashboardWorkflow({
     });
     await page.unroute("**/v1/telemetry/metrics?**");
     await signIn();
+    await finishMetricsRead();
     const currentCookie = (await context.cookies()).find(
       (cookie) => cookie.httpOnly,
     );
@@ -726,7 +873,7 @@ export async function dashboardWorkflow({
               }
             : null,
           cards: { participating: 6, dau: 3, wau: 4, mau: 5 },
-          tokens: 660,
+          tokens: 700,
           knownCostUsd: 1.5,
           unknownCostGroups: 2,
           cacheReadShare: 0.55,
