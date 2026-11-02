@@ -37,7 +37,7 @@ import {
 import { money, exactMoney } from "./format";
 const props = defineProps<{ data: TelemetryMetrics }>();
 const grouping = defineModel<Grouping>("grouping", { default: "provider" });
-const { groups, days, value } = useReportGroups(
+const { groups, days, value, observed } = useReportGroups(
   () => props.data,
   () => grouping.value,
 );
@@ -64,6 +64,7 @@ const dailyProviders = computed(() => {
       label: row.label,
       color: row.color,
       values: days.value.map((day) => value(row, day, "estimatedCostUsd")),
+      observed: days.value.map((day) => observed(row, day)),
     }))
     .filter((row) => row.values.some((amount) => amount !== null));
 });

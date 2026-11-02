@@ -129,5 +129,7 @@ export function useReportGroups(
         : null;
     return reportedDays.value.has(day) ? "0" : null;
   };
-  return { groups, days, value };
+  const observed = (group: ReportGroup, day: string) =>
+    daily.value.has(`${day}/${group.key}`);
+  return { groups, days, value, observed };
 }
