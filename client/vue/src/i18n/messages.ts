@@ -6,7 +6,7 @@ export const messages = {
     githubStar: {
       title: 'Support the project',
       notice: 'Enjoying {product}?',
-      action: 'Star on GitHub',
+      action: 'Star us on GitHub',
       dismiss: 'Dismiss star reminder',
     },
     telemetry: {

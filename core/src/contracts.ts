@@ -751,6 +751,7 @@ export type AppCommand =
   | { type: 'handoff-active-agent' }
   | { type: 'debug-approval-request' }
   | { type: 'debug-user-questions' }
+  | { type: 'debug-github-star-reminder' }
   | { type: 'debug-celebrate'; kind: CelebrationKind }
   | { type: 'debug-image-annotation'; imageDataUrl?: string; pixelRatio?: 1 | 2 }
   | { type: 'debug-mark-unread' }

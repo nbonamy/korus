@@ -412,11 +412,13 @@ describe('app menu', () => {
     expect(sendDebugAgentMessage).toHaveBeenCalledOnce();
   });
 
-  it('dispatches the background worktree indicator preview', () => {
+  it('dispatches the background worktree indicator and star reminder previews', () => {
     const actions = callbacks();
     const menu = buildAppMenuTemplate(actions, { debugMode: true }, 'darwin');
     clickNestedItem(menu, 'Debug', 'UI Previews', 'Worktree Initialization Indicator');
     expect(actions.sendAppCommand).toHaveBeenCalledWith({ type: 'debug-operation-progress', kind: 'worktreeIndicator' });
+    clickNestedItem(menu, 'Debug', 'UI Previews', 'GitHub Star Reminder');
+    expect(actions.sendAppCommand).toHaveBeenLastCalledWith({ type: 'debug-github-star-reminder' });
   });
 
   it('dispatches the multi-question fixture from the debug agent menu', () => {
@@ -510,6 +512,7 @@ describe('app menu', () => {
     expect(submenuLabels(debugMenu, 'Debug', 'UI Previews')).toStrictEqual([
       'Markdown',
       'Image Annotation',
+      'GitHub Star Reminder',
       'Worktree Initialization',
       'Worktree Initialization Indicator',
       'Pull Request Progress',
@@ -535,6 +538,7 @@ describe('app menu', () => {
     expect(nestedSubmenu(debugMenu, 'Debug', 'UI Previews').map(menuEntryLabel)).toStrictEqual([
       'Markdown',
       'Image Annotation',
+      'GitHub Star Reminder',
       'separator',
       'Worktree Initialization',
       'Worktree Initialization Indicator',

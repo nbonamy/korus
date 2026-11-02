@@ -1,5 +1,6 @@
 import { matchesShellShortcut } from '@workspace/core/keyboard-shortcuts';
 import { product } from '@workspace/core/product';
+import { showGithubStarPromptPreview } from '../github-star-prompt';
 import type {
   Agent,
   AppCommand,
@@ -433,6 +434,13 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
 
     if (command.type === 'debug-operation-progress') {
       void options.actions.openDebugOperationProgress(command.kind);
+      return;
+    }
+
+    if (command.type === 'debug-github-star-reminder') {
+      if (isModalDialogVisible.value || !currentAgent.value) return;
+      options.actions.openAgentSurface();
+      showGithubStarPromptPreview();
       return;
     }
 

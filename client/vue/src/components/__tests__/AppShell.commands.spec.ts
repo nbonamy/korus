@@ -1118,6 +1118,31 @@ describe('AppShell dialogs and commands', () => {
     expect(wrapper.emitted('debug-mark-unread')).toStrictEqual([[]]);
   });
 
+  it('reopens the star reminder preview without changing saved eligibility or dismissal', async () => {
+    const key = 'app:githubStarPrompt:v1';
+    const saved = JSON.stringify({ sentPrompts: 2, dismissed: true });
+    localStorage.setItem(key, saved);
+    let listener!: (command: AppCommand) => void;
+    setElectronTestClient({ onAppCommand: next => { listener = next; return () => {}; } });
+    const props = { snapshot: createInitialSnapshot(), stubAgentWorkspace: false, realConversationPane: true };
+    const wrapper = mountShell(props);
+    await nextTick();
+    expect(wrapper.find('.github-star-prompt').exists()).toBe(false);
+    for (let i = 0; i < 2; i++) {
+      listener({ type: 'debug-github-star-reminder' });
+      await nextTick();
+      expect(wrapper.find('.github-star-prompt').exists()).toBe(true);
+      await wrapper.get('button[aria-label="Dismiss star reminder"]').trigger('click');
+      expect(wrapper.find('.github-star-prompt').exists()).toBe(false);
+      expect(localStorage.getItem(key)).toBe(saved);
+    }
+    wrapper.unmount();
+    const restored = mountShell(props);
+    await nextTick();
+    expect(restored.find('.github-star-prompt').exists()).toBe(false);
+    expect(localStorage.getItem(key)).toBe(saved);
+  });
+
   it('previews background worktree initialization without changing the agent or running setup', async () => {
     vi.useFakeTimers();
     let listener!: (command: AppCommand) => void;

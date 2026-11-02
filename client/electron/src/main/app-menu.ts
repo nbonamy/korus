@@ -336,6 +336,10 @@ function buildDebugUiPreviews(callbacks: AppMenuCallbacks): MenuItemConstructorO
       click: () => callbacks.sendAppCommand({ type: 'debug-open-markdown' }),
     },
     debugImageAnnotationMenuItem(callbacks),
+    {
+      label: 'GitHub Star Reminder',
+      click: () => callbacks.sendAppCommand({ type: 'debug-github-star-reminder' }),
+    },
     { type: 'separator' },
     {
       label: 'Worktree Initialization',

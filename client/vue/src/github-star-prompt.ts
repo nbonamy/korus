@@ -5,6 +5,11 @@ import { appClientPlatform } from './platform-api';
 const storageKey = 'app:githubStarPrompt:v1';
 const threshold = 5;
 const preference = ref({ sentPrompts: 0, dismissed: false });
+const previewVisible = ref(false);
+
+export function showGithubStarPromptPreview(): void {
+  previewVisible.value = true;
+}
 
 function restore(): void {
   try {
@@ -32,8 +37,12 @@ export function recordSentPrompt(): void {
 export function useGithubStarPrompt() {
   restore();
   return {
-    visible: computed(() => preference.value.sentPrompts >= threshold && !preference.value.dismissed),
+    visible: computed(() => previewVisible.value || (preference.value.sentPrompts >= threshold && !preference.value.dismissed)),
     dismiss: () => {
+      if (previewVisible.value) {
+        previewVisible.value = false;
+        return;
+      }
       preference.value.dismissed = true;
       save();
     },
