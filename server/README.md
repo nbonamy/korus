@@ -290,7 +290,7 @@ configuration/readiness only and produce no request records. The database and
 backups intentionally contain installation UUIDs and numeric rollups, never source
 addresses or conversation content. Monitor health/exit state, backup freshness and
 disk capacity alongside application diagnostics. Set `TELEMETRY_LOGGING_EVIDENCE`
-to an external JSON file when running `node --test server/scripts/stack.test.mjs`
+to an external JSON file when running `npm run test:server:infrastructure`
 to retain the sanitized records from its real database-failure probe.
 Do not enable packet capture, debug logs, SQL audit extensions or request tracing
 on this route in production.
@@ -330,13 +330,18 @@ counts/aggregates and oldest retained days before any separately authorized
 recovery cutover. Reapply grants before serving a recovered database; restoration
 must not resurrect expired backup copies in other storage.
 
-`node --test server/scripts/stack.test.mjs` builds the real isolated image and
+`npm run test:server:infrastructure` builds the real isolated image and
 exercises the disposable Compose stack, role denials, HTTP through nginx,
 restart/recreation persistence, exact expiry boundaries, failed dumps and isolated
 restore including old history. It removes its containers, networks and volumes.
 Set `TELEMETRY_STACK_EVIDENCE` to an untracked output file for sanitized results.
 
-The same workflow connects an isolated desktop-owned profile through the real
+Run `npm run test:server:e2e` for the console browser workflow in
+`server/test/e2e/console.test.mjs`. It starts a disposable local stack without
+database restart, backup-expiry or restore exercises. Its fixture uses synthetic
+credentials and never reads an operator environment or connects to a deployed host.
+
+The console workflow connects an isolated desktop-owned profile through the real
 settings/activity RPC, SQLite ledger and `TelemetryUploadService` to that stack.
 Its local fault receiver forwards canonical bytes and discards an acknowledgement
 after commit. Restart and repeated window notifications must preserve one logical

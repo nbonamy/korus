@@ -46,6 +46,7 @@ jobs:
       - run: npm run release-notes:check
       - run: npm run test --workspaces -- --maxWorkers=2
       - run: npm run test:scripts
+      - run: npm run test:server:infrastructure
 
   build:
     name: build (${{ matrix.target }})

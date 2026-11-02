@@ -14,13 +14,15 @@
         "website/docs/.vitepress/theme/index.mts",
         "vite.sdk-aliases.ts",
         "server/scripts/**/*.mjs",
+        "server/test/**/*.mjs",
         "server/deploy/container.mjs"
       ],
       "project": [
         "scripts/**/*.mjs",
         "website/**/*.{js,mjs,mts}",
         "*.ts",
-        "server/scripts/**/*.mjs"
+        "server/scripts/**/*.mjs",
+        "server/test/**/*.mjs"
       ],
       "stylelint": {
         "config": [

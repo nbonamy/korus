@@ -32,6 +32,7 @@ jobs:
       - run: npm run lint
       - run: npm run test:coverage --workspaces -- --maxWorkers=2
       - run: npm run test:scripts
+      - run: npm run test:server:infrastructure
       - run: node scripts/coverage-badge.mjs generate
       - name: Retain coverage badge
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'

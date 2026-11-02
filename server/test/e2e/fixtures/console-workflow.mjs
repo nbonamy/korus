@@ -132,7 +132,7 @@ export async function dashboardWorkflow({
         .waitFor();
     }
     await signIn();
-    await page.getByRole("region", { name: "Global activity" }).waitFor();
+    await page.getByRole("region", { name: "Weekly overview" }).waitFor();
     await page.addInitScript(() => {
       window.__loginFormRendered = false;
       new MutationObserver(() => {
@@ -204,6 +204,7 @@ export async function dashboardWorkflow({
       await page
         .getByRole("heading", { level: 1, name, exact: true })
         .waitFor();
+      await finishMetricsRead();
     }
     await visit("Performance");
     assert.equal(
@@ -211,13 +212,16 @@ export async function dashboardWorkflow({
       0,
     );
     await visit("Overview");
-    // Reports are separate, addressable pages; changing page preserves the range.
+    assert.equal(await page.getByLabel("From day", { exact: true }).count(), 0);
+    assert.equal(await page.locator(".weekly-card").count(), 4);
+    await visit("Tokens");
+    // Detail pages preserve the selected range.
     const initialFrom = await page
       .getByLabel("From day", { exact: true })
       .inputValue();
     await visit("Tokens");
     await page
-      .getByRole("region", { name: "Weekly tokens", exact: true })
+      .getByRole("region", { name: "Total tokens", exact: true })
       .waitFor();
     assert.equal(
       await page
@@ -231,7 +235,7 @@ export async function dashboardWorkflow({
       .waitFor();
     assert.equal(
       await page
-        .getByRole("region", { name: "Weekly tokens", exact: true })
+        .getByRole("region", { name: "Total tokens", exact: true })
         .count(),
       0,
     );
@@ -251,7 +255,7 @@ export async function dashboardWorkflow({
     await page
       .getByRole("heading", { level: 1, name: "Models", exact: true })
       .waitFor();
-    await visit("Overview");
+    await visit("Tokens");
     const providerLabels = {
       "": "All providers",
       codex: "Codex",
@@ -281,7 +285,20 @@ export async function dashboardWorkflow({
         ),
         page.getByRole("button", { name: "Apply range", exact: true }).click(),
       ]);
-      await page.getByRole("region", { name: "Global activity" }).waitFor();
+      await finishMetricsRead();
+    }
+    async function summary(label) {
+      return (await page.getByLabel(label).innerText()).replace(/\s+/g, " ");
+    }
+    async function globalActivity() {
+      await visit("Activity");
+      await finishMetricsRead();
+      const text = await page
+        .getByRole("region", { name: "Global activity" })
+        .innerText();
+      await visit("Tokens");
+      await finishMetricsRead();
+      return text;
     }
     if (desktopProfile) {
       await range(desktopProfile.reportDay, desktopProfile.emptyDay);
@@ -289,6 +306,8 @@ export async function dashboardWorkflow({
         .getByLabel("Measured total tokens", { exact: true })
         .getByText("120", { exact: true })
         .waitFor();
+      await visit("Activity");
+      await finishMetricsRead();
       await page
         .getByLabel("Participating installs", { exact: true })
         .getByText("1", { exact: true })
@@ -302,15 +321,9 @@ export async function dashboardWorkflow({
         fullPage: true,
       });
       await visit("Performance");
-      assert.match(
-        await page.getByLabel("Output speed summary").innerText(),
-        /20 tokens\/s/,
-      );
-      assert.match(
-        await page.getByLabel("Time to first output summary").innerText(),
-        /0.3 s/,
-      );
-      await visit("Overview");
+      assert.match(await summary("Output speed summary"), /20 tokens\/s/);
+      assert.match(await summary("Time to first output summary"), /0.3 s/);
+      await visit("Tokens");
       await replaceProfile();
       await Promise.all([
         page.waitForResponse(
@@ -323,6 +336,8 @@ export async function dashboardWorkflow({
         .getByLabel("Measured total tokens", { exact: true })
         .getByText("70", { exact: true })
         .waitFor();
+      await visit("Activity");
+      await finishMetricsRead();
       await page
         .getByLabel("Participating installs", { exact: true })
         .getByText("1", { exact: true })
@@ -338,7 +353,7 @@ export async function dashboardWorkflow({
         fullPage: true,
       });
     }
-    await visit("Overview");
+    await visit("Tokens");
     await sql("TRUNCATE usage_daily,install_days,installs");
     await sql(seed);
     await page.clock.setFixedTime(new Date("2026-10-25T12:00:00Z"));
@@ -375,25 +390,48 @@ export async function dashboardWorkflow({
       page.getByRole("option", { name: "All models", exact: true }).click(),
     ]);
     for (const [label, value] of [
+      ["Measured total tokens", "700"],
+      ["Measured cache-read share", "55.0%"],
+    ])
+      assert.ok(
+        (await page.getByLabel(label, { exact: true }).innerText()).includes(
+          value,
+        ),
+        label,
+      );
+    const aggregate = await (
+      await context.request.get(
+        origin +
+          "/v1/telemetry/metrics?from=2026-10-18&to=2026-10-24&timeZone=UTC",
+      )
+    ).json();
+    assert.equal(aggregate.totals.turns, "7");
+    assert.deepEqual(aggregate.weeklyTopUsers, [
+      {
+        rank: 1,
+        turns: "7",
+        totalTokens: "700",
+        estimatedCostUsd: "1.5",
+        turnShare: "1",
+      },
+    ]);
+    await visit("Activity");
+    await finishMetricsRead();
+    for (const [label, value] of [
       ["Participating installs", "6"],
       ["Daily active installs", "3"],
       ["Weekly active installs", "4"],
       ["Monthly active installs", "5"],
-      ["Turns", "7"],
-      ["Measured total tokens", "700"],
-      ["Known estimated spend", "$1.50"],
-      ["Measured cache-read share", "55.0%"],
     ])
-      assert.equal(
+      assert.ok(
         (await page.getByLabel(label, { exact: true }).innerText()).includes(
           value,
         ),
-        true,
         label,
       );
-    const global = await page
-      .getByRole("region", { name: "Global activity" })
-      .innerText();
+    const global = await globalActivity();
+    await visit("Spend");
+    await finishMetricsRead();
     assert.match(
       await page
         .getByLabel("Known estimated spend", { exact: true })
@@ -406,7 +444,7 @@ export async function dashboardWorkflow({
     });
     assert.equal(await cost.locator("canvas").count(), 1);
     // Known zeroes remain inspectable; missing dates have no observations.
-    assert.equal(await cost.locator(".chart-observation").count(), 3);
+    assert.equal(await cost.locator(".chart-observation").count(), 7);
     await cost.getByRole("img").focus();
     await page.keyboard.press("End");
     assert.match(await cost.getByRole("status").innerText(), /Oct 24.*\$0/is);
@@ -415,23 +453,25 @@ export async function dashboardWorkflow({
       await cost.getByRole("status").innerText(),
       /Oct 23.*Unavailable/is,
     );
+    await visit("Tokens");
+    await finishMetricsRead();
     const weekly = page.getByRole("region", {
-      name: "Weekly tokens",
+      name: "Total tokens",
       exact: true,
     });
     await weekly.getByRole("img").focus();
     await page.keyboard.press("Home");
     assert.equal(
       await weekly.locator(".tooltip-day").getAttribute("title"),
-      "2026-10-12",
+      "2026-10-18",
     );
     assert.equal(await weekly.locator(".tooltip-total b").innerText(), "110");
     await page.keyboard.press("End");
     assert.equal(
       await weekly.locator(".tooltip-day").getAttribute("title"),
-      "2026-10-19",
+      "2026-10-24",
     );
-    assert.equal(await weekly.locator(".tooltip-total b").innerText(), "590");
+    assert.equal(await weekly.locator(".tooltip-total b").innerText(), "370");
     assert.equal(await page.getByText("View data", { exact: true }).count(), 0);
     assert.equal(
       await page.getByText("About the data", { exact: true }).count(),
@@ -481,7 +521,7 @@ export async function dashboardWorkflow({
         animations: "disabled",
       });
     }
-    await visit("Overview");
+    await visit("Tokens");
     await Promise.all([
       page.waitForResponse(
         (r) => r.url().includes("provider=codex") && r.status() === 200,
@@ -492,10 +532,7 @@ export async function dashboardWorkflow({
       .getByLabel("Measured total tokens", { exact: true })
       .getByText("440", { exact: true })
       .waitFor();
-    assert.equal(
-      await page.getByRole("region", { name: "Global activity" }).innerText(),
-      global,
-    );
+    assert.equal(await globalActivity(), global);
     const modelControl = page.getByRole("combobox", {
       name: "Model",
       exact: true,
@@ -519,10 +556,7 @@ export async function dashboardWorkflow({
       .getByLabel("Measured total tokens", { exact: true })
       .getByText("260", { exact: true })
       .waitFor();
-    assert.equal(
-      await page.getByRole("region", { name: "Global activity" }).innerText(),
-      global,
-    );
+    assert.equal(await globalActivity(), global);
     await Promise.all([
       page.waitForResponse(
         (r) =>
@@ -589,10 +623,7 @@ export async function dashboardWorkflow({
       .getByLabel("Measured total tokens", { exact: true })
       .getByText("330", { exact: true })
       .waitFor();
-    assert.equal(
-      await page.getByRole("region", { name: "Global activity" }).innerText(),
-      global,
-    );
+    assert.equal(await globalActivity(), global);
     await sql("TRUNCATE usage_daily,install_days,installs");
     await sql(seed);
     await Promise.all([
@@ -606,6 +637,8 @@ export async function dashboardWorkflow({
       .getByLabel("Measured total tokens", { exact: true })
       .getByText("700", { exact: true })
       .waitFor();
+    await visit("Activity");
+    await finishMetricsRead();
     const geometry = await page.evaluate(() => ({
       viewport: innerWidth,
       page: document.documentElement.scrollWidth,
@@ -657,19 +690,13 @@ export async function dashboardWorkflow({
       "UPDATE usage_daily SET speed_turns=2,speed_output_tokens=30,generation_ms=1000,ttft_ms=1000,ttft_turns=2 WHERE provider='codex' AND day='2026-10-24'",
     );
     await page.getByLabel("Refresh metrics").click();
-    await page.getByLabel("Measured total tokens", { exact: true }).waitFor();
+    await finishMetricsRead();
     await visit("Performance");
-    assert.match(
-      await page.getByLabel("Output speed summary").innerText(),
-      /30 tokens\/s/,
-    );
-    assert.match(
-      await page.getByLabel("Time to first output summary").innerText(),
-      /0.5 s/,
-    );
+    assert.match(await summary("Output speed summary"), /30 tokens\/s/);
+    assert.match(await summary("Time to first output summary"), /0.5 s/);
     assert.match(
       await page
-        .getByRole("region", { name: "Performance by model", exact: true })
+        .getByRole("region", { name: "Output speed ranking", exact: true })
         .innerText(),
       /Unavailable/,
     );
@@ -699,7 +726,7 @@ export async function dashboardWorkflow({
       fullPage: true,
       animations: "disabled",
     });
-    await visit("Overview");
+    await visit("Models");
     await range("2026-10-20", "2026-10-20");
     await page
       .getByText("No usage for this selection.", { exact: true })
@@ -727,7 +754,7 @@ export async function dashboardWorkflow({
     try {
       const localPage = await localContext.newPage();
       localPage.on("pageerror", (error) => errors.push(error.message));
-      await localPage.goto(origin);
+      await localPage.goto(origin + "/tokens");
       await localPage
         .getByLabel("From day", { exact: true })
         .fill("2026-10-24");
