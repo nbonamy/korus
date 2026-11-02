@@ -302,7 +302,7 @@ function drawAnnotation(
   context.lineWidth = 4;
 
   if (annotation.tool === 'arrow') drawArrow(context, annotation.end, annotation.start);
-  else if (annotation.tool === 'rectangle') drawRoughRectangle(context, annotation.start, annotation.end);
+  else if (annotation.tool === 'rectangle') drawRectangle(context, annotation.start, annotation.end);
   else if (annotation.tool === 'oval') drawRoughOval(context, annotation.start, annotation.end);
   else counterPlacement = drawMeasurement(context, annotation, palette, pixelRatio);
 
@@ -343,7 +343,7 @@ function drawArrow(
   context.stroke();
 }
 
-function drawRoughRectangle(
+function drawRectangle(
   context: CanvasRenderingContext2D,
   start: ImageAnnotationPoint,
   end: ImageAnnotationPoint,
@@ -352,15 +352,13 @@ function drawRoughRectangle(
   const top = Math.min(start.y, end.y);
   const right = Math.max(start.x, end.x);
   const bottom = Math.max(start.y, end.y);
+  context.lineJoin = 'miter';
   context.beginPath();
-  context.moveTo(left + 2, top);
-  context.lineTo(right - 1, top + 1);
-  context.quadraticCurveTo(right + 2, top + 2, right, top + 5);
-  context.lineTo(right - 1, bottom - 2);
-  context.quadraticCurveTo(right - 2, bottom + 2, right - 6, bottom);
-  context.lineTo(left + 1, bottom - 1);
-  context.quadraticCurveTo(left - 2, bottom - 2, left, bottom - 6);
-  context.lineTo(left + 1, top + 2);
+  context.moveTo(left, top);
+  context.lineTo(right, top);
+  context.lineTo(right, bottom);
+  context.lineTo(left, bottom);
+  context.closePath();
   context.stroke();
 }
 
