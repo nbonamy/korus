@@ -68,6 +68,7 @@ locally without provider operations.
 
 Every behavior change needs coverage at the owning runtime boundary; write the
 behavior test before the production change. Never write unit tests after code.
+Never delete or weaken a failing test to make the suite pass; fix the code, or ask.
 Prefer E2E or integration tests as the sole testing mechanism, especially for
 complex features, and produce a verifiable, repeatable artifact from those tests.
 If a system must be tested in isolation, write down all the ways it could fail
