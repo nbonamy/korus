@@ -438,7 +438,8 @@ describe('collaboration across daemon ownership boundaries', () => {
       return;
     }
     await vi.waitFor(async () => expect((await owner.store.loadTasks())[0]).toMatchObject({ state: 'completed', submission: { summary: 'Remote findings verified' } }));
-    const outcome = await owner.mcp.callTool(parent.id, 'wait-tasks', { taskIds: [result.taskId] });
+    // The saved file can become visible before the in-memory transaction commits.
+    const outcome = await owner.mcp.callTool(parent.id, 'wait-tasks', { taskIds: [result.taskId], timeoutMs: 2000 });
     expect(outcome.structuredContent?.tasks).toEqual([expect.objectContaining({ state: 'completed' })]);
     const parentConversation = owner.provider.conversation('local-parent');
     parentConversation.setSnapshot({ busy: false, activeTurnId: null });
