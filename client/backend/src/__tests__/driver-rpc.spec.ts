@@ -308,6 +308,7 @@ describe('BackendDriverRpc', () => {
         loadingStrategy: 'lazy',
         historyItemsView: 'summary',
         originalHistoryImages: true,
+        originalHistoryUsage: true,
         transport: {
           command: expect.any(String),
         },

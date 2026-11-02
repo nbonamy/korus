@@ -74,6 +74,7 @@ export function appSurfaceOptions(options: BackendDriverRegistryOptions = {}): A
     loadingStrategy: 'lazy',
     historyItemsView: 'summary',
     originalHistoryImages: true,
+    originalHistoryUsage: true,
     transport: {
       ...resolveCodexLaunch(options.generalSettings?.codexBinaryPath),
       configOverrides: buildAppMcpConfigOverrides(
