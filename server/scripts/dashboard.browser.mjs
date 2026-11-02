@@ -60,7 +60,8 @@ export async function dashboardWorkflow({
       timezoneId: "UTC",
     });
     const page = await context.newPage();
-    await page.clock.install({ time: new Date() });
+    // Fix calendar dates while keeping canvas animation frames and resize timers real.
+    await page.clock.setFixedTime(new Date());
     const errors = [],
       external = [],
       aggregateBodies = [];
@@ -303,7 +304,7 @@ export async function dashboardWorkflow({
       await visit("Performance");
       assert.match(
         await page.getByLabel("Output speed summary").innerText(),
-        /20.0 tok\/s/,
+        /20 tokens\/s/,
       );
       assert.match(
         await page.getByLabel("Time to first output summary").innerText(),
@@ -342,19 +343,25 @@ export async function dashboardWorkflow({
     await sql(seed);
     await page.clock.setFixedTime(new Date("2026-10-25T12:00:00Z"));
     await range("2026-10-18", "2026-10-24");
-    await page.getByRole("combobox", { name: "Model", exact: true }).press("ArrowDown");
-    assert.deepEqual(await page.getByRole("listbox", { name: "Model", exact: true }).getByRole("option").allTextContents(), [
-      "All models",
-      "claude-sonnet-4-6",
-      "Unknown model",
-    ]);
+    await page
+      .getByRole("combobox", { name: "Model", exact: true })
+      .press("ArrowDown");
+    assert.deepEqual(
+      await page
+        .getByRole("listbox", { name: "Model", exact: true })
+        .getByRole("option")
+        .allTextContents(),
+      ["All models", "claude-sonnet-4-6", "Unknown model"],
+    );
     await Promise.all([
       page.waitForResponse(
         (r) => r.url().includes("model=unknown") && r.status() === 200,
       ),
       page.getByRole("option", { name: "Unknown model", exact: true }).click(),
     ]);
-    await page.getByRole("combobox", { name: "Model", exact: true }).press("ArrowDown");
+    await page
+      .getByRole("combobox", { name: "Model", exact: true })
+      .press("ArrowDown");
     await page
       .getByRole("option", { name: "claude-sonnet-4-6", exact: true })
       .waitFor();
@@ -397,40 +404,9 @@ export async function dashboardWorkflow({
       name: "Daily estimated spend",
       exact: true,
     });
-    assert.equal(await cost.locator("rect").count(), 3);
-    const gapHasPaint = await cost.getByRole("img").evaluate((svg) => {
-      const labels = [...svg.querySelectorAll(".date-label text")];
-      const first = Number(labels[0].getAttribute("x"));
-      const last = Number(labels.at(-1).getAttribute("x"));
-      // Probe the unmeasured interior days; both the line and its area must be absent.
-      const paths = [...svg.querySelectorAll("path,rect")];
-      return [2.5, 3.5, 4.5].some((day) => {
-        const x = first + ((last - first) * day) / 6;
-        for (let y = 0; y < svg.viewBox.baseVal.height; y += 0.5) {
-          const point = new DOMPoint(x, y);
-          if (
-            paths.some(
-              (p) =>
-                (getComputedStyle(p).fill !== "none" &&
-                  p.isPointInFill(point)) ||
-                p.isPointInStroke(point),
-            )
-          )
-            return true;
-        }
-        return false;
-      });
-    });
-    assert.equal(
-      gapHasPaint,
-      false,
-      "unmeasured spend dates must contain no curve or area",
-    );
-    assert.equal(
-      await cost.locator("circle").count(),
-      0,
-      "no persistent point markers",
-    );
+    assert.equal(await cost.locator("canvas").count(), 1);
+    // Known zeroes remain inspectable; missing dates have no observations.
+    assert.equal(await cost.locator(".chart-observation").count(), 3);
     await cost.getByRole("img").focus();
     await page.keyboard.press("End");
     assert.match(await cost.getByRole("status").innerText(), /Oct 24.*\$0/is);
@@ -462,30 +438,16 @@ export async function dashboardWorkflow({
       0,
     );
     const chartBounds = await page
-      .locator("path.chart-line")
-      .evaluateAll((paths) =>
-        paths.map((p) => {
-          const box = p.getBBox();
-          const grid = [
-            ...p.ownerSVGElement.querySelectorAll(".grid line"),
-          ].map((line) => Number(line.getAttribute("y1")));
-          return {
-            plotTop: Math.min(...grid),
-            plotBottom: Math.max(...grid),
-            top: box.y,
-            bottom: box.y + box.height,
-            stroke: getComputedStyle(p).strokeWidth,
-          };
-        }),
+      .locator('canvas[role="img"]')
+      .evaluateAll((charts) =>
+        charts.map((chart) => ({
+          width: chart.getBoundingClientRect().width,
+          height: chart.getBoundingClientRect().height,
+        })),
       );
-    assert.equal(
-      chartBounds.every(
-        (b) =>
-          b.top >= b.plotTop - 0.01 &&
-          b.bottom <= b.plotBottom + 0.01 &&
-          b.stroke === "1.5px",
-      ),
-      true,
+    assert.ok(chartBounds.length > 0);
+    assert.ok(
+      chartBounds.every((chart) => chart.width > 0 && chart.height === 300),
     );
     const models = page.getByRole("region", {
       name: "Provider and model",
@@ -499,10 +461,18 @@ export async function dashboardWorkflow({
       fullPage: true,
       animations: "disabled",
     });
-    for (const name of ["Activity", "Models", "Tokens", "Spend", "Performance"]) {
+    for (const name of [
+      "Activity",
+      "Models",
+      "Tokens",
+      "Spend",
+      "Performance",
+    ]) {
       await visit(name);
       assert.equal(
-        /turns? missing usage|partial estimate|^partial$/im.test(await page.locator("main").innerText()),
+        /turns? missing usage|partial estimate|^partial$/im.test(
+          await page.locator("main").innerText(),
+        ),
         false,
       );
       await page.screenshot({
@@ -526,10 +496,16 @@ export async function dashboardWorkflow({
       await page.getByRole("region", { name: "Global activity" }).innerText(),
       global,
     );
-    const modelControl = page.getByRole("combobox", { name: "Model", exact: true });
+    const modelControl = page.getByRole("combobox", {
+      name: "Model",
+      exact: true,
+    });
     await modelControl.press("ArrowDown");
     assert.deepEqual(
-      await page.getByRole("listbox", { name: "Model", exact: true }).getByRole("option").allTextContents(),
+      await page
+        .getByRole("listbox", { name: "Model", exact: true })
+        .getByRole("option")
+        .allTextContents(),
       ["All models", "Unknown model"],
     );
     await modelControl.press("Escape");
@@ -539,27 +515,39 @@ export async function dashboardWorkflow({
       ),
       select("Provider", "claude"),
     ]);
-    await page.getByLabel("Measured total tokens", { exact: true }).getByText("260", { exact: true }).waitFor();
+    await page
+      .getByLabel("Measured total tokens", { exact: true })
+      .getByText("260", { exact: true })
+      .waitFor();
     assert.equal(
       await page.getByRole("region", { name: "Global activity" }).innerText(),
       global,
     );
     await Promise.all([
       page.waitForResponse(
-        (r) => r.url().includes("model=claude-sonnet-4-6") && r.status() === 200,
+        (r) =>
+          r.url().includes("model=claude-sonnet-4-6") && r.status() === 200,
       ),
       select("Model", "claude-sonnet-4-6"),
     ]);
-    await page.getByLabel("Measured total tokens", { exact: true }).getByText("220", { exact: true }).waitFor();
+    await page
+      .getByLabel("Measured total tokens", { exact: true })
+      .getByText("220", { exact: true })
+      .waitFor();
     // This Claude model has no Codex usage: changing provider clears it and refetches.
     await Promise.all([
       page.waitForResponse(
-        (r) => r.url().includes("provider=codex") &&
-          !new URL(r.url()).searchParams.has("model") && r.status() === 200,
+        (r) =>
+          r.url().includes("provider=codex") &&
+          !new URL(r.url()).searchParams.has("model") &&
+          r.status() === 200,
       ),
       select("Provider", "codex"),
     ]);
-    await page.getByLabel("Measured total tokens", { exact: true }).getByText("440", { exact: true }).waitFor();
+    await page
+      .getByLabel("Measured total tokens", { exact: true })
+      .getByText("440", { exact: true })
+      .waitFor();
     await Promise.all([
       page.waitForResponse(
         (r) => r.url().includes("provider=antigravity") && r.status() === 200,
@@ -621,10 +609,12 @@ export async function dashboardWorkflow({
     const geometry = await page.evaluate(() => ({
       viewport: innerWidth,
       page: document.documentElement.scrollWidth,
-      charts: [...document.querySelectorAll('svg[role="img"]')].map((el) => ({
-        width: el.getBoundingClientRect().width,
-        height: el.getBoundingClientRect().height,
-      })),
+      charts: [...document.querySelectorAll('canvas[role="img"]')].map(
+        (el) => ({
+          width: el.getBoundingClientRect().width,
+          height: el.getBoundingClientRect().height,
+        }),
+      ),
     }));
     assert.equal(
       geometry.page <= geometry.viewport,
@@ -646,6 +636,11 @@ export async function dashboardWorkflow({
       mobileBox.x + mobileBox.width - 18,
       mobileBox.y + 45,
     );
+    // Chart.js dispatches pointer inspection on the next animation frame.
+    await page
+      .getByRole("region", { name: "Daily activity", exact: true })
+      .locator('.tooltip-day[title="2026-10-24"]')
+      .waitFor();
     assert.match(
       await page
         .getByRole("region", { name: "Daily activity", exact: true })
@@ -666,7 +661,7 @@ export async function dashboardWorkflow({
     await visit("Performance");
     assert.match(
       await page.getByLabel("Output speed summary").innerText(),
-      /30.0 tok\/s/,
+      /30 tokens\/s/,
     );
     assert.match(
       await page.getByLabel("Time to first output summary").innerText(),
@@ -679,21 +674,26 @@ export async function dashboardWorkflow({
       /Unavailable/,
     );
     const speedChart = page.getByRole("region", {
-      name: "Output speed",
+      name: "Output speed over time",
       exact: true,
     });
-    assert.equal(await speedChart.getByRole("list", { name: "Series" }).count(), 0);
+    assert.equal(
+      await speedChart.getByRole("list", { name: "Series" }).count(),
+      0,
+    );
     await speedChart.getByRole("img").focus();
     await page.keyboard.press("End");
     assert.match(
       await speedChart.getByRole("status").innerText(),
-      /30.0 tok\/s/,
+      /30 tokens\/s/,
     );
-    assert.equal((await speedChart.getByRole("status").innerText()).includes("Unavailable"), false);
     assert.equal(
-      await speedChart.locator('path[fill^="url("]').count(),
-      0,
+      (await speedChart.getByRole("status").innerText()).includes(
+        "Unavailable",
+      ),
+      false,
     );
+    assert.equal(await speedChart.locator("canvas").count(), 1);
     await page.screenshot({
       path: path.join(output, "performance.png"),
       fullPage: true,

@@ -1,6 +1,17 @@
 // @vitest-environment jsdom
 import { mount, flushPromises } from "@vue/test-utils";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
+vi.mock("vue-chartjs", async () => {
+  const { defineComponent, h } = await import("vue");
+  return {
+    Chart: defineComponent({
+      props: ["data", "options", "plugins", "type"],
+      setup(_props, { attrs }) {
+        return () => h("canvas", attrs);
+      },
+    }),
+  };
+});
 import { ElPopover, ElSwitch } from "element-plus";
 import ConsoleApp from "../ConsoleApp.vue";
 import { createConsoleSession } from "../console-session";

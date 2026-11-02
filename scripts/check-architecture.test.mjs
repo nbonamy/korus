@@ -252,8 +252,9 @@ test("private dashboard imports only browser-safe aggregate contracts", async ()
       "import type {Settings} from '@workspace/core/contracts';",
     "server/frontend/src/desktop.ts":
       "import {state} from '@workspace/vue/app-state';",
+    "server/frontend/src/client-widget.ts": "import FormField from '@workspace/vue/shared/form/FormField.vue';",
   });
   assert.equal(bad.status, 1);
-  for (const name of ["database.ts", "backend.ts", "identity.ts", "desktop.ts"])
+  for (const name of ["database.ts", "backend.ts", "identity.ts", "desktop.ts", "client-widget.ts"])
     assert.ok(bad.stderr.includes(name), bad.stderr);
 });

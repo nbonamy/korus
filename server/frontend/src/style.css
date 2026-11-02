@@ -325,37 +325,12 @@ small {
   min-width: 0;
   width: 100%;
 }
-.chart-stage svg {
-  display: block;
-  width: 100%;
-  overflow: visible;
-}
-svg text {
-  fill: var(--color-text-muted);
-  font-family: inherit;
-  font-size: 11px;
-}
-.grid line {
-  stroke: var(--color-border);
-  stroke-width: 0.6;
-}
-.chart-line {
-  fill: none;
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.crosshair {
-  stroke: var(--color-outline);
-  stroke-dasharray: 3 3;
-  stroke-width: 0.8;
-}
 .legend {
   display: flex;
   gap: 8px 16px;
   flex-wrap: wrap;
   padding: 0;
-  margin: 0 0 12px;
+  margin: 12px 0 0;
   list-style: none;
   font-size: 11px;
   color: var(--color-text-muted);
@@ -366,8 +341,9 @@ svg text {
   gap: 6px;
 }
 .legend i {
-  width: 16px;
-  border-top-width: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
 }
 .usage-heading {
   margin: 24px 0 12px;
@@ -693,7 +669,7 @@ footer {
 .chart-tooltip {
   position: absolute;
   z-index: 2;
-  padding: 12px 16px;
+  padding: 8px 12px;
   border: 1px solid var(--color-border);
   border-radius: var(--console-radius);
   background: var(--color-surface-lowest);
@@ -749,17 +725,30 @@ footer {
 }
 
 .console-options-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border: 1px solid var(--color-border);
+  border-radius: 5px;
+  background: var(--color-surface-lowest);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.console-options-trigger:hover {
+  background: var(--color-surface-low);
+}
+.console-options-trigger:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 @media (max-width: 560px) {
   .console-options-trigger {
     width: 40px;
     height: 40px;
   }
-}
-
-.console-options-tooltip {
-  display: inline-flex;
 }
 
 .sidebar-session {
@@ -858,4 +847,23 @@ footer {
   .sign-in-panel {
     padding: 28px 24px;
   }
+}
+
+.chart-heading p {
+  margin: 4px 0 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.console-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.console-form-field > label {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
 }

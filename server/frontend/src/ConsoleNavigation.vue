@@ -42,9 +42,17 @@
         :disabled="signingOut"
         @click="emit('signOut')"
       >
-        <QuitIcon aria-hidden="true" /><span>{{
-          signingOut ? "Signing out…" : "Sign out"
-        }}</span>
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          width="18"
+          height="18"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.6"
+        >
+          <path d="M9 5H4v14h5M14 8l4 4-4 4M8 12h10" /></svg
+        ><span>{{ signingOut ? "Signing out…" : "Sign out" }}</span>
       </button>
       <p v-if="authError" role="alert" class="sign-out-error">
         {{ authError }}
@@ -55,8 +63,7 @@
 <script setup lang="ts">
 import { RouterLink } from "vue-router";
 import { consolePages } from "./console-pages";
-import { QuitIcon } from "@workspace/vue/shared/icons/app-icons";
-import productIcon from "../../../client/electron/assets/icon.svg";
+import productIcon from "./assets/icon.svg";
 defineProps<{
   productName: string;
   signingOut?: boolean;

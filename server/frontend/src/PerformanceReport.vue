@@ -10,7 +10,8 @@
     </p>
     <div class="chart-grid">
       <MetricChart
-        title="Output speed"
+        title="Output speed over time"
+        subtitle="tokens/s"
         :days="days"
         :series="speedSeries"
         measure="rate"
@@ -18,6 +19,7 @@
       />
       <MetricChart
         title="Time to first output"
+        subtitle="s"
         :days="days"
         :series="ttftSeries"
         measure="milliseconds"
@@ -125,26 +127,25 @@
 </template>
 <script setup lang="ts">
 import { computed, toRef } from "vue";
-import {
-  comparisonLabel,
-  modelKey,
-  useModelComparison,
-} from "./use-model-comparison";
+import { modelKey, useModelComparison } from "./use-model-comparison";
 import type { TelemetryMetrics } from "@workspace/core/telemetry-metrics";
 import { modelLabel } from "./model-label";
 import MetricChart from "./MetricChart.vue";
 import { count, rate, duration, percent } from "./format";
 const props = defineProps<{ data: TelemetryMetrics }>();
-const { choices, days, daily, color, dash } = useModelComparison(
+const { choices, days, daily, color } = useModelComparison(
   toRef(props, "data"),
 );
 const performanceSeries = (
   field: "outputTokensPerSecond" | "timeToFirstOutputMs",
 ) =>
   choices.value.map((row) => ({
-    label: comparisonLabel(row),
+    label:
+      choices.value.filter((item) => modelLabel(item) === modelLabel(row))
+        .length > 1
+        ? `${modelLabel(row)} (${row.provider})`
+        : modelLabel(row),
     color: color(row),
-    dash: dash(row),
     values: days.value.map(
       (day) =>
         daily.value.get(`${day}/${modelKey(row)}`)?.performance?.[field] ??
@@ -155,13 +156,10 @@ const speedSeries = computed(() => performanceSeries("outputTokensPerSecond"));
 const ttftSeries = computed(() => performanceSeries("timeToFirstOutputMs"));
 </script>
 <style scoped>
+.chart-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
 .performance-totals {
   margin-bottom: 16px;
-}
-.performance-note {
-  font-size: 11px;
-  line-height: 1.6;
-  margin: 14px 0;
-  max-width: 90ch;
 }
 </style>

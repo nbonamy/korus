@@ -143,11 +143,19 @@ function chartScale(
   );
   return { min: 0, max: scale.max * unit, step: scale.step * unit };
 }
+/** Keep this state for the chart lifetime: vue-chartjs retains plugins across option updates. */
+export type AnalyticsChartInteraction = {
+  index: number | null;
+  border?: string;
+  touch?: boolean;
+  renderedWidth?: () => number;
+};
 /** Browser-neutral Chart.js policy shared by desktop and console adapters. */
 export function buildAnalyticsChart(
   spec: AnalyticsChartSpec,
   theme: AnalyticsChartTheme,
   onActive?: (index: number | null) => void,
+  interaction: AnalyticsChartInteraction = { index: null },
 ) {
   theme = {
     ...theme,
@@ -164,9 +172,9 @@ export function buildAnalyticsChart(
     spec.days.map((_, index) => analyticsNumber(row.values[index])),
   );
   const scale = chartScale(spec, values, stacked);
-  let activeIndex: number | null = null;
+  interaction.border = theme.border;
   const activate = (index: number | null) => {
-    activeIndex = index;
+    interaction.index = index;
     onActive?.(index);
   };
   const data: ChartData<"line", (number | null)[], string> = {
@@ -297,6 +305,13 @@ export function buildAnalyticsChart(
       },
     },
     onHover: (event, _elements, chart) => {
+      const native = event.native as
+        | { type?: string; sourceCapabilities?: { firesTouchEvents?: boolean } }
+        | undefined;
+      interaction.touch = Boolean(
+        native?.type?.startsWith("touch") ||
+        native?.sourceCapabilities?.firesTouchEvents,
+      );
       const index =
         event.x == null
           ? null
@@ -304,7 +319,17 @@ export function buildAnalyticsChart(
               0,
               Math.min(
                 spec.days.length - 1,
-                Math.round(Number(chart.scales.x!.getValueForPixel(event.x))),
+                Math.round(
+                  Number(
+                    chart.scales.x!.getValueForPixel(
+                      event.x *
+                        (interaction.renderedWidth
+                          ? chart.width /
+                            (interaction.renderedWidth() || chart.width)
+                          : 1),
+                    ),
+                  ),
+                ),
               ),
             );
       activate(Number.isFinite(index) ? index : null);
@@ -314,22 +339,29 @@ export function buildAnalyticsChart(
   const plugins: Plugin[] = [
     {
       id: "analytics-crosshair",
-      beforeEvent: (_chart, args) => {
-        if (args.event.type === "mouseout") {
+      beforeEvent: (chart, args) => {
+        if (args.event.type === "mouseout" && !interaction.touch) {
           activate(null);
+          args.changed = true;
+        } else if (
+          args.event.type !== "mouseout" &&
+          args.inChartArea === false
+        ) {
+          // Padding belongs to the nearest date, just like the plot itself.
+          chart.options.onHover?.call(chart, args.event, [], chart);
           args.changed = true;
         }
       },
       afterDraw: (chart) => {
-        if (activeIndex === null) return;
-        const x = chart.scales.x!.getPixelForValue(activeIndex),
+        if (interaction.index === null) return;
+        const x = chart.scales.x!.getPixelForValue(interaction.index),
           { ctx, chartArea } = chart;
         ctx.save();
         ctx.beginPath();
         ctx.moveTo(x, chartArea.top);
         ctx.lineTo(x, chartArea.bottom);
         ctx.lineWidth = 1;
-        ctx.strokeStyle = theme.border;
+        ctx.strokeStyle = interaction.border!;
         ctx.stroke();
         ctx.restore();
       },

@@ -1,6 +1,7 @@
 import { computed, ref, watch, type Ref } from "vue";
 import type { TelemetryMetrics } from "@workspace/core/telemetry-metrics";
 import { modelLabel } from "./model-label";
+import { seriesColor } from "@workspace/core/analytics-palette";
 export type ModelRow = TelemetryMetrics["models"][number];
 export const modelKey = (
   row: Pick<ModelRow, "provider" | "model" | "serviceTier">,
@@ -59,23 +60,16 @@ export function useModelComparison(data: Ref<TelemetryMetrics>) {
           .map((row) => row.day),
       ),
   );
-  // Match desktop Analytics: provider-family hues, with stable model/tier shades.
-  const color = (row: ModelRow) => {
-    const hash = [...modelKey(row)].reduce(
-      (n, c) => (n * 31 + c.charCodeAt(0)) >>> 0,
-      0,
+  const color = (row: ModelRow) =>
+    seriesColor(
+      data.value.range.groupServiceTiers
+        ? row.model
+        : JSON.stringify([
+            row.model === "unknown" ? null : row.model,
+            row.serviceTier ?? null,
+          ]),
+      "model",
     );
-    const base = `var(--chart-${{ codex: 1, claude: 2, antigravity: 3 }[row.provider]})`;
-    return hash % 3 === 0
-      ? base
-      : `color-mix(in oklab, ${base} ${hash % 3 === 1 ? 78 : 58}%, var(--color-surface-lowest))`;
-  };
-  const dash = (row: ModelRow) =>
-    row.serviceTier === "fast"
-      ? "5 3"
-      : row.serviceTier === "ultrafast"
-        ? "2 3"
-        : undefined;
   return {
     choices,
     selected,
@@ -83,7 +77,6 @@ export function useModelComparison(data: Ref<TelemetryMetrics>) {
     days,
     daily,
     color,
-    dash,
     reportedDays,
   };
 }

@@ -1,6 +1,17 @@
 // @vitest-environment jsdom
 import { mount, flushPromises } from "@vue/test-utils";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+vi.mock("vue-chartjs", async () => {
+  const { defineComponent, h } = await import("vue");
+  return {
+    Chart: defineComponent({
+      props: ["data", "options", "plugins", "type"],
+      setup(_props, { attrs }) {
+        return () => h("canvas", attrs);
+      },
+    }),
+  };
+});
 import { ElPopover, ElSwitch } from "element-plus";
 import { RouterView, createMemoryHistory } from "vue-router";
 import { createConsoleRouter } from "../router";
@@ -47,10 +58,14 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   await flushPromises();
   expect(wrapper.get('[role="status"]').text()).toContain("Loading");
   const initial = { ...metrics(), availableModels: ["gpt-6-sol", "unknown"] };
+  initial.modelDaily[0]!.performance.outputTokensPerSecond = "47";
   initial.modelDaily.push({
     ...initial.modelDaily[0]!,
     day: "2020-01-02",
-    performance: { ...initial.modelDaily[0]!.performance, outputTokensPerSecond: "0" },
+    performance: {
+      ...initial.modelDaily[0]!.performance,
+      outputTokensPerSecond: "0",
+    },
   });
   pending.shift()!(
     Response.json({
@@ -99,8 +114,8 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
     wrapper.get('[aria-label="Measured total tokens"] dd').attributes("title"),
   ).toBe("1,250,000,000");
   expect(
-    wrapper.findAll('[aria-label="Daily activity"] path[fill^="url("]'),
-  ).toHaveLength(2);
+    wrapper.find('[aria-label="Daily activity"] canvas[role="img"]').exists(),
+  ).toBe(true);
   expect(
     wrapper
       .get('[aria-label="Recent ranges"]')
@@ -112,7 +127,7 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   expect(wrapper.text()).not.toContain("About the data");
   expect(wrapper.text()).not.toContain("View data");
   await wrapper
-    .get('[aria-label="Daily activity"] svg[role="img"]')
+    .get('[aria-label="Daily activity"] canvas[role="img"]')
     .trigger("focus");
   expect(
     wrapper.get('[aria-label="Daily activity"] [role="status"]').text(),
@@ -142,10 +157,10 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
     .trigger("click");
   await flushPromises();
   expect(
-    wrapper.find('[aria-label="Model usage over time"] rect').exists(),
+    wrapper.find('canvas[aria-label^="Model usage over time"]').exists(),
   ).toBe(true);
 
-  expect(wrapper.get("tbody").text()).toContain("Fast");
+  expect(wrapper.get("tbody").text()).toContain("fast");
   expect(wrapper.get("tbody").text()).toContain("gpt-6-sol");
   expect(wrapper.find('[aria-label="Provider and model"]').exists()).toBe(true);
   expect(wrapper.find('[aria-label="Daily activity"]').exists()).toBe(false);
@@ -156,27 +171,22 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   expect(wrapper.text()).not.toMatch(
     /provider benchmark|Higher is faster|Lower is faster|Missing samples are not zero/,
   );
-  const speedChart = wrapper.get('[aria-label="Output speed"]');
+  const speedChart = wrapper.get('[aria-label="Output speed over time"]');
   expect(speedChart.find('[aria-label="Series"]').exists()).toBe(false);
-  expect(speedChart.findAll(".chart-line")).toHaveLength(2);
-  expect(speedChart.findAll('path[fill^="url("]')).toHaveLength(0);
-  expect(
-    wrapper
-      .get('[aria-label="Time to first output"]')
-      .findAll('path[fill^="url("]'),
-  ).toHaveLength(0);
-  await speedChart.get('svg[role="img"]').trigger("focus");
-  expect(speedChart.text()).toContain("40.0 tok/s");
-  expect(speedChart.text()).toContain("10.0 tok/s");
-  await speedChart.get('svg[role="img"]').trigger("keydown", { key: "End" });
+  expect(speedChart.find('canvas[role="img"]').exists()).toBe(true);
+  expect(speedChart.findAll(".chart-observation")).toHaveLength(3);
+  await speedChart.get('canvas[role="img"]').trigger("focus");
+  expect(speedChart.text()).toContain("47 tokens/s");
+  expect(speedChart.text()).toContain("10 tokens/s");
+  await speedChart.get('canvas[role="img"]').trigger("keydown", { key: "End" });
   const speedTooltip = speedChart.get('[role="status"]');
   expect(speedTooltip.findAll("li")).toHaveLength(1);
-  expect(speedTooltip.text()).toContain("gpt-6-sol · Fast");
-  expect(speedTooltip.text()).toContain("0.0 tok/s");
+  expect(speedTooltip.text()).toContain("gpt-6-sol · fast");
+  expect(speedTooltip.text()).toContain("0 tokens/s");
   expect(speedTooltip.text()).not.toContain("Unavailable");
 
   expect(wrapper.get('[aria-label="Output speed summary"]').text()).toContain(
-    "25.0 tok/s",
+    "25 tokens/s",
   );
   expect(
     wrapper.get('[aria-label="Time to first output summary"]').text(),
@@ -184,7 +194,9 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   await router.push("/tokens");
   await flushPromises();
   expect(
-    wrapper.get('[aria-label="Cache-read share"]').findAll('path[fill^="url("]'),
+    wrapper
+      .get('[aria-label="Cache-read share"]')
+      .findAll('path[fill^="url("]'),
   ).toHaveLength(0);
   await router.push("/overview");
   await flushPromises();
@@ -257,7 +269,7 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   await flushPromises();
   await router.push("/models");
   await flushPromises();
-  expect(wrapper.get("tbody").text()).not.toContain("Fast");
+  expect(wrapper.get("tbody").text()).not.toContain("fast");
   await optionsButton.trigger("click");
   await vi.waitFor(() =>
     expect(optionsButton.attributes("aria-expanded")).toBe("true"),

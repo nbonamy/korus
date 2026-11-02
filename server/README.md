@@ -4,6 +4,10 @@
 owns the private admin console. `deploy/` contains portable Docker services and
 `scripts/` owns image packaging and end-to-end server checks. The mobile and Electron clients are independent of the hosted frontend.
 
+The console owns its Vue controls, theme and assets, and imports no client code.
+Chart.js/vue-chartjs render analytics using the pure configuration and palette in
+core, shared with desktop. Each renderer adapts its own data and accessible tooltips.
+
 The server uses shared `@workspace/core` contracts and canonical UI primitives,
 product metadata and assets from the app repository. Those shared inputs must be
 packaged or transferred explicitly when extracting this directory into another

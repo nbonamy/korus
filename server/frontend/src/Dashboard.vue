@@ -118,26 +118,7 @@
               :value="item"
             />
           </ElSelect>
-          <AppMenuButton
-            ariaLabel="Analytics options"
-            :items="optionsItems"
-            @select="toggleServiceTiers"
-          >
-            <template #trigger="{ attrs }">
-              <ElTooltip content="Analytics options" placement="top">
-                <span class="console-options-tooltip">
-                  <button
-                    v-bind="attrs"
-                    type="button"
-                    class="app-icon-button console-options-trigger"
-                    aria-label="Analytics options"
-                  >
-                    <DotsVerticalIcon aria-hidden="true" />
-                  </button>
-                </span>
-              </ElTooltip>
-            </template>
-          </AppMenuButton>
+          <ConsoleOptions v-model="groupServiceTiers" @change="load" />
         </section>
       </div>
       <p class="freshness">
@@ -393,13 +374,8 @@ import {
   ElSelect,
   ElOption,
   ElSegmented,
-  ElTooltip,
 } from "element-plus";
-import AppMenuButton from "@workspace/vue/shared/menu/AppMenuButton.vue";
-import {
-  BoltIcon,
-  DotsVerticalIcon,
-} from "@workspace/vue/shared/icons/app-icons";
+import ConsoleOptions from "./ConsoleOptions.vue";
 import ModelsReport from "./ModelsReport.vue";
 import MetricChart from "./MetricChart.vue";
 import PerformanceReport from "./PerformanceReport.vue";
@@ -455,19 +431,6 @@ const {
   load,
   recent,
 } = useMetrics(() => emit("sessionExpired"));
-const optionsItems = computed(() => [
-  {
-    id: "group-service-tiers",
-    type: "checkbox" as const,
-    label: "Group service tiers",
-    icon: BoltIcon,
-    checked: groupServiceTiers.value,
-  },
-]);
-function toggleServiceTiers() {
-  groupServiceTiers.value = !groupServiceTiers.value;
-  void load();
-}
 const selectedRange = computed(() => {
   const days = (Date.parse(to.value) - Date.parse(from.value)) / 86400000 + 1;
   return to.value === currentDay() && [7, 30, 90].includes(days)

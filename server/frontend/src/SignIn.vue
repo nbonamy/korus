@@ -15,11 +15,8 @@
         action="/auth/session"
         @submit.prevent="signIn"
       >
-        <FormField
-          label="Username"
-          label-for="console-username"
-          density="compact"
-        >
+        <div class="console-form-field">
+          <label for="console-username">Username</label>
           <ElInput
             id="console-username"
             ref="usernameInput"
@@ -31,12 +28,9 @@
             :disabled="busy"
             required
           />
-        </FormField>
-        <FormField
-          label="Password"
-          label-for="console-password"
-          density="compact"
-        >
+        </div>
+        <div class="console-form-field">
+          <label for="console-password">Password</label>
           <ElInput
             id="console-password"
             ref="passwordInput"
@@ -49,7 +43,7 @@
             :disabled="busy"
             required
           />
-        </FormField>
+        </div>
         <p v-if="error" role="alert" class="sign-in-error">{{ error }}</p>
         <ElButton
           type="primary"
@@ -65,8 +59,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick } from "vue";
 import { ElInput, ElButton } from "element-plus";
-import FormField from "@workspace/vue/shared/form/FormField.vue";
-import productIcon from "../../../client/electron/assets/icon.svg";
+import productIcon from "./assets/icon.svg";
 import { sessionRequest } from "./session";
 const emit = defineEmits<{ authenticated: [] }>();
 const productName =

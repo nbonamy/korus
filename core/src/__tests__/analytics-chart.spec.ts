@@ -283,3 +283,72 @@ it("keeps entity hues stable across desktop and console grouping and theme chang
   expect(analyticsValue(0.987, "ratio", "en-US")).toBe("98.7%");
   expect(analyticsValue(19000000, "tokens", "en-US")).toBe("19M");
 });
+
+it("retains the crosshair across reactive theme and data rebuilds", () => {
+  const interaction = { index: null as number | null };
+  const first = buildAnalyticsChart(make(), theme, undefined, interaction);
+  const updated = buildAnalyticsChart(
+    make(),
+    { ...theme, border: "#888" },
+    undefined,
+    interaction,
+  );
+  const stroke = vi.fn();
+  const chart = {
+    scales: { x: { getPixelForValue: () => 100 } },
+    chartArea: { top: 0, bottom: 300 },
+    ctx: {
+      save: vi.fn(),
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      stroke,
+      restore: vi.fn(),
+      strokeStyle: "",
+    },
+  };
+  updated.activate(1);
+  first.plugins[0]!.afterDraw!.call(
+    {} as never,
+    chart as never,
+    {} as never,
+    {} as never,
+  );
+  expect(stroke).toHaveBeenCalledOnce();
+  expect(chart.ctx.strokeStyle).toBe("#888");
+});
+
+it("maps constrained canvas input and retains touch inspection through synthetic mouseout", () => {
+  const active = vi.fn(),
+    state = { index: null as number | null, renderedWidth: () => 250 };
+  const config = buildAnalyticsChart(make(), theme, active, state);
+  const getValueForPixel = vi.fn(() => 2),
+    chart = { width: 1000, scales: { x: { getValueForPixel } }, draw: vi.fn() };
+  config.options.onHover!.call(
+    {} as never,
+    { x: 100, native: { type: "touchstart" } } as never,
+    [],
+    chart as never,
+  );
+  expect(getValueForPixel).toHaveBeenCalledWith(400);
+  config.plugins[0]!.beforeEvent!.call(
+    {} as never,
+    chart as never,
+    { event: { type: "mouseout" } } as never,
+    {} as never,
+  );
+  expect(active).toHaveBeenLastCalledWith(2);
+  config.options.onHover!.call(
+    {} as never,
+    { x: 100, native: { type: "mousemove" } } as never,
+    [],
+    chart as never,
+  );
+  config.plugins[0]!.beforeEvent!.call(
+    {} as never,
+    chart as never,
+    { event: { type: "mouseout" } } as never,
+    {} as never,
+  );
+  expect(active).toHaveBeenLastCalledWith(null);
+});

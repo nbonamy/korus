@@ -3,12 +3,5 @@
   "include": [
     "src/**/*.ts",
     "src/**/*.vue"
-  ],
-  "compilerOptions": {
-    "paths": {
-      "@workspace/vue/*": [
-        "../../client/vue/src/*"
-      ]
-    }
-  }
+  ]
 }

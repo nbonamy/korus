@@ -1,0 +1,276 @@
+
+:root {
+
+  /* ========================================
+    COLOR SYSTEM
+  ======================================== */
+
+  --color-cockpit-background: #000000;
+
+  /* Primary */
+  --color-primary: #1B4FB2;
+  --color-on-primary: #FFFFFF;
+  --color-primary-container: #EFF4FF;
+  --color-on-primary-container: #1E4B97;
+
+  /* Secondary Colors */
+  --color-secondary: #0C72EE;
+  --color-on-secondary: #FFFFFF;
+  --color-secondary-container: #EBF8FF;
+  --color-on-secondary-container: #1159BC;
+
+  /* Semantic */
+  --color-attention: #8054D9;
+  --color-activity-idle: #BEAA00;
+  --color-bookmark-saved: #EAB308;
+  --color-error: #D5351F;
+  --color-on-error: #FFFFFF;
+  --color-error-container: #FEF3F2;
+  --color-on-error-container: #9B2919;
+
+  --color-warning: #D97708;
+  --color-on-warning: #FFFFFF;
+  --color-warning-container: #FFFAE5;
+  --color-on-warning-container: #B4540A;
+
+  --color-success: #079669;
+  --color-on-success: #FFFFFF;
+  --color-success-container: #E8FDF3;
+  --color-on-success-container: #064E3B;
+
+
+  /* Data visualization — categorical slots in a fixed, CVD-validated order */
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-4: #eda100;
+  --chart-5: #e87ba4;
+  --chart-6: #008300;
+  --chart-7: #4a3aa7;
+  --chart-8: #e34948;
+
+  /* Surfaces — neutral gray scale */
+  --color-surface: #F9F9F9;
+  --color-surface-lowest: #FFFFFF;
+  --color-surface-low: #F4F4F4;
+  --color-surface-base: #EFEFEF;
+  --color-surface-high: #E8E8E8;
+  --color-surface-highest: #E0E0E0;
+
+  --color-on-surface: #0D0D0D;
+  --color-on-surface-variant: #666666;
+
+  /* Borders */
+  --color-outline: #B0B0B0;
+  --color-outline-variant: #DEDEDE;
+  --color-outline-subtle: rgba(0, 0, 0, 0.08);
+
+  /* Semantic aliases */
+  --color-text: var(--color-on-surface);
+  --color-text-muted: var(--color-on-surface-variant);
+  --color-background: var(--color-surface);
+  --color-window-background: var(--color-background);
+  --color-border: var(--color-outline-variant);
+  --color-border-strong: var(--color-outline);
+  --color-shell-main: var(--color-surface-lowest);
+  --color-menu-background: var(--color-surface-lowest);
+  --color-card-background: color-mix(in srgb, var(--color-surface) 25%, var(--color-surface-lowest));
+  --color-shell-window: var(--color-shell-main);
+  --shell-glass-opacity: 65%;
+  --color-shell-sidebar: var(--color-surface-low);
+  --color-shell-rail: var(--color-surface-low);
+  --color-shell-collapsed-header: #FFFFFF;
+  --color-shell-appbar-divider: color-mix(in srgb, var(--color-outline) 14%, transparent);
+  --color-shell-rail-divider: color-mix(in srgb, var(--color-outline) 22%, transparent);
+  --color-resize-handle-hover: color-mix(in srgb, var(--color-outline) 55%, transparent);
+  --color-dialog-body: #FDFDFD;
+  --color-dialog-overlay: rgba(0, 0, 0, 0.14);
+  --color-overlay: rgba(255, 255, 255, 0.78);
+  --color-shine: rgba(255, 255, 255, 0.95);
+
+  /* ========================================
+    TYPOGRAPHY
+  ======================================== */
+
+  --font-family-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-family-base: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-family-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", "SF Mono", Consolas, "Liberation Mono", monospace;
+
+  --font-size-8: 8px;
+  --font-size-9: 9px;
+  --font-size-10: 10px;
+  --font-size-11: 11px;
+  --font-size-12: 12px;
+  --font-size-13: 13px;
+  --font-size-13-5: 13.5px;
+  --font-size-14: 14px;
+  --font-size-15: 15px;
+  --font-size-16: 16px;
+  --font-size-18: 18px;
+  --font-size-20: 20px;
+  --font-size-24: 24px;
+  --font-size-28: 28px;
+
+  --font-weight-xlight: 200;
+  --font-weight-light: 300;
+  --font-weight-regular: 400;
+  --font-weight-medium: 450;
+  --font-weight-semibold: 500;
+  --font-weight-bold: 600;
+
+  --line-height-16: 16px;
+  --line-height-18: 18px;
+  --line-height-20: 20px;
+  --line-height-22: 22px;
+  --line-height-24: 24px;
+  --line-height-28: 28px;
+  --line-height-32: 32px;
+
+  /* ========================================
+    LAYOUT
+  ======================================== */
+
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-full: 100px;
+
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-6: 12px;
+  --space-8: 16px;
+  --space-10: 20px;
+  --space-12: 24px;
+  --space-16: 32px;
+  --space-20: 40px;
+  --space-24: 48px;
+  --space-32: 64px;
+
+  --workbench-appbar-height: 48px;
+  --workbench-subheader-height: 65px;
+  --workbench-layout-header-offset: 0px;
+  --workbench-layout-footer-offset: 0px;
+  --conversation-content-width: 780px;
+  --idea-pane-header-height: 56px;
+  --ideas-chat-width: 40%;
+  --ideas-explorer-width: 44px;
+  --team-rail-scale: 1.1;
+  --team-rail-width: calc((var(--space-24) + var(--space-32)) / 2);
+
+  --icon-sm: 14px;
+  --icon-md: 16px;
+  --icon-lg: 20px;
+  --icon-xl: 24px;
+  --icon-xxl: 32px;
+
+  /* ========================================
+    SHADOWS
+  ======================================== */
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 3px 8px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.1);
+  --shadow-menu: 0 4px 6px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.05);
+  --shadow-content-edge:
+    0 0 0 0.5px color-mix(in srgb, var(--color-text) 12%, transparent),
+    0 3px 7.5px #0000000A,
+    0 0 20px #0000000D;
+
+}
+
+html[data-platform='macos'] {
+  --color-window-background: transparent;
+  --color-shell-window: transparent;
+  --color-shell-sidebar: color-mix(in srgb, var(--color-shell-main) var(--shell-glass-opacity), transparent);
+  --color-shell-rail: color-mix(in srgb, var(--color-shell-main) var(--shell-glass-opacity), transparent);
+}
+
+html.dark {
+
+  color-scheme: dark;
+
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #1a9a1a;
+  --chart-7: #9085e9;
+  --chart-8: #e66767;
+
+  /* Primary */
+  --color-primary: #7DA6FF;
+  --color-on-primary: #081B3F;
+  --color-primary-container: #17356E;
+  --color-on-primary-container: #C9DBFF;
+  --shell-glass-opacity: 88%;
+  --color-shell-collapsed-header: var(--color-shell-main);
+  /* Semantic */
+  --color-activity-idle: #E7CC64;
+  --color-bookmark-saved: #FACC15;
+  --color-error: #FF8A78;
+  --color-on-error: #3D0B05;
+  --color-error-container: #4A1710;
+  --color-on-error-container: #FFB8AB;
+
+  --color-success: #5ED9A6;
+  --color-on-success: #022A1B;
+  --color-success-container: #0C3A2A;
+  --color-on-success-container: #A6EFCF;
+
+  --color-warning: #F2B35B;
+  --color-on-warning: #3A2200;
+  --color-warning-container: #3F2B0B;
+  --color-on-warning-container: #FFD9A3;
+
+  /* Surfaces — neutral gray scale */
+  --color-surface: #0D0F12;
+  --color-surface-lowest: #15181D;
+  --color-surface-low: #1B1F25;
+  --color-surface-base: #232832;
+  --color-surface-high: #2B313C;
+  --color-surface-highest: #363D49;
+
+  --color-on-surface: #F1F4F8;
+  --color-on-surface-variant: #AAB3C0;
+
+  /* Borders */
+  --color-outline: #566171;
+  --color-outline-variant: #323946;
+  --color-outline-subtle: rgba(255, 255, 255, 0.08);
+
+  /* Semantic aliases */
+  --color-text: var(--color-on-surface);
+  --color-text-muted: var(--color-on-surface-variant);
+  --color-background: var(--color-surface);
+  --color-border: var(--color-outline-variant);
+  --color-border-strong: var(--color-outline);
+  --color-dialog-body: var(--color-surface-lowest);
+  --color-menu-background: var(--color-surface-lowest);
+  --color-card-background: color-mix(in srgb, var(--color-surface) 25%, var(--color-surface-lowest));
+  --color-dialog-overlay: rgba(0, 0, 0, 0.3);
+  --color-overlay: rgba(13, 15, 18, 0.78);
+  --color-shine: rgba(255, 255, 255, 0.72);
+
+  /* Element Plus alignment */
+  --el-color-primary: var(--color-primary);
+  --el-color-primary-light-3: #5C82D5;
+  --el-color-primary-light-5: #3D5E9E;
+  --el-color-primary-light-7: #263F70;
+  --el-color-primary-light-8: #20365F;
+  --el-color-primary-light-9: var(--color-primary-container);
+  --el-color-primary-dark-2: #A4C0FF;
+  --el-bg-color-page: var(--color-surface);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.34);
+  --shadow-md: 0 3px 10px rgba(0, 0, 0, 0.38);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.42);
+  --shadow-menu: 0 12px 32px rgba(0, 0, 0, 0.42), 0 4px 10px rgba(0, 0, 0, 0.32);
+
+}

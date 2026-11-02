@@ -11,7 +11,6 @@ import "element-plus/es/components/option/style/css";
 import "element-plus/es/components/segmented/style/css";
 import "element-plus/es/components/popover/style/css";
 import "element-plus/es/components/tooltip/style/css";
-import "@workspace/vue/shared/menu/menu-chrome.css";
 import "./style.css";
 const session = createConsoleSession();
 createApp(ConsoleApp, { session })

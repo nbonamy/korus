@@ -4,7 +4,7 @@ export function modelLabel(row: TelemetryMetrics["models"][number]): string {
   const tier = row.serviceTier;
   if (tier === null || tier === "standard") return row.model;
   const labels = {
-    fast: "Fast",
+    fast: "fast",
     ultrafast: "Ultrafast",
     flex: "Flex",
     batch: "Batch",

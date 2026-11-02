@@ -47,9 +47,13 @@ export const percent = (value: number | null) =>
         maximumFractionDigits: 1,
       }).format(value);
 export const rate = (value: string | null) =>
-  value === null ? "Unavailable" : `${Number(value).toFixed(1)} tok/s`;
+  value === null
+    ? "Unavailable"
+    : `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1, notation: "compact" }).format(Number(value))} tokens/s`;
 export const duration = (value: string | null) =>
-  value === null ? "Unavailable" : `${(Number(value) / 1000).toFixed(1)} s`;
+  value === null
+    ? "Unavailable"
+    : `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(Number(value) / 1000)} s`;
 export type Measure =
   | "count"
   | "tokens"

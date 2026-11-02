@@ -95,7 +95,7 @@ import {
   type ModelRow,
 } from "./use-model-comparison";
 const props = defineProps<{ data: TelemetryMetrics }>();
-const { choices, selected, compared, days, daily, color, dash, reportedDays } =
+const { choices, selected, compared, days, daily, color, reportedDays } =
   useModelComparison(toRef(props, "data"));
 const measure = ref<"turns" | "totalTokens" | "inputTokens" | "outputTokens">(
   "turns",
@@ -121,7 +121,6 @@ const series = computed(() =>
   compared.value.map((row) => ({
     label: comparisonLabel(row),
     color: color(row),
-    dash: dash(row),
     values: days.value.map((day) => {
       const entry = daily.value.get(`${day}/${modelKey(row)}`);
       return entry
