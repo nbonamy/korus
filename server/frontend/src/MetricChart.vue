@@ -61,7 +61,7 @@
         <p v-if="!tooltipRows.length">Unavailable</p>
         <div v-if="tooltipTotal !== null" class="tooltip-total">
           <span>{{ totalLabel ?? "Total" }}</span
-          ><b :title="count(tooltipTotal)">{{
+          ><b :title="exactMeasurement(tooltipTotal, measure)">{{
             measurement(tooltipTotal, measure)
           }}</b>
         </div>
@@ -107,7 +107,8 @@ import {
   buildAnalyticsChart,
   analyticsDay,
 } from "@workspace/core/analytics-chart";
-import { count, measurement, exactMeasurement, type Measure } from "./format";
+import { measurement, exactMeasurement, type Measure } from "./format";
+import { addAmounts } from "./report-data";
 import { readAnalyticsTheme } from "./analytics-theme";
 ChartJS.register(
   CategoryScale,
@@ -203,15 +204,10 @@ const tooltipTotal = computed(() => {
   if (
     !(props.totalLabel || props.stacked || props.variant === "stacked") ||
     props.series.length < 2 ||
-    !["count", "tokens"].includes(props.measure)
+    !["count", "tokens", "usd"].includes(props.measure)
   )
     return null;
-  const values = tooltipRows.value.filter(
-    (row) => row.value !== null && /^\d+$/.test(row.value),
-  );
-  return values.length
-    ? values.reduce((sum, row) => sum + BigInt(row.value!), 0n).toString()
-    : null;
+  return addAmounts(tooltipRows.value.map((row) => row.value));
 });
 const tooltipStyle = computed(() => {
   const width = chart.value?.chart?.width ?? 640,

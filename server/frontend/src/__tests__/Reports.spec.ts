@@ -263,9 +263,14 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
     await spendChart.get("canvas").trigger("keydown", { key: "Home" });
     expect(spendChart.get('[role="status"]').text()).toContain("Codex$0.30");
     expect(spendChart.get('[role="status"]').text()).not.toContain("Claude");
+    expect(spendChart.get(".tooltip-total b").attributes("title")).toBe(
+      "$0.30000003",
+    );
+    expect(spendChart.get(".tooltip-total").text()).toBe("Total$0.30");
     await spendChart.get("canvas").trigger("keydown", { key: "End" });
     expect(spendChart.get('[role="status"]').text()).toContain("Claude$0.00");
     expect(spendChart.get('[role="status"]').text()).toContain("Codex$0.00");
+    expect(spendChart.get(".tooltip-total").text()).toBe("Total$0.00");
     await wrapper
       .get('[aria-label="Spend grouping"]')
       .findAll("label")
@@ -278,6 +283,10 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
     );
     expect(spendChart.get('[aria-label="Series"]').text()).toContain(
       "gpt-6-astra",
+    );
+    await spendChart.get("canvas").trigger("keydown", { key: "Home" });
+    expect(spendChart.get(".tooltip-total b").attributes("title")).toBe(
+      "$0.30000003",
     );
     expect(wrapper.find('[aria-label="Measured input"]').exists()).toBe(false);
     await router.push("/models");
