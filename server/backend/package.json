@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "typecheck": "tsc --noEmit",
-    "lint": "tsc --noEmit",
+    "typecheck": "node ../../scripts/typecheck.mjs plain --noEmit",
+    "lint": "node ../../scripts/typecheck.mjs plain --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "start": "node dist/collector.mjs",
