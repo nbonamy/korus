@@ -64,6 +64,8 @@ if (isDarwin && !skipMacSigning) {
   osxPackagerConfig = {
     osxSign: {
       identity: process.env.IDENTITY_DARWIN_CODE,
+      // Packager defaults to continuing (quietly) after a signing error, which only surfaces later as a notarization failure.
+      continueOnError: false,
       // Signed explicitly with its SDK entitlements before the outer app pass.
       ignore: (filePath: string) => filePath.endsWith(path.join('Resources', 'claude', 'claude')),
       optionsForFile: () => { return {
