@@ -1,11 +1,16 @@
 import { mkdir, mkdtemp, readdir, rm, stat, writeFile, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { describe, expect, it, vi } from 'vitest';
 import { createSourceRepository, requireRepositoryName } from '../create-source-repository';
+import { AgentGitService } from '../git/agent-git-service';
+
+const exec = promisify(execFile);
 
 describe('createSourceRepository', () => {
-  it('creates an empty project folder without initializing Git', async () => {
+  it('creates a local Git repository recognized without commits or a remote', async () => {
     const sourceRoot = await mkdtemp(path.join(os.tmpdir(), 'app-create-repository-'));
 
     try {
@@ -15,8 +20,29 @@ describe('createSourceRepository', () => {
         worktrees: [],
       });
       expect((await stat(path.join(sourceRoot, 'new-project'))).isDirectory()).toBe(true);
-      expect(await readdir(path.join(sourceRoot, 'new-project'))).toStrictEqual([]);
+      const folder = path.join(sourceRoot, 'new-project');
+      expect(await readdir(folder)).toStrictEqual(['.git']);
+      expect(await new AgentGitService().identity(folder)).toMatchObject({ kind: 'git', isLinkedWorktree: false });
+      expect((await exec('git', ['remote'], { cwd: folder })).stdout.trim()).toBe('');
+      expect((await exec('git', ['rev-list', '--all', '--count'], { cwd: folder })).stdout.trim()).toBe('0');
     } finally {
+      await rm(sourceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('tolerates a missing Git executable but surfaces other initialization failures', async () => {
+    const sourceRoot = await mkdtemp(path.join(os.tmpdir(), 'app-create-repository-git-'));
+    try {
+      vi.stubEnv('PATH', sourceRoot);
+      await expect(createSourceRepository(sourceRoot, 'without-git')).resolves.toMatchObject({ name: 'without-git' });
+      expect(await readdir(path.join(sourceRoot, 'without-git'))).toStrictEqual([]);
+      vi.unstubAllEnvs();
+      vi.stubEnv('GIT_CONFIG_COUNT', '1');
+      vi.stubEnv('GIT_CONFIG_KEY_0', 'init.defaultBranch');
+      vi.stubEnv('GIT_CONFIG_VALUE_0', 'invalid branch name');
+      await expect(createSourceRepository(sourceRoot, 'broken-git')).rejects.toMatchObject({ code: 128 });
+    } finally {
+      vi.unstubAllEnvs();
       await rm(sourceRoot, { recursive: true, force: true });
     }
   });

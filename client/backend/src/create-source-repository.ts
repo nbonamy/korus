@@ -1,8 +1,12 @@
+import { execFile } from 'node:child_process';
 import { mkdir, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import { AppError } from '@workspace/core/app-error';
 import type { SourceRepository } from '@workspace/core/contracts';
 import { resolveSourceFolderPath } from './source-repositories';
+
+const execFileAsync = promisify(execFile);
 
 export async function createSourceRepository(
   sourceFolderPath: string,
@@ -20,6 +24,11 @@ export async function createSourceRepository(
   }
 
   await mkdir(destinationPath);
+  try {
+    await execFileAsync('git', ['init'], { cwd: destinationPath, timeout: 30_000 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
   return { name: repositoryName, path: destinationPath, worktrees: [] };
 }
 
