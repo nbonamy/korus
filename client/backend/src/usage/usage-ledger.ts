@@ -88,11 +88,16 @@ export class UsageLedger {
     }
     return this.db;
   }
-  async load(): Promise<void> {
+  async load(options: { interruptOpenExecutions?: boolean } = {}): Promise<void> {
     const db = this.open();
     if (!db) return;
     try {
       this.prune();
+      // Only the owning daemon startup opts in; read/repair clients must not close live turns.
+      if (options.interruptOpenExecutions) {
+        db.prepare("UPDATE executions SET phase='interrupted',updated_at=? WHERE phase='started'")
+          .run(this.now());
+      }
     } catch {
       this.available = false;
       db.close();

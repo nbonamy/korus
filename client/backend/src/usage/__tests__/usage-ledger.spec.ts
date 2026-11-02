@@ -219,14 +219,26 @@ it("persists only statistics in SQLite and replaces late measurements without in
         },
       ],
     });
+    await ledger.observe({
+      ...event, provider: "codex", turnId: "orphan", model: "gpt-6-sol", phase: "started",
+      tokens: { input: 10, output: 5, total: 15, cacheRead: 0, cacheWrite: null },
+    }, { teamId: "team", repository: "repo" });
     await ledger.close();
-    ledger = new UsageLedger(file, () => at);
-    await ledger.load();
+    ledger = new UsageLedger(file, () => at + 60000);
+    await ledger.load({ interruptOpenExecutions: true });
     expect(ledger.query().rows[0]).toMatchObject({
-      started: 1,
+      started: 2, completed: 1, interrupted: 1, inProgress: 0,
       speed: { turns: 1, outputTokens: 20, generationMs: 10000 },
     });
-    expect(ledger.query({ provider: "codex" }).rows).toStrictEqual([]);
+    expect(ledger.query({ provider: "codex" }).rows[0]).toMatchObject({
+      started: 1, interrupted: 1, inProgress: 0, tokens: { total: 15 },
+    });
+    await ledger.observe({ ...event, provider: "codex", turnId: "orphan", phase: "usage",
+      tokens: { input: 20, output: 10, total: 30, cacheRead: 0, cacheWrite: null },
+    }, { teamId: null, repository: null });
+    expect(ledger.query({ provider: "codex" }).rows[0]).toMatchObject({
+      started: 1, interrupted: 1, inProgress: 0, tokens: { total: 30 },
+    });
     await ledger.close();
     const bytes = await readFile(file);
     expect(bytes.subarray(0, 16).toString()).toBe("SQLite format 3\0");
