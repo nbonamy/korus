@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "@noble/hashes": "^2.0.1",
+    "chart.js": "4.6.1",
     "rrule-temporal": "2.2.8"
   }
 }

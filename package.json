@@ -15,6 +15,7 @@
     "@libp2p/peer-id": "6.0.16",
     "@lyliya/stylelint-value-no-unknown-custom-properties": "^6.3.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@vitejs/plugin-vue": "6.0.7",
     "dotenv": "^17.4.2",
     "esbuild": "0.28.2",
     "extract-zip": "2.0.1",

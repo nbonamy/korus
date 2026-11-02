@@ -529,6 +529,19 @@ export const surfaceMessages = {
     "unableToParseDiff": "Unable to parse diff.",
     "unableToLoadDiff": "Unable to load diff."
   },
+  "diffTreemap": {
+    "changeMap": "Change map",
+    "view": "Change view",
+    "files": "Files",
+    "map": "Map",
+    "docs": "Docs",
+    "backToMap": "Back to change map",
+    "filterByType": "Filter by file type",
+    "all": "All",
+    "noLineChanges": "No line changes in these files.",
+    "filesWithoutLines": "Files without line changes ({count})",
+    "areaLegend": "Area = additions + deletions"
+  },
   "gitReviewPanel": {
     "gitHubReview": "GitHub review",
     "diffStatistics": "Diff statistics",

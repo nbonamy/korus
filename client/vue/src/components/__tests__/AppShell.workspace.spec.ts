@@ -770,6 +770,27 @@ describe('AppShell workspace and plans', () => {
     expect(wrapper.text()).toContain('Chat with Dina');
   });
 
+  it.each([true, false])('loads a restored Changes tab on presentation without Refresh (initially open: %s)', async open => {
+    const saved = { tabs: [{ id: 'review', title: 'review' }], activeTab: 'review', open, width: 420, filesPaneOpen: false, filesPaneWidth: 280 };
+    setElectronTestClient({ getDocumentWorkspaces: vi.fn().mockResolvedValue({ 'agent-dina': saved }) });
+    let finish!: (value: import('@workspace/core/contracts').AgentGitDiff) => void;
+    const getAgentGitDiff = vi.fn(() => new Promise<import('@workspace/core/contracts').AgentGitDiff>(resolve => { finish = resolve; }));
+    const wrapper = mountShell({ getAgentGitDiff });
+    await flushPromises();
+    if (!open) {
+      expect(getAgentGitDiff).not.toHaveBeenCalled();
+      await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+    }
+    expect(getAgentGitDiff).toHaveBeenCalledExactlyOnceWith('agent-dina');
+    expect(wrapper.get('.git-diff-preview-panel').attributes('aria-busy')).toBe('true');
+    finish({ target: { type: 'uncommitted' }, summary: { addedLines: 1, removedLines: 1, changedFiles: 1 }, sections: [],
+      diff: 'diff --git a/src/restored.ts b/src/restored.ts\n--- a/src/restored.ts\n+++ b/src/restored.ts\n@@ -1 +1 @@\n-before\n+restored change' });
+    await flushPromises();
+    expect(wrapper.get('.git-diff-preview-panel').attributes('aria-busy')).toBe('false');
+    expect(wrapper.get('.git-diff-preview-panel').text()).toContain('restored change');
+    expect(getAgentGitDiff).toHaveBeenCalledOnce();
+  });
+
   it('opens the active agent git diff from header diff stats', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.agentGitStatuses['agent-dina'] = {

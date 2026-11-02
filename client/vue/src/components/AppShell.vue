@@ -2077,6 +2077,14 @@ const workspacePreviews = useWorkspacePreviews({
   previewAgentFile: (agentId, filePath) => props.previewAgentFile(agentId, filePath),
   workspaceFor: rightWorkspaceFor,
 });
+// Restored tabs retain references, so load the diff when its workspace becomes visible.
+watch(
+  () => Object.entries(rightWorkspaces).find(([agentId, workspace]) => workspace.activeTab === 'review'
+    && !workspace.gitReviewPanel && isPresentedWorkspaceVisible(agentId)
+    && props.snapshot.agents.some(agent => agent.id === agentId && agent.folder))?.[0],
+  agentId => { if (agentId) void workspacePreviews.openAgentGitDiff(agentId); },
+  { immediate: true },
+);
 const {
   handleFileActivity,
   openAgentGitDiff: openAgentGitDiffForAgent,
