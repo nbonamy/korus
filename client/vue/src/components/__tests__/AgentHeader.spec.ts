@@ -123,6 +123,8 @@ describe('AgentHeader', () => {
 
     expect(wrapper.text()).toContain('+134');
     expect(wrapper.text()).toContain('-1');
+    expect(wrapper.get('.git-diff-control__files').text()).toBe('3');
+    expect(wrapper.get('.git-diff-control__files').attributes('aria-label')).toBe('3 files');
     expect(wrapper.get('.agent-header__folder').text()).toBe('main @ id8');
     expect(wrapper.get('.agent-header__folder').attributes('title')).toBe('~/src/id8');
     expect(wrapper.text()).not.toContain('3 files');
@@ -323,7 +325,7 @@ describe('AgentHeader', () => {
         branch: { baseRef: 'origin/main', addedLines: 8, removedLines: 3, changedFiles: 2 },
         uncommitted: { addedLines: 4, removedLines: 2, changedFiles: 1 },
         unstaged: { addedLines: 1, removedLines: 0, changedFiles: 1 },
-        staged: { addedLines: 3, removedLines: 2, changedFiles: 1 },
+        staged: { addedLines: 3, removedLines: 2, changedFiles: 3 },
         commits: [{ sha: 'abcdef123456', shortSha: 'abcdef1', subject: 'ship it', addedLines: 5, removedLines: 1, changedFiles: 1 }],
       },
       updatedAt: '2026-06-05T00:00:00.000Z',
@@ -333,6 +335,7 @@ describe('AgentHeader', () => {
     });
 
     expect(wrapper.get('.git-diff-control__open').attributes('title')).toBe('Uncommitted');
+    expect(wrapper.get('.git-diff-control__files').text()).toBe('1');
     expect(wrapper.find('.git-diff-control__icon').exists()).toBe(false);
     await wrapper.get('[aria-label="Choose repository diff"]').trigger('click');
     const menu = wrapper.getComponent({ name: 'AppMenu' });
@@ -347,6 +350,7 @@ describe('AgentHeader', () => {
     await wrapper.vm.$nextTick();
 
     expect(wrapper.get('.git-diff-control__open').attributes('title')).toBe('Staged');
+    expect(wrapper.get('.git-diff-control__files').text()).toBe('3');
     expect(wrapper.emitted('open-git-diff')).toBeUndefined();
     expect(wrapper.emitted('select-git-diff-target')).toStrictEqual([[{ type: 'staged' }]]);
 
@@ -379,7 +383,7 @@ describe('AgentHeader', () => {
     expect(wrapper.emitted('open-git-diff')).toContainEqual([{ type: 'staged' }]);
   });
 
-  it('keeps Git actions available for a clean repository', () => {
+  it('keeps Git actions available for a clean repository and opens file-only changes', async () => {
     const wrapper = mountHeader({ backend: 'codex', status: 'running' }, false, {
       folder: '/Users/nbonamy/src/id8',
       branch: 'main',
@@ -399,6 +403,10 @@ describe('AgentHeader', () => {
     expect(wrapper.get('.git-diff-control__empty').text()).toBe('No changes');
     expect(getComputedStyle(wrapper.get('.agent-header').element).userSelect).toBe('none');
     expect(wrapper.find('.git-diff-control__menu-trigger').exists()).toBe(true);
+    await wrapper.setProps({ gitStatus: { ...wrapper.props('gitStatus')!, changedFiles: 1, state: 'dirty' } });
+    expect(wrapper.get('.git-diff-control__open').text()).toBe('1');
+    expect(wrapper.get('.git-diff-control__files').attributes('aria-label')).toBe('1 file');
+    expect(wrapper.find('.git-diff-control__empty').exists()).toBe(false);
   });
 
   it('does not duplicate repository backlog navigation in the agent header', () => {

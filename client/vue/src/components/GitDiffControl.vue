@@ -22,6 +22,13 @@
         :label="$t('surface.agentHeader.removedLines')"
         :value="selectedSummary.removedLines"
       />
+      <span
+        v-if="selectedSummary.changedFiles"
+        class="git-diff-control__files"
+        role="img"
+        :aria-label="fileKindCount(selectedSummary.changedFiles)"
+        :title="fileKindCount(selectedSummary.changedFiles)"
+      ><FileDiffIcon aria-hidden="true" />{{ selectedSummary.changedFiles }}</span>
     </button>
     <span v-else class="git-diff-control__empty">{{ $t('surface.agentHeader.noChanges') }}</span>
     <AppMenuButton v-model:open="menuOpen" :ariaLabel="$t('surface.agentHeader.chooseRepositoryDiff')" :items="menuItems" :width="260" @select="selectTarget">
@@ -72,7 +79,7 @@ const fallbackSummary = computed<AgentGitDiffSummary>(() => ({
   changedFiles: props.gitStatus.changedFiles,
 }));
 const selectedSummary = computed(() => summaryFor(selectedTarget.value));
-const hasSelectedChanges = computed(() => selectedSummary.value.addedLines > 0 || selectedSummary.value.removedLines > 0);
+const hasSelectedChanges = computed(() => selectedSummary.value.changedFiles > 0 || selectedSummary.value.addedLines > 0 || selectedSummary.value.removedLines > 0);
 const selectedLabel = computed(() => selectedLabelFor(selectedTarget.value));
 const menuItems = computed<AppMenuItem[]>(() => {
   const catalog = props.gitStatus.diffCatalog;
@@ -270,6 +277,19 @@ function summaryFor(target: AgentGitDiffTarget): AgentGitDiffSummary {
 .git-diff-control__empty {
   color: var(--color-text-muted);
   white-space: nowrap;
+}
+
+.git-diff-control__files {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.git-diff-control__files svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
 }
 
 .git-diff-control__menu-trigger {
