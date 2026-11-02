@@ -27,8 +27,8 @@
   <a href="https://github.com/nbonamy/korus/actions/workflows/quality.yml">
     <img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fnbonamy%2Fkorus%2Fbadges%2Fcoverage.json" alt="Statement coverage across all workspaces" />
   </a>
-  <a href="https://tooomm.github.io/github-release-stats/?username=nbonamy&amp;repository=korus">
-    <img src="https://img.shields.io/github/downloads/nbonamy/korus/total?color=orange" alt="GitHub release asset downloads" />
+  <a href="https://github.com/nbonamy/korus/releases">
+    <img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fnbonamy%2Fkorus%2Fbadges%2Fdownloads.json" alt="Application package downloads" />
   </a>
 </p>
 

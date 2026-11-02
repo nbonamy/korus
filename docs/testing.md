@@ -305,10 +305,12 @@ The independent Quality workflow runs on branch pushes, PRs and manual dispatch.
 Tag pushes do not trigger it. It owns lint/typechecks, the full suite under
 coverage, script tests, and retained coverage reports. The README badge combines
 covered and total statement counts
-from every declared workspace. Only successful runs for the current `main` commit
-publish badge data to the separate `badges` branch; PRs have no publication authority.
+from every declared workspace. Only successful Quality runs for the current `main` commit
+publish coverage badge data to the separate `badges` branch; PRs have no publication authority.
 The publishing job alone has repository write permission and retains badge history
-independently of application source. The release workflow runs ordinary workspace
+independently of application source. All badge publishers share a publication
+concurrency group and preserve the other badge files so independent updates
+cannot overwrite one another. The release workflow runs ordinary workspace
 and script tests, without coverage, before builds and publication. The workflows are independent:
 Quality failures do not block releases; release test failures do. Run against the
 installed SDK package boundary; source aliases do not substitute for package

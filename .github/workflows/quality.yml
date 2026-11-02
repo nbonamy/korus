@@ -87,7 +87,7 @@ jobs:
           for report in coverage-results/*/coverage.tar; do
             tar -xf "$report"
           done
-      - run: node scripts/coverage-badge.mjs generate
+      - run: node scripts/badges.mjs coverage
       - name: Retain coverage badge
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -104,7 +104,7 @@ jobs:
     permissions:
       contents: write
     concurrency:
-      group: coverage-badge
+      group: badges-publication
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -118,4 +118,4 @@ jobs:
       - name: Publish successful main coverage
         env:
           BADGE_FILE: ${{ runner.temp }}/coverage-badge/badge.json
-        run: node scripts/coverage-badge.mjs publish "$BADGE_FILE" "$GITHUB_SHA"
+        run: node scripts/badges.mjs publish coverage "$BADGE_FILE" "$GITHUB_SHA"
