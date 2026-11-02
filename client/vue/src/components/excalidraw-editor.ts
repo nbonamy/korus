@@ -15,6 +15,11 @@ export type CanvasAnnotationTarget = { id: string; x: number; y: number; width: 
 export type CanvasControlsState = { zoom: number };
 export async function importVisualization(visualization: Visualization, imageSource: string): Promise<CanvasScene> {
   if (visualization.canvas) return structuredClone(visualization.canvas);
+  if (visualization.content.kind === 'excalidraw') {
+    // The backend validated and normalized this scene, so it is already a canvas document minus revision.
+    const { elements, files } = JSON.parse(visualization.content.source) as Pick<CanvasScene, 'elements' | 'files'>;
+    return { elements, files, selectedElementIds: [], preview: '' };
+  }
   if (visualization.content.kind === 'mermaid') {
     if (/%%\s*\{|\bclick\s+|\b(?:img|icon)\s*:|<(?:img|iframe|script|object|embed|link|style)\b/iu.test(visualization.content.source)) {
       throw new Error('Canvas import does not allow Mermaid directives, links, or external assets.');

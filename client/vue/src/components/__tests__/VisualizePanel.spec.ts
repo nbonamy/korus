@@ -46,6 +46,18 @@ describe('VisualizePanel', () => {
     expect(wrapper.get('.editor-canvas').text()).toBe('Map canvas');
   });
 
+  it('labels native Excalidraw scenes and shows a placeholder thumbnail until the canvas saves a preview', async () => {
+    const visualize = visualizeSession();
+    visualize.visualizations = [{ id: 'native', title: 'Native', content: { kind: 'excalidraw', source: '{"elements":[],"files":{}}' }, createdAt: '', updatedAt: '' }];
+    visualize.selectedVisualizationId = 'native';
+    const wrapper = mount(VisualizePanel, { props: { visualize, readAsset: vi.fn(), saveCanvas: vi.fn() } });
+    expect(wrapper.get('.visualize-panel__heading').text()).toContain('Excalidraw');
+    expect(wrapper.get('.visualize-panel__thumbnail').find('img').exists()).toBe(false);
+    const canvas = { revision: 1, elements: [], files: {}, selectedElementIds: [], preview: 'data:image/png;base64,YQ==' };
+    await wrapper.setProps({ visualize: { ...visualize, visualizations: [{ ...visualize.visualizations[0], canvas }] } });
+    expect(wrapper.get('.visualize-panel__thumbnail img').attributes('src')).toBe('data:image/png;base64,YQ==');
+  });
+
   it('moves from suggestions to an inspectable visualization and switches with the thumbnail strip', async () => {
     const readAsset = vi.fn().mockResolvedValue({
       visualizationId: 'visualization-image',

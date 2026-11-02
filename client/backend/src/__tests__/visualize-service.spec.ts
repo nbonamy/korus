@@ -48,6 +48,42 @@ describe('VisualizeService', () => {
     expect(worker.visualize?.selectedVisualizationId).toBeNull();
   });
 
+  it('adds native Excalidraw scenes as normalized editable content and rejects malformed ones', async () => {
+    const snapshot = createInitialSnapshot();
+    const agentId = snapshot.agents[0].id;
+    const service = new VisualizeService({ snapshot, generatedImagesRoot: os.tmpdir(), persist: async () => undefined, publish: () => undefined });
+    await service.enter(agentId);
+    const box = { id: 'box', type: 'rectangle', x: 10, y: 20, width: 100, height: 60, link: null };
+    const { visualizationId } = await service.add(agentId, { title: 'Native', content: { kind: 'excalidraw', source: JSON.stringify({ type: 'excalidraw', version: 2, elements: [box], appState: { gridSize: 24 }, files: { img: { mimeType: 'image/png', dataURL: 'data:image/png;base64,YQ==' } } }) } });
+    const content = service.get(agentId, visualizationId).visualization.content;
+    expect(content.kind).toBe('excalidraw');
+    // Only the scene survives, with every file given the id and creation time the canvas document requires.
+    expect(JSON.parse((content as { source: string }).source)).toStrictEqual({ elements: [box], files: { img: { id: 'img', mimeType: 'image/png', dataURL: 'data:image/png;base64,YQ==', created: expect.any(Number) } } });
+    expect(service.list(agentId).visualizations).toStrictEqual([{ id: visualizationId, title: 'Native', kind: 'excalidraw', selected: true }]);
+    for (const source of ['not json', '{}', '{"elements":[{"id":"a","type":"script","x":0,"y":0,"width":1,"height":1}]}', '{"elements":[{"id":"a","type":"rectangle","x":0,"y":0,"width":1,"height":1,"link":"https://example.com"}]}']) {
+      await expect(service.add(agentId, { title: 'Bad', content: { kind: 'excalidraw', source } })).rejects.toThrow('Excalidraw');
+    }
+    expect(service.list(agentId).visualizations).toHaveLength(1);
+  });
+
+  it('lets the agent add elements to an authoritative canvas without disturbing user edits', async () => {
+    const snapshot = createInitialSnapshot();
+    const agentId = snapshot.agents[0].id;
+    const service = new VisualizeService({ snapshot, generatedImagesRoot: os.tmpdir(), persist: async () => undefined, publish: () => undefined });
+    await service.enter(agentId);
+    const { visualizationId } = await service.add(agentId, { title: 'Native', content: { kind: 'excalidraw', source: JSON.stringify({ elements: [{ id: 'box', type: 'rectangle', x: 0, y: 0, width: 100, height: 60 }] }) } });
+    const document = { elements: [{ id: 'box', type: 'rectangle', x: 40, y: 0, width: 100, height: 60 }], files: {}, selectedElementIds: [], preview: '' };
+    await service.saveCanvas(agentId, { visualizationId, sessionId: snapshot.agents[0].visualize!.id, expectedSource: JSON.stringify(service.get(agentId, visualizationId).visualization.content), expectedRevision: 0, document });
+    const added = [{ id: 'next', type: 'ellipse', x: 200, y: 0, width: 80, height: 60 }];
+    await expect(service.editCanvas(agentId, visualizationId, 0, [], added)).rejects.toThrow('Stale');
+    expect(await service.editCanvas(agentId, visualizationId, 1, [], added)).toStrictEqual({ success: true, revision: 2 });
+    const elements = service.readCanvas(agentId, visualizationId, false).elements;
+    expect(elements.map(element => element.id)).toStrictEqual(['box', 'next']);
+    expect(elements[0]).toMatchObject({ x: 40 });
+    await expect(service.editCanvas(agentId, visualizationId, 2, [], added)).rejects.toThrow();
+    expect(service.readCanvas(agentId, visualizationId, false).revision).toBe(2);
+  });
+
   it('persists user-edited canvases and assets, rejects stale batches and preserves untouched edits across reload', async () => {
     temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'app-canvas-'));
     const persistence = new AppStateStore(temporaryDirectory);

@@ -165,7 +165,9 @@ function kindLabel(visualization: Visualization): string {
     ? translate('visualize.kind.mermaid')
     : visualization.content.kind === 'svg'
       ? translate('visualize.kind.svg')
-      : translate('visualize.kind.image');
+      : visualization.content.kind === 'excalidraw'
+        ? translate('visualize.kind.excalidraw')
+        : translate('visualize.kind.image');
 }
 
 function compactDescription(description: string): string {

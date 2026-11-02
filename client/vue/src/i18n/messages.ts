@@ -423,7 +423,7 @@ export const messages = {
       zoomOut: 'Zoom out',
       resetView: 'Reset view',
       zoomLevel: '{percent}% zoom',
-      kind: { mermaid: 'Mermaid', svg: 'SVG', image: 'Generated image' },
+      kind: { mermaid: 'Mermaid', svg: 'SVG', excalidraw: 'Excalidraw', image: 'Generated image' },
     },
     worktreeReuse: {
       title: 'Worktree already exists',

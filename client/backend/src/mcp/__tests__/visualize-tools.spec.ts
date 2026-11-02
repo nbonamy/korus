@@ -51,10 +51,10 @@ describe('Visualize MCP tool module', () => {
     } as never);
 
     await handlers.get('read-visualization-canvas')!({ visualizationId: 'visualization-1', selectedOnly: true } as never);
-    await handlers.get('edit-visualization-canvas')!({ visualizationId: 'visualization-1', expectedRevision: 2, edits: [{ id: 'a', changes: { x: 30 } }] } as never);
+    await handlers.get('edit-visualization-canvas')!({ visualizationId: 'visualization-1', expectedRevision: 2, edits: [{ id: 'a', changes: { x: 30 } }], add: [{ id: 'n', type: 'rectangle', x: 0, y: 0, width: 5, height: 5 }] } as never);
     expect(await handlers.get('view-visualization-canvas')!({ visualizationId: 'visualization-1' } as never)).toStrictEqual({ content: [{ type: 'image', mimeType: 'image/png', data: 'YQ==' }] });
     expect(service.readCanvas).toHaveBeenCalledWith('agent-visualize', 'visualization-1', true);
-    expect(service.editCanvas).toHaveBeenCalledWith('agent-visualize', 'visualization-1', 2, [{ id: 'a', changes: { x: 30 } }]);
+    expect(service.editCanvas).toHaveBeenCalledWith('agent-visualize', 'visualization-1', 2, [{ id: 'a', changes: { x: 30 } }], [{ id: 'n', type: 'rectangle', x: 0, y: 0, width: 5, height: 5 }]);
     expect(service.suggest).toHaveBeenCalledWith('agent-visualize', [{ title: 'System', description: 'Architecture' }]);
     expect(service.add).toHaveBeenCalledWith('agent-visualize', expect.objectContaining({ suggestionId: 'suggestion-1' }));
     expect(service.get).toHaveBeenCalledWith('agent-visualize', 'visualization-1');

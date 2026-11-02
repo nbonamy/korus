@@ -36,6 +36,7 @@ describe('Visualize session contract', () => {
   it.each([
     { kind: 'mermaid', source: 'flowchart LR; A --> B' },
     { kind: 'svg', source: '<svg viewBox="0 0 10 10" />' },
+    { kind: 'excalidraw', source: '{"elements":[],"files":{}}' },
     { kind: 'image', assetPath: '/tmp/map.png', mimeType: 'image/png', alt: 'System map' },
   ] satisfies Visualization['content'][])('accepts $kind visualization content', content => {
     expect(isVisualizeSession(session({

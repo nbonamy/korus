@@ -61,8 +61,9 @@ function validProperties(element: Record<string, unknown>): boolean {
   return Number(element.width) >= 0 && Number(element.height) >= 0;
 }
 const editable = new Set(['x', 'y', 'width', 'height', 'angle', 'text', 'originalText', 'fontSize', 'fontFamily', 'textAlign', 'verticalAlign', 'strokeColor', 'backgroundColor', 'fillStyle', 'strokeWidth', 'strokeStyle', 'roughness', 'opacity', 'isDeleted', 'locked']);
-export function editCanvas(document: CanvasDocument, edits: CanvasEdit[]): CanvasDocument {
-  if (!Array.isArray(edits) || edits.length < 1 || edits.length > 100) throw new Error('Provide 1 to 100 canvas edits.');
+/** Applies property edits to existing elements and appends new ones; Excalidraw fills any property left out when it restores the scene. */
+export function editCanvas(document: CanvasDocument, edits: CanvasEdit[], added: CanvasElement[] = []): CanvasDocument {
+  if (!Array.isArray(edits) || !Array.isArray(added) || edits.length > 100 || added.length > 100 || edits.length + added.length < 1) throw new Error('Provide 1 to 100 canvas edits or new elements.');
   const next = structuredClone(document);
   const seen = new Set<string>();
   for (const edit of edits) {
@@ -79,6 +80,10 @@ export function editCanvas(document: CanvasDocument, edits: CanvasEdit[]): Canva
     element.version = Number(element.version ?? 0) + 1;
     element.versionNonce = Math.floor(Math.random() * 2 ** 31);
     element.updated = Date.now();
+  }
+  for (const element of structuredClone(added)) {
+    if (!record(element)) throw new Error('New canvas element must be an object.');
+    next.elements.push({ isDeleted: false, version: 1, versionNonce: Math.floor(Math.random() * 2 ** 31), updated: Date.now(), ...element });
   }
   next.revision++;
   next.preview = '';

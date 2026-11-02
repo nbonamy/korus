@@ -13,7 +13,7 @@
       @keydown="handleKeydown"
     >
       <div v-if="error" class="visualization-view__error" role="alert"><slot name="error" :error="error">{{ error }}</slot></div>
-      <div v-else-if="visualization.content.kind === 'image' && !imageSource" class="visualization-view__loading">{{ translate('common.loading') }}</div>
+      <div v-else-if="(visualization.content.kind === 'image' && !imageSource) || !source" class="visualization-view__loading">{{ translate('common.loading') }}</div>
       <img
         v-else
         class="visualization-view__image"
@@ -55,6 +55,8 @@ const rendering = computed(() => {
   try {
     if (props.visualization.canvas?.preview) return { source: props.visualization.canvas.preview, error: '' };
     if (props.visualization.content.kind === 'image') return { source: props.imageSource, error: '' };
+    // Native Excalidraw scenes have no standalone rendering until the canvas saves its preview.
+    if (props.visualization.content.kind === 'excalidraw') return { source: '', error: '' };
     const raw = props.visualization.content.kind === 'mermaid'
       ? renderMermaidSVG(props.visualization.content.source, { transparent: true })
       : props.visualization.content.source;

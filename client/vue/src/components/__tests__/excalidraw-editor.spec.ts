@@ -48,6 +48,15 @@ describe('canvas imports', () => {
     await expect(importVisualization({ ...base, content: { kind: 'mermaid', source } }, '')).rejects.toThrow('does not allow');
     expect(convert).not.toHaveBeenCalled();
   });
+  it('loads a native Excalidraw scene directly as the editable canvas', async () => {
+    const elements = [{ id: 'box', type: 'rectangle', x: 5, y: 6, width: 100, height: 40 }];
+    vi.mocked(restoreElements).mockClear();
+    const source = JSON.stringify({ elements, files: { img: { id: 'img', mimeType: 'image/png', dataURL: 'data:image/png;base64,YQ==', created: 1 } } });
+    const scene = await importVisualization({ ...base, content: { kind: 'excalidraw', source } }, '');
+    expect(scene).toStrictEqual({ elements, files: { img: { id: 'img', mimeType: 'image/png', dataURL: 'data:image/png;base64,YQ==', created: 1 } }, selectedElementIds: [], preview: '' });
+    expect(isCanvasDocument({ ...scene, revision: 1 })).toBe(true);
+    expect(convert).not.toHaveBeenCalled();
+  });
   it('restores an authoritative canvas without reparsing its original source', async () => {
     const canvas = { revision: 3, elements: [{ id: 'user', type: 'rectangle', x: 77, y: 31, width: 20, height: 20 }], files: {}, selectedElementIds: [], preview: '' };
     expect(await importVisualization({ ...base, canvas }, '')).toEqual(canvas);

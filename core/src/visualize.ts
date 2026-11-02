@@ -1,7 +1,7 @@
 import { isCanvasDocument, type CanvasDocument } from './visualize-canvas';
 import type { Agent, BackendConversationRef } from './contracts';
 
-export const visualizationKinds = ['mermaid', 'svg', 'image'] as const;
+export const visualizationKinds = ['mermaid', 'svg', 'excalidraw', 'image'] as const;
 
 export const visualizationSuggestionLimits = {
   title: 80,
@@ -20,8 +20,9 @@ export type VisualizationSuggestion = {
   visualizationId?: string;
 };
 
+/** Excalidraw sources are JSON `{ elements, files }`: native editable elements, not a rendered picture. */
 export type VisualizationTextContent = {
-  kind: 'mermaid' | 'svg';
+  kind: 'mermaid' | 'svg' | 'excalidraw';
   source: string;
 };
 
@@ -143,7 +144,7 @@ export function isVisualization(value: unknown): value is Visualization {
 
 function isVisualizationContent(value: unknown): value is VisualizationContent {
   if (!record(value)) return false;
-  if (value.kind === 'mermaid' || value.kind === 'svg') {
+  if (value.kind === 'mermaid' || value.kind === 'svg' || value.kind === 'excalidraw') {
     return typeof value.source === 'string';
   }
   return value.kind === 'image'

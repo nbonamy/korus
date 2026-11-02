@@ -1,5 +1,5 @@
 import { product } from '@workspace/core/product';
-import { editCanvas, isCanvasDocument, selectedCanvasElements, type CanvasEdit, type SaveCanvasInput } from '@workspace/core/visualize-canvas';
+import { editCanvas, isCanvasDocument, selectedCanvasElements, type CanvasEdit, type CanvasElement, type SaveCanvasInput } from '@workspace/core/visualize-canvas';
 import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,7 +28,7 @@ export type VisualizationInput = {
   title: string;
   suggestionId?: string;
   content:
-    | { kind: 'mermaid' | 'svg'; source: string }
+    | { kind: 'mermaid' | 'svg' | 'excalidraw'; source: string }
     | { kind: 'image'; generatedImagePath: string; alt: string };
 };
 
@@ -311,15 +311,15 @@ export class VisualizeService {
     return canvas.preview;
   }
 
-  editCanvas(agentId: string, visualizationId: string, expectedRevision: number, edits: CanvasEdit[]) {
-    return this.canvasWrite(visualizationId, () => this.editCanvasDocument(agentId, visualizationId, expectedRevision, edits));
+  editCanvas(agentId: string, visualizationId: string, expectedRevision: number, edits: CanvasEdit[], added: CanvasElement[] = []) {
+    return this.canvasWrite(visualizationId, () => this.editCanvasDocument(agentId, visualizationId, expectedRevision, edits, added));
   }
 
-  private async editCanvasDocument(agentId: string, visualizationId: string, expectedRevision: number, edits: CanvasEdit[]) {
+  private async editCanvasDocument(agentId: string, visualizationId: string, expectedRevision: number, edits: CanvasEdit[], added: CanvasElement[]) {
     const visualization = this.requireVisualization(agentId, visualizationId);
     const current = visualization.canvas;
     if (!current || current.revision !== expectedRevision) throw new Error('Stale canvas revision. Read the canvas and retry.');
-    const next = editCanvas(current, edits);
+    const next = editCanvas(current, edits, added);
     this.bindConversation(agentId, this.requireContext(agentId).visualize);
     visualization.canvas = next;
     try { await this.commit(); } catch (error) { visualization.canvas = current; throw error; }
@@ -400,9 +400,10 @@ export class VisualizeService {
   private async visualizationContent(input: VisualizationInput['content']): Promise<VisualizationContent> {
     if ('source' in input) {
       if (input.kind === 'mermaid') assertSupportedMermaid(input.source);
+      const source = input.kind === 'excalidraw' ? normalizeExcalidrawScene(input.source, this.now().getTime()) : input.source;
       return {
         kind: input.kind,
-        source: boundedText(input.source, 'Visualization source', MAX_VISUALIZATION_SOURCE_BYTES),
+        source: boundedText(source, 'Visualization source', MAX_VISUALIZATION_SOURCE_BYTES),
       };
     }
     const resolved = await this.resolveGeneratedImage(input.generatedImagePath);
@@ -489,6 +490,21 @@ function injectedPrompt(message: string, instructions: string): string {
 
 function contextJson(value: unknown): string {
   return JSON.stringify(value).replaceAll('<', '\\u003c').replaceAll('>', '\\u003e');
+}
+
+/** Keeps only the scene (elements and image files) and proves the canvas will accept it. */
+function normalizeExcalidrawScene(source: string, now: number): string {
+  let parsed: unknown;
+  try { parsed = JSON.parse(source); } catch { throw new Error('Excalidraw source must be JSON with an elements array.'); }
+  const scene = parsed && typeof parsed === 'object' ? parsed as { elements?: unknown; files?: unknown } : null;
+  if (!scene || !Array.isArray(scene.elements)) throw new Error('Excalidraw source must be JSON with an elements array.');
+  const rawFiles = scene.files && typeof scene.files === 'object' && !Array.isArray(scene.files) ? scene.files as Record<string, Record<string, unknown>> : {};
+  const files = Object.fromEntries(Object.entries(rawFiles).map(([id, file]) => [id, {
+    id, mimeType: file?.mimeType, dataURL: file?.dataURL, created: typeof file?.created === 'number' ? file.created : now,
+  }]));
+  const document = { revision: 1, elements: scene.elements, files, selectedElementIds: [], preview: '' };
+  if (!isCanvasDocument(document)) throw new Error('Excalidraw scene is not valid: use rectangle, ellipse, diamond, text, arrow, line, freedraw, image or frame elements with unique ids, numeric geometry and no links.');
+  return JSON.stringify({ elements: document.elements, files: document.files });
 }
 
 function assertSupportedMermaid(source: string): void {

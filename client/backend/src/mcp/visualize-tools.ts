@@ -1,12 +1,13 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import * as z from 'zod/v4';
 import { visualizationSuggestionLimits } from '@workspace/core/visualize';
+import type { CanvasElement } from '@workspace/core/visualize-canvas';
 import type { VisualizeService } from '../visualize-service';
 import { loggedToolResult, type AppMcpToolModuleProvider } from './tool-modules';
 
 const visualizationContent = z.discriminatedUnion('kind', [
   z.object({
-    kind: z.enum(['mermaid', 'svg']),
+    kind: z.enum(['mermaid', 'svg', 'excalidraw']),
     source: z.string().trim().min(1).max(250_000),
   }),
   z.object({
@@ -33,13 +34,14 @@ function registerVisualizeTools(server: McpServer, visualize: VisualizeService, 
   }, ({ visualizationId, selectedOnly }) => loggedToolResult('read-visualization-canvas', { agentId, visualizationId },
     () => visualize.readCanvas(agentId, visualizationId, selectedOnly)));
   server.registerTool('edit-visualization-canvas', {
-    description: 'Apply one undoable batch to existing stable element IDs at the exact revision read. Preserves all other elements. Supports geometry, text, styling, locked and isDeleted; no code execution.',
+    description: 'Apply one undoable batch at the exact revision read: edit existing stable element IDs (geometry, text, styling, locked, isDeleted) and/or add new Excalidraw elements with fresh unique IDs. Preserves all other elements; no code execution. Added elements need id, type, x, y, width and height; omitted properties take Excalidraw defaults. Text goes in standalone text elements; arrows are line-like elements with relative points.',
     inputSchema: {
       visualizationId: z.string().min(1), expectedRevision: z.number().int().positive(),
-      edits: z.array(z.object({ id: z.string().min(1), changes: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])) })).min(1).max(100),
+      edits: z.array(z.object({ id: z.string().min(1), changes: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])) })).max(100).default([]),
+      add: z.array(z.record(z.string(), z.unknown())).max(100).default([]),
     },
-  }, ({ visualizationId, expectedRevision, edits }) => loggedToolResult('edit-visualization-canvas', { agentId, visualizationId },
-    () => visualize.editCanvas(agentId, visualizationId, expectedRevision, edits)));
+  }, ({ visualizationId, expectedRevision, edits, add }) => loggedToolResult('edit-visualization-canvas', { agentId, visualizationId },
+    () => visualize.editCanvas(agentId, visualizationId, expectedRevision, edits, add as CanvasElement[])));
   server.registerTool('view-visualization-canvas', {
     description: 'Get the latest saved PNG visual context for a canvas when structured element context is insufficient.',
     inputSchema: { visualizationId: z.string().min(1) },
@@ -66,7 +68,7 @@ function registerVisualizeTools(server: McpServer, visualize: VisualizeService, 
   ));
 
   server.registerTool('add-visualization', {
-    description: 'Add a complete Mermaid, SVG, or generated-image visualization to the active Visualize conversation and select it.',
+    description: 'Add a complete Mermaid, SVG, native Excalidraw, or generated-image visualization to the active Visualize conversation and select it. For kind excalidraw, source is the JSON of an .excalidraw file (elements and files); it opens as editable canvas elements.',
     inputSchema: {
       title: z.string().trim().min(1).max(200),
       suggestionId: z.string().trim().min(1).optional(),
@@ -109,7 +111,7 @@ function registerVisualizeTools(server: McpServer, visualize: VisualizeService, 
   ));
 
   server.registerTool('replace-visualization', {
-    description: 'Replace one existing visualization with a complete revised Mermaid, SVG, or generated-image visualization.',
+    description: 'Replace one existing visualization with a complete revised Mermaid, SVG, native Excalidraw, or generated-image visualization.',
     inputSchema: {
       visualizationId: z.string().trim().min(1),
       title: z.string().trim().min(1).max(200),
