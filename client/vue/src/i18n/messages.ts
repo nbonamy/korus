@@ -112,7 +112,7 @@ export const messages = {
       cliDetected: `${product.name} detected an authenticated {provider} CLI. Connect ${product.name} directly for faster {provider} access.`,
       retry: 'Retry', retryAuthorization: 'Retry {provider} authorization',
     },
-    gitlabWorkflow: { generatePullRequestDraftWithCodex: 'Generate merge request draft with Codex', uncommittedChangesWillNotBeIncludedInThisPullRequest: 'Uncommitted changes will not be included in this merge request.', createPR: 'Create MR', createPullRequest: 'Create merge request', creatingPullRequest: 'Creating merge request', pullRequestCreated: 'Merge request created', pullRequestFailed: 'Merge request failed', openRequest: 'Open merge request', openPullRequest: 'Open pull request' },
+    gitlabWorkflow: { generatePullRequestDraft: 'Generate merge request draft', uncommittedChangesWillNotBeIncludedInThisPullRequest: 'Uncommitted changes will not be included in this merge request.', createPR: 'Create MR', createPullRequest: 'Create merge request', creatingPullRequest: 'Creating merge request', pullRequestCreated: 'Merge request created', pullRequestFailed: 'Merge request failed', openRequest: 'Open merge request', openPullRequest: 'Open pull request' },
     gitlabBacklog: { mergeRequests: 'Merge requests', searchMergeRequests: 'Search merge requests…', recentMergeRequests: 'Recent merge requests', noMergeRequests: 'No merge requests found.', mr: 'MR', missingBranch: 'GitLab did not return the merge request branch. Refresh and try again.' },
     gitlabIntegration: {
       description: 'Repositories, issues and merge requests',

@@ -1,5 +1,6 @@
 import { normalizePromptContent, promptContentText } from '@codex-app-sdk/core/surface';
 import { promptWithSelectedReferences } from '../agents/prompt-content';
+import { utilityTextModel } from '../agents/utility-text-model';
 import type { ExecutionObservation } from '@workspace/core/usage';
 import { mkdir, realpath } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -154,8 +155,8 @@ export class AntigravityHost implements AgentBackendDriver {
     this.auxiliary.add(session);
     try {
       if (this.closed) throw new Error('Antigravity host is closed.');
-      const model = agent.backendDefaults?.kind === this.backend ? agent.backendDefaults.model : undefined;
-      if (model) await session.setModel(model);
+      const selection = utilityTextModel(this.backend, antigravityModels(session.configuration.models));
+      await session.setModel(selection.model);
       await session.setMode('default');
       const turn = session.prompt([input.developerInstructions, 'Return only the requested text. Do not call tools.',
         input.outputSchema ? `Return JSON matching this schema: ${JSON.stringify(input.outputSchema)}` : '', input.prompt].filter(Boolean).join('\n\n'));
@@ -254,14 +255,7 @@ export class AntigravityHost implements AgentBackendDriver {
     // Read the adopted session; a cancelled resume must not reopen the caller's old reference.
     const session = resuming ? this.sessions.get(agent.id) : await this.ensure(agent);
     if (!session || session.isClosed) throw new Error('Antigravity session was released during model loading.');
-    const models = session.configuration.models;
-    if (!record(models) || !Array.isArray(models.availableModels)) return [];
-    return models.availableModels.filter(record).filter(model => typeof model.modelId === 'string').map(model => ({
-      id: model.modelId as string, model: model.modelId as string,
-      displayName: typeof model.name === 'string' ? model.name : model.modelId as string,
-      ...(typeof model.description === 'string' ? { description: model.description } : {}),
-      isDefault: model.modelId === models.currentModelId,
-    }));
+    return antigravityModels(session.configuration.models);
   }
 
   async setPermissionMode(agent: Agent, mode: string) {
@@ -346,4 +340,14 @@ export class AntigravityHost implements AgentBackendDriver {
     this.emit({ type: 'provider.authenticationChanged', backend: this.backend, payload: state }); return state;
   }
   private emit(event: BackendEvent): void { for (const listener of this.listeners) listener(event); }
+}
+
+function antigravityModels(models: unknown): BackendModelOption[] {
+  if (!record(models) || !Array.isArray(models.availableModels)) return [];
+  return models.availableModels.filter(record).filter(model => typeof model.modelId === 'string').map(model => ({
+    id: model.modelId as string, model: model.modelId as string,
+    displayName: typeof model.name === 'string' ? model.name : model.modelId as string,
+    ...(typeof model.description === 'string' ? { description: model.description } : {}),
+    isDefault: model.modelId === models.currentModelId,
+  }));
 }

@@ -113,8 +113,8 @@
           type="button"
           :disabled="busy || commitAddedLines + commitRemovedLines === 0"
           :aria-busy="generatingKind === 'commit'"
-          :aria-label="$t('surface.gitWorkflowControl.generateCommitMessageWithCodex')"
-          :title="$t('surface.gitWorkflowControl.generateWithCodex')"
+          :aria-label="$t('surface.gitWorkflowControl.generateCommitMessage')"
+          :title="$t('surface.gitWorkflowControl.generate')"
           @click="generateCommitMessage"
         >
           <SparklesIcon aria-hidden="true" />
@@ -228,8 +228,8 @@
           type="button"
           :disabled="busy"
           :aria-busy="generatingKind === 'pullRequest'"
-          :aria-label="requestText('generatePullRequestDraftWithCodex')"
-          :title="$t('surface.gitWorkflowControl.generateWithCodex')"
+          :aria-label="requestText('generatePullRequestDraft')"
+          :title="$t('surface.gitWorkflowControl.generate')"
           @click="generatePullRequestMessage"
         >
           <SparklesIcon aria-hidden="true" />
@@ -531,7 +531,7 @@ let mergeSuccessTimer: ReturnType<typeof setTimeout> | null = null;
 let updateSuccessTimer: ReturnType<typeof setTimeout> | null = null;
 const debugOperationTimers: Array<ReturnType<typeof setTimeout>> = [];
 const mergeUnavailable = computed(() => !props.mergeBranch);
-const canGenerateMessage = computed(() => props.agent.backend === 'codex' && Boolean(props.generateMessage));
+const canGenerateMessage = computed(() => Boolean(props.generateMessage));
 const unstagedAddedLines = computed(() => workflow.value?.unstagedAddedLines ?? props.gitStatus?.addedLines ?? 0);
 const unstagedRemovedLines = computed(() => workflow.value?.unstagedRemovedLines ?? props.gitStatus?.removedLines ?? 0);
 const stagedAddedLines = computed(() => workflow.value?.stagedAddedLines ?? 0);

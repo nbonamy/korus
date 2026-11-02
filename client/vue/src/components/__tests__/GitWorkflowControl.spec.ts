@@ -36,7 +36,7 @@ describe('GitWorkflowControl', () => {
       await wrapper.get('.git-workflow-control__trigger').trigger('click');
       await bodyAll('[role="menuitem"]').find(item => item.text() === 'Create MR')!.trigger('click');
       expect(wrapper.get('[role="dialog"]').text()).toContain('Create merge request');
-      expect(wrapper.find('[aria-label="Generate merge request draft with Codex"]').exists()).toBe(true);
+      expect(wrapper.find('[aria-label="Generate merge request draft"]').exists()).toBe(true);
       expect(wrapper.text()).toContain('Uncommitted changes will not be included in this merge request.');
       await wrapper.get('.git-workflow-control__pull-request-form button').trigger('click');
       await flushPromises();
@@ -332,16 +332,16 @@ describe('GitWorkflowControl', () => {
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
   });
 
-  it('generates an editable commit message from the selected scopes', async () => {
+  it.each(['codex', 'claude', 'antigravity'] as const)('generates an editable %s commit message from the selected scopes', async backend => {
     const pendingGeneration = deferred<{ kind: 'commit'; message: string }>();
     const generateMessage = vi.fn(() => pendingGeneration.promise);
-    const wrapper = mountControl({ generateMessage });
+    const wrapper = mountControl({ generateMessage, agent: { ...agent, backend, backendDefaults: { kind: backend } } });
     await flushPromises();
     expect(wrapper.get('.git-workflow-control__primary').attributes('disabled')).toBeUndefined();
     await wrapper.get('.git-workflow-control__primary').trigger('click');
     await wrapper.findAllComponents({ name: 'ElSwitch' })[0]!.setValue(false);
     await wrapper.findAllComponents({ name: 'ElSwitch' })[1]!.setValue(true);
-    const generate = wrapper.get('[aria-label="Generate commit message with Codex"]');
+    const generate = wrapper.get('[aria-label="Generate commit message"]');
     await generate.trigger('click');
 
     expect(generateMessage).toHaveBeenCalledWith('agent-1', {
@@ -1232,7 +1232,7 @@ describe('GitWorkflowControl', () => {
     expect(wrapper.get('.git-workflow-control__primary').attributes('disabled')).toBeUndefined();
     await wrapper.get('.git-workflow-control__trigger').trigger('click');
     await bodyAll('[role="menuitem"]').find((item) => item.text().includes('Create PR'))?.trigger('click');
-    await wrapper.get('[aria-label="Generate pull request draft with Codex"]').trigger('click');
+    await wrapper.get('[aria-label="Generate pull request draft"]').trigger('click');
     await flushPromises();
 
     expect(generateMessage).toHaveBeenCalledWith('agent-1', { kind: 'pullRequest' });
@@ -1253,7 +1253,7 @@ describe('GitWorkflowControl', () => {
     expect(wrapper.get('.git-workflow-control__primary').attributes('disabled')).toBeUndefined();
     await wrapper.get('.git-workflow-control__trigger').trigger('click');
     await bodyAll('[role="menuitem"]').find((item) => item.text().includes(provider === 'gitlab' ? 'Create MR' : 'Create PR'))?.trigger('click');
-    await wrapper.get(`[aria-label="Generate ${provider === 'gitlab' ? 'merge' : 'pull'} request draft with Codex"]`).trigger('click');
+    await wrapper.get(`[aria-label="Generate ${provider === 'gitlab' ? 'merge' : 'pull'} request draft"]`).trigger('click');
     await flushPromises();
 
     expect(wrapper.get('.git-workflow-control__generation-error').text()).toBe(
@@ -1285,10 +1285,10 @@ describe('GitWorkflowControl', () => {
     expect(wrapper.text()).not.toContain('Error invoking remote method');
   });
 
-  it('does not offer Codex draft generation for Claude agents', async () => {
+  it('hides draft generation when the host does not provide it', async () => {
     const wrapper = mountControl({
       agent: { ...agent, backend: 'claude', backendDefaults: { kind: 'claude' } },
-      generateMessage: vi.fn(),
+      generateMessage: undefined,
     });
     await flushPromises();
     expect(wrapper.get('.git-workflow-control__primary').attributes('disabled')).toBeUndefined();

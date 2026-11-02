@@ -1,5 +1,6 @@
 import { ConversationContentTransport } from '@codex-app-sdk/backend';
 import { promptWithSelectedReferences } from '../agents/prompt-content';
+import { utilityTextModel } from '../agents/utility-text-model';
 import { normalizePromptContent } from '@codex-app-sdk/core/surface';
 import type { ExecutionObservation } from '@workspace/core/usage';
 import { codexExecutionConsumption } from './execution-usage';
@@ -363,13 +364,12 @@ export class CodexSurfaceAgentAdapter {
     });
   }
 
-  async generateText(agent: Agent, input: BackendTextGenerationInput): Promise<BackendTextGenerationResult> {
-    const defaults = agent.backendDefaults?.kind === 'codex' ? agent.backendDefaults : undefined;
+  async generateText(_agent: Agent, input: BackendTextGenerationInput): Promise<BackendTextGenerationResult> {
+    const selection = utilityTextModel('codex', await this.listModels());
     return this.surface.generateText(input.prompt, {
       cwd: expandHome(input.cwd),
-      ...(defaults?.model ? { model: defaults.model } : {}),
-      ...(defaults?.reasoningEffort ? { reasoningEffort: defaults.reasoningEffort } : {}),
-      ...(defaults?.serviceTier !== undefined ? { serviceTier: defaults.serviceTier } : {}),
+      ...selection,
+      serviceTier: null,
       ...(input.developerInstructions ? { developerInstructions: input.developerInstructions } : {}),
       ...(input.outputSchema ? { outputSchema: input.outputSchema } : {}),
     });

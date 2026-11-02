@@ -76,7 +76,7 @@ export type ClaudePermissionResponse = {
 };
 
 export type ClaudeTurnTransport = {
-  generateText?(input: import('@workspace/core/backend-driver').BackendTextGenerationInput): Promise<import('@workspace/core/backend-driver').BackendTextGenerationResult>;
+  generateText?(input: import('@workspace/core/backend-driver').BackendTextGenerationInput, selection?: Pick<ClaudeTurnParams, 'model' | 'effort'>): Promise<import('@workspace/core/backend-driver').BackendTextGenerationResult>;
   startTurn(
     params: ClaudeTurnParams,
     onMessage: (message: ClaudeSdkMessage) => void,

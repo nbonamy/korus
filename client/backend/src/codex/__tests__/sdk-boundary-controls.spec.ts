@@ -52,14 +52,22 @@ describe(`Codex SDK → ${product.name} backend controls`, () => {
     expect(conversation('conversation-b').handle.updateSettings).not.toHaveBeenCalled();
   });
 
-  it('generates ephemeral drafts with defaults without creating an agent conversation', async () => {
+  it('uses a lightweight advertised model for utility drafts without changing the agent conversation', async () => {
     const { driver, surface } = setup();
+    surface.listModels.mockResolvedValue([
+      { id: 'luna', model: 'gpt-6.1-luna', displayName: 'Luna', supportedReasoningEfforts: [{ reasoningEffort: 'low', description: '' }] },
+      { id: 'sol', model: 'gpt-6.1-sol', displayName: 'Sol', isDefault: true },
+    ]);
     surface.generateText.mockResolvedValue({ text: 'feat: ship' });
     const agent = { ...sdkAgent(), backendDefaults: { kind: 'codex' as const, model: 'model', reasoningEffort: 'high', serviceTier: 'fast' } };
     await expect(driver.generateText(agent, { prompt: 'draft', cwd: '/repo', developerInstructions: 'Keep short', outputSchema: { type: 'object' } })).resolves.toStrictEqual({ text: 'feat: ship' });
-    expect(surface.generateText).toHaveBeenCalledWith('draft', { cwd: '/repo', developerInstructions: 'Keep short', model: 'model', reasoningEffort: 'high', serviceTier: 'fast', outputSchema: { type: 'object' } });
+    expect(surface.generateText).toHaveBeenCalledWith('draft', { cwd: '/repo', developerInstructions: 'Keep short', model: 'gpt-6.1-luna', reasoningEffort: 'low', serviceTier: null, outputSchema: { type: 'object' } });
+    expect(agent.backendDefaults).toStrictEqual({ kind: 'codex', model: 'model', reasoningEffort: 'high', serviceTier: 'fast' });
     expect(surface.createConversation).not.toHaveBeenCalled();
     expect(surface.conversation).not.toHaveBeenCalled();
+    surface.listModels.mockResolvedValue([{ id: 'sol', model: 'gpt-6.1-sol', displayName: 'Sol' }]);
+    await expect(driver.generateText(agent, { cwd: '/repo', prompt: 'draft' })).rejects.toThrow(/lightweight/i);
+    expect(surface.generateText).toHaveBeenCalledOnce();
   });
 
   it('delegates account lifecycle and device-login identity without handling credentials', async () => {

@@ -47,6 +47,12 @@ log and socket paths, npm scripts and launchd labels stay brand-neutral.
   user messages.
 - Agent creation (protocol, MCP delegation, independent review) goes through one
   `AgentCreationService`; callers only adapt their input.
+- Short text utilities use `driver/text/generate` with the initiating agent's
+  provider, prompt, optional instructions and output schema. `utilityTextModel`
+  owns the lightweight model policy: Luna, Haiku, or Gemini Flash-Lite/Flash,
+  resolved from that provider's catalog. A missing lightweight model is an error;
+  utilities never switch providers, send a conversation prompt or change the
+  agent's selected model. Provider hosts own isolated generation and cleanup.
 - Repository acquisition and branch-to-agent setup share daemon-owned modules
   across desktop and companion adapters. Access adapters may revalidate a grant
   before each write, but do not duplicate checkout selection or clone-reuse rules.

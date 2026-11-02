@@ -318,14 +318,14 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
     }
   }
 
-  async generateText(input: import('@workspace/core/backend-driver').BackendTextGenerationInput): Promise<{ text: string }> {
+  async generateText(input: import('@workspace/core/backend-driver').BackendTextGenerationInput, selection: Pick<ClaudeTurnParams, 'model' | 'effort'> = {}): Promise<{ text: string }> {
     if (this.closing) throw new Error('Claude transport is closed.');
     const prompt = new AsyncPushQueue<SDKUserMessage>();
     const sessionId = this.createSessionId();
     const runtime = this.createQuery({
       prompt,
       options: {
-        ...claudeQueryOptions({ cwd: input.cwd, prompt: input.prompt, appendSystemPrompt: input.developerInstructions }, sessionId, null, denyInspectionToolUse, this.options),
+        ...claudeQueryOptions({ cwd: input.cwd, prompt: input.prompt, appendSystemPrompt: input.developerInstructions, ...selection }, sessionId, null, denyInspectionToolUse, this.options),
         persistSession: false,
         tools: [],
         mcpServers: {},

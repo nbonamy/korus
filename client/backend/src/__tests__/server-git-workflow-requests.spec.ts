@@ -169,7 +169,11 @@ describe('AppBackendServer', () => {
     await server.close();
   });
 
-  it.each(['github', 'gitlab'])('generates editable %s Git drafts through the active backend without sending a conversation prompt', async provider => {
+  it.each([
+    { provider: 'github', backend: 'codex' as const },
+    { provider: 'github', backend: 'claude' as const },
+    { provider: 'gitlab', backend: 'antigravity' as const },
+  ])('generates editable $provider drafts through $backend without another provider or a conversation prompt', async ({ provider, backend }) => {
     const snapshot = createTestSnapshot();
     snapshot.general.commitMessageInstructions = 'Use lowercase conventional commits.';
     snapshot.general.pullRequestInstructions = 'Include a deployment checklist.';
@@ -179,7 +183,7 @@ describe('AppBackendServer', () => {
       teamId: 'team-test',
       name: 'Dina',
       folder: '/repo',
-      backend: 'codex',
+      backend,
       status: { type: 'idle' },
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
@@ -189,8 +193,8 @@ describe('AppBackendServer', () => {
       .mockResolvedValueOnce({ text: '{"title":"Improve Git drafts","body":"## Summary\\n- Generate drafts"}' });
     const sendPrompt = vi.fn();
     const driver: AgentBackendDriver = {
-      backend: 'codex',
-      getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
+      backend,
+      getRuntimeStatus: () => ({ backend, status: 'running' }),
       getCapabilities: () => codexBackendCapabilities,
       generateText,
       sendPrompt,
@@ -204,7 +208,7 @@ describe('AppBackendServer', () => {
     const server = new AppBackendServer({
       version: 'test-version',
       snapshot,
-      driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
+      driverRpc: new BackendDriverRpc(new Map([[backend, driver]])),
       agentGitService: { commitMessageContext, pullRequestMessageContext, workflow: async () => ({ remoteUrl: `git@${provider}.com:owner/repo.git` }) } as unknown as AgentGitService,
     });
 

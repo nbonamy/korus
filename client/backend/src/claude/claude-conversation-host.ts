@@ -2,6 +2,7 @@ import { validConsumption, type Consumption, type ExecutionObservation, type Req
 import path from 'node:path';
 import { cp, rm } from 'node:fs/promises';
 import { warnMain } from '../log';
+import { utilityTextModel } from '../agents/utility-text-model';
 import { promptContentDirectory, restorePromptContent, savePromptContent } from './prompt-content';
 import { promptWithSelectedReferences } from '../agents/prompt-content';
 import { isAppMcpServerName, product } from '@workspace/core/product';
@@ -196,9 +197,10 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     return this.catalog.listSkills(agent);
   }
 
-  async generateText(_agent: Agent, input: import('@workspace/core/backend-driver').BackendTextGenerationInput) {
+  async generateText(agent: Agent, input: import('@workspace/core/backend-driver').BackendTextGenerationInput) {
     if (!this.transport.generateText) throw new Error('Claude text generation is unavailable.');
-    return this.transport.generateText(input);
+    const selection = utilityTextModel('claude', await this.catalog.listModels(agent));
+    return this.transport.generateText(input, { model: selection.model, ...(selection.reasoningEffort ? { effort: claudeEffort(selection.reasoningEffort) } : {}) });
   }
 
   async runCodeReview(agent: Agent, input: BackendCodeReviewInput): Promise<BackendCodeReviewResult> {

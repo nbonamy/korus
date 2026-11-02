@@ -78,6 +78,7 @@ rl.on('line',line=>{
  if(v.method==='initialize') {fs.writeFileSync(require('node:path').join(process.cwd(),'fixture-initialize.json'),JSON.stringify(v.params));reply({protocolVersion:2,agentInfo:{name:'antigravity-acp',version:'1.3.0'}});}
  else if(v.method==='authenticate') reply({});
  else if(v.method==='session/new') {mcpServers=v.params.mcpServers;fs.writeFileSync(require('node:path').join(process.cwd(),'fixture-session.json'),JSON.stringify(v.params));fs.appendFileSync(catalogFile,JSON.stringify({sessionId,cwd:v.params.cwd,title:'Saved conversation'})+'\\n');reply({sessionId,...(usageFixture()?.configuration??{}),models:usageFixture()?.configuration.models??{currentModelId:'gemini-low',availableModels:[{modelId:'gemini-low',name:'Gemini Low'},{modelId:'opaque-oss-id',name:'GPT-OSS 120B (Medium)'}]}});}
+ else if(v.method==='session/set_config_option') {fs.writeFileSync(require('node:path').join(process.cwd(),'fixture-model.json'),JSON.stringify(v.params));reply({});}
  else if(v.method==='session/list') reply({sessions:[...catalog(),{sessionId:'stored-session',cwd:process.cwd(),title:'Create a file'},{sessionId:'other-folder',cwd:'/another-workspace',title:'Private'}]});
  else if(v.method==='session/load') {
    sessionId=v.params.sessionId;
@@ -393,6 +394,9 @@ describe('Antigravity native session', () => {
   });
 
   it('generates auxiliary text with no MCP or filesystem tools and preserves the agent conversation', async () => {
+    await writeFile(path.join(root, 'usage-fixture.json'), JSON.stringify({ configuration: { models: {
+      currentModelId: 'heavy', availableModels: [{ modelId: 'heavy', name: 'Gemini Pro' }, { modelId: 'quick', name: 'Gemini Flash' }, { modelId: 'quick-lite', name: 'Gemini Flash Lite' }],
+    } } }));
     const host = new AntigravityHost();
     const agent: Agent = { id: 'utility', name: 'Utility', folder: root, backend: 'antigravity', createdAt: '', updatedAt: '', status: { type: 'idle' } };
     const events: BackendEvent[] = [];
@@ -400,6 +404,7 @@ describe('Antigravity native session', () => {
     try {
       const result = await host.generateText(agent, { cwd: root, prompt: 'utility-fixture', outputSchema: { type: 'string' } });
       expect(result.text).toBe('Tools denied; text result.');
+      expect(JSON.parse(await readFile(path.join(root, 'fixture-model.json'), 'utf8'))).toMatchObject({ configId: 'model', value: 'quick-lite' });
       expect(JSON.parse(await readFile(path.join(root, 'fixture-initialize.json'), 'utf8')).clientCapabilities.fs).toEqual({ readTextFile: false, writeTextFile: false });
       expect(JSON.parse(await readFile(path.join(root, 'fixture-session.json'), 'utf8'))).toMatchObject({ mcpServers: [], _meta: { agy: { enabledTools: [] } } });
       await expect(readFile(path.join(root, 'unwanted-write'))).rejects.toMatchObject({ code: 'ENOENT' });
@@ -408,10 +413,14 @@ describe('Antigravity native session', () => {
     } finally { await host.close(); }
   });
   it('keeps utility generation sessions out of history and stores no prompt text for them', async () => {
+    await writeFile(path.join(root, 'usage-fixture.json'), JSON.stringify({ configuration: { models: {
+      currentModelId: 'heavy', availableModels: [{ modelId: 'heavy', name: 'Gemini Pro' }, { modelId: 'quick', name: 'Gemini Flash' }],
+    } } }));
     const host = new AntigravityHost();
     const agent: Agent = { id: 'utility', name: 'Utility', folder: root, backend: 'antigravity', createdAt: '', updatedAt: '', status: { type: 'idle' } };
     try {
       await host.generateText(agent, { cwd: root, prompt: 'utility-fixture-diff' });
+      expect(JSON.parse(await readFile(path.join(root, 'fixture-model.json'), 'utf8'))).toMatchObject({ configId: 'model', value: 'quick' });
       const generated = (await readFile(path.join(root, 'home', 'catalog.json'), 'utf8')).trim().split('\n').map(line => JSON.parse(line).sessionId as string);
       expect(generated).toHaveLength(1);
       const sessionDirectory = path.join(root, 'home', 'korus-sessions', encodeURIComponent(generated[0]!));
