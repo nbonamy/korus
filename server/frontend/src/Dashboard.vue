@@ -33,7 +33,7 @@
           >Refresh
         </ElButton>
       </header>
-      <div class="report-controls">
+      <div v-if="page !== 'overview'" class="report-controls">
         <form
           class="range-controls"
           aria-label="Reporting range"
@@ -121,7 +121,7 @@
           <ConsoleOptions v-model="groupServiceTiers" @change="load" />
         </section>
       </div>
-      <p class="freshness">
+      <p v-if="page !== 'overview'" class="freshness">
         <span class="status-dot" aria-hidden="true" />
         <template v-if="data?.availability.lastDay"
           >Latest report {{ data.availability.lastDay }} ·
@@ -131,172 +131,20 @@
       <p v-if="loading" role="status" class="state panel">Loading metrics…</p>
       <p v-else-if="error" role="alert" class="state panel">{{ error }}</p>
       <template v-else-if="data">
-        <section
-          v-if="page === 'overview' || page === 'activity'"
-          aria-label="Global activity"
-          class="overview-section"
-        >
-          <div class="section-heading">
-            <h2>Installations</h2>
-            <span class="muted">As of {{ data.range.to }} {{ timeZone }}</span>
-          </div>
-          <dl class="cards">
-            <div class="panel" aria-label="Participating installs">
-              <dt>Participating installs</dt>
-              <dd>{{ count(data.overview.participatingInstalls) }}</dd>
-            </div>
-            <div class="panel" aria-label="Daily active installs">
-              <dt>Daily active</dt>
-              <dd>{{ count(data.overview.dau) }}</dd>
-            </div>
-            <div class="panel" aria-label="Weekly active installs">
-              <dt>Weekly active</dt>
-              <dd>{{ count(data.overview.wau) }}</dd>
-            </div>
-            <div class="panel" aria-label="Monthly active installs">
-              <dt>Monthly active</dt>
-              <dd>{{ count(data.overview.mau) }}</dd>
-            </div>
-          </dl>
-        </section>
-        <p
-          v-if="page !== 'activity' && data.totals.groups === '0'"
-          class="state panel"
-        >
-          No usage for this selection.
-        </p>
-        <div
-          v-if="!['activity', 'performance', 'models'].includes(page)"
-          class="section-heading usage-heading"
-        >
-          <h2>Usage</h2>
-        </div>
-        <dl
-          v-if="!['activity', 'performance', 'models'].includes(page)"
-          class="cards usage-totals"
-        >
-          <div class="panel" aria-label="Turns">
-            <dt>Turns</dt>
-            <dd>{{ count(data.totals.turns) }}</dd>
-          </div>
-          <div
-            v-if="page !== 'spend'"
-            class="panel"
-            aria-label="Measured total tokens"
-          >
-            <dt>Total tokens</dt>
-            <dd :title="count(data.totals.totalTokens)">
-              {{ tokens(data.totals.totalTokens) }}
-            </dd>
-          </div>
-          <div
-            v-if="page !== 'tokens'"
-            class="panel"
-            aria-label="Known estimated spend"
-          >
-            <dt>Estimated spend</dt>
-            <dd :title="exactMoney(data.totals.estimatedCostUsd)">
-              {{ money(data.totals.estimatedCostUsd) }}
-            </dd>
-          </div>
-          <div
-            v-if="page === 'overview' || page === 'tokens'"
-            class="panel"
-            aria-label="Measured cache-read share"
-          >
-            <dt>Cache-read share</dt>
-            <dd>{{ percent(data.totals.cacheReadShare) }}</dd>
-          </div>
-        </dl>
-        <MetricChart
-          v-if="page === 'overview' || page === 'activity'"
-          id="activity"
-          title="Daily activity"
-          :days="data.activity.map((row) => row.day)"
-          :series="[
-            {
-              label: 'Active installs',
-              values: data.activity.map((row) => row.activeInstalls),
-            },
-            {
-              label: 'First reported installs',
-              values: data.activity.map((row) => row.firstReportedInstalls),
-            },
-          ]"
-          measure="count"
+        <OverviewReport
+          v-if="page === 'overview'"
+          :data="data"
+          :previous="previousData"
         />
-
-        <div
-          v-if="['overview', 'tokens', 'spend'].includes(page)"
-          class="chart-grid"
-        >
-          <MetricChart
-            v-if="page !== 'spend'"
-            id="tokens"
-            title="Weekly tokens"
-            :days="data.weekly.map((row) => row.week)"
-            :series="[
-              {
-                label: 'Inclusive input',
-                values: data.weekly.map((row) => row.inputTokens),
-              },
-              {
-                label: 'Output',
-                values: data.weekly.map((row) => row.outputTokens),
-              },
-            ]"
-            measure="tokens"
-            variant="stacked"
-          />
-          <MetricChart
-            v-if="page !== 'tokens'"
-            id="spend"
-            title="Daily estimated spend"
-            :days="data.daily.map((row) => row.day)"
-            :series="[
-              {
-                label: 'Estimated USD',
-                values: data.daily.map((row) => row.estimatedCostUsd),
-              },
-            ]"
-            measure="usd"
-            variant="bar"
-          />
-          <MetricChart
-            v-if="page === 'tokens'"
-            title="Cache-read share"
-            :days="data.daily.map((row) => row.day)"
-            :series="[
-              {
-                label: 'Cache-read share',
-                values: data.daily.map((row) =>
-                  row.cacheReadShare === null
-                    ? null
-                    : String(row.cacheReadShare),
-                ),
-              },
-            ]"
-            measure="ratio"
-          />
-          <MetricChart
-            v-if="page === 'tokens'"
-            title="Measured input"
-            :days="data.weekly.map((row) => row.week)"
-            :series="[
-              {
-                label: 'Cache-read input',
-                values: data.weekly.map((row) => row.cacheReadTokens),
-              },
-              {
-                label: 'Non-cache-read input',
-                values: data.weekly.map((row) => row.nonCacheReadTokens),
-              },
-            ]"
-            measure="tokens"
-            variant="stacked"
-          />
-        </div>
-        <ModelsReport v-if="page === 'models'" :data="data" />
+        <ActivityReport v-if="page === 'activity'" :data="data" />
+        <TokensReport v-if="page === 'tokens'" :data="data" />
+        <SpendReport v-if="page === 'spend'" :data="data" />
+        <ModelsReport
+          v-if="page === 'models'"
+          v-model:measure="modelMeasure"
+          v-model:grouping="modelGrouping"
+          :data="data"
+        />
         <PerformanceReport v-if="page === 'performance'" :data="data" />
         <section
           v-if="page === 'models'"
@@ -305,10 +153,22 @@
           aria-label="Provider and model"
         >
           <header class="panel-heading">
-            <h2>Provider and model</h2>
+            <h2>
+              {{
+                modelGrouping === "provider"
+                  ? "Providers"
+                  : "Provider and model"
+              }}
+            </h2>
             <span class="muted"
-              >{{ data.models.length }}
-              {{ data.range.groupServiceTiers ? "models" : "variants" }}</span
+              >{{ rankedModels.length }}
+              {{
+                modelGrouping === "provider"
+                  ? "providers"
+                  : data.range.groupServiceTiers
+                    ? "models"
+                    : "variants"
+              }}</span
             >
           </header>
           <div
@@ -318,29 +178,87 @@
           >
             <table>
               <caption class="sr-only">
-                Usage by provider and canonical model
+                {{
+                  modelGrouping === "provider"
+                    ? "Usage by provider"
+                    : "Usage by provider and canonical model"
+                }}
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">Provider / model</th>
-                  <th scope="col">Turns</th>
-                  <th scope="col">Inclusive input</th>
+                  <th scope="col">
+                    {{
+                      modelGrouping === "provider"
+                        ? "Provider"
+                        : "Provider / model"
+                    }}
+                  </th>
+                  <th
+                    scope="col"
+                    :aria-sort="
+                      modelMeasure === 'turns' ? 'descending' : undefined
+                    "
+                  >
+                    Turns
+                  </th>
+                  <th
+                    scope="col"
+                    :aria-sort="
+                      modelMeasure === 'totalTokens' ? 'descending' : undefined
+                    "
+                  >
+                    Total tokens
+                  </th>
+                  <th
+                    scope="col"
+                    :aria-sort="
+                      modelMeasure === 'inputTokens' ? 'descending' : undefined
+                    "
+                  >
+                    Inclusive input
+                  </th>
                   <th scope="col">Cache reads</th>
-                  <th scope="col">Output</th>
-                  <th scope="col">Estimated USD</th>
+                  <th
+                    scope="col"
+                    :aria-sort="
+                      modelMeasure === 'outputTokens' ? 'descending' : undefined
+                    "
+                  >
+                    Output
+                  </th>
+                  <th
+                    scope="col"
+                    :aria-sort="
+                      modelMeasure === 'inputRatio' ? 'descending' : undefined
+                    "
+                  >
+                    Input ratio
+                  </th>
+                  <th
+                    scope="col"
+                    :aria-sort="
+                      modelMeasure === 'estimatedCostUsd'
+                        ? 'descending'
+                        : undefined
+                    "
+                  >
+                    Estimated USD
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                <tr
-                  v-for="row in data.models"
-                  :key="`${row.provider}/${row.model}/${row.serviceTier}`"
-                >
+                <tr v-for="row in rankedModels" :key="row.key">
                   <th scope="row">
-                    <span class="provider">{{ row.provider }}</span
-                    ><span>{{ modelLabel(row) }}</span>
+                    <span v-if="row.modelLabel" class="provider">{{
+                      row.provider
+                    }}</span
+                    ><span>{{ row.modelLabel ?? row.label }}</span>
                   </th>
                   <td>
                     {{ count(row.turns) }}
+                  </td>
+                  <td :title="count(row.totalTokens)">
+                    {{ tokens(row.totalTokens) }}
                   </td>
                   <td :title="count(row.inputTokens)">
                     {{ tokens(row.inputTokens) }}
@@ -351,12 +269,15 @@
                   <td :title="count(row.outputTokens)">
                     {{ tokens(row.outputTokens) }}
                   </td>
+                  <td>
+                    {{ measurement(modelValue(row, "inputRatio"), "ratio") }}
+                  </td>
                   <td :title="exactMoney(row.estimatedCostUsd)">
                     {{ money(row.estimatedCostUsd) }}
                   </td>
                 </tr>
                 <tr v-if="!data.models.length">
-                  <td colspan="6">No usage groups.</td>
+                  <td colspan="8">No usage groups.</td>
                 </tr>
               </tbody>
             </table>
@@ -368,6 +289,7 @@
 </template>
 <script setup lang="ts">
 import { computed, ref, onMounted, watch, nextTick } from "vue";
+import { useRoute } from "vue-router";
 import {
   ElButton,
   ElDatePicker,
@@ -377,7 +299,10 @@ import {
 } from "element-plus";
 import ConsoleOptions from "./ConsoleOptions.vue";
 import ModelsReport from "./ModelsReport.vue";
-import MetricChart from "./MetricChart.vue";
+import OverviewReport from "./OverviewReport.vue";
+import ActivityReport from "./ActivityReport.vue";
+import TokensReport from "./TokensReport.vue";
+import SpendReport from "./SpendReport.vue";
 import PerformanceReport from "./PerformanceReport.vue";
 import ConsoleNavigation from "./ConsoleNavigation.vue";
 import {
@@ -385,12 +310,19 @@ import {
   tokens,
   money,
   exactMoney,
-  percent,
+  measurement,
   currentDay,
+  utcDay,
 } from "./format";
 import { consolePages, type ConsolePage } from "./console-pages";
 import { modelLabel } from "./model-label";
+import { modelValue, type ModelMeasure } from "./use-model-comparison";
 import { useMetrics } from "./use-metrics";
+import {
+  useReportGroups,
+  rankReportGroups,
+  type ReportGrouping,
+} from "./use-report-groups";
 const props = withDefaults(
   defineProps<{
     page?: ConsolePage;
@@ -406,9 +338,14 @@ const pageTitle = computed(
   () => consolePages.find((page) => page.id === props.page)!.label,
 );
 const heading = ref<HTMLElement | null>(null);
+const modelMeasure = ref<ModelMeasure>("turns");
+const modelGrouping = ref<ReportGrouping>("model");
+const route = useRoute();
 watch(
   () => props.page,
-  async () => {
+  async (page, previous) => {
+    if (previous === "overview" && page !== "overview") applyLinkedRange();
+    if (page === "overview" || previous === "overview") void load();
     document.title = `${productName} Console · ${pageTitle.value}`;
     await nextTick();
     heading.value?.focus();
@@ -426,11 +363,43 @@ const {
   availableModels,
   groupServiceTiers,
   data,
+  previousData,
   loading,
   error,
   load,
   recent,
-} = useMetrics(() => emit("sessionExpired"));
+} = useMetrics(
+  () => emit("sessionExpired"),
+  () => props.page === "overview",
+);
+const { groups: modelGroups } = useReportGroups(
+  () => data.value,
+  () => modelGrouping.value,
+);
+const rankedModels = computed(() =>
+  rankReportGroups(modelGroups.value, modelMeasure.value),
+);
+function applyLinkedRange() {
+  if (
+    props.page === "overview" ||
+    typeof route.query.from !== "string" ||
+    typeof route.query.to !== "string"
+  )
+    return;
+  from.value = route.query.from;
+  to.value = route.query.to;
+  provider.value = "";
+  model.value = "";
+  groupServiceTiers.value = false;
+}
+applyLinkedRange();
+watch(to, (day, previous) => {
+  if (props.page !== "overview") return;
+  const delta = Date.parse(day) - Date.parse(previous),
+    start = Date.parse(from.value);
+  if (Number.isFinite(delta) && Number.isFinite(start))
+    from.value = utcDay(start + delta);
+});
 const selectedRange = computed(() => {
   const days = (Date.parse(to.value) - Date.parse(from.value)) / 86400000 + 1;
   return to.value === currentDay() && [7, 30, 90].includes(days)

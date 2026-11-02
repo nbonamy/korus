@@ -6,6 +6,7 @@
     :width="220"
     :show-arrow="false"
     :offset="6"
+    popper-class="console-options-menu"
     @after-leave="trigger?.focus()"
   >
     <template #reference>
@@ -44,8 +45,19 @@
         :aria-checked="modelValue"
         @click="toggle"
       >
-        Group service tiers
-        <span aria-hidden="true">{{ modelValue ? "✓" : "" }}</span>
+        <svg
+          class="console-menu-icon"
+          :class="{ 'is-checked': modelValue }"
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path :d="modelValue ? 'M5 12l4 4L19 6' : 'M13 3 4 14h7l-1 7 10-13h-7z'" />
+        </svg>
+        <span>Group service tiers</span>
       </button>
     </div>
   </ElPopover>
@@ -75,17 +87,30 @@ async function toggle() {
 .console-menu-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   width: 100%;
-  padding: 8px;
+  min-height: 28px;
+  margin-block: 0.125px;
+  padding: var(--space-2) var(--space-4);
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--radius-xl);
   background: transparent;
   color: var(--color-text);
   font: inherit;
+  font-size: var(--font-size-13-5);
   text-align: left;
   cursor: pointer;
+}
+.console-menu-icon {
+  width: var(--icon-md);
+  height: var(--icon-md);
+  flex: 0 0 auto;
+  opacity: 0.5;
+  stroke-width: 2px;
+}
+.console-menu-icon.is-checked {
+  opacity: 1;
+  stroke-width: 2.5px;
 }
 .console-menu-item:hover,
 .console-menu-item:focus-visible {

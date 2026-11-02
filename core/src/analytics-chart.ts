@@ -3,8 +3,15 @@ import type {
   ChartDataset,
   ChartOptions,
   Plugin,
+  LineElement,
+  ChartType,
   ScriptableContext,
 } from "chart.js";
+declare module "chart.js" {
+  interface PluginOptionsByType<TType extends ChartType> {
+    "analytics-stack-fill"?: { enabled: boolean };
+  }
+}
 export type AnalyticsMeasure =
   | "count"
   | "tokens"
@@ -16,6 +23,7 @@ export type AnalyticsSeries = {
   key?: string;
   label: string;
   color: string;
+  order?: number;
   values: readonly (string | number | null)[];
 };
 export type AnalyticsChartSpec = {
@@ -26,6 +34,8 @@ export type AnalyticsChartSpec = {
   stacked?: boolean;
   legend?: boolean;
   locale?: string;
+  area?: "gradient" | "solid" | "none";
+  bounds?: { min: number; max: number; step: number };
 };
 export type AnalyticsChartTheme = {
   text: string;
@@ -168,10 +178,12 @@ export function buildAnalyticsChart(
     spec.variant && spec.variant !== "line" ? "bar" : "line";
   const rate = ["rate", "milliseconds", "ratio"].includes(spec.measure);
   const stacked = spec.variant === "stacked" || Boolean(spec.stacked);
+  const curvedStack =
+    type === "line" && stacked && !rate && spec.area !== "none";
   const values = spec.series.map((row) =>
     spec.days.map((_, index) => analyticsNumber(row.values[index])),
   );
-  const scale = chartScale(spec, values, stacked);
+  const scale = spec.bounds ?? chartScale(spec, values, stacked);
   interaction.border = theme.border;
   const activate = (index: number | null) => {
     interaction.index = index;
@@ -184,11 +196,12 @@ export function buildAnalyticsChart(
         const color = resolveChartColor(row.color, theme.tokens);
         return {
           label: row.label,
+          order: row.order,
           data: values[index]!,
           borderColor: color,
           borderWidth: 2,
           backgroundColor: (context: ScriptableContext<"line">) => {
-            if (rate || type === "bar") return color;
+            if (rate || type === "bar" || spec.area === "solid") return color;
             const { chart } = context,
               area = chart.chartArea;
             if (!area) return color;
@@ -219,7 +232,12 @@ export function buildAnalyticsChart(
             );
             return gradient;
           },
-          fill: rate ? false : stacked && index > 0 ? "-1" : "origin",
+          fill:
+            rate || spec.area === "none" || curvedStack
+              ? false
+              : stacked && index > 0
+                ? "stack"
+                : "origin",
           spanGaps: false,
           cubicInterpolationMode: "monotone",
           pointRadius: rate ? 4.5 : 0,
@@ -254,6 +272,9 @@ export function buildAnalyticsChart(
         },
       },
       tooltip: { enabled: false },
+      // The shared plugin clips against the real curved boundaries. Chart.js's
+      // built-in 'stack' target joins the lower samples with straight segments.
+      "analytics-stack-fill": { enabled: curvedStack },
     },
     scales: {
       x: {
@@ -364,6 +385,55 @@ export function buildAnalyticsChart(
         ctx.strokeStyle = interaction.border!;
         ctx.stroke();
         ctx.restore();
+      },
+    },
+    {
+      id: "analytics-stack-fill",
+      beforeDatasetsDraw: (chart, _args, settings) => {
+        if (!settings.enabled) return;
+        const { ctx, chartArea: area } = chart,
+          layers = chart.getSortedVisibleDatasetMetas(),
+          baseline = chart.scales.y!.getBasePixel();
+        // Use the same Bézier paths as the strokes, including their null gaps.
+        // Excluding every lower layer also handles a missing immediate neighbor.
+        const areaPath = (line: LineElement) => {
+          for (const segment of line.segments) {
+            line.pathSegment(ctx, segment, { move: true });
+            ctx.lineTo(line.points[segment.end]!.x!, baseline);
+            ctx.lineTo(line.points[segment.start]!.x!, baseline);
+            ctx.closePath();
+          }
+        };
+        for (const meta of layers)
+          (meta.dataset as LineElement).updateControlPoints(area, "x");
+        for (let index = 0; index < layers.length; index++) {
+          const line = layers[index]!.dataset as LineElement;
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(
+            area.left,
+            area.top,
+            area.right - area.left,
+            area.bottom - area.top,
+          );
+          ctx.clip();
+          for (const lower of layers.slice(0, index)) {
+            ctx.beginPath();
+            ctx.rect(
+              area.left,
+              area.top,
+              area.right - area.left,
+              area.bottom - area.top,
+            );
+            areaPath(lower.dataset as LineElement);
+            ctx.clip("evenodd");
+          }
+          ctx.beginPath();
+          areaPath(line);
+          ctx.fillStyle = line.options.backgroundColor;
+          ctx.fill();
+          ctx.restore();
+        }
       },
     },
   ];

@@ -16,11 +16,11 @@ import { ElPopover, ElSwitch } from "element-plus";
 import { RouterView, createMemoryHistory } from "vue-router";
 import { createConsoleRouter } from "../router";
 import { createConsoleSession } from "../console-session";
-async function renderDashboard() {
+async function renderDashboard(page = "/tokens") {
   const session = createConsoleSession();
   session.authenticate();
   const router = createConsoleRouter(session, createMemoryHistory());
-  await router.push("/overview");
+  await router.push(page);
   await router.isReady();
   const wrapper = mount(RouterView, {
     attachTo: document.body,
@@ -87,7 +87,7 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   expect(wrapper.text()).not.toMatch(
     /Selected range|Opted-in installations|API-equivalent/,
   );
-  expect(document.title).toContain("Console · Overview");
+  expect(document.title).toContain("Console · Tokens");
   await wrapper.get('[aria-label="Model"]').trigger("click");
   await flushPromises();
   expect(
@@ -104,7 +104,6 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
     .trigger("keydown", { key: "Escape" });
   await flushPromises();
 
-  expect(wrapper.get('[aria-label="Turns"]').text()).toContain("7");
   expect(wrapper.get('[aria-label="Measured total tokens"]').text()).toContain(
     "1.3B",
   );
@@ -114,7 +113,7 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
     wrapper.get('[aria-label="Measured total tokens"] dd').attributes("title"),
   ).toBe("1,250,000,000");
   expect(
-    wrapper.find('[aria-label="Daily activity"] canvas[role="img"]').exists(),
+    wrapper.find('[aria-label="Total tokens"] canvas[role="img"]').exists(),
   ).toBe(true);
   expect(
     wrapper
@@ -126,12 +125,6 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   expect(wrapper.get('[aria-label="Recent ranges"]').text()).toBe("7d30d90d");
   expect(wrapper.text()).not.toContain("About the data");
   expect(wrapper.text()).not.toContain("View data");
-  await wrapper
-    .get('[aria-label="Daily activity"] canvas[role="img"]')
-    .trigger("focus");
-  expect(
-    wrapper.get('[aria-label="Daily activity"] [role="status"]').text(),
-  ).toContain("Active installs");
   // A report has its own URL and content; page changes preserve the loaded data.
   const navigation = wrapper.get('nav[aria-label="Analytics sections"]');
   expect(navigation.findAll("a").map((a) => a.text())).toStrictEqual([
@@ -149,11 +142,19 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   );
   expect(wrapper.get("h1").text()).toBe("Models");
   const popularity = wrapper.get('[aria-label="Most used models"]');
+  expect(
+    popularity.find('canvas[aria-label^="Model usage over time"]').exists(),
+  ).toBe(true);
+  await popularity
+    .findAll("label")
+    .find((label) => label.text() === "Ranking")!
+    .trigger("click");
+  await flushPromises();
   expect(popularity.text()).toContain("50.0%");
   expect(popularity.findAll('[role="listitem"]')).toHaveLength(2);
   await wrapper
     .findAll("label")
-    .find((label) => label.text() === "Over time")!
+    .find((label) => label.text() === "Trend")!
     .trigger("click");
   await flushPromises();
   expect(
@@ -163,7 +164,7 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   expect(wrapper.get("tbody").text()).toContain("fast");
   expect(wrapper.get("tbody").text()).toContain("gpt-6-sol");
   expect(wrapper.find('[aria-label="Provider and model"]').exists()).toBe(true);
-  expect(wrapper.find('[aria-label="Daily activity"]').exists()).toBe(false);
+  expect(wrapper.find('[aria-label="Total tokens"]').exists()).toBe(false);
   await router.push("/performance");
   await flushPromises();
   expect(wrapper.get("h1").text()).toBe("Performance");
@@ -172,7 +173,7 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
     /provider benchmark|Higher is faster|Lower is faster|Missing samples are not zero/,
   );
   const speedChart = wrapper.get('[aria-label="Output speed over time"]');
-  expect(speedChart.find('[aria-label="Series"]').exists()).toBe(false);
+  expect(speedChart.find('[aria-label="Series"]').exists()).toBe(true);
   expect(speedChart.find('canvas[role="img"]').exists()).toBe(true);
   expect(speedChart.findAll(".chart-observation")).toHaveLength(3);
   await speedChart.get('canvas[role="img"]').trigger("focus");
@@ -193,24 +194,15 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   ).toContain("0.5 s");
   await router.push("/tokens");
   await flushPromises();
-  expect(
-    wrapper
-      .get('[aria-label="Cache-read share"]')
-      .findAll('path[fill^="url("]'),
-  ).toHaveLength(0);
-  await router.push("/overview");
+  expect(wrapper.find('[aria-label="Cache-read share"]').exists()).toBe(false);
+  await router.push("/spend");
   await flushPromises();
-  expect(wrapper.get("h1").text()).toBe("Overview");
-  expect(fetcher).toHaveBeenCalledTimes(1);
-  expect(
-    (
-      wrapper.findAll('[role="radiogroup"] input')[1]!
-        .element as HTMLInputElement
-    ).checked,
-  ).toBe(true);
   expect(wrapper.get('[aria-label="Known estimated spend"]').text()).toContain(
     "<$0.01",
   );
+  await router.push("/tokens");
+  await flushPromises();
+  expect(fetcher).toHaveBeenCalledTimes(1);
   await wrapper.get('input[aria-label="From day"]').setValue("2020-01-01");
   await wrapper.get('input[aria-label="To day"]').setValue("2020-01-01");
   await wrapper.get('input[aria-label="From day"]').trigger("change");
@@ -227,14 +219,21 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   option.click();
   await flushPromises();
   expect(pending).toHaveLength(2);
-  pending.pop()!(Response.json(metrics("45035996273704955")));
-  await flushPromises();
-  expect(wrapper.get('[aria-label="Turns"]').text()).toContain(
-    "45,035,996,273,704,955",
+  pending.pop()!(
+    Response.json({
+      ...metrics(),
+      totals: { ...metrics().totals, totalTokens: "45035996273704955" },
+    }),
   );
+  await flushPromises();
+  expect(
+    wrapper.get('[aria-label="Measured total tokens"] dd').attributes("title"),
+  ).toBe("45,035,996,273,704,955");
   pending.shift()!(Response.json(metrics("999")));
   await flushPromises();
-  expect(wrapper.get('[aria-label="Turns"]').text()).not.toContain("999");
+  expect(
+    wrapper.get('[aria-label="Measured total tokens"] dd').attributes("title"),
+  ).toBe("45,035,996,273,704,955");
   const optionsButton = wrapper.get('button[aria-label="Analytics options"]');
   expect(optionsButton.attributes("aria-haspopup")).toBe("menu");
   await optionsButton.trigger("click");

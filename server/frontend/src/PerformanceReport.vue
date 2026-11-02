@@ -1,165 +1,137 @@
 <template>
   <section aria-label="Model performance">
-    <p
-      v-if="
-        !data.totals.performance || data.totals.performance.ttftTurns === '0'
-      "
-      class="performance-note muted"
-    >
-      No performance measurements for this selection yet.
-    </p>
-    <div class="chart-grid">
-      <MetricChart
-        title="Output speed over time"
-        subtitle="tokens/s"
-        :days="days"
-        :series="speedSeries"
-        measure="rate"
-        hide-legend
-      />
-      <MetricChart
-        title="Time to first output"
-        subtitle="s"
-        :days="days"
-        :series="ttftSeries"
-        measure="milliseconds"
-        hide-legend
-      />
-    </div>
-    <div class="section-heading usage-heading"><h2>Summary</h2></div>
-    <dl class="cards performance-totals">
-      <div class="panel" aria-label="Output speed summary">
-        <dt>Output speed</dt>
-        <dd>
-          {{ rate(data.totals.performance?.outputTokensPerSecond ?? null) }}
-        </dd>
-        <small
-          >{{ count(data.totals.performance?.speedTurns ?? "0") }} measured
-          turns</small
-        >
-      </div>
+    <dl class="performance-totals">
       <div class="panel" aria-label="Time to first output summary">
-        <dt>Time to first output</dt>
+        <dt>Time to First Token (TTFT)</dt>
         <dd>
-          {{ duration(data.totals.performance?.timeToFirstOutputMs ?? null) }}
+          <strong>{{ performanceNumber(ttft, "milliseconds") }}</strong>
+          <span v-if="ttft !== null">{{ " " }}s</span>
         </dd>
-        <small
-          >{{ count(data.totals.performance?.ttftTurns ?? "0") }} measured
-          turns</small
-        >
       </div>
-      <div class="panel">
-        <dt>Timing coverage</dt>
+      <div class="panel" aria-label="Output speed summary">
+        <dt>Output Speed</dt>
         <dd>
-          {{
-            percent(
-              Number(data.totals.turns) > 0
-                ? Number(data.totals.performance?.speedTurns ?? 0) /
-                    Number(data.totals.turns)
-                : null,
-            )
-          }}
+          <strong>{{ performanceNumber(speed, "rate") }}</strong>
+          <span v-if="speed !== null">{{ " " }}tokens/s</span>
         </dd>
-        <small
-          >{{ count(data.totals.performance?.speedTurns ?? "0") }} of
-          {{ count(data.totals.turns) }} turns measured</small
-        >
       </div>
     </dl>
-    <section class="panel model-panel" aria-label="Performance by model">
-      <header class="panel-heading">
-        <h2>Performance by model</h2>
-        <span class="muted"
-          >{{ data.models.length }}
-          {{ data.range.groupServiceTiers ? "models" : "variants" }}</span
-        >
-      </header>
-      <div
-        class="table-scroll"
-        tabindex="0"
-        aria-label="Model performance data"
-      >
-        <table>
-          <caption class="sr-only">
-            Model performance
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">Provider / model</th>
-              <th scope="col">Output speed</th>
-              <th scope="col">First output</th>
-              <th scope="col">Speed samples</th>
-              <th scope="col">First-output samples</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="row in data.models"
-              :key="`${row.provider}/${row.model}/${row.serviceTier}`"
-            >
-              <th scope="row">
-                <span class="provider">{{ row.provider }}</span
-                >{{ modelLabel(row) }}
-              </th>
-              <td>
-                {{ rate(row.performance?.outputTokensPerSecond ?? null) }}
-              </td>
-              <td>
-                {{ duration(row.performance?.timeToFirstOutputMs ?? null) }}
-              </td>
-              <td>
-                {{ count(row.performance?.speedTurns ?? "0") }} /
-                {{ count(row.turns) }}
-              </td>
-              <td>
-                {{ count(row.performance?.ttftTurns ?? "0") }} /
-                {{ count(row.turns) }}
-              </td>
-            </tr>
-            <tr v-if="!data.models.length">
-              <td colspan="5">No model measurements.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
+    <MetricChart
+      class="performance-trend"
+      title="Output speed over time"
+      subtitle="tokens/s"
+      :days="days"
+      :series="speedSeries"
+      measure="rate"
+    />
+    <div class="performance-grid">
+      <PerformanceRanking kind="ttft" :rows="ttftRows" />
+      <PerformanceRanking kind="speed" :rows="speedRows" />
+    </div>
   </section>
 </template>
 <script setup lang="ts">
 import { computed, toRef } from "vue";
-import { modelKey, useModelComparison } from "./use-model-comparison";
 import type { TelemetryMetrics } from "@workspace/core/telemetry-metrics";
+import { providerColorForModel } from "@workspace/core/analytics-palette";
+import {
+  modelKey,
+  useModelComparison,
+  type ModelRow,
+} from "./use-model-comparison";
 import { modelLabel } from "./model-label";
+import { performanceNumber } from "./format";
 import MetricChart from "./MetricChart.vue";
-import { count, rate, duration, percent } from "./format";
+import PerformanceRanking from "./PerformanceRanking.vue";
 const props = defineProps<{ data: TelemetryMetrics }>();
 const { choices, days, daily, color } = useModelComparison(
   toRef(props, "data"),
 );
-const performanceSeries = (
-  field: "outputTokensPerSecond" | "timeToFirstOutputMs",
-) =>
-  choices.value.map((row) => ({
-    label:
-      choices.value.filter((item) => modelLabel(item) === modelLabel(row))
-        .length > 1
-        ? `${modelLabel(row)} (${row.provider})`
-        : modelLabel(row),
-    color: color(row),
-    values: days.value.map(
-      (day) =>
-        daily.value.get(`${day}/${modelKey(row)}`)?.performance?.[field] ??
-        null,
+const ttft = computed(
+  () => props.data.totals.performance?.timeToFirstOutputMs ?? null,
+);
+const speed = computed(
+  () => props.data.totals.performance?.outputTokensPerSecond ?? null,
+);
+const label = (row: ModelRow) =>
+  choices.value.filter((item) => modelLabel(item) === modelLabel(row)).length >
+  1
+    ? `${modelLabel(row)} (${row.provider})`
+    : modelLabel(row);
+const speedSeries = computed(() =>
+  choices.value
+    .map((row) => ({
+      label: label(row),
+      color: color(row),
+      values: days.value.map(
+        (day) =>
+          daily.value.get(`${day}/${modelKey(row)}`)?.performance
+            ?.outputTokensPerSecond ?? null,
+      ),
+    }))
+    .filter((row) => row.values.some((value) => value !== null)),
+);
+const rows = (field: "timeToFirstOutputMs" | "outputTokensPerSecond") =>
+  props.data.models.map((row) => ({
+    key: modelKey(row),
+    label: label(row),
+    color: providerColorForModel(
+      row.model === "unknown" ? "Unknown" : row.model,
     ),
+    value: row.performance?.[field] ?? null,
   }));
-const speedSeries = computed(() => performanceSeries("outputTokensPerSecond"));
-const ttftSeries = computed(() => performanceSeries("timeToFirstOutputMs"));
+const ttftRows = computed(() => rows("timeToFirstOutputMs"));
+const speedRows = computed(() => rows("outputTokensPerSecond"));
 </script>
 <style scoped>
-.chart-grid {
-  grid-template-columns: minmax(0, 1fr);
+.performance-totals,
+.performance-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-8);
 }
 .performance-totals {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-8);
+}
+.performance-totals > .panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-10);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-sm);
+}
+.performance-totals dt {
+  font-size: var(--font-size-12);
+  font-weight: var(--font-weight-semibold);
+}
+.performance-totals dd {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+}
+.performance-totals strong {
+  font-size: var(--font-size-28);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-32);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.performance-totals dd > span {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-14);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0;
+}
+.performance-trend {
+  padding: var(--space-10);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-sm);
+}
+@media (max-width: 900px) {
+  .performance-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>

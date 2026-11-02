@@ -3,21 +3,64 @@ import type { TelemetryMetrics } from "@workspace/core/telemetry-metrics";
 import { modelLabel } from "./model-label";
 import { seriesColor } from "@workspace/core/analytics-palette";
 export type ModelRow = TelemetryMetrics["models"][number];
+export type ModelMeasure =
+  | "turns"
+  | "totalTokens"
+  | "inputTokens"
+  | "outputTokens"
+  | "estimatedCostUsd"
+  | "inputRatio";
 export const modelKey = (
   row: Pick<ModelRow, "provider" | "model" | "serviceTier">,
 ) => JSON.stringify([row.provider, row.model, row.serviceTier ?? null]);
 export const comparisonLabel = (row: ModelRow) =>
   `${{ codex: "Codex", claude: "Claude", antigravity: "Antigravity" }[row.provider]} / ${modelLabel(row)}`;
-export const descending = (a: string | null, b: string | null) =>
-  a === b
-    ? 0
-    : a === null
-      ? 1
-      : b === null
-        ? -1
-        : BigInt(a) > BigInt(b)
-          ? -1
-          : 1;
+export function descending(a: string | null, b: string | null) {
+  if (a === b) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  const precision = Math.max(
+    a.split(".")[1]?.length ?? 0,
+    b.split(".")[1]?.length ?? 0,
+  );
+  const scaled = (value: string) => {
+    const [whole, fraction = ""] = value.split(".");
+    return BigInt(whole! + fraction.padEnd(precision, "0"));
+  };
+  const left = scaled(a),
+    right = scaled(b);
+  return left === right ? 0 : left > right ? -1 : 1;
+}
+export type ModelValues = Pick<
+  ModelRow,
+  "turns" | "totalTokens" | "inputTokens" | "outputTokens"
+> & { estimatedCostUsd?: string | null };
+/** Input's share of the known measured total, expressed as a fraction for charts. */
+export function modelValue(
+  row: ModelValues,
+  measure: ModelMeasure,
+): string | null {
+  if (measure !== "inputRatio") return row[measure] ?? null;
+  if (
+    row.inputTokens === null ||
+    row.totalTokens === null ||
+    BigInt(row.totalTokens) === 0n
+  )
+    return null;
+  const scaled = (
+    (BigInt(row.inputTokens) * 100000000n) /
+    BigInt(row.totalTokens)
+  )
+    .toString()
+    .padStart(9, "0");
+  return `${scaled.slice(0, -8)}.${scaled.slice(-8)}`;
+}
+export const rankModels = (rows: readonly ModelRow[], measure: ModelMeasure) =>
+  [...rows].sort(
+    (a, b) =>
+      descending(modelValue(a, measure), modelValue(b, measure)) ||
+      modelKey(a).localeCompare(modelKey(b)),
+  );
 export function useModelComparison(data: Ref<TelemetryMetrics>) {
   const choices = computed(() =>
     [...data.value.models].sort(

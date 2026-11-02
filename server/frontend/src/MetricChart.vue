@@ -10,6 +10,7 @@
     <div ref="stage" class="chart-stage">
       <div class="chart-canvas">
         <VueChart
+          :key="configuration.type"
           ref="chart"
           :type="configuration.type"
           :data="chartData"
@@ -51,7 +52,7 @@
         <ul>
           <li v-for="item in tooltipRows" :key="item.label">
             <i :style="{ background: item.color }" aria-hidden="true" />
-            <span class="tooltip-name">{{ item.label }}</span>
+            <span class="tooltip-name" :title="item.label">{{ item.label }}</span>
             <b :title="exactMeasurement(item.value, measure)">{{
               measurement(item.value, measure)
             }}</b>
@@ -129,9 +130,12 @@ const props = defineProps<{
     values: (string | null)[];
     color?: string;
     dash?: string;
+    order?: number;
   }[];
   variant?: "line" | "bar" | "stacked";
+  stacked?: boolean;
   measure: Measure;
+  area?: "gradient" | "solid" | "none";
   totalLabel?: string;
   hideLegend?: boolean;
 }>();
@@ -156,7 +160,9 @@ const configuration = computed(() =>
       })),
       measure: props.measure,
       variant: props.variant,
+      stacked: props.stacked,
       legend: false,
+      area: props.area,
     },
     theme.value,
     (index) => (active.value = index),
@@ -195,7 +201,7 @@ const tooltipRows = computed(() =>
 );
 const tooltipTotal = computed(() => {
   if (
-    !(props.totalLabel || props.variant === "stacked") ||
+    !(props.totalLabel || props.stacked || props.variant === "stacked") ||
     props.series.length < 2 ||
     !["count", "tokens"].includes(props.measure)
   )
@@ -209,7 +215,7 @@ const tooltipTotal = computed(() => {
 });
 const tooltipStyle = computed(() => {
   const width = chart.value?.chart?.width ?? 640,
-    popupWidth = Math.min(340, width - 16),
+    popupWidth = Math.min(480, width - 16),
     point =
       chart.value?.chart?.scales.x?.getPixelForValue(active.value ?? 0) ?? 16;
   return {

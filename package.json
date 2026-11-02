@@ -62,6 +62,7 @@
     "dev:backend": "npm run dev -w @workspace/backend",
     "dev:backend:run": "npm run dev:run -w @workspace/backend",
     "dev:backend:serve": "npm run serve -w @workspace/backend",
+    "dev:console": "npm run dev -w @workspace/server-frontend",
     "dev:electron": "node scripts/dev.mjs",
     "dev:relay": "node scripts/dev-relay.mjs",
     "docs:dev": "vitepress dev website/docs --host 127.0.0.1",

@@ -2,7 +2,10 @@ import { onMounted, onUnmounted, ref } from "vue";
 import type { TelemetryMetrics } from "@workspace/core/telemetry-metrics";
 import { currentDay, utcDay, viewerTimeZone } from "./format";
 
-export function useMetrics(onSessionExpired?: () => void) {
+export function useMetrics(
+  onSessionExpired?: () => void,
+  weekly: () => boolean = () => false,
+) {
   const timeZone = viewerTimeZone();
   const to = ref(currentDay(timeZone));
   const from = ref(utcDay(Date.parse(to.value) - 29 * 86400000));
@@ -11,6 +14,7 @@ export function useMetrics(onSessionExpired?: () => void) {
   const groupServiceTiers = ref(false);
   const availableModels = ref<string[]>([]);
   const data = ref<TelemetryMetrics | null>(null),
+    previousData = ref<TelemetryMetrics | null>(null),
     loading = ref(false),
     error = ref("");
   let request = 0,
@@ -19,59 +23,75 @@ export function useMetrics(onSessionExpired?: () => void) {
     const identity = ++request;
     controller?.abort();
     data.value = null;
+    previousData.value = null;
     error.value = "";
     const validDay = (day: string) =>
       /^\d{4}-\d{2}-\d{2}$/.test(day) &&
       Number.isFinite(Date.parse(day)) &&
       utcDay(Date.parse(day)) === day;
-    const span = (Date.parse(to.value) - Date.parse(from.value)) / 86400000;
+    const isWeekly = weekly();
+    const queryTo = isWeekly ? currentDay(timeZone) : to.value;
+    const queryFrom = isWeekly
+      ? utcDay(Date.parse(queryTo) - 13 * 86400000)
+      : from.value;
+    const span = (Date.parse(queryTo) - Date.parse(queryFrom)) / 86400000;
     if (
-      !validDay(from.value) ||
-      !validDay(to.value) ||
+      !validDay(queryFrom) ||
+      !validDay(queryTo) ||
       span < 0 ||
       span > 3659 ||
-      to.value > currentDay(timeZone)
+      queryTo > currentDay(timeZone)
     ) {
       error.value = "Choose days in order, up to 3,660 days per range.";
       loading.value = false;
       return;
     }
     const params = new URLSearchParams({
-      from: from.value,
-      to: to.value,
+      from: queryFrom,
+      to: queryTo,
       timeZone,
     });
-    if (provider.value) params.set("provider", provider.value);
-    if (model.value) params.set("model", model.value);
-    if (groupServiceTiers.value) params.set("groupServiceTiers", "true");
+    if (!isWeekly && provider.value) params.set("provider", provider.value);
+    if (!isWeekly && model.value) params.set("model", model.value);
+    if (!isWeekly && groupServiceTiers.value)
+      params.set("groupServiceTiers", "true");
     const active = (controller = new AbortController());
     loading.value = true;
     const timeout = setTimeout(() => active.abort(), 15000);
     try {
       // The console proxy owns viewer authentication and the private upstream
       // token. The HttpOnly session is sent only to the same origin.
-      const response = await fetch(`/v1/telemetry/metrics?${params}`, {
-        signal: active.signal,
-        credentials: "same-origin",
-        cache: "no-store",
-        redirect: "error",
-      });
-      if (!response.ok) {
-        if (response.status === 401 && identity === request)
-          onSessionExpired?.();
-        if (response.status === 401 || response.status === 403)
+      const read = async (query: URLSearchParams) => {
+        const response = await fetch(`/v1/telemetry/metrics?${query}`, {
+          signal: active.signal,
+          credentials: "same-origin",
+          cache: "no-store",
+          redirect: "error",
+        });
+        if (!response.ok) {
+          if (response.status === 401 && identity === request)
+            onSessionExpired?.();
+          if (response.status === 401 || response.status === 403)
+            throw new Error(
+              "Private access required. Sign in through the console access gate, then refresh.",
+            );
+          if (response.status === 400)
+            throw new Error(
+              "This range or filter is not available. Check the selection and try again.",
+            );
           throw new Error(
-            "Private access required. Sign in through the console access gate, then refresh.",
+            "Metrics are temporarily unavailable. Refresh to try again.",
           );
-        if (response.status === 400)
-          throw new Error(
-            "This range or filter is not available. Check the selection and try again.",
-          );
-        throw new Error(
-          "Metrics are temporarily unavailable. Refresh to try again.",
-        );
-      }
-      const result = (await response.json()) as TelemetryMetrics;
+        }
+        return (await response.json()) as TelemetryMetrics;
+      };
+      const previousParams = new URLSearchParams(params);
+      previousParams.set("to", utcDay(Date.parse(queryTo) - 7 * 86400000));
+      previousParams.set("from", queryFrom);
+      const [result, previous] = await Promise.all([
+        read(params),
+        isWeekly ? read(previousParams) : Promise.resolve(null),
+      ]);
       if (identity === request) {
         availableModels.value =
           result.availableModels ??
@@ -86,10 +106,17 @@ export function useMetrics(onSessionExpired?: () => void) {
                 .map((row) => row.model),
             ),
           ].sort();
-        if (model.value && !availableModels.value.includes(model.value)) {
+        if (
+          !isWeekly &&
+          model.value &&
+          !availableModels.value.includes(model.value)
+        ) {
           model.value = "";
           await load();
-        } else data.value = result;
+        } else {
+          data.value = result;
+          previousData.value = previous;
+        }
       }
     } catch (cause) {
       if (identity === request)
@@ -123,6 +150,7 @@ export function useMetrics(onSessionExpired?: () => void) {
     availableModels,
     groupServiceTiers,
     data,
+    previousData,
     loading,
     error,
     load,

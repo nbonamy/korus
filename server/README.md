@@ -145,7 +145,11 @@ come from nonzero recorded usage within the selected date/provider scope,
 independently of the selected model.
 At most four aggregate statements execute concurrently; excess work receives 429
 with a one-second Retry-After. Database lock/statement deadlines yield generic 503
-responses. Responses are not cached and contain no installation-level records.
+responses. Responses are not cached. The weekly top-ten ranking contains usage totals and
+turn shares for anonymous installations in the final seven selected days, ranked
+by turns. Ranks apply only within the response; installation identifiers never
+leave the read service. Shares use all turns in the same filtered weekly scope,
+including installations outside the top ten.
 
 `core/src/telemetry-metrics.ts` is the browser-safe read contract. Cards use the
 range's end day and global activity, independent of usage filters: cumulative
@@ -191,6 +195,12 @@ Run `TELEMETRY_METRICS_EVIDENCE=<external-evidence-file> npm run test -w
 @workspace/server-backend -- src/collector/__tests__/metrics.spec.ts` to record repeatable
 aggregate JSON while verifying SQL/API parity, private access, corrections,
 unknowns, exact large integers and bounded database failure against real Postgres.
+
+Run `npm run dev:console` from the repository root, or `npm run dev` in
+`server/frontend`, for the loopback console with Vue hot reload on port 58191.
+Its `/auth` and `/v1` requests proxy to a private local upstream on port 58192;
+`TELEMETRY_CONSOLE_DEV_UPSTREAM` can select another operator-managed upstream.
+Authentication and data access stay in that upstream, outside browser assets.
 
 Build the portable private console with `npm run build:console`. The static
 artifact is `server/frontend/dist`; supply its absolute directory privately through
