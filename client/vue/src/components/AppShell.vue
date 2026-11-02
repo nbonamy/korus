@@ -2458,8 +2458,9 @@ const conversationPaneState: CodexConversationPaneState = {
       if (activeSurface.value === 'mission' && selectedMission.value?.stage === 'requirements' && conversationMessages.value.length === 0) {
         return t('missions.describeWhatYouWantToBuild');
       }
-      return currentAgent.value.suggestedPrompt || translate('surface.appShell.askForFollowUpChanges');
+      return translate('surface.appShell.askForFollowUpChanges');
     },
+    get suggestedPrompt() { return currentAgent.value?.suggestedPrompt ?? undefined; },
     get approvalPreset() { return props.approvalPreset; },
     get leadingMenuItems() { return [...permissionModeMenuItems.value, ...conversationCommandMenuItems()]; },
     get modelMenuItems() { return modelFavoriteMenuItems.value; },

@@ -51,7 +51,7 @@ describe('AgentConversationPanel', () => {
     } finally { wrapper.unmount(); }
   });
 
-  it('shows only the active agent suggestion as a placeholder without changing its draft', async () => {
+  it('keeps default hints inert and accepts only the active agent suggestion into its draft', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
     const view = shallowReactive<AgentConversationView>({
@@ -76,6 +76,12 @@ describe('AgentConversationPanel', () => {
     }, global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } } });
     const editor = () => wrapper.get('.chat-rich-text-editor');
     const defaultPlaceholder = editor().attributes('data-placeholder');
+    for (const key of ['Tab', 'ArrowRight', ' ', 'Enter']) {
+      await editor().trigger('keydown', { key });
+      expect(editor().text()).toBe('');
+    }
+    expect(actions.updateComposerState).not.toHaveBeenCalled();
+    expect(actions.send).not.toHaveBeenCalled();
     view.agent = { ...agent, suggestedPrompt: 'Add keyboard navigation' };
     await flushPromises();
     expect(editor().attributes('data-placeholder')).toBe('Add keyboard navigation');
@@ -90,6 +96,17 @@ describe('AgentConversationPanel', () => {
     view.composerState = { text: '', selectionStart: 0, selectionEnd: 0 };
     await flushPromises();
     expect(editor().attributes('data-placeholder')).toBe(defaultPlaceholder);
+    await editor().trigger('keydown', { key: 'Tab' });
+    expect(editor().text()).toBe('');
+    view.agent = { ...view.agent, suggestedPrompt: 'Run the tests' };
+    await flushPromises();
+    await editor().trigger('keydown', { key: 'Enter' });
+    expect(editor().text()).toBe('Run the tests');
+    expect(actions.updateComposerState).toHaveBeenLastCalledWith(view.agent.id, expect.objectContaining({ text: 'Run the tests' }));
+    expect(actions.send).not.toHaveBeenCalled();
+    await editor().trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+    expect(actions.send).toHaveBeenCalledWith(view.agent.id, 'Run the tests', undefined);
     wrapper.unmount();
   });
 
