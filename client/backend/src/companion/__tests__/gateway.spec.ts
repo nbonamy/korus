@@ -4,8 +4,12 @@ import { CompanionGateway, companionAgentMethods, type GatewayState } from '../g
 import { companionSessionId, type CompanionTarget, type CompanionWorkspace } from '@workspace/core/companion-protocol';
 import type { BackendSkillSummary } from '@workspace/core/contracts';
 import { opaquePath } from '@workspace/core/companion-projection';
-import { codexSdkFixture, sdkAgent } from '../../codex/__tests__/sdk-surface-fixture';
+import { codexSdkFixture, sdkAgent, sdkSnapshot } from '../../codex/__tests__/sdk-surface-fixture';
 import { normalizePairingCode } from '@workspace/core/companion-pairing';
+import { ConversationSource } from '../conversation-source';
+import { AgentConversationService } from '../../agents/agent-conversation-service';
+import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
+import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 const workspace: CompanionWorkspace = {
   teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }, { id: 'remote-team', name: 'Remote', agentIds: ['remote-agent'] }],
   agents: [{ id: 'agent', name: 'Agent', teamId: 'team', folder: '/private', backend: 'codex', status: { type: 'idle' }, createdAt: '', updatedAt: '', mcpSessionId: 'private-session' },
@@ -40,6 +44,43 @@ function fixture(autoAcceptCode?: string) {
     } };
 }
 describe('companion authorization gateway', () => {
+  it('keeps released phone subscriptions readable while a published Codex reset is still saving', async () => {
+    const f = fixture(); await f.pair();
+    const app = createTestSnapshot();
+    const agent = { ...workspace.agents[0]!, backendSession: { kind: 'codex' as const, threadId: 'thread' } };
+    app.agents = [agent];
+    f.port.workspace.mockResolvedValue({ teams: workspace.teams, agents: [agent] });
+    const phoneTarget = { ...target, sessionId: JSON.stringify(agent.backendSession) };
+    const frame = { type: 'codex.conversationSnapshotChanged' as const, agentId: agent.id, backend: 'codex' as const,
+      threadId: 'thread', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot: sdkSnapshot('thread') } };
+    let finishSave!: () => void;
+    const saving = new Promise<void>(resolve => { finishSave = resolve; });
+    let source!: ConversationSource;
+    const driverRequest = vi.fn(async () => { source.observe(frame); return agent.backendSession; });
+    const service = new AgentConversationService({ getSnapshot: () => app, driverRequest,
+      applyEvent: event => source.observe({ ...event, seq: 2, occurredAt: 'now' } as AppBackendEvent),
+      persistSnapshot: async () => { await saving; return app; },
+      refreshGitStatus: async () => {}, refreshWorkspaceIdentity: async () => {},
+    });
+    source = new ConversationSource(id => service.hydrate(id));
+    f.port.conversation.mockImplementation(id => source.read(id));
+    const desktopLoad = service.hydrate(agent.id);
+    await vi.waitFor(() => expect(driverRequest).toHaveBeenCalledOnce());
+    // The released conversation.subscribe request has no sync opt-in or checkpoint.
+    const reads = Promise.allSettled([f.gateway.request('phone', 'conversation.subscribe', phoneTarget),
+      f.gateway.request('phone', 'conversation.subscribe', phoneTarget)]);
+    // Let both authorized reads join the pending hydration before persistence finishes.
+    await vi.waitFor(() => expect(f.port.conversation).toHaveBeenCalledTimes(2));
+    finishSave(); await desktopLoad;
+    const results = await reads;
+    expect(results.map(result => result.status)).toStrictEqual(['fulfilled', 'fulfilled']);
+    expect(results.map(result => result.status === 'fulfilled' ? JSON.parse(JSON.stringify(result.value)) : null)).toStrictEqual([frame, frame]);
+    expect(driverRequest).toHaveBeenCalledOnce();
+    driverRequest.mockRejectedValueOnce(new Error('History unavailable'));
+    await expect(f.gateway.request('phone', 'conversation.subscribe', phoneTarget)).rejects.toThrow('unavailable');
+    driverRequest.mockImplementationOnce(async () => { source.observe(frame); return agent.backendSession; });
+    expect(JSON.parse(JSON.stringify(await f.gateway.request('phone', 'conversation.subscribe', phoneTarget)))).toStrictEqual(frame);
+  });
   it('keeps the released phone snapshot response unchanged when desktop feature labels are persisted', async () => {
     const f = fixture();
     await f.pair();

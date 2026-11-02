@@ -165,6 +165,7 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
             if let data = json?.data(using: .utf8), let decoded = try? JSONDecoder().decode(ComposerSendResult.self, from: data) { onSendResult?(decoded) }
         case "state":
             if let data = json?.data(using: .utf8), let decoded = try? JSONDecoder().decode(StateEvent.self, from: data) { onState?(decoded.state) }
+            else { recordLifecycle("app.state-rejected", stage: "decode") }
         case "conversationTransfer": if let json { onTranscript?(.transfer, json) }
         case "conversation": if let json { onTranscript?(.conversation, json) }
         case "conversationContext": if let json { onTranscript?(.context, json) }

@@ -23,7 +23,7 @@
 /* End PBXCopyFilesBuildPhase section */
 /* Begin PBXFileReference section */
 		B00000020000000000000006 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		B00000020000000000000005 /* icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = ../../electron/assets/icon.png; sourceTree = SOURCE_ROOT; };
+		B00000020000000000000005 /* icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = ../../client/electron/assets/icon.png; sourceTree = SOURCE_ROOT; };
 		B00000020000000000000001 /* Companion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Companion.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B00000020000000000000002 /* Web */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Web; sourceTree = "<group>"; };
 		B00000020000000000000003 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };

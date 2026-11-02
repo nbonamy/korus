@@ -15,6 +15,8 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
     var onTransferApplied: ((String, [String: Any]) -> Void)?
     var onNeedsReset: ((String) -> Void)?
     var onRenderFailed: (() -> Void)?
+    var onLifecycle: ((String) -> Void)?
+    private var hasRendered = false
     private var presentation = 0
     private var isReady = false
     private var needsRecovery = false
@@ -56,6 +58,7 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
 
     private func run(_ job: TranscriptRenderQueue.Job) {
         let revision = presentation
+        if !hasRendered { onLifecycle?("render-start") }
         armWatchdog()
         let method: String
         switch job.kind {
@@ -77,13 +80,17 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
             if case .success(let value) = result,
                let receipt = value as? [String: Any], let agentID = receipt["agentId"] as? String,
                let readRevision = receipt["revision"] as? Int,
-               let generation = receipt["generation"] as? Int { self.onRendered?(agentID, readRevision, generation) }
+               let generation = receipt["generation"] as? Int {
+                if !self.hasRendered { self.onLifecycle?("rendered"); self.hasRendered = true }
+                self.onRendered?(agentID, readRevision, generation)
+            } else if !self.hasRendered { self.onLifecycle?("no-receipt") }
             if let next = self.queue.finish() { self.run(next) }
         }
     }
 
     /// A new native selection invalidates acknowledgments already in flight.
     func beginSelection() {
+        hasRendered = false
         presentation += 1
         watchdog?.invalidate()
         watchdog = nil
@@ -102,6 +109,7 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
     }
 
     private func loadPage() {
+        hasRendered = false
         needsRecovery = false
         isReady = false
         webView.stopLoading()
@@ -123,6 +131,7 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
 
     private func fail() {
         guard !needsRecovery else { return }
+        onLifecycle?("failed")
         watchdog?.invalidate()
         watchdog = nil
         presentation += 1
@@ -193,6 +202,7 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
         watchdog?.invalidate()
         watchdog = nil
         isReady = true
+        onLifecycle?("ready")
         setInsets(top: insets.top, bottom: insets.bottom, leading: insets.leading, trailing: insets.trailing)
         if let latestConversation, let job = queue.enqueue(latestKind, latestConversation) { run(job) }
         if let latestContext, let job = queue.enqueue(.context, latestContext) { run(job) }

@@ -83,9 +83,11 @@ authoritative and transcript-free; between snapshots clients replay only sequenc
 `daemon` events through the shared reducer.
 
 Electron and the renderer use a subscribe-buffer-snapshot barrier: subscribe, buffer
-notifications while reading `snapshot/get`, discard events at or below
-`lastEventSeq`, apply only contiguous events above it. A gap triggers a fresh
-barrier. After a global gap the renderer also invalidates cached provider frames
+notifications while reading `snapshot/get`, discard snapshot-owned events at or below
+`lastEventSeq`, apply only contiguous events above it. Provider frames received during or after
+a synchronization barrier retain their own revision checks: the product snapshot cannot
+replace their transcript data. A gap triggers a fresh
+barrier. After a global gap the renderer also invalidates previously cached provider frames
 and re-requests conversation snapshots (including inactive and split-pane ones),
 because an app snapshot cannot replace a missed provider completion event.
 Clients ignore unknown event types.

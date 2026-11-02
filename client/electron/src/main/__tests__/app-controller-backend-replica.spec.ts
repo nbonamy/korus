@@ -159,7 +159,7 @@ describe('AppController', () => {
     expect(send).toHaveBeenCalledWith(ipcChannels.event, expect.objectContaining({ type: 'agentCreation.progress', payload: { ...progress, state } }));
   });
 
-  it('replays buffered provider frames before publishing the reconnected snapshot', async () => {
+  it.each([{ fence: 1, late: false }, { fence: 2, late: false }, { fence: 2, late: true }])('forwards provider history across reconnect synchronization: %j', async ({ fence, late }) => {
     vi.useFakeTimers();
     const initialSnapshot = createInitialSnapshot();
     const reconnectedSnapshot = createInitialSnapshot();
@@ -218,7 +218,7 @@ describe('AppController', () => {
 
     await vi.advanceTimersByTimeAsync(250);
     expect(snapshotReads).toBe(2);
-    backendEventListener({
+    const frame = {
       seq: 2,
       occurredAt: '2026-09-06T20:00:00.000Z',
       agentId: 'agent-dina',
@@ -236,13 +236,15 @@ describe('AppController', () => {
           payload: { messageId: 'message-1', itemId: 'item-1', delta: 'Hello' },
         } as unknown as Extract<AppBackendEvent, { type: 'codex.conversationEventReceived' }>['payload']['event'],
       },
-    });
+    } as AppBackendEvent;
+    if (!late) backendEventListener(frame);
     resolveReconnectSnapshot({
       snapshot: reconnectedSnapshot,
-      lastEventSeq: 1,
+      lastEventSeq: fence,
       clientState,
     });
     await flushMicrotasks();
+    if (late) backendEventListener(frame);
 
     expect(backendClient.start).toHaveBeenCalledTimes(2);
     expect(currentSnapshot(controller)).toBe(reconnectedSnapshot);
@@ -254,11 +256,8 @@ describe('AppController', () => {
     expect(send.mock.calls
       .filter(([channel]) => channel === ipcChannels.event)
       .map(([, event]) => event.type))
-      .toStrictEqual([
-        'client.connectionChanged',
-        'codex.conversationEventReceived',
-        'client.connectionChanged',
-        'snapshot.updated',
+      .toStrictEqual(late ? ['client.connectionChanged', 'client.connectionChanged', 'snapshot.updated', 'codex.conversationEventReceived'] : [
+        'client.connectionChanged', 'codex.conversationEventReceived', 'client.connectionChanged', 'snapshot.updated',
       ]);
     await controller.shutdown();
   });

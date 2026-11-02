@@ -24,6 +24,7 @@ export class ConversationSource {
   constructor(private readonly load: (agentId: string) => Promise<void>, private readonly now: () => number = Date.now) {}
 
   observe(event: AppBackendEvent): void {
+    if (event.type === 'conversation.historyLoadFailed') { this.forget(event.agentId); return; }
     if (event.type === 'snapshot.updated') {
       const agents = new Set(event.payload.agents.map(agent => agent.id));
       for (const id of this.frames.keys()) if (!agents.has(id)) this.forget(id);
@@ -79,7 +80,8 @@ export class ConversationSource {
       if (reset?.type === 'claude.conversationSnapshotChanged') return reset;
     }
     if (current) return current;
-    this.frames.delete(agentId); this.followed.delete(agentId);
+    // A shared hydration may already have published its reset while still saving.
+    // Retain that reset; a failed hydration invalidates it through its event.
     await this.load(agentId);
     const frame = this.current(agentId) ?? this.frames.get(agentId);
     if (!frame) throw new Error('Authoritative conversation is unavailable.');

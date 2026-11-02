@@ -1,4 +1,5 @@
 import type { AgentBackend, AppApi, WorkProviderConnectOptions } from '@workspace/core/contracts';
+import { isConversationFrame } from '@workspace/core/companion-protocol';
 import { mobileRuntimePaths } from './mobile/runtime';
 import { MobileSimulatorService } from './mobile/service';
 import { NativeMobileAdapter } from './mobile/adapter';
@@ -1691,6 +1692,7 @@ export class AppController {
       let gap = false;
       for (const event of buffered) {
         if (event.seq <= this.lastBackendEventSeq) {
+          this.forwardProviderFrame(event);
           // Progress is absent from snapshots. Forward covered updates on the
           // client channel without rolling the backend sequence backwards.
           if (event.type === 'agentCreation.progress') {
@@ -1982,7 +1984,7 @@ export class AppController {
       this.backendEventBuffer.push(event);
       return;
     }
-    if (event.seq <= this.lastBackendEventSeq) return;
+    if (event.seq <= this.lastBackendEventSeq) { this.forwardProviderFrame(event); return; }
     if (event.seq !== this.lastBackendEventSeq + 1) {
       warnMain('daemon', 'backend event sequence gap; synchronizing snapshot', {
         expected: this.lastBackendEventSeq + 1,
@@ -1995,6 +1997,12 @@ export class AppController {
       return;
     }
     this.applyBackendEvent(event, true);
+  }
+
+  // Product snapshots cover metadata only. Provider revisions are checked by the renderer.
+  private forwardProviderFrame(event: AppBackendEvent): void {
+    if (!isConversationFrame(event) || !this.mainWindow || this.mainWindow.isDestroyed()) return;
+    sendRendererEvent(this.mainWindow.webContents, withRendererMediaUrls(eventForRenderer(event), this.localMediaRegistry));
   }
 
   private applyBackendEvent(event: AppBackendEvent, notifyRenderer: boolean): void {

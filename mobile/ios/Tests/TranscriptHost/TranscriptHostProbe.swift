@@ -13,6 +13,7 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
     var receipts = 0
     var lastReceipt: (revision: Int, generation: Int)?
     var checks: [[String: Any]] = []
+    var lifecycle: [String] = []
 
     func application(_ application: UIApplication, configurationForConnecting session: UISceneSession, options: UIScene.ConnectionOptions) -> UISceneConfiguration {
         let configuration = UISceneConfiguration(name: "Transcript tests", sessionRole: session.role)
@@ -29,6 +30,7 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
         controller.view.addSubview(host.webView)
         self.window = window
         window.makeKeyAndVisible()
+        host.onLifecycle = { [weak self] stage in self?.lifecycle.append(stage) }
         host.onRendered = { [weak self] id, revision, generation in
             guard let self, id == "transcript-probe" else { return }
             self.receipts += 1
@@ -187,10 +189,15 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
             await pause(100)
         }
         await transferChecks()
+        lifecycle.removeAll()
         select()
+        host.submit(.conversation, frame(0, ready: false))
+        await wait { self.lifecycle.contains("no-receipt") }
+        check(loading.isLoading, "an unready startup payload does not release the loading overlay")
         host.submit(.conversation, frame(1))
         await wait { !self.loading.isLoading }
         check(!loading.isLoading && !loading.failed, "initial conversation paints successfully")
+        check(lifecycle == ["render-start", "no-receipt", "render-start", "rendered"], "initial loading traces the native render boundary without transcript data")
         let synchronizedReceipts = receipts
         host.submit(.conversation, frame(40, generation: 2, ready: false))
         await pause(300)
@@ -225,6 +232,7 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
         host.submit(.conversation, frame(24))
         await wait { self.loading.failed }
         check(loading.failed && !loading.isLoading, "JavaScript rendering errors release the spinner into a recoverable failure")
+        check(lifecycle.last == "failed", "native render failures leave a diagnostic stage")
         loading.update(fetching: false, failed: false, hasAgent: true)
         check(loading.failed, "engine metadata updates do not erase rendering failures")
         await retry(24)

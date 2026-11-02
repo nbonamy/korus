@@ -49,6 +49,7 @@ final class AppModel {
     var hasTranscript: Bool { conversationLoading.hasTranscript }
     private var conversationReady = false
     private var conversationGeneration = 0
+    private var lastLoadingDiagnostic = ""
     private var connectionNotice = ConnectionNoticeState()
     @ObservationIgnored private let connectionNoticeWatcher = DeadlineWatcher()
     private var updatingIndicator = QuietIndicatorState(delay: .seconds(1))
@@ -222,6 +223,7 @@ final class AppModel {
         }
         transcript.onChooseBackend = { [weak self] backend in self?.chooseBackend(backend) }
         transcript.onLoadOlder = { [weak self] id in self?.command("loadOlder", ["agentId": id]) }
+        transcript.onLifecycle = { [weak self] stage in self?.engine.recordLifecycle("app.transcript", stage: stage) }
         transcript.onRenderFailed = { [weak self] in
             guard let self, self.activeAgentID != nil else { return }
             self.conversationLoading.renderingFailed()
@@ -229,7 +231,12 @@ final class AppModel {
         transcript.onTransferApplied = { [weak self] identity, checkpoint in self?.command("transcriptApplied", ["identity": identity, "checkpoint": checkpoint]) }
         transcript.onNeedsReset = { [weak self] identity in self?.command("transcriptReset", ["identity": identity]) }
         transcript.onRendered = { [weak self] id, revision, generation in
-            guard let self, id == self.activeAgentID, generation == self.conversationGeneration else { return }
+            guard let self else { return }
+            if self.loadingConversation {
+                let stage = id != self.activeAgentID ? "other-agent" : generation != self.conversationGeneration ? "stale-generation" : "accepted"
+                self.engine.recordLifecycle("app.transcript-receipt", stage: stage)
+            }
+            guard id == self.activeAgentID, generation == self.conversationGeneration else { return }
             self.conversationLoading.rendered(synchronized: self.connection == .connected && self.conversationReady)
             guard self.connection == .connected, self.conversationReady else { return }
             self.conversationRead.didRender(agentId: id, revision: revision)
@@ -290,6 +297,11 @@ final class AppModel {
         conversationGeneration = generation
         conversationReady = state.conversationReady == true
         conversationLoading.update(fetching: state.loading, failed: state.error == "mobile.errors.loadConversation", hasAgent: !state.agentId.isEmpty, connected: state.connection == .connected, refreshing: state.refreshing == true)
+        let loadingDiagnostic = "generation=\(generation) fetching=\(state.loading) ready=\(conversationReady)"
+        if loadingDiagnostic != lastLoadingDiagnostic {
+            lastLoadingDiagnostic = loadingDiagnostic
+            engine.recordLifecycle("app.conversation-loading", stage: loadingDiagnostic)
+        }
         set(\.requests, state.requests ?? [])
         set(\.respondingRequest, state.respondingRequest)
         set(\.failedRequest, state.failedRequest)

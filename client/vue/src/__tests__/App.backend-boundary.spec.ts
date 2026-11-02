@@ -338,6 +338,33 @@ describe('Unified backend → mounted application', () => {
     wrapper.unmount();
   });
 
+  it.each(['during', 'after'])('renders the first Codex history reset received %s the startup snapshot read', async timing => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    agent.backendSession = { kind: 'codex', threadId: 'first-history' };
+    const { api, emitSequenced } = installBackendFixture(snapshot);
+    let finishHistory!: (value: typeof snapshot) => void;
+    api.loadConversationHistory.mockImplementationOnce(() => new Promise(resolve => { finishHistory = resolve; }));
+    const emitHistory = () => emitSequenced({ seq: 54, occurredAt: '2026-11-02T12:00:00Z', type: 'codex.conversationSnapshotChanged',
+        backend: 'codex', agentId: agent.id, threadId: 'first-history', payload: { revision: 1,
+          snapshot: codexConversationSnapshot([{ id: 'first-answer', role: 'assistant', status: 'complete',
+            parts: [{ type: 'text', text: 'First history is ready without switching chats.' }] }]),
+        } });
+    api.getSnapshotState.mockImplementationOnce(async () => {
+      if (timing === 'during') emitHistory();
+      return { snapshot, lastBackendEventSeq: 55, connection: { status: 'connected' } };
+    });
+    const wrapper = mount(App);
+    await flushPromises();
+    if (timing === 'after') emitHistory();
+    finishHistory(snapshot);
+    await flushPromises();
+    expect(wrapper.text()).toContain('First history is ready without switching chats.');
+    expect(api.loadConversationHistory).toHaveBeenCalledTimes(1);
+    expect(api.selectAgent).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
   it.each(['backend gap', 'desktop recovery'])('settles a silent completed report after %s without another user prompt', async (recovery) => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;

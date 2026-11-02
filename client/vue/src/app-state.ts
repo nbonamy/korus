@@ -1,5 +1,6 @@
 import { normalizeThreadFlags } from '@workspace/core/thread-flags';
 import { product } from '@workspace/core/product';
+import { isConversationFrame } from '@workspace/core/companion-protocol';
 import { createAntigravityConversationState } from './antigravity-conversation-state';
 import type { AntigravityConversationSnapshot } from '@workspace/core/contracts/antigravity-conversation';
 
@@ -559,14 +560,16 @@ export function useAppState() {
     return rendererSynchronization;
   }
   synchronizeRendererSnapshotRequest = async () => {
+    const cachedCodexAgentIds = Object.keys(codexConversationFramesByAgentId.value);
+    const cachedClaudeAgentIds = Object.keys(claudeConversationFramesByAgentId.value);
     await synchronizeRendererSnapshot(true);
     // App snapshots cannot repair provider events skipped by the global
     // sequence fence. Refresh every cached pane from its conversation owner,
     // including split panes and inactive agents, before trusting those frames.
-    for (const agentId of Object.keys(codexConversationFramesByAgentId.value)) {
+    for (const agentId of cachedCodexAgentIds) {
       invalidateAndRecoverCodexConversation(agentId);
     }
-    for (const agentId of Object.keys(claudeConversationFramesByAgentId.value)) {
+    for (const agentId of cachedClaudeAgentIds) {
       invalidateAndRecoverClaudeConversation(agentId);
     }
     antigravityConversations.recoverAll();
@@ -595,6 +598,9 @@ export function useAppState() {
           continue;
         }
         if (event.seq <= lastBackendEventSeq) {
+          // Product snapshots contain no provider history. Provider revisions
+          // still apply even when the global sequence is covered.
+          if (isSnapshotEventOwnedBy(event, 'renderer') && isConversationFrame(event)) handleRendererOwnedMainEvent(event);
           // Provisioning progress is transient and absent from snapshots. A
           // covered terminal must still settle its already-visible dialog.
           if (event.type === 'agentCreation.progress') syncAgentCreationProgressFromMainEvent(event);
@@ -2092,7 +2098,10 @@ function subscribeToMainEvents(): void {
       return;
     }
     if (isBackendMainEvent(event)) {
-      if (event.seq <= lastBackendEventSeq) return;
+      if (event.seq <= lastBackendEventSeq) {
+        if (isSnapshotEventOwnedBy(event, 'renderer') && isConversationFrame(event)) handleRendererOwnedMainEvent(event);
+        return;
+      }
       if (event.seq !== lastBackendEventSeq + 1) {
         bufferedMainEvents = [event];
         void synchronizeRendererSnapshotRequest?.().catch((error) => {
