@@ -139,6 +139,13 @@ it("agrees with executable SQL across global activity, known token subtotals, sp
   const r = await get();
   expect(r.status).toBe(200);
   const body = (await r.json()) as TelemetryMetrics;
+  expect(body.availableModels).toStrictEqual(["claude-sonnet-4-6", "unknown"]);
+  const selectedModel = await (await get(range + "&model=unknown")).json() as TelemetryMetrics;
+  expect(selectedModel.availableModels).toStrictEqual(body.availableModels);
+  const providerModels = await (await get(range + "&provider=codex")).json() as TelemetryMetrics;
+  expect(providerModels.availableModels).toStrictEqual(["unknown"]);
+  const noUsageModels = await (await get(range + "&provider=antigravity")).json() as TelemetryMetrics;
+  expect(noUsageModels.availableModels).toStrictEqual([]);
   expect(body.overview).toStrictEqual({
     participatingInstalls: "6",
     dau: "3",

@@ -168,7 +168,6 @@
             measurement(tooltipTotal, measure)
           }}</b>
         </div>
-        <p v-if="notes?.[active]" class="tooltip-note">{{ notes[active] }}</p>
       </output>
     </div>
     <p v-if="outsideRange" class="muted">
@@ -201,7 +200,6 @@ const props = defineProps<{
   }[];
   variant?: "line" | "bar" | "stacked";
   measure: Measure;
-  notes?: string[];
   totalLabel?: string;
 }>();
 const id = useId(),

@@ -1,13 +1,4 @@
 import { dayOf } from "@workspace/core/usage-time";
-import type { TelemetryMetricTotals } from "@workspace/core/telemetry-metrics";
-export function usageCoverage(row: TelemetryMetricTotals): string {
-  if (row.unmeasuredTurns !== undefined) {
-    const missing = row.unmeasuredTurns;
-    return missing === '0' ? '' : `${count(missing)} ${missing === '1' ? 'turn' : 'turns'} missing usage`;
-  }
-  return (row.excludedTokenGroups ?? '0') !== '0' || (row.excludedCacheGroups ?? '0') !== '0'
-    ? 'Some usage measurements unavailable' : '';
-}
 /** Display formatting never changes the exact aggregate values received. */
 export function count(value: string | null): string {
   if (value === null) return "Unavailable";
@@ -87,8 +78,10 @@ export const exactMeasurement = (value: string | null, measure: Measure) =>
         : String(Number(value) * 100) + "%"
       : count(value);
 export const utcDay = (at: number) => new Date(at).toISOString().slice(0, 10);
-export const viewerTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
-export const currentDay = (timeZone = viewerTimeZone()) => dayOf(Date.now(),timeZone);
+export const viewerTimeZone = () =>
+  Intl.DateTimeFormat().resolvedOptions().timeZone;
+export const currentDay = (timeZone = viewerTimeZone()) =>
+  dayOf(Date.now(), timeZone);
 export function plotValue(value: string | null) {
   if (value === null) return null;
   const number = Number(value);

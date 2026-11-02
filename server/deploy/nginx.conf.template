@@ -23,6 +23,10 @@ http {
   resolver 127.0.0.11 valid=10s ipv6=off;
   proxy_cache off;
   proxy_buffering off;
+  map $uri $console_login_redirect {
+    default /login;
+    ~^/(overview|activity|models|tokens|spend|performance)$ /login?redirect=$uri;
+  }
   include /run/secrets/edge_realip;
   server { listen 8080 default_server; server_name _; return 404; }
   server {
@@ -105,6 +109,6 @@ http {
       add_header Cache-Control "no-store" always;
       try_files $uri $uri/ /index.html;
     }
-    location @console_login { return 302 /login; }
+    location @console_login { return 302 $console_login_redirect; }
   }
 }

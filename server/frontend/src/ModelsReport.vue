@@ -41,10 +41,9 @@
               background: `linear-gradient(90deg, ${color(row)}, color-mix(in srgb, ${color(row)} 55%, var(--color-surface-lowest)))`,
             }"
         /></span>
-        <strong :title="count(row[measure])"
-          >{{ measure === "turns" ? count(row[measure]) : tokens(row[measure])
-          }}<small v-if="incomplete(row)">Partial</small></strong
-        >
+        <strong :title="count(row[measure])">{{
+          measure === "turns" ? count(row[measure]) : tokens(row[measure])
+        }}</strong>
         <span class="muted">{{
           row[measure] === null || !total
             ? "—"
@@ -113,17 +112,6 @@ const ranked = computed(() =>
 const total = computed(() =>
   ranked.value.reduce((sum, row) => sum + BigInt(row[measure.value] ?? 0), 0n),
 );
-const incomplete = (row: ModelRow) =>
-  measure.value === "turns"
-    ? false
-    : (row.unmeasuredTurns !== undefined && row.unmeasuredTurns !== "0") ||
-      (row[
-        measure.value === "totalTokens"
-          ? "excludedTokenGroups"
-          : measure.value === "inputTokens"
-            ? "unknownInputGroups"
-            : "unknownOutputGroups"
-      ] ?? "0") !== "0";
 const barWidth = (row: ModelRow) => {
   const n = plotValue(row[measure.value]);
   const max = plotValue(ranked.value[0]?.[measure.value] ?? null);

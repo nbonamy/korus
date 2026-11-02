@@ -116,6 +116,12 @@ WITH bounds AS (
  ) AS value FROM stats s
 )
 SELECT jsonb_build_object(
+ 'availableModels',coalesce((SELECT jsonb_agg(model ORDER BY model) FROM (
+   SELECT DISTINCT model FROM daily_usage
+   WHERE ($3::text IS NULL OR provider=$3) AND (turns>0 OR coalesce(input_tokens,0)>0
+     OR coalesce(cached_input_tokens,0)>0 OR coalesce(output_tokens,0)>0
+     OR coalesce(estimated_cost_usd,0)>0 OR coalesce(ttft_turns,0)>0)
+ ) options),'[]'::jsonb),
  'range',jsonb_build_object('from',$1::text,'to',$2::text,'provider',$3::text,'model',$4::text,'groupServiceTiers',$5::boolean,'timeZone',$6::text),
  'availability',(SELECT jsonb_build_object('firstDay',min(day),'lastDay',max(day),'lastReceivedAt',max(received_at)) FROM local_activity),
  'overview',(SELECT jsonb_build_object(

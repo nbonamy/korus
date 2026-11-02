@@ -2,7 +2,6 @@
   <div class="console-shell">
     <ConsoleNavigation
       :product-name="productName"
-      :page="page"
       :signing-out="signingOut"
       :auth-error="authError"
       @sign-out="emit('signOut')"
@@ -112,11 +111,10 @@
             @change="load"
           >
             <ElOption label="All models" value="" />
-            <ElOption label="Unknown model" value="unknown" />
             <ElOption
-              v-for="item in telemetryModels"
+              v-for="item in availableModels"
               :key="item"
-              :label="item"
+              :label="item === 'unknown' ? 'Unknown model' : item"
               :value="item"
             />
           </ElSelect>
@@ -209,9 +207,6 @@
             <dd :title="count(data.totals.totalTokens)">
               {{ tokens(data.totals.totalTokens) }}
             </dd>
-            <small v-if="usageCoverage(data.totals)">{{
-              usageCoverage(data.totals)
-            }}</small>
           </div>
           <div
             v-if="page !== 'tokens'"
@@ -222,7 +217,6 @@
             <dd :title="exactMoney(data.totals.estimatedCostUsd)">
               {{ money(data.totals.estimatedCostUsd) }}
             </dd>
-            <small v-if="data.totals.costCoverage === 'partial'">partial</small>
           </div>
           <div
             v-if="page === 'overview' || page === 'tokens'"
@@ -231,9 +225,6 @@
           >
             <dt>Cache-read share</dt>
             <dd>{{ percent(data.totals.cacheReadShare) }}</dd>
-            <small v-if="usageCoverage(data.totals)">{{
-              usageCoverage(data.totals)
-            }}</small>
           </div>
         </dl>
         <MetricChart
@@ -273,7 +264,6 @@
                 values: data.weekly.map((row) => row.outputTokens),
               },
             ]"
-            :notes="data.weekly.map((row) => usageCoverage(row))"
             measure="tokens"
             variant="stacked"
           />
@@ -288,11 +278,6 @@
                 values: data.daily.map((row) => row.estimatedCostUsd),
               },
             ]"
-            :notes="
-              data.daily.map((row) =>
-                row.costCoverage === 'partial' ? 'Partial estimate' : '',
-              )
-            "
             measure="usd"
             variant="bar"
           />
@@ -310,7 +295,6 @@
                 ),
               },
             ]"
-            :notes="data.daily.map((row) => usageCoverage(row))"
             measure="ratio"
           />
           <MetricChart
@@ -327,7 +311,6 @@
                 values: data.weekly.map((row) => row.nonCacheReadTokens),
               },
             ]"
-            :notes="data.weekly.map((row) => usageCoverage(row))"
             measure="tokens"
             variant="stacked"
           />
@@ -376,10 +359,7 @@
                     ><span>{{ modelLabel(row) }}</span>
                   </th>
                   <td>
-                    {{ count(row.turns)
-                    }}<small v-if="usageCoverage(row)">{{
-                      usageCoverage(row)
-                    }}</small>
+                    {{ count(row.turns) }}
                   </td>
                   <td :title="count(row.inputTokens)">
                     {{ tokens(row.inputTokens) }}
@@ -391,10 +371,7 @@
                     {{ tokens(row.outputTokens) }}
                   </td>
                   <td :title="exactMoney(row.estimatedCostUsd)">
-                    {{ money(row.estimatedCostUsd)
-                    }}<small v-if="row.costCoverage === 'partial'"
-                      >partial</small
-                    >
+                    {{ money(row.estimatedCostUsd) }}
                   </td>
                 </tr>
                 <tr v-if="!data.models.length">
@@ -409,8 +386,7 @@
   </div>
 </template>
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, watch, nextTick } from "vue";
-import { telemetryModels } from "@workspace/core/telemetry-models";
+import { computed, ref, onMounted, watch, nextTick } from "vue";
 import {
   ElButton,
   ElDatePicker,
@@ -435,49 +411,43 @@ import {
   exactMoney,
   percent,
   currentDay,
-  usageCoverage,
 } from "./format";
+import { consolePages, type ConsolePage } from "./console-pages";
 import { modelLabel } from "./model-label";
 import { useMetrics } from "./use-metrics";
-defineProps<{ signingOut?: boolean; authError?: string }>();
+const props = withDefaults(
+  defineProps<{
+    page?: ConsolePage;
+    signingOut?: boolean;
+    authError?: string;
+  }>(),
+  { page: "overview" },
+);
 const emit = defineEmits<{ sessionExpired: []; signOut: [] }>();
 const productName =
   typeof __PRODUCT_NAME__ === "undefined" ? "Usage console" : __PRODUCT_NAME__;
-const pageLabels = {
-  overview: "Overview",
-  activity: "Activity",
-  tokens: "Tokens",
-  spend: "Spend",
-  models: "Models",
-  performance: "Performance",
-} as const;
-type ConsolePage = keyof typeof pageLabels;
-function readPage(): ConsolePage {
-  const route = window.location.hash.slice(2);
-  return Object.hasOwn(pageLabels, route) ? (route as ConsolePage) : "overview";
-}
-const page = ref<ConsolePage>(readPage());
-const pageTitle = computed(() => pageLabels[page.value]);
+const pageTitle = computed(
+  () => consolePages.find((page) => page.id === props.page)!.label,
+);
 const heading = ref<HTMLElement | null>(null);
-watch(page, async () => {
-  document.title = `${productName} Console · ${pageTitle.value}`;
-  await nextTick();
-  heading.value?.focus();
-});
-function navigate() {
-  page.value = readPage();
-}
+watch(
+  () => props.page,
+  async () => {
+    document.title = `${productName} Console · ${pageTitle.value}`;
+    await nextTick();
+    heading.value?.focus();
+  },
+);
 onMounted(() => {
   document.title = `${productName} Console · ${pageTitle.value}`;
-  window.addEventListener("hashchange", navigate);
 });
-onUnmounted(() => window.removeEventListener("hashchange", navigate));
 const {
   timeZone,
   from,
   to,
   provider,
   model,
+  availableModels,
   groupServiceTiers,
   data,
   loading,

@@ -28,7 +28,7 @@ export type TelemetryMetricTotals = {
   outputTokens: string | null;
   unknownOutputGroups: string;
   totalTokens: string | null;
-  /** Complete input/output pairs used by additive token charts. */
+  /** Input/output subtotals from matched reporting buckets. */
   pairedInputTokens?: string | null;
   pairedOutputTokens?: string | null;
   excludedTokenGroups: string;
@@ -56,6 +56,8 @@ export type TelemetryMetricsFilter = {
  */
 export type TelemetryMetrics = {
   range: TelemetryMetricsFilter;
+  /** Models with recorded usage in the date/provider scope, independent of the selected model. */
+  availableModels?: TelemetryModel[];
   availability: {
     firstDay: string | null;
     lastDay: string | null;
@@ -76,7 +78,7 @@ export type TelemetryMetrics = {
   totals: TelemetryMetricTotals;
   daily: (TelemetryMetricTotals & { day: string })[];
   weekly: (TelemetryMetricTotals & { week: string })[];
-  /** Sparse UTC-day series. Absent timings remain missing, never interpolated. */
+  /** Sparse viewer-day series. Absent timings remain missing, never interpolated. */
   modelDaily?: (Pick<
     TelemetryMetricTotals,
     | "turns"

@@ -1,8 +1,5 @@
 <template>
   <section aria-label="Model performance">
-    <div class="comparison-controls performance-controls">
-      <ModelComparisonControl v-model="selected" :choices="choices" />
-    </div>
     <p
       v-if="
         !data.totals.performance || data.totals.performance.ttftTurns === '0'
@@ -25,9 +22,6 @@
         measure="milliseconds"
       />
     </div>
-    <p v-if="!selected.length" class="muted performance-note">
-      Choose models to compare.
-    </p>
     <div class="section-heading usage-heading"><h2>Summary</h2></div>
     <dl class="cards performance-totals">
       <div class="panel" aria-label="Output speed summary">
@@ -129,7 +123,6 @@
 </template>
 <script setup lang="ts">
 import { computed, toRef } from "vue";
-import ModelComparisonControl from "./ModelComparisonControl.vue";
 import {
   comparisonLabel,
   modelKey,
@@ -140,12 +133,13 @@ import { modelLabel } from "./model-label";
 import MetricChart from "./MetricChart.vue";
 import { count, rate, duration, percent } from "./format";
 const props = defineProps<{ data: TelemetryMetrics }>();
-const { choices, selected, compared, days, daily, color, dash } =
-  useModelComparison(toRef(props, "data"));
+const { choices, days, daily, color, dash } = useModelComparison(
+  toRef(props, "data"),
+);
 const performanceSeries = (
   field: "outputTokensPerSecond" | "timeToFirstOutputMs",
 ) =>
-  compared.value.map((row) => ({
+  choices.value.map((row) => ({
     label: comparisonLabel(row),
     color: color(row),
     dash: dash(row),

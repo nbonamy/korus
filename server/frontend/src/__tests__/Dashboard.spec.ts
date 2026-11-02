@@ -2,7 +2,21 @@
 import { mount, flushPromises } from "@vue/test-utils";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ElPopover, ElSwitch } from "element-plus";
-import Dashboard from "../Dashboard.vue";
+import { RouterView, createMemoryHistory } from "vue-router";
+import { createConsoleRouter } from "../router";
+import { createConsoleSession } from "../console-session";
+async function renderDashboard() {
+  const session = createConsoleSession();
+  session.authenticate();
+  const router = createConsoleRouter(session, createMemoryHistory());
+  await router.push("/overview");
+  await router.isReady();
+  const wrapper = mount(RouterView, {
+    attachTo: document.body,
+    global: { plugins: [router], components: { ElPopover, ElSwitch } },
+  });
+  return { wrapper, router };
+}
 
 // Rendered owner boundary: stale filter responses, revoked private access, old
 // dates rejected locally, unknowns displayed as zero, and exact tiny/large values.
@@ -29,13 +43,10 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
       new Promise<Response>((resolve) => pending.push(resolve)),
   );
   vi.stubGlobal("fetch", fetcher);
-  const wrapper = mount(Dashboard, {
-    attachTo: document.body,
-    global: { components: { ElPopover, ElSwitch } },
-  });
+  const { wrapper, router } = await renderDashboard();
   await flushPromises();
   expect(wrapper.get('[role="status"]').text()).toContain("Loading");
-  const initial = metrics();
+  const initial = { ...metrics(), availableModels: ["gpt-6-sol", "unknown"] };
   pending.shift()!(
     Response.json({
       ...initial,
@@ -57,20 +68,28 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
     /Selected range|Opted-in installations|API-equivalent/,
   );
   expect(document.title).toContain("Console · Overview");
+  await wrapper.get('[aria-label="Model"]').trigger("click");
+  await flushPromises();
+  expect(
+    [
+      ...document
+        .getElementById(
+          wrapper.get('[aria-label="Model"]').attributes("aria-controls")!,
+        )!
+        .querySelectorAll('[role="option"]'),
+    ].map((option) => option.textContent?.trim()),
+  ).toStrictEqual(["All models", "gpt-6-sol", "Unknown model"]);
+  await wrapper
+    .get('[aria-label="Model"]')
+    .trigger("keydown", { key: "Escape" });
+  await flushPromises();
+
   expect(wrapper.get('[aria-label="Turns"]').text()).toContain("7");
   expect(wrapper.get('[aria-label="Measured total tokens"]').text()).toContain(
     "1.3B",
   );
-  expect(wrapper.get('[aria-label="Measured total tokens"]').text()).toContain(
-    "2 turns missing usage",
-  );
-  expect(
-    wrapper.get('[aria-label="Measured cache-read share"]').text(),
-  ).toContain("2 turns missing usage");
+  expect(wrapper.text()).not.toMatch(/turns missing usage|partial/i);
   expect(wrapper.text()).not.toContain("groups excluded");
-  expect(wrapper.get('[aria-label="Known estimated spend"]').text()).toContain(
-    "partial",
-  );
   expect(
     wrapper.get('[aria-label="Measured total tokens"] dd').attributes("title"),
   ).toBe("1,250,000,000");
@@ -103,10 +122,9 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
     "Spend",
     "Performance",
   ]);
-  window.location.hash = "#/models";
-  window.dispatchEvent(new HashChangeEvent("hashchange"));
+  await router.push("/models");
   await flushPromises();
-  expect(navigation.get('a[href="#/models"]').attributes("aria-current")).toBe(
+  expect(navigation.get('a[href="/models"]').attributes("aria-current")).toBe(
     "page",
   );
   expect(wrapper.get("h1").text()).toBe("Models");
@@ -126,10 +144,10 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   expect(wrapper.get("tbody").text()).toContain("gpt-6-sol");
   expect(wrapper.find('[aria-label="Provider and model"]').exists()).toBe(true);
   expect(wrapper.find('[aria-label="Daily activity"]').exists()).toBe(false);
-  window.location.hash = "#/performance";
-  window.dispatchEvent(new HashChangeEvent("hashchange"));
+  await router.push("/performance");
   await flushPromises();
   expect(wrapper.get("h1").text()).toBe("Performance");
+  expect(wrapper.find('[aria-label="Compare models"]').exists()).toBe(false);
   expect(wrapper.text()).not.toMatch(
     /provider benchmark|Higher is faster|Lower is faster|Missing samples are not zero/,
   );
@@ -149,8 +167,7 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   expect(
     wrapper.get('[aria-label="Time to first output summary"]').text(),
   ).toContain("0.5 s");
-  window.location.hash = "#/overview";
-  window.dispatchEvent(new HashChangeEvent("hashchange"));
+  await router.push("/overview");
   await flushPromises();
   expect(wrapper.get("h1").text()).toBe("Overview");
   expect(fetcher).toHaveBeenCalledTimes(1);
@@ -219,8 +236,7 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
     }),
   );
   await flushPromises();
-  window.location.hash = "#/models";
-  window.dispatchEvent(new HashChangeEvent("hashchange"));
+  await router.push("/models");
   await flushPromises();
   expect(wrapper.get("tbody").text()).not.toContain("Fast");
   await optionsButton.trigger("click");
@@ -254,10 +270,7 @@ it("shows recoverable failures without echoing remote diagnostics and bounds dat
     .fn()
     .mockResolvedValue(new Response("SECRET SQL diagnostic", { status: 503 }));
   vi.stubGlobal("fetch", fetcher);
-  const wrapper = mount(Dashboard, {
-    attachTo: document.body,
-    global: { components: { ElPopover, ElSwitch } },
-  });
+  const { wrapper } = await renderDashboard();
   await flushPromises();
   expect(wrapper.get('[role="alert"]').text()).toContain("unavailable");
   expect(wrapper.text()).not.toContain("SECRET");
@@ -288,9 +301,7 @@ it("requests and labels browser-local days including today at midnight and acros
     ]) {
       vi.stubEnv("TZ", zone!);
       vi.setSystemTime(new Date(now!));
-      const wrapper = mount(Dashboard, {
-        global: { components: { ElPopover, ElSwitch } },
-      });
+      const { wrapper } = await renderDashboard();
       await flushPromises();
       const params = new URL(
         fetcher.mock.calls.at(-1)![0]!,
@@ -317,4 +328,55 @@ it("requests and labels browser-local days including today at midnight and acros
     vi.useRealTimers();
     vi.unstubAllEnvs();
   }
+});
+
+it("uses model facets from real data and clears selections absent from a new scope", async () => {
+  const requested: string[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) => {
+      requested.push(url);
+      const selected = new URL(url, "https://console.invalid").searchParams;
+      return Response.json({
+        ...metrics(),
+        availableModels:
+          selected.get("provider") === "claude"
+            ? ["unknown"]
+            : ["gpt-6-sol", "unknown"],
+      });
+    }),
+  );
+  const { wrapper } = await renderDashboard();
+  await flushPromises();
+  await wrapper.get('[aria-label="Model"]').trigger("click");
+  await flushPromises();
+  (
+    Array.from(document.querySelectorAll('[role="option"]')).find(
+      (o) => o.textContent?.trim() === "gpt-6-sol",
+    ) as HTMLElement
+  ).click();
+  await flushPromises();
+  expect(requested.at(-1)).toContain("model=gpt-6-sol");
+  await wrapper.get('[aria-label="Model"]').trigger("click");
+  await flushPromises();
+  expect(document.body.textContent).toContain("Unknown model");
+  await wrapper
+    .get('[aria-label="Model"]')
+    .trigger("keydown", { key: "Escape" });
+  await flushPromises();
+  await wrapper.get('[aria-label="Provider"]').trigger("click");
+  await flushPromises();
+  (
+    Array.from(document.querySelectorAll('[role="option"]')).find(
+      (o) => o.textContent?.trim() === "Claude",
+    ) as HTMLElement
+  ).click();
+  await flushPromises();
+  expect(requested.at(-1)).toContain("provider=claude");
+  expect(
+    new URL(requested.at(-1)!, "https://console.invalid").searchParams.has(
+      "model",
+    ),
+  ).toBe(false);
+  wrapper.unmount();
 });

@@ -28,7 +28,7 @@
             autocomplete="username"
             :spellcheck="false"
             :maxlength="64"
-            :disabled="checking || busy"
+            :disabled="busy"
             required
           />
         </FormField>
@@ -46,17 +46,16 @@
             autocomplete="current-password"
             show-password
             :maxlength="1024"
-            :disabled="checking || busy"
+            :disabled="busy"
             required
           />
         </FormField>
         <p v-if="error" role="alert" class="sign-in-error">{{ error }}</p>
-        <p v-if="checking" role="status" class="muted">Checking session…</p>
         <ElButton
           type="primary"
           native-type="submit"
           :loading="busy"
-          :disabled="checking || busy"
+          :disabled="busy"
           >Sign in</ElButton
         >
       </form>
@@ -69,17 +68,13 @@ import { ElInput, ElButton } from "element-plus";
 import FormField from "@workspace/vue/shared/form/FormField.vue";
 import productIcon from "../../../client/electron/assets/icon.svg";
 import { sessionRequest } from "./session";
-const props = withDefaults(defineProps<{ checkSession?: boolean }>(), {
-  checkSession: true,
-});
 const emit = defineEmits<{ authenticated: [] }>();
 const productName =
   typeof __PRODUCT_NAME__ === "undefined" ? "Console" : __PRODUCT_NAME__;
 const username = ref("admin"),
   password = ref(""),
   error = ref(""),
-  busy = ref(false),
-  checking = ref(props.checkSession);
+  busy = ref(false);
 const usernameInput = ref<InstanceType<typeof ElInput>>(),
   passwordInput = ref<InstanceType<typeof ElInput>>();
 const controller = new AbortController();
@@ -89,7 +84,7 @@ function authenticated() {
   emit("authenticated");
 }
 async function signIn() {
-  if (busy.value || checking.value) return;
+  if (busy.value) return;
   error.value = "";
   if (!username.value.trim() || !password.value) {
     error.value = "Enter your username and password.";
@@ -124,24 +119,6 @@ async function signIn() {
 }
 onMounted(async () => {
   document.title = `Sign in · ${productName} Console`;
-  if (props.checkSession) {
-    try {
-      const response = await sessionRequest("GET", controller.signal);
-      if (!controller.signal.aborted) {
-        if (response.status === 204) {
-          authenticated();
-          return;
-        }
-        if (response.status !== 401)
-          error.value = "Sign-in is unavailable. Try again.";
-      }
-    } catch {
-      if (!controller.signal.aborted)
-        error.value = "Sign-in is unavailable. Try again.";
-    } finally {
-      checking.value = false;
-    }
-  }
   await nextTick();
   passwordInput.value?.focus();
 });

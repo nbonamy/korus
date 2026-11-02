@@ -183,6 +183,7 @@ function forbiddenImport(area, file, specifier) {
     !(
       [
         "vue",
+        "vue-router",
         "element-plus",
         "element-plus/es/components/button/style/css",
         "element-plus/es/components/input/style/css",

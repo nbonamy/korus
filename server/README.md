@@ -111,6 +111,12 @@ the private `.env` password requires recreating the auth container. Login and lo
 global ten-attempt/minute budget and at most two concurrent scrypt operations;
 rate state contains no IP addresses. Errors never echo credentials or cookies.
 
+The console uses Vue Router history routes. Authentication guards resolve the
+server session before rendering login or protected reports; an unavailable
+authentication service produces a retryable state. Login return paths are
+limited to the console report routes. The proxy also enforces authentication on
+direct report URLs.
+
 The proxy checks sessions before serving console HTML or
 `/v1/telemetry/metrics`. Unauthenticated HTML redirects to `/login`; metrics return
 401 without a browser password challenge. The login document and its static
@@ -130,7 +136,9 @@ The read endpoint accepts inclusive `from`/`to` calendar days, an optional IANA
 `groupServiceTiers` option. The console supplies the viewer browser timezone and
 includes today by default, using reports received so far. It rejects
 unknown/duplicate filters, future viewer days and ranges longer than 3,660 days
-instead of clipping results. Older retained ranges remain available.
+instead of clipping results. Older retained ranges remain available. Model choices
+come from nonzero recorded usage within the selected date/provider scope,
+independently of the selected model.
 At most four aggregate statements execute concurrently; excess work receives 429
 with a one-second Retry-After. Database lock/statement deadlines yield generic 503
 responses. Responses are not cached and contain no installation-level records.
