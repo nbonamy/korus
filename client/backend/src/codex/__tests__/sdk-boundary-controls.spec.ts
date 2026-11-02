@@ -21,6 +21,23 @@ describe(`Codex SDK → ${product.name} backend controls`, () => {
     await expect(driver.listModels(sdkAgent())).rejects.toThrow('catalog offline');
   });
 
+  it('prefers advertised 6.1 Sol with High effort without inventing catalog entries or mutating the SDK', async () => {
+    const { driver, surface } = setup();
+    const models = [
+      { id: 'other', model: 'other', displayName: 'Other', description: '', isDefault: true, defaultReasoningEffort: 'medium',
+        supportedReasoningEfforts: [{ reasoningEffort: 'medium', description: '' }], serviceTiers: [] },
+      { id: 'sol', model: 'gpt-6.1-sol', displayName: '6.1 Sol', description: '', isDefault: false, defaultReasoningEffort: 'low',
+        supportedReasoningEfforts: [{ reasoningEffort: 'low', description: '' }, { reasoningEffort: 'high', description: '' }], serviceTiers: [] },
+    ];
+    surface.listModels.mockResolvedValue(models);
+    expect(await driver.listModels(sdkAgent())).toStrictEqual([
+      { ...models[0], isDefault: false }, { ...models[1], isDefault: true, defaultReasoningEffort: 'high' },
+    ]);
+    expect(models[1]).toMatchObject({ isDefault: false, defaultReasoningEffort: 'low' });
+    surface.listModels.mockResolvedValue([models[0]!]);
+    expect(await driver.listModels(sdkAgent())).toStrictEqual([models[0]]);
+  });
+
   it('uses conversation-specific permissions without leaking them between agents', async () => {
     const { driver, conversation } = setup();
     conversation('conversation-a').setSnapshot({ approvalPresets: ['ask-for-approval'] });

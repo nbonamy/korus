@@ -159,8 +159,11 @@ describe(`Codex SDK → ${product.name} backend lifecycle`, () => {
     expect(session.handle.load).toHaveBeenCalledOnce();
     expect(events.filter((event) => event.type === 'codex.conversationSnapshotChanged')).toMatchObject([{ payload: { snapshot: { messages: session.handle.getSnapshot().messages } } }]);
     vi.advanceTimersByTime(16 * 60_000);
-    await driver.loadConversation(sdkAgent());
+    const savedAgent = { ...sdkAgent(), backendDefaults: { kind: 'codex' as const, model: 'gpt-6.1-sol', reasoningEffort: 'high', userSelectedModel: true } };
+    session.setSnapshot({ selectedModelId: 'gpt-6.1-sol', selectedReasoningEffort: 'low' });
+    await driver.loadConversation(savedAgent);
     expect(session.handle.load).toHaveBeenCalledTimes(2);
+    expect(session.handle.updateSettings).toHaveBeenCalledWith({ modelId: 'gpt-6.1-sol', reasoningEffort: 'high' });
     session.setSnapshot({ activeTurnId: 'live', busy: true });
     vi.advanceTimersByTime(16 * 60_000);
     await driver.loadConversation(sdkAgent());

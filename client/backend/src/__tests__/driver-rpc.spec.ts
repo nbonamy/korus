@@ -307,6 +307,7 @@ describe('BackendDriverRpc', () => {
         codexHome: '/tmp/agent-workspace-isolated-home/codex-home',
         loadingStrategy: 'lazy',
         historyItemsView: 'summary',
+        conversationDefaults: { model: 'gpt-6.1-sol', reasoningEffort: 'high' },
         originalHistoryImages: true,
         originalHistoryUsage: true,
         transport: {

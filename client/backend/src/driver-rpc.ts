@@ -18,6 +18,7 @@ import { ClaudeBackendDriver } from './claude/claude-driver';
 import { AntigravityHost } from './antigravity/antigravity-host';
 import { CodexBackendDriver } from './codex/codex-driver';
 import { CodexSurfaceAgentAdapter } from './codex/codex-surface-adapter';
+import { codexConversationDefaults } from './codex/codex-model-defaults';
 import { resolveCodexLaunch } from './codex/codex-command';
 import { createCodexSurface } from '@codex-app-sdk/backend';
 import { listSourceBranches, listSourceWorktrees, suggestedSourceWorktreePath } from './git-worktrees';
@@ -71,6 +72,7 @@ export function appSurfaceOptions(options: BackendDriverRegistryOptions = {}): A
     autoSelectFirstConversation: false,
     clientInfo: { name: 'workspace', title: product.name, version: '0.3.0' },
     codexHome: options.generalSettings?.providerHomes?.codex?.homePath ?? backendCodexHomeDir(),
+    conversationDefaults: codexConversationDefaults,
     loadingStrategy: 'lazy',
     historyItemsView: 'summary',
     originalHistoryImages: true,

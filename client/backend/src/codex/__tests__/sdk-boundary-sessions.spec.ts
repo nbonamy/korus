@@ -78,18 +78,29 @@ describe(`Codex SDK → ${product.name} session policy`, () => {
     await expect(driver.loadOlderHistory(agent)).rejects.toThrow('page unavailable');
   });
 
-  it('restores the selected tier rather than a stale thread default on cold load', async () => {
-    const { driver, conversation } = setup();
+  it.each(['gpt-6.1-sol', 'gpt-6.1-terra'])('restores saved %s, effort and tier before publishing a cold-loaded conversation', async model => {
+    const { driver, conversation, events } = setup();
     const session = conversation('conversation-a');
-    session.setSnapshot({ selectedServiceTier: 'fast' });
+    session.setSnapshot({ selectedModelId: 'gpt-6.1-sol', selectedReasoningEffort: 'low', selectedServiceTier: 'fast' });
+    session.handle.updateSettings.mockImplementation(async settings => {
+      session.setSnapshot({
+        selectedModelId: settings.modelId ?? session.handle.getSnapshot().selectedModelId,
+        selectedReasoningEffort: settings.reasoningEffort ?? session.handle.getSnapshot().selectedReasoningEffort,
+        selectedServiceTier: settings.serviceTier === undefined ? session.handle.getSnapshot().selectedServiceTier : settings.serviceTier,
+      });
+      return session.handle.getSnapshot();
+    });
     const agent = {
       ...sdkAgent(),
-      backendDefaults: { kind: 'codex' as const, model: 'sol', reasoningEffort: 'high', serviceTier: null, userSelectedModel: true },
+      backendDefaults: { kind: 'codex' as const, model, reasoningEffort: 'high', serviceTier: null, userSelectedModel: true },
     };
 
     await driver.loadConversation(agent);
 
-    expect(session.handle.updateSettings).toHaveBeenCalledWith({ serviceTier: null });
+    expect(session.handle.updateSettings).toHaveBeenCalledWith({ modelId: model, reasoningEffort: 'high', serviceTier: null });
+    const settings = events.filter(event => event.type === 'conversation.settingsUpdated');
+    expect(settings).toHaveLength(1);
+    expect(settings[0]).toMatchObject({ payload: { settings: { model, reasoningEffort: 'high', serviceTier: null } } });
   });
 
   it.each([false, true])('rolls over via a bounded handoff and archives only after replacement acceptance (failure=%s)', async (fail) => {

@@ -45,6 +45,7 @@ import { agentFolder } from '@workspace/core/agent-folder';
 import { shouldSyncConversationTitleFromAgent } from '@workspace/core/conversation-title';
 import type { CodexConversation, CodexSurface } from '@codex-app-sdk/backend';
 import { CodexImageGeneration } from './codex-image-generation';
+import { codexConversationDefaults } from './codex-model-defaults';
 import { statusFromSnapshot } from './codex-status';
 import type {
   CodexConversationEvent,
@@ -58,6 +59,7 @@ import type {
   CodexSurfaceTurnStatus,
   CodexSurfaceThreadStatus,
   SendCodexMessageOptions,
+  UpdateCodexConversationSettings,
   SurfaceMessage,
   SurfaceMessagePart,
   SurfaceMessageToolPart,
@@ -324,8 +326,12 @@ export class CodexSurfaceAgentAdapter {
 
   async listModels(): Promise<BackendModelOption[]> {
     const models = await this.surface.listModels({ includeHidden: false, forceReload: true });
+    const preferred = models.find(model => model.model === codexConversationDefaults.model);
     return models.map((model) => ({
       ...model,
+      ...(preferred ? { isDefault: model === preferred } : {}),
+      ...(model === preferred && model.supportedReasoningEfforts?.some(effort => effort.reasoningEffort === codexConversationDefaults.reasoningEffort)
+        ? { defaultReasoningEffort: codexConversationDefaults.reasoningEffort } : {}),
       supportedReasoningEfforts: model.supportedReasoningEfforts?.map((effort) => ({ ...effort })),
       serviceTiers: model.serviceTiers?.map((tier) => ({ ...tier })),
     }));
@@ -840,9 +846,10 @@ export class CodexSurfaceAgentAdapter {
       const wasSuppressingEvents = existing.suppressEvents;
       existing.suppressEvents = true;
       try {
+        const requestedDefaults = agent.backendDefaults?.kind === 'codex' ? { ...agent.backendDefaults } : undefined;
         await existing.handle.load({ ...agentCwd(agent), extensionContext: agent });
         this.historyHydratedAtByAgentId.set(agent.id, Date.now());
-        const snapshot = existing.handle.getSnapshot();
+        const snapshot = await this.restoreConversationSettings(existing, existing.handle.getSnapshot(), requestedDefaults);
         // Publish load's full initial page now. Older messages remain behind
         // the SDK's demand-paging cursor until the conversation requests them.
         this.publishInitial(existing, snapshot);
@@ -1084,8 +1091,8 @@ export class CodexSurfaceAgentAdapter {
     }
 
     await this.start();
-    const requestedServiceTier = agent.backendDefaults?.kind === 'codex'
-      ? agent.backendDefaults.serviceTier
+    const requestedDefaults = agent.backendDefaults?.kind === 'codex'
+      ? { ...agent.backendDefaults }
       : undefined;
     const session = this.bindRuntime(agent, threadId, false, true);
     try {
@@ -1104,26 +1111,38 @@ export class CodexSurfaceAgentAdapter {
       this.publishQuickChatConversationTitle(session, snapshot.conversations.find(
         (conversation) => conversation.id === threadId,
       ));
+      snapshot = await this.restoreConversationSettings(session, snapshot, requestedDefaults);
       this.publishInitial(session, snapshot);
       session.suppressEvents = false;
-
-      const requestedPreset = codexApprovalPresetFromDefaults(agent.backendDefaults);
-      const effectivePreset = effectiveApprovalPreset(requestedPreset, snapshot.approvalPresets);
-      if (effectivePreset && snapshot.approvalPreset !== effectivePreset) {
-        await invokeCodexConversationBridgeOperation(
-          this.surface, session.handle.id, 'updateConversationSettings', [{ approvalPreset: effectivePreset }],
-        );
-      }
-      if (requestedServiceTier !== undefined && snapshot.selectedServiceTier !== requestedServiceTier) {
-        await invokeCodexConversationBridgeOperation(
-          this.surface, session.handle.id, 'updateConversationSettings', [{ serviceTier: requestedServiceTier }],
-        );
-      }
       return session;
     } catch (error) {
       this.releaseConversation(agent.id);
       throw error;
     }
+  }
+
+  private async restoreConversationSettings(
+    session: AgentConversation,
+    snapshot: CodexConversationSnapshot,
+    requestedDefaults: Agent['backendDefaults'],
+  ): Promise<CodexConversationSnapshot> {
+    const settings: UpdateCodexConversationSettings = {};
+    if (requestedDefaults?.userSelectedModel && requestedDefaults.model) {
+      const modelId = snapshot.models.find(model => model.model === requestedDefaults.model || model.id === requestedDefaults.model)?.id ?? requestedDefaults.model;
+      if (snapshot.selectedModelId !== modelId || (requestedDefaults.reasoningEffort && snapshot.selectedReasoningEffort !== requestedDefaults.reasoningEffort)) {
+        settings.modelId = modelId;
+        if (requestedDefaults.reasoningEffort) settings.reasoningEffort = requestedDefaults.reasoningEffort;
+      }
+    }
+    const requestedPreset = codexApprovalPresetFromDefaults(requestedDefaults);
+    const effectivePreset = effectiveApprovalPreset(requestedPreset, snapshot.approvalPresets);
+    if (effectivePreset && snapshot.approvalPreset !== effectivePreset) settings.approvalPreset = effectivePreset;
+    if (requestedDefaults?.kind === 'codex' && requestedDefaults.serviceTier !== undefined && (snapshot.selectedServiceTier !== requestedDefaults.serviceTier || settings.modelId)) {
+      settings.serviceTier = requestedDefaults.serviceTier;
+    }
+    return Object.keys(settings).length ? invokeCodexConversationBridgeOperation(
+      this.surface, session.handle.id, 'updateConversationSettings', [settings],
+    ) : snapshot;
   }
 
   private bindRuntime(
