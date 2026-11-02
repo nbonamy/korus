@@ -12,6 +12,31 @@ async function mountDocument(content: string, attachTo?: HTMLElement) {
 }
 
 describe('MarkdownPanel', () => {
+  it('keeps multiple diagrams independent and replaces them when document content changes', async () => {
+    const wrapper = await mountDocument('```mermaid\nflowchart LR\n  A --> B\n```\n\n```mermaid\nflowchart RL\n  Client --> API\n```');
+    try {
+      expect(wrapper.findAll('svg[role="img"]')).toHaveLength(2);
+      const ids = wrapper.findAll('svg[role="img"] [id]').map(element => element.attributes('id'));
+      expect(new Set(ids).size).toBe(ids.length);
+
+      await wrapper.setProps({ content: '# Replacement\n\n> ```mermaid\n> flowchart LR\n>   Start --> Finish\n> ```\n\nAfter replacement.' });
+      expect(wrapper.get('blockquote svg[role="img"]').text()).toContain('Finish');
+      expect(wrapper.text()).not.toContain('Client');
+      expect(wrapper.text()).toContain('After replacement.');
+    } finally { wrapper.unmount(); }
+  });
+
+  it('keeps invalid Mermaid readable without enabling authored HTML or losing the rest of the document', async () => {
+    const source = 'not-a-diagram <script>run()</script>';
+    const wrapper = await mountDocument('# Analysis\n\n```mermaid\n' + source + '\n```\n\nStill readable.\n\n<script>run()</script>');
+    try {
+      expect(wrapper.get('pre code').text()).toBe(source);
+      expect(wrapper.find('svg[role="img"]').exists()).toBe(false);
+      expect(wrapper.find('script').exists()).toBe(false);
+      expect(wrapper.text()).toContain('Still readable.');
+    } finally { wrapper.unmount(); }
+  });
+
   it('renders markdown using the shared markdown surface', () => {
     const wrapper = mount(MarkdownPanel, {
       props: {

@@ -94,7 +94,7 @@ describe('AppShell missions', () => {
   it.each(['README.md', '/workspace/mission/README.md', '/tmp/telemetry-merge3-evidence.json'])('opens a rendered Mission document link in a dialog without hiding the Mission (%s)', async target => {
     const evidence = target.endsWith('.json');
     const path = evidence ? target : 'README.md';
-    const content = evidence ? '{\"commit\":\"8116155c\"}' : '# Mission document';
+    const content = evidence ? '{\"commit\":\"8116155c\"}' : '# Mission document\n\n```mermaid\nflowchart RL\n  Release["Release"] --> Requirements["Requirements"]\n  Requirements --> Analysis["Analysis"]\n```\n\n```ts\nconst ok = true\n```\n\nSurrounding Markdown stays readable.';
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
     agent.folder = '/workspace/mission';
@@ -115,6 +115,12 @@ describe('AppShell missions', () => {
       expect(wrapper.get('.mission-document-dialog').findAll('.markdown-panel, .source-preview-panel')).toHaveLength(1);
       expect(wrapper.get('.mission-document-dialog').find('[data-code-annotation-trigger]').exists()).toBe(false);
       expect(wrapper.get('.mission-document-dialog').text()).toContain(evidence ? '8116155c' : 'Mission document');
+      if (!evidence) {
+        const document = wrapper.get('.mission-document-dialog');
+        expect(document.get('svg[role="img"]').text()).toContain('Requirements');
+        expect(document.get('pre code').text()).toBe('const ok = true');
+        expect(document.text()).toContain('Surrounding Markdown stays readable.');
+      }
       expect(wrapper.get('.mission-conversation-rail a').isVisible()).toBe(true);
       expect(wrapper.get('.mission-stage-rail').isVisible()).toBe(true);
       expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(true);
