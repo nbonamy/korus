@@ -445,7 +445,7 @@ describe('SettingsView', () => {
     await wrapper.setProps({ activeTab: 'claude-code' } as never);
 
     expect(wrapper.get('.engine-hero__copy strong').text()).toBe('Claude Code');
-    expect(wrapper.text()).not.toContain('Enable Claude Code');
+    expect(wrapper.get('[role="switch"]').attributes('aria-label')).toBe('Enable Claude Code');
     expect(wrapper.text()).not.toContain('Launch ChatGPT');
     expect(wrapper.text()).not.toContain('Codex executable');
     await wrapper.findAll('button').find(button => button.text() === 'Connect')!.trigger('click');
