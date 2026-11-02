@@ -3,7 +3,7 @@ import { normalizePromptContent } from '@codex-app-sdk/core/surface';
 import { MAX_DELEGATION_INSTRUCTIONS_LENGTH } from './delegation-context';
 import { workProviderKinds } from './work-providers';
 import { isAgentBackend } from './contracts/shared';
-import { spokenAnnouncementVoices, type AppGeneralSettings, type AppPluginSettings, type AppshotSettings, type AppSnapshot, type AppThemeSettings, type ModelFavorite, type SavedPromptDraft, type SourceFolderState, type SpokenAnnouncementVoice, type UpdateSettingsInput, type WorkProviderSettings } from './contracts';
+import { spokenAnnouncementVoices, type AgentBackend, type AppGeneralSettings, type AppPluginSettings, type AppshotSettings, type AppSnapshot, type AppThemeSettings, type ModelFavorite, type SavedPromptDraft, type SourceFolderState, type SpokenAnnouncementVoice, type UpdateSettingsInput, type WorkProviderSettings } from './contracts';
 import { repositoryIconKeyForRemote } from './git-remote';
 import { isApprovalPreset } from './approval-presets';
 import { claudeBackendCapabilities } from './backend-capabilities';
@@ -160,6 +160,11 @@ export function normalizeGeneralSettings(value: unknown): AppGeneralSettings {
     ...(value.providerOnboardingComplete === true || typeof value.codexEnabled === 'boolean' ? { providerOnboardingComplete: true } : {}),
     ...(isRecord(value.providerHomes) ? { providerHomes: normalizeProviderHomes(value.providerHomes) } : {}),
     ...(isRecord(value.providerEnabled) ? { providerEnabled: Object.fromEntries(Object.entries(value.providerEnabled).filter(([backend, enabled]) => (isAgentBackend(backend)) && typeof enabled === 'boolean')) } : {}),
+    ...(isRecord(value.githubStarPrompt) && Number.isSafeInteger(value.githubStarPrompt.sentPrompts) && (value.githubStarPrompt.sentPrompts as number) >= 0 && typeof value.githubStarPrompt.dismissed === 'boolean'
+      ? { githubStarPrompt: { sentPrompts: Math.min(value.githubStarPrompt.sentPrompts as number, 5), dismissed: value.githubStarPrompt.dismissed } } : {}),
+    ...(isRecord(value.preferredProviders) ? { preferredProviders: Object.fromEntries(Object.entries(value.preferredProviders).filter((pair): pair is [string, AgentBackend] => pair[0].trim().length > 0 && isAgentBackend(pair[1]))) } : {}),
+    ...(isRecord(value.gitMergeCleanup) && typeof value.gitMergeCleanup.deleteWorktree === 'boolean' && typeof value.gitMergeCleanup.deleteBranch === 'boolean'
+      ? { gitMergeCleanup: { deleteWorktree: value.gitMergeCleanup.deleteWorktree, deleteBranch: value.gitMergeCleanup.deleteBranch } } : {}),
     ...(isRecord(value.providerModelDefaults) ? { providerModelDefaults: normalizeProviderModelDefaults(value.providerModelDefaults) } : {}),
     ...(readPersistedReviewPreferences(value.codeReviewDefaults) ? { codeReviewDefaults: readPersistedReviewPreferences(value.codeReviewDefaults)! } : {}),
     ...(isRecord(value.providerApprovalDefaults) ? { providerApprovalDefaults: normalizeProviderApprovalDefaults(value.providerApprovalDefaults) } : {}),

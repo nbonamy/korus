@@ -4,6 +4,24 @@ import { createEmptySnapshot } from '../snapshot';
 import { defaultAppshotSettings, defaultGeneralSettings, defaultPluginSettings, defaultSourceFolderState, defaultThemeSettings, normalizeAppshotSettings, normalizeGeneralSettings, normalizePluginSettings, normalizeSourceFolderState, normalizeThemeSettings, updateSettingsInSnapshot } from '../settings';
 
 describe('settings contracts', () => {
+  it('normalizes durable preferences without inventing values for installations that need migration', () => {
+    const empty = normalizeGeneralSettings({});
+    expect(empty.githubStarPrompt).toBeUndefined();
+    expect(empty.preferredProviders).toBeUndefined();
+    expect(empty.gitMergeCleanup).toBeUndefined();
+    const general = normalizeGeneralSettings({
+      githubStarPrompt: { sentPrompts: 99, dismissed: true },
+      preferredProviders: { local: 'claude', remote: 'antigravity', invalid: 'unknown' },
+      gitMergeCleanup: { deleteWorktree: false, deleteBranch: true },
+    });
+    expect(general.githubStarPrompt).toStrictEqual({ sentPrompts: 5, dismissed: true });
+    expect(general.preferredProviders).toStrictEqual({ local: 'claude', remote: 'antigravity' });
+    expect(general.gitMergeCleanup).toStrictEqual({ deleteWorktree: false, deleteBranch: true });
+    const invalid = normalizeGeneralSettings({ githubStarPrompt: { sentPrompts: -1, dismissed: true }, preferredProviders: [], gitMergeCleanup: { deleteWorktree: 'false', deleteBranch: true } });
+    expect(invalid.githubStarPrompt).toBeUndefined();
+    expect(invalid.preferredProviders).toBeUndefined();
+    expect(invalid.gitMergeCleanup).toBeUndefined();
+  });
   it('defaults interactive planning on and preserves an explicit opt-out', () => {
     expect(normalizeGeneralSettings({}).useInteractivePlans).toBe(true);
     expect(defaultGeneralSettings.useInteractivePlans).toBe(true);

@@ -2,7 +2,10 @@ import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { mountProvisioningHost } from './provisioning-host';
 import { ElMessage } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { nextTick } from 'vue';
+import { nextTick, reactive } from 'vue';
+import { createInitialSnapshot } from '@workspace/core/snapshot';
+import { updateSettingsInSnapshot } from '@workspace/core/settings';
+import { createGeneralPreferences, generalPreferencesKey, type GeneralPreferences } from '../../general-preferences';
 import GitWorkflowControl from '../GitWorkflowControl.vue';
 import CommandPalette from '../CommandPalette.vue';
 import type { CommandPaletteAction } from '../command-palette-actions';
@@ -18,9 +21,9 @@ const workflow: AgentGitWorkflow = { repository: 'owner/repo', folder: agent.fol
 const inlineTeleport = { props: ['to', 'disabled'], template: '<slot />' };
 // The menu opens in a popper attached to the body.
 const bodyAll = (selector: string) => Array.from(document.body.querySelectorAll(selector)).map((element) => new DOMWrapper(element));
-function mountControl(overrides: Partial<Record<string, unknown>> = {}, realTeleport = false) {
+function mountControl(overrides: Partial<Record<string, unknown>> = {}, realTeleport = false, preferences?: GeneralPreferences) {
   // Browser coverage owns overlay placement; these workflows exercise dialog actions inline.
-  return mount(GitWorkflowControl, { attachTo: document.body, global: { stubs: { teleport: realTeleport ? false : inlineTeleport } }, props: { agent, gitStatus: status, getWorkflow: async () => workflow, ...overrides } });
+  return mount(GitWorkflowControl, { attachTo: document.body, global: { provide: preferences ? { [generalPreferencesKey as symbol]: preferences } : {}, stubs: { teleport: realTeleport ? false : inlineTeleport } }, props: { agent, gitStatus: status, getWorkflow: async () => workflow, ...overrides } });
 }
 
 describe('GitWorkflowControl', () => {
@@ -772,25 +775,31 @@ describe('GitWorkflowControl', () => {
   });
 
   it('remembers cleanup choices across dialog and agent recreation without primary checkouts overwriting them', async () => {
+    const snapshot = reactive(createInitialSnapshot());
+    const save = vi.fn(async general => { updateSettingsInSnapshot(snapshot, { general }); });
+    const preferences = createGeneralPreferences(() => snapshot.general, save);
     const openMerge = async (wrapper: ReturnType<typeof mountControl>) => {
       await flushPromises();
       await wrapper.get('.git-workflow-control__trigger').trigger('click');
       await bodyAll('[role="menuitem"]').find(item => item.text() === 'Merge')!.trigger('click');
       await flushPromises();
     };
-    const first = mountControl({ mergeBranch: vi.fn() });
+    const first = mountControl({ mergeBranch: vi.fn() }, false, preferences);
     await openMerge(first);
     await first.findAll<HTMLInputElement>('.git-workflow-control__merge-cleanup input[role="switch"]')[1]!.setValue(false);
     await submitButton(first, 'Cancel').trigger('click');
     first.unmount();
 
-    const primary = mountControl({ getWorkflow: async () => ({ ...workflow, isLinkedWorktree: false }), mergeBranch: vi.fn() });
+    const primary = mountControl({ getWorkflow: async () => ({ ...workflow, isLinkedWorktree: false }), mergeBranch: vi.fn() }, false, preferences);
     await openMerge(primary);
     expect(primary.find('.git-workflow-control__merge-cleanup').exists()).toBe(false);
     primary.unmount();
+    await flushPromises();
+    expect(snapshot.general.gitMergeCleanup).toStrictEqual({ deleteWorktree: true, deleteBranch: false });
+    expect(localStorage.getItem('app:mergeCleanup')).toBeNull();
 
     const mergeBranch = vi.fn(async () => workflow);
-    const next = mountControl({ agent: { ...agent, id: 'next-agent' }, mergeBranch });
+    const next = mountControl({ agent: { ...agent, id: 'next-agent' }, mergeBranch }, false, preferences);
     await openMerge(next);
     const cleanup = next.findAll<HTMLInputElement>('.git-workflow-control__merge-cleanup input[role="switch"]');
     expect(cleanup.map(control => control.element.checked)).toStrictEqual([true, false]);

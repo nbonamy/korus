@@ -1,50 +1,43 @@
 import { computed, ref } from 'vue';
+import { ElMessage } from 'element-plus';
 import { appClientPlatform } from './platform-api';
+import { useGeneralPreferences, type GeneralPreferences } from './general-preferences';
 
-// A client-local UI preference, like the saved workspace layout. No prompt content.
-const storageKey = 'app:githubStarPrompt:v1';
 const threshold = 5;
-const preference = ref({ sentPrompts: 0, dismissed: false });
 const previewVisible = ref(false);
 
 export function showGithubStarPromptPreview(): void {
   previewVisible.value = true;
 }
 
-function restore(): void {
-  try {
-    const saved = JSON.parse(localStorage.getItem(storageKey) ?? 'null');
-    preference.value = {
-      sentPrompts: Number.isSafeInteger(saved?.sentPrompts) && saved.sentPrompts >= 0 ? Math.min(saved.sentPrompts, threshold) : 0,
-      dismissed: saved?.dismissed === true,
-    };
-  } catch { /* Keep the session preference if storage is unavailable. */ }
-}
-
-function save(): void {
-  try { localStorage.setItem(storageKey, JSON.stringify(preference.value)); }
-  catch { /* A star reminder must never prevent sending a prompt. */ }
-}
-
-export function recordSentPrompt(): void {
+export async function recordSentPrompt(preferences: GeneralPreferences): Promise<void> {
   if (appClientPlatform !== 'desktop') return;
-  restore();
-  if (preference.value.dismissed || preference.value.sentPrompts >= threshold) return;
-  preference.value.sentPrompts++;
-  save();
+  try {
+    await preferences.update(general => {
+      const current = general.githubStarPrompt ?? { sentPrompts: 0, dismissed: false };
+      if (current.dismissed || current.sentPrompts >= threshold) return {};
+      return { githubStarPrompt: { ...current, sentPrompts: current.sentPrompts + 1 } };
+    });
+  } catch { /* A reminder must never turn a successful prompt into a failed send. */ }
 }
 
 export function useGithubStarPrompt() {
-  restore();
+  const preferences = useGeneralPreferences();
   return {
-    visible: computed(() => previewVisible.value || (preference.value.sentPrompts >= threshold && !preference.value.dismissed)),
-    dismiss: () => {
+    visible: computed(() => {
+      const current = preferences?.general().githubStarPrompt;
+      return previewVisible.value || Boolean(current && current.sentPrompts >= threshold && !current.dismissed);
+    }),
+    dismiss: async () => {
       if (previewVisible.value) {
         previewVisible.value = false;
         return;
       }
-      preference.value.dismissed = true;
-      save();
+      try {
+        await preferences?.update(general => ({ githubStarPrompt: {
+          sentPrompts: general.githubStarPrompt?.sentPrompts ?? threshold, dismissed: true,
+        } }));
+      } catch (cause) { ElMessage.error(cause instanceof Error ? cause.message : String(cause)); }
     },
   };
 }

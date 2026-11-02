@@ -5,6 +5,7 @@ import { nextTick, reactive } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useAppState } from '../app-state';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
+import { updateSettingsInSnapshot } from '@workspace/core/settings';
 import { createMission } from '@workspace/core/missions';
 import type { AppSnapshot, AppApi, DevicePairingSession, MainToRendererEvent, SourceRepository } from '@workspace/core/contracts';
 import { clearConfetti } from '../shared/confetti/use-confetti';
@@ -15,6 +16,80 @@ import { claudeConversationSnapshot } from '../test/claude-conversation-fixtures
 import { emptyAntigravitySnapshot } from '@workspace/core/antigravity-conversation-replica';
 
 describe('useAppState', () => {
+  it('migrates durable legacy preferences on load, deletes only migrated keys, and stays migrated after reload', async () => {
+    const saved = createInitialSnapshot();
+    const preferences = {
+      githubStarPrompt: { sentPrompts: 5, dismissed: true },
+      preferredProviders: { local: 'claude', remote: 'antigravity' },
+      gitMergeCleanup: { deleteWorktree: true, deleteBranch: false },
+    } as const;
+    localStorage.setItem('app:githubStarPrompt:v1', JSON.stringify(preferences.githubStarPrompt));
+    localStorage.setItem('app:preferredEngines', JSON.stringify(preferences.preferredProviders));
+    localStorage.setItem('app:mergeCleanup', JSON.stringify(preferences.gitMergeCleanup));
+    localStorage.setItem('app:splitWorkspace:v1:team', 'keep UI state');
+    const updateSettings = vi.fn(async input => {
+      updateSettingsInSnapshot(saved, input);
+      return structuredClone(saved);
+    });
+    stubElectronTestWindow({ app: { getSnapshot: async () => structuredClone(saved), updateSettings } });
+    const state = useAppState();
+    await state.loadSnapshot();
+    expect(state.snapshot.value.general).toMatchObject(preferences);
+    for (const key of ['app:githubStarPrompt:v1', 'app:preferredEngines', 'app:mergeCleanup']) expect(localStorage.getItem(key)).toBeNull();
+    expect(localStorage.getItem('app:splitWorkspace:v1:team')).toBe('keep UI state');
+    const writes = updateSettings.mock.calls.length;
+    await state.loadSnapshot();
+    expect(state.snapshot.value.general).toMatchObject(preferences);
+    expect(updateSettings).toHaveBeenCalledTimes(writes);
+  });
+
+  it('retains legacy values during a failed or unacknowledged save and retries on the next load', async () => {
+    const saved = createInitialSnapshot();
+    const key = 'app:githubStarPrompt:v1';
+    const legacy = JSON.stringify({ sentPrompts: 4, dismissed: false });
+    localStorage.setItem(key, legacy);
+    const pending = deferred<import('@workspace/core/contracts').AppSnapshot>();
+    const updateSettings = vi.fn().mockReturnValueOnce(pending.promise)
+      .mockImplementationOnce(async () => structuredClone(saved))
+      .mockImplementation(async input => { updateSettingsInSnapshot(saved, input); return structuredClone(saved); });
+    stubElectronTestWindow({ app: { getSnapshot: async () => structuredClone(saved), updateSettings } });
+    const state = useAppState();
+    const loading = state.loadSnapshot();
+    await vi.waitFor(() => expect(updateSettings).toHaveBeenCalledOnce());
+    expect(localStorage.getItem(key)).toBe(legacy);
+    pending.reject(new Error('Disk unavailable'));
+    await loading;
+    expect(localStorage.getItem(key)).toBe(legacy);
+    expect(state.connectionState.value.status).not.toBe('error');
+    await state.loadSnapshot();
+    expect(localStorage.getItem(key)).toBe(legacy);
+    await state.loadSnapshot();
+    expect(localStorage.getItem(key)).toBeNull();
+    expect({ ...state.snapshot.value.general.githubStarPrompt }).toStrictEqual({ sentPrompts: 4, dismissed: false });
+  });
+
+  it('keeps existing settings authoritative and leaves malformed legacy entries untouched', async () => {
+    const saved = createInitialSnapshot();
+    Object.assign(saved.general, { githubStarPrompt: { sentPrompts: 1, dismissed: false }, preferredProviders: { local: 'codex' }, gitMergeCleanup: { deleteWorktree: false, deleteBranch: false } });
+    localStorage.setItem('app:githubStarPrompt:v1', JSON.stringify({ sentPrompts: 5, dismissed: true }));
+    localStorage.setItem('app:preferredEngines', JSON.stringify({ local: 'claude' }));
+    localStorage.setItem('app:mergeCleanup', JSON.stringify({ deleteWorktree: true, deleteBranch: true }));
+    const updateSettings = vi.fn();
+    stubElectronTestWindow({ app: { getSnapshot: async () => structuredClone(saved), updateSettings } });
+    const state = useAppState();
+    await state.loadSnapshot();
+    expect(state.snapshot.value.general).toMatchObject(saved.general);
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(localStorage.length).toBe(0);
+    delete saved.general.githubStarPrompt;
+    delete saved.general.preferredProviders;
+    delete saved.general.gitMergeCleanup;
+    for (const [key, value] of [['app:githubStarPrompt:v1', '{bad'], ['app:preferredEngines', '[]'], ['app:mergeCleanup', '{"deleteWorktree":"yes"}']]) localStorage.setItem(key!, value!);
+    await state.loadSnapshot();
+    expect(localStorage.length).toBe(3);
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
   afterEach(() => {
     clearConfetti();
     clearFirstRunOnboardingStage();

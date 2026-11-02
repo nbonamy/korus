@@ -412,6 +412,7 @@ import type { Agent, AgentGitCommitInput, AgentGitMergeInput, AgentGitMessageGen
 import { AlertTriangleIcon, ClockHour8Icon, ArrowBackUpIcon, ArrowRightIcon, ArrowsMinimizeIcon, ChevronDown, CloudUploadIcon, GitCommitIcon, GitForkIcon, GitHubIcon, GitLabIcon, GitMergeIcon, RefreshIcon, SparklesIcon } from '../shared/icons/app-icons';
 import { appApi, appPlatformActions } from '../platform-api';
 import { localizedErrorMessage } from '../i18n/errors';
+import { useGeneralPreferences } from '../general-preferences';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
@@ -474,7 +475,7 @@ const mergeStrategy = ref<'merge' | 'squash'>('merge');
 const squashCommitMessage = ref('');
 const deleteBranch = ref(false);
 const deleteWorktree = ref(false);
-const mergeCleanupPreferenceKey = 'app:mergeCleanup';
+const generalPreferences = useGeneralPreferences();
 const reportBack = ref(true);
 const selectedReportBackAgentId = ref('');
 const selectedReportBackAgent = computed(() => props.reportBackAgents.find(agent => agent.id === selectedReportBackAgentId.value));
@@ -710,8 +711,7 @@ watch(mergeDialogOpen, (open) => {
     reportBack.value = Boolean(props.reportBackAgentName);
     selectedReportBackAgentId.value = '';
     squashCommitMessage.value = '';
-    let saved: { deleteWorktree?: unknown; deleteBranch?: unknown } | null = null;
-    try { saved = JSON.parse(window.localStorage.getItem(mergeCleanupPreferenceKey) ?? 'null'); } catch { /* Optional client preference. */ }
+    const saved = generalPreferences?.general().gitMergeCleanup;
     deleteWorktree.value = Boolean(workflow.value?.isLinkedWorktree)
       && (typeof saved?.deleteWorktree === 'boolean' ? saved.deleteWorktree : true);
     deleteBranch.value = deleteWorktree.value
@@ -738,9 +738,10 @@ watch(deleteWorktree, (enabled) => {
 
 watch([deleteWorktree, deleteBranch], ([removeWorktree, removeBranch]) => {
   if (!mergeDialogOpen.value || !workflow.value?.isLinkedWorktree) return;
-  try {
-    window.localStorage.setItem(mergeCleanupPreferenceKey, JSON.stringify({ deleteWorktree: removeWorktree, deleteBranch: removeBranch }));
-  } catch { /* Storage failures must not block merging. */ }
+  const value = { deleteWorktree: removeWorktree, deleteBranch: removeBranch };
+  void generalPreferences?.update(general => general.gitMergeCleanup?.deleteWorktree === value.deleteWorktree && general.gitMergeCleanup?.deleteBranch === value.deleteBranch
+    ? {} : { gitMergeCleanup: value })
+    .catch(cause => ElMessage.error(localizedErrorMessage(cause, translate)));
 });
 
 watch(mergeStrategy, (strategy) => {

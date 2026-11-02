@@ -5,6 +5,7 @@ export const clientGeneralSettingKeys = [
   'agentListCompact', 'collapsedRepositoryKeys', 'modelFavorites',
   'backlogRepositoryFavorites', 'repositoryIcons', 'sessionCompressionWarningEnabled', 'spokenAnnouncementsMuted',
   'savedPromptDrafts', 'followUpBehavior', 'browserBookmarks',
+  'githubStarPrompt', 'preferredProviders', 'gitMergeCleanup',
   'spokenAnnouncementsOnlyWhenFocused', 'spokenAnnouncementScope', 'spokenAnnouncementVoice',
 ] as const satisfies readonly (keyof AppGeneralSettings)[];
 export type ClientPreferences = {
