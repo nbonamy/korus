@@ -89,6 +89,10 @@ behavior, is in [docs/testing.md](docs/testing.md); read it before editing code.
 The gate is `npm run lint` plus `npm test`. Run focused tests while iterating and
 the relevant gate before handoff.
 
+Fixed real-time sleeps are forbidden in all Vue tests and browser test helpers
+(desktop, console, mobile web and website). Use observable conditions or
+controlled clocks, as described in [testing.md](docs/testing.md).
+
 ## Build
 
 Use the Node 26 reference toolchain (`.nvmrc`, `package.json`). Keep build outputs,

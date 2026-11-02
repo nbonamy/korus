@@ -881,23 +881,10 @@ test("navigation, films, and cards work at desktop and phone widths", async () =
           ),
         );
       }
-      await video.evaluate(
-        (node) =>
-          new Promise((resolve, reject) => {
-            if (node.currentTime > 0) return resolve();
-            const timer = setTimeout(
-              () => reject(new Error("Video did not play")),
-              10000,
-            );
-            node.addEventListener(
-              "timeupdate",
-              () => {
-                clearTimeout(timer);
-                resolve();
-              },
-              { once: true },
-            );
-          }),
+      await page.waitForFunction(
+        (node) => node.currentTime > 0,
+        await video.elementHandle(),
+        { timeout: 10000 },
       );
       assert.equal(
         await video.evaluate(

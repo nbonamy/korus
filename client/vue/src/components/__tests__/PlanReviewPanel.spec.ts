@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ElTooltip } from 'element-plus';
 import type { PlanReview, PlanReviewResponse } from '@workspace/core/plan-review';
 import PlanReviewPanel from '../PlanReviewPanel.vue';
@@ -10,7 +10,9 @@ const result = (current: PlanReview, response: PlanReviewResponse): PlanReview =
   ? { ...current, draft: response.draft, draftVersion: response.draftVersion! + 1 }
   : { ...current, status: response.resolution };
 const button = (wrapper: ReturnType<typeof mount>, text: string) => wrapper.findAll('button').find(b => b.text() === text)!;
-const save = async () => { await new Promise(resolve => setTimeout(resolve, 400)); await flushPromises(); };
+beforeEach(() => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }));
+afterEach(() => vi.useRealTimers());
+const save = async () => { await vi.advanceTimersByTimeAsync(400); await flushPromises(); };
 
 describe('Markdown plan review', () => {
   it('renders read-only diagrams and preserves separate whole-diagram comments through reload and revision', async () => {
@@ -117,8 +119,8 @@ describe('Markdown plan review', () => {
     } finally { wrapper.unmount(); }
   });
 
-  it('preserves selected answers across reload and removes them when reset to the proposal', async () => {
-    let current = review();
+  it('preserves answers and section feedback through reload, then resets choices to the proposal', async () => {
+    let current: PlanReview = { ...review(), draftVersion: 3 };
     const respond = vi.fn(async response => { current = result(current, response); return current; });
     let wrapper = mount(PlanReviewPanel, { props: { review: current, respond } });
     try {
@@ -129,14 +131,38 @@ describe('Markdown plan review', () => {
         expect.objectContaining({ selected: ['macOS', 'Windows'], confirmed: true }),
         expect.objectContaining({ selected: ['Project'], confirmed: true }),
       ]);
+      await wrapper.get('button[aria-label="Comment on this section: Platforms"]').trigger('click');
+      await wrapper.get('textarea').setValue('Keep all platforms.');
+      await save();
       wrapper.unmount();
-      wrapper = mount(PlanReviewPanel, { props: { review: current, respond } });
+      wrapper = mount(PlanReviewPanel, {
+        props: { review: current, respond }, attachTo: document.body,
+        global: { components: { ElTooltip } },
+      });
+      expect(wrapper.get('.comment-preview').text()).toBe('Keep all platforms.');
       expect(wrapper.find('[role="switch"]').exists()).toBe(false);
       expect(wrapper.findAll('input[type="radio"]').map(input => (input.element as HTMLInputElement).checked)).toEqual([true, false]);
       await wrapper.findAll('.plan-choice-group')[0]!.get('button[aria-label="Reset"]').trigger('click');
       await save();
       expect(current.draft?.choices).toHaveLength(1);
       expect(wrapper.findAll('.plan-choice-option input[type="checkbox"]').map(input => (input.element as HTMLInputElement).checked)).toEqual([true, false, false]);
+
+      const reset = wrapper.get('button[aria-label="Reset"]');
+      expect(reset.text()).toBe('');
+      await reset.trigger('mouseenter');
+      await vi.waitFor(() => {
+        const tooltip = document.querySelector<HTMLElement>('[role="tooltip"]');
+        expect(tooltip?.textContent).toBe('Reset');
+        expect(tooltip && getComputedStyle(tooltip).display).not.toBe('none');
+      });
+      expect(reset.get('svg').attributes('aria-hidden')).toBe('true');
+      const draftVersion = current.draftVersion;
+      const draft = current.draft;
+      await reset.trigger('click');
+      await save();
+      expect(respond).toHaveBeenLastCalledWith(expect.objectContaining({ draftVersion, draft: { ...draft, choices: [] } }));
+      expect(wrapper.findAll('input[type="radio"]').map(input => (input.element as HTMLInputElement).checked)).toEqual([false, true]);
+      expect(wrapper.get('.comment-preview').text()).toBe('Keep all platforms.');
     } finally { wrapper.unmount(); }
   });
 
@@ -260,28 +286,6 @@ describe('Markdown plan review', () => {
     } finally { wrapper.unmount(); }
   });
 
-  it('restores feedback and lets users reset a choice to the unanswered proposal', async () => {
-    const current: PlanReview = { ...review(), draftVersion: 3, draft: { comments: [{ id: 's1', sectionId: 's1', quote: 'Platforms', body: 'Keep all platforms.' }], choices: [{ id: 's2-g1', quote: 'Storage', selected: ['Project'] }] } };
-    const respond = vi.fn(async r => result(current, r));
-    const wrapper = mount(PlanReviewPanel, { props: { review: current, respond }, attachTo: document.body, global: { components: { ElTooltip } } });
-    try {
-      expect(wrapper.get('.comment-preview').text()).toBe('Keep all platforms.');
-      expect((wrapper.findAll('input[type="radio"]')[0]!.element as HTMLInputElement).checked).toBe(true);
-      const reset = wrapper.get('button[aria-label="Reset"]');
-      expect(reset.text()).toBe('');
-      await reset.trigger('mouseenter');
-      await vi.waitFor(() => {
-        const tooltip = document.querySelector<HTMLElement>('[role="tooltip"]');
-        expect(tooltip?.textContent).toBe('Reset');
-        expect(tooltip && getComputedStyle(tooltip).display).not.toBe('none');
-      });
-      expect(reset.get('svg').attributes('aria-hidden')).toBe('true');
-      await reset.trigger('click');
-      await save();
-      expect(respond).toHaveBeenLastCalledWith(expect.objectContaining({ draftVersion: 3, draft: { ...current.draft, choices: [] } }));
-      expect(wrapper.findAll('input[type="radio"]').map(input => (input.element as HTMLInputElement).checked)).toEqual([false, true]);
-    } finally { wrapper.unmount(); }
-  });
 
   it('keeps code, mixed/nested lists, malformed radio groups and hostile HTML inert', () => {
     const current = { ...review(), markdown: '# <script>run()</script>\n\n- (x) One\n- (x) Two\n\n- Plain\n- ( ) Mixed\n\n> - ( ) Quote\n> - ( ) Quote two\n\n- [ ] Parent\n  - [ ] Child\n\n```html\n<input onclick="run()">\n```\n\n[Bad](javascript:run())' };

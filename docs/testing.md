@@ -110,6 +110,13 @@ builds. A failed, cancelled or skipped required job blocks the aggregate gate.
   fields with scattered `toHaveProperty()` when the full shape is the contract.
 - Isolate and clean up: tests are idempotent, close streams, child processes, file
   handles and subscriptions in `finally`.
+- Fixed real-time waits are forbidden in all Vue tests and browser test helpers:
+  desktop, server console, mobile web and website. Do not use sleeps,
+  `waitForTimeout`, or promises wrapping timer delays, including delays hidden
+  behind helpers or aliases.
+  Wait for observable DOM, requests or events; control asynchronous responses with
+  deferred promises. Exercise debounce and deadline behavior with fake clocks and
+  explicit clock advances. Timeouts bound a condition wait; they must not pace a test.
 - Mock external boundaries, never the logic under test.
 - Native Compose effect deadlines use the Compose test clock. Let lifecycle and
   composition updates settle before advancing it; real elapsed waits belong to

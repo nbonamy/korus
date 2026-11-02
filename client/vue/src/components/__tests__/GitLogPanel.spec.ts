@@ -118,6 +118,7 @@ describe('Git log inline history', () => {
   });
 
   it('recovers read errors through refresh and shows an empty search distinctly', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const getAgentGitLog = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ ...page, commits: [], nextCursor: undefined });
     stubElectronTestWindow({ app: { getAgentGitLog } });
     const wrapper = render(); await flushPromises();
@@ -125,7 +126,7 @@ describe('Git log inline history', () => {
     await wrapper.get('[aria-label="Refresh Git log"]').trigger('click'); await flushPromises();
     expect(wrapper.text()).toContain('No commits yet');
     await wrapper.get('input').setValue('missing');
-    await new Promise(resolve => setTimeout(resolve, 280)); await flushPromises();
+    await vi.advanceTimersByTimeAsync(250); await flushPromises();
     expect(wrapper.text()).toContain('No matching commits');
   });
   it('keeps late commit and file reads out of a newer inline selection', async () => {

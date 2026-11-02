@@ -48,7 +48,6 @@ try {
   await page.getByRole('button', { name: 'Remove UI smoke test', exact: true }).click();
   await page.getByRole('button', { name: 'Remove UI smoke test', exact: true }).waitFor({ state: 'detached' });
   await page.getByLabel('Pinned commands', { exact: true }).evaluate(element => { element.scrollTop = 0; });
-  await page.waitForTimeout(250);
   const controlHeights = await page.locator('.command-picker__toolbar').evaluate(element => [...element.children].map(control => control.getBoundingClientRect().height));
   assert.deepEqual(controlHeights, [36, 36], 'Source and search controls must have the same height.');
   assert.equal(await page.getByRole('button', { name: 'Change directory…', exact: true }).count(), 0);

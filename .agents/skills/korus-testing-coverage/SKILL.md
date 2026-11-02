@@ -18,6 +18,10 @@ owning public seam, the test does not belong.
 ## Principles
 
 - Test observable behavior and app contracts, not implementation details.
+- Never add fixed real-time waits to Vue tests or their browser helpers, across
+  desktop, console, mobile web and website. Use observable conditions, deferred
+  events, or fake-clock advances for debounce/deadline behavior. Sleeps and
+  `waitForTimeout` are forbidden.
 - Match test scope to risk.
 - Use focused tests while iterating, then run the full relevant gate.
 - For provider integration, fake the public Codex app SDK or Claude Agent SDK

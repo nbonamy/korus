@@ -514,6 +514,7 @@ test('image previews follow the viewport with stable geometry, bounded caching a
   try {
     await server.listen(); browser = await browserEngine.launch();
     const page = await browser.newPage({ viewport: { width: 402, height: 740 } });
+    await page.clock.install();
     await page.addInitScript(() => {
       window.imageReads = []; window.openedImages = []; window.activeReads = 0; window.peakReads = 0;
       window.imageUrls = new Set(); window.imageBytes = new Map(); window.revokedImages = 0;
@@ -523,13 +524,13 @@ test('image previews follow the viewport with stable geometry, bounded caching a
       window.webkit = { messageHandlers: { transcript: { postMessage(json) {
         const event = JSON.parse(json); if (event.type === 'openImage') window.openedImages.push(event); if (event.type !== 'readConversationImage') return;
         window.imageReads.push(event); window.peakReads = Math.max(window.peakReads, ++window.activeReads);
-        setTimeout(() => {
+        queueMicrotask(() => {
           window.activeReads--;
           const canvas = document.createElement('canvas'); const index = Number(/shot-(\d+)/.exec(event.path)?.[1] ?? 2);
           canvas.width = event.path.endsWith('large.png') ? 3072 : index % 3 === 0 ? 2048 : index % 3 === 1 ? 512 : 1024;
           canvas.height = event.path.endsWith('large.png') ? 3072 : 1024 * 1024 / canvas.width;
           window.companionTranscript.setImage(JSON.stringify({requestId:event.requestId,agentId:event.agentId,dataUrl:canvas.toDataURL('image/png')}));
-        }, 30);
+        });
       } } } };
     });
     await page.goto(`${server.resolvedUrls.local[0]}transcript.html`); await page.waitForFunction(() => window.companionTranscript);
@@ -539,7 +540,13 @@ test('image previews follow the viewport with stable geometry, bounded caching a
       await window.companionTranscript.setConversation(JSON.stringify(window.imageBudgetConversation));
     });
     await page.waitForFunction(() => window.imageReads.length > 0 && window.activeReads === 0);
-    await page.waitForTimeout(250);
+    await page.waitForFunction(() => {
+      const visible = [...document.querySelectorAll('button[aria-label^="Open Shot"]')].filter(button => {
+        const bounds = button.getBoundingClientRect();
+        return bounds.top < innerHeight && bounds.bottom > 0;
+      });
+      return visible.length > 0 && visible.every(button => button.querySelector('img')?.naturalWidth > 0) && window.activeReads === 0;
+    });
     const initialReads = await page.evaluate(() => window.imageReads.length);
     assert.ok(initialReads < 6, `offscreen images should not fetch (read ${initialReads})`);
     const shot = i => page.getByRole('button', {name: `Open Shot ${i}`, exact:true});
@@ -560,7 +567,7 @@ test('image previews follow the viewport with stable geometry, bounded caching a
     await page.waitForFunction(() => document.querySelector('[aria-label="Open Shot 0"] img')?.naturalWidth > 0);
     assert.ok(await page.evaluate(count => window.imageReads.filter(e => e.path === '/tmp/shot-0.png').length === count, readsBeforeReturn), 'returning previews reuse downloaded bytes without a host read');
     const settledReads = await page.evaluate(() => window.imageReads.length);
-    await page.waitForTimeout(300);
+    await page.clock.runFor(300);
     assert.equal(await page.evaluate(() => window.imageReads.length), settledReads, 'memory pressure must not cause a fetch loop');
     const evidence = await page.evaluate(() => ({peakReads:window.peakReads,retainedImages:window.imageUrls.size,evictions:window.revokedImages}));
     await page.evaluate(async () => { const c = window.imageBudgetConversation; c.frame.payload.snapshot.messages=[]; await window.companionTranscript.setConversation(JSON.stringify(c)); });
@@ -624,7 +631,9 @@ test('summary turns load only the selected Working details through the native br
     assert.equal(await details.isDisabled(), true);
     assert.equal(await details.locator('svg').count(), 1, 'the spinner must replace the chevron');
     assert.notEqual(await spinner.evaluate(element => getComputedStyle(element).animationName), 'none');
-    await page.waitForTimeout(250);
+    await spinner.evaluate(async element => {
+      await Promise.all(element.getAnimations().map(animation => animation.ready));
+    });
     assert.equal(await page.locator('.chat-fold--open').count(), 0);
     const pending = await answer.boundingBox();
     assert(Math.abs(pending.y - before.y) < 1, 'loading must not move the final answer');

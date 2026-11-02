@@ -140,11 +140,30 @@ export async function dashboardWorkflow({
           window.__loginFormRendered = true;
       }).observe(document, { subtree: true, childList: true });
     });
+    let sessionGate = Promise.resolve();
     await page.route("**/auth/session", async (route) => {
-      if (route.request().method() === "GET")
-        await new Promise((resolve) => setTimeout(resolve, 250));
+      if (route.request().method() === "GET") await sessionGate;
       await route.continue();
     });
+    async function checkPendingSession(navigate) {
+      let release;
+      sessionGate = new Promise((resolve) => {
+        release = resolve;
+      });
+      try {
+        await navigate();
+        await page
+          .getByRole("status", { name: "Loading console", exact: true })
+          .waitFor();
+        assert.equal(
+          await page.evaluate(() => window.__loginFormRendered),
+          false,
+        );
+      } finally {
+        release();
+        sessionGate = Promise.resolve();
+      }
+    }
     await finishMetricsRead();
     for (const target of [
       "/overview",
@@ -152,7 +171,7 @@ export async function dashboardWorkflow({
       "/#/tokens",
       "/models",
     ]) {
-      await page.goto(origin + target);
+      await checkPendingSession(() => page.goto(origin + target));
       await page
         .getByRole("heading", {
           level: 1,
@@ -171,7 +190,7 @@ export async function dashboardWorkflow({
       );
       await finishMetricsRead();
     }
-    await page.reload();
+    await checkPendingSession(() => page.reload());
     await page
       .getByRole("heading", { level: 1, name: "Models", exact: true })
       .waitFor();

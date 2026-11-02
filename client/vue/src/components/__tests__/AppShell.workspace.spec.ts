@@ -5,7 +5,7 @@ import type {
 } from '@codex-app-sdk/vue';
 import type { SurfaceMessage } from '@codex-app-sdk/core/surface';
 import { nextTick } from 'vue';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AppShell from '../AppShell.vue';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import type { AppCommand, AppApi } from '@workspace/core/contracts';
@@ -22,8 +22,8 @@ import {
   workItem,
 } from './app-shell-test-harness';
 
-/** Workspace persistence is debounced; wait past the window. */
-const settlePersistence = async () => { await new Promise(resolve => setTimeout(resolve, 300)); await flushPromises(); };
+/** Exercise the persistence debounce without sleeping in real time. */
+const settlePersistence = async () => { await vi.advanceTimersByTimeAsync(300); await flushPromises(); };
 const mountShell: typeof mountRealShell = (overrides = {}) => mountRealShell({
   ...overrides,
   stubTeamRail: true,
@@ -37,6 +37,8 @@ vi.mock('../image-annotation', async (importOriginal) => ({
 vi.mock('../../shared/confetti/canvas-celebration', () => ({
   launchCanvasCelebration: vi.fn(),
 }));
+
+beforeEach(() => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }));
 
 afterEach(() => {
   useConfetti().clear();
@@ -1044,7 +1046,7 @@ describe('AppShell workspace and plans', () => {
     expect(wrapper.get('[aria-label="Right workspace"]').isVisible()).toBe(false);
   });
 
-  it('opens markdown links in additive right-workspace tabs through the agent file bridge', async () => {
+  it('previews markdown links, closes tabs, and reports unreadable files', async () => {
     const snapshot = createInitialSnapshot();
     let resolveReadAgentFile: (result: { content: string; path: string }) => void = () => undefined;
     const previewAgentFile = vi.fn().mockReturnValue(new Promise((resolve) => {
@@ -1055,13 +1057,20 @@ describe('AppShell workspace and plans', () => {
         snapshot,
         activeAgent: snapshot.agents[0],
         codexConversationSnapshot: codexConversationSnapshot([
-          codexTextMessage('message-doc-link', 'assistant', 'Open [architecture](docs/architecture.md).'),
+          codexTextMessage('message-doc-link', 'assistant', 'Open [architecture](docs/architecture.md) or [secret](../secret.md).'),
         ]),
         isLoading: false,
         isSending: false,
         previewAgentFile,
       },
     });
+
+    await conversationControllerActions(wrapper).openLink?.({
+      kind: 'file', href: '   ', path: '   ',
+    });
+    await flushPromises();
+    expect(previewAgentFile).not.toHaveBeenCalled();
+    expect(wrapper.find('.side-panel').exists()).toBe(false);
 
     await wrapper.get('a[href="docs/architecture.md"]').trigger('click');
 
@@ -1080,6 +1089,13 @@ describe('AppShell workspace and plans', () => {
 
     await wrapper.get('[aria-label="Close architecture.md tab"]').trigger('click');
     expect(wrapper.find('.markdown-panel').exists()).toBe(false);
+
+    previewAgentFile.mockRejectedValueOnce(new Error('File is outside the agent folder.'));
+    await wrapper.get('a[href="../secret.md"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('.side-panel').exists()).toBe(false);
+    expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toContain('secret.md');
+    expect(wrapper.text()).toContain('File is outside the agent folder.');
   });
 
   it('opens source file links as read-only source previews', async () => {
@@ -1377,56 +1393,7 @@ describe('AppShell workspace and plans', () => {
     expect(wrapper.findAll('.right-workspace-panel')[0]?.text()).toContain('This error is stale.');
   });
 
-  it('shows markdown file-tab read errors', async () => {
-    const snapshot = createInitialSnapshot();
-    const previewAgentFile = vi.fn().mockRejectedValue(new Error('File is outside the agent folder.'));
-    const wrapper = mount(AppShell, {
-      props: {
-        snapshot,
-        activeAgent: snapshot.agents[0],
-        codexConversationSnapshot: codexConversationSnapshot([
-          codexTextMessage('message-doc-link', 'assistant', 'Open [secret](../secret.md).'),
-        ]),
-        isLoading: false,
-        isSending: false,
-        previewAgentFile,
-      },
-    });
 
-    await wrapper.get('a[href="../secret.md"]').trigger('click');
-    await flushPromises();
-
-    expect(wrapper.find('.side-panel').exists()).toBe(false);
-    expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toContain('secret.md');
-    expect(wrapper.text()).toContain('File is outside the agent folder.');
-  });
-
-  it('ignores blank markdown file preview requests', async () => {
-    const snapshot = createInitialSnapshot();
-    const previewAgentFile = vi.fn().mockResolvedValue({
-      path: 'docs/architecture.md',
-      content: '# Architecture',
-    });
-    const wrapper = mount(AppShell, {
-      props: {
-        snapshot,
-        activeAgent: snapshot.agents[0],
-        isLoading: false,
-        isSending: false,
-        previewAgentFile,
-      },
-    });
-
-    await conversationControllerActions(wrapper).openLink?.({
-      kind: 'file',
-      href: '   ',
-      path: '   ',
-    });
-    await flushPromises();
-
-    expect(previewAgentFile).not.toHaveBeenCalled();
-    expect(wrapper.find('.side-panel').exists()).toBe(false);
-  });
 
   it('opens MCP markdown requests as right-workspace tabs', async () => {
     const snapshot = createInitialSnapshot();

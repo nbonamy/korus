@@ -16,6 +16,7 @@ class ResizeObserverStub {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   delete window.app;
 });
@@ -191,6 +192,7 @@ describe('RightWorkspacePanel', () => {
   });
 
   it('shows a tab title tooltip when the label may be compressed', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const fileTab = rightWorkspaceFileTab('src/long-file-name.ts');
     const wrapper = mountPanel([fileTab], fileTab, {
       [fileTab]: {
@@ -203,8 +205,9 @@ describe('RightWorkspacePanel', () => {
     expect(tab.attributes('aria-label')).toBe('long-file-name.ts');
     expect(tab.attributes('title')).toBeUndefined();
     await tab.trigger('mouseenter');
-    await new Promise((resolve) => setTimeout(resolve, 450));
+    await vi.advanceTimersByTimeAsync(450);
     expect(document.body.querySelector('[role="tooltip"]')).toBeNull();
+    await vi.advanceTimersByTimeAsync(350);
     await vi.waitFor(() => {
       expect(document.body.querySelector('[role="tooltip"]')?.textContent).toContain('long-file-name.ts');
     }, { timeout: 1_200 });

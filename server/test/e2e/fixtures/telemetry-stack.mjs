@@ -97,7 +97,24 @@ export async function telemetryStackWorkflow(
         JSON.stringify({
           services: Object.fromEntries(
             ["db", "collector", "metrics", "auth", "backup", "proxy"].map(
-              (name) => [name, { healthcheck: { start_interval: "250ms" } }],
+              (name) => [
+                name,
+                {
+                  healthcheck: {
+                    start_interval: "250ms",
+                    // The temporary initdb server accepts Unix sockets before the
+                    // TCP endpoint used by the application services is available.
+                    ...(name === "db"
+                      ? {
+                          test: [
+                            "CMD-SHELL",
+                            "pg_isready -q -h 127.0.0.1 -U postgres -d telemetry",
+                          ],
+                        }
+                      : {}),
+                  },
+                },
+              ],
             ),
           ),
         }),
