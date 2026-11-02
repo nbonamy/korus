@@ -43,7 +43,6 @@
           {{ card.change.label }}
         </p>
       </RouterLink>
-      <p class="weekly-comparison">vs {{ comparisonPeriod }}</p>
     </div>
     <MetricChart
       title="Weekly turns"
@@ -189,20 +188,20 @@ const cards = computed(() => {
       change: change(currentNew, priorNew),
     },
     {
-      label: "Tokens this week",
+      label: "Tokens last 7 days",
       icon: weeklyTokensIcon,
       page: "tokens",
       measure: "tokens" as const,
-      description: "Tokens this week",
+      description: "Tokens last 7 days",
       value: weekly("totalTokens"),
       change: change(weekly("totalTokens"), weekly("totalTokens", -7)),
     },
     {
-      label: "Spend this week",
+      label: "Spend last 7 days",
       icon: weeklySpendIcon,
       page: "spend",
       measure: "usd" as const,
-      description: "Spend this week",
+      description: "Spend last 7 days",
       value: weekly("estimatedCostUsd"),
       change: change(
         weekly("estimatedCostUsd"),
@@ -210,22 +209,6 @@ const cards = computed(() => {
       ),
     },
   ];
-});
-const comparisonPeriod = computed(() => {
-  const short = new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-  const end = new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-  const first = shiftDay(days.value[0]!, -7),
-    last = shiftDay(props.data.range.to, -7);
-  return `${short.format(new Date(first))} – ${end.format(new Date(last))}`;
 });
 const series = computed(() => {
   const byDay = new Map(props.data.daily.map((row) => [row.day, row.turns]));
@@ -344,12 +327,6 @@ const series = computed(() => {
 .weekly-change svg {
   width: 17px;
   height: 17px;
-}
-.weekly-comparison {
-  grid-column: 1 / -1;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-12);
-  line-height: 1.5;
 }
 .weekly-overview > .chart {
   margin: 0;

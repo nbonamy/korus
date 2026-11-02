@@ -171,14 +171,14 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
     expect(wrapper.find('[aria-label="Usage filters"]').exists()).toBe(false);
     expect(wrapper.text()).not.toContain("Latest report");
     expect(wrapper.findAll(".weekly-card")).toHaveLength(4);
-    expect(wrapper.get('[aria-label="Tokens this week"]').text()).toContain(
+    expect(wrapper.get('[aria-label="Tokens last 7 days"]').text()).toContain(
       "840",
     );
-    expect(wrapper.get('[aria-label="Spend this week"]').text()).toContain(
+    expect(wrapper.get('[aria-label="Spend last 7 days"]').text()).toContain(
       "$17.50",
     );
     expect(
-      wrapper.get('[aria-label="Spend this week"] .weekly-change').text(),
+      wrapper.get('[aria-label="Spend last 7 days"] .weekly-change').text(),
     ).toContain("100%");
     expect(
       wrapper.get('[aria-label="Weekly active installs"]').text(),
@@ -197,10 +197,10 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
         .get('[aria-label="Weekly new installs"] .weekly-change')
         .attributes("data-trend"),
     ).toBe("down");
-    expect(wrapper.get('[aria-label="Weekly overview"]').text()).toContain(
-      "vs Oct 19 – Oct 25, 2026",
+    expect(wrapper.get('[aria-label="Weekly overview"]').text()).not.toContain(
+      "vs Oct",
     );
-    expect(wrapper.findAll(".weekly-comparison")).toHaveLength(1);
+    expect(wrapper.find(".weekly-comparison").exists()).toBe(false);
     expect(
       wrapper.findAll(".chart").map((chart) => chart.attributes("aria-label")),
     ).toEqual(["Weekly turns"]);
@@ -229,7 +229,7 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
     ).toBe(true);
     await router.push("/overview");
     await flushPromises();
-    await wrapper.get('[aria-label="Tokens this week"]').trigger("click");
+    await wrapper.get('[aria-label="Tokens last 7 days"]').trigger("click");
     await flushPromises();
     expect(router.currentRoute.value.path).toBe("/tokens");
     expect(
@@ -249,7 +249,7 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
     );
     await router.push("/overview");
     await flushPromises();
-    await wrapper.get('[aria-label="Spend this week"]').trigger("click");
+    await wrapper.get('[aria-label="Spend last 7 days"]').trigger("click");
     await flushPromises();
     expect(router.currentRoute.value.path).toBe("/spend");
     expect(wrapper.get('[aria-label="Spend by provider"]').text()).toContain(
