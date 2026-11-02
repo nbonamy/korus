@@ -100,8 +100,9 @@ describe('banked resets settings', () => {
   it.each([
     [{ hasCredits: true, unlimited: false, balance: '62500' }, '62,500 credits remaining'],
     [{ hasCredits: true, unlimited: false, balance: '62500.0000000000' }, '62,500 credits remaining'],
-    [{ hasCredits: true, unlimited: false, balance: '62500.2500000000' }, '62,500.25 credits remaining'],
-    [{ hasCredits: true, unlimited: false, balance: '9007199254740993.25' }, '9,007,199,254,740,993.25 credits remaining'],
+    [{ hasCredits: true, unlimited: false, balance: '61555.3481145' }, '61,555 credits remaining'],
+    [{ hasCredits: true, unlimited: false, balance: '62500.9900000000' }, '62,500 credits remaining'],
+    [{ hasCredits: true, unlimited: false, balance: '9007199254740993.25' }, '9,007,199,254,740,993 credits remaining'],
     [{ hasCredits: false, unlimited: false, balance: '0' }, '0 credits remaining'],
     [{ hasCredits: true, unlimited: true, balance: null }, 'Unlimited credits'],
     [null, 'Unknown'],

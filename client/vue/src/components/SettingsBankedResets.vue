@@ -68,10 +68,10 @@ function iso(seconds: number): string { return new Date(seconds * 1000).toISOStr
 function date(seconds: number): string {
   return new Date(seconds * 1000).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
 }
+// Whole credits only, truncated so the balance never overstates what is left; string-based to stay exact for any size.
 function formatBalance(balance: string): string {
   const match = /^(\d+)(\.\d+)?$/.exec(balance);
-  const fraction = (match?.[2] ?? '').replace(/0+$/, '').replace(/\.$/, '');
-  return match ? match[1]!.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + fraction : balance;
+  return match ? match[1]!.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : balance;
 }
 
 async function refresh() {
