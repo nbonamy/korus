@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.50.0",
+  "currentVersion": "0.50.1",
   "releases": [
+    {
+      "version": "0.50.1",
+      "releasedAt": "2026-11-01",
+      "sourceSha256": "f276928423f1679af1cdf08c1f82d02a75996f2e1471dc163ebde77a540e6502",
+      "markdown": "### Improvements and fixes\n\n- Refresh the workspace file list when opening Quick Open so newly created files appear.\n- Refresh Git status when Claude shell commands finish."
+    },
     {
       "version": "0.50.0",
       "releasedAt": "2026-11-01",

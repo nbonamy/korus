@@ -4,6 +4,13 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.50.1] - 2026-11-01
+
+### Improvements and fixes
+
+- Refresh the workspace file list when opening Quick Open so newly created files appear.
+- Refresh Git status when Claude shell commands finish.
+
 ## [0.50.0] - 2026-11-01
 
 ### New features
