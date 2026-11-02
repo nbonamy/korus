@@ -5,7 +5,7 @@
       </button>
       <button v-for="kind in fileKinds" :key="kind" type="button" :aria-pressed="modelValue === kind"
         :disabled="counts[kind] === 0" @click="emit('update:modelValue', kind)">
-        <i :style="{ background: diffTreemapColor[kind] }" aria-hidden="true" />
+        <i :style="{ background: fileKindColor[kind] }" aria-hidden="true" />
         {{ kind === 'docs' ? $t('surface.diffTreemap.docs') : fileKindLabel(kind) }} <span>{{ counts[kind] }}</span>
       </button>
     </div>
@@ -13,8 +13,7 @@
 
 <script setup lang="ts">
 import { fileKinds, type FileKind } from '@workspace/core/file-kind';
-import { fileKindLabel } from './file-kind-presentation';
-import { diffTreemapColor } from './diff-treemap-presentation';
+import { fileKindColor, fileKindLabel } from './file-kind-presentation';
 defineProps<{ modelValue: FileKind | null; total: number; counts: Record<FileKind, number> }>();
 const emit = defineEmits<{ 'update:modelValue': [kind: FileKind | null] }>();
 </script>
@@ -38,7 +37,7 @@ const emit = defineEmits<{ 'update:modelValue': [kind: FileKind | null] }>();
 .diff-treemap__filters button:disabled { opacity: 0.45; cursor: default; }
 .diff-treemap__filters button span { color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
 .diff-treemap__filters i { width: 9px; height: 9px; flex: 0 0 auto; border-radius: var(--radius-full); }
-.diff-treemap__all-dot { background: var(--chart-1); }
+.diff-treemap__all-dot { background: var(--color-primary); }
 .diff-treemap__filters button:hover:not(:disabled) { border-color: var(--color-primary); }
 .diff-treemap__filters button[aria-pressed="true"] span { color: inherit; }
 </style>

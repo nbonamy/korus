@@ -56,10 +56,15 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
           import '/client/vue/src/styles/base.css';
           import {i18n} from '/client/vue/src/i18n/index.ts';
           import Review from '/client/vue/src/components/GitReviewPanel.vue';
+          import DiffControl from '/client/vue/src/components/GitDiffControl.vue';
           const sections=${JSON.stringify(sections)};
           const panel=ref({kind:'gitDiff',title:'Changes',summary:${JSON.stringify(summary)},state:'idle',diff:sections.map(s=>s.diff).join('\\n'),sections});
           window.fixture={replace:value=>panel.value={...panel.value,...value},opens:[]};
-          createApp({setup:()=>()=>h('main',{class:'fixture'},[h(Review,{agent:{id:'fixture',folder:'/repos/korus'},panel:panel.value,onOpenFile:path=>window.fixture.opens.push(path)})])}).use(i18n).use(ElementPlus).mount('#app');
+          const byKind=Object.fromEntries(['code','test','docs','other'].map(kind=>[kind,{changedFiles:1,addedLines:1,removedLines:1}]));
+          createApp({setup:()=>()=>[
+            h('aside',{style:'position:absolute;right:16px;top:16px'},[h(DiffControl,{agentId:'fixture',gitStatus:{...panel.value.summary,diffCatalog:{uncommitted:{...panel.value.summary,byKind},commits:[]}}})]),
+            h('main',{class:'fixture'},[h(Review,{agent:{id:'fixture',folder:'/repos/korus'},panel:panel.value,onOpenFile:path=>window.fixture.opens.push(path)})])
+          ]}).use(i18n).use(ElementPlus).mount('#app');
         `;
       },
     }],
@@ -77,7 +82,13 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
       await page.locator('.git-review-panel__toolbar .el-segmented__item').filter({ hasText: /^Map$/ }).click();
     };
     assert.equal(await page.locator('.git-review-panel__toolbar').getByRole('radio', { name: 'Files', exact: true }).isChecked(), true);
+    await page.getByRole('button', { name: 'Choose repository diff', exact: true }).click();
+    const menuColors = await page.locator('.app-menu__color-dot').evaluateAll(dots => dots.map(dot => getComputedStyle(dot).backgroundColor));
+    assert.equal(menuColors.length, 4);
+    await page.keyboard.press('Escape');
     await toggleMap();
+    const filterColors = await page.locator('.diff-treemap__filters button:not(:first-child) i').evaluateAll(dots => dots.map(dot => getComputedStyle(dot).backgroundColor));
+    assert.deepEqual(filterColors, menuColors, 'the map filters and header menu must use identical file-type colors');
     const tiles = page.locator('[data-diff-map-path]');
     await tiles.first().waitFor();
     assert.equal(await tiles.count(), 200, 'duplicate staged/unstaged paths must share one tile');
@@ -94,6 +105,20 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
     });
     const initialPixel = await readPixel();
     assert.equal(initialPixel[3], 255, 'the chart must paint the file tile, not leave a blank canvas');
+    const colorSamples = await tiles.evaluateAll((tiles, colors) => {
+      const canvas = tiles[0].parentElement.querySelector('canvas'), bounds = canvas.getBoundingClientRect();
+      const surface = getComputedStyle(document.documentElement).getPropertyValue('--color-surface-lowest').trim();
+      const expected = document.createElement('canvas').getContext('2d');
+      return ['src/', 'tests/', 'docs/', 'config/'].map((prefix, i) => {
+        const rect = tiles.find(tile => tile.dataset.diffMapPath.startsWith(prefix)).getBoundingClientRect();
+        const x = Math.floor((rect.x - bounds.x + rect.width * 0.6) * canvas.width / bounds.width);
+        const y = Math.floor((rect.y - bounds.y + rect.height * 0.6) * canvas.height / bounds.height);
+        expected.fillStyle = `color-mix(in srgb, ${colors[i]} 16%, ${surface})`;
+        expected.fillRect(0, 0, 1, 1);
+        return { actual: [...canvas.getContext('2d').getImageData(x, y, 1, 1).data], expected: [...expected.getImageData(0, 0, 1, 1).data] };
+      });
+    }, menuColors);
+    for (const sample of colorSamples) assert.ok(sample.actual.every((value, i) => Math.abs(value - sample.expected[i]) <= 3), 'canvas tile tints must use the menu category color');
     const measurements = [];
     for (const width of [960, 460, 280]) {
       await page.locator('.fixture').evaluate((element, width) => { element.style.width = width + 'px'; }, width);

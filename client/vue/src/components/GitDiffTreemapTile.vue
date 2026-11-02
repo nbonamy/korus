@@ -18,13 +18,13 @@
 import { computed } from 'vue';
 import type { MapFile } from './diff-treemap-files';
 import type { TreemapRect } from './diff-treemap-presentation';
-import { diffTreemapColor } from './diff-treemap-presentation';
+import { fileKindColor } from './file-kind-presentation';
 import GitDiffLineStats from './GitDiffLineStats.vue';
 const props = defineProps<{ file: MapFile; rect: TreemapRect; size: { width: number; height: number } }>();
 const emit = defineEmits<{ select: [path: string] }>();
 const style = computed(() => {
   const { file, rect, size } = props;
-  return { left: `${rect.x / size.width * 100}%`, top: `${rect.y / size.height * 100}%`, width: `${rect.width / size.width * 100}%`, height: `${rect.height / size.height * 100}%`, '--diff-treemap-file-color': diffTreemapColor[file.kind] };
+  return { left: `${rect.x / size.width * 100}%`, top: `${rect.y / size.height * 100}%`, width: `${rect.width / size.width * 100}%`, height: `${rect.height / size.height * 100}%`, '--diff-treemap-file-color': fileKindColor[file.kind] };
 });
 const canLabel = computed(() => props.rect.width >= 64 && props.rect.height >= 36);
 const canWrapName = computed(() => props.rect.width >= 88 && props.rect.height >= 82);

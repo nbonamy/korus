@@ -8,7 +8,8 @@ import { Chart, LinearScale, Tooltip, type Plugin } from 'chart.js';
 import { TreemapController, TreemapElement, type TreemapDataPoint } from 'chartjs-chart-treemap';
 import { resolveChartColor } from '@workspace/core/analytics-chart';
 import type { MapFile } from './diff-treemap-files';
-import { diffTreemapColor, type TreemapLayout } from './diff-treemap-presentation';
+import type { TreemapLayout } from './diff-treemap-presentation';
+import { fileKindColor } from './file-kind-presentation';
 import { readAnalyticsTheme } from './analytics-theme';
 
 Chart.register(LinearScale, Tooltip, TreemapController, TreemapElement);
@@ -22,7 +23,7 @@ let theme: ReturnType<typeof readAnalyticsTheme>;
 function background(raw: TreemapDataPoint | undefined, ctx: CanvasRenderingContext2D): CanvasGradient | string {
   if (!raw?._data) return 'transparent';
   const file = raw._data as MapFile;
-  const color = resolveChartColor(diffTreemapColor[file.kind], theme.tokens);
+  const color = resolveChartColor(fileKindColor[file.kind], theme.tokens);
   const surface = resolveChartColor(theme.surface, theme.tokens);
   const gradient = ctx.createLinearGradient(raw.x, raw.y, raw.x + raw.w, raw.y + raw.h);
   gradient.addColorStop(0, `color-mix(in srgb, ${color} 10%, ${surface})`);
