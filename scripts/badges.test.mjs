@@ -81,7 +81,7 @@ test('publishes badge data independently of main, advances existing badges and s
     assert.equal(result.status, 0, result.stderr);
     assert.equal(git('rev-parse', 'HEAD^'), first);
     assert.equal(JSON.parse(f.git('--git-dir=remote.git', 'show', 'badges:coverage.json')).message, '91.0%');
-    const packageBadge = { schemaVersion: 1, label: 'package downloads', message: '2379', color: 'orange' };
+    const packageBadge = { schemaVersion: 1, label: 'package downloads', message: '2.4K', color: 'orange' };
     f.write('downloads.json', packageBadge);
     const downloads = spawnSync(process.execPath, [script, 'publish', 'downloads', path.join(f.root, 'downloads.json'), sha], { cwd: checkout, encoding: 'utf8' });
     assert.equal(downloads.status, 0, downloads.stderr);
@@ -104,7 +104,7 @@ test('publishes badge data independently of main, advances existing badges and s
 test('counts application packages across release pages, excludes metadata and drafts, and rejects incomplete counts', async () => {
   const asset = (name, download_count) => ({ name, download_count });
   const pages = [
-    Array.from({ length: 100 }, (_, i) => ({ assets: [asset(i === 0 ? 'app.dmg' : 'RELEASES', 10)] })),
+    Array.from({ length: 100 }, (_, i) => ({ assets: [asset(i === 0 ? 'app.dmg' : 'RELEASES', i === 0 ? 2370 : 10)] })),
     [
       { prerelease: true, assets: ['exe', 'zip', 'deb', 'rpm', 'nupkg'].map(ext => asset(`app.${ext}`, 2)) },
       { assets: ['catalog.json', 'latest.yml', 'app.exe.blockmap', 'source.tar.gz'].map(name => asset(name, 500)) },
@@ -117,7 +117,7 @@ test('counts application packages across release pages, excludes metadata and dr
     return Response.json(pages[calls.length - 1]);
   };
   assert.deepEqual(await collectDownloads({ repository: 'example/app', fetchImpl }), {
-    schemaVersion: 1, label: 'package downloads', message: '20', color: 'orange',
+    schemaVersion: 1, label: 'package downloads', message: '2.4K', color: 'orange',
   });
   assert.equal(calls.length, 2);
   assert.equal(new URL(calls[1]).searchParams.get('page'), '2');

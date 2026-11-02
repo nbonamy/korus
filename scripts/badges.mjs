@@ -66,7 +66,7 @@ export async function collectDownloads({ repository = product.repository, fetchI
     }
     if (releases.length < 100) break;
   }
-  return { schemaVersion: 1, label: 'package downloads', message: String(total), color: 'orange' };
+  return { schemaVersion: 1, label: 'package downloads', message: new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(total), color: 'orange' };
 }
 
 function publish(kind, file, sourceSha) {
@@ -76,7 +76,7 @@ function publish(kind, file, sourceSha) {
   const badge = JSON.parse(content);
   const valid = kind === 'coverage'
     ? badge.label === 'statement coverage' && /^\d+\.\d%$/.test(badge.message) && ['brightgreen', 'green', 'red'].includes(badge.color)
-    : badge.label === 'package downloads' && /^\d+$/.test(badge.message) && badge.color === 'orange';
+    : badge.label === 'package downloads' && /^(?:\d+|\d+(?:\.\d)?[KMBT])$/.test(badge.message) && badge.color === 'orange';
   if (badge.schemaVersion !== 1 || !valid) throw new Error(`Invalid ${kind} badge.`);
   if (git('ls-remote', 'origin', 'refs/heads/main').split(/\s/)[0] !== sourceSha) {
     console.log('Skipping stale badge result; main has advanced.');
