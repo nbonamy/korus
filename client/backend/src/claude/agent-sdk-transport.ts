@@ -978,6 +978,9 @@ function normalizedPermissionMode(value: string | null | undefined): PermissionM
 function claudeEnvironment(
   env: NodeJS.ProcessEnv,
 ): NodeJS.ProcessEnv {
+  // Attribute queries to this app, including launches from inside a Claude session.
+  const entrypoint = env.CLAUDE_CODE_ENTRYPOINT?.trim();
+  if (!entrypoint || entrypoint === 'cli' || entrypoint.startsWith('sdk-')) env.CLAUDE_CODE_ENTRYPOINT = product.slug;
   // Session mutations run in this process, so query-only home overrides would
   // send reads and deletes to a different store than the running conversation.
   env.CLAUDE_CONFIG_DIR = claudeConfigDirectoryOverride();

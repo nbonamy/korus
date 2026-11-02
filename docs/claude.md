@@ -29,6 +29,9 @@ adding steering, forks, goals, turn mutations or context controls.
   `APP_CLAUDE_COMMAND` overrides resolution without falling back if it is broken.
   Detection, queries, authentication and version inspection share this policy.
   The packaged runtime updates with Korus, not through a CLI package manager.
+  Query processes use the product slug as `CLAUDE_CODE_ENTRYPOINT` when unset or
+  inherited as `cli` or `sdk-*`, so upstream quota attribution identifies the app.
+  Explicit custom entrypoint labels are preserved; the parent environment is unchanged.
 - The Claude conversation host is the sole owner of the normalized transcript. It
   maps SDK stream messages to immutable `ClaudeConversationEvent`s, keeps one
   snapshot per agent and publishes a bounded reset plus revisioned deltas
