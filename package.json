@@ -31,8 +31,9 @@
     "stylelint-config-recommended-vue": "^1.6.1",
     "typescript": "^6.0.3",
     "vitepress": "1.6.4",
-    "zod": "4.4.3",
-    "vitest": "4.1.8"
+    "vue-tsc": "3.3.3",
+    "vitest": "4.1.8",
+    "zod": "4.4.3"
   },
   "workspaces": [
     "core",
@@ -44,7 +45,7 @@
     "server/frontend"
   ],
   "scripts": {
-    "postinstall": "node scripts/patch-relay-timers.mjs && node scripts/patch-cross-zip.mjs",
+    "postinstall": "node scripts/patch-relay-timers.mjs && node scripts/patch-cross-zip.mjs && npm run setup:tools",
     "pricing:update": "node scripts/update-pricing.mjs",
     "build": "npm run build:electron",
     "build:backend": "npm run build:sdk && npm run build -w @workspace/core && npm run build -w @workspace/backend && node scripts/package-backend.mjs",
@@ -105,6 +106,8 @@
     "typecheck:electron": "npm run typecheck -w @workspace/electron",
     "verify:github-mcp-token": "node scripts/verify-github-mcp-token.mjs",
     "prepare:mobile-simulator": "node scripts/prepare-mobile-simulator.mjs",
+    "setup:tools": "npm ci --prefix scripts/typecheck-tools --no-audit --no-fund",
+    "typecheck:stock": "node scripts/typecheck.mjs stock",
     "build:console": "npm run build -w @workspace/server-frontend",
     "build:server": "npm run build -w @workspace/server-backend && npm run build -w @workspace/server-frontend"
   },

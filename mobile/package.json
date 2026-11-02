@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit && vue-tsc --noEmit -p web/tsconfig.json",
+    "typecheck": "node ../scripts/typecheck.mjs plain --noEmit && node ../scripts/typecheck.mjs vue --noEmit -p web/tsconfig.json",
     "lint": "npm run typecheck",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
@@ -45,7 +45,6 @@
     "rolldown": "1.0.3",
     "typescript": "^6.0.3",
     "vite": "^8.0.16",
-    "vitest": "^4.1.8",
-    "vue-tsc": "^3.3.3"
+    "vitest": "^4.1.8"
   }
 }

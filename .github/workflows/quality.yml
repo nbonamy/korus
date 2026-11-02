@@ -4,35 +4,89 @@ on:
     branches: ['**']
   pull_request:
   workflow_dispatch:
-
 permissions:
   contents: read
 env:
   NODE_OPTIONS: --max-old-space-size=4096
-
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'automated' }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 jobs:
-  quality:
-    name: Quality checks
+  workspaces:
+    name: Discover workspaces
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.list.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - id: list
+        run: |
+          node -e 'const { workspaces } = require("./package.json"); console.log("matrix=" + JSON.stringify({ include: workspaces.map(workspace => ({ workspace, artifact: workspace.replaceAll("/", "-") })) }));' >> "$GITHUB_OUTPUT"
+  checks:
+    name: Lint and script checks
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 26.12.1
-          cache: npm
-      - run: npm install --global npm@10.9.4
-      - run: npm ci --no-audit --no-fund
+      - uses: ./.github/actions/setup
       - name: Install script-test browser and system dependencies
         run: npx playwright install --with-deps chromium
-      - run: node node_modules/electron/install.js
       - run: npm run release-notes:check
       - run: npm run lint
-      - run: npm run test:coverage --workspaces -- --maxWorkers=2
       - run: npm run test:scripts
       - run: npm run test:server:infrastructure
+  coverage:
+    needs: workspaces
+    name: Coverage (${{ matrix.workspace }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.workspaces.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: npm run test:coverage --workspace ${{ matrix.workspace }} -- --maxWorkers=2
+      - name: Archive workspace coverage
+        if: always()
+        run: tar -cf coverage.tar "${{ matrix.workspace }}/coverage"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: coverage-${{ matrix.artifact }}
+          path: coverage.tar
+          retention-days: 14
+          if-no-files-found: error
+  quality:
+    name: Quality checks
+    if: always()
+    needs: [workspaces, checks, coverage]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+      - run: node scripts/check-ci-results.mjs workspaces checks coverage
+        env:
+          CI_RESULTS: ${{ toJSON(needs) }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: coverage-*
+          path: coverage-results
+      - name: Restore all workspace reports
+        run: |
+          for report in coverage-results/*/coverage.tar; do
+            tar -xf "$report"
+          done
       - run: node scripts/coverage-badge.mjs generate
       - name: Retain coverage badge
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
@@ -41,21 +95,6 @@ jobs:
           name: coverage-badge
           path: coverage/badge.json
           if-no-files-found: error
-      - name: Retain coverage reports
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: coverage-${{ github.sha }}
-          path: |
-            core/coverage/
-            client/backend/coverage/
-            client/vue/coverage/
-            client/electron/coverage/
-            server/backend/coverage/
-            server/frontend/coverage/
-            mobile/coverage/
-          retention-days: 14
-          if-no-files-found: warn
 
   coverage-badge:
     name: Publish coverage badge

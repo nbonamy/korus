@@ -20,33 +20,67 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  quality:
-    name: quality
+  workspaces:
+    name: Discover workspaces
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.list.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - id: list
+        run: |
+          node -e 'const { workspaces } = require("./package.json"); console.log("matrix=" + JSON.stringify({ include: workspaces.map(workspace => ({ workspace, artifact: workspace.replaceAll("/", "-") })) }));' >> "$GITHUB_OUTPUT"
+  checks:
+    name: Release checks
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 26.12.1
-          cache: npm
+      - uses: ./.github/actions/setup
       - name: Validate release ref
         if: inputs.channel != 'none'
         shell: bash
         run: |
           test "$GITHUB_REF_TYPE" = tag
           test "$GITHUB_REF_NAME" = "v$(node -p 'require("./package.json").version')"
-      - run: npm install --global npm@10.9.4
-      - run: npm ci --no-audit --no-fund
       - name: Install script-test browser and system dependencies
         run: npx playwright install --with-deps chromium
-      - run: node node_modules/electron/install.js
       - run: npm run release-notes:check
-      - run: npm run test --workspaces -- --maxWorkers=2
       - run: npm run test:scripts
       - run: npm run test:server:infrastructure
+  tests:
+    needs: workspaces
+    name: Tests (${{ matrix.workspace }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.workspaces.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: npm run test --workspace ${{ matrix.workspace }} -- --maxWorkers=2
+  quality:
+    name: quality
+    if: always()
+    needs: [workspaces, checks, tests]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+      - run: node scripts/check-ci-results.mjs workspaces checks tests
+        env:
+          CI_RESULTS: ${{ toJSON(needs) }}
 
   build:
     name: build (${{ matrix.target }})
@@ -86,6 +120,19 @@ jobs:
       - run: npm install --global npm@10.9.4
       - run: npm ci --no-audit --no-fund
       - run: node node_modules/electron/install.js
+      - name: Identify unsigned helper toolchain
+        if: runner.os == 'macOS'
+        id: toolchain
+        shell: bash
+        run: |
+          hash=$(printf '%s\n' "$ImageOS" "$ImageVersion" "$(swift --version)" "$(xcodebuild -version)" | shasum -a 256 | cut -d ' ' -f 1)
+          echo "hash=$hash" >> "$GITHUB_OUTPUT"
+      - name: Cache unsigned Swift build intermediates
+        if: runner.os == 'macOS'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: native/tts-helper/.build
+          key: unsigned-tts-${{ runner.arch }}-${{ steps.toolchain.outputs.hash }}-${{ hashFiles('native/tts-helper/Package.swift', 'native/tts-helper/Package.resolved', 'native/tts-helper/Sources/**', 'scripts/prepare-tts-helper.mjs') }}
       - name: Test macOS signing cleanup
         if: runner.os == 'macOS'
         run: node --test scripts/macos-keychain.test.mjs
