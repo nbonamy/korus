@@ -118,6 +118,7 @@ export function mountShell(overrides: Partial<{
   snapshot: AppSnapshot;
   connectionState: BackendConnectionState;
   agentFiles: AgentFileSearchItem[];
+  loadAgentFiles: () => Promise<void>;
   backendModels: BackendModelOption[];
   selectedModelId: string | null;
   selectedReasoningEffort: ReasoningEffort | null;
@@ -220,6 +221,7 @@ export function mountShell(overrides: Partial<{
       unreadAgentIds: overrides.unreadAgentIds ?? [],
       agentCreationProgresses: overrides.agentCreationProgresses ?? [],
       agentFiles: overrides.agentFiles ?? [],
+      ...(overrides.loadAgentFiles ? { loadAgentFiles: overrides.loadAgentFiles } : {}),
       backendModels: overrides.backendModels ?? [],
       selectedModelId: overrides.selectedModelId ?? null,
       selectedReasoningEffort: overrides.selectedReasoningEffort ?? null,

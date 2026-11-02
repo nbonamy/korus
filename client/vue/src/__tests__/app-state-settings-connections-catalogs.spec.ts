@@ -617,6 +617,22 @@ describe('useAppState', () => {
     ]);
   });
 
+  it('reads the active agent files again on request, so files created later can be found', async () => {
+    const remoteSnapshot = createInitialSnapshot();
+    const listAgentFiles = vi.fn()
+      .mockResolvedValueOnce([{ name: 'README.md', path: 'README.md' }])
+      .mockResolvedValue([{ name: 'README.md', path: 'README.md' }, { name: 'AGENTS.md', path: 'core/AGENTS.md' }]);
+    stubElectronTestWindow({ app: { getSnapshot: vi.fn().mockResolvedValue(remoteSnapshot), listAgentFiles, onEvent: vi.fn() } satisfies Partial<AppApi> });
+
+    const state = useAppState();
+    await state.loadSnapshot();
+    expect(state.agentFiles.value).toHaveLength(1);
+
+    await state.loadAgentFiles();
+    expect(listAgentFiles).toHaveBeenCalledTimes(2);
+    expect(state.agentFiles.value.map((file) => file.path)).toStrictEqual(['README.md', 'core/AGENTS.md']);
+  });
+
   it('does not request a file catalog for a workspace-free quick chat', async () => {
     const remoteSnapshot = createInitialSnapshot();
     const activeAgent = remoteSnapshot.agents.find((agent) => agent.id === remoteSnapshot.activeAgentId)!;

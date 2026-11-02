@@ -782,6 +782,8 @@ const props = withDefaults(defineProps<{
   activeAgent: Agent | null;
   unreadAgentIds?: string[];
   agentFiles?: AgentFileSearchItem[];
+  /** Reads the active agent's workspace files again; the list is otherwise loaded once when the agent is opened. */
+  loadAgentFiles?: () => Promise<void>;
   isLoading: boolean;
   isConversationLoading?: boolean;
   isConversationLoadFailed?: boolean;
@@ -1397,6 +1399,8 @@ async function confirmMissionDeletion(deleteWorktrees: boolean): Promise<void> {
   }
 }
 const fileQuickOpenVisible = ref(false);
+// Files created since the agent was opened would be missing from a list loaded only then.
+watch(fileQuickOpenVisible, (visible) => { if (visible) void props.loadAgentFiles?.(); });
 const agentQuickOpenVisible = ref(false);
 const debugApproval = ref<{ agentId: string; request: BackendApprovalRequest } | null>(null);
 const debugUserQuestions = ref<{ agentId: string; message: SurfaceMessage; requestId: string } | null>(null);

@@ -374,7 +374,7 @@ export function createAgentComposerState(options: {
     });
   }
 
-  async function loadFiles(agentId = snapshot().activeAgentId): Promise<void> {
+  async function loadFiles(agentId = snapshot().activeAgentId, refresh = false): Promise<void> {
     if (agentId === snapshot().activeAgentId) rememberActive();
     const source = appApi;
     const agent = agentId ? snapshot().agents.find((candidate) => candidate.id === agentId) : null;
@@ -396,6 +396,7 @@ export function createAgentComposerState(options: {
       source: source.listAgentFiles,
       load: () => source.listAgentFiles!(agent.id),
       sync: syncFiles,
+      refresh,
     });
   }
 
@@ -475,9 +476,13 @@ export function createAgentComposerState(options: {
     source: unknown;
     load: () => Promise<Value[]>;
     sync: (agentId: string, entry: AsyncCatalogEntry<Value>) => void;
+    /** Read the catalog again even if it is already loaded. */
+    refresh?: boolean;
   }): Promise<void> {
     const backend = snapshot().agents.find(agent => agent.id === catalog.agentId)?.backend;
-    const entry = catalog.cache.load(catalog.key, catalog.source, catalog.load);
+    const entry = catalog.refresh
+      ? catalog.cache.refresh(catalog.key, catalog.source, catalog.load)
+      : catalog.cache.load(catalog.key, catalog.source, catalog.load);
     catalog.sync(catalog.agentId, entry);
     if (catalog.agentId === snapshot().activeAgentId) restore(catalog.agentId);
     await entry.promise;

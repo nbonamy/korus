@@ -53,6 +53,7 @@
     :connection-state="connectionState"
     :answered-client-request-ids="answeredClientRequestIds"
     :agent-files="agentFiles"
+    :load-agent-files="loadAgentFiles"
     :backend-models="backendModels"
     :backend-commands="activeBackendCommands"
     :backend-plugins="backendPlugins"
@@ -300,6 +301,7 @@ const {
   connectionState,
   answeredClientRequestIds,
   agentFiles,
+  loadAgentFiles,
   backendModels,
   activeBackendCommands,
   activeCodexConversationSnapshot,

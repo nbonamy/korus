@@ -57,6 +57,34 @@ export class AsyncCatalogCache<Key, Value> {
     return entry;
   }
 
+  /**
+   * Reads a loaded catalog again. What was loaded stays in place while the new read is in flight and if it
+   * fails, so a refresh never blanks a list someone is looking at. A catalog never loaded is simply loaded.
+   */
+  refresh(key: Key, source: unknown, loader: () => Promise<Value[]>): AsyncCatalogEntry<Value> {
+    const entry = this.entry(key);
+    this.resetIfSourceChanged(entry, source);
+    if (entry.promise) return entry;
+    if (entry.status === 'notLoaded' || entry.status === 'error') {
+      entry.status = 'notLoaded';
+      return this.load(key, source, loader);
+    }
+    const revision = entry.revision;
+    const request = loader()
+      .then((values) => {
+        if (entry.revision !== revision) return;
+        entry.value = values.map(this.copy);
+        entry.status = 'loaded';
+        entry.error = null;
+      })
+      .catch(() => undefined);
+    entry.promise = request;
+    void request.finally(() => {
+      if (entry.promise === request) entry.promise = null;
+    });
+    return entry;
+  }
+
   replace(key: Key, values: readonly Value[]): AsyncCatalogEntry<Value> {
     const entry = this.entry(key);
     entry.revision += 1;

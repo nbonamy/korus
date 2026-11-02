@@ -1759,7 +1759,8 @@ export function useAppState() {
     loadBackendModels: loadBackendModelsForActiveAgent,
     loadBackendPlugins: loadBackendPluginsForActiveAgent,
     loadBackendSkills: loadBackendSkillsForActiveAgent,
-    loadAgentFiles: loadAgentFilesForActiveAgent,
+    /** Reads the active agent's files again; the list is otherwise loaded once per session. */
+    loadAgentFiles: () => loadAgentFilesForActiveAgent(undefined, true),
     loadWorkRepositories,
     loadWorkItems,
     loadGlobalWorkItems,

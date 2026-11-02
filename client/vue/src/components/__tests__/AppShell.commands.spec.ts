@@ -557,6 +557,19 @@ describe('AppShell dialogs and commands', () => {
     expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toContain('main.ts');
   });
 
+  it('reads the workspace files again each time quick open is shown, so new files can be found', async () => {
+    const snapshot = createInitialSnapshot();
+    const loadAgentFiles = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mountShell({ snapshot, agentFiles: [{ name: 'main.ts', path: 'src/main.ts' }], loadAgentFiles });
+    await flushPromises();
+    expect(loadAgentFiles).not.toHaveBeenCalled();
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', metaKey: true, cancelable: true }));
+    await flushPromises();
+    expect(wrapper.findComponent({ name: 'FileQuickOpen' }).exists()).toBe(true);
+    expect(loadAgentFiles).toHaveBeenCalledTimes(1);
+  });
+
   it('opens the agent palette with Command-K and switches teams for the selected unread agent', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.teams.push({
