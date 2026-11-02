@@ -1,8 +1,7 @@
 <template>
   <aside class="conversation-plan" aria-live="polite" :aria-label="t('chat.planProgress.title')">
     <header class="conversation-plan__header">
-      <ListIcon :size="16" stroke-width="1.8" aria-hidden="true" />
-      <h2>{{ t('chat.planProgress.title') }}</h2>
+      <h2 :title="planTitle">{{ planTitle }}</h2>
       <button
         class="conversation-plan__close"
         type="button"
@@ -13,11 +12,6 @@
         <X :size="16" stroke-width="1.8" aria-hidden="true" />
       </button>
     </header>
-    <p
-      v-if="planExplanation"
-      class="conversation-plan__explanation"
-      :title="planExplanation"
-    >{{ planExplanation }}</p>
     <ol class="conversation-plan__steps">
       <li
         v-for="(entry, index) in plan.steps"
@@ -25,21 +19,16 @@
         class="conversation-plan__step"
         :class="`conversation-plan__step--${entry.status}`"
       >
-        <CheckIcon
+        <CircleCheckIcon
           v-if="entry.status === 'completed'"
           class="conversation-plan__status-icon"
-          :size="15"
-          stroke-width="2.2"
+          :size="16"
+          stroke-width="1.8"
           aria-hidden="true"
         />
-        <Circle
-          v-else
-          class="conversation-plan__status-icon"
-          :size="13"
-          :stroke-width="entry.status === 'inProgress' ? 2.4 : 1.6"
-          aria-hidden="true"
-        />
-        <span>{{ entry.step }}</span>
+        <LoaderIcon v-else-if="entry.status === 'inProgress' && running" class="conversation-plan__status-icon conversation-plan__working" :size="16" stroke-width="1.8" aria-hidden="true" />
+        <Circle v-else class="conversation-plan__status-icon conversation-plan__pending" :size="16" stroke-width="1.8" aria-hidden="true" />
+        <span class="conversation-plan__step-label">{{ entry.step }}</span>
         <span class="conversation-plan__sr-only">
           {{ t(`chat.planProgress.status.${entry.status}`) }}
         </span>
@@ -52,7 +41,7 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { ThreadPlan } from '@workspace/core/contracts';
-import { CheckIcon, Circle, ListIcon, X } from '../shared/icons/app-icons';
+import { Circle, CircleCheckIcon, LoaderIcon, X } from '../shared/icons/app-icons';
 
 const props = defineProps<{
   plan: ThreadPlan;
@@ -63,57 +52,46 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const planExplanation = computed(() => props.plan.explanation?.trim() || '');
+const planTitle = computed(() => props.plan.explanation?.trim() || t('chat.planProgress.title'));
+const running = computed(() => props.plan.status === 'inProgress');
 </script>
 
 <style scoped>
 .conversation-plan {
   position: absolute;
   z-index: 2;
-  top: var(--space-12);
-  right: var(--space-12);
+  top: var(--space-6);
+  right: var(--space-20);
   box-sizing: border-box;
   width: min(280px, calc(100% - var(--space-24)));
   max-height: min(42%, 360px);
   overflow: auto;
-  padding: var(--space-10) var(--space-12);
+  padding: var(--space-6);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
-  color: var(--color-text);
-  background: color-mix(in srgb, var(--color-surface-lowest) 94%, transparent);
-  box-shadow: var(--shadow-menu);
-  backdrop-filter: blur(18px);
+  color: var(--color-text-muted);
+  background: var(--color-surface-lowest);
+  box-shadow: var(--shadow-sm);
 }
 
 .conversation-plan__header {
   display: flex;
-  align-items: flex-start;
-  gap: var(--space-6);
-}
-
-.conversation-plan__header > svg {
-  margin-top: 1px;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-1) var(--space-4);
 }
 
 .conversation-plan__header h2 {
   flex: 1 1 auto;
   min-width: 0;
+  max-width: 100%;
   margin: 0;
-  font-size: var(--font-size-13);
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-16);
-}
-
-.conversation-plan__explanation {
-  display: -webkit-box;
-  margin: var(--space-6) 0 0;
   overflow: hidden;
-  color: var(--color-text);
   font-size: var(--font-size-13);
   font-weight: var(--font-weight-medium);
   line-height: var(--line-height-18);
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .conversation-plan__close {
@@ -142,42 +120,54 @@ const planExplanation = computed(() => props.plan.explanation?.trim() || '');
 
 .conversation-plan__steps {
   display: grid;
-  gap: var(--space-6);
-  margin: var(--space-8) 0 0;
+  gap: 10px;
+  margin: var(--space-4) 0 0;
   padding: 0;
   list-style: none;
 }
 
 .conversation-plan__step {
   display: grid;
-  grid-template-columns: var(--space-10) minmax(0, 1fr);
+  grid-template-columns: var(--icon-md) minmax(0, 1fr);
   align-items: start;
   gap: var(--space-4);
+  padding-inline: var(--space-4);
   color: var(--color-text-muted);
-  font-size: var(--font-size-12);
-  line-height: var(--line-height-16);
+  font-size: var(--font-size-13);
+  line-height: var(--line-height-18);
 }
 
 .conversation-plan__step--inProgress {
   color: var(--color-text);
-  font-weight: var(--font-weight-medium);
 }
 
 .conversation-plan__step--completed {
   color: var(--color-text-muted);
 }
 
+.conversation-plan__step--completed .conversation-plan__step-label {
+  text-decoration: line-through;
+}
+
 .conversation-plan__status-icon {
+  width: var(--icon-md);
+  height: var(--icon-md);
   margin-top: 1px;
 }
 
-.conversation-plan__step--completed .conversation-plan__status-icon {
-  color: var(--color-success);
+.conversation-plan__working {
+  animation: app-spin 6s linear infinite;
 }
 
-.conversation-plan__step--inProgress .conversation-plan__status-icon {
-  color: var(--color-primary);
-  fill: color-mix(in srgb, var(--color-primary) 14%, transparent);
+@media (prefers-reduced-motion: reduce) {
+  .conversation-plan__working {
+    animation: none;
+  }
+}
+
+.conversation-plan__pending {
+  color: var(--color-border-strong);
+  stroke-dasharray: 2 3;
 }
 
 .conversation-plan__sr-only {
