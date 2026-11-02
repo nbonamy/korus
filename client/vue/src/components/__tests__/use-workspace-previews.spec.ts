@@ -49,7 +49,7 @@ describe('workspace diff queries', () => {
     await state.previews.openConversationFile({ kind: 'file', href: '/repo/file.txt', path: '/repo/file.txt', diffContent: { sessionId: 'thread', contentId: 'a'.repeat(64), byteLength: 10, changeKind: 'add' } });
     expect(Object.values(state.workspace.workspaceFor(state.agent.id).diffPanels)[0]).toMatchObject({ state: 'error' });
   });
-  it.each(['binary', 'tooLarge'])('downloads %s chat files without opening or replacing sidebar tabs', async kind => {
+  it.each(['binary', 'tooLarge'])('downloads %s chat files without leaving or replacing sidebar tabs', async kind => {
     const state = setup(vi.fn());
     state.workspace.openTab('review', state.agent.id);
     state.previewAgentFile.mockResolvedValue({ path: 'film.mp4', size: 100, kind });
@@ -60,6 +60,10 @@ describe('workspace diff queries', () => {
     state.downloadAgentFile.mockRejectedValueOnce(new Error('Transfer failed'));
     await state.previews.openConversationFile({ kind: 'file', path: 'film.mp4', href: 'film.mp4' });
     expect(state.reportError).toHaveBeenCalledWith('Transfer failed');
+    await state.previews.openConversationFile({ kind: 'file', path: 'film.mp4', href: 'film.mp4' }, state.agent.id, false);
+    expect(state.downloadAgentFile).toHaveBeenCalledTimes(3);
+    expect(state.workspace.workspaceFor(state.agent.id).tabs).toEqual(['review']);
+    expect(state.workspace.workspaceFor(state.agent.id).filePanels).toEqual({});
   });
 
   it('keeps a delayed query result attached to its initiating agent', async () => {

@@ -117,6 +117,7 @@ export function createClientApiMock(
     pruneAgentGit: unscripted<'pruneAgentGit'>('pruneAgentGit'),
     getOpenInApplications: unscripted<'getOpenInApplications'>('getOpenInApplications'),
     openAgentPath: unscripted<'openAgentPath'>('openAgentPath'),
+    openAgentFile: unscripted<'openAgentFile'>('openAgentFile'),
     chooseAgentFolder: unscripted<'chooseAgentFolder'>('chooseAgentFolder'),
     chooseSourceFolder: unscripted<'chooseSourceFolder'>('chooseSourceFolder'),
     listSourceFolders: unscripted<'listSourceFolders'>('listSourceFolders'),

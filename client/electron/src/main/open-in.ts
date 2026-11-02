@@ -14,6 +14,7 @@ type InstalledOpenInApplication = OpenInApplicationOption & {
 export type OpenInProvider = {
   list(): Promise<OpenInApplicationCatalog>;
   open(application: OpenInApplication, targetPath: string): Promise<void>;
+  openFile(targetPath: string, action: 'open' | 'reveal'): Promise<void>;
 };
 
 type OpenInDependencies = {
@@ -54,6 +55,14 @@ export function createOpenInProvider(dependencies: Partial<OpenInDependencies> =
   }
 
   return {
+    async openFile(targetPath, action) {
+      if (action === 'reveal') {
+        resolved.showItemInFolder(targetPath);
+        return;
+      }
+      const error = await resolved.openPath(targetPath);
+      if (error) throw new Error(error);
+    },
     async list() {
       const applications = await installedApplications();
       return {

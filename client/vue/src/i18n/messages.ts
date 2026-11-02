@@ -1205,6 +1205,10 @@ export const messages = {
           completed: 'Completed',
         },
       },
+      fileActions: {
+        title: 'File actions', open: 'Open', folder: 'Show in Explorer', finder: 'Show in Finder', fileManager: 'Show in file manager', download: 'Download',
+        localOnly: 'Opening files is only available for local agents in the desktop app.',
+      },
       tool: {
         searchTools: {
           running: 'Searching tools',

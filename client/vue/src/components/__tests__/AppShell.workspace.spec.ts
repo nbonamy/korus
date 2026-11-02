@@ -304,7 +304,35 @@ describe('AppShell workspace and plans', () => {
     expect(wrapper.findAll('[role="tab"]')).toHaveLength(0);
   });
 
-  it('downloads an unsupported chat file without opening a workspace tab', async () => {
+  it.each([
+    ['MacIntel', 'Show in Finder'],
+    ['Win32', 'Show in Explorer'],
+    ['Linux x86_64', 'Show in file manager'],
+  ])('opens a local binary link and offers platform file actions on right-click (%s)', async (platform, revealLabel) => {
+    vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform);
+    const openAgentFile = vi.fn().mockResolvedValue(undefined);
+    const readAgentFileChunk = vi.fn();
+    setElectronTestClient({ openAgentFile, readAgentFileChunk });
+    const wrapper = mountShell({
+      realConversationPane: true,
+      previewAgentFile: vi.fn().mockResolvedValue({ path: 'film.mp4', kind: 'binary', size: 2 }),
+      codexConversationSnapshot: codexConversationSnapshot([codexTextMessage('video', 'assistant', '[Film](film.mp4)')]),
+    });
+    const link = wrapper.get('a[href="film.mp4"]');
+    await link.trigger('click');
+    await flushPromises();
+    expect(openAgentFile).toHaveBeenLastCalledWith('agent-dina', 'film.mp4', 'open');
+    expect(readAgentFileChunk).not.toHaveBeenCalled();
+    expect(wrapper.findAll('[role="tab"]')).toHaveLength(0);
+    await link.trigger('contextmenu', { clientX: 50, clientY: 50 });
+    const menu = new DOMWrapper(document.body).get('[role="menu"][aria-label="File actions"]');
+    expect(menu.findAll('[role="menuitem"]').map(item => item.text())).toEqual(['Open', revealLabel, 'Download']);
+    await menu.findAll('[role="menuitem"]')[1]!.trigger('click');
+    await flushPromises();
+    expect(openAgentFile).toHaveBeenLastCalledWith('agent-dina', 'film.mp4', 'reveal');
+  });
+
+  it('downloads an unsupported remote chat file without opening a workspace tab', async () => {
     const readAgentFileChunk = vi.fn().mockResolvedValue({ path: 'film.mp4', size: 2, data: 'AAE=', nextOffset: 2 });
     setElectronTestClient({ readAgentFileChunk });
     vi.stubGlobal('URL', class extends URL {
@@ -316,7 +344,10 @@ describe('AppShell workspace and plans', () => {
       expect(this.download).toBe('film.mp4');
     });
     try {
+      const snapshot = createInitialSnapshot();
+      snapshot.agents[0]!.remoteConnectionId = 'remote';
       const wrapper = mountShell({
+        snapshot,
         realConversationPane: true,
         previewAgentFile: vi.fn().mockResolvedValue({ path: 'film.mp4', kind: 'binary', size: 2 }),
         codexConversationSnapshot: codexConversationSnapshot([
@@ -329,6 +360,14 @@ describe('AppShell workspace and plans', () => {
       expect(download).toHaveBeenCalledOnce();
       expect(wrapper.findAll('[role="tab"]')).toHaveLength(0);
       expect(wrapper.get('[aria-label="Right workspace"]').isVisible()).toBe(false);
+      await wrapper.get('a[href="film.mp4"]').trigger('contextmenu');
+      const menu = new DOMWrapper(document.body).get('[role="menu"][aria-label="File actions"]');
+      const items = menu.findAll('[role="menuitem"]');
+      expect((items[0]!.element as HTMLButtonElement).disabled).toBe(true);
+      expect((items[1]!.element as HTMLButtonElement).disabled).toBe(true);
+      await items[2]!.trigger('click');
+      await flushPromises();
+      expect(download).toHaveBeenCalledTimes(2);
     } finally {
       vi.unstubAllGlobals();
     }

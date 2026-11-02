@@ -8,6 +8,7 @@ import { createInitialSnapshot } from '@workspace/core/snapshot';
 import type { AppSnapshot, CodexAuthentication, CodexChatGptLogin, SetCodexResourceSharingInput, UpdateSettingsInput } from '@workspace/core/contracts';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import type { OpenInProvider } from '../open-in';
+import { createOpenInProvider } from '../open-in';
 import { callPrivate, currentSnapshot, fakeAppLifecycle, createBackendClient, updateSettings } from './app-controller-test-harness';
 
 describe('AppController', () => {
@@ -336,6 +337,7 @@ describe('AppController', () => {
     (controller as unknown as { openInProvider: OpenInProvider }).openInProvider = {
       list: vi.fn(),
       open,
+      openFile: vi.fn(),
     };
 
     await expect(openAgentPath(controller, 'agent-dina', 'vscode', 'README.md')).resolves.toBe(updatedSnapshot);
@@ -348,6 +350,32 @@ describe('AppController', () => {
     expect(currentSnapshot(controller).agents[0].openInApplication).toBe('vscode');
   });
 
+  it('opens and reveals local files without changing app preferences, and rejects remote or escaped targets', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    agent.folder = path.resolve(__dirname, '../../../../..');
+    const openPath = vi.fn().mockResolvedValue('');
+    const showItemInFolder = vi.fn();
+    const controller = new AppController(snapshot, createBackendClient());
+    (controller as unknown as { openInProvider: OpenInProvider }).openInProvider = createOpenInProvider({ openPath, showItemInFolder });
+    const act = (filePath: string, action: 'open' | 'reveal') => (controller as unknown as {
+      openAgentFile(id: string, file: string, action: 'open' | 'reveal'): Promise<void>;
+    }).openAgentFile(agent.id, filePath, action);
+    await act('README.md', 'open');
+    expect(openPath).toHaveBeenCalledWith(path.join(agent.folder, 'README.md'));
+    await act('README.md', 'reveal');
+    expect(showItemInFolder).toHaveBeenCalledWith(path.join(agent.folder, 'README.md'));
+    expect(agent.openInApplication).toBeUndefined();
+    openPath.mockResolvedValueOnce('No associated application');
+    await expect(act('README.md', 'open')).rejects.toThrow('No associated application');
+    await expect(act(os.tmpdir(), 'open')).rejects.toThrow('only available for files inside');
+    await expect(act('README.md', 'invalid' as never)).rejects.toThrow('Invalid file action');
+    agent.remoteConnectionId = 'remote';
+    await expect(act('README.md', 'open')).rejects.toThrow('only available for local agents');
+    expect(openPath).toHaveBeenCalledTimes(2);
+    expect(showItemInFolder).toHaveBeenCalledOnce();
+  });
+
   it('rejects Open In for remote agents and files outside the project', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents[0].folder = path.resolve(__dirname, '../../../../..');
@@ -356,6 +384,7 @@ describe('AppController', () => {
     (controller as unknown as { openInProvider: OpenInProvider }).openInProvider = {
       list: vi.fn(),
       open,
+      openFile: vi.fn(),
     };
 
     const outsideDirectory = await mkdtemp(path.join(os.tmpdir(), 'open-in-controller-'));

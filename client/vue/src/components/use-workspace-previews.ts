@@ -36,6 +36,7 @@ export type WorkspacePreviewOptions = {
   openTab: (tab: RightWorkspaceTab, agentId?: string) => void;
   previewAgentFile: (agentId: string, filePath: string) => Promise<AgentFilePreviewResult>;
   downloadAgentFile: (agentId: string, filePath: string) => Promise<void>;
+  openLocalFile?: (agentId: string, filePath: string) => Promise<void>;
   reportError: (message: string) => void;
   workspaceFor: (agentId: string) => AgentRightWorkspaceState;
 };
@@ -68,7 +69,7 @@ export function useWorkspacePreviews(options: WorkspacePreviewOptions) {
   const contentRequestIds = new Map<string, number>();
   let gitDiffFocusSequence = 0;
 
-  async function openConversationFile(link: ConversationFileLink, agentId = options.currentAgent()?.id, downloadUnsupported = true): Promise<void> {
+  async function openConversationFile(link: ConversationFileLink, agentId = options.currentAgent()?.id, deferPreview = true): Promise<void> {
     const agent = agentId ? agentForId(agentId) : null;
     if (!agent) return;
     const filePath = link.filepath ?? link.path;
@@ -98,7 +99,7 @@ export function useWorkspacePreviews(options: WorkspacePreviewOptions) {
       await openAgentGitDiff(agent.id);
       return;
     }
-    await openFile(agent.id, filePath, true, downloadUnsupported);
+    await openFile(agent.id, filePath, { openUnsupported: true, showLoading: !deferPreview });
   }
 
   function openTurnDiff(agentId: string, turnId: string, filePath: string): boolean {
@@ -135,10 +136,15 @@ export function useWorkspacePreviews(options: WorkspacePreviewOptions) {
     const workspace = options.workspaceFor(agent.id);
     const tab = rightWorkspaceFileTab(filePath);
     if (activity.action === 'read' || activity.status !== 'completed' || !workspace.filePanels[tab]) return;
-    void openFile(agent.id, filePath, false);
+    void openFile(agent.id, filePath, { reveal: false });
   }
 
-  async function openFile(agentId: string, filePath: string, reveal = true, downloadUnsupported = false): Promise<void> {
+  async function openFile(agentId: string, filePath: string, settings: {
+    reveal?: boolean;
+    openUnsupported?: boolean;
+    showLoading?: boolean;
+  } = {}): Promise<void> {
+    const { reveal = true, openUnsupported = false, showLoading = !openUnsupported } = settings;
     const agent = agentForId(agentId);
     const trimmedPath = normalizePreviewFilePath(filePath, agent?.folder);
     if (!agent || !trimmedPath) return;
@@ -163,21 +169,26 @@ export function useWorkspacePreviews(options: WorkspacePreviewOptions) {
         options.openTab(tab, agentId);
       }
     }
-    if (!downloadUnsupported) revealPanel();
+    if (showLoading) revealPanel();
 
     try {
       const result = await options.previewAgentFile(agent.id, trimmedPath);
       if (workspace.filePreviewRequestIds[tab] !== requestId) return;
-      if (reveal && !downloadUnsupported && (!workspace.open || !workspace.tabs.includes(tab))) return;
-      if (downloadUnsupported && (result.kind === 'binary' || result.kind === 'tooLarge')) {
+      if (reveal && showLoading && (!workspace.open || !workspace.tabs.includes(tab))) return;
+      if (openUnsupported && (result.kind === 'binary' || result.kind === 'tooLarge')) {
+        if (showLoading) options.closeTab(agent.id, tab);
         try {
-          await options.downloadAgentFile(agent.id, trimmedPath);
+          if (!agent.remoteConnectionId && !agent.sharedConversation && options.openLocalFile) {
+            await options.openLocalFile(agent.id, trimmedPath);
+          } else {
+            await options.downloadAgentFile(agent.id, trimmedPath);
+          }
         } catch (error) {
           options.reportError(error instanceof Error ? error.message : String(error));
         }
         return;
       }
-      if (downloadUnsupported) revealPanel();
+      if (!showLoading) revealPanel();
       if (result.kind === 'image' && result.dataUrl) {
         const imageTab = rightWorkspaceImageTab(`workspace:${result.path}`);
         workspace.imagePanels = {
@@ -216,7 +227,7 @@ export function useWorkspacePreviews(options: WorkspacePreviewOptions) {
       };
     } catch (error) {
       if (workspace.filePreviewRequestIds[tab] !== requestId) return;
-      if (downloadUnsupported) revealPanel();
+      if (!showLoading) revealPanel();
       workspace.filePanels = {
         ...workspace.filePanels,
         [tab]: filePreviewPanel(

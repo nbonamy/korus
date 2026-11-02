@@ -96,6 +96,7 @@ const api: AppApi = {
   pruneAgentGit: (agentId, input) => ipc.invoke(ipcChannels.pruneAgentGit, agentId, input),
   getOpenInApplications: () => ipc.invoke(ipcChannels.getOpenInApplications),
   openAgentPath: (agentId: string, application: OpenInApplication, filePath?: string) => ipc.invoke(ipcChannels.openAgentPath, agentId, application, filePath),
+  openAgentFile: (agentId, filePath, action) => ipc.invoke(ipcChannels.openAgentFile, agentId, filePath, action),
   chooseAgentFolder: () => ipc.invoke(ipcChannels.chooseAgentFolder),
   chooseSourceFolder: () => ipc.invoke(ipcChannels.chooseSourceFolder),
   listSourceFolders: (input?: SourceFolderListInput) => ipc.invoke(ipcChannels.listSourceFolders, input),

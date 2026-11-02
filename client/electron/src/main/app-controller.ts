@@ -332,6 +332,7 @@ export class AppController {
     ipc.handle(ipcChannels.openAgentPath, (_event, agentId: string, application: OpenInApplication, filePath?: string) => {
       return this.openAgentPath(agentId, application, filePath);
     });
+    ipc.handle(ipcChannels.openAgentFile, (_event, agentId, filePath, action) => this.openAgentFile(agentId, filePath, action));
 
     ipc.handle(ipcChannels.chooseAgentFolder, async () => {
       return this.chooseAgentFolder();
@@ -1035,6 +1036,16 @@ export class AppController {
       backendMethods.clientAgentExternalApplicationUpdate,
       { agentId, application },
     ));
+  }
+
+  private async openAgentFile(agentId: string, filePath: string, action: 'open' | 'reveal'): Promise<void> {
+    if (action !== 'open' && action !== 'reveal') throw new Error('Invalid file action.');
+    if (typeof filePath !== 'string' || !filePath.trim()) throw new Error('File path is required.');
+    const agent = this.snapshot?.agents.find(candidate => candidate.id === agentId);
+    if (!agent) throw new Error(`Agent not found: ${agentId}`);
+    if (agent.remoteConnectionId || agent.sharedConversation) throw new Error('File actions are only available for local agents.');
+    const target = await resolveProjectPath(requireAgentFolder(agent), filePath);
+    await this.openInProvider.openFile(target, action);
   }
 
   private async duplicateAgent(agentId: string, options?: DuplicateAgentOptions): Promise<AppSnapshot> {

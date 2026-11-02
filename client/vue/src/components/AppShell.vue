@@ -2,7 +2,17 @@
   <main
     class="app-shell"
     :class="{ 'app-shell--auth-gated': showOnboardingGate }"
+    @contextmenu.capture="conversationFileActions.capture"
   >
+    <AppContextMenu
+      v-if="conversationFileActions.menu.value"
+      :x="conversationFileActions.menu.value.x"
+      :y="conversationFileActions.menu.value.y"
+      :items="conversationFileActions.items.value"
+      :ariaLabel="t('chat.fileActions.title')"
+      @close="conversationFileActions.close"
+      @select="conversationFileActions.select"
+    />
     <FirstRunOnboardingGate
       v-if="!currentAgent?.sharedConversation"
       :provider-setup="displayProviderSetup"
@@ -771,6 +781,8 @@ import { useCockpitBacklog } from './use-cockpit-backlog';
 import { provideBacklogConnections } from './backlog-providers';
 import { useWorkspacePreviews } from './use-workspace-previews';
 import { downloadAgentFile } from '../download-agent-file';
+import AppContextMenu from '../shared/menu/AppContextMenu.vue';
+import { useConversationFileActions } from './use-conversation-file-actions';
 import { useWorkItemRouting } from './use-work-item-routing';
 import { useAppShellCommands } from './use-app-shell-commands';
 
@@ -2067,9 +2079,15 @@ const missionDocuments = useMissionDocuments({
   currentAgentId: () => currentAgent.value?.id,
   open: request => openMarkdownRequest(request),
 });
+const conversationFileActions = useConversationFileActions({
+  agent: id => props.snapshot.agents.find(agent => agent.id === id),
+  download: downloadAgentFile,
+  reportError: message => { ElMessage.error(message); },
+});
 const workspacePreviews = useWorkspacePreviews({
   readConversationContent: (agentId, input) => appApi ? appApi.readConversationContent(agentId, input) : Promise.reject(new Error('Conversation content unavailable.')),
   downloadAgentFile,
+  ...(conversationFileActions.nativeAvailable() ? { openLocalFile: conversationFileActions.openNative } : {}),
   reportError: message => { ElMessage.error(message); },
   closeTab: closeRightWorkspaceTab,
   currentAgent: () => currentAgent.value,

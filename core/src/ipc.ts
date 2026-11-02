@@ -103,6 +103,7 @@ export const ipcChannels = {
   updateAgentGitBranchFromBase: 'agent:git-workflow:update-from-base',
   getOpenInApplications: 'open-in:applications:get',
   openAgentPath: 'agent:path:open-in',
+  openAgentFile: 'agent:file:open-native',
   chooseAgentFolder: 'agent:choose-folder',
   chooseSourceFolder: 'source-folder:choose',
   listSourceFolders: 'source-folder:folders:list',

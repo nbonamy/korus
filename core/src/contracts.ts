@@ -971,6 +971,8 @@ export type AppApi = {
   updateAgentGitBranchFromBase(agentId: string, input: AgentGitUpdateFromBaseInput): Promise<AgentGitUpdateFromBaseResult>;
   getOpenInApplications(): Promise<OpenInApplicationCatalog>;
   openAgentPath(agentId: string, application: OpenInApplication, filePath?: string): Promise<AppSnapshot>;
+  /** Desktop-only native action; absent on older or browser hosts. */
+  openAgentFile?(agentId: string, filePath: string, action: 'open' | 'reveal'): Promise<void>;
   chooseAgentFolder(): Promise<string | null>;
   chooseSourceFolder(): Promise<string | null>;
   listSourceFolders(input?: SourceFolderListInput): Promise<SourceFolderListing>;
