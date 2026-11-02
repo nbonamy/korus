@@ -80,7 +80,7 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
         host.onNeedsReset = { [weak self] identity in
             guard identity == "native-cached" else { return }
             resets += 1
-            self?.host.submit(.transfer, transfer(true))
+            self?.host.submit(.transfer, transfer(true, engineInstance: "restarted-native-engine"))
         }
         host.submit(.transfer, transfer(true))
         await wait { applied == 1 }
@@ -100,9 +100,14 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
         host.submit(.transfer, transfer(false, engineInstance: "restarted-native-engine"))
         await wait { applied == 5 }
         let beforeReload = applied
-        host.retry()
+        host.webViewWebContentProcessDidTerminate(host.webView)
+        // The engine restores the same selection without a native tap or Retry.
+        loading.select(awaitingRender: true)
+        host.submit(.transfer, transfer(false, engineInstance: "restarted-native-engine"))
         await wait({ applied > beforeReload }, milliseconds: 6000)
-        check(resets == 1 && applied > beforeReload, "reloaded WebView requests and paints a fresh baseline instead of accepting an absent cache")
+        let restored = await js("document.body.textContent.includes('Retained native conversation')") as? Bool ?? false
+        check(resets == 1 && applied > beforeReload && !loading.isLoading && restored,
+              "history arriving after transcript process death reloads and paints without switching chats")
         host.onTransferApplied = nil
         host.onNeedsReset = nil
     }

@@ -52,6 +52,7 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
         case .conversation, .transfer: latestKind = kind; latestConversation = json; latestContext = nil
         case .context: latestContext = json
         }
+        if needsRecovery { loadPage() }
         guard isReady else { return }
         if let job = queue.enqueue(kind, json) { run(job) }
     }
