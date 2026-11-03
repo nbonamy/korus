@@ -107,7 +107,8 @@ function changed(scene: CanvasScene) {
   clearTimeout(timer);
   timer = setTimeout(() => { void flush(); }, 180);
 }
-function receive(document: CanvasDocument | undefined) {
+let receiveEpoch = 0;
+async function receive(document: CanvasDocument | undefined) {
   if (!document || document.revision <= revision) return;
   if (saving.value) { incoming = document; return; }
   if (local.value && key(local.value) !== baseKey) {
@@ -115,12 +116,24 @@ function receive(document: CanvasDocument | undefined) {
     error.value = translate('visualize.canvasConflict');
     return;
   }
-  revision = document.revision;
-  needsPreview = !document.preview;
-  baseKey = key(document);
-  local.value = structuredClone(toRaw(document));
-  editor?.update(local.value, true);
-  if (needsPreview) { clearTimeout(timer); timer = setTimeout(() => { void flush(); }, 180); }
+  const epoch = ++receiveEpoch;
+  const before = local.value && key(local.value);
+  try {
+    const scene = document.elements.some(element => Boolean((element.customData as {iconImage?:unknown} | undefined)?.iconImage) || (element.type === 'text' && [4,10].includes(Number(element.fontFamily))))
+      ? await (await import('./excalidraw-editor')).importVisualization({...toRaw(props.visualization), canvas:toRaw(document)}, '')
+      : structuredClone(toRaw(document));
+    if (disposed || epoch !== receiveEpoch || document.revision <= revision) return;
+    if (saving.value) {incoming = document; return;}
+    if (local.value && key(local.value) !== before) {
+      incoming = document; error.value = translate('visualize.canvasConflict'); return;
+    }
+    revision = document.revision;
+    needsPreview = !document.preview || key(scene) !== key(document);
+    baseKey = key(scene);
+    local.value = scene;
+    editor?.update(scene, true);
+    if (needsPreview) { clearTimeout(timer); timer = setTimeout(() => { void flush(); }, 180); }
+  } catch (cause) { if (!disposed && epoch === receiveEpoch) error.value = cause instanceof Error ? cause.message : String(cause); }
 }
 watch(() => props.visualization.canvas, receive);
 async function flush(): Promise<void> {
@@ -272,6 +285,7 @@ async function initialize() {
     ready.value = true;
     refreshCanvasUi();
     if (!props.visualization.canvas) changed(scene);
+    else if (key(scene) !== key(props.visualization.canvas)) {needsPreview = true; timer = setTimeout(() => {void flush();}, 180);}
   } catch (cause) { if (!disposed) error.value = cause instanceof Error ? cause.message : String(cause); }
   finally { initializing = false; }
 }

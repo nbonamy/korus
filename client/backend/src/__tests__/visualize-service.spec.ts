@@ -1,3 +1,4 @@
+import { DiagramIconResolver } from '../diagram-icons/resolver';
 import { product } from '@workspace/core/product';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -15,6 +16,29 @@ afterEach(async () => {
 });
 
 describe('VisualizeService', () => {
+  it('embeds fetched bytes in saved diagrams and edits without an asset registry surviving the process', async () => {
+    temporaryDirectory=await mkdtemp(path.join(os.tmpdir(),'visualize-icons-'));
+    const snapshot=createInitialSnapshot();const agent=snapshot.agents[0];
+    const persistence=new AppStateStore(temporaryDirectory);
+    const resolver=new DiagramIconResolver({fetch:vi.fn<typeof fetch>().mockImplementation(async()=>new Response('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#f00" d="M1 1h22v22H1z"/></svg>'))});
+    const service=new VisualizeService({snapshot,generatedImagesRoot:temporaryDirectory,iconResolver:resolver,persist:()=>persistence.save(snapshot),publish:()=>{}});
+    const response=await service.fetchIcon(agent.id,'lucide/database');
+    expect(response).not.toHaveProperty('assetId');
+    if(!response.found)throw new Error('Expected icon');
+    const {found:_,name:__,dark:___,...iconImage}=response;
+    const element={id:'brand',type:'image',x:0,y:0,width:48,height:48,customData:{iconImage}};
+    await service.enter(agent.id);
+    const {visualizationId}=await service.add(agent.id,{title:'Brand',content:{kind:'excalidraw',source:JSON.stringify({elements:[element],files:{}})}});
+    const loaded=await persistence.load();
+    const reopened=new VisualizeService({snapshot:loaded,generatedImagesRoot:temporaryDirectory,persist:()=>persistence.save(loaded),publish:()=>{}});
+    const saved=reopened.get(agent.id,visualizationId).visualization;
+    expect(JSON.parse((saved.content as {source:string}).source).elements[0].customData.iconImage.base64).toBe(iconImage.base64);
+    await reopened.saveCanvas(agent.id,{visualizationId,sessionId:loaded.agents[0].visualize!.id,expectedSource:JSON.stringify(saved.content),expectedRevision:0,document:{elements:[],files:{},preview:'',selectedElementIds:[]}});
+    await reopened.editCanvas(agent.id,visualizationId,1,[],[element]);
+    const reloaded=await persistence.load();
+    expect(reloaded.agents[0].visualize!.visualizations[0].canvas!.elements[0].customData).toEqual({iconImage});
+  });
+
   it('shares repository diagrams across a worktree and main agent while keeping pane state separate', async () => {
     const snapshot = createInitialSnapshot();
     const [worker, main] = snapshot.agents;

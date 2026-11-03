@@ -80,6 +80,7 @@ export type BackendJsonValue = null | boolean | number | string | BackendJsonVal
 
 export const utilityTaskComplexities = ['simple', 'normal', 'complex'] as const;
 export type UtilityTaskComplexity = typeof utilityTaskComplexities[number];
+export type UtilityMcpServer = { name: string; url: string; enabledTools: readonly ['fetch_tech_icon'] };
 export type BackendTextGenerationInput = {
   prompt: string;
   cwd: string;
@@ -87,6 +88,8 @@ export type BackendTextGenerationInput = {
   complexity?: UtilityTaskComplexity;
   /** Isolated inspection utilities may use read-only Git and source tools. */
   tools?: boolean;
+  /** Private host-owned HTTP capabilities for this invocation only. */
+  mcpServers?: readonly UtilityMcpServer[];
   developerInstructions?: string;
   outputSchema?: BackendJsonValue;
   /** Image paths resolved and authorized by the owning host; independent of workspace tools. */

@@ -420,12 +420,12 @@ describe('Antigravity native session', () => {
     host.onEvent(event => events.push(event));
     try {
       const file=path.resolve(import.meta.dirname,'../../../../electron/assets/viz/reference.png');
-      const result = await host.generateText(agent, { cwd: root, prompt: 'utility-fixture', outputSchema: { type: 'string' },attachments:[{type:'image',path:file,mimeType:'image/png'}] });
+      const result = await host.generateText(agent, { cwd: root, prompt: 'utility-fixture', outputSchema: { type: 'string' },mcpServers:[{name:'diagram_icons_job',url:'http://127.0.0.1:1234/mcp/token',enabledTools:['fetch_tech_icon']}],attachments:[{type:'image',path:file,mimeType:'image/png'}] });
       expect(JSON.parse(await readFile(path.join(root,'fixture-prompt.json'),'utf8'))).toEqual([expect.objectContaining({type:'text'}),{type:'image',mimeType:'image/png',data:(await readFile(file)).toString('base64')}]);
       expect(result.text).toBe('Tools denied; text result.');
       expect(JSON.parse(await readFile(path.join(root, 'fixture-model.json'), 'utf8'))).toMatchObject({ configId: 'model', value: 'quick-lite' });
       expect(JSON.parse(await readFile(path.join(root, 'fixture-initialize.json'), 'utf8')).clientCapabilities.fs).toEqual({ readTextFile: false, writeTextFile: false });
-      expect(JSON.parse(await readFile(path.join(root, 'fixture-session.json'), 'utf8'))).toMatchObject({ mcpServers: [], _meta: { agy: { enabledTools: [] } } });
+      expect(JSON.parse(await readFile(path.join(root, 'fixture-session.json'), 'utf8'))).toMatchObject({ mcpServers: [expect.objectContaining({name:'diagram_icons_job',env:expect.arrayContaining([{name:'KORUS_ACP_MCP_URL',value:'http://127.0.0.1:1234/mcp/token'}])})], _meta: { agy: { enabledTools: [] } } });
       await expect(readFile(path.join(root, 'unwanted-write'))).rejects.toMatchObject({ code: 'ENOENT' });
       expect(events).toEqual([]);
       expect(agent.backendSession).toBeUndefined();
@@ -437,6 +437,15 @@ describe('Antigravity native session', () => {
       await host.generateText(agent, {cwd:root,prompt:'utility-fixture',complexity:'complex'});
       expect(JSON.parse(await readFile(path.join(root,'fixture-model.json'),'utf8'))).toMatchObject({value:'heavy'});
     } finally { await host.close(); }
+  });
+  it.each([false,'read-only'] as const)('allows only the supplied native MCP tool in an isolated utility with tools=%s', async tools => {
+    const mcp = {toolCall:{toolCallId:'icon-call',kind:'other',title:'Fetch icon',_meta:{is_mcp_tool_call:true,mcp:{server:'diagram_icons_job',tool:'fetch_tech_icon'}}},options:[{optionId:'once',name:'Allow',kind:'allow_once'}]};
+    const {session}=await open(undefined,{tools,mcpServers:[sessionMcpServer('http://127.0.0.1:1/mcp/token','diagram_icons_job',['fetch_tech_icon'])],utilityMcpTools:[{server:'diagram_icons_job',tools:['fetch_tech_icon']}]});
+    await session.prompt(`permission-fixture:${JSON.stringify(mcp)}`).completion;
+    expect(JSON.parse(await readFile(path.join(root,'permission-response.json'),'utf8')).result).toMatchObject({outcome:{outcome:'selected',optionId:'once'}});
+    const wrong={...mcp,toolCall:{...mcp.toolCall,_meta:{is_mcp_tool_call:true,mcp:{server:'other',tool:'fetch_tech_icon'}}}};
+    await session.prompt(`permission-fixture:${JSON.stringify(wrong)}`).completion;
+    expect(JSON.parse(await readFile(path.join(root,'permission-response.json'),'utf8')).result).toMatchObject({outcome:{outcome:'cancelled'}});
   });
   it('keeps utility generation sessions out of history and stores no prompt text for them', async () => {
     await writeFile(path.join(root, 'usage-fixture.json'), JSON.stringify({ configuration: { models: {

@@ -10,7 +10,7 @@
       <div class="diff-viz__actions">
         <button class="app-button app-button--primary diff-viz__generate" type="button" :disabled="busy || !active || !preferencesLoaded || !diff.trim()" @click="generate">
           <LoaderIcon v-if="busy" class="diff-viz__spinner" aria-hidden="true" />
-          {{ translate(busy ? 'surface.diffViz.generating' : 'surface.diffViz.generate') }}
+          {{ busy ? loadingLabel : translate('surface.diffViz.generate') }}
         </button>
         <el-checkbox v-model="doNotAskAgain" class="diff-viz__consent" :disabled="busy || !active || !preferencesLoaded">{{ translate('surface.diffViz.doNotAskAgain') }}</el-checkbox>
       </div>
@@ -22,14 +22,14 @@
     <footer v-if="diagram" class="diff-viz__footer">
       <button class="app-button app-button--tertiary diff-viz__generate" type="button" :disabled="busy || !active" @click="generate">
         <LoaderIcon v-if="busy" class="diff-viz__spinner" aria-hidden="true" />
-        {{ translate(busy ? 'surface.diffViz.generating' : 'surface.diffViz.regenerate') }}
+        {{ busy ? loadingLabel : translate('surface.diffViz.regenerate') }}
       </button>
     </footer>
   </section>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, ref, shallowRef, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import { diffVizStatuses, type DiffVizDiagram, type DiffVisualizationMode, type DiffVizLocation } from '@workspace/core/git-diff-viz';
 import type { AgentGitDiffTarget, AgentGitDiffScope } from '@workspace/core/contracts';
 import { appApi } from '../platform-api';
@@ -43,6 +43,23 @@ const emit = defineEmits<{ select: [paths: string[], location?: DiffVizLocation]
 function select(paths: string[], location?: DiffVizLocation) { emit('select', paths, location); }
 const diagram = shallowRef<DiffVizDiagram>();
 const busy = ref(false);
+const loadingLabelIndex = ref(0);
+const loadingLabelOrder = shallowRef<number[]>([]);
+const loadingLabel = computed(() => translate(`surface.diffViz.loadingLabels.${loadingLabelOrder.value[loadingLabelIndex.value]}`));
+watch(busy, (running, _previous, onCleanup) => {
+  loadingLabelIndex.value = 0;
+  if (!running) return;
+  const order = Array.from({ length: 20 }, (_, index) => index);
+  for (let index = order.length - 1; index > 0; index--) {
+    const swap = Math.floor(Math.random() * (index + 1));
+    [order[index], order[swap]] = [order[swap]!, order[index]!];
+  }
+  loadingLabelOrder.value = order;
+  const timer = setInterval(() => {
+    loadingLabelIndex.value = (loadingLabelIndex.value + 1) % loadingLabelOrder.value.length;
+  }, 5_000);
+  onCleanup(() => clearInterval(timer));
+}, { flush: 'sync' });
 const error = ref('');
 const doNotAskAgain = ref(props.automatic);
 let epoch = 0;

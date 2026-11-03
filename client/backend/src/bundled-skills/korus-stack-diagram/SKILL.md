@@ -40,12 +40,15 @@ Do not draw a legend or header inside the canvas when the caller provides one.
 - Tiles: light neutral plates, thin borders, restrained corner radius; no heavy
   shadows or decorative gradients. Keep supplied logos on a suitable contrasting
   plate, including in dark mode.
-- Type: readable sans-serif names and group headings. Short technical roles and
-  connection labels may use monospace when supported. Do not shrink text to force
+- Type: Geist names and group headings; JetBrains Mono for technical roles and
+  relationship labels. Native Visualize uses fontFamily 4 for Geist and 10 for
+  JetBrains Mono; the app bundles and loads both faces. Do not shrink text to force
   an overfull composition to fit; shorten labels or rearrange the diagram.
 - Connections: one accent for the principal request/data path; neutral solid for
   secondary internal links; neutral dashed for dev/deploy/supporting relationships.
   Use these distinctions only through the styling controls the caller exposes.
+  Match each relationship label's color to its connection. In native Visualize,
+  set the label's containerId to the arrow id so the app preserves that association.
   Diff change state colors remain separate from connection meaning.
 - Groups: a soft neutral or restrained vendor tint, a fine solid border and a
   top-left title. Nested boundaries may use a dashed border when distinguishable
@@ -71,11 +74,25 @@ Do not draw a legend or header inside the canvas when the caller provides one.
 - Preserve source attribution and available light/dark variants. A white mark
   needs a dark plate; a black mark needs a light plate. Never fix contrast by
   changing the brand's colors. Do not redistribute icon packs as part of a diagram.
-- No icon-fetching tool is implied by this skill. In Diff Viz, use only the
-  caller's component.icon enum: the app supplies the image. Never return an image
-  URL or run fetch_icons.py through the read-only workspace tools. In Visualize,
-  use supplied assets or supported native pictograms; fetch only with authorization
-  and an available capability. Do not claim an icon was fetched when it was not.
+- When `fetch_tech_icon` is exposed, use it for technology marks and Lucide role
+  icons. It accepts a technology name, `name:slug`, `lucide/database` or
+  `aws/lambda`. It returns `mimeType`, `base64`, `source`, `sourceUrl`, `whiteFill`
+  and an optional `dark` payload. A miss means use the role fallback.
+- Embed those returned image fields directly in the saved diagram. There are no
+  asset IDs, lookup tables or caches to resolve later. Never invent bytes or run
+  Python/workspace commands to fetch.
+- In Diff Viz, copy the image fields into `component.iconImage`, retaining
+  `component.icon` as the role fallback. The app creates the icon and caption.
+- In Visualize, create a native `image` element with desired x/y/width/height and
+  `customData: {iconImage: {mimeType, base64, source, sourceUrl, whiteFill}}`.
+  Select the light or dark payload as appropriate. Group it with its tile and
+  captions. The renderer converts these embedded bytes into the canvas's own PNG
+  image files; saved canvases contain everything needed to reopen after restart.
+  Fetching does not require an open pane; publishing and editing do.
+
+- No icon-fetching capability is implied when `fetch_tech_icon` is absent. Use supplied
+  assets or supported native role icons; never claim an icon was fetched without
+  a successful tool result.
 
 ## Geometry
 

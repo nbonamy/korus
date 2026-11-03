@@ -1,3 +1,4 @@
+import { diagramIcons } from '../../diagram-icons/resolver';
 import { readBundledSkill } from '../../bundled-skills/catalog';
 import path from 'node:path';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -144,4 +145,25 @@ it('fails before calling the provider when the bundled visual reference is unava
   const generate=vi.fn();
   await expect(generateDiffViz(comparison,'/repo',generate)).rejects.toThrow(/reference/i);
   expect(generate).not.toHaveBeenCalled();
+});
+
+it('embeds fetched payloads directly in polished output and closes the tool endpoint on every exit', async () => {
+  const asset={mimeType:'image/svg+xml' as const,base64:'PHN2Zy8+',source:'lucide' as const,sourceUrl:'https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/database.svg',whiteFill:false};
+  const fetchIcon=vi.spyOn(diagramIcons,'fetchIcon').mockResolvedValue({name:'database',asset});
+  let endpoint='';
+  try {
+    const result=await generateDiffViz(comparison,'/repo',async input=>{
+      endpoint=input.mcpServers![0].url;
+      const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'fetch_tech_icon',arguments:{icon:'lucide/database'}}})});
+      const {found:_,name:__,...iconImage}=(await response.json() as {result:{structuredContent:Record<string,unknown>}}).result.structuredContent;
+      expect(iconImage).toEqual(asset);
+      return {text:JSON.stringify(withBox({component:{...component,iconImage}}))};
+    });
+    expect(JSON.parse(JSON.stringify(result)).nodes[0].iconImage).toEqual(asset);
+    expect(result).not.toHaveProperty('iconAssets');
+    await expect(fetch(endpoint,{method:'POST'})).rejects.toThrow();
+    await expect(generateDiffViz(comparison,'/repo',async input=>{endpoint=input.mcpServers![0].url;throw new Error('startup failed');})).rejects.toThrow('startup failed');
+    await expect(fetch(endpoint,{method:'POST'})).rejects.toThrow();
+    await expect(generateDiffViz(comparison,'/repo',async()=>({text:JSON.stringify(withBox({component:{...component,iconImage:{...asset,base64:'not base64!'}}}))}))).rejects.toThrow(/invalid/i);
+  }finally{fetchIcon.mockRestore();}
 });

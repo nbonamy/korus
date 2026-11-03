@@ -1,3 +1,5 @@
+import {loadCanvasFonts} from './diagram-fonts';
+import {isDiagramIconImage, type DiagramIconImage} from '@workspace/core/diagram-icon';
 import { Component, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Excalidraw, MainMenu, CaptureUpdateAction, bumpVersion, convertToExcalidrawElements, exportToCanvas, restoreElements, sceneCoordsToViewportCoords } from '@excalidraw/excalidraw';
@@ -14,11 +16,12 @@ export type CanvasScene = Omit<CanvasDocument, 'revision'>;
 export type CanvasAnnotationTarget = { id: string; x: number; y: number; width: number; height: number };
 export type CanvasControlsState = { zoom: number };
 export async function importVisualization(visualization: Visualization, imageSource: string): Promise<CanvasScene> {
-  if (visualization.canvas) return structuredClone(visualization.canvas);
+  if (visualization.canvas) {await loadCanvasFonts(visualization.canvas.elements); return materializeDiagramIcons(structuredClone(visualization.canvas));}
   if (visualization.content.kind === 'excalidraw') {
     // The backend validated and normalized this scene, so it is already a canvas document minus revision.
     const { elements, files } = JSON.parse(visualization.content.source) as Pick<CanvasScene, 'elements' | 'files'>;
-    return { elements, files, selectedElementIds: [], preview: '' };
+    await loadCanvasFonts(elements);
+    return materializeDiagramIcons({ elements, files, selectedElementIds: [], preview: '' });
   }
   if (visualization.content.kind === 'mermaid') {
     if (/%%\s*\{|\bclick\s+|\b(?:img|icon)\s*:|<(?:img|iframe|script|object|embed|link|style)\b/iu.test(visualization.content.source)) {
@@ -48,7 +51,26 @@ export async function importVisualization(visualization: Visualization, imageSou
     selectedElementIds: [], preview: '',
   };
 }
-export async function rasterizeCanvasImage(source: string): Promise<{ dataURL: string; width: number; height: number }> {
+/** Embedded marks retain their source colors and an explicit contrast plate in both themes. */
+export function rasterizeDiagramIcon(image: DiagramIconImage) {
+  return rasterizeCanvasImage(`data:${image.mimeType};base64,${image.base64}`, image.whiteFill ? '#20242d' : '#ffffff');
+}
+export async function materializeDiagramIcons(scene: CanvasScene): Promise<CanvasScene> {
+  const files = {...scene.files};
+  const elements = await Promise.all(scene.elements.map(async element => {
+    const customData = element.customData as Record<string, unknown> | undefined;
+    if (element.type !== 'image' || !customData?.iconImage) return element;
+    if (!isDiagramIconImage(customData.iconImage)) throw new Error('Invalid embedded icon payload.');
+    const image = await rasterizeDiagramIcon(customData.iconImage);
+    const fileId = `icon_${element.id}`;
+    files[fileId] = {id:fileId, mimeType:'image/png', dataURL:image.dataURL, created:0};
+    const remaining = {...customData};
+    delete remaining.iconImage;
+    return {...element, fileId, customData:remaining};
+  }));
+  return {...scene, elements, files};
+}
+export async function rasterizeCanvasImage(source: string, background?: string): Promise<{ dataURL: string; width: number; height: number }> {
   if (!source.startsWith('data:image/')) throw new Error('Image is not available.');
   // SVG is always decoded, sanitized and re-encoded before the browser sees it.
   if (source.startsWith('data:image/svg+xml')) {
@@ -70,7 +92,9 @@ export async function rasterizeCanvasImage(source: string): Promise<{ dataURL: s
   const canvas = document.createElement('canvas');
   canvas.width = Math.max(1, Math.round(image.naturalWidth * ratio));
   canvas.height = Math.max(1, Math.round(image.naturalHeight * ratio));
-  canvas.getContext('2d')!.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const context = canvas.getContext('2d')!;
+  if (background) {context.fillStyle = background; context.fillRect(0, 0, canvas.width, canvas.height);}
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
   return { dataURL: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height };
 }
 class CanvasErrorBoundary extends Component<{ onError: (error: Error) => void; children: ReactNode }, { failed: boolean }> {
@@ -87,6 +111,7 @@ function restoreSceneElements(elements: readonly ExcalidrawElement[]) {
   return restored.map(element => {
     if (element.type !== 'text' || !element.containerId) return element;
     const container = byId.get(element.containerId);
+    if (container?.type === 'arrow' || container?.type === 'line') return {...element, strokeColor:container.strokeColor};
     if (!container || !['rectangle', 'ellipse', 'diamond'].includes(container.type)) return element;
     return { ...element,
       x: element.textAlign === 'center' ? container.x + (container.width - element.width) / 2 : element.x,
@@ -222,6 +247,7 @@ export function mountCanvas(host: HTMLElement, scene: CanvasScene, onChange: (sc
     },
     fit() { api?.scrollToContent(undefined, { fitToContent: true }); },
     async preview(value = current): Promise<string> {
+      await loadCanvasFonts(value.elements);
       const canvas = await exportToCanvas({ elements: elements(value), files: value.files as BinaryFiles, appState: { exportBackground: false }, maxWidthOrHeight: 1000 });
       return canvas.toDataURL('image/png');
     },

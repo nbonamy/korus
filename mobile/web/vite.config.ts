@@ -1,3 +1,4 @@
+import { diagramFontAssets } from '../../client/vue/vite.diagram-fonts';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import path from 'node:path';
@@ -11,7 +12,7 @@ const useSdkSources = process.env.CODEX_APP_SDK_SOURCE === '1';
 export default defineConfig({
   root: __dirname,
   base: './',
-  plugins: [vue(), ...(android ? [] : [appleCryptoBuild()])],
+  plugins: [vue(), diagramFontAssets(), ...(android ? [] : [appleCryptoBuild()])],
   resolve: { dedupe: ['vue', '@codex-app-sdk/core', '@codex-app-sdk/vue'], alias: {
     ...(android ? {} : {
       '@chainsafe/libp2p-noise': path.resolve(__dirname, '../src/apple-crypto/noise.ts'),

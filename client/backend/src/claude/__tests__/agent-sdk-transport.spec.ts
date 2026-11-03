@@ -145,11 +145,14 @@ describe('ClaudeAgentSdkTransport', () => {
     const harness=createQueryHarness();
     const transport=new ClaudeAgentSdkTransport({createQuery:harness.createQuery});
     try {
-      const result=transport.generateText({cwd:'/tmp',prompt:'Read this reference',attachments:[{type:'image',path:file,mimeType:'image/png'}]});
+      const result=transport.generateText({cwd:'/tmp',prompt:'Read this reference',mcpServers:[{name:'diagram_icons_job',url:'http://127.0.0.1:1234/mcp/token',enabledTools:['fetch_tech_icon']}],attachments:[{type:'image',path:file,mimeType:'image/png'}]});
       await vi.waitFor(()=>expect(harness.inputs).toHaveLength(1));
       expect(harness.inputs[0].message.content).toEqual([{type:'text',text:'Read this reference'},{type:'image',source:{type:'base64',media_type:'image/png',data:(await readFile(file)).toString('base64')}}]);
       expect(harness.inputs[0].session_id).toBeTruthy();
-      expect(harness.options[0]).toMatchObject({tools:[],persistSession:false});
+      expect(harness.options[0]).toMatchObject({tools:[],persistSession:false,mcpServers:{diagram_icons_job:{type:'http',url:'http://127.0.0.1:1234/mcp/token'}},allowedTools:['mcp__diagram_icons_job__fetch_tech_icon']});
+      const permission=harness.options[0]!.canUseTool!;
+      expect(await permission('mcp__diagram_icons_job__fetch_tech_icon',{icon:'vue'},{signal:new AbortController().signal,toolUseID:'icon',requestId:'icon'})).toMatchObject({behavior:'allow'});
+      expect(await permission('mcp__other__fetch_tech_icon',{icon:'vue'},{signal:new AbortController().signal,toolUseID:'icon',requestId:'icon'})).toMatchObject({behavior:'deny'});
       harness.emit({type:'result',subtype:'success',session_id:'reference',is_error:false,result:'Read'} as ClaudeSdkMessage);
       await expect(result).resolves.toEqual({text:'Read'});
     } finally {await transport.close();}

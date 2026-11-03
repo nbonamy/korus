@@ -26,6 +26,53 @@ function setup(auto = false) {
 }
 
 describe('Changes Viz workflow', () => {
+  it('shuffles twenty loading labels per run, rotates every five seconds and releases the timer', async () => {
+    // Protect against frozen loading copy, early rotation and timers surviving completion/unmount.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.999);
+    const { wrapper, generate, openViz } = setup();
+    let resolve!: (value: unknown) => void;
+    let reject!: (cause: Error) => void;
+    generate.mockImplementation(() => new Promise((resolveRequest, rejectRequest) => { resolve = resolveRequest; reject = rejectRequest; }));
+    try {
+      await openViz(); await flushPromises();
+      await wrapper.get('.diff-viz__generate').trigger('click'); await flushPromises();
+      const button = () => wrapper.get('.diff-viz__generate');
+      const first = button().text();
+      expect(button().attributes('disabled')).toBeDefined();
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(button().text()).toBe(first);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(button().text()).not.toBe(first);
+      const labels = new Set([first, button().text()]);
+      for (let index = 2; index < 20; index++) {
+        await vi.advanceTimersByTimeAsync(5_000);
+        labels.add(button().text());
+      }
+      expect(labels.size).toBe(20);
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(button().text()).toBe(first);
+      reject(new Error('Try again')); await flushPromises();
+      expect(button().text()).toBe('Generate');
+      expect(vi.getTimerCount()).toBe(0);
+      random.mockReturnValue(0);
+      await button().trigger('click'); await flushPromises();
+      const retryFirst = button().text();
+      expect(retryFirst).not.toBe(first);
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(button().text()).not.toBe(retryFirst);
+      resolve({ kind: 'viz', diagram }); await flushPromises();
+      expect(button().text()).toBe('Regenerate');
+      expect(vi.getTimerCount()).toBe(0);
+      await button().trigger('click'); await flushPromises();
+      const regeneratedFirst = button().text();
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(button().text()).not.toBe(regeneratedFirst);
+      wrapper.unmount();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { if (wrapper.exists()) wrapper.unmount(); random.mockRestore(); vi.useRealTimers(); }
+  });
+
   it('sends a cloneable request across IPC when the selected comparison comes from reactive app state', async () => {
     const { wrapper, generate, openViz } = setup();
     try {

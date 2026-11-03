@@ -12,6 +12,8 @@ test('a built daemon carries only public connection settings and preserves telem
   const directoryLink = process.platform === 'win32' ? 'junction' : 'dir';
   try {
     await mkdir(path.join(temp, 'client/backend'), { recursive: true });
+    await mkdir(path.join(temp, 'client/electron/assets/viz'), {recursive:true});
+    await copyFile(path.join(root, 'client/electron/assets/viz/reference.png'), path.join(temp, 'client/electron/assets/viz/reference.png'));
     await copyFile(path.join(root, 'client/backend/vite.config.ts'), path.join(temp, 'client/backend/vite.config.ts'));
     await copyFile(path.join(root, 'vite.sdk-aliases.ts'), path.join(temp, 'vite.sdk-aliases.ts'));
     for (const name of ['core', 'node_modules']) await symlink(path.join(root, name), path.join(temp, name), directoryLink);

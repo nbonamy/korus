@@ -1,3 +1,4 @@
+import { diagramFontAssets } from '../vue/vite.diagram-fonts';
 import { excalidrawAssets } from '../vue/vite.excalidraw-assets';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
@@ -35,7 +36,7 @@ export default defineConfig({
       ],
     },
   },
-  plugins: [vue(), excalidrawAssets()],
+  plugins: [vue(), excalidrawAssets(), diagramFontAssets()],
   build: {
     outDir: path.resolve(__dirname, '.vite/renderer/main_window'),
     emptyOutDir: true,

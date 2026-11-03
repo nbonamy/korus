@@ -1,3 +1,4 @@
+import { utilityMcpServers } from './diagram-icons/utility-mcp';
 import { utilityImageAttachments } from './agents/utility-image-attachments';
 import type { ExecutionObservation, RequestObservation } from '@workspace/core/usage';
 import { assertPromptSession, requireExpectedSessionId, requirePromptText } from './prompt-input';
@@ -310,6 +311,7 @@ export class BackendDriverRpc {
           cwd: requireString(record.cwd, 'cwd'),
           ...(record.complexity !== undefined ? { complexity: record.complexity as UtilityTaskComplexity } : {}),
           ...(typeof record.tools === 'boolean' ? { tools: record.tools } : {}),
+          ...(record.mcpServers !== undefined ? {mcpServers: utilityMcpServers(record.mcpServers)} : {}),
           ...(record.attachments !== undefined ? {attachments:await utilityImageAttachments(record.attachments)} : {}),
           ...(typeof record.developerInstructions === 'string' ? { developerInstructions: record.developerInstructions } : {}),
           ...(record.outputSchema !== undefined ? { outputSchema: record.outputSchema as never } : {}),

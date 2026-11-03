@@ -1,3 +1,4 @@
+import { utilityMcpServers } from '../diagram-icons/utility-mcp';
 import { ClaudeRequestUsageObserver, type ClaudeRequestUsage, type ClaudeRequestUsageOwner } from './request-usage';
 import { ClaudeModelObserver } from './claude-model-observer';
 import { validConsumption, type Consumption } from '@workspace/core/usage';
@@ -324,10 +325,14 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
     const prompt = new AsyncPushQueue<SDKUserMessage>();
     const sessionId = this.createSessionId();
     const inspect = input.tools === true;
-    const canUseTool: CanUseTool = inspect ? async (name, args) => {
+    const servers = utilityMcpServers(input.mcpServers);
+    const allowedTools = servers.flatMap(server => server.enabledTools.map(tool => `mcp__${server.name}__${tool}`));
+    const canUseTool: CanUseTool = async (name, args, context) => {
+      if (allowedTools.includes(name)) return {behavior: 'allow', updatedInput: args};
+      if (!inspect) return denyInspectionToolUse(name, args, context);
       const updatedInput = await readOnlyWorkspaceTool(name, args, input.cwd);
       return updatedInput ? { behavior: 'allow', updatedInput } : { behavior: 'deny', message: 'This utility only inspects Git and source in its working folder.' };
-    } : denyInspectionToolUse;
+    };
     const runtime = this.createQuery({
       prompt,
       options: {
@@ -335,7 +340,8 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
         persistSession: false,
         tools: inspect ? ['Read', 'Glob', 'Grep', 'Bash'] : [],
         ...(inspect ? { settingSources: [], permissionMode: 'default' as const } : {}),
-        mcpServers: {},
+        mcpServers: Object.fromEntries(servers.map(server => [server.name, {type: 'http' as const, url: server.url}])),
+        ...(allowedTools.length ? {allowedTools} : {}),
         ...(input.outputSchema ? { outputFormat: { type: 'json_schema' as const, schema: input.outputSchema as Record<string, unknown> } } : {}),
       },
     });

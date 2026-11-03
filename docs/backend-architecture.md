@@ -61,7 +61,8 @@ log and socket paths, npm scripts and launchd labels stay brand-neutral.
   patch contents are not embedded in its prompt. Native shapes own their component
   and review metadata; navigation stays limited to files and line ranges present
   in the selected comparison. Role icons resolve to app-owned assets in the
-  renderer, so generated output cannot introduce external image or SVG sources.
+  renderer; fetched marks are embedded as bounded image payloads. The renderer sanitizes
+  SVG and retains each saved diagram's image bytes without an external registry.
   The bundled `korus-stack-diagram` skill owns the shared architecture-diagram
   guidance. Visualize loads it through `read-skill`; Polished Diff Viz injects the
   same skill text into its utility request. Caller-specific output and evidence

@@ -364,6 +364,13 @@ Mermaid import, sanitization, exports and cleanup. The canvas has no composer: t
 normal conversation handles change requests and the agent reads the saved selection
 through its canvas tools.
 
+Stack diagrams use bundled Geist and JetBrains Mono. Their native font numbers
+are stable document data; the renderer registers the family names and awaits each
+font before text measurement, restoration or PNG export. Relationship labels bind
+to their arrows and inherit the arrow color. Retained standalone Diff Viz labels
+use their nearest connection. Both renderer hosts carry the font files and OFL
+notices through the shared Vite asset graph.
+
 Elements, assets, selection, revision and a bounded PNG preview persist through the
 daemon's save method, with no hosted editor or browser database. Saves carry the
 Visualize session ID and expected revision (a final save may finish after the pane

@@ -7,6 +7,7 @@ vi.mock('@excalidraw/excalidraw', () => ({
   Excalidraw: () => null,
   MainMenu: () => null,
   CaptureUpdateAction: {},
+  FONT_FAMILY: {},
   convertToExcalidrawElements: vi.fn(),
   exportToCanvas: vi.fn(),
   restoreElements: vi.fn(elements => structuredClone(elements)),
@@ -17,11 +18,46 @@ vi.mock('@excalidraw/excalidraw', () => ({
   })),
 }));
 vi.mock('@excalidraw/mermaid-to-excalidraw', () => ({ parseMermaidToExcalidraw: convert }));
-import { convertToExcalidrawElements, restoreElements } from '@excalidraw/excalidraw';
+import { convertToExcalidrawElements, restoreElements, exportToCanvas } from '@excalidraw/excalidraw';
 import { isCanvasDocument } from '@workspace/core/visualize-canvas';
 import { importVisualization, mountCanvas } from '../excalidraw-editor';
 const base: Visualization = { id: 'v', title: 'Diagram', content: { kind: 'mermaid', source: '' }, createdAt: '', updatedAt: '' };
 describe('canvas imports', () => {
+  it('waits for bundled diagram fonts before importing or reopening native text', async () => {
+    const pending:Array<()=>void>=[];
+    const added:unknown[]=[];
+    class Face {
+      constructor(readonly family:string,readonly source:string) {}
+      load(){return new Promise<this>(resolve=>pending.push(()=>resolve(this)));}
+    }
+    vi.stubGlobal('FontFace',Face);
+    Object.defineProperty(document,'fonts',{configurable:true,value:{add:(font:unknown)=>added.push(font)}});
+    const elements=[{id:'name',type:'text',x:0,y:0,width:150,height:24,text:'Vue UI',fontFamily:4},{id:'edge',type:'text',x:160,y:0,width:150,height:20,text:'prompts',fontFamily:10}];
+    let complete=false;
+    const importing=importVisualization({...base,content:{kind:'excalidraw',source:JSON.stringify({elements,files:{}})}},'').then(scene=>{complete=true;return scene;});
+    await Promise.resolve();
+    expect(complete).toBe(false);
+    expect(pending).toHaveLength(2);
+    pending.forEach(resolve=>resolve());
+    const scene=await importing;
+    expect(added).toMatchObject([{family:'Geist',source:expect.stringContaining('Geist.woff2')},{family:'JetBrains Mono',source:expect.stringContaining('JetBrainsMono.woff2')}]);
+    await importVisualization({...base,canvas:{...scene,revision:1}},'');
+    expect(added).toHaveLength(2);
+    // PNG exports can run independently of a mounted/imported diagram.
+    Object.defineProperty(document,'fonts',{configurable:true,value:Object.assign(new EventTarget(),{ready:Promise.resolve(),add:(font:unknown)=>added.push(font)})});
+    vi.stubGlobal('ResizeObserver',class {observe(){} disconnect(){}});
+    vi.stubGlobal('requestAnimationFrame',vi.fn());
+    vi.mocked(exportToCanvas).mockResolvedValueOnce({toDataURL:()=> 'data:image/png;base64,YQ=='} as never);
+    const editor=mountCanvas(document.createElement('div'),{elements:[],files:{},selectedElementIds:[],preview:''},vi.fn(),vi.fn());
+    pending.splice(0);
+    const exporting=editor.preview(scene);
+    expect(exportToCanvas).not.toHaveBeenCalled();
+    expect(pending).toHaveLength(2);
+    pending.forEach(resolve=>resolve());
+    expect(await exporting).toBe('data:image/png;base64,YQ==');
+    expect(exportToCanvas).toHaveBeenCalledOnce();
+    editor.dispose();
+  });
   it('renders app-owned native colors without Excalidraw inverting the palette in dark mode', () => {
     const fonts = Object.assign(new EventTarget(), { ready: Promise.resolve() });
     Object.defineProperty(document, 'fonts', { configurable: true, value: fonts });
@@ -66,6 +102,26 @@ describe('canvas imports', () => {
     expect(scene).toStrictEqual({ elements, files: { img: { id: 'img', mimeType: 'image/png', dataURL: 'data:image/png;base64,YQ==', created: 1 } }, selectedElementIds: [], preview: '' });
     expect(isCanvasDocument({ ...scene, revision: 1 })).toBe(true);
     expect(convert).not.toHaveBeenCalled();
+  });
+  it.each([false,true])('loads self-contained icon bytes from diagram data after a restart (saved=%s)', async saved => {
+    const iconImage={mimeType:'image/svg+xml' as const,base64:btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 24"><path fill="#fff" d="M0 0h48v24H0z"/></svg>'),source:'svgl' as const,sourceUrl:'https://svgl.app/library/example.svg',whiteFill:true};
+    const elements=[{id:'brand',type:'image',x:10,y:20,width:80,height:40,customData:{iconImage}}];
+    const native={elements,files:{},selectedElementIds:[],preview:''};
+    vi.stubGlobal('Image',class {naturalWidth=48;naturalHeight=24;src='';async decode(){}});
+    const paint={drawImage:vi.fn(),fillRect:vi.fn(),fillStyle:''};
+    const context=vi.spyOn(HTMLCanvasElement.prototype,'getContext').mockReturnValue(paint as never);
+    const data=vi.spyOn(HTMLCanvasElement.prototype,'toDataURL').mockReturnValue('data:image/png;base64,YQ==');
+    try {
+      const persisted=JSON.parse(JSON.stringify({...base,content:{kind:'excalidraw',source:JSON.stringify(native)},...(saved?{canvas:{...native,revision:2}}:{})}));
+      const scene=await importVisualization(persisted,'');
+      expect(Object.values(scene.files)).toEqual([expect.objectContaining({mimeType:'image/png',dataURL:'data:image/png;base64,YQ=='})]);
+      expect(scene.elements[0]).toMatchObject({id:'brand',x:10,y:20,width:80,height:40});
+      expect(scene.files[scene.elements[0].fileId as string]).toBeDefined();
+      expect(scene.elements[0].customData).not.toHaveProperty('iconImage');
+      expect(paint.fillStyle).toBe('#20242d');
+      expect(paint.drawImage).toHaveBeenCalledOnce();
+      expect(isCanvasDocument({...scene,revision:1})).toBe(true);
+    } finally {context.mockRestore();data.mockRestore();}
   });
   it('restores an authoritative canvas without reparsing its original source', async () => {
     const canvas = { revision: 3, elements: [{ id: 'user', type: 'rectangle', x: 77, y: 31, width: 20, height: 20 }], files: {}, selectedElementIds: [], preview: '' };

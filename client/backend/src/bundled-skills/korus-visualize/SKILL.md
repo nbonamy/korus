@@ -17,6 +17,7 @@ Requires an open pane; tool availability is not activation. Closed pane: ask to 
 - Imported editable canvases are authoritative. read-visualization-canvas for selection/revision, then one edit-visualization-canvas batch: `edits` change existing IDs, `add` appends new elements. The pane saves a new scene once after loading, so re-read the revision before the first edit. Never overwrite user edits by replacing/reimporting original source. Request all elements only if selection context is insufficient.
 - For discovery, ask one native synchronous question with three concrete proposals; use its built-in Other field, never a fourth option. Specific visualization requests go straight to generation.
 - Publish completed diagrams in the pane; keep chat secondary. Do not publish suggestion cards for discovery.
+- `fetch_tech_icon` is available for diagram assets even when the pane is closed; it needs no separate browsing or command permission. Load the shared stack skill for its asset-ID insertion rules.
 - Use conversation/existing visualizations only. Outside browsing, files, commands or research require explicit user request.
 
 ## Architecture and stack diagrams

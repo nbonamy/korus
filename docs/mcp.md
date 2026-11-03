@@ -24,6 +24,25 @@ read [custom-tools.md](custom-tools.md).
   presentation still recognizes `workspace` for retained history. Allow rules,
   review prompts and instructions use the same namespace.
 
+## Diagram icons
+
+`fetch_tech_icon` has a stable catalog entry in regular agent sessions and can fetch
+without an open Visualize pane. The daemon resolves exact marks from the
+stack-diagram source chain and returns bounded base64 payloads, MIME types and
+source/contrast metadata, including available dark variants. It keeps no disk
+cache, in-memory result cache, asset registry or app-owned asset IDs.
+
+Polished Diff Viz receives a private per-invocation endpoint exposing only this
+tool, using an unguessable loopback capability URL and closing in the generation's
+`finally` path. Its MCP configuration is per invocation, independent of
+workspace-tool permissions; it does not disable unrelated provider-configured tools.
+
+Image bytes are embedded directly in the generated diagram. Diff Viz components
+carry their image payload; Visualize image elements carry it in `customData.iconImage`.
+The renderer sanitizes SVG and converts embedded images into the saved canvas's
+own PNG files, preserving source colors and offline/restart loading. Publishing
+and editing use the pane's normal authorization.
+
 ## Enablement And Identity
 
 Backends receive the server through request- or session-local configuration, never
@@ -246,8 +265,8 @@ Registered per authenticated request by independent modules
 ([custom-tools.md](custom-tools.md)).
 
 - **Visualize** tools are advertised from session start because providers may cache
-  tool catalogs, but calls are accepted only while the agent owns an open Visualize
-  session for its current conversation. Instructions say tool availability alone
+  tool catalogs. Publishing and editing require an open Visualize session for the
+  current conversation; `fetch_tech_icon` can run without an open pane. Instructions say tool availability alone
   does not activate Visualize. Mermaid is limited to the families `beautiful-mermaid`
   renders (flowchart, state, sequence, class, ER, XY); other types use SVG, and
   unsupported Mermaid is rejected before it reaches durable state. Generated-image

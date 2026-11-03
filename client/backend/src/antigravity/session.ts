@@ -18,6 +18,7 @@ type SessionOptions = {
   agentId: string; cwd: string; home?: string; sessionId?: string;
   mcpServers: unknown[];
   tools?: boolean | 'read-only';
+  utilityMcpTools?: readonly {server: string; tools: readonly string[]}[];
   /** Not a user conversation: persist no prompts and hide it from history. */
   ephemeral?: boolean;
   changed(event: AntigravityConversationEvent): void;
@@ -205,6 +206,18 @@ export class AcpSession {
 
   private async request(method: string, params: unknown): Promise<unknown> {
     if (!record(params) || !this.transcript || params.sessionId !== this.sessionId || this.disposed || this.loading) throw new Error('Antigravity client request is outside an active session.');
+    if (method === 'session/request_permission' && this.options.utilityMcpTools) {
+      if (!this.active || this.interrupted) return {outcome: {outcome: 'cancelled'}};
+      const call = record(params.toolCall) ? params.toolCall : {};
+      const meta = record(call._meta) ? call._meta : {};
+      const mcp = record(meta.mcp) ? meta.mcp : {};
+      const registered = call.kind === 'other' && meta.is_mcp_tool_call === true
+        && this.options.utilityMcpTools.some(server => server.server === mcp.server && server.tools.includes(String(mcp.tool)));
+      if (registered || meta.is_mcp_tool_call === true) {
+        const option = registered && Array.isArray(params.options) ? params.options.find(value => record(value) && value.kind === 'allow_once') : undefined;
+        return record(option) && typeof option.optionId === 'string' ? {outcome: {outcome:'selected', optionId:option.optionId}} : {outcome:{outcome:'cancelled'}};
+      }
+    }
     if (this.options.tools === false) {
       if (method === 'session/request_permission') return { outcome: { outcome: 'cancelled' } };
       throw new Error('Tools are unavailable during text generation.');

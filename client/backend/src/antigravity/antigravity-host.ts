@@ -1,3 +1,4 @@
+import { utilityMcpServers } from '../diagram-icons/utility-mcp';
 import { normalizePromptContent, promptContentText } from '@codex-app-sdk/core/surface';
 import { promptWithSelectedReferences } from '../agents/prompt-content';
 import { utilityTextModel } from '../agents/utility-text-model';
@@ -152,14 +153,15 @@ export class AntigravityHost implements AgentBackendDriver {
   async generateText(agent: Agent, input: BackendTextGenerationInput): Promise<{ text: string }> {
     if (this.closed) throw new Error('Antigravity host is closed.');
     const inspect = input.tools === true;
-    const session = await this.openSession({ agentId: `generation-${randomUUID()}`, cwd: input.cwd, mcpServers: [], tools: inspect ? 'read-only' : false, ephemeral: true, changed: () => {}, usage: event => this.observeUsage({ ...event, agentId: agent.id }) });
+    const servers = utilityMcpServers(input.mcpServers);
+    const session = await this.openSession({ agentId: `generation-${randomUUID()}`, cwd: input.cwd, mcpServers: servers.map(server => sessionMcpServer(server.url, server.name, [...server.enabledTools])), utilityMcpTools: servers.map(server => ({server:server.name, tools:server.enabledTools})), tools: inspect ? 'read-only' : false, ephemeral: true, changed: () => {}, usage: event => this.observeUsage({ ...event, agentId: agent.id }) });
     this.auxiliary.add(session);
     try {
       if (this.closed) throw new Error('Antigravity host is closed.');
       const selection = utilityTextModel(this.backend, antigravityModels(session.configuration.models), input.complexity);
       await session.setModel(selection.model);
       await session.setMode('default');
-      const prompt = [input.developerInstructions, inspect ? 'Inspect the working folder with read-only Git and source tools. Use simple Git commands without shell operators. For git diff, show or log, include --no-ext-diff --no-textconv. Never write files or modify Git state. Return only the requested final text.' : 'Return only the requested text. Do not call tools.',
+      const prompt = [input.developerInstructions, inspect ? 'Inspect the working folder with read-only Git and source tools. Use simple Git commands without shell operators. For git diff, show or log, include --no-ext-diff --no-textconv. Never write files or modify Git state. Return only the requested final text.' : (servers.length ? 'Return only the requested text. The supplied fetch_tech_icon MCP tool is available; workspace tools are disabled.' : 'Return only the requested text. Do not call tools.'),
         input.outputSchema ? `Return JSON matching this schema: ${JSON.stringify(input.outputSchema)}` : '', input.prompt].filter(Boolean).join('\n\n');
       const turn = session.prompt(prompt, [{type:'text',text:prompt}, ...await acpAttachments(input.attachments ?? [])]);
       await turn.completion;
