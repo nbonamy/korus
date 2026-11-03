@@ -170,6 +170,9 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
     expect(wrapper.find('[aria-label="Reporting range"]').exists()).toBe(false);
     expect(wrapper.find('[aria-label="Usage filters"]').exists()).toBe(false);
     expect(wrapper.text()).not.toContain("Latest report");
+    expect(wrapper.get(".masthead-subtitle").text()).toBe(
+      "Oct 26 – Nov 1 · compared with the previous week",
+    );
     expect(wrapper.findAll(".weekly-card")).toHaveLength(4);
     expect(wrapper.get('[aria-label="Tokens last 7 days"]').text()).toContain(
       "840",

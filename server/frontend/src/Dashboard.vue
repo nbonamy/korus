@@ -10,6 +10,9 @@
       <header class="masthead">
         <div>
           <h1 ref="heading" tabindex="-1">{{ pageTitle }}</h1>
+          <p v-if="page === 'overview' && data" class="masthead-subtitle">
+            {{ weekRange }} · compared with the previous week
+          </p>
         </div>
         <div class="masthead-actions">
           <ElSegmented
@@ -345,6 +348,8 @@ import {
   currentDay,
   utcDay,
 } from "./format";
+import { analyticsDay } from "@workspace/core/analytics-chart";
+import { weekDays } from "./report-data";
 import { consolePages, type ConsolePage } from "./console-pages";
 import { modelLabel } from "./model-label";
 import { modelValue, type ModelMeasure } from "./use-model-comparison";
@@ -437,6 +442,10 @@ watch(to, (day, previous) => {
     start = Date.parse(from.value);
   if (Number.isFinite(delta) && Number.isFinite(start))
     from.value = utcDay(start + delta);
+});
+const weekRange = computed(() => {
+  const week = weekDays(data.value?.range.to ?? to.value);
+  return `${analyticsDay(week[0]!)} – ${analyticsDay(week[6]!)}`;
 });
 const selectedRange = computed(() => {
   const days = (Date.parse(to.value) - Date.parse(from.value)) / 86400000 + 1;

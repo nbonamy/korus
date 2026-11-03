@@ -2,54 +2,43 @@
   <section class="weekly-overview" aria-label="Weekly overview">
     <div class="weekly-cards">
       <RouterLink
-        v-for="card in cards"
-        :key="card.label"
-        class="panel weekly-card"
-        :aria-label="card.description"
-        :to="{ name: card.page, query: { from: days[0], to: data.range.to } }"
+        class="weekly-card weekly-hero"
+        :aria-label="hero.description"
+        :to="{ name: hero.page, query: { from: days[0], to: data.range.to } }"
       >
-        <span class="weekly-icon" aria-hidden="true">
-          <img :src="card.icon" alt="" width="40" height="40" />
-        </span>
         <dl class="weekly-card-copy">
-          <dt>{{ card.label }}</dt>
-          <dd :title="exactMeasurement(card.value, card.measure)">
-            {{ measurement(card.value, card.measure) }}
+          <dt>{{ hero.label }}</dt>
+          <dd :title="exactMeasurement(hero.value, hero.measure)">
+            {{ measurement(hero.value, hero.measure) }}
           </dd>
         </dl>
-        <p
-          class="weekly-change"
-          :data-trend="card.change.direction"
-          :aria-label="card.change.description"
-        >
-          <svg
-            v-if="card.change.direction !== 'flat'"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path
-              :d="
-                card.change.direction === 'up'
-                  ? 'M4 17l7-7 4 4 6-9M15 5h6v6'
-                  : 'M4 7l7 7 4-4 6 9M15 19h6v-6'
-              "
-            />
-          </svg>
-          {{ card.change.label }}
-        </p>
+        <WeeklyChange :change="hero.change" />
       </RouterLink>
+      <div class="panel weekly-list">
+        <RouterLink
+          v-for="card in rows"
+          :key="card.label"
+          class="weekly-card weekly-row"
+          :aria-label="card.description"
+          :to="{ name: card.page, query: { from: days[0], to: data.range.to } }"
+        >
+          <dl class="weekly-card-copy">
+            <dt>{{ card.label }}</dt>
+            <dd :title="exactMeasurement(card.value, card.measure)">
+              {{ measurement(card.value, card.measure) }}
+            </dd>
+          </dl>
+          <WeeklyChange :change="card.change" />
+        </RouterLink>
+      </div>
     </div>
     <MetricChart
       title="Weekly turns"
       :days="days"
       :series="series"
       measure="count"
-      area="none"
+      variant="bar"
+      :day-labels="dayLabels"
     />
   </section>
   <section
@@ -71,7 +60,10 @@
         </thead>
         <tbody>
           <tr v-for="row in data.weeklyTopUsers" :key="row.rank">
-            <th scope="row">User {{ row.rank }}</th>
+            <th scope="row">
+              <span class="user-rank" aria-hidden="true">{{ row.rank }}</span
+              >User {{ row.rank }}
+            </th>
             <td data-label="Turns">{{ count(row.turns) }}</td>
             <td data-label="Tokens" :title="count(row.totalTokens)">
               {{ tokens(row.totalTokens) }}
@@ -80,7 +72,12 @@
               {{ money(row.estimatedCostUsd) }}
             </td>
             <td data-label="Share of turns">
-              {{ percent(Number(row.turnShare)) }}
+              <div class="share">
+                <span class="share-bar" aria-hidden="true"
+                  ><i :style="{ width: `${Number(row.turnShare) * 100}%` }"
+                /></span>
+                {{ percent(Number(row.turnShare)) }}
+              </div>
             </td>
           </tr>
           <tr v-if="!data.weeklyTopUsers.length">
@@ -94,12 +91,10 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { RouterLink } from "vue-router";
+import { analyticsDay } from "@workspace/core/analytics-chart";
 import type { TelemetryMetrics } from "@workspace/core/telemetry-metrics";
 import MetricChart from "./MetricChart.vue";
-import activeUsersIcon from "./assets/metrics/active-users-v1.png";
-import newInstallsIcon from "./assets/metrics/new-installs-v1.png";
-import weeklyTokensIcon from "./assets/metrics/weekly-tokens-v1.png";
-import weeklySpendIcon from "./assets/metrics/weekly-spend-v1.png";
+import WeeklyChange from "./WeeklyChange.vue";
 import {
   count,
   tokens,
@@ -108,6 +103,8 @@ import {
   percent,
   measurement,
   exactMeasurement,
+  currentDay,
+  viewerTimeZone,
 } from "./format";
 import { addAmounts, weekDays, shiftDay } from "./report-data";
 const props = defineProps<{
@@ -169,8 +166,15 @@ const cards = computed(() => {
     );
   return [
     {
+      label: "Tokens last 7 days",
+      page: "tokens",
+      measure: "tokens" as const,
+      description: "Tokens last 7 days",
+      value: weekly("totalTokens"),
+      change: change(weekly("totalTokens"), weekly("totalTokens", -7)),
+    },
+    {
       label: "WAU",
-      icon: activeUsersIcon,
       page: "activity",
       measure: "count" as const,
       description: "Weekly active installs",
@@ -182,7 +186,6 @@ const cards = computed(() => {
     },
     {
       label: "New installs",
-      icon: newInstallsIcon,
       page: "activity",
       measure: "count" as const,
       description: "Weekly new installs",
@@ -190,17 +193,7 @@ const cards = computed(() => {
       change: change(currentNew, priorNew),
     },
     {
-      label: "Tokens last 7 days",
-      icon: weeklyTokensIcon,
-      page: "tokens",
-      measure: "tokens" as const,
-      description: "Tokens last 7 days",
-      value: weekly("totalTokens"),
-      change: change(weekly("totalTokens"), weekly("totalTokens", -7)),
-    },
-    {
       label: "Spend last 7 days",
-      icon: weeklySpendIcon,
       page: "spend",
       measure: "usd" as const,
       description: "Spend last 7 days",
@@ -212,6 +205,17 @@ const cards = computed(() => {
     },
   ];
 });
+const hero = computed(() => cards.value[0]!);
+const rows = computed(() => cards.value.slice(1));
+// The newest day is still accumulating only when it is the viewer's today.
+const live = computed(
+  () => props.data.range.to === currentDay(viewerTimeZone()),
+);
+const dayLabels = computed(() =>
+  live.value
+    ? { [props.data.range.to]: `${analyticsDay(props.data.range.to)} · today` }
+    : undefined,
+);
 const series = computed(() => {
   const byDay = new Map(props.data.daily.map((row) => [row.day, row.turns]));
   return [
@@ -219,10 +223,13 @@ const series = computed(() => {
       label: "This week",
       color: "var(--chart-1)",
       values: days.value.map((day) => byDay.get(day) ?? null),
+      partial: days.value.map(
+        (day) => live.value && day === props.data.range.to,
+      ),
     },
     {
       label: "Previous week",
-      color: "var(--color-text-muted)",
+      color: "var(--color-border-strong)",
       values: days.value.map((day) => byDay.get(shiftDay(day, -7)) ?? null),
     },
   ];
@@ -230,7 +237,8 @@ const series = computed(() => {
 </script>
 <style scoped>
 .top-users {
-  margin-top: 20px;
+  margin-top: 16px;
+  border-radius: 12px;
 }
 .top-users .panel-heading {
   margin-bottom: 12px;
@@ -242,108 +250,145 @@ const series = computed(() => {
   font-weight: 500;
   color: var(--color-text);
 }
+.user-rank {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-right: 10px;
+  border-radius: 50%;
+  background: var(--color-primary-container);
+  color: var(--color-on-primary-container);
+  font-size: 11px;
+  font-weight: 600;
+}
+.share {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.share-bar {
+  width: 120px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-surface-base);
+  overflow: hidden;
+}
+.share-bar i {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: 3px;
+  background: var(--chart-1);
+}
 
 .weekly-overview {
   display: grid;
-  grid-template-columns: minmax(400px, 0.65fr) minmax(0, 1fr);
-  gap: 20px;
+  grid-template-columns: minmax(360px, 440px) minmax(0, 1fr);
+  gap: 16px;
   align-items: stretch;
 }
 .weekly-cards {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 .weekly-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 40px;
-  align-content: center;
-  align-items: center;
-  gap: 6px 8px;
-  padding: 16px;
-  border-radius: 12px;
-  min-height: 160px;
   color: var(--color-text);
   text-decoration: none;
-  transition:
-    border-color 150ms ease,
-    box-shadow 150ms ease;
-}
-.weekly-card:hover {
-  border-color: var(--color-primary);
-  box-shadow: var(--shadow-sm);
 }
 .weekly-card:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 3px;
 }
-.weekly-icon {
-  display: grid;
-  place-items: center;
-  grid-column: 2;
-  grid-row: 1;
-  width: 40px;
-  height: 40px;
-}
-.weekly-icon img {
-  display: block;
-  width: 40px;
-  height: 40px;
-  object-fit: contain;
-}
 .weekly-card-copy {
   display: contents;
 }
 .weekly-card dt {
-  grid-column: 1;
-  grid-row: 1;
-  color: var(--color-text);
+  color: inherit;
   font-size: 13px;
   font-weight: 500;
 }
 .weekly-card dd {
-  grid-column: 1 / -1;
   margin: 0;
-  font-size: 34px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.045em;
-  line-height: 1.15;
+  overflow-wrap: normal;
 }
-.weekly-change {
-  grid-column: 1 / -1;
+.weekly-hero {
   display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 190px;
+  padding: 24px;
+  border-radius: 16px;
+  background: linear-gradient(
+    155deg,
+    var(--color-primary),
+    var(--color-secondary)
+  );
+  color: var(--color-on-primary);
+  transition: box-shadow 150ms ease;
+}
+.weekly-hero:hover {
+  box-shadow: var(--shadow-md);
+}
+.weekly-hero dt {
+  opacity: 0.9;
+}
+.weekly-hero dd {
+  font-size: 60px;
+  line-height: 1;
+}
+.weekly-hero :deep(.weekly-change) {
+  background: rgb(255 255 255 / 20%);
+  color: inherit;
+}
+.weekly-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  padding: 4px 20px;
+  border-radius: 12px;
+}
+.weekly-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 5px;
-  color: var(--color-text-muted);
-  font-size: 14px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-border);
 }
-.weekly-change[data-trend="up"] {
-  color: var(--color-success);
+.weekly-row:last-child {
+  border-bottom: 0;
 }
-.weekly-change[data-trend="down"] {
-  color: var(--color-error);
+.weekly-row dd {
+  font-size: 22px;
+  line-height: 1.2;
 }
-.weekly-change svg {
-  width: 17px;
-  height: 17px;
+.weekly-row:hover dt {
+  color: var(--color-primary);
 }
 .weekly-overview > .chart {
   margin: 0;
+  border-radius: 12px;
 }
 @media (max-width: 1100px) {
   .weekly-overview {
     grid-template-columns: minmax(0, 1fr);
   }
   .weekly-cards {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 @media (max-width: 820px) {
   .weekly-cards {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 @media (max-width: 560px) {
@@ -390,23 +435,21 @@ const series = computed(() => {
     color: var(--color-text-muted);
     font-size: 11px;
   }
-  .weekly-card {
-    min-height: 132px;
-    padding: 14px;
+  .share {
+    justify-content: flex-start;
   }
-  .weekly-icon {
-    display: none;
+  .share-bar {
+    width: 72px;
   }
-  .weekly-card dt {
-    grid-column: 1 / -1;
-    font-size: 12px;
-    line-height: 1.4;
+  .weekly-hero {
+    min-height: 150px;
+    padding: 20px;
   }
-  .weekly-card dd {
-    font-size: clamp(22px, 6vw, 28px);
+  .weekly-hero dd {
+    font-size: 44px;
   }
-  .weekly-change {
-    font-size: 13px;
+  .weekly-row dd {
+    font-size: 20px;
   }
 }
 </style>
