@@ -6,7 +6,7 @@ import type { AntigravityConversationSnapshot } from '@workspace/core/contracts/
 
 import { translate } from './i18n';
 import { localizedErrorMessage } from './i18n/errors';
-import { computed, ref, watch } from 'vue';
+import { computed, ref, shallowRef, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import type { PlanReviewResolution } from '@workspace/core/plan-review';
 import type { AgentGitBranchInput, AgentGitCommitInput, AgentGitMessageGenerationInput, AgentGitMessageGenerationResult, AgentGitPullRequestInput, AgentGitPushInput, AgentGitStageInput, AgentGitUpdateFromBaseInput, AgentGitUpdateFromBaseResult, AgentGitWorkflow } from '@workspace/core/contracts';
@@ -84,13 +84,14 @@ const missionImplementationStartProgress = ref<MissionImplementationStartProgres
 /** An agent asked to open a Mission. The sequence makes repeated requests for one Mission distinct. */
 const missionFocusRequest = ref<{ missionId: string; sequence: number } | null>(null);
 let missionFocusSequence = 0;
-const codexConversationFramesByAgentId = ref<Record<string, {
+// Frames are replaced, never mutated, so shallow refs spare the whole message tree (and the replica) deep reactive proxies.
+const codexConversationFramesByAgentId = shallowRef<Record<string, {
   replica: CodexConversationReplica;
   revision: number;
   snapshot: CodexConversationSnapshot;
   threadId: string;
 }>>({});
-const claudeConversationFramesByAgentId = ref<Record<string, {
+const claudeConversationFramesByAgentId = shallowRef<Record<string, {
   replica: ClaudeConversationReplica;
   revision: number;
   snapshot: ClaudeConversationSnapshot;
