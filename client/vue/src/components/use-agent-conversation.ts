@@ -46,12 +46,26 @@ export type AgentConversationActions = {
 };
 
 
+/** Returns the same Set instance for as long as the requested members stay the same. */
+function stableSet() {
+  let held: ReadonlySet<string> = new Set();
+  return {
+    current(source: Iterable<string>): ReadonlySet<string> {
+      const next = new Set(source);
+      if (next.size !== held.size || [...next].some(id => !held.has(id))) held = next;
+      return held;
+    },
+  };
+}
+
 export function agentConversationState(view: () => AgentConversationView, extensions: {
   followUpBehavior?: () => AppGeneralSettings['followUpBehavior'];
   mentionGroups?: () => NonNullable<CodexConversationPaneState['catalogs']>['mentionGroups'];
   modelMenuItems?: () => CodexComposerMenuItem[];
 } = {}): CodexConversationPaneState {
   const provider = () => view().codexSnapshot ?? view().claudeSnapshot ?? view().antigravitySnapshot;
+  // Every message block receives this set as a prop; a fresh Set per read would re-render all of them on every event.
+  const answeredIds = stableSet();
   const approvalPreset = () => {
     const allowed = view().capabilities.approvalPresets ?? [];
     const stored = approvalPresetFromDefaults(view().agent.backendDefaults);
@@ -79,7 +93,7 @@ export function agentConversationState(view: () => AgentConversationView, extens
         if (antigravity) return antigravityPaneClientRequests(antigravity);
         return view().codexSnapshot?.clientRequests ?? claudePaneClientRequests(view().claudeSnapshot);
       },
-      get answeredClientRequestIds() { return new Set(provider()?.answeredClientRequestIds ?? view().answeredClientRequestIds); },
+      get answeredClientRequestIds() { return answeredIds.current(provider()?.answeredClientRequestIds ?? view().answeredClientRequestIds); },
       get goal() { return view().codexSnapshot?.goal ?? view().agent.goal ?? null; },
       get queuedPrompts() { return view().queuedPrompts; },
       get contextUsage() { return provider()?.contextUsage ?? view().agent.contextUsage ?? null; },
