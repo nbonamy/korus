@@ -1,4 +1,5 @@
 import { product } from './product';
+import { missionLeadAgentId } from './mission-attention';
 import { interactiveReviewMarkdownGuidance } from './plan-review';
 import type { Mission, MissionRun, MissionStage, MissionTicketAssignment, MissionWorkspace } from './mission-types';
 import type { Agent } from './contracts';
@@ -93,6 +94,9 @@ export function missionDeveloperInstructions(mission: Mission, run: MissionRun, 
     run.stage === 'implementation' && mission.execution?.parallelImplementation
       ? 'Other agents may be working concurrently in this same worktree, including on the same files. Before any Git index mutation, call acquire-mission-commit-lock and wait for it to succeed. Hold the lock through staging, staged-diff inspection and commit, then call release-mission-commit-lock. Inspect existing staging first; if you cannot safely attribute it, stop and ask the user. If you detect a conflict or cannot safely distinguish your changes, stop work and ask the user. Preserve all other agents’ work. Commit only changes you made for your assigned ticket. If a file contains changes from multiple agents, stage and commit only your own lines or hunks; inspect the staged diff before committing. Never stage the entire worktree or commit another agent’s staged changes. Other agents may leave uncommitted changes.'
       : '',
+    run.stage === 'implementation'
+      ? `Persist through ordinary command, test and environment failures: diagnose the cause, try a reasonable alternative and continue toward the assigned ticket. Mission lead agent ID: ${missionLeadAgentId(mission) ?? 'unavailable'}. This assignment authorizes send-message to that lead for a concrete blocker requiring coordination or a human decision: include your agent ID, ticket ID, attempts, preserved progress and the smallest action needed. Do not silently abandon work or claim completion. Honor explicit user Stop and never bypass approvals or unsafe Git boundaries.`
+      : 'The daemon supervisor schedules implementation workers and sends short updates with worker agent IDs in context. Track those assignments and help resolve escalated blockers; do not duplicate scheduling, acknowledge informational updates or silently restart stopped workers.',
     run.stage !== 'implementation' ? 'As Mission lead, use reopen-mission-stage to return to an earlier reached stage when the user requests revisions. Viewing a stage does not change it. Stop repository workers before backtracking; user approval is still required to advance Requirements, Tickets and Review.' : '',
     run.stage === 'requirements' ? `Requirements always use interactive review. The Mission UI displays the canonical requirements automatically. Do not call display-markdown for requirements or their revisions; use write-mission-artifact and submit-mission-result instead. Write the canonical Mission brief in this format: ${interactiveReviewMarkdownGuidance}` : '',
     run.skills.length ? `Load the assigned procedure through ${product.mcpServerName} MCP before acting: ${run.skills.map(skill => `read-skill with name="${skill.name}"`).join(', ')}.` : 'This stage has no agent-run skill.',

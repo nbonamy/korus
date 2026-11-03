@@ -70,6 +70,10 @@ export type MissionRun = {
   /** Canonical ticket content when the draft started; completion is excluded. */
   draftTicketsBaseHash?: string;
   implementationResult?: { changes: string; tests: string };
+  /** Automatic continuations consumed by this assignment; never reset on daemon restart. */
+  recoveryAttempts?: number;
+  recoveryPending?: true;
+  completedTurnIds?: string[];
 };
 export type MissionWorkspace = { repositoryPath: string; path: string; branch: string; baseSha?: string; deleted?: true; commitLock?: { agentId: string; runId: string; turnId: string } };
 export type MissionDelivery = {
@@ -92,6 +96,10 @@ export type MissionExecution = {
   workspaces?: MissionWorkspace[];
   deliveries?: MissionDelivery[];
   runs: MissionRun[];
+  /** Explicit Stop fences automated prompts until a user resumes the agent. */
+  stoppedAgentIds?: string[];
+  /** Pending supervisor messages survive daemon restart; IDs let the lead recognize replays. */
+  supervisorUpdates?: { id: string; runId: string; fromAgentId: string; leadId: string; content: string; delivered?: true }[];
 };
 export type Mission = {
   id: string;

@@ -783,6 +783,19 @@ publishes only after saving.
   workers, not external Git processes or concurrent edits to files.
   Each worktree records a baseline commit for whole-Mission diff
   review. Failed or cancelled attempts keep their workspace and conversation.
+  An implementation worker ending a known provider turn without submitting its
+  unfinished assignment receives at most two automatic continuations in that same
+  conversation. The budget and completed-turn identities persist with the run.
+  Approval waits, provider-managed retries, stale assignments and explicit user Stop
+  do not trigger continuation. Exhausted recovery requires explicit retry.
+  User Stop cancels active assignments before provider interruption, removes queued
+  Mission prompts and fences late completions and restart recovery. Stopping the lead
+  holds supervisor updates until the user resumes that agent.
+  The supervisor keeps scheduling authority and reports assignment, acceptance,
+  recovery, failure and cancellation to the lead through short messages. Hidden
+  context carries Mission, run, ticket, worker/lead IDs, repository/worktree and the
+  next decision. A persisted outbox retries messages rejected by the messaging
+  boundary; update IDs identify possible replays after interrupted delivery.
   Implementation assignments bind a stable ticket ID to the run and repository;
   one-based ticket numbers are display context. Ticket authoring must require local
   commits; implementation assignments authorize and require committed ticket changes

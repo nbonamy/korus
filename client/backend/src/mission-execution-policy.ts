@@ -40,11 +40,26 @@ export function stageKickoffPrompt(mission: Mission, run: MissionRun): string {
     const assignment = missionRunAssignment(mission, run);
     const ticketNumber = assignment?.ticketNumber ?? (run.ticketIndex ?? 0) + 1;
     const context = `The tickets are approved. Begin assigned ticket ${ticketNumber}. Your assignment is ${JSON.stringify(assignment)}. Read get-mission-assignment, then implement only this ticket in your assigned worktree. Commit all your ticket changes before submitting the result, even if the ticket or tracker comments say not to commit. Local commits are authorized and required; push, merge and PR creation are not. If you cannot commit safely, report a blocker and do not submit completion. Report progress in this Mission conversation and submit summary, ticketId and implementation evidence including commit SHAs through submit-mission-result.`;
-    return `<context>\n${context.replace(/<\/?context>/giu, tag => tag.replace('<', '&lt;'))}\n</context>\n\nStart ticket ${ticketNumber}${assignment ? `: ${assignment.title}` : ''}`;
+    return `<context>\n${missionRunPromptMarker(run.id)}${context.replace(/<\/?context>/giu, tag => tag.replace('<', '&lt;'))}\n</context>\n\nStart ticket ${ticketNumber}${assignment ? `: ${assignment.title}` : ''}`;
   }
   return 'The implementation is approved. Begin the Mission review now and prepare the delivery decision for the user.';
 }
 
 export function sameSkills(left: MissionRun['skills'], right: MissionRun['skills']): boolean {
   return left.length === right.length && left.every((skill, index) => skill.name === right[index]?.name && skill.path === right[index]?.path);
+}
+
+/** Identifies queued Mission work so Stop removes only supervisor-owned prompts. */
+export function missionRunPromptMarker(runId: string): string { return `Mission run: ${runId}\n`; }
+
+export function missionRecoveryPrompt(mission: Mission, run: MissionRun): string {
+  const context = [
+    missionRunPromptMarker(run.id).trim(),
+    `Supervisor continuation ${run.recoveryAttempts}/2 for unfinished ticket ${JSON.stringify(missionRunAssignment(mission, run))}.`,
+    'Your previous turn ended without submit-mission-result. Preserve your worktree, commits and conversation; inspect the current assignment and continue from existing progress.',
+    'Diagnose failed commands or checks and try a reasonable alternative. Do not give up at the first failure. Do not repeat unsafe or ambiguous non-idempotent actions.',
+    'Submit the assigned ticket with actual verification and commit SHAs when complete. If blocked by authorization, missing credentials, unsafe shared changes or a human decision, tell the Mission lead the exact blocker, attempts and smallest action needed; then stop. Do not claim completion or bypass approval.',
+    'This continuation does not authorize push, merge, PR creation, stage advancement or overriding an explicit user Stop.',
+  ].join('\n');
+  return `<context>\n${context.replace(/<\/?context>/giu, tag => tag.replace('<', '&lt;'))}\n</context>\n\nContinue the assigned ticket from your existing progress.`;
 }

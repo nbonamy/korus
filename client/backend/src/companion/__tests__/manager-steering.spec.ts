@@ -10,6 +10,7 @@ import type { Agent } from '@workspace/core/contracts';
 import type { AgentBackendDriver } from '@workspace/core/backend-driver';
 import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { companionTarget } from '@workspace/core/companion-protocol';
+import { createMission } from '@workspace/core/missions';
 import { AppBackendServer } from '../../server';
 import { BackendDriverRpc } from '../../driver-rpc';
 import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
@@ -75,6 +76,26 @@ async function fixture(status: 'idle' | 'working' | 'awaitingInput', rejectSteer
 }
 
 describe('mobile prompt admission', () => {
+  it('keeps the released phone Stop request and Mission ticket response compatible during recovery', async () => {
+    const f = await fixture('working');
+    const worker = f.snapshot.agents[0]!;
+    const mission = createMission(f.snapshot, { outcome: 'Checkout', workflowType: 'shapeAndShipFeature', teamId: worker.teamId!, orchestratorMemberId: worker.id });
+    mission.stage = 'implementation';
+    mission.artifacts.tickets = [{ title: 'Checkout', repositoryPath: worker.folder!, done: false }];
+    mission.execution!.runs = [{ id: 'mission-run-phone', stage: 'implementation', memberId: worker.id, workerId: worker.id,
+      ticketIndex: 0, repositoryPath: worker.folder!, status: 'running', skills: [], feedback: '', startedAt: '', recoveryAttempts: 1 }];
+    f.snapshot.queuedPrompts = [{ id: 'recovery', agentId: worker.id, text: '<context>\nMission run: mission-run-phone\nContinue existing progress.\n</context>', createdAt: '' }];
+    // Released phone wire shape: no recovery fields or capability negotiation.
+    const target = { hostId: f.command.target.hostId, locationId: 'local', teamId: 'team-test', agentId: 'agent-phone', sessionId: '{"kind":"codex","threadId":"thread-phone"}' };
+    expect(await f.gateway.request('phone', 'agent.interrupt', target)).toStrictEqual({});
+    expect(f.snapshot.queuedPrompts).toStrictEqual([]);
+    const workspace = await f.gateway.request('phone', 'snapshot.get', {}) as { missionProgress: { id: string; tickets: unknown[] }[] };
+    expect(workspace.missionProgress.find(value => value.id === mission.id)!.tickets).toStrictEqual([
+      { number: 1, title: 'Checkout', state: 'cancelled', repository: 'phone', agentId: 'agent-phone' },
+    ]);
+    expect(f.sendPrompt).not.toHaveBeenCalled();
+  });
+
   it.each(['steer', 'delete'] as const)('rechecks the session at the backend before a queued %s', async action => {
     const f = await fixture('working', false, agent => { agent.backendSession = { kind: 'codex', threadId: 'replacement' }; });
     f.snapshot.queuedPrompts = [{ id: 'selected', createdAt: '', agentId: 'agent-phone', text: 'Original session' }];

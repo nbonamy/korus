@@ -10,6 +10,48 @@ import { applyMissionScreenshotFixture } from '../mission-screenshot-fixture';
 import { missionCreatedWorkspaces } from '@workspace/core/mission-execution';
 
 describe('mission backend boundary', () => {
+  it('persists user Stop and removes a queued Mission recovery before provider interruption', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const worker = snapshot.agents[0]!;
+    worker.backendSession = { kind: 'codex', threadId: 'mission-worker' }; worker.status = { type: 'working' };
+    const mission = createMission(snapshot, { outcome: 'Checkout', workflowType: 'shapeAndShipFeature', teamId: worker.teamId!, orchestratorMemberId: worker.id });
+    mission.stage = 'implementation';
+    mission.artifacts.tickets = [{ title: 'Checkout', repositoryPath: worker.folder!, done: false }];
+    mission.execution!.runs = [{ id: 'mission-run-stop', stage: 'implementation', memberId: worker.id, workerId: worker.id,
+      ticketIndex: 0, repositoryPath: worker.folder!, status: 'running', skills: [], feedback: '', startedAt: '' }];
+    const sendPrompt = vi.fn().mockResolvedValue({ backendSession: worker.backendSession, turnId: 'recovery' });
+    let server!: AppBackendServer; let disk: unknown;
+    const completed = (turnId: string, status = 'completed') => server.emitEvent({
+      agentId: worker.id, backend: 'codex', threadId: 'mission-worker', type: 'codex.conversationEventReceived',
+      payload: { revision: 1, event: { seq: 1, occurredAt: '', origin: 'notification', turnId,
+        type: 'turn.completed', payload: { status, error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null } } },
+    } as Parameters<AppBackendServer['emitEvent']>[0]);
+    const interrupt = vi.fn(async () => {
+      expect(snapshotFromPersistedState(disk).missions![0]!.execution!.runs[0]!.status).toBe('cancelled');
+      completed('unfinished', 'interrupted');
+      return { backendSession: worker.backendSession! };
+    });
+    const driver: AgentBackendDriver = {
+      backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }), getCapabilities: () => codexBackendCapabilities,
+      sendPrompt, interrupt, respondToAgentRequest: async () => undefined, onEvent: () => () => {}, close: async () => {},
+    };
+    server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
+      saveSnapshot: async value => { disk = persistedStateFromSnapshot(value); } });
+    try {
+      completed('unfinished');
+      await vi.waitFor(() => expect(snapshot.queuedPrompts).toHaveLength(1));
+      await server.handleMessage({ jsonrpc: '2.0', id: 'stop', method: backendMethods.agentInterrupt, params: { agentId: worker.id } });
+      server.emitEvent({ agentId: worker.id, type: 'agent.statusChanged', payload: { type: 'idle' } });
+      completed('late-completion');
+      expect(interrupt).toHaveBeenCalledOnce();
+      expect(snapshot.queuedPrompts).toHaveLength(0);
+      expect(snapshot.missions![0]!.execution!.runs[0]!.status).toBe('cancelled');
+      expect(sendPrompt).not.toHaveBeenCalled();
+      expect(snapshotFromPersistedState(disk).missions![0]!.artifacts.tickets[0]!.done).toBe(false);
+    } finally { await server.close(); }
+  });
+
   it('sends Update from main conflicts to the Mission repository worker without changing delivery', async () => {
     const exec = promisify(execFile);
     const root = await mkdtemp(join(tmpdir(), 'mission-update-conflict-'));
@@ -223,10 +265,11 @@ describe('mission backend boundary', () => {
       completed('compact-turn');
       await new Promise(resolve => setTimeout(resolve, 0));
       expect(currentRun().status).toBe('running');
-      // A genuine work completion without a result still fails the assignment.
+      // A genuine work completion without a result continues the same assignment.
       completed('work-turn');
       server.emitEvent({ agentId: worker.id, type: 'agent.statusChanged', payload: { type: 'idle' } });
-      await vi.waitFor(() => expect(currentRun().status).toBe('failed'));
+      await vi.waitFor(() => expect(currentRun()).toMatchObject({ status: 'running', recoveryAttempts: 1 }));
+      await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledTimes(2));
     } finally { await server.close(); }
   });
 

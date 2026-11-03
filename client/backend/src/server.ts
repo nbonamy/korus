@@ -39,6 +39,7 @@ import type { Requirements } from './requirements';
 import { backendCodexHomeDir } from './state';
 import { isProviderConnection, type ProviderAuthentication, type ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
 import { MissionExecutionService } from './mission-execution-service';
+import { missionRunPromptMarker } from './mission-execution-policy';
 import { applyMissionDebugFixture } from './mission-debug-fixtures';
 import { applyMissionScreenshotFixture, isMissionScreenshotAgent, missionScreenshotConversation, missionScreenshotModel } from './mission-screenshot-fixture';
 import { createVisualizeDebugFixture } from './visualize-debug-fixtures';
@@ -812,6 +813,13 @@ export class AppBackendServer {
         await this.agentPrompts.sendAndWaitForAcceptance(agent, prompt);
       },
       sendMessage: this.sendAgentMessage,
+      cancelPendingPrompts: (agentId, runIds) => {
+        for (const prompt of this.snapshot.queuedPrompts ?? []) {
+          if (prompt.agentId === agentId && runIds.some(id => prompt.text.startsWith(`<context>\n${missionRunPromptMarker(id)}`))) {
+            this.agentPrompts.dequeue(agentId, prompt.id);
+          }
+        }
+      },
       interrupt: agent => this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent }),
       isCommitLockOwnerStopped: async agent => {
         if (!agent.backendSession) return false;
@@ -2982,6 +2990,7 @@ export class AppBackendServer {
               await this.agentPrompts.sendAndWaitForAcceptance(agent, prompt, options, expectedSessionId, clientId);
               result = this.snapshot;
             } else result = this.agentPrompts.send(agentId, prompt, options, clientId);
+            await this.missionExecution.resumeAgent(agent.id);
             if (agent.threadFlags === previousFlags && agent.suggestedPrompt === previousSuggestion) this.clearTurnHints(agent);
             await this.persistSnapshotOnly();
             return result;
@@ -3009,6 +3018,7 @@ export class AppBackendServer {
           // Receipt-based admission starts immediately or rejects; it cannot enqueue.
           if (startIfIdle && this.agentPrompts.canStart(agent)) {
             await this.agentPrompts.sendAndWaitForAcceptance(agent, prompt, options, expectedSessionId, clientId);
+            await this.missionExecution.resumeAgent(agent.id);
             await this.persistSnapshotOnly();
             return this.snapshot;
           }
@@ -3026,6 +3036,7 @@ export class AppBackendServer {
             throw error;
           }
           agent.backendSession = result.backendSession;
+          await this.missionExecution.resumeAgent(agent.id);
           this.clearTurnHints(agent);
           await this.persistSnapshotOnly();
           return this.snapshot;
@@ -3104,6 +3115,7 @@ export class AppBackendServer {
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentInterrupt, { agentId }, async (agent) => {
           this.stoppingAgents.add(agent.id);
           try {
+            await this.missionExecution.stopAgent(agent.id);
             this.recoveryTurns.delete(agent.id);
             if (agent.autoResumePending) {
               delete agent.autoResumePending;
@@ -4349,7 +4361,11 @@ export class AppBackendServer {
       if (turnId) this.missionExecution.agentStarted(fullEvent.agentId, turnId);
     }
     if (fullEvent.agentId && providerConversationEventView(fullEvent).type === 'turn.completed') {
-      void this.missionExecution.agentFinished(fullEvent.agentId, providerConversationEventView(fullEvent).turnId).catch(error => warnMain('missions', 'failed to record mission completion', { message: String(error) }));
+      const view = providerConversationEventView(fullEvent);
+      const payload = view.payload as { status?: string; willRetry?: boolean; turn?: { status?: string } } | undefined;
+      const status = payload?.status ?? payload?.turn?.status;
+      const recover = (status === 'completed' || status === 'failed') && !payload?.willRetry;
+      if (!payload?.willRetry) void this.missionExecution.agentFinished(fullEvent.agentId, view.turnId, recover).catch(error => warnMain('missions', 'failed to record mission completion', { message: String(error) }));
     }
     this.agentRequests.record(fullEvent);
     this.emitBackendEvent(fullEvent);

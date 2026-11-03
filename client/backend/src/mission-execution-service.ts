@@ -12,7 +12,7 @@ import { missionLeadAgentId } from '@workspace/core/mission-attention';
 import { missionImplementationBusy, missionRunAssignment, missionRunTicketIndex, pendingMissionRun, type MissionArtifactReadResult, type MissionArtifactWriteInput, type MissionExecutionInput, type MissionImplementationStartProgress, type MissionResultInput, type MissionReviewFindingInput, type MissionReviewFindingUpdateInput, type MissionRun, type MissionTicketDraftInput, type MissionTicketDraftResult, type MissionToolContext } from '@workspace/core/mission-execution';
 import type { MissionService } from './mission-service';
 import { MissionAgentTools, missionFindingFixPrompt, missionTicketsMarkdown } from './mission-agent-tools';
-import { missionAgent, missionTeamRepositories, sameSkills, stageKickoffPrompt } from './mission-execution-policy';
+import { missionAgent, missionTeamRepositories, sameSkills, stageKickoffPrompt, missionRecoveryPrompt } from './mission-execution-policy';
 import { MissionWorkspaceService } from './mission-workspace-service';
 
 export type MissionExecutionPorts = {
@@ -33,12 +33,15 @@ export type MissionExecutionPorts = {
   continueStage(agentId: string, prompt: string): Promise<void>;
   startRemediation(agentId: string, prompt: string): Promise<void>;
   sendMessage?(fromAgentId: string, toAgentId: string, content: string): void;
+  cancelPendingPrompts?(agentId: string, runIds: string[]): void;
   interrupt(agent: Agent): Promise<unknown>;
   isCommitLockOwnerStopped?(agent: Agent): Promise<boolean>;
 };
 
 /** Mission policy owns durable runs; provider hosts still own conversations and turns. */
 export class MissionExecutionService {
+  private readonly stoppedAgents = new Set<string>();
+  private readonly updateDeliveries = new Map<string, Promise<void>>();
   private readonly launches = new Map<string, Promise<void>>();
   private readonly postTurnLaunches = new Map<string, { missionId: string; runIds: string[] }>();
   private readonly remediationDispatches = new Set<string>();
@@ -116,6 +119,7 @@ export class MissionExecutionService {
       this.cancellingRuns.set(run.id, new Promise<void>(resolve => { finishCancellation = resolve; }));
       try {
         const worker = this.agent(run.workerId);
+        if (worker) this.ports.cancelPendingPrompts?.(worker.id, [run.id]);
         const deferred = worker && this.postTurnLaunches.get(worker.id);
         if (worker && deferred?.runIds.includes(run.id)) {
           deferred.runIds = deferred.runIds.filter(id => id !== run.id);
@@ -128,9 +132,11 @@ export class MissionExecutionService {
             || !(['preparing', 'running', 'awaitingReview'].includes(latest.status) || (worker && latest.status === 'failed'))) {
             throw new Error('This mission changed. Reload before continuing.');
           }
-          latest.status = 'cancelled'; latest.finishedAt = new Date().toISOString();
+          latest.status = 'cancelled'; delete latest.recoveryPending; latest.finishedAt = new Date().toISOString();
+          this.recordSupervisorUpdate(current, latest, 'cancelled', 'stopped by the user', 'Do not restart this worker. An explicit user retry is required.');
         });
         await this.ports.publish();
+        await this.deliverSupervisorUpdates(input.id);
       } finally {
         this.cancellingRuns.delete(run.id);
         finishCancellation();
@@ -335,6 +341,8 @@ export class MissionExecutionService {
         if (run.stage === 'implementation') {
           implementationCompleted = this.acceptImplementationResult(current, run);
           await this.persistImplementationArtifact(current);
+          this.recordSupervisorUpdate(current, run, 'accepted', implementationCompleted ? 'completed; all implementation tickets are complete' : 'completed',
+            implementationCompleted ? 'Implementation evidence is saved. Read it with read-mission-artifact for stage="implementation". Wait for the user to continue to Review.' : 'Result accepted; supervisor will schedule ready tickets.');
         } else {
           if (run.stage === 'tickets' && !workflow.stageReady('tickets', run.proposal)) {
             throw new Error('Assign one represented repository to every ticket before starting implementation.');
@@ -355,7 +363,7 @@ export class MissionExecutionService {
         nextRunIds = this.enqueueRuns(current, {});
       });
       this.dispatchRuns(input.id, nextRunIds);
-      if (implementationCompleted) await this.notifyImplementationComplete(this.requireMission(input.id));
+      await this.deliverSupervisorUpdates(input.id);
       return;
     }
     if (input.action === 'continueToReview') {
@@ -489,11 +497,12 @@ export class MissionExecutionService {
     }
     const interrupted = (this.ports.snapshot.missions ?? []).flatMap(mission => (
       mission.execution?.debugFixture ? [] : mission.execution?.runs
-        .filter(run => run.status === 'preparing' || (run.status === 'running' && !this.agent(run.workerId)?.backendSession))
+        .filter(run => run.status === 'preparing' || (run.status === 'running' && (!this.agent(run.workerId)?.backendSession || run.recoveryPending)))
         .map(run => ({ missionId: mission.id, runId: run.id })) ?? []
     ));
     for (const { missionId, runId } of interrupted) this.dispatchRuns(missionId, [runId]);
     await this.waitForLaunches();
+    for (const mission of this.ports.snapshot.missions ?? []) await this.deliverSupervisorUpdates(mission.id);
   }
 
   async refreshOwnedSkills(): Promise<void> {
@@ -524,9 +533,11 @@ export class MissionExecutionService {
       await this.ports.missions.change(missionId, current => {
         const run = current.execution!.runs.find(run => run.id === runId)!;
         if (!['preparing', 'running'].includes(run.status)) return;
-        run.status = 'failed'; run.error = error instanceof Error ? error.message : String(error); run.finishedAt = new Date().toISOString();
+        run.status = 'failed'; delete run.recoveryPending; run.error = error instanceof Error ? error.message : String(error); run.finishedAt = new Date().toISOString();
+        this.recordSupervisorUpdate(current, run, 'launch-failed', 'could not start; needs attention', 'Launch failed. Inspect the error and resolve the blocker before explicitly retrying.');
       });
       await this.ports.publish();
+      await this.deliverSupervisorUpdates(missionId);
     }).finally(() => this.launches.delete(runId));
     this.launches.set(runId, launch);
     // Launch runs independently of request deadlines; snapshot shows its actual phase.
@@ -604,12 +615,16 @@ export class MissionExecutionService {
         }
         status = 'accepted';
         nextRunIds = this.enqueueRuns(mission, {});
+        this.recordSupervisorUpdate(mission, run, 'accepted', implementationCompleted ? 'completed; all implementation tickets are complete' : 'completed',
+          implementationCompleted
+            ? 'Implementation evidence is saved. Read it with read-mission-artifact for stage="implementation". Give the user a concise completion update. Wait for the user to continue to Review.'
+            : `Result accepted. Supervisor scheduled ${nextRunIds.length} ready assignment(s); other workers continue.`, input.summary);
       }
     });
     if (commitLockReleased) for (const wake of this.commitLockWaiters) wake();
     await this.ports.publish();
     this.dispatchRuns(context.missionId, nextRunIds, agentId);
-    if (implementationCompleted) await this.notifyImplementationComplete(this.requireMission(context.missionId));
+    await this.deliverSupervisorUpdates(context.missionId);
     return { success: true, status };
   }
 
@@ -737,8 +752,52 @@ export class MissionExecutionService {
 
   agentStarted(agentId: string, turnId: string): void { this.activeTurns.set(agentId, turnId); }
 
-  async agentFinished(agentId: string, turnId?: string): Promise<void> {
+  /** Called before sending the provider interrupt, including desktop and remote user Stop. */
+  async stopAgent(agentId: string): Promise<void> {
+    this.stoppedAgents.add(agentId);
+    this.postTurnLaunches.delete(agentId);
+    for (const mission of this.ports.snapshot.missions ?? []) {
+      if (!mission.execution || (!mission.execution.runs.some(run => run.workerId === agentId) && missionLeadAgentId(mission) !== agentId)) continue;
+      const runIds = mission.execution.runs.filter(run => run.workerId === agentId && ['preparing', 'running', 'awaitingReview'].includes(run.status)).map(run => run.id);
+      this.ports.cancelPendingPrompts?.(agentId, runIds);
+      await this.ports.missions.change(mission.id, current => {
+        const stopped = current.execution!.stoppedAgentIds ??= [];
+        if (!stopped.includes(agentId)) stopped.push(agentId);
+        for (const run of current.execution!.runs) {
+          if (!runIds.includes(run.id) || !['preparing', 'running', 'awaitingReview'].includes(run.status)) continue;
+          run.status = 'cancelled'; delete run.recoveryPending; run.finishedAt = new Date().toISOString();
+          this.recordSupervisorUpdate(current, run, 'cancelled', 'stopped by the user', 'Do not restart this worker. An explicit user retry is required.');
+        }
+      });
+      this.ports.cancelPendingPrompts?.(agentId, runIds);
+      await this.ports.publish();
+      await this.deliverSupervisorUpdates(mission.id);
+    }
+  }
+
+  async resumeAgent(agentId: string): Promise<void> {
+    this.stoppedAgents.delete(agentId);
+    for (const mission of this.ports.snapshot.missions ?? []) {
+      if (!mission.execution?.stoppedAgentIds?.includes(agentId)) continue;
+      await this.ports.missions.change(mission.id, current => {
+        current.execution!.stoppedAgentIds = current.execution!.stoppedAgentIds!.filter(id => id !== agentId);
+      });
+      await this.deliverSupervisorUpdates(mission.id);
+    }
+  }
+
+  async agentFinished(agentId: string, turnId?: string, recover = true): Promise<void> {
     const activeTurn = this.activeTurns.get(agentId);
+    if (turnId) {
+      const completedMission = this.ports.snapshot.missions?.find(mission => mission.execution?.runs.some(run => run.workerId === agentId && run.completedTurnIds?.includes(turnId)));
+      const completedRun = completedMission?.execution?.runs.find(run => run.workerId === agentId && run.completedTurnIds?.includes(turnId));
+      if (completedMission && completedRun) {
+        // Publication can fail after the continuation decision was durably saved.
+        if (completedRun.recoveryPending && ['preparing', 'running'].includes(completedRun.status)) void this.startLaunch(completedMission.id, completedRun.id);
+        await this.deliverSupervisorUpdates(completedMission.id);
+        return;
+      }
+    }
     if (turnId) {
       const completed = this.completedTurns.get(agentId) ?? new Set<string>();
       if (completed.has(turnId)) return;
@@ -752,7 +811,7 @@ export class MissionExecutionService {
         await this.releaseCommitLock(agentId, turnId);
         return;
       }
-      await this.finishAgentTurn(agentId, turnId);
+      await this.finishAgentTurn(agentId, turnId, recover);
     } catch (error) {
       if (turnId) {
         this.completedTurns.get(agentId)?.delete(turnId);
@@ -760,7 +819,7 @@ export class MissionExecutionService {
         if (!this.completionRetries.has(key)) {
           const timer = setTimeout(() => {
             this.completionRetries.delete(key);
-            void this.agentFinished(agentId, turnId).catch(() => undefined);
+            void this.agentFinished(agentId, turnId, recover).catch(() => undefined);
           }, 1000);
           timer.unref();
           this.completionRetries.set(key, timer);
@@ -770,7 +829,7 @@ export class MissionExecutionService {
     }
   }
 
-  private async finishAgentTurn(agentId: string, turnId?: string): Promise<void> {
+  private async finishAgentTurn(agentId: string, turnId?: string, recover = true): Promise<void> {
     if (turnId && this.ports.snapshot.missions?.some(mission => mission.execution?.workspaces?.some(workspace => workspace.commitLock?.agentId === agentId && workspace.commitLock.turnId === turnId))) {
       await this.releaseCommitLock(agentId, turnId);
     }
@@ -802,21 +861,49 @@ export class MissionExecutionService {
     }
     const postTurnLaunch = this.postTurnLaunches.get(agentId);
     if (postTurnLaunch) {
+      if (turnId) await this.ports.missions.change(postTurnLaunch.missionId, current => {
+        const completedRun = current.execution?.runs.slice().reverse().find(run => run.workerId === agentId && run.status === 'accepted');
+        if (completedRun) completedRun.completedTurnIds = [...(completedRun.completedTurnIds ?? []), turnId].slice(-64);
+      });
       this.postTurnLaunches.delete(agentId);
       for (const runId of postTurnLaunch.runIds) void this.startLaunch(postTurnLaunch.missionId, runId);
       return;
     }
-    // A completed maintenance/compaction turn is not the end of the assignment
-    // when the prompt manager still has work to deliver, including after resume.
-    if (this.ports.snapshot.queuedPrompts?.some(prompt => prompt.agentId === agentId)) return;
     const mission = this.ports.snapshot.missions?.find(mission => mission.execution?.runs.some(run => run.workerId === agentId && run.status === 'running' && ['implementation', 'review'].includes(run.stage)));
     if (!mission) return;
+    // Maintenance/compaction is not assignment completion while its work is queued.
+    if (this.ports.snapshot.queuedPrompts?.some(prompt => prompt.agentId === agentId)) {
+      if (turnId) await this.ports.missions.change(mission.id, current => {
+        const run = current.execution!.runs.find(run => run.workerId === agentId && run.status === 'running');
+        if (run) run.completedTurnIds = [...(run.completedTurnIds ?? []), turnId].slice(-64);
+      });
+      return;
+    }
+    let recoveryRunId: string | undefined;
     await this.ports.missions.change(mission.id, current => {
       const run = current.execution!.runs.find(run => run.workerId === agentId && run.status === 'running');
-      if (!run) return;
-      run.status = 'failed'; run.error = 'Agent finished without submitting a mission result. Inspect the conversation and rerun with feedback.'; run.finishedAt = new Date().toISOString();
+      if (!run || this.cancellingRuns.has(run.id) || this.isStopped(current, agentId)) return;
+      if (turnId) run.completedTurnIds = [...(run.completedTurnIds ?? []), turnId].slice(-64);
+      const index = missionRunTicketIndex(current, run);
+      const eligible = recover && !!turnId && run.stage === 'implementation' && current.stage === 'implementation'
+        && current.status === 'active' && index !== undefined && !current.artifacts.tickets[index]!.done
+        && this.agent(agentId)?.status.type !== 'awaitingInput' && !current.execution!.debugFixture;
+      if (eligible && (run.recoveryAttempts ?? 0) < 2) {
+        run.recoveryAttempts = (run.recoveryAttempts ?? 0) + 1;
+        run.recoveryPending = true; run.status = 'preparing'; delete run.finishedAt;
+        recoveryRunId = run.id;
+        this.recordSupervisorUpdate(current, run, `recovery-${run.recoveryAttempts}`, `continuing unfinished work (${run.recoveryAttempts}/2)`,
+          'Supervisor will continue the same worker and assignment from existing progress. No replacement agent is being created.');
+      } else {
+        run.status = 'failed'; run.error = 'Agent finished without submitting a mission result. Inspect the conversation and rerun with feedback.'; run.finishedAt = new Date().toISOString();
+        this.recordSupervisorUpdate(current, run, 'unfinished', 'needs attention',
+          eligible ? 'Automatic recovery budget exhausted (2/2). Inspect the worker conversation and resolve the blocker; do not silently retry.'
+            : 'Automatic recovery is unavailable for this completion. Inspect the worker conversation for a blocker or required human decision.');
+      }
     });
     await this.ports.publish();
+    await this.deliverSupervisorUpdates(mission.id);
+    if (recoveryRunId) void this.startLaunch(mission.id, recoveryRunId);
   }
 
   async waitForLaunches(): Promise<void> { await Promise.all(this.launches.values()); }
@@ -828,6 +915,7 @@ export class MissionExecutionService {
     const canLaunch = async () => {
       await this.cancellingRuns.get(runId);
       return this.ports.snapshot.missions?.some(current => current.id === id && current.stage === run.stage
+        && !this.isStopped(current, run.workerId)
         && current.execution?.runs.some(candidate => candidate.id === runId && ['preparing', 'running'].includes(candidate.status)));
     };
     const member = this.agent(run.memberId);
@@ -868,7 +956,10 @@ export class MissionExecutionService {
     await this.ports.missions.change(id, current => {
       const currentRun = current.execution!.runs.find(run => run.id === runId)!;
       currentRun.workerId = worker.id;
-      if (currentRun.status !== 'cancelled') currentRun.status = 'running';
+      if (currentRun.status !== 'cancelled' && !this.isStopped(current, worker.id)) {
+        currentRun.status = 'running';
+        if (!currentRun.recoveryPending) this.recordSupervisorUpdate(current, currentRun, 'assigned', 'assigned', reusedWorker ? 'Supervisor is reusing this worker for the next ready ticket.' : 'Supervisor created this worker and will start the assigned ticket.');
+      }
       current.stageAgentIds[currentRun.stage] = worker.id;
     });
     await this.ports.publish();
@@ -885,7 +976,19 @@ export class MissionExecutionService {
       if (!await canLaunch()) return;
     }
     const returningLead = mission.execution!.runs.some(candidate => candidate.id !== run.id && candidate.workerId === worker.id);
-    if (await canLaunch() && (run.stage !== 'requirements' || returningLead)) await this.ports.continueStage(worker.id, stageKickoffPrompt(mission, run));
+    if (await canLaunch() && (run.stage !== 'requirements' || returningLead)) {
+      const current = this.requireMission(id);
+      const latest = current.execution!.runs.find(candidate => candidate.id === runId)!;
+      const prompt = latest.recoveryPending ? missionRecoveryPrompt(current, latest) : stageKickoffPrompt(current, latest);
+      if (latest.recoveryPending) {
+        await this.ports.missions.change(id, candidate => { delete candidate.execution!.runs.find(run => run.id === runId)!.recoveryPending; });
+        if (!await canLaunch()) return;
+      }
+      const admittedRun = this.requireMission(id).execution!.runs.find(candidate => candidate.id === runId)!;
+      if (this.cancellingRuns.has(runId) || this.isStopped(this.requireMission(id), worker.id) || !['preparing', 'running'].includes(admittedRun.status)) return;
+      await this.ports.continueStage(worker.id, prompt);
+    }
+    await this.deliverSupervisorUpdates(id);
   }
 
   private async validateImplementationModel(mission: Mission, selection: ExecutionSelection): Promise<ExecutionSelection> {
@@ -949,6 +1052,11 @@ export class MissionExecutionService {
     const execution = mission.execution;
     if (!execution) throw new Error('Configure the Mission team first.');
     const previousOrchestratorRun = execution.runs.slice().reverse().find(run => (run.stage === 'requirements' || run.stage === 'tickets') && run.workerId);
+    // Creating a stage run is an explicit user run/approval, unlike automatic ticket dispatch.
+    if (previousOrchestratorRun?.workerId) {
+      this.stoppedAgents.delete(previousOrchestratorRun.workerId);
+      if (execution.stoppedAgentIds) execution.stoppedAgentIds = execution.stoppedAgentIds.filter(id => id !== previousOrchestratorRun.workerId);
+    }
     const memberId = input.memberId ?? previousOrchestratorRun?.memberId ?? execution.memberIds[0]!;
     const member = this.agent(memberId);
     if (!execution.memberIds.includes(memberId) || !member || member.teamId !== execution.teamId) throw new Error('The selected team member is unavailable.');
@@ -984,12 +1092,12 @@ export class MissionExecutionService {
   ): string {
     const execution = mission.execution!;
     const repositoryWorker = execution.runs.slice().reverse().find(run => (
-      run.stage === 'implementation' && run.repositoryPath === repositoryPath && run.workerId
+      run.stage === 'implementation' && run.repositoryPath === repositoryPath && run.workerId && !this.isStopped(mission, run.workerId)
     ));
     const reusableWorker = execution.parallelImplementation
       ? execution.runs.slice().reverse().find(run => (
         run.stage === 'implementation' && run.repositoryPath === repositoryPath && run.status === 'accepted'
-        && this.agent(run.workerId)
+        && this.agent(run.workerId) && !this.isStopped(mission, run.workerId)
         && execution.runs.slice().reverse().find(candidate => candidate.workerId === run.workerId)?.id === run.id
       ))
       : repositoryWorker;
@@ -1030,16 +1138,59 @@ export class MissionExecutionService {
     return !wasComplete && mission.artifacts.tickets.every(ticket => ticket.done);
   }
 
-  private async notifyImplementationComplete(mission: Mission): Promise<void> {
+  private isStopped(mission: Mission, agentId: string | undefined): boolean {
+    return !!agentId && (this.stoppedAgents.has(agentId) || !!mission.execution?.stoppedAgentIds?.includes(agentId));
+  }
+
+  private recordSupervisorUpdate(mission: Mission, run: MissionRun, event: string, outcome: string, decision: string, summary?: string): void {
     const leadId = missionLeadAgentId(mission);
-    if (!leadId || !this.agent(leadId)) return;
-    const report = [
-      `Mission orchestrator update: all ${mission.artifacts.tickets.length} implementation tickets are complete.`,
-      `Mission: ${mission.outcome} (${mission.id}).`,
-      'Implementation evidence is saved. Read it with read-mission-artifact for stage="implementation".',
-      'Give the user a concise completion update. The Mission remains in Implementation until the user chooses to continue to Review. This message does not authorize Review, stage advancement, push, merge or PR creation.',
+    if (!leadId || run.stage !== 'implementation' || mission.execution?.debugFixture) return;
+    const updates = mission.execution!.supervisorUpdates ??= [];
+    const id = `${run.id}:${event}`;
+    if (updates.some(update => update.id === id)) return;
+    const assignment = missionRunAssignment(mission, run);
+    const context = [
+      `Supervisor update ID: ${id}`,
+      `Mission: ${mission.outcome} (${mission.id}). Run: ${run.id}.`,
+      `Worker agent ID: ${run.workerId ?? 'not created'}. Lead agent ID: ${leadId}.`,
+      `Ticket: ${assignment ? JSON.stringify(assignment) : run.ticketId ?? run.ticketIndex ?? 'unavailable'}.`,
+      `Repository: ${run.repositoryPath ?? assignment?.repositoryPath ?? 'unavailable'}. Worktree: ${this.agent(run.workerId)?.folder ?? 'unavailable'}.`,
+      `Outcome: ${outcome}. ${summary ? `Worker summary: ${summary}` : ''}`,
+      `Supervisor decision: ${decision}`,
+      ...(run.error ? [`Error: ${run.error}`] : []),
+      'The supervisor owns scheduling. Keep track of these worker IDs and help resolve escalated blockers. Do not duplicate assignments or automatically restart failed/stopped workers.',
+      'Informational updates need no reply. This message does not authorize Review, stage advancement, push, merge or PR creation. Honor explicit user Stop.',
     ].join('\n');
-    await this.ports.continueStage(leadId, `<context>\n${report.replace(/<\/?context>/giu, tag => tag.replace('<', '&lt;'))}\n</context>`);
+    const visible = `Ticket ${assignment?.ticketNumber ?? (run.ticketIndex ?? 0) + 1}: ${outcome}.`;
+    const fromAgentId = this.agent(run.workerId)?.id ?? this.agent(run.memberId)?.id ?? leadId;
+    updates.push({ id, runId: run.id, fromAgentId, leadId,
+      content: `${visible}\n\n<context>\n${context.replace(/<\/?context>/giu, tag => tag.replace('<', '&lt;'))}\n</context>` });
+    // Retain pending deliveries and a bounded window of delivered messages for deduplication.
+    const delivered = updates.filter(update => update.delivered).slice(-100);
+    mission.execution!.supervisorUpdates = [...delivered, ...updates.filter(update => !update.delivered)];
+  }
+
+  private deliverSupervisorUpdates(missionId: string): Promise<void> {
+    const previous = this.updateDeliveries.get(missionId) ?? Promise.resolve();
+    const delivery = previous.then(async () => {
+      if (!this.ports.sendMessage) return;
+      let changed = false;
+      for (const update of this.requireMission(missionId).execution?.supervisorUpdates ?? []) {
+        if (update.delivered || this.isStopped(this.requireMission(missionId), update.leadId)) continue;
+        if (!this.agent(update.leadId) || !this.agent(update.fromAgentId)) continue;
+        try {
+          this.ports.sendMessage(update.fromAgentId, update.leadId, update.content);
+          await this.ports.missions.change(missionId, mission => {
+            const pending = mission.execution?.supervisorUpdates?.find(candidate => candidate.id === update.id);
+            if (pending) pending.delivered = true;
+          });
+          changed = true;
+        } catch { break; } // The persisted outbox is retried on the next update or daemon resume.
+      }
+      if (changed) await this.ports.publish().catch(() => undefined);
+    }).finally(() => { if (this.updateDeliveries.get(missionId) === delivery) this.updateDeliveries.delete(missionId); });
+    this.updateDeliveries.set(missionId, delivery);
+    return delivery;
   }
 
   private async persistImplementationArtifact(mission: Mission): Promise<void> {
