@@ -765,6 +765,7 @@ describe('ClaudeBackendDriver', () => {
         `mcp__${product.mcpServerName}__update_finding`,
         `mcp__${product.mcpServerName}__delete_finding`,
         `mcp__${product.mcpServerName}__finish_review_round`,
+        `mcp__${product.mcpServerName}__send-message`,
         `mcp__${product.mcpServerName}__set-status`,
         `mcp__${product.mcpServerName}__finish_turn`,
       ],

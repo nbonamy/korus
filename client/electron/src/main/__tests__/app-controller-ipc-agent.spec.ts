@@ -38,6 +38,15 @@ describe('AppController', () => {
     expect(currentSnapshot(controller)).toStrictEqual(backendSnapshot);
   });
 
+  it('does not fetch another roster after compact hydration', async () => {
+    const snapshot = createInitialSnapshot();
+    const request = vi.fn().mockResolvedValue(null);
+    const controller = new AppController(snapshot, createBackendClient({ request }));
+    await controller.initialize();
+    await expect(loadConversationHistory(controller, 'agent-dina', { recovery: true })).resolves.toMatchObject({ activeAgentId: snapshot.activeAgentId });
+    expect(request).toHaveBeenCalledExactlyOnceWith('agent/conversation/load', { agentId: 'agent-dina', omitSnapshot: true });
+  });
+
   it('routes agent goal mutations through daemon', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.sourceFolder.initialized = true;
@@ -426,10 +435,10 @@ async function restartAgent(controller: AppController, agentId: string): Promise
   }).restartAgent(agentId);
 }
 
-async function loadConversationHistory(controller: AppController, agentId: string): Promise<AppSnapshot> {
+async function loadConversationHistory(controller: AppController, agentId: string, options?: { recovery?: boolean }): Promise<AppSnapshot> {
   return (controller as unknown as {
-    loadConversationHistory(agentId: string): Promise<AppSnapshot>;
-  }).loadConversationHistory(agentId);
+    loadConversationHistory(agentId: string, options?: { recovery?: boolean }): Promise<AppSnapshot>;
+  }).loadConversationHistory(agentId, options);
 }
 
 async function readConversationMessages(

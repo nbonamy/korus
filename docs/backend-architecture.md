@@ -472,7 +472,9 @@ a confirmed rejection rather than a prompt in a replacement conversation.
 The desktop's remote-access keep-awake preference covers both Codex remote access
 and Korus mobile access. The companion publishes durable access enablement into
 daemon client state, including after restart; relay reconnects do not release it.
-Electron applies the policy only on AC power and owns the native sleep blocker.
+Electron applies the remote-access policy only on AC power. Agent activity and
+remote access share a native `prevent-app-suspension` assertion, which protects
+system availability while allowing display sleep and configured automatic locking.
 
 Mobile updates use one authenticated duplex stream per phone. A workspace reset
 and a subscribe-before-read conversation barrier precede ordered provider-native

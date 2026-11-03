@@ -46,6 +46,7 @@ export class StdioRpcPeer {
   private nextRequestId = 1;
   private readonly pending = new Map<AppRpcId, PendingRequest>();
   private outputBackpressured = false;
+  private readonly outputIdleWaiters = new Set<(running: boolean) => void>();
   private readonly outputQueue: QueuedFrame[] = [];
   private outputQueueBytes = 0;
   private started = false;
@@ -67,6 +68,8 @@ export class StdioRpcPeer {
     }
 
     this.started = false;
+    for (const resolve of this.outputIdleWaiters) resolve(false);
+    this.outputIdleWaiters.clear();
     this.options.input.off('data', this.onData);
     this.options.output.off('drain', this.onOutputDrain);
     this.outputQueue.length = 0;
@@ -139,6 +142,14 @@ export class StdioRpcPeer {
         return;
       }
 
+      // Recovery must not generate replay frames while the transport is still
+      // dropping notifications. Legacy requests retain their existing behavior.
+      if (isAppRpcRequest(message) && message.method === backendMethods.agentConversationLoad &&
+          message.params && typeof message.params === 'object' && 'omitSnapshot' in message.params && message.params.omitSnapshot === true &&
+          this.outputBackpressured) {
+        const running = await new Promise<boolean>(resolve => this.outputIdleWaiters.add(resolve));
+        if (!running) return;
+      }
       let response: AppRpcResponse | undefined;
       try {
         response = await this.options.onMessage(message);
@@ -219,6 +230,8 @@ export class StdioRpcPeer {
     }
 
     this.outputBackpressured = false;
+    for (const resolve of this.outputIdleWaiters) resolve(true);
+    this.outputIdleWaiters.clear();
   }
 
   private enqueueOutput(message: AppRpcMessage, frame: string, responseMethod?: string): void {

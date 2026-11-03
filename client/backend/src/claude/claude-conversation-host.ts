@@ -239,7 +239,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     try {
       const started = await this.sendPromptWithConfiguration(reviewer, input.prompt, {}, {
         mcpServerUrl: input.reviewMcpServerUrl,
-        allowedTools: ['report_finding', 'update_finding', 'delete_finding', 'finish_review_round', 'set-status', 'finish_turn']
+        allowedTools: ['report_finding', 'update_finding', 'delete_finding', 'finish_review_round', 'send-message', 'set-status', 'finish_turn']
           .map(tool => `mcp__${product.mcpServerName}__${tool}`),
       });
       targetTurnId = started.turnId ?? null;

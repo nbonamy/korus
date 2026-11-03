@@ -1204,6 +1204,159 @@ describe('useAppState', () => {
     ]);
   });
 
+  it('coalesces transport repair storms and serializes cached Codex and Claude recovery without blanking either pane', async () => {
+    const remote = createInitialSnapshot();
+    const codex = remote.agents[0]!;
+    codex.backendSession = { kind: 'codex', threadId: 'thread-1' };
+    const claude = remote.agents[1]!;
+    claude.backend = 'claude';
+    claude.backendSession = { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' };
+    let receive!: (event: MainToRendererEvent) => void;
+    const load = vi.fn().mockResolvedValue(remote);
+    const getSnapshotState = vi.fn().mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 0, connection: { status: 'connected' } });
+    stubElectronTestWindow({ app: { getSnapshotState, loadConversationHistory: load, onEvent: listener => { receive = listener; return () => {}; } } });
+    const state = useAppState();
+    await state.loadSnapshot();
+    await vi.waitFor(() => expect(load).toHaveBeenCalled());
+    await nextTick();
+    receive({ seq: 1, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 40, snapshot: codexConversationSnapshot() } });
+    receive({ seq: 2, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 40, snapshot: claudeConversationSnapshot([], { agentId: claude.id }) } });
+    getSnapshotState.mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 2, connection: { status: 'connected' } });
+    const first = deferred<ReturnType<typeof createInitialSnapshot>>();
+    const second = deferred<ReturnType<typeof createInitialSnapshot>>();
+    load.mockReset().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const repair = () => receive({ seq: 0, source: 'client', occurredAt: '', type: 'snapshot.updated', payload: structuredClone(remote) });
+    repair();
+    await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(1));
+    receive({ seq: 3, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 2, snapshot: codexConversationSnapshot([], { busy: true }) } });
+    for (let n = 0; n < 20; n++) repair();
+    expect(state.activeCodexConversationSnapshot.value?.busy).toBe(true);
+    expect(state.agentConversationFor(claude.id)?.claudeSnapshot).not.toBeNull();
+    expect(load).toHaveBeenCalledTimes(1);
+    first.resolve(remote);
+    await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+    expect(load.mock.calls.map(call => call[0])).toEqual([codex.id, claude.id]);
+    getSnapshotState.mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 6, connection: { status: 'connected' } });
+    for (let n = 0; n < 20; n++) repair();
+    receive({ seq: 5, source: 'backend', occurredAt: '', agentId: codex.id, type: 'agent.statusChanged', payload: { type: 'working' } });
+    // Repairs in the window re-read the app snapshot, but concurrent ones coalesce.
+    await vi.waitFor(() => expect(getSnapshotState.mock.calls.length).toBeGreaterThanOrEqual(3));
+    await nextTick();
+    const snapshotFetches = getSnapshotState.mock.calls.length;
+    expect(snapshotFetches).toBeLessThan(8);
+    receive({ seq: 6, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: claude.id, busy: true }) } });
+    await vi.waitFor(() => expect(state.agentConversationFor(claude.id)?.claudeSnapshot?.busy).toBe(true));
+    second.resolve(remote);
+    // The repair burst reached the Codex pane after its first recovery completed, so it gets one catch-up load.
+    await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(3));
+    expect(load.mock.calls.map(call => call[0])).toEqual([codex.id, claude.id, codex.id]);
+    expect(getSnapshotState).toHaveBeenCalledTimes(snapshotFetches);
+    receive({ seq: 7, source: 'backend', occurredAt: '', agentId: codex.id, type: 'agent.statusChanged', payload: { type: 'working' } });
+    expect(state.activeAgent.value?.status.type).toBe('working');
+    expect(state.activeCodexConversationSnapshot.value?.busy).toBe(true);
+    expect(state.agentConversationFor(claude.id)?.claudeSnapshot).not.toBeNull();
+    // The owner restarted: its counter is below the retained frame's, yet the replay and its deltas apply.
+    receive({ seq: 8, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 1, snapshot: codexConversationSnapshot([], { busy: false }) } });
+    expect(state.activeCodexConversationSnapshot.value?.busy).toBe(false);
+    receive({ seq: 9, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationEventReceived', payload: { revision: 2, event: { seq: 1, occurredAt: '', origin: 'notification', type: 'conversation.activityChanged', conversationId: 'thread-1', payload: { threadStatus: null, busy: true, error: null } } } });
+    expect(state.activeCodexConversationSnapshot.value?.busy).toBe(true);
+    // Only the first replay bypasses the revision fence.
+    receive({ seq: 10, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 1, snapshot: codexConversationSnapshot([], { busy: false }) } });
+    expect(state.activeCodexConversationSnapshot.value?.busy).toBe(true);
+    receive({ seq: 11, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: claude.id }) } });
+    receive({ seq: 12, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationEventReceived', payload: { revision: 2, event: { seq: 1, occurredAt: '', agentId: claude.id, backend: 'claude', type: 'error', payload: { message: 'post-restart' } } } });
+    expect(state.agentConversationFor(claude.id)?.claudeSnapshot?.error).toBe('post-restart');
+  });
+
+  it('restores the active agent after reconnect while cached recoveries are still loading', async () => {
+    const remote = createInitialSnapshot();
+    const codex = remote.agents[0]!;
+    codex.backendSession = { kind: 'codex', threadId: 'thread-1' };
+    let receive!: (event: MainToRendererEvent) => void;
+    const load = vi.fn().mockResolvedValue(remote);
+    const getSnapshotState = vi.fn().mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 0, connection: { status: 'reconnecting' } });
+    stubElectronTestWindow({ app: { getSnapshotState, loadConversationHistory: load, onEvent: listener => { receive = listener; return () => {}; } } });
+    const state = useAppState();
+    await state.loadSnapshot();
+    receive({ seq: 1, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 40, snapshot: codexConversationSnapshot() } });
+    const stuck = deferred<ReturnType<typeof createInitialSnapshot>>();
+    load.mockReset().mockReturnValueOnce(stuck.promise).mockResolvedValue(remote);
+    getSnapshotState.mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 1, connection: { status: 'connected' } });
+    receive({ seq: 0, source: 'client', occurredAt: '', type: 'client.connectionChanged', payload: { status: 'connected' } });
+    try {
+      // The stuck cached-pane recovery must not hold back the active agent's history load.
+      await vi.waitFor(() => expect(load.mock.calls.length).toBeGreaterThanOrEqual(2));
+    } finally {
+      stuck.resolve(remote);
+    }
+    await nextTick();
+  });
+
+  it('releases the recovery queue when one load never settles and retries after a failed hydrate', async () => {
+    vi.useFakeTimers();
+    try {
+      const remote = createInitialSnapshot();
+      const codex = remote.agents[0]!;
+      codex.backendSession = { kind: 'codex', threadId: 'thread-1' };
+      const claude = remote.agents[1]!;
+      claude.backend = 'claude';
+      claude.backendSession = { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' };
+      let receive!: (event: MainToRendererEvent) => void;
+      const load = vi.fn().mockResolvedValue(remote);
+      const getSnapshotState = vi.fn().mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 0, connection: { status: 'connected' } });
+      stubElectronTestWindow({ app: { getSnapshotState, loadConversationHistory: load, onEvent: listener => { receive = listener; return () => {}; } } });
+      const state = useAppState();
+      await state.loadSnapshot();
+      await vi.advanceTimersByTimeAsync(0);
+      receive({ seq: 1, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 40, snapshot: codexConversationSnapshot() } });
+      receive({ seq: 2, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 40, snapshot: claudeConversationSnapshot([], { agentId: claude.id }) } });
+      load.mockReset().mockReturnValueOnce(new Promise(() => {})).mockResolvedValue(remote);
+      receive({ seq: 0, source: 'client', occurredAt: '', type: 'snapshot.updated', payload: structuredClone(remote) });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(load).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(load.mock.calls.map(call => call[0])).toEqual([codex.id, claude.id]);
+      // The Codex hydrate produced no snapshot: its frame stays visible, and the next live event retries.
+      expect(state.activeCodexConversationSnapshot.value).not.toBeNull();
+      receive({ seq: 3, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationEventReceived', payload: { revision: 41, event: { seq: 1, occurredAt: '', origin: 'notification', type: 'conversation.activityChanged', conversationId: 'thread-1', payload: { threadStatus: null, busy: true, error: null } } } });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(load.mock.calls.length).toBeGreaterThanOrEqual(3);
+      expect(load.mock.calls[2]![0]).toBe(codex.id);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('re-reads the app snapshot and hydrates a marked pane on selection while recovery is queued', async () => {
+    const remote = createInitialSnapshot();
+    const codex = remote.agents[0]!;
+    codex.backendSession = { kind: 'codex', threadId: 'thread-1' };
+    let receive!: (event: MainToRendererEvent) => void;
+    const load = vi.fn().mockResolvedValue(remote);
+    const getSnapshotState = vi.fn().mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 0, connection: { status: 'connected' } });
+    stubElectronTestWindow({ app: { getSnapshotState, loadConversationHistory: load, onEvent: listener => { receive = listener; return () => {}; } } });
+    const state = useAppState();
+    await state.loadSnapshot();
+    receive({ seq: 1, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 40, snapshot: codexConversationSnapshot() } });
+    getSnapshotState.mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 1, connection: { status: 'connected' } });
+    const stuck = deferred<ReturnType<typeof createInitialSnapshot>>();
+    load.mockReset().mockReturnValueOnce(stuck.promise).mockResolvedValue(remote);
+    try {
+      receive({ seq: 0, source: 'client', occurredAt: '', type: 'snapshot.updated', payload: structuredClone(remote) });
+      await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(1));
+      const fetches = getSnapshotState.mock.calls.length;
+      // The recovery window is still open: a later repair must still re-read the app snapshot.
+      receive({ seq: 0, source: 'client', occurredAt: '', type: 'snapshot.updated', payload: structuredClone(remote) });
+      await vi.waitFor(() => expect(getSnapshotState.mock.calls.length).toBeGreaterThan(fetches));
+      // The marked frame is not hydrated: selecting the pane loads it without waiting for the queue.
+      await state.prepareAgentConversation(codex.id);
+      expect(load).toHaveBeenCalledTimes(2);
+    } finally {
+      stuck.resolve(remote);
+    }
+    await nextTick();
+  });
+
   it('invalidates and rehydrates a Codex frame after a revision gap', async () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
@@ -1276,7 +1429,7 @@ describe('useAppState', () => {
       occurredAt: '2026-09-06T00:00:03.000Z',
     });
 
-    expect(state.activeCodexConversationSnapshot.value).toBeNull();
+    expect(state.activeCodexConversationSnapshot.value).not.toBeNull();
     await vi.waitFor(() => expect(loadConversationHistory).toHaveBeenCalledOnce());
   });
 
@@ -1329,7 +1482,7 @@ describe('useAppState', () => {
       occurredAt: '2026-09-06T00:00:02.000Z',
     });
 
-    expect(state.activeCodexConversationSnapshot.value).toBeNull();
+    expect(state.activeCodexConversationSnapshot.value).not.toBeNull();
     await vi.waitFor(() => expect(loadConversationHistory).toHaveBeenCalledOnce());
   });
 
@@ -1516,7 +1669,7 @@ describe('useAppState', () => {
       occurredAt: '2026-09-06T00:00:03.000Z',
     });
 
-    expect(state.activeClaudeConversationSnapshot.value).toBeNull();
+    expect(state.activeClaudeConversationSnapshot.value).not.toBeNull();
     await vi.waitFor(() => expect(loadConversationHistory).toHaveBeenCalledOnce());
   });
 });

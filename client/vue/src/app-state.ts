@@ -95,10 +95,39 @@ const claudeConversationFramesByAgentId = ref<Record<string, {
   revision: number;
   snapshot: ClaudeConversationSnapshot;
 }>>({});
-const recoveringCodexConversationAgentIds = new Set<string>();
-const recoveringClaudeConversationAgentIds = new Set<string>();
+// One hydration at a time across providers. Pending identities coalesce repeated
+// repair signals while their last good provider frame remains visible.
+const conversationRecoveries = new Map<string, Promise<void>>();
+// Retained frames stay visible during recovery, but their revision fence may belong
+// to a previous owner process. Recovery marks the frame with this revision so the
+// next snapshot replaces it even when its own revision is lower, and no live event
+// can extend it before then. The state lives and dies with the frame.
+const AWAITING_RECOVERY_REVISION = Number.NEGATIVE_INFINITY;
+// A load that never settles must not hold the queue slot for every other pane.
+const CONVERSATION_RECOVERY_TIMEOUT_MS = 30_000;
+let conversationRecoveryTail = Promise.resolve();
+function recoverConversation(agentId: string): Promise<void> {
+  const existing = conversationRecoveries.get(agentId);
+  if (existing) return existing;
+  const request = conversationRecoveryTail.then(async () => {
+    if (appApi?.loadConversationHistory && snapshot.value.agents.some(agent => agent.id === agentId)) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const loaded = await Promise.race([
+        appApi.loadConversationHistory(agentId, { recovery: true }),
+        new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), CONVERSATION_RECOVERY_TIMEOUT_MS); }),
+      ]).finally(() => clearTimeout(timer));
+      // After a timeout the frame stays marked; the next gap or event retries.
+      if (loaded) adoptBackgroundSnapshot(loaded);
+    }
+  }).catch(() => undefined).finally(() => {
+    if (conversationRecoveries.get(agentId) === request) conversationRecoveries.delete(agentId);
+  });
+  conversationRecoveries.set(agentId, request);
+  conversationRecoveryTail = request;
+  return request;
+}
 const antigravityConversations = createAntigravityConversationState(async agentId => {
-  if (appApi?.loadConversationHistory) adoptBackgroundSnapshot(await appApi.loadConversationHistory(agentId));
+  await recoverConversation(agentId);
 });
 let agentSelectionRequestId = 0;
 let unsubscribeMainEvents: (() => void) | null = null;
@@ -522,8 +551,7 @@ export function useAppState() {
     codexConversationFramesByAgentId.value = {};
     claudeConversationFramesByAgentId.value = {};
     antigravityConversations.reset();
-    recoveringCodexConversationAgentIds.clear();
-    recoveringClaudeConversationAgentIds.clear();
+    conversationRecoveries.clear();
     agentCreationProgresses.value = [];
     backgroundedAgentCreationIds.clear();
 
@@ -568,6 +596,10 @@ export function useAppState() {
     });
     return rendererSynchronization;
   }
+  // Every repair re-reads the app snapshot and re-marks every cached pane. Pending
+  // hydrations coalesce per agent, so a storm fans out once per pane, while a pane
+  // whose earlier recovery completed gets one catch-up load: its owner may have
+  // restarted since. Callers never wait for provider loads.
   synchronizeRendererSnapshotRequest = async () => {
     const cachedCodexAgentIds = Object.keys(codexConversationFramesByAgentId.value);
     const cachedClaudeAgentIds = Object.keys(claudeConversationFramesByAgentId.value);
@@ -2287,27 +2319,19 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
 }
 
 function invalidateAndRecoverCodexConversation(agentId: string): void {
-  const frames = { ...codexConversationFramesByAgentId.value };
-  delete frames[agentId];
-  codexConversationFramesByAgentId.value = frames;
-  if (recoveringCodexConversationAgentIds.has(agentId) || !appApi?.loadConversationHistory) return;
-  recoveringCodexConversationAgentIds.add(agentId);
-  void appApi.loadConversationHistory(agentId)
-    .then(adoptBackgroundSnapshot)
-    .catch(() => undefined)
-    .finally(() => recoveringCodexConversationAgentIds.delete(agentId));
+  const frame = codexConversationFramesByAgentId.value[agentId];
+  if (frame && frame.revision !== AWAITING_RECOVERY_REVISION) {
+    codexConversationFramesByAgentId.value = { ...codexConversationFramesByAgentId.value, [agentId]: { ...frame, revision: AWAITING_RECOVERY_REVISION } };
+  }
+  void recoverConversation(agentId);
 }
 
 function invalidateAndRecoverClaudeConversation(agentId: string): void {
-  const frames = { ...claudeConversationFramesByAgentId.value };
-  delete frames[agentId];
-  claudeConversationFramesByAgentId.value = frames;
-  if (recoveringClaudeConversationAgentIds.has(agentId) || !appApi?.loadConversationHistory) return;
-  recoveringClaudeConversationAgentIds.add(agentId);
-  void appApi.loadConversationHistory(agentId)
-    .then(adoptBackgroundSnapshot)
-    .catch(() => undefined)
-    .finally(() => recoveringClaudeConversationAgentIds.delete(agentId));
+  const frame = claudeConversationFramesByAgentId.value[agentId];
+  if (frame && frame.revision !== AWAITING_RECOVERY_REVISION) {
+    claudeConversationFramesByAgentId.value = { ...claudeConversationFramesByAgentId.value, [agentId]: { ...frame, revision: AWAITING_RECOVERY_REVISION } };
+  }
+  void recoverConversation(agentId);
 }
 
 function showPlanReview(markdown: string): void {
@@ -2493,10 +2517,14 @@ function syncFileActivityFromMainEvent(event: Extract<RendererOnlySnapshotEvent,
 function agentNeedsHistory(agentId: string): boolean {
   const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
   if (!agent?.backendSession) return false;
-  if (agent.backendSession.kind === 'antigravity') return !antigravityConversations.select(agent);
-  return agent.backendSession.kind === 'codex'
-    ? codexConversationFramesByAgentId.value[agentId]?.threadId !== agent.backendSession.threadId
-    : claudeConversationFramesByAgentId.value[agentId]?.snapshot.sessionId !== agent.backendSession.sessionId;
+  // A retained frame still awaiting its recovery replay is not hydrated yet.
+  if (agent.backendSession.kind === 'antigravity') return !antigravityConversations.select(agent) || antigravityConversations.awaitingRecovery(agentId);
+  if (agent.backendSession.kind === 'codex') {
+    const frame = codexConversationFramesByAgentId.value[agentId];
+    return frame?.threadId !== agent.backendSession.threadId || frame.revision === AWAITING_RECOVERY_REVISION;
+  }
+  const frame = claudeConversationFramesByAgentId.value[agentId];
+  return frame?.snapshot.sessionId !== agent.backendSession.sessionId || frame.revision === AWAITING_RECOVERY_REVISION;
 }
 
 async function refreshTeamSelection(

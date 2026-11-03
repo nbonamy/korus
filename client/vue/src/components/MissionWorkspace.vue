@@ -446,7 +446,7 @@ watch(() => props.mission.stage, stage => {
   viewedStage.value = stage;
 });
 watch(
-  () => [props.mission.id, viewedStage.value, props.mission.artifactFiles?.[viewedStage.value]?.revision] as const,
+  [() => props.mission.id, () => viewedStage.value, () => props.mission.artifactFiles?.[viewedStage.value]?.revision],
   async ([missionId, stage, revision]) => {
     const request = ++artifactRead;
     canonicalArtifact.value = '';
@@ -536,7 +536,7 @@ function resetImplementationModel(): void {
   implementationTier.value = selected ? selected.serviceTier ?? '' : (lead?.backendDefaults && 'serviceTier' in lead.backendDefaults ? lead.backendDefaults.serviceTier : null) ?? '';
 }
 watch(() => `${props.mission.id}:${activeRun.value?.id}:${missionLead.value?.id ?? ''}`, resetImplementationModel, { immediate: true });
-watch(() => [props.mission.id, props.mission.revision, activeRun.value?.id, viewedStage.value], () => {
+watch([() => props.mission.id, () => props.mission.revision, () => activeRun.value?.id, () => viewedStage.value], () => {
   implementationApprovalVisible.value = false;
 });
 

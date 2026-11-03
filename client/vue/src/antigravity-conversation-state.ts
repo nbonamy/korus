@@ -19,7 +19,10 @@ export function createAntigravityConversationState(recover: (agentId: string) =>
     return frame.snapshot.sessionId !== lastAttachedSessions.get(agent.id);
   }
   function invalidate(agentId: string) {
-    const next = { ...frames.value }; delete next[agentId]; frames.value = next;
+    // Retained frames stay visible during recovery; an unreachable revision lets the
+    // next snapshot replace them even if the owner's counter restarted below it.
+    const frame = frames.value[agentId];
+    if (frame && frame.revision !== Number.NEGATIVE_INFINITY) frames.value = { ...frames.value, [agentId]: { ...frame, revision: Number.NEGATIVE_INFINITY } };
     if (pending.has(agentId)) return;
     pending.add(agentId);
     void recover(agentId).catch(() => {}).finally(() => pending.delete(agentId));
@@ -42,6 +45,7 @@ export function createAntigravityConversationState(recover: (agentId: string) =>
         frames.value = { ...frames.value, [event.agentId]: { ...current, snapshot: current.replica.apply(event.payload.event), revision: event.payload.revision } };
       } catch { invalidate(event.agentId); }
     },
+    awaitingRecovery(agentId: string): boolean { return frames.value[agentId]?.revision === Number.NEGATIVE_INFINITY; },
     reset() { frames.value = {}; pending.clear(); lastAttachedSessions.clear(); },
     recoverAll() { for (const id of Object.keys(frames.value)) invalidate(id); },
     reconcile(agents: Agent[]) {

@@ -314,6 +314,30 @@ describe('stdio JSON-RPC transport', () => {
     peer.stop();
   });
 
+  it('waits for overloaded output to drain before compact conversation recovery emits its frame', async () => {
+    const input = new PassThrough();
+    const output = new PassThrough({ highWaterMark: 1 });
+    const received: string[] = [];
+    const onMessage = vi.fn(() => {
+      peer.notify('backend/event/notify', { seq: 3, type: 'claude.conversationSnapshotChanged', payload: { transcript: 'retained' } });
+      return { jsonrpc: '2.0' as const, id: 'repair', result: null };
+    });
+    const peer = new StdioRpcPeer({ input, output, maxBufferedOutputBytes: 100, onMessage });
+    peer.start();
+    peer.notify('backend/event/notify', { seq: 1, type: 'snapshot.updated', payload: 'x'.repeat(6_000_000) });
+    peer.notify('backend/event/notify', { seq: 2, type: 'agent.statusChanged', payload: 'dropped'.repeat(100) });
+    input.write(JSON.stringify({ jsonrpc: '2.0', id: 'repair', method: 'agent/conversation/load', params: { agentId: 'lead', omitSnapshot: true } }) + '\n');
+    await Promise.resolve();
+    expect(onMessage).not.toHaveBeenCalled();
+    output.on('data', chunk => received.push(chunk.toString()));
+    await vi.waitFor(() => expect(received.join('')).toContain('"id":"repair"'));
+    expect(received.join('')).toContain('"seq":3');
+    expect(received.join('')).not.toContain('"seq":2');
+    expect(onMessage).toHaveBeenCalledOnce();
+    peer.stop();
+    output.destroy();
+  });
+
   it('identifies the request method for an oversized response', async () => {
     const input = new PassThrough();
     const output = new PassThrough();
