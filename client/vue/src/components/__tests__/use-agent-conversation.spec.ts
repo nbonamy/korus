@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import { promptContentText } from '@codex-app-sdk/core/surface';
 import type { CodexConversationPaneState, CodexNativeAttachment, CodexNativeRendererApi } from '@codex-app-sdk/vue';
-import { useAgentConversation, type AgentConversationActions } from '../use-agent-conversation';
+import { agentConversationState, useAgentConversation, type AgentConversationActions } from '../use-agent-conversation';
+import type { AgentConversationView } from '../../app-state';
 import { resolveConversationControllerValue } from './app-shell-test-harness';
 
 const image: CodexNativeAttachment = { id: 'shot', type: 'image', reference: 'electron-attachment:shot', name: 'shot.png',
@@ -43,5 +44,24 @@ describe('useAgentConversation image annotations', () => {
     expect(promptContentText(send.mock.calls[0]![2].content)).toBe(send.mock.calls[0]![1]);
     await actions.submit?.('Fix this.', { content });
     expect(send).toHaveBeenLastCalledWith('agent', 'Fix this.', { content });
+  });
+});
+
+describe('agentConversationState identity', () => {
+  it('hands the pane the same answered-request set until its members change, so message blocks are not re-rendered by every update', () => {
+    const answered = ref<ReadonlySet<string>>(new Set(['a']));
+    const state = agentConversationState(() => ({
+      codexSnapshot: null, claudeSnapshot: null, antigravitySnapshot: null, answeredClientRequestIds: answered.value,
+    }) as unknown as AgentConversationView);
+    const first = state.thread!.answeredClientRequestIds;
+
+    answered.value = new Set(['a']);
+    expect(state.thread!.answeredClientRequestIds).toBe(first);
+
+    answered.value = new Set(['a', 'b']);
+    const changed = state.thread!.answeredClientRequestIds;
+    expect([...changed!]).toStrictEqual(['a', 'b']);
+    expect(changed).not.toBe(first);
+    expect(state.thread!.answeredClientRequestIds).toBe(changed);
   });
 });

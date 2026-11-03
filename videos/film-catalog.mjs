@@ -1,5 +1,14 @@
 // Export settings shared by Studio, the renderer, and narration tools.
 export const FPS = 24;
+export const recordedFilms = [
+  {
+    id: "diff-review",
+    title: "Diff review",
+    width: 1600,
+    height: 900,
+    fps: 30,
+  },
+];
 export const films = [
   { id: "mission-film", title: "Mission", duration: 48, posterSecond: 12 },
   { id: "review-film", title: "Code Review", duration: 56, posterSecond: 28 },

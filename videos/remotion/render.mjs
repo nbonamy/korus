@@ -111,6 +111,11 @@ export async function renderFilms({
 
 async function main() {
   const args = process.argv.slice(2);
+  if (args[0] === "--recording" && args.length === 2) {
+    const { renderRecording } = await import("./render-recording.mjs");
+    await renderRecording(args[1]);
+    return;
+  }
   const requested = args.find((arg) => !arg.startsWith("--")) ?? "review-film";
   if (
     args.some(
