@@ -1079,7 +1079,7 @@ describe('AppMcpService', () => {
       command: 'get_app_state',
       arguments: { app: 'TextEdit', window_id: 1, maxNodes: 200, includeScreenshot: false },
     });
-    expect(stateResponse.result.content[0].text).toBe('Observation metadata returned in structuredContent.');
+    expect(stateResponse.result.content[0].text).toBe('Result returned in structuredContent.');
     expect(stateResponse.result.structuredContent).toStrictEqual({ apps: [] });
 
     const stopResponse = await postJson(agentUrl(url, 'agent-dina'), {

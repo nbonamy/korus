@@ -299,7 +299,7 @@ describe('Computer Use MCP tools', () => {
 
     await expect(handlers.get('computer-use-get-app-state')?.({ app: product.name, window_id: 7 })).resolves.toStrictEqual({
       content: [
-        { type: 'text', text: '~ 7 AXButton "Save"' },
+        { type: 'text', text: STRUCTURED_TOOL_RESULT_NOTICE },
         { type: 'image', data: 'cG5n', mimeType: 'image/png' },
       ],
       structuredContent: {
@@ -308,6 +308,7 @@ describe('Computer Use MCP tools', () => {
         stateKind: 'diff',
         stateRevision: 3,
         baseRevision: 2,
+        text: '~ 7 AXButton "Save"',
         screenshot: {
           scope: 'window',
           window: { bounds: { x: 100, y: 200, width: 800, height: 600 } },
@@ -332,6 +333,13 @@ describe('Computer Use MCP tools', () => {
     });
   });
 
+  it('returns the accessibility tree once, in structured content, so structured-first clients can read it', async () => {
+    vi.mocked(computerUse.execute).mockResolvedValue({ ok: true, result: { window_id: 2, stateKind: 'full', text: '3 AXTextField "Search"' } });
+    const result = await handlers.get('computer-use-get-app-state')?.({ app: 'Safari', window_id: 2 });
+    expect(result?.structuredContent).toMatchObject({ text: '3 AXTextField "Search"' });
+    expect(JSON.stringify(result?.content)).not.toContain('AXTextField');
+  });
+
   it('keeps accessibility state usable when the combined screenshot fails', async () => {
     vi.mocked(computerUse.execute).mockResolvedValue({
       ok: true,
@@ -346,11 +354,12 @@ describe('Computer Use MCP tools', () => {
     });
 
     await expect(handlers.get('computer-use-get-app-state')?.({ app: product.name, window_id: 7 })).resolves.toStrictEqual({
-      content: [{ type: 'text', text: `1 AXApplication "${product.name}"` }],
+      content: [{ type: 'text', text: STRUCTURED_TOOL_RESULT_NOTICE }],
       structuredContent: {
         window_id: 7,
         stateKind: 'full',
         stateRevision: 1,
+        text: `1 AXApplication "${product.name}"`,
         screenshot: null,
         screenshotError: { code: 'screen_capture_not_granted', message: 'Screen Recording is not granted.' },
       },
@@ -467,7 +476,7 @@ describe('Computer Use MCP tools', () => {
     const result = await handlers.get('computer-use-click')?.({ app: 'Safari', window_id: 3, element_index: 4, observe: { waitForText: 'Added' } });
     expect(computerUse.execute).toHaveBeenNthCalledWith(1, { command: 'click', arguments: { app: 'Safari', window_id: 3, element_index: 4 } });
     expect(computerUse.execute).toHaveBeenNthCalledWith(2, { command: 'get_app_state', arguments: { app: 'Safari', pid: undefined, path: undefined, bundleIdentifier: undefined, window_id: 3, includeScreenshot: false, waitForText: 'Added' } });
-    expect(result).toStrictEqual({ content: [{ type: 'text', text: '~ 4 Added' }], structuredContent: { stateKind: 'diff', settling: { timedOut: false }, actionDelivered: true, actionResult: { success: true, method: 'ax_press' } }, isError: false });
+    expect(result).toStrictEqual({ content: [{ type: 'text', text: STRUCTURED_TOOL_RESULT_NOTICE }], structuredContent: { text: '~ 4 Added', stateKind: 'diff', settling: { timedOut: false }, actionDelivered: true, actionResult: { success: true, method: 'ax_press' } }, isError: false });
   });
 
   it('preserves delivery information when subsequent observation fails', async () => {
@@ -512,8 +521,8 @@ describe('Computer Use MCP tools', () => {
       .mockResolvedValueOnce({ success: true })
       .mockResolvedValueOnce({ text: 'Still loading', settling: { timedOut: true } });
     expect(await handlers.get('computer-use-click')?.({ window_id: 1, element_index: 2, observe: {} })).toStrictEqual({
-      content: [{ type: 'text', text: 'Still loading' }],
-      structuredContent: { actionDelivered: true, actionResult: { success: true }, settling: { timedOut: true } }, isError: false,
+      content: [{ type: 'text', text: STRUCTURED_TOOL_RESULT_NOTICE }],
+      structuredContent: { text: 'Still loading', actionDelivered: true, actionResult: { success: true }, settling: { timedOut: true } }, isError: false,
     });
   });
 
@@ -521,7 +530,7 @@ describe('Computer Use MCP tools', () => {
     vi.mocked(computerUse.execute).mockResolvedValue({ scope: 'window', image: { dataBase64: 'png' }, window: { bounds: { x: 'bad', y: 0, width: -1, height: 10 } } });
     expect(await handlers.get('computer-use-screenshot')?.({ window_id: 1 })).toMatchObject({ isError: false, content: [expect.anything(), { type: 'image', mimeType: 'image/png', data: 'png' }] });
     vi.mocked(computerUse.execute).mockResolvedValue({ text: 'usable', screenshot: { image: { width: 10 } } });
-    expect(await handlers.get('computer-use-get-app-state')?.({ window_id: 1 })).toMatchObject({ content: [{ type: 'text', text: 'usable' }], isError: false });
+    expect(await handlers.get('computer-use-get-app-state')?.({ window_id: 1 })).toMatchObject({ structuredContent: { text: 'usable' }, isError: false });
   });
 
   function normalizedInputSchema(tool: string): ZodType {

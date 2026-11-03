@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import * as z from 'zod/v4';
-import { errorToolResult, structuredToolResult } from './tool-result';
+import { errorToolResult, STRUCTURED_TOOL_RESULT_NOTICE, structuredToolResult } from './tool-result';
 
 export type ComputerUseClient = {
   execute(input: { command: ComputerUseCommand; arguments: Record<string, unknown> }): Promise<unknown>;
@@ -379,15 +379,17 @@ async function computerUseAppStateResult(run: () => Promise<unknown>): Promise<C
     if (!payload) return errorToolResult('Computer Use returned invalid app state.');
 
     const screenshot = screenshotProjection(payload.screenshot);
+    // Structured-first clients (Claude Code) read only structuredContent, so
+    // the tree lives there once rather than being duplicated in text content.
     const { text: hierarchyText, contextSnapshot: _contextSnapshot, ...metadata } = payload;
     const structuredContent = {
       ...metadata,
+      ...(typeof hierarchyText === 'string' ? { text: hierarchyText } : {}),
       ...(Object.hasOwn(payload, 'screenshot') ? { screenshot: screenshot?.metadata ?? null } : {}),
     };
-    const text = typeof hierarchyText === 'string' ? hierarchyText : 'Observation metadata returned in structuredContent.';
     return {
       content: [
-        { type: 'text', text },
+        { type: 'text', text: STRUCTURED_TOOL_RESULT_NOTICE },
         ...(screenshot?.data ? [{ type: 'image' as const, data: screenshot.data, mimeType: screenshot.mimeType }] : []),
       ],
       structuredContent,
