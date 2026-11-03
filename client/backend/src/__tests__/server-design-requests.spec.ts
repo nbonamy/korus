@@ -39,8 +39,9 @@ it('routes Design edits to their owning daemon, validates requests and publishes
     await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledTimes(2));
     const implementation = sendPrompt.mock.calls[1][1] as string;
     expect(implementation).toContain('Implement the selected design');
-    expect(implementation).toContain('"artboardId":"desktop"');
-    expect(implementation).toContain('"revision":4');
+    const handoffContext = implementation.match(/<context>\n([\s\S]*?)\n<\/context>$/u);
+    expect(handoffContext).not.toBeNull();
+    expect(JSON.parse(handoffContext![1]!)).toMatchObject({ artboardId: 'desktop', revision: 4 });
     expect(implementation).toContain('Saved');
     expect(implementation).toContain('Keep this headline.');
     expect(implementation).toContain('Do not commit, push or deploy');
