@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AgentActivityPowerSaveBlocker } from '../agent-activity-power-save-blocker';
 
 describe('AgentActivityPowerSaveBlocker', () => {
-  it('starts a display sleep blocker when backend client state requests it', () => {
+  it('starts a system idle sleep blocker when backend client state requests it', () => {
     const start = vi.fn().mockReturnValue(42);
     const stop = vi.fn();
     const blocker = new AgentActivityPowerSaveBlocker({ start, stop });
@@ -11,7 +11,7 @@ describe('AgentActivityPowerSaveBlocker', () => {
     blocker.sync(true);
 
     expect(start).toHaveBeenCalledOnce();
-    expect(start).toHaveBeenCalledWith('prevent-display-sleep');
+    expect(start).toHaveBeenCalledWith('prevent-app-suspension');
     expect(stop).not.toHaveBeenCalled();
   });
 
