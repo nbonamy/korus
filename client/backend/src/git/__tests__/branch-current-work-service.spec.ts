@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, open, readFile, readlink, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, open, readFile, readlink, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -14,6 +14,11 @@ vi.mock('node:fs/promises', async importOriginal => {
     return (actual.open as (...args: unknown[]) => unknown)(file, ...rest);
   }) as typeof actual.open };
 });
+import { WorktreeManager, type WorktreeManagerOptions } from '../../worktrees/worktree-manager';
+import { AppBackendServer } from '../../server';
+import { createInitialSnapshot } from '@workspace/core/snapshot';
+import { backendMethods } from '@workspace/core/backend-protocol/methods';
+import type { BranchWorkResult } from '@workspace/core/branch-current-work';
 import { BranchCurrentWorkService } from '../branch-current-work-service';
 import type { BranchWorkInput } from '@workspace/core/branch-current-work';
 import type { Agent } from '@workspace/core/contracts';
@@ -46,6 +51,55 @@ async function fixture() {
 }
 
 describe('BranchCurrentWorkService', () => {
+  it.each(['automatic', 'off', 'setup failure'] as const)('initializes an isolated branch through the configured runtime after transfer: %s', async scenario => {
+    const f = await fixture();
+    // An ignored environment file is not part of the captured Git changes.
+    await writeFile(join(f.source, '.git', 'info', 'exclude'), '.env\n');
+    await writeFile(join(f.source, 'package.json'), '{"name":"fixture","private":true}');
+    const input = { ...f.input, snapshotId: (await f.service.preview(f.source)).snapshotId };
+    const staged = await f.git('diff', '--cached', '--binary');
+    const unstaged = await f.git('diff', '--binary');
+    const snapshot = createInitialSnapshot();
+    snapshot.agents = [{ ...snapshot.agents[0]!, id: f.agent.id, folder: f.source }];
+    snapshot.teams[0]!.agentIds = [f.agent.id];
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.general.worktreeInitializationMode = scenario === 'off' ? 'off' : 'automatic';
+    const runCommand = vi.fn<NonNullable<WorktreeManagerOptions['runCommand']>>(async (_command, _args, options) => {
+      expect(await f.git('status', '--porcelain')).toBe('');
+      expect(await readFile(join(options.cwd, 'package.json'), 'utf8')).toContain('fixture');
+      if (scenario === 'setup failure') throw new Error('setup failed');
+      return {};
+    });
+    const manager = new WorktreeManager({ getInitializationMode: () => snapshot.general.worktreeInitializationMode, runCommand });
+    const initializeWorktree = vi.fn(async (source: string, folder: string) => {
+      await manager.initializeWorktree(source, folder, { backgroundInitialization: true });
+    });
+    const server = new AppBackendServer({ version: 'test', snapshot, initializeWorktree });
+    try {
+      const response = await server.handleMessage({ jsonrpc: '2.0', id: 1, method: backendMethods.agentGitBranchWork, params: { agentId: f.agent.id, input } });
+      if (!response || !('result' in response)) throw new Error(JSON.stringify(response));
+      const result = response.result as BranchWorkResult;
+      expect(result.state, result.detail).toBe('completed');
+      expect(initializeWorktree).toHaveBeenCalledExactlyOnceWith(await realpath(f.source), result.folder);
+      if (scenario === 'setup failure') await expect(manager.waitForInitialization(result.folder)).rejects.toThrow('setup failed');
+      else await manager.waitForInitialization(result.folder);
+      if (scenario === 'off') {
+        expect(runCommand).not.toHaveBeenCalled();
+        await expect(readFile(join(result.folder, '.env'))).rejects.toThrow();
+      } else {
+        expect(runCommand).toHaveBeenCalledOnce();
+        expect(await readFile(join(result.folder, '.env'), 'utf8')).toBe('synthetic-secret\n');
+      }
+      expect(manager.getInitializationState(result.folder)?.state).toBe(scenario === 'setup failure' ? 'error' : 'complete');
+      const destinationGit = async (...args: string[]) => (await exec('git', args, { cwd: result.folder })).stdout.trim();
+      expect(await destinationGit('diff', '--cached', '--binary')).toBe(staged);
+      expect(await destinationGit('diff', '--binary')).toBe(unstaged);
+      expect(await f.git('status', '--porcelain')).toBe('');
+      await server.handleMessage({ jsonrpc: '2.0', id: 2, method: backendMethods.agentGitBranchWork, params: { agentId: f.agent.id, input } });
+      expect(initializeWorktree).toHaveBeenCalledTimes(1);
+    } finally { await manager.close(); await server.close(); }
+  });
+
   it('moves all changes without commits, preserving staged/unstaged state and leaving ignored files behind', async () => {
     const f = await fixture();
     await writeFile(join(f.source, '.git', 'hooks', 'pre-commit'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });

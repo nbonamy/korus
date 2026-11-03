@@ -366,6 +366,9 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   });
   server = new AppBackendServer({
     worktreeInitializationForFolder: folder => worktreeManager.getInitializationState(folder),
+    initializeWorktree: async (repositoryPath, folder) => {
+      await worktreeManager.initializeWorktree(repositoryPath, folder, { backgroundInitialization: true });
+    },
     requirements,
     usage,
     telemetryConsent,

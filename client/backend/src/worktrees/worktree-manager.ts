@@ -52,7 +52,7 @@ export type WorktreeManagerOptions = {
 
 export type WorktreeCreateOptions = {
   backgroundInitialization?: boolean;
-  /** Transfers must never copy environment files or run repository setup implicitly. */
+  /** Defer setup until a transfer has safely materialized and cleaned its source. */
   skipInitialization?: boolean;
   onInitializationProgress?: (progress: WorktreeInitializationProgress) => void;
 };
@@ -108,11 +108,21 @@ export class WorktreeManager {
       };
     }
 
+    const initialization = await this.initializeWorktree(input.repoPath, created.worktree.path, options);
+    return initialization ? { ...created, initialization } : created;
+  }
+
+  /** Initialize a newly created worktree after its transferred files are safely in place. */
+  async initializeWorktree(
+    repositoryPath: string,
+    worktreePath: string,
+    options: Pick<WorktreeCreateOptions, 'backgroundInitialization' | 'onInitializationProgress'> = {},
+  ): Promise<PreparedWorktree['initialization']> {
     if (options.backgroundInitialization) {
-      const folder = path.resolve(created.worktree.path);
+      const folder = path.resolve(worktreePath);
       const controller = new AbortController();
       this.updateInitialization(folder, { state: 'running' });
-      const completion = this.initialize(input.repoPath, created.worktree.path, progress => {
+      const completion = this.initialize(repositoryPath, worktreePath, progress => {
         options.onInitializationProgress?.(progress);
         this.updateInitialization(folder, progress.phase === 'complete' ? { state: 'complete' }
           : { state: 'running', ...(progress.phase === 'running' ? { command: progress.command } : {}) });
@@ -124,14 +134,13 @@ export class WorktreeManager {
         });
       }).finally(() => { this.initializationJobs.delete(folder); });
       this.initializationJobs.set(folder, { controller, completion });
-      return created;
+      return undefined;
     }
-    const initialization = await this.initialize(
-      input.repoPath,
-      created.worktree.path,
+    return this.initialize(
+      repositoryPath,
+      worktreePath,
       options.onInitializationProgress,
     );
-    return { ...created, initialization };
   }
 
   getInitializationState(folder: string): WorktreeInitializationState | undefined {

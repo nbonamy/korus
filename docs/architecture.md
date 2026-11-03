@@ -585,7 +585,10 @@ clears or changes it, Korus never re-detects.
   back to `setup`; an empty file is an intentional no-op) suppresses everything
   else. Otherwise the user's setting may copy `.env*` files (never templates,
   generated folders, nested checkouts, or over existing files) and restore
-  dependencies. Existing worktrees are never re-initialized.
+  dependencies. Existing worktrees are never re-initialized. Branch isolation defers
+  setup of its new worktree until the captured changes and staging state are
+  transferred and source cleanup succeeds, then uses the same configured
+  initializer in the background. Setup errors do not roll back the transfer.
   Agent creation returns after Git creates the worktree; initialization continues
   in the owning daemon. Agents carry setup state and the current command across
   desktop, split panes and remote projections. Their conversations can start during

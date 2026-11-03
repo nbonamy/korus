@@ -168,6 +168,7 @@ export type AppBackendServerOptions = {
   saveCodeReviewReport?: (agent: Agent, session: CodeReviewSession) => Promise<string>;
   agentCreation?: AgentCreationService;
   worktreeInitializationForFolder?: (folder: string) => Agent['worktreeInitialization'];
+  initializeWorktree?: (repositoryPath: string, worktreePath: string) => Promise<void>;
   designService?: DesignService;
   visualizeService?: VisualizeService;
 };
@@ -914,6 +915,7 @@ export class AppBackendServer {
     });
     this.agentGitWorkflows = new AgentGitWorkflowService({
       branchWork: new BranchCurrentWorkService({
+        initializeWorktree: options.initializeWorktree,
         progress: payload => this.applyAndEmitBackendEvent({ agentId: payload.agentId, type: 'git.branchWorkProgress', payload }),
         provision: async (parent, input, folder, agentId) => {
           const worker = this.snapshot.agents.find(candidate => candidate.id === agentId)
