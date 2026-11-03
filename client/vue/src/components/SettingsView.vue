@@ -308,6 +308,8 @@ function selectTab(tab: SettingsTab): void {
 
 .settings-view__header {
   position: absolute;
+  /* Above the scrolling content: icons drawn with CSS masks form their own stacking context and would otherwise paint over this bar. */
+  z-index: 1;
   top: 0;
   left: var(--team-rail-width);
   height: var(--workbench-appbar-height);
