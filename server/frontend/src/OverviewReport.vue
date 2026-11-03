@@ -442,11 +442,17 @@ const series = computed(() => {
     width: 72px;
   }
   .weekly-hero {
-    min-height: 150px;
-    padding: 20px;
+    min-height: 124px;
+    padding: 16px 20px;
   }
   .weekly-hero dd {
-    font-size: 44px;
+    font-size: 40px;
+  }
+  .weekly-list {
+    padding: 0 16px;
+  }
+  .weekly-row {
+    padding: 9px 0;
   }
   .weekly-row dd {
     font-size: 20px;
