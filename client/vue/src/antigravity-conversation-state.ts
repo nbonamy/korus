@@ -11,9 +11,6 @@ type Event = Extract<ProviderConversationFrame, { backend: 'antigravity' }>;
 export function createAntigravityConversationState(recover: (agentId: string) => Promise<unknown>) {
   const frames = shallowRef<Record<string, Frame>>({});
   const pending = new Set<string>();
-  // Retained frames stay visible during recovery; the next snapshot replaces them
-  // even if the owner's revision counter restarted below the retained one.
-  const recovering = new Set<string>();
   const lastAttachedSessions = new Map<string, string>();
   function matchesAgent(agent: Agent, frame: Frame): boolean {
     if (agent.backend !== 'antigravity') return false;
@@ -22,7 +19,10 @@ export function createAntigravityConversationState(recover: (agentId: string) =>
     return frame.snapshot.sessionId !== lastAttachedSessions.get(agent.id);
   }
   function invalidate(agentId: string) {
-    if (frames.value[agentId]) recovering.add(agentId);
+    // Retained frames stay visible during recovery; an unreachable revision lets the
+    // next snapshot replace them even if the owner's counter restarted below it.
+    const frame = frames.value[agentId];
+    if (frame && frame.revision !== Number.NEGATIVE_INFINITY) frames.value = { ...frames.value, [agentId]: { ...frame, revision: Number.NEGATIVE_INFINITY } };
     if (pending.has(agentId)) return;
     pending.add(agentId);
     void recover(agentId).catch(() => {}).finally(() => pending.delete(agentId));
@@ -35,10 +35,8 @@ export function createAntigravityConversationState(recover: (agentId: string) =>
     },
     receive(event: Event): void {
       const current = frames.value[event.agentId];
-      const replacing = event.type === 'antigravity.conversationSnapshotChanged' && recovering.has(event.agentId);
-      if (current && event.payload.revision <= current.revision && !replacing) return;
+      if (current && event.payload.revision <= current.revision) return;
       if (event.type === 'antigravity.conversationSnapshotChanged') {
-        recovering.delete(event.agentId);
         frames.value = { ...frames.value, [event.agentId]: { replica: createAntigravityConversationReplica(event.payload.snapshot), snapshot: event.payload.snapshot, revision: event.payload.revision } };
         return;
       }
@@ -47,7 +45,7 @@ export function createAntigravityConversationState(recover: (agentId: string) =>
         frames.value = { ...frames.value, [event.agentId]: { ...current, snapshot: current.replica.apply(event.payload.event), revision: event.payload.revision } };
       } catch { invalidate(event.agentId); }
     },
-    reset() { frames.value = {}; pending.clear(); recovering.clear(); lastAttachedSessions.clear(); },
+    reset() { frames.value = {}; pending.clear(); lastAttachedSessions.clear(); },
     recoverAll() { for (const id of Object.keys(frames.value)) invalidate(id); },
     reconcile(agents: Agent[]) {
       const agentsById = new Map(agents.map(agent => [agent.id, agent]));

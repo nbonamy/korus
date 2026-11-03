@@ -1260,6 +1260,41 @@ describe('useAppState', () => {
     expect(state.agentConversationFor(claude.id)?.claudeSnapshot?.error).toBe('post-restart');
   });
 
+  it('releases the recovery queue when one load never settles and retries after a failed hydrate', async () => {
+    vi.useFakeTimers();
+    try {
+      const remote = createInitialSnapshot();
+      const codex = remote.agents[0]!;
+      codex.backendSession = { kind: 'codex', threadId: 'thread-1' };
+      const claude = remote.agents[1]!;
+      claude.backend = 'claude';
+      claude.backendSession = { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' };
+      let receive!: (event: MainToRendererEvent) => void;
+      const load = vi.fn().mockResolvedValue(remote);
+      const getSnapshotState = vi.fn().mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 0, connection: { status: 'connected' } });
+      stubElectronTestWindow({ app: { getSnapshotState, loadConversationHistory: load, onEvent: listener => { receive = listener; return () => {}; } } });
+      const state = useAppState();
+      await state.loadSnapshot();
+      await vi.advanceTimersByTimeAsync(0);
+      receive({ seq: 1, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 40, snapshot: codexConversationSnapshot() } });
+      receive({ seq: 2, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 40, snapshot: claudeConversationSnapshot([], { agentId: claude.id }) } });
+      load.mockReset().mockReturnValueOnce(new Promise(() => {})).mockResolvedValue(remote);
+      receive({ seq: 0, source: 'client', occurredAt: '', type: 'snapshot.updated', payload: structuredClone(remote) });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(load).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(load.mock.calls.map(call => call[0])).toEqual([codex.id, claude.id]);
+      // The Codex hydrate produced no snapshot: its frame stays visible, and the next live event retries.
+      expect(state.activeCodexConversationSnapshot.value).not.toBeNull();
+      receive({ seq: 3, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationEventReceived', payload: { revision: 41, event: { seq: 1, occurredAt: '', origin: 'notification', type: 'conversation.activityChanged', conversationId: 'thread-1', payload: { threadStatus: null, busy: true, error: null } } } });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(load.mock.calls.length).toBeGreaterThanOrEqual(3);
+      expect(load.mock.calls[2]![0]).toBe(codex.id);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('invalidates and rehydrates a Codex frame after a revision gap', async () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();

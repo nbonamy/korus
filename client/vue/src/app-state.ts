@@ -99,17 +99,25 @@ const claudeConversationFramesByAgentId = ref<Record<string, {
 // repair signals while their last good provider frame remains visible.
 const conversationRecoveries = new Map<string, Promise<void>>();
 // Retained frames stay visible during recovery, but their revision fence may belong
-// to a previous owner process. The next snapshot for these agents replaces the frame
-// even when its revision is lower; ordinary stale snapshots are still rejected.
-const codexRecoveryAgentIds = new Set<string>();
-const claudeRecoveryAgentIds = new Set<string>();
+// to a previous owner process. Recovery marks the frame with this revision so the
+// next snapshot replaces it even when its own revision is lower, and no live event
+// can extend it before then. The state lives and dies with the frame.
+const AWAITING_RECOVERY_REVISION = Number.NEGATIVE_INFINITY;
+// A load that never settles must not hold the queue slot for every other pane.
+const CONVERSATION_RECOVERY_TIMEOUT_MS = 30_000;
 let conversationRecoveryTail = Promise.resolve();
 function recoverConversation(agentId: string): Promise<void> {
   const existing = conversationRecoveries.get(agentId);
   if (existing) return existing;
   const request = conversationRecoveryTail.then(async () => {
     if (appApi?.loadConversationHistory && snapshot.value.agents.some(agent => agent.id === agentId)) {
-      adoptBackgroundSnapshot(await appApi.loadConversationHistory(agentId, { recovery: true }));
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const loaded = await Promise.race([
+        appApi.loadConversationHistory(agentId, { recovery: true }),
+        new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), CONVERSATION_RECOVERY_TIMEOUT_MS); }),
+      ]).finally(() => clearTimeout(timer));
+      // After a timeout the frame stays marked; the next gap or event retries.
+      if (loaded) adoptBackgroundSnapshot(loaded);
     }
   }).catch(() => undefined).finally(() => {
     if (conversationRecoveries.get(agentId) === request) conversationRecoveries.delete(agentId);
@@ -544,8 +552,6 @@ export function useAppState() {
     claudeConversationFramesByAgentId.value = {};
     antigravityConversations.reset();
     conversationRecoveries.clear();
-    codexRecoveryAgentIds.clear();
-    claudeRecoveryAgentIds.clear();
     agentCreationProgresses.value = [];
     backgroundedAgentCreationIds.clear();
 
@@ -2199,9 +2205,7 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
       if (
         current?.threadId === event.threadId
         && current.revision >= event.payload.revision
-        && !codexRecoveryAgentIds.has(event.agentId)
       ) return;
-      codexRecoveryAgentIds.delete(event.agentId);
       codexConversationFramesByAgentId.value = {
         ...codexConversationFramesByAgentId.value,
         [event.agentId]: {
@@ -2253,8 +2257,7 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
       return;
     case 'claude.conversationSnapshotChanged': {
       const current = claudeConversationFramesByAgentId.value[event.agentId];
-      if (current && current.revision >= event.payload.revision && !claudeRecoveryAgentIds.has(event.agentId)) return;
-      claudeRecoveryAgentIds.delete(event.agentId);
+      if (current && current.revision >= event.payload.revision) return;
       claudeConversationFramesByAgentId.value = {
         ...claudeConversationFramesByAgentId.value,
         [event.agentId]: {
@@ -2322,12 +2325,18 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
 }
 
 function invalidateAndRecoverCodexConversation(agentId: string): void {
-  if (codexConversationFramesByAgentId.value[agentId]) codexRecoveryAgentIds.add(agentId);
+  const frame = codexConversationFramesByAgentId.value[agentId];
+  if (frame && frame.revision !== AWAITING_RECOVERY_REVISION) {
+    codexConversationFramesByAgentId.value = { ...codexConversationFramesByAgentId.value, [agentId]: { ...frame, revision: AWAITING_RECOVERY_REVISION } };
+  }
   void recoverConversation(agentId);
 }
 
 function invalidateAndRecoverClaudeConversation(agentId: string): void {
-  if (claudeConversationFramesByAgentId.value[agentId]) claudeRecoveryAgentIds.add(agentId);
+  const frame = claudeConversationFramesByAgentId.value[agentId];
+  if (frame && frame.revision !== AWAITING_RECOVERY_REVISION) {
+    claudeConversationFramesByAgentId.value = { ...claudeConversationFramesByAgentId.value, [agentId]: { ...frame, revision: AWAITING_RECOVERY_REVISION } };
+  }
   void recoverConversation(agentId);
 }
 
