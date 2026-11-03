@@ -736,8 +736,14 @@ export async function dashboardWorkflow({
           await filtersToggle.getAttribute("aria-expanded"),
           "false",
         );
+        for (const shortcut of ["7d", "30d", "90d"])
+          assert.equal(
+            await page.getByLabel("Recent ranges", { exact: true }).getByText(shortcut, { exact: true }).isVisible(),
+            true,
+            `${name}: ${shortcut} hidden behind filters`,
+          );
         assert.equal(
-          await page.getByRole("form", { name: "Reporting range" }).isVisible(),
+          await page.getByLabel("From day", { exact: true }).isVisible(),
           false,
         );
         const layout = await page.evaluate(() => ({

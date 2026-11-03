@@ -1018,7 +1018,7 @@ footer {
     display: none;
   }
   .report-controls {
-    display: none;
+    margin-bottom: 12px;
   }
   .report-controls--open {
     display: flex;
@@ -1062,6 +1062,10 @@ footer {
   }
   .report-controls .filters .el-select {
     width: 100%;
+  }
+  .report-controls:not(.report-controls--open) .date-range-fields,
+  .report-controls:not(.report-controls--open) .filters {
+    display: none;
   }
   .console-options-trigger {
     width: 44px;
