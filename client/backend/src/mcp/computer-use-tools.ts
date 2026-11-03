@@ -82,7 +82,7 @@ export function registerComputerUseTools(server: McpServer, computerUse: Compute
   }, (arguments_) => executeWindowTargeted(computerUse, 'focus_app', arguments_));
 
   server.registerTool('computer-use-get-app-state', {
-    description: 'Read selected-window AX state (full/diff), optional screenshot and waitForText. Read-only menu-bar inspection needs no window ID.',
+    description: 'Read selected-window AX state (full/diff), optional screenshot and waitForText. Read-only menu-bar inspection needs no window ID. In code mode, chain known steps in one exec.',
     inputSchema: appStateInputSchema,
   }, (arguments_) => arguments_.accessibilityScope === 'menu_bar'
     ? observeAppState(computerUse, arguments_)
@@ -96,7 +96,7 @@ export function registerComputerUseTools(server: McpServer, computerUse: Compute
     : computerUseWindowScreenshotResult(computerUse, arguments_));
 
   server.registerTool('computer-use-click', {
-    description: 'Click by background AX or foreground physical input; observe optionally returns resulting UI state.',
+    description: 'Click by background AX or foreground physical input; observe optionally returns resulting UI state. In code mode, chain known steps in one exec.',
     inputSchema: z.strictObject({
       ...actionTargetSchema,
       click_count: z.number().int().min(1).max(3).optional(),
@@ -111,7 +111,7 @@ export function registerComputerUseTools(server: McpServer, computerUse: Compute
   }, (arguments_) => executeWindowTargeted(computerUse, 'dismiss', arguments_));
 
   server.registerTool('computer-use-press-key', {
-    description: 'Send one key or X-keysym-style chord directly to a running app process.',
+    description: 'Send one key or X-keysym-style chord directly to a running app process. In code mode, chain known steps in one exec.',
     inputSchema: z.strictObject({
       ...keyboardTargetSchema,
       key: z.string().min(1).max(200),
@@ -119,7 +119,7 @@ export function registerComputerUseTools(server: McpServer, computerUse: Compute
   }, (arguments_) => executeWindowTargeted(computerUse, 'press_key', arguments_));
 
   server.registerTool('computer-use-type-text', {
-    description: 'Type into an indexed editable control with internal focus verification. replace=true replaces contents; submit=true presses Return.',
+    description: 'Type into an indexed editable control with internal focus verification. replace=true replaces contents; submit=true presses Return. In code mode, chain known steps in one exec.',
     inputSchema: z.strictObject({
       ...windowTargetSchema,
       element_index: z.number().int().nonnegative().optional(),

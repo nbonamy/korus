@@ -51,6 +51,12 @@ describe('Computer Use MCP tools', () => {
     expect(vi.mocked(computerUse.execute).mock.calls.every(([input]) => input.command === 'get_app_state')).toBe(true);
   });
 
+  it('tells code-mode agents to chain known steps in one exec', () => {
+    for (const name of ['computer-use-get-app-state', 'computer-use-click', 'computer-use-type-text', 'computer-use-press-key']) {
+      expect(definitions.get(name)?.description, name).toContain('chain known steps in one exec');
+    }
+  });
+
   it('accepts semantic click selectors and constrains accessibility scope', () => {
     const clickSchema = inputShape('computer-use-click');
     expect(clickSchema?.selector.safeParse({ role: 'AXButton', title: 'Cancel' }).success).toBe(true);
