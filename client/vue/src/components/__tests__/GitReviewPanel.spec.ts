@@ -32,7 +32,7 @@ describe('GitReviewPanel', () => {
   it('shares the off-by-default lockfile preference between Code settings, Git stats, Changes and Map', async () => {
     const general = ref({ ...defaultGeneralSettings });
     const preferences = createGeneralPreferences(() => general.value, async input => { general.value = normalizeGeneralSettings({ ...general.value, ...input }); });
-    const lock = ['diff --git a/nested/package-lock.json b/nested/package-lock.json', '--- a/nested/package-lock.json', '+++ b/nested/package-lock.json', '@@ -1 +1,4000 @@', '-old', ...Array(4000).fill('+generated')].join('\n');
+    const lock = ['diff --git a/nested/package-lock.json b/nested/package-lock.json', '--- a/nested/package-lock.json', '+++ b/nested/package-lock.json', '@@ -1 +1,2 @@', '-old', '+generated', '+another generated line'].join('\n');
     const patch = `${diff}\n${lock}`;
     const summary = summarizeUnifiedDiff(patch);
     const status = { folder: '/repo', state: 'dirty' as const, ahead: 0, behind: 0, hasUntracked: false, updatedAt: '', ...summary };
@@ -52,7 +52,7 @@ describe('GitReviewPanel', () => {
       expect(wrapper.getComponent(SettingsGeneralPanel).text()).toContain('Git operations still include them.');
       expect((setting().element as HTMLInputElement).checked).toBe(false);
       expect(wrapper.get('.git-diff-control__files').text()).toBe('2');
-      expect(wrapper.get('.git-review-panel__added').text()).toBe('+4002');
+      expect(wrapper.get('.git-review-panel__added').text()).toBe('+4');
       await wrapper.get('[aria-label="Choose repository diff"]').trigger('click');
       await flushPromises();
       const toggle = bodyAll('[role="menuitemcheckbox"]').find(row => row.text().includes('Exclude lockfiles'))!;
