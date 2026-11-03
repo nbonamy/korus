@@ -556,11 +556,51 @@ describe('AppShell work routing', () => {
     const wrapper = mountRealShell({ snapshot, cloneSourceRepository, listSourceBranches, loadWorkRepositories: vi.fn(async () => [project]) });
     wrapper.getComponent({ name: 'AgentSidebar' }).vm.$emit('start-work', 'gitlab'); await flushPromises();
     await wrapper.getComponent({ name: 'RepositoryAcquireDialog' }).get('.repository-acquire-dialog__row').trigger('click');
+    await flushPromises();
+    expect(wrapper.getComponent({ name: 'RepositoryAcquireDialog' }).get('.git-operation-feedback').attributes('aria-busy')).toBe('true');
     await wrapper.setProps({ snapshot: structuredClone(snapshot) }); await flushPromises();
     release({ name: 'repo', path: '/src/repo', worktrees: [] }); await flushPromises();
     expect(cloneSourceRepository).toHaveBeenCalledTimes(1);
     expect(listSourceBranches).toHaveBeenCalledWith('/src/repo', undefined);
     expect(wrapper.getComponent({ name: 'RepositorySessionSourceDialog' }).props('visible')).toBe(true);
+  });
+
+  it.each([true, false])('finishes a background clone without disturbing a later dialog (success=%s)', async success => {
+    const snapshot = createInitialSnapshot();
+    snapshot.sourceFolder = { path: '/src', initialized: true, recentRepoNames: [] };
+    let resolve!: (repository: SourceRepository) => void;
+    let reject!: (error: Error) => void;
+    const cloneSourceRepository = vi.fn(() => new Promise<SourceRepository>((done, fail) => { resolve = done; reject = fail; }));
+    const listSourceBranches = vi.fn(async () => []);
+    const wrapper = mountShell({ snapshot, cloneSourceRepository, listSourceBranches });
+    try {
+      const sidebar = wrapper.getComponent({ name: 'AgentSidebar' });
+      sidebar.vm.$emit('start-work', 'url');
+      await flushPromises();
+      const acquire = wrapper.getComponent({ name: 'RepositoryAcquireDialog' });
+      await acquire.get('[aria-label="Repository URL"]').setValue('https://github.com/owner/project.git');
+      await acquire.get('.app-button--primary').trigger('click');
+      await flushPromises();
+      expect(cloneSourceRepository).toHaveBeenCalledExactlyOnceWith({ url: 'https://github.com/owner/project.git' });
+      expect(acquire.get('.git-operation-feedback').attributes('aria-busy')).toBe('true');
+      expect(acquire.get('.git-operation-feedback').text()).toContain('Cloning project');
+      expect(acquire.find('[aria-label="Repository URL"]').exists()).toBe(false);
+      await acquire.findAll('button').find(button => button.text() === 'Run in background')!.trigger('click');
+      await flushPromises();
+      expect(acquire.props('visible')).toBe(false);
+      sidebar.vm.$emit('start-work', 'url');
+      await flushPromises();
+      await acquire.get('[aria-label="Repository URL"]').setValue('https://github.com/owner/another.git');
+      if (success) resolve({ name: 'project', path: '/src/project', worktrees: [] });
+      else reject(new Error('Authentication failed'));
+      await flushPromises();
+      expect(acquire.props('visible')).toBe(true);
+      expect(acquire.get<HTMLInputElement>('[aria-label="Repository URL"]').element.value).toBe('https://github.com/owner/another.git');
+      expect(acquire.props('error')).toBeNull();
+      expect(listSourceBranches).not.toHaveBeenCalled();
+      expect(wrapper.getComponent({ name: 'RepositorySessionSourceDialog' }).props('visible')).toBe(false);
+      expect(document.body.textContent).toContain(success ? 'project cloned' : 'Couldn’t clone project: Authentication failed');
+    } finally { wrapper.unmount(); }
   });
 
   it('finishes GitLab device authorization with selectable repository results', async () => {

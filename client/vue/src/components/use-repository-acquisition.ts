@@ -5,7 +5,9 @@ import type {
   WorkSource,
   AutomationLocation,
 } from '@workspace/core/contracts';
-import { computed, ref, watch } from 'vue';
+import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
+import { computed, onScopeDispose, ref, watch } from 'vue';
+import { translate } from '../i18n';
 
 export type RepositoryProvider = 'github' | 'gitlab';
 export type RepositoryAcquisitionMode = RepositoryProvider | 'url';
@@ -21,6 +23,8 @@ export type RepositoryAcquisitionOptions = {
   connection: (provider: RepositoryProvider) => WorkIntegrationConnection;
   connectionError: (provider: RepositoryProvider) => string | null;
   loadRepositories: (provider: RepositoryProvider) => Promise<WorkSource[] | void>;
+  notifySuccess: (message: string) => void;
+  notifyError: (message: string) => void;
   openFolder: (folder: string, teamId?: string) => Promise<void>;
   openAuthorization: (provider: RepositoryProvider) => Promise<void>;
   openRepository: (repository: SourceRepository, teamId?: string, source?: WorkSource) => Promise<void>;
@@ -38,6 +42,14 @@ export function useRepositoryAcquisition(options: RepositoryAcquisitionOptions) 
   const loading = ref(false);
   const busy = ref(false);
   const error = ref<string | null>(null);
+  const cloneProgress = ref<{ repository: string; destination: string } | null>(null);
+  let activeClone: { backgrounded: boolean } | null = null;
+
+  function detachClone(): void {
+    if (activeClone) activeClone.backgrounded = true;
+    activeClone = null;
+    cloneProgress.value = null;
+  }
 
   let revision = 0;
   const awaitingCatalog = ref(false);
@@ -47,6 +59,7 @@ export function useRepositoryAcquisition(options: RepositoryAcquisitionOptions) 
   const catalogLoading = computed(() => loading.value || (awaitingCatalog.value && !error.value && options.catalog(provider.value) === undefined));
 
   async function open(nextMode: RepositoryAcquisitionMode): Promise<void> {
+    detachClone();
     const mine = ++revision;
     mode.value = nextMode;
     visible.value = true;
@@ -64,6 +77,7 @@ export function useRepositoryAcquisition(options: RepositoryAcquisitionOptions) 
   }
 
   function close(): void {
+    detachClone();
     ++revision;
     loading.value = false;
     visible.value = false;
@@ -105,21 +119,40 @@ export function useRepositoryAcquisition(options: RepositoryAcquisitionOptions) 
   }
 
   async function cloneAndOpen(url: string, reuseExisting = false, source?: WorkSource): Promise<void> {
+    if (busy.value) return;
     const mine = revision;
+    const teamId = options.activeTeamId();
+    const operation = { backgrounded: false };
+    const name = source?.name ?? canonicalGitRemoteIdentity(url)?.split('/').at(-1) ?? translate('repositories.acquire.repository');
+    activeClone = operation;
     await runBusy(async () => {
-      if (!options.sourceFolder().trim()) {
-        const folder = await options.chooseSourceFolder();
-        if (!folder || mine !== revision) return;
-        await options.saveSourceFolder(folder);
+      try {
+        if (!options.sourceFolder().trim()) {
+          const folder = await options.chooseSourceFolder();
+          if (!folder || mine !== revision) return;
+          await options.saveSourceFolder(folder);
+          if (mine !== revision) return;
+        }
+        cloneProgress.value = { repository: name, destination: options.sourceFolder() };
+        const repository = await options.cloneRepository({
+          url,
+          ...(reuseExisting ? { reuseExisting: true } : {}),
+        });
+        if (operation.backgrounded) {
+          options.notifySuccess(translate('repositories.acquire.cloned', { repository: name }));
+          return;
+        }
         if (mine !== revision) return;
+        activeClone = null;
+        cloneProgress.value = null;
+        close();
+        await options.openRepository(repository, teamId, source);
+      } catch (cause) {
+        if (operation.backgrounded || mine !== revision) options.notifyError(translate('repositories.acquire.cloneFailed', { repository: name, message: options.errorMessage(cause) }));
+        else throw cause;
+      } finally {
+        if (activeClone === operation) { activeClone = null; cloneProgress.value = null; }
       }
-      const repository = await options.cloneRepository({
-        url,
-        ...(reuseExisting ? { reuseExisting: true } : {}),
-      });
-      if (mine !== revision) return;
-      close();
-      await options.openRepository(repository, options.activeTeamId(), source);
     });
   }
 
@@ -157,14 +190,16 @@ export function useRepositoryAcquisition(options: RepositoryAcquisitionOptions) 
   watch(() => [mode.value, connection.value.status] as const, ([nextMode, status], [previousMode, previous]) => {
     if (!visible.value || nextMode === 'url' || previousMode !== nextMode) return;
     if (status === 'connected' && previous !== 'connected') void loadCatalog();
-    else if (status !== 'connected' && previous === 'connected') { ++revision; repositories.value = []; loading.value = false; busy.value = false; }
+    else if (status !== 'connected' && previous === 'connected' && !activeClone) { ++revision; repositories.value = []; loading.value = false; busy.value = false; }
   });
   watch(() => options.activeTeamId(), () => {
     if (visible.value) void open(mode.value);
   });
+  onScopeDispose(close);
 
   return {
     busy,
+    cloneProgress,
     connection,
     catalogLoading,
     displayError,

@@ -772,6 +772,11 @@ export const messages = {
         title: 'Connect GitHub',
       },
       acquire: {
+        repository: 'repository',
+        cloningTitle: 'Cloning {repository}',
+        destination: 'Into {path}',
+        cloned: '{repository} cloned',
+        cloneFailed: 'Couldn’t clone {repository}: {message}',
         clone: 'Clone',
         cloneRepository: 'Clone repository',
         cloning: 'Cloning…',

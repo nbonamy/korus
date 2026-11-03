@@ -1,12 +1,15 @@
 <template>
   <FormDialog
-    v-if="mode === 'url'"
+    v-if="mode === 'url' || progress"
     class="repository-acquire-dialog"
     :model-value="visible"
     :title="t('repositories.acquire.cloneRepository')"
     @update:model-value="onVisibilityChanged"
   >
-    <form class="app-form-dialog" @submit.prevent="submitUrl">
+    <GitOperationFeedback v-if="progress" status="running" :title="t('repositories.acquire.cloningTitle', { repository: progress.repository })" :detail="t('repositories.acquire.destination', { path: progress.destination })">
+      <template #icon><DownloadIcon /></template>
+    </GitOperationFeedback>
+    <form v-else class="app-form-dialog" @submit.prevent="submitUrl">
       <FormField :label="t('repositories.acquire.url')" label-for="repository-acquire-url">
         <div class="app-form-dialog__control app-form-dialog__input-control">
           <input
@@ -19,19 +22,20 @@
             autocomplete="url"
             :placeholder="t('repositories.acquire.urlPlaceholder')"
             spellcheck="false"
+            :disabled="busy"
           >
         </div>
       </FormField>
       <p v-if="error" class="repository-acquire-dialog__url-error">{{ error }}</p>
     </form>
-    <template v-if="backendChoices.length !== 1" #footer-left>
-      <BackendSelector v-model="backend" :disabled="busy" />
-    </template>
     <template #footer>
-      <button class="app-button app-button--tertiary" type="button" @click="emit('close')">{{ t('common.cancel') }}</button>
-      <button class="app-button app-button--primary" type="button" :disabled="!canSubmitUrl || busy" @click="submitUrl">
-        {{ busy ? t('repositories.acquire.cloning') : t('repositories.acquire.cloneRepository') }}
-      </button>
+      <button v-if="progress" class="app-button app-button--secondary" type="button" @click="emit('background')">{{ t('common.runInBackground') }}</button>
+      <template v-else>
+        <button class="app-button app-button--tertiary" type="button" @click="emit('close')">{{ t('common.cancel') }}</button>
+        <button class="app-button app-button--primary" type="button" :disabled="!canSubmitUrl || busy" @click="submitUrl">
+          {{ t('repositories.acquire.cloneRepository') }}
+        </button>
+      </template>
     </template>
   </FormDialog>
   <el-dialog
@@ -132,22 +136,18 @@ import { useI18n } from 'vue-i18n';
 import { IconSearch as SearchIcon } from '@tabler/icons-vue';
 import type { WorkIntegrationConnection, WorkProviderAuthorization, WorkSource } from '@workspace/core/contracts';
 import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
-import { GitHubIcon, GitLabIcon, ShieldCheckIcon } from '../shared/icons/app-icons';
+import { DownloadIcon, GitHubIcon, GitLabIcon, ShieldCheckIcon } from '../shared/icons/app-icons';
 import WorkAuthorizationSteps from './WorkAuthorizationSteps.vue';
-import BackendSelector from './BackendSelector.vue';
-import { useBackendChoices, useNewAgentBackend } from './backend-selection';
-const backendChoices = useBackendChoices();
+import GitOperationFeedback from './GitOperationFeedback.vue';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
-const backend = defineModel<import('@workspace/core/contracts').AgentBackend>('backend');
-
-
 const props = withDefaults(defineProps<{
   busy?: boolean;
   authorization?: WorkProviderAuthorization | null;
   connection?: WorkIntegrationConnection | null;
   error?: string | null;
   loading?: boolean;
+  progress?: { repository: string; destination: string } | null;
   localRepositoryIdentities?: string[];
   mode: 'github' | 'gitlab' | 'url';
   repositories?: WorkSource[];
@@ -158,13 +158,14 @@ const props = withDefaults(defineProps<{
   connection: null,
   error: null,
   loading: false,
+  progress: null,
   localRepositoryIdentities: () => [],
   repositories: () => [],
 });
 
-useNewAgentBackend(backend, backendChoices, () => props.visible);
 const emit = defineEmits<{
   close: [];
+  background: [];
   'clone-url': [url: string];
   connect: [];
   'open-authorization': [];
@@ -203,7 +204,7 @@ function onVisibilityChanged(visible: boolean): void {
 }
 
 function submitUrl(): void {
-  if (canSubmitUrl.value && !props.busy && backend.value && backendChoices.value.includes(backend.value)) emit('clone-url', url.value.trim());
+  if (canSubmitUrl.value && !props.busy) emit('clone-url', url.value.trim());
 }
 
 function isRepositoryLocal(repository: WorkSource): boolean {

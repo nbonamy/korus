@@ -475,7 +475,6 @@
       @created="createRepositorySessionFromWorktree"
     />
     <RepositoryAcquireDialog
-      v-model:backend="repositorySession.backend.value"
       :visible="repositoryAcquireVisible"
       :mode="repositoryAcquireMode"
       :connection="repositoryAcquisition.connection.value"
@@ -484,8 +483,10 @@
       :local-repository-identities="repositoryAcquireSourceRepositories.flatMap((repository) => repository.remoteIdentity ? [repository.remoteIdentity] : [])"
       :loading="repositoryAcquireCatalogLoading"
       :busy="repositoryAcquireBusy"
+      :progress="repositoryAcquisition.cloneProgress.value"
       :error="repositoryAcquireDisplayError"
       @close="closeRepositoryAcquire"
+      @background="closeRepositoryAcquire"
       @clone-url="cloneRepositoryAndOpen"
       @connect="connectGitHub"
       @open-authorization="openGitHubAuthorization"
@@ -1738,6 +1739,8 @@ function openOnRemote(request: RemoteTargetRequest): void {
   void remoteTarget.open(request);
 }
 const repositoryAcquisition = useRepositoryAcquisition({
+  notifySuccess: message => { ElMessage.success(message); },
+  notifyError: message => { ElMessage.error(message); },
   activeTeamId: () => props.snapshot.activeTeamId ?? undefined,
   catalog: provider => props.workRepositoriesByProvider[provider],
   chooseLocalFolder: () => props.chooseAgentFolder(),

@@ -154,7 +154,7 @@ describe('RepositoryAcquireDialog', () => {
     expect(wrapper.find('.repository-acquire-dialog__search').exists()).toBe(false);
     expect(wrapper.find('.repository-acquire-dialog__body--state').exists()).toBe(false);
     expect(wrapper.find('.app-form-dialog__field [aria-label="Repository URL"]').exists()).toBe(true);
-    expect(wrapper.find('.app-form-dialog__footer-left .backend-selector').exists()).toBe(true);
+    expect(wrapper.find('.backend-selector').exists()).toBe(false);
     expect(wrapper.get('.app-dialog__title').text()).toBe('Clone repository');
     expect(wrapper.get('.el-dialog').classes()).not.toContain('app-dialog--compact');
     expect(wrapper.get('[aria-label="Repository URL"]').attributes('placeholder')).toBe('https://github.com/owner/repository.git');
@@ -166,5 +166,9 @@ describe('RepositoryAcquireDialog', () => {
     await submit.trigger('click');
 
     expect(wrapper.emitted('clone-url')).toStrictEqual([['git@github.com:nbonamy/agent-workspace.git']]);
+    choices.value = [];
+    await flushPromises();
+    await wrapper.get('form').trigger('submit');
+    expect(wrapper.emitted('clone-url')).toHaveLength(2);
   });
 });
