@@ -4,6 +4,20 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.50.6] - 2026-11-02
+
+### Improvements and fixes
+
+- Keep Mission conversations visible during recovery and stop Implement approval from closing on unchanged updates.
+- Allow normal display sleep while keeping agents and remote access available.
+- Preserve reviewer context between rounds and start discussions with the original agent after inspection when enabled.
+- Generate commit messages and pull request drafts with the conversation's provider.
+- Remember provider choices, merge cleanup options and GitHub reminder decisions across restarts.
+- Keep repository icons and saved commands consistent across worktrees and clones.
+- Keep the sidebar in place when switching to and from Cockpit.
+- Avoid failures when moving work to a branch while another Git operation is running.
+- Show account credits as whole numbers.
+
 ## [0.50.5] - 2026-11-02
 
 ### Improvements and fixes
