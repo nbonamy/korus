@@ -6,15 +6,16 @@ with the existing Enterprise team login. **Full provider qualification is blocke
 file edits bypassed permission callbacks, session-supplied MCP still prompted,
 and authenticated home isolation failed; several Enterprise controls remain
 unverified.
-Native Cursor execution remains unavailable; the implementation checkpoints below
-add shared transport and provider identity only.
+The streaming host is implemented with fixture evidence and only interrupt
+enabled. The checkpoints below distinguish implemented behavior from remaining
+native qualification; this is not a production-readiness claim.
 
 ## Objective and scope
 
 Add Cursor as a peer provider through the existing backend seam, preserving
 Korus approvals, plans, history and workflow behavior. Advertise only measured
-capabilities. This plan records native transport evidence, not app integration,
-fixture tests, or production readiness. Approved requirements revision 2 and
+capabilities. Native transport evidence and deterministic app integration tests
+are recorded separately below. Approved requirements revision 2 and
 Mission tickets revision 15 define the remaining work.
 
 Use ACP over stdio, sharing the Antigravity connection implementation. Keep this
@@ -259,8 +260,8 @@ Replay and lifecycle:
 ## Capability matrix after Phase 0
 
 “Qualified candidate” means native evidence permits implementation, not that a
-flag can be enabled before its owning ticket and tests. Ticket 3 starts with
-every boolean false and planMode unsupported.
+flag can be enabled before its owning ticket and tests. Ticket 3 started with
+every boolean false and planMode unsupported; ticket 5 enables only interrupt.
 
 | Capability | Final Phase 0 decision | Gate / limitation |
 | --- | --- | --- |
@@ -292,12 +293,12 @@ Other rows identify integration seams, not implemented Cursor features.
 | --- | --- |
 | Core identity | `core/src/contracts/shared.ts`, `contracts/backend.ts`, `backend-driver.ts`, `backend-capabilities.ts`, `settings.ts`, provider-setup contracts: Cursor identity registered, capabilities disabled and per-provider settings preserved |
 | ACP transport | `client/backend/src/acp/acp-connection.ts`: shared framing, ID separation, bounded buffers, deadlines and teardown; provider-supplied display name and optional login marker; stderr stays private |
-| Session/driver | `antigravity/session.ts`, `antigravity-host.ts`, `provider-lifecycle.ts`, `driver-rpc.ts`: Cursor owns normalization/lifecycle, provider health and explicit denial; no renderer protocol parsing |
+| Session/driver | `cursor/cursor-host.ts`, `cursor/session.ts`, `cursor/transcript.ts`, `driver-rpc.ts`: native ACP startup, serialized turns, bounded cancellation, denial and disconnected observations |
 | Lifecycle/auth/updates | `cursor/provider-lifecycle.ts`, `cursor/authentication.ts`, `cursor/runtime.ts`: shared runtime discovery, existing home only, bounded native observations and explicit login; `provider-update-runtime.ts` uses native about/update through the shared idle/consent service |
 | Replay | `antigravity/transcript.ts`, `prompt-journal.ts`; core Antigravity replica/contracts: native history remains authoritative, journal presentation metadata only |
 | MCP | `antigravity/mcp-bridge.ts`, `sessionMcpServer`: shared scoped identity bridge; prove HTTP/SSE trust separately from these stdio probes |
 | Settings/model selection | `SettingsCursorPanel.vue`, onboarding and remote connection rows expose detection/authentication/enablement and official installation instructions. Model selection remains an integration seam through `requirements.ts`, execution selection and `BackendSelector.vue` |
-| Conversation | Core provider envelopes; `client/vue/src/antigravity-conversation-state.ts`, `components/use-agent-conversation.ts`: provider-owned replica, shared UI |
+| Conversation | Core Cursor contracts/guards/replica and revisioned app envelopes; `client/vue/src/cursor-conversation-state.ts`, `app-state.ts`, `components/use-agent-conversation.ts`: provider-owned replica, shared UI |
 | Usage/collector | Backend usage ledger; core usage/telemetry; collector metrics: unknown pricing and collector deployment before Cursor desktop emission |
 | Mobile/workflows | Companion boundary must preserve released-client decoding. Mechanical provider registration only in Missions/review/automation/delegation; their workflow behavior stays unchanged |
 
@@ -455,6 +456,96 @@ file set. The default-worker Git timeouts are absent with two workers. Validatio
 also repaired a partial Electron dependency extraction and started the stopped
 Docker VM; container tests used scratch directories within its home mount.
 Dependency inputs, test timeouts and coverage rules are unchanged.
+
+## Streaming checkpoint (Mission ticket 5)
+
+The Cursor host replaces the unavailable driver. A new agent or Quick Chat
+checks the native CLI version/authentication, launches `agent acp` without a
+shell and uses `initialize` → `authenticate(cursor_login)` → `session/new`.
+The client advertises only `_meta.parameterizedModelPicker: true`; no client
+filesystem, terminal, subagent or interactive request capabilities are claimed.
+Session creation supplies the agent's workspace and an empty MCP list. Quick
+Chats use a private `cursor-quick-chats` directory. Developer instructions use
+the shared `appDeveloperInstructions` service in a context block; the visible
+user message retains only the submitted text and presentation metadata.
+
+Each agent has its own process, session, FIFO admission and revision sequence.
+Concurrent starts share only the in-flight safe authentication observation.
+The Cursor transcript projects text, thoughts and tool updates into its own
+core replica; generic coordination reducers never own transcript transitions.
+Native tool titles travel through app-owned display metadata into the shared
+pane. Permission callbacks select the exact native `reject_once` option ID,
+or cancel when none is offered. A rejected tool remains visibly failed even
+when native updates say completed. Unsupported blocking `cursor/*` requests
+return `{outcome:{outcome:"cancelled"}}`; they never authorize an action.
+
+Interrupt sends `session/cancel`, waits for prompt settlement, then performs a
+workspace-filtered `session/list` round trip before releasing queued work.
+The cancellation guard stays active through that round trip so buffered text
+and late permissions cannot contaminate the next turn. The native handshake
+must advertise list support, as measured in Phase 0. This use retains no history
+metadata and does not enable history controls. A five-second cancellation
+deadline falls back to the shared transport's bounded process-group teardown.
+The fallback preserves an interrupted replica; it does not silently create a
+new native conversation after losing the process. Cold resume and recovery of
+that process belong to ticket 7. The round-trip fence is adapter fixture proof;
+its integrated native proof remains part of ticket 15. The protocol's
+[session-list definition](https://github.com/agentclientprotocol/agent-client-protocol/blob/main/docs/rfds/session-list.mdx)
+documents the advertised capability and working-directory filter.
+
+Unexpected EOF, malformed frames, incompatible handshakes and safe classified
+team/policy errors become disconnected observations and terminal replicas.
+The shared transport recognizes fixed provider-supplied stderr markers and
+formats RPC errors through a provider callback; raw diagnostics, native URLs
+and arbitrary error data are discarded. Version gating and existing-home
+semantics remain intact. Native edit/approval limitations from Gate 5 remain;
+denying callbacks does not enforce prevention for actions that bypass callbacks.
+
+Only `interrupt` becomes true. Models, plans, approvals, questions, history,
+attachments, workflow integration and usage remain disabled/unimplemented by
+this slice. Cursor emits no usage observations or telemetry. No native model
+prompt was run for this checkpoint; deterministic fixtures use sanitized
+**2026.10.22-27dcf5f** shapes with synthetic content and no credentials.
+
+Contract expansion required two defensive guards: guest frame indexing checks
+for event payloads, and the mobile conversation cache discards desktop-only
+Cursor frames. Companion frame/reset filters and wire output remain unchanged;
+these guards do not enable mobile Cursor conversations. The existing released
+phone subscription and snapshot regressions remain applicable; ticket 13 still
+owns the Cursor-containing-workspace compatibility proof.
+
+Behavior tests precede implementation. The real-child fixture covers split
+frames, two turns, queued admission, multi-agent separation, developer context,
+permission denial, cancelled extensions, normal and bounded fallback interrupt,
+duplicate completion/late chunks/late permissions, EOF, malformed protocol,
+team/policy errors, minimum version, incompatible capability metadata and release
+during startup. The public app boundary switches a fresh Codex agent to Cursor
+before its first prompt. Core tests cover frame identity and terminal-turn
+idempotence; renderer tests cover revision-gap recovery, session attachment identity,
+app-state routing and the mounted shared pane's text/tool/interrupt behavior.
+
+Validation uses Node 26.12.1 and npm 10.9.4. Full affected-workspace coverage
+passes with two workers: core 670 tests / 85.73% statements; backend 2,827
+tests / 89.19% (9 skipped); Vue 2,307 tests / 86.84%; mobile 289 tests /
+91.38%. The initial core run exposed the old all-false capability expectation;
+it now asserts the exact interrupt-only surface, and a full core coverage rerun
+passes. Coverage thresholds and measured surfaces are unchanged. Focused backend
+checks include all Antigravity and shared ACP tests (154 tests). Full lint passes
+architecture, every workspace typecheck, CSS/i18n and dead-code checks.
+
+The broader `VITEST_MAX_WORKERS=2 npm run test:ai` run passed core, Vue,
+Electron (534), mobile, collector (35) and console (12). Backend had one existing
+five-second Git provisioning-retry timeout; its unchanged full file then passed
+all 21 tests with one worker, and full backend coverage had already passed.
+The complete tooling set ran serially: 102/103 passed. The diff-treemap browser
+test still times out waiting for its tiny-tile tooltip, including an isolated
+retry. This same failure is recorded under ticket 4; the treemap component and
+test are unchanged here. Thus the broader entrypoint is not reported green.
+An archived-baseline attempt failed fixture bootstrap and is not regression
+evidence. No test assertion or timeout was weakened. The task's focused tests,
+lint and affected coverage pass; the unrelated browser failure remains for its
+owning quality work. Background initialization still reports cached
+`spawn npm ENOENT`; validation used the recovered dependencies recorded above.
 
 ## Verification and learnings
 

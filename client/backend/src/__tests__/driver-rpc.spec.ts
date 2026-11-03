@@ -19,19 +19,15 @@ vi.mock('../codex/codex-command', () => ({
 }));
 
 describe('BackendDriverRpc', () => {
-  it('rejects explicit Cursor operations instead of falling through to a working provider', async () => {
+  it('keeps the unsupported Cursor catalog empty and rejects another provider session without falling through', async () => {
     const cursor = createBackendDriver('cursor');
     const other = createDriver();
-    const agent = { ...createAgent(), backend: 'cursor' as const };
+    const agent = { ...createAgent(), backend: 'cursor' as const, backendSession: { kind: 'codex' as const, threadId: 'foreign-session' } };
     const rpc = new BackendDriverRpc(new Map([['cursor', cursor], ['codex', other]]));
     try {
-      for (const [method, params] of [
-        ['driver/prompt/send', { agent, prompt: 'Synthetic prompt' }],
-        ['driver/models/list', { agent }],
-        ['driver/conversation/load', { agent }],
-      ] as const) await expect(rpc.handle(method, params)).rejects.toThrow('Cursor is not available');
+      await expect(rpc.handle('driver/models/list', { agent })).resolves.toEqual([]);
       expect(other.sendPrompt).not.toHaveBeenCalled();
-      expect(cursor.getRuntimeStatus()).toMatchObject({ backend: 'cursor', status: 'notConfigured' });
+      await expect(rpc.handle('driver/prompt/send', { agent, prompt: 'Synthetic prompt' })).rejects.toThrow(/another provider|does not match/i);
     } finally { await rpc.close(); }
   });
   it.each(['driver/prompt/send', 'driver/prompt/steer'])('checks the expected session after asynchronous engine preflight (%s)', async method => {

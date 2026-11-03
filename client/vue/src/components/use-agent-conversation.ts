@@ -64,7 +64,7 @@ export function agentConversationState(view: () => AgentConversationView, extens
   mentionGroups?: () => NonNullable<CodexConversationPaneState['catalogs']>['mentionGroups'];
   modelMenuItems?: () => CodexComposerMenuItem[];
 } = {}): CodexConversationPaneState {
-  const provider = () => view().codexSnapshot ?? view().claudeSnapshot ?? view().antigravitySnapshot;
+  const provider = () => view().codexSnapshot ?? view().claudeSnapshot ?? view().cursorSnapshot ?? view().antigravitySnapshot;
   // Every message block receives this set as a prop; a fresh Set per read would re-render all of them on every event.
   const answeredIds = stableSet();
   const approvalPreset = () => {

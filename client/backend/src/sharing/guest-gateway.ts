@@ -72,7 +72,7 @@ export class GuestConversationGateway {
     const images = new Set<string>(); const contentIds = new Set<string>();
     const remember = (frame: ProviderConversationFrame) => {
       const messages = isConversationReset(frame) ? frame.payload.snapshot.messages : (() => {
-        const payload = frame.payload.event.payload;
+        const payload = 'event' in frame.payload ? frame.payload.event.payload : {};
         if ('messages' in payload && Array.isArray(payload.messages)) return payload.messages as CompanionReset['payload']['snapshot']['messages'];
         if ('message' in payload) return [payload.message] as CompanionReset['payload']['snapshot']['messages'];
         return [];

@@ -1,3 +1,4 @@
+import { isCursorEvent, isCursorSnapshot } from '../cursor-conversation-guards';
 import { isDelegationContext } from '../delegation-context';
 import { product } from '../product';
 import { isAntigravityEvent, isAntigravitySnapshot } from '../antigravity-conversation-guards';
@@ -397,6 +398,14 @@ function expectClaudeConversationEvent(value: unknown, path: string): void {
 }
 
 export const runtimePayloadValidators = {
+  'cursor.conversationSnapshotChanged': (value, path) => {
+    expectRecord(value, path);
+    if (!Number.isSafeInteger(value.revision) || Number(value.revision) < 1 || !isCursorSnapshot(value.snapshot)) throw new Error('Invalid Cursor conversation snapshot.');
+  },
+  'cursor.conversationEventReceived': (value, path) => {
+    expectRecord(value, path);
+    if (!Number.isSafeInteger(value.revision) || Number(value.revision) < 1 || !isCursorEvent(value.event)) throw new Error('Invalid Cursor conversation event.');
+  },
   'antigravity.conversationSnapshotChanged': (value, path) => {
     expectRecord(value, path);
     expectNumber(value.revision, `${path}.revision`);

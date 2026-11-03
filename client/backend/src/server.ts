@@ -1317,7 +1317,6 @@ export class AppBackendServer {
     await this.providerConnections?.refreshDisconnected(backend);
     if (this.options.providerUpdates?.isUpdating(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
     const selected = resolveAgentBackend(this.snapshot, backend);
-    if (selected === 'cursor') throw new Error('Cursor is not available yet.');
     return selected;
   }
 

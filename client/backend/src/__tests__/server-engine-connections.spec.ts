@@ -8,7 +8,7 @@ import { normalizeGeneralSettings } from '@workspace/core/settings';
 vi.mock('../claude/authentication', () => ({ getLocalClaudeAuthentication: vi.fn(), logoutLocalClaude: vi.fn() }));
 
 describe('connected engine admission', () => {
-  it('observes and enables Cursor independently but blocks work, rechecking a previously connected account', async () => {
+  it('observes and enables Cursor independently and rechecks a previously connected account', async () => {
     const snapshot = createTestSnapshot();
     snapshot.general.providerEnabled = { cursor: false };
     let connected = true;
@@ -22,7 +22,7 @@ describe('connected engine admission', () => {
       expect(snapshot.providerConnections?.[0]).toMatchObject({ installed: true, connected: true, enabled: false });
       expect(snapshot.general.providerEnabled?.cursor).toBe(false);
       await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'provider/enabled/set', params: { backend: 'cursor', enabled: true } });
-      await expect(server.requireConnectedEngine('cursor')).rejects.toThrow('not available yet');
+      await expect(server.requireConnectedEngine('cursor')).resolves.toBe('cursor');
       connected = false;
       await expect(server.requireConnectedEngine('cursor')).rejects.toThrow('not connected');
       expect(snapshot.providerConnections?.[0]).toMatchObject({ connected: false, enabled: true });

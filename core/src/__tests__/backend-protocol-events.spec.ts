@@ -1,3 +1,4 @@
+import { emptyCursorSnapshot } from '../cursor-conversation-replica';
 import { product } from '../product';
 import { emptyAntigravitySnapshot } from '../antigravity-conversation-replica';
 import { approvalAgentRequest, approvalOutcome } from '@workspace/core/agent-request';
@@ -111,6 +112,14 @@ function createFixtures(): EventFixtures {
       proposals: [{ id: 'proposal-1', handle: 'a'.repeat(32), identity: 'guest-1', name: 'Guest', discriminator: '1234abcd', text: '2026-10-29T13:19:32.126Z', status: 'pending', createdAt: occurredAt, messageId: 'message-1', turnId: 'turn-1' }],
       authors: [{ messageId: 'message-1', identity: 'guest-1', name: 'Guest', discriminator: '1234abcd' }],
     } },
+    'cursor.conversationSnapshotChanged': {
+      ...base, type: 'cursor.conversationSnapshotChanged', agentId: 'agent-1', backend: 'cursor', backendSessionId: 'session-1',
+      payload: { revision: 1, snapshot: emptyCursorSnapshot('agent-1', 'session-1') },
+    },
+    'cursor.conversationEventReceived': {
+      ...base, type: 'cursor.conversationEventReceived', agentId: 'agent-1', backend: 'cursor', backendSessionId: 'session-1',
+      payload: { revision: 2, event: { agentId: 'agent-1', sessionId: 'session-1', turnId: 'turn-1', occurredAt: base.occurredAt, type: 'turn.started', payload: { turn: { id: 'turn-1' } } } },
+    },
     'antigravity.conversationSnapshotChanged': {
       ...base, type: 'antigravity.conversationSnapshotChanged', agentId: 'agent-1', backend: 'antigravity', backendSessionId: 'session-1',
       payload: { revision: 1, snapshot: emptyAntigravitySnapshot('agent-1', 'session-1') },

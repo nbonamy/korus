@@ -104,6 +104,15 @@ function expectTurnContext(
 
 function expectEventContext(event: EventRecord): void {
   switch (event.type) {
+    case 'cursor.conversationSnapshotChanged':
+    case 'cursor.conversationEventReceived': {
+      expectAgentBackend(event, 'cursor');
+      expectRequiredString(event, 'backendSessionId');
+      const payload = event.payload as Record<string, unknown>;
+      const frame = (payload.event ?? payload.snapshot) as Record<string, unknown>;
+      if (frame.agentId !== event.agentId || frame.sessionId !== event.backendSessionId) failEventValidation('$.payload', 'expected the outer Cursor identity');
+      return;
+    }
     case 'antigravity.conversationSnapshotChanged':
     case 'antigravity.conversationEventReceived': {
       expectAgentBackend(event, 'antigravity');

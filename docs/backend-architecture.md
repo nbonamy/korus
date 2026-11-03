@@ -107,7 +107,21 @@ Only authentication state, validated version and display-safe account/team
 metadata cross the driver boundary; credentials and native diagnostics do not.
 Explicit login owns a cancellable process group. Connection observations never
 enable Cursor, and new-work admission refreshes authentication before selection.
-Execution remains unavailable until a Cursor runtime is registered.
+Each agent owns a native `agent acp` process through the shared ACP connection.
+The host serializes prompts and projects text, thoughts and tool updates into a
+Cursor-owned revisioned replica. App developer instructions travel in prompt
+context blocks; the renderer receives only app-owned messages. Quick Chats use
+private working directories. Only interrupt is advertised; permission callbacks
+are rejected and unsupported blocking Cursor extensions are cancelled.
+
+Cancellation waits for prompt settlement and a bounded, workspace-filtered
+`session/list` round trip before admitting the next prompt. This drains buffered
+cancelled-turn updates without retaining history metadata. The handshake requires
+that advertised native capability. Process teardown bounds non-cooperative
+cancellation. A lost process keeps its terminal replica; cold resume is unavailable
+and never silently creates a replacement conversation. Known team-switch and
+policy markers produce fixed safe errors and disconnected observations; raw
+diagnostics and URLs are discarded.
 
 Updates inspect native `about --format json` metadata and use native `update`
 through the shared consent and idle scheduler. Child environments explicitly

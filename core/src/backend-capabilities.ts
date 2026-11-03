@@ -105,13 +105,13 @@ export const antigravityBackendCapabilities: BackendCapabilities = {
   ],
 };
 
-// Identity is registered before the runtime and its qualified capabilities.
+// Cursor enables only capabilities implemented and verified by its host.
 export const cursorBackendCapabilities: BackendCapabilities = {
   codeReview: false, planReview: false, questions: false, plugins: false,
   conversationArchive: false, conversationResume: false, conversationReplaceWithSummary: false,
   remoteControl: false, attachments: false, models: false, skills: false,
   reasoningEffort: false, serviceTier: false, thinkingBudget: false, planMode: 'unsupported',
-  goals: false, steerPrompt: false, interrupt: false, history: false, conversationFork: false,
+  goals: false, steerPrompt: false, interrupt: true, history: false, conversationFork: false,
   deleteTurn: false, editTurn: false, retryTurn: false, approvals: false,
   approvalPresets: [], permissionModes: [],
 };

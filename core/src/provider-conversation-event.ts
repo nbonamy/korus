@@ -14,6 +14,7 @@ export function providerConversationEventView(
 ): ProviderConversationEventView {
   let conversationId = event.conversationId ?? event.threadId ?? event.backendSessionId;
   if (
+    event.type === 'cursor.conversationEventReceived' ||
     event.type === 'antigravity.conversationEventReceived' ||
     event.type === 'codex.conversationEventReceived' ||
     event.type === 'claude.conversationEventReceived'

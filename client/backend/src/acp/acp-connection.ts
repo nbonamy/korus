@@ -25,6 +25,9 @@ export class AcpConnection {
     onClose(error: Error): void;
     onLoginRequired?(): void;
     loginRequiredMarker?: string;
+    /** Match only fixed markers; raw diagnostics never leave the transport. */
+    stderrErrorMarkers?: readonly { marker: string; message: string }[];
+    formatRpcError?(code: number, message: unknown): string;
     maxFrameBytes?: number;
   }) {}
 
@@ -49,8 +52,16 @@ export class AcpConnection {
     const marker = this.options.loginRequiredMarker;
     let suffix = '';
     let loginReported = false;
+    const errorMarkers = this.options.stderrErrorMarkers ?? [];
+    let errorSuffix = '';
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', (chunk: string) => {
+      if (errorMarkers.length) {
+        const text = errorSuffix + chunk;
+        const match = errorMarkers.find(value => text.includes(value.marker));
+        if (match) { this.fail(new Error(match.message)); void this.close(); return; }
+        errorSuffix = text.slice(-Math.max(...errorMarkers.map(value => value.marker.length - 1)));
+      }
       if (loginReported || !marker || !this.options.onLoginRequired) return;
       const text = suffix + chunk;
       if (text.includes(marker)) { loginReported = true; suffix = ''; this.options.onLoginRequired(); }
@@ -141,7 +152,10 @@ export class AcpConnection {
     if (!pending) return;
     this.pending.delete(value.id);
     clearTimeout(pending.timer);
-    if (record(value.error)) pending.reject(new AcpError(typeof value.error.code === 'number' ? value.error.code : -32603, this.options.displayName));
+    if (record(value.error)) {
+      const code = typeof value.error.code === 'number' ? value.error.code : -32603;
+      pending.reject(this.options.formatRpcError ? new Error(this.options.formatRpcError(code, value.error.message)) : new AcpError(code, this.options.displayName));
+    }
     else pending.resolve(value.result);
   }
 

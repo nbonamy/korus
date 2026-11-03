@@ -1,6 +1,6 @@
 # Choosing The Coding Agent
 
-How Korus picks Codex, Claude Code or Antigravity for new work.
+How Korus picks Codex, Claude Code, Antigravity or Cursor for new work.
 
 ## Rules
 
@@ -88,6 +88,11 @@ approval settings provider-scoped. Sending waits for an outstanding switch, and 
 catalog responses from the former provider are ignored. Antigravity effort is encoded
 in native model IDs; separate effort, thinking-budget and service-tier settings do
 not apply.
+
+Cursor uses its native default model while its model and permission controls are
+unsupported; its host advertises interrupt only. Cold Cursor history requires a
+separate resume implementation. Selecting a provider does not grant capabilities
+that its host has not implemented.
 
 ## Connection State
 

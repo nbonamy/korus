@@ -10,8 +10,44 @@ import { claudeConversationSnapshot } from '../../test/claude-conversation-fixtu
 import type { AgentConversationActions } from '../use-agent-conversation';
 import AgentConversationPanel from '../AgentConversationPanel.vue';
 import { backendChoicesKey } from '../backend-selection';
+import { cursorBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { emptyCursorSnapshot, createCursorConversationReplica } from '@workspace/core/cursor-conversation-replica';
 
 describe('AgentConversationPanel', () => {
+  it('renders Cursor text and tool activity through the shared pane and routes interrupt after a provider switch', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = { ...snapshot.agents[0]!, backend: 'cursor' as const, backendDefaults: { kind: 'cursor' as const }, backendSession: undefined };
+    const view = shallowReactive<AgentConversationView>({
+      agent, codexSnapshot: null, claudeSnapshot: null, cursorSnapshot: null,
+      composer: createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(agent.id),
+      composerState: { text: 'Hello Cursor', selectionStart: 12, selectionEnd: 12 }, attachments: [], capabilities: cursorBackendCapabilities,
+      approvals: [], sending: false, queuedPrompts: [], history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false }, answeredClientRequestIds: new Set(),
+    });
+    const actions: AgentConversationActions = {
+      planReview: vi.fn(), clearGoal: vi.fn(), threadFlag: vi.fn(), prepare: vi.fn(), loadOlder: vi.fn(), send: vi.fn(), steer: vi.fn(), interrupt: vi.fn(),
+      deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(), continueInterruptedTurn: vi.fn(), resolveApproval: vi.fn(), clientResponse: vi.fn(),
+      selectModel: vi.fn(), selectReasoningEffort: vi.fn(), selectServiceTier: vi.fn(), setPlanMode: vi.fn(), setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(),
+      updateComposerState: (_id, state) => { view.composerState = state; }, updateAttachments: vi.fn(), deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
+    };
+    const wrapper = mount(AgentConversationPanel, { props: { view, actions, agents: [agent], focused: true, mentionGroups: [], modelMenuItems: [], selectModelMenuItem: vi.fn(),
+      savedPromptDrafts: [], savePromptDraft: vi.fn(), removePromptDraft: vi.fn(), openLink: vi.fn(), openImage: vi.fn(), openVisualization: vi.fn(),
+    }, global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'cursor']) } } });
+    try {
+      await wrapper.get('form').trigger('submit'); await flushPromises();
+      expect(actions.send).toHaveBeenCalledWith(agent.id, 'Hello Cursor', undefined);
+      const replica = createCursorConversationReplica(emptyCursorSnapshot(agent.id, 'session'));
+      const identity = { agentId: agent.id, sessionId: 'session', turnId: 'turn', occurredAt: '2026-11-03T12:00:00Z' };
+      replica.apply({ ...identity, type: 'turn.started', payload: { turn: { id: 'turn' } } });
+      view.cursorSnapshot = replica.apply({ ...identity, type: 'message.upsert', payload: { message: { id: 'answer', agentId: agent.id, turnId: 'turn', role: 'assistant', status: 'streaming', createdAt: identity.occurredAt,
+        parts: [{ type: 'text', text: 'Cursor streamed reply' }, { type: 'tool', id: 'tool', kind: 'read', title: 'Read synthetic.txt', status: 'completed', body: 'synthetic contents', metadata: { displayTitle: 'Read synthetic.txt' } }] } } });
+      view.composerState = { text: '', selectionStart: 0, selectionEnd: 0 };
+      await flushPromises();
+      expect(wrapper.text()).toContain('Cursor streamed reply');
+      expect(wrapper.text()).toContain('Read synthetic.txt');
+      await wrapper.get('button[title="Interrupt"]').trigger('click');
+      expect(actions.interrupt).toHaveBeenCalledWith(agent.id);
+    } finally { wrapper.unmount(); }
+  });
   it('toggles Goal mode in a Claude composer and submits the objective to that agent', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[1]!;
