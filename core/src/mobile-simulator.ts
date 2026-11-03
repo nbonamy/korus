@@ -54,7 +54,7 @@ export type MobileAction =
       durationMs: number;
     }
   | { action: 'text'; text: string }
-  | { action: 'button'; button: 'home' | 'back' | 'enter' | 'backspace' | 'volumeUp' | 'volumeDown' | 'power' }
+  | { action: 'button'; button: 'home' | 'back' | 'enter' | 'backspace' | 'volumeUp' | 'volumeDown' | 'power' | 'up' | 'down' | 'left' | 'right' | 'select' }
   | { action: 'launch'; appId: string };
 export type MobileRequest =
   | { action: 'list' }

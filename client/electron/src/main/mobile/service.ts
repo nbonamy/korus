@@ -281,7 +281,7 @@ function validateAction(input: MobileAction): void {
         throw new Error('Invalid app identifier.');
       return;
     case 'button':
-      if (!['home', 'back', 'enter', 'backspace', 'volumeUp', 'volumeDown', 'power'].includes(input.button)) throw new Error('Unsupported device button.');
+      if (!['home', 'back', 'enter', 'backspace', 'volumeUp', 'volumeDown', 'power', 'up', 'down', 'left', 'right', 'select'].includes(input.button)) throw new Error('Unsupported device button.');
       return;
     default:
       throw new Error('Unsupported simulator action.');

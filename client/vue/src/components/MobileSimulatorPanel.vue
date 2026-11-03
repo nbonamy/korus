@@ -355,6 +355,8 @@ async function action(input: MobileAction) {
   if (attachment.value && !busy.value) await run({ ...input, attachmentId: attachment.value.id });
 }
 function button(button: Extract<MobileAction, { action: 'button' }>['button']) {
+  // Remote presses queue in order like typed keys; hardware buttons wait for the device to be idle.
+  if (television.value && ['up', 'down', 'left', 'right', 'select'].includes(button)) return sendKey({ action: 'button', button });
   void action({ action: 'button', button });
 }
 function openSetup(url: string) {
@@ -422,8 +424,21 @@ function flushTyped() {
   typed = '';
   sendKey({ action: 'text', text: value });
 }
+const remoteKeys: Record<string, 'up' | 'down' | 'left' | 'right' | 'back'> = {
+  ArrowUp: 'up',
+  ArrowDown: 'down',
+  ArrowLeft: 'left',
+  ArrowRight: 'right',
+  Escape: 'back',
+};
 function keyDown(event: KeyboardEvent) {
   if (event.metaKey || event.ctrlKey || event.altKey) return;
+  // A television is driven by its remote: arrows move focus, Enter selects, Escape goes back.
+  if (television.value && (event.key in remoteKeys || event.key === 'Enter')) {
+    event.preventDefault();
+    sendKey({ action: 'button', button: event.key === 'Enter' ? 'select' : remoteKeys[event.key]! });
+    return;
+  }
   if (event.key === 'Enter' || event.key === 'Backspace') {
     event.preventDefault();
     flushTyped();

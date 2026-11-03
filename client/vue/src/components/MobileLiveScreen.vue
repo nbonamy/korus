@@ -67,8 +67,9 @@ const props = withDefaults(
   }>(),
   { platform: 'ios' },
 );
-defineEmits<{ keydown: [event: KeyboardEvent]; button: [id: HardwareButton] }>();
+const emit = defineEmits<{ keydown: [event: KeyboardEvent]; button: [id: HardwareButton | RemoteButton] }>();
 type HardwareButton = 'volumeUp' | 'volumeDown' | 'power';
+type RemoteButton = 'up' | 'down' | 'left' | 'right' | 'select';
 type Edge = 'top' | 'right' | 'bottom' | 'left';
 const edges: Edge[] = ['top', 'right', 'bottom', 'left'];
 /** Physical buttons of an upright phone: edge and extent along it (fractions of the edge, top to bottom). */
@@ -278,7 +279,27 @@ function point(event: PointerEvent): Point | undefined {
     y: Math.max(0, Math.min(displayedHeight - 1, Math.round(((event.clientY - rect.top) * displayedHeight) / rect.height))),
   };
 }
+// A television has no touchscreen: a click presses the remote's select key and a drag presses the matching arrow.
+const REMOTE_DRAG_PX = 24;
+let remoteStart: { pointerId: number; x: number; y: number } | undefined;
+function remoteDown(event: PointerEvent) {
+  if (props.disabled || event.button !== 0) return;
+  event.preventDefault();
+  (event.currentTarget as HTMLImageElement).focus();
+  (event.currentTarget as HTMLImageElement).setPointerCapture?.(event.pointerId);
+  remoteStart = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+}
+function remoteUp(event: PointerEvent) {
+  if (!remoteStart || remoteStart.pointerId !== event.pointerId) return;
+  const dx = event.clientX - remoteStart.x;
+  const dy = event.clientY - remoteStart.y;
+  remoteStart = undefined;
+  if (event.type === 'pointercancel') return;
+  if (Math.hypot(dx, dy) < REMOTE_DRAG_PX) emit('button', 'select');
+  else emit('button', Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+}
 function pointerDown(event: PointerEvent) {
+  if (props.television) return remoteDown(event);
   if (props.disabled || gesture || pendingUp || sending || event.button !== 0 || !send) return;
   const start = point(event);
   if (!start) return;
@@ -298,11 +319,13 @@ function pointerMove(event: PointerEvent) {
   void flushTouch();
 }
 function pointerUp(event: PointerEvent) {
+  if (props.television) return remoteUp(event);
   if (!gesture || gesture.pointerId !== event.pointerId) return;
   gesture.point = point(event) ?? gesture.point;
   release();
 }
 function release() {
+  remoteStart = undefined;
   if (!gesture) return;
   pendingUp = gesture.point;
   pendingMove = undefined;

@@ -54,7 +54,7 @@ export function createMobileSimulatorToolModuleProvider(
   };
 }
 const coordinate = z.number().finite().nonnegative().max(10000);
-const BUTTONS = ['home', 'back', 'enter', 'backspace', 'volumeUp', 'volumeDown', 'power'] as const;
+const BUTTONS = ['home', 'back', 'enter', 'backspace', 'volumeUp', 'volumeDown', 'power', 'up', 'down', 'left', 'right', 'select'] as const;
 const MAX_WAIT_MS = 10_000;
 function pause(ms: number): Promise<void> {
   return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
@@ -86,7 +86,7 @@ const flatInput = z.object({
   height: z.number().optional().describe('tap, swipe: height of the screenshot the coordinates refer to'),
   durationMs: z.number().optional().describe('swipe: 100 to 3000'),
   text: z.string().optional().describe('text: printable ASCII to type'),
-  button: z.enum(BUTTONS).optional().describe('button: key to press (power toggles the screen lock; volume shows the volume indicator)'),
+  button: z.enum(BUTTONS).optional().describe('button: key to press (power toggles the screen lock; volume shows the volume indicator; up/down/left/right/select are the D-pad for Android TV, which has no touchscreen)'),
   appId: z.string().optional().describe('launch: bundle or package id'),
   waitMs: z
     .number()

@@ -9,6 +9,7 @@ import {
 } from '@grpc/grpc-js';
 import { loadSync } from '@grpc/proto-loader';
 import path from 'node:path';
+import type { MobileAction } from '@workspace/core/mobile-simulator';
 
 type Message = Record<string, unknown>;
 type Call = ClientUnaryCall | ClientWritableStream<Message> | ClientDuplexStream<Message, Message>;
@@ -159,8 +160,9 @@ export class IdbClient {
   async swipe(x: number, y: number, toX: number, toY: number, duration: number): Promise<void> {
     await this.hid([{ swipe: { start: { x, y }, end: { x: toX, y: toY }, duration } }]);
   }
-  async button(button: 'home' | 'enter' | 'backspace' | 'back' | 'volumeUp' | 'volumeDown' | 'power'): Promise<void> {
+  async button(button: Extract<MobileAction, { action: 'button' }>['button']): Promise<void> {
     if (button === 'back') throw new Error('iOS has no Back button.');
+    if (['up', 'down', 'left', 'right', 'select'].includes(button)) throw new Error('D-pad buttons are for Android TV.');
     // idb HID buttons: 1 home, 2 lock (the side button), 6 volume up, 7 volume down.
     const hardware = { home: 1, power: 2, volumeUp: 6, volumeDown: 7 } as const;
     if (button in hardware) return this.hid(press({ button: { button: hardware[button as keyof typeof hardware] } }));

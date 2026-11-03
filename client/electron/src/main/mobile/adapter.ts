@@ -264,7 +264,7 @@ export class NativeMobileAdapter implements MobileAdapter {
         args = ['text', shellQuote(action.text.replace(/ /g, '%s'))];
         break;
       case 'button': {
-        const keys = { home: '3', back: '4', enter: '66', backspace: '67', volumeUp: '24', volumeDown: '25', power: '26' };
+        const keys = { home: '3', back: '4', enter: '66', backspace: '67', volumeUp: '24', volumeDown: '25', power: '26', up: '19', down: '20', left: '21', right: '22', select: '23' };
         args = ['keyevent', keys[action.button]];
         break;
       }

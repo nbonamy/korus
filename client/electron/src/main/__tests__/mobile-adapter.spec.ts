@@ -323,7 +323,7 @@ describe('native mobile adapters', () => {
     expect(native.run.mock.lastCall?.[1]).toEqual(['-s', 'emulator-5554', 'shell', 'input', 'tap', '300', '600']);
     await adapter.perform(android, { action: 'button', button: 'back' });
     expect(native.run.mock.lastCall?.[1]).toEqual(['-s', 'emulator-5554', 'shell', 'input', 'keyevent', '4']);
-    for (const [button, code] of [['volumeUp', '24'], ['volumeDown', '25'], ['power', '26']] as const) {
+    for (const [button, code] of [['volumeUp', '24'], ['volumeDown', '25'], ['power', '26'], ['up', '19'], ['down', '20'], ['left', '21'], ['right', '22'], ['select', '23']] as const) {
       await adapter.perform(android, { action: 'button', button });
       expect(native.run.mock.lastCall?.[1]).toEqual(['-s', 'emulator-5554', 'shell', 'input', 'keyevent', code]);
     }

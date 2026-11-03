@@ -63,6 +63,29 @@ describe('MobileSimulatorPanel', () => {
     } finally { wrapper.unmount(); }
   });
 
+  it('drives an Android TV with remote keys, clicks and drags because it has no touchscreen', async () => {
+    const { wrapper, mobileSimulator, mobileSimulatorView } = setup(true, { ...attachment.device, name: 'Android_TV_1080p_API_31' });
+    try {
+      await flushPromises();
+      const image = wrapper.get('img');
+      vi.spyOn(image.element, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 960, height: 540 } as DOMRect);
+      mobileSimulator.mockClear();
+      for (const key of ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape'])
+        await image.trigger('keydown', { key });
+      await vi.advanceTimersByTimeAsync(100);
+      expect(mobileSimulator.mock.calls.map(([, input]) => (input as { button?: string }).button)).toEqual(['up', 'down', 'left', 'right', 'select', 'back']);
+      mobileSimulator.mockClear();
+      const pointer = (type: string, x: number, y: number) =>
+        image.element.dispatchEvent(new MouseEvent(type, { button: 0, clientX: x, clientY: y, bubbles: true }));
+      pointer('pointerdown', 100, 100); pointer('pointerup', 102, 101);
+      pointer('pointerdown', 100, 100); pointer('pointerup', 220, 110);
+      pointer('pointerdown', 100, 100); pointer('pointerup', 95, 20);
+      await flushPromises();
+      expect(mobileSimulator.mock.calls.map(([, input]) => (input as { button?: string }).button)).toEqual(['select', 'right', 'up']);
+      expect(mobileSimulatorView.mock.calls.some(([, input]) => input.action === 'touch')).toBe(false);
+    } finally { wrapper.unmount(); }
+  });
+
   it('folds and unfolds a Duo and starts a fresh live view for each screen size', async () => {
     const { wrapper, mobileSimulator, mobileSimulatorView } = setup(true, { ...attachment.device, platform: 'ios', name: 'My Duo', foldable: true });
     try {
