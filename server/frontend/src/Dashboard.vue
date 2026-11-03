@@ -12,6 +12,18 @@
           <h1 ref="heading" tabindex="-1">{{ pageTitle }}</h1>
         </div>
         <div class="masthead-actions">
+          <ElSegmented
+            v-if="page !== 'overview'"
+            class="presets"
+            :model-value="selectedRange"
+            :options="[
+              { label: '7d', value: 7 },
+              { label: '30d', value: 30 },
+              { label: '90d', value: 90 },
+            ]"
+            aria-label="Recent ranges"
+            @change="recent(Number($event))"
+          />
           <ElButton
             v-if="page !== 'overview'"
             class="filters-toggle"
@@ -32,7 +44,6 @@
             >
               <path d="M4 7h16M7 12h10M10 17h4" />
             </svg>
-            <span>Filters</span>
           </ElButton>
           <ElButton
             class="refresh-button"
@@ -68,17 +79,6 @@
           aria-label="Reporting range"
           @submit.prevent="load"
         >
-          <ElSegmented
-            class="presets"
-            :model-value="selectedRange"
-            :options="[
-              { label: '7d', value: 7 },
-              { label: '30d', value: 30 },
-              { label: '90d', value: 90 },
-            ]"
-            aria-label="Recent ranges"
-            @change="recent(Number($event))"
-          />
           <div class="date-range-fields">
             <ElDatePicker
               v-model="from"

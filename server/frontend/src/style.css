@@ -990,6 +990,26 @@ footer {
 }
 
 @media (max-width: 560px) {
+  .masthead {
+    gap: 8px;
+  }
+  .masthead > div:first-child {
+    flex: 1;
+    min-width: 0;
+  }
+  .masthead h1 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .masthead-actions {
+    flex-shrink: 0;
+    gap: 6px;
+  }
+  .masthead-actions .presets {
+    width: clamp(114px, 30vw, 132px);
+    min-width: 0;
+  }
   main {
     padding: 16px max(16px, env(safe-area-inset-right))
       max(28px, env(safe-area-inset-bottom))
@@ -1004,6 +1024,8 @@ footer {
   }
   .console-shell .filters-toggle {
     display: inline-flex;
+    width: 44px;
+    padding: 0;
   }
   .filters-toggle > span {
     display: inline-flex;

@@ -742,6 +742,19 @@ export async function dashboardWorkflow({
             true,
             `${name}: ${shortcut} hidden behind filters`,
           );
+        const presetsBox = await page.getByLabel("Recent ranges", { exact: true }).boundingBox();
+        const filtersBox = await filtersToggle.boundingBox();
+        const headingBox = await page.getByRole("heading", { level: 1 }).boundingBox();
+        const refreshBox = await page.getByRole("button", { name: "Refresh metrics", exact: true }).boundingBox();
+        assert.ok(
+          headingBox.x + headingBox.width <= presetsBox.x &&
+          presetsBox.x + presetsBox.width <= filtersBox.x &&
+            filtersBox.x + filtersBox.width <= refreshBox.x &&
+            Math.abs(headingBox.y + headingBox.height / 2 - filtersBox.y - filtersBox.height / 2) <= 1 &&
+            Math.abs(presetsBox.y + presetsBox.height / 2 - filtersBox.y - filtersBox.height / 2) <= 1,
+          `${name}: title, range shortcuts, Filters and Refresh must share one row`,
+        );
+        assert.equal((await filtersToggle.innerText()).trim(), "");
         assert.equal(
           await page.getByLabel("From day", { exact: true }).isVisible(),
           false,
