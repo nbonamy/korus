@@ -4,7 +4,8 @@ Status: Phase 0 measured on 2026-11-03 with Cursor CLI **2026.10.22-27dcf5f**
 (minimum supported candidate: 2026.10.08). ACP session creation is permitted
 with the existing Enterprise team login. **Full provider qualification is blocked**:
 file edits bypassed permission callbacks, session-supplied MCP still prompted,
-and fresh-home login and several Enterprise controls remain unverified.
+and authenticated home isolation failed; several Enterprise controls remain
+unverified.
 No Cursor provider code is implemented by this checkpoint.
 
 ## Objective and scope
@@ -33,7 +34,7 @@ Credentials, Keychain, `auth.json` and global config contents were never read.
 Stderr was drained and discarded. No API key or auth token was supplied; neither
 corresponding environment variable was present. Existing native login was reused.
 
-The bounded probes issued 24 small prompts, primarily with `composer-2.5`.
+The bounded probes issued 25 small prompts, primarily with `composer-2.5`.
 Request deadlines were 25–65 seconds; owned process groups received SIGTERM then
 SIGKILL during cleanup. No company repository was used as the Cursor cwd.
 No global permission configuration, persistent approval or team setting was changed.
@@ -52,6 +53,7 @@ Scratch evidence groups (ephemeral, not prerequisites for future tests):
 | `cancel.jsonl`, `shell-cancel.jsonl`, `extra-summary.txt` | Cancellation and recovery, auxiliary text and text attachment |
 | `image.jsonl`, `subagent.jsonl`, `overlap.jsonl`, `final-summary.txt` | Image, child activity and concurrent prompts |
 | `isolated.jsonl`, `home-metadata-audit.json` | Unauthenticated isolated initialization and filename/stat audit |
+| `isolation-auth.jsonl`, `isolation-replay.jsonl`, `isolation-auth-audit.json`, `isolation-auth-summary.txt`, `isolation-logout-summary.json` | User-completed isolated login, native chat/replay, full-tree metadata audit and isolated logout |
 
 The sanitized wire excerpts below are the durable fixture source. Do not copy
 whole raw discovery payloads into fixtures: native slash-command discovery
@@ -65,8 +67,8 @@ A failed gate is a qualification result, not permission to relax app acceptance.
 | Gate | CLI version | Outcome and measured evidence | Consequence / follow-up |
 | --- | --- | --- | --- |
 | 1. Handshake | 2026.10.22-27dcf5f | **Pass.** Protocol 1; native auth; session creation with no prompt. With picker metadata: base model IDs and model-specific options. Without: bracket-parameterized variants. | Use negotiated protocol and runtime catalog; do not claim capabilities merely from advertisement. |
-| 2. Auth | 2026.10.22-27dcf5f | **Blocked (partial).** Existing login authenticates with empty result. Fresh config plus file credential store reports `isAuthenticated:false,status:unauthenticated` through bounded `status --format json`, with no login invocation. | Explicit browser login, logout after isolated login, expiry and team-switch disconnect still require native proof. No logout/team switch was applied to the user's active account. |
-| 3. Home isolation | 2026.10.22-27dcf5f | **Blocked.** `CURSOR_CONFIG_DIR=<scratch>/isolated AGENT_CLI_CREDENTIAL_STORE=file` does not reuse native login. Isolated `initialize` works. Browser login requested from user; not completed at this checkpoint. | Isolated Korus home is **not qualified/supported**. Keep existing-home semantics. Authenticated chats, permissions and MCP approval isolation require login and before/after filesystem audit. |
+| 2. Auth | 2026.10.22-27dcf5f | **Blocked (partial).** Existing native auth works. Fresh home initially reported unauthenticated; user completed explicit browser login, then isolated status/authenticate/session/new/prompt/load succeeded. Native isolated logout returned exit 0; isolated status became unauthenticated while existing-home status stayed authenticated. | Login/logout detection measured without reading credentials or logging out the active home. Expiry and team-switch disconnect remain unverified follow-ups; never claim those transitions are qualified. |
+| 3. Home isolation | 2026.10.22-27dcf5f | **Fail for full isolation.** After user browser login, `CURSOR_CONFIG_DIR=<scratch>/isolated AGENT_CLI_CREDENTIAL_STORE=file` authenticated and stored ACP config/chats under scratch; cold replay succeeded. Full-tree filename/stat comparison still found six changed paths in real `~/.cursor` (inventory below). Shell/MCP prompted; edit bypass reproduced. | Isolated Korus home is **unsupported**. Config/chats/credential state redirect, but other native state is shared. Keep existing-home semantics; do not advertise isolated approvals/MCP trust or infer global allowlist independence. |
 | 4. Chat and replay | 2026.10.22-27dcf5f | **Pass, with caveats.** Two streamed turns recalled `KORUS_C0_7A`. New process `session/load` emitted both prompts, thoughts and replies. Tool-session load replayed both tools without permission requests or changing the shell-output file mtime. | Replay tool IDs changed; timestamps absent. Replace/hydrate a replica, do not append replay into live transcript or infer tool continuity from IDs. |
 | 5. Approvals | 2026.10.22-27dcf5f | **Fail for full contract.** Rejected shell write absent; allowed shell and edit both exactly `ALLOWED`. Rejection probe still created `denied-edit.txt`: edit had **no permission request**. MCP reject prevented actual call; allow-once reached the recorder. Auto-review still prompted for printf; force ran it without callback. | `approvals:false` for the complete Korus contract until native edit approval is resolved. No fake edit dialog. Details below. |
 | 6. Questions/plans/todos | 2026.10.22-27dcf5f | **Blocked (partial).** In plan mode, native `cursor/create_plan` requests accepted and rejected successfully; planned file absent after both turns. Reject could cause another proposal in the same turn. Structured `plan` updates carried todos. Two explicit question prompts (agent/plan modes) produced textual questions, no `cursor/ask_question`. No `cursor/update_todos` observed. | Native plan review is a candidate. Questions remain false; todo-extension mapping and implementation-after-separate-acceptance still need proof. |
@@ -82,16 +84,48 @@ A failed gate is a qualification result, not permission to relax app acceptance.
 The isolated logged-out `status` check created `isolated/cli-config.json`
 (filename only inspected). A filename/size/mtime snapshot of the existing
 `~/.cursor` before/after that isolated check found **no changed paths**.
-This result covers that status call only. It does **not** establish an exhaustive
-list of writes for authenticated isolated ACP: that list is blocked on fresh-home
-login. Config, chats, ordinary approvals and MCP approvals must all be audited
-before offering a Korus-specific Cursor home. Never copy credentials to finish it.
+This result covers that status call only. After the user completed browser login,
+the authenticated ACP session and cold replay were audited separately. Full-tree
+filename/size/mtime snapshots found the following **complete observed change set**
+under real `~/.cursor` during that bounded interval (no created/deleted paths).
+Team and workspace identifiers are sanitized; no file contents were read:
+
+| Remaining real-home path | Observed change |
+| --- | --- |
+| `ai-tracking/ai-code-tracking.db` | Metadata changed |
+| `managed/team_<team>/hooks/restrict-browser-mcp` | Metadata changed |
+| `managed/team_<team>/hooks/restrict-playwright-cli` | Metadata changed |
+| `projects/<short-workspace-key>/worker.sock` | Socket metadata changed |
+| `projects/<workspace-key>/worker.log` | Metadata changed |
+| `skills-cursor/.sync-manifest.json` | Metadata changed |
+
+This is an interval-based inventory, not syscall attribution or a guarantee for
+all future operations. Process inspection found no other Cursor runtime running
+after cleanup. No managed-hook content or account identifier is included here.
+
+Under the isolated directory, the run created `acp-config.json`,
+`acp-sessions/<session>/meta.json`, `store.db`, `store.db-shm`, `store.db-wal`
+(the database files within that session directory), and `statsig-cache.json`;
+`cli-config.json` metadata changed. Cold replay restored the synthetic marker
+and tools with no new permission requests. Ordinary shell printf and supplied
+MCP calls each prompted and were rejected; no shell-output file appeared, but
+the edit file still appeared without an approval request. No persistent
+allow-always grant was used, so persistent approval independence remains
+unproven. Full home isolation fails regardless of that unverified subcase.
+
+Native logout was then applied only with the isolated config and file-store
+environment: exit 0, isolated `isAuthenticated:false,status:unauthenticated`,
+existing home `isAuthenticated:true,status:authenticated`. That verifies local
+credential-state separation without extracting credentials. Do not offer an
+isolated Korus home on the basis of config/chat redirection alone.
 
 Existing-home sessions retain native chats/settings. The approved prerequisite
 observation was allowlist mode, allow `Shell(ls)`, no denies, sandbox disabled.
 The probes did not read that config or alter its allowlist. An unlisted printf
 command triggered `Not in allowlist: printf`, consistent with that observation;
-a direct comparison of allowlisted ls versus an isolated home remains pending.
+the isolated session also ran ls without a callback. This does not distinguish
+inherited allowlisting from native defaults, so allowlist independence remains
+unverified.
 
 Measured permission modes:
 
@@ -104,8 +138,10 @@ Measured permission modes:
 No allow-always decision was sent. Force did not establish any team-enforcement
 bypass and must not be used to solve callback gaps. Managed hooks/rules were not
 inspected or executed as a separate probe: their contents could include company
-data. An administrator-approved synthetic policy fixture is needed to verify
-loading/precedence safely. An empty app-supplied MCP list alone cannot prove
+data. Authenticated-isolation metadata showed two managed hook cache files
+changing in the real home; this proves shared cache activity, not hook execution
+or enforcement. An administrator-approved synthetic policy fixture is needed
+to verify loading/precedence safely. An empty app-supplied MCP list alone cannot prove
 dashboard MCP absence without knowing an approved test server exists there.
 Likewise, native catalog discovery alone cannot prove team restriction parity.
 
@@ -243,7 +279,7 @@ every boolean false and planMode unsupported.
 | Usage / pricing | Unknown coverage; USD unavailable | 10: no consumption evidence, never fabricate zero |
 | Auxiliary `generateText` | Absent | 11: tool abstention does not enforce tool-free operation |
 | Subagent controls | Disabled | 10: completion activity observed, child routing unqualified |
-| Isolated provider home | Unsupported pending browser login/audit | 3 |
+| Isolated provider home | **Unsupported**: authenticated run changed six real-home paths | 3: config/chats redirect, full isolation fails |
 
 ## Current-code integration map
 
@@ -295,7 +331,8 @@ commit. This mapping describes the approved work; it does not expand ticket 1.
   resolve the setup failure before dependency-dependent checks.
 - Cleanup: process inspection found no remaining Cursor runtime, Node helper or
   sleep process from the probes. Synthetic files and private evidence remain only
-  in the scratch directory; browser login is user-owned and was not launched.
+  in the scratch directory. Browser login was completed by the user; isolated
+  credentials were subsequently logged out through the native CLI.
 - Document check: `git diff --check` passed. The staged diff and scope were
   inspected before the ticket's local checkpoint commit. No push, merge, PR or
   changelog change.
@@ -308,8 +345,9 @@ commit. This mapping describes the approved work; it does not expand ticket 1.
   options are conditional, and one successful setter returned an empty catalog.
 - Native replay regenerates tool IDs and omits observed timestamps. Durable
   replica hydration must tolerate both.
-- The authenticated isolated-home write inventory is deliberately unresolved;
-  “no changes” for an unauthenticated status probe is insufficient.
+- The authenticated isolated-home audit overturned the unauthenticated status
+  result: config/chats redirect while tracking, hook caches, skill sync and
+  workspace worker state still touch the real home. Keep isolated-home support off.
 - Docs and runtime differed for `cursor/task` notification/request framing.
   Preserve the measured request ID and fail honestly on unknown shapes.
 
