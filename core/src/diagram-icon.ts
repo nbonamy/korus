@@ -2,7 +2,7 @@
 export type DiagramIconImage = {
   mimeType: 'image/svg+xml' | 'image/png' | 'image/jpeg' | 'image/webp';
   base64: string;
-  source: 'svgl' | 'devicon' | 'gilbarbara' | 'aws' | 'lucide' | 'explicit';
+  source: 'svgl' | 'devicon' | 'gilbarbara' | 'lucide' | 'explicit';
   sourceUrl: string;
   whiteFill: boolean;
 };
@@ -15,7 +15,7 @@ export function isDiagramIconImage(value: unknown): value is DiagramIconImage {
     image.base64.length > 0 &&
     image.base64.length <= 3 * 1024 * 1024 &&
     /^[A-Za-z0-9+/]+={0,2}$/.test(image.base64) &&
-    ['svgl', 'devicon', 'gilbarbara', 'aws', 'lucide', 'explicit'].includes(String(image.source)) &&
+    ['svgl', 'devicon', 'gilbarbara', 'lucide', 'explicit'].includes(String(image.source)) &&
     typeof image.sourceUrl === 'string' &&
     image.sourceUrl.startsWith('https://') &&
     typeof image.whiteFill === 'boolean'

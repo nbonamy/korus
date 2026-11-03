@@ -165,7 +165,7 @@ export class AntigravityHost implements AgentBackendDriver {
       const selection = utilityTextModel(this.backend, antigravityModels(session.configuration.models), input.complexity);
       await session.setModel(selection.model);
       await session.setMode('default');
-      const prompt = [input.developerInstructions, inspect ? 'Inspect the working folder with read-only Git and source tools. Use simple Git commands without shell operators. For git diff, show or log, include --no-ext-diff --no-textconv. Never write files or modify Git state. Return only the requested final text.' : (servers.length ? 'Return only the requested text. The supplied fetch_tech_icon MCP tool is available; workspace tools are disabled.' : 'Return only the requested text. Do not call tools.'),
+      const prompt = [input.developerInstructions, inspect ? 'Inspect the working folder with read-only Git and source tools. Use simple Git commands without shell operators. Start every Git command with `git --no-pager --no-optional-locks -c core.fsmonitor=false`. For git diff, show or log, include --no-ext-diff --no-textconv. Never write files or modify Git state. Return only the requested final text.' : (servers.length ? 'Return only the requested text. The supplied fetch_tech_icon MCP tool is available; workspace tools are disabled.' : 'Return only the requested text. Do not call tools.'),
         input.outputSchema ? `Return JSON matching this schema: ${JSON.stringify(input.outputSchema)}` : '', input.prompt].filter(Boolean).join('\n\n');
       const attachments = await acpAttachments(input.attachments ?? []);
       input.signal?.throwIfAborted();

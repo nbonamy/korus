@@ -121,6 +121,24 @@ describe('Changes Viz workflow', () => {
     } finally { wrapper.unmount(); }
   });
 
+  it('cancels a superseded generation when the diff changes and starts the replacement once it settles', async () => {
+    const { wrapper, generate, cancel, openViz } = setup(true);
+    let reject!: (error: Error) => void;
+    generate.mockReturnValueOnce(new Promise((_done, fail) => { reject = fail; }));
+    try {
+      await openViz(); await flushPromises();
+      const first = generate.mock.calls[0]![1];
+      await wrapper.setProps({ panel: { kind: 'gitDiff', title: 'Changes', diff: `${diff}\n`, state: 'idle' } }); await flushPromises();
+      expect(cancel).toHaveBeenCalledExactlyOnceWith('a', first.generationId);
+      expect(generate).toHaveBeenCalledTimes(1);
+      reject(new Error('Generation cancelled.')); await flushPromises();
+      expect(generate).toHaveBeenCalledTimes(2);
+      expect(generate.mock.calls[1]![1].generationId).not.toBe(first.generationId);
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(wrapper.text()).toContain('Draft generation');
+    } finally { wrapper.unmount(); }
+  });
+
   it('sends a cloneable request across IPC when the selected comparison comes from reactive app state', async () => {
     const { wrapper, generate, openViz } = setup();
     try {

@@ -117,7 +117,7 @@ watch(busy, (running, _previous, onCleanup) => {
 }, { flush: 'sync' });
 const error = ref('');
 const cancelling = ref(false);
-let generation: { id: string; agentId: string; cancelled: boolean } | undefined;
+let generation: { id: string; agentId: string; cancelled: boolean; superseded: boolean } | undefined;
 const doNotAskAgain = ref(props.automatic);
 let epoch = 0;
 let disposed = false;
@@ -127,6 +127,7 @@ onBeforeUnmount(() => { disposed = true; epoch++; });
 watch(() => props.automatic, value => { doNotAskAgain.value = value; });
 watch([() => props.agentId, () => props.diff, () => props.mode, () => JSON.stringify([props.target, props.scopes])], () => {
   epoch++;
+  supersede();
   diagram.value = undefined;
   error.value = '';
   busy.value = inFlight;
@@ -134,6 +135,14 @@ watch([() => props.agentId, () => props.diff, () => props.mode, () => JSON.strin
 });
 watch([() => props.active, () => props.automatic, () => props.preferencesLoaded], maybeGenerate, { immediate: true });
 
+/** A changed selection makes the running provider job pointless; stop it and let the next one start when it settles. */
+function supersede() {
+  const stale = generation;
+  if (!stale || stale.cancelled || !appApi) return;
+  stale.cancelled = true;
+  stale.superseded = true;
+  void appApi.cancelAgentGitMessage(stale.agentId, stale.id).catch(() => { stale.cancelled = false; stale.superseded = false; });
+}
 function maybeGenerate() {
   if (props.active && props.preferencesLoaded && props.automatic && props.diff.trim() && !busy.value && !diagram.value && !error.value) void generate();
 }
@@ -154,7 +163,7 @@ async function cancel() {
 async function generate() {
   if (busy.value || !props.active || !props.diff.trim()) return;
   const request = ++epoch;
-  const current = { id: crypto.randomUUID(), agentId: props.agentId, cancelled: false };
+  const current = { id: crypto.randomUUID(), agentId: props.agentId, cancelled: false, superseded: false };
   generation = current;
   cancelling.value = false;
   const { agentId, mode } = props;
@@ -175,7 +184,7 @@ async function generate() {
   finally {
     inFlight = false;
     if (generation === current) { generation = undefined; cancelling.value = false; }
-    if (!disposed) { busy.value = false; if (request !== epoch && !current.cancelled) maybeGenerate(); }
+    if (!disposed) { busy.value = false; if (request !== epoch && (!current.cancelled || current.superseded)) maybeGenerate(); }
   }
 }
 </script>

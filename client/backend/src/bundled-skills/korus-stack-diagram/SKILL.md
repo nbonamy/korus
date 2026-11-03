@@ -102,15 +102,15 @@ themes when rendering tools are available.
 - An icon occupies roughly half the tile's width. Center it optically; a wide logo
   can be wider while keeping clear padding. Preserve aspect ratio.
 - If icon retrieval is available and authorized, prefer exact technology matches
-  from svgl, then devicon, then gilbarbara/logos or the official repository. Use
-  official AWS Architecture Icons for AWS services. Reject a fuzzy near-match;
+  from svgl, then devicon, then gilbarbara/logos or the official repository.
+  Reject a fuzzy near-match;
   use a generic role pictogram when the correct asset is unavailable.
 - Preserve source attribution and available light/dark variants. A white mark
   needs a dark plate; a black mark needs a light plate. Never fix contrast by
   changing the brand's colors. Do not redistribute icon packs as part of a diagram.
 - When `fetch_tech_icon` is exposed, use it for technology marks and Lucide role
-  icons. It accepts a technology name, `name:slug`, `lucide/database` or
-  `aws/lambda`. It returns `mimeType`, `base64`, `source`, `sourceUrl`, `whiteFill`
+  icons. It accepts a technology name, `name:slug` or `lucide/database`.
+  It returns `mimeType`, `base64`, `source`, `sourceUrl`, `whiteFill`
   and an optional `dark` payload. A miss means use the role fallback.
 - Embed those returned image fields directly in the saved diagram. There are no
   asset IDs, lookup tables or caches to resolve later. Never invent bytes or run

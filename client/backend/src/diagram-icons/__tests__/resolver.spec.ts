@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises';
 import { expect, it, vi } from 'vitest';
 import { DiagramIconResolver } from '../resolver';
 
@@ -52,23 +51,6 @@ it('rejects fuzzy matches and follows devicon then gilbarbara fallbacks without 
   expect(requests.findIndex((url) => url.includes('devicons'))).toBeLessThan(
     requests.findIndex((url) => url.includes('gilbarbara')),
   );
-});
-
-it('ports AWS aliases, groups, general icons and dark variants with bounded archive reads', async () => {
-  const archive = await readFile(new URL('./fixtures/aws.zip', import.meta.url));
-  const fetcher = vi
-    .fn<typeof fetch>()
-    .mockImplementation(async (input) =>
-      String(input).includes('.zip')
-        ? response(archive)
-        : response('<a href="https://d1.awsstatic.com/icons/Icon-package_Test.zip">Icons</a>'),
-    );
-  const { resolver } = await setup(fetcher);
-  for (const icon of ['aws/lambda', 'aws/s3', 'aws/vpc', 'aws/General-User'])
-    expect(await resolver.fetchIcon(icon)).toMatchObject({ asset: { source: 'aws' } });
-  expect(await resolver.fetchIcon('aws/vpc')).toHaveProperty('darkAsset');
-  expect(await resolver.fetchIcon('aws/not-a-service')).toBeNull();
-  expect(fetcher).toHaveBeenCalledTimes(12);
 });
 
 it('ports Lucide tinting and explicit source syntax, refusing active images and unsafe destinations', async () => {

@@ -1,4 +1,3 @@
-import { fromBuffer, type ZipFile, type Entry } from 'yauzl';
 import type { DiagramIconImage } from '@workspace/core/diagram-icon';
 
 // TypeScript port of caru-ini/stack-diagram/scripts/fetch_icons.py (MIT).
@@ -7,25 +6,6 @@ export type ResolvedDiagramIcon = { name: string; asset: DiagramIconImage; darkA
 type Source = { source: DiagramIconImage['source']; url: string; darkUrl?: string };
 const maxImage = 2 * 1024 * 1024;
 const norm = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
-const aliases: Record<string, string> = {
-  s3: 'Amazon-Simple-Storage-Service',
-  glacier: 'Amazon-Simple-Storage-Glacier',
-  sqs: 'Amazon-Simple-Queue-Service',
-  sns: 'Amazon-Simple-Notification-Service',
-  ses: 'Amazon-Simple-Email-Service',
-  ecs: 'Amazon-Elastic-Container-Service',
-  ecr: 'Amazon-Elastic-Container-Registry',
-  eks: 'Amazon-Elastic-Kubernetes-Service',
-  elb: 'Elastic-Load-Balancing',
-  alb: 'Elastic-Load-Balancing',
-  nlb: 'Elastic-Load-Balancing',
-  rds: 'Amazon-RDS',
-  iam: 'AWS-Identity-and-Access-Management',
-  kms: 'AWS-Key-Management-Service',
-  msk: 'Amazon-Managed-Streaming-for-Apache-Kafka',
-  opensearch: 'Amazon-OpenSearch-Service',
-  vpc: 'Virtual-private-cloud-VPC',
-};
 
 export class DiagramIconResolver {
   constructor(private readonly options: { fetch?: typeof fetch } = {}) {}
@@ -36,61 +16,47 @@ export class DiagramIconResolver {
 
   private async resolve(parsed: ReturnType<typeof parseSpec>): Promise<ResolvedDiagramIcon | null> {
     let result: ResolvedDiagramIcon | null = null;
-    if (parsed.aws) {
+    const sources: Source[] = parsed.url
+      ? [{ source: 'explicit', url: parsed.url }]
+      : parsed.slug.startsWith('lucide/')
+        ? [{ source: 'lucide', url: `https://cdn.jsdelivr.net/npm/lucide-static/icons/${parsed.slug.slice(7)}.svg` }]
+        : [
+            ...(await this.svgl(parsed.slug)),
+            {
+              source: 'devicon',
+              url: `https://raw.githubusercontent.com/devicons/devicon/master/icons/${parsed.slug}/${parsed.slug}-original.svg`,
+            },
+            ...[`${parsed.slug}-icon`, parsed.slug].map((name) => ({
+              source: 'gilbarbara' as const,
+              url: `https://cdn.jsdelivr.net/gh/gilbarbara/logos/logos/${name}.svg`,
+            })),
+          ];
+    for (const candidate of sources) {
       try {
-        const index = await this.awsIndex();
-        const query = norm(aliases[norm(parsed.aws)] ?? parsed.aws);
-        const item = index.get(query) ?? [...index].find(([name]) => name.replace(/^(aws|amazon)/, '') === query)?.[1];
-        if (item) {
-          const asset = image(item.bytes, item.url, 'aws');
-          const darkAsset = item.dark && image(item.dark.bytes, item.dark.url, 'aws');
-          if (asset) result = { name: parsed.name, asset, ...(darkAsset ? { darkAsset } : {}) };
-        }
+        let bytes = await this.get(candidate.url);
+        if (candidate.source === 'lucide')
+          bytes = Buffer.from(
+            bytes
+              .toString()
+              .replaceAll('stroke="currentColor"', 'stroke="#3d4660"')
+              .replaceAll('stroke-width="2"', 'stroke-width="1.25"'),
+          );
+        const asset = image(bytes, candidate.url, candidate.source);
+        if (!asset) continue;
+        let darkAsset: DiagramIconImage | null = null;
+        if (candidate.darkUrl)
+          try {
+            darkAsset = image(await this.get(candidate.darkUrl), candidate.darkUrl, candidate.source);
+          } catch {
+            /* Light variant remains usable. */
+          }
+        result = { name: parsed.name, asset, ...(darkAsset ? { darkAsset } : {}) };
+        break;
       } catch {
-        return null;
-      }
-    } else {
-      const sources: Source[] = parsed.url
-        ? [{ source: 'explicit', url: parsed.url }]
-        : parsed.slug.startsWith('lucide/')
-          ? [{ source: 'lucide', url: `https://cdn.jsdelivr.net/npm/lucide-static/icons/${parsed.slug.slice(7)}.svg` }]
-          : [
-              ...(await this.svgl(parsed.slug)),
-              {
-                source: 'devicon',
-                url: `https://raw.githubusercontent.com/devicons/devicon/master/icons/${parsed.slug}/${parsed.slug}-original.svg`,
-              },
-              ...[`${parsed.slug}-icon`, parsed.slug].map((name) => ({
-                source: 'gilbarbara' as const,
-                url: `https://cdn.jsdelivr.net/gh/gilbarbara/logos/logos/${name}.svg`,
-              })),
-            ];
-      for (const candidate of sources) {
-        try {
-          let bytes = await this.get(candidate.url);
-          if (candidate.source === 'lucide')
-            bytes = Buffer.from(
-              bytes
-                .toString()
-                .replaceAll('stroke="currentColor"', 'stroke="#3d4660"')
-                .replaceAll('stroke-width="2"', 'stroke-width="1.25"'),
-            );
-          const asset = image(bytes, candidate.url, candidate.source);
-          if (!asset) continue;
-          let darkAsset: DiagramIconImage | null = null;
-          if (candidate.darkUrl)
-            try {
-              darkAsset = image(await this.get(candidate.darkUrl), candidate.darkUrl, candidate.source);
-            } catch {
-              /* Light variant remains usable. */
-            }
-          result = { name: parsed.name, asset, ...(darkAsset ? { darkAsset } : {}) };
-          break;
-        } catch {
-          /* Follow upstream's next source; never replace with a fuzzy match. */
-        }
+        /* Follow upstream's next source; never replace with a fuzzy match. */
       }
     }
+  
     return result;
   }
 
@@ -157,30 +123,6 @@ export class DiagramIconResolver {
     }
     throw new Error('Too many icon redirects.');
   }
-
-  private async awsIndex() {
-    const page = (await this.get('https://aws.amazon.com/architecture/icons/')).toString();
-    const match = page.match(/(?:https:)?\/\/[\w.-]+\.awsstatic\.com\/[^"'\s]+\/Icon-package_[^"'\s/]+\.zip/);
-    if (!match) throw new Error('AWS icon package is unavailable.');
-    const url = new URL(match[0], 'https://aws.amazon.com').href;
-    const entries = await archiveIcons(await this.get(url, 80 * 1024 * 1024));
-    const index = new Map<string, { bytes: Buffer; url: string; dark?: { bytes: Buffer; url: string } }>();
-    for (const [file, bytes] of [...entries].sort(([a], [b]) => a.localeCompare(b))) {
-      const match = file.match(
-        /Architecture-Service-Icons_[^/]+\/[^/]+\/64\/Arch_(.+)_64\.svg$|Architecture-Group-Icons_[^/]+\/(.+)_32\.svg$|Resource-Icons_[^/]+\/Res_General-Icons\/Res_48_Light\/Res_(.+)_48_Light\.svg$/,
-      );
-      if (!match) continue;
-      const name = norm(match[1] ?? match[2] ?? `General-${match[3]}`);
-      const dark = match[3] ? file.replaceAll('_Light', '_Dark') : file.slice(0, -4) + '_Dark.svg';
-      if (!index.has(name))
-        index.set(name, {
-          bytes,
-          url: url + '#' + file,
-          ...(entries.has(dark) ? { dark: { bytes: entries.get(dark)!, url: url + '#' + dark } } : {}),
-        });
-    }
-    return index;
-  }
 }
 
 function parseSpec(spec: string) {
@@ -198,14 +140,7 @@ function parseSpec(spec: string) {
     throw new Error('Invalid icon specification.');
   const url = equal >= 0 ? spec.slice(equal + 1) : undefined;
   if (url) assertSource(url);
-  const aws = slug.startsWith('aws/')
-    ? slug.slice(4)
-    : ['aws', 'amazonwebservices'].includes(norm(slug))
-      ? 'AWS-Cloud-logo'
-      : slug.toLowerCase().startsWith('aws-')
-        ? slug.slice(4)
-        : undefined;
-  return { name, slug, url, aws };
+  return { name, slug, url };
 }
 function assertSource(raw: string) {
   const url = new URL(raw);
@@ -215,9 +150,7 @@ function assertSource(raw: string) {
     url.password ||
     url.port ||
     !(
-      /^(?:api\.)?svgl\.app$/.test(url.hostname) ||
-      ['raw.githubusercontent.com', 'cdn.jsdelivr.net', 'aws.amazon.com'].includes(url.hostname) ||
-      /^[a-z0-9.-]+\.awsstatic\.com$/.test(url.hostname)
+      /^(?:api\.)?svgl\.app$/.test(url.hostname) || ['raw.githubusercontent.com', 'cdn.jsdelivr.net'].includes(url.hostname)
     )
   )
     throw new Error('Unsupported icon source.');
@@ -257,57 +190,6 @@ function image(bytes: Buffer, url: string, source: DiagramIconImage['source']): 
     whiteFill,
   };
 }
-async function archiveIcons(bytes: Buffer): Promise<Map<string, Buffer>> {
-  const zip = await new Promise<ZipFile>((resolve, reject) =>
-    fromBuffer(bytes, { lazyEntries: true, autoClose: false, validateEntrySizes: true }, (error, zip) =>
-      error ? reject(error) : resolve(zip!),
-    ),
-  );
-  const result = new Map<string, Buffer>();
-  let total = 0,
-    count = 0;
-  try {
-    await new Promise<void>((resolve, reject) => {
-      zip.on('error', reject);
-      zip.on('end', resolve);
-      zip.on('entry', (entry: Entry) => {
-        if (++count > 50_000) {
-          reject(new Error('AWS icon archive exceeds the entry limit.'));
-          return;
-        }
-        if (!entry.fileName.endsWith('.svg') || entry.uncompressedSize > maxImage || entry.isEncrypted()) {
-          zip.readEntry();
-          return;
-        }
-        zip.openReadStream(entry, (error, stream) => {
-          if (error || !stream) {
-            reject(error ?? new Error('Invalid AWS icon archive.'));
-            return;
-          }
-          const chunks: Buffer[] = [];
-          let size = 0;
-          stream.on('error', reject);
-          stream.on('data', (chunk: Buffer) => {
-            size += chunk.length;
-            total += chunk.length;
-            if (size > maxImage || total > 40 * 1024 * 1024)
-              stream.destroy(new Error('AWS icons exceed the expansion limit.'));
-            else chunks.push(chunk);
-          });
-          stream.on('end', () => {
-            result.set(entry.fileName, Buffer.concat(chunks));
-            zip.readEntry();
-          });
-        });
-      });
-      zip.readEntry();
-    });
-    return result;
-  } finally {
-    zip.close();
-  }
-}
-
 export const diagramIcons = new DiagramIconResolver();
 
 export async function fetchTechIcon(icon: string, resolver: DiagramIconResolver = diagramIcons) {

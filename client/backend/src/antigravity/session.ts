@@ -12,7 +12,7 @@ import { AcpPromptJournal } from './prompt-journal';
 import type { RendererMessagePart } from '@workspace/core/contracts';
 import type { ExecutionObservation } from '@workspace/core/usage';
 import { product } from '@workspace/core/product';
-import { readOnlyGitCommand } from '../agents/utility-workspace-tools';
+import { hasGitSafeguards, nativeTargetsInside, readOnlyGitCommand } from '../agents/utility-workspace-tools';
 
 type SessionOptions = {
   agentId: string; cwd: string; home?: string; sessionId?: string;
@@ -230,12 +230,12 @@ export class AcpSession {
         const input = record(call.rawInput) ? call.rawInput : {};
         const command = input.CommandLine ?? input.command;
         const cwd = input.Cwd ?? input.cwd;
-        const read = ['read', 'search'].includes(String(call.kind));
-        // Native command permissions cannot rewrite tool input; require diff-driver safeguards explicitly.
+        const read = ['read', 'search'].includes(String(call.kind)) && await nativeTargetsInside(call, this.options.cwd);
+        // Native command permissions cannot rewrite tool input; require the hardened invocation, including diff-driver and fsmonitor safeguards.
         const safeCommand = readOnlyGitCommand(command);
         const diffCommand = safeCommand && /\b(?:diff|show|log) --no-ext-diff/u.test(safeCommand);
         const git = call.kind === 'execute' && safeCommand
-          && typeof command === 'string' && (!diffCommand || (/--no-ext-diff\b/u.test(command) && /--no-textconv\b/u.test(command)))
+          && hasGitSafeguards(command) && typeof command === 'string' && (!diffCommand || (/--no-ext-diff\b/u.test(command) && /--no-textconv\b/u.test(command)))
           && (cwd === undefined || cwd === this.options.cwd);
         const option = (read || git) && Array.isArray(params.options) ? params.options.find(value => record(value) && value.kind === 'allow_once') : undefined;
         return record(option) && typeof option.optionId === 'string' ? { outcome: { outcome: 'selected', optionId: option.optionId } } : { outcome: { outcome: 'cancelled' } };

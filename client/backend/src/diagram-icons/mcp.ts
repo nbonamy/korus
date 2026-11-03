@@ -14,7 +14,7 @@ export function registerFetchIconTool(
     'fetch_tech_icon',
     {
       description:
-        'Fetch a technology logo or Lucide role icon for a native diagram. Return base64 bytes, MIME type, source, contrast hints and available dark variants. Use a technology name (vue), name:slug, lucide/database or aws/lambda. Embed the returned payload directly in the saved diagram. Available for diagram authoring; Diff Viz uses an isolated job.',
+        'Fetch a technology logo or Lucide role icon for a native diagram. Return base64 bytes, MIME type, source, contrast hints and available dark variants. Use a technology name (vue), name:slug, or lucide/database. Embed the returned payload directly in the saved diagram. Available for diagram authoring; Diff Viz uses an isolated job.',
       inputSchema: { icon: z.string().min(1).max(500) },
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
