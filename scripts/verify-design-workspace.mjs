@@ -189,6 +189,12 @@ try {
     await page.getByRole('menuitem', { name: 'Fit all artboards', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Fit all artboards', exact: true }).waitFor({ state: 'hidden' });
   };
+  const zoomTrigger = page.getByRole('button', { name: 'Zoom', exact: true });
+  await zoomTrigger.focus();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await zoomTrigger.evaluate(element => getComputedStyle(element).outlineStyle), 'none');
+  assert.notEqual(await zoomTrigger.evaluate(element => getComputedStyle(element).backgroundColor), 'rgba(0, 0, 0, 0)', 'Toolbar keyboard focus remains visible without an outline.');
   const openArtboardActions = async () => {
     const show = page.getByRole('button', { name: 'Show inspector', exact: true });
     if (await show.isVisible()) await show.click();
@@ -302,10 +308,8 @@ try {
   await page.locator('.design-canvas').waitFor({ state: 'visible' });
   assert.equal(await page.locator('.design-canvas iframe').count(), 3);
   await page.getByRole('button', { name: 'Edit Desktop', exact: true }).click();
-  await openArtboardActions();
-  await page.getByRole('menuitem', { name: 'Use this direction', exact: true }).click();
   await fitAll();
-  await page.waitForFunction(() => document.querySelector('.design-panel')?.dataset.revision === '9');
+  await page.waitForFunction(() => document.querySelector('.design-panel')?.dataset.revision === '8');
   explored = (await design({ type: 'read' })).workspace.document;
   await design({ type: 'edit', expectedRevision: explored.revision, edits: [
     { type: 'text', nodeId: copiedHeadline, text: 'An independent alternative' },
@@ -345,7 +349,7 @@ try {
   assert.equal(await frame.locator('#headline').textContent(), 'Written by the user');
   assert.equal(await frame.locator('#headline').evaluate(node => getComputedStyle(node).color), 'rgb(102, 51, 153)');
   const alternatives = await design({ type: 'export' });
-  assert.equal(alternatives.workspace.document.content.chosenArtboardId, 'desktop');
+  assert.ok(!alternatives.html.includes('Chosen direction'));
   await exportPage.setContent(alternatives.html);
   assert.equal(await exportPage.locator('iframe').count(), 4);
   const originalExport = exportPage.frameLocator('iframe[title="Desktop"]');
@@ -355,27 +359,27 @@ try {
   assert.notEqual(await originalExport.locator('body').evaluate(node => getComputedStyle(node).backgroundColor), await alternativeExport.locator('body').evaluate(node => getComputedStyle(node).backgroundColor));
   await writeFile(path.join(output, 'alternatives.html'), alternatives.html);
   await writeFile(path.join(output, 'alternatives.json'), JSON.stringify(alternatives.workspace, null, 2));
-  record('Comparison, duplication, notes, chosen direction, a later agent alternative and independent export survive reload without changing manual edits.');
+  record('Comparison, duplication, notes, a later agent alternative and independent export survive reload without changing manual edits.');
   if (!await page.locator('.design-layers').evaluate(element => element.open)) await page.getByText('Layers', { exact: true }).click();
   await page.getByRole('treeitem', { name: 'h1 · Written by the user', exact: true }).click();
   await page.getByRole('button', { name: 'Element actions', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Duplicate element', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('.design-panel')?.dataset.revision === '11');
+  await page.waitForFunction(() => document.querySelector('.design-panel')?.dataset.revision === '10');
   let layered = (await design({ type: 'read' })).workspace;
   const duplicateId = layered.document.content.artboards[0].root.children.find(node => node.tag === 'h1' && node.id !== 'headline').id;
   await waitSelection(duplicateId);
   assert.notEqual(duplicateId, 'headline');
   await page.getByRole('textbox', { name: 'Text', exact: true }).fill('A duplicate edited by hand');
   await page.getByRole('button', { name: 'Apply', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('.design-panel')?.dataset.revision === '12');
+  await page.waitForFunction(() => document.querySelector('.design-panel')?.dataset.revision === '11');
   await page.getByRole('button', { name: 'Element actions', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Move down', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('.design-panel')?.dataset.revision === '13');
+  await page.waitForFunction(() => document.querySelector('.design-panel')?.dataset.revision === '12');
   assert.equal((await design({ type: 'read' })).workspace.document.content.artboards[0].root.children[2].id, duplicateId);
   await page.getByRole('treeitem', { name: 'main · root', exact: true }).locator('.el-tree-node__content').first().click();
   await page.getByRole('button', { name: 'Element actions', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Add container', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('.design-panel')?.dataset.revision === '14');
+  await page.waitForFunction(() => document.querySelector('.design-panel')?.dataset.revision === '13');
   layered = (await design({ type: 'read' })).workspace;
   const containerId = layered.document.content.artboards[0].root.children.find(node => node.tag === 'div').id;
   await waitSelection(containerId);
@@ -384,14 +388,14 @@ try {
   await page.getByRole('combobox', { name: 'Direction', exact: true }).selectOption('column');
   await page.getByRole('textbox', { name: 'Gap', exact: true }).fill('20px');
   await page.getByRole('button', { name: 'Apply', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('.design-panel')?.dataset.revision === '15');
+  await page.waitForFunction(() => document.querySelector('.design-panel')?.dataset.revision === '14');
   layered = (await design({ type: 'read' })).workspace;
   assert.equal(layered.document.content.artboards[0].root.children.find(node => node.id === containerId).text, undefined, 'A layout edit must keep an empty container able to accept children.');
   await page.getByRole('treeitem', { name: 'h1 · A duplicate edited by hand', exact: true }).click();
   await page.waitForFunction(() => { const input = document.querySelector('input[aria-label="Parent layer"]'); return input && !input.disabled && !input.closest('[inert]'); });
   await page.getByRole('combobox', { name: 'Parent layer', exact: true }).press('ArrowDown');
   await page.getByRole('option', { name: `div · ${containerId}`, exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('.design-panel')?.dataset.revision === '16');
+  await page.waitForFunction(() => document.querySelector('.design-panel')?.dataset.revision === '15');
   await page.reload();
   await frame.locator(`#${containerId} > #${duplicateId}`).waitFor({ state: 'visible' });
   assert.equal(await frame.locator('#headline').textContent(), 'Written by the user');

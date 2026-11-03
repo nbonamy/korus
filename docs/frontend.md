@@ -396,7 +396,7 @@ attachments pass through the native attachment registry before provider dispatch
 Artboard operations share the same atomic edit batches. Duplication remaps authored
 IDs, CSS selectors and interaction targets; it leaves comments on their original
 targets. Each artboard can own its stylesheet, with the document stylesheet as a
-legacy fallback. The chosen direction and design notes are saved content, distinct
+legacy fallback. Design notes are saved content, distinct
 from the editor's current selection. Undo/redo retain both document content and
 artboard operations across reloads.
 
@@ -437,7 +437,7 @@ Multi-artboard HTML exports use isolated frames to preserve independent viewport
 and CSS cascades. Each exported entry includes its reachable screens and keeps a
 local playback history, so navigation works offline without an app bridge.
 
-Coding handoff checks the reviewed revision, saves the chosen direction and sends
+Coding handoff checks the reviewed revision and sends
 an immutable snapshot of that proposal, its reachable screens and their comments
 to the owning agent. Later design edits cannot change the submitted specification.
 Success requires provider acceptance; a rejected request retains the design and

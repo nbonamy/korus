@@ -95,9 +95,10 @@ function changeZoom(value: string) { emit('zoom', value === 'fit' || value === '
   background: var(--color-surface-low);
 }
 
-.design-tools__menu:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 1px;
+.design-tools :deep(button:focus-visible) {
+  outline: none;
+  background: var(--color-primary-container);
+  color: var(--color-primary);
 }
 
 .design-tools__menu:disabled {

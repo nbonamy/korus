@@ -19,6 +19,7 @@ export type DesignNode = {
 };
 export type DesignArtboard = { id: string; title: string; width: number; height: number; root: DesignNode; css?: string; notes?: string; position?: { x: number; y: number } };
 export type DesignComment = { id: string; nodeId: string; text: string; revision: number };
+// chosenArtboardId is retained only for saved-document and client compatibility.
 export type DesignContent = { title: string; css: string; artboards: DesignArtboard[]; comments: DesignComment[]; chosenArtboardId?: string; tweaks?: DesignTweak[] };
 export type DesignDocument = { id: string; revision: number; content: DesignContent };
 export type DesignCheckpoint = { id: string; title: string; revision: number; content: DesignContent };
@@ -220,7 +221,7 @@ ${designInteractionScript('navigate')}`;
     return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${csp}"><title>${escape(board.title)}</title><style id="design-styles">body{margin:0}*{box-sizing:border-box}${board.css ?? content.css}</style></head><body>${designNodeHtml(board.root)}<script nonce="design-export">${runtime}</script></body></html>`;
   }
   // Each artboard retains its own viewport and CSS cascade in the portable export.
-  const boards = content.artboards.map(board => `<section><h2>${escape(board.title)}${content.chosenArtboardId === board.id ? ' · Chosen direction' : ''}</h2>${board.notes ? `<p>${escape(board.notes)}</p>` : ''}<iframe title="${escape(board.title)}" width="${board.width}" height="${board.height}" sandbox="allow-scripts" srcdoc="${escape(exportDesign(content, board.id))}"></iframe></section>`).join('\n');
+  const boards = content.artboards.map(board => `<section><h2>${escape(board.title)}</h2>${board.notes ? `<p>${escape(board.notes)}</p>` : ''}<iframe title="${escape(board.title)}" width="${board.width}" height="${board.height}" sandbox="allow-scripts" srcdoc="${escape(exportDesign(content, board.id))}"></iframe></section>`).join('\n');
   const resize = `window.addEventListener('message',event=>{const frame=[...document.querySelectorAll('iframe')].find(item=>item.contentWindow===event.source);const data=event.data;if(frame&&data?.kind==='design-export-size'&&Number.isInteger(data.width)&&data.width>=240&&data.width<=3840&&Number.isInteger(data.height)&&data.height>=160&&data.height<=3840){frame.width=data.width;frame.height=data.height}});`;
   return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><title>${escape(content.title)}</title><style>body{font-family:system-ui;margin:24px}iframe{border:0}section{margin-bottom:32px}</style></head><body>${boards}<script nonce="design-export">${resize}</script></body></html>`;
 }

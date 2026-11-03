@@ -1,12 +1,12 @@
 ---
-description: Compare interface ideas, refine the details, and send a chosen design for coding.
+description: Compare interface ideas, refine the details, and send a reviewed design for coding.
 ---
 
 # Design
 
 Design turns an interface idea into something you can compare, edit, and try before implementation. Keep the proposals beside your conversation, refine a direction together, then send the reviewed design to your agent for coding.
 
-![Three checkout proposals in the Design canvas, with one marked as the chosen direction.](/screens/design.webp)
+![Three checkout proposals in the Design canvas.](/screens/design.webp)
 
 Use Design for websites, app screens, components, and clickable flows. Use [Visualize](./visualize) for diagrams and explanations, or the [Browser](./browser) to check a running application.
 
@@ -28,13 +28,11 @@ Exploration does not start implementation. Continue the design discussion until 
 
 An artboard holds one proposal or screen. Use the **Artboard** menu to focus a board, or the zoom menu's **Fit all artboards** to compare the whole canvas. **Pan canvas** moves your view without changing the design.
 
-Read each proposal's notes, then choose **Use this direction** to record your preference. This keeps the other proposals available and does not start coding.
-
 In **Artboard actions**, duplicate a proposal to explore a variation, add a screen, or change its name, dimensions, and notes. Drag artboards to arrange the comparison; moving a board does not rearrange its contents.
 
 ## Refine together
 
-Use **Comment on this proposal** for feedback on the overall direction. For a specific detail, choose **Select elements**, select it on the canvas or in **Layers**, and write an **Element comment**. Choose **Send to agent** to continue the discussion with that target attached.
+Use **Comment** for feedback on the overall direction. For a specific detail, choose **Select elements**, select it on the canvas or in **Layers**, and write an **Element comment**. Choose **Send to agent** to continue the discussion with that target attached.
 
 For example:
 

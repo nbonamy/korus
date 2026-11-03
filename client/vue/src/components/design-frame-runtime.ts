@@ -11,6 +11,7 @@ export function installDesignFrame(config: FrameConfig): void {
   const authored = (target: EventTarget | null) => target instanceof Element ? target.closest<HTMLElement>('[data-design-id]') : null;
   const px = (value: number) => `${Math.round(value * 100) / 100}px`;
   let selected = element(config.selected);
+  let hovered: HTMLElement | null = null;
   let locked = false;
   let zoom = 1;
   let editing: HTMLElement | null = null;
@@ -19,6 +20,10 @@ export function installDesignFrame(config: FrameConfig): void {
   const overlay = document.createElement('div');
   overlay.dataset.designEditor = '';
   overlay.style.cssText = 'all:initial;position:fixed;box-sizing:border-box;pointer-events:none;z-index:2147483647;border:1px solid Highlight';
+  const hover = document.createElement('div');
+  hover.dataset.designEditor = '';
+  hover.dataset.designHover = '';
+  hover.style.cssText = 'all:initial;position:fixed;box-sizing:border-box;pointer-events:none;z-index:2147483646;display:none;border:1px solid Highlight;background:color-mix(in srgb, Highlight 12%, transparent)';
   const marker = document.createElement('div');
   marker.dataset.designEditor = '';
   marker.style.cssText = 'all:initial;position:fixed;pointer-events:none;z-index:2147483647;background:Highlight;display:none';
@@ -31,8 +36,15 @@ export function installDesignFrame(config: FrameConfig): void {
     overlay.append(button);
     return button;
   });
-  if (!config.play) document.body.append(overlay, marker);
+  if (!config.play) document.body.append(hover, overlay, marker);
+  function drawHover() {
+    hover.style.display = hovered?.isConnected && hovered !== selected && !locked && !editing && !gesture ? 'block' : 'none';
+    if (hover.style.display === 'none' || !hovered) return;
+    const bounds = hovered.getBoundingClientRect();
+    Object.assign(hover.style, { left: px(bounds.left), top: px(bounds.top), width: px(bounds.width), height: px(bounds.height), borderWidth: px(1 / zoom) });
+  }
   function draw() {
+    drawHover();
     overlay.style.display = selected && selected.isConnected && !editing && !config.play ? 'block' : 'none';
     if (!selected) return;
     const bounds = selected.getBoundingClientRect();
@@ -141,11 +153,13 @@ export function installDesignFrame(config: FrameConfig): void {
       left: computed.left === 'auto' ? node.offsetLeft - (parseFloat(computed.marginLeft) || 0) : parseFloat(computed.left),
       top: computed.top === 'auto' ? node.offsetTop - (parseFloat(computed.marginTop) || 0) : parseFloat(computed.top),
       free, resize: handle, active: false, styles: {}, drop: null };
+    hovered = null; drawHover();
     node.setPointerCapture(event.pointerId);
   });
   document.addEventListener('pointermove', event => {
     const current = gesture;
-    if (!current || current.pointerId !== event.pointerId) return;
+    if (!current) { hovered = authored(event.target); drawHover(); return; }
+    if (current.pointerId !== event.pointerId) return;
     const dx = event.clientX - current.x, dy = event.clientY - current.y;
     if (!current.active && Math.hypot(dx, dy) * zoom < 4) return;
     if (!current.active) { clearTimeout(selectTimer); current.active = true; selected = current.node; send('interaction-start', current.node.id); getSelection()?.removeAllRanges(); }
@@ -166,6 +180,7 @@ export function installDesignFrame(config: FrameConfig): void {
     }
     draw();
   });
+  document.addEventListener('pointerout', event => { if (!event.relatedTarget) { hovered = null; drawHover(); } });
   function finish(cancelled: boolean) {
     const current = gesture; gesture = null;
     if (!current) return;

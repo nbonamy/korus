@@ -1,11 +1,101 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { expect, it, vi } from 'vitest';
+import ElementPlus from 'element-plus';
 import type { DesignRequest, DesignResult, DesignWorkspace } from '@workspace/core/design';
 import DesignPanel from '../DesignPanel.vue';
 
 const editableWorkspace = (): DesignWorkspace => ({
   conversationRef: null, isOpen: true, selectedArtboardId: 'desktop', selectedNodeId: 'heading', undo: [], checkpoints: [],
   document: { id: 'design-a', revision: 1, content: { title: 'Page', css: '', comments: [], artboards: [{ id: 'desktop', title: 'Desktop', width: 800, height: 600, root: { id: 'page', tag: 'main', children: [{ id: 'heading', tag: 'h1', text: 'Hello' }, { id: 'cta', tag: 'button', text: 'Continue' }] } }] } },
+});
+
+it('fits once and preserves zoom through sidebar resizes until the next explicit fit', async () => {
+  let resize!: (width: number, height?: number) => void;
+  vi.stubGlobal('ResizeObserver', class {
+    constructor(private callback: ResizeObserverCallback) {}
+    observe(target: Element) {
+      if (target.matches('.design-canvas')) resize = (width, height = 700) => this.callback([{ target, contentRect: { width, height } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+    }
+    unobserve() {}
+    disconnect() {}
+  });
+  const workspace = editableWorkspace();
+  const wrapper = mount(DesignPanel, { attachTo: document.body, props: { agentId: 'designer', workspace, execute: vi.fn(async () => ({ workspace })) }, global: { plugins: [ElementPlus] } });
+  const width = () => wrapper.get('.design-canvas__artboard').attributes('style');
+  const fit = async (label: string) => {
+    await wrapper.get('button[aria-label="Zoom"]').trigger('click');
+    await flushPromises();
+    const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent?.trim() === label);
+    expect(item).toBeDefined();
+    item!.click();
+    await flushPromises();
+  };
+  try {
+    // Restored tabs can mount hidden; defer the initial fit until visible.
+    resize(0, 0);
+    await flushPromises();
+    resize(700);
+    await flushPromises();
+    const initial = width();
+    expect(initial).toContain('width: 636px');
+    resize(500);
+    await flushPromises();
+    expect(width()).toBe(initial);
+    for (const label of ['Fit all artboards', 'Fit artboard']) {
+      await fit(label);
+      const fitted = width();
+      expect(fitted).not.toBe(initial);
+      resize(600);
+      await flushPromises();
+      expect(width()).toBe(fitted);
+      await fit(label);
+      expect(width()).not.toBe(fitted);
+      resize(500);
+      await flushPromises();
+    }
+    const beforeWheel = width();
+    wrapper.get('.design-canvas').element.dispatchEvent(new WheelEvent('wheel', { ctrlKey: true, deltaY: -40 }));
+    await flushPromises();
+    const manual = width();
+    expect(manual).not.toBe(beforeWheel);
+    resize(700);
+    await flushPromises();
+    expect(width()).toBe(manual);
+  } finally { wrapper.unmount(); vi.unstubAllGlobals(); }
+});
+
+it('resizes and drags the inspector closed without losing drafts or its restored width', async () => {
+  const workspace = editableWorkspace();
+  const wrapper = mount(DesignPanel, { attachTo: document.body, props: { agentId: 'designer', workspace, execute: vi.fn(async () => ({ workspace })) } });
+  try {
+    vi.spyOn(wrapper.get('.design-panel__body').element, 'getBoundingClientRect').mockReturnValue({ width: 1000 } as DOMRect);
+    await wrapper.get('textarea[aria-label="Text"]').setValue('Keep this draft');
+    const pointer = (type: string, clientX: number) => new PointerEvent(type, { bubbles: true, pointerId: 7, button: 0, clientX });
+    const divider = wrapper.get('[role="separator"][aria-label="Resize inspector"]');
+    divider.element.dispatchEvent(pointer('pointerdown', 720));
+    window.dispatchEvent(pointer('pointermove', 640));
+    await flushPromises();
+    const shell = wrapper.get('.design-panel__inspector-shell');
+    expect(shell.attributes('style')).toContain('--design-inspector-width: 360px');
+    window.dispatchEvent(pointer('pointerup', 640));
+    await divider.trigger('keydown', { key: 'ArrowLeft' });
+    expect(shell.attributes('style')).toContain('--design-inspector-width: 376px');
+    divider.element.dispatchEvent(pointer('pointerdown', 624));
+    window.dispatchEvent(pointer('pointermove', 850));
+    await flushPromises();
+    expect(shell.isVisible()).toBe(false);
+    // Reversing the same gesture reopens the pane even after it disappears.
+    window.dispatchEvent(pointer('pointermove', 624));
+    await flushPromises();
+    expect(shell.isVisible()).toBe(true);
+    window.dispatchEvent(pointer('pointermove', 850));
+    window.dispatchEvent(pointer('pointerup', 850));
+    await flushPromises();
+    await wrapper.get('button[aria-label="Show inspector"]').trigger('click');
+    expect(shell.isVisible()).toBe(true);
+    expect(shell.attributes('style')).toContain('--design-inspector-width: 376px');
+    expect((wrapper.get('textarea[aria-label="Text"]').element as HTMLTextAreaElement).value).toBe('Keep this draft');
+  } finally { wrapper.unmount(); }
 });
 
 // Unsent feedback must keep its original identity/revision after selection or
@@ -77,10 +167,17 @@ it.each([true, false])('prevents inspector edits during Apply and restores editi
 it('edits a stable selected node, retains conflicting drafts, routes comments and separates Play', async () => {
   const workspace: DesignWorkspace = {
     conversationRef: null, isOpen: true, selectedArtboardId: 'desktop', selectedNodeId: 'heading', undo: [], checkpoints: [],
-    document: { id: 'design-a', revision: 1, content: { title: 'Page', css: '', comments: [], artboards: [{ id: 'desktop', title: 'Desktop', width: 800, height: 600, root: { id: 'page', tag: 'main', children: [{ id: 'heading', tag: 'h1', text: 'Hello' }] } }] } },
+    document: { id: 'design-a', revision: 1, content: { title: 'Page', css: '', comments: [], chosenArtboardId: 'desktop', artboards: [{ id: 'desktop', title: 'Desktop', notes: 'Proposal details stay out of the review bar.', width: 800, height: 600, root: { id: 'page', tag: 'main', children: [{ id: 'heading', tag: 'h1', text: 'Hello' }] } }] } },
   };
   const execute = vi.fn(async () => ({ workspace: structuredClone(workspace) }));
   const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace, execute } });
+  expect(wrapper.get('.design-review-bar__actions').findAll('button')).toHaveLength(2);
+  expect(wrapper.find('[aria-label="Chosen"]').exists()).toBe(false);
+  expect(wrapper.get('.design-review-bar__summary').text()).toBe('Desktop');
+  expect(wrapper.get('.design-review-bar__summary strong').attributes('title')).toBe('Desktop');
+  const commentAction = wrapper.get('.design-review-bar button[aria-label="Comment on this proposal"]');
+  expect(commentAction.text()).toBe('Comment');
+  expect(commentAction.find('svg').exists()).toBe(true);
   const text = wrapper.get('textarea[aria-label="Text"]');
   await text.setValue('My draft');
   await wrapper.setProps({ workspace: { ...workspace, document: { ...workspace.document!, revision: 2 } } });
@@ -121,7 +218,7 @@ it('edits a stable selected node, retains conflicting drafts, routes comments an
   wrapper.unmount();
 });
 
-// Rejection may follow a persisted choice. Retrying must review fresh state,
+// Rejection may follow a persisted handoff. Retrying must review fresh state,
 // retain revision checks, and submit only after another explicit confirmation.
 it('returns rejected coding handoffs to review and confirms the latest saved direction', async () => {
   const workspace: DesignWorkspace = {
@@ -133,7 +230,6 @@ it('returns rejected coding handoffs to review and confirms the latest saved dir
     if (request.type === 'implement') {
       if (request.expectedRevision !== workspace.document!.revision) throw new Error('Stale design revision');
       workspace.document!.revision++;
-      workspace.document!.content.chosenArtboardId = request.artboardId;
       if (rejectProvider) throw new Error('Provider rejected coding request');
     }
     return { workspace: structuredClone(workspace) };

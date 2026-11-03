@@ -5,7 +5,6 @@
       <article v-for="board in boards" v-show="!play || board.id === activeArtboardId" :key="board.id" class="design-canvas__artboard" :data-artboard-id="board.id" :data-active="board.id === activeArtboardId" :style="boardStyle(board)">
         <header v-if="!play" class="design-canvas__caption" :style="{ height: `${captionHeight}px` }">
           <button type="button" :aria-label="t('design.editArtboard', { name: board.title })" :title="t('design.moveArtboardHint')" :disabled="locked" @pointerdown.stop="startBoardDrag($event, board.id)" @keydown="nudgeBoard($event, board.id)" @click="clickBoard($event, board.id)">{{ board.title }}</button>
-          <CheckIcon v-if="board.id === content.chosenArtboardId" class="design-canvas__chosen" :aria-label="t('design.chosen')" />
           <button class="app-icon-button" type="button" :aria-label="t('design.focusArtboard', { name: board.title })" :title="t('design.focusArtboard', { name: board.title })" :disabled="locked" @click="emit('focus', board.id)"><ArrowsDiagonalIcon /></button>
         </header>
         <div class="design-canvas__surface" :style="{ height: `${board.height * zoom}px` }">
@@ -20,7 +19,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import { designArtboardPositions, type DesignArtboard, type DesignContent, type DesignInteraction } from '@workspace/core/design';
 import { translate as t } from '../i18n';
-import { CheckIcon, ArrowsDiagonalIcon } from '../shared/icons/app-icons';
+import { ArrowsDiagonalIcon } from '../shared/icons/app-icons';
 import DesignArtboardFrame from './DesignArtboardFrame.vue';
 import type { DesignCanvasChange } from './design-frame';
 
@@ -91,6 +90,13 @@ const zoom = computed(() => {
   const height = selected?.height ?? bounds.value.bottom - bounds.value.y;
   return Math.max(0.001, Math.min(1, (stageWidth.value - 64) / Math.max(1, width), (stageHeight.value - (props.play ? 108 : 164) - (selected ? 0 : captionGutters.value)) / Math.max(1, height)));
 });
+// Fit is a viewport action, not a resize-dependent zoom mode. Let framing and
+// scroll positioning settle before retaining the resulting numeric scale.
+async function retainZoom() {
+  await nextTick();
+  if (stage.value && typeof props.zoomChoice !== 'number') emit('zoom', zoom.value);
+}
+watch(() => props.zoomChoice, () => void retainZoom(), { flush: 'post' });
 watch([bounds, () => !!boardDrag.value, () => props.zoomChoice, () => props.documentId], async () => {
   if (boardDrag.value) return;
   const previous = retainedOrigin.value;
@@ -210,9 +216,16 @@ watch(() => props.selectedArtboardId, () => { if (props.zoomChoice === 'selectio
 onMounted(() => {
   window.addEventListener('keydown', cancelKey);
   if (typeof ResizeObserver !== 'undefined') {
-    observer = new ResizeObserver(entries => { stageWidth.value = entries[0]?.contentRect.width ?? 420; stageHeight.value = entries[0]?.contentRect.height ?? 600; });
+    let measured = false;
+    observer = new ResizeObserver(entries => {
+      const size = entries[0]?.contentRect;
+      if (!size || size.width <= 0 || size.height <= 0) return;
+      stageWidth.value = size.width;
+      stageHeight.value = size.height;
+      if (!measured) { measured = true; void retainZoom(); }
+    });
     if (stage.value) observer.observe(stage.value);
-  }
+  } else void retainZoom();
   if (props.zoomChoice === 'selection') void focus(props.selectedArtboardId ?? '');
 });
 onBeforeUnmount(() => { observer?.disconnect(); window.removeEventListener('keydown', cancelKey); });
@@ -275,13 +288,6 @@ defineExpose({ focus, zoom, activeArtboardId });
   overflow: hidden;
   cursor: grab;
   touch-action: none;
-}
-
-.design-canvas__chosen {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
-  color: var(--color-primary);
-  flex: none;
 }
 
 .design-canvas__surface {

@@ -11,7 +11,7 @@
       <p>{{ t('design.emptyHelp') }}</p>
     </div>
     <template v-else>
-      <div class="design-panel__body">
+      <div ref="body" class="design-panel__body" :class="{ 'design-panel__body--resizing': inspectorResizing }">
         <div class="design-panel__canvas-shell">
           <DesignTools :artboards="current.document.content.artboards" :selected-artboard-id="canvas?.activeArtboardId ?? board?.id ?? null" :locked="locked" :interacting="interacting" :play="play" :pan="pan" :inspector-visible="inspectorVisible" :zoom="canvas?.zoom ?? 1" :zoom-choice="zoomChoice" @focus="focusBoard" @pan="pan = $event" @play="togglePlay" @inspector="inspectorVisible = !inspectorVisible" @zoom="changeZoom">
             <template #actions>
@@ -37,7 +37,7 @@
               </AppMenuButton>
             </template>
           </DesignCanvas>
-          <DesignReviewBar v-if="board && !play" :board="board" :chosen="current.document.content.chosenArtboardId === board.id" :disabled="locked || !!reviewCommentDraft" :commenting="!!reviewCommentDraft" @comment="beginComment" @choose="chooseBoard(board.id)" @build="reviewBuild">
+          <DesignReviewBar v-if="board && !play" :board="board" :disabled="locked || !!reviewCommentDraft" :commenting="!!reviewCommentDraft" @comment="beginComment" @build="reviewBuild">
             <template #comment>
               <form v-if="reviewCommentDraft" class="design-panel__review-comment" :aria-label="t('design.commentOn', { title: reviewCommentDraft.title })" @submit.prevent="sendReviewComment">
                 <strong>{{ t('design.commentOn', { title: reviewCommentDraft.title }) }}</strong>
@@ -52,7 +52,10 @@
             </template>
           </DesignReviewBar>
         </div>
-        <div v-if="!play" v-show="inspectorVisible" class="design-panel__inspector" :inert="interacting || !!pendingCanvas">
+        <PaneTransition :enabled="!inspectorResizing">
+        <div v-if="!play" v-show="inspectorVisible" ref="inspector" class="design-panel__inspector-shell" :style="{ '--design-inspector-width': `${inspectorWidth}px` }">
+          <div class="design-panel__inspector-resizer" role="separator" :aria-label="t('design.resizeInspector')" aria-orientation="vertical" tabindex="0" aria-valuemin="220" aria-valuemax="560" :aria-valuenow="inspectorWidth" @pointerdown="startInspectorResize" @keydown.left.prevent="resizeInspector(inspectorWidth + 16)" @keydown.right.prevent="resizeInspector(inspectorWidth - 16)" />
+        <div class="design-panel__inspector" :inert="interacting || !!pendingCanvas">
           <button class="app-icon-button design-panel__close-inspector" type="button" :aria-label="t('design.closeInspector')" :title="t('design.closeInspector')" :disabled="interacting" @click="inspectorVisible = false"><XIcon /></button>
           <el-tabs v-model="inspectorTab" class="design-panel__tabs">
             <el-tab-pane name="properties" :label="t('design.properties')" :disabled="!!tweakDraft">
@@ -100,6 +103,8 @@
             </el-tab-pane>
           </el-tabs>
         </div>
+        </div>
+        </PaneTransition>
       </div>
     </template>
     <FormDialog v-model="buildVisible" :title="t('design.sendForCoding')" width="420px" compact>
@@ -144,6 +149,8 @@ import { translate as t } from '../i18n';
 import FormField from '../shared/form/FormField.vue';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
+import PaneTransition from '../shared/PaneTransition.vue';
+import { useCollapsiblePaneResize } from '../shared/use-collapsible-pane-resize';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { ArrowBackUpIcon as UndoIcon, ArrowForwardUpIcon as RedoIcon, HistoryIcon, DownloadIcon, XIcon, ChevronDown } from '../shared/icons/app-icons';
 import DesignCanvas from './DesignCanvas.vue';
@@ -157,6 +164,24 @@ import type { DesignCanvasChange } from './design-frame';
 const props = defineProps<{ agentId: string; workspace: DesignWorkspace; execute: (request: DesignRequest) => Promise<DesignResult> }>();
 const current = ref(props.workspace);
 const inspectorVisible = ref(!!props.workspace.selectedNodeId);
+const inspectorWidth = ref(280);
+const body = ref<HTMLElement>();
+const inspector = ref<HTMLElement>();
+const { resizing: inspectorResizing, start: startPaneResize } = useCollapsiblePaneResize();
+function resizeInspector(width: number) {
+  inspectorWidth.value = Math.round(Math.max(220, Math.min(width, 560, (body.value?.getBoundingClientRect().width ?? 800) - 240)));
+}
+function startInspectorResize(event: PointerEvent) {
+  const width = inspector.value?.getBoundingClientRect().width || inspectorWidth.value;
+  const startX = event.clientX;
+  startPaneResize(event, {
+    minimum: 220,
+    width,
+    widthAt: move => width + startX - move.clientX,
+    resize: resizeInspector,
+    setOpen: open => { inspectorVisible.value = open; },
+  });
+}
 const reviewCommentInput = ref<HTMLTextAreaElement>();
 const reviewCommentDraft = ref<{ nodeId: string; title: string; revision: number; text: string }>();
 const buildVisible = ref(false);
@@ -222,7 +247,6 @@ const artboardItems = computed<AppMenuItem[]>(() => [
   { type: 'action', id: 'duplicate', label: t('design.duplicateArtboard'), disabled: !board.value || (current.value.document?.content.artboards.length ?? 0) >= 12 },
   { type: 'action', id: 'settings', label: t('design.artboardSettings'), disabled: !board.value },
   { type: 'action', id: 'arrange', label: t('design.arrangeArtboards') },
-  { type: 'action', id: 'choose', label: t('design.chooseDirection'), disabled: !board.value || current.value.document?.content.chosenArtboardId === board.value.id },
   { type: 'action', id: 'remove', label: t('design.removeArtboard'), disabled: (current.value.document?.content.artboards.length ?? 0) < 2 },
 ]);
 const historyItems = computed<AppMenuItem[]>(() => [
@@ -333,7 +357,6 @@ function canvasInteraction(artboardId: string, active: boolean) {
   interactingArtboardId = active ? artboardId : null;
   interacting.value = active;
 }
-async function chooseBoard(artboardId: string) { await mutate({ type: 'edit', expectedRevision: revision.value, edits: [{ type: 'choose-artboard', artboardId }] }); }
 async function artboardAction(action: string) {
   if (action === 'arrange') {
     let x = 0;
@@ -351,8 +374,7 @@ async function artboardAction(action: string) {
     boardDraft.value = action === 'add' ? { title: t('design.newArtboard'), width: board.value?.width ?? 800, height: board.value?.height ?? 600, notes: '' } : { title: board.value!.title, width: board.value!.width, height: board.value!.height, notes: board.value!.notes ?? '' };
     error.value = '';
     boardDialog.value = true;
-  } else if (board.value && action === 'choose') await chooseBoard(board.value.id);
-  else if (board.value && (action === 'duplicate' || action === 'remove')) {
+  } else if (board.value && (action === 'duplicate' || action === 'remove')) {
     const ids = new Set(current.value.document!.content.artboards.map(item => item.id));
     if (await mutate({ type: 'edit', expectedRevision: revision.value, edits: [{ type: action === 'duplicate' ? 'artboard-duplicate' : 'artboard-remove', artboardId: board.value.id }] })) {
       const added = current.value.document!.content.artboards.find(item => !ids.has(item.id));
@@ -487,29 +509,56 @@ async function retryCanvas() {
   color: var(--color-primary);
 }
 
+.design-panel__inspector-shell {
+  --design-inspector-width: 280px;
+
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 48%;
+  flex: none;
+  border-top: 1px solid var(--color-border);
+}
+
 .design-panel__inspector {
   position: relative;
   padding: var(--space-3);
   display: flex;
+  flex: 1;
   flex-direction: column;
+  min-width: 0;
+  min-height: 0;
   gap: var(--space-3);
-  max-height: 48%;
-  flex: none;
   overflow: auto;
-  border-top: 1px solid var(--color-border);
 }
+
+.design-panel__inspector-resizer { display: none; }
+
+.design-panel__body--resizing { cursor: col-resize; user-select: none; }
+.design-panel__body--resizing :deep(iframe) { pointer-events: none; }
 
 @container design-panel (min-width: 720px) {
   .design-panel__body {
     flex-direction: row;
   }
 
-  .design-panel__inspector {
-    width: 280px;
+  .design-panel__inspector-shell {
+    flex-direction: row;
+    width: min(var(--design-inspector-width), calc(100% - 240px));
     max-height: none;
     border-top: 0;
-    border-left: 1px solid var(--color-border);
   }
+
+  .design-panel__inspector-resizer {
+    display: block;
+    flex: 0 0 5px;
+    border-left: 1px solid var(--color-border);
+    cursor: col-resize;
+    touch-action: none;
+  }
+
+  .design-panel__inspector-resizer:hover,
+  .design-panel__inspector-resizer:focus-visible { border-left-color: var(--color-primary); outline: 0; }
 }
 
 .design-panel__build-summary p {
