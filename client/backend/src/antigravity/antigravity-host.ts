@@ -19,7 +19,7 @@ import { appDeveloperInstructions } from '../mcp/agent-prompts';
 import { AcpRuntime, NativeLoginRequired } from './acp-runtime';
 import { AcpSession } from './session';
 import { antigravityHome, resolveAcpRuntime } from './runtime';
-import { record } from './acp-connection';
+import { record } from '../acp/acp-connection';
 import { sessionMcpServer } from './mcp-bridge';
 import { listAcpSessions } from './catalog';
 import { acpAttachments } from './attachments';

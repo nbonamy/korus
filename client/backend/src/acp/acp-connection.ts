@@ -15,6 +15,7 @@ export class AcpConnection {
   private closing?: Promise<void>;
 
   constructor(private readonly options: {
+    displayName: string;
     command: string;
     args?: string[];
     cwd: string;
@@ -23,6 +24,7 @@ export class AcpConnection {
     onNotification(method: string, params: unknown): void;
     onClose(error: Error): void;
     onLoginRequired?(): void;
+    loginRequiredMarker?: string;
     maxFrameBytes?: number;
   }) {}
 
@@ -33,26 +35,26 @@ export class AcpConnection {
       detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.exit = new Promise(resolve => {
-      child.once('close', () => { this.fail(new Error('Antigravity runtime closed.')); resolve(); });
+      child.once('close', () => { this.fail(new Error(`${this.options.displayName} runtime closed.`)); resolve(); });
     });
-    child.once('error', () => this.fail(new Error('Could not start Antigravity ACP runtime.')));
-    child.stdin.on('error', () => this.fail(new Error('Antigravity input stream closed.')));
+    child.once('error', () => this.fail(new Error(`Could not start ${this.options.displayName} ACP runtime.`)));
+    child.stdin.on('error', () => this.fail(new Error(`${this.options.displayName} input stream closed.`)));
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk: string) => this.receive(chunk));
     child.stdout.once('end', () => {
-      this.fail(new Error('Antigravity output stream ended.'));
+      this.fail(new Error(`${this.options.displayName} output stream ended.`));
       void this.close();
     });
     // Recognize only the native login marker. Never expose or persist diagnostics or URLs.
-    const marker = 'Open the following link to authenticate the ACP server:';
+    const marker = this.options.loginRequiredMarker;
     let suffix = '';
     let loginReported = false;
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', (chunk: string) => {
-      if (loginReported || !this.options.onLoginRequired) return;
+      if (loginReported || !marker || !this.options.onLoginRequired) return;
       const text = suffix + chunk;
       if (text.includes(marker)) { loginReported = true; suffix = ''; this.options.onLoginRequired(); }
-      else suffix = text.slice(-(marker.length - 1));
+      else suffix = marker.length > 1 ? text.slice(-(marker.length - 1)) : '';
     });
   }
 
@@ -62,7 +64,7 @@ export class AcpConnection {
     const id = ++this.sequence;
     return new Promise((resolve, reject) => {
       const timer = timeoutMs === null ? undefined : setTimeout(() => {
-        this.fail(new Error(`Antigravity request timed out: ${method}`));
+        this.fail(new Error(`${this.options.displayName} request timed out: ${method}`));
         void this.close();
       }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
@@ -80,7 +82,7 @@ export class AcpConnection {
   }
 
   private async shutdown(): Promise<void> {
-    this.fail(new Error('Antigravity connection closed.'));
+    this.fail(new Error(`${this.options.displayName} connection closed.`));
     if (!this.child) return;
     this.child.stdin.end();
     const term = setTimeout(() => this.signal('SIGTERM'), 300);
@@ -101,7 +103,7 @@ export class AcpConnection {
   private write(message: unknown): void {
     if (this.ended) return;
     try { this.child?.stdin.write(JSON.stringify(message) + '\n'); }
-    catch { this.fail(new Error('Could not write to Antigravity.')); }
+    catch { this.fail(new Error(`Could not write to ${this.options.displayName}.`)); }
   }
 
   private receive(chunk: string): void {
@@ -139,12 +141,12 @@ export class AcpConnection {
     if (!pending) return;
     this.pending.delete(value.id);
     clearTimeout(pending.timer);
-    if (record(value.error)) pending.reject(new AcpError(typeof value.error.code === 'number' ? value.error.code : -32603));
+    if (record(value.error)) pending.reject(new AcpError(typeof value.error.code === 'number' ? value.error.code : -32603, this.options.displayName));
     else pending.resolve(value.result);
   }
 
   private protocolFailure(): void {
-    this.fail(new Error('Invalid or oversized Antigravity ACP frame.'));
+    this.fail(new Error(`Invalid or oversized ${this.options.displayName} ACP frame.`));
     void this.close();
   }
 
@@ -159,7 +161,7 @@ export class AcpConnection {
 }
 
 class AcpError extends Error {
-  constructor(readonly code: number) { super(`Antigravity ACP request failed (${code}).`); }
+  constructor(readonly code: number, displayName: string) { super(`${displayName} ACP request failed (${code}).`); }
 }
 
 function rpcId(value: unknown): value is RpcId { return typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value)); }

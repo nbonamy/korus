@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { realpath } from 'node:fs/promises';
-import { AcpConnection, record } from './acp-connection';
+import { AcpConnection, record } from '../acp/acp-connection';
 
 export type AcpCatalogEntry = { sessionId: string; cwd: string; title: string };
 

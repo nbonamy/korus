@@ -110,6 +110,11 @@ serializes installation with home changes and detection refreshes. Discovery
 accepts the managed pair, paired executables on PATH, explicit runtime/harness
 environment paths, or an existing versioned runtime directory.
 
+ACP process framing, directional request IDs, deadlines and process-group teardown
+are owned by the shared `client/backend/src/acp` transport. Provider adapters
+supply display labels and optional native login markers. Stderr is drained only
+for marker recognition; diagnostics and login URLs are never exposed or retained.
+
 Each agent owns a process/session with serialized prompts and bounded cancellation.
 Cold replay validates session identity and rebuilds atomically: replay tool IDs
 differ and later updates may reverse tool status. Unknown timestamps stay absent;

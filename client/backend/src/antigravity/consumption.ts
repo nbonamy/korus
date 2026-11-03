@@ -1,5 +1,5 @@
 import type { Consumption } from '@workspace/core/usage';
-import { record } from './acp-connection';
+import { record } from '../acp/acp-connection';
 
 const count = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= 1e9;
 

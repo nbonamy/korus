@@ -283,13 +283,14 @@ every boolean false and planMode unsupported.
 
 ## Current-code integration map
 
-Source inspection at repository baseline `d035d1fb`; paths describe existing seams,
-not files implemented in this ticket.
+Source inspection began at repository baseline `d035d1fb`; the transport row
+reflects the shared connection checkpoint below. Other rows identify integration
+seams, not implemented Cursor features.
 
 | Owner | Existing seam and intended Cursor integration |
 | --- | --- |
 | Core identity | `core/src/contracts/shared.ts`, `contracts/backend.ts`, `backend-driver.ts`, `backend-capabilities.ts`, `settings.ts`, provider-setup contracts: additive identity, conservative capabilities and per-provider settings |
-| ACP transport | `client/backend/src/antigravity/acp-connection.ts`: share framing, ID separation, bounded buffers, deadlines and teardown; preserve stderr privacy |
+| ACP transport | `client/backend/src/acp/acp-connection.ts`: shared framing, ID separation, bounded buffers, deadlines and teardown; provider-supplied display name and optional login marker; stderr stays private |
 | Session/driver | `antigravity/session.ts`, `antigravity-host.ts`, `provider-lifecycle.ts`, `driver-rpc.ts`: Cursor owns normalization/lifecycle, provider health and explicit denial; no renderer protocol parsing |
 | Replay | `antigravity/transcript.ts`, `prompt-journal.ts`; core Antigravity replica/contracts: native history remains authoritative, journal presentation metadata only |
 | MCP | `antigravity/mcp-bridge.ts`, `sessionMcpServer`: shared scoped identity bridge; prove HTTP/SSE trust separately from these stdio probes |
@@ -321,14 +322,42 @@ commit. This mapping describes the approved work; it does not expand ticket 1.
 | 14 | Review/Mission/automation/delegation through unchanged workflow seams; omit auxiliary generation until tool-free enforcement qualifies |
 | 15 | Integrated native proofs, Web/remote verification, durable docs and full lint/test/85% coverage gates |
 
+## Shared transport checkpoint (Mission ticket 2)
+
+The ACP connection and its real-child-process tests live under
+`client/backend/src/acp`. Antigravity imports that connection directly and
+supplies its existing display name and native stderr login marker. Error text,
+framing, deadlines, callback routing and teardown retain their native behavior;
+stderr diagnostics and URLs remain private. No Cursor runtime or MCP bridge
+behavior is introduced by this extraction.
+
+The transport tests cover colliding directional IDs, split frames, malformed and
+oversized frames, EOF, timeout, close with pending requests, sanitized errors,
+optional split login-marker recognition and process-group teardown. The new
+label/marker tests failed against the original implementation before extraction.
+The Antigravity and shared ACP suites pass together (75 tests).
+`npm run lint` passes, including architecture checks, backend/all-workspace
+typechecks and dead-code analysis. No mobile-facing contract changed.
+`npm run test:coverage -w @workspace/backend -- --maxWorkers=2` passes:
+2,786 tests passed, 9 skipped; 89.22% statements overall and 89.55% for the shared
+connection, with the 85% gate unchanged. The initial unrestricted coverage run
+hit five-second deadlines in eight real-Git tests; limiting workers resolved
+those failures without changing deadlines, test assertions or coverage scope.
+
+Learning: the installed application's signed Node runtime rejects third-party
+native test bindings under macOS library validation. Local verification uses the
+checksum-verified repository-pinned Node 26.12.1 distribution and npm 10.9.4.
+Background worktree setup failed with `spawn npm ENOENT`; explicit worktree-local
+`npm ci` completed after that failure, without changing dependency inputs.
+
 ## Verification and learnings
 
-- Docs-only change: no runtime contract or app code changed. App suite,
-  typecheck and coverage are not required for this ticket; native probes are
+- Phase 0 was docs-only: no runtime contract or app code changed. App suite,
+  typecheck and coverage were not required for ticket 1; native probes are
   qualification evidence, not deterministic regression tests.
-- Worktree initialization reported `spawn npm ENOENT`. No installation was
-  attempted and no app-suite success is claimed. Later implementation must
-  resolve the setup failure before dependency-dependent checks.
+- Phase 0 worktree initialization reported `spawn npm ENOENT`; no installation
+  or app suite was attempted at that checkpoint. Ticket 2 setup recovery is
+  recorded above.
 - Cleanup: process inspection found no remaining Cursor runtime, Node helper or
   sleep process from the probes. Synthetic files and private evidence remain only
   in the scratch directory. Browser login was completed by the user; isolated
