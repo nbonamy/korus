@@ -1,6 +1,6 @@
 <template>
-  <span v-if="themed" class="backend-icon backend-icon--monochrome" :style="maskStyle" aria-hidden="true" />
-  <img v-else class="backend-icon" :src="source" alt="" aria-hidden="true" />
+  <span v-if="source && themed" class="backend-icon backend-icon--monochrome" :style="maskStyle" aria-hidden="true" />
+  <img v-else-if="source" class="backend-icon" :src="source" alt="" aria-hidden="true" />
 </template>
 
 <script setup lang="ts">
@@ -8,7 +8,7 @@ import { computed } from 'vue';
 import type { AgentBackend } from '@workspace/core/contracts';
 
 const props = defineProps<{ backend: AgentBackend; monochrome?: boolean }>();
-const icons = {
+const icons: Partial<Record<AgentBackend, string>> = {
   codex: new URL('../shared/icons/chatgpt-icon.svg', import.meta.url).href,
   claude: new URL('../shared/icons/claude-code-icon.svg', import.meta.url).href,
   antigravity: new URL('../shared/icons/antigravity-icon.svg', import.meta.url).href,

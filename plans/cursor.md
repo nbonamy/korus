@@ -6,7 +6,8 @@ with the existing Enterprise team login. **Full provider qualification is blocke
 file edits bypassed permission callbacks, session-supplied MCP still prompted,
 and authenticated home isolation failed; several Enterprise controls remain
 unverified.
-No Cursor provider code is implemented by this checkpoint.
+Native Cursor execution remains unavailable; the implementation checkpoints below
+add shared transport and provider identity only.
 
 ## Objective and scope
 
@@ -283,13 +284,13 @@ every boolean false and planMode unsupported.
 
 ## Current-code integration map
 
-Source inspection began at repository baseline `d035d1fb`; the transport row
-reflects the shared connection checkpoint below. Other rows identify integration
+Source inspection began at repository baseline `d035d1fb`; the transport and
+identity rows reflect the implementation checkpoints below. Other rows identify integration
 seams, not implemented Cursor features.
 
 | Owner | Existing seam and intended Cursor integration |
 | --- | --- |
-| Core identity | `core/src/contracts/shared.ts`, `contracts/backend.ts`, `backend-driver.ts`, `backend-capabilities.ts`, `settings.ts`, provider-setup contracts: additive identity, conservative capabilities and per-provider settings |
+| Core identity | `core/src/contracts/shared.ts`, `contracts/backend.ts`, `backend-driver.ts`, `backend-capabilities.ts`, `settings.ts`, provider-setup contracts: Cursor identity registered, capabilities disabled and per-provider settings preserved |
 | ACP transport | `client/backend/src/acp/acp-connection.ts`: shared framing, ID separation, bounded buffers, deadlines and teardown; provider-supplied display name and optional login marker; stderr stays private |
 | Session/driver | `antigravity/session.ts`, `antigravity-host.ts`, `provider-lifecycle.ts`, `driver-rpc.ts`: Cursor owns normalization/lifecycle, provider health and explicit denial; no renderer protocol parsing |
 | Replay | `antigravity/transcript.ts`, `prompt-journal.ts`; core Antigravity replica/contracts: native history remains authoritative, journal presentation metadata only |
@@ -349,6 +350,48 @@ native test bindings under macOS library validation. Local verification uses the
 checksum-verified repository-pinned Node 26.12.1 distribution and npm 10.9.4.
 Background worktree setup failed with `spawn npm ENOENT`; explicit worktree-local
 `npm ci` completed after that failure, without changing dependency inputs.
+
+## Identity and persistence checkpoint (Mission ticket 3)
+
+`cursor` is a recognized provider in app-owned contracts, snapshot/event guards,
+execution selections and stored roster/task records. Sessions retain a native
+session ID; defaults retain model selection and optional permission mode without
+inheriting another provider's defaults. Settings use `providerEnabled` and
+`providerHomes`; no provider-specific enable flag is introduced. Review and
+delegation registration changes are limited to provider/session discriminants.
+Automation execution records preserve Cursor conversation references on reload.
+Existing store schema versions remain unchanged; no migration is necessary.
+
+The default driver registry contains an unavailable Cursor driver. Metadata reads
+report `notConfigured` and the fully conservative capability constant (every
+boolean false, `planMode: unsupported`); native operations reject with
+`Cursor is not available`. Subscription registration and closing are inert so
+the registry can initialize and shut down safely. Update inspection rejects
+before executable/package probing. No Cursor runtime, model discovery, login or
+workflow execution is implemented by this ticket.
+
+Type expansion required small renderer guards: an unimplemented provider icon is
+omitted, account labels require account metadata, and subagent reads remain
+restricted to supported providers. The Cursor icon and connection UI belong to
+ticket 4. No companion/mobile wire producer or telemetry emitter is changed;
+released-client behavior for workspaces containing Cursor agents remains ticket
+13's release gate, and Cursor telemetry belongs to ticket 12.
+
+Boundary tests were written before implementation. They cover app-event identity
+and authentication decoding, exact disk roster/task round-trips, mismatched
+session/default rejection, settings isolation, review ledger decoding, unavailable
+driver routing, updater rejection and provider-specific model requirements.
+Malformed Cursor model restrictions remain errors rather than unrestricted input.
+The shared selection helpers already handle the new identity through their
+provider guard; no duplicated Cursor selection resolver is needed.
+
+Validation uses Node 26.12.1 and npm 10.9.4. Core coverage passes with 668 tests
+and 85.89% statements. Backend coverage with two workers passes with 2,797 tests,
+9 skipped, and 89.23% statements. The 85% thresholds and coverage surfaces are
+unchanged. Mounted renderer checks pass (24 tests), and full lint covers all
+workspace typechecks, architecture, CSS/i18n and dead-code checks. Backend
+coverage includes the existing released-client companion regression suites;
+it does not replace ticket 13's Cursor-containing-workspace compatibility proof.
 
 ## Verification and learnings
 

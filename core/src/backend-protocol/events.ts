@@ -72,11 +72,11 @@ function expectRequiredString(
 
 function expectRequiredBackend(
   event: Record<string, unknown>,
-  backend?: 'codex' | 'claude' | 'antigravity',
+  backend?: 'codex' | 'claude' | 'antigravity' | 'cursor',
 ): void {
   expectLiteral(
     event.backend,
-    backend ? [backend] : ['codex', 'claude', 'antigravity'],
+    backend ? [backend] : ['codex', 'claude', 'antigravity', 'cursor'],
     '$.backend',
   );
 }
@@ -87,7 +87,7 @@ function expectAgent(event: Record<string, unknown>): void {
 
 function expectAgentBackend(
   event: Record<string, unknown>,
-  backend?: 'codex' | 'claude' | 'antigravity',
+  backend?: 'codex' | 'claude' | 'antigravity' | 'cursor',
 ): void {
   expectAgent(event);
   expectRequiredBackend(event, backend);
@@ -218,7 +218,7 @@ export function decodeAppBackendEvent(value: unknown): AppBackendEvent {
   const event = value as EventRecord;
   expectOptional(event, 'agentId', '$', expectString);
   expectOptional(event, 'backend', '$', (candidate, path) =>
-    expectLiteral(candidate, ['codex', 'claude', 'antigravity'], path),
+    expectLiteral(candidate, ['codex', 'claude', 'antigravity', 'cursor'], path),
   );
   expectOptional(event, 'backendSessionId', '$', expectString);
   expectOptional(event, 'conversationId', '$', expectString);

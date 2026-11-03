@@ -11,6 +11,7 @@ export const taskResultSchema = z.strictObject({
   caveats: z.array(text.max(500)).max(10),
 }) satisfies z.ZodType<TaskResultInput>;
 const session = z.discriminatedUnion('kind', [
+  z.looseObject({ kind: z.literal('cursor'), sessionId: text }),
   z.looseObject({ kind: z.literal('antigravity'), sessionId: text }),
   z.looseObject({ kind: z.literal('codex'), threadId: text }),
   z.looseObject({
@@ -23,7 +24,7 @@ const acceptance = z.looseObject({ backendSession: session, turnId: text.optiona
 // Command inputs stay strict; stored records accept additive fields from newer builds.
 const taskSchema = z.looseObject({
   id: text, requestId: text.max(200), requestFingerprint: text,
-  parentAgentId: text, workerAgentId: text, backend: z.enum(['codex', 'claude', 'antigravity']),
+  parentAgentId: text, workerAgentId: text, backend: z.enum(['codex', 'claude', 'antigravity', 'cursor']),
   assignment: taskContractSchema.loose(), prompt: text.max(100000), attemptId: text,
   goal: z.boolean().optional(),
   planMode: z.boolean().optional(),

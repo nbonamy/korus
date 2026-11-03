@@ -196,7 +196,7 @@ export function normalizeGeneralSettings(value: unknown): AppGeneralSettings {
 
 function normalizeProviderHomes(value: Record<string, unknown>): NonNullable<AppGeneralSettings['providerHomes']> {
   const homes: NonNullable<AppGeneralSettings['providerHomes']> = {};
-  for (const backend of ['codex', 'claude', 'antigravity'] as const) {
+  for (const backend of ['codex', 'claude', 'antigravity', 'cursor'] as const) {
     const entry = value[backend];
     if (isRecord(entry) && typeof entry.homePath === 'string' && entry.homePath.trim()
       && typeof entry.isolated === 'boolean' && typeof entry.shareSkills === 'boolean') {
@@ -208,7 +208,7 @@ function normalizeProviderHomes(value: Record<string, unknown>): NonNullable<App
 
 function normalizeProviderModelDefaults(value: Record<string, unknown>): NonNullable<AppGeneralSettings['providerModelDefaults']> {
   const defaults: NonNullable<AppGeneralSettings['providerModelDefaults']> = {};
-  for (const backend of ['codex', 'claude', 'antigravity'] as const) {
+  for (const backend of ['codex', 'claude', 'antigravity', 'cursor'] as const) {
     const entry = value[backend];
     if (isRecord(entry) && entry.model !== undefined && entry.model !== null && !normalizeString(entry.model)) continue;
     const selection = readPersistedExecutionSelection(isRecord(entry) ? { ...entry, model: normalizeString(entry.model) || null, reasoningEffort: normalizeString(entry.reasoningEffort) || null, serviceTier: normalizeString(entry.serviceTier) || null } : entry, backend);
@@ -273,7 +273,7 @@ function normalizeModelFavorites(value: unknown): ModelFavorite[] {
   const seen = new Set<string>();
   for (const candidate of value) {
     if (!isRecord(candidate)) continue;
-    const backend = candidate.backend === 'codex' || candidate.backend === 'claude' || candidate.backend === 'antigravity'
+    const backend = candidate.backend === 'codex' || candidate.backend === 'claude' || candidate.backend === 'antigravity' || candidate.backend === 'cursor'
       ? candidate.backend
       : null;
     const modelId = normalizeFavoriteValue(candidate.modelId);

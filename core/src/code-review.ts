@@ -50,9 +50,9 @@ export type CodeReviewAutomationSettings = {
 };
 
 export type CodeReviewPreferences = {
-  backend: 'codex' | 'claude' | 'antigravity';
+  backend: 'codex' | 'claude' | 'antigravity' | 'cursor';
   automation: CodeReviewAutomationSettings;
-  providers: Partial<Record<'codex' | 'claude' | 'antigravity', ExecutionSelection>>;
+  providers: Partial<Record<'codex' | 'claude' | 'antigravity' | 'cursor', ExecutionSelection>>;
 };
 
 export type CodeReviewAutomation = CodeReviewAutomationSettings & {
@@ -275,9 +275,9 @@ export function isCodeReviewAutomationSettings(value: unknown): value is CodeRev
 }
 
 export function isCodeReviewPreferences(value: unknown): value is CodeReviewPreferences {
-  return isRecord(value) && (value.backend === 'codex' || value.backend === 'claude' || value.backend === 'antigravity')
+  return isRecord(value) && (value.backend === 'codex' || value.backend === 'claude' || value.backend === 'antigravity' || value.backend === 'cursor')
     && isCodeReviewAutomationSettings(value.automation) && isRecord(value.providers)
-    && Object.entries(value.providers).every(([backend, selection]) => (backend === 'codex' || backend === 'claude' || backend === 'antigravity')
+    && Object.entries(value.providers).every(([backend, selection]) => (backend === 'codex' || backend === 'claude' || backend === 'antigravity' || backend === 'cursor')
       && isExecutionSelection(selection) && selection.backend === backend);
 }
 
@@ -360,7 +360,7 @@ function isCodeReviewRound(value: unknown): value is CodeReviewRound {
 
 function isBackendSession(value: unknown): value is BackendSession {
   if (!isRecord(value)) return false;
-  if (value.kind === 'antigravity') return typeof value.sessionId === 'string';
+  if (value.kind === 'antigravity' || value.kind === 'cursor') return typeof value.sessionId === 'string';
   if (value.kind === 'codex') return typeof value.threadId === 'string';
   return value.kind === 'claude'
     && typeof value.sessionId === 'string'
@@ -435,7 +435,7 @@ function optionalSelection(value: unknown): boolean {
 export function readPersistedReviewPreferences(value: unknown): CodeReviewPreferences | undefined {
   if (!isRecord(value) || !isRecord(value.providers)) return undefined;
   const providers: CodeReviewPreferences['providers'] = {};
-  for (const backend of ['codex', 'claude', 'antigravity'] as const) {
+  for (const backend of ['codex', 'claude', 'antigravity', 'cursor'] as const) {
     if (value.providers[backend] === undefined) continue;
     const selection = readPersistedExecutionSelection(value.providers[backend], backend);
     if (!selection) return undefined;

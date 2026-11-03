@@ -22,6 +22,14 @@ function fixture(resolved: string) {
 }
 
 describe('installed provider updates', () => {
+  it('rejects unavailable Cursor updates before probing executables or other provider packages', async () => {
+    const f = fixture('/tools/lib/node_modules/@openai/codex/bin/codex.js');
+    await expect(f.runtime.inspect('cursor')).rejects.toThrow('Cursor is not available');
+    expect(f.run).not.toHaveBeenCalled();
+    expect(f.read).not.toHaveBeenCalled();
+    expect(f.fetchText).not.toHaveBeenCalled();
+    expect(f.realpath).not.toHaveBeenCalled();
+  });
   it('rejects Antigravity updates before probing another provider or looking up packages', async () => {
     const f = fixture('/tools/lib/node_modules/@anthropic-ai/claude-code/cli.js');
     await expect(f.runtime.inspect('antigravity')).rejects.toThrow('Antigravity updates are managed externally');

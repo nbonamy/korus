@@ -94,7 +94,7 @@ function selectOverflowItem(id: string): void {
 }
 const accountLabel = computed(() => {
   const auth = props.authentication;
-  if (!auth || auth.kind === 'antigravity') return '';
+  if (!auth || !('account' in auth.state)) return '';
   const account = auth.state.account;
   if (!account) return '';
   if (account.type === 'apiKey') return t('engineConnection.apiKey');

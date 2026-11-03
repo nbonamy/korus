@@ -6,6 +6,17 @@ import {
 } from '../backend-capabilities';
 
 describe('backend capabilities', () => {
+  it('keeps every Cursor capability unavailable until its implementation is qualified', () => {
+    expect(defaultBackendCapabilities('cursor')).toStrictEqual({
+      codeReview: false, planReview: false, questions: false, plugins: false,
+      conversationArchive: false, conversationResume: false, conversationReplaceWithSummary: false,
+      remoteControl: false, attachments: false, models: false, skills: false,
+      reasoningEffort: false, serviceTier: false, thinkingBudget: false, planMode: 'unsupported',
+      goals: false, steerPrompt: false, interrupt: false, history: false, conversationFork: false,
+      deleteTurn: false, editTurn: false, retryTurn: false, approvals: false,
+      approvalPresets: [], permissionModes: [],
+    });
+  });
   it('never inherits unsupported Codex controls for Antigravity', () => {
     expect(defaultBackendCapabilities('antigravity')).toMatchObject({
       goals: false, serviceTier: false, thinkingBudget: false, reasoningEffort: false,

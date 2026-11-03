@@ -1,3 +1,5 @@
+import { applyExecutionSelection, executionSelectionForAgent, isExecutionSelection } from '../execution-selection';
+import type { Agent } from '../contracts';
 import { MAX_DELEGATION_INSTRUCTIONS_LENGTH } from '../delegation-context';
 import { describe, expect, it } from 'vitest';
 import { createEmptySnapshot } from '../snapshot';
@@ -33,6 +35,27 @@ describe('settings contracts', () => {
     expect(invalid.preferredProviders).toBeUndefined();
     expect(invalid.gitMergeCleanup).toBeUndefined();
   });
+  it('normalizes Cursor settings without leaking execution defaults across providers', () => {
+    const home = { homePath: '/cursor', isolated: false, shareSkills: false };
+    const selection = { backend: 'cursor', model: 'composer-fixture', reasoningEffort: 'high', serviceTier: null } as const;
+    const settings = normalizeGeneralSettings({
+      providerEnabled: { codex: true, cursor: false },
+      providerHomes: { cursor: home },
+      providerModelDefaults: { cursor: selection },
+    });
+    expect(settings.providerEnabled).toStrictEqual({ codex: true, cursor: false });
+    expect(settings.providerHomes).toStrictEqual({ cursor: home });
+    expect(settings.providerModelDefaults).toStrictEqual({ cursor: selection });
+    expect(isExecutionSelection(selection)).toBe(true);
+    const agent = { backend: 'cursor', backendDefaults: { kind: 'codex', model: 'codex-only' } } as Pick<Agent, 'backend' | 'backendDefaults'>;
+    expect(executionSelectionForAgent(agent)).toStrictEqual({ backend: 'cursor', model: null, reasoningEffort: null, serviceTier: null });
+    applyExecutionSelection(agent, selection);
+    expect(agent.backendDefaults).toStrictEqual({ kind: 'cursor', model: 'composer-fixture', userSelectedModel: true, reasoningEffort: 'high', serviceTier: null });
+    agent.backend = 'claude';
+    expect(executionSelectionForAgent(agent)).toStrictEqual({ backend: 'claude', model: null, reasoningEffort: null, serviceTier: null });
+    expect(() => applyExecutionSelection(agent, selection)).toThrow('does not match');
+  });
+
   it('defaults interactive planning on and preserves an explicit opt-out', () => {
     expect(normalizeGeneralSettings({}).useInteractivePlans).toBe(true);
     expect(defaultGeneralSettings.useInteractivePlans).toBe(true);

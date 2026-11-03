@@ -20,6 +20,11 @@ const entity = <T>(label: string) => z.custom<T>(isRecord, `${label} must be an 
 
 const engineSchema = z.discriminatedUnion('kind', [
   z.looseObject({
+    kind: z.literal('cursor'),
+    session: z.looseObject({ sessionId: z.string() }).optional(),
+    settings: z.looseObject({}).optional(),
+  }),
+  z.looseObject({
     kind: z.literal('antigravity'),
     session: z.looseObject({ sessionId: z.string() }).optional(),
     settings: z.looseObject({}).optional(),

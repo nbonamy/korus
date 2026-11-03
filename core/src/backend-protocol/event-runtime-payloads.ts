@@ -76,7 +76,7 @@ function expectBackendCapabilities(value: unknown, path: string): void {
 
 function expectBackendRuntimeStatus(value: unknown, path: string): void {
   expectRecord(value, path);
-  expectLiteral(value.backend, ['codex', 'claude', 'antigravity'], `${path}.backend`);
+  expectLiteral(value.backend, ['codex', 'claude', 'antigravity', 'cursor'], `${path}.backend`);
   expectLiteral(
     value.status,
     ['notConfigured', 'starting', 'running', 'error'],
@@ -221,7 +221,7 @@ function expectAgentCreationProgress(value: unknown, path: string): void {
   expectRecord(value, path);
   expectString(value.id, `${path}.id`);
   expectLiteral(value.state, ['running', 'success', 'error'], `${path}.state`);
-  expectLiteral(value.backend, ['codex', 'claude', 'antigravity'], `${path}.backend`);
+  expectLiteral(value.backend, ['codex', 'claude', 'antigravity', 'cursor'], `${path}.backend`);
   expectString(value.repositoryName, `${path}.repositoryName`);
   expectBoolean(value.createWorktree, `${path}.createWorktree`);
   expectOptional(value, 'createProject', path, expectBoolean);

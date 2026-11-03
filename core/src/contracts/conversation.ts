@@ -49,6 +49,7 @@ export type AgentContextUsage = {
 };
 
 export type BackendConversationRef =
+  | { backend: 'cursor'; folder: string | null; sessionId: string }
   | { backend: 'antigravity'; folder: string | null; sessionId: string }
   | {
     backend: 'codex';
@@ -252,6 +253,7 @@ export type RendererSendPromptOptions = Omit<SendPromptOptions, 'attachments' | 
 export type PromptContentOptions = Pick<SendPromptOptions, 'content'>;
 
 export type BackendPromptOptions =
+  | { kind: 'cursor'; permissionMode?: string | null }
   | { kind: 'antigravity'; permissionMode?: string | null }
   | {
     kind: 'codex';

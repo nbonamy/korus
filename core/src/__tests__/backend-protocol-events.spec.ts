@@ -502,6 +502,20 @@ function createFixtures(): EventFixtures {
 }
 
 describe(`${product.name} backend event decoder`, () => {
+  it('decodes Cursor identity, session and authentication in app-owned envelopes', () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.agents[0]!.backend = 'cursor';
+    snapshot.agents[0]!.backendSession = { kind: 'cursor', sessionId: 'cursor-session' };
+    snapshot.agents[0]!.backendDefaults = { kind: 'cursor', permissionMode: 'allowlist' };
+    const authentication = { kind: 'cursor', connected: false, state: { loggedIn: false, homePath: '/cursor' } } as const;
+    snapshot.providerConnections = [{ backend: 'cursor', installed: false, connected: false, checking: false, authentication }];
+    const event = { seq: 1, occurredAt, type: 'snapshot.updated', payload: snapshot };
+    expect(decodeAppBackendEvent(JSON.parse(JSON.stringify(event)))).toStrictEqual(event);
+    const authEvent = { seq: 2, occurredAt, type: 'provider.authenticationChanged', payload: authentication };
+    expect(decodeAppBackendEvent(authEvent)).toStrictEqual(authEvent);
+    expect(() => decodeAppBackendEvent({ ...authEvent, payload: { ...authentication, state: { loggedIn: 'no', homePath: '/cursor' } } })).toThrow();
+  });
+
   it.each(['github', 'gitlab'] as const)('decodes %s merged tracking updates without losing provider identity', provider => {
     const tracking = { provider, repository: provider === 'gitlab' ? 'gitlab.com/group/sub/repo' : 'owner/repo', branch: 'feature', number: 7, title: 'Work', url: provider === 'gitlab' ? 'https://gitlab.com/group/sub/repo/-/merge_requests/7' : 'https://github.com/owner/repo/pull/7', draft: false, headSha: 'head', state: 'merged', mergedAt: occurredAt, createdAt: occurredAt, updatedAt: occurredAt };
     const event = { seq: 1, occurredAt, type: 'agent.updated', agentId: 'agent-1', payload: { id: 'agent-1', pullRequest: tracking } };

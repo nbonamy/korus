@@ -85,6 +85,7 @@ export const claudeBackendCapabilities: BackendCapabilities = {
 };
 
 export function defaultBackendCapabilities(backend: AgentBackend): BackendCapabilities {
+  if (backend === 'cursor') return cursorBackendCapabilities;
   if (backend === 'antigravity') return antigravityBackendCapabilities;
   return backend === 'claude' ? claudeBackendCapabilities : codexBackendCapabilities;
 }
@@ -102,4 +103,15 @@ export const antigravityBackendCapabilities: BackendCapabilities = {
     { id: 'default', label: { key: 'permissions.antigravity.default.label' }, description: { key: 'permissions.antigravity.default.description' } },
     { id: 'auto_edit', label: { key: 'permissions.antigravity.autoEdit.label' }, description: { key: 'permissions.antigravity.autoEdit.description' } },
   ],
+};
+
+// Identity is registered before the runtime and its qualified capabilities.
+export const cursorBackendCapabilities: BackendCapabilities = {
+  codeReview: false, planReview: false, questions: false, plugins: false,
+  conversationArchive: false, conversationResume: false, conversationReplaceWithSummary: false,
+  remoteControl: false, attachments: false, models: false, skills: false,
+  reasoningEffort: false, serviceTier: false, thinkingBudget: false, planMode: 'unsupported',
+  goals: false, steerPrompt: false, interrupt: false, history: false, conversationFork: false,
+  deleteTurn: false, editTurn: false, retryTurn: false, approvals: false,
+  approvalPresets: [], permissionModes: [],
 };

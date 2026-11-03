@@ -41,6 +41,7 @@ export class ProviderUpdateRuntime {
   }
 
   async inspect(backend: AgentBackend): Promise<ProviderInstallation> {
+    if (backend === 'cursor') throw new Error('Cursor is not available');
     if (backend === 'antigravity') throw new Error('Antigravity updates are managed externally.');
     const executable = this.io.resolve(this.options.command(backend));
     if (!executable) return { method: 'manual', identity: 'missing' };

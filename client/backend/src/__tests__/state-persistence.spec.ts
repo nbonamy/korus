@@ -27,6 +27,42 @@ afterEach(async () => {
 });
 
 describe('state persistence', () => {
+  it('restores a Cursor roster, settings and delegation identity exactly after disk restart', async () => {
+    const home = await tempHome();
+    const snapshot = createInitialSnapshot();
+    for (const item of snapshot.agents) item.lastActivityAt = item.createdAt;
+    const agent = snapshot.agents[0]!;
+    agent.backend = 'cursor';
+    agent.backendSession = { kind: 'cursor', sessionId: 'cursor-native-session' };
+    agent.backendDefaults = { kind: 'cursor', model: 'composer-fixture', reasoningEffort: 'high', serviceTier: null, permissionMode: 'allowlist', userSelectedModel: true };
+    agent.userDelegationOverrides = { startingContext: 'handoff', instructions: 'Synthetic constraint', execution: { backend: 'cursor', conversationId: 'cursor-native-session', turnId: 'turn-1' } };
+    snapshot.general.providerHomes = { cursor: { homePath: '/cursor', isolated: false, shareSkills: false } };
+    snapshot.general.providerEnabled = { codex: true, cursor: false };
+    snapshot.general.providerModelDefaults = { cursor: { backend: 'cursor', model: 'composer-fixture', reasoningEffort: 'high', serviceTier: null } };
+    await new AppStateStore(home).save(snapshot);
+    const rosterBefore = JSON.parse(await readFile(path.join(home, 'roster.json'), 'utf8'));
+    const restored = await new AppStateStore(home).load();
+    expect(isAppSnapshot(restored)).toBe(true);
+    expect(restored.agents.find(item => item.id === agent.id)).toStrictEqual(agent);
+    expect(restored.general.providerHomes).toStrictEqual(snapshot.general.providerHomes);
+    expect(restored.general.providerEnabled).toStrictEqual(snapshot.general.providerEnabled);
+    expect(restored.general.providerModelDefaults).toStrictEqual(snapshot.general.providerModelDefaults);
+    await new AppStateStore(home).save(restored);
+    expect(JSON.parse(await readFile(path.join(home, 'roster.json'), 'utf8'))).toStrictEqual(rosterBefore);
+  });
+
+  it.each(['codex', 'claude', 'antigravity'] as const)('drops mismatched %s session/defaults from a Cursor agent', backend => {
+    const snapshot = createInitialSnapshot();
+    const persisted = persistedStateFromSnapshot(snapshot);
+    persisted.agents[0]!.backend = 'cursor';
+    persisted.agents[0]!.backendSession = backend === 'codex' ? { kind: backend, threadId: 'other' } : backend === 'claude' ? { kind: backend, sessionId: 'other', transport: 'stdio' } : { kind: backend, sessionId: 'other' };
+    persisted.agents[0]!.backendDefaults = { kind: backend, model: 'other-only' };
+    const restored = snapshotFromPersistedState(persisted);
+    expect(restored.agents[0]!.backend).toBe('cursor');
+    expect(restored.agents[0]!.backendSession).toBeUndefined();
+    expect(restored.agents[0]!.backendDefaults).toBeUndefined();
+  });
+
   it('retains a guest display name saved through settings update after restart', async () => {
     const home = await tempHome();
     const store = new AppStateStore(home);
@@ -158,7 +194,7 @@ describe('state persistence', () => {
     expect(restored.automations).toEqual([]);
     expect(restored.agents.map(agent => agent.id)).toEqual(snapshot.agents.map(agent => agent.id));
   });
-  it.each(['claude', 'antigravity'] as const)('creates, updates and runs a remote %s prompt automation, then reloads its configuration and conversation', async backend => {
+  it.each(['claude', 'antigravity', 'cursor'] as const)('creates, updates and runs a remote %s prompt automation, then reloads its configuration and conversation', async backend => {
     const persistence = new AppStateStore(await tempHome());
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ backend, installed: true, connected: true, checking: false }];

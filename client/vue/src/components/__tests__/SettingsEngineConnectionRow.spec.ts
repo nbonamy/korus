@@ -5,12 +5,12 @@ import { ElMessageBox, ElSwitch } from 'element-plus';
 import SettingsEngineConnectionRow from '../SettingsEngineConnectionRow.vue';
 
 describe('SettingsEngineConnectionRow', () => {
-  it('renders a connected Antigravity account without inventing account metadata', () => {
-    const wrapper = mount(SettingsEngineConnectionRow, { props: { backend: 'antigravity', title: 'Antigravity', connected: true, enabled: true,
-      authentication: { kind: 'antigravity', connected: true, state: { loggedIn: true, homePath: '/private/home' } } } });
+  it.each([{ backend: 'antigravity', title: 'Antigravity' }, { backend: 'cursor', title: 'Cursor' }] as const)('renders a connected $title account without inventing account metadata', ({ backend, title }) => {
+    const wrapper = mount(SettingsEngineConnectionRow, { props: { backend, title, connected: true, enabled: true,
+      authentication: { kind: backend, connected: true, state: { loggedIn: true, homePath: '/private/home' } } } });
     expect(wrapper.text()).not.toContain('/private/home');
     expect(wrapper.get('[role="switch"]').attributes('aria-checked')).toBe('true');
-    expect(wrapper.get('[role="switch"]').attributes('aria-label')).toBe('Enable Antigravity');
+    expect(wrapper.get('[role="switch"]').attributes('aria-label')).toBe(`Enable ${title}`);
   });
   afterEach(async () => {
     ElMessageBox.close();

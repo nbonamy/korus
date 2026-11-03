@@ -5,7 +5,7 @@ export type AppTextDescriptor = {
 
 export type AppText = string | AppTextDescriptor;
 
-export const agentBackends = ['codex', 'claude', 'antigravity'] as const;
+export const agentBackends = ['codex', 'claude', 'antigravity', 'cursor'] as const;
 export type AgentBackend = typeof agentBackends[number];
 
 export function isAgentBackend(value: unknown): value is AgentBackend {

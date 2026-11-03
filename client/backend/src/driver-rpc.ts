@@ -1,5 +1,6 @@
 import { utilityMcpServers } from './diagram-icons/utility-mcp';
 import { utilityImageAttachments } from './agents/utility-image-attachments';
+import { cursorBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type { ExecutionObservation, RequestObservation } from '@workspace/core/usage';
 import { assertPromptSession, requireExpectedSessionId, requirePromptText } from './prompt-input';
 import { product } from '@workspace/core/product';
@@ -52,10 +53,11 @@ type AppSurfaceOptions = Parameters<typeof createCodexSurface>[0] & {
 
 export function createDefaultBackendDrivers(options: BackendDriverRegistryOptions = {}): Map<AgentBackend, AgentBackendDriver> {
   // Retain hosts for saved history and cleanup even when their new-work release gate is off.
-  return new Map((['codex', 'claude', 'antigravity'] as const).map(backend => [backend, createBackendDriver(backend, options)]));
+  return new Map((['codex', 'claude', 'antigravity', 'cursor'] as const).map(backend => [backend, createBackendDriver(backend, options)]));
 }
 
 export function createBackendDriver(backend: AgentBackend, options: BackendDriverRegistryOptions = {}): AgentBackendDriver {
+  if (backend === 'cursor') return unavailableCursorDriver();
   if (backend === 'antigravity') return new AntigravityHost(options);
   if (backend === 'claude') return new ClaudeBackendDriver(undefined, undefined, {
     appMcpServerUrl: options.appMcpServerUrl ?? null,
@@ -67,6 +69,34 @@ export function createBackendDriver(backend: AgentBackend, options: BackendDrive
   const codexSurface = createCodexSurface(appSurfaceOptions(options));
   const codexSessionManager = new CodexSurfaceAgentAdapter(codexSurface);
   return new CodexBackendDriver(codexSessionManager);
+}
+
+/** Retains the provider identity without ever constructing another provider's host. */
+function unavailableCursorDriver(): AgentBackendDriver {
+  const fail = (): never => { throw new Error('Cursor is not available'); };
+  const reject = async (): Promise<never> => fail();
+  return {
+    backend: 'cursor',
+    getRuntimeStatus: () => ({ backend: 'cursor', status: 'notConfigured', detail: 'Cursor is not available' }),
+    getCapabilities: () => cursorBackendCapabilities,
+    authenticate: reject, getBankedResets: reject, useBankedReset: reject, getAccountRateLimits: reject,
+    generateText: reject, generateImage: reject, runCodeReview: reject, disposeCodeReview: reject,
+    tryHandlePromptCommand: fail, preparePromptOptions: fail, sendPrompt: reject,
+    setConversationTitle: reject, setGoal: reject, clearGoal: reject,
+    setApprovalPreset: reject, setPermissionMode: reject, releaseConversation: reject,
+    assertHandoffReady: reject, archiveAgentConversation: reject, deleteAgentConversation: reject,
+    reconcileConversations: reject, interrupt: reject, respondToAgentRequest: reject,
+    loadConversation: reject, loadOlderHistory: reject, loadTurnHistory: reject,
+    readConversationContent: reject, listConversations: reject, resumeConversation: reject,
+    replaceConversationWithSummary: reject, forkWorktreeConversation: reject, forkConversation: reject,
+    readConversationMessages: reject, readConversationSummary: reject, steerPrompt: reject,
+    deleteTurn: reject, editTurn: reject, retryTurn: reject, continueInterruptedTurn: reject,
+    listModels: reject, listPlugins: reject, listSkills: reject,
+    getRemoteControlStatus: reject, enableRemoteControl: reject, disableRemoteControl: reject,
+    startDevicePairing: reject, checkDevicePairing: reject, listPairedDevices: reject, revokePairedDevice: reject,
+    onEvent: () => () => {},
+    close: async () => {},
+  };
 }
 
 export function appSurfaceOptions(options: BackendDriverRegistryOptions = {}): AppSurfaceOptions {
