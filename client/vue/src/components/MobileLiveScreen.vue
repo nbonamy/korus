@@ -12,6 +12,7 @@
       :data-rotation="rotation"
       :data-image-rotation="imageRotation"
       :data-platform="platform"
+      :data-television="television"
       :data-landscape="aspectRatio > 1"
       :style="frameStyle"
     >
@@ -44,6 +45,7 @@
         @keydown="$emit('keydown', $event)"
       />
       </div>
+      <span v-if="television" class="mobile-live-screen__tv-light" aria-hidden="true" />
     </div>
     <span v-else-if="!error && !ended">{{ $t('surface.mobileSimulator.reading') }}</span>
   </div>
@@ -61,6 +63,7 @@ const props = withDefaults(
     /** Frame style: iPhones are much rounder than Android phones. */
     platform?: 'ios' | 'android';
     foldable?: boolean;
+    television?: boolean;
   }>(),
   { platform: 'ios' },
 );
@@ -109,7 +112,7 @@ const frameStyle = computed(() => {
   return style;
 });
 const hardwareButtons = computed(() =>
-  (props.foldable ? [
+  (props.television ? [] : props.foldable ? [
     { id: 'volumeUp' as const, edge: 'top' as const, from: innerDisplay.value ? 0.73 : 0.45, to: innerDisplay.value ? 0.79 : 0.59 },
     { id: 'volumeDown' as const, edge: 'top' as const, from: innerDisplay.value ? 0.81 : 0.62, to: innerDisplay.value ? 0.87 : 0.76 },
     { id: 'power' as const, edge: 'right' as const, from: 0.27, to: 0.4 },
@@ -405,6 +408,47 @@ onBeforeUnmount(() => {
 /* Android phones have tighter corners than iPhones. */
 .mobile-live-screen__device[data-platform='android'] {
   --mobile-corner: 0.055;
+}
+.mobile-live-screen__device[data-television='true'] {
+  --mobile-screen-width: min(calc(100cqw - 48px), calc((100cqh - 100px) * var(--mobile-screen-ratio)));
+  --mobile-screen-radius: 3px;
+  margin-bottom: 40px;
+  padding: 6px 6px 14px;
+  border-width: 1px;
+  border-radius: 8px;
+  background: var(--color-device-bezel);
+}
+.mobile-live-screen__device[data-television='true']::before,
+.mobile-live-screen__device[data-television='true']::after {
+  left: 50%;
+  pointer-events: none;
+  transform: translateX(-50%);
+  background: var(--color-device-bezel);
+}
+.mobile-live-screen__device[data-television='true']::before {
+  bottom: -30px;
+  width: 12%;
+  min-width: 28px;
+  height: 30px;
+  border-radius: 0;
+  clip-path: polygon(25% 0, 75% 0, 100% 100%, 0 100%);
+}
+.mobile-live-screen__device[data-television='true']::after {
+  bottom: -37px;
+  width: 34%;
+  height: 8px;
+  border-radius: 50% 50% 3px 3px;
+  box-shadow: var(--shadow-md);
+}
+.mobile-live-screen__tv-light {
+  position: absolute;
+  bottom: 5px;
+  left: calc(50% - 1.5px);
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--color-border-strong);
+  pointer-events: none;
 }
 /* Side buttons: a thin bar on the frame, with a larger invisible hit area, that pushes in when pressed. */
 .mobile-live-screen__hw {

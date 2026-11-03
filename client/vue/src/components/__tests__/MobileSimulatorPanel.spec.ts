@@ -50,6 +50,19 @@ function setup(attached = true, device: MobileDevice = attachment.device) {
 }
 
 describe('MobileSimulatorPanel', () => {
+  it('gives an Android TV its television frame without phone hardware buttons', async () => {
+    const { wrapper, mobileSimulator } = setup(true, { ...attachment.device, name: 'Android_TV_1080p_API_31' });
+    try {
+      await flushPromises();
+      expect(wrapper.get('.mobile-live-screen__device').attributes('data-television')).toBe('true');
+      expect(wrapper.find('.mobile-live-screen__hw').exists()).toBe(false);
+      expect(wrapper.get('img').attributes('src')).toBe('blob:native-frame');
+      await wrapper.get('[aria-label="Home"]').trigger('click');
+      await flushPromises();
+      expect(mobileSimulator).toHaveBeenCalledWith('a', { action: 'button', attachmentId: 'session', button: 'home' });
+    } finally { wrapper.unmount(); }
+  });
+
   it('folds and unfolds a Duo and starts a fresh live view for each screen size', async () => {
     const { wrapper, mobileSimulator, mobileSimulatorView } = setup(true, { ...attachment.device, platform: 'ios', name: 'My Duo', foldable: true });
     try {

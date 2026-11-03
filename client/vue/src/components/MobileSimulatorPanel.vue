@@ -124,6 +124,7 @@
         :agent-id="agentId"
         :attachment-id="attachment.id"
         :platform="attachment.device.platform"
+        :television="television"
         :foldable="attachment.device.foldable"
         :disabled="busy"
         @keydown="keyDown"
@@ -237,6 +238,7 @@ import MobileLiveScreen from './MobileLiveScreen.vue';
 import { DuoPoseIcon } from '../shared/icons/app-icons';
 const props = defineProps<{ agentId: string; visible: boolean }>();
 const attachment = ref<MobileAttachment | null>(null);
+const television = computed(() => /\b(?:tv|androidtv|googletv|appletv|television)\b/iu.test(attachment.value?.device.name.replace(/[_-]/gu, ' ') ?? ''));
 const catalog = ref<MobileCatalog>({ devices: [], setup: [] });
 const platform = ref<MobileDevice['platform'] | ''>('');
 const pending = ref('');
