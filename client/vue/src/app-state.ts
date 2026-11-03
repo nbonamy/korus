@@ -95,10 +95,26 @@ const claudeConversationFramesByAgentId = ref<Record<string, {
   revision: number;
   snapshot: ClaudeConversationSnapshot;
 }>>({});
-const recoveringCodexConversationAgentIds = new Set<string>();
-const recoveringClaudeConversationAgentIds = new Set<string>();
+// One hydration at a time across providers. Pending identities coalesce repeated
+// repair signals while their last good provider frame remains visible.
+const conversationRecoveries = new Map<string, Promise<void>>();
+let conversationRecoveryTail = Promise.resolve();
+function recoverConversation(agentId: string): Promise<void> {
+  const existing = conversationRecoveries.get(agentId);
+  if (existing) return existing;
+  const request = conversationRecoveryTail.then(async () => {
+    if (appApi?.loadConversationHistory && snapshot.value.agents.some(agent => agent.id === agentId)) {
+      adoptBackgroundSnapshot(await appApi.loadConversationHistory(agentId, { recovery: true }));
+    }
+  }).catch(() => undefined).finally(() => {
+    if (conversationRecoveries.get(agentId) === request) conversationRecoveries.delete(agentId);
+  });
+  conversationRecoveries.set(agentId, request);
+  conversationRecoveryTail = request;
+  return request;
+}
 const antigravityConversations = createAntigravityConversationState(async agentId => {
-  if (appApi?.loadConversationHistory) adoptBackgroundSnapshot(await appApi.loadConversationHistory(agentId));
+  await recoverConversation(agentId);
 });
 let agentSelectionRequestId = 0;
 let unsubscribeMainEvents: (() => void) | null = null;
@@ -522,8 +538,7 @@ export function useAppState() {
     codexConversationFramesByAgentId.value = {};
     claudeConversationFramesByAgentId.value = {};
     antigravityConversations.reset();
-    recoveringCodexConversationAgentIds.clear();
-    recoveringClaudeConversationAgentIds.clear();
+    conversationRecoveries.clear();
     agentCreationProgresses.value = [];
     backgroundedAgentCreationIds.clear();
 
@@ -568,20 +583,30 @@ export function useAppState() {
     });
     return rendererSynchronization;
   }
-  synchronizeRendererSnapshotRequest = async () => {
-    const cachedCodexAgentIds = Object.keys(codexConversationFramesByAgentId.value);
-    const cachedClaudeAgentIds = Object.keys(claudeConversationFramesByAgentId.value);
-    await synchronizeRendererSnapshot(true);
-    // App snapshots cannot repair provider events skipped by the global
-    // sequence fence. Refresh every cached pane from its conversation owner,
-    // including split panes and inactive agents, before trusting those frames.
-    for (const agentId of cachedCodexAgentIds) {
-      invalidateAndRecoverCodexConversation(agentId);
+  let conversationRepair: Promise<void> | null = null;
+  synchronizeRendererSnapshotRequest = () => {
+    if (conversationRepair) {
+      // A second sequence gap still needs its fence repaired and buffered
+      // events drained, even while provider hydration is already queued.
+      return bufferedMainEvents ? synchronizeRendererSnapshot(true) : conversationRepair;
     }
-    for (const agentId of cachedClaudeAgentIds) {
-      invalidateAndRecoverClaudeConversation(agentId);
-    }
-    antigravityConversations.recoverAll();
+    conversationRepair = (async () => {
+      const cachedCodexAgentIds = Object.keys(codexConversationFramesByAgentId.value);
+      const cachedClaudeAgentIds = Object.keys(claudeConversationFramesByAgentId.value);
+      await synchronizeRendererSnapshot(true);
+      // App snapshots cannot repair provider events skipped by the global
+      // sequence fence. Refresh every cached pane from its conversation owner,
+      // including split panes and inactive agents, before trusting those frames.
+      for (const agentId of cachedCodexAgentIds) {
+        invalidateAndRecoverCodexConversation(agentId);
+      }
+      for (const agentId of cachedClaudeAgentIds) {
+        invalidateAndRecoverClaudeConversation(agentId);
+      }
+      antigravityConversations.recoverAll();
+      await conversationRecoveryTail;
+    })().finally(() => { conversationRepair = null; });
+    return conversationRepair;
   };
 
   async function performRendererSynchronization(preserveActiveSelection: boolean): Promise<void> {
@@ -2287,27 +2312,11 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
 }
 
 function invalidateAndRecoverCodexConversation(agentId: string): void {
-  const frames = { ...codexConversationFramesByAgentId.value };
-  delete frames[agentId];
-  codexConversationFramesByAgentId.value = frames;
-  if (recoveringCodexConversationAgentIds.has(agentId) || !appApi?.loadConversationHistory) return;
-  recoveringCodexConversationAgentIds.add(agentId);
-  void appApi.loadConversationHistory(agentId)
-    .then(adoptBackgroundSnapshot)
-    .catch(() => undefined)
-    .finally(() => recoveringCodexConversationAgentIds.delete(agentId));
+  void recoverConversation(agentId);
 }
 
 function invalidateAndRecoverClaudeConversation(agentId: string): void {
-  const frames = { ...claudeConversationFramesByAgentId.value };
-  delete frames[agentId];
-  claudeConversationFramesByAgentId.value = frames;
-  if (recoveringClaudeConversationAgentIds.has(agentId) || !appApi?.loadConversationHistory) return;
-  recoveringClaudeConversationAgentIds.add(agentId);
-  void appApi.loadConversationHistory(agentId)
-    .then(adoptBackgroundSnapshot)
-    .catch(() => undefined)
-    .finally(() => recoveringClaudeConversationAgentIds.delete(agentId));
+  void recoverConversation(agentId);
 }
 
 function showPlanReview(markdown: string): void {

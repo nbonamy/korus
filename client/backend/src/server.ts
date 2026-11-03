@@ -2714,6 +2714,15 @@ export class AppBackendServer {
       }
       case backendMethods.agentConversationLoad: {
         const agentId = requireAgentId(message.params);
+        // Explicit desktop opt-in: legacy/mobile loads retain their full snapshot
+        // response and workspace refresh. Remote routes keep their composite snapshot
+        // projection for compatibility with older owning daemons.
+        if (requireRecord(message.params).omitSnapshot === true && (await this.locationForAgentId(agentId))?.kind === 'local') {
+          return this.routeAgentResultRequest(message.id, agentId, backendMethods.agentConversationLoad, { agentId, omitSnapshot: true }, async () => {
+            await this.agentConversations.hydrate(agentId);
+            return null;
+          });
+        }
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentConversationLoad, { agentId }, async () => {
           const fixture = missionScreenshotConversation(this.snapshot, agentId);
           if (fixture) {

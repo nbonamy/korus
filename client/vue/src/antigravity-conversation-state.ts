@@ -19,7 +19,6 @@ export function createAntigravityConversationState(recover: (agentId: string) =>
     return frame.snapshot.sessionId !== lastAttachedSessions.get(agent.id);
   }
   function invalidate(agentId: string) {
-    const next = { ...frames.value }; delete next[agentId]; frames.value = next;
     if (pending.has(agentId)) return;
     pending.add(agentId);
     void recover(agentId).catch(() => {}).finally(() => pending.delete(agentId));

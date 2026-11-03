@@ -1204,6 +1204,53 @@ describe('useAppState', () => {
     ]);
   });
 
+  it('coalesces transport repair storms and serializes cached Codex and Claude recovery without blanking either pane', async () => {
+    const remote = createInitialSnapshot();
+    const codex = remote.agents[0]!;
+    codex.backendSession = { kind: 'codex', threadId: 'thread-1' };
+    const claude = remote.agents[1]!;
+    claude.backend = 'claude';
+    claude.backendSession = { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' };
+    let receive!: (event: MainToRendererEvent) => void;
+    const load = vi.fn().mockResolvedValue(remote);
+    const getSnapshotState = vi.fn().mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 0, connection: { status: 'connected' } });
+    stubElectronTestWindow({ app: { getSnapshotState, loadConversationHistory: load, onEvent: listener => { receive = listener; return () => {}; } } });
+    const state = useAppState();
+    await state.loadSnapshot();
+    await vi.waitFor(() => expect(load).toHaveBeenCalled());
+    await nextTick();
+    receive({ seq: 1, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 1, snapshot: codexConversationSnapshot() } });
+    receive({ seq: 2, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: claude.id }) } });
+    getSnapshotState.mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 2, connection: { status: 'connected' } });
+    const first = deferred<ReturnType<typeof createInitialSnapshot>>();
+    const second = deferred<ReturnType<typeof createInitialSnapshot>>();
+    load.mockReset().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const repair = () => receive({ seq: 0, source: 'client', occurredAt: '', type: 'snapshot.updated', payload: structuredClone(remote) });
+    repair();
+    await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(1));
+    receive({ seq: 3, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 2, snapshot: codexConversationSnapshot([], { busy: true }) } });
+    for (let n = 0; n < 20; n++) repair();
+    expect(state.activeCodexConversationSnapshot.value?.busy).toBe(true);
+    expect(state.agentConversationFor(claude.id)?.claudeSnapshot).not.toBeNull();
+    expect(load).toHaveBeenCalledTimes(1);
+    first.resolve(remote);
+    await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+    expect(load.mock.calls.map(call => call[0])).toEqual([codex.id, claude.id]);
+    for (let n = 0; n < 20; n++) repair();
+    getSnapshotState.mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 5, connection: { status: 'connected' } });
+    receive({ seq: 5, source: 'backend', occurredAt: '', agentId: codex.id, type: 'agent.statusChanged', payload: { type: 'working' } });
+    await vi.waitFor(() => expect(getSnapshotState).toHaveBeenCalledTimes(3));
+    second.resolve(remote);
+    await nextTick();
+    await nextTick();
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(getSnapshotState).toHaveBeenCalledTimes(3);
+    receive({ seq: 6, source: 'backend', occurredAt: '', agentId: codex.id, type: 'agent.statusChanged', payload: { type: 'working' } });
+    expect(state.activeAgent.value?.status.type).toBe('working');
+    expect(state.activeCodexConversationSnapshot.value?.busy).toBe(true);
+    expect(state.agentConversationFor(claude.id)?.claudeSnapshot).not.toBeNull();
+  });
+
   it('invalidates and rehydrates a Codex frame after a revision gap', async () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
@@ -1276,7 +1323,7 @@ describe('useAppState', () => {
       occurredAt: '2026-09-06T00:00:03.000Z',
     });
 
-    expect(state.activeCodexConversationSnapshot.value).toBeNull();
+    expect(state.activeCodexConversationSnapshot.value).not.toBeNull();
     await vi.waitFor(() => expect(loadConversationHistory).toHaveBeenCalledOnce());
   });
 
@@ -1329,7 +1376,7 @@ describe('useAppState', () => {
       occurredAt: '2026-09-06T00:00:02.000Z',
     });
 
-    expect(state.activeCodexConversationSnapshot.value).toBeNull();
+    expect(state.activeCodexConversationSnapshot.value).not.toBeNull();
     await vi.waitFor(() => expect(loadConversationHistory).toHaveBeenCalledOnce());
   });
 
@@ -1516,7 +1563,7 @@ describe('useAppState', () => {
       occurredAt: '2026-09-06T00:00:03.000Z',
     });
 
-    expect(state.activeClaudeConversationSnapshot.value).toBeNull();
+    expect(state.activeClaudeConversationSnapshot.value).not.toBeNull();
     await vi.waitFor(() => expect(loadConversationHistory).toHaveBeenCalledOnce());
   });
 });

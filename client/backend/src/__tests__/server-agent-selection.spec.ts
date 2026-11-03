@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AgentBackendDriver } from '@workspace/core/backend-driver';
 import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { AppBackendServer } from '../server';
+import { createMission } from '@workspace/core/missions';
 import { BackendDriverRpc } from '../driver-rpc';
 import type { AgentGitService } from '../git/agent-git-service';
 import {
@@ -95,6 +96,21 @@ describe('AppBackendServer', () => {
       expect.objectContaining({ type: 'git.statusUpdated', agentId: 'agent-dina' }),
     ]));
     expect(saveSnapshot).toHaveBeenCalled();
+    // Released clients omit the opt-in and still receive the full snapshot above.
+    // Desktop recovery explicitly opts out, even with a large retained roster.
+    const mission = createMission(snapshot, { outcome: 'Large mission', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: 'agent-dina' });
+    const proposal = structuredClone(mission.artifacts);
+    proposal.requirements = { problem: 'x'.repeat(6_000_000), acceptance: 'Preserve the transcript' };
+    mission.execution = { teamId: snapshot.teams[0]!.id, repoPath: '/repo', memberIds: ['agent-dina'], runs: [{ id: 'retained-run', stage: 'requirements', memberId: 'agent-dina', workerId: 'agent-dina', status: 'awaitingReview', skills: [], feedback: '', startedAt: '', proposal }] };
+    const compact = await server.handleMessage({ jsonrpc: '2.0', id: 'compact', method: 'agent/conversation/load', params: { agentId: 'agent-dina', omitSnapshot: true } });
+    expect(compact).toEqual({ jsonrpc: '2.0', id: 'compact', result: null });
+    expect(loadConversation).toHaveBeenCalledTimes(2);
+    const legacy = await server.handleMessage({ jsonrpc: '2.0', id: 'legacy', method: 'agent/conversation/load', params: { agentId: 'agent-dina' } });
+    // Decode the released request's JSON independently of current shared types.
+    const decoded = JSON.parse(JSON.stringify(legacy));
+    expect(decoded.result.agents[0].backendSession).toEqual({ kind: 'codex', threadId: 'thread-hydrated' });
+    expect(decoded.result.missions[0].execution.runs[0].proposal.requirements.problem).toHaveLength(6_000_000);
+    expect(getGitStatus).toHaveBeenCalledTimes(2);
     await server.close();
   });
 

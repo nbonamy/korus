@@ -13,7 +13,7 @@ it('recovers revision gaps, replaces history atomically, and evicts frames after
   state.receive({ ...identity, type: 'antigravity.conversationSnapshotChanged', payload: { revision: 1, snapshot } });
   const event = { agentId: agent.id, sessionId: 'native', turnId: 'turn', occurredAt: identity.occurredAt, type: 'turn.started' as const, payload: { turn: { id: 'turn' } } };
   state.receive({ ...identity, type: 'antigravity.conversationEventReceived', payload: { revision: 3, event } });
-  expect(state.select(agent)).toBeNull();
+  expect(state.select(agent)).toEqual(snapshot);
   expect(recover).toHaveBeenCalledExactlyOnceWith(agent.id);
   await flushPromises();
   state.receive({ ...identity, type: 'antigravity.conversationSnapshotChanged', payload: { revision: 4, snapshot } });
