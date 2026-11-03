@@ -601,7 +601,8 @@ function isAppshotSettings(value: unknown): boolean {
 function isPluginSettings(value: unknown): boolean {
   return isRecord(value) &&
     typeof value.computerUseEnabled === 'boolean' &&
-    typeof value.chromeEnabled === 'boolean';
+    typeof value.chromeEnabled === 'boolean' &&
+    (value.computerUseKeepUnlocked === undefined || typeof value.computerUseKeepUnlocked === 'boolean');
 }
 
 function isSourceFolder(value: unknown): boolean {

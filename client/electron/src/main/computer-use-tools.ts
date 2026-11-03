@@ -3,6 +3,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { computerUseActivity } from './computer-use-activity';
 
 const helperAppName = `${product.name} Computer Use.app`;
 const helperExecutableName = 'computer-use-pilot';
@@ -33,6 +34,9 @@ const computerUseCommands = [
 ] as const;
 
 export type ComputerUseCommand = (typeof computerUseCommands)[number];
+
+// Permission checks and prompts do not drive the screen, so they do not need it unlocked.
+const setupComputerUseCommands = new Set<ComputerUseCommand>(['status', 'request_accessibility', 'request_screen_capture']);
 
 const cursorlessComputerUseCommands = new Set<ComputerUseCommand>([
   'status',
@@ -130,6 +134,7 @@ export async function executeComputerUseCommand(input: {
     return failure('tool_unavailable', 'Computer Use helper is not built. Run npm run build:computer-use.');
   }
 
+  if (!setupComputerUseCommands.has(input.command)) computerUseActivity.touch();
   const commandArguments = cursorlessComputerUseCommands.has(input.command)
     ? { ...input.arguments, showCursor: false }
     : input.arguments;

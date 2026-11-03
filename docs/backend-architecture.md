@@ -456,6 +456,11 @@ daemon client state, including after restart; relay reconnects do not release it
 Electron applies the remote-access policy only on AC power. Agent activity and
 remote access share a native `prevent-app-suspension` assertion, which protects
 system availability while allowing display sleep and configured automatic locking.
+Computer Use cannot operate a locked session, so any Computer Use action upgrades
+the single native blocker to `prevent-display-sleep` for five minutes after the
+last action (on battery too), then it falls back to the policy above. Users can turn
+this off in Settings → Plugins → Computer Use, leaving display sleep and locking to
+the system.
 
 Mobile updates use one authenticated duplex stream per phone. A workspace reset
 and a subscribe-before-read conversation barrier precede ordered provider-native

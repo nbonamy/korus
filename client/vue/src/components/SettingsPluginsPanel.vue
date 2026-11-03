@@ -26,6 +26,20 @@
           />
         </template>
       </FormRow>
+      <FormRow
+        v-if="pluginSettings.computerUseEnabled"
+        as="label"
+        :title="$t('surface.settingsPluginsPanel.keepMacUnlockedDuringComputerUse')"
+        :description="$t('surface.settingsPluginsPanel.keepTheScreenOnWhileAnAgentUsesYourMacSoItDoesNotLockTurnO')"
+      >
+        <template #control>
+          <el-switch
+            :model-value="pluginSettings.computerUseKeepUnlocked !== false"
+            :aria-label="$t('surface.settingsPluginsPanel.keepMacUnlockedDuringComputerUse')"
+            @update:model-value="updateKeepUnlocked"
+          />
+        </template>
+      </FormRow>
     </FormSection>
 
     <FormSection
@@ -133,6 +147,13 @@ function updatePlugin(plugin: PendingPlugin, enabled: boolean): void {
   }
 
   void persistPlugin(plugin, false);
+}
+
+function updateKeepUnlocked(value: unknown): void {
+  computerUseError.value = null;
+  props.updateSettings({ general: { plugins: { computerUseKeepUnlocked: value === true } } }).catch((error: unknown) => {
+    computerUseError.value = error instanceof Error ? error.message : String(error);
+  });
 }
 
 async function persistPlugin(plugin: PendingPlugin, enabled: boolean): Promise<void> {

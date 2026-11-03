@@ -210,6 +210,7 @@ function expectedEmptySnapshot(): AppSnapshot {
       plugins: {
         computerUseEnabled: false,
         chromeEnabled: false,
+        computerUseKeepUnlocked: true,
       },
     },
     sourceFolder: {

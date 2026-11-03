@@ -17,6 +17,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, net, power
 import path from 'node:path';
 import { registerCodexNativeIpc, TypedIpcMain } from '@codex-app-sdk/electron';
 import { AgentActivityPowerSaveBlocker } from './agent-activity-power-save-blocker';
+import { computerUseActivity } from './computer-use-activity';
 import { initializeMainLogging, installProcessErrorLogging, logMain, warnMain } from './log';
 import { createMainWindow } from './main-window';
 import { createRuntimeAppBackendClient, type AppBackendClientPort } from './backend-client';
@@ -120,6 +121,7 @@ export class AppController {
     this.syncPowerSaveBlocker();
   };
   private powerSourceListenersInstalled = false;
+  private stopWatchingComputerUse: (() => void) | null = null;
   private readonly backendClient: AppBackendClientPort | null;
   private readonly policyAwareSpokenAnnouncements: PolicyAwareSpokenAnnouncementQueue;
 
@@ -164,6 +166,7 @@ export class AppController {
 
   async initialize(): Promise<void> {
     logMain('startup', 'initializing application');
+    this.stopWatchingComputerUse ??= computerUseActivity.onChange(() => this.syncPowerSaveBlocker());
     if (!this.powerSourceListenersInstalled && powerMonitor) {
       powerMonitor.on('on-battery', this.handlePowerSourceChanged);
       powerMonitor.on('on-ac', this.handlePowerSourceChanged);
@@ -830,6 +833,8 @@ export class AppController {
     this.rejectAllPendingBrowserOpens(new Error('Application is shutting down.'));
     await this.browserPane.closeAll();
     await this.extensionService?.dispose();
+    this.stopWatchingComputerUse?.();
+    this.stopWatchingComputerUse = null;
     this.powerSaveBlocker.stop();
     if (this.powerSourceListenersInstalled && powerMonitor) {
       powerMonitor.removeListener('on-battery', this.handlePowerSourceChanged);
@@ -2143,7 +2148,10 @@ export class AppController {
 
   private syncPowerSaveBlocker(): void {
     const isOnBattery = powerMonitor?.isOnBatteryPower?.() ?? false;
-    this.powerSaveBlocker.sync(shouldBlockDisplaySleep(this.clientState, isOnBattery));
+    // Computer Use needs an unlocked screen; everything else only needs the system kept available.
+    const keepUnlocked = this.snapshot?.general.plugins?.computerUseKeepUnlocked !== false;
+    this.powerSaveBlocker.sync(computerUseActivity.isActive() && keepUnlocked ? 'display'
+      : shouldBlockDisplaySleep(this.clientState, isOnBattery) ? 'suspension' : 'none');
   }
 
   private flushPendingDeepLinkCommands(): void {

@@ -86,6 +86,22 @@ describe('SettingsPluginsPanel', () => {
     expect(builtInLaunchChatGpt).not.toHaveBeenCalled();
   });
 
+  it('lets the user choose whether Computer Use keeps the Mac unlocked, only while Computer Use is on', async () => {
+    const updateSettings = vi.fn().mockResolvedValue(undefined);
+    const off = mount(SettingsPluginsPanel, { props: { settings: { computerUseEnabled: false, chromeEnabled: false }, updateSettings } });
+    expect(off.find('[aria-label="Keep Mac unlocked during Computer Use"]').exists()).toBe(false);
+    const wrapper = mount(SettingsPluginsPanel, {
+      props: { settings: { computerUseEnabled: true, chromeEnabled: false }, updateSettings },
+    });
+    const toggle = wrapper.get('input[aria-label="Keep Mac unlocked during Computer Use"]');
+    expect((toggle.element as HTMLInputElement).checked).toBe(true);
+    await wrapper.get('[aria-label="Keep Mac unlocked during Computer Use"]').trigger('click');
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith({ general: { plugins: { computerUseKeepUnlocked: false } } });
+    await wrapper.setProps({ settings: { computerUseEnabled: true, chromeEnabled: false, computerUseKeepUnlocked: false } });
+    expect((wrapper.get('input[aria-label="Keep Mac unlocked during Computer Use"]').element as HTMLInputElement).checked).toBe(false);
+  });
+
   it('enables Computer Use directly without opening the plugin manager', async () => {
     const updateSettings = vi.fn().mockResolvedValue(undefined);
     const wrapper = mount(SettingsPluginsPanel, {

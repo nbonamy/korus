@@ -1,35 +1,47 @@
 import { describe, expect, it, vi } from 'vitest';
+vi.mock('electron', () => ({ powerSaveBlocker: { start: vi.fn(), stop: vi.fn() } }));
 import { AgentActivityPowerSaveBlocker } from '../agent-activity-power-save-blocker';
 
+function setup() {
+  const start = vi.fn().mockReturnValueOnce(42).mockReturnValueOnce(43).mockReturnValueOnce(44).mockReturnValue(45);
+  const stop = vi.fn();
+  return { start, stop, blocker: new AgentActivityPowerSaveBlocker({ start, stop }) };
+}
+
 describe('AgentActivityPowerSaveBlocker', () => {
-  it('starts a system idle sleep blocker when backend client state requests it', () => {
-    const start = vi.fn().mockReturnValue(42);
-    const stop = vi.fn();
-    const blocker = new AgentActivityPowerSaveBlocker({ start, stop });
-
-    blocker.sync(true);
-    blocker.sync(true);
-
-    expect(start).toHaveBeenCalledOnce();
-    expect(start).toHaveBeenCalledWith('prevent-app-suspension');
+  it('keeps the system available without holding the display for ordinary agent activity', () => {
+    const { start, stop, blocker } = setup();
+    blocker.sync('suspension');
+    blocker.sync('suspension');
+    expect(start).toHaveBeenCalledExactlyOnceWith('prevent-app-suspension');
     expect(stop).not.toHaveBeenCalled();
   });
 
-  it('stops the blocker when backend client state no longer requests it', () => {
-    const start = vi.fn().mockReturnValue(42);
-    const stop = vi.fn();
-    const blocker = new AgentActivityPowerSaveBlocker({ start, stop });
+  it('holds the display awake, so the session cannot idle-lock, for as long as it is asked to', () => {
+    const { start, stop, blocker } = setup();
+    blocker.sync('display');
+    blocker.sync('display');
+    expect(start).toHaveBeenCalledExactlyOnceWith('prevent-display-sleep');
+    expect(stop).not.toHaveBeenCalled();
+  });
 
-    blocker.sync(true);
+  it('holds a single blocker and swaps it as the needed protection changes', () => {
+    const { start, stop, blocker } = setup();
+    blocker.sync('suspension');
+    blocker.sync('display');
+    blocker.sync('suspension');
+    blocker.sync('none');
+    expect(start.mock.calls.map(([type]) => type)).toStrictEqual(['prevent-app-suspension', 'prevent-display-sleep', 'prevent-app-suspension']);
+    expect(stop.mock.calls.map(([id]) => id)).toStrictEqual([42, 43, 44]);
+  });
 
-    blocker.sync(false);
-
-    blocker.sync(true);
-    blocker.sync(false);
-
+  it('releases on stop and starts again afterwards', () => {
+    const { start, stop, blocker } = setup();
+    blocker.sync('display');
+    blocker.stop();
+    blocker.stop();
+    blocker.sync('display');
     expect(start).toHaveBeenCalledTimes(2);
-    expect(stop).toHaveBeenCalledTimes(2);
-    expect(stop).toHaveBeenNthCalledWith(1, 42);
-    expect(stop).toHaveBeenNthCalledWith(2, 42);
+    expect(stop).toHaveBeenCalledExactlyOnceWith(42);
   });
 });
