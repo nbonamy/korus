@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { ipcChannels } from '@workspace/core/ipc';
 import type { AppBackendClientPort } from '../backend-client';
+import type { ClientState } from '@workspace/core/contracts';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 
 const native = vi.hoisted(() => ({
@@ -47,7 +48,7 @@ vi.mock('electron', async () => {
       invoke: async (channel: string, ...args: unknown[]) => native.handlers.get(channel)!({}, ...args),
     },
     nativeTheme: { themeSource: 'system' },
-    powerMonitor: Object.assign(new EventEmitter(), { isOnBatteryPower: () => false }),
+    powerMonitor: Object.assign(new EventEmitter(), { isOnBatteryPower: vi.fn(() => false) }),
     powerSaveBlocker: { start: vi.fn(() => 1), stop: vi.fn() },
     clipboard: {}, dialog: native.dialog, shell: native.shell,
     protocol: { handle: vi.fn() }, net: { fetch: vi.fn() },
@@ -95,7 +96,7 @@ vi.mock('../auto-update', () => ({
     start = vi.fn(); stop = vi.fn(); getStatus = () => ({ state: 'idle' });
   },
 }));
-import { app, powerMonitor, BrowserWindow } from 'electron';
+import { app, powerMonitor, powerSaveBlocker, BrowserWindow } from 'electron';
 import { AppController, startMainApp } from '../app-controller';
 import { AppshotsKeyMonitor } from '../appshots-key-monitor';
 import { installAppMenu } from '../app-menu';
@@ -112,7 +113,7 @@ function windowFixture() {
 }
 function backendFixture() {
   const snapshot = createInitialSnapshot();
-  const state = { snapshot, lastEventSeq: 0, clientState: { sourceFolderPath: '/projects', shouldPreventDisplaySleep: false } };
+  const state: { snapshot: typeof snapshot; lastEventSeq: number; clientState: ClientState } = { snapshot, lastEventSeq: 0, clientState: { sourceFolderPath: '/projects', shouldPreventDisplaySleep: false } };
   let emit = (_event: AppBackendEvent) => {};
   let disconnect = (_state: 'connected' | 'disconnected', _error?: Error) => {};
   const unsubscribe = vi.fn();
@@ -158,6 +159,7 @@ beforeEach(() => {
   native.shell.openPath.mockResolvedValue('');
   app.removeAllListeners();
   powerMonitor.removeAllListeners();
+  vi.mocked(powerMonitor.isOnBatteryPower).mockReturnValue(false);
   vi.mocked(app.requestSingleInstanceLock).mockReturnValue(true);
   vi.mocked(app.isInApplicationsFolder).mockReturnValue(true);
 });
@@ -173,6 +175,53 @@ afterEach(async () => {
 });
 
 describe('controller desktop lifecycle', () => {
+  it.each(['agents', 'remote'] as const)('keeps %s available without holding the display awake and releases on disablement', async (reason) => {
+    const { controller, state, emit } = setup();
+    state.clientState.shouldPreventDisplaySleep = reason === 'agents';
+    state.clientState.shouldPreventDisplaySleepForRemoteAccess = reason === 'remote';
+    await controller.initialize();
+    expect(powerSaveBlocker.start).toHaveBeenCalledExactlyOnceWith('prevent-app-suspension');
+    state.clientState = { sourceFolderPath: '/projects', shouldPreventDisplaySleep: false,
+      shouldPreventDisplaySleepForRemoteAccess: false };
+    emit({ seq: 1, occurredAt: '2026-11-02T00:00:00Z', type: 'snapshot.updated',
+      payload: state.snapshot, clientState: state.clientState });
+    expect(powerSaveBlocker.stop).toHaveBeenCalledExactlyOnceWith(1);
+  });
+
+  it('composes agent and remote protection across power changes and releases it on shutdown', async () => {
+    const { controller, state, emit } = setup();
+    state.clientState.shouldPreventDisplaySleepForRemoteAccess = true;
+    vi.mocked(powerMonitor.isOnBatteryPower).mockReturnValue(true);
+    await controller.initialize();
+    expect(powerSaveBlocker.start).not.toHaveBeenCalled();
+    vi.mocked(powerMonitor.isOnBatteryPower).mockReturnValue(false);
+    powerMonitor.emit('on-ac');
+    expect(powerSaveBlocker.start).toHaveBeenCalledExactlyOnceWith('prevent-app-suspension');
+    vi.mocked(powerMonitor.isOnBatteryPower).mockReturnValue(true);
+    powerMonitor.emit('on-battery');
+    expect(powerSaveBlocker.stop).toHaveBeenCalledExactlyOnceWith(1);
+    state.clientState = { ...state.clientState, shouldPreventDisplaySleep: true };
+    emit({ seq: 1, occurredAt: '2026-11-02T00:00:00Z', type: 'snapshot.updated',
+      payload: state.snapshot, clientState: state.clientState });
+    expect(powerSaveBlocker.start).toHaveBeenCalledTimes(2);
+    state.clientState = { ...state.clientState, shouldPreventDisplaySleepForRemoteAccess: false };
+    emit({ seq: 2, occurredAt: '2026-11-02T00:00:00Z', type: 'snapshot.updated',
+      payload: state.snapshot, clientState: state.clientState });
+    expect(powerSaveBlocker.stop).toHaveBeenCalledTimes(1);
+    vi.mocked(powerMonitor.isOnBatteryPower).mockReturnValue(false);
+    powerMonitor.emit('on-ac');
+    state.clientState = { ...state.clientState, shouldPreventDisplaySleep: false,
+      shouldPreventDisplaySleepForRemoteAccess: true };
+    emit({ seq: 3, occurredAt: '2026-11-02T00:00:00Z', type: 'snapshot.updated',
+      payload: state.snapshot, clientState: state.clientState });
+    expect(powerSaveBlocker.stop).toHaveBeenCalledTimes(1);
+    expect(powerSaveBlocker.start).toHaveBeenCalledTimes(2);
+    await controller.shutdown();
+    expect(powerSaveBlocker.stop).toHaveBeenCalledTimes(2);
+    powerMonitor.emit('on-ac');
+    expect(powerSaveBlocker.start).toHaveBeenCalledTimes(2);
+  });
+
   it('delegates open, focus, wake and reconnect activity to the local backend without creating upload timers', async () => {
     const { backend, window, controller, disconnect, state } = setup();
     backend.request.mockImplementation(async (method: string) => {

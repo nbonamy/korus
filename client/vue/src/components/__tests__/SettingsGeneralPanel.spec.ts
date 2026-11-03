@@ -73,6 +73,7 @@ describe('SettingsGeneralPanel', () => {
       .find(candidate => candidate.attributes('aria-label') === 'Prevent sleep while agents run')!.vm.$emit('update:modelValue', false);
 
     expect(wrapper.text()).toContain('Prevent sleep while agents run');
+    expect(wrapper.text()).toContain('Display sleep and automatic locking follow your system settings.');
     expect(wrapper.text()).not.toContain('Worktree initialization');
     expect(updateSettings).toHaveBeenCalledWith({
       general: {

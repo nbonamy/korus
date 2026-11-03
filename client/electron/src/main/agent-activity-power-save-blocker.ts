@@ -1,7 +1,7 @@
 import { powerSaveBlocker } from 'electron';
 
 type PowerSaveBlockerDependencies = {
-  start: (type: 'prevent-display-sleep') => number;
+  start: (type: 'prevent-app-suspension') => number;
   stop: (id: number) => void;
 };
 
@@ -17,13 +17,13 @@ export class AgentActivityPowerSaveBlocker {
 
   constructor(private readonly dependencies: PowerSaveBlockerDependencies = defaultDependencies()) {}
 
-  sync(shouldPreventDisplaySleep: boolean): void {
-    if (shouldPreventDisplaySleep && this.blockerId === null) {
-      this.blockerId = this.dependencies.start('prevent-display-sleep');
+  sync(shouldPreventAppSuspension: boolean): void {
+    if (shouldPreventAppSuspension && this.blockerId === null) {
+      this.blockerId = this.dependencies.start('prevent-app-suspension');
       return;
     }
 
-    if (!shouldPreventDisplaySleep) {
+    if (!shouldPreventAppSuspension) {
       this.stop();
     }
   }

@@ -2292,6 +2292,7 @@ function createEmptyClientState(): ClientState {
   };
 }
 
+// Client-state field names are retained for compatibility; native protection allows display sleep.
 export function shouldBlockDisplaySleep(clientState: ClientState, isOnBattery: boolean): boolean {
   return clientState.shouldPreventDisplaySleep ||
     (clientState.shouldPreventDisplaySleepForRemoteAccess === true && !isOnBattery);

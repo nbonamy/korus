@@ -14,6 +14,7 @@ describe('desktop mobile access controls', () => {
       updateSettings: vi.fn().mockRejectedValue(new Error('Settings could not be saved.')),
     } });
     await flushPromises();
+    expect(wrapper.text()).toContain('Display sleep and automatic locking follow your system settings.');
     await wrapper.get('[role="switch"][aria-label="Keep this Mac awake"]').setValue(false);
     await flushPromises();
     expect(wrapper.text()).toContain('Settings could not be saved.');
