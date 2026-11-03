@@ -1,5 +1,4 @@
 import type {
-  TelemetryModel,
   TelemetryProvider,
   TelemetryServiceTier,
 } from "./telemetry";
@@ -45,7 +44,7 @@ export type TelemetryMetricsFilter = {
   from: string;
   to: string;
   provider: TelemetryProvider | null;
-  model: TelemetryModel | null;
+  model: string | null;
   groupServiceTiers?: boolean;
   /** IANA viewer timezone; omitted requests retain UTC semantics. */
   timeZone?: string;
@@ -57,7 +56,7 @@ export type TelemetryMetricsFilter = {
 export type TelemetryMetrics = {
   range: TelemetryMetricsFilter;
   /** Models with recorded usage in the date/provider scope, independent of the selected model. */
-  availableModels?: TelemetryModel[];
+  availableModels?: string[];
   availability: {
     firstDay: string | null;
     lastDay: string | null;
@@ -104,12 +103,12 @@ export type TelemetryMetrics = {
     day: string;
     estimatedCostUsd?: string | null;
     provider: TelemetryProvider;
-    model: TelemetryModel;
+    model: string;
     serviceTier?: TelemetryServiceTier | null;
   })[];
   models: (TelemetryMetricTotals & {
     provider: TelemetryProvider;
-    model: TelemetryModel;
+    model: string;
     /** Null when variants are explicitly combined. Legacy rows are unknown. */
     serviceTier?: TelemetryServiceTier | null;
   })[];

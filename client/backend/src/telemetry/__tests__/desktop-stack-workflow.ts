@@ -186,7 +186,7 @@ export async function desktopStackWorkflow(endpoint: string) {
           agentId: canary,
           sessionId: canary,
           turnId: canary,
-          model: `${canary}-alias`,
+          model: "custom/é-model-alias",
           phase: "started",
           at: clock,
         },
@@ -201,7 +201,7 @@ export async function desktopStackWorkflow(endpoint: string) {
           agentId: canary,
           sessionId: canary,
           turnId: canary,
-          model: `${canary}-alias`,
+          model: "custom/é-model-alias",
           phase: "completed",
           timing: { activeMs: 1300, ttftMs: 300 },
           at: clock,
@@ -234,7 +234,7 @@ export async function desktopStackWorkflow(endpoint: string) {
     assert.deepEqual(JSON.parse(sealed.body).usage, [
       {
         provider: "codex",
-        model: "unknown",
+        model: "custom/é-model-alias",
         serviceTier: "unknown",
         turns: 1,
         inputTokens: 100,

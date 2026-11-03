@@ -280,8 +280,8 @@
         <li>
           <code>usage</code>: hourly groups containing only
           <code>provider</code> (the app driver: codex, claude, or antigravity),
-          <code>model</code> (an allowed catalog ID or unknown, never a custom
-          alias), <code>serviceTier</code> (standard, fast, ultrafast, flex, batch, scale, or unknown), <code>turns</code>, <code>inputTokens</code> (inclusive
+          <code>model</code> (the full locally recorded model name, including custom
+          aliases, or unknown when missing), <code>serviceTier</code> (standard, fast, ultrafast, flex, batch, scale, or unknown), <code>turns</code>, <code>inputTokens</code> (inclusive
           input), <code>cachedInputTokens</code> (cache reads),
           <code>outputTokens</code>, and
           <code>estimatedCostUsd</code> (estimated API-equivalent cost in USD).
@@ -311,7 +311,7 @@
         agent, team, session, turn and request names or identifiers, error text,
         account details, email addresses, machine identifiers, device names,
         exact activity timestamps, per-turn output speed, IP-address fields, and all
-        other free-form content. Custom model aliases are never sent.
+        other free-form content apart from model names.
       </p>
       <p>
         No IP addresses are stored by the telemetry service or its delivery

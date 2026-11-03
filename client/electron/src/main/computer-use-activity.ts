@@ -1,5 +1,5 @@
 /** How long the screen stays awake after the last Computer Use action: agents pause to think between actions, and a locked session cannot be operated. */
-export const computerUseHoldMs = 5 * 60_000;
+const computerUseHoldMs = 5 * 60_000;
 
 /** Tracks whether Computer Use was recently used, so the Mac is kept unlocked while an agent drives it. */
 export class ComputerUseActivity {

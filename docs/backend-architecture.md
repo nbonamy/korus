@@ -1152,8 +1152,8 @@ known subtotals with a measured-turn count; an entirely unmeasured group remains
 null. Estimated costs retain the known subtotal with separate complete, partial
 or unavailable coverage. Missing measurements never erase measured contributions.
 
-The shared wire allowlist contains canonical IDs from the embedded pricing catalog,
-independent of runtime/user model catalogs. Other IDs coalesce into `unknown`.
+Model names are uploaded exactly as recorded locally, including custom aliases,
+independently of the pricing catalog. Missing names become `unknown`.
 The serializer rejects extra fields, constructs every wire field explicitly, sorts
 provider/model/tier groups and returns immutable canonical JSON text. Hourly
 reports include a UTC hour; daily previews and legacy reports omit it. Its UTF-8 bytes are

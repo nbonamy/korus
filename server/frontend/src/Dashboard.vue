@@ -212,7 +212,7 @@
                 {{
                   modelGrouping === "provider"
                     ? "Usage by provider"
-                    : "Usage by provider and canonical model"
+                    : "Usage by provider and model"
                 }}
               </caption>
               <thead>
