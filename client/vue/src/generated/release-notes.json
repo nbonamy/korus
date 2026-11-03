@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.50.5",
+  "currentVersion": "0.50.6",
   "releases": [
+    {
+      "version": "0.50.6",
+      "releasedAt": "2026-11-02",
+      "sourceSha256": "f69c5d9c057f2e7e9a84658197da5c6ba6645e2079f239f08ed9433cd1d21865",
+      "markdown": "### Improvements and fixes\n\n- Keep Mission conversations visible during recovery and stop Implement approval from closing on unchanged updates.\n- Allow normal display sleep while keeping agents and remote access available.\n- Preserve reviewer context between rounds and start discussions with the original agent after inspection when enabled.\n- Send annotations to a working agent without typing an extra instruction.\n- Keep stopped and failed Working groups collapsed until opened, and avoid loading spinners on collapsed groups.\n- Generate commit messages and pull request drafts with the conversation's provider.\n- Remember provider choices, merge cleanup options and GitHub reminder decisions across restarts.\n- Keep repository icons and saved commands consistent across worktrees and clones.\n- Keep the sidebar in place when switching to and from Cockpit.\n- Avoid failures when moving work to a branch while another Git operation is running.\n- Show account credits as whole numbers."
+    },
     {
       "version": "0.50.5",
       "releasedAt": "2026-11-02",
