@@ -19,6 +19,7 @@ const REMOTE_SETUP_REQUEST_TIMEOUT_MS = 15 * 60_000;
  * the method's ordinary deadline.
  */
 const requestTimeoutByMethod = {
+  [backendMethods.clientDebugBackendRestart]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.collaborationTaskAccess]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.repositoryDeletePreview]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.repositoryDelete]: EXTENDED_REQUEST_TIMEOUT_MS,

@@ -177,6 +177,69 @@ afterEach(async () => {
 });
 
 describe('controller desktop lifecycle', () => {
+  it.each([false, true])('allows a conversation-authorized MCP restart without a desktop dialog (window=%s)', async openWindow => {
+    const packaged = app.isPackaged;
+    Object.defineProperty(app, 'isPackaged', { value: false, configurable: true });
+    const fixture = backendFixture();
+    native.factory.mockReturnValue(fixture.backend);
+    const controller = new AppController(fixture.state.snapshot, undefined, undefined, undefined, undefined, null,
+      async () => ({ supported: false, installed: false, running: true, socketPath: '', launchAgentPath: '' }));
+    controllers.push(controller);
+    try {
+      await controller.initialize();
+      if (openWindow) controller.createWindow();
+      const restart = native.factory.mock.calls[0]![0].debugRestartBackend;
+      expect(await restart({ agentId: fixture.state.snapshot.agents[0]!.id, reason: 'Load the backend fix' })).toStrictEqual({ scheduled: true });
+      expect(native.dialog.showMessageBox).not.toHaveBeenCalled();
+      expect(fixture.backend.close).not.toHaveBeenCalled();
+      await expect(restart({ agentId: fixture.state.snapshot.agents[0]!.id, reason: 'Duplicate' })).rejects.toThrow('already pending');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fixture.backend.close).toHaveBeenCalledOnce();
+      expect(fixture.backend.start).toHaveBeenCalledTimes(2);
+      if (openWindow) expect(native.createWindow.mock.results[0]!.value.webContents.reload).not.toHaveBeenCalled();
+      expect(app.relaunch).not.toHaveBeenCalled();
+      fixture.backend.close.mockRejectedValueOnce(new Error('Restart failed'));
+      expect(await restart({ agentId: fixture.state.snapshot.agents[0]!.id, reason: 'Retry the fix' })).toStrictEqual({ scheduled: true });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(native.dialog.showErrorBox).not.toHaveBeenCalled();
+      expect(native.dialog.showMessageBox).not.toHaveBeenCalled();
+      fixture.state.snapshot.agents[0]!.remoteConnectionId = 'remote';
+      await expect(restart({ agentId: fixture.state.snapshot.agents[0]!.id, reason: 'Remote' })).rejects.toThrow('local agent');
+      delete fixture.state.snapshot.agents[0]!.remoteConnectionId;
+      Object.defineProperty(app, 'isPackaged', { value: true, configurable: true });
+      await expect(restart({ agentId: fixture.state.snapshot.agents[0]!.id, reason: 'Again' })).rejects.toThrow('debug');
+    } finally { Object.defineProperty(app, 'isPackaged', { value: packaged, configurable: true }); }
+  });
+
+  it('restarts directly from Debug, suppresses duplicate clicks, and reports daemon restart failure with a retry', async () => {
+    const packaged = app.isPackaged;
+    Object.defineProperty(app, 'isPackaged', { value: false, configurable: true });
+    const fixture = backendFixture();
+    const status = { supported: true, installed: true, running: true, socketPath: '', launchAgentPath: '' };
+    const refresh = vi.fn().mockRejectedValueOnce(new Error('Daemon restart failed')).mockResolvedValue(status);
+    const controller = new AppController(fixture.state.snapshot, fixture.backend as AppBackendClientPort, undefined, undefined, undefined, null, async () => status, refresh);
+    controllers.push(controller);
+    try {
+      await controller.initialize();
+      controller.createWindow();
+      const menu = native.createWindow.mock.calls[0]![0];
+      menu.restartBackend();
+      menu.restartBackend();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(refresh).toHaveBeenCalledOnce();
+      expect(fixture.backend.close).toHaveBeenCalledOnce();
+      expect(fixture.backend.start).toHaveBeenCalledTimes(2);
+      expect(native.dialog.showMessageBox).not.toHaveBeenCalled();
+      expect(native.dialog.showErrorBox).toHaveBeenCalledWith('Could not restart backend', 'Daemon restart failed');
+      menu.restartBackend();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(refresh).toHaveBeenCalledTimes(2);
+      expect(fixture.backend.start).toHaveBeenCalledTimes(3);
+      expect(native.createWindow.mock.results[0]!.value.webContents.reload).not.toHaveBeenCalled();
+      expect(app.relaunch).not.toHaveBeenCalled();
+    } finally { Object.defineProperty(app, 'isPackaged', { value: packaged, configurable: true }); }
+  });
+
   it.each(['agents', 'remote'] as const)('keeps %s available without holding the display awake and releases on disablement', async (reason) => {
     const { controller, state, emit } = setup();
     state.clientState.shouldPreventDisplaySleep = reason === 'agents';

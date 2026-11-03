@@ -6,6 +6,9 @@ import { presentAppToolTitle } from '../tool-title-presenter';
 
 describe(`${product.name} tool title presenter`, () => {
   it.each([
+    ['korus.restart-backend', { reason: 'Private reason' }, 'running', 'Requesting backend restart'],
+    ['mcp__korus__restart_backend', {}, 'completed', 'Requested backend restart'],
+    ['korus.restart-backend', {}, 'error', 'Could not request backend restart'],
     ['korus.open-design', {}, 'running', 'Opening Design'],
     ['mcp__korus__open_design', {}, 'completed', 'Opened Design'],
     ['korus.open-design', {}, 'error', 'Could not open Design'],

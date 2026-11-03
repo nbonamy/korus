@@ -10,6 +10,7 @@ import { createRuntimeSpokenAnnouncementQueue, type SpokenAnnouncementQueue } fr
 export type ClientRequestHandler = (params: unknown) => unknown | Promise<unknown>;
 
 export type ClientRequestHandlersOptions = {
+  debugRestartBackend?: (input: { agentId: string; reason: string }) => Promise<{ scheduled: boolean }>;
   desktopFocused?: () => boolean;
   openExternal: (url: string) => Promise<unknown>;
   getSystemPermissionsStatus: () => SystemPermissionsStatus;
@@ -22,7 +23,7 @@ export type ClientRequestHandlersOptions = {
   spokenAnnouncementVoice?: () => SpokenAnnouncementVoice;
 };
 
-export function createRuntimeClientRequestHandlers(overrides: Pick<ClientRequestHandlersOptions, 'mobileSimulator' | 'browserExecute' | 'browserOpen' | 'spokenAnnouncements' | 'spokenAnnouncementVoice'> = {}): Record<string, ClientRequestHandler> {
+export function createRuntimeClientRequestHandlers(overrides: Pick<ClientRequestHandlersOptions, 'debugRestartBackend' | 'mobileSimulator' | 'browserExecute' | 'browserOpen' | 'spokenAnnouncements' | 'spokenAnnouncementVoice'> = {}): Record<string, ClientRequestHandler> {
   const spokenAnnouncements = overrides.spokenAnnouncements ?? createRuntimeSpokenAnnouncementQueue({
     appPath: app?.getAppPath?.() ?? process.cwd(),
     isPackaged: app?.isPackaged ?? false,
@@ -47,6 +48,12 @@ export function createRuntimeClientRequestHandlers(overrides: Pick<ClientRequest
 
 export function createClientRequestHandlers(options: ClientRequestHandlersOptions): Record<string, ClientRequestHandler> {
   return {
+    ...(options.debugRestartBackend ? {
+      [backendMethods.clientDebugBackendRestart]: (params: unknown) => {
+        const input = requireRecord(params);
+        return options.debugRestartBackend!({ agentId: requireString(input.agentId, 'agentId'), reason: requireString(input.reason, 'reason') });
+      },
+    } : {}),
     [backendMethods.clientDesignCapture]: params => captureDesign(requireRecord(params) as import('@workspace/core/design').DesignCaptureInput),
     [backendMethods.clientFocusGet]: () => ({ focused: options.desktopFocused?.() === true }),
     [backendMethods.clientExternalOpen]: async (params) => {

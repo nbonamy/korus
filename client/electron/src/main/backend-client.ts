@@ -17,6 +17,7 @@ export type AppBackendClientPort = {
 };
 
 export function createRuntimeAppBackendClient(options: {
+  debugRestartBackend?: (input: { agentId: string; reason: string }) => Promise<{ scheduled: boolean }>;
   mobileSimulator?: (agentId: string, input: import('@workspace/core/mobile-simulator').MobileRequest) => Promise<import('@workspace/core/mobile-simulator').MobileResult>;
   browserOpen?: (agentId: string, browserId: string, url: string) => Promise<unknown>;
   browserExecute?: (agentId: string, browserId: string, command: string, arguments_: Record<string, unknown>) => Promise<unknown>;
@@ -25,6 +26,7 @@ export function createRuntimeAppBackendClient(options: {
 } = {}): AppBackendClientPort | null {
   const mode = runtimeDaemonBackendMode();
   const requestHandlers = createRuntimeClientRequestHandlers({
+    debugRestartBackend: options.debugRestartBackend,
     mobileSimulator: options.mobileSimulator,
     browserExecute: options.browserExecute,
     browserOpen: options.browserOpen,
@@ -42,7 +44,7 @@ export function createRuntimeAppBackendClient(options: {
 
   const command = runtimeDaemonCommand();
   const processClient = command ? new AppBackendProcessClient({
-    command,
+    command: { ...command, env: { ...command.env, APP_DEBUG_BACKEND_TOOLS: options.debugRestartBackend ? '1' : '0' } },
     requestHandlers,
     watchFile: runtimeDaemonWatchFile(),
   }) : null;

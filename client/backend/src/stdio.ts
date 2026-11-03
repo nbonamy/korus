@@ -312,6 +312,7 @@ function lineLooksLikeJson(line: string): boolean {
 }
 
 function defaultRequestTimeoutMs(method: string, params?: unknown): number | null {
+  if (method === backendMethods.clientDebugBackendRestart) return backendRequestTimeoutMs(method);
   if (method === backendMethods.agentGitMessageGenerate || method === backendMethods.driverTextGenerate) return backendRequestTimeoutMs(method, params);
   if (method === backendMethods.clientCollaborationCall) return backendRequestTimeoutMs(method);
   // Let Electron's 30-second browser-open deadline report the navigation failure.

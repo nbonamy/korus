@@ -24,7 +24,7 @@ type MainWindowState = {
 };
 
 export function createMainWindow(
-  appMenuOptions: Partial<Pick<AppMenuOptions, 'updateStatus'>> & Partial<Pick<AppMenuCallbacks, 'checkForUpdates' | 'installUpdate' | 'capturePerformanceProfile' | 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag'>> = {},
+  appMenuOptions: Partial<Pick<AppMenuOptions, 'updateStatus'>> & Partial<Pick<AppMenuCallbacks, 'restartBackend' | 'checkForUpdates' | 'installUpdate' | 'capturePerformanceProfile' | 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag'>> = {},
 ): BrowserWindow {
   const releaseMode = isReleaseMode();
   if (process.platform === 'darwin' && !releaseMode) {

@@ -9,6 +9,12 @@ afterEach(() => {
 });
 
 describe('runtime config', () => {
+  it('marks a development desktop daemon for debug-only tools', async () => {
+    const { runtimeDaemonCommand } = await import('../runtime-config');
+    const command = (defaultApp: boolean) => runtimeDaemonCommand({ defaultApp, env: { APP_BACKEND_COMMAND: 'node' } });
+    expect(command(true)!.env.APP_DEBUG_BACKEND_TOOLS).toBe('1');
+    expect(command(false)!.env.APP_DEBUG_BACKEND_TOOLS).toBeUndefined();
+  });
   it('returns null when no backend command is configured', async () => {
     const { runtimeDaemonCommand } = await import('../runtime-config');
 

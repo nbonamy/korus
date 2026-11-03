@@ -38,6 +38,7 @@ describe(`${product.name} tool presentation`, () => {
 
   it.each([
     ['close-agent', UsersIcon, 'Closed agent'],
+    ['restart-backend', DeviceDesktopIcon, 'Requested backend restart'],
     ['generate-image', PhotoIcon, 'Generated images'],
     ['open-design', PaletteIcon, 'Opened Design'],
     ['wait-tasks', SquareCheck, 'Checked delegated tasks'],

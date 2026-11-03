@@ -258,7 +258,7 @@ async function serve(): Promise<void> {
 function runtimeFeatures(): DaemonRuntimeOptions['features'] {
   return process.env.APP_HOST === 'web'
     ? { computerUse: false, embeddedBrowser: false, mobileSimulator: false }
-    : undefined;
+    : { debugTools: process.env.APP_DEBUG_BACKEND_TOOLS === '1' };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

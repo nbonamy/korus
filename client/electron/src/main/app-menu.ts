@@ -18,6 +18,7 @@ export type AppMenuOptions = {
 export type DebugCodeReviewScenario = 'automaticReviewing' | 'reviewing' | 'ready' | 'fixing' | 'readyToFinish';
 
 export type AppMenuCallbacks = {
+  restartBackend?: () => void;
   checkForUpdates?: () => void;
   installUpdate?: () => void;
   capturePerformanceProfile?: () => void;
@@ -44,12 +45,13 @@ export type AppMenuCallbacks = {
   closeAuxiliaryWindow?(focusedWindow: BaseWindow | undefined): boolean;
 };
 
-type AppMenuInstallOptions = AppMenuOptions & Partial<Pick<AppMenuCallbacks, 'checkForUpdates' | 'installUpdate' | 'capturePerformanceProfile' | 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'hasDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'getDebugMissionReviewState' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag' | 'getDebugMissingEngines' | 'setDebugMissingEngines' | 'getDebugProviderUpgrades' | 'setDebugProviderUpgrades' | 'getDebugReviewUncommitted' | 'setDebugReviewUncommitted'>>;
+type AppMenuInstallOptions = AppMenuOptions & Partial<Pick<AppMenuCallbacks, 'restartBackend' | 'checkForUpdates' | 'installUpdate' | 'capturePerformanceProfile' | 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'hasDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'getDebugMissionReviewState' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag' | 'getDebugMissingEngines' | 'setDebugMissingEngines' | 'getDebugProviderUpgrades' | 'setDebugProviderUpgrades' | 'getDebugReviewUncommitted' | 'setDebugReviewUncommitted'>>;
 const editMenuId = 'app-edit-menu';
 
 export function installAppMenu(window: BrowserWindow, options: AppMenuInstallOptions): void {
   const { checkForUpdates, installUpdate, capturePerformanceProfile, ...menuOptions } = options;
   const callbacks: AppMenuCallbacks = {
+    restartBackend: options.restartBackend,
     checkForUpdates,
     installUpdate,
     capturePerformanceProfile,
@@ -146,6 +148,8 @@ function buildDebugMenu(callbacks: AppMenuCallbacks): MenuItemConstructorOptions
   return {
     label: 'Debug',
     submenu: [
+      { label: 'Restart Backend', enabled: Boolean(callbacks.restartBackend), click: () => callbacks.restartBackend?.() },
+      { type: 'separator' },
       {
         label: 'Agent Fixtures',
         submenu: buildDebugAgentFixtures(callbacks),

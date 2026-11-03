@@ -15,6 +15,11 @@ read [custom-tools.md](custom-tools.md).
   for desktop effects. The renderer never calls MCP.
 - Only advertise tools backed by real Korus product capabilities, and never
   filesystem, worktree or process-control tools the product does not own.
+- Debug desktop runtimes opt into backend restart tooling. Agents must obtain
+  explicit authorization in the conversation before invoking it, including when
+  the user connects remotely or from mobile. No desktop confirmation is shown.
+  Electron rejects packaged, remote-host and shared-session callers. The result
+  acknowledges scheduling because restarting can interrupt the calling tool.
 - Streamable HTTP on loopback, ephemeral port, JSON responses, started before
   provider drivers so sessions receive a valid URL. `POST /mcp` only: the server is
   stateless per HTTP request while a process-local coordinator owns collaboration

@@ -27,6 +27,7 @@ describe('stdio JSON-RPC transport', () => {
 
   it.each([
     ['client/external/open', undefined, 5000],
+    ['client/debug/backend/restart', undefined, 10000],
     ['client/computerUse/execute', undefined, 35000],
     ['client/browser/open', undefined, 35000],
     ['client/mobileSimulator/execute', undefined, 240000],

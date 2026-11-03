@@ -142,6 +142,7 @@ export function provideAppToolPresentation(translate: Translate, resolveAgentNam
 }
 
 function appToolIcon(tool: string): ToolIcon | undefined {
+  if (tool === 'restart-backend') return icons.computerUse;
   if (tool === 'list-hosts') return icons.hosts;
   if (tool === 'generate-image') return icons.image;
   if (tool === 'simulator') return icons.simulator;

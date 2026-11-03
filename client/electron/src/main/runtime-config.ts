@@ -138,6 +138,7 @@ function runtimeDaemonEnv(deps: RuntimeDaemonConfigDeps): NodeJS.ProcessEnv {
 
   return {
     APP_ASSETS_PATH: runtimeDaemonAssetsPath(deps),
+    ...((deps.defaultApp ?? process.defaultApp) ? { APP_DEBUG_BACKEND_TOOLS: '1' } : {}),
     APP_HOME: runtimeDaemonHome(deps),
     HOME: home,
     ...(runtimePath ? { PATH: runtimePath } : {}),

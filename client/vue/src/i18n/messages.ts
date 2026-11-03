@@ -1428,6 +1428,7 @@ export const messages = {
             running: 'Using Computer',
           },
           app: {
+            restartBackend: { running: 'Requesting backend restart', completed: 'Requested backend restart', failed: 'Could not request backend restart' },
             broadcastMessage: {
               completed: 'Broadcast message',
               failed: 'Failed broadcasting message',

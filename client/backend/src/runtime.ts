@@ -10,6 +10,7 @@ import { PricingCatalog } from './pricing/catalog-updates';
 import { PromptRejectedError } from './agents/prompt-rejected';
 import { quickChatTeamInstructions } from './agents/quick-chat-context';
 import { createMobileSimulatorToolModuleProvider } from './mcp/mobile-simulator-tools';
+import { createDebugToolModuleProvider } from './mcp/debug-tools';
 import { relayFromEnvironment, CompanionManager } from './companion/manager';
 import { appRpcErrorCodes, createAppRpcRequest } from '@workspace/core/backend-protocol/rpc';
 import { DocumentWorkspaceService } from './document-workspace-service';
@@ -68,6 +69,7 @@ type DaemonClientRequest = <Result>(method: string, params?: unknown) => Promise
 export type DaemonRuntimeOptions = {
   emitEvent(event: AppBackendEvent): void;
   features?: {
+    debugTools?: boolean;
     computerUse?: boolean;
     embeddedBrowser?: boolean;
     mobileSimulator?: boolean;
@@ -226,6 +228,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     listRemoteWorktrees: (connectionId, repoPath) => server.listRemoteWorktrees(connectionId, repoPath),
     createRemoteWorktree: input => server.createRemoteWorktree(input),
     toolModuleProviders: [
+      createDebugToolModuleProvider(options.features?.debugTools === true, (agentId, reason) => options.requestClient(backendMethods.clientDebugBackendRestart, { agentId, reason })),
       createImageGenerationToolModuleProvider(new ImageGenerationService({
         snapshot, generatedImagesRoot: path.join(backendCodexHomeDir(), 'generated_images'), defaultCwd: backendHomeDir(),
         generate: (agent, input, signal) => driverRpc.handle(backendMethods.driverImageGenerate, { agent, ...input }, { signal }) as Promise<import('@workspace/core/backend-driver').BackendImageGenerationResult>,

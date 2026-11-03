@@ -48,6 +48,16 @@ vi.mock('electron', () => ({
 }));
 
 describe('createClientRequestHandlers', () => {
+  it('routes debug restart requests only when the desktop provides the restart handler', async () => {
+    const options = { openExternal: vi.fn(), getSystemPermissionsStatus: vi.fn(), openAccessibilitySettings: vi.fn(), computerUseOptions };
+    expect(createClientRequestHandlers(options)['client/debug/backend/restart']).toBeUndefined();
+    const restart = vi.fn().mockResolvedValue({ scheduled: true });
+    const handler = createClientRequestHandlers({ ...options, debugRestartBackend: restart })['client/debug/backend/restart']!;
+    await expect(handler({ agentId: 'caller', reason: 'Load a fix', confirmed: true })).resolves.toStrictEqual({ scheduled: true });
+    expect(restart).toHaveBeenCalledExactlyOnceWith({ agentId: 'caller', reason: 'Load a fix' });
+    expect(() => handler({ reason: 'Missing identity' })).toThrow('agentId');
+    expect(restart).toHaveBeenCalledOnce();
+  });
   it('reads current desktop focus for push decisions instead of retaining a stale focus state', async () => {
     let focused = true;
     const handlers = createClientRequestHandlers({ openExternal: vi.fn(), getSystemPermissionsStatus: vi.fn(),

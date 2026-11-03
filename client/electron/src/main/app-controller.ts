@@ -100,6 +100,7 @@ export class AppController {
   private desktopUpdateStatus: DesktopUpdateStatus = { state: 'idle' };
   private selectedMissionId: string | null = null;
   private appshotCapturePending = false;
+  private debugBackendRestartPending = false;
 
   private readonly mobileSimulator = new MobileSimulatorService(new NativeMobileAdapter(mobileRuntimePaths({
     isPackaged: Boolean(app?.isPackaged),
@@ -157,6 +158,7 @@ export class AppController {
       }),
     );
     this.backendClient = backendClient ?? createRuntimeAppBackendClient({
+      debugRestartBackend: app?.isPackaged ? undefined : input => this.requestDebugBackendRestart(input),
       mobileSimulator: (agentId, input) => this.executeMobileSimulator(agentId, input),
       browserOpen: (agentId, browserId, url) => this.requestBrowserOpen(agentId, browserId, url),
       browserExecute: (agentId, browserId, command, arguments_) => this.browserPane.execute(agentId, browserId, command, arguments_),
@@ -1221,16 +1223,45 @@ export class AppController {
     this.backendClientConnectionUnsubscribe = null;
     this.setConnectionState({ status: 'reconnecting', detail: { key: 'backend.restarting' } });
     await this.backendClient?.close();
+    let restartError: unknown;
     if (daemonStatus.installed) {
       try {
         await this.daemonRefresher();
       } catch (error) {
-        warnMain('daemon', 'failed to restart background backend after resource sharing changed', {
+        restartError = error;
+        warnMain('daemon', 'failed to restart background backend', {
           detail: error instanceof Error ? error.message : String(error),
         });
       }
     }
     await this.initializeBackendClient();
+    if (restartError) throw restartError;
+  }
+
+  private async requestDebugBackendRestart(input?: { agentId: string; reason: string }): Promise<{ scheduled: boolean }> {
+    if (app.isPackaged) throw new Error('Backend restart tools are only available in debug mode.');
+    if (this.debugBackendRestartPending) throw new Error('A backend restart is already pending.');
+    this.debugBackendRestartPending = true;
+    try {
+      if (input) {
+        const agent = this.snapshot?.agents.find(candidate => candidate.id === input.agentId);
+        if (!agent || agent.remoteConnectionId || agent.sharedConversation) throw new Error('Backend restart requires a local agent.');
+        if (typeof input.reason !== 'string' || !input.reason.trim() || input.reason.length > 500) throw new Error('Invalid backend restart reason.');
+      }
+      // Return the scheduling acknowledgment before closing the RPC transport.
+      setImmediate(() => {
+        void this.restartBackend()
+          .catch(error => this.reportDebugBackendRestartError(error, !input))
+          .finally(() => { this.debugBackendRestartPending = false; });
+      });
+      return { scheduled: true };
+    } catch (error) { this.debugBackendRestartPending = false; throw error; }
+  }
+
+  private reportDebugBackendRestartError(error: unknown, showDialog = true): void {
+    const detail = error instanceof Error ? error.message : String(error);
+    warnMain('daemon', 'debug backend restart failed', { detail });
+    if (showDialog) dialog.showErrorBox('Could not restart backend', detail);
   }
 
   private async getAutomationSnapshot(location?: AutomationLocation): Promise<AppSnapshot> {
@@ -1822,8 +1853,11 @@ export class AppController {
     });
   }
 
-  private debugMenuOptions(): Pick<AppMenuCallbacks, 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'hasDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'getDebugMissionReviewState' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag' | 'getDebugMissingEngines' | 'setDebugMissingEngines' | 'getDebugProviderUpgrades' | 'setDebugProviderUpgrades' | 'getDebugReviewUncommitted' | 'setDebugReviewUncommitted'> {
+  private debugMenuOptions(): Pick<AppMenuCallbacks, 'restartBackend' | 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'hasDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'getDebugMissionReviewState' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag' | 'getDebugMissingEngines' | 'setDebugMissingEngines' | 'getDebugProviderUpgrades' | 'setDebugProviderUpgrades' | 'getDebugReviewUncommitted' | 'setDebugReviewUncommitted'> {
     return {
+      restartBackend: () => {
+        if (!this.debugBackendRestartPending) void this.requestDebugBackendRestart().catch(error => this.reportDebugBackendRestartError(error));
+      },
       getDebugProviderUpgrades: () => this.debugProviderUpgrades,
       setDebugProviderUpgrades: enabled => {
         if (app.isPackaged) return;

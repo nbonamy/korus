@@ -82,6 +82,16 @@ const callbacks = (): AppMenuCallbacks => ({
 });
 
 describe('app menu', () => {
+  it('installs a debug-only backend restart action without reloading the renderer', () => {
+    const restartBackend = vi.fn();
+    const window = { webContents: { reload: vi.fn(), toggleDevTools: vi.fn() } };
+    installAppMenu(window as never, { debugMode: true, restartBackend });
+    const template = electronMenuMocks.buildFromTemplate.mock.lastCall![0];
+    clickItem(template, 'Debug', 'Restart Backend');
+    expect(restartBackend).toHaveBeenCalledOnce();
+    expect(window.webContents.reload).not.toHaveBeenCalled();
+    expect(buildAppMenuTemplate(callbacks(), { debugMode: false }).some(item => item.label === 'Debug')).toBe(false);
+  });
   it('closes a focused extension window without closing the agent or team', () => {
     const main = { webContents: {} }, auxiliary = { close: vi.fn() };
     installAppMenu(main as never, { debugMode: false });
@@ -459,6 +469,8 @@ describe('app menu', () => {
     ]);
     const debugItems = submenu(debugMenu, 'Debug');
     expect(debugItems.map((item) => item.type === 'separator' ? 'separator' : item.label)).toStrictEqual([
+      'Restart Backend',
+      'separator',
       'Agent Fixtures',
       'Mission Fixtures',
       'Visualize Fixtures',

@@ -12,6 +12,7 @@ const SIMULATOR_ACTIONS = new Set([
 ]);
 
 const TOOL_KEYS: Record<string, string> = {
+  'restart-backend': 'restartBackend',
   'open-design': 'openDesign',
   'generate-image': 'generateImage',
   simulator: 'simulator',
