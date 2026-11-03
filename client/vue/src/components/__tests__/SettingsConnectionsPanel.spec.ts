@@ -48,6 +48,7 @@ describe('SettingsConnectionsPanel', () => {
     await switchWithLabel(wrapper, 'Keep this Mac awake').vm.$emit('update:modelValue', false);
 
     expect(wrapper.text()).toContain('Keep this Mac awake');
+    expect(wrapper.text()).toContain('Display sleep and automatic locking follow your system settings.');
     expect(updateSettings).toHaveBeenCalledWith({
       general: {
         preventSleepWhenRemoteAccessEnabled: false,
