@@ -9,7 +9,7 @@ import { translate as t } from '../i18n';
 import { designFrame, type DesignCanvasChange } from './design-frame';
 
 const props = defineProps<{ board: DesignArtboard; css: string; documentId: string; revision: number; play: boolean; selectedNodeId: string | null; zoom: number; locked: boolean; frozen: boolean }>();
-const emit = defineEmits<{ select: [nodeId: string | null]; styles: [nodeId: string, revision: number, styles: Record<string, string>]; edit: [change: DesignCanvasChange]; interaction: [active: boolean]; prototype: [action: DesignInteraction] }>();
+const emit = defineEmits<{ select: [nodeId: string | null]; styles: [nodeId: string, revision: number, styles: Record<string, string>, properties: Record<string, string>]; edit: [change: DesignCanvasChange]; interaction: [active: boolean]; prototype: [action: DesignInteraction] }>();
 const frame = ref<HTMLIFrameElement>();
 const source = ref('');
 const token = crypto.randomUUID().replaceAll('-', '');
@@ -41,7 +41,10 @@ function receive(event: MessageEvent) {
   }
   if (data.kind === 'styles' && frameNodeIds.has(data.nodeId) && data.styles && typeof data.styles === 'object' && !Array.isArray(data.styles)) {
     const entries = Object.entries(data.styles);
-    if (entries.length <= 512 && entries.every(([key, value]) => key.length <= 160 && typeof value === 'string' && value.length <= 4000)) emit('styles', data.nodeId, frameRevision, data.styles);
+    const properties = data.properties ?? data.styles;
+    if (!properties || typeof properties !== 'object' || Array.isArray(properties)) return;
+    const fields = Object.entries(properties);
+    if (entries.length <= 512 && fields.length <= 512 && [...entries, ...fields].every(([key, value]) => key.length <= 160 && typeof value === 'string' && value.length <= 4000)) emit('styles', data.nodeId, frameRevision, data.styles, properties);
     return;
   }
   if (data.kind === 'interaction-end') { emit('interaction', false); return; }

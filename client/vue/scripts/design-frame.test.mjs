@@ -39,6 +39,10 @@ test('Design pointer hover previews element bounds without changing selection or
     assert.equal(inspected['padding-left'], '12px');
     assert.equal(inspected['font-family'], 'Arial');
     assert.equal(inspected['font-weight'], undefined, 'A sibling selector must not leak into selected CSS');
+    const properties = await page.evaluate(() => window.messages.find(message => message.kind === 'styles' && message.nodeId === 'action').properties);
+    assert.equal(properties.padding, '12px', 'The inspector receives resolved shorthands');
+    assert.equal(properties.opacity, '1', 'Default values populate inspector controls');
+    assert.equal(Number.parseFloat(properties.width), await action.evaluate(el => Number.parseFloat(getComputedStyle(el).width)));
     assert.equal(await selected.evaluate(el => getComputedStyle(el).borderTopWidth), '4px', 'A half-scale frame retains a two-pixel selection stroke');
     assert.equal(await selected.evaluate(el => getComputedStyle(el).borderTopColor), 'rgb(12, 114, 238)');
     await heading.hover();

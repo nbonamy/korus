@@ -127,6 +127,54 @@ it('clears element selection from the canvas background and on entering Pan', as
   } finally { wrapper.unmount(); }
 });
 
+it('fills applied properties without saving them and only persists fields edited by the user', async () => {
+  vi.useFakeTimers();
+  const workspace = editableWorkspace();
+  const heading = workspace.document!.content.artboards[0].root.children![0];
+  heading.styles = { 'font-size': '1.5rem' };
+  let resolve!: (result: DesignResult) => void;
+  const pending = new Promise<DesignResult>(done => { resolve = done; });
+  const execute = vi.fn(async () => pending);
+  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace, execute }, global: { plugins: [ElementPlus] } });
+  const field = (label: string) => wrapper.get<HTMLInputElement>(`input[aria-label="${label}"]`);
+  const inspect = (properties: Record<string, string>) => {
+    const frame = wrapper.get('iframe');
+    const token = frame.attributes('srcdoc')!.match(/<script nonce="([^"]+)"/)![1];
+    window.dispatchEvent(new MessageEvent('message', { source: (frame.element as HTMLIFrameElement).contentWindow, data: {
+      kind: 'styles', token, revision: 1, nodeId: 'heading', styles: { 'font-size': '24px' }, properties,
+    } }));
+  };
+  const properties = { width: '600px', height: '32px', padding: '8px 12px', margin: '0px', position: 'static', 'font-size': '24px', 'line-height': '32px', 'letter-spacing': '-1px', opacity: '1' };
+  try {
+    inspect(properties);
+    await flushPromises();
+    expect(field('Width').element.value).toBe('600px');
+    expect(field('Padding').element.value).toBe('8px 12px');
+    expect(field('Font size').element.value).toBe('1.5rem');
+    expect(field('Line height').element.value).toBe('32px');
+    expect(field('Letter spacing').element.value).toBe('-1px');
+    expect(wrapper.get<HTMLSelectElement>('select[aria-label="Position"]').element.value).toBe('static');
+    await vi.advanceTimersByTimeAsync(400);
+    expect(execute).not.toHaveBeenCalled();
+    field('Width').element.value = '640px';
+    await field('Width').trigger('input');
+    inspect({ ...properties, width: '610px' });
+    await flushPromises();
+    expect(field('Width').element.value).toBe('640px');
+    await vi.advanceTimersByTimeAsync(400);
+    expect(execute).toHaveBeenCalledExactlyOnceWith({ type: 'edit', expectedRevision: 1, edits: [{ type: 'style', nodeId: 'heading', styles: { width: '640px' } }] });
+    field('Height').element.value = '40px';
+    await field('Height').trigger('input');
+    heading.styles.width = '640px';
+    workspace.document!.revision = 2;
+    resolve({ workspace: structuredClone(workspace) });
+    await flushPromises();
+    execute.mockResolvedValue({ workspace: structuredClone(workspace) });
+    await vi.advanceTimersByTimeAsync(400);
+    expect(execute).toHaveBeenLastCalledWith({ type: 'edit', expectedRevision: 2, edits: [{ type: 'style', nodeId: 'heading', styles: { height: '40px' } }] });
+  } finally { wrapper.unmount(); vi.useRealTimers(); }
+});
+
 it.each([true, false])('preserves edits typed during autosave and recovers after success=%s', async success => {
   vi.useFakeTimers();
   const workspace = editableWorkspace();

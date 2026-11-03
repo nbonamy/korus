@@ -8,7 +8,7 @@
           <button class="app-icon-button" type="button" :aria-label="t('design.focusArtboard', { name: board.title })" :title="t('design.focusArtboard', { name: board.title })" :disabled="locked" @click="emit('focus', board.id)"><ArrowsDiagonalIcon /></button>
         </header>
         <div class="design-canvas__surface" :style="{ height: `${board.height * zoom}px` }">
-          <DesignArtboardFrame :board="board" :css="displayed.css" :document-id="documentId" :revision="revision" :play="play" :selected-node-id="board.id === selectedArtboardId ? selectedNodeId : null" :zoom="zoom" :locked="locked || pan" :frozen="interacting" @select="emit('select', board.id, $event)" @styles="(nodeId, frameRevision, styles) => emit('styles', board.id, nodeId, frameRevision, styles)" @edit="emit('edit', $event)" @interaction="emit('interaction', board.id, $event)" @prototype="navigate(board.id, $event)" />
+          <DesignArtboardFrame :board="board" :css="displayed.css" :document-id="documentId" :revision="revision" :play="play" :selected-node-id="board.id === selectedArtboardId ? selectedNodeId : null" :zoom="zoom" :locked="locked || pan" :frozen="interacting" @select="emit('select', board.id, $event)" @styles="(nodeId, frameRevision, styles, properties) => emit('styles', board.id, nodeId, frameRevision, styles, properties)" @edit="emit('edit', $event)" @interaction="emit('interaction', board.id, $event)" @prototype="navigate(board.id, $event)" />
         </div>
       </article>
     </div>
@@ -24,7 +24,7 @@ import DesignArtboardFrame from './DesignArtboardFrame.vue';
 import type { DesignCanvasChange } from './design-frame';
 
 const props = defineProps<{ content: DesignContent; documentId: string; revision: number; selectedArtboardId: string | null; selectedNodeId: string | null; play: boolean; locked: boolean; interacting: boolean; pan: boolean; zoomChoice: number | 'fit' | 'selection'; pendingChange?: DesignCanvasChange | null }>();
-const emit = defineEmits<{ focus: [artboardId: string]; select: [artboardId: string, nodeId: string | null]; styles: [artboardId: string, nodeId: string, revision: number, styles: Record<string, string>]; edit: [change: DesignCanvasChange]; interaction: [artboardId: string, active: boolean]; zoom: [value: number] }>();
+const emit = defineEmits<{ focus: [artboardId: string]; select: [artboardId: string, nodeId: string | null]; styles: [artboardId: string, nodeId: string, revision: number, styles: Record<string, string>, properties: Record<string, string>]; edit: [change: DesignCanvasChange]; interaction: [artboardId: string, active: boolean]; zoom: [value: number] }>();
 function clearCanvasSelection(event: MouseEvent) {
   if (props.play || props.pan || props.locked || !props.selectedNodeId || !props.selectedArtboardId) return;
   if (event.target instanceof Element && event.target.closest('button, a, input, textarea, select, [contenteditable]')) return;

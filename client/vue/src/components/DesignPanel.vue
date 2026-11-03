@@ -58,16 +58,33 @@
               <fieldset class="design-panel__fields" :disabled="busy && !autoSaving">
                 <DesignLayers v-if="board" class="design-panel__tree" :board="board" :selected-id="current.selectedNodeId" :disabled="locked" @select="selectNode" />
                 <template v-if="selected">
-                  <FormSection v-if="!selected.children?.length && !['img', 'input', 'br', 'hr'].includes(selected.tag)" class="design-panel__section" density="compact" :title="t('design.text')">
+                  <FormSection v-if="!selected.children?.length && !['img', 'input', 'br', 'hr'].includes(selected.tag)" class="design-panel__section" density="compact" :title="t('design.textContent')">
                     <textarea v-model="textDraft" :aria-label="t('design.text')" rows="3" @input="queueApply" @change="apply" />
                   </FormSection>
                   <FormSection v-for="section in propertySections" :key="section.title" class="design-panel__section" density="compact" :title="t(section.title)">
-                    <FormRow v-for="property in section.fields" :key="property.key" as="label" :title="t(property.label)">
-                      <template #control><input v-model="styleDraft[property.key]" :aria-label="t(property.label)" @input="queueApply" @change="apply" /></template>
-                    </FormRow>
+                    <template v-for="property in section.fields" :key="property.key">
+                      <h4 v-if="property.heading" class="design-panel__subsection">{{ t(property.heading) }}</h4>
+                      <FormRow as="label" :title="t(property.label)">
+                        <template #control>
+                          <select v-if="property.key === '@layout'" :value="layoutChoice" :aria-label="t(property.label)" @change="changeLayout(($event.target as HTMLSelectElement).value)">
+                            <option v-for="option in ['block', 'row', 'column', 'grid', 'inline', 'inline-block', 'none']" :key="option" :value="option">{{ option }}</option>
+                          </select>
+                          <select v-else-if="property.key === '@type'" v-model="controlTypeDraft" :aria-label="t(property.label)" @change="queueApply">
+                            <option v-for="option in controlTypes" :key="option" :value="option">{{ option }}</option>
+                          </select>
+                          <span v-else-if="property.key === '@spacing'" class="design-panel__paired-inputs">
+                            <input v-model="styleDraft['line-height']" :aria-label="t('design.lineHeight')" :title="t('design.lineHeight')" @input="queueApply" @change="apply" />
+                            <input v-model="styleDraft['letter-spacing']" :aria-label="t('design.letterSpacing')" :title="t('design.letterSpacing')" @input="queueApply" @change="apply" />
+                          </span>
+                          <select v-else-if="property.options" v-model="styleDraft[property.key]" :aria-label="t(property.aria ?? property.label)" @change="queueApply">
+                            <option v-if="styleDraft[property.key] && !property.options.includes(styleDraft[property.key] ?? '')" :value="styleDraft[property.key]">{{ styleDraft[property.key] }}</option>
+                            <option v-for="option in property.options" :key="option" :value="option">{{ option }}</option>
+                          </select>
+                          <input v-else v-model="styleDraft[property.key]" :aria-label="t(property.aria ?? property.label)" @input="changeProperty(property.key)" @change="apply" />
+                        </template>
+                      </FormRow>
+                    </template>
                   </FormSection>
-                  <DesignLayout class="design-panel__section" :styles="styleDraft" @change="styleDraft = $event; queueApply()" />
-                  <DesignInteraction class="design-panel__section" :model-value="interactionDraft" :artboards="current.document.content.artboards" :nodes="nodes" @update:model-value="interactionDraft = $event; queueApply()" />
                 </template>
               </fieldset>
             </el-tab-pane>
@@ -120,8 +137,6 @@ import DesignCanvas from './DesignCanvas.vue';
 import DesignTools from './DesignTools.vue';
 import DesignTweaks from './DesignTweaks.vue';
 import DesignLayers from './DesignLayers.vue';
-import DesignLayout from './DesignLayout.vue';
-import DesignInteraction from './DesignInteraction.vue';
 import type { DesignCanvasChange } from './design-frame';
 
 const props = defineProps<{ agentId: string; workspace: DesignWorkspace; execute: (request: DesignRequest) => Promise<DesignResult> }>();
@@ -151,9 +166,11 @@ const buildVisible = ref(false);
 const buildDraft = ref<{ artboardId: string; title: string; notes?: string; revision: number }>();
 const historyVisible = ref(false);
 const inspectorTab = ref('properties');
-const codeStyles = ref<{ nodeId: string; revision: number; styles: Record<string, string> }>();
-function receiveStyles(artboardId: string, nodeId: string, frameRevision: number, styles: Record<string, string>) {
-  if (artboardId === board.value?.id && nodeId === (selected.value ?? board.value?.root)?.id && frameRevision === revision.value) codeStyles.value = { nodeId, revision: frameRevision, styles };
+const codeStyles = ref<{ nodeId: string; revision: number; styles: Record<string, string>; properties: Record<string, string> }>();
+function receiveStyles(artboardId: string, nodeId: string, frameRevision: number, styles: Record<string, string>, properties: Record<string, string>) {
+  if (artboardId !== board.value?.id || nodeId !== (selected.value ?? board.value?.root)?.id || frameRevision !== revision.value) return;
+  codeStyles.value = { nodeId, revision: frameRevision, styles, properties };
+  if (!dirty.value) resetDraft();
 }
 const tweakDraft = ref<{ tweakId: string; value: DesignTweakValue; expectedRevision: number; definition: DesignTweak } | null>(null);
 const canvas = ref<InstanceType<typeof DesignCanvas>>();
@@ -167,6 +184,8 @@ let applyTimer: ReturnType<typeof setTimeout> | undefined;
 const error = ref('');
 const textDraft = ref('');
 const styleDraft = ref<Record<string, string>>({});
+const styleBaseline = ref<Record<string, string>>({});
+const controlTypeDraft = ref('');
 const interactionDraft = ref<DesignInteractionValue | null>(null);
 const checkpointTitle = ref('');
 const draftRevision = ref(0);
@@ -202,16 +221,49 @@ const exportItems = computed<AppMenuItem[]>(() => [
   { type: 'action', id: 'selected', label: t('design.exportArtboard') },
   { type: 'action', id: 'all', label: t('design.exportAll') },
 ]);
-const propertySections = [
-  { title: 'design.typography', fields: [{ key: 'font-family', label: 'design.fontFamily' }, { key: 'font-size', label: 'design.fontSize' }, { key: 'color', label: 'design.color' }] },
-  { title: 'design.size', fields: [{ key: 'width', label: 'design.width' }, { key: 'height', label: 'design.height' }] },
-  { title: 'design.appearance', fields: [{ key: 'background-color', label: 'design.fill' }, { key: 'border-radius', label: 'design.radius' }] },
-];
+type InspectorField = { key: string; label: string; aria?: string; heading?: string; options?: string[] };
+const propertySections = computed<{ title: string; fields: InspectorField[] }[]>(() => [
+  { title: 'design.size', fields: [
+    { key: 'width', label: 'design.width' }, { key: 'height', label: 'design.height' },
+    { key: 'position', label: 'design.position', options: ['static', 'relative', 'absolute', 'fixed', 'sticky'] },
+    { key: 'flex-grow', label: 'design.grow' },
+  ] },
+  { title: 'design.layout', fields: [{ key: '@layout', label: 'design.layout' }, { key: 'margin', label: 'design.margin' }, { key: 'padding', label: 'design.padding' }] },
+  ...(selected.value && ['button', 'input'].includes(selected.value.tag) ? [{ title: 'design.control', fields: [{ key: '@type', label: 'design.type' }] }] : []),
+  { title: 'design.appearance', fields: [
+    { key: 'background-color', label: 'design.fill' }, { key: 'opacity', label: 'design.opacity' }, { key: 'border-radius', label: 'design.radius' },
+    { key: 'border-color', label: 'design.colorLabel', aria: 'design.borderColor', heading: 'design.border' },
+    { key: 'border-width', label: 'design.width', aria: 'design.borderWidth' },
+  ] },
+  { title: 'design.text', fields: [
+    { key: 'font-style', label: 'design.textStyle', options: ['normal', 'italic', 'oblique'] },
+    { key: 'font-family', label: 'design.font', aria: 'design.fontFamily' },
+    { key: 'font-weight', label: 'design.weight', options: ['100', '200', '300', '400', '500', '600', '700', '800', '900', 'normal', 'bold'] },
+    { key: 'font-size', label: 'design.size', aria: 'design.fontSize' }, { key: '@spacing', label: 'design.spacing' },
+    { key: 'color', label: 'design.colorLabel', aria: 'design.color' },
+    { key: 'text-align', label: 'design.align', options: ['start', 'left', 'center', 'right', 'justify', 'end'] },
+  ] },
+]);
+const controlTypes = computed(() => selected.value?.tag === 'button' ? ['button', 'submit', 'reset'] : ['text', 'email', 'password', 'number', 'tel', 'url', 'search', 'checkbox', 'radio', 'date', 'time', 'range', 'color', 'file', 'hidden']);
+const layoutChoice = computed(() => ['flex', 'inline-flex'].includes(styleDraft.value.display ?? '') ? styleDraft.value['flex-direction']?.startsWith('column') ? 'column' : 'row' : styleDraft.value.display);
+function changeLayout(layout: string) {
+  styleDraft.value.display = layout === 'row' || layout === 'column' ? 'flex' : layout;
+  if (layout === 'row' || layout === 'column') styleDraft.value['flex-direction'] = layout;
+  queueApply();
+}
+function changeProperty(property: string) {
+  if ((property === 'border-color' || property === 'border-width') && (!styleDraft.value['border-style'] || styleDraft.value['border-style'] === 'none')) styleDraft.value['border-style'] = 'solid';
+  queueApply();
+}
 watch(() => props.workspace, workspace => { current.value = workspace; });
 watch([selected, revision], () => { if (!dirty.value) resetDraft(); }, { immediate: true });
 function resetDraft() {
   textDraft.value = selected.value?.text ?? '';
-  styleDraft.value = { ...selected.value?.styles };
+  controlTypeDraft.value = selected.value?.attributes?.type ?? (selected.value?.tag === 'button' ? 'button' : 'text');
+  const inspected = codeStyles.value;
+  const applied = inspected && selected.value && inspected.nodeId === selected.value.id && inspected.revision === revision.value ? inspected.properties : {};
+  styleDraft.value = { ...applied, ...selected.value?.styles };
+  styleBaseline.value = { ...styleDraft.value };
   interactionDraft.value = selected.value?.interaction ? { ...selected.value.interaction } : selected.value?.toggleTargetId ? { type: 'toggle', nodeId: selected.value.toggleTargetId } : null;
   draftRevision.value = revision.value;
   draftNodeId.value = selected.value?.id ?? null;
@@ -237,22 +289,24 @@ async function apply() {
   const original = nodes.value.find(node => node.id === draftNodeId.value);
   if (!original) { error.value = t('design.targetRemoved'); return; }
   if (textDraft.value !== (original.text ?? '') && !original.children?.length) edits.push({ type: 'text', nodeId: draftNodeId.value, text: textDraft.value });
-  const changedStyles = Object.fromEntries(Object.entries(styleDraft.value).filter(([key, value]) => value !== (original.styles?.[key] ?? '')).map(([key, value]) => [key, value.trim() ? value : null]));
+  const changedStyles = Object.fromEntries(Object.entries(styleDraft.value).filter(([key, value]) => value !== (styleBaseline.value[key] ?? '')).map(([key, value]) => [key, value.trim() ? value : null]));
   if (Object.keys(changedStyles).length) edits.push({ type: 'style', nodeId: draftNodeId.value, styles: changedStyles });
+  if (['button', 'input'].includes(original.tag) && controlTypeDraft.value !== (original.attributes?.type ?? (original.tag === 'button' ? 'button' : 'text'))) edits.push({ type: 'attributes', nodeId: original.id, attributes: { type: controlTypeDraft.value } });
   const originalAction = original.interaction ?? (original.toggleTargetId ? { type: 'toggle', nodeId: original.toggleTargetId } : null);
   if (JSON.stringify(interactionDraft.value) !== JSON.stringify(originalAction)) edits.push({ type: 'interaction', nodeId: draftNodeId.value, interaction: interactionDraft.value });
   if (!edits.length) { resetDraft(); return; }
   const submitted = draftSignature();
+  const submittedStyles = { ...styleDraft.value };
   const submittedRevision = draftRevision.value;
   autoSaving.value = true;
   try {
     if (await mutate({ type: 'edit', expectedRevision: submittedRevision, edits })) {
       if (draftSignature() === submitted) resetDraft();
-      else { draftRevision.value = submittedRevision + 1; queueApply(); }
+      else { styleBaseline.value = submittedStyles; draftRevision.value = submittedRevision + 1; queueApply(); }
     }
   } finally { autoSaving.value = false; }
 }
-function draftSignature() { return JSON.stringify([draftNodeId.value, textDraft.value, styleDraft.value, interactionDraft.value]); }
+function draftSignature() { return JSON.stringify([draftNodeId.value, textDraft.value, styleDraft.value, interactionDraft.value, controlTypeDraft.value]); }
 function queueApply() {
   dirty.value = true;
   clearTimeout(applyTimer);
@@ -506,6 +560,9 @@ async function retryCanvas() {
 
 .design-panel__tree { padding-bottom: var(--space-6); margin-bottom: var(--space-4); border-bottom: 1px solid var(--color-border); }
 .design-panel__section { padding-block: var(--space-3); }
+.design-panel__subsection { margin: var(--space-4) 0 var(--space-2); color: var(--color-text-muted); font-size: var(--font-size-12); font-weight: var(--font-weight-medium); }
+.design-panel__paired-inputs { display: flex; flex: 1; width: 100%; gap: var(--space-2); min-width: 0; }
+.design-panel__paired-inputs input { flex: 1; min-width: 0; }
 .design-panel__fields :deep(.form-section + .form-section) { margin-top: 0; }
 .design-panel__section :deep(.form-section__group) { border: 0; border-radius: 0; background: transparent; overflow: visible; }
 .design-panel__section :deep(.form-section__header) { min-height: 0; padding-bottom: var(--space-2); }
@@ -515,11 +572,13 @@ async function retryCanvas() {
 .design-panel__section :deep(.form-row__copy strong) { color: var(--color-text-muted); font-size: var(--font-size-12); font-weight: var(--font-weight-regular); }
 .design-panel__section :deep(.form-row__control) { width: 100%; min-width: 0; }
 .design-panel .design-panel__inspector input,
+.design-panel .design-panel__inspector select,
 .design-panel .design-panel__inspector textarea { background: var(--color-surface-lowest); }
 .design-panel .design-panel__inspector input,
 .design-panel__inspector .design-panel__fields :deep(select) { height: 24px; padding: var(--space-1) var(--space-3); font-size: var(--font-size-12); line-height: 18px; }
 
 .design-panel input,
+.design-panel select,
 .design-panel textarea,
 .design-panel__history input {
   width: 100%;

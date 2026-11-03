@@ -25,6 +25,8 @@ export const messages = {
       tweaks: 'Tweaks', noTweaks: 'Ask your agent to add controls for this artboard.', fromStyles: 'From stylesheet', retryTweak: 'Apply my tweak', tweakChanged: 'This control has changed. Discard the preview and choose a new value.',
       code: 'Code', codeRegion: 'Design code', copyCode: 'Copy {format}', copiedCode: 'Copied {format}', copyFailed: 'Unable to copy. Select the code and copy it manually.',
       typography: 'Typography', size: 'Size', appearance: 'Appearance', behavior: 'Interaction',
+      textContent: 'Text content',
+      grow: 'Grow', control: 'Control', type: 'Type', opacity: 'Opacity', colorLabel: 'Color', borderColor: 'Border color', borderWidth: 'Border width', textStyle: 'Text style', font: 'Font', weight: 'Weight', spacing: 'Spacing', lineHeight: 'Line height', letterSpacing: 'Letter spacing',
       tweakValue: '{name} value', tweakHex: '{name} hex color',
       layer_group: 'Group', layer_heading: 'Heading', layer_text: 'Text', layer_button: 'Button', layer_image: 'Image', layer_input: 'Input', layer_link: 'Link', layer_row: 'Row', layer_column: 'Column',
       arrangeArtboards: 'Arrange in row', moveArtboardHint: 'Drag to move · Arrow keys to nudge · Shift for larger steps',

@@ -80,7 +80,11 @@ export function installDesignFrame(config: FrameConfig): void {
       for (const property of Array.from(target.style)) if (!property.startsWith('--') && (target === node || inherited.test(property))) properties.add(property);
     }
     const computed = getComputedStyle(node);
-    send('styles', node.id, { styles: Object.fromEntries([...properties].map(property => [property, computed.getPropertyValue(property)])) });
+    const fields = ['opacity', 'flex-grow', 'border-color', 'border-width', 'border-style', 'font-style', 'font-weight', 'line-height', 'letter-spacing', 'text-align', 'color', 'background-color', 'font-size', 'font-family', 'padding', 'gap', 'width', 'height', 'border-radius', 'display', 'flex-direction', 'justify-content', 'align-items', 'flex-wrap', 'position', 'grid-template-columns', 'flex', 'left', 'top', 'margin', 'border'];
+    send('styles', node.id, {
+      styles: Object.fromEntries([...properties].map(property => [property, computed.getPropertyValue(property)])),
+      properties: Object.fromEntries(fields.map(property => [property, computed.getPropertyValue(property)])),
+    });
   }
   window.addEventListener('message', event => {
     if (event.source !== parent || event.data?.token !== config.token || event.data.kind !== 'highlight' || config.play) return;
