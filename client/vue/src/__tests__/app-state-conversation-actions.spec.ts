@@ -1246,21 +1246,25 @@ describe('useAppState', () => {
     expect(snapshotFetches).toBeLessThan(8);
     receive({ seq: 6, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: claude.id, busy: true }) } });
     await vi.waitFor(() => expect(state.agentConversationFor(claude.id)?.claudeSnapshot?.busy).toBe(true));
-    // Only the first replay bypasses the revision fence.
-    receive({ seq: 7, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: claude.id }) } });
-    expect(state.agentConversationFor(claude.id)?.claudeSnapshot?.busy).toBe(true);
     second.resolve(remote);
-    await nextTick();
-    await nextTick();
-    expect(load).toHaveBeenCalledTimes(2);
+    // The repair burst reached the Codex pane after its first recovery completed, so it gets one catch-up load.
+    await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(3));
+    expect(load.mock.calls.map(call => call[0])).toEqual([codex.id, claude.id, codex.id]);
     expect(getSnapshotState).toHaveBeenCalledTimes(snapshotFetches);
-    receive({ seq: 8, source: 'backend', occurredAt: '', agentId: codex.id, type: 'agent.statusChanged', payload: { type: 'working' } });
+    receive({ seq: 7, source: 'backend', occurredAt: '', agentId: codex.id, type: 'agent.statusChanged', payload: { type: 'working' } });
     expect(state.activeAgent.value?.status.type).toBe('working');
     expect(state.activeCodexConversationSnapshot.value?.busy).toBe(true);
     expect(state.agentConversationFor(claude.id)?.claudeSnapshot).not.toBeNull();
-    receive({ seq: 9, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationEventReceived', payload: { revision: 3, event: { seq: 1, occurredAt: '', origin: 'notification', type: 'conversation.activityChanged', conversationId: 'thread-1', payload: { threadStatus: null, busy: false, error: null } } } });
+    // The owner restarted: its counter is below the retained frame's, yet the replay and its deltas apply.
+    receive({ seq: 8, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 1, snapshot: codexConversationSnapshot([], { busy: false }) } });
     expect(state.activeCodexConversationSnapshot.value?.busy).toBe(false);
-    receive({ seq: 10, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationEventReceived', payload: { revision: 2, event: { seq: 1, occurredAt: '', agentId: claude.id, backend: 'claude', type: 'error', payload: { message: 'post-restart' } } } });
+    receive({ seq: 9, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationEventReceived', payload: { revision: 2, event: { seq: 1, occurredAt: '', origin: 'notification', type: 'conversation.activityChanged', conversationId: 'thread-1', payload: { threadStatus: null, busy: true, error: null } } } });
+    expect(state.activeCodexConversationSnapshot.value?.busy).toBe(true);
+    // Only the first replay bypasses the revision fence.
+    receive({ seq: 10, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 1, snapshot: codexConversationSnapshot([], { busy: false }) } });
+    expect(state.activeCodexConversationSnapshot.value?.busy).toBe(true);
+    receive({ seq: 11, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: claude.id }) } });
+    receive({ seq: 12, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationEventReceived', payload: { revision: 2, event: { seq: 1, occurredAt: '', agentId: claude.id, backend: 'claude', type: 'error', payload: { message: 'post-restart' } } } });
     expect(state.agentConversationFor(claude.id)?.claudeSnapshot?.error).toBe('post-restart');
   });
 

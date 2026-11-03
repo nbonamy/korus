@@ -596,37 +596,24 @@ export function useAppState() {
     });
     return rendererSynchronization;
   }
-  // The repair window stays open until queued hydration drains, so a storm of
-  // transport gaps fans out once. Callers only wait for the snapshot sync and the
-  // enqueue, never for provider loads.
-  let conversationRepair: Promise<void> | null = null;
-  synchronizeRendererSnapshotRequest = () => {
-    if (conversationRepair) {
-      // Later gaps, client repairs and reconnects still need the app snapshot
-      // re-read and buffered events drained, even while provider hydration is
-      // queued. Only the per-pane invalidation is already pending.
-      return synchronizeRendererSnapshot(true);
+  // Every repair re-reads the app snapshot and re-marks every cached pane. Pending
+  // hydrations coalesce per agent, so a storm fans out once per pane, while a pane
+  // whose earlier recovery completed gets one catch-up load: its owner may have
+  // restarted since. Callers never wait for provider loads.
+  synchronizeRendererSnapshotRequest = async () => {
+    const cachedCodexAgentIds = Object.keys(codexConversationFramesByAgentId.value);
+    const cachedClaudeAgentIds = Object.keys(claudeConversationFramesByAgentId.value);
+    await synchronizeRendererSnapshot(true);
+    // App snapshots cannot repair provider events skipped by the global
+    // sequence fence. Refresh every cached pane from its conversation owner,
+    // including split panes and inactive agents, before trusting those frames.
+    for (const agentId of cachedCodexAgentIds) {
+      invalidateAndRecoverCodexConversation(agentId);
     }
-    const enqueued = (async () => {
-      const cachedCodexAgentIds = Object.keys(codexConversationFramesByAgentId.value);
-      const cachedClaudeAgentIds = Object.keys(claudeConversationFramesByAgentId.value);
-      await synchronizeRendererSnapshot(true);
-      // App snapshots cannot repair provider events skipped by the global
-      // sequence fence. Refresh every cached pane from its conversation owner,
-      // including split panes and inactive agents, before trusting those frames.
-      for (const agentId of cachedCodexAgentIds) {
-        invalidateAndRecoverCodexConversation(agentId);
-      }
-      for (const agentId of cachedClaudeAgentIds) {
-        invalidateAndRecoverClaudeConversation(agentId);
-      }
-      antigravityConversations.recoverAll();
-    })();
-    const repair = enqueued.then(() => conversationRecoveryTail).catch(() => undefined).finally(() => {
-      if (conversationRepair === repair) conversationRepair = null;
-    });
-    conversationRepair = repair;
-    return enqueued;
+    for (const agentId of cachedClaudeAgentIds) {
+      invalidateAndRecoverClaudeConversation(agentId);
+    }
+    antigravityConversations.recoverAll();
   };
 
   async function performRendererSynchronization(preserveActiveSelection: boolean): Promise<void> {
