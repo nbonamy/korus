@@ -212,6 +212,34 @@ describe('MissionWorkspace', () => {
     wrapper.unmount();
   });
 
+  it.each(['revision', 'run', 'stage', 'id'] as const)('retains approval and artifacts across equivalent snapshots; invalidates on %s changes', async key => {
+    const mission = missionWithRun('awaitingReview', true);
+    mission.stage = 'tickets';
+    mission.execution!.runs[0]!.stage = 'tickets';
+    mission.execution!.runs[0]!.proposal!.tickets = [{ title: 'Checkout', repositoryPath: '/repo', done: false }];
+    mission.artifactFiles = { tickets: { revision: 1, size: 12, updatedAt: '' } };
+    const readMissionArtifact = vi.fn().mockResolvedValue({ stage: 'tickets', content: 'Ticket artifact', revision: 1, updatedAt: '' });
+    const wrapper = mountWorkspace(mission, { readMissionArtifact, models: [] });
+    await flushPromises();
+    await wrapper.get('.mission-workspace__stage-header .app-button--primary').trigger('click');
+    await flushPromises();
+    const dialog = () => wrapper.find('[role="dialog"][aria-label="Start implementation"]');
+    expect(dialog().exists()).toBe(true);
+    await wrapper.setProps({ mission: structuredClone(mission) });
+    await flushPromises();
+    expect(dialog().exists()).toBe(true);
+    expect(readMissionArtifact).toHaveBeenCalledTimes(1);
+    const changed = structuredClone(mission);
+    if (key === 'revision') changed.revision++;
+    if (key === 'run') changed.execution!.runs[0]!.id = 'another-run';
+    if (key === 'stage') changed.stage = 'requirements';
+    if (key === 'id') changed.id = 'another-mission';
+    await wrapper.setProps({ mission: changed });
+    await flushPromises();
+    expect(dialog().exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it('selects the implementation model in a cancellable approval dialog without changing the lead', async () => {
     const mission = missionWithRun('awaitingReview', true);
     mission.stage = 'tickets';
@@ -766,6 +794,14 @@ describe('MissionWorkspace', () => {
     expect(readMissionArtifact).toHaveBeenCalledExactlyOnceWith(mission.id, 'requirements');
     expect(wrapper.get('[aria-label="Artifact ready for review"]').text()).toContain('Canonical billing brief');
     expect(wrapper.get('[aria-label="Artifact ready for review"]').text()).not.toContain('Teams need one bill');
+    const updated = structuredClone(mission);
+    updated.artifactFiles!.requirements!.revision++;
+    readMissionArtifact.mockResolvedValue({ stage: 'requirements', content: 'Revised canonical brief', revision: 2, updatedAt: '' });
+    await wrapper.setProps({ mission: updated });
+    await flushPromises();
+    expect(readMissionArtifact).toHaveBeenCalledTimes(2);
+    expect(wrapper.get('[aria-label="Artifact ready for review"]').text()).toContain('Revised canonical brief');
+    wrapper.unmount();
   });
 
   it('approves review before entering Ship', async () => {

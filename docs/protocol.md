@@ -34,6 +34,14 @@ shape; client navigation remains separate from the shared product operation.
 - Client commands never load conversations as a side effect. Clients request
   `agent/conversation/load` explicitly, and snapshot queries perform no
   maintenance (startup maintenance is runtime initialization).
+  Conversation loads return the full snapshot and refresh workspace metadata by
+  default. Desktop recovery opts into `omitSnapshot: true`: it hydrates provider
+  frames without workspace refresh and returns `null`, except that it returns the
+  full snapshot when hydration rebinds the agent's backend session, and it is
+  rejected while a handoff is in progress. Stdio waits for queued
+  output to drain before executing this opt-in so replay frames can be delivered.
+  Remote agents retain the full composite snapshot response.
+  Unnegotiated clients retain the default request, response and event semantics.
 - Location-scoped methods take optional `remoteConnectionId` / `location`; omitted
   means local. Agent-scoped methods route through the agent's owning location.
 - Unsupported optional capabilities answer deterministically: archive returns

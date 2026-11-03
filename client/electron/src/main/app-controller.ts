@@ -523,8 +523,8 @@ export class AppController {
       return this.compressAgentSession(agentId);
     });
 
-    ipc.handle(ipcChannels.loadConversationHistory, async (_event, agentId: string) => {
-      return this.loadConversationHistory(agentId);
+    ipc.handle(ipcChannels.loadConversationHistory, async (_event, agentId: string, options?: { recovery?: boolean }) => {
+      return this.loadConversationHistory(agentId, options);
     });
 
     ipc.handle(ipcChannels.loadAgentTurnHistory, async (_event, agentId: string, turnId: string) => {
@@ -1458,8 +1458,15 @@ export class AppController {
     ));
   }
 
-  private async loadConversationHistory(agentId: string): Promise<AppSnapshot> {
-    return this.adoptBackendMutationSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentConversationLoad, { agentId }));
+  private async loadConversationHistory(agentId: string, options?: { recovery?: boolean }): Promise<AppSnapshot> {
+    if (!options?.recovery) {
+      return this.adoptBackendMutationSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentConversationLoad, { agentId }));
+    }
+    const result = await this.requireBackendClient().request<AppSnapshot | null>(backendMethods.agentConversationLoad, { agentId, omitSnapshot: true });
+    // Older remote daemons may ignore the opt-in and return their snapshot.
+    if (result) return this.adoptBackendMutationSnapshot(result);
+    if (!this.snapshot) throw new Error('daemon snapshot is not available.');
+    return withRendererMediaUrls(this.snapshot, this.localMediaRegistry);
   }
 
   private async loadOlderAgentHistory(agentId: string): Promise<{ hasOlder: boolean }> {
