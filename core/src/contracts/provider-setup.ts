@@ -6,7 +6,7 @@ export type ProviderAuthenticationAction = { action: 'check' | 'cancel' | 'logou
 export type ProviderAuthentication =
   | { kind: 'codex'; connected: boolean; state: CodexAuthentication }
   | { kind: 'claude'; connected: boolean; state: ClaudeAuthentication }
-  | { kind: 'cursor'; connected: boolean; state: { loggedIn: boolean; homePath: string } }
+  | { kind: 'cursor'; connected: boolean; state: { loggedIn: boolean; homePath: string; version?: string; supported?: boolean; error?: string; account?: { type: 'subscription'; email?: string }; team?: string } }
   | { kind: 'antigravity'; connected: boolean; state: { loggedIn: boolean; homePath: string } };
 
 /** Runtime observation, never persisted as an enable/disable preference. */
@@ -34,7 +34,14 @@ export function isProviderConnection(value: unknown): value is ProviderConnectio
 export function isProviderAuthentication(value: unknown): value is ProviderAuthentication {
   if (!record(value) || typeof value.connected !== 'boolean' || !record(value.state)) return false;
   const state = value.state;
-  if (value.kind === 'antigravity' || value.kind === 'cursor') return typeof state.loggedIn === 'boolean' && typeof state.homePath === 'string';
+  if (value.kind === 'cursor') return typeof state.loggedIn === 'boolean' && typeof state.homePath === 'string'
+    && (state.version === undefined || typeof state.version === 'string')
+    && (state.supported === undefined || typeof state.supported === 'boolean')
+    && (state.error === undefined || typeof state.error === 'string')
+    && (state.team === undefined || typeof state.team === 'string')
+    && (state.account === undefined || (record(state.account) && state.account.type === 'subscription'
+      && (state.account.email === undefined || typeof state.account.email === 'string')));
+  if (value.kind === 'antigravity') return typeof state.loggedIn === 'boolean' && typeof state.homePath === 'string';
   if (value.kind === 'claude') return typeof state.loggedIn === 'boolean'
     && (state.executablePath === undefined || typeof state.executablePath === 'string')
     && (state.configDirectory === undefined || state.configDirectory === null || typeof state.configDirectory === 'string')

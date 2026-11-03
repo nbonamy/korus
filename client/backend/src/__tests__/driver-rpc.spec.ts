@@ -29,7 +29,6 @@ describe('BackendDriverRpc', () => {
         ['driver/prompt/send', { agent, prompt: 'Synthetic prompt' }],
         ['driver/models/list', { agent }],
         ['driver/conversation/load', { agent }],
-        ['driver/provider/authentication', { backend: 'cursor', action: 'check' }],
       ] as const) await expect(rpc.handle(method, params)).rejects.toThrow('Cursor is not available');
       expect(other.sendPrompt).not.toHaveBeenCalled();
       expect(cursor.getRuntimeStatus()).toMatchObject({ backend: 'cursor', status: 'notConfigured' });

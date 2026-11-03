@@ -8,6 +8,7 @@
           :installed="engine.installed"
           :title="backendDisplayName(engine.backend)"
           :authentication="engine.authentication"
+          :error="engine.authentication?.kind === 'cursor' ? engine.authentication.state.error || engine.error : engine.error"
           :connected="engine.connected"
           :enabled="engine.enabled"
           :busy="busy"
@@ -99,6 +100,7 @@ async function setEnabled(backend: AgentBackend, enabled: boolean) {
   } finally { if (expected === revision) busy.value = false; }
 }
 async function connect(engine: ProviderConnection) {
+  if (!engine.connected && engine.backend === 'cursor') { error.value = engine.authentication?.kind === 'cursor' && engine.authentication.state.error || translate('cursor.remoteLogin'); return; }
   if (!engine.connected && engine.backend === 'antigravity') { error.value = translate('antigravity.remoteLogin'); return; }
   if (!engine.connected) { signingIn.value = engine.backend; return; }
   busy.value = true;

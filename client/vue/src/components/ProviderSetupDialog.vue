@@ -7,10 +7,10 @@
       <p v-if="error" role="alert">{{ error }}</p>
     </div>
     <div v-else class="app-form-dialog">
-      <FormField :label="t('auth.conversations')" :help="t('auth.separateExplanation')">
+      <FormField :label="t('auth.conversations')" :help="t(setup?.backend === 'cursor' ? 'cursor.existingHome' : 'auth.separateExplanation')">
         <el-radio-group v-model="isolated" class="provider-setup__choices" :disabled="busy || (setup?.locked && !allowReset)">
           <el-radio :value="false">{{ t('auth.existingSetup') }}</el-radio>
-          <el-radio :value="true" class="provider-setup__separate">{{ t('auth.separateChats') }}</el-radio>
+          <el-radio v-if="setup?.backend !== 'cursor'" :value="true" class="provider-setup__separate">{{ t('auth.separateChats') }}</el-radio>
           <el-checkbox v-if="isolated" v-model="shareSkills" class="provider-setup__skills" :disabled="busy || (setup?.locked && !allowReset)">{{ t('auth.shareSkills') }}</el-checkbox>
         </el-radio-group>
       </FormField>
@@ -41,8 +41,8 @@ const shareSkills = ref(true);
 const confirming = ref(false);
 const acknowledged = ref(false);
 watch(() => props.setup, setup => {
-  isolated.value = setup?.isolated ?? true;
-  shareSkills.value = setup?.shareSkills ?? true;
+  isolated.value = setup?.backend === 'cursor' ? false : setup?.isolated ?? true;
+  shareSkills.value = setup?.backend === 'cursor' ? false : setup?.shareSkills ?? true;
   confirming.value = false;
   acknowledged.value = false;
 }, { immediate: true });

@@ -12,6 +12,26 @@ function setup() {
 }
 
 describe('provider upgrades', () => {
+  it('handles Cursor build versions with native hashes while waiting for idle and requiring consent', async () => {
+    let busy = true;
+    const installation = { executable: '/agent', version: '2026.10.22-27dcf5f', latestVersion: '2026.11.03-abcdef', method: 'native' as const, identity: 'cursor-build', command: { file: '/agent', args: ['update'] } };
+    const inspect = vi.fn(async () => installation);
+    const upgrade = vi.fn(async () => { installation.version = installation.latestVersion; });
+    const stopped = vi.fn(async (_backend, work: () => Promise<void>) => { await work(); });
+    const updates = new ProviderUpdates({ inspect, upgrade, busy: () => busy, withStoppedProvider: stopped });
+    const status = await updates.get('cursor', true);
+    expect(status).toMatchObject({ status: 'available', canUpgrade: true, installedVersion: installation.version });
+    expect(upgrade).not.toHaveBeenCalled();
+    expect(() => updates.request('cursor', { action: 'upgrade', confirmed: false, token: status.token })).toThrow();
+    updates.request('cursor', { action: 'upgrade', confirmed: true, token: status.token });
+    expect(upgrade).not.toHaveBeenCalled();
+    busy = false;
+    await updates.tick();
+    expect(upgrade).toHaveBeenCalledTimes(1);
+    expect(stopped).toHaveBeenCalledExactlyOnceWith('cursor', expect.any(Function));
+    expect(await updates.get('cursor')).toMatchObject({ status: 'current', installedVersion: installation.latestVersion });
+  });
+
   it('checks without installing and upgrades only with explicit fresh consent', async () => {
     const f = setup();
     const checked = await f.updates.get('codex', true);

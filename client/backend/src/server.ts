@@ -1311,9 +1311,14 @@ export class AppBackendServer {
   async requireConnectedEngine(backend?: Agent['backend']): Promise<Agent['backend']> {
     if (this.options.providerUpdates?.isUpdating(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
     if (this.providerSetup?.isChanging(backend)) throw new Error('Engine setup is changing. Try again when it finishes.');
+    if (backend === 'cursor' || (!backend && this.snapshot.providerConnections?.some(provider => provider.backend === 'cursor' && provider.connected))) {
+      this.providerConnections?.invalidate('cursor');
+    }
     await this.providerConnections?.refreshDisconnected(backend);
     if (this.options.providerUpdates?.isUpdating(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
-    return resolveAgentBackend(this.snapshot, backend);
+    const selected = resolveAgentBackend(this.snapshot, backend);
+    if (selected === 'cursor') throw new Error('Cursor is not available yet.');
+    return selected;
   }
 
   private async authenticateProvider(backend: Agent['backend'], action: 'check' | 'cancel' | 'logout' | 'login' = 'check', loginId?: string): Promise<ProviderAuthentication> {
@@ -1322,7 +1327,7 @@ export class AppBackendServer {
 
   private async observeAuthentication(authentication: ProviderAuthentication): Promise<void> {
     const { kind: backend, connected } = authentication;
-    if (connected) {
+    if (connected && backend !== 'cursor') {
       this.snapshot.general.providerEnabled = { ...this.snapshot.general.providerEnabled, [backend]: true };
     }
     this.providerConnections?.observe(backend, connected, authentication);
@@ -3344,7 +3349,7 @@ export class AppBackendServer {
       case backendMethods.providerAuthenticate: {
         const params = requireRecord(message.params);
         const backend = requireAgentBackend(params.backend);
-        if (backend !== 'antigravity' || (params.action !== 'login' && params.action !== 'cancel')) throw new Error('Unsupported native authentication action.');
+        if ((backend !== 'antigravity' && backend !== 'cursor') || (params.action !== 'login' && params.action !== 'cancel')) throw new Error('Unsupported native authentication action.');
         const authentication = await this.authenticateProvider(backend, params.action);
         this.providerConnections?.observe(backend, authentication.connected, authentication);
         await this.persistAndEmitSnapshot();

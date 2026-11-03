@@ -284,18 +284,19 @@ every boolean false and planMode unsupported.
 
 ## Current-code integration map
 
-Source inspection began at repository baseline `d035d1fb`; the transport and
-identity rows reflect the implementation checkpoints below. Other rows identify integration
-seams, not implemented Cursor features.
+Source inspection began at repository baseline `d035d1fb`; the transport,
+identity and lifecycle rows reflect the implementation checkpoints below.
+Other rows identify integration seams, not implemented Cursor features.
 
 | Owner | Existing seam and intended Cursor integration |
 | --- | --- |
 | Core identity | `core/src/contracts/shared.ts`, `contracts/backend.ts`, `backend-driver.ts`, `backend-capabilities.ts`, `settings.ts`, provider-setup contracts: Cursor identity registered, capabilities disabled and per-provider settings preserved |
 | ACP transport | `client/backend/src/acp/acp-connection.ts`: shared framing, ID separation, bounded buffers, deadlines and teardown; provider-supplied display name and optional login marker; stderr stays private |
 | Session/driver | `antigravity/session.ts`, `antigravity-host.ts`, `provider-lifecycle.ts`, `driver-rpc.ts`: Cursor owns normalization/lifecycle, provider health and explicit denial; no renderer protocol parsing |
+| Lifecycle/auth/updates | `cursor/provider-lifecycle.ts`, `cursor/authentication.ts`, `cursor/runtime.ts`: shared runtime discovery, existing home only, bounded native observations and explicit login; `provider-update-runtime.ts` uses native about/update through the shared idle/consent service |
 | Replay | `antigravity/transcript.ts`, `prompt-journal.ts`; core Antigravity replica/contracts: native history remains authoritative, journal presentation metadata only |
 | MCP | `antigravity/mcp-bridge.ts`, `sessionMcpServer`: shared scoped identity bridge; prove HTTP/SSE trust separately from these stdio probes |
-| Settings/model selection | `requirements.ts`, execution selection and persistence schemas; `client/vue/src/components/SettingsAntigravityPanel.vue`, `BackendSelector.vue`: add Cursor through existing contracts |
+| Settings/model selection | `SettingsCursorPanel.vue`, onboarding and remote connection rows expose detection/authentication/enablement and official installation instructions. Model selection remains an integration seam through `requirements.ts`, execution selection and `BackendSelector.vue` |
 | Conversation | Core provider envelopes; `client/vue/src/antigravity-conversation-state.ts`, `components/use-agent-conversation.ts`: provider-owned replica, shared UI |
 | Usage/collector | Backend usage ledger; core usage/telemetry; collector metrics: unknown pricing and collector deployment before Cursor desktop emission |
 | Mobile/workflows | Companion boundary must preserve released-client decoding. Mechanical provider registration only in Missions/review/automation/delegation; their workflow behavior stays unchanged |
@@ -392,6 +393,68 @@ unchanged. Mounted renderer checks pass (24 tests), and full lint covers all
 workspace typechecks, architecture, CSS/i18n and dead-code checks. Backend
 coverage includes the existing released-client companion regression suites;
 it does not replace ticket 13's Cursor-containing-workspace compatibility proof.
+
+## Lifecycle and connection checkpoint (Mission ticket 4)
+
+Cursor has a detect-only lifecycle and a native authentication owner behind
+`AgentBackendDriver.authenticate`. Discovery uses the shared runtime resolver for
+`agent`, then `cursor-agent`; detection alone means installed. Builds older than
+`2026.10.08` remain installed but disconnected with an update hint. Background
+version/status checks set `NO_OPEN_BROWSER=1`; only an explicit login launches
+`agent login`. Login cancellation and driver disposal terminate the process group.
+Authentication observes `isAuthenticated` and selects display-safe email/team
+names; account identifiers, credentials and diagnostics are discarded. No
+credential file or store is read by Korus.
+
+Gate 3's failed authenticated isolation proof means existing `~/.cursor` is the
+only supported home. Neither Settings nor onboarding offers a separate Cursor
+home or skill-sharing choice. Child environments clear ambient Cursor credentials
+and pin that existing config directory. Undefined environment overrides are
+intentional: the shared PATH helper merges inherited environments, so deletion
+alone would reintroduce credentials during update commands.
+
+Settings, onboarding and remote connection rows distinguish installed,
+authenticated and enabled. Cursor observations never persist enablement; the
+toggle remains an explicit setting and the last usable-engine guard still applies.
+Remote login directs the user to run `agent login` on that host. Installation
+shows the official command and documentation without executing an installer.
+The update service reads dated native versions from `about --format json`, binds
+consent to the checked installation and invokes `agent update` only while idle.
+An in-flight login counts as busy. Updates replace drivers without resetting
+conversation identities.
+
+New-work admission rechecks Cursor authentication and still rejects with
+`Cursor is not available yet`. All Cursor execution capabilities remain false;
+this checkpoint does not implement ACP execution or lift the Phase 0 gates.
+Companion/mobile producers and telemetry emission are unchanged.
+
+The production authentication adapter passed a read-only native check against
+CLI **2026.10.22-27dcf5f**: connected and supported, with display account and
+team metadata present. The retained smoke result contains only those booleans
+and the CLI version. No browser, model prompt, installer or native update was run.
+
+Behavior tests precede implementation and exercise real fake-executable child
+processes, including alias detection, version rejection, safe parsing, external
+login retry, explicit login/cancel, sanitized update environments and login/upgrade
+exclusion. Mounted Settings, onboarding and remote rows cover separate enablement,
+existing-home controls, installation instructions and unsupported-version hints.
+
+Validation uses Node 26.12.1 and npm 10.9.4. Full affected-workspace coverage
+(`npm run test:coverage -w @workspace/core -w @workspace/backend -w @workspace/vue -- --maxWorkers=2 --silent`)
+passes: core 668 tests / 85.89% statements, backend 2,807 tests / 89.22%
+statements (9 skipped), Vue 2,303 tests / 86.83% statements. Coverage thresholds
+and measured surfaces are unchanged. Full `npm run lint` passes architecture,
+all workspace typechecks, CSS/i18n and dead-code checks. The mounted checks are
+the visible-UI evidence; no installed-app rebuild or replacement is required.
+
+The broader `VITEST_MAX_WORKERS=2 npm run test:ai` run passes all seven
+workspace Vitest suites (6,648 tests, 9 skipped). Its tooling stage encountered
+one existing diff-treemap tooltip timeout; the complete tooling suite passes
+all 103 tests when rerun with `node --test --test-concurrency=1` and the same
+file set. The default-worker Git timeouts are absent with two workers. Validation
+also repaired a partial Electron dependency extraction and started the stopped
+Docker VM; container tests used scratch directories within its home mount.
+Dependency inputs, test timeouts and coverage rules are unchanged.
 
 ## Verification and learnings
 

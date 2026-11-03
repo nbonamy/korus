@@ -4,6 +4,17 @@ import { describe, expect, it } from 'vitest';
 import ProviderSetupDialog from '../ProviderSetupDialog.vue';
 
 describe('ProviderSetupDialog', () => {
+  it('does not offer an unqualified isolated home for Cursor', () => {
+    const wrapper = mount(ProviderSetupDialog, { props: {
+      setup: { backend: 'cursor', installed: true, isolated: false, shareSkills: false, homePath: '/cursor', locked: false },
+      busy: false, error: null,
+    }, global: { components: { ElCheckbox, ElRadio, ElRadioGroup }, stubs: { teleport: true } } });
+    expect(wrapper.findAll('input[type="radio"]')).toHaveLength(1);
+    expect(wrapper.text()).not.toContain('Separate chats');
+    expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it('lets Settings change skills reuse for existing chats without requesting roster removal', async () => {
     const setup = { backend: 'codex' as const, installed: true, isolated: true, shareSkills: true, homePath: '/app/codex-home', locked: true, affectedAgentIds: ['agent-one'] };
     const wrapper = mount(ProviderSetupDialog, {

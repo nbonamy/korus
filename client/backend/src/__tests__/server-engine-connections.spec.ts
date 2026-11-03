@@ -8,6 +8,31 @@ import { normalizeGeneralSettings } from '@workspace/core/settings';
 vi.mock('../claude/authentication', () => ({ getLocalClaudeAuthentication: vi.fn(), logoutLocalClaude: vi.fn() }));
 
 describe('connected engine admission', () => {
+  it('observes and enables Cursor independently but blocks work, rechecking a previously connected account', async () => {
+    const snapshot = createTestSnapshot();
+    snapshot.general.providerEnabled = { cursor: false };
+    let connected = true;
+    const handle = vi.fn(async () => ({ kind: 'cursor', connected, state: { loggedIn: connected, homePath: '/cursor' } }));
+    const server = new AppBackendServer({ version: 'test', snapshot,
+      driverRpc: { handle, onEvent: () => () => {}, close: async () => {} } as never,
+      providerSetup: { isChanging: () => false, list: () => [{ backend: 'cursor', installed: true, homePath: '/cursor' }] } as never,
+    });
+    try {
+      await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'provider/connections/get' });
+      expect(snapshot.providerConnections?.[0]).toMatchObject({ installed: true, connected: true, enabled: false });
+      expect(snapshot.general.providerEnabled?.cursor).toBe(false);
+      await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'provider/enabled/set', params: { backend: 'cursor', enabled: true } });
+      await expect(server.requireConnectedEngine('cursor')).rejects.toThrow('not available yet');
+      connected = false;
+      await expect(server.requireConnectedEngine('cursor')).rejects.toThrow('not connected');
+      expect(snapshot.providerConnections?.[0]).toMatchObject({ connected: false, enabled: true });
+      connected = true;
+      await server.handleMessage({ jsonrpc: '2.0', id: 3, method: 'provider/connections/get' });
+      expect(snapshot.providerConnections?.[0]?.connected).toBe(true);
+      await expect(server.handleMessage({ jsonrpc: '2.0', id: 4, method: 'provider/enabled/set', params: { backend: 'cursor', enabled: false } })).rejects.toThrow('last engine');
+    } finally { await server.close(); }
+  });
+
   it('admits connected Antigravity work and keeps authentication and disablement checks without a release gate', async () => {
     const snapshot = createTestSnapshot();
     let connected = false;

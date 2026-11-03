@@ -1,5 +1,6 @@
 import { utilityMcpServers } from './diagram-icons/utility-mcp';
 import { utilityImageAttachments } from './agents/utility-image-attachments';
+import { CursorAuthentication } from './cursor/authentication';
 import { cursorBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type { ExecutionObservation, RequestObservation } from '@workspace/core/usage';
 import { assertPromptSession, requireExpectedSessionId, requirePromptText } from './prompt-input';
@@ -73,13 +74,17 @@ export function createBackendDriver(backend: AgentBackend, options: BackendDrive
 
 /** Retains the provider identity without ever constructing another provider's host. */
 function unavailableCursorDriver(): AgentBackendDriver {
-  const fail = (): never => { throw new Error('Cursor is not available'); };
+  const listeners = new Set<(event: BackendEvent) => void>();
+  const authentication = new CursorAuthentication(payload => {
+    for (const listener of listeners) { try { listener({ type: 'provider.authenticationChanged', backend: 'cursor', payload }); } catch { /* Observer isolation. */ } }
+  });
+  const fail = (): never => { throw new Error('Cursor is not available yet'); };
   const reject = async (): Promise<never> => fail();
   return {
     backend: 'cursor',
     getRuntimeStatus: () => ({ backend: 'cursor', status: 'notConfigured', detail: 'Cursor is not available' }),
     getCapabilities: () => cursorBackendCapabilities,
-    authenticate: reject, getBankedResets: reject, useBankedReset: reject, getAccountRateLimits: reject,
+    authenticate: request => authentication.authenticate(request), getBankedResets: reject, useBankedReset: reject, getAccountRateLimits: reject,
     generateText: reject, generateImage: reject, runCodeReview: reject, disposeCodeReview: reject,
     tryHandlePromptCommand: fail, preparePromptOptions: fail, sendPrompt: reject,
     setConversationTitle: reject, setGoal: reject, clearGoal: reject,
@@ -94,8 +99,8 @@ function unavailableCursorDriver(): AgentBackendDriver {
     listModels: reject, listPlugins: reject, listSkills: reject,
     getRemoteControlStatus: reject, enableRemoteControl: reject, disableRemoteControl: reject,
     startDevicePairing: reject, checkDevicePairing: reject, listPairedDevices: reject, revokePairedDevice: reject,
-    onEvent: () => () => {},
-    close: async () => {},
+    onEvent: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    close: async () => { await authentication.close(); listeners.clear(); },
   };
 }
 
@@ -229,7 +234,7 @@ export class BackendDriverRpc {
   async handle(method: string, params: unknown, options: { signal?: AbortSignal } = {}): Promise<unknown> {
     const record = isRecord(params) ? params : {};
     const candidate = record.backend ?? (isRecord(record.agent) ? record.agent.backend : undefined);
-    const backend = candidate === 'codex' || candidate === 'claude' ? candidate : undefined;
+    const backend = candidate === 'codex' || candidate === 'claude' || candidate === 'cursor' ? candidate : undefined;
     if (backend) {
       if (method !== backendMethods.driverTextCancel && this.blocked(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
       this.inFlight.set(backend, (this.inFlight.get(backend) ?? 0) + 1);
@@ -246,7 +251,7 @@ export class BackendDriverRpc {
         const driver = this.requireDriver(backend);
         if (!driver.authenticate) throw new Error(`Authentication is unavailable for ${backend}.`);
         const action = record.action;
-        if (action !== 'check' && action !== 'cancel' && action !== 'logout' && !(action === 'login' && backend === 'antigravity')) throw new Error('Invalid authentication action.');
+        if (action !== 'check' && action !== 'cancel' && action !== 'logout' && !(action === 'login' && (backend === 'antigravity' || backend === 'cursor'))) throw new Error('Invalid authentication action.');
         return driver.authenticate({ action, ...(record.loginId === undefined ? {} : { loginId: requireString(record.loginId, 'loginId') }) });
       }
       case backendMethods.driverBankedResetsGet: {

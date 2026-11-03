@@ -94,6 +94,26 @@ log and socket paths, npm scripts and launchd labels stay brand-neutral.
   daemon; clients consume the filtered results. See
   [host requirements](agent-provider-selection.md#host-requirements).
 
+## Cursor
+
+The Cursor lifecycle detects `agent` or `cursor-agent` through shared runtime
+discovery; installation remains an operator action through official instructions.
+It uses the existing `~/.cursor` home. Isolated configuration is unavailable
+because native CLI state also writes outside `CURSOR_CONFIG_DIR`.
+
+Native authentication is owned by the Cursor driver. Bounded version/status
+checks suppress browser opening and reject CLI builds older than `2026.10.08`.
+Only authentication state, validated version and display-safe account/team
+metadata cross the driver boundary; credentials and native diagnostics do not.
+Explicit login owns a cancellable process group. Connection observations never
+enable Cursor, and new-work admission refreshes authentication before selection.
+Execution remains unavailable until a Cursor runtime is registered.
+
+Updates inspect native `about --format json` metadata and use native `update`
+through the shared consent and idle scheduler. Child environments explicitly
+clear ambient Cursor credentials even when PATH discovery merges environments.
+Existing-home login and updates preserve native conversation identities.
+
 ## Antigravity
 
 `client/backend/src/antigravity` owns installation and discovery of the ACP

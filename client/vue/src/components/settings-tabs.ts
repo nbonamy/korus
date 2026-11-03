@@ -20,6 +20,7 @@ export type SettingsTab =
   | "usage"
   | "browser"
   | "workflows"
+  | "cursor"
   | "antigravity"
   | "appearance"
   | "appshots"
@@ -103,6 +104,7 @@ const settingsDestinations: readonly SettingsDestination[] = [
     backend: "claude",
     aliases: "anthropic engine provider login authentication",
   },
+  { id: "cursor", labelKey: "cursor.name", group: "agents", backend: "cursor", aliases: "engine provider login authentication" },
   {
     id: "antigravity",
     labelKey: "antigravity.name",
@@ -162,6 +164,7 @@ export function availableSettingsDestinations(context: {
     (destination) =>
       (destination.id !== "browser" || context.embeddedBrowser === true) &&
       (destination.id !== "appshots" || context.appshots) &&
+      (destination.id !== "cursor" || context.availableBackends.includes("cursor")) &&
       (destination.id !== "antigravity" ||
         context.availableBackends.includes("antigravity")),
   );

@@ -3,7 +3,8 @@
     <FormRow :title="title ?? $t('engineConnection.title')" :error="error">
       <template #control>
         <template v-if="overflow">
-          <el-button v-if="installed === false" size="small" :disabled="busy || saving || updateBusy" @click="emit('install')">{{ $t('auth.installProvider') }}</el-button>
+          <ProviderInstallActions v-if="installed === false && backend === 'cursor'" backend="cursor" :busy="busy" @refresh="emit('refresh')" />
+          <el-button v-else-if="installed === false" size="small" :disabled="busy || saving || updateBusy" @click="emit('install')">{{ $t('auth.installProvider') }}</el-button>
           <el-button v-else-if="!connected && !pending" size="small" :disabled="busy || saving || updateBusy" @click="emit('connect')">{{ $t('engineConnection.connect') }}</el-button>
           <el-button v-else-if="updateAvailable && !pending" size="small" :disabled="busy || saving || updateBusy" @click="emit('upgrade')">{{ $t('engineConnection.update') }}</el-button>
           <AppMenuButton :ariaLabel="t('engineConnection.actions', { name: title })" :items="overflowItems" @select="selectOverflowItem">
@@ -99,7 +100,7 @@ const accountLabel = computed(() => {
   if (!account) return '';
   if (account.type === 'apiKey') return t('engineConnection.apiKey');
   if (account.type === 'chatgpt') return [account.email, account.planType].filter(Boolean).join(' · ');
-  if (account.type === 'subscription') return [account.email, account.subscription ?? t('engineConnection.subscription')].filter(Boolean).join(' · ');
+  if (account.type === 'subscription') return [account.email, ('subscription' in account ? account.subscription : undefined) ?? t('engineConnection.subscription')].filter(Boolean).join(' · ');
   return t('engineConnection.amazonBedrock');
 });
 const state = computed(() => {

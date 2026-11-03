@@ -83,13 +83,28 @@
               </template>
             </div>
           </div>
-          <el-button class="codex-login__continue" size="large" :loading="continuing" :disabled="Boolean(updatingProvider) || !(codexConnected && codexEnabled || claudeConnected && claudeEnabled || antigravityAvailable && antigravityConnected && antigravityEnabled)" @click="emit('continue')">
+          <div v-if="cursorAvailable" class="codex-login__provider">
+            <el-button size="large" :class="{ 'codex-login__connect--required': needsSignIn('cursor', cursorConnected) }" :disabled="missing('cursor') || cursorLoading || cursorPending || (cursorConnected && cursorEnabled) || continuing || Boolean(updatingProvider)" @click="emit('connect-cursor')">
+              <BackendIcon backend="cursor" />
+              {{ t(cursorConnected ? (cursorEnabled ? 'cursor.connected' : 'cursor.enable') : 'cursor.connect') }}
+            </el-button>
+            <div class="codex-login__detection">
+              <ProviderInstallActions v-if="missing('cursor')" backend="cursor" :busy="updatingProvider === 'cursor'" :disabled="Boolean(updatingProvider)" @refresh="emit('refresh-provider', 'cursor')" @install="emit('install-provider', 'cursor')" />
+              <button v-else-if="cursorPending" class="codex-login__cancel" type="button" @click="emit('cancel-cursor')"><i class="app-spinner" aria-hidden="true" />{{ t('auth.cancel') }}</button>
+              <template v-else>
+                <span v-if="updatingProvider === 'cursor' || cursorLoading" role="status">{{ t('auth.checking') }}</span>
+                <span v-else-if="cursorConnected || detected('cursor')"><CheckIcon aria-hidden="true" /> {{ t(cursorConnected ? 'auth.connected' : 'auth.detected') }}</span>
+              </template>
+            </div>
+          </div>
+          <el-button class="codex-login__continue" size="large" :loading="continuing" :disabled="Boolean(updatingProvider) || !(codexConnected && codexEnabled || claudeConnected && claudeEnabled || antigravityAvailable && antigravityConnected && antigravityEnabled || cursorAvailable && cursorConnected && cursorEnabled)" @click="emit('continue')">
             {{ t('auth.continue') }}
           </el-button>
         </div>
         <p v-if="error" class="codex-login__error" role="alert">{{ error }}</p>
         <p v-if="claudeError" class="codex-login__error" role="alert">{{ claudeError }}</p>
         <p v-if="antigravityAvailable && antigravityError" class="codex-login__error" role="alert">{{ antigravityError }}</p>
+        <p v-if="cursorAvailable && cursorError" class="codex-login__error" role="alert">{{ cursorError }}</p>
         <p v-if="setupError" class="codex-login__error" role="alert">{{ setupError }}</p>
       </template>
     </div>
@@ -124,6 +139,11 @@ const props = withDefaults(defineProps<{
   codexEnabled?: boolean;
   claudeEnabled?: boolean;
   claudeLoading?: boolean;
+  cursorConnected?: boolean;
+  cursorEnabled?: boolean;
+  cursorLoading?: boolean;
+  cursorPending?: boolean;
+  cursorError?: string | null;
   antigravityConnected?: boolean;
   antigravityEnabled?: boolean;
   antigravityLoading?: boolean;
@@ -135,11 +155,13 @@ const props = withDefaults(defineProps<{
   codexEnabled: true,
   claudeEnabled: true,
   antigravityEnabled: true,
+  cursorEnabled: true,
 });
 
-const emit = defineEmits<{ cancel: []; login: []; 'connect-claude': []; 'connect-antigravity': []; 'cancel-antigravity': []; continue: []; customize: [backend: AgentBackend]; 'refresh-provider': [backend: AgentBackend]; 'install-provider': [backend: AgentBackend] }>();
+const emit = defineEmits<{ cancel: []; login: []; 'connect-claude': []; 'connect-cursor': []; 'cancel-cursor': []; 'connect-antigravity': []; 'cancel-antigravity': []; continue: []; customize: [backend: AgentBackend]; 'refresh-provider': [backend: AgentBackend]; 'install-provider': [backend: AgentBackend] }>();
 const { t } = useI18n();
 const detected = (backend: AgentBackend) => props.providerSetup?.some(setup => setup.backend === backend && setup.installed);
+const cursorAvailable = computed(() => props.providerSetup?.some(setup => setup.backend === 'cursor') ?? false);
 const antigravityAvailable = computed(() => props.providerSetup?.some(setup => setup.backend === 'antigravity') ?? false);
 const missing = (backend: AgentBackend) => props.providerSetup?.some(setup => setup.backend === backend && !setup.installed);
 const needsSignIn = (backend: AgentBackend, connected?: boolean) => !connected

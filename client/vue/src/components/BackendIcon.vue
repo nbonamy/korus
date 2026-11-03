@@ -11,6 +11,7 @@ const props = defineProps<{ backend: AgentBackend; monochrome?: boolean }>();
 const icons: Partial<Record<AgentBackend, string>> = {
   codex: new URL('../shared/icons/chatgpt-icon.svg', import.meta.url).href,
   claude: new URL('../shared/icons/claude-code-icon.svg', import.meta.url).href,
+  cursor: new URL('../shared/icons/cursor-icon.svg', import.meta.url).href,
   antigravity: new URL('../shared/icons/antigravity-icon.svg', import.meta.url).href,
 };
 // Claude keeps its brand colors; the other marks are single-color glyphs that must follow the theme text color.

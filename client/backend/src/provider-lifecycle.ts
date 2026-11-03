@@ -1,3 +1,4 @@
+import { createCursorLifecycle } from './cursor/provider-lifecycle';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import type { AgentBackend, AppSnapshot, CodexResourceSharingStatus, SetCodexResourceSharingInput } from '@workspace/core/contracts';
@@ -23,7 +24,7 @@ export type ProviderLifecycle = {
 };
 
 export function createProviderLifecycles(): ReadonlyMap<AgentBackend, ProviderLifecycle> {
-  return new Map([['codex', createCodexLifecycle()], ['claude', createClaudeLifecycle()], ['antigravity', createAntigravityLifecycle()]]);
+  return new Map([['codex', createCodexLifecycle()], ['claude', createClaudeLifecycle()], ['antigravity', createAntigravityLifecycle()], ['cursor', createCursorLifecycle()]]);
 }
 
 export function providerHomePaths(backend: AgentBackend, configured: string | undefined) {

@@ -1,3 +1,4 @@
+import { cursorEnvironment, cursorVersion } from './cursor/runtime';
 import { execFile } from 'node:child_process';
 import { readFile, realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -41,7 +42,7 @@ export class ProviderUpdateRuntime {
   }
 
   async inspect(backend: AgentBackend): Promise<ProviderInstallation> {
-    if (backend === 'cursor') throw new Error('Cursor is not available');
+    if (backend === 'cursor') return this.inspectCursor();
     if (backend === 'antigravity') throw new Error('Antigravity updates are managed externally.');
     const executable = this.io.resolve(this.options.command(backend));
     if (!executable) return { method: 'manual', identity: 'missing' };
@@ -118,9 +119,25 @@ export class ProviderUpdateRuntime {
       identity: JSON.stringify([executable, resolved, version, method, channel, command]), command };
   }
 
+  private async inspectCursor(): Promise<ProviderInstallation> {
+    const executable = this.io.resolve('agent') ?? this.io.resolve('cursor-agent');
+    if (!executable) return { backend: 'cursor', method: 'manual', identity: 'cursor:missing' };
+    const resolved = await this.io.realpath(executable);
+    const about: unknown = JSON.parse(await this.io.run(executable, ['about', '--format', 'json'], 15_000, cursorEnvironment()));
+    if (!about || typeof about !== 'object' || !('cliVersion' in about) || !('latestStatus' in about)
+      || typeof about.cliVersion !== 'string' || cursorVersion(about.cliVersion) === null || typeof about.latestStatus !== 'string') {
+      throw new Error('Could not read Cursor CLI version.');
+    }
+    const latestVersion = about.latestStatus === 'up_to_date' ? about.cliVersion
+      : 'latestVersion' in about && typeof about.latestVersion === 'string' && cursorVersion(about.latestVersion) !== null ? about.latestVersion : undefined;
+    const command = latestVersion ? { file: executable, args: ['update'] } : undefined;
+    return { backend: 'cursor', executable, version: about.cliVersion, latestVersion, method: 'native',
+      identity: JSON.stringify([resolved, about.cliVersion, about.latestStatus, latestVersion]), command };
+  }
+
   async upgrade(installation: ProviderInstallation): Promise<void> {
     if (!installation.command || !installation.executable) throw new Error('Manual provider upgrade required.');
-    await this.io.run(installation.command.file, installation.command.args, 5 * 60_000, {
+    await this.io.run(installation.command.file, installation.command.args, 5 * 60_000, installation.backend === 'cursor' ? cursorEnvironment() : {
       CLAUDE_CONFIG_DIR: this.options.claudeHome(),
       ...(installation.method === 'native' && path.basename(installation.executable) === 'codex' ? { CODEX_HOME: path.join(this.io.home, '.codex') } : {}),
     });

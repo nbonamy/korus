@@ -13,6 +13,23 @@ function mountLanding(props: InstanceType<typeof CodexLoginLanding>['$props'] = 
 }
 
 describe('CodexLoginLanding', () => {
+  it('offers Cursor browser login and keeps the enabled state separate when continuing', async () => {
+    const wrapper = mountLanding({ cursorConnected: false, cursorEnabled: false, providerSetup: [
+      { backend: 'cursor', installed: true, isolated: false, shareSkills: false, homePath: '/cursor', locked: false },
+    ] });
+    await wrapper.findAll('button').find(button => button.text() === 'Connect Cursor')!.trigger('click');
+    expect(wrapper.emitted('connect-cursor')).toStrictEqual([[]]);
+    await wrapper.setProps({ cursorPending: true });
+    await wrapper.findAll('button').find(button => button.text() === 'Cancel sign-in')!.trigger('click');
+    expect(wrapper.emitted('cancel-cursor')).toStrictEqual([[]]);
+    await wrapper.setProps({ cursorPending: false, cursorConnected: true });
+    expect(wrapper.get('.codex-login__continue').attributes('disabled')).toBeDefined();
+    await wrapper.setProps({ cursorEnabled: true });
+    expect(wrapper.get('.codex-login__continue').attributes('disabled')).toBeUndefined();
+    expect(wrapper.findAll('button').some(button => button.text() === 'Customize')).toBe(false);
+    wrapper.unmount();
+  });
+
   it('hides unreleased setup and ignores stale connection state when continuing', () => {
     const wrapper = mountLanding({ providerSetup: [], antigravityConnected: true });
     expect(wrapper.text()).not.toContain('Antigravity');

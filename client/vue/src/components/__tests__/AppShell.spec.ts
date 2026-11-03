@@ -232,6 +232,47 @@ describe('AppShell authentication and conversation', () => {
     expect(completed.find('.codex-login').exists()).toBe(false);
   });
 
+  it('shows the native Cursor update hint during onboarding before starting login', async () => {
+    const snapshot = createEmptySnapshot();
+    snapshot.providerConnections = [{ backend: 'cursor', installed: true, connected: false, checking: false,
+      authentication: { kind: 'cursor', connected: false, state: { loggedIn: false, homePath: '/cursor', supported: false, error: 'Update Cursor CLI to 2026.10.08 or newer.' } } }];
+    const authenticateProvider = vi.fn();
+    setElectronTestClient({ getProviderSetup: vi.fn().mockResolvedValue([
+      { backend: 'cursor', installed: true, isolated: false, shareSkills: false, homePath: '/cursor', locked: false },
+    ]), authenticateProvider });
+    const wrapper = mountShell({ snapshot });
+    try {
+      await flushPromises();
+      expect(wrapper.get('.codex-login').text()).toContain('Update Cursor CLI to 2026.10.08');
+      expect(authenticateProvider).not.toHaveBeenCalled();
+    } finally { wrapper.unmount(); }
+  });
+
+  it('runs Cursor login only after Connect and cancels it without changing engine enablement', async () => {
+    const snapshot = createEmptySnapshot();
+    snapshot.providerConnections = [{ backend: 'cursor', installed: true, connected: false, enabled: false, checking: false }];
+    let settle!: (value: import('@workspace/core/contracts/provider-setup').ProviderAuthentication) => void;
+    const disconnected = { kind: 'cursor', connected: false, state: { loggedIn: false, homePath: '/cursor' } } as const;
+    const authenticateProvider = vi.fn((_backend, action) => action === 'login'
+      ? new Promise<import('@workspace/core/contracts/provider-setup').ProviderAuthentication>(resolve => { settle = resolve; }) : (settle(disconnected), Promise.resolve(disconnected)));
+    const setProviderEnabled = vi.fn().mockResolvedValue([]);
+    setElectronTestClient({ getProviderSetup: vi.fn().mockResolvedValue([
+      { backend: 'cursor', installed: true, isolated: false, shareSkills: false, homePath: '/cursor', locked: false },
+    ]), authenticateProvider, setProviderEnabled });
+    const wrapper = mountShell({ snapshot });
+    try {
+      await flushPromises();
+      expect(authenticateProvider).not.toHaveBeenCalled();
+      await wrapper.findAll('button').find(button => button.text() === 'Connect Cursor')!.trigger('click');
+      await flushPromises();
+      expect(authenticateProvider).toHaveBeenCalledWith('cursor', 'login');
+      await wrapper.findAll('button').find(button => button.text() === 'Cancel sign-in')!.trigger('click');
+      await flushPromises();
+      expect(authenticateProvider).toHaveBeenCalledWith('cursor', 'cancel');
+      expect(setProviderEnabled).not.toHaveBeenCalled();
+    } finally { wrapper.unmount(); }
+  });
+
   it('narrows to the provider being authorized, hides Continue, and restores the list on cancel', async () => {
     setFirstRunOnboardingStage('repositories');
     const snapshot = createInitialSnapshot();

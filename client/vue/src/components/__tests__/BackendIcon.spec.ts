@@ -3,12 +3,7 @@ import { describe, expect, it } from 'vitest';
 import BackendIcon from '../BackendIcon.vue';
 
 describe('BackendIcon', () => {
-  it('does not display another provider mark for an identity whose icon is not implemented', () => {
-    const wrapper = mount(BackendIcon, { props: { backend: 'cursor' } });
-    expect(wrapper.find('.backend-icon').exists()).toBe(false);
-    wrapper.unmount();
-  });
-  it.each(['codex', 'antigravity'] as const)('renders the %s mark in the surrounding text color so it follows the theme', (backend) => {
+  it.each(['codex', 'antigravity', 'cursor'] as const)('renders the %s mark in the surrounding text color so it follows the theme', (backend) => {
     const wrapper = mount(BackendIcon, { props: { backend }, attachTo: document.body });
     const icon = wrapper.get('.backend-icon');
     expect(wrapper.find('img').exists()).toBe(false);
