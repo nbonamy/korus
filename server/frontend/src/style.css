@@ -287,6 +287,11 @@ label {
   flex-wrap: wrap;
 }
 .section-heading .muted,
+.masthead-subtitle {
+  margin-top: 2px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
 .panel-heading .muted {
   font-size: 11px;
 }

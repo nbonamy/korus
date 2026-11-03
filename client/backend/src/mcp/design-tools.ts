@@ -44,7 +44,7 @@ function register(server: McpServer, service: DesignService, agentId: string) {
     inputSchema: { content: z.object({ title: z.string().min(1).max(200), css: z.string().max(50_000).describe('Fallback stylesheet for artboards without their own css. Not combined with artboard css.'), comments: z.array(z.never()).max(0), artboards: z.array(artboard).min(1).max(12), tweaks: z.array(tweak).max(200).optional() }) },
   }, ({ content }) => run({ type: 'create', content }));
   server.registerTool('edit-design', {
-    description: 'Apply one undoable batch at the exact revision just read. Preserve manual edits. Text targets a leaf; insert/remove/duplicate targets a subtree. Move uses a destination container and its final zero-based child index within the same artboard. Null style or attribute values remove overrides. Artboard add/duplicate creates an independent alternative; update changes only metadata, size, notes or its own CSS. Duplicate remaps stable IDs and interaction targets. Choose records the user’s preferred direction. Never regenerate unchanged nodes.',
+    description: 'Apply one undoable batch at the exact revision just read. Preserve manual edits. Text targets a leaf; insert/remove/duplicate targets a subtree. Move uses a destination container and its final zero-based child index within the same artboard. Null style or attribute values remove overrides. Artboard add/duplicate creates an independent alternative; update changes only metadata, size, notes or its own CSS. Duplicate remaps stable IDs and interaction targets. Never regenerate unchanged nodes.',
     inputSchema: { ...revision, edits: z.array(z.discriminatedUnion('type', [
       z.object({ type: z.literal('tweak-set'), tweak }),
       z.object({ type: z.literal('tweak-remove'), tweakId: z.string() }),
@@ -62,7 +62,6 @@ function register(server: McpServer, service: DesignService, agentId: string) {
       z.object({ type: z.literal('artboard-update'), artboardId: z.string(), changes: artboard.pick({ title: true, width: true, height: true, css: true, notes: true, position: true }).partial() }),
       z.object({ type: z.literal('artboard-remove'), artboardId: z.string() }),
       z.object({ type: z.literal('artboard-move'), artboardId: z.string(), index: z.number().int().nonnegative() }),
-      z.object({ type: z.literal('choose-artboard'), artboardId: z.string().nullable() }),
     ])).min(1).max(100) },
   }, ({ expectedRevision, edits }) => run({ type: 'edit', expectedRevision, edits }));
   server.registerTool('capture-design', { description: 'Capture a saved artboard as a PNG at its exact revision. Supply artboardId to inspect each alternative without changing the user’s selection. Requires the desktop host.', inputSchema: { ...revision, artboardId: z.string().optional() } }, async ({ expectedRevision, artboardId }) => {

@@ -776,7 +776,7 @@ function annotationCaptureScript(): string {
     style.textContent = '* { cursor: crosshair !important; }';
     document.documentElement.append(style);
     const highlight = document.createElement('div');
-    highlight.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483646;border:3px solid #0a84ff;background:rgba(10,132,255,.18);box-sizing:border-box;display:none;';
+    highlight.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483646;border:3px solid #0c72ee;background:rgba(12,114,238,.18);box-sizing:border-box;display:none;';
     document.documentElement.append(highlight);
     let start = null;
     let hovered = null;

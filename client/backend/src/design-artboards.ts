@@ -40,6 +40,7 @@ export function applyArtboardEdit(content: DesignContent, edit: ArtboardEdit): v
     boards.splice(index, 0, structuredClone(edit.artboard));
     return;
   }
+  // Retain the legacy edit contract for existing clients and saved history.
   if (edit.type === 'choose-artboard' && edit.artboardId === null) { delete content.chosenArtboardId; return; }
   const index = boards.findIndex(board => board.id === edit.artboardId);
   if (index === -1) throw new Error('Design artboard not found.');

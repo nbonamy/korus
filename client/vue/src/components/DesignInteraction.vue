@@ -1,23 +1,28 @@
 <template>
-  <div class="design-interaction">
-    <FormField density="compact" :label="t('design.onClick')">
+  <FormSection class="design-interaction" density="compact" :title="t('design.behavior')">
+    <FormRow as="label" :title="t('design.onClick')">
+      <template #control>
       <select :value="modelValue?.type ?? ''" :aria-label="t('design.onClick')" @change="changeType(($event.target as HTMLSelectElement).value)">
         <option value="">{{ t('design.noInteraction') }}</option>
         <option v-for="action in actions" :key="action" :value="action">{{ t(`design.action_${action}`) }}</option>
       </select>
-    </FormField>
-    <FormField v-if="modelValue && modelValue.type !== 'back'" density="compact" :label="t('design.interactionTarget')">
+      </template>
+    </FormRow>
+    <FormRow v-if="modelValue && modelValue.type !== 'back'" as="label" :title="t('design.interactionTarget')">
+      <template #control>
       <select :value="target" :aria-label="t('design.interactionTarget')" @change="changeTarget(($event.target as HTMLSelectElement).value)">
         <option v-for="item in targets" :key="item.id" :value="item.id">{{ item.label }}</option>
       </select>
-    </FormField>
-  </div>
+      </template>
+    </FormRow>
+  </FormSection>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { DesignArtboard, DesignInteraction, DesignNode } from '@workspace/core/design';
-import FormField from '../shared/form/FormField.vue';
+import FormSection from '../shared/form/FormSection.vue';
+import FormRow from '../shared/form/FormRow.vue';
 import { translate as t } from '../i18n';
 const props = defineProps<{ modelValue: DesignInteraction | null; artboards: DesignArtboard[]; nodes: DesignNode[] }>();
 const emit = defineEmits<{ 'update:modelValue': [value: DesignInteraction | null] }>();
@@ -40,17 +45,13 @@ function changeTarget(id: string) {
 </script>
 
 <style scoped>
-.design-interaction {
-  display: grid;
-  gap: var(--space-2);
-}
 .design-interaction select {
   width: 100%;
   min-width: 0;
   padding: var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  background: var(--color-surface);
+  background: var(--color-surface-lowest);
   color: var(--color-text);
   font: inherit;
 }

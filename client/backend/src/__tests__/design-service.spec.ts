@@ -274,7 +274,7 @@ it('rejects unsafe content, invalid targets and edits atomically, and rolls back
 
 // Exploration must never alias a copy's identities, styles or interaction targets
 // to the original. Editing, removing and recovering alternatives must survive disk.
-it('branches independent artboards, preserves the chosen direction and recovers exploration after reload', async () => {
+it('branches independent artboards, retains legacy metadata and recovers exploration after reload', async () => {
   directory = await mkdtemp(path.join(os.tmpdir(), 'design-alternatives-'));
   const store = new AppStateStore(directory);
   let snapshot = createInitialSnapshot();
@@ -339,6 +339,6 @@ it('branches independent artboards, preserves the chosen direction and recovers 
   expect(exported.html).toContain('My headline');
   expect(exported.html).not.toContain('Different direction');
   expect(exported.handoff).toContain('Editorial hierarchy');
-  expect(exported.handoff).toContain('Chosen direction: Desktop');
+  expect(exported.handoff).not.toContain('Chosen direction:');
   expect((await store.load()).agents[0].designWorkspace).toStrictEqual(exported.workspace);
 });

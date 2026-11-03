@@ -2,12 +2,10 @@
   <div class="design-review-bar">
     <div v-if="commenting" class="design-review-bar__comment"><slot name="comment" /></div>
     <div class="design-review-bar__summary">
-      <strong>{{ board.title }}</strong>
-      <p v-if="board.notes">{{ board.notes }}</p>
+      <strong :title="board.title">{{ board.title }}</strong>
     </div>
     <div class="design-review-bar__actions">
-      <button class="app-icon-button" type="button" :aria-label="t('design.reviewComment')" :title="t('design.reviewComment')" :disabled="disabled" @click="emit('comment')"><MessageCircleIcon /></button>
-      <button class="app-icon-button" type="button" :aria-label="t(chosen ? 'design.chosen' : 'design.chooseDirection')" :title="t(chosen ? 'design.chosen' : 'design.chooseDirection')" :aria-pressed="chosen" :disabled="disabled || chosen" @click="emit('choose')"><CheckIcon /></button>
+      <button class="app-button app-button--secondary" type="button" :aria-label="t('design.reviewComment')" :title="t('design.reviewComment')" :disabled="disabled" @click="emit('comment')"><MessageCircleIcon />{{ t('design.commentAction') }}</button>
       <button class="app-button app-button--primary" type="button" data-action="build" :disabled="disabled" @click="emit('build')"><CodeIcon />{{ t('design.buildThis') }}</button>
     </div>
   </div>
@@ -16,16 +14,16 @@
 <script setup lang="ts">
 import type { DesignArtboard } from '@workspace/core/design';
 import { translate as t } from '../i18n';
-import { CheckIcon, CodeIcon, MessageCircleIcon } from '../shared/icons/app-icons';
-defineProps<{ board: DesignArtboard; chosen: boolean; disabled: boolean; commenting: boolean }>();
-const emit = defineEmits<{ comment: []; choose: []; build: [] }>();
+import { CodeIcon, MessageCircleIcon } from '../shared/icons/app-icons';
+defineProps<{ board: DesignArtboard; disabled: boolean; commenting: boolean }>();
+const emit = defineEmits<{ comment: []; build: [] }>();
 </script>
 
 <style scoped>
 .design-review-bar {
   position: absolute;
   z-index: 2;
-  bottom: var(--space-4);
+  bottom: var(--space-8);
   left: 50%;
   transform: translateX(-50%);
   width: max-content;
@@ -33,8 +31,8 @@ const emit = defineEmits<{ comment: []; choose: []; build: [] }>();
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-3) var(--space-4);
+  gap: var(--space-12);
+  padding: var(--space-6) var(--space-8);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-surface);
@@ -64,20 +62,10 @@ const emit = defineEmits<{ comment: []; choose: []; build: [] }>();
   white-space: nowrap;
   font-weight: var(--font-weight-medium);
 }
-.design-review-bar__summary p {
-  margin: var(--space-1) 0 0;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-12);
-  line-height: var(--line-height-18);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
 .design-review-bar__actions {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-4);
   flex: none;
 }
 .design-review-bar__actions .app-button {
@@ -90,8 +78,10 @@ const emit = defineEmits<{ comment: []; choose: []; build: [] }>();
   width: var(--icon-sm);
   height: var(--icon-sm);
 }
-.design-review-bar__actions [aria-pressed="true"] {
-  color: var(--color-primary);
-  opacity: 1;
+
+@container design-canvas-controls (max-width: 420px) {
+  .design-review-bar { flex-wrap: wrap; }
+  .design-review-bar__summary { flex-basis: 100%; max-width: 100%; }
+  .design-review-bar__actions { margin-left: auto; }
 }
 </style>

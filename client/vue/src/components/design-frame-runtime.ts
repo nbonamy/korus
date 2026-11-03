@@ -11,6 +11,7 @@ export function installDesignFrame(config: FrameConfig): void {
   const authored = (target: EventTarget | null) => target instanceof Element ? target.closest<HTMLElement>('[data-design-id]') : null;
   const px = (value: number) => `${Math.round(value * 100) / 100}px`;
   let selected = element(config.selected);
+  let hovered: HTMLElement | null = null;
   let locked = false;
   let zoom = 1;
   let editing: HTMLElement | null = null;
@@ -18,7 +19,11 @@ export function installDesignFrame(config: FrameConfig): void {
   let selectTimer: ReturnType<typeof setTimeout> | undefined;
   const overlay = document.createElement('div');
   overlay.dataset.designEditor = '';
-  overlay.style.cssText = 'all:initial;position:fixed;box-sizing:border-box;pointer-events:none;z-index:2147483647;border:1px solid Highlight';
+  overlay.style.cssText = 'all:initial;position:fixed;box-sizing:border-box;pointer-events:none;z-index:2147483647;border:2px solid Highlight';
+  const hover = document.createElement('div');
+  hover.dataset.designEditor = '';
+  hover.dataset.designHover = '';
+  hover.style.cssText = 'all:initial;position:fixed;box-sizing:border-box;pointer-events:none;z-index:2147483646;display:none;border:1px solid Highlight;background:color-mix(in srgb, Highlight 12%, transparent)';
   const marker = document.createElement('div');
   marker.dataset.designEditor = '';
   marker.style.cssText = 'all:initial;position:fixed;pointer-events:none;z-index:2147483647;background:Highlight;display:none';
@@ -27,38 +32,86 @@ export function installDesignFrame(config: FrameConfig): void {
     button.type = 'button';
     button.dataset.resize = direction;
     button.setAttribute('aria-label', config.labels[direction === 'e' ? 'width' : direction === 's' ? 'height' : 'size']);
-    button.style.cssText = `all:initial;display:block;position:absolute;box-sizing:border-box;pointer-events:auto;background:Canvas;border:1px solid Highlight;cursor:${direction}-resize`;
+    button.style.cssText = `all:initial;display:block;position:absolute;box-sizing:border-box;pointer-events:auto;background:Canvas;border:2px solid Highlight;cursor:${direction}-resize`;
     overlay.append(button);
     return button;
   });
-  if (!config.play) document.body.append(overlay, marker);
+  if (!config.play) document.body.append(hover, overlay, marker);
+  function drawHover() {
+    hover.style.display = hovered?.isConnected && hovered !== selected && !locked && !editing && !gesture ? 'block' : 'none';
+    if (hover.style.display === 'none' || !hovered) return;
+    const bounds = hovered.getBoundingClientRect();
+    Object.assign(hover.style, { left: px(bounds.left), top: px(bounds.top), width: px(bounds.width), height: px(bounds.height), borderWidth: px(1 / zoom) });
+  }
   function draw() {
+    drawHover();
     overlay.style.display = selected && selected.isConnected && !editing && !config.play ? 'block' : 'none';
     if (!selected) return;
     const bounds = selected.getBoundingClientRect();
-    Object.assign(overlay.style, { left: px(bounds.left), top: px(bounds.top), width: px(bounds.width), height: px(bounds.height), borderWidth: px(1 / zoom) });
+    Object.assign(overlay.style, { left: px(bounds.left), top: px(bounds.top), width: px(bounds.width), height: px(bounds.height), borderWidth: px(2 / zoom) });
     for (const handle of handles) {
       handle.style.display = locked ? 'none' : 'block';
       const direction = handle.dataset.resize!;
-      Object.assign(handle.style, { width: px(9 / zoom), height: px(9 / zoom), right: px(-11 / zoom), bottom: px(-11 / zoom), borderWidth: px(1 / zoom) });
+      Object.assign(handle.style, { width: px(9 / zoom), height: px(9 / zoom), right: px(-5.5 / zoom), bottom: px(-5.5 / zoom), borderWidth: px(2 / zoom) });
       if (direction === 'e') handle.style.bottom = `calc(50% - ${px(4.5 / zoom)})`;
       if (direction === 's') handle.style.right = `calc(50% - ${px(4.5 / zoom)})`;
     }
+  }
+  function inspectStyles(node: HTMLElement) {
+    const properties = new Set<string>();
+    const inherited = /^(color$|font|line-height$|letter-spacing$|word-spacing$|text-|white-space$|cursor$|visibility$)/;
+    const collect = (rules: CSSRuleList, target: HTMLElement) => {
+      for (const rule of Array.from(rules)) {
+        if (rule instanceof CSSMediaRule && !matchMedia(rule.conditionText).matches) continue;
+        if (rule instanceof CSSSupportsRule && !CSS.supports(rule.conditionText)) continue;
+        if (rule instanceof CSSStyleRule) {
+          try {
+            if (target.matches(rule.selectorText)) for (const property of Array.from(rule.style)) {
+              if (!property.startsWith('--') && (target === node || inherited.test(property))) properties.add(property);
+            }
+          } catch { /* Selectors for pseudo-elements do not describe this node. */ }
+        }
+        if ('cssRules' in rule) collect((rule as CSSGroupingRule).cssRules, target);
+      }
+    };
+    const sheet = document.querySelector<HTMLStyleElement>('style[data-design-authored]')?.sheet;
+    for (let target: HTMLElement | null = node; target; target = target.parentElement) {
+      if (sheet) collect(sheet.cssRules, target);
+      for (const property of Array.from(target.style)) if (!property.startsWith('--') && (target === node || inherited.test(property))) properties.add(property);
+    }
+    const computed = getComputedStyle(node);
+    const fields = ['opacity', 'flex-grow', 'border-color', 'border-width', 'border-style', 'font-style', 'font-weight', 'line-height', 'letter-spacing', 'text-align', 'color', 'background-color', 'font-size', 'font-family', 'padding', 'gap', 'width', 'height', 'border-radius', 'display', 'flex-direction', 'justify-content', 'align-items', 'flex-wrap', 'position', 'grid-template-columns', 'flex', 'left', 'top', 'margin', 'border'];
+    send('styles', node.id, {
+      styles: Object.fromEntries([...properties].map(property => [property, computed.getPropertyValue(property)])),
+      properties: Object.fromEntries(fields.map(property => [property, computed.getPropertyValue(property)])),
+    });
   }
   window.addEventListener('message', event => {
     if (event.source !== parent || event.data?.token !== config.token || event.data.kind !== 'highlight' || config.play) return;
     if (!gesture?.active && !editing) selected = element(event.data.nodeId);
     locked = Boolean(event.data.locked);
     if (typeof event.data.zoom === 'number' && event.data.zoom > 0) zoom = event.data.zoom;
+    const color = event.data.selectionColor;
+    if (typeof color === 'string' && CSS.supports('color', color)) {
+      for (const element of [overlay, hover, ...handles]) element.style.borderColor = color;
+      marker.style.backgroundColor = color;
+      hover.style.backgroundColor = `color-mix(in srgb, ${color} 12%, transparent)`;
+    }
     draw();
+    const inspected = element(event.data.inspectNodeId ?? event.data.nodeId);
+    if (inspected instanceof HTMLElement) inspectStyles(inspected);
   });
   window.addEventListener('resize', draw);
   document.addEventListener('scroll', draw, true);
   document.addEventListener('submit', event => event.preventDefault());
   document.addEventListener('click', event => {
     if (suppressClick) { event.preventDefault(); event.stopPropagation(); suppressClick = false; return; }
+    if (event.target instanceof Element && event.target.closest('[data-design-editor]')) return;
     const node = authored(event.target);
-    if (!node) return;
+    if (!node) {
+      if (!locked && !editing) { clearTimeout(selectTimer); selected = null; hovered = null; draw(); send('select', null); }
+      return;
+    }
     if (editing) return;
     event.preventDefault(); event.stopPropagation();
     if (!locked) {
@@ -141,11 +194,13 @@ export function installDesignFrame(config: FrameConfig): void {
       left: computed.left === 'auto' ? node.offsetLeft - (parseFloat(computed.marginLeft) || 0) : parseFloat(computed.left),
       top: computed.top === 'auto' ? node.offsetTop - (parseFloat(computed.marginTop) || 0) : parseFloat(computed.top),
       free, resize: handle, active: false, styles: {}, drop: null };
+    hovered = null; drawHover();
     node.setPointerCapture(event.pointerId);
   });
   document.addEventListener('pointermove', event => {
     const current = gesture;
-    if (!current || current.pointerId !== event.pointerId) return;
+    if (!current) { hovered = authored(event.target); drawHover(); return; }
+    if (current.pointerId !== event.pointerId) return;
     const dx = event.clientX - current.x, dy = event.clientY - current.y;
     if (!current.active && Math.hypot(dx, dy) * zoom < 4) return;
     if (!current.active) { clearTimeout(selectTimer); current.active = true; selected = current.node; send('interaction-start', current.node.id); getSelection()?.removeAllRanges(); }
@@ -166,6 +221,7 @@ export function installDesignFrame(config: FrameConfig): void {
     }
     draw();
   });
+  document.addEventListener('pointerout', event => { if (!event.relatedTarget) { hovered = null; drawHover(); } });
   function finish(cancelled: boolean) {
     const current = gesture; gesture = null;
     if (!current) return;

@@ -1,23 +1,27 @@
 <template>
-  <details class="design-layout">
-    <summary>{{ t('design.layout') }}</summary>
+  <FormSection class="design-layout" density="compact" :title="t('design.layout')">
     <div class="design-layout__fields">
-      <FormField v-for="field in fields" :key="field.key" density="compact" :label="t(field.label)">
+      <FormRow v-for="field in fields" :key="field.key" as="label" :title="t(field.label)">
+        <template #control>
         <select :value="styles[field.key] ?? ''" :aria-label="t(field.label)" @change="change(field.key, $event)">
           <option value="">{{ t('design.inherit') }}</option>
           <option v-for="value in field.values" :key="value" :value="value">{{ value }}</option>
         </select>
-      </FormField>
-      <FormField v-for="field in dimensions" :key="field.key" density="compact" :label="t(field.label)">
+        </template>
+      </FormRow>
+      <FormRow v-for="field in dimensions" :key="field.key" as="label" :title="t(field.label)">
+        <template #control>
         <input :value="styles[field.key] ?? ''" :aria-label="t(field.label)" @input="change(field.key, $event)" />
-      </FormField>
+        </template>
+      </FormRow>
     </div>
-  </details>
+  </FormSection>
 </template>
 
 <script setup lang="ts">
 import { translate as t } from '../i18n';
-import FormField from '../shared/form/FormField.vue';
+import FormSection from '../shared/form/FormSection.vue';
+import FormRow from '../shared/form/FormRow.vue';
 const props = defineProps<{ styles: Record<string, string> }>();
 const emit = defineEmits<{ change: [styles: Record<string, string>] }>();
 const fields = [
@@ -29,6 +33,7 @@ const fields = [
   { key: 'position', label: 'design.position', values: ['static', 'relative', 'absolute', 'fixed', 'sticky'] },
 ];
 const dimensions = [
+  { key: 'padding', label: 'design.padding' }, { key: 'gap', label: 'design.gap' },
   { key: 'grid-template-columns', label: 'design.columns' }, { key: 'flex', label: 'design.flex' },
   { key: 'left', label: 'design.left' }, { key: 'top', label: 'design.top' },
   { key: 'margin', label: 'design.margin' }, { key: 'border', label: 'design.border' },
@@ -37,16 +42,9 @@ function change(key: string, event: Event) { emit('change', { ...props.styles, [
 </script>
 
 <style scoped>
-.design-layout summary {
-  cursor: pointer;
-  font-weight: 500;
-  padding-block: var(--space-1);
-}
 .design-layout__fields {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
-  padding-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
 }
 .design-layout select,
 .design-layout input {
@@ -55,7 +53,7 @@ function change(key: string, event: Event) { emit('change', { ...props.styles, [
   padding: var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  background: var(--color-surface);
+  background: var(--color-surface-lowest);
   color: var(--color-text);
   font: inherit;
 }

@@ -138,7 +138,10 @@ const props = defineProps<{
     order?: number;
     /** False for zeroes supplied only to keep the plotted stack continuous. */
     observed?: boolean[];
+    /** True for bars still accumulating (today); drawn hatched in bar charts. */
+    partial?: boolean[];
   }[];
+  dayLabels?: Record<string, string>;
   variant?: "line" | "bar" | "stacked";
   stacked?: boolean;
   measure: Measure;
@@ -179,6 +182,7 @@ const configuration = computed(() =>
       stacked: props.stacked,
       legend: false,
       area: props.area,
+      dayLabels: props.dayLabels,
     },
     theme.value,
     (index) => (active.value = index),

@@ -25,6 +25,8 @@ export type AnalyticsSeries = {
   color: string;
   order?: number;
   values: readonly (string | number | null)[];
+  /** Bars still accumulating (today); drawn hatched so they don't read as a drop. */
+  partial?: readonly boolean[];
 };
 export type AnalyticsChartSpec = {
   days: readonly string[];
@@ -36,6 +38,8 @@ export type AnalyticsChartSpec = {
   locale?: string;
   area?: "gradient" | "solid" | "none";
   bounds?: { min: number; max: number; step: number };
+  /** Replaces the axis label of a day, e.g. to mark the day in progress. */
+  dayLabels?: Readonly<Record<string, string>>;
 };
 export type AnalyticsChartTheme = {
   text: string;
@@ -72,6 +76,29 @@ export function analyticsNumber(
   return Number.isFinite(number) && Math.abs(number) <= Number.MAX_SAFE_INTEGER
     ? number
     : null;
+}
+// The tile comes from the chart's own document so the core stays DOM-free.
+function hatched(
+  color: string,
+  surface: string,
+  owner: ScriptableContext<"line">["chart"]["canvas"] | undefined,
+) {
+  const tile = owner?.ownerDocument?.createElement("canvas");
+  const ctx = tile?.getContext("2d");
+  if (!tile || !ctx) return color;
+  tile.width = tile.height = 8;
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, 8, 8);
+  ctx.strokeStyle = surface;
+  ctx.globalAlpha = 0.55;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  for (const shift of [-8, 0, 8]) {
+    ctx.moveTo(shift, 8);
+    ctx.lineTo(shift + 8, 0);
+  }
+  ctx.stroke();
+  return ctx.createPattern(tile, "repeat") ?? color;
 }
 export function analyticsDay(
   day: string,
@@ -201,6 +228,8 @@ export function buildAnalyticsChart(
           borderColor: color,
           borderWidth: 2,
           backgroundColor: (context: ScriptableContext<"line">) => {
+            if (type === "bar" && row.partial?.[context.dataIndex])
+              return hatched(color, theme.surface, context.chart?.canvas);
             if (rate || type === "bar" || spec.area === "solid") return color;
             const { chart } = context,
               area = chart.chartArea;
@@ -290,6 +319,7 @@ export function buildAnalyticsChart(
           maxTicksLimit: 7,
           maxRotation: 0,
           callback: (_value, index) =>
+            spec.dayLabels?.[spec.days[index]!] ??
             analyticsDay(spec.days[index]!, false, spec.locale),
         },
       },

@@ -104,7 +104,7 @@ it('hydrates an authored design and exports an isolated, interactive HTML docume
   }
 });
 
-it('exports alternatives with independent document styling and keeps the chosen direction', () => {
+it('exports alternatives with independent styling and no preferred-direction labels from legacy metadata', () => {
   const content: DesignContent = { title: 'Alternatives', css: 'h1{color:red}', comments: [], chosenArtboardId: 'second', artboards: [
     { id: 'first', title: 'Editorial', width: 900, height: 600, root: { id: 'first-heading', tag: 'h1', text: 'First' } },
     { id: 'second', title: 'Compact', width: 500, height: 700, css: 'h1{color:blue}', root: { id: 'second-heading', tag: 'h1', text: 'Second' } },
@@ -112,6 +112,7 @@ it('exports alternatives with independent document styling and keeps the chosen 
   expect(isDesignContent(content)).toBe(true);
   const page = new JSDOM(exportDesign(content));
   try {
+    expect([...page.window.document.querySelectorAll('section > h2')].map(title => title.textContent)).toStrictEqual(['Editorial', 'Compact']);
     const frames = [...page.window.document.querySelectorAll('iframe')] as { title: string; srcdoc: string }[];
     expect(frames.map(frame => frame.title)).toStrictEqual(['Editorial', 'Compact']);
     for (const [index, frame] of frames.entries()) {

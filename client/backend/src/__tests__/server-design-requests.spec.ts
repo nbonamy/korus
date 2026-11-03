@@ -35,12 +35,15 @@ it('routes Design edits to their owning daemon, validates requests and publishes
     await expect(request({ type: 'implement', expectedRevision: 2, artboardId: 'desktop' })).rejects.toThrow('Stale');
     await expect(request({ type: 'implement', expectedRevision: 3, artboardId: 'missing' })).rejects.toThrow();
     expect(sendPrompt).toHaveBeenCalledOnce();
-    expect(await request({ type: 'implement', expectedRevision: 3, artboardId: 'desktop' })).toMatchObject({ result: { workspace: { document: { revision: 4, content: { chosenArtboardId: 'desktop' } } } } });
+    const implemented = await request({ type: 'implement', expectedRevision: 3, artboardId: 'desktop' });
+    expect(implemented).toMatchObject({ result: { workspace: { selectedArtboardId: 'desktop', document: { revision: 4 } } } });
+    expect(snapshot.agents.find(agent => agent.id === 'designer')!.designWorkspace!.document!.content.chosenArtboardId).toBeUndefined();
     await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledTimes(2));
     const implementation = sendPrompt.mock.calls[1][1] as string;
     expect(implementation).toContain('Implement the selected design');
-    expect(implementation).toContain('"artboardId":"desktop"');
-    expect(implementation).toContain('"revision":4');
+    const handoffContext = implementation.match(/<context>\n([\s\S]*?)\n<\/context>$/u);
+    expect(handoffContext).not.toBeNull();
+    expect(JSON.parse(handoffContext![1]!)).toMatchObject({ artboardId: 'desktop', revision: 4 });
     expect(implementation).toContain('Saved');
     expect(implementation).toContain('Keep this headline.');
     expect(implementation).toContain('Do not commit, push or deploy');

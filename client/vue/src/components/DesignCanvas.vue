@@ -1,15 +1,14 @@
 <template>
-  <div ref="stage" class="design-canvas design-panel__stage" :class="{ 'design-canvas--pan': pan && !play, 'design-canvas--panning': !!gesture || !!boardDrag?.moved }" :aria-label="t('design.alternatives')" @pointerdown="startPan" @pointermove="movePointer" @pointerup="endPointer" @pointercancel="cancelPointer" @lostpointercapture="lostCapture" @wheel="wheel">
+  <div ref="stage" class="design-canvas design-panel__stage" :class="{ 'design-canvas--pan': pan && !play, 'design-canvas--panning': !!gesture || !!boardDrag?.moved }" :aria-label="t('design.alternatives')" @click="clearCanvasSelection" @pointerdown="startPan" @pointermove="movePointer" @pointerup="endPointer" @pointercancel="cancelPointer" @lostpointercapture="lostCapture" @wheel="wheel">
     <div v-if="!play" class="design-canvas__document"><h2>{{ content.title }}</h2><slot name="history" /></div>
     <div class="design-canvas__boards" :style="canvasStyle">
       <article v-for="board in boards" v-show="!play || board.id === activeArtboardId" :key="board.id" class="design-canvas__artboard" :data-artboard-id="board.id" :data-active="board.id === activeArtboardId" :style="boardStyle(board)">
         <header v-if="!play" class="design-canvas__caption" :style="{ height: `${captionHeight}px` }">
           <button type="button" :aria-label="t('design.editArtboard', { name: board.title })" :title="t('design.moveArtboardHint')" :disabled="locked" @pointerdown.stop="startBoardDrag($event, board.id)" @keydown="nudgeBoard($event, board.id)" @click="clickBoard($event, board.id)">{{ board.title }}</button>
-          <CheckIcon v-if="board.id === content.chosenArtboardId" class="design-canvas__chosen" :aria-label="t('design.chosen')" />
           <button class="app-icon-button" type="button" :aria-label="t('design.focusArtboard', { name: board.title })" :title="t('design.focusArtboard', { name: board.title })" :disabled="locked" @click="emit('focus', board.id)"><ArrowsDiagonalIcon /></button>
         </header>
         <div class="design-canvas__surface" :style="{ height: `${board.height * zoom}px` }">
-          <DesignArtboardFrame :board="board" :css="displayed.css" :document-id="documentId" :revision="revision" :play="play" :selected-node-id="board.id === selectedArtboardId ? selectedNodeId : null" :zoom="zoom" :locked="locked || pan" :frozen="interacting" @select="emit('select', board.id, $event)" @edit="emit('edit', $event)" @interaction="emit('interaction', board.id, $event)" @prototype="navigate(board.id, $event)" />
+          <DesignArtboardFrame :board="board" :css="displayed.css" :document-id="documentId" :revision="revision" :play="play" :selected-node-id="board.id === selectedArtboardId ? selectedNodeId : null" :zoom="zoom" :locked="locked || pan" :frozen="interacting" @select="emit('select', board.id, $event)" @styles="(nodeId, frameRevision, styles, properties) => emit('styles', board.id, nodeId, frameRevision, styles, properties)" @edit="emit('edit', $event)" @interaction="emit('interaction', board.id, $event)" @prototype="navigate(board.id, $event)" />
         </div>
       </article>
     </div>
@@ -20,12 +19,17 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import { designArtboardPositions, type DesignArtboard, type DesignContent, type DesignInteraction } from '@workspace/core/design';
 import { translate as t } from '../i18n';
-import { CheckIcon, ArrowsDiagonalIcon } from '../shared/icons/app-icons';
+import { ArrowsDiagonalIcon } from '../shared/icons/app-icons';
 import DesignArtboardFrame from './DesignArtboardFrame.vue';
 import type { DesignCanvasChange } from './design-frame';
 
 const props = defineProps<{ content: DesignContent; documentId: string; revision: number; selectedArtboardId: string | null; selectedNodeId: string | null; play: boolean; locked: boolean; interacting: boolean; pan: boolean; zoomChoice: number | 'fit' | 'selection'; pendingChange?: DesignCanvasChange | null }>();
-const emit = defineEmits<{ focus: [artboardId: string]; select: [artboardId: string, nodeId: string]; edit: [change: DesignCanvasChange]; interaction: [artboardId: string, active: boolean]; zoom: [value: number] }>();
+const emit = defineEmits<{ focus: [artboardId: string]; select: [artboardId: string, nodeId: string | null]; styles: [artboardId: string, nodeId: string, revision: number, styles: Record<string, string>, properties: Record<string, string>]; edit: [change: DesignCanvasChange]; interaction: [artboardId: string, active: boolean]; zoom: [value: number] }>();
+function clearCanvasSelection(event: MouseEvent) {
+  if (props.play || props.pan || props.locked || !props.selectedNodeId || !props.selectedArtboardId) return;
+  if (event.target instanceof Element && event.target.closest('button, a, input, textarea, select, [contenteditable]')) return;
+  emit('select', props.selectedArtboardId, null);
+}
 const stage = ref<HTMLElement>();
 const stageWidth = ref(420);
 const stageHeight = ref(600);
@@ -91,6 +95,15 @@ const zoom = computed(() => {
   const height = selected?.height ?? bounds.value.bottom - bounds.value.y;
   return Math.max(0.001, Math.min(1, (stageWidth.value - 64) / Math.max(1, width), (stageHeight.value - (props.play ? 108 : 164) - (selected ? 0 : captionGutters.value)) / Math.max(1, height)));
 });
+// Fit is a viewport action, not a resize-dependent zoom mode. Let framing and
+// scroll positioning settle before retaining the resulting numeric scale.
+async function retainZoom() {
+  await nextTick();
+  if (stage.value && props.zoomChoice === 'fit') { stage.value.scrollLeft = 0; stage.value.scrollTop = 0; }
+  else if (props.zoomChoice === 'selection') await focus(props.selectedArtboardId ?? '');
+  if (stage.value && typeof props.zoomChoice !== 'number') emit('zoom', zoom.value);
+}
+watch(() => props.zoomChoice, () => void retainZoom(), { flush: 'post' });
 watch([bounds, () => !!boardDrag.value, () => props.zoomChoice, () => props.documentId], async () => {
   if (boardDrag.value) return;
   const previous = retainedOrigin.value;
@@ -210,9 +223,16 @@ watch(() => props.selectedArtboardId, () => { if (props.zoomChoice === 'selectio
 onMounted(() => {
   window.addEventListener('keydown', cancelKey);
   if (typeof ResizeObserver !== 'undefined') {
-    observer = new ResizeObserver(entries => { stageWidth.value = entries[0]?.contentRect.width ?? 420; stageHeight.value = entries[0]?.contentRect.height ?? 600; });
+    let measured = false;
+    observer = new ResizeObserver(entries => {
+      const size = entries[0]?.contentRect;
+      if (!size || size.width <= 0 || size.height <= 0) return;
+      stageWidth.value = size.width;
+      stageHeight.value = size.height;
+      if (!measured) { measured = true; void retainZoom(); }
+    });
     if (stage.value) observer.observe(stage.value);
-  }
+  } else void retainZoom();
   if (props.zoomChoice === 'selection') void focus(props.selectedArtboardId ?? '');
 });
 onBeforeUnmount(() => { observer?.disconnect(); window.removeEventListener('keydown', cancelKey); });
@@ -275,13 +295,6 @@ defineExpose({ focus, zoom, activeArtboardId });
   overflow: hidden;
   cursor: grab;
   touch-action: none;
-}
-
-.design-canvas__chosen {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
-  color: var(--color-primary);
-  flex: none;
 }
 
 .design-canvas__surface {
