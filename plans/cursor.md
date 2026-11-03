@@ -547,6 +547,78 @@ lint and affected coverage pass; the unrelated browser failure remains for its
 owning quality work. Background initialization still reports cached
 `spawn npm ENOENT`; validation used the recovered dependencies recorded above.
 
+## Approval qualification blocker (Mission ticket 6)
+
+Ticket 6 cannot enable the complete approval contract on the qualified CLI
+**2026.10.22-27dcf5f**. A fresh bounded native probe tested the remaining
+client-filesystem hypothesis: advertise both filesystem capabilities, reject
+every permission callback, and reject every client write request before writing.
+The client identified itself as `korus-phase6-qualification`, version `0.0.0`.
+It used the existing native login and a private mode-0700 scratch workspace,
+with an empty MCP list, no shell transport and `NO_OPEN_BROWSER=1`.
+
+The initialization differed from Phase 0 only in its explicit client filesystem
+and terminal capabilities:
+
+```json
+{"method":"initialize","params":{"protocolVersion":1,"clientInfo":{"name":"korus-phase6-qualification","version":"0.0.0"},"clientCapabilities":{"fs":{"readTextFile":true,"writeTextFile":true},"terminal":false,"_meta":{"parameterizedModelPicker":true}}}}
+```
+
+After `authenticate(cursor_login)` and `session/new`, the probe requested
+`composer-2.5` through `session/set_config_option`. That setter acknowledgement
+does not attest the served model. One synthetic prompt asked native editor tools
+to create `new.txt` and change `existing.txt`, each to exactly `AFTER\n`, and to
+stop an action if denied. The pre-existing file contained exactly `BEFORE\n`.
+No company files, credentials, global permission settings or managed policy
+contents were read or changed by the helper.
+
+| Measurement | Native result, CLI 2026.10.22-27dcf5f |
+| --- | --- |
+| `session/request_permission` requests | 0 |
+| `fs/read_text_file` requests | 0 |
+| `fs/write_text_file` requests | 0 |
+| Tool kinds observed | `read`, `search`, `edit` |
+| Prompt settlement | `stopReason: end_turn` |
+| Newly created `new.txt` | Present, exactly `AFTER\n` |
+| Modified `existing.txt` | Changed, exactly `AFTER\n` |
+
+Thus advertising client filesystem support did not make these native edits
+interceptable. No permission or client write request was available to deny.
+This independently reproduces Gate 5's edit-prevention failure; a fixture that
+emits a file-edit permission request would not qualify the real runtime.
+The documented [ACP permission exchange](https://cursor.com/docs/cli/acp)
+describes requests when a tool needs approval; it does not promise a callback
+for every edit. The documented
+[permission tokens](https://cursor.com/docs/cli/reference/permissions) describe
+native allow/deny configuration, not a measured per-edit Korus decision path.
+No global/team configuration was altered to seek a workaround.
+
+The release surface stays unchanged: `approvals:false`, `questions:false`,
+`permissionModes:[]`. The streaming host continues rejecting every native
+permission callback and cancelling unsupported blocking extensions. That does
+not prevent native actions which bypass callbacks. Gate 6 still lacks a native
+`cursor/ask_question` exchange; Gate 5/12 still lack effective Auto-review and
+team-mode precedence proof. No new claim is made for those gates, and no Ask or
+Auto-review control is exposed on the basis of deterministic fixtures alone.
+
+To resume ticket 6, qualify a supported native mechanism/build that exposes a
+pre-write allow/deny decision, then prove denied creation leaves no file and
+denied modification preserves the exact original bytes. Also capture a native
+question exchange and effective approval-mode evidence, including team override
+handling. Implement the fixture-driven routing and UI only against that proven
+contract. Do not substitute force, allow-always, transport changes, post-write
+dialogs or policy changes for the missing prevention boundary.
+
+Only sanitized counters, event-kind names and synthetic file comparisons were
+retained; raw discovery payloads, stderr, account and session identifiers were
+discarded. The probe settled, its process group was torn down, and process cwd
+inspection found no remaining process in the scratch tree. Helpers remained
+outside Git. This checkpoint changes only this evidence document: `git diff
+--check` is the applicable check; app tests, lint and coverage are not rerun for
+a docs-only blocker record. Worktree initialization still reports its cached
+`spawn npm ENOENT`; no dependency installation is needed for this checkpoint.
+Ticket 6 remains blocked and is not submitted as completed implementation.
+
 ## Verification and learnings
 
 - Phase 0 was docs-only: no runtime contract or app code changed. App suite,
