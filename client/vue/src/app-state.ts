@@ -98,6 +98,11 @@ const claudeConversationFramesByAgentId = ref<Record<string, {
 // One hydration at a time across providers. Pending identities coalesce repeated
 // repair signals while their last good provider frame remains visible.
 const conversationRecoveries = new Map<string, Promise<void>>();
+// Retained frames stay visible during recovery, but their revision fence may belong
+// to a previous owner process. The next snapshot for these agents replaces the frame
+// even when its revision is lower; ordinary stale snapshots are still rejected.
+const codexRecoveryAgentIds = new Set<string>();
+const claudeRecoveryAgentIds = new Set<string>();
 let conversationRecoveryTail = Promise.resolve();
 function recoverConversation(agentId: string): Promise<void> {
   const existing = conversationRecoveries.get(agentId);
@@ -539,6 +544,8 @@ export function useAppState() {
     claudeConversationFramesByAgentId.value = {};
     antigravityConversations.reset();
     conversationRecoveries.clear();
+    codexRecoveryAgentIds.clear();
+    claudeRecoveryAgentIds.clear();
     agentCreationProgresses.value = [];
     backgroundedAgentCreationIds.clear();
 
@@ -2192,7 +2199,9 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
       if (
         current?.threadId === event.threadId
         && current.revision >= event.payload.revision
+        && !codexRecoveryAgentIds.has(event.agentId)
       ) return;
+      codexRecoveryAgentIds.delete(event.agentId);
       codexConversationFramesByAgentId.value = {
         ...codexConversationFramesByAgentId.value,
         [event.agentId]: {
@@ -2244,7 +2253,8 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
       return;
     case 'claude.conversationSnapshotChanged': {
       const current = claudeConversationFramesByAgentId.value[event.agentId];
-      if (current && current.revision >= event.payload.revision) return;
+      if (current && current.revision >= event.payload.revision && !claudeRecoveryAgentIds.has(event.agentId)) return;
+      claudeRecoveryAgentIds.delete(event.agentId);
       claudeConversationFramesByAgentId.value = {
         ...claudeConversationFramesByAgentId.value,
         [event.agentId]: {
@@ -2312,10 +2322,12 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
 }
 
 function invalidateAndRecoverCodexConversation(agentId: string): void {
+  if (codexConversationFramesByAgentId.value[agentId]) codexRecoveryAgentIds.add(agentId);
   void recoverConversation(agentId);
 }
 
 function invalidateAndRecoverClaudeConversation(agentId: string): void {
+  if (claudeConversationFramesByAgentId.value[agentId]) claudeRecoveryAgentIds.add(agentId);
   void recoverConversation(agentId);
 }
 

@@ -1219,8 +1219,8 @@ describe('useAppState', () => {
     await state.loadSnapshot();
     await vi.waitFor(() => expect(load).toHaveBeenCalled());
     await nextTick();
-    receive({ seq: 1, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 1, snapshot: codexConversationSnapshot() } });
-    receive({ seq: 2, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: claude.id }) } });
+    receive({ seq: 1, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 40, snapshot: codexConversationSnapshot() } });
+    receive({ seq: 2, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 40, snapshot: claudeConversationSnapshot([], { agentId: claude.id }) } });
     getSnapshotState.mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 2, connection: { status: 'connected' } });
     const first = deferred<ReturnType<typeof createInitialSnapshot>>();
     const second = deferred<ReturnType<typeof createInitialSnapshot>>();
@@ -1240,15 +1240,24 @@ describe('useAppState', () => {
     getSnapshotState.mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 5, connection: { status: 'connected' } });
     receive({ seq: 5, source: 'backend', occurredAt: '', agentId: codex.id, type: 'agent.statusChanged', payload: { type: 'working' } });
     await vi.waitFor(() => expect(getSnapshotState).toHaveBeenCalledTimes(3));
+    receive({ seq: 6, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: claude.id, busy: true }) } });
+    await vi.waitFor(() => expect(state.agentConversationFor(claude.id)?.claudeSnapshot?.busy).toBe(true));
+    // Only the first replay bypasses the revision fence.
+    receive({ seq: 7, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: claude.id }) } });
+    expect(state.agentConversationFor(claude.id)?.claudeSnapshot?.busy).toBe(true);
     second.resolve(remote);
     await nextTick();
     await nextTick();
     expect(load).toHaveBeenCalledTimes(2);
     expect(getSnapshotState).toHaveBeenCalledTimes(3);
-    receive({ seq: 6, source: 'backend', occurredAt: '', agentId: codex.id, type: 'agent.statusChanged', payload: { type: 'working' } });
+    receive({ seq: 8, source: 'backend', occurredAt: '', agentId: codex.id, type: 'agent.statusChanged', payload: { type: 'working' } });
     expect(state.activeAgent.value?.status.type).toBe('working');
     expect(state.activeCodexConversationSnapshot.value?.busy).toBe(true);
     expect(state.agentConversationFor(claude.id)?.claudeSnapshot).not.toBeNull();
+    receive({ seq: 9, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationEventReceived', payload: { revision: 3, event: { seq: 1, occurredAt: '', origin: 'notification', type: 'conversation.activityChanged', conversationId: 'thread-1', payload: { threadStatus: null, busy: false, error: null } } } });
+    expect(state.activeCodexConversationSnapshot.value?.busy).toBe(false);
+    receive({ seq: 10, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationEventReceived', payload: { revision: 2, event: { seq: 1, occurredAt: '', agentId: claude.id, backend: 'claude', type: 'error', payload: { message: 'post-restart' } } } });
+    expect(state.agentConversationFor(claude.id)?.claudeSnapshot?.error).toBe('post-restart');
   });
 
   it('invalidates and rehydrates a Codex frame after a revision gap', async () => {
