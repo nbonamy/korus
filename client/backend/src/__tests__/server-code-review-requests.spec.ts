@@ -370,17 +370,16 @@ describe('AppBackendServer code review workflow', () => {
     expect(disposeCodeReview).not.toHaveBeenCalled();
     expect(round.reviewerSession).toBeDefined();
     expect(saveCodeReviewReport).toHaveBeenCalledOnce();
-    expect(saveCodeReviewReport.mock.invocationCallOrder[0]).toBeLessThan(releaseConversation.mock.invocationCallOrder[0]!);
-    expect(releaseConversation).toHaveBeenCalledExactlyOnceWith(reviewer.id);
-    expect(runCodeReview.mock.calls[2]?.[1]).not.toHaveProperty('reviewerSession');
+    expect(releaseConversation).not.toHaveBeenCalled();
+    expect(runCodeReview.mock.calls[2]?.[1].reviewerSession).toStrictEqual(round.reviewerSession);
     await request(server, backendMethods.agentCodeReviewRoundSubmit, { agentId: reviewer.id, sessionId: session.id });
     const finished = await request(server, backendMethods.agentCodeReviewFinish, { agentId: reviewer.id, sessionId: session.id });
     expect(snapshot.agents).toStrictEqual([owner, neighbor, leading]);
     expect(snapshot.agentGitStatuses[reviewer.id]).toBeUndefined();
     expect(disposeCodeReview).not.toHaveBeenCalled();
-    expect(archiveAgentConversation).toHaveBeenCalledTimes(backend === 'codex' ? 2 : 0);
+    expect(archiveAgentConversation).toHaveBeenCalledTimes(backend === 'codex' ? 1 : 0);
     expect(saveCodeReviewReport).toHaveBeenCalledTimes(2);
-    expect(releaseConversation).toHaveBeenCalledTimes(2);
+    expect(releaseConversation).toHaveBeenCalledExactlyOnceWith(reviewer.id);
     expect(finished.activeAgentId).toBe(owner.id);
     expect(sendAgentMessage).toHaveBeenCalledExactlyOnceWith(
       reviewer.id,

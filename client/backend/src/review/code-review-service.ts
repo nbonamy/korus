@@ -79,11 +79,7 @@ export class CodeReviewService {
     agent: Agent, prompt: string, url: string, reviewerSession?: BackendSession,
   ): Promise<BackendCodeReviewResult> {
     const general = this.options.snapshot.general;
-    const instructions = [
-      general.codeReviewInstructions?.trim(),
-      general.codeReviewDiscussWithOriginalThread && agent.codeReview?.threadMode === 'independent'
-        ? 'Review the findings with the original thread if you have access to it.' : undefined,
-    ].filter(Boolean).join('\n\n');
+    const instructions = general.codeReviewInstructions?.trim();
     if (instructions) {
       const context = instructions.replace(/<\/?context>/giu, tag => tag.replace('<', '&lt;'));
       prompt += `\n\n<context>\nUser's custom review instructions:\n${context}\n</context>`;
@@ -389,13 +385,14 @@ export class CodeReviewService {
       try {
         await this.options.saveReport(agent, session);
         if (agent.codeReview !== session || (wasAutomatic && session.automation?.state !== 'running')) return previousRound;
-        await this.options.resetReviewer(agent);
+        // Context-retention experiment: keep prior findings, discussions and fixes available.
+        // await this.options.resetReviewer(agent);
       }
       finally { this.activeRoundTurns.delete(previousRound.id); }
       if (agent.codeReview !== session || (wasAutomatic && session.automation?.state !== 'running')) return previousRound;
     }
     const round = this.newRound(session.rounds.length + 1);
-    if (session.threadMode === 'current') round.reviewerSession = requiredReviewerSession(previousRound);
+    round.reviewerSession = requiredReviewerSession(previousRound);
     session.rounds.push(round);
     session.activeRoundId = round.id;
     session.status = 'reviewing';
@@ -548,6 +545,13 @@ export class CodeReviewService {
       const completion = (round as CodeReviewRound).inspectionCompletion;
       if (!completion || completion.findingCount !== round.findings.length) {
         throw new Error('The reviewer ended its turn without an accepted finish_review_round confirmation. Register each finding with report_finding, then call finish_review_round with the total current-round findingCount (including zero for a clean review).');
+      }
+      if (session.threadMode === 'independent' && this.options.snapshot.general.codeReviewDiscussWithOriginalThread && round.findings.length) {
+        const discussed = await this.runReview(agent, originalDiscussionPrompt(session, round), context.url, round.reviewerSession);
+        if (agent.codeReview !== session || round.status !== 'reviewing') return;
+        agent.backendSession = round.reviewerSession = discussed.reviewerSession;
+        round.summary = discussed.text;
+        if (session.automation?.state === 'running') await this.assertReviewWorkspace(agent, session, true);
       }
       const completedAt = this.timestamp();
       round.status = 'ready';
@@ -1089,6 +1093,21 @@ Register all actionable findings with mcp__${mcpServerName}__report_finding and 
 </context>
 
 Review ${visibleScope}.${session.instructions ? `\n\nAdditional instructions from the user:\n${session.instructions}` : ''}`;
+}
+
+function originalDiscussionPrompt(session: CodeReviewSession, round: CodeReviewRound): string {
+  const context = JSON.stringify({ originalAgentId: session.targetAgentId, reviewerAgentId: session.reviewerAgentId,
+    reviewId: session.id, roundId: round.id,
+    findings: round.findings.map(({ id, priority, title, body, location }) => ({ id, priority, title, body, location })),
+  }, null, 2).replace(/</gu, '\\u003c');
+  return `<context>
+${context}
+
+The user asks both agents to discuss these findings so the reviewer can update them if needed. Use send-message to contact originalAgentId yourself. Explain the evidence, invite the original agent to challenge or clarify it, and continue through normal agent messages. Check the response against the code; update or delete findings when warranted and retain findings supported by evidence. Do not modify files or ask the original agent to fix them during this discussion.
+${reviewToolDiscoveryInstructions()}
+</context>
+
+Discuss your findings with the original agent.`;
 }
 
 function fixPrompt(session: CodeReviewSession, round: CodeReviewRound, findings: CodeReviewFinding[]): string {

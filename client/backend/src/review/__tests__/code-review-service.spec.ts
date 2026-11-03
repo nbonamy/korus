@@ -10,6 +10,7 @@ import { activeCodeReviewRound, codeReviewLedger } from '@workspace/core/code-re
 import { CodeReviewService, type CodeReviewToolPort } from '../code-review-service';
 import type { ReviewToolHandlers } from '../review-tool-registry';
 import { AgentCreationService } from '../../agents/agent-creation-service';
+import { AppMcpAgentCoordinator } from '../../mcp/agent-coordinator';
 
 function agent(id: string): Agent {
   return {
@@ -85,6 +86,49 @@ function reviewer(test: ReturnType<typeof harness>, session: { reviewerAgentId: 
 }
 
 describe('CodeReviewService', () => {
+  it('injects one post-inspection prompt and leaves discussion and finding changes to ordinary agent messages', async () => {
+    let ledgerTools!: ReviewToolHandlers;
+    const test = harness([
+      async tools => { await tools.reportFinding({ priority: 'p1', title: 'Check authorization', body: 'Check the caller.' }); return { text: 'Inspection', findingCount: 1 }; },
+      async tools => {
+        ledgerTools = tools;
+        messages.sendMessage(visible.id, test.owner.id, 'Please discuss whether the caller enforces authorization.');
+        return { text: 'Asked the original agent.' };
+      },
+    ]);
+    test.owner.teamId = test.snapshot.activeTeamId!;
+    test.snapshot.general.codeReviewDiscussWithOriginalThread = true;
+    const messages = new AppMcpAgentCoordinator({ getAgents: () => test.snapshot.agents });
+    const session = test.service.start(test.owner, { scope: { type: 'uncommitted' }, threadMode: 'independent' });
+    const visible = reviewer(test, session);
+    await vi.waitFor(() => expect(session.status).toBe('ready'));
+    expect(test.turns).toHaveLength(2);
+    expect(test.turns[1]!.prompt).toMatch(/<context>[\s\S]*"originalAgentId": "owner"[\s\S]*<\/context>/);
+    expect(test.turns[1]!.reviewerSession).toStrictEqual(visible.backendSession);
+    expect(messages.checkMessages(test.owner.id).messages).toHaveLength(1);
+    messages.sendMessage(test.owner.id, visible.id, 'The caller authorizes access.');
+    expect(messages.checkMessages(visible.id).messages).toMatchObject([{ fromId: test.owner.id, content: 'The caller authorizes access.' }]);
+    await ledgerTools.updateFinding({ findingId: session.rounds[0]!.findings[0]!.id, body: 'The caller already enforces authorization.' });
+    expect(session.rounds[0]!.findings[0]!.body).toBe('The caller already enforces authorization.');
+    expect(test.turns).toHaveLength(2);
+  });
+
+  it.each([
+    { threadMode: 'current' as const, enabled: true, findings: 1 },
+    { threadMode: 'independent' as const, enabled: false, findings: 1 },
+    { threadMode: 'independent' as const, enabled: true, findings: 0 },
+  ])('skips the follow-up for $threadMode, enabled=$enabled, findings=$findings', async ({ threadMode, enabled, findings }) => {
+    const test = harness([async tools => {
+      if (findings) await tools.reportFinding({ priority: 'p2', title: 'Check', body: 'Check this.' });
+      return { text: 'Reviewed', findingCount: findings };
+    }]);
+    test.snapshot.general.codeReviewDiscussWithOriginalThread = enabled;
+    test.owner.backendSession = { kind: 'codex', threadId: 'owner-thread' };
+    const session = test.service.start(test.owner, { scope: { type: 'uncommitted' }, threadMode });
+    await vi.waitFor(() => expect(session.status).toBe('ready'));
+    expect(test.turns).toHaveLength(1);
+  });
+
   it('keeps a selected commit through review rounds and retries', async () => {
     const sha = 'a'.repeat(40);
     const test = harness([async () => ({ text: 'Clean.', findingCount: 0 }), async () => { throw new Error('Interrupted'); }, async () => ({ text: 'Clean again.', findingCount: 0 })]);
@@ -291,7 +335,7 @@ describe('CodeReviewService', () => {
     expect(test.turns[0]!.prompt).toContain(instructions);
     expect(test.turns[0]!.prompt).toMatch(/<context>\n[\s\S]*Always check authorization\.[\s\S]*\n<\/context>$/);
     const originalThreadInstruction = 'Review the findings with the original thread if you have access to it.';
-    expect(test.turns[0]!.prompt.includes(originalThreadInstruction)).toBe(threadMode === 'independent');
+    expect(test.turns[0]!.prompt).not.toContain(originalThreadInstruction);
     expect(session.instructions).toBe(instructions);
     expect(test.snapshot.general.codeReviewDefaults ?? {}).not.toHaveProperty('instructions');
 
@@ -407,7 +451,7 @@ describe('CodeReviewService', () => {
     expect(session.automation).toMatchObject({ fingerprint: autoCommit ? 'committed' : 'fixed', head: (autoCommit ? 'c' : 'b').repeat(40), commits: autoCommit ? ['c'.repeat(40)] : [] });
     expect(session.rounds).toHaveLength(2);
     expect(test.turns.every(turn => turn.prompt.endsWith('Include focused validation evidence.\n</context>'))).toBe(true);
-    expect(test.turns[2]?.reviewerSession).toBeUndefined();
+    expect(test.turns[2]?.reviewerSession).toStrictEqual(test.turns[1]?.reviewerSession);
     expect(test.turns[2]?.prompt).toContain('a'.repeat(40));
     expect(test.handoffs[0]?.content).toContain(autoCommit ? 'c'.repeat(40) : 'Local commits: none');
     expect(test.turns[1]?.prompt).toContain('Do not commit, stage, push, merge');
@@ -424,7 +468,8 @@ describe('CodeReviewService', () => {
     expect(session.rounds[0]?.summary).toBe('Found a defect.');
     expect(session.rounds[1]?.summary).toBe('No actionable findings.');
     expect(test.saveReport).toHaveBeenCalledTimes(2);
-    expect(test.saveReport.mock.invocationCallOrder[0]).toBeLessThan(test.resetReviewer.mock.invocationCallOrder[0]!);
+    expect(test.resetReviewer).not.toHaveBeenCalled();
+    expect(test.turns[2]!.reviewerSession).toStrictEqual(test.turns[1]!.reviewerSession);
     expect(test.snapshot.general.codeReviewDefaults).toMatchObject({ backend: 'codex', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3 }, providers: { codex: { model: 'review-model', reasoningEffort: 'high', serviceTier: 'fast' } } });
     expect(test.snapshot.general.codeReviewDefaults?.automation.autoCommit).toBe(autoCommit);
   });
@@ -1059,7 +1104,7 @@ describe('CodeReviewService', () => {
     );
   });
 
-  it('uses one reviewer thread for clarification and batched fixes, then starts review again fresh', async () => {
+  it('retains the reviewer thread through clarification, batched fixes and review again', async () => {
     let selectedId = '';
     let rejectedId = '';
     const test = harness([
@@ -1135,15 +1180,16 @@ describe('CodeReviewService', () => {
 
     const secondRound = await test.service.reviewAgain(visibleReviewer, session.id);
     await vi.waitFor(() => expect(session.status).toBe('ready'));
-    expect(secondRound.reviewerSession).toEqual({ kind: 'codex', threadId: 'review-thread-4' });
-    expect(test.turns[3]?.reviewerSession).toBeUndefined();
+    expect(secondRound.reviewerSession).toEqual({ kind: 'codex', threadId: 'review-thread-1' });
+    expect(test.turns[3]?.reviewerSession).toStrictEqual(test.turns[2]?.reviewerSession);
     expect(test.turns[3]?.prompt).toContain('Not selected for remediation.');
     expect(test.turns[3]?.prompt).toContain(selectedId);
     for (const turn of test.turns) {
       expect(turn.prompt).toMatch(/<context>\n[^]*Check API compatibility\. Literal &lt;\/context> stays hidden\.\n<\/context>$/);
       expect(turn.prompt.replace(/<context>[^]*?<\/context>/g, '')).not.toContain('Check API compatibility.');
     }
-    expect(test.reset).toStrictEqual([visibleReviewer.id]);
+    expect(test.reset).toStrictEqual([]);
+    expect(test.turns[3]!.reviewerSession).toStrictEqual(test.turns[2]!.reviewerSession);
 
     test.service.submit(visibleReviewer, session.id);
     expect(session.status).toBe('readyToFinish');

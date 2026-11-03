@@ -832,9 +832,9 @@ target and reviewer agents) plus an opaque reviewer session reference.
   an explicit user reorder takes precedence.
 - Codex review rounds wait for their matching terminal turn event without a fixed
   duration limit; elapsed time alone does not fail an active review.
-- Independent reviews reset the reviewer's conversation between rounds to reduce
-  anchoring; every round receives the cumulative ledger (all prior skips, fixes
-  and decisions) in a `<context>` block.
+- Independent reviews start in a fresh conversation and retain it between rounds;
+  every round receives the cumulative ledger (all prior skips, fixes and decisions)
+  in a `<context>` block.
 - Independent reviewers retain their selected provider, model, effort and service
   tier across rounds and retries. Review preferences keep these choices per provider;
   an explicit Standard tier clears inherited Fast mode. Current-thread reviews use
@@ -848,6 +848,11 @@ target and reviewer agents) plus an opaque reviewer session reference.
   Saved workflow review instructions are separate: the review service appends the
   current preference in a hidden `<context>` block to every inspection, discussion,
   remediation and commit prompt, including automatic reviews and fresh rounds.
+- When discussion with the original agent is enabled, an independent inspection
+  with findings receives a follow-up in the same reviewer conversation, naming the
+  original agent in `<context>`. The reviewer initiates the discussion with normal
+  agent messaging and can update findings as the conversation continues. Replies
+  use ordinary teammate delivery.
 - Completion can commit first: with the review's commit option ticked, the review
   agent is asked to commit the reviewed work locally before Finish or Review again
   runs. Korus only verifies that HEAD advanced; it never pushes. The option is
