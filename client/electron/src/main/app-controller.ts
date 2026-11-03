@@ -15,6 +15,7 @@ import { encodedAppError } from '@workspace/core/app-error';
 import { mainT } from './i18n';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, net, powerMonitor, protocol, shell } from 'electron';
 import path from 'node:path';
+import { realpath } from 'node:fs/promises';
 import { registerCodexNativeIpc, TypedIpcMain } from '@codex-app-sdk/electron';
 import { AgentActivityPowerSaveBlocker } from './agent-activity-power-save-blocker';
 import { computerUseActivity } from './computer-use-activity';
@@ -1053,7 +1054,8 @@ export class AppController {
     const agent = this.snapshot?.agents.find(candidate => candidate.id === agentId);
     if (!agent) throw new Error(`Agent not found: ${agentId}`);
     if (agent.remoteConnectionId || agent.sharedConversation) throw new Error('File actions are only available for local agents.');
-    const target = await resolveProjectPath(requireAgentFolder(agent), filePath);
+    const targetPath = path.isAbsolute(filePath) ? filePath : path.resolve(requireAgentFolder(agent), filePath);
+    const target = await realpath(targetPath);
     await this.openInProvider.openFile(target, action);
   }
 

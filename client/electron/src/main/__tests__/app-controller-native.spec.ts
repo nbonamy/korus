@@ -1,7 +1,7 @@
 import { product } from '@workspace/core/product';
 import path from 'node:path';
 import os from 'node:os';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { describe, expect, it, vi } from 'vitest';
 import { AppController, requiresSingleInstanceLock, shouldBlockDisplaySleep } from '../app-controller';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
@@ -350,7 +350,7 @@ describe('AppController', () => {
     expect(currentSnapshot(controller).agents[0].openInApplication).toBe('vscode');
   });
 
-  it('opens and reveals local files without changing app preferences, and rejects remote or escaped targets', async () => {
+  it('opens and reveals local files without changing app preferences, and rejects non-local targets', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
     agent.folder = path.resolve(__dirname, '../../../../..');
@@ -368,12 +368,50 @@ describe('AppController', () => {
     expect(agent.openInApplication).toBeUndefined();
     openPath.mockResolvedValueOnce('No associated application');
     await expect(act('README.md', 'open')).rejects.toThrow('No associated application');
-    await expect(act(os.tmpdir(), 'open')).rejects.toThrow('only available for files inside');
     await expect(act('README.md', 'invalid' as never)).rejects.toThrow('Invalid file action');
     agent.remoteConnectionId = 'remote';
     await expect(act('README.md', 'open')).rejects.toThrow('only available for local agents');
+    delete agent.remoteConnectionId;
+    agent.sharedConversation = { joinId: 'shared' };
+    await expect(act('README.md', 'reveal')).rejects.toThrow('only available for local agents');
     expect(openPath).toHaveBeenCalledTimes(2);
     expect(showItemInFolder).toHaveBeenCalledOnce();
+  });
+
+  it('opens and reveals explicitly selected external files, including symlinks and workspace-free Quick Chats', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'native-file-actions-'));
+    try {
+      const folder = path.join(directory, 'project');
+      const external = path.join(directory, 'generated report.txt');
+      await mkdir(folder);
+      await writeFile(external, 'Generated output');
+      await symlink(external, path.join(folder, 'report.txt'));
+      const snapshot = createInitialSnapshot();
+      const agent = snapshot.agents[0]!;
+      agent.folder = folder;
+      const openPath = vi.fn().mockResolvedValue('');
+      const showItemInFolder = vi.fn();
+      const controller = new AppController(snapshot, createBackendClient());
+      (controller as unknown as { openInProvider: OpenInProvider }).openInProvider = createOpenInProvider({ openPath, showItemInFolder });
+      const act = (file: string, action: 'open' | 'reveal') => (controller as unknown as {
+        openAgentFile(id: string, file: string, action: 'open' | 'reveal'): Promise<void>;
+      }).openAgentFile(agent.id, file, action);
+      const expected = await realpath(external);
+      for (const file of [external, '../generated report.txt', 'report.txt']) {
+        await act(file, 'open');
+        expect(openPath).toHaveBeenLastCalledWith(expected);
+        await act(file, 'reveal');
+        expect(showItemInFolder).toHaveBeenLastCalledWith(expected);
+      }
+      agent.folder = null;
+      agent.sessionKind = 'quickChat';
+      for (const action of ['open', 'reveal'] as const) await act(external, action);
+      await expect(act('report.txt', 'open')).rejects.toThrow('does not have a project workspace');
+      await expect(act(path.join(directory, 'missing.txt'), 'reveal')).rejects.toThrow('ENOENT');
+      expect(openPath).toHaveBeenCalledTimes(4);
+      expect(showItemInFolder).toHaveBeenCalledTimes(4);
+      expect(agent.openInApplication).toBeUndefined();
+    } finally { await rm(directory, { recursive: true, force: true }); }
   });
 
   it('rejects Open In for remote agents and files outside the project', async () => {
