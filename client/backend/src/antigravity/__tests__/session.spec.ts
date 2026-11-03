@@ -122,7 +122,7 @@ rl.on('line',line=>{
    }
    if(mcpServers.some(server=>server.env.some(item=>item.name==='KORUS_ACP_MCP_URL'&&item.value.includes('reviewContextId=')))) {void review(text,reply).catch(error=>{fs.writeFileSync(require('node:path').join(process.cwd(),'fixture-error.txt'),error.message);send({id:v.id,error:{code:-32603,message:error.message}});});return;}
    if(text==='crash') process.exit(1);
-   if(text==='wait') return;
+   if(text==='wait'||text.endsWith('utility-wait')) return;
    if(text==='question'||text==='deny') {
      update({sessionUpdate:'tool_call',toolCallId:'live-id',title:'Create file',kind:'edit',status:'pending'});
      send({id:v.id,method:'session/request_permission',params:{sessionId,toolCall:{toolCallId:text==='question'?'interaction_1':'live-id',title:text==='question'?'Which option?':'Create file'},options:text==='question'?[{optionId:'native-choice-7',name:'Proceed',kind:'allow_once'}]:[{optionId:'native-deny-9',name:'Deny',kind:'reject_once'}]}});
@@ -408,6 +408,24 @@ describe('Antigravity native session', () => {
     expect(JSON.parse(await readFile(path.join(root, 'permission-response.json'), 'utf8')).result).toStrictEqual({ outcome: { outcome: 'cancelled' } });
     expect(changed.mock.calls.map(([event]) => event.type)).not.toContain('request.created');
     expect(session.snapshot.turns.at(-1)?.status).toBe('interrupted');
+  });
+
+  it('aborts an auxiliary generation through session/cancel without creating an agent conversation', async () => {
+    await writeFile(path.join(root, 'usage-fixture.json'), JSON.stringify({ configuration: { models: { currentModelId: 'quick-lite', availableModels: [{ modelId: 'quick-lite', name: 'Gemini Flash Lite' }] } } }));
+    const host = new AntigravityHost();
+    const agent: Agent = { id: 'utility-cancel', name: 'Utility', folder: root, backend: 'antigravity', createdAt: '', updatedAt: '', status: { type: 'idle' } };
+    const controller = new AbortController();
+    const events: BackendEvent[] = [];
+    host.onEvent(event => events.push(event));
+    try {
+      const pending = host.generateText(agent, { cwd: root, prompt: 'utility-wait', signal: controller.signal });
+      const stopped = expect(pending).rejects.toThrow(/cancel/i);
+      await vi.waitFor(async () => expect(await readFile(path.join(root, 'fixture-prompt.json'), 'utf8')).toContain('wait'));
+      controller.abort(new Error('Generation cancelled.'));
+      await stopped;
+      expect(agent.backendSession).toBeUndefined();
+      expect(events).toEqual([]);
+    } finally { await host.close(); }
   });
 
   it('generates auxiliary text with no MCP or filesystem tools and preserves the agent conversation', async () => {

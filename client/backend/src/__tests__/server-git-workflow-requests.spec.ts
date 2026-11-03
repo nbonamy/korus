@@ -23,6 +23,46 @@ describe('AppBackendServer', () => {
   beforeEach(()=>vi.stubEnv('APP_ASSETS_PATH',assets));
   afterEach(()=>vi.unstubAllEnvs());
 
+  it('cancels only the matching ephemeral generation through the provider and prevents preflight starts', async () => {
+    const snapshot = createTestSnapshot();
+    const agent: import('@workspace/core/contracts').Agent = { id: 'agent-dina', name: 'Dina', folder: '/repo', backend: 'codex', status: { type: 'idle' }, createdAt: '', updatedAt: '' };
+    snapshot.agents = [agent];
+    snapshot.teams[0]!.agentIds = [agent.id];
+    let signal!: AbortSignal;
+    const generateText = vi.fn((_agent, input) => new Promise((_resolve, reject) => {
+      signal = input.signal;
+      signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }));
+    const interrupt = vi.fn();
+    const driver = { backend: agent.backend, getRuntimeStatus: () => ({ backend: agent.backend, status: 'running' }),
+      getCapabilities: () => codexBackendCapabilities, generateText, interrupt, sendPrompt: vi.fn(),
+      respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: async () => {} } as unknown as AgentBackendDriver;
+    const diff = vi.fn(async () => ({ target: { type: 'uncommitted' }, sections: [], diff: 'diff --git a/input.ts b/input.ts\n' }));
+    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new BackendDriverRpc(new Map([[agent.backend, driver]])),
+      agentGitService: { diff } as unknown as AgentGitService });
+    const request = (generationId: string) => server.handleMessage({ jsonrpc: '2.0', id: generationId, method: backendMethods.agentGitMessageGenerate,
+      params: { agentId: agent.id, input: { kind: 'viz', mode: 'fast', target: { type: 'uncommitted' }, generationId } } });
+    const cancel = (generationId: string) => server.handleMessage({ jsonrpc: '2.0', id: 'cancel', method: backendMethods.agentGitMessageCancel, params: { agentId: agent.id, generationId } });
+    const running = request('active');
+    const stopped = expect(running).rejects.toThrow(/cancel/i);
+    await vi.waitFor(() => expect(generateText).toHaveBeenCalledOnce());
+    await cancel('unrelated');
+    expect(signal?.aborted).toBe(false);
+    const acknowledgement = await cancel('active'); await stopped;
+    expect(JSON.parse(JSON.stringify(acknowledgement))).toMatchObject({ result: null });
+    expect(signal.aborted).toBe(true);
+    expect(interrupt).not.toHaveBeenCalled();
+    let finishDiff!: (value: unknown) => void;
+    diff.mockReturnValueOnce(new Promise(resolve => { finishDiff = resolve; }) as never);
+    const preflight = request('preflight');
+    const notStarted = expect(preflight).rejects.toThrow(/cancel/i);
+    await vi.waitFor(() => expect(diff).toHaveBeenCalledTimes(2));
+    const cancellation = cancel('preflight');
+    finishDiff({ target: { type: 'uncommitted' }, sections: [], diff: 'diff --git a/input.ts b/input.ts\n' });
+    await cancellation; await notStarted;
+    expect(generateText).toHaveBeenCalledOnce();
+  });
+
   it('returns git diff data without emitting presentation events', async () => {
     const snapshot = createTestSnapshot();
     snapshot.teams[0]!.agentIds = ['agent-dina'];

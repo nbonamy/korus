@@ -541,6 +541,8 @@ export const surfaceMessages = {
     "filesWithoutLines": "Files without line changes ({count})"
   },
   "diffViz": {
+    "cancel": "Cancel",
+    "cancelling": "Cancelling…",
     "name": "Viz",
     "title": "See the impact of your changes",
     "description": "See the affected components and how they connect. Your conversation’s AI provider will inspect this working folder and the selected Git comparison using read-only tools.",

@@ -53,8 +53,11 @@ log and socket paths, npm scripts and launchd labels stay brand-neutral.
   `utilityTextModel` resolves the tier from that provider's native catalog. A
   missing model is an error; utilities never switch providers, send a conversation
   prompt or change the agent's selected model. Provider hosts own isolated
-  generation and cleanup. A separate tools flag opts inspection utilities into
-  read-only workspace inspection; omission disables workspace-tool access. This
+  generation and cleanup. Cancellable utilities carry request IDs across RPC;
+  their owning host maps those IDs to local abort signals. Cancellation targets
+  the isolated provider conversation and acknowledges its settlement, independently
+  of the agent's main conversation. A separate tools flag opts inspection utilities
+  into read-only workspace inspection; omission disables workspace-tool access. This
   policy does not control provider-configured tools unrelated to the workspace.
   Diff visualization supplies the agent's working folder and selected Git scope,
   including section filters. The model retrieves focused evidence through tools;

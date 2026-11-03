@@ -82,6 +82,8 @@ export const utilityTaskComplexities = ['simple', 'normal', 'complex'] as const;
 export type UtilityTaskComplexity = typeof utilityTaskComplexities[number];
 export type UtilityMcpServer = { name: string; url: string; enabledTools: readonly ['fetch_tech_icon'] };
 export type BackendTextGenerationInput = {
+  /** Host-local cancellation; never serialized over RPC. */
+  signal?: AbortSignal;
   prompt: string;
   cwd: string;
   /** Omitted keeps legacy utilities on the simple tier. */

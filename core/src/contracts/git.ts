@@ -160,7 +160,7 @@ export type AgentGitUpdateFromBaseResult = {
 };
 
 export type AgentGitMessageGenerationInput =
-  | { kind: 'viz'; target: AgentGitDiffTarget; scopes?: AgentGitDiffScope[]; mode?: 'fast' | 'polished' }
+  | { kind: 'viz'; generationId?: string; target: AgentGitDiffTarget; scopes?: AgentGitDiffScope[]; mode?: 'fast' | 'polished' }
   | { kind: 'commit'; includeUnstaged: boolean; includeUntracked: boolean }
   | { kind: 'pullRequest' };
 

@@ -65,8 +65,9 @@ describe(`Codex SDK → ${product.name} backend controls`, () => {
     expect(surface.generateText).toHaveBeenCalledWith('draft', { cwd: '/repo', developerInstructions: 'Keep short', model: 'gpt-6.1-luna', reasoningEffort: 'low', serviceTier: null, outputSchema: { type: 'object' } });
     const mcpServers=[{name:'diagram_icons_job',url:'http://127.0.0.1:1234/mcp/token',enabledTools:['fetch_tech_icon'] as const}];
     const attachments=[{type:'image' as const,path:'/assets/viz/reference.png',mimeType:'image/png'}];
-    await driver.generateText(agent, { prompt: 'impact', cwd: '/repo', complexity: 'normal', tools: true, attachments, mcpServers });
-    expect(surface.generateText).toHaveBeenLastCalledWith('impact', expect.objectContaining({model:'gpt-6.1-sol',reasoningEffort:'medium',tools:'read-only',attachments,mcpServers:[{name:'diagram_icons_job',transport:{type:'http',url:mcpServers[0]!.url},enabledTools:['fetch_tech_icon'],toolApprovalMode:'auto',required:true}]}));
+    const controller = new AbortController();
+    await driver.generateText(agent, { signal: controller.signal, prompt: 'impact', cwd: '/repo', complexity: 'normal', tools: true, attachments, mcpServers });
+    expect(surface.generateText).toHaveBeenLastCalledWith('impact', expect.objectContaining({ signal: controller.signal,model:'gpt-6.1-sol',reasoningEffort:'medium',tools:'read-only',attachments,mcpServers:[{name:'diagram_icons_job',transport:{type:'http',url:mcpServers[0]!.url},enabledTools:['fetch_tech_icon'],toolApprovalMode:'auto',required:true}]}));
     await driver.generateText(agent, { prompt: 'analysis', cwd: '/repo', complexity: 'complex' });
     expect(surface.generateText).toHaveBeenLastCalledWith('analysis', expect.objectContaining({model:'gpt-6-astra',reasoningEffort:'high'}));
     expect(agent.backendDefaults).toStrictEqual({ kind: 'codex', model: 'model', reasoningEffort: 'high', serviceTier: 'fast' });

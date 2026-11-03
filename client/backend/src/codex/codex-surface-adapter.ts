@@ -366,9 +366,12 @@ export class CodexSurfaceAgentAdapter {
   }
 
   async generateText(_agent: Agent, input: BackendTextGenerationInput): Promise<BackendTextGenerationResult> {
+    input.signal?.throwIfAborted();
     const servers = utilityMcpServers(input.mcpServers);
     const selection = utilityTextModel('codex', await this.listModels(), input.complexity);
+    input.signal?.throwIfAborted();
     return this.surface.generateText(input.prompt, {
+      ...(input.signal ? { signal: input.signal } : {}),
       cwd: expandHome(input.cwd),
       ...selection,
       serviceTier: null,

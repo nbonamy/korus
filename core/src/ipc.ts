@@ -89,6 +89,7 @@ export const ipcChannels = {
   branchCurrentWork: 'agent:git-branch-work',
   getAgentGitWorkflow: 'agent:git-workflow:get',
   getAgentClosePreview: 'agent:close-preview:get',
+  cancelAgentGitMessage: 'agent:git-workflow:message:cancel',
   generateAgentGitMessage: 'agent:git-workflow:message:generate',
   stageAgentGitFiles: 'agent:git-workflow:stage',
   commitAgentGitChanges: 'agent:git-workflow:commit',

@@ -152,25 +152,32 @@ export class AntigravityHost implements AgentBackendDriver {
 
   async generateText(agent: Agent, input: BackendTextGenerationInput): Promise<{ text: string }> {
     if (this.closed) throw new Error('Antigravity host is closed.');
+    input.signal?.throwIfAborted();
     const inspect = input.tools === true;
     const servers = utilityMcpServers(input.mcpServers);
     const session = await this.openSession({ agentId: `generation-${randomUUID()}`, cwd: input.cwd, mcpServers: servers.map(server => sessionMcpServer(server.url, server.name, [...server.enabledTools])), utilityMcpTools: servers.map(server => ({server:server.name, tools:server.enabledTools})), tools: inspect ? 'read-only' : false, ephemeral: true, changed: () => {}, usage: event => this.observeUsage({ ...event, agentId: agent.id }) });
     this.auxiliary.add(session);
+    const abort = () => { void session.interrupt().catch(() => session.close()); };
+    input.signal?.addEventListener('abort', abort, { once: true });
     try {
+      input.signal?.throwIfAborted();
       if (this.closed) throw new Error('Antigravity host is closed.');
       const selection = utilityTextModel(this.backend, antigravityModels(session.configuration.models), input.complexity);
       await session.setModel(selection.model);
       await session.setMode('default');
       const prompt = [input.developerInstructions, inspect ? 'Inspect the working folder with read-only Git and source tools. Use simple Git commands without shell operators. For git diff, show or log, include --no-ext-diff --no-textconv. Never write files or modify Git state. Return only the requested final text.' : (servers.length ? 'Return only the requested text. The supplied fetch_tech_icon MCP tool is available; workspace tools are disabled.' : 'Return only the requested text. Do not call tools.'),
         input.outputSchema ? `Return JSON matching this schema: ${JSON.stringify(input.outputSchema)}` : '', input.prompt].filter(Boolean).join('\n\n');
-      const turn = session.prompt(prompt, [{type:'text',text:prompt}, ...await acpAttachments(input.attachments ?? [])]);
+      const attachments = await acpAttachments(input.attachments ?? []);
+      input.signal?.throwIfAborted();
+      const turn = session.prompt(prompt, [{type:'text',text:prompt}, ...attachments]);
       await turn.completion;
+      input.signal?.throwIfAborted();
       if (session.snapshot.turns[0]?.status !== 'completed') throw new Error(session.snapshot.error ?? 'Antigravity text generation failed.');
       const text = session.snapshot.messages.filter(message => message.role === 'assistant')
         .flatMap(message => message.parts.flatMap(part => part.type === 'text' ? [part.text] : [])).join('\n');
       if (!text.trim()) throw new Error('Antigravity returned no text.');
       return { text };
-    } finally { this.auxiliary.delete(session); await session.close(); }
+    } finally { input.signal?.removeEventListener('abort', abort); this.auxiliary.delete(session); await session.close(); }
   }
 
   async disposeCodeReview(agent: Agent, reviewerSession: BackendSession): Promise<void> {

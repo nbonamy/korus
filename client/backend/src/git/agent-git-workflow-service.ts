@@ -67,10 +67,11 @@ export type AgentGitWorkflowServiceOptions = {
 
 /** Owns the complete local workflow for app-level agent Git requests. */
 export class AgentGitWorkflowService {
+  private readonly generations = new Map<string, { cancelled: boolean; started: boolean; done: Promise<void>; finish: () => void }>();
   private readonly creatingRequests = new Set<string>();
   constructor(private readonly options: AgentGitWorkflowServiceOptions) {}
 
-  async execute(request: AgentGitRequest, agent: Agent): Promise<AgentGitLogPage | AgentGitLogDetails | AgentGitLogFileDiff | BranchWorkPreview | BranchWorkResult | AgentGitDiff | AgentGitMessageGenerationResult | AgentGitWorkflow | AgentGitUpdateFromBaseResult | AgentGitPullResult | GitPruneInventory | GitPruneResult> {
+  async execute(request: AgentGitRequest, agent: Agent): Promise<null | AgentGitLogPage | AgentGitLogDetails | AgentGitLogFileDiff | BranchWorkPreview | BranchWorkResult | AgentGitDiff | AgentGitMessageGenerationResult | AgentGitWorkflow | AgentGitUpdateFromBaseResult | AgentGitPullResult | GitPruneInventory | GitPruneResult> {
     const { method, agentId, params } = request;
     switch (method) {
       case backendMethods.agentGitBranchWorkPreview:
@@ -99,6 +100,15 @@ export class AgentGitWorkflowService {
         return this.getDiff(agent, parseGitDiffTarget(params.target));
       case backendMethods.agentGitWorkflowGet:
         return this.workflow(agent, { includePullRequest: params.includePullRequest === true });
+      case backendMethods.agentGitMessageCancel: {
+        const generationId = requireString(params.generationId, 'generationId');
+        const job = this.generations.get(JSON.stringify([agent.id, generationId]));
+        if (!job) return null;
+        job.cancelled = true;
+        if (job.started) await this.options.driverRequest(agent, backendMethods.driverTextCancel, { agent, generationId });
+        await job.done;
+        return null;
+      }
       case backendMethods.agentGitMessageGenerate:
         return this.generateMessage(agent, params);
       case backendMethods.agentGitStage: {
@@ -264,16 +274,31 @@ export class AgentGitWorkflowService {
     const input = requireRecord(params.input);
     const kind = requireString(input.kind, 'kind');
     if (kind === 'viz') {
-      const mode = input.mode ?? this.options.getSnapshot().general.diffVisualizationMode ?? 'polished';
-      if (mode !== 'fast' && mode !== 'polished') throw new Error('Invalid diff visualization style.');
-      const target = parseGitDiffTarget(input.target);
-      if (target.type === 'turn') throw new Error('Choose a branch, commit or working-tree comparison for Viz. A conversation turn is not a Git revision.');
-      const scopes = input.scopes === undefined ? undefined : requireStringArray(input.scopes, 'scopes');
-      if (scopes?.some(scope => !['staged', 'unstaged', 'untracked'].includes(scope))) throw new Error('Invalid Git visualization scope.');
-      const selected = await this.getDiff(agent, target);
-      const patch = scopes && selected.sections.length ? selected.sections.filter(section => scopes.includes(section.scope)).map(section => section.diff).join('\n') : selected.diff;
-      const diagram = await generateDiffViz({ target: selected.target, ...(scopes ? { scopes: scopes as import('@workspace/core/contracts').AgentGitDiffScope[] } : {}), paths: changedFilePaths(patch), diff: patch }, folder, request => this.options.driverRequest(agent, backendMethods.driverTextGenerate, { agent, ...request }), mode);
-      return { kind, diagram };
+      const generationId = input.generationId === undefined ? undefined : requireString(input.generationId, 'generationId');
+      const key = JSON.stringify([agent.id, generationId]);
+      if (generationId && this.generations.has(key)) throw new Error('Generation is already running.');
+      let finish!: () => void;
+      const job = { cancelled: false, started: false, done: new Promise<void>(resolve => { finish = resolve; }), finish: () => finish() };
+      if (generationId) this.generations.set(key, job);
+      const check = () => { if (job.cancelled) throw new Error('Generation cancelled.'); };
+      try {
+        const mode = input.mode ?? this.options.getSnapshot().general.diffVisualizationMode ?? 'polished';
+        if (mode !== 'fast' && mode !== 'polished') throw new Error('Invalid diff visualization style.');
+        const target = parseGitDiffTarget(input.target);
+        if (target.type === 'turn') throw new Error('Choose a branch, commit or working-tree comparison for Viz. A conversation turn is not a Git revision.');
+        const scopes = input.scopes === undefined ? undefined : requireStringArray(input.scopes, 'scopes');
+        if (scopes?.some(scope => !['staged', 'unstaged', 'untracked'].includes(scope))) throw new Error('Invalid Git visualization scope.');
+        const selected = await this.getDiff(agent, target);
+        check();
+        const patch = scopes && selected.sections.length ? selected.sections.filter(section => scopes.includes(section.scope)).map(section => section.diff).join('\n') : selected.diff;
+        const diagram = await generateDiffViz({ target: selected.target, ...(scopes ? { scopes: scopes as import('@workspace/core/contracts').AgentGitDiffScope[] } : {}), paths: changedFilePaths(patch), diff: patch }, folder, request => {
+          check();
+          job.started = true;
+          return this.options.driverRequest(agent, backendMethods.driverTextGenerate, { agent, ...request, ...(generationId ? { generationId } : {}) });
+        }, mode);
+        check();
+        return { kind, diagram };
+      } finally { if (generationId) this.generations.delete(key); job.finish(); }
     }
     if (kind === 'commit') {
       const source = await this.options.git.commitMessageContext(folder, {

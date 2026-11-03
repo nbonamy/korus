@@ -27,6 +27,9 @@ export function registerAgentGitIpcHandlers(
   ipc.handle(ipcChannels.getAgentGitWorkflow, (_event, agentId, options) => (
     requestAppBackend(getBackendClient(), backendMethods.agentGitWorkflowGet, { agentId, ...(options?.includePullRequest !== undefined ? { includePullRequest: options.includePullRequest } : {}) })
   ));
+  ipc.handle(ipcChannels.cancelAgentGitMessage, async (_event, agentId, generationId) => {
+    await requestAppBackend(getBackendClient(), backendMethods.agentGitMessageCancel, { agentId, generationId });
+  });
   ipc.handle(ipcChannels.generateAgentGitMessage, async (_event, agentId, input) => {
     try {
       return await requestAppBackend(getBackendClient(), backendMethods.agentGitMessageGenerate, { agentId, input });

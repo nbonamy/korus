@@ -103,6 +103,7 @@ export function createClientApiMock(
     getAgentClosePreview: unscripted<'getAgentClosePreview'>('getAgentClosePreview'),
     listAgentTasks: vi.fn().mockResolvedValue([]),
     cancelAgentTask: unscripted<'cancelAgentTask'>('cancelAgentTask'),
+    cancelAgentGitMessage: unscripted<'cancelAgentGitMessage'>('cancelAgentGitMessage'),
     generateAgentGitMessage: unscripted<'generateAgentGitMessage'>('generateAgentGitMessage'),
     stageAgentGitFiles: unscripted<'stageAgentGitFiles'>('stageAgentGitFiles'),
     commitAgentGitChanges: unscripted<'commitAgentGitChanges'>('commitAgentGitChanges'),

@@ -220,6 +220,10 @@ export type AppBackendRequestMap = {
     params: { agentId: string; taskId: string };
     result: import('../delegated-task').DelegatedTask;
   };
+  [backendMethods.agentGitMessageCancel]: {
+    params: { agentId: string; generationId: string };
+    result: null;
+  };
   [backendMethods.agentGitMessageGenerate]: {
     params: { agentId: string; input: AgentGitMessageGenerationInput };
     result: AgentGitMessageGenerationResult;

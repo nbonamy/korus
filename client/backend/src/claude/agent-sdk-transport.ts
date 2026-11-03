@@ -322,6 +322,7 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
 
   async generateText(input: import('@workspace/core/backend-driver').BackendTextGenerationInput, selection: Pick<ClaudeTurnParams, 'model' | 'effort'> = {}): Promise<{ text: string }> {
     if (this.closing) throw new Error('Claude transport is closed.');
+    input.signal?.throwIfAborted();
     const prompt = new AsyncPushQueue<SDKUserMessage>();
     const sessionId = this.createSessionId();
     const inspect = input.tools === true;
@@ -346,15 +347,22 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
       },
     });
     this.inspectionQueries.add(runtime);
+    const abort = () => { prompt.close(); runtime.close(); };
+    input.signal?.addEventListener('abort', abort, { once: true });
     try {
-      prompt.push({ ...await claudeUserMessage(input.prompt, input.attachments), session_id: sessionId });
+      const message = await claudeUserMessage(input.prompt, input.attachments);
+      input.signal?.throwIfAborted();
+      prompt.push({ ...message, session_id: sessionId });
       for await (const message of runtime) {
+        input.signal?.throwIfAborted();
         if (message.type !== 'result') continue;
         if (message.subtype !== 'success' || message.is_error) throw new Error('Claude text generation failed.');
         return { text: message.structured_output !== undefined ? JSON.stringify(message.structured_output) : message.result };
       }
+      input.signal?.throwIfAborted();
       throw new Error('Claude text generation ended without a result.');
     } finally {
+      input.signal?.removeEventListener('abort', abort);
       this.inspectionQueries.delete(runtime);
       prompt.close();
       runtime.close();

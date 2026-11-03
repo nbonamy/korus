@@ -128,6 +128,21 @@ describe('ClaudeAgentSdkTransport', () => {
     await closing;
     await transport.close();
   });
+  it('stops the isolated query on cancellation and never returns a late result', async () => {
+    const harness = createQueryHarness();
+    const transport = new ClaudeAgentSdkTransport({ createQuery: harness.createQuery });
+    const controller = new AbortController();
+    try {
+      const pending = transport.generateText({ cwd: '/tmp/project', prompt: 'Draw', signal: controller.signal });
+      const stopped = expect(pending).rejects.toThrow(/cancel/i);
+      await vi.waitFor(() => expect(harness.inputs).toHaveLength(1));
+      controller.abort(new Error('Generation cancelled.'));
+      expect(harness.runtimes[0]?.close).toHaveBeenCalled();
+      harness.emit({ type: 'result', subtype: 'success', session_id: 'selection', is_error: false, result: 'late' } as ClaudeSdkMessage);
+      await stopped;
+    } finally { await transport.close(); }
+  });
+
   it('returns structured automation selection without tools or a persisted conversation', async () => {
     const harness = createQueryHarness();
     const transport = new ClaudeAgentSdkTransport({ createQuery: harness.createQuery });
