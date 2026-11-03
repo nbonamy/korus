@@ -1260,6 +1260,30 @@ describe('useAppState', () => {
     expect(state.agentConversationFor(claude.id)?.claudeSnapshot?.error).toBe('post-restart');
   });
 
+  it('restores the active agent after reconnect while cached recoveries are still loading', async () => {
+    const remote = createInitialSnapshot();
+    const codex = remote.agents[0]!;
+    codex.backendSession = { kind: 'codex', threadId: 'thread-1' };
+    let receive!: (event: MainToRendererEvent) => void;
+    const load = vi.fn().mockResolvedValue(remote);
+    const getSnapshotState = vi.fn().mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 0, connection: { status: 'reconnecting' } });
+    stubElectronTestWindow({ app: { getSnapshotState, loadConversationHistory: load, onEvent: listener => { receive = listener; return () => {}; } } });
+    const state = useAppState();
+    await state.loadSnapshot();
+    receive({ seq: 1, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 40, snapshot: codexConversationSnapshot() } });
+    const stuck = deferred<ReturnType<typeof createInitialSnapshot>>();
+    load.mockReset().mockReturnValueOnce(stuck.promise).mockResolvedValue(remote);
+    getSnapshotState.mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 1, connection: { status: 'connected' } });
+    receive({ seq: 0, source: 'client', occurredAt: '', type: 'client.connectionChanged', payload: { status: 'connected' } });
+    try {
+      // The stuck cached-pane recovery must not hold back the active agent's history load.
+      await vi.waitFor(() => expect(load.mock.calls.length).toBeGreaterThanOrEqual(2));
+    } finally {
+      stuck.resolve(remote);
+    }
+    await nextTick();
+  });
+
   it('releases the recovery queue when one load never settles and retries after a failed hydrate', async () => {
     vi.useFakeTimers();
     try {

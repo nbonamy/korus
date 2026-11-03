@@ -596,14 +596,18 @@ export function useAppState() {
     });
     return rendererSynchronization;
   }
+  // The repair window stays open until queued hydration drains, so a storm of
+  // transport gaps fans out once. Callers only wait for the snapshot sync and the
+  // enqueue, never for provider loads.
   let conversationRepair: Promise<void> | null = null;
+  let conversationRepairEnqueued: Promise<void> | null = null;
   synchronizeRendererSnapshotRequest = () => {
     if (conversationRepair) {
       // A second sequence gap still needs its fence repaired and buffered
       // events drained, even while provider hydration is already queued.
-      return bufferedMainEvents ? synchronizeRendererSnapshot(true) : conversationRepair;
+      return bufferedMainEvents ? synchronizeRendererSnapshot(true) : conversationRepairEnqueued!;
     }
-    conversationRepair = (async () => {
+    const enqueued = (async () => {
       const cachedCodexAgentIds = Object.keys(codexConversationFramesByAgentId.value);
       const cachedClaudeAgentIds = Object.keys(claudeConversationFramesByAgentId.value);
       await synchronizeRendererSnapshot(true);
@@ -617,9 +621,13 @@ export function useAppState() {
         invalidateAndRecoverClaudeConversation(agentId);
       }
       antigravityConversations.recoverAll();
-      await conversationRecoveryTail;
-    })().finally(() => { conversationRepair = null; });
-    return conversationRepair;
+    })();
+    conversationRepairEnqueued = enqueued;
+    const repair = enqueued.then(() => conversationRecoveryTail).catch(() => undefined).finally(() => {
+      if (conversationRepair === repair) conversationRepair = conversationRepairEnqueued = null;
+    });
+    conversationRepair = repair;
+    return enqueued;
   };
 
   async function performRendererSynchronization(preserveActiveSelection: boolean): Promise<void> {
