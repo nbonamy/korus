@@ -11,6 +11,7 @@ struct CodeReviewDetails: Decodable, Equatable {
         let activeRoundId: String
         let updatedAt: String
         let busy: Bool
+        let commitAvailable: Bool?
         let rounds: [Round]
         let automation: Automation?
         struct Automation: Decodable, Equatable { let state: String; let reason: String? }
@@ -68,9 +69,10 @@ struct CodeReviewDetails: Decodable, Equatable {
         struct Remediation: Decodable, Equatable { let state: String; let evidence: String? }
         struct Discussion: Decodable, Equatable, Identifiable { let id: String; let author: String; let body: String }
     }
-    func command(action: String, findingID: String? = nil, selected: Bool? = nil, question: String? = nil) -> [String: Any]? {
+    func command(action: String, findingID: String? = nil, selected: Bool? = nil, question: String? = nil, commitFirst: Bool = false) -> [String: Any]? {
         guard let session, let data = try? JSONEncoder().encode(target), let encoded = try? JSONSerialization.jsonObject(with: data) else { return nil }
         var input: [String: Any] = ["sessionId": session.id, "roundId": session.activeRoundId, "updatedAt": session.updatedAt, "action": action]
+        if commitFirst && session.commitAvailable == true && session.status == "readyToFinish" && ["again", "finish"].contains(action) { input["commitFirst"] = true }
         if let findingID { input["findingId"] = findingID }
         if let selected { input["selected"] = selected }
         if let question { input["question"] = question }

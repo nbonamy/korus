@@ -1128,3 +1128,13 @@ describe('companion authorization gateway', () => {
     });
   });
 });
+
+it('preserves released review requests and forwards explicit commit consent for a new round', async () => {
+  const f = fixture(); await f.pair();
+  const input = { sessionId: 'review', roundId: 'round', updatedAt: 'v1', action: 'again' };
+  expect(await f.gateway.request('phone', 'agent.review.action', { target, input })).toStrictEqual({});
+  expect(f.port.reviewAction).toHaveBeenLastCalledWith('agent', input);
+  const consent = { ...input, commitFirst: true };
+  expect(await f.gateway.request('phone', 'agent.review.action', { target, input: consent })).toStrictEqual({});
+  expect(f.port.reviewAction).toHaveBeenLastCalledWith('agent', consent);
+});

@@ -2,6 +2,8 @@ package com.nabocorp.companion
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -23,6 +25,7 @@ import org.json.JSONObject
     val review = state.obj("review")
     val activeRound = session.string("activeRoundId")
     var roundId by remember(session.string("id"), activeRound) { mutableStateOf(activeRound) }
+    var commitFirst by remember(session.string("id"), session.optBoolean("commitAvailable")) { mutableStateOf(false) }
     var confirmation by remember { mutableStateOf<String?>(null) }
     var confirmedCommand by remember { mutableStateOf<JSONObject?>(null) }
     var options by remember { mutableStateOf(false) }
@@ -42,6 +45,7 @@ import org.json.JSONObject
     }
     fun confirm(action: String) {
         confirmedCommand = json("target" to details.obj("target"), "input" to json("sessionId" to session.string("id"), "roundId" to activeRound, "updatedAt" to session.string("updatedAt"), "action" to action))
+        if (commitFirst && session.optBoolean("commitAvailable") && status == "readyToFinish" && action in listOf("again", "finish")) confirmedCommand?.obj("input")?.put("commitFirst", true)
         confirmation = action
     }
     LaunchedEffect(session.string("id"), state.connection) {
@@ -67,6 +71,10 @@ import org.json.JSONObject
                     TextButton(onClick = { model.command("loadReviewDetails") }) { Text("Refresh status") }
                 }
                 if (review.string("action") == "working") LinearProgressIndicator(Modifier.fillMaxWidth())
+                if (!automatic && status == "readyToFinish" && session.optBoolean("commitAvailable")) {
+                    AppRow("Commit changes", Modifier.toggleable(commitFirst, enabled = idle, role = Role.Switch, onValueChange = { commitFirst = it }), enabled = idle,
+                        trailing = { Switch(commitFirst, onCheckedChange = null, enabled = idle) })
+                }
                 when {
                     automatic -> OutlinedButton(onClick = { confirm("manual") }, enabled = available, modifier = Modifier.fillMaxWidth()) { Text("Switch to manual") }
                     status == "ready" -> AppProminentButton(if (selected > 0) "Fix selected" else "Complete round", canDecide) { confirm("submit") }
