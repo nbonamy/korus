@@ -24,6 +24,7 @@ export const defaultAppshotSettings: AppshotSettings = {
 
 export const defaultGeneralSettings: AppGeneralSettings = {
   git: normalizeGitSettings(undefined),
+  excludeLockfilesFromDiffs: false,
   commitMessageInstructions: '',
   pullRequestInstructions: '',
   codeReviewInstructions: '',
@@ -140,6 +141,7 @@ export function normalizeGeneralSettings(value: unknown): AppGeneralSettings {
   return {
     preventSleepWhenAgentsRun: value.preventSleepWhenAgentsRun !== false,
     git: normalizeGitSettings(value.git),
+    excludeLockfilesFromDiffs: value.excludeLockfilesFromDiffs === true,
     commitMessageInstructions: normalizeString(value.commitMessageInstructions) ?? '',
     pullRequestInstructions: normalizeString(value.pullRequestInstructions) ?? '',
     codeReviewInstructions: normalizeString(value.codeReviewInstructions) ?? '',

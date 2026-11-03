@@ -27,6 +27,8 @@
 </template>
 
 <script setup lang="ts">
+import { withoutLockfileStats } from '@workspace/core/diff-lockfiles';
+import { useGeneralPreferences } from '../general-preferences';
 import { translate } from '../i18n';
 import { computed, inject, ref, watch } from 'vue';
 import type { Agent, AgentGitDiffScope, AgentGitStatus } from '@workspace/core/contracts';
@@ -85,11 +87,14 @@ const visibleScopes = ref<Record<AgentGitDiffScope, boolean>>({
 });
 const repositoryName = computed(() => fileBasename(props.gitStatus?.folder ?? props.agent.folder ?? ''));
 const vizScopes = computed(() => props.panel.sections?.length ? props.panel.sections.filter(section => visibleScopes.value[section.scope]).map(section => section.scope) : undefined);
-const displayedSummary = computed(() => props.panel.summary ?? {
+const preferences = useGeneralPreferences();
+const rawSummary = computed(() => props.panel.summary ?? {
   addedLines: props.gitStatus?.addedLines ?? 0,
   removedLines: props.gitStatus?.removedLines ?? 0,
   changedFiles: props.gitStatus?.changedFiles ?? 0,
+  lockfiles: props.gitStatus?.lockfiles,
 });
+const displayedSummary = computed(() => preferences?.general().excludeLockfilesFromDiffs ? withoutLockfileStats(rawSummary.value) : rawSummary.value);
 const visibleDiff = computed(() => {
   if (!props.panel.sections?.length) return props.panel.diff;
   return props.panel.sections

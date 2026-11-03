@@ -168,12 +168,13 @@
 </template>
 
 <script setup lang="ts">
+import { useGeneralPreferences } from '../general-preferences';
 import { computed, nextTick, ref, watch } from 'vue';
 import { IconBrandJavascript, IconBrandTypescript, IconBrandVue, IconFileCode, IconPlus } from '@tabler/icons-vue';
 import parseGitDiff, { type AnyChunk, type AnyFileChange, type Chunk } from 'parse-git-diff';
 import { translate } from '../i18n';
 import { ChevronDown, ChevronRightIcon, FileArrowRightIcon } from '../shared/icons/app-icons';
-import { classifyFile, fileKinds, type FileKind } from '@workspace/core/file-kind';
+import { isLockfile, classifyFile, fileKinds, type FileKind } from '@workspace/core/file-kind';
 import { fileKindColor, fileKindCount, fileKindLabel } from './file-kind-presentation';
 import GitDiffTreemap from './GitDiffTreemap.vue';
 import CodeSelectionAnnotation from './CodeSelectionAnnotation.vue';
@@ -300,9 +301,12 @@ const parsed = computed(() => {
   }
 });
 
-const files = computed(() => props.fileKindFilter
-  ? parsed.value.files.filter(file => classifyFile(file.fullPath) === props.fileKindFilter)
-  : parsed.value.files);
+const preferences = useGeneralPreferences();
+const excludeLockfiles = computed(() => preferences?.general().excludeLockfilesFromDiffs === true);
+const files = computed(() => parsed.value.files.filter(file =>
+  (!excludeLockfiles.value || !isLockfile(file.fullPath)) &&
+  (!props.fileKindFilter || classifyFile(file.fullPath) === props.fileKindFilter)));
+
 const parseError = computed(() => parsed.value.error);
 const mapKind = ref<FileKind | null>(null);
 const focusedFilePaths = ref<string[] | null>(null);

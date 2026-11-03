@@ -99,6 +99,7 @@ describe('settings contracts', () => {
       plugins: defaultPluginSettings,
     })).toStrictEqual({
       git: { pull: 'git-config', update: 'merge' },
+      excludeLockfilesFromDiffs: false,
       commitMessageInstructions: '',
       pullRequestInstructions: '',
       codeReviewInstructions: '',
@@ -209,6 +210,7 @@ describe('settings contracts', () => {
 
     expect(snapshot.general).toStrictEqual({
       git: { pull: 'git-config', update: 'merge' },
+      excludeLockfilesFromDiffs: false,
       commitMessageInstructions: '',
       pullRequestInstructions: '',
       codeReviewInstructions: '',

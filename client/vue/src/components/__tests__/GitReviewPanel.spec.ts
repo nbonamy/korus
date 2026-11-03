@@ -1,4 +1,12 @@
-import { DOMWrapper, mount } from '@vue/test-utils';
+import { ElSegmented, ElSwitch } from 'element-plus';
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
+import { defineComponent, h, provide, ref } from 'vue';
+import { normalizeGeneralSettings, defaultGeneralSettings } from '@workspace/core/settings';
+import { summarizeUnifiedDiff } from '@workspace/core/unified-diff-stats';
+import { createGeneralPreferences, generalPreferencesKey } from '../../general-preferences';
+import GitDiffControl from '../GitDiffControl.vue';
+import GitDiffTreemap from '../GitDiffTreemap.vue';
+import SettingsGeneralPanel from '../SettingsGeneralPanel.vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import GitReviewPanel from '../GitReviewPanel.vue';
 // Menus open in a popper attached to the body.
@@ -21,6 +29,50 @@ const scopedDiffs = [
 ];
 
 describe('GitReviewPanel', () => {
+  it('shares the off-by-default lockfile preference between Code settings, Git stats, Changes and Map', async () => {
+    const general = ref({ ...defaultGeneralSettings });
+    const preferences = createGeneralPreferences(() => general.value, async input => { general.value = normalizeGeneralSettings({ ...general.value, ...input }); });
+    const lock = ['diff --git a/nested/package-lock.json b/nested/package-lock.json', '--- a/nested/package-lock.json', '+++ b/nested/package-lock.json', '@@ -1 +1,4000 @@', '-old', ...Array(4000).fill('+generated')].join('\n');
+    const patch = `${diff}\n${lock}`;
+    const summary = summarizeUnifiedDiff(patch);
+    const status = { folder: '/repo', state: 'dirty' as const, ahead: 0, behind: 0, hasUntracked: false, updatedAt: '', ...summary };
+    const panel = { kind: 'gitDiff' as const, title: 'Changes', diff: patch, state: 'idle' as const, error: null, summary };
+    const Host = defineComponent({ setup() {
+      provide(generalPreferencesKey, preferences);
+      return () => h('div', [
+        h(SettingsGeneralPanel, { settings: general.value, updateSettings: input => preferences.update(input.general ?? {}) }),
+        h(GitDiffControl, { agentId: 'a', gitStatus: status }),
+        h(GitReviewPanel, { agent: { id: 'a', folder: '/repo' } as never, gitStatus: status, panel }),
+      ]);
+    } });
+    const wrapper = mount(Host, { attachTo: document.body, global: { components: { ElSegmented, ElSwitch }, stubs: { GitDiffTreemapChart: true } } });
+    try {
+      const setting = () => wrapper.get('input[aria-label="Exclude lockfiles"]');
+      expect(wrapper.get('#settings-general-source-title').text()).toBe('Code');
+      expect(wrapper.getComponent(SettingsGeneralPanel).text()).toContain('Git operations still include them.');
+      expect((setting().element as HTMLInputElement).checked).toBe(false);
+      expect(wrapper.get('.git-diff-control__files').text()).toBe('2');
+      expect(wrapper.get('.git-review-panel__added').text()).toBe('+4002');
+      await wrapper.get('[aria-label="Choose repository diff"]').trigger('click');
+      await flushPromises();
+      const toggle = bodyAll('[role="menuitemcheckbox"]').find(row => row.text().includes('Exclude lockfiles'))!;
+      expect(toggle.find('svg.tabler-icon-lock-off').exists()).toBe(true);
+      await toggle.trigger('click');
+      await flushPromises();
+      expect(general.value.excludeLockfilesFromDiffs).toBe(true);
+      expect((setting().element as HTMLInputElement).checked).toBe(true);
+      expect(wrapper.get('.git-diff-control__files').text()).toBe('1');
+      expect(wrapper.get('.git-review-panel__added').text()).toBe('+2');
+      expect(wrapper.get('.git-diff-preview-panel').text()).not.toContain('package-lock.json');
+      const map = wrapper.findAll('.git-diff-view-toggle label').find(label => label.text() === 'Map')!;
+      await map.get('input').setValue(true);
+      expect(wrapper.getComponent(GitDiffTreemap).props('files')).toHaveLength(1);
+      await setting().setValue(false);
+      await flushPromises();
+      expect(wrapper.get('.git-diff-control__files').text()).toBe('2');
+      expect(wrapper.getComponent(GitDiffTreemap).props('files')).toHaveLength(2);
+    } finally { wrapper.unmount(); }
+  });
   afterEach(() => vi.restoreAllMocks());
   it('shows the selected remote provider in Git review', () => {
     const wrapper = mount(GitReviewPanel, { props: { agent: { id: 'a', folder: '/repo' } as never,

@@ -47,10 +47,13 @@
 </template>
 
 <script setup lang="ts">
+import { ElMessage } from 'element-plus';
+import { useGeneralPreferences } from '../general-preferences';
+import { withoutLockfileStats } from '@workspace/core/diff-lockfiles';
 import { computed, ref, shallowRef, watch } from 'vue';
 import type { AgentGitDiffSummary, AgentGitDiffTarget, AgentGitStatus, TurnGitDiff } from '@workspace/core/contracts';
 import { CodexAnimatedDiffStat } from '@codex-app-sdk/vue';
-import { ChevronDown, FileDiffIcon, GitBranchIcon, GitCommitIcon } from '../shared/icons/app-icons';
+import { ChevronDown, FileDiffIcon, GitBranchIcon, GitCommitIcon, LockOffIcon } from '../shared/icons/app-icons';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { translate } from '../i18n';
@@ -70,6 +73,8 @@ const emit = defineEmits<{
   select: [target: AgentGitDiffTarget];
 }>();
 
+const preferences = useGeneralPreferences();
+const excludeLockfiles = computed(() => preferences?.general().excludeLockfilesFromDiffs === true);
 const menuOpen = ref(false);
 const hasUserSelection = ref(Boolean(props.selectedTarget));
 const selectedTarget = shallowRef<AgentGitDiffTarget>(selectedTargetForAgent());
@@ -77,6 +82,7 @@ const fallbackSummary = computed<AgentGitDiffSummary>(() => ({
   addedLines: props.gitStatus.addedLines,
   removedLines: props.gitStatus.removedLines,
   changedFiles: props.gitStatus.changedFiles,
+  lockfiles: props.gitStatus.lockfiles,
 }));
 const selectedSummary = computed(() => summaryFor(selectedTarget.value));
 const hasSelectedChanges = computed(() => selectedSummary.value.changedFiles > 0 || selectedSummary.value.addedLines > 0 || selectedSummary.value.removedLines > 0);
@@ -122,11 +128,16 @@ const menuItems = computed<AppMenuItem[]>(() => {
           description: commit.shortSha,
           icon: GitCommitIcon,
           checked,
-          value: commit,
+          value: displaySummary(commit),
         };
       }),
     });
   }
+  items.push({ id: 'separator-lockfiles', type: 'separator' }, {
+    id: 'exclude-lockfiles', type: 'checkbox',
+    label: translate('surface.settingsGeneralPanel.excludeLockfiles'),
+    icon: LockOffIcon, checked: excludeLockfiles.value, disabled: !preferences,
+  });
   return items;
 });
 
@@ -178,6 +189,12 @@ function selectedTargetForAgent(): AgentGitDiffTarget {
 }
 
 function selectTarget(itemId: string): void {
+  if (itemId === 'exclude-lockfiles') {
+    menuOpen.value = false;
+    void preferences?.update(current => ({ excludeLockfilesFromDiffs: current.excludeLockfilesFromDiffs !== true }))
+      .catch(() => ElMessage.error(translate('surface.settingsGeneralPanel.unableToSaveDiffPreference')));
+    return;
+  }
   if (itemId.startsWith('kind:')) {
     menuOpen.value = false;
     emit('open', { ...selectedTarget.value }, itemId.slice('kind:'.length) as FileKind);
@@ -225,11 +242,18 @@ function selectedLabelFor(target: AgentGitDiffTarget): string {
 
 /** The turn records its diff text; the file count and file types come from that text. */
 function turnSummary(turn: TurnGitDiff): AgentGitDiffSummary {
-  const { changedFiles, byKind } = summarizeUnifiedDiff(turn.diff ?? '');
-  return { addedLines: turn.addedLines, removedLines: turn.removedLines, changedFiles, byKind };
+  return { ...summarizeUnifiedDiff(turn.diff ?? ''), addedLines: turn.addedLines, removedLines: turn.removedLines };
+}
+
+function displaySummary(summary: AgentGitDiffSummary): AgentGitDiffSummary {
+  return excludeLockfiles.value ? withoutLockfileStats(summary) : summary;
 }
 
 function summaryFor(target: AgentGitDiffTarget): AgentGitDiffSummary {
+  return displaySummary(rawSummaryFor(target));
+}
+
+function rawSummaryFor(target: AgentGitDiffTarget): AgentGitDiffSummary {
   const catalog = props.gitStatus.diffCatalog;
   if (target.type === 'branch') return catalog?.branch ?? fallbackSummary.value;
   if (target.type === 'uncommitted') return catalog?.uncommitted ?? fallbackSummary.value;

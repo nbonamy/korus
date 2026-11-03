@@ -500,6 +500,8 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
     const canvasBounds = await page.locator('.diff-treemap__canvas').boundingBox();
     assert.ok(tinyBounds.x + tinyBounds.width <= canvasBounds.x + canvasBounds.width + 0.1, 'a dominant file must not push tiny tiles past the canvas');
     assert.ok(tinyBounds.width * tinyBounds.height < 4, 'tiny tiles must preserve their true area rather than a minimum button size');
+    // Keep pointer hover outside the relaid-out map while testing keyboard focus.
+    await page.locator('.git-review-panel__repository').hover();
     await tiles.last().focus();
     await page.getByRole('tooltip').filter({ has: page.locator('.diff-treemap__tooltip') }).waitFor({ state: 'visible' });
     assert.match(await page.getByRole('tooltip').filter({ has: page.locator('.diff-treemap__tooltip') }).innerText(), /src\/tiny.ts/);

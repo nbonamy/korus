@@ -5,6 +5,7 @@ struct CodeReviewLedgerView: View {
     @Environment(AppModel.self) private var app
     let details: CodeReviewDetails
     let session: CodeReviewDetails.Session
+    @State private var commitFirst = false
     @State private var roundID = ""
     @State private var confirmation: String?
     @State private var confirmedCommand: [String: Any]?
@@ -69,6 +70,8 @@ struct CodeReviewLedgerView: View {
                 } label: { Image(systemName: "ellipsis") }.accessibilityLabel("Review options")
             }
         }
+        .onChange(of: session.id) { _, _ in commitFirst = false }
+        .onChange(of: session.commitAvailable) { _, value in if value != true { commitFirst = false } }
         .onChange(of: session.activeRoundId, initial: true) { _, value in roundID = value }
         .alert(confirmationTitle, isPresented: Binding(get: { confirmation != nil }, set: { if !$0 { confirmation = nil } })) {
             Button("Cancel", role: .cancel) { confirmation = nil }
@@ -130,6 +133,9 @@ struct CodeReviewLedgerView: View {
                         .fontWeight(.semibold).frame(maxWidth: .infinity).padding(.vertical, 10)
                 }.buttonStyle(.borderedProminent).disabled(!canDecide)
             } else if session.status == "readyToFinish" || session.status == "failed" {
+                if session.status == "readyToFinish" && session.commitAvailable == true {
+                    Toggle("Commit changes", isOn: $commitFirst).disabled(!available || session.busy)
+                }
                 HStack(spacing: 12) {
                     if session.status == "readyToFinish" {
                         Button { confirm("finish") } label: { Text("Finish review").fontWeight(.semibold).frame(maxWidth: .infinity).padding(.vertical, 10) }
@@ -147,7 +153,7 @@ struct CodeReviewLedgerView: View {
         app.command("reviewAction", command)
     }
     private func confirm(_ action: String) {
-        confirmedCommand = details.command(action: action)
+        confirmedCommand = details.command(action: action, commitFirst: commitFirst)
         confirmation = action
     }
     private var confirmationTitle: String {

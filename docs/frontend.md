@@ -234,6 +234,9 @@ Settings destinations share their icons, labels and host/provider availability i
 `components/settings-tabs.ts`, consumed by both the sidebar and command search.
 Git command availability and dispatch come from the focused agent's workflow control,
 which retains ownership of operation state, confirmations and host routing.
+Diff display preferences affect presentation only. The daemon retains complete Git
+statistics and file lists; optional lockfile contributions let the renderer filter
+stats and previews without changing staging, commits or other Git operations.
 
 ## Interaction
 

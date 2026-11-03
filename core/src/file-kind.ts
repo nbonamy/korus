@@ -7,7 +7,20 @@ export type KindStats = { addedLines: number; removedLines: number; changedFiles
 export type KindBreakdown = Record<FileKind, KindStats>;
 
 const generatedDirectories = new Set(['node_modules', 'vendor', 'dist', 'coverage', '__pycache__', '.git', '.next', '.nuxt', '.gradle', '.idea']);
-const generatedNames = new Set(['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'cargo.lock', 'go.sum', 'gemfile.lock', 'composer.lock', 'poetry.lock', 'pipfile.lock', 'bun.lockb']);
+const lockfileNames = new Set([
+  'package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml', 'pnpm-lock.yml', 'shrinkwrap.yaml', 'bun.lock', 'bun.lockb', 'deno.lock',
+  'cargo.lock', 'composer.lock', 'gemfile.lock', 'gems.locked', 'berksfile.lock',
+  'pipfile.lock', 'poetry.lock', 'pdm.lock', 'uv.lock', 'pylock.toml', 'requirements.lock',
+  'go.sum', 'go.work.sum', 'gopkg.lock', 'glide.lock', 'packages.lock.json',
+  'package.resolved', 'podfile.lock', 'cartfile.resolved', 'pubspec.lock', 'mix.lock', 'rebar.lock',
+  'flake.lock', 'devbox.lock', '.terraform.lock.hcl', 'conan.lock', 'renv.lock', 'spago.lock',
+]);
+
+/** Dependency lockfiles only: application files with a .lock extension remain visible. */
+export function isLockfile(path: string): boolean {
+  const name = currentPath(path).split('/').at(-1)?.toLowerCase() ?? '';
+  return lockfileNames.has(name) || name.endsWith('.lockfile') || /^pylock\..+\.toml$/u.test(name) || /^requirements-.+\.lock$/u.test(name);
+}
 const docExtensions = new Set(['md', 'mdx', 'markdown', 'rst', 'adoc', 'asciidoc', 'org']);
 const docNames = new Set(['readme', 'changelog', 'changes', 'history', 'license', 'licence', 'copying', 'notice', 'authors', 'contributors', 'contributing', 'code_of_conduct', 'maintainers', 'news']);
 const docDirectories = new Set(['docs', 'doc', 'documentation', 'wiki']);
@@ -60,7 +73,7 @@ export function classifyFile(path: string): FileKind {
   const name = normalized.split('/').filter(Boolean).at(-1) ?? '';
   const lower = name.toLowerCase();
   if (segments.slice(0, -1).some(segment => generatedDirectories.has(segment))) return 'other';
-  if (generatedNames.has(lower) || /\.(?:lock|map)$/u.test(lower) || /\.min\.[^.]+$/u.test(lower)) return 'other';
+  if (isLockfile(normalized) || /\.(?:lock|map)$/u.test(lower) || /\.min\.[^.]+$/u.test(lower)) return 'other';
   if (isTestName(name, lower)) return 'test';
   if (isDocumentation(segments, lower)) return 'docs';
   if (segments.slice(0, -1).some(segment => testDirectories.has(segment) || /\.tests?$/u.test(segment))) return 'test';

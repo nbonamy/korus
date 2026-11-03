@@ -1,6 +1,7 @@
 import { realpath } from 'node:fs/promises';
 import { fileRepositoryKey, gitRepositoryKey } from '@workspace/core/repository-key';
 import { addFileToKindStats, emptyKindStats, mergeKindStats } from '@workspace/core/file-kind';
+import { summarizeLockfiles } from '@workspace/core/diff-lockfiles';
 import { summarizeUnifiedDiff } from '@workspace/core/unified-diff-stats';
 import { product } from '@workspace/core/product';
 import { execFile } from 'node:child_process';
@@ -98,8 +99,8 @@ export class AgentGitService {
         this.runGit(folder, ['remote', '-v']).catch(() => ({ stdout: '' })),
       ]);
       const branch = parseBranchStatus(statusResult.stdout);
-      const stagedDiff = parseNumstat(stagedNumstat.stdout);
-      const unstagedDiff = parseNumstat(unstagedNumstat.stdout);
+      const stagedDiff = parseNumstatSummary(stagedNumstat.stdout);
+      const unstagedDiff = parseNumstatSummary(unstagedNumstat.stdout);
       const untrackedDiff = await untrackedNumstat(this.runGit, folder, untrackedFilesResult.stdout.split('\0').filter(Boolean));
       const trackedUncommitted = await this.runGit(folder, ['diff', 'HEAD', '--numstat', '--'])
         .then((result) => parseNumstatSummary(result.stdout))
@@ -118,8 +119,8 @@ export class AgentGitService {
       const diffCatalog = await this.diffCatalog(folder, {
         branch: branch.branch,
         remote: selected?.[1],
-        staged: parseNumstatSummary(stagedNumstat.stdout),
-        unstaged: combineSummaries(parseNumstatSummary(unstagedNumstat.stdout), untrackedDiff),
+        staged: stagedDiff,
+        unstaged: combineSummaries(unstagedDiff, untrackedDiff),
         untracked: { ...untrackedDiff, changedFiles: untrackedFilesResult.stdout.split('\0').filter(Boolean).length },
         uncommitted: { ...diff, changedFiles: changed.changedFiles },
       });
@@ -817,13 +818,16 @@ function parseUnifiedDiffSummary(diff: string): AgentGitDiffSummary {
   return summarizeUnifiedDiff(diff);
 }
 
-function combineSummaries(...summaries: Array<Pick<AgentGitDiffSummary, 'addedLines' | 'removedLines' | 'byKind'> & Partial<Pick<AgentGitDiffSummary, 'changedFiles'>>>): AgentGitDiffSummary {
+function combineSummaries(...summaries: Array<Pick<AgentGitDiffSummary, 'addedLines' | 'removedLines' | 'byKind' | 'lockfiles'> & Partial<Pick<AgentGitDiffSummary, 'changedFiles'>>>): AgentGitDiffSummary {
   const total = summaries.reduce<AgentGitDiffSummary>((sum, summary) => ({
     addedLines: sum.addedLines + summary.addedLines,
     removedLines: sum.removedLines + summary.removedLines,
     changedFiles: sum.changedFiles + (summary.changedFiles ?? 0),
   }), emptyDiffSummary());
-  return summaries.some(summary => summary.byKind) ? { ...total, byKind: mergeKindStats(...summaries.map(summary => summary.byKind)) } : total;
+  if (summaries.some(summary => summary.byKind)) total.byKind = mergeKindStats(...summaries.map(summary => summary.byKind));
+  const lockfiles = summaries.flatMap(summary => summary.lockfiles ? [summary.lockfiles] : []);
+  if (lockfiles.length) total.lockfiles = combineSummaries(...lockfiles);
+  return total;
 }
 
 function emptyDiffSummary(): AgentGitDiffSummary {
@@ -838,7 +842,7 @@ export function parseCommitSummaries(output: string): AgentGitCommitSummary[] {
   }).filter((commit) => Boolean(commit.sha));
 }
 
-async function untrackedNumstat(runGit: AgentGitRunner, folder: string, paths: string[]): Promise<Pick<AgentGitDiffSummary, 'addedLines' | 'removedLines' | 'byKind'>> {
+async function untrackedNumstat(runGit: AgentGitRunner, folder: string, paths: string[]): Promise<AgentGitDiffSummary> {
   const results = await Promise.all(paths.map(async (filePath) => {
     try {
       return { filePath, ...parseNumstat((await runGit(folder, ['diff', '--no-index', '--numstat', '--', process.platform === 'win32' ? 'NUL' : '/dev/null', filePath])).stdout) };
@@ -849,6 +853,8 @@ async function untrackedNumstat(runGit: AgentGitRunner, folder: string, paths: s
   const byKind = emptyKindStats();
   for (const result of results) addFileToKindStats(byKind, result.filePath, result.addedLines, result.removedLines);
   return {
+    changedFiles: paths.length,
+    lockfiles: summarizeLockfiles(results.map(result => ({ ...result, path: result.filePath }))),
     addedLines: results.reduce((total, result) => total + result.addedLines, 0),
     removedLines: results.reduce((total, result) => total + result.removedLines, 0),
     byKind,
@@ -939,12 +945,18 @@ export function parseNumstat(output: string): Pick<AgentGitStatus, 'addedLines' 
 
 function parseNumstatSummary(output: string): AgentGitDiffSummary {
   const byKind = emptyKindStats();
+  const files: Array<{ path: string; addedLines: number; removedLines: number }> = [];
   for (const line of output.split(/\r?\n/u)) {
     const match = /^(\S+)\s+(\S+)\s+(.+)$/u.exec(line.trim());
-    if (match) addFileToKindStats(byKind, match[3]!, numericStat(match[1]), numericStat(match[2]));
+    if (match) {
+      addFileToKindStats(byKind, match[3]!, numericStat(match[1]), numericStat(match[2]));
+      files.push({ path: match[3]!, addedLines: numericStat(match[1]), removedLines: numericStat(match[2]) });
+    }
   }
+  const lockfiles = summarizeLockfiles(files);
   return {
     ...parseNumstat(output),
+    ...(lockfiles ? { lockfiles } : {}),
     changedFiles: output.split(/\r?\n/u).filter((line) => line.trim()).length,
     byKind,
   };

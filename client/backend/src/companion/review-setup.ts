@@ -49,6 +49,7 @@ export async function readReviewSession(port: CompanionBackendPort, hostId: stri
   return { target: companionTarget(hostId, team, agent), session: session ? {
     id: session.id, targetAgentId: session.targetAgentId, reviewerAgentId: session.reviewerAgentId,
     status: session.status, activeRoundId: session.activeRoundId, updatedAt: session.updatedAt,
+    commitAvailable: (snapshot.agentGitStatuses[reviewer!.id]?.changedFiles ?? 0) > 0,
     busy: reviewer?.status.type === 'working' || reviewer?.status.type === 'awaitingInput',
     ...(session.automation ? { automation: { state: session.automation.state, ...(session.automation.reason ? { reason: session.automation.reason } : {}) } } : {}),
     rounds: session.rounds.map(round => ({ id: round.id, number: round.number, status: round.status, startedAt: round.startedAt,
@@ -60,7 +61,7 @@ export async function readReviewSession(port: CompanionBackendPort, hostId: stri
 }
 
 export async function actOnReview(port: CompanionBackendPort, agentId: string, input: import('@workspace/core/companion-review').CompanionReviewAction): Promise<void> {
-  const { reviewer, session } = await reviewContext(port, agentId);
+  const { snapshot, reviewer, session } = await reviewContext(port, agentId);
   if (!reviewer || !session || session.id !== input.sessionId || session.activeRoundId !== input.roundId || session.updatedAt !== input.updatedAt) {
     throw new Error('The review changed. Refresh before trying again.');
   }
@@ -82,6 +83,10 @@ export async function actOnReview(port: CompanionBackendPort, agentId: string, i
         ...(input.action === 'decide' ? { decision: input.selected ? 'select' : 'reject' } : { question: input.question }) }, _clientId: 'companion-write',
     });
   } else {
+    if ((input.action === 'again' || input.action === 'finish') && input.commitFirst === true && session.status === 'readyToFinish'
+      && (snapshot.agentGitStatuses[reviewer.id]?.changedFiles ?? 0) > 0) {
+      await port.request(backendMethods.agentCodeReviewCommit, { agentId: reviewer.id, sessionId: session.id, _clientId: 'companion-write' });
+    }
     const method = { submit: backendMethods.agentCodeReviewRoundSubmit, again: backendMethods.agentCodeReviewAgain,
       finish: backendMethods.agentCodeReviewFinish, manual: backendMethods.agentCodeReviewManual, discard: backendMethods.agentCodeReviewDiscard }[input.action];
     await port.request(method, { agentId: reviewer.id, sessionId: session.id, _clientId: 'companion-write' });

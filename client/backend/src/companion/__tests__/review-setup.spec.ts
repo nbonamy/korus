@@ -103,3 +103,37 @@ it('reads and arbitrates the bound review, rejects stale rounds and follows reme
   await actOnReview(f.port, 'a', { ...input, roundId: 'round2', action: 'finish' });
   expect((await readReviewSession(f.port, 'host', 'a')).session).toBeNull();
 });
+
+it.each(['again', 'finish'] as const)('commits only with phone consent before %s, and leaves the review open on commit failure', async action => {
+  const f = fixture();
+  const session: import('@workspace/core/code-review').CodeReviewSession = { id: 'review', targetAgentId: 'a', reviewerAgentId: 'reviewer',
+    scope: { type: 'uncommitted' }, threadMode: 'independent', status: 'readyToFinish', activeRoundId: 'round', createdAt: '', updatedAt: 'v1',
+    rounds: [{ id: 'round', number: 1, status: 'completed', startedAt: '', findings: [] }] };
+  f.snapshot.agents.push({ ...f.snapshot.agents[0]!, id: 'reviewer', codeReview: session });
+  f.snapshot.agentGitStatuses.reviewer = { folder: '/private/workspace', branch: 'feature', state: 'dirty', ahead: 0, behind: 0, changedFiles: 1, addedLines: 1, removedLines: 0, hasUntracked: false, updatedAt: '' };
+  const input = { sessionId: 'review', roundId: 'round', updatedAt: 'v1', action };
+  const operations: string[] = [];
+  let failCommit = false;
+  f.request.mockImplementation(async (method: string, params?: any) => {
+    if (method === backendMethods.snapshotGet) return { snapshot: f.snapshot };
+    expect(params).toStrictEqual({ agentId: 'reviewer', sessionId: 'review', _clientId: 'companion-write' });
+    operations.push(method);
+    if (method === backendMethods.agentCodeReviewCommit && failCommit) throw new Error('Commit failed');
+    return { snapshot: f.snapshot };
+  });
+  expect((await readReviewSession(f.port, 'host', 'a')).session).toMatchObject({ commitAvailable: true });
+  const method = action === 'again' ? backendMethods.agentCodeReviewAgain : backendMethods.agentCodeReviewFinish;
+  // Released build 124 omits commitFirst: it must retain its no-commit behavior.
+  await actOnReview(f.port, 'a', input);
+  expect(operations.splice(0)).toStrictEqual([method]);
+  await actOnReview(f.port, 'a', { ...input, commitFirst: true });
+  expect(operations.splice(0)).toStrictEqual([backendMethods.agentCodeReviewCommit, method]);
+  failCommit = true;
+  await expect(actOnReview(f.port, 'a', { ...input, commitFirst: true })).rejects.toThrow('Commit failed');
+  expect(operations.splice(0)).toStrictEqual([backendMethods.agentCodeReviewCommit]);
+  expect((await readReviewSession(f.port, 'host', 'a')).session?.status).toBe('readyToFinish');
+  f.snapshot.agentGitStatuses.reviewer.changedFiles = 0;
+  expect((await readReviewSession(f.port, 'host', 'a')).session).toMatchObject({ commitAvailable: false });
+  await actOnReview(f.port, 'a', { ...input, commitFirst: true });
+  expect(operations).toStrictEqual([method]);
+});

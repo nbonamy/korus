@@ -24,6 +24,8 @@ export type CompanionReviewSetup = {
 export type CompanionCodeReview = Pick<import('./code-review').CodeReviewSession,
   'id' | 'targetAgentId' | 'reviewerAgentId' | 'status' | 'activeRoundId' | 'updatedAt'> & {
   busy: boolean;
+  /** Present only when the host supports committing before review completion. */
+  commitAvailable?: boolean;
   automation?: { state: 'running' | 'paused' | 'completed' | 'manual'; reason?: string };
   rounds: Omit<import('./code-review').CodeReviewRound, 'reviewerSession'>[];
 };
@@ -31,5 +33,6 @@ export type CompanionReviewDetails = { target: CompanionTarget; session: Compani
 export type CompanionReviewAction = { sessionId: string; roundId: string; updatedAt: string } & (
   | { action: 'decide'; findingId: string; selected: boolean }
   | { action: 'discuss'; findingId: string; question: string }
-  | { action: 'submit' | 'again' | 'finish' | 'manual' | 'discard' }
+  | { action: 'again' | 'finish'; commitFirst?: boolean }
+  | { action: 'submit' | 'manual' | 'discard' }
 );

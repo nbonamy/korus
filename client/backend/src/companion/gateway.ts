@@ -364,7 +364,8 @@ const agentOperations = {
     z.discriminatedUnion('action', [
       z.object({ action: z.literal('decide'), findingId: z.string().min(1).max(200), selected: z.boolean() }),
       z.object({ action: z.literal('discuss'), findingId: z.string().min(1).max(200), question: z.string().trim().min(1).max(20_000) }),
-      ...(['submit', 'again', 'finish', 'manual', 'discard'] as const).map(action => z.object({ action: z.literal(action) })),
+      ...(['again', 'finish'] as const).map(action => z.object({ action: z.literal(action), commitFirst: z.boolean().optional() })),
+      ...(['submit', 'manual', 'discard'] as const).map(action => z.object({ action: z.literal(action) })),
     ]),
   ) }).strict()))({
     act: async (port, agent, { input }) => {

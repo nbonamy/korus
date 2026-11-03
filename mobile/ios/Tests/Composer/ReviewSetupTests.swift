@@ -39,4 +39,18 @@ final class ReviewSetupTests: XCTestCase {
         choices.automatic = true
         XCTAssertNil(choices.input(setup(current: true)))
     }
+    func testReviewCompletionCarriesOnlyExplicitCommitConsentAndAcceptsOlderHosts() throws {
+        let json = #"{"target":{"hostId":"host","locationId":"local","teamId":"team","agentId":"agent","sessionId":null},"session":{"id":"review","targetAgentId":"agent","reviewerAgentId":"reviewer","status":"readyToFinish","activeRoundId":"round","updatedAt":"v1","busy":false,"rounds":[]}}"#
+        let old = try JSONDecoder().decode(CodeReviewDetails.self, from: Data(json.utf8))
+        XCTAssertNil(old.session?.commitAvailable)
+        let oldInput = try XCTUnwrap(old.command(action: "again")?["input"] as? [String: Any])
+        XCTAssertEqual(oldInput as NSDictionary, ["sessionId": "review", "roundId": "round", "updatedAt": "v1", "action": "again"] as NSDictionary)
+        XCTAssertEqual(old.command(action: "again", commitFirst: true)?["input"] as? NSDictionary, oldInput as NSDictionary)
+        let current = try JSONDecoder().decode(CodeReviewDetails.self, from: Data(json.replacingOccurrences(of: #""busy":false"#, with: #""busy":false,"commitAvailable":true"#).utf8))
+        for action in ["again", "finish"] {
+            let input = try XCTUnwrap(current.command(action: action, commitFirst: true)?["input"] as? [String: Any])
+            XCTAssertEqual(input as NSDictionary, ["sessionId": "review", "roundId": "round", "updatedAt": "v1", "action": action, "commitFirst": true] as NSDictionary)
+        }
+    }
+
 }
