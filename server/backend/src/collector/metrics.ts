@@ -1,7 +1,6 @@
 import { dayOf } from "@workspace/core/usage-time";
 import sql from "./metrics.sql?raw";
 import { isUtcDay } from "@workspace/core/usage";
-import { telemetryModels } from "@workspace/core/telemetry-models";
 import type { TelemetryMetricsFilter } from "@workspace/core/telemetry-metrics";
 
 export const metricsSql = sql;
@@ -40,12 +39,7 @@ export function metricsFilter(
     !["codex", "claude", "antigravity"].includes(provider)
   )
     return null;
-  if (
-    model !== null &&
-    model !== "unknown" &&
-    !(telemetryModels as readonly string[]).includes(model)
-  )
-    return null;
+  if (model !== null && model.length === 0) return null;
   const grouping = params.get("groupServiceTiers");
   if (grouping !== null && grouping !== "true" && grouping !== "false")
     return null;

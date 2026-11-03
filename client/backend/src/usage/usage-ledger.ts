@@ -29,12 +29,10 @@ import {
 } from "../pricing/evaluate";
 import { addCost, emptyCost } from "./cost";
 import {
-  telemetryModel,
   telemetryServiceTier,
   validTelemetryProjectionInput,
   type TelemetryProjectionInput,
   type TelemetryProvider,
-  type TelemetryModel,
   type TelemetryUsage,
 } from "@workspace/core/telemetry";
 const retention = 365 * 86400000;
@@ -343,7 +341,7 @@ export class UsageLedger {
       .map((row) => {
         const [provider, model, serviceTier] = JSON.parse(row.label) as [
           TelemetryProvider,
-          TelemetryModel,
+          string,
           TelemetryUsage["serviceTier"],
         ];
         return {
@@ -501,7 +499,7 @@ export class UsageLedger {
           ? { model: record.model, serviceTier: usageServiceTier(record.provider, record.serviceTier) }
           : undefined;
         const label = projection
-          ? JSON.stringify([record.provider, telemetryModel(record.model), telemetryServiceTier(usageServiceTier(record.provider, record.serviceTier))])
+          ? JSON.stringify([record.provider, (record.model || "unknown"), telemetryServiceTier(usageServiceTier(record.provider, record.serviceTier))])
           : modelVariant
             ? usageModelVariantKey(modelVariant)
             : filter.group
@@ -564,7 +562,7 @@ export class UsageLedger {
           continue;
         const modelVariant = !projection && filter.group === "model" && !filter.groupServiceTiers ? requestUsageModelVariant(event) : undefined;
         const label = projection
-          ? JSON.stringify([parent.provider, telemetryModel(event.model), telemetryServiceTier(requestUsageModelVariant(event).serviceTier)])
+          ? JSON.stringify([parent.provider, (event.model || "unknown"), telemetryServiceTier(requestUsageModelVariant(event).serviceTier)])
           : modelVariant
             ? usageModelVariantKey(modelVariant)
             : filter.group === "model"

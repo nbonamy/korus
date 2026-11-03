@@ -6,7 +6,7 @@ import {
   telemetryOs,
 } from "../telemetry";
 
-// Wire-boundary failures: extra fields, aliases, unsafe/unknown numbers, duplicate
+// Wire-boundary failures: extra fields, driver aliases, unsafe/unknown numbers, duplicate
 // groups and insertion-order drift must never become sealed telemetry bytes.
 it("seals only the closed telemetry contract in canonical order and preserves null and measured zero", () => {
   const group = {
@@ -47,6 +47,8 @@ it("seals only the closed telemetry contract in canonical order and preserves nu
     usage: [group, zero],
   }).body;
   expect(JSON.parse(body).usage).toStrictEqual([zero, group]);
+  for (const model of ["gpt-6.1-terra", "private-alias", "provider/é-model 'β'"])
+    expect(JSON.parse(serializeDailyTelemetry({ ...payload, usage: [{ ...group, model }] }).body).usage[0].model).toBe(model);
   expect(
     serializeDailyTelemetry({ ...payload, usage: [zero, group] }).body,
   ).toBe(body);
@@ -71,7 +73,9 @@ it("seals only the closed telemetry contract in canonical order and preserves nu
     { appVersion: "0.44.0-local" },
     { os: "darwin" },
     { usage: [group, group] },
-    { usage: [{ ...group, model: "private-alias" }] },
+    { usage: [{ ...group, model: "" }] },
+    { usage: [{ ...group, model: null }] },
+    { usage: [{ ...group, model: 123 }] },
     { usage: [{ ...group, provider: "proxy-alias" }] },
     { usage: [{ ...group, path: "CANARY" }] },
     { usage: [{ ...group, inputTokens: 1, cachedInputTokens: 2 }] },

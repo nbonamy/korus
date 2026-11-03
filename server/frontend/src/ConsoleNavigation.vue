@@ -1,22 +1,57 @@
 <template>
-  <aside class="sidebar">
-    <RouterLink
-      class="brand"
-      :to="{ name: 'overview' }"
-      :aria-label="`${productName} Console home`"
-    >
-      <img :src="productIcon" alt="" width="36" height="36" />
-      <span class="brand-copy"
-        ><strong>{{ productName }}</strong
-        ><span>Console</span></span
+  <aside
+    class="sidebar"
+    :class="{ 'sidebar--open': navigationOpen }"
+    @keydown.esc="closeNavigation"
+  >
+    <div class="sidebar-header">
+      <RouterLink
+        class="brand"
+        :to="{ name: 'overview' }"
+        :aria-label="`${productName} Console home`"
       >
-    </RouterLink>
-    <nav aria-label="Analytics sections">
+        <img :src="productIcon" alt="" width="36" height="36" />
+        <span class="brand-copy"
+          ><strong>{{ productName }}</strong
+          ><span>Console</span></span
+        >
+      </RouterLink>
+      <button
+        ref="navigationToggle"
+        class="navigation-toggle"
+        type="button"
+        aria-label="Toggle navigation"
+        aria-controls="console-sections"
+        :aria-expanded="navigationOpen"
+        @click="navigationOpen = !navigationOpen"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          width="20"
+          height="20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.7"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <path
+            :d="
+              navigationOpen
+                ? 'M6 6l12 12M6 18L18 6'
+                : 'M4 6h16M4 12h16M4 18h16'
+            "
+          />
+        </svg>
+      </button>
+    </div>
+    <nav id="console-sections" aria-label="Analytics sections">
       <RouterLink
         v-for="item in consolePages"
         :key="item.id"
         class="section-link"
         :to="{ name: item.id }"
+        @click="navigationOpen = false"
       >
         <svg
           viewBox="0 0 24 24"
@@ -61,7 +96,8 @@
   </aside>
 </template>
 <script setup lang="ts">
-import { RouterLink } from "vue-router";
+import { ref, watch } from "vue";
+import { RouterLink, useRoute } from "vue-router";
 import { consolePages } from "./console-pages";
 import productIcon from "./assets/icon.svg";
 defineProps<{
@@ -70,4 +106,18 @@ defineProps<{
   authError?: string;
 }>();
 const emit = defineEmits<{ signOut: [] }>();
+const navigationOpen = ref(false);
+const navigationToggle = ref<HTMLButtonElement>();
+const route = useRoute();
+watch(
+  () => route.name,
+  () => {
+    navigationOpen.value = false;
+  },
+);
+function closeNavigation() {
+  if (!navigationOpen.value) return;
+  navigationOpen.value = false;
+  navigationToggle.value?.focus();
+}
 </script>

@@ -199,7 +199,6 @@ function forbiddenImport(area, file, specifier) {
         "element-plus/es/components/tooltip/style/css",
         "@workspace/core/telemetry-metrics",
         "@workspace/core/usage-time",
-        "@workspace/core/telemetry-models",
       ].includes(specifier) ||
       (target && isWithin(path.join(root, "server/frontend/src"), target))
     )
@@ -215,7 +214,6 @@ function forbiddenImport(area, file, specifier) {
           "@workspace/core/telemetry",
           "@workspace/core/telemetry-metrics",
           "@workspace/core/usage-time",
-          "@workspace/core/telemetry-models",
           "@workspace/core/usage",
         ].includes(specifier) ||
         (target && isWithin(hostedBackend, target))
@@ -292,7 +290,7 @@ function forbiddenImport(area, file, specifier) {
   if (isTelemetryProjection(file)) {
     const allowed =
       area === "core"
-        ? ["./usage", "./telemetry-models"]
+        ? ["./usage"]
         : [
             "node:fs",
             "node:path",
@@ -410,7 +408,6 @@ function isTelemetryProjection(file) {
   return (
     [
       "core/src/telemetry.ts",
-      "core/src/telemetry-models.ts",
       "client/backend/src/usage/usage-ledger.ts",
       "client/backend/src/usage/usage-service.ts",
     ].includes(relative) || relative.startsWith("client/backend/src/usage/telemetry")

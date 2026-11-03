@@ -863,6 +863,9 @@ footer {
   min-height: 40px;
   padding: 0 12px;
 }
+.sign-in-panel .el-input__inner {
+  font-size: 16px;
+}
 .sign-in-panel .el-button {
   height: 40px;
   margin: 4px 0 0;
@@ -911,4 +914,250 @@ footer {
   font-size: 13px;
   font-weight: 500;
   line-height: 18px;
+}
+
+.sidebar-header,
+.masthead-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.navigation-toggle,
+.console-shell .filters-toggle {
+  display: none;
+}
+
+@media (max-width: 800px) {
+  :root {
+    scroll-padding-top: 88px;
+  }
+  .sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    padding: max(10px, env(safe-area-inset-top))
+      max(16px, env(safe-area-inset-right)) 10px
+      max(16px, env(safe-area-inset-left));
+  }
+  .sidebar-header {
+    min-height: 44px;
+  }
+  .navigation-toggle {
+    display: grid;
+    place-items: center;
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 1px solid var(--color-border);
+    border-radius: var(--console-radius);
+    background: var(--color-surface-lowest);
+    color: var(--color-text);
+    cursor: pointer;
+  }
+  .sidebar nav,
+  .sidebar-session {
+    display: none;
+  }
+  .sidebar--open nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+    margin-top: 12px;
+    padding-bottom: 0;
+  }
+  .section-link {
+    min-height: 44px;
+    font-size: 14px;
+    gap: 8px;
+  }
+  .sidebar--open .sidebar-session {
+    display: block;
+    position: static;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--color-border);
+  }
+  .sign-out-button {
+    min-height: 44px;
+    font-size: 14px;
+  }
+  .sign-out-error {
+    position: static;
+    width: auto;
+  }
+}
+
+@media (max-width: 560px) {
+  .masthead {
+    gap: 8px;
+  }
+  .masthead > div:first-child {
+    flex: 1;
+    min-width: 0;
+  }
+  .masthead h1 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .masthead-actions {
+    flex-shrink: 0;
+    gap: 6px;
+  }
+  .masthead-actions .presets {
+    width: clamp(114px, 30vw, 132px);
+    min-width: 0;
+  }
+  main {
+    padding: 16px max(16px, env(safe-area-inset-right))
+      max(28px, env(safe-area-inset-bottom))
+      max(16px, env(safe-area-inset-left));
+  }
+  .console-shell .el-button,
+  .console-shell .filters-toggle,
+  .el-select__wrapper,
+  .range-controls .range-date.el-date-editor {
+    min-height: 44px;
+    height: 44px;
+  }
+  .console-shell .filters-toggle {
+    display: inline-flex;
+    width: 44px;
+    padding: 0;
+  }
+  .filters-toggle > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .console-shell .refresh-button {
+    width: 44px;
+    padding: 0;
+  }
+  .refresh-label {
+    display: none;
+  }
+  .report-controls {
+    margin-bottom: 12px;
+  }
+  .report-controls--open {
+    display: flex;
+    margin-bottom: 12px;
+    padding: 12px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--console-radius);
+    background: var(--color-surface-lowest);
+  }
+  .range-controls,
+  .report-controls .filters {
+    width: 100%;
+  }
+  .date-range-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  }
+  .date-range-fields .el-button {
+    grid-column: 1 / -1;
+  }
+  .range-controls .range-date.el-date-editor {
+    width: 100%;
+  }
+  .console-date-options .el-date-picker {
+    width: min(322px, calc(100vw - 24px));
+  }
+  .model-comparison-select .el-select__wrapper {
+    min-height: 44px;
+  }
+  .range-date .el-input__inner,
+  .el-select__input {
+    font-size: 16px;
+  }
+  .range-date .el-input__inner {
+    height: 42px;
+  }
+  .report-controls .filters {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px;
+    gap: 8px;
+  }
+  .report-controls .filters .el-select {
+    width: 100%;
+  }
+  .report-controls:not(.report-controls--open) .date-range-fields,
+  .report-controls:not(.report-controls--open) .filters {
+    display: none;
+  }
+  .console-options-trigger {
+    width: 44px;
+    height: 44px;
+  }
+  .el-segmented {
+    min-height: 44px;
+  }
+  .el-segmented__item {
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .freshness {
+    flex-wrap: wrap;
+    gap: 4px;
+    line-height: 1.5;
+    margin-bottom: 16px;
+  }
+  .model-heading,
+  .model-heading .model-comparison-select {
+    width: 100%;
+  }
+  .model-heading {
+    gap: 12px;
+  }
+  .popularity > .panel-heading > .comparison-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    width: 100%;
+    gap: 8px;
+  }
+  .popularity .model-measures {
+    order: 1;
+    grid-column: 1 / -1;
+    width: 100%;
+    gap: 8px;
+  }
+  .model-measures > .el-segmented {
+    width: 100%;
+  }
+  .popularity .comparison-controls > .el-segmented {
+    width: 100%;
+  }
+  .model-measures > .model-token-measure--hidden {
+    display: none;
+  }
+  .model-panel .table-scroll th:first-child,
+  .model-panel .table-scroll td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    min-width: 140px;
+    max-width: 180px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    background: var(--color-surface-lowest);
+  }
+  .model-panel .table-scroll thead th:first-child {
+    background: var(--color-surface-low);
+  }
+  .legend {
+    padding-bottom: 6px;
+    font-size: 12px;
+  }
+  .chart-tooltip {
+    max-height: 260px;
+  }
+  .chart {
+    scroll-margin-top: 88px;
+  }
 }

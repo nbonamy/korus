@@ -163,6 +163,7 @@ it("prices Terra usage with its published input, cached input and output rates",
     expect(ledger.query({ group: 'model' }).rows.map(row => [row.label, row.cost?.usd])).toStrictEqual([
       ['gpt-6.1-terra', 0.115],
     ]);
+    expect(ledger.projectDailyTelemetry({day:'2026-10-26'})[0]?.model).toBe('gpt-6.1-terra');
   } finally { await ledger.close(); }
 });
 
@@ -500,6 +501,7 @@ it("leaves incomplete, provisional, unknown and pre-baseline requests unpriced w
       coverage: "partial",
       pricedRequests: 1,
     });
+    expect(ledger.projectDailyTelemetry({day:'2026-10-15'}).some(row => row.model === 'zero')).toBe(true);
     await ledger.observeRequest(
       request({
         requestId: "baseline",

@@ -70,7 +70,7 @@ it('retains measured subtotals through hourly ingestion, daily coalescing and id
   await new Promise<void>(r=>collector.listen(0,'127.0.0.1',r));
   const url = `http://127.0.0.1:${(collector.address() as AddressInfo).port}/v1/telemetry/daily`;
   const payload = {installId:'00000000-0000-4000-8000-000000000001',day:'2026-10-24',hour:12,appVersion:'0.49.1',os:'macos',usage:[{
-    provider:'codex',model:'gpt-6-sol',serviceTier:'fast',turns:2,measuredTurns:1,
+    provider:'codex',model:"custom/é-model 'quoted' @preview",serviceTier:'fast',turns:2,measuredTurns:1,
     inputTokens:100,cachedInputTokens:80,outputTokens:20,estimatedCostUsd:0.5,costCoverage:'partial',
   }]};
   const send = async (body:unknown) => fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -85,6 +85,12 @@ it('retains measured subtotals through hourly ingestion, daily coalescing and id
     expect(result.daily.at(-1)).toMatchObject(result.totals);
     expect(result.weekly.at(-1)).toMatchObject(result.totals);
     expect(result.models[0]).toMatchObject(result.totals);
+    expect(result.models[0].model).toBe(payload.usage[0].model);
+    expect(result.modelDaily?.[0].model).toBe(payload.usage[0].model);
+    expect(result.availableModels).toStrictEqual([payload.usage[0].model]);
+    const filtered = await get(range + '&model=' + encodeURIComponent(payload.usage[0].model));
+    expect(filtered.status).toBe(200);
+    expect(((await filtered.json()) as TelemetryMetrics).totals).toStrictEqual(result.totals);
     expect(result.modelDaily?.[0]).toMatchObject({provider:'codex',estimatedCostUsd:'0.5'});
     const corrected = {...payload,usage:[{...payload.usage[0],measuredTurns:2,inputTokens:200,cachedInputTokens:160,outputTokens:40,estimatedCostUsd:1,costCoverage:'complete'}]};
     expect((await send(corrected)).status).toBe(204);
@@ -115,7 +121,8 @@ it("requires private access and exact configured origins; rejects invalid and un
     range + "&timeZone=UTC&timeZone=UTC",
     range + "&timeZone=%2B05:00",
     range + "&provider=custom",
-    range + "&model=alias",
+    range + "&model=",
+    range + "&model=first&model=second",
     range + "&groupServiceTiers=yes",
     range + "&groupServiceTiers=true&groupServiceTiers=false",
     range + "&from=2026-10-18",

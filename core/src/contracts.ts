@@ -450,6 +450,8 @@ export type AppThemeSettings = {
 export type AppPluginSettings = {
   computerUseEnabled: boolean;
   chromeEnabled: boolean;
+  /** Keep the screen awake, so the Mac cannot lock, while an agent uses Computer Use. Defaults to off. */
+  computerUseKeepUnlocked?: boolean;
 };
 
 export type AppPluginStatus = {

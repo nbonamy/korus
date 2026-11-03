@@ -28,7 +28,7 @@ test("collector stays independently runnable without importing the desktop or co
       "import { createServer } from 'node:http'; import type { DailyTelemetryPayload } from '@workspace/core/telemetry'; import { TelemetryStore } from './store';",
     "server/backend/src/collector/store.ts": "import pg from 'pg';",
     "server/backend/src/collector/metrics.ts":
-      "import {dayOf} from '@workspace/core/usage-time'; import type { TelemetryMetrics } from '@workspace/core/telemetry-metrics'; import { isUtcDay } from '@workspace/core/usage'; import { telemetryModels } from '@workspace/core/telemetry-models';",
+      "import {dayOf} from '@workspace/core/usage-time'; import type { TelemetryMetrics } from '@workspace/core/telemetry-metrics'; import { isUtcDay } from '@workspace/core/usage';",
   });
   assert.equal(good.status, 0, good.stderr);
   const bad = await checkFixture({
@@ -240,7 +240,7 @@ test("telemetry uploader ownership permits runtime composition and rejects alter
 test("private dashboard imports only browser-safe aggregate contracts", async () => {
   const good = await checkFixture({
     "server/frontend/src/view.ts":
-      "import {dayOf} from '@workspace/core/usage-time'; import {computed} from 'vue'; import {createRouter} from 'vue-router'; import {ElSelect} from 'element-plus'; import 'element-plus/es/components/select/style/css'; import type {TelemetryMetrics} from '@workspace/core/telemetry-metrics'; import {telemetryModels} from '@workspace/core/telemetry-models'; import './format';",
+      "import {dayOf} from '@workspace/core/usage-time'; import {computed} from 'vue'; import {createRouter} from 'vue-router'; import {ElSelect} from 'element-plus'; import 'element-plus/es/components/select/style/css'; import type {TelemetryMetrics} from '@workspace/core/telemetry-metrics'; import './format';",
   });
   assert.equal(good.status, 0, good.stderr);
   const bad = await checkFixture({

@@ -1,8 +1,6 @@
 import { isUtcDay } from "./usage";
-import { telemetryModels } from "./telemetry-models";
 
 export type TelemetryProvider = "codex" | "claude" | "antigravity";
-export type TelemetryModel = (typeof telemetryModels)[number] | "unknown";
 export const telemetryServiceTiers = [
   "standard",
   "fast",
@@ -31,7 +29,7 @@ export type TelemetryPerformance = {
 };
 export type TelemetryUsage = {
   provider: TelemetryProvider;
-  model: TelemetryModel;
+  model: string;
   /** Absent legacy reports have unknown served tier. */
   serviceTier?: TelemetryServiceTier;
   turns: number;
@@ -65,12 +63,6 @@ export type TelemetryPreviewInput = TelemetryProjectionInput & {
  */
 export type SealedTelemetryBody = Readonly<{ body: string }>;
 
-const models = new Set<string>(telemetryModels);
-export function telemetryModel(value: string | null): TelemetryModel {
-  return value !== null && models.has(value)
-    ? (value as TelemetryModel)
-    : "unknown";
-}
 export function telemetryOs(platform: string): TelemetryOs {
   return platform === "darwin"
     ? "macos"
@@ -184,7 +176,7 @@ export function serializeDailyTelemetry(
           ...(Object.hasOwn(row, "performance") ? ["performance"] : []),
         ]) ||
         !["codex", "claude", "antigravity"].includes(row.provider) ||
-        (row.model !== "unknown" && !models.has(row.model)) ||
+        (typeof row.model !== "string" || row.model.length === 0) ||
         (Object.hasOwn(row, "serviceTier") &&
           !(telemetryServiceTiers as readonly unknown[]).includes(
             row.serviceTier,

@@ -21,7 +21,6 @@ import {
 import pg from "pg";
 import type { DailyTelemetryPayload } from "@workspace/core/telemetry";
 import { metricsSql } from "../metrics";
-import { telemetryModels } from "@workspace/core/telemetry-models";
 import { createCollectorServer } from "../server";
 import { createDiagnostics } from "../diagnostics";
 import { createTelemetryPool, TelemetryStore } from "../store";
@@ -233,7 +232,7 @@ describe("daily ingestion into disposable Postgres", () => {
               {
                 ...row,
                 provider: "claude",
-                model: telemetryModels[0]!,
+                model: "custom/モデル 'quoted' @v1",
                 inputTokens: null,
                 cachedInputTokens: null,
                 outputTokens: 0,
@@ -249,7 +248,7 @@ describe("daily ingestion into disposable Postgres", () => {
         install_id: installId,
         day: "2026-10-24",
         provider: "claude",
-        model: telemetryModels[0],
+        model: "custom/モデル 'quoted' @v1",
         turns: "3",
         input_tokens: null,
         cached_input_tokens: null,
@@ -483,7 +482,7 @@ describe("daily ingestion into disposable Postgres", () => {
       payload({ appVersion: "1.2.3-private-canary" }),
       payload({ os: "private-canary" as never }),
       payload({ usage: [{ ...row, provider: "private-canary" as never }] }),
-      payload({ usage: [{ ...row, model: "private-canary" as never }] }),
+      payload({ usage: [{ ...row, model: "" }] }),
       payload({ usage: [{ ...row, turns: -1 }] }),
       payload({ usage: [{ ...row, inputTokens: 0.5 }] }),
       payload({
@@ -514,7 +513,7 @@ describe("daily ingestion into disposable Postgres", () => {
     }
   });
 
-  it("accepts measured zero, null, safe maxima, all driver/OS enums and 256 allowed groups", async () => {
+  it("accepts measured zero, null, safe maxima, all driver/OS enums and 256 distinct full model names", async () => {
     for (const os of ["macos", "windows", "linux", "unknown"] as const)
       expect(
         (
@@ -534,15 +533,11 @@ describe("daily ingestion into disposable Postgres", () => {
           )
         ).status,
       ).toBe(204);
-    const groups = ["antigravity", "claude", "codex"]
-      .flatMap((provider) =>
-        ["unknown", ...telemetryModels].map((model) => ({
-          ...row,
-          provider,
-          model,
-        })),
-      )
-      .slice(0, 256) as DailyTelemetryPayload["usage"];
+    const groups = Array.from({length:256}, (_, index) => ({
+      ...row,
+      provider: ["antigravity", "claude", "codex"][index % 3],
+      model: `custom/model-${index}`,
+    })) as DailyTelemetryPayload["usage"];
     expect(groups).toHaveLength(256);
     expect((await send(payload({ usage: groups }))).status).toBe(204);
     expect((await snapshot()).usage).toHaveLength(256);

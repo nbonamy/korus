@@ -134,4 +134,17 @@ const speedRows = computed(() => rows("outputTokensPerSecond"));
     grid-template-columns: minmax(0, 1fr);
   }
 }
+@media (max-width: 560px) {
+  .performance-totals {
+    gap: 10px;
+  }
+  .performance-totals > .panel,
+  .performance-trend {
+    padding: 16px 14px;
+    border-radius: var(--console-radius);
+  }
+  .performance-totals dd {
+    flex-wrap: wrap;
+  }
+}
 </style>

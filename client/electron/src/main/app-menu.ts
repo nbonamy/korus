@@ -20,6 +20,7 @@ export type DebugCodeReviewScenario = 'automaticReviewing' | 'reviewing' | 'read
 export type AppMenuCallbacks = {
   checkForUpdates?: () => void;
   installUpdate?: () => void;
+  capturePerformanceProfile?: () => void;
   sendDebugAgentMessage?: () => void;
   toggleDebugExecutionPlan?: () => void;
   hasDebugExecutionPlan?: () => boolean;
@@ -43,14 +44,15 @@ export type AppMenuCallbacks = {
   closeAuxiliaryWindow?(focusedWindow: BaseWindow | undefined): boolean;
 };
 
-type AppMenuInstallOptions = AppMenuOptions & Partial<Pick<AppMenuCallbacks, 'checkForUpdates' | 'installUpdate' | 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'hasDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'getDebugMissionReviewState' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag' | 'getDebugMissingEngines' | 'setDebugMissingEngines' | 'getDebugProviderUpgrades' | 'setDebugProviderUpgrades' | 'getDebugReviewUncommitted' | 'setDebugReviewUncommitted'>>;
+type AppMenuInstallOptions = AppMenuOptions & Partial<Pick<AppMenuCallbacks, 'checkForUpdates' | 'installUpdate' | 'capturePerformanceProfile' | 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'hasDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'getDebugMissionReviewState' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag' | 'getDebugMissingEngines' | 'setDebugMissingEngines' | 'getDebugProviderUpgrades' | 'setDebugProviderUpgrades' | 'getDebugReviewUncommitted' | 'setDebugReviewUncommitted'>>;
 const editMenuId = 'app-edit-menu';
 
 export function installAppMenu(window: BrowserWindow, options: AppMenuInstallOptions): void {
-  const { checkForUpdates, installUpdate, ...menuOptions } = options;
+  const { checkForUpdates, installUpdate, capturePerformanceProfile, ...menuOptions } = options;
   const callbacks: AppMenuCallbacks = {
     checkForUpdates,
     installUpdate,
+    capturePerformanceProfile,
     reload: () => window.webContents.reload(),
     sendAppCommand: (command) => sendAppCommand(window.webContents, command),
     toggleDeveloperTools: () => window.webContents.toggleDevTools(),
@@ -125,6 +127,10 @@ function buildHelpMenu(callbacks: AppMenuCallbacks, options: AppMenuOptions, pla
         label: mainT('menu.whatsNew'),
         click: () => callbacks.sendAppCommand({ type: 'open-whats-new' }),
       },
+      ...(callbacks.capturePerformanceProfile ? [{ type: 'separator' as const }, {
+        label: mainT('menu.capturePerformanceProfile'),
+        click: () => callbacks.capturePerformanceProfile?.(),
+      }] : []),
       ...(platform !== 'darwin' ? [
         ...(options.updateStatus && callbacks.checkForUpdates && callbacks.installUpdate
           ? [createUpdateMenuItem(options.updateStatus, callbacks, true)]

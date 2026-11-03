@@ -19,6 +19,7 @@ type Journal = {
   result: BranchWorkResult;
 };
 type Options = {
+  initializeWorktree?(repositoryPath: string, worktreePath: string): Promise<void>;
   /** How long source cleanup waits for another git process to release the index lock. */
   lockWaitMs?: number;
   progress?(progress: BranchWorkProgress): void;
@@ -123,7 +124,7 @@ export class BranchCurrentWorkService {
     try {
       const folder = record.result.folder;
       if (!await exists(folder)) {
-        // No setup scripts or automatic environment copying in a transfer.
+        // Setup must wait until source cleanup succeeds, preserving the captured files.
         await new WorktreeManager().create({ repoPath: source, branchName: input.branchName, destinationPath: folder, startPoint: record.head, requireNewBranch: true }, { skipInitialization: true });
         const marker = await git(folder, ['rev-parse', '--path-format=absolute', '--git-path', 'korus-branch-transfer']);
         await writeFile(marker, `${hash(key)}:${specification}`, { flag: 'wx', mode: 0o600 });
@@ -183,6 +184,7 @@ export class BranchCurrentWorkService {
       record.result.detail = error instanceof Error ? error.message : String(error);
       await saveJournal(journalPath, record);
     }
+    if (record.result.state === 'completed') await this.options.initializeWorktree?.(source, record.result.folder);
     return structuredClone(record.result);
   }
 

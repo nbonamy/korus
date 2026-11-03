@@ -483,6 +483,11 @@ daemon client state, including after restart; relay reconnects do not release it
 Electron applies the remote-access policy only on AC power. Agent activity and
 remote access share a native `prevent-app-suspension` assertion, which protects
 system availability while allowing display sleep and configured automatic locking.
+Computer Use cannot operate a locked session. When the user opts in under
+Settings → Plugins → Computer Use (off by default), any Computer Use action upgrades
+the single native blocker to `prevent-display-sleep` for five minutes after the
+last action (on battery too), then it falls back to the policy above. Otherwise
+display sleep and locking follow the system.
 
 Mobile updates use one authenticated duplex stream per phone. A workspace reset
 and a subscribe-before-read conversation barrier precede ordered provider-native
@@ -1174,8 +1179,8 @@ known subtotals with a measured-turn count; an entirely unmeasured group remains
 null. Estimated costs retain the known subtotal with separate complete, partial
 or unavailable coverage. Missing measurements never erase measured contributions.
 
-The shared wire allowlist contains canonical IDs from the embedded pricing catalog,
-independent of runtime/user model catalogs. Other IDs coalesce into `unknown`.
+Model names are uploaded exactly as recorded locally, including custom aliases,
+independently of the pricing catalog. Missing names become `unknown`.
 The serializer rejects extra fields, constructs every wire field explicitly, sorts
 provider/model/tier groups and returns immutable canonical JSON text. Hourly
 reports include a UTC hour; daily previews and legacy reports omit it. Its UTF-8 bytes are

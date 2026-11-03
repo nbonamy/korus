@@ -99,7 +99,7 @@ export function createCollectorServer(options: Options) {
         const input: unknown = JSON.parse(
           new TextDecoder("utf-8", { fatal: true }).decode(bytes),
         );
-        // Use the shared closed validator, including the canonical model catalog.
+        // Use the shared closed validator for fields, types and aggregate bounds.
         // Only its explicitly constructed fields can reach parameterized SQL.
         payload = JSON.parse(
           serializeDailyTelemetry(input as DailyTelemetryPayload).body,

@@ -136,7 +136,7 @@ Origin must exactly match. The explicit
 console origin in isolated local tests; production leaves it unset or zero.
 
 The read endpoint accepts inclusive `from`/`to` calendar days, an optional IANA
-`timeZone` (UTC when omitted), canonical `provider`/`model` filters and a boolean
+`timeZone` (UTC when omitted), driver `provider` and exact full-name `model` filters and a boolean
 `groupServiceTiers` option. The console supplies the viewer browser timezone and
 includes today by default, using reports received so far. It rejects
 unknown/duplicate filters, future viewer days and ranges longer than 3,660 days

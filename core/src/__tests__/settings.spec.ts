@@ -351,7 +351,18 @@ describe('settings contracts', () => {
     expect(snapshot.general.plugins).toStrictEqual({
       computerUseEnabled: true,
       chromeEnabled: true,
+      computerUseKeepUnlocked: false,
     });
+  });
+
+  it('leaves keeping the Mac unlocked for Computer Use off until the user turns it on', () => {
+    const snapshot = createEmptySnapshot();
+    expect(snapshot.general.plugins?.computerUseKeepUnlocked).toBe(false);
+    updateSettingsInSnapshot(snapshot, { general: { plugins: { computerUseKeepUnlocked: true } } });
+    expect(snapshot.general.plugins).toMatchObject({ computerUseEnabled: false, computerUseKeepUnlocked: true });
+    updateSettingsInSnapshot(snapshot, { general: { plugins: { computerUseEnabled: true } } });
+    expect(snapshot.general.plugins?.computerUseKeepUnlocked).toBe(true);
+    expect(normalizePluginSettings({ computerUseEnabled: true, chromeEnabled: false })).toMatchObject({ computerUseKeepUnlocked: false });
   });
 
   it('updates GitHub provider settings without replacing connection state', () => {

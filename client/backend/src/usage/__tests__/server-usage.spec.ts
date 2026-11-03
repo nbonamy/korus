@@ -154,7 +154,7 @@ it("previews exact local UTF-8 telemetry from persisted provider measurements wi
         {
           ...codex,
           turnId,
-          model: `${canary}-custom-model`,
+          model: "custom/é-local-model",
           phase: "started",
           tokens,
         },
@@ -243,7 +243,7 @@ it("previews exact local UTF-8 telemetry from persisted provider measurements wi
         tokens: { ...normalized.tokens!, input: 20000 },
       });
       const corrected = await preview("2026-10-15");
-      expect(JSON.parse(corrected.body).usage[1].inputTokens).toBe(20000);
+      expect(JSON.parse(corrected.body).usage.find((row: {model:string}) => row.model === "gpt-6-sol").inputTokens).toBe(20000);
       expect(first.body).not.toBe(corrected.body); // A sealed preview never changes with later observations.
       expect(network).not.toHaveBeenCalled();
       for (const patch of [
