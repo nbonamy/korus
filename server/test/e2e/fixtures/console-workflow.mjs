@@ -99,6 +99,27 @@ export async function dashboardWorkflow({
       await page.getByLabel("Username", { exact: true }).inputValue(),
       "admin",
     );
+    await page.setViewportSize({ width: 390, height: 844 });
+    const signInFields = await page
+      .locator(".sign-in-panel input")
+      .evaluateAll((fields) =>
+        fields.map((field) => ({
+          fontSize: Number.parseFloat(getComputedStyle(field).fontSize),
+          width: field.getBoundingClientRect().width,
+        })),
+      );
+    assert.ok(
+      signInFields.length >= 2 &&
+        signInFields.every((field) => field.fontSize >= 16),
+      `Sign-in inputs must not trigger iOS focus zoom: ${JSON.stringify(signInFields)}`,
+    );
+    assert.equal(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+      true,
+    );
+    await page.setViewportSize({ width: 1440, height: 1100 });
     await page
       .getByLabel("Password", { exact: true })
       .fill("incorrect-test-password");
@@ -127,9 +148,7 @@ export async function dashboardWorkflow({
         ),
         page.getByRole("button", { name: "Sign in", exact: true }).click(),
       ]);
-      await page
-        .getByRole("button", { name: "Sign out", exact: true })
-        .waitFor();
+      await page.getByLabel("Refresh metrics", { exact: true }).waitFor();
     }
     await signIn();
     await page.getByRole("region", { name: "Weekly overview" }).waitFor();
@@ -216,6 +235,15 @@ export async function dashboardWorkflow({
       0,
     );
     async function visit(name) {
+      const menu = page.getByRole("button", {
+        name: "Toggle navigation",
+        exact: true,
+      });
+      if (
+        (await menu.isVisible()) &&
+        (await menu.getAttribute("aria-expanded")) === "false"
+      )
+        await menu.click();
       await page
         .getByRole("navigation", { name: "Analytics sections" })
         .getByRole("link", { name, exact: true })
@@ -294,6 +322,10 @@ export async function dashboardWorkflow({
       await page.getByRole("option", { name, exact: true }).click();
     }
     async function range(from, to) {
+      if (!(await page.getByLabel("From day", { exact: true }).isVisible()))
+        await page
+          .getByRole("button", { name: "Toggle filters", exact: true })
+          .click();
       await page.getByLabel("From day", { exact: true }).fill(from);
       await page.getByLabel("To day", { exact: true }).fill(to);
       await page.getByLabel("To day", { exact: true }).press("Tab");
@@ -656,7 +688,119 @@ export async function dashboardWorkflow({
       .getByLabel("Measured total tokens", { exact: true })
       .getByText("700", { exact: true })
       .waitFor();
-    await visit("Activity");
+    const navigationToggle = page.getByRole("button", {
+      name: "Toggle navigation",
+      exact: true,
+    });
+    assert.equal(await navigationToggle.count(), 1);
+    await visit("Overview");
+    assert.equal(await navigationToggle.getAttribute("aria-expanded"), "false");
+    assert.equal(
+      await page
+        .getByRole("navigation", { name: "Analytics sections" })
+        .isVisible(),
+      false,
+    );
+    const overviewBottom = await page
+      .locator(".weekly-cards")
+      .evaluate((el) => el.getBoundingClientRect().bottom);
+    assert.ok(
+      overviewBottom < 460,
+      `Overview tiles push charts too far down: ${overviewBottom}`,
+    );
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      await visit("Overview");
+      assert.ok(
+        await page.locator(".top-users tbody td").evaluateAll((cells) =>
+          cells.every((el) => {
+            const r = el.getBoundingClientRect();
+            return r.right <= innerWidth && r.left >= 0;
+          }),
+        ),
+        "Leaderboard values clipped on phone",
+      );
+      for (const name of [
+        "Models",
+        "Tokens",
+        "Spend",
+        "Performance",
+        "Activity",
+      ]) {
+        await visit(name);
+        const filtersToggle = page.getByRole("button", {
+          name: "Toggle filters",
+          exact: true,
+        });
+        assert.equal(
+          await filtersToggle.getAttribute("aria-expanded"),
+          "false",
+        );
+        assert.equal(
+          await page.getByRole("form", { name: "Reporting range" }).isVisible(),
+          false,
+        );
+        const layout = await page.evaluate(() => ({
+          viewport: innerWidth,
+          width: document.documentElement.scrollWidth,
+          controls: [
+            ...document.querySelectorAll(
+              ".popularity > .panel-heading .el-segmented",
+            ),
+          ]
+            .filter((el) => getComputedStyle(el).visibility !== "hidden")
+            .map((el) => {
+              const r = el.getBoundingClientRect();
+              return { left: r.left, right: r.right };
+            }),
+          labels: [
+            ...document.querySelectorAll(".performance-ranking .model-cell"),
+          ].map((el) => ({ width: el.clientWidth, content: el.scrollWidth })),
+        }));
+        assert.ok(layout.width <= width, `${name}: ${JSON.stringify(layout)}`);
+        assert.ok(
+          layout.controls.every((r) => r.left >= 0 && r.right <= width),
+          `${name}: clipped report controls`,
+        );
+        assert.ok(
+          layout.labels.every((r) => r.content <= r.width + 1),
+          `${name}: overlapping model labels`,
+        );
+      }
+    }
+    await page
+      .getByRole("button", { name: "Toggle filters", exact: true })
+      .click();
+    await page.getByLabel("From day", { exact: true }).click();
+    const calendar = page.locator(".el-picker-panel:visible");
+    await calendar.waitFor();
+    const calendarBox = await calendar.boundingBox();
+    assert.ok(
+      calendarBox.x >= 0 && calendarBox.x + calendarBox.width <= 320,
+      "Date picker clipped on phone",
+    );
+    await page.keyboard.press("Escape");
+    await page
+      .getByRole("button", { name: "Toggle filters", exact: true })
+      .click();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page
+      .getByRole("button", { name: "Toggle filters", exact: true })
+      .click();
+    assert.equal(
+      await page.getByRole("form", { name: "Reporting range" }).isVisible(),
+      true,
+    );
+    await page
+      .getByRole("button", { name: "Toggle filters", exact: true })
+      .click();
+    await navigationToggle.click();
+    await page.keyboard.press("Escape");
+    assert.equal(await navigationToggle.getAttribute("aria-expanded"), "false");
+    assert.equal(
+      await navigationToggle.evaluate((el) => el === document.activeElement),
+      true,
+    );
     await finishMetricsRead();
     const geometry = await page.evaluate(() => ({
       viewport: innerWidth,
@@ -869,6 +1013,11 @@ export async function dashboardWorkflow({
       (cookie) => cookie.httpOnly,
     );
     assert.ok(currentCookie);
+    const signOutMenu = page.getByRole("button", {
+      name: "Toggle navigation",
+      exact: true,
+    });
+    if (await signOutMenu.isVisible()) await signOutMenu.click();
     await Promise.all([
       page.waitForResponse(
         (r) =>

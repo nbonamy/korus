@@ -59,7 +59,7 @@
   >
     <header class="panel-heading"><h2>Top 10 users</h2></header>
     <div class="table-scroll" tabindex="0" aria-label="Top users by turns">
-      <table>
+      <table role="table">
         <thead>
           <tr>
             <th scope="col">User</th>
@@ -72,14 +72,16 @@
         <tbody>
           <tr v-for="row in data.weeklyTopUsers" :key="row.rank">
             <th scope="row">User {{ row.rank }}</th>
-            <td>{{ count(row.turns) }}</td>
-            <td :title="count(row.totalTokens)">
+            <td data-label="Turns">{{ count(row.turns) }}</td>
+            <td data-label="Tokens" :title="count(row.totalTokens)">
               {{ tokens(row.totalTokens) }}
             </td>
-            <td :title="exactMoney(row.estimatedCostUsd)">
+            <td data-label="Spend" :title="exactMoney(row.estimatedCostUsd)">
               {{ money(row.estimatedCostUsd) }}
             </td>
-            <td>{{ percent(Number(row.turnShare)) }}</td>
+            <td data-label="Share of turns">
+              {{ percent(Number(row.turnShare)) }}
+            </td>
           </tr>
           <tr v-if="!data.weeklyTopUsers.length">
             <td colspan="5" class="muted">No turns this week</td>
@@ -345,11 +347,66 @@ const series = computed(() => {
   }
 }
 @media (max-width: 560px) {
+  .top-users .table-scroll {
+    overflow: visible;
+    max-height: none;
+  }
+  .top-users table,
+  .top-users tbody {
+    display: block;
+  }
+  .top-users thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .top-users tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 16px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .top-users tbody tr:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+  .top-users tbody th {
+    grid-column: 1 / -1;
+    font-weight: 600;
+  }
+  .top-users tbody th,
+  .top-users tbody td {
+    padding: 0;
+    border: 0;
+    text-align: left;
+  }
+  .top-users tbody td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 3px;
+    color: var(--color-text-muted);
+    font-size: 11px;
+  }
   .weekly-card {
+    min-height: 132px;
     padding: 14px;
   }
+  .weekly-icon {
+    display: none;
+  }
+  .weekly-card dt {
+    grid-column: 1 / -1;
+    font-size: 12px;
+    line-height: 1.4;
+  }
   .weekly-card dd {
-    font-size: 28px;
+    font-size: clamp(22px, 6vw, 28px);
+  }
+  .weekly-change {
+    font-size: 13px;
   }
 }
 </style>

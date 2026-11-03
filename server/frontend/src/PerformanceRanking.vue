@@ -28,25 +28,27 @@
               aria-hidden="true"
             />{{ row.label }}
           </td>
-          <td class="metric-cell">
-            <span class="value-track" aria-hidden="true"
-              ><span
-                class="value-fill"
-                :style="{
-                  width: width(row.value),
-                  backgroundColor: row.color,
-                }"
-            /></span>
-            <span
-              class="num"
-              :title="kind === 'ttft' ? duration(row.value) : rate(row.value)"
-              >{{
-                performanceNumber(
-                  row.value,
-                  kind === "ttft" ? "milliseconds" : "rate",
-                )
-              }}</span
-            >
+          <td>
+            <div class="metric-cell">
+              <span class="value-track" aria-hidden="true"
+                ><span
+                  class="value-fill"
+                  :style="{
+                    width: width(row.value),
+                    backgroundColor: row.color,
+                  }"
+              /></span>
+              <span
+                class="num"
+                :title="kind === 'ttft' ? duration(row.value) : rate(row.value)"
+                >{{
+                  performanceNumber(
+                    row.value,
+                    kind === "ttft" ? "milliseconds" : "rate",
+                  )
+                }}</span
+              >
+            </div>
           </td>
         </tr>
         <tr v-if="!ranked.length">
@@ -158,6 +160,8 @@ tbody tr:hover {
 }
 .model-cell {
   overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.5;
 }
 .rank-dot {
   display: inline-block;
@@ -165,5 +169,15 @@ tbody tr:hover {
   height: 9px;
   margin-right: var(--space-4);
   border-radius: 3px;
+}
+
+@media (max-width: 560px) {
+  .performance-ranking {
+    padding: 16px 14px;
+  }
+  th:first-child,
+  td:first-child {
+    width: 56%;
+  }
 }
 </style>

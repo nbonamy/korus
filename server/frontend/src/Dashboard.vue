@@ -11,29 +11,58 @@
         <div>
           <h1 ref="heading" tabindex="-1">{{ pageTitle }}</h1>
         </div>
-        <ElButton
-          class="refresh-button"
-          aria-label="Refresh metrics"
-          @click="load"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            width="16"
-            height="16"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.7"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
+        <div class="masthead-actions">
+          <ElButton
+            v-if="page !== 'overview'"
+            class="filters-toggle"
+            aria-label="Toggle filters"
+            aria-controls="report-controls"
+            :aria-expanded="filtersExpanded"
+            @click="filtersExpanded = !filtersExpanded"
           >
-            <path
-              d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 3M4 15l2 3a7 7 0 0 0 12-1"
-            /></svg
-          >Refresh
-        </ElButton>
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <path d="M4 7h16M7 12h10M10 17h4" />
+            </svg>
+            <span>Filters</span>
+          </ElButton>
+          <ElButton
+            class="refresh-button"
+            aria-label="Refresh metrics"
+            @click="load"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path
+                d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 3M4 15l2 3a7 7 0 0 0 12-1"
+              /></svg
+            ><span class="refresh-label">Refresh</span>
+          </ElButton>
+        </div>
       </header>
-      <div v-if="page !== 'overview'" class="report-controls">
+      <div
+        v-if="page !== 'overview'"
+        id="report-controls"
+        class="report-controls"
+        :class="{ 'report-controls--open': filtersExpanded }"
+      >
         <form
           class="range-controls"
           aria-label="Reporting range"
@@ -54,6 +83,7 @@
             <ElDatePicker
               v-model="from"
               class="range-date"
+              popper-class="console-date-options"
               type="date"
               format="YYYY-MM-DD"
               value-format="YYYY-MM-DD"
@@ -65,6 +95,7 @@
             <ElDatePicker
               v-model="to"
               class="range-date"
+              popper-class="console-date-options"
               type="date"
               format="YYYY-MM-DD"
               value-format="YYYY-MM-DD"
@@ -341,6 +372,13 @@ const heading = ref<HTMLElement | null>(null);
 const modelMeasure = ref<ModelMeasure>("turns");
 const modelGrouping = ref<ReportGrouping>("model");
 const route = useRoute();
+const filtersExpanded = ref(false);
+watch(
+  () => props.page,
+  () => {
+    filtersExpanded.value = false;
+  },
+);
 watch(
   () => props.page,
   async (page, previous) => {
