@@ -42,6 +42,14 @@ test('a new release is staged as a draft, filled with every installer, then publ
   assert.equal(create[create.indexOf('--notes') + 1], notes);
 });
 
+test('each target\'s source map zip is uploaded with its installers', async t => {
+  const f = setup(t, null);
+  for (const target of ['darwin-arm64', 'win32-x64', 'linux-x64', 'linux-arm64']) fs.writeFileSync(path.join(f.directory, `desktop-${target}`, `korus-${target}-sourcemaps.zip`), 'maps');
+  await publishDesktop({ directory: f.directory, tag: 'v0.27.0', channel: 'prerelease', changelog, run: f.run });
+  const uploaded = f.remote.calls.find(call => call[1] === 'upload').filter(arg => arg.endsWith('-sourcemaps.zip')).map(arg => path.basename(arg)).sort();
+  assert.deepEqual(uploaded, ['korus-darwin-arm64-sourcemaps.zip', 'korus-linux-arm64-sourcemaps.zip', 'korus-linux-x64-sourcemaps.zip', 'korus-win32-x64-sourcemaps.zip']);
+});
+
 test('latest publishes a leftover draft without recreating it', async t => {
   const f = setup(t, { isDraft: true, isPrerelease: true });
   await publishDesktop({ directory: f.directory, tag: 'v0.27.0', channel: 'latest', changelog, run: f.run });

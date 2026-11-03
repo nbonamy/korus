@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import product from '../core/src/product.json' with { type: 'json' };
+import { findPackagedAsar, sourcemapZip } from './sourcemap-archive.mjs';
 
 export const targets = ['darwin-arm64', 'win32-x64', 'linux-x64', 'linux-arm64'];
 
@@ -19,8 +20,13 @@ export async function listTarget(directory, target) {
   return names.sort().map(name => path.join(directory, name));
 }
 
-// Copies installers out of Forge's make output under stable, download-friendly names.
-export async function collectArtifacts({ source, output, target }) {
+async function packageVersion() {
+  return JSON.parse(await fs.readFile(new URL('../package.json', import.meta.url), 'utf8')).version;
+}
+
+// Copies installers out of Forge's make output under stable, download-friendly names. With `sourcemaps` (Forge's
+// output directory), also zips the maps that ship in the packaged app so profiles from this build can be symbolicated.
+export async function collectArtifacts({ source, output, target, sourcemaps, version }) {
   if (!targets.includes(target)) throw new Error(`Unsupported target: ${target}`);
   await fs.mkdir(output, { recursive: true });
   const names = new Set();
@@ -41,6 +47,12 @@ export async function collectArtifacts({ source, output, target }) {
     }
   }
   await visit(source);
+  if (sourcemaps) {
+    const asarPath = findPackagedAsar(sourcemaps);
+    if (!asarPath) throw new Error(`Packaged app.asar not found under ${sourcemaps}; cannot publish source maps.`);
+    const name = `${product.slug}-${target}-sourcemaps.zip`;
+    await fs.writeFile(path.join(output, name), sourcemapZip({ asarPath, version: version ?? await packageVersion(), target }));
+  }
   await listTarget(output, target);
 }
 
@@ -49,6 +61,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === import.meta.filename) {
   const signed = process.platform === 'darwin';
   const task = process.platform + '-' + process.arch !== target ? Promise.reject(new Error('Incorrect native runner.'))
     : signed && (process.env.APP_SKIP_SIGNING === '1' || process.env.TEST) ? Promise.reject(new Error('Signed artifacts required.'))
-    : collectArtifacts({ source: 'client/electron/out/make', output: `out/release/${target}`, target });
+    : collectArtifacts({ source: 'client/electron/out/make', output: `out/release/${target}`, target, sourcemaps: 'client/electron/out' });
   task.catch(error => { console.error(error.message); process.exitCode = 1; });
 }
