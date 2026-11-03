@@ -149,6 +149,7 @@ export function isAgentGitStatus(value: unknown): boolean {
     typeof value.removedLines === 'number' &&
     typeof value.hasUntracked === 'boolean' &&
     includes(['clean', 'dirty', 'unknown'], value.state) &&
+    optional(value, 'lockfiles', isGitDiffCounts) &&
     optional(value, 'diffCatalog', isAgentGitDiffCatalog) &&
     typeof value.updatedAt === 'string' &&
     optional(value, 'error', isString);
@@ -181,6 +182,10 @@ export function isAgentGitDiffTarget(value: unknown): value is AgentGitDiffTarge
 }
 
 function isAgentGitDiffSummary(value: unknown): boolean {
+  return isGitDiffCounts(value) && isRecord(value) && optional(value, 'lockfiles', isGitDiffCounts);
+}
+
+function isGitDiffCounts(value: unknown): boolean {
   return isRecord(value) &&
     typeof value.addedLines === 'number' &&
     typeof value.removedLines === 'number' &&

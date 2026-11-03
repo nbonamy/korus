@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addFileToKindStats, classifyFile, emptyKindStats, mergeKindStats } from '../file-kind';
+import { addFileToKindStats, isLockfile, classifyFile, emptyKindStats, mergeKindStats } from '../file-kind';
 
 
 describe('classifyFile', () => {
@@ -62,5 +62,17 @@ describe('kind stats', () => {
     const merged = mergeKindStats(stats, stats);
     expect(merged.code).toStrictEqual({ addedLines: 20, removedLines: 4, changedFiles: 2 });
     expect(stats.code.addedLines).toBe(10);
+  });
+});
+
+describe('dependency lockfiles', () => {
+  it('recognizes common ecosystems, nested paths and Git renames while retaining manifests and application locks', () => {
+    const names = ['package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml', 'bun.lock', 'bun.lockb', 'deno.lock', 'Cargo.lock', 'composer.lock', 'Gemfile.lock', 'gems.locked', 'Berksfile.lock', 'Pipfile.lock', 'poetry.lock', 'pdm.lock', 'uv.lock', 'pylock.toml', 'pylock.dev.toml', 'requirements-dev.lock', 'go.sum', 'go.work.sum', 'Gopkg.lock', 'glide.lock', 'packages.lock.json', 'Package.resolved', 'Podfile.lock', 'Cartfile.resolved', 'pubspec.lock', 'mix.lock', 'rebar.lock', 'flake.lock', 'devbox.lock', '.terraform.lock.hcl', 'conan.lock', 'renv.lock', 'spago.lock', 'gradle.lockfile', 'gradle/dependency-locks/runtime.lockfile'];
+    for (const name of names) expect(isLockfile(`nested/${name}`), name).toBe(true);
+    for (const name of ['package.json', 'Cargo.toml', 'go.mod', 'requirements.txt', 'src/file.lock', 'src/package-lock.json.ts']) expect(isLockfile(name), name).toBe(false);
+    expect(isLockfile('"nested\\UV.LOCK"')).toBe(true);
+    expect(isLockfile('old/{before => after}/yarn.lock')).toBe(true);
+    expect(isLockfile('old.txt => nested/bun.lock')).toBe(true);
+    expect(isLockfile('yarn.lock => ordinary.txt')).toBe(false);
   });
 });

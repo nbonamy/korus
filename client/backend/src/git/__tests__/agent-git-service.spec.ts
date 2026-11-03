@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -8,6 +8,41 @@ import { vi } from 'vitest';
 import { AgentGitService, parseBranchStatus, parseChangedFiles, parseCommitSummaries, parseNumstat, parsePorcelainFiles } from '../agent-git-service';
 
 describe('agent git service parsers', () => {
+  it('projects lockfile contributions across real Git scopes without removing files from operations', async () => {
+    const folder = await mkdtemp(join(tmpdir(), 'git-lockfiles-'));
+    const exec = promisify(execFile);
+    const run = (args: string[]) => exec('git', args, { cwd: folder });
+    try {
+      await run(['init', '--initial-branch=main']);
+      await writeFile(join(folder, 'main.ts'), 'old\n');
+      await writeFile(join(folder, 'package-lock.json'), 'old\n');
+      await run(['add', '.']);
+      await run(['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture']);
+      await writeFile(join(folder, 'main.ts'), 'new\n');
+      await writeFile(join(folder, 'package-lock.json'), 'new\nmore\n');
+      await writeFile(join(folder, 'uv.lock'), 'dependency\n');
+      await run(['add', 'package-lock.json']);
+      const service = new AgentGitService();
+      const status = await service.status(folder);
+      expect(JSON.parse(JSON.stringify(status))).toMatchObject({ state: 'dirty', changedFiles: 3, addedLines: 4, removedLines: 2,
+        lockfiles: { changedFiles: 2, addedLines: 3, removedLines: 1 } });
+      expect(status.diffCatalog).toMatchObject({
+        staged: { lockfiles: { changedFiles: 1, addedLines: 2, removedLines: 1 } },
+        unstaged: { changedFiles: 2, lockfiles: { changedFiles: 1, addedLines: 1, removedLines: 0 } },
+      });
+      const staged = await service.diff(folder, { type: 'staged' });
+      expect(staged.summary.lockfiles).toMatchObject({ changedFiles: 1, addedLines: 2, removedLines: 1 });
+      expect(staged.diff).toContain('package-lock.json');
+      const workflow = await service.workflow(folder);
+      expect(workflow.stagedFiles).toContain('package-lock.json');
+      expect(workflow.files.map(file => file.path)).toContain('uv.lock');
+      await run(['add', '.']);
+      await run(['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', 'commit', '-m', 'changes']);
+      const committed = await service.diff(folder, { type: 'commit', sha: (await run(['rev-parse', 'HEAD'])).stdout.trim() });
+      expect(committed.summary.lockfiles).toMatchObject({ changedFiles: 2, addedLines: 3, removedLines: 1 });
+    } finally { await rm(folder, { recursive: true, force: true }); }
+  });
+
   it('parses branch tracking status', () => {
     expect(parseBranchStatus('## main...origin/main [ahead 2, behind 1]\n M README.md\n')).toStrictEqual({
       branch: 'main',

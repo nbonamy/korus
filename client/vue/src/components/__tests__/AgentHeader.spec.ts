@@ -256,7 +256,7 @@ describe('AgentHeader', () => {
     });
     const wrapper = mountHeader({ backend: 'codex', status: 'running' }, false, withKinds);
     await wrapper.get('[aria-label="Choose repository diff"]').trigger('click');
-    expect(wrapper.getComponent({ name: 'AppMenu' }).element.lastElementChild?.querySelector('.app-menu__label')?.textContent).toBe('Commits');
+    expect(wrapper.getComponent({ name: 'AppMenu' }).element.lastElementChild?.querySelector('.app-menu__label')?.textContent).toBe('Exclude lockfiles');
     const menuRows = () => (wrapper.getComponent({ name: 'AppMenu' }).props('items') as Array<{ id: string; type: string; label: string; description?: string; value?: unknown }>).filter(item => item.id === 'kinds-heading' || item.id.startsWith('kind:'));
     const rows = menuRows;
     expect(rows().map(row => [row.id, row.label, row.description])).toStrictEqual([

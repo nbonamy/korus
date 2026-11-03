@@ -54,6 +54,7 @@ export {
   IconExternalLink as ExternalLinkIcon,
   IconFileArrowRight as FileArrowRightIcon,
   IconFileDiff as FileDiffIcon,
+  IconLockOff as LockOffIcon,
   IconFileSpark as FileSparkIcon,
   IconFileText as FileTextIcon,
   IconFolder as FolderIcon,

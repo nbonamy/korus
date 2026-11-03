@@ -170,6 +170,7 @@ function expectedEmptySnapshot(): AppSnapshot {
     },
     general: {
       git: { pull: 'git-config', update: 'merge' },
+      excludeLockfilesFromDiffs: false,
       commitMessageInstructions: '',
       pullRequestInstructions: '',
       codeReviewInstructions: '',

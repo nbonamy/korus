@@ -506,6 +506,7 @@ export type SavedPromptDraft = {
 };
 
 export type AppGeneralSettings = {
+  excludeLockfilesFromDiffs?: boolean;
   git?: import('./git-preferences').GitSettings;
   commitMessageInstructions: string;
   pullRequestInstructions: string;

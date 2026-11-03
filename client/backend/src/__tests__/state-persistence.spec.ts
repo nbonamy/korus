@@ -1424,7 +1424,7 @@ describe('state persistence', () => {
 
     const restored = snapshotFromPersistedState(persistedStateFromSnapshot(snapshot));
 
-    expect(restored.general).toStrictEqual({ ...snapshot.general, guestDisplayName: '', codeReviewInstructions: '', codeReviewDiscussWithOriginalThread: false, missionInstructions: '', autoResumeAfterLimit: true, autoResumeOnStartup: true, useInteractivePlans: true, git: { pull: 'git-config', update: 'merge' } });
+    expect(restored.general).toStrictEqual({ ...snapshot.general, excludeLockfilesFromDiffs: false, guestDisplayName: '', codeReviewInstructions: '', codeReviewDiscussWithOriginalThread: false, missionInstructions: '', autoResumeAfterLimit: true, autoResumeOnStartup: true, useInteractivePlans: true, git: { pull: 'git-config', update: 'merge' } });
   });
 
   it('removes credentials from restored workspace origins', () => {

@@ -1,6 +1,7 @@
+import { summarizeLockfiles, type LockfileStats } from './diff-lockfiles';
 import { addFileToKindStats, emptyKindStats, type KindBreakdown } from './file-kind';
 
-export type UnifiedDiffStats = { addedLines: number; removedLines: number; changedFiles: number; byKind: KindBreakdown };
+export type UnifiedDiffStats = { addedLines: number; removedLines: number; changedFiles: number; byKind: KindBreakdown; lockfiles?: LockfileStats };
 
 /** Counts a unified diff's lines per file and groups the files by what they are for. */
 export function summarizeUnifiedDiff(diff: string): UnifiedDiffStats {
@@ -10,8 +11,9 @@ export function summarizeUnifiedDiff(diff: string): UnifiedDiffStats {
   let current: { path: string; added: number; removed: number } | undefined;
   for (const line of diff.split(/\r?\n/u)) {
     if (line.startsWith('diff --git ')) {
-      // The new path follows the last " b/", so paths containing spaces keep their own name.
-      current = files.get(line) ?? { path: line.slice(line.lastIndexOf(' b/') + 3), added: 0, removed: 0 };
+      // Git quotes paths with special characters, including binary files without +++ headers.
+      const path = / (?:"b\/(.*)"|b\/(.*))$/u.exec(line);
+      current = files.get(line) ?? { path: path?.[1] ?? path?.[2] ?? '', added: 0, removed: 0 };
       files.set(line, current);
     } else if (line.startsWith('+') && !line.startsWith('+++')) {
       addedLines += 1;
@@ -23,5 +25,6 @@ export function summarizeUnifiedDiff(diff: string): UnifiedDiffStats {
   }
   const byKind = emptyKindStats();
   for (const file of files.values()) addFileToKindStats(byKind, file.path, file.added, file.removed);
-  return { addedLines, removedLines, changedFiles: files.size, byKind };
+  const lockfiles = summarizeLockfiles(Array.from(files.values(), file => ({ path: file.path, addedLines: file.added, removedLines: file.removed })));
+  return { addedLines, removedLines, changedFiles: files.size, byKind, ...(lockfiles ? { lockfiles } : {}) };
 }

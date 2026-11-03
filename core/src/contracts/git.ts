@@ -12,6 +12,8 @@ export type AgentGitStatus = {
   removedLines: number;
   hasUntracked: boolean;
   state: 'clean' | 'dirty' | 'unknown';
+  /** Dependency lockfile contribution, included in the raw totals above. */
+  lockfiles?: import('../diff-lockfiles').LockfileStats;
   diffCatalog?: AgentGitDiffCatalog;
   updatedAt: string;
   error?: string;
@@ -29,6 +31,8 @@ export type AgentGitDiffSummary = {
   addedLines: number;
   removedLines: number;
   changedFiles: number;
+  /** Dependency lockfile contribution, included in the raw totals above. */
+  lockfiles?: import('../diff-lockfiles').LockfileStats;
   /** The same totals split by what each file is for (code, tests, docs, other). */
   byKind?: import('../file-kind').KindBreakdown;
 };

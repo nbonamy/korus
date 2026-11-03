@@ -37,6 +37,19 @@ function snapshotWithCalendar(): AppSnapshot {
 }
 
 describe('AppStateStore', () => {
+  it('persists the lockfile display preference through restart and explicit opt-out', async () => {
+    const store = new AppStateStore(home);
+    const snapshot = await store.load();
+    expect(snapshot.general.excludeLockfilesFromDiffs).toBe(false);
+    snapshot.clientPreferences = { desktop: { general: { excludeLockfilesFromDiffs: true } } };
+    await store.save(snapshot);
+    const reloaded = await new AppStateStore(home).load();
+    expect(projectClientSnapshot(reloaded, 'desktop').general.excludeLockfilesFromDiffs).toBe(true);
+    reloaded.general.excludeLockfilesFromDiffs = false;
+    await new AppStateStore(home).save(reloaded);
+    expect(projectClientSnapshot(await new AppStateStore(home).load(), 'desktop').general.excludeLockfilesFromDiffs).toBe(false);
+  });
+
   it('persists icon removal from the existing desktop client-preferences contract', async () => {
     const initial = createInitialSnapshot();
     initial.general.repositoryIcons = { 'remote:github.com/fixture/project': '🎾' };

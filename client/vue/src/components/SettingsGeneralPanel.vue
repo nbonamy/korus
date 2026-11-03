@@ -63,11 +63,11 @@
     </FormSection>
 
     <FormSection
-      v-if="appHostCapabilities.nativeFileDialogs && showSourceFolderSetting"
-      :title="$t('surface.settingsGeneralPanel.sourceFolder')"
+      :title="$t('surface.settingsGeneralPanel.code')"
       title-id="settings-general-source-title"
     >
       <FormRow
+        v-if="appHostCapabilities.nativeFileDialogs && showSourceFolderSetting"
         :title="$t('surface.settingsGeneralPanel.sourceFolder')"
         :description="$t('surface.settingsGeneralPanel.discoverRepositoriesAndWorktreesWhenCreatingAgents')"
         :error="sourceFolderError"
@@ -91,6 +91,19 @@
               @click="clearSourceFolder"
             > {{ $t('surface.settingsGeneralPanel.clear') }} </el-button>
           </span>
+        </template>
+      </FormRow>
+      <FormRow
+        :title="$t('surface.settingsGeneralPanel.excludeLockfiles')"
+        :description="$t('surface.settingsGeneralPanel.excludeLockfilesDescription')"
+        :error="diffPreferenceError"
+      >
+        <template #control>
+          <el-switch
+            :model-value="settings.excludeLockfilesFromDiffs === true"
+            :aria-label="$t('surface.settingsGeneralPanel.excludeLockfiles')"
+            @update:model-value="updateExcludeLockfiles"
+          />
         </template>
       </FormRow>
     </FormSection>
@@ -416,6 +429,16 @@ function updateAutoResumeOnStartup(value: boolean | string | number): void {
 function updateFollowUpBehavior(value: string | number | boolean): void {
   if (value !== 'queue' && value !== 'steer') return;
   void props.updateSettings?.({ general: { followUpBehavior: value } });
+}
+
+const diffPreferenceError = ref('');
+async function updateExcludeLockfiles(value: boolean | string | number): Promise<void> {
+  diffPreferenceError.value = '';
+  try {
+    await props.updateSettings?.({ general: { excludeLockfilesFromDiffs: value === true } });
+  } catch {
+    diffPreferenceError.value = translate('surface.settingsGeneralPanel.unableToSaveDiffPreference');
+  }
 }
 
 function updateCelebrationsEnabled(value: boolean | string | number): void {

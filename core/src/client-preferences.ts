@@ -2,6 +2,7 @@ import type { AppGeneralSettings,AppSnapshot,AppThemeSettings,OpenInApplication,
 import { normalizeGeneralSettings,normalizeThemeSettings } from './settings';
 
 export const clientGeneralSettingKeys = [
+  'excludeLockfilesFromDiffs',
   'agentListCompact', 'collapsedRepositoryKeys', 'modelFavorites',
   'backlogRepositoryFavorites', 'repositoryIcons', 'sessionCompressionWarningEnabled', 'spokenAnnouncementsMuted',
   'savedPromptDrafts', 'followUpBehavior', 'browserBookmarks',
