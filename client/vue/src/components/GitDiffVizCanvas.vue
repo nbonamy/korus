@@ -1,5 +1,5 @@
 <template>
-  <div class="diff-viz-canvas">
+  <div class="diff-viz-canvas" :style="{ backgroundColor: background }">
     <div class="diff-viz-canvas__viewport">
       <div ref="host" class="diff-viz-canvas__host" />
       <div class="diff-viz-canvas__targets">
@@ -7,7 +7,7 @@
           :style="{ left: `${target.x}px`, top: `${target.y}px`, width: `${target.width}px`, height: `${target.height}px` }">
           <button v-if="target.paths.length" type="button" class="diff-viz-canvas__target"
             :aria-label="translate('surface.diffViz.openChanges', { label: target.label })" :title="diffVizTooltip(target)" @click="emit('select', target.paths, target.locations?.[0])" />
-          <span v-else role="img" :aria-label="`${target.label} · ${translate('surface.diffViz.unchanged')}`" />
+          <span v-else role="img" :aria-label="`${target.label} · ${translate(`surface.diffViz.${target.status}`)}`" />
         </div>
       </div>
       <div class="diff-viz-canvas__controls">
@@ -36,6 +36,7 @@ const emit = defineEmits<{ select: [paths: string[], location?: DiffVizLocation]
 const host = ref<HTMLElement>();
 const ready = ref(false);
 const error = ref('');
+const background = ref('');
 const targets = ref<Array<CanvasAnnotationTarget & NativeDiffVizDiagram['nodes'][number]>>([]);
 let editor: ReturnType<typeof mountCanvas> | undefined;
 let disposed = false;
@@ -56,12 +57,14 @@ async function load() {
   editor = undefined;
   targets.value = [];
   try {
-    const [{ mountCanvas }, { diffVizScene }] = await Promise.all([import('./excalidraw-editor'), import('./diff-viz-scene')]);
+    const [{ mountCanvas }, { diffVizScene, diffVizPalette }] = await Promise.all([import('./excalidraw-editor'), import('./diff-viz-scene')]);
     const scene = await diffVizScene(diagram);
+    background.value = diffVizPalette().canvas;
     if (disposed || request !== epoch || !host.value) return;
     editor = mountCanvas(host.value, scene, () => { void nextTick(refreshTargets); }, cause => { if (request === epoch) error.value = cause.message; }, refreshTargets, { nativeColors: true });
     recolor = () => {
       const colorRequest = ++colorEpoch;
+      background.value = diffVizPalette().canvas;
       void diffVizScene(props.diagram).then(scene => {
         if (!disposed && request === epoch && colorRequest === colorEpoch) editor?.update(scene, false);
       }).catch(cause => { if (!disposed && request === epoch && colorRequest === colorEpoch) error.value = cause instanceof Error ? cause.message : String(cause); });
@@ -69,6 +72,14 @@ async function load() {
     ready.value = true;
   } catch (cause) { if (!disposed && request === epoch) error.value = cause instanceof Error ? cause.message : String(cause); }
 }
+async function exportDiagram(format: 'native' | 'svg' | 'png'): Promise<Blob> {
+  if (!ready.value || !editor || error.value) throw new Error(translate('surface.diffViz.notReady'));
+  const canvasBackground = background.value;
+  if (format === 'native') return new Blob([editor.nativeDocument(canvasBackground)], { type: 'application/json' });
+  if (format === 'svg') return new Blob([await editor.svg(canvasBackground)], { type: 'image/svg+xml' });
+  return (await fetch(await editor.preview(undefined, canvasBackground))).blob();
+}
+defineExpose({ exportDiagram });
 onMounted(() => { themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'] }); void load(); });
 watch(() => props.diagram, load);
 onBeforeUnmount(() => { disposed = true; epoch++; recolor = undefined; themeObserver.disconnect(); editor?.dispose(); });

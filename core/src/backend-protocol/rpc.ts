@@ -116,6 +116,10 @@ export type AppBackendRequestMap = {
     params: { agentId: string; input: import('../visualize').DeleteVisualizationInput };
     result: AppSnapshot;
   };
+  [backendMethods.agentRepositoryVisualizationSave]: {
+    params: { agentId: string; input: import('../visualize').SaveRepositoryVisualizationInput };
+    result: AppSnapshot;
+  };
   [backendMethods.agentVisualizationCanvasSave]: {
     params: { agentId: string; input: import('../visualize-canvas').SaveCanvasInput };
     result: import('../visualize-canvas').CanvasDocument;

@@ -13,7 +13,7 @@ export function diffVizIcon(name: DiffVizIcon, color: string): Promise<{ id: str
   if (cached) return cached;
   const operation = (async () => {
     const host = document.createElement('div');
-    render(h(icons[name], { size: 96, color, stroke: 1.7 }), host);
+    render(h(icons[name], { size: 96, color, stroke: 1.25 }), host);
     const svg = host.querySelector('svg')!;
     svg.setAttribute('viewBox', '0 0 96 96');
     const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');

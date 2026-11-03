@@ -289,10 +289,10 @@ describe('AppBackendServer', () => {
     expect(generateText).toHaveBeenCalledTimes(3);
     expect(generateText.mock.calls[2]?.[1].prompt).not.toMatch(/LARGE_PATCH_SENTINEL|diff --git/);
     expect(generateText.mock.calls[2]?.[1]).toMatchObject({ complexity: 'normal', cwd: '/repo', tools: true, attachments:[{type:'image',path:path.join(assets,'viz/reference.png'),mimeType:'image/png'}], prompt: expect.stringContaining('origin/main'),
-      developerInstructions: expect.stringMatching(/system impact.*not files/i), outputSchema: { properties: { elements: { maxItems: 80 } } } });
+      developerInstructions: expect.stringMatching(/system impact.*not files/i), outputSchema: { properties: { elements: { minItems: 1 } } } });
     generateText.mockResolvedValueOnce({ text: JSON.stringify(nativeViz([{ id: 'outside', label: 'Invented work', status: 'changed', paths: ['/outside'] }])) });
     await expect(server.handleMessage({ jsonrpc: '2.0', id: 'bad-viz', method: backendMethods.agentGitMessageGenerate,
-      params: { agentId: 'agent-dina', input: { kind: 'viz', target: { type: 'branch', baseRef: 'origin/main' } } } })).rejects.toThrow(/changed file/i);
+      params: { agentId: 'agent-dina', input: { kind: 'viz', target: { type: 'branch', baseRef: 'origin/main' } } } })).resolves.toMatchObject({result:{kind:'viz',diagram:{nodes:[{id:'outside',paths:[]}]}}});
     expect(generateText.mock.calls[0]?.[1].developerInstructions).toContain('Use lowercase conventional commits.');
     expect(generateText.mock.calls[0]?.[1].developerInstructions).not.toContain('deployment checklist');
     expect(generateText.mock.calls[1]?.[1].developerInstructions).toContain('Include a deployment checklist.');

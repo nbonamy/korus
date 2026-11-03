@@ -69,7 +69,12 @@ log and socket paths, npm scripts and launchd labels stay brand-neutral.
   The bundled `korus-stack-diagram` skill owns the shared architecture-diagram
   guidance. Visualize loads it through `read-skill`; Polished Diff Viz injects the
   same skill text into its utility request. Caller-specific output and evidence
-  contracts stay separate from that visual guidance.
+  contracts stay separate from that visual guidance. Composition targets are
+  advisory: usable drawings survive extra components, groups, connections and
+  longer labels. Optional review metadata is recovered independently; unsupported
+  annotations and out-of-scope links are omitted, and dangling bindings become
+  standalone geometry. Rendering and safety constraints still reject unusable
+  or unsafe content.
   Polished Viz attaches an app-owned PNG composition reference from the runtime
   assets root. Forge ships it outside `app.asar`; standalone daemon staging and
   SSH installation carry the same file beside the daemon. Utility image inputs

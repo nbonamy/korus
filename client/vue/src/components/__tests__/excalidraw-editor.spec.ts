@@ -7,7 +7,7 @@ vi.mock('@excalidraw/excalidraw', () => ({
   Excalidraw: () => null,
   MainMenu: () => null,
   CaptureUpdateAction: {},
-  FONT_FAMILY: {},
+  FONT_FAMILY: { Nunito: 6, Cascadia: 3 },
   convertToExcalidrawElements: vi.fn(),
   exportToCanvas: vi.fn(),
   restoreElements: vi.fn(elements => structuredClone(elements)),
@@ -23,40 +23,15 @@ import { isCanvasDocument } from '@workspace/core/visualize-canvas';
 import { importVisualization, mountCanvas } from '../excalidraw-editor';
 const base: Visualization = { id: 'v', title: 'Diagram', content: { kind: 'mermaid', source: '' }, createdAt: '', updatedAt: '' };
 describe('canvas imports', () => {
-  it('waits for bundled diagram fonts before importing or reopening native text', async () => {
-    const pending:Array<()=>void>=[];
-    const added:unknown[]=[];
-    class Face {
-      constructor(readonly family:string,readonly source:string) {}
-      load(){return new Promise<this>(resolve=>pending.push(()=>resolve(this)));}
-    }
-    vi.stubGlobal('FontFace',Face);
-    Object.defineProperty(document,'fonts',{configurable:true,value:{add:(font:unknown)=>added.push(font)}});
-    const elements=[{id:'name',type:'text',x:0,y:0,width:150,height:24,text:'Vue UI',fontFamily:4},{id:'edge',type:'text',x:160,y:0,width:150,height:20,text:'prompts',fontFamily:10}];
-    let complete=false;
-    const importing=importVisualization({...base,content:{kind:'excalidraw',source:JSON.stringify({elements,files:{}})}},'').then(scene=>{complete=true;return scene;});
-    await Promise.resolve();
-    expect(complete).toBe(false);
-    expect(pending).toHaveLength(2);
-    pending.forEach(resolve=>resolve());
-    const scene=await importing;
-    expect(added).toMatchObject([{family:'Geist',source:expect.stringContaining('Geist.woff2')},{family:'JetBrains Mono',source:expect.stringContaining('JetBrainsMono.woff2')}]);
-    await importVisualization({...base,canvas:{...scene,revision:1}},'');
-    expect(added).toHaveLength(2);
-    // PNG exports can run independently of a mounted/imported diagram.
-    Object.defineProperty(document,'fonts',{configurable:true,value:Object.assign(new EventTarget(),{ready:Promise.resolve(),add:(font:unknown)=>added.push(font)})});
-    vi.stubGlobal('ResizeObserver',class {observe(){} disconnect(){}});
-    vi.stubGlobal('requestAnimationFrame',vi.fn());
-    vi.mocked(exportToCanvas).mockResolvedValueOnce({toDataURL:()=> 'data:image/png;base64,YQ=='} as never);
-    const editor=mountCanvas(document.createElement('div'),{elements:[],files:{},selectedElementIds:[],preview:''},vi.fn(),vi.fn());
-    pending.splice(0);
-    const exporting=editor.preview(scene);
-    expect(exportToCanvas).not.toHaveBeenCalled();
-    expect(pending).toHaveLength(2);
-    pending.forEach(resolve=>resolve());
-    expect(await exporting).toBe('data:image/png;base64,YQ==');
-    expect(exportToCanvas).toHaveBeenCalledOnce();
-    editor.dispose();
+  it('opens legacy diagram text with portable native fonts without mutating the saved scene', async () => {
+    const elements = [{id:'name',type:'text',x:0,y:0,width:150,height:24,text:'Vue UI',fontFamily:4},
+      {id:'edge',type:'text',x:160,y:0,width:150,height:20,text:'prompts',fontFamily:10}];
+    const canvas = {elements,files:{},selectedElementIds:[],preview:'',revision:1};
+    const scene = await importVisualization({...base,canvas}, '');
+    expect(scene.elements.map(element=>element.fontFamily)).toEqual([6,3]);
+    expect(canvas.elements.map(element=>element.fontFamily)).toEqual([4,10]);
+    const imported = await importVisualization({...base,content:{kind:'excalidraw',source:JSON.stringify(canvas)}}, '');
+    expect(imported.elements.map(element=>element.fontFamily)).toEqual([6,3]);
   });
   it('renders app-owned native colors without Excalidraw inverting the palette in dark mode', () => {
     const fonts = Object.assign(new EventTarget(), { ready: Promise.resolve() });

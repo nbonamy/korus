@@ -23,6 +23,7 @@ export const ipcChannels = {
   generateVisualizationSuggestion: 'agent:visualize:suggestion:generate',
   selectVisualization: 'agent:visualize:visualization:select',
   deleteVisualization: 'agent:visualize:visualization:delete',
+  saveRepositoryVisualization: 'agent:visualize:repository:save',
   saveVisualizationCanvas: 'agent:visualize:canvas:save',
   readVisualizationAsset: 'agent:visualize:asset:read',
   startCodeReview: 'agent:code-review:start',

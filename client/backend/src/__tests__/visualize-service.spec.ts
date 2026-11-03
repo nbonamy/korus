@@ -16,6 +16,33 @@ afterEach(async () => {
 });
 
 describe('VisualizeService', () => {
+  it('saves a Diff Viz into the repository library without opening a pane or losing it after restart', async () => {
+    temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'saved-diff-viz-'));
+    const persistence = new AppStateStore(temporaryDirectory);
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0];
+    agent.folder = '/projects/app';
+    agent.workspace = { kind: 'git', folder: agent.folder, repositoryName: 'app', repositoryRoot: agent.folder,
+      branch: 'feature', isLinkedWorktree: false, primaryWorktreeRoot: agent.folder, updatedAt: agent.updatedAt };
+    const service = new VisualizeService({ snapshot, generatedImagesRoot: temporaryDirectory, persist: () => persistence.save(snapshot), publish: () => {} });
+    const content = { kind: 'excalidraw' as const, source: JSON.stringify({ elements: [{ id: 'box', type: 'rectangle', x: 0, y: 0, width: 50, height: 50 }], files: {} }) };
+    await service.saveRepository(agent.id, { title: 'Changed architecture', content });
+    expect(agent.visualize).toBeUndefined();
+    const loaded = await persistence.load();
+    const reopened = new VisualizeService({ snapshot: loaded, generatedImagesRoot: temporaryDirectory, persist: () => persistence.save(loaded), publish: () => {} });
+    const { visualize } = await reopened.enter(agent.id);
+    expect(visualize.visualizations).toMatchObject([{ title: 'Changed architecture', content }]);
+    await reopened.saveRepository(agent.id, { title: 'Flow', content: { kind: 'mermaid', source: 'flowchart LR; A --> B' } });
+    expect(reopened.list(agent.id).visualizations).toHaveLength(2);
+    await expect(reopened.saveRepository(agent.id, { title: 'Bad', content: { kind: 'excalidraw', source: '{}' } })).rejects.toThrow();
+    expect(reopened.list(agent.id).visualizations).toHaveLength(2);
+    vi.spyOn(persistence, 'save').mockRejectedValueOnce(new Error('Disk full'));
+    await expect(reopened.saveRepository(agent.id, { title: 'Retry', content: { kind: 'mermaid', source: 'flowchart LR; A --> B' } })).rejects.toThrow('Disk full');
+    expect(reopened.list(agent.id).visualizations).toHaveLength(2);
+    delete loaded.agents[0].workspace;
+    await expect(reopened.saveRepository(agent.id, { title: 'Flow', content: { kind: 'mermaid', source: 'flowchart LR; A --> B' } })).rejects.toThrow(/repository/i);
+  });
+
   it('embeds fetched bytes in saved diagrams and edits without an asset registry surviving the process', async () => {
     temporaryDirectory=await mkdtemp(path.join(os.tmpdir(),'visualize-icons-'));
     const snapshot=createInitialSnapshot();const agent=snapshot.agents[0];

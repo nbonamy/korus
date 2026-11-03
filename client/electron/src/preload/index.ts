@@ -12,6 +12,7 @@ const api: AppApi = {
   generateVisualizationSuggestion: (agentId, input) => ipc.invoke(ipcChannels.generateVisualizationSuggestion, agentId, input),
   selectVisualization: (agentId, input) => ipc.invoke(ipcChannels.selectVisualization, agentId, input),
   deleteVisualization: (agentId, input) => ipc.invoke(ipcChannels.deleteVisualization, agentId, input),
+  saveRepositoryVisualization: (agentId, input) => ipc.invoke(ipcChannels.saveRepositoryVisualization, agentId, input),
   saveVisualizationCanvas: (agentId, input) => ipc.invoke(ipcChannels.saveVisualizationCanvas, agentId, input),
   readVisualizationAsset: (agentId, visualizationId) => ipc.invoke(ipcChannels.readVisualizationAsset, agentId, visualizationId),
   startCodeReview: (agentId, input) => ipc.invoke(ipcChannels.startCodeReview, agentId, input),

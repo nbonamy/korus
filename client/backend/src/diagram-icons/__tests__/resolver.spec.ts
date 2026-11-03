@@ -77,7 +77,7 @@ it('ports Lucide tinting and explicit source syntax, refusing active images and 
     .mockImplementation(async (input) =>
       response(
         String(input).includes('lucide-static')
-          ? '<!-- @license lucide-static - ISC -->\n' + svg('currentColor').replace('fill=', 'stroke=')
+          ? '<!-- @license lucide-static - ISC -->\n' + svg('currentColor').replace('<svg ', '<svg stroke-width="2" ').replace('fill=', 'stroke=')
           : '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
       ),
     );
@@ -85,6 +85,7 @@ it('ports Lucide tinting and explicit source syntax, refusing active images and 
   const icon = await resolver.fetchIcon('store:lucide/database');
   expect(icon).toMatchObject({ asset: { source: 'lucide' } });
   expect(Buffer.from(icon!.asset.base64, 'base64').toString()).toContain('#3d4660');
+  expect(Buffer.from(icon!.asset.base64, 'base64').toString()).toContain('stroke-width="1.25"');
   expect(await resolver.fetchIcon('bad=https://raw.githubusercontent.com/test/icon.svg')).toBeNull();
   for (const spec of [
     '../escape',

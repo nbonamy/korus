@@ -46,6 +46,7 @@ export const backendMethods = {
   agentVisualizationSuggestionGenerate: 'agent/visualize/suggestion/generate',
   agentVisualizationSelect: 'agent/visualize/visualization/select',
   agentVisualizationDelete: 'agent/visualize/visualization/delete',
+  agentRepositoryVisualizationSave: 'agent/visualize/repository/save',
   agentVisualizationCanvasSave: 'agent/visualize/canvas/save',
   agentVisualizationAssetGet: 'agent/visualize/asset/get',
   agentConversationMessagesGet: 'agent/conversation/messages/get',

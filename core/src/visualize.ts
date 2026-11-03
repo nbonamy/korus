@@ -44,6 +44,8 @@ export type Visualization = {
   updatedAt: string;
 };
 
+export type SaveRepositoryVisualizationInput = { title: string; content: VisualizationTextContent };
+
 export type RepositoryVisualizations = Record<string, Visualization[]>;
 
 export function visualizationRepositoryRoot(agent: Agent): string | null {

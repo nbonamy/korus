@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer, build } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import { excalidrawAssets } from '../vite.excalidraw-assets.ts';
 import { chromium } from 'playwright';
 
 // Owning rendered workflow: a dense map must preserve churn, scope and file identity
@@ -42,7 +43,7 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
     optimizeDeps: { entries: [path.join(root, 'client/vue/src/components/GitReviewPanel.vue'), path.join(root, 'client/vue/src/components/excalidraw-editor.ts')] },
     server: { middlewareMode: true, host: '127.0.0.1', port, hmr: { server: httpServer } },
     resolve: { alias: { '@workspace/core': path.join(root, 'core/src') }, dedupe: ['vue'] },
-    plugins: [vue(), {
+    plugins: [vue(), excalidrawAssets(), {
       name: 'diff-treemap-fixture',
       configureServer(server) {
         server.middlewares.use('/diff-map', (_req, res) => {
@@ -69,15 +70,15 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
           import {createEmptySnapshot} from '/core/src/snapshot.ts';
           const sections=${JSON.stringify(sections)};
           const panel=ref({kind:'gitDiff',title:'Changes',target:{type:'uncommitted'},summary:${JSON.stringify(summary)},state:'idle',diff:sections.map(s=>s.diff).join('\\n'),sections});
-          window.fixture={replace:value=>panel.value={...panel.value,...value},opens:[],generations:[],settings:[]};
+          window.fixture={replace:value=>panel.value={...panel.value,...value},opens:[],generations:[],settings:[],saved:[]};
           const snapshot=reactive(createEmptySnapshot());
           const settingsVisible=ref(false);
           window.fixture.openSettings=value=>settingsVisible.value=value;
           const save=async input=>{window.fixture.settings.push(input);Object.assign(snapshot.general,input.general);return snapshot;};
           const nodes=[
             {id:'requests',icon:'repository',label:'GitHub PRs and reviews',status:'unchanged',paths:[],x:20,y:20,width:180,height:70},
-            {id:'sync',icon:'sync',review:{title:'Persist profile activity',changed:'Profile activity is saved during synchronization.',impact:'Responses can read the synchronized activity.',question:'Does incremental sync retain existing records?'},locations:[{path:'src/rewrite.ts',line:2,endLine:3,side:'new'}],label:'Profile Sync Service',status:'changed',paths:['src/rewrite.ts','src/module-100.ts'],x:240,y:160,width:200,height:90},
-            {id:'store',icon:'database',label:'Activity storage',status:'added',paths:['src/module-101.ts'],x:240,y:340,width:200,height:90},
+            {id:'sync',subtitle:'node backend',icon:'sync',review:{title:'Persist profile activity',changed:'Profile activity is saved during synchronization.',impact:'Responses can read the synchronized activity.',question:'Does incremental sync retain existing records?'},locations:[{path:'src/rewrite.ts',line:2,endLine:3,side:'new'}],label:'Profile Sync Service',status:'changed',paths:['src/rewrite.ts','src/module-100.ts'],x:240,y:160,width:200,height:90},
+            {id:'store',subtitle:'sqlite',icon:'database',label:'Activity storage',status:'added',paths:['src/module-101.ts'],x:240,y:340,width:200,height:90},
             {id:'legacy',icon:'service',label:'Legacy sync path',status:'deleted',paths:['src/module-102.ts'],x:20,y:170,width:160,height:60},
             {id:'response',icon:'api',label:'Profile API',status:'unchanged',paths:[],x:240,y:540,width:180,height:70},
             {id:'tests',icon:'tests',label:'Profile tests',status:'added',paths:['tests/module-140.spec.ts'],x:240,y:20,width:200,height:60}
@@ -85,7 +86,7 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
           const brandAsset={mimeType:'image/svg+xml',base64:btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 24"><path fill="#ee00cc" d="M0 0h48v24H0z"/></svg>'),source:'svgl',sourceUrl:'https://svgl.app/library/fixture.svg',whiteFill:false};
           nodes.find(node=>node.id==='store').iconImage=brandAsset;
           nodes.find(node=>node.id==='legacy').iconImage={...brandAsset,base64:btoa('<svg>')};
-          const diagram={format:'excalidraw',title:'Profile sync persists review activity',layout:'PR events feed synchronization and storage, with tests supporting the changed components.',groups:['activity'],nodes:nodes.map(({id,label,status,paths,icon,iconImage,review,locations})=>({id,label,status,paths,icon,iconImage,review,locations})),elements:[
+          const diagram={format:'excalidraw',title:'Profile sync persists review activity',layout:'PR events feed synchronization and storage, with tests supporting the changed components.',groups:['activity'],nodes:nodes.map(({id,label,subtitle,status,paths,icon,iconImage,review,locations})=>({id,label,subtitle,status,paths,icon,iconImage,review,locations})),elements:[
             {id:'activity',type:'rectangle',x:210,y:100,width:280,height:380},
             {id:'activity_title',type:'text',x:230,y:115,width:240,height:24,text:'Profile Activity',fontFamily:2,fontSize:18},
             ...[['pr_events',200,55,140,105,[[0,0],[140,0],[140,105]],'requests','sync'],['save',340,258,0,74,[[0,0],[0,74]],'sync','store'],['read',340,438,0,94,[[0,0],[0,94]],'store','response'],['replace',188,200,44,5,[[0,0],[44,0]],'legacy','sync'],['checks',340,88,0,64,[[0,0],[0,64]],'tests','sync']].map(([id,x,y,width,height,points,from,to])=>({id,type:'arrow',x,y,width,height,points,...(id==='read'?{strokeStyle:'dashed'}:{}),endArrowhead:'arrow',startBinding:{elementId:from,focus:0,gap:8},endBinding:{elementId:to,focus:0,gap:8}})),
@@ -102,6 +103,7 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
           configureAppClient({platform:'desktop',api:{
             getSnapshot:async()=>snapshot,
             updateSettings:save,
+            saveRepositoryVisualization:async(id,input)=>{window.fixture.saved.push({id,input:structuredClone(input)});return snapshot;},
             generateAgentGitMessage:async(id,input)=>{const request=structuredClone(input);window.fixture.generations.push({id,input:request});return {kind:'viz',diagram:request.mode==='fast'?fastDiagram:diagram};}
           }});
           const byKind=Object.fromEntries(['code','test','docs','other'].map(kind=>[kind,{changedFiles:1,addedLines:1,removedLines:1}]));
@@ -307,6 +309,7 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
     assert.equal(await page.locator('.diff-viz-canvas__target').count(), 4, 'unchanged context must not be clickable');
     assert.equal(await page.locator('.diff-viz-canvas .App-menu_top').isVisible(),false,'the read-only viewer must hide the editor menu');
     assert.equal(await page.locator('.diff-viz-canvas .layer-ui__wrapper__footer').isVisible(),false,'the viewer provides its own controls');
+    await page.waitForFunction(() => ['Nunito', 'Cascadia'].every(family => [...document.fonts].some(face => face.family.replaceAll('"','') === family && face.status === 'loaded')));
     const assets=await page.evaluate(async()=>{
       const scene=await window.fixture.nativeScene();
       const images=scene.elements.filter(element=>element.type==='image');
@@ -314,20 +317,33 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
       const tile=scene.elements.find(element=>element.id==='sync');
       const caption=scene.elements.find(element=>element.id==='sync_label');
       const group=scene.elements.find(element=>element.id==='activity');
-      return {count:images.length,dimensions,tile,caption,group,heading:scene.elements.find(element=>element.id==='activity_title'),labels:['save_label','read_label'].map(id=>scene.elements.find(element=>element.id===id)),secondary:scene.elements.find(element=>element.id==='read'),fonts:[...document.fonts].filter(face=>['Geist','JetBrains Mono'].includes(face.family.replaceAll(String.fromCharCode(34),''))).map(face=>({family:face.family.replaceAll(String.fromCharCode(34),''),status:face.status})),connection:scene.elements.find(element=>element.id==='save'),icon:images.find(element=>element.id==='viz_icon_sync'),brand:images.find(element=>element.id==='viz_icon_store'),brandFile:scene.files[images.find(element=>element.id==='viz_icon_store').fileId]};
+      return {count:images.length,dimensions,tile,caption,subtitle:scene.elements.find(element=>element.id==='viz_subtitle_sync'),group,heading:scene.elements.find(element=>element.id==='activity_title'),labels:['save_label','read_label'].map(id=>scene.elements.find(element=>element.id===id)),secondary:scene.elements.find(element=>element.id==='read'),fonts:[...document.fonts].filter(face=>face.status==='loaded' && ['Nunito','Cascadia'].includes(face.family.replaceAll(String.fromCharCode(34),''))).map(face=>({family:face.family.replaceAll(String.fromCharCode(34),''),status:face.status})),connection:scene.elements.find(element=>element.id==='save'),icon:images.find(element=>element.id==='viz_icon_sync'),brand:images.find(element=>element.id==='viz_icon_store'),brandFile:scene.files[images.find(element=>element.id==='viz_icon_store').fileId]};
     });
-    assert.equal(assets.caption.fontFamily,4,'node names use Geist');
-    assert.equal(assets.heading.fontFamily,4,'group headings use Geist');
-    assert.deepEqual(assets.labels.map(label=>label.fontFamily),[10,10],'relationships use JetBrains Mono');
+    assert.equal(assets.caption.fontFamily,6,'node names use Nunito');
+    assert.equal(assets.subtitle.fontFamily,3,'technical subtitles use Cascadia Code');
+    assert.equal(assets.subtitle.text,'node backend');
+    assert.equal(assets.subtitle.fontSize,13);
+    assert.equal(assets.caption.fontSize,18);
+    assert.ok(assets.labels[0].y >= assets.subtitle.y + assets.subtitle.height, 'rerouted relationship labels clear technical subtitles');
+    assert.notEqual(assets.subtitle.strokeColor,assets.caption.strokeColor,'subtitles use a muted color');
+    assert.ok(assets.subtitle.y >= assets.caption.y + assets.caption.height + 4,'subtitles sit below the title');
+    assert.equal(assets.heading.fontFamily,6,'group headings use Nunito');
+    assert.equal(assets.heading.fontSize,20,'group headings sit above component titles in the hierarchy');
+    assert.deepEqual(assets.labels.map(label=>label.fontFamily),[3,3],'relationships use Cascadia Code');
     assert.equal(assets.labels[0].strokeColor,assets.connection.strokeColor,'legacy standalone labels inherit their arrow color');
     assert.equal(assets.labels[1].strokeColor,assets.secondary.strokeColor,'bound labels follow their dashed connection color');
     assert.notEqual(assets.connection.strokeColor,assets.secondary.strokeColor,'the fixture checks distinct relationship colors');
-    assert.deepEqual(assets.fonts.map(font=>font.family).sort(),['Geist','JetBrains Mono']);
+    assert.deepEqual(assets.fonts.map(font=>font.family).sort(),['Cascadia','Nunito']);
     assert.ok(assets.fonts.every(font=>font.status==='loaded'),'both real font files must be loaded before laying out the scene');
+    assert.equal(assets.connection.strokeColor,'#1c73e8');
+    assert.equal(assets.group.backgroundColor,'#edf0f4');
+    assert.equal(assets.group.strokeColor,'#c9ced8');
+    assert.equal(assets.group.strokeWidth,2);
+    assert.equal(await page.locator('.diff-viz-canvas').evaluate(element=>getComputedStyle(element).backgroundColor),'rgb(248, 249, 252)');
     assert.equal(assets.tile.width,assets.tile.height,'semantic components render as square icon tiles');
     assert.ok(assets.caption.y >= assets.tile.y+assets.tile.height+8,'captions sit beneath tiles, outside arrow attachment geometry');
     assert.equal(assets.caption.containerId,null,'native text binding must not pull captions back inside the tile');
-    assert.ok(assets.connection.y+assets.connection.points[0][1] >= assets.caption.y+assets.caption.height+8,'vertical connections start beyond the caption');
+    assert.ok(assets.connection.y+assets.connection.points[0][1] >= assets.subtitle.y+assets.subtitle.height+8,'vertical connections start beyond both captions');
     assert.ok(assets.icon.width >= assets.tile.width*0.45,'role icons carry the visual weight');
     assert.equal(assets.group.strokeStyle,'solid','subsystems use quiet solid boundaries');
     assert.notEqual(assets.group.backgroundColor,'transparent','subsystems have a theme-aware surface');
@@ -382,6 +398,65 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
     assert.deepEqual(await page.locator('[data-code-path="src/rewrite.ts"] [data-viz-focus="true"]').evaluateAll(rows=>rows.map(row=>Number(row.dataset.codeLine))),[2,3],'clicking a component must focus its relevant diff lines');
     await page.locator('.git-diff-view-toggle .el-segmented__item').filter({hasText:/^Viz$/}).click();
     assert.equal(await page.evaluate(() => window.fixture.generations.length), 1, 'switching views must reuse the generated drawing');
+    async function checkExports(format) {
+      const saveButton = page.locator('.diff-viz__save').getByRole('button', { name: 'Save', exact: true });
+      await saveButton.click();
+      await page.getByRole('menuitem', { name: 'Save to Visualize', exact: true }).waitFor();
+      const menu = page.getByRole('menu', { name: 'Save', exact: true });
+      assert.equal(await menu.locator('svg.app-menu__icon').count(), 4);
+      await page.waitForFunction(() => [...document.querySelectorAll('.el-popper')].filter(element => element.getClientRects().length).every(element => getComputedStyle(element).opacity === '1'));
+      if (format === 'excalidraw') {
+        await page.locator('.fixture').screenshot({ path: path.join(output, 'viz-save-menu.png') });
+        const footer = page.locator('.diff-viz__footer');
+        const regenerate = await footer.getByRole('button', { name: 'Regenerate', exact: true }).boundingBox();
+        const save = await saveButton.boundingBox();
+        assert.ok(save.x > regenerate.x + regenerate.width, 'regenerate stays left and Save stays right');
+      }
+      await page.getByRole('menuitem', { name: 'Save to Visualize', exact: true }).click();
+      const count = format === 'excalidraw' ? 1 : 2;
+      await page.waitForFunction(count => window.fixture.saved.length === count, count);
+      const saved = await page.evaluate(() => window.fixture.saved.at(-1));
+      assert.equal(saved.id, 'fixture');
+      assert.equal(saved.input.content.kind, format);
+      if (format === 'excalidraw') {
+        const document = JSON.parse(saved.input.content.source);
+        assert.ok(document.elements.some(element => element.type === 'text' && element.fontFamily === 3));
+        assert.ok(Object.values(document.files).some(file => file.dataURL.startsWith('data:image/png;base64,')), 'saved diagrams carry their icon bytes');
+      } else assert.match(saved.input.content.source, /^flowchart TB/);
+      for (const [label, extension] of [[format === 'excalidraw' ? 'Excalidraw' : 'Mermaid', format === 'excalidraw' ? 'excalidraw' : 'mmd'], ['SVG', 'svg'], ['PNG', 'png']]) {
+        await saveButton.click();
+        const downloadPromise = page.waitForEvent('download');
+        await page.getByRole('menuitem', { name: `Download as ${label}`, exact: true }).click();
+        const download = await downloadPromise;
+        assert.ok(download.suggestedFilename().endsWith('.' + extension));
+        const bytes = await readFile(await download.path());
+        if (extension === 'excalidraw') {
+          assert.equal(JSON.parse(bytes).type, 'excalidraw');
+          assert.ok(JSON.parse(bytes).elements.filter(element=>element.type==='text').every(element=>[3,6].includes(element.fontFamily)), 'native downloads use portable font IDs');
+          assert.equal(JSON.parse(bytes).elements.length, JSON.parse(saved.input.content.source).elements.length);
+        } else if (extension === 'mmd') assert.equal(bytes.toString(), saved.input.content.source);
+        else if (extension === 'svg') {
+          const svg = bytes.toString();
+          assert.match(svg, /<svg/);
+          if (format === 'excalidraw') {
+            assert.match(svg, /font-family: ["']?Nunito/);
+            assert.match(svg, /font-family: ["']?Cascadia/);
+            assert.match(svg, /data:[^;]*;base64,d09GMg/); // Real WOFF2 bytes, not a network URL.
+            assert.match(svg, /data:image\/png;base64,/);
+          } else assert.ok(!svg.includes('var('), 'Mermaid SVG resolves app theme variables for standalone use');
+          const size = await page.evaluate(async svg => {
+            const image = new Image(); image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+            await image.decode(); return [image.naturalWidth, image.naturalHeight];
+          }, svg);
+          assert.ok(size.every(value => value > 100), 'standalone SVG decodes at real dimensions');
+        } else {
+          assert.deepEqual([...bytes.subarray(0, 8)], [137,80,78,71,13,10,26,10]);
+          assert.ok(bytes.readUInt32BE(16) > 100 && bytes.readUInt32BE(20) > 100);
+          assert.ok(bytes.length > 2_000, 'PNG contains rendered diagram pixels');
+        }
+      }
+    }
+    await checkExports('excalidraw');
     // Workflow settings and the consent checkbox share the automatic-generation preference.
     await page.evaluate(()=>window.fixture.openSettings(true));
     const style = page.locator('.settings-diff-viz .el-select');
@@ -398,6 +473,7 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
     await page.locator('.diff-viz-mermaid g.node[role="button"]').first().waitFor();
     assert.equal(await page.locator('.diff-viz-mermaid g.node[role="button"]').count(),4);
     assert.equal(await page.evaluate(()=>window.fixture.generations.at(-1).input.mode),'fast');
+    await checkExports('mermaid');
     await page.locator('.fixture').screenshot({path:path.join(output,'viz-fast-460.png')});
     await page.getByRole('button',{name:'Open changes for Profile Sync Service',exact:true}).click();
     assert.deepEqual(await page.locator('[data-code-path]').evaluateAll(elements=>elements.map(element=>element.dataset.codePath)),['src/module-100.ts','src/rewrite.ts']);
@@ -444,21 +520,20 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
 });
 
 
-test('bundles exact diagram fonts and their licenses for production rendering', async t => {
+test('ships native diagram fonts and editor licenses for production rendering', async t => {
   const root=fileURLToPath(new URL('../../..',import.meta.url));
   const fixture=await mkdtemp(path.join(root,'node_modules/.cache/diagram-font-build-'));
   try {
-    await writeFile(path.join(fixture,'index.html'),'<script type="module">import {loadCanvasFonts} from "/client/vue/src/components/diagram-fonts.ts";window.loadDiagramFonts=loadCanvasFonts;</script>');
-    const {diagramFontAssets}=await import('../vite.diagram-fonts.ts');
-    await build({configFile:false,root,logLevel:'error',plugins:[diagramFontAssets()],build:{outDir:path.join(fixture,'dist'),rollupOptions:{input:path.join(fixture,'index.html'),external:['@excalidraw/excalidraw']}}});
-    const assets=path.join(fixture,'dist/assets');
-    const names=await readdir(assets);
-    for(const name of ['Geist','JetBrainsMono']){
-      const emitted=names.find(file=>file.startsWith(name+'-')&&file.endsWith('.woff2'));
-      assert.ok(emitted, name+' must be emitted as a local font resource');
-      assert.deepEqual(await readFile(path.join(assets,emitted)),await readFile(path.join(root,'client/vue/src/assets/diagram-fonts',name+'.woff2')));
-      assert.deepEqual(await readFile(path.join(fixture,'dist/diagram-fonts/OFL-'+name+'.txt')),await readFile(path.join(root,'client/vue/src/assets/diagram-fonts/OFL-'+name+'.txt')));
+    await writeFile(path.join(fixture,'index.html'),'<script type="module">window.fixture=true;</script>');
+    const {excalidrawAssets}=await import('../vite.excalidraw-assets.ts');
+    await build({configFile:false,root,logLevel:'error',plugins:[excalidrawAssets()],build:{outDir:path.join(fixture,'dist'),rollupOptions:{input:path.join(fixture,'index.html')}}});
+    const source=path.join(root,'node_modules/@excalidraw/excalidraw/dist/prod/fonts');
+    for(const family of ['Nunito','Cascadia']){
+      const files=await readdir(path.join(source,family));
+      assert.ok(files.some(file=>file.endsWith('.woff2')));
+      for(const file of files) assert.deepEqual(await readFile(path.join(fixture,'dist/excalidraw/fonts',family,file)),await readFile(path.join(source,family,file)));
     }
-    t.diagnostic('Production font bytes and OFL notices match the bundled sources.');
+    assert.deepEqual(await readFile(path.join(fixture,'dist/excalidraw/excalidraw-LICENSE.txt')),await readFile(path.join(root,'licenses/excalidraw-MIT.txt')));
+    t.diagnostic('Native Nunito/Cascadia font resources and editor license match the installed package.');
   }finally{await rm(fixture,{recursive:true,force:true});}
 });

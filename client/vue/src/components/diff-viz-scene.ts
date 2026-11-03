@@ -1,4 +1,4 @@
-import {diagramFonts, loadCanvasFonts} from './diagram-fonts';
+import {diagramFonts} from './diagram-fonts';
 import { rasterizeDiagramIcon } from './excalidraw-editor';
 import type { NativeDiffVizDiagram, DiffVizStatus } from '@workspace/core/git-diff-viz';
 import { resolveChartColor } from '@workspace/core/analytics-chart';
@@ -7,15 +7,25 @@ import type { CanvasScene } from './excalidraw-editor';
 import { diffVizIcon } from './diff-viz-icons';
 import type { CanvasElement } from '@workspace/core/visualize-canvas';
 
+/** Light reference colors are independent of the application's accent palette. */
+export function diffVizPalette() {
+  const theme = readAnalyticsTheme();
+  const color = (token: string) => resolveChartColor(`var(${token})`, theme.tokens);
+  return document.documentElement.classList.contains('dark')
+    ? { canvas: color('--color-surface-lowest'), group: color('--color-surface-base'), border: color('--color-border'), tile: color('--color-surface-lowest'), text: color('--color-text'), subtitle: color('--color-text-muted'), arrow: color('--color-primary'), secondary: color('--color-text-muted') }
+    : { canvas: '#f8f9fc', group: '#edf0f4', border: '#c9ced8', tile: '#ffffff', text: '#2b2f36', subtitle: '#7b8190', arrow: '#1c73e8', secondary: '#4b5263' };
+}
+
 /** The model places the architecture; the app owns tiles, captions and semantic colors. */
 export async function diffVizScene(diagram: NativeDiffVizDiagram): Promise<CanvasScene> {
   const theme = readAnalyticsTheme();
   const color = (token: string) => resolveChartColor(`var(${token})`, theme.tokens);
+  const style = diffVizPalette();
   const nodes = new Map(diagram.nodes.map(node => [node.id, node]));
   const groups = new Set(diagram.groups);
   const byId = new Map(diagram.elements.map(element => [element.id, element]));
   const connections = diagram.elements.filter(element => ['arrow', 'line'].includes(element.type));
-  const connectionColor = (element: CanvasElement) => color(element.strokeStyle === 'dashed' ? '--color-text-muted' : '--color-primary');
+  const connectionColor = (element: CanvasElement) => element.strokeStyle === 'dashed' ? style.secondary : style.arrow;
   const relationshipFor = (text: CanvasElement): CanvasElement | undefined => {
     if (text.type !== 'text') return;
     const container = typeof text.containerId === 'string' ? byId.get(text.containerId) : undefined;
@@ -64,7 +74,7 @@ export async function diffVizScene(diagram: NativeDiffVizDiagram): Promise<Canva
       boundElements: Array.isArray(shape.boundElements) ? (shape.boundElements as Array<{ type: string }>).filter(bound => bound.type !== 'text') : [] });
     const embedded = node.iconImage;
     const raster = embedded ? await rasterizeDiagramIcon(embedded).catch(() => undefined) : undefined;
-    const asset = embedded && raster ? {id:`viz_tech_${node.id}`, ...raster} : await diffVizIcon(node.icon ?? 'service', color('--color-text'));
+    const asset = embedded && raster ? {id:`viz_tech_${node.id}`, ...raster} : await diffVizIcon(node.icon ?? 'service', style.text);
     if (embedded && raster) presentation.set(shape.id, {...presentation.get(shape.id), backgroundColor:embedded.whiteFill ? '#20242d' : '#ffffff'});
     files[asset.id] = { id: asset.id, mimeType: 'image/png', dataURL: asset.dataURL, created: 0 };
     const iconSize = size * 0.60;
@@ -77,13 +87,23 @@ export async function diffVizScene(diagram: NativeDiffVizDiagram): Promise<Canva
     // The caption is deliberately unbound: Excalidraw otherwise pulls it into the tile.
     const width = 168;
     const fontSize = 18;
-    const lines = Math.max(node.label.split('\n').length, Math.ceil(node.label.length * fontSize * 0.5 / width));
+    const lines = Math.max(node.label.split('\n').length, Math.ceil(node.label.length * fontSize * 0.45 / width));
     const caption = { x: x + (size - width) / 2, y: y + size + 12, width, height: lines * fontSize * 1.25,
       fontSize, containerId: null, autoResize: false, textAlign: 'center', verticalAlign: 'top' };
-    captionBottoms.set(shape.id, caption.y + caption.height);
+    let captionBottom = caption.y + caption.height;
+    if (node.subtitle) {
+      const subtitleSize = 13;
+      const subtitle = { id: uniqueId(`viz_subtitle_${shape.id}`), type: 'text', text: node.subtitle, originalText: node.subtitle,
+        x: x + (size - Math.max(width, node.subtitle.length * subtitleSize * 0.6)) / 2, y: captionBottom + 4, width: Math.max(width, node.subtitle.length * subtitleSize * 0.6), height: subtitleSize * 1.25, fontSize: subtitleSize,
+        fontFamily: diagramFonts.mono, lineHeight: 1.25, strokeColor: style.subtitle,
+        containerId: null, autoResize: false, textAlign: 'center', verticalAlign: 'top' };
+      decorations.push(subtitle);
+      captionBottom = subtitle.y + subtitle.height;
+    }
+    captionBottoms.set(shape.id, captionBottom);
     if (label) presentation.set(label.id, caption);
     else decorations.push({ id: uniqueId(`viz_caption_${shape.id}`), type: 'text', text: node.label, originalText: node.label,
-      fontFamily: diagramFonts.geist, lineHeight: 1.25, strokeColor: color('--color-text'), ...caption });
+      fontFamily: diagramFonts.title, lineHeight: 1.25, strokeColor: style.text, ...caption });
   }));
   // Binding repair must respect the caption too, including drawings generated before tile styling.
   const captionSafeConnection = (element: CanvasElement): Partial<CanvasElement> => {
@@ -108,22 +128,33 @@ export async function diffVizScene(diagram: NativeDiffVizDiagram): Promise<Canva
       width: Math.max(...points.map(point => point[0]!)) - Math.min(...points.map(point => point[0]!)),
       height: Math.max(...points.map(point => point[1]!)) - Math.min(...points.map(point => point[1]!)) };
   };
+  const connectionRepairs = new Map(connections.map(connection => [connection.id, captionSafeConnection(connection)]));
   const scene: CanvasScene = { files, selectedElementIds: [], preview: '', elements: [...diagram.elements.map(element => {
     const node = nodes.get(element.id);
     const group = groups.has(element.id);
     const connection = ['arrow', 'line'].includes(element.type);
     const relationship = relationshipFor(element);
+    const repaired = relationship && connectionRepairs.get(relationship.id);
+    const labelOffset = relationship?.width === 0 && repaired?.y !== undefined && repaired.height !== undefined
+      ? { y: element.y + repaired.y + repaired.height / 2 - relationship.y - relationship.height / 2 } : {};
+    const groupBottom = group ? Math.max(element.y + element.height, ...diagram.nodes.flatMap(node => {
+      const tile = byId.get(node.id);
+      const bottom = captionBottoms.get(node.id);
+      return tile && bottom !== undefined && tile.x >= element.x && tile.x + tile.width <= element.x + element.width
+        && tile.y >= element.y && tile.y + tile.height <= element.y + element.height ? [bottom + 24] : [];
+    })) : undefined;
     return { ...element, roughness: 0,
-      strokeColor: relationship ? connectionColor(relationship) : connection ? connectionColor(element) : color(node ? palette[node.status] : element.type === 'text' ? '--color-text' : group ? '--color-border' : '--color-text-muted'),
-      backgroundColor: node ? color('--color-surface-lowest') : group ? color('--color-surface-base') : 'transparent', fillStyle: 'solid',
-      strokeWidth: node && node.status !== 'unchanged' ? 2 : connection ? 1.8 : 1.2,
+      strokeColor: relationship ? connectionColor(relationship) : connection ? connectionColor(element) : node ? (node.status === 'unchanged' ? style.border : color(palette[node.status])) : element.type === 'text' ? style.text : group ? style.border : style.secondary,
+      backgroundColor: node ? style.tile : group ? style.group : 'transparent', fillStyle: 'solid',
+      strokeWidth: node || group || connection ? 2 : 1.2,
       strokeStyle: node?.status === 'deleted' ? 'dashed' : connection ? element.strokeStyle ?? 'solid' : 'solid',
       ...(element.type === 'rectangle' || node ? { roundness: { type: 3 } } : {}),
-      ...(element.type === 'text' ? { fontFamily: relationship ? diagramFonts.mono : diagramFonts.geist, ...(relationship ? {fontSize:Math.min(typeof element.fontSize === 'number' ? element.fontSize : 14,14)} : {}) } : {}),
+      ...(element.type === 'text' ? { fontFamily: relationship ? diagramFonts.mono : diagramFonts.title, fontSize: relationship ? 14 : 20 } : {}),
       ...presentation.get(element.id),
-      ...captionSafeConnection(element),
+      ...connectionRepairs.get(element.id),
+      ...labelOffset,
+      ...(groupBottom !== undefined ? { height: groupBottom - element.y } : {}),
     };
   }), ...decorations] };
-  await loadCanvasFonts(scene.elements);
   return scene;
 }

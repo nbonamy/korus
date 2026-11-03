@@ -18,8 +18,10 @@ facts to insert into the user's system.
   activities or file paths. Use concrete names of one to four words.
 - Give the diagram a specific short title. Put explanations in the caller's review
   annotations or surrounding document, not paragraphs inside diagram nodes.
-- A node has an icon tile and a name below it, at most two short lines. Add a short
-  lowercase role below the name only when useful and supported by the caller.
+- A node has an icon tile and a name below it, at most two short lines. An optional
+  secondary label below the name can identify its technical role or technology,
+  such as renderer, node backend or sqlite. Include it only when it adds useful,
+  source-backed context; not every box needs one.
 - Groups mean shared runtime, subsystem, vendor or repository ownership. Name the
   boundary. Nest one level when it reveals a real distinction; omit decorative
   frames and bands of incidental helpers or tests.
@@ -37,13 +39,19 @@ outside them. Avoid wide cards containing tiny icons and body copy. Use a quiet
 canvas, subtly filled group boundaries, generous corridors and consistent type.
 Do not draw a legend or header inside the canvas when the caller provides one.
 
-- Tiles: light neutral plates, thin borders, restrained corner radius; no heavy
+- Tiles: white icon plates, 2px borders, restrained corner radius; no heavy
   shadows or decorative gradients. Keep supplied logos on a suitable contrasting
   plate, including in dark mode.
-- Type: Geist names and group headings; JetBrains Mono for technical roles and
-  relationship labels. Native Visualize uses fontFamily 4 for Geist and 10 for
-  JetBrains Mono; the app bundles and loads both faces. Do not shrink text to force
-  an overfull composition to fit; shorten labels or rearrange the diagram.
+- Type: Nunito (`fontFamily: 6`) for names and group headings; Cascadia Code
+  (`fontFamily: 3`, native family name Cascadia) for technical subtitles and
+  relationship labels. These are built-in Excalidraw families. Use dark 18px names,
+  20px group headings and 14px relationship labels. Optional secondary labels use
+  Cascadia Code at 13px in `rgb(123, 129, 144)` / `#7b8190`, centered 4px below the
+  title. Keep each secondary label one short line, grounded in
+  the source. A subtitle explains the component's role or technology; it does not
+  repeat the title or summarize the change. Omit it when it adds no information.
+  Do not shrink text to force an overfull composition to fit; shorten labels or
+  rearrange the diagram.
 - Connections: one accent for the principal request/data path; neutral solid for
   secondary internal links; neutral dashed for dev/deploy/supporting relationships.
   Use these distinctions only through the styling controls the caller exposes.
@@ -53,9 +61,32 @@ Do not draw a legend or header inside the canvas when the caller provides one.
 - Groups: a soft neutral or restrained vendor tint, a fine solid border and a
   top-left title. Nested boundaries may use a dashed border when distinguishable
   from connection semantics. Keep titles out of node and routing corridors.
-- The host owns theme colors when specified. Do not emit CSS variables into a
-  native canvas or invent schema fields to force a palette. Check contrast in both
-  themes when rendering tools are available.
+
+### Reference palette
+
+Use these exact light-mode values when the caller permits native colors:
+
+| Role | Color |
+| --- | --- |
+| Primary arrows and their labels | `rgb(28, 115, 232)` / `#1c73e8` |
+| Subsystem box fill | `rgb(237, 240, 244)` / `#edf0f4` |
+| Box and tile borders | `rgb(201, 206, 216)` / `#c9ced8`, 2px |
+| Canvas background | `rgb(248, 249, 252)` / `#f8f9fc` |
+| Icon tile fill | White / `#ffffff` |
+| Titles | Dark charcoal / `#2b2f36` |
+| Optional secondary labels | `rgb(123, 129, 144)` / `#7b8190` |
+| Secondary connections and their labels | Slate / `#4b5263` |
+
+Keep white icon tiles distinct from the larger softly filled subsystem boxes.
+Round subsystem boundaries generously. Diff change-state colors take precedence
+on semantic tile borders; they do not recolor primary arrows or subsystem boxes.
+In dark mode use the host's accessible theme equivalents, keeping the same visual
+hierarchy. For Visualize native scenes, set explicit strokeColor/backgroundColor
+and strokeWidth values on elements; Diff Viz supplies them in the renderer.
+
+The host owns theme colors when specified. Do not emit CSS variables into a
+native canvas or invent schema fields to force a palette. Check contrast in both
+themes when rendering tools are available.
 
 ## Icons
 
@@ -65,6 +96,9 @@ Do not draw a legend or header inside the canvas when the caller provides one.
 - Use consistent line pictograms for abstract concepts: user, browser, service,
   database, queue, repository, security, synchronization. No emoji, letter tiles or
   text pretending to be an icon. Prefer available app-owned role icons.
+- Role pictograms use a light 1.25px stroke on a 24×24 source viewBox; scale that
+  weight proportionally with the icon. Avoid heavy or bold glyphs. Preserve the
+  original stroke and artwork of official technology logos.
 - An icon occupies roughly half the tile's width. Center it optically; a wide logo
   can be wider while keeping clear padding. Preserve aspect ratio.
 - If icon retrieval is available and authorized, prefer exact technology matches
@@ -98,13 +132,14 @@ Do not draw a legend or header inside the canvas when the caller provides one.
 
 Treat a node as its tile PLUS the captions below it. These dimensions match the
 Polished Diff Viz renderer and also provide a native Visualize layout scale. Use
-18px names, about 20px group titles and, when supported, 13px roles/edge labels:
+18px names, 20px group titles, 13px role subtitles and 14px edge labels:
 
 | Item | Geometry |
 | --- | --- |
 | Tile | 80 × 80; its position is `(cx − 40, top)` |
 | Icon | About 42 × 42, centered inside the tile |
-| Name | Centered in a 168px-wide caption box, beginning at `top + 92` |
+| Name | Nunito 18px, centered in a 168px-wide caption box, beginning at `top + 92` |
+| Subtitle | Cascadia Code 13px, muted, centered 4px below the name; one short technical role |
 | Full node footprint | `cx ± 84`, from `top` to `top + 144` |
 | Same-row centers | At least 220px apart; increase for long captions or edge labels |
 | Consecutive tile rows | At least 220px between tile tops |
@@ -174,10 +209,14 @@ adds end arrowheads itself: omit `endArrowhead` when its schema does not expose 
 ```
 
 For a Visualize native scene, the API tile can be a rectangle at `(600,100)` with
-size `80×80`, an icon centered at `(640,140)` and unbound text centered in
-`(556,192,168,45)`. Use a common groupId to move that node together. For Diff Viz,
-put the label and component metadata on the `(600,100,80,80)` semantic shape;
-the app creates the icon/caption. Do not duplicate those as native text or images.
+size `80×80`, an icon centered at `(640,140)`, a Nunito title "API service"
+(`fontFamily: 6`, `fontSize: 18`) centered in `(556,192,168,22.5)` and a muted
+Cascadia subtitle "node backend" (`fontFamily: 3`, `fontSize: 13`) centered in
+`(556,218.5,168,16.25)`. Keep both text elements unbound and share a groupId with
+the tile and icon. A two-line title needs 45px height; move its subtitle down too.
+For Diff Viz, put the title in text and `subtitle: "node backend"` inside component
+metadata on the `(600,100,80,80)` semantic shape; the app creates both captions.
+Do not duplicate those as native text or images.
 
 ### A shared service branching to alternate providers
 

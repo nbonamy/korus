@@ -9,7 +9,7 @@ beforeEach(() => vi.stubEnv('APP_ASSETS_PATH', assets));
 afterEach(() => vi.unstubAllEnvs());
 
 const comparison = { target: { type: 'uncommitted' as const }, paths: ['new.ts'] };
-const component = { status: 'changed', paths: ['new.ts'] };
+const component = { status: 'changed', paths: ['new.ts'], subtitle: 'renderer' };
 const box = { id: 'choices', type: 'rectangle', x: 30, y: 60, width: 240, height: 70, text: 'Conversation\nchoices', component };
 const elements = [
   { id: 'system', type: 'rectangle', x: 0, y: 0, width: 400, height: 400, text: 'Conversation system', group: true },
@@ -46,26 +46,35 @@ it.each(['inline', 'bound', 'empty bound'])('preserves native labels without dup
   expect(result.elements.find(element => element.id === 'details')).toMatchObject({ ...text, text: label === 'empty bound' ? box.text : text.text });
 });
 
-it('rejects invalid native components, unsafe content and out-of-comparison navigation', async () => {
-  const generate = vi.fn();
-  for (const [draft, failure] of [
-    [withBox({ component: { ...component, paths: ['old.ts'] } }), /changed files/],
-    [{ elements: [...elements, box] }, /duplicate/],
-    [withBox({ type: 'text' }), /component.*shape/i],
-    [withBox({ text: '' }), /label/i],
-    [withBox({ component: { ...component, status: 'unchanged' } }), /context/],
-    [withBox({ component: { ...component, paths: [] } }), /changed.*file/],
-    [{ elements: elements.map(element => element.id === 'connection' ? { ...element, endBinding: { elementId: 'outside' } } : element) }, /connection/],
-    [{ elements: [{ id: 'image', type: 'image', x: 0, y: 0, width: 100, height: 100 }] }, /invalid Viz/],
-    [withBox({ link: 'https://outside.test' }), /invalid Viz/],
-    [{ elements: Array.from({ length: 13 }, (_, i) => ({ ...box, id: `node${i}` })) }, /components/i],
-    [withBox({ component: { ...component, icon: 'https://outside.test/icon.svg' } }), /invalid Viz/],
-  ] as const) {
-    generate.mockResolvedValueOnce({ text: JSON.stringify(draft) });
-    await expect(generateDiffViz(comparison, '/repo', generate)).rejects.toThrow(failure);
-  }
-  generate.mockResolvedValueOnce({ text: 'not JSON' });
-  await expect(generateDiffViz(comparison, '/repo', generate)).rejects.toThrow(/invalid Viz/);
+it('rejects ambiguous or unrenderable output', async () => {
+  for (const draft of [
+    {elements:[...elements,box]},
+    {elements:[{id:'image',type:'image',x:0,y:0,width:100,height:100}]},
+    withBox({width:-1}),
+    {elements:[{id:'edge',type:'arrow',x:0,y:0,width:20,height:20}]},
+  ]) await expect(generateDiffViz(comparison,'/repo',async()=>({text:JSON.stringify(draft)}))).rejects.toThrow();
+  await expect(generateDiffViz(comparison,'/repo',async()=>({text:'not JSON'}))).rejects.toThrow(/invalid Viz/);
+});
+
+it('keeps a usable drawing while dropping unsupported annotations, unsafe links and dangling bindings', async () => {
+  const draft = {elements:[
+    {...box,link:'https://outside.test',component:{...component,subtitle:'a longer technical secondary label',paths:['new.ts','outside.ts'],icon:'unknown',iconImage:{base64:'invalid'},review:{title:'Incomplete'},locations:[{path:'outside.ts',line:1}]}},
+    {id:'unnamed',type:'rectangle',x:400,y:0,width:80,height:80,component:{status:'changed',paths:[]}},
+    {id:'context',type:'ellipse',x:600,y:0,width:80,height:80,text:'Context',component:{status:'unchanged',paths:['new.ts']}},
+    {id:'edge',type:'arrow',x:100,y:0,width:200,height:0,points:[[0,0],[200,0]],endBinding:{elementId:'missing'}},
+    {id:'label',type:'text',x:0,y:200,width:100,height:20,text:'Loose label',containerId:'missing',component:{status:'changed',paths:['new.ts']}},
+  ]};
+  const result = await generateDiffViz(comparison,'/repo',async()=>({text:JSON.stringify(draft)}));
+  if(result.format!=='excalidraw')throw new Error('Expected native');
+  expect(result.nodes.map(node=>({id:node.id,paths:node.paths}))).toEqual([{id:'choices',paths:['new.ts']},{id:'unnamed',paths:[]},{id:'context',paths:[]}]);
+  expect(result.nodes[0]).not.toHaveProperty('icon');
+  expect(result.nodes[0]).not.toHaveProperty('iconImage');
+  expect(result.nodes[0]).not.toHaveProperty('review');
+  expect(result.nodes[0].locations).toEqual([]);
+  expect(result.elements.find(element=>element.id==='choices')).not.toHaveProperty('link');
+  expect(result.elements.find(element=>element.id==='edge')).not.toHaveProperty('endBinding');
+  expect(result.elements.find(element=>element.id==='label')).not.toHaveProperty('containerId');
+  expect(result.nodes[1].label).toBe('unnamed');
 });
 
 it('keeps supporting components, nested subsystem boundaries, role icons and cross-cutting dependencies', async () => {
@@ -164,6 +173,7 @@ it('embeds fetched payloads directly in polished output and closes the tool endp
     await expect(fetch(endpoint,{method:'POST'})).rejects.toThrow();
     await expect(generateDiffViz(comparison,'/repo',async input=>{endpoint=input.mcpServers![0].url;throw new Error('startup failed');})).rejects.toThrow('startup failed');
     await expect(fetch(endpoint,{method:'POST'})).rejects.toThrow();
-    await expect(generateDiffViz(comparison,'/repo',async()=>({text:JSON.stringify(withBox({component:{...component,iconImage:{...asset,base64:'not base64!'}}}))}))).rejects.toThrow(/invalid/i);
+    const recovered=await generateDiffViz(comparison,'/repo',async()=>({text:JSON.stringify(withBox({component:{...component,iconImage:{...asset,base64:'not base64!'}}}))}));
+    expect(recovered.nodes[0]).not.toHaveProperty('iconImage');
   }finally{fetchIcon.mockRestore();}
 });

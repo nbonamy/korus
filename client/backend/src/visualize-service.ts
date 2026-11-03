@@ -183,6 +183,24 @@ export class VisualizeService {
     return { success: true, visualizationId: visualization.id, title: visualization.title };
   }
 
+  async saveRepository(agentId: string, input: import('@workspace/core/visualize').SaveRepositoryVisualizationInput): Promise<void> {
+    const agent = this.requireAgent(agentId);
+    const root = visualizationRepositoryRoot(agent);
+    if (!root) throw new Error('A Git repository is required to save this visualization.');
+    if (!input || !input.content || !['mermaid', 'svg', 'excalidraw'].includes(input.content.kind) || typeof input.content.source !== 'string') {
+      throw new Error('Invalid visualization content.');
+    }
+    const title = boundedText(input.title, 'Visualization title', 200);
+    const content = await this.visualizationContent(input.content);
+    const library = this.repositoryVisualizationsFor(agent)!;
+    if (library.length >= MAX_VISUALIZATIONS) throw new Error(`Visualize supports at most ${MAX_VISUALIZATIONS} visualizations.`);
+    const timestamp = this.now().toISOString();
+    const visualization: Visualization = { id: this.createId('visualization'), title, content, createdAt: timestamp, updatedAt: timestamp };
+    library.push(visualization);
+    try { await this.commit(); }
+    catch (error) { library.splice(library.indexOf(visualization), 1); throw error; }
+  }
+
   get(agentId: string, visualizationId: string): { success: true; visualization: Visualization } {
     const visualization = this.requireVisualization(agentId, visualizationId);
     return { success: true, visualization: { ...visualization, content: { ...visualization.content }, ...(visualization.canvas ? { canvas: structuredClone(visualization.canvas) } : {}) } };

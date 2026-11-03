@@ -87,6 +87,7 @@ const requestTimeoutByMethod = {
   [backendMethods.agentVisualizationSuggestionGenerate]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.agentVisualizationSelect]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.agentVisualizationDelete]: QUICK_REQUEST_TIMEOUT_MS,
+  [backendMethods.agentRepositoryVisualizationSave]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.agentVisualizationCanvasSave]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.agentVisualizationAssetGet]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.agentConversationMessagesGet]: LONG_RUNNING_REQUEST_TIMEOUT_MS,

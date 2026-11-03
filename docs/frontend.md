@@ -364,12 +364,14 @@ Mermaid import, sanitization, exports and cleanup. The canvas has no composer: t
 normal conversation handles change requests and the agent reads the saved selection
 through its canvas tools.
 
-Stack diagrams use bundled Geist and JetBrains Mono. Their native font numbers
-are stable document data; the renderer registers the family names and awaits each
-font before text measurement, restoration or PNG export. Relationship labels bind
-to their arrows and inherit the arrow color. Retained standalone Diff Viz labels
-use their nearest connection. Both renderer hosts carry the font files and OFL
-notices through the shared Vite asset graph.
+Stack diagrams use the editor's native Nunito and Cascadia Code families, keeping
+saved scenes compatible with Excalidraw. Names and group headings use Nunito;
+short technical subtitles use smaller muted Cascadia text. Both renderer hosts
+ship the editor's font resources through the shared Excalidraw asset plugin.
+Native loading and PNG/SVG exports use the editor's font lifecycle, with fonts
+embedded in standalone SVGs. Retained custom font IDs normalize to the native
+pairing when imported. Relationship labels bind to their arrows and inherit the
+arrow color; retained standalone Diff Viz labels use their nearest connection.
 
 Elements, assets, selection, revision and a bounded PNG preview persist through the
 daemon's save method, with no hosted editor or browser database. Saves carry the

@@ -5,6 +5,7 @@ import GitDiffVizMermaid from '../GitDiffVizMermaid.vue';
 const diagram = { format: 'mermaid' as const, source: 'flowchart TB\nsubgraph system[System]\nA["Sync service"]\nB["Storage"]\nA -->|stores| B\nend', nodes: [
   { id: 'A', label: 'Sync service', status: 'changed' as const, paths: ['src/sync.ts', 'src/store.ts'] },
   { id: 'B', label: 'Storage', status: 'unchanged' as const, paths: [] },
+  { id: 'missing', label: 'Unmatched optional annotation', status: 'changed' as const, paths: [] },
 ] };
 it('keeps simultaneous Fast diagrams isolated and opens only changed semantic nodes with pointer or keyboard', async () => {
   const wrapper = mount({ components: { GitDiffVizMermaid }, setup: () => ({ diagram }), template: '<div><GitDiffVizMermaid :diagram="diagram"/><GitDiffVizMermaid :diagram="diagram"/></div>' });

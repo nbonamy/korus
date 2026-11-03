@@ -2,7 +2,7 @@
   <div class="diff-viz-mermaid">
     <div class="diff-viz-mermaid__viewport">
       <div v-if="rendered.error" role="alert" class="diff-viz-mermaid__error">{{ rendered.error }}</div>
-      <div v-else class="diff-viz-mermaid__stage" :style="{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }" @click="activate" @keydown="activate" v-html="rendered.svg" />
+      <div v-else ref="stage" class="diff-viz-mermaid__stage" :style="{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }" @click="activate" @keydown="activate" v-html="rendered.svg" />
     </div>
     <div class="diff-viz-mermaid__controls">
       <button type="button" class="app-button app-button--tertiary" :aria-label="translate('visualize.zoomOut')" :disabled="zoom <= 1" @click="zoom = Math.max(1, zoom - 0.25)"><MinusIcon aria-hidden="true" /></button>
@@ -22,6 +22,7 @@ import { ArrowsMinimizeIcon, MinusIcon, PlusIcon } from '../shared/icons/app-ico
 const props = defineProps<{ diagram: Extract<DiffVizDiagram, { format: 'mermaid' }> }>();
 const emit = defineEmits<{ select: [paths: string[], location?: DiffVizLocation] }>();
 const zoom = ref(1);
+const stage = ref<HTMLElement>();
 const namespace = `diff-viz-${useId().replace(/[^a-zA-Z0-9_-]/gu, '')}`;
 watch(() => props.diagram, () => { zoom.value = 1; });
 const rendered = computed(() => {
@@ -46,7 +47,7 @@ const rendered = computed(() => {
     };
     for (const node of props.diagram.nodes) {
       const element = [...svg.querySelectorAll<SVGElement>('g.node')].find(element => element.dataset.id === node.id);
-      if (!element) throw new Error(translate('surface.diffViz.invalid'));
+      if (!element) continue;
       element.style.setProperty('--_node-stroke', `var(${tokens[node.status][0]})`);
       element.style.setProperty('--_node-fill', `var(${tokens[node.status][1]})`);
       if (!node.paths.length) continue;
@@ -58,6 +59,36 @@ const rendered = computed(() => {
     return { svg: new XMLSerializer().serializeToString(root), error: '' };
   } catch (cause) { return { svg: '', error: cause instanceof Error ? cause.message : String(cause) }; }
 });
+async function exportDiagram(format: 'native' | 'svg' | 'png'): Promise<Blob> {
+  if (format === 'native') return new Blob([props.diagram.source], { type: 'text/plain' });
+  const source = stage.value?.querySelector('svg');
+  if (!source || rendered.value.error) throw new Error(translate('surface.diffViz.notReady'));
+  const copy = source.cloneNode(true) as SVGElement;
+  const originals = [source, ...source.querySelectorAll('*')];
+  const copies = [copy, ...copy.querySelectorAll('*')];
+  originals.forEach((element, index) => {
+    const style = getComputedStyle(element);
+    const target = copies[index] as SVGElement;
+    target.removeAttribute('style');
+    for (const property of ['fill', 'stroke', 'color', 'opacity', 'stroke-width', 'stroke-dasharray', 'font-family', 'font-size', 'font-weight', 'text-anchor', 'dominant-baseline']) {
+      target.style.setProperty(property, style.getPropertyValue(property));
+    }
+    for (const attribute of [...target.attributes]) {
+      if (attribute.value.includes('var(')) target.removeAttribute(attribute.name);
+    }
+    target.removeAttribute('tabindex'); target.removeAttribute('role');
+  });
+  copy.querySelectorAll('style').forEach(style => style.remove());
+  copy.style.setProperty('background-color', getComputedStyle(document.documentElement).getPropertyValue('--color-surface-lowest').trim());
+  const bounds = source.viewBox.baseVal;
+  copy.setAttribute('width', String(bounds.width)); copy.setAttribute('height', String(bounds.height));
+  const svg = new XMLSerializer().serializeToString(copy);
+  if (format === 'svg') return new Blob([svg], { type: 'image/svg+xml' });
+  const { rasterizeCanvasImage } = await import('./excalidraw-editor');
+  const image = await rasterizeCanvasImage(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`);
+  return (await fetch(image.dataURL)).blob();
+}
+defineExpose({ exportDiagram });
 function activate(event: MouseEvent | KeyboardEvent) {
   if (event instanceof KeyboardEvent && !['Enter', ' '].includes(event.key)) return;
   const id = (event.target as Element).closest<SVGElement>('g.node')?.dataset.id;

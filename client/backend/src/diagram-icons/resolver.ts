@@ -73,7 +73,7 @@ export class DiagramIconResolver {
               bytes
                 .toString()
                 .replaceAll('stroke="currentColor"', 'stroke="#3d4660"')
-                .replaceAll('stroke-width="2"', 'stroke-width="1.7"'),
+                .replaceAll('stroke-width="2"', 'stroke-width="1.25"'),
             );
           const asset = image(bytes, candidate.url, candidate.source);
           if (!asset) continue;

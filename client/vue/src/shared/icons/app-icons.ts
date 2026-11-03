@@ -55,6 +55,7 @@ export {
   IconShare as ShareIcon,
   IconDotsVertical as DotsVerticalIcon,
   IconDownload as DownloadIcon,
+  IconDeviceFloppy as SaveIcon,
   IconEye as EyeIcon,
   IconExternalLink as ExternalLinkIcon,
   IconFileArrowRight as FileArrowRightIcon,

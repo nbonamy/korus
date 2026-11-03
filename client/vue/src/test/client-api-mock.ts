@@ -33,6 +33,7 @@ export function createClientApiMock(
     generateVisualizationSuggestion: unscripted<'generateVisualizationSuggestion'>('generateVisualizationSuggestion'),
     selectVisualization: unscripted<'selectVisualization'>('selectVisualization'),
     deleteVisualization: unscripted<'deleteVisualization'>('deleteVisualization'),
+    saveRepositoryVisualization: unscripted<'saveRepositoryVisualization'>('saveRepositoryVisualization'),
     saveVisualizationCanvas: unscripted<'saveVisualizationCanvas'>('saveVisualizationCanvas'),
     readVisualizationAsset: unscripted<'readVisualizationAsset'>('readVisualizationAsset'),
     startCodeReview: unscripted<'startCodeReview'>('startCodeReview'),

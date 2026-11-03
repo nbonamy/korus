@@ -1,8 +1,8 @@
-import {loadCanvasFonts} from './diagram-fonts';
+import { normalizeCanvasFonts } from './diagram-fonts';
 import {isDiagramIconImage, type DiagramIconImage} from '@workspace/core/diagram-icon';
 import { Component, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Excalidraw, MainMenu, CaptureUpdateAction, bumpVersion, convertToExcalidrawElements, exportToCanvas, restoreElements, sceneCoordsToViewportCoords } from '@excalidraw/excalidraw';
+import { Excalidraw, MainMenu, CaptureUpdateAction, bumpVersion, convertToExcalidrawElements, exportToCanvas, exportToSvg, restoreElements, sceneCoordsToViewportCoords } from '@excalidraw/excalidraw';
 import type { ExcalidrawImperativeAPI, BinaryFiles, AppState, ExcalidrawProps } from '@excalidraw/excalidraw/types';
 import type { ExcalidrawElement, FileId } from '@excalidraw/excalidraw/element/types';
 import type { CanvasDocument, CanvasElement } from '@workspace/core/visualize-canvas';
@@ -16,12 +16,14 @@ export type CanvasScene = Omit<CanvasDocument, 'revision'>;
 export type CanvasAnnotationTarget = { id: string; x: number; y: number; width: number; height: number };
 export type CanvasControlsState = { zoom: number };
 export async function importVisualization(visualization: Visualization, imageSource: string): Promise<CanvasScene> {
-  if (visualization.canvas) {await loadCanvasFonts(visualization.canvas.elements); return materializeDiagramIcons(structuredClone(visualization.canvas));}
+  if (visualization.canvas) {
+    const scene = structuredClone(visualization.canvas);
+    return materializeDiagramIcons({ ...scene, elements: normalizeCanvasFonts(scene.elements) });
+  }
   if (visualization.content.kind === 'excalidraw') {
     // The backend validated and normalized this scene, so it is already a canvas document minus revision.
     const { elements, files } = JSON.parse(visualization.content.source) as Pick<CanvasScene, 'elements' | 'files'>;
-    await loadCanvasFonts(elements);
-    return materializeDiagramIcons({ elements, files, selectedElementIds: [], preview: '' });
+    return materializeDiagramIcons({ elements: normalizeCanvasFonts(elements), files, selectedElementIds: [], preview: '' });
   }
   if (visualization.content.kind === 'mermaid') {
     if (/%%\s*\{|\bclick\s+|\b(?:img|icon)\s*:|<(?:img|iframe|script|object|embed|link|style)\b/iu.test(visualization.content.source)) {
@@ -246,9 +248,16 @@ export function mountCanvas(host: HTMLElement, scene: CanvasScene, onChange: (sc
       return nextZoom;
     },
     fit() { api?.scrollToContent(undefined, { fitToContent: true }); },
-    async preview(value = current): Promise<string> {
-      await loadCanvasFonts(value.elements);
-      const canvas = await exportToCanvas({ elements: elements(value), files: value.files as BinaryFiles, appState: { exportBackground: false }, maxWidthOrHeight: 1000 });
+    nativeDocument(background = 'transparent'): string {
+      return JSON.stringify({ type: 'excalidraw', version: 2, source: '', elements: current.elements, files: current.files, appState: { viewBackgroundColor: background } }, null, 2);
+    },
+    async svg(background?: string): Promise<string> {
+      const scene = current;
+      const svg = await exportToSvg({ elements: elements(scene), files: scene.files as BinaryFiles, appState: { exportBackground: !!background, viewBackgroundColor: background || 'transparent', exportWithDarkMode: false } });
+      return new XMLSerializer().serializeToString(svg);
+    },
+    async preview(value = current, background?: string): Promise<string> {
+      const canvas = await exportToCanvas({ elements: elements(value), files: value.files as BinaryFiles, appState: { exportBackground: !!background, viewBackgroundColor: background || 'transparent' }, maxWidthOrHeight: 1000 });
       return canvas.toDataURL('image/png');
     },
     dispose() { document.fonts.removeEventListener('loadingdone', refreshTextAfterFontsLoad); unsubscribeScroll?.(); themeObserver.disconnect(); resizeObserver.disconnect(); disposed = true; root.unmount(); api = undefined; },
