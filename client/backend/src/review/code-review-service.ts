@@ -1080,6 +1080,9 @@ function reviewPrompt(session: CodeReviewSession, target?: Agent): string {
     : session.scope.type === 'commit'
     ? `commit ${session.scope.sha}`
     : 'the current uncommitted changes';
+  const request = session.threadMode === 'independent' && activeCodeReviewRound(session).number > 1
+    ? 'Run a follow-up review.'
+    : `Review ${visibleScope}.`;
   return `<context>
 ${origin}${reviewToolDiscoveryInstructions()}
 Load korus-reviewer through read-skill before inspection. Cumulative review ledger:
@@ -1092,7 +1095,7 @@ ${session.automation ? 'This is an automatic review inspection: do not modify fi
 Register all actionable findings with mcp__${mcpServerName}__report_finding and obtain accepted mcp__${mcpServerName}__finish_review_round({ findingCount }) before ending, including zero for a clean inspection. The skill supplies the reporting procedure; confirmation is not approval to ship.
 </context>
 
-Review ${visibleScope}.${session.instructions ? `\n\nAdditional instructions from the user:\n${session.instructions}` : ''}`;
+${request}${session.instructions ? `\n\nAdditional instructions from the user:\n${session.instructions}` : ''}`;
 }
 
 function originalDiscussionPrompt(session: CodeReviewSession, round: CodeReviewRound): string {

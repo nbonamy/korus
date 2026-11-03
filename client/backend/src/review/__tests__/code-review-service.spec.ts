@@ -1100,7 +1100,7 @@ describe('CodeReviewService', () => {
     expect(thirdRoundPrompt.slice(0, contextEnd)).toContain('Invalidate the round one cache');
     expect(thirdRoundPrompt.slice(0, contextEnd)).toContain('Reduce round two logging');
     expect(thirdRoundPrompt.slice(contextEnd + '</context>'.length).trim()).toBe(
-      'Review the current uncommitted changes.',
+      'Run a follow-up review.',
     );
   });
 
