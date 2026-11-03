@@ -116,6 +116,10 @@ export type AppBackendRequestMap = {
     params: { agentId: string; input: import('../visualize').DeleteVisualizationInput };
     result: AppSnapshot;
   };
+  [backendMethods.agentRepositoryVisualizationSave]: {
+    params: { agentId: string; input: import('../visualize').SaveRepositoryVisualizationInput };
+    result: AppSnapshot;
+  };
   [backendMethods.agentVisualizationCanvasSave]: {
     params: { agentId: string; input: import('../visualize-canvas').SaveCanvasInput };
     result: import('../visualize-canvas').CanvasDocument;
@@ -219,6 +223,10 @@ export type AppBackendRequestMap = {
   [backendMethods.agentTaskCancel]: {
     params: { agentId: string; taskId: string };
     result: import('../delegated-task').DelegatedTask;
+  };
+  [backendMethods.agentGitMessageCancel]: {
+    params: { agentId: string; generationId: string };
+    result: null;
   };
   [backendMethods.agentGitMessageGenerate]: {
     params: { agentId: string; input: AgentGitMessageGenerationInput };

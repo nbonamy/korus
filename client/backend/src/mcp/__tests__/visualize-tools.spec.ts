@@ -1,3 +1,9 @@
+import { DiagramIconResolver } from '../../diagram-icons/resolver';
+import { createInitialSnapshot } from '@workspace/core/snapshot';
+import { VisualizeService as RealVisualizeService } from '../../visualize-service';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { describe, expect, it, vi } from 'vitest';
 import type { VisualizeService } from '../../visualize-service';
 import { createVisualizeToolModuleProvider } from '../visualize-tools';
@@ -5,6 +11,7 @@ import { createVisualizeToolModuleProvider } from '../visualize-tools';
 describe('Visualize MCP tool module', () => {
   it('registers for every agent and delegates domain inputs to the owning session', async () => {
     const service = {
+      fetchIcon: vi.fn().mockResolvedValue({found:false,icon:'vue'}),
       readCanvas: vi.fn().mockReturnValue({ revision: 2, elements: [], selectedElementIds: [] }),
       editCanvas: vi.fn().mockResolvedValue({ success: true, revision: 3 }),
       canvasPreview: vi.fn().mockReturnValue('data:image/png;base64,YQ=='),
@@ -27,6 +34,7 @@ describe('Visualize MCP tool module', () => {
     } as never, { proposedActions: true });
 
     expect([...handlers.keys()]).toStrictEqual([
+      'fetch_tech_icon',
       'read-visualization-canvas',
       'edit-visualization-canvas',
       'view-visualization-canvas',
@@ -62,4 +70,29 @@ describe('Visualize MCP tool module', () => {
     expect(service.delete).toHaveBeenCalledWith('agent-visualize', 'visualization-1');
     expect(service.replace).toHaveBeenCalledWith('agent-visualize', expect.objectContaining({ visualizationId: 'visualization-1' }));
   });
+});
+
+it('keeps fetch_tech_icon listed and callable before opening and after closing Visualize',async()=>{
+  const snapshot=createInitialSnapshot();const agent=snapshot.agents[0];
+  const resolver=new DiagramIconResolver();vi.spyOn(resolver,'fetchIcon').mockResolvedValue(null);
+  const service=new RealVisualizeService({snapshot,iconResolver:resolver,generatedImagesRoot:'/tmp',persist:async()=>{},publish:()=>{}});
+  const connect=async()=>{
+    const server=new McpServer({name:'test',version:'1'});
+    createVisualizeToolModuleProvider(service).resolve({agentId:agent.id,url:new URL('http://localhost/mcp')})!.register(server,{proposedActions:true});
+    const [clientSide,serverSide]=InMemoryTransport.createLinkedPair();
+    const client=new Client({name:'test',version:'1'});
+    await server.connect(serverSide);await client.connect(clientSide);
+    return {server,client};
+  };
+  const closed=await connect();
+  expect((await closed.client.listTools()).tools.map(tool=>tool.name)).toContain('fetch_tech_icon');
+  expect((await closed.client.callTool({name:'fetch_tech_icon',arguments:{icon:'vue'}})).isError).not.toBe(true);
+  await closed.client.close();await closed.server.close();
+  await service.enter(agent.id);
+  const open=await connect();
+  try {
+    expect((await open.client.listTools()).tools.map(tool=>tool.name)).toContain('fetch_tech_icon');
+    await service.setOpen(agent.id,false);
+    expect((await open.client.callTool({name:'fetch_tech_icon',arguments:{icon:'vue'}})).isError).not.toBe(true);
+  } finally {await open.client.close();await open.server.close();}
 });

@@ -8,13 +8,15 @@ const EXTENDED_REQUEST_TIMEOUT_MS = 10 * 60_000;
 const REMOTE_SETUP_REQUEST_TIMEOUT_MS = 15 * 60_000;
 
 /**
- * Every backend action must have an intentional timeout budget.
+ * Every backend action must have an intentional deadline policy.
  *
  * Do not add a fallback here: when a method is added to backendMethods,
  * TypeScript must force its author to classify the operation based on the work
  * it actually performs. Use QUICK for in-memory state, IO for bounded local
  * filesystem/process work, LONG_RUNNING for provider/network/git operations,
  * and EXTENDED only for operations designed to run for several minutes.
+ * Diff Viz explicitly runs until completion or cancellation instead of using
+ * the method's ordinary deadline.
  */
 const requestTimeoutByMethod = {
   [backendMethods.collaborationTaskAccess]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
@@ -87,6 +89,7 @@ const requestTimeoutByMethod = {
   [backendMethods.agentVisualizationSuggestionGenerate]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.agentVisualizationSelect]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.agentVisualizationDelete]: QUICK_REQUEST_TIMEOUT_MS,
+  [backendMethods.agentRepositoryVisualizationSave]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.agentVisualizationCanvasSave]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.agentVisualizationAssetGet]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.agentConversationMessagesGet]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
@@ -123,6 +126,7 @@ const requestTimeoutByMethod = {
   [backendMethods.agentGitBranchWorkPreview]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.agentGitBranchWork]: EXTENDED_REQUEST_TIMEOUT_MS,
   [backendMethods.agentGitWorkflowGet]: IO_REQUEST_TIMEOUT_MS,
+  [backendMethods.agentGitMessageCancel]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.agentGitMessageGenerate]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.agentGitStage]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.agentGitCommit]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
@@ -216,6 +220,7 @@ const requestTimeoutByMethod = {
   [backendMethods.workspaceFileChunkRead]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.workspaceFilesList]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.workspaceDirectoryList]: IO_REQUEST_TIMEOUT_MS,
+  [backendMethods.driverTextCancel]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.driverTextGenerate]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.driverImageGenerate]: EXTENDED_REQUEST_TIMEOUT_MS,
   [backendMethods.driverCodeReviewRun]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
@@ -298,10 +303,16 @@ const requestTimeoutByMethod = {
   [backendMethods.workProviderBranchesList]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
 } satisfies Record<BackendMethod, number>;
 
-export function backendRequestTimeoutMs(method: string): number {
+export function backendRequestTimeoutMs(method: string, params?: unknown): number | null {
   const timeoutMs = requestTimeoutByMethod[method as BackendMethod];
   if (timeoutMs === undefined) {
     throw new Error(`No backend request timeout configured for ${method}.`);
+  }
+  if (params && typeof params === 'object') {
+    const request = params as Record<string, unknown>;
+    if (method === backendMethods.driverTextGenerate && request.timeoutMs === null) return null;
+    if (method === backendMethods.agentGitMessageGenerate && request.input && typeof request.input === 'object'
+      && (request.input as Record<string, unknown>).kind === 'viz') return null;
   }
   return timeoutMs;
 }

@@ -50,6 +50,24 @@ describe('ExcalidrawCanvas', () => {
     expect(wrapper.get('button[aria-label="Fit canvas"]').attributes('disabled')).toBeUndefined();
     expect(editor.importScene).toHaveBeenCalledTimes(3);
   });
+  it('materializes incoming icon edits and preserves local changes made while decoding', async () => {
+    const save=vi.fn(async (input:SaveCanvasInput)=>({...input.document,revision:input.expectedRevision+1}));
+    const wrapper=mount(ExcalidrawCanvas,{props:{visualization,save,sessionId:'session'}});
+    await flushPromises();
+    let resolve!:(scene:CanvasScene)=>void;
+    editor.importScene.mockImplementationOnce(()=>new Promise<CanvasScene>(done=>{resolve=done;}));
+    const changed={...structuredClone(canvas),revision:2};
+    changed.elements.push({id:'icon',type:'image',customData:{iconImage:{}},x:0,y:0,width:40,height:40});
+    await wrapper.setProps({visualization:{...visualization,canvas:changed}});
+    await flushPromises();
+    expect(editor.importScene).toHaveBeenCalledTimes(2);
+    const local=structuredClone(canvas);local.elements[0].x=99;
+    editor.change(local);
+    resolve(changed);await flushPromises();
+    expect(wrapper.text()).toContain('changed');
+    expect(editor.update).not.toHaveBeenCalledWith(expect.objectContaining({elements:changed.elements}),true);
+    wrapper.unmount();
+  });
   it('autosaves the selected shapes for the original agent without a second composer', async () => {
     const save = vi.fn(async (input: SaveCanvasInput) => ({ ...input.document, revision: input.expectedRevision + 1 })).mockRejectedValueOnce(new Error('Save unavailable.'));
     const wrapper = mount(ExcalidrawCanvas, { props: { visualization, save, sessionId: 'session' } });

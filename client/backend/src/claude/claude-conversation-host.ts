@@ -199,7 +199,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
 
   async generateText(agent: Agent, input: import('@workspace/core/backend-driver').BackendTextGenerationInput) {
     if (!this.transport.generateText) throw new Error('Claude text generation is unavailable.');
-    const selection = utilityTextModel('claude', await this.catalog.listModels(agent));
+    const selection = utilityTextModel('claude', await this.catalog.listModels(agent), input.complexity);
     return this.transport.generateText(input, { model: selection.model, ...(selection.reasoningEffort ? { effort: claudeEffort(selection.reasoningEffort) } : {}) });
   }
 

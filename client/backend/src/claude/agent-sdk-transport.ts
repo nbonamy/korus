@@ -1,3 +1,4 @@
+import { utilityMcpServers } from '../diagram-icons/utility-mcp';
 import { ClaudeRequestUsageObserver, type ClaudeRequestUsage, type ClaudeRequestUsageOwner } from './request-usage';
 import { ClaudeModelObserver } from './claude-model-observer';
 import { validConsumption, type Consumption } from '@workspace/core/usage';
@@ -36,6 +37,7 @@ import {
 } from './transport';
 import { claudeMessageSessionId, type ClaudeSdkMessage } from './protocol';
 import { claudeConfigDirectoryOverride } from './config-directory';
+import { readOnlyWorkspaceTool } from '../agents/utility-workspace-tools';
 
 export type ClaudeAgentSdkTransportOptions = {
   command?: string;
@@ -320,28 +322,47 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
 
   async generateText(input: import('@workspace/core/backend-driver').BackendTextGenerationInput, selection: Pick<ClaudeTurnParams, 'model' | 'effort'> = {}): Promise<{ text: string }> {
     if (this.closing) throw new Error('Claude transport is closed.');
+    input.signal?.throwIfAborted();
     const prompt = new AsyncPushQueue<SDKUserMessage>();
     const sessionId = this.createSessionId();
+    const inspect = input.tools === true;
+    const servers = utilityMcpServers(input.mcpServers);
+    const allowedTools = servers.flatMap(server => server.enabledTools.map(tool => `mcp__${server.name}__${tool}`));
+    const canUseTool: CanUseTool = async (name, args, context) => {
+      if (allowedTools.includes(name)) return {behavior: 'allow', updatedInput: args};
+      if (!inspect) return denyInspectionToolUse(name, args, context);
+      const updatedInput = await readOnlyWorkspaceTool(name, args, input.cwd);
+      return updatedInput ? { behavior: 'allow', updatedInput } : { behavior: 'deny', message: 'This utility only inspects Git and source in its working folder.' };
+    };
     const runtime = this.createQuery({
       prompt,
       options: {
-        ...claudeQueryOptions({ cwd: input.cwd, prompt: input.prompt, appendSystemPrompt: input.developerInstructions, ...selection }, sessionId, null, denyInspectionToolUse, this.options),
+        ...claudeQueryOptions({ cwd: input.cwd, prompt: input.prompt, appendSystemPrompt: input.developerInstructions, ...selection }, sessionId, null, canUseTool, this.options),
         persistSession: false,
-        tools: [],
-        mcpServers: {},
+        tools: inspect ? ['Read', 'Glob', 'Grep', 'Bash'] : [],
+        ...(inspect ? { settingSources: [], permissionMode: 'default' as const } : {}),
+        mcpServers: Object.fromEntries(servers.map(server => [server.name, {type: 'http' as const, url: server.url}])),
+        ...(allowedTools.length ? {allowedTools} : {}),
         ...(input.outputSchema ? { outputFormat: { type: 'json_schema' as const, schema: input.outputSchema as Record<string, unknown> } } : {}),
       },
     });
     this.inspectionQueries.add(runtime);
+    const abort = () => { prompt.close(); runtime.close(); };
+    input.signal?.addEventListener('abort', abort, { once: true });
     try {
-      prompt.push({ type: 'user', session_id: sessionId, parent_tool_use_id: null, message: { role: 'user', content: input.prompt } });
+      const message = await claudeUserMessage(input.prompt, input.attachments);
+      input.signal?.throwIfAborted();
+      prompt.push({ ...message, session_id: sessionId });
       for await (const message of runtime) {
+        input.signal?.throwIfAborted();
         if (message.type !== 'result') continue;
         if (message.subtype !== 'success' || message.is_error) throw new Error('Claude text generation failed.');
         return { text: message.structured_output !== undefined ? JSON.stringify(message.structured_output) : message.result };
       }
+      input.signal?.throwIfAborted();
       throw new Error('Claude text generation ended without a result.');
     } finally {
+      input.signal?.removeEventListener('abort', abort);
       this.inspectionQueries.delete(runtime);
       prompt.close();
       runtime.close();

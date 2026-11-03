@@ -11,6 +11,12 @@ export function diffForPath(diff: string, filePath: string): string | null {
   }).join('') || null;
 }
 
+/** Visible patch paths: renames use the destination; deletions retain their name. */
+export function changedFilePaths(diff: string): string[] {
+  return [...new Set([...diff.matchAll(/^diff --git ("(?:\\.|[^"\\])*"|a\/.*?) ("(?:\\.|[^"\\])*"|b\/.*)$/gmu)]
+    .map(match => normalizePathSeparators(gitPath(match[2]!)).replace(/^[ab]\//u, '')))];
+}
+
 /** Git quotes control characters and UTF-8 bytes in patch headers. */
 function gitPath(value: string): string {
   if (!value.startsWith('"')) return value;

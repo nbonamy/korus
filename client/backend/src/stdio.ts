@@ -30,7 +30,7 @@ export function startStdioRpcServer(options: StdioRpcServerOptions): () => void 
 type PendingRequest = {
   resolve(value: unknown): void;
   reject(error: Error): void;
-  timeout: NodeJS.Timeout;
+  timeout: NodeJS.Timeout | undefined;
 };
 
 type QueuedFrame = {
@@ -51,7 +51,7 @@ export class StdioRpcPeer {
   private outputQueueBytes = 0;
   private started = false;
 
-  constructor(private readonly options: StdioRpcServerOptions & { requestTimeoutMs?: number }) {}
+  constructor(private readonly options: StdioRpcServerOptions & { requestTimeoutMs?: number | null }) {}
 
   start(): void {
     if (this.started) {
@@ -86,13 +86,14 @@ export class StdioRpcPeer {
     const id = `backend-${this.nextRequestId++}`;
     const message = createAppRpcRequest(id, method, params);
     const result = new Promise<Result>((resolve, reject) => {
-      const timeout = setTimeout(() => {
+      const requestTimeoutMs = this.options.requestTimeoutMs === undefined ? defaultRequestTimeoutMs(method, params) : this.options.requestTimeoutMs;
+      const timeout = requestTimeoutMs === null ? undefined : setTimeout(() => {
         this.pending.delete(id);
         reject(new Error(`stdio request timed out: ${method}`));
       // Native helper requests have a 30s inner deadline; the outer callback
       // must leave room for that response (including a helper timeout error).
       // A simulator attach may cold-boot a device before its bridge answers (iOS up to 90s, Android up to 180s).
-      }, this.options.requestTimeoutMs ?? defaultRequestTimeoutMs(method));
+      }, requestTimeoutMs);
 
       this.pending.set(id, {
         resolve: (value) => resolve(value as Result),
@@ -310,7 +311,8 @@ function lineLooksLikeJson(line: string): boolean {
   return line.startsWith('{') || line.startsWith('[');
 }
 
-function defaultRequestTimeoutMs(method: string): number {
+function defaultRequestTimeoutMs(method: string, params?: unknown): number | null {
+  if (method === backendMethods.agentGitMessageGenerate || method === backendMethods.driverTextGenerate) return backendRequestTimeoutMs(method, params);
   if (method === backendMethods.clientCollaborationCall) return backendRequestTimeoutMs(method);
   // Let Electron's 30-second browser-open deadline report the navigation failure.
   if (method === 'client/browser/open') return 35_000;

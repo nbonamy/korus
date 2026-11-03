@@ -668,6 +668,7 @@ import { defaultTeamColor } from '@workspace/core/team-colors';
 import { agentMentionGroups as projectAgentMentionGroups } from './agent-mention-groups';
 import { appApi, appHostCapabilities, appClientPlatform, appPlatformActions } from '../platform-api';
 import { codeReviewSettingsKey, useCodeReviewSettings } from './code-review-settings';
+import { diffVizSettingsKey } from './diff-viz-settings';
 import AgentDialog from './AgentDialog.vue';
 import ProvisioningOperationHost from './ProvisioningOperationHost.vue';
 import type { WorkspaceProvisioningOperation } from './WorkspaceProvisioningProgressDialog.vue';
@@ -1152,6 +1153,7 @@ provide(generalPreferencesKey, createGeneralPreferences(() => props.snapshot.gen
 provideBackendChoices(() => props.snapshot, openSettings);
 const reviewSettings = useCodeReviewSettings();
 provide(codeReviewSettingsKey, { ...reviewSettings, preferences: () => props.snapshot.general.codeReviewDefaults });
+provide(diffVizSettingsKey, () => props.snapshot.general);
 provideBacklogConnections(() => props.snapshot.workBacklog.connections);
 const backendSwitch = provideBackendSwitch((id, backend) => props.updateAgent({ id, selection: { backend } }));
 const agentSidebarCollapsed = ref(false);

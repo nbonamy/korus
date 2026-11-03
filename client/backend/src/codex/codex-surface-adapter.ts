@@ -1,3 +1,4 @@
+import { utilityMcpServers } from '../diagram-icons/utility-mcp';
 import { ConversationContentTransport } from '@codex-app-sdk/backend';
 import { promptWithSelectedReferences } from '../agents/prompt-content';
 import { utilityTextModel } from '../agents/utility-text-model';
@@ -365,11 +366,19 @@ export class CodexSurfaceAgentAdapter {
   }
 
   async generateText(_agent: Agent, input: BackendTextGenerationInput): Promise<BackendTextGenerationResult> {
-    const selection = utilityTextModel('codex', await this.listModels());
+    input.signal?.throwIfAborted();
+    const servers = utilityMcpServers(input.mcpServers);
+    const selection = utilityTextModel('codex', await this.listModels(), input.complexity);
+    input.signal?.throwIfAborted();
     return this.surface.generateText(input.prompt, {
+      ...(input.timeoutMs === null ? { timeoutMs: null } : {}),
+      ...(input.signal ? { signal: input.signal } : {}),
       cwd: expandHome(input.cwd),
       ...selection,
       serviceTier: null,
+      ...(input.tools === true ? { tools: 'read-only' as const } : {}),
+      ...(input.attachments ? { attachments: input.attachments } : {}),
+      ...(servers.length ? {mcpServers: servers.map(server => ({name: server.name, transport: {type: 'http' as const, url: server.url}, enabledTools: [...server.enabledTools], toolApprovalMode: 'auto' as const, required: true}))} : {}),
       ...(input.developerInstructions ? { developerInstructions: input.developerInstructions } : {}),
       ...(input.outputSchema ? { outputSchema: input.outputSchema } : {}),
     });

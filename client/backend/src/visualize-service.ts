@@ -1,3 +1,5 @@
+import {isDiagramIconImage} from '@workspace/core/diagram-icon';
+import {fetchTechIcon, type DiagramIconResolver} from './diagram-icons/resolver';
 import { product } from '@workspace/core/product';
 import { editCanvas, isCanvasDocument, selectedCanvasElements, type CanvasEdit, type CanvasElement, type SaveCanvasInput } from '@workspace/core/visualize-canvas';
 import { readFile, realpath, stat } from 'node:fs/promises';
@@ -39,6 +41,7 @@ export type ReplaceVisualizationInput = VisualizationInput & {
 export type VisualizeServiceOptions = {
   snapshot: AppSnapshot;
   generatedImagesRoot: string;
+  iconResolver?: DiagramIconResolver;
   createId?: (prefix: string) => string;
   now?: () => Date;
   persist: () => Promise<void>;
@@ -64,6 +67,11 @@ export class VisualizeService {
     const agent = this.agent(agentId);
     if (!agent?.visualize || !this.ownsCurrentConversation(agent, agent.visualize)) return undefined;
     return agent.visualize;
+  }
+
+  async fetchIcon(agentId: string, icon: string) {
+    this.requireAgent(agentId);
+    return fetchTechIcon(icon, this.options.iconResolver);
   }
 
   developerInstructions(): string {
@@ -173,6 +181,24 @@ export class VisualizeService {
     visualize.updatedAt = timestamp;
     await this.commit();
     return { success: true, visualizationId: visualization.id, title: visualization.title };
+  }
+
+  async saveRepository(agentId: string, input: import('@workspace/core/visualize').SaveRepositoryVisualizationInput): Promise<void> {
+    const agent = this.requireAgent(agentId);
+    const root = visualizationRepositoryRoot(agent);
+    if (!root) throw new Error('A Git repository is required to save this visualization.');
+    if (!input || !input.content || !['mermaid', 'svg', 'excalidraw'].includes(input.content.kind) || typeof input.content.source !== 'string') {
+      throw new Error('Invalid visualization content.');
+    }
+    const title = boundedText(input.title, 'Visualization title', 200);
+    const content = await this.visualizationContent(input.content);
+    const library = this.repositoryVisualizationsFor(agent)!;
+    if (library.length >= MAX_VISUALIZATIONS) throw new Error(`Visualize supports at most ${MAX_VISUALIZATIONS} visualizations.`);
+    const timestamp = this.now().toISOString();
+    const visualization: Visualization = { id: this.createId('visualization'), title, content, createdAt: timestamp, updatedAt: timestamp };
+    library.push(visualization);
+    try { await this.commit(); }
+    catch (error) { library.splice(library.indexOf(visualization), 1); throw error; }
   }
 
   get(agentId: string, visualizationId: string): { success: true; visualization: Visualization } {
@@ -321,6 +347,7 @@ export class VisualizeService {
     if (!current || current.revision !== expectedRevision) throw new Error('Stale canvas revision. Read the canvas and retry.');
     const next = editCanvas(current, edits, added);
     this.bindConversation(agentId, this.requireContext(agentId).visualize);
+    validateEmbeddedIcons(next.elements);
     visualization.canvas = next;
     try { await this.commit(); } catch (error) { visualization.canvas = current; throw error; }
     return { success: true, revision: next.revision };
@@ -403,7 +430,7 @@ export class VisualizeService {
       const source = input.kind === 'excalidraw' ? normalizeExcalidrawScene(input.source, this.now().getTime()) : input.source;
       return {
         kind: input.kind,
-        source: boundedText(source, 'Visualization source', MAX_VISUALIZATION_SOURCE_BYTES),
+        source: boundedText(source, 'Visualization source', input.kind === 'excalidraw' ? 8*1024*1024 : MAX_VISUALIZATION_SOURCE_BYTES),
       };
     }
     const resolved = await this.resolveGeneratedImage(input.generatedImagePath);
@@ -492,6 +519,13 @@ function contextJson(value: unknown): string {
   return JSON.stringify(value).replaceAll('<', '\\u003c').replaceAll('>', '\\u003e');
 }
 
+function validateEmbeddedIcons(elements: CanvasElement[]) {
+  for (const element of elements) {
+    const data = element.customData as {iconImage?: unknown} | undefined;
+    if (data?.iconImage !== undefined && !isDiagramIconImage(data.iconImage)) throw new Error('Invalid embedded icon payload.');
+  }
+}
+
 /** Keeps only the scene (elements and image files) and proves the canvas will accept it. */
 function normalizeExcalidrawScene(source: string, now: number): string {
   let parsed: unknown;
@@ -502,6 +536,7 @@ function normalizeExcalidrawScene(source: string, now: number): string {
   const files = Object.fromEntries(Object.entries(rawFiles).map(([id, file]) => [id, {
     id, mimeType: file?.mimeType, dataURL: file?.dataURL, created: typeof file?.created === 'number' ? file.created : now,
   }]));
+  validateEmbeddedIcons(scene.elements as CanvasElement[]);
   const document = { revision: 1, elements: scene.elements, files, selectedElementIds: [], preview: '' };
   if (!isCanvasDocument(document)) throw new Error('Excalidraw scene is not valid: use rectangle, ellipse, diamond, text, arrow, line, freedraw, image or frame elements with unique ids, numeric geometry and no links.');
   return JSON.stringify({ elements: document.elements, files: document.files });

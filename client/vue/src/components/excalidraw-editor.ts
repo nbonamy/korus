@@ -1,6 +1,8 @@
+import { normalizeCanvasFonts } from './diagram-fonts';
+import {isDiagramIconImage, type DiagramIconImage} from '@workspace/core/diagram-icon';
 import { Component, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Excalidraw, MainMenu, CaptureUpdateAction, bumpVersion, convertToExcalidrawElements, exportToCanvas, restoreElements, sceneCoordsToViewportCoords } from '@excalidraw/excalidraw';
+import { Excalidraw, MainMenu, CaptureUpdateAction, bumpVersion, convertToExcalidrawElements, exportToCanvas, exportToSvg, restoreElements, sceneCoordsToViewportCoords } from '@excalidraw/excalidraw';
 import type { ExcalidrawImperativeAPI, BinaryFiles, AppState, ExcalidrawProps } from '@excalidraw/excalidraw/types';
 import type { ExcalidrawElement, FileId } from '@excalidraw/excalidraw/element/types';
 import type { CanvasDocument, CanvasElement } from '@workspace/core/visualize-canvas';
@@ -14,11 +16,14 @@ export type CanvasScene = Omit<CanvasDocument, 'revision'>;
 export type CanvasAnnotationTarget = { id: string; x: number; y: number; width: number; height: number };
 export type CanvasControlsState = { zoom: number };
 export async function importVisualization(visualization: Visualization, imageSource: string): Promise<CanvasScene> {
-  if (visualization.canvas) return structuredClone(visualization.canvas);
+  if (visualization.canvas) {
+    const scene = structuredClone(visualization.canvas);
+    return materializeDiagramIcons({ ...scene, elements: normalizeCanvasFonts(scene.elements) });
+  }
   if (visualization.content.kind === 'excalidraw') {
     // The backend validated and normalized this scene, so it is already a canvas document minus revision.
     const { elements, files } = JSON.parse(visualization.content.source) as Pick<CanvasScene, 'elements' | 'files'>;
-    return { elements, files, selectedElementIds: [], preview: '' };
+    return materializeDiagramIcons({ elements: normalizeCanvasFonts(elements), files, selectedElementIds: [], preview: '' });
   }
   if (visualization.content.kind === 'mermaid') {
     if (/%%\s*\{|\bclick\s+|\b(?:img|icon)\s*:|<(?:img|iframe|script|object|embed|link|style)\b/iu.test(visualization.content.source)) {
@@ -31,7 +36,7 @@ export async function importVisualization(visualization: Visualization, imageSou
     const files: BinaryFiles = {};
     for (const [id, file] of Object.entries(result.files ?? {})) {
       files[id] = file.mimeType === 'image/svg+xml'
-        ? { ...file, created: Date.now(), mimeType: 'image/png', dataURL: (await rasterize(file.dataURL)).dataURL as typeof file.dataURL }
+        ? { ...file, created: Date.now(), mimeType: 'image/png', dataURL: (await rasterizeCanvasImage(file.dataURL)).dataURL as typeof file.dataURL }
         : { ...file, created: Date.now() };
     }
     return { elements: convertToExcalidrawElements(result.elements, { regenerateIds: false }) as unknown as CanvasElement[], files, selectedElementIds: [], preview: '' };
@@ -39,7 +44,7 @@ export async function importVisualization(visualization: Visualization, imageSou
   const source = visualization.content.kind === 'svg'
     ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(sanitizeSvg(visualization.content.source))}`
     : imageSource;
-  const image = await rasterize(source);
+  const image = await rasterizeCanvasImage(source);
   const id = `image-${visualization.id}`;
   const elements = convertToExcalidrawElements([{ type: 'image', x: 0, y: 0, width: image.width, height: image.height, fileId: id as FileId }]);
   return {
@@ -48,7 +53,26 @@ export async function importVisualization(visualization: Visualization, imageSou
     selectedElementIds: [], preview: '',
   };
 }
-async function rasterize(source: string): Promise<{ dataURL: string; width: number; height: number }> {
+/** Embedded marks retain their source colors and an explicit contrast plate in both themes. */
+export function rasterizeDiagramIcon(image: DiagramIconImage) {
+  return rasterizeCanvasImage(`data:${image.mimeType};base64,${image.base64}`, image.whiteFill ? '#20242d' : '#ffffff');
+}
+export async function materializeDiagramIcons(scene: CanvasScene): Promise<CanvasScene> {
+  const files = {...scene.files};
+  const elements = await Promise.all(scene.elements.map(async element => {
+    const customData = element.customData as Record<string, unknown> | undefined;
+    if (element.type !== 'image' || !customData?.iconImage) return element;
+    if (!isDiagramIconImage(customData.iconImage)) throw new Error('Invalid embedded icon payload.');
+    const image = await rasterizeDiagramIcon(customData.iconImage);
+    const fileId = `icon_${element.id}`;
+    files[fileId] = {id:fileId, mimeType:'image/png', dataURL:image.dataURL, created:0};
+    const remaining = {...customData};
+    delete remaining.iconImage;
+    return {...element, fileId, customData:remaining};
+  }));
+  return {...scene, elements, files};
+}
+export async function rasterizeCanvasImage(source: string, background?: string): Promise<{ dataURL: string; width: number; height: number }> {
   if (!source.startsWith('data:image/')) throw new Error('Image is not available.');
   // SVG is always decoded, sanitized and re-encoded before the browser sees it.
   if (source.startsWith('data:image/svg+xml')) {
@@ -70,7 +94,9 @@ async function rasterize(source: string): Promise<{ dataURL: string; width: numb
   const canvas = document.createElement('canvas');
   canvas.width = Math.max(1, Math.round(image.naturalWidth * ratio));
   canvas.height = Math.max(1, Math.round(image.naturalHeight * ratio));
-  canvas.getContext('2d')!.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const context = canvas.getContext('2d')!;
+  if (background) {context.fillStyle = background; context.fillRect(0, 0, canvas.width, canvas.height);}
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
   return { dataURL: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height };
 }
 class CanvasErrorBoundary extends Component<{ onError: (error: Error) => void; children: ReactNode }, { failed: boolean }> {
@@ -87,6 +113,7 @@ function restoreSceneElements(elements: readonly ExcalidrawElement[]) {
   return restored.map(element => {
     if (element.type !== 'text' || !element.containerId) return element;
     const container = byId.get(element.containerId);
+    if (container?.type === 'arrow' || container?.type === 'line') return {...element, strokeColor:container.strokeColor};
     if (!container || !['rectangle', 'ellipse', 'diamond'].includes(container.type)) return element;
     return { ...element,
       x: element.textAlign === 'center' ? container.x + (container.width - element.width) / 2 : element.x,
@@ -94,7 +121,7 @@ function restoreSceneElements(elements: readonly ExcalidrawElement[]) {
     };
   });
 }
-export function mountCanvas(host: HTMLElement, scene: CanvasScene, onChange: (scene: CanvasScene) => void, onError: (error: Error) => void, onViewportChange: () => void = () => {}) {
+export function mountCanvas(host: HTMLElement, scene: CanvasScene, onChange: (scene: CanvasScene) => void, onError: (error: Error) => void, onViewportChange: () => void = () => {}, presentation: { nativeColors?: boolean } = {}) {
   const root = createRoot(host);
   let api: ExcalidrawImperativeAPI | undefined;
   let current = scene;
@@ -112,7 +139,7 @@ export function mountCanvas(host: HTMLElement, scene: CanvasScene, onChange: (sc
       initialFitPending = false;
     });
   };
-  const theme = () => document.documentElement.classList.contains('dark') ? 'dark' as const : 'light' as const;
+  const theme = () => !presentation.nativeColors && document.documentElement.classList.contains('dark') ? 'dark' as const : 'light' as const;
   const syncControlStyle = () => requestAnimationFrame(() => {
     if (disposed) return;
     const container = host.querySelector('.excalidraw');
@@ -160,7 +187,7 @@ export function mountCanvas(host: HTMLElement, scene: CanvasScene, onChange: (sc
     requestAnimationFrame(onViewportChange);
   };
   root.render(createElement(CanvasErrorBoundary, { onError, children: createElement(Excalidraw, {
-    initialData: { elements: elements(scene), files: scene.files as BinaryFiles, appState: { selectedElementIds: {}, theme: theme(), viewModeEnabled: true, activeTool: { type: 'hand', customType: null, locked: false, lastActiveTool: null } }, scrollToContent: true },
+    initialData: { elements: elements(scene), files: scene.files as BinaryFiles, appState: { selectedElementIds: {}, theme: theme(), ...(presentation.nativeColors ? { viewBackgroundColor: 'transparent' } : {}), viewModeEnabled: true, activeTool: { type: 'hand', customType: null, locked: false, lastActiveTool: null } }, scrollToContent: true },
     excalidrawAPI: (value: ExcalidrawImperativeAPI) => {
       api = value;
       unsubscribeScroll = value.onScrollChange(onViewportChange);
@@ -221,8 +248,16 @@ export function mountCanvas(host: HTMLElement, scene: CanvasScene, onChange: (sc
       return nextZoom;
     },
     fit() { api?.scrollToContent(undefined, { fitToContent: true }); },
-    async preview(value = current): Promise<string> {
-      const canvas = await exportToCanvas({ elements: elements(value), files: value.files as BinaryFiles, appState: { exportBackground: false }, maxWidthOrHeight: 1000 });
+    nativeDocument(background = 'transparent'): string {
+      return JSON.stringify({ type: 'excalidraw', version: 2, source: '', elements: current.elements, files: current.files, appState: { viewBackgroundColor: background } }, null, 2);
+    },
+    async svg(background?: string): Promise<string> {
+      const scene = current;
+      const svg = await exportToSvg({ elements: elements(scene), files: scene.files as BinaryFiles, appState: { exportBackground: !!background, viewBackgroundColor: background || 'transparent', exportWithDarkMode: false } });
+      return new XMLSerializer().serializeToString(svg);
+    },
+    async preview(value = current, background?: string): Promise<string> {
+      const canvas = await exportToCanvas({ elements: elements(value), files: value.files as BinaryFiles, appState: { exportBackground: !!background, viewBackgroundColor: background || 'transparent' }, maxWidthOrHeight: 1000 });
       return canvas.toDataURL('image/png');
     },
     dispose() { document.fonts.removeEventListener('loadingdone', refreshTextAfterFontsLoad); unsubscribeScroll?.(); themeObserver.disconnect(); resizeObserver.disconnect(); disposed = true; root.unmount(); api = undefined; },

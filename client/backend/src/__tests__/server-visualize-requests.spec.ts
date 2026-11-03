@@ -7,6 +7,21 @@ import { AppBackendServer } from '../server';
 import { createTestSnapshot } from './server-test-fixtures';
 
 describe('AppBackendServer Visualize workflow', () => {
+  it('saves a repository visualization without opening Visualize or sending a prompt', async () => {
+    const { agentId, server, snapshot, sendPrompt } = setup();
+    const agent = snapshot.agents.at(-1)!;
+    agent.workspace = { kind: 'git', folder: '/repo', repositoryRoot: '/repo', primaryWorktreeRoot: '/repo', repositoryName: 'repo', branch: 'main', isLinkedWorktree: false, updatedAt: '' };
+    try {
+      const result = await server.handleMessage({ jsonrpc: '2.0', id: 'save-repo', method: backendMethods.agentRepositoryVisualizationSave, params: {
+        agentId, input: { title: 'Review map', content: { kind: 'mermaid', source: 'flowchart LR; A --> B' } },
+      } });
+      expect(result).toHaveProperty('result');
+      expect(snapshot.repositoryVisualizations?.['/repo']).toMatchObject([{ title: 'Review map' }]);
+      expect(agent.visualize).toBeUndefined();
+      expect(sendPrompt).not.toHaveBeenCalled();
+    } finally { await server.close(); }
+  });
+
   it('routes canvas saves through the owning agent and publishes persisted content', async () => {
     const { agentId, server, snapshot } = setup();
     try {

@@ -121,6 +121,10 @@ Host bad;alias
       '/current/backend/daemon.mjs',
       expect.stringMatching(/devbox:~\/[^/]+\/daemon-[a-f0-9-]+\.mjs$/u),
     ], { timeoutMs: 120000 });
+    expect(run).toHaveBeenCalledWith('scp',expect.arrayContaining([
+      '/current/backend/viz/reference.png',expect.stringMatching(/devbox:~\/[^/]+\/viz\/reference-[a-f0-9-]+\.png$/u),
+    ]),{timeoutMs:120000});
+    expect(run.mock.calls.some(([command,args])=>command==='ssh'&&args.at(-1)?.includes('viz/reference.png'))).toBe(true);
     expect(run).toHaveBeenCalledWith('scp', [
       '-o', 'StrictHostKeyChecking=accept-new',
       '-o',

@@ -658,6 +658,9 @@ export class AppController {
     ipc.handle(ipcChannels.deleteVisualization, async (_event, agentId: string, input: import('@workspace/core/visualize').DeleteVisualizationInput) => (
       this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentVisualizationDelete, { agentId, input }))
     ));
+    ipc.handle(ipcChannels.saveRepositoryVisualization, async (_event, agentId: string, input: import('@workspace/core/visualize').SaveRepositoryVisualizationInput) => (
+      this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentRepositoryVisualizationSave, { agentId, input }))
+    ));
     ipc.handle(ipcChannels.saveVisualizationCanvas, (_event, agentId: string, input: import('@workspace/core/visualize-canvas').SaveCanvasInput) => (
       this.requireBackendClient().request(backendMethods.agentVisualizationCanvasSave, { agentId, input })
     ));

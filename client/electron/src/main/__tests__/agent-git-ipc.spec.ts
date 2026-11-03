@@ -38,6 +38,15 @@ describe('agent Git IPC', () => {
     expect(request).toHaveBeenCalledExactlyOnceWith(backendMethods.agentGitWorkflowGet, { agentId: 'agent', includePullRequest: true });
   });
 
+  it('routes cancellation with its generation identity', async () => {
+    const handlers = new Map<string, (...args: unknown[]) => unknown>();
+    const ipc = { handle: (channel: string, handler: (...args: unknown[]) => unknown) => handlers.set(channel, handler) } as unknown as Parameters<typeof registerAgentGitIpcHandlers>[0];
+    const backend = { request: vi.fn().mockResolvedValue(undefined) } as unknown as ReturnType<Parameters<typeof registerAgentGitIpcHandlers>[1]>;
+    registerAgentGitIpcHandlers(ipc, () => backend);
+    await handlers.get(ipcChannels.cancelAgentGitMessage)!({}, 'agent-1', 'generation-1');
+    expect(backend.request).toHaveBeenCalledWith(backendMethods.agentGitMessageCancel, { agentId: 'agent-1', generationId: 'generation-1' });
+  });
+
   it.each([
     [ipcChannels.getAgentGitLog, backendMethods.agentGitLogGet, [{ search: 'fix', cursor: { head: 'head', offset: 50, search: 'fix' } }], { branch: 'main', commits: [] }],
     [ipcChannels.getAgentGitLogCommit, backendMethods.agentGitLogCommitGet, [{ head: 'head', sha: 'sha' }], { message: 'full', files: [] }],

@@ -1,3 +1,4 @@
+import { DiagramIconResolver } from '../diagram-icons/resolver';
 import { product } from '@workspace/core/product';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -15,6 +16,56 @@ afterEach(async () => {
 });
 
 describe('VisualizeService', () => {
+  it('saves a Diff Viz into the repository library without opening a pane or losing it after restart', async () => {
+    temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'saved-diff-viz-'));
+    const persistence = new AppStateStore(temporaryDirectory);
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0];
+    agent.folder = '/projects/app';
+    agent.workspace = { kind: 'git', folder: agent.folder, repositoryName: 'app', repositoryRoot: agent.folder,
+      branch: 'feature', isLinkedWorktree: false, primaryWorktreeRoot: agent.folder, updatedAt: agent.updatedAt };
+    const service = new VisualizeService({ snapshot, generatedImagesRoot: temporaryDirectory, persist: () => persistence.save(snapshot), publish: () => {} });
+    const content = { kind: 'excalidraw' as const, source: JSON.stringify({ elements: [{ id: 'box', type: 'rectangle', x: 0, y: 0, width: 50, height: 50 }], files: {} }) };
+    await service.saveRepository(agent.id, { title: 'Changed architecture', content });
+    expect(agent.visualize).toBeUndefined();
+    const loaded = await persistence.load();
+    const reopened = new VisualizeService({ snapshot: loaded, generatedImagesRoot: temporaryDirectory, persist: () => persistence.save(loaded), publish: () => {} });
+    const { visualize } = await reopened.enter(agent.id);
+    expect(visualize.visualizations).toMatchObject([{ title: 'Changed architecture', content }]);
+    await reopened.saveRepository(agent.id, { title: 'Flow', content: { kind: 'mermaid', source: 'flowchart LR; A --> B' } });
+    expect(reopened.list(agent.id).visualizations).toHaveLength(2);
+    await expect(reopened.saveRepository(agent.id, { title: 'Bad', content: { kind: 'excalidraw', source: '{}' } })).rejects.toThrow();
+    expect(reopened.list(agent.id).visualizations).toHaveLength(2);
+    vi.spyOn(persistence, 'save').mockRejectedValueOnce(new Error('Disk full'));
+    await expect(reopened.saveRepository(agent.id, { title: 'Retry', content: { kind: 'mermaid', source: 'flowchart LR; A --> B' } })).rejects.toThrow('Disk full');
+    expect(reopened.list(agent.id).visualizations).toHaveLength(2);
+    delete loaded.agents[0].workspace;
+    await expect(reopened.saveRepository(agent.id, { title: 'Flow', content: { kind: 'mermaid', source: 'flowchart LR; A --> B' } })).rejects.toThrow(/repository/i);
+  });
+
+  it('embeds fetched bytes in saved diagrams and edits without an asset registry surviving the process', async () => {
+    temporaryDirectory=await mkdtemp(path.join(os.tmpdir(),'visualize-icons-'));
+    const snapshot=createInitialSnapshot();const agent=snapshot.agents[0];
+    const persistence=new AppStateStore(temporaryDirectory);
+    const resolver=new DiagramIconResolver({fetch:vi.fn<typeof fetch>().mockImplementation(async()=>new Response('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#f00" d="M1 1h22v22H1z"/></svg>'))});
+    const service=new VisualizeService({snapshot,generatedImagesRoot:temporaryDirectory,iconResolver:resolver,persist:()=>persistence.save(snapshot),publish:()=>{}});
+    const response=await service.fetchIcon(agent.id,'lucide/database');
+    expect(response).not.toHaveProperty('assetId');
+    if(!response.found)throw new Error('Expected icon');
+    const {found:_,name:__,dark:___,...iconImage}=response;
+    const element={id:'brand',type:'image',x:0,y:0,width:48,height:48,customData:{iconImage}};
+    await service.enter(agent.id);
+    const {visualizationId}=await service.add(agent.id,{title:'Brand',content:{kind:'excalidraw',source:JSON.stringify({elements:[element],files:{}})}});
+    const loaded=await persistence.load();
+    const reopened=new VisualizeService({snapshot:loaded,generatedImagesRoot:temporaryDirectory,persist:()=>persistence.save(loaded),publish:()=>{}});
+    const saved=reopened.get(agent.id,visualizationId).visualization;
+    expect(JSON.parse((saved.content as {source:string}).source).elements[0].customData.iconImage.base64).toBe(iconImage.base64);
+    await reopened.saveCanvas(agent.id,{visualizationId,sessionId:loaded.agents[0].visualize!.id,expectedSource:JSON.stringify(saved.content),expectedRevision:0,document:{elements:[],files:{},preview:'',selectedElementIds:[]}});
+    await reopened.editCanvas(agent.id,visualizationId,1,[],[element]);
+    const reloaded=await persistence.load();
+    expect(reloaded.agents[0].visualize!.visualizations[0].canvas!.elements[0].customData).toEqual({iconImage});
+  });
+
   it('shares repository diagrams across a worktree and main agent while keeping pane state separate', async () => {
     const snapshot = createInitialSnapshot();
     const [worker, main] = snapshot.agents;

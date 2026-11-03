@@ -164,10 +164,12 @@ export type AgentGitUpdateFromBaseResult = {
 };
 
 export type AgentGitMessageGenerationInput =
+  | { kind: 'viz'; generationId?: string; target: AgentGitDiffTarget; scopes?: AgentGitDiffScope[]; mode?: 'fast' | 'polished' }
   | { kind: 'commit'; includeUnstaged: boolean; includeUntracked: boolean }
   | { kind: 'pullRequest' };
 
 export type AgentGitMessageGenerationResult =
+  | { kind: 'viz'; diagram: import('../git-diff-viz').DiffVizDiagram }
   | { kind: 'commit'; message: string }
   | { kind: 'pullRequest'; title: string; body: string };
 

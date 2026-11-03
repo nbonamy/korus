@@ -1,8 +1,30 @@
 import { PassThrough } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import { startStdioRpcServer, StdioRpcPeer } from '../stdio';
+import { backendMethods } from '@workspace/core/backend-protocol/methods';
 
 describe('stdio JSON-RPC transport', () => {
+  it('delivers an unbounded utility result over stdio and rejects pending work on disconnect', async () => {
+    vi.useFakeTimers();
+    const input = new PassThrough();
+    const output = new PassThrough();
+    const writes: string[] = [];
+    output.on('data', chunk => writes.push(chunk.toString()));
+    const peer = new StdioRpcPeer({ input, output, onMessage: () => undefined });
+    peer.start();
+    try {
+      const params = { prompt: 'Inspect', cwd: '/repo', timeoutMs: null };
+      const result = peer.request(backendMethods.driverTextGenerate, params).then(value => ({ value }), error => ({ error }));
+      const request = JSON.parse(writes[0]!);
+      await vi.advanceTimersByTimeAsync(60 * 60_000);
+      input.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { text: 'complete' } })}\n`);
+      expect(await result).toEqual({ value: { text: 'complete' } });
+      const interrupted = expect(peer.request(backendMethods.driverTextGenerate, params)).rejects.toThrow(/stopped|closed/i);
+      peer.stop();
+      await interrupted;
+    } finally { peer.stop(); vi.useRealTimers(); }
+  });
+
   it.each([
     ['client/external/open', undefined, 5000],
     ['client/computerUse/execute', undefined, 35000],

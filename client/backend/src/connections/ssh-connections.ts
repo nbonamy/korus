@@ -192,6 +192,13 @@ export class SshConnectionService {
   private async installRemoteDaemon(host: string): Promise<void> {
     const localDaemon = await this.resolveLocalDaemonScript();
     const stagedDaemon = `~/${product.homeDirectory}/daemon-${randomUUID()}.mjs`;
+    const stagedReference = `~/${product.homeDirectory}/viz/reference-${randomUUID()}.png`;
+    const candidates = [path.join(path.dirname(localDaemon),'viz/reference.png'), path.join(this.deps.assetsPath ?? process.env.APP_ASSETS_PATH ?? path.resolve(process.cwd(),'assets'),'viz/reference.png')];
+    let reference: string | undefined;
+    for(const candidate of candidates) {
+      try {await (this.deps.accessFile ?? access)(candidate,fsConstants.R_OK);reference=candidate;break;} catch { /* Try the configured desktop assets. */ }
+    }
+    if(!reference) throw new Error('The bundled Viz reference image was not found for remote installation.');
     await this.run('ssh', [
       '-o',
       'BatchMode=yes',
@@ -208,13 +215,15 @@ export class SshConnectionService {
       localDaemon,
       `${host}:${stagedDaemon}`,
     ], { timeoutMs: 120_000 });
+    await this.run('ssh',['-o','BatchMode=yes','-o','ConnectTimeout=10',host,`mkdir -p ~/${product.homeDirectory}/viz`]);
+    await this.run('scp',['-o','BatchMode=yes','-o','ConnectTimeout=10',reference,`${host}:${stagedReference}`],{timeoutMs:120_000});
     await this.run('ssh', [
       '-o',
       'BatchMode=yes',
       '-o',
       'ConnectTimeout=10',
       host,
-      remoteEnvironmentCommand(`set -eu\nversion=$(node ${stagedDaemon} --version)\n[ "$version" = "${product.daemonName} ${backendPackage.version}" ] || { echo "Remote Korus verification failed; previous installation kept." >&2; exit 1; }\nchmod 600 ${stagedDaemon}\nmv ${stagedDaemon} ${remoteDaemonPath}`),
+      remoteEnvironmentCommand(`set -eu\nversion=$(node ${stagedDaemon} --version)\n[ "$version" = "${product.daemonName} ${backendPackage.version}" ] || { echo "Remote Korus verification failed; previous installation kept." >&2; exit 1; }\ntest -s ${stagedReference}\nchmod 600 ${stagedDaemon} ${stagedReference}\nmv ${stagedReference} ~/${product.homeDirectory}/viz/reference.png\nmv ${stagedDaemon} ${remoteDaemonPath}`),
     ]);
   }
 

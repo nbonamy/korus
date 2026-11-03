@@ -1,3 +1,5 @@
+import { utilityMcpServers } from './diagram-icons/utility-mcp';
+import { utilityImageAttachments } from './agents/utility-image-attachments';
 import type { ExecutionObservation, RequestObservation } from '@workspace/core/usage';
 import { assertPromptSession, requireExpectedSessionId, requirePromptText } from './prompt-input';
 import { product } from '@workspace/core/product';
@@ -9,7 +11,7 @@ import { expandWorktreeDelegationCommand } from './agents/worktree-delegation';
 import { handoffInProgress } from '@workspace/core/agent-handoff';
 import { isAgentRequestResponse } from '@workspace/core/agent-request';
 import type { AgentBackendDriver, BackendEvent, BackendSendResult } from '@workspace/core/backend-driver';
-import { unsupportedBackendFeature } from '@workspace/core/backend-driver';
+import { unsupportedBackendFeature, utilityTaskComplexities, type UtilityTaskComplexity } from '@workspace/core/backend-driver';
 import type { Agent, AgentBackend, AppGeneralSettings, AppPluginSettings, BackendSession, ConversationListInput, ConversationResumeTarget, CreateSourceWorktreeInput, DevicePairingSession, SendPromptOptions } from '@workspace/core/contracts';
 import { stat } from 'node:fs/promises';
 import { listAgentFolderFiles, previewAgentFolderFile, readAgentFolderFileChunk } from './agent-files';
@@ -124,6 +126,7 @@ function reviewExtensionMcpUrl(value: unknown): string | null {
 }
 
 export class BackendDriverRpc {
+  private readonly textGenerations = new Map<string, { controller: AbortController; done: Promise<void>; finish: () => void }>();
   private readonly requestUsageListeners = new Set<(observation: RequestObservation) => void>();
   private readonly unsubscribeRequestUsage = new Map<AgentBackend, () => void>();
   private readonly usageListeners = new Set<(observation: ExecutionObservation) => void>();
@@ -198,7 +201,7 @@ export class BackendDriverRpc {
     const candidate = record.backend ?? (isRecord(record.agent) ? record.agent.backend : undefined);
     const backend = candidate === 'codex' || candidate === 'claude' ? candidate : undefined;
     if (backend) {
-      if (this.blocked(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
+      if (method !== backendMethods.driverTextCancel && this.blocked(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
       this.inFlight.set(backend, (this.inFlight.get(backend) ?? 0) + 1);
     }
     try { return await this.dispatch(method, params, options.signal); }
@@ -296,18 +299,47 @@ export class BackendDriverRpc {
         }
         return null;
       }
+      case backendMethods.driverTextCancel: {
+        const { agent } = requireAgentParams(params);
+        const generationId = requireString(requireRecord(params).generationId, 'generationId');
+        const job = this.textGenerations.get(JSON.stringify([agent.id, generationId]));
+        if (job) { job.controller.abort(new Error('Generation cancelled.')); await job.done; }
+        return null;
+      }
       case backendMethods.driverTextGenerate: {
         const { agent } = requireAgentParams(params);
-        await this.requireNewWork(agent.backend);
         const record = requireRecord(params);
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.generateText) throw unsupportedBackendFeature(agent, 'ephemeral text generation');
-        return driver.generateText(agent, {
-          prompt: requireString(record.prompt, 'prompt'),
-          cwd: requireString(record.cwd, 'cwd'),
-          ...(typeof record.developerInstructions === 'string' ? { developerInstructions: record.developerInstructions } : {}),
-          ...(record.outputSchema !== undefined ? { outputSchema: record.outputSchema as never } : {}),
-        });
+        const generationId = record.generationId === undefined ? undefined : requireString(record.generationId, 'generationId');
+        const key = JSON.stringify([agent.id, generationId]);
+        if (generationId && this.textGenerations.has(key)) throw new Error('Generation is already running.');
+        let finish!: () => void;
+        const controller = new AbortController();
+        const job = { controller, done: new Promise<void>(resolve => { finish = resolve; }), finish: () => finish() };
+        if (generationId) this.textGenerations.set(key, job);
+        try {
+          await this.requireNewWork(agent.backend);
+          const driver = this.requireDriver(agent.backend);
+          if (!driver.generateText) throw unsupportedBackendFeature(agent, 'ephemeral text generation');
+          if (record.complexity !== undefined && !utilityTaskComplexities.includes(record.complexity as UtilityTaskComplexity)) throw new Error('Invalid utility task complexity.');
+          if (record.timeoutMs !== undefined && record.timeoutMs !== null) throw new Error('Invalid utility timeout.');
+          if (record.tools !== undefined && typeof record.tools !== 'boolean') throw new Error('Invalid utility tool flag.');
+          controller.signal.throwIfAborted();
+          const input = {
+            ...(record.timeoutMs === null ? { timeoutMs: null } : {}),
+            prompt: requireString(record.prompt, 'prompt'),
+            cwd: requireString(record.cwd, 'cwd'),
+            ...(record.complexity !== undefined ? { complexity: record.complexity as UtilityTaskComplexity } : {}),
+            ...(typeof record.tools === 'boolean' ? { tools: record.tools } : {}),
+            ...(record.mcpServers !== undefined ? {mcpServers: utilityMcpServers(record.mcpServers)} : {}),
+            ...(record.attachments !== undefined ? {attachments:await utilityImageAttachments(record.attachments)} : {}),
+            ...(typeof record.developerInstructions === 'string' ? { developerInstructions: record.developerInstructions } : {}),
+            ...(record.outputSchema !== undefined ? { outputSchema: record.outputSchema as never } : {}),
+          };
+          controller.signal.throwIfAborted();
+          const result = await driver.generateText(agent, { ...input, ...(generationId ? { signal: controller.signal } : {}) });
+          controller.signal.throwIfAborted();
+          return result;
+        } finally { if (generationId) this.textGenerations.delete(key); job.finish(); }
       }
       case backendMethods.driverImageGenerate: {
         const { agent } = requireAgentParams(params);
@@ -685,6 +717,7 @@ export class BackendDriverRpc {
   }
 
   async close(): Promise<void> {
+    for (const job of this.textGenerations.values()) job.controller.abort(new Error('Generation cancelled during shutdown.'));
     for (const unsubscribe of this.unsubscribeUsage.values()) unsubscribe();
     for (const unsubscribe of this.unsubscribeRequestUsage.values()) unsubscribe();
     for (const unsubscribe of this.unsubscribeDriverEvents.values()) {

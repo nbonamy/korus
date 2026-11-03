@@ -48,11 +48,40 @@ log and socket paths, npm scripts and launchd labels stay brand-neutral.
 - Agent creation (protocol, MCP delegation, independent review) goes through one
   `AgentCreationService`; callers only adapt their input.
 - Short text utilities use `driver/text/generate` with the initiating agent's
-  provider, prompt, optional instructions and output schema. `utilityTextModel`
-  owns the lightweight model policy: Luna, Haiku, or Gemini Flash-Lite/Flash,
-  resolved from that provider's catalog. A missing lightweight model is an error;
-  utilities never switch providers, send a conversation prompt or change the
-  agent's selected model. Provider hosts own isolated generation and cleanup.
+  provider, prompt, optional instructions and output schema. Callers declare task
+  complexity instead of provider model IDs; omission retains the simple tier.
+  `utilityTextModel` resolves the tier from that provider's native catalog. A
+  missing model is an error; utilities never switch providers, send a conversation
+  prompt or change the agent's selected model. Provider hosts own isolated
+  generation and cleanup. Cancellable utilities carry request IDs across RPC;
+  their owning host maps those IDs to local abort signals. Cancellation targets
+  the isolated provider conversation and acknowledges its settlement, independently
+  of the agent's main conversation. Diff visualization sets `timeoutMs: null`
+  across utility RPC and provider generation to wait until completion or cancellation.
+  A separate tools flag opts inspection utilities
+  into read-only workspace inspection; omission disables workspace-tool access. This
+  policy does not control provider-configured tools unrelated to the workspace.
+  Diff visualization supplies the agent's working folder and selected Git scope,
+  including section filters. The model retrieves focused evidence through tools;
+  patch contents are not embedded in its prompt. Native shapes own their component
+  and review metadata; navigation stays limited to files and line ranges present
+  in the selected comparison. Role icons resolve to app-owned assets in the
+  renderer; fetched marks are embedded as bounded image payloads. The renderer sanitizes
+  SVG and retains each saved diagram's image bytes without an external registry.
+  The bundled `korus-stack-diagram` skill owns the shared architecture-diagram
+  guidance. Visualize loads it through `read-skill`; Polished Diff Viz injects the
+  same skill text into its utility request. Caller-specific output and evidence
+  contracts stay separate from that visual guidance. Composition targets are
+  advisory: usable drawings survive extra components, groups, connections and
+  longer labels. Optional review metadata is recovered independently; unsupported
+  annotations and out-of-scope links are omitted, and dangling bindings become
+  standalone geometry. Rendering and safety constraints still reject unusable
+  or unsafe content.
+  Polished Viz attaches an app-owned PNG composition reference from the runtime
+  assets root. Forge ships it outside `app.asar`; standalone daemon staging and
+  SSH installation carry the same file beside the daemon. Utility image inputs
+  are host-resolved absolute paths, validated as bounded image attachments before
+  provider dispatch, and do not enable workspace tools.
 - Repository acquisition and branch-to-agent setup share daemon-owned modules
   across desktop and companion adapters. Access adapters may revalidate a grant
   before each write, but do not duplicate checkout selection or clone-reuse rules.
@@ -208,9 +237,10 @@ The protocol is transport-neutral JSON-RPC 2.0, one message per line.
 - `stdout` is reserved for JSON-RPC in stdio mode; diagnostics go to stderr and
   `$APP_HOME/logs/daemon.log` (structured JSONL, size-rotated). Redact prompts,
   tokens, OAuth codes, command secrets and file contents from logs.
-- Requests carry deadlines (`core/src/backend-protocol/request-timeout.ts`) so no
-  client waits forever; Electron adds a grace period so a remote timeout reaches
-  the desktop first.
+- Request deadline policy lives in `core/src/backend-protocol/request-timeout.ts`.
+  Diff visualization explicitly waits until completion or cancellation; other
+  requests retain bounded deadlines. Electron adds a grace period so a remote
+  timeout reaches the desktop first.
 
 ### Conversation share authority
 

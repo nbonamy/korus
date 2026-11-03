@@ -2,7 +2,7 @@
   <el-segmented v-model="view" class="git-diff-view-toggle" :options="options" :aria-label="$t('surface.diffTreemap.view')">
     <template #default="{ item }">
       <span class="git-diff-view-toggle__option">
-        <component :is="item.value === 'map' ? ChartTreemapIcon : FileDiffIcon" aria-hidden="true" />
+        <component :is="item.icon" aria-hidden="true" />
         <span>{{ item.label }}</span>
       </span>
     </template>
@@ -12,11 +12,12 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { translate } from '../i18n';
-import { ChartTreemapIcon, FileDiffIcon } from '../shared/icons/app-icons';
-const view = defineModel<'diff' | 'map'>({ required: true });
+import { AffiliateIcon, ChartTreemapIcon, FileDiffIcon } from '../shared/icons/app-icons';
+const view = defineModel<'diff' | 'viz' | 'map'>({ required: true });
 const options = computed(() => [
-  { value: 'diff', label: translate('surface.diffTreemap.files') },
-  { value: 'map', label: translate('surface.diffTreemap.map') },
+  { value: 'diff', label: translate('surface.diffTreemap.files'), icon: FileDiffIcon },
+  { value: 'viz', label: translate('surface.diffViz.name'), icon: AffiliateIcon },
+  { value: 'map', label: translate('surface.diffTreemap.map'), icon: ChartTreemapIcon },
 ]);
 </script>
 

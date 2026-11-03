@@ -7,6 +7,7 @@ vi.mock('@excalidraw/excalidraw', () => ({
   Excalidraw: () => null,
   MainMenu: () => null,
   CaptureUpdateAction: {},
+  FONT_FAMILY: { Nunito: 6, Cascadia: 3 },
   convertToExcalidrawElements: vi.fn(),
   exportToCanvas: vi.fn(),
   restoreElements: vi.fn(elements => structuredClone(elements)),
@@ -17,11 +18,31 @@ vi.mock('@excalidraw/excalidraw', () => ({
   })),
 }));
 vi.mock('@excalidraw/mermaid-to-excalidraw', () => ({ parseMermaidToExcalidraw: convert }));
-import { convertToExcalidrawElements, restoreElements } from '@excalidraw/excalidraw';
+import { convertToExcalidrawElements, restoreElements, exportToCanvas } from '@excalidraw/excalidraw';
 import { isCanvasDocument } from '@workspace/core/visualize-canvas';
 import { importVisualization, mountCanvas } from '../excalidraw-editor';
 const base: Visualization = { id: 'v', title: 'Diagram', content: { kind: 'mermaid', source: '' }, createdAt: '', updatedAt: '' };
 describe('canvas imports', () => {
+  it('opens legacy diagram text with portable native fonts without mutating the saved scene', async () => {
+    const elements = [{id:'name',type:'text',x:0,y:0,width:150,height:24,text:'Vue UI',fontFamily:4},
+      {id:'edge',type:'text',x:160,y:0,width:150,height:20,text:'prompts',fontFamily:10}];
+    const canvas = {elements,files:{},selectedElementIds:[],preview:'',revision:1};
+    const scene = await importVisualization({...base,canvas}, '');
+    expect(scene.elements.map(element=>element.fontFamily)).toEqual([6,3]);
+    expect(canvas.elements.map(element=>element.fontFamily)).toEqual([4,10]);
+    const imported = await importVisualization({...base,content:{kind:'excalidraw',source:JSON.stringify(canvas)}}, '');
+    expect(imported.elements.map(element=>element.fontFamily)).toEqual([6,3]);
+  });
+  it('renders app-owned native colors without Excalidraw inverting the palette in dark mode', () => {
+    const fonts = Object.assign(new EventTarget(), { ready: Promise.resolve() });
+    Object.defineProperty(document, 'fonts', { configurable: true, value: fonts });
+    vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+    vi.stubGlobal('requestAnimationFrame', vi.fn());
+    document.documentElement.classList.add('dark');
+    const editor = mountCanvas(document.createElement('div'), { elements: [], files: {}, selectedElementIds: [], preview: '' }, vi.fn(), vi.fn(), vi.fn(), { nativeColors: true });
+    try { expect(root.render.mock.calls.at(-1)![0].props.children.props.initialData.appState).toMatchObject({ theme: 'light', viewBackgroundColor: 'transparent' }); }
+    finally { editor.dispose(); document.documentElement.classList.remove('dark'); }
+  });
   it('imports converter image files as persistable canvas documents', async () => {
     const image = { id: 'image', type: 'image', x: 0, y: 0, width: 120, height: 60, fileId: 'asset' };
     convert.mockResolvedValueOnce({ elements: [image], files: { asset: { id: 'asset', mimeType: 'image/svg+xml', dataURL: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60" viewBox="0 0 1200 600"><text>Fallback diagram</text></svg>') } } });
@@ -56,6 +77,26 @@ describe('canvas imports', () => {
     expect(scene).toStrictEqual({ elements, files: { img: { id: 'img', mimeType: 'image/png', dataURL: 'data:image/png;base64,YQ==', created: 1 } }, selectedElementIds: [], preview: '' });
     expect(isCanvasDocument({ ...scene, revision: 1 })).toBe(true);
     expect(convert).not.toHaveBeenCalled();
+  });
+  it.each([false,true])('loads self-contained icon bytes from diagram data after a restart (saved=%s)', async saved => {
+    const iconImage={mimeType:'image/svg+xml' as const,base64:btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 24"><path fill="#fff" d="M0 0h48v24H0z"/></svg>'),source:'svgl' as const,sourceUrl:'https://svgl.app/library/example.svg',whiteFill:true};
+    const elements=[{id:'brand',type:'image',x:10,y:20,width:80,height:40,customData:{iconImage}}];
+    const native={elements,files:{},selectedElementIds:[],preview:''};
+    vi.stubGlobal('Image',class {naturalWidth=48;naturalHeight=24;src='';async decode(){}});
+    const paint={drawImage:vi.fn(),fillRect:vi.fn(),fillStyle:''};
+    const context=vi.spyOn(HTMLCanvasElement.prototype,'getContext').mockReturnValue(paint as never);
+    const data=vi.spyOn(HTMLCanvasElement.prototype,'toDataURL').mockReturnValue('data:image/png;base64,YQ==');
+    try {
+      const persisted=JSON.parse(JSON.stringify({...base,content:{kind:'excalidraw',source:JSON.stringify(native)},...(saved?{canvas:{...native,revision:2}}:{})}));
+      const scene=await importVisualization(persisted,'');
+      expect(Object.values(scene.files)).toEqual([expect.objectContaining({mimeType:'image/png',dataURL:'data:image/png;base64,YQ=='})]);
+      expect(scene.elements[0]).toMatchObject({id:'brand',x:10,y:20,width:80,height:40});
+      expect(scene.files[scene.elements[0].fileId as string]).toBeDefined();
+      expect(scene.elements[0].customData).not.toHaveProperty('iconImage');
+      expect(paint.fillStyle).toBe('#20242d');
+      expect(paint.drawImage).toHaveBeenCalledOnce();
+      expect(isCanvasDocument({...scene,revision:1})).toBe(true);
+    } finally {context.mockRestore();data.mockRestore();}
   });
   it('restores an authoritative canvas without reparsing its original source', async () => {
     const canvas = { revision: 3, elements: [{ id: 'user', type: 'rectangle', x: 77, y: 31, width: 20, height: 20 }], files: {}, selectedElementIds: [], preview: '' };

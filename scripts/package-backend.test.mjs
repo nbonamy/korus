@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +15,9 @@ for (const split of [false, true]) {
       symlinkSync(fileURLToPath(new URL('../node_modules', import.meta.url)), path.join(root, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
       writeFileSync(path.join(root, 'core/src/product.json'), JSON.stringify({ daemonName: 'korusd' }));
       writeFileSync(path.join(root, 'client/backend/dist/korusd'), '');
+      mkdirSync(path.join(root,'client/backend/dist/viz'));
+      const reference=readFileSync(new URL('../client/electron/assets/viz/reference.png',import.meta.url));
+      writeFileSync(path.join(root,'client/backend/dist/viz/reference.png'),reference);
       writeFileSync(path.join(root, 'client/backend/dist/daemon.mjs'), split
         ? 'export const lazy = () => import("./assets/lazy.js");'
         : 'const { basename } = await import("node:path"); process.stdout.write(basename("/fixture/ok"));');
@@ -27,6 +30,7 @@ for (const split of [false, true]) {
         const run = spawnSync(process.execPath, [path.join(root, 'client/electron/resources/daemon/daemon.mjs')], { encoding: 'utf8' });
         assert.equal(run.status, 0, run.stderr);
         assert.equal(run.stdout, 'ok');
+        assert.deepEqual(readFileSync(path.join(root,'client/electron/resources/daemon/viz/reference.png')),reference);
       }
     } finally { rmSync(root, { recursive: true, force: true }); }
   });

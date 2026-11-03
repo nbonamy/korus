@@ -2501,6 +2501,14 @@ export class AppBackendServer {
           return this.remoteTeams.clientSnapshot();
         });
       }
+      case backendMethods.agentRepositoryVisualizationSave: {
+        const agentId = requireStringParam(message.params, 'agentId');
+        const input = requireRecordParam(message.params, 'input') as unknown as import('@workspace/core/visualize').SaveRepositoryVisualizationInput;
+        return this.routeAgentSnapshotRequest(message.id, agentId, message.method, { agentId, input }, async () => {
+          await this.visualize.saveRepository(agentId, input);
+          return this.remoteTeams.clientSnapshot();
+        });
+      }
       case backendMethods.agentVisualizationCanvasSave: {
         const agentId = requireStringParam(message.params, 'agentId');
         const input = requireRecordParam(message.params, 'input') as unknown as import('@workspace/core/visualize-canvas').SaveCanvasInput;

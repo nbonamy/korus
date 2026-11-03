@@ -17,13 +17,13 @@ Requires an open pane; tool availability is not activation. Closed pane: ask to 
 - Imported editable canvases are authoritative. read-visualization-canvas for selection/revision, then one edit-visualization-canvas batch: `edits` change existing IDs, `add` appends new elements. The pane saves a new scene once after loading, so re-read the revision before the first edit. Never overwrite user edits by replacing/reimporting original source. Request all elements only if selection context is insufficient.
 - For discovery, ask one native synchronous question with three concrete proposals; use its built-in Other field, never a fourth option. Specific visualization requests go straight to generation.
 - Publish completed diagrams in the pane; keep chat secondary. Do not publish suggestion cards for discovery.
+- `fetch_tech_icon` is available for diagram assets even when the pane is closed; it needs no separate browsing or command permission. Load the shared stack skill for its asset-ID insertion rules.
 - Use conversation/existing visualizations only. Outside browsing, files, commands or research require explicit user request.
 
 ## Architecture and stack diagrams
 
-Adapted from caru-ini/stack-diagram (MIT). Use native excalidraw.
-
-- Model: nodes are a name plus a short lowercase role. Groups wrap things sharing a runtime, vendor or repo, one level of nesting at most. Edges: accent for the primary flow, neutral for internal links, dashed for deploy or dev-time. Infer groups and flows from a flat tool list.
-- Style: white rounded tile with a line pictogram, bold name, monospace role beneath; tinted group box with its label top-left; one or two word edge labels. No emoji; never recolor or redraw a brand logo.
-- Layout: a node is its tile plus its text. Node centers at least 140px apart. Arrows run tile side to tile side, or from below the text to the next tile's top, never through a label. Route elbows through gaps; crossing edges is fine, crossing nodes is not.
-- Verify: after adding, call view-visualization-canvas and fix arrows through text, clipped labels or elements outside their group in one edit batch before reporting.
+Before composing a stack, architecture or service-topology diagram, load
+`korus-stack-diagram` through read-skill. It owns the shared visual language,
+geometry, icon policy and worked examples; use native excalidraw for that style.
+Keep this skill's pane activation, output, editing and permission rules. After
+adding, use view-visualization-canvas and repair the current canvas before reporting.

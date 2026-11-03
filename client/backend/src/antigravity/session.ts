@@ -12,11 +12,14 @@ import { AcpPromptJournal } from './prompt-journal';
 import type { RendererMessagePart } from '@workspace/core/contracts';
 import type { ExecutionObservation } from '@workspace/core/usage';
 import { product } from '@workspace/core/product';
+import { hasGitSafeguards, nativeTargetsInside, readOnlyGitCommand } from '../agents/utility-workspace-tools';
 
 type SessionOptions = {
   agentId: string; cwd: string; home?: string; sessionId?: string;
   mcpServers: unknown[];
-  tools?: boolean;
+  tools?: boolean | 'read-only';
+  promptTimeoutMs?: number | null;
+  utilityMcpTools?: readonly {server: string; tools: readonly string[]}[];
   /** Not a user conversation: persist no prompts and hide it from history. */
   ephemeral?: boolean;
   changed(event: AntigravityConversationEvent): void;
@@ -45,7 +48,7 @@ export class AcpSession {
   static async open(options: SessionOptions): Promise<AcpSession> {
     const session = new AcpSession(options);
     try {
-      session.runtime = await AcpRuntime.open({ cwd: options.cwd, home: options.home, filesystem: options.tools !== false,
+      session.runtime = await AcpRuntime.open({ cwd: options.cwd, home: options.home, filesystem: options.tools === 'read-only' ? 'read-only' : options.tools !== false,
         onRequest: (method, params) => session.request(method, params),
         onNotification: (method, params) => session.notification(method, params),
         onClose: error => session.closed(error),
@@ -123,7 +126,7 @@ export class AcpSession {
       this.promptSent = true;
       startedAt = Date.now();
       observe('started');
-      return this.runtime.connection.request('session/prompt', { sessionId: this.sessionId, prompt: content }, 30 * 60_000);
+      return this.runtime.connection.request('session/prompt', { sessionId: this.sessionId, prompt: content }, this.options.promptTimeoutMs === undefined ? 30 * 60_000 : this.options.promptTimeoutMs);
     })
       .then(result => {
         if (!record(result) || typeof result.stopReason !== 'string') throw new Error('Invalid Antigravity turn completion.');
@@ -204,6 +207,18 @@ export class AcpSession {
 
   private async request(method: string, params: unknown): Promise<unknown> {
     if (!record(params) || !this.transcript || params.sessionId !== this.sessionId || this.disposed || this.loading) throw new Error('Antigravity client request is outside an active session.');
+    if (method === 'session/request_permission' && this.options.utilityMcpTools) {
+      if (!this.active || this.interrupted) return {outcome: {outcome: 'cancelled'}};
+      const call = record(params.toolCall) ? params.toolCall : {};
+      const meta = record(call._meta) ? call._meta : {};
+      const mcp = record(meta.mcp) ? meta.mcp : {};
+      const registered = call.kind === 'other' && meta.is_mcp_tool_call === true
+        && this.options.utilityMcpTools.some(server => server.server === mcp.server && server.tools.includes(String(mcp.tool)));
+      if (registered || meta.is_mcp_tool_call === true) {
+        const option = registered && Array.isArray(params.options) ? params.options.find(value => record(value) && value.kind === 'allow_once') : undefined;
+        return record(option) && typeof option.optionId === 'string' ? {outcome: {outcome:'selected', optionId:option.optionId}} : {outcome:{outcome:'cancelled'}};
+      }
+    }
     if (this.options.tools === false) {
       if (method === 'session/request_permission') return { outcome: { outcome: 'cancelled' } };
       throw new Error('Tools are unavailable during text generation.');
@@ -211,6 +226,21 @@ export class AcpSession {
     if (method === 'session/request_permission') {
       if (!this.active) throw new Error('Antigravity permission request has no active turn.');
       if (this.interrupted) return { outcome: { outcome: 'cancelled' } };
+      if (this.options.tools === 'read-only') {
+        const call = record(params.toolCall) ? params.toolCall : {};
+        const input = record(call.rawInput) ? call.rawInput : {};
+        const command = input.CommandLine ?? input.command;
+        const cwd = input.Cwd ?? input.cwd;
+        const read = ['read', 'search'].includes(String(call.kind)) && await nativeTargetsInside(call, this.options.cwd);
+        // Native command permissions cannot rewrite tool input; require the hardened invocation, including diff-driver and fsmonitor safeguards.
+        const safeCommand = readOnlyGitCommand(command);
+        const diffCommand = safeCommand && /\b(?:diff|show|log) --no-ext-diff/u.test(safeCommand);
+        const git = call.kind === 'execute' && safeCommand
+          && hasGitSafeguards(command) && typeof command === 'string' && (!diffCommand || (/--no-ext-diff\b/u.test(command) && /--no-textconv\b/u.test(command)))
+          && (cwd === undefined || cwd === this.options.cwd);
+        const option = (read || git) && Array.isArray(params.options) ? params.options.find(value => record(value) && value.kind === 'allow_once') : undefined;
+        return record(option) && typeof option.optionId === 'string' ? { outcome: { outcome: 'selected', optionId: option.optionId } } : { outcome: { outcome: 'cancelled' } };
+      }
       const sessionHasKorusMcp = this.options.mcpServers.some(server => record(server) && server.name === product.mcpServerName);
       const pending = permissionRequest(params, sessionHasKorusMcp);
       if (pending.automaticResponse) return pending.automaticResponse;
@@ -220,6 +250,7 @@ export class AcpSession {
       });
     }
     if (!this.active) throw new Error('Antigravity file request has no active turn.');
+    if (this.options.tools === 'read-only' && method !== 'fs/read_text_file') throw new Error('This utility only reads its working folder.');
     const result = await handleAcpFileRequest(method, params, [this.options.cwd,
       path.join(this.options.home ?? antigravityHome(), 'antigravity-acp', 'brain', this.sessionId)]);
     if (method === 'fs/write_text_file' && typeof params.path === 'string' && /^(?:PLAN|implementation_plan)\.md$/i.test(path.basename(params.path)) && typeof params.content === 'string') this.planMarkdown = params.content;

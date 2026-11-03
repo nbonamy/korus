@@ -97,6 +97,7 @@ rl.on('line',line=>{
  } else if(v.method==='session/prompt') {
    promptId=v.id;
    const text=v.params.prompt[0].text;
+   fs.writeFileSync(require('node:path').join(process.cwd(),'fixture-prompt.json'),JSON.stringify(v.params.prompt));
    if(text.startsWith('usage-fixture:')) {
      const fixture=usageFixture();
      for(const item of fixture.updates) update(item);
@@ -121,7 +122,7 @@ rl.on('line',line=>{
    }
    if(mcpServers.some(server=>server.env.some(item=>item.name==='KORUS_ACP_MCP_URL'&&item.value.includes('reviewContextId=')))) {void review(text,reply).catch(error=>{fs.writeFileSync(require('node:path').join(process.cwd(),'fixture-error.txt'),error.message);send({id:v.id,error:{code:-32603,message:error.message}});});return;}
    if(text==='crash') process.exit(1);
-   if(text==='wait') return;
+   if(text==='wait'||text.endsWith('utility-wait')) return;
    if(text==='question'||text==='deny') {
      update({sessionUpdate:'tool_call',toolCallId:'live-id',title:'Create file',kind:'edit',status:'pending'});
      send({id:v.id,method:'session/request_permission',params:{sessionId,toolCall:{toolCallId:text==='question'?'interaction_1':'live-id',title:text==='question'?'Which option?':'Create file'},options:text==='question'?[{optionId:'native-choice-7',name:'Proceed',kind:'allow_once'}]:[{optionId:'native-deny-9',name:'Deny',kind:'reject_once'}]}});
@@ -383,6 +384,47 @@ describe('Antigravity native session', () => {
     expect(JSON.parse(await readFile(path.join(root, 'permission-response.json'), 'utf8')).result).toStrictEqual({ outcome: { outcome: 'cancelled' } });
   });
 
+  it('automatically admits hardened read-only Git inspection and denies mutation in a utility session', async () => {
+    const { session, changed } = await open(undefined, { tools: 'read-only' });
+    const safe = 'git --no-pager --no-optional-locks -c core.fsmonitor=false';
+    for (const [command, allowed] of [
+      [`${safe} status --short`, true],
+      [`${safe} diff --no-ext-diff --no-textconv --stat HEAD`, true],
+      ['git status --short', false],
+      ['git --no-optional-locks status --short', false],
+      [`${safe} reset --hard`, false],
+      [`${safe} diff --no-ext-diff --no-textconv --output=source.ts`, false],
+      [`${safe} status; touch source.ts`, false],
+    ] as const) {
+      const fixture = mcpPermission('inspect');
+      await session.prompt(`permission-fixture:${JSON.stringify({ ...fixture, toolCall: { toolCallId: 'git-inspect', kind: 'execute', rawInput: { CommandLine: command, Cwd: root } } })}`).completion;
+      expect(JSON.parse(await readFile(path.join(root, 'permission-response.json'), 'utf8')).result).toStrictEqual({ outcome: allowed ? { outcome: 'selected', optionId: 'native-once-42' } : { outcome: 'cancelled' } });
+    }
+    expect(changed.mock.calls.map(([event]) => event.type)).not.toContain('request.created');
+  });
+
+  it('admits native reads and searches only for targets established inside the working folder', async () => {
+    await writeFile(path.join(root, 'inside.ts'), 'export {};');
+    const outside = path.join(path.dirname(root), `${path.basename(root)}-outside.ts`);
+    await writeFile(outside, 'secret');
+    const { session } = await open(undefined, { tools: 'read-only' });
+    for (const [toolCall, allowed] of [
+      [{ kind: 'read', rawInput: { AbsolutePath: path.join(root, 'inside.ts') } }, true],
+      [{ kind: 'read', locations: [{ path: 'inside.ts' }] }, true],
+      [{ kind: 'search', rawInput: { SearchPath: root } }, true],
+      [{ kind: 'read', rawInput: { AbsolutePath: outside } }, false],
+      [{ kind: 'read', rawInput: { path: `../${path.basename(outside)}` } }, false],
+      [{ kind: 'read', locations: [{ path: 'inside.ts' }, { path: path.dirname(root) }] }, false],
+      [{ kind: 'search', rawInput: { Query: 'secret' } }, false],
+      [{ kind: 'read' }, false],
+    ] as const) {
+      const fixture = mcpPermission('inspect');
+      await session.prompt(`permission-fixture:${JSON.stringify({ ...fixture, toolCall: { toolCallId: 'native-read', ...toolCall } })}`).completion;
+      expect(JSON.parse(await readFile(path.join(root, 'permission-response.json'), 'utf8')).result).toStrictEqual({ outcome: allowed ? { outcome: 'selected', optionId: 'native-once-42' } : { outcome: 'cancelled' } });
+    }
+    await rm(outside, { force: true });
+  });
+
   it('does not authorize a Korus MCP request arriving after cancellation', async () => {
     const { session, changed } = await open(undefined, { mcpServers: [sessionMcpServer('http://127.0.0.1:1/mcp')] });
     const turn = session.prompt(`cancel-permission-fixture:${JSON.stringify(mcpPermission('finish_turn'))}`);
@@ -391,6 +433,24 @@ describe('Antigravity native session', () => {
     expect(JSON.parse(await readFile(path.join(root, 'permission-response.json'), 'utf8')).result).toStrictEqual({ outcome: { outcome: 'cancelled' } });
     expect(changed.mock.calls.map(([event]) => event.type)).not.toContain('request.created');
     expect(session.snapshot.turns.at(-1)?.status).toBe('interrupted');
+  });
+
+  it('aborts an auxiliary generation through session/cancel without creating an agent conversation', async () => {
+    await writeFile(path.join(root, 'usage-fixture.json'), JSON.stringify({ configuration: { models: { currentModelId: 'quick-lite', availableModels: [{ modelId: 'quick-lite', name: 'Gemini Flash Lite' }] } } }));
+    const host = new AntigravityHost();
+    const agent: Agent = { id: 'utility-cancel', name: 'Utility', folder: root, backend: 'antigravity', createdAt: '', updatedAt: '', status: { type: 'idle' } };
+    const controller = new AbortController();
+    const events: BackendEvent[] = [];
+    host.onEvent(event => events.push(event));
+    try {
+      const pending = host.generateText(agent, { cwd: root, prompt: 'utility-wait', timeoutMs: null, signal: controller.signal });
+      const stopped = expect(pending).rejects.toThrow(/cancel/i);
+      await vi.waitFor(async () => expect(await readFile(path.join(root, 'fixture-prompt.json'), 'utf8')).toContain('wait'));
+      controller.abort(new Error('Generation cancelled.'));
+      await stopped;
+      expect(agent.backendSession).toBeUndefined();
+      expect(events).toEqual([]);
+    } finally { await host.close(); }
   });
 
   it('generates auxiliary text with no MCP or filesystem tools and preserves the agent conversation', async () => {
@@ -402,25 +462,43 @@ describe('Antigravity native session', () => {
     const events: BackendEvent[] = [];
     host.onEvent(event => events.push(event));
     try {
-      const result = await host.generateText(agent, { cwd: root, prompt: 'utility-fixture', outputSchema: { type: 'string' } });
+      const file=path.resolve(import.meta.dirname,'../../../../electron/assets/viz/reference.png');
+      const result = await host.generateText(agent, { cwd: root, prompt: 'utility-fixture', outputSchema: { type: 'string' },mcpServers:[{name:'diagram_icons_job',url:'http://127.0.0.1:1234/mcp/token',enabledTools:['fetch_tech_icon']}],attachments:[{type:'image',path:file,mimeType:'image/png'}] });
+      expect(JSON.parse(await readFile(path.join(root,'fixture-prompt.json'),'utf8'))).toEqual([expect.objectContaining({type:'text'}),{type:'image',mimeType:'image/png',data:(await readFile(file)).toString('base64')}]);
       expect(result.text).toBe('Tools denied; text result.');
       expect(JSON.parse(await readFile(path.join(root, 'fixture-model.json'), 'utf8'))).toMatchObject({ configId: 'model', value: 'quick-lite' });
       expect(JSON.parse(await readFile(path.join(root, 'fixture-initialize.json'), 'utf8')).clientCapabilities.fs).toEqual({ readTextFile: false, writeTextFile: false });
-      expect(JSON.parse(await readFile(path.join(root, 'fixture-session.json'), 'utf8'))).toMatchObject({ mcpServers: [], _meta: { agy: { enabledTools: [] } } });
+      expect(JSON.parse(await readFile(path.join(root, 'fixture-session.json'), 'utf8'))).toMatchObject({ mcpServers: [expect.objectContaining({name:'diagram_icons_job',env:expect.arrayContaining([{name:'KORUS_ACP_MCP_URL',value:'http://127.0.0.1:1234/mcp/token'}])})], _meta: { agy: { enabledTools: [] } } });
       await expect(readFile(path.join(root, 'unwanted-write'))).rejects.toMatchObject({ code: 'ENOENT' });
       expect(events).toEqual([]);
       expect(agent.backendSession).toBeUndefined();
+      await host.generateText(agent, {cwd:root,prompt:'utility-fixture',complexity:'normal'});
+      expect(JSON.parse(await readFile(path.join(root,'fixture-model.json'),'utf8'))).toMatchObject({value:'quick'});
+      await host.generateText(agent, {cwd:root,prompt:'utility-fixture',complexity:'normal',tools:true});
+      expect(JSON.parse(await readFile(path.join(root, 'fixture-initialize.json'), 'utf8')).clientCapabilities.fs).toEqual({ readTextFile: true, writeTextFile: false });
+      await expect(readFile(path.join(root, 'unwanted-write'))).rejects.toMatchObject({ code: 'ENOENT' });
+      await host.generateText(agent, {cwd:root,prompt:'utility-fixture',complexity:'complex'});
+      expect(JSON.parse(await readFile(path.join(root,'fixture-model.json'),'utf8'))).toMatchObject({value:'heavy'});
     } finally { await host.close(); }
+  });
+  it.each([false,'read-only'] as const)('allows only the supplied native MCP tool in an isolated utility with tools=%s', async tools => {
+    const mcp = {toolCall:{toolCallId:'icon-call',kind:'other',title:'Fetch icon',_meta:{is_mcp_tool_call:true,mcp:{server:'diagram_icons_job',tool:'fetch_tech_icon'}}},options:[{optionId:'once',name:'Allow',kind:'allow_once'}]};
+    const {session}=await open(undefined,{tools,mcpServers:[sessionMcpServer('http://127.0.0.1:1/mcp/token','diagram_icons_job',['fetch_tech_icon'])],utilityMcpTools:[{server:'diagram_icons_job',tools:['fetch_tech_icon']}]});
+    await session.prompt(`permission-fixture:${JSON.stringify(mcp)}`).completion;
+    expect(JSON.parse(await readFile(path.join(root,'permission-response.json'),'utf8')).result).toMatchObject({outcome:{outcome:'selected',optionId:'once'}});
+    const wrong={...mcp,toolCall:{...mcp.toolCall,_meta:{is_mcp_tool_call:true,mcp:{server:'other',tool:'fetch_tech_icon'}}}};
+    await session.prompt(`permission-fixture:${JSON.stringify(wrong)}`).completion;
+    expect(JSON.parse(await readFile(path.join(root,'permission-response.json'),'utf8')).result).toMatchObject({outcome:{outcome:'cancelled'}});
   });
   it('keeps utility generation sessions out of history and stores no prompt text for them', async () => {
     await writeFile(path.join(root, 'usage-fixture.json'), JSON.stringify({ configuration: { models: {
-      currentModelId: 'heavy', availableModels: [{ modelId: 'heavy', name: 'Gemini Pro' }, { modelId: 'quick', name: 'Gemini Flash' }],
+      currentModelId: 'heavy', availableModels: [{ modelId: 'heavy', name: 'Gemini Pro' }, { modelId: 'quick', name: 'Gemini Flash' }, {modelId:'quick-lite',name:'Gemini Flash Lite'}],
     } } }));
     const host = new AntigravityHost();
     const agent: Agent = { id: 'utility', name: 'Utility', folder: root, backend: 'antigravity', createdAt: '', updatedAt: '', status: { type: 'idle' } };
     try {
       await host.generateText(agent, { cwd: root, prompt: 'utility-fixture-diff' });
-      expect(JSON.parse(await readFile(path.join(root, 'fixture-model.json'), 'utf8'))).toMatchObject({ configId: 'model', value: 'quick' });
+      expect(JSON.parse(await readFile(path.join(root, 'fixture-model.json'), 'utf8'))).toMatchObject({ configId: 'model', value: 'quick-lite' });
       const generated = (await readFile(path.join(root, 'home', 'catalog.json'), 'utf8')).trim().split('\n').map(line => JSON.parse(line).sessionId as string);
       expect(generated).toHaveLength(1);
       const sessionDirectory = path.join(root, 'home', 'korus-sessions', encodeURIComponent(generated[0]!));

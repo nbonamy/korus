@@ -21,7 +21,7 @@ import { backendRequestTimeoutMs } from './backend-request-timeout';
 type PendingRequest = {
   resolve(value: unknown): void;
   reject(error: Error): void;
-  timeout: NodeJS.Timeout;
+  timeout: NodeJS.Timeout | undefined;
 };
 
 export type BackendRpcSessionOptions = {
@@ -76,13 +76,13 @@ export class BackendRpcSession {
   request<Result>(method: string, params?: unknown): Promise<Result> {
     if (!this.write) throw new Error('daemon is not connected.');
 
-    const requestTimeoutMs = backendRequestTimeoutMs(method);
+    const requestTimeoutMs = backendRequestTimeoutMs(method, params);
     const id = this.nextRequestId++;
     const message = params === undefined
       ? { jsonrpc: '2.0' as const, id, method }
       : { jsonrpc: '2.0' as const, id, method, params };
     const result = new Promise<Result>((resolve, reject) => {
-      const timeout = setTimeout(() => {
+      const timeout = requestTimeoutMs === null ? undefined : setTimeout(() => {
         this.pending.delete(id);
         warnMain('daemon', 'request timed out', { method, id });
         reject(new Error(`daemon request timed out: ${method}`));

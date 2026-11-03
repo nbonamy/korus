@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import path from 'node:path';
+import type { DiffVizDiagram } from '@workspace/core/git-diff-viz';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentBackendDriver, BackendEvent } from '@workspace/core/backend-driver';
 import { claudeBackendCapabilities, codexBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
@@ -11,7 +13,55 @@ import {
   createWorkItem,
 } from './server-test-fixtures';
 
+function nativeViz(nodes: DiffVizDiagram['nodes']) {
+  return { elements: nodes.map((node, i) => ({ id: node.id, type: 'rectangle', x: 0, y: i * 160, width: 260, height: 80,
+    text: node.label, component: { status: node.status, paths: node.paths } })) };
+}
+
 describe('AppBackendServer', () => {
+  const assets=path.resolve(import.meta.dirname,'../../../electron/assets');
+  beforeEach(()=>vi.stubEnv('APP_ASSETS_PATH',assets));
+  afterEach(()=>vi.unstubAllEnvs());
+
+  it('cancels only the matching ephemeral generation through the provider and prevents preflight starts', async () => {
+    const snapshot = createTestSnapshot();
+    const agent: import('@workspace/core/contracts').Agent = { id: 'agent-dina', name: 'Dina', folder: '/repo', backend: 'codex', status: { type: 'idle' }, createdAt: '', updatedAt: '' };
+    snapshot.agents = [agent];
+    snapshot.teams[0]!.agentIds = [agent.id];
+    let signal!: AbortSignal;
+    const generateText = vi.fn((_agent, input) => new Promise((_resolve, reject) => {
+      signal = input.signal;
+      signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }));
+    const interrupt = vi.fn();
+    const driver = { backend: agent.backend, getRuntimeStatus: () => ({ backend: agent.backend, status: 'running' }),
+      getCapabilities: () => codexBackendCapabilities, generateText, interrupt, sendPrompt: vi.fn(),
+      respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: async () => {} } as unknown as AgentBackendDriver;
+    const diff = vi.fn(async () => ({ target: { type: 'uncommitted' }, sections: [], diff: 'diff --git a/input.ts b/input.ts\n' }));
+    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new BackendDriverRpc(new Map([[agent.backend, driver]])),
+      agentGitService: { diff } as unknown as AgentGitService });
+    const request = (generationId: string) => server.handleMessage({ jsonrpc: '2.0', id: generationId, method: backendMethods.agentGitMessageGenerate,
+      params: { agentId: agent.id, input: { kind: 'viz', mode: 'fast', target: { type: 'uncommitted' }, generationId } } });
+    const cancel = (generationId: string) => server.handleMessage({ jsonrpc: '2.0', id: 'cancel', method: backendMethods.agentGitMessageCancel, params: { agentId: agent.id, generationId } });
+    const running = request('active');
+    const stopped = expect(running).rejects.toThrow(/cancel/i);
+    await vi.waitFor(() => expect(generateText).toHaveBeenCalledOnce());
+    await cancel('unrelated');
+    expect(signal?.aborted).toBe(false);
+    const acknowledgement = await cancel('active'); await stopped;
+    expect(JSON.parse(JSON.stringify(acknowledgement))).toMatchObject({ result: null });
+    expect(signal.aborted).toBe(true);
+    expect(interrupt).not.toHaveBeenCalled();
+    let finishDiff!: (value: unknown) => void;
+    diff.mockReturnValueOnce(new Promise(resolve => { finishDiff = resolve; }) as never);
+    const preflight = request('preflight');
+    const notStarted = expect(preflight).rejects.toThrow(/cancel/i);
+    await vi.waitFor(() => expect(diff).toHaveBeenCalledTimes(2));
+    const cancellation = cancel('preflight');
+    finishDiff({ target: { type: 'uncommitted' }, sections: [], diff: 'diff --git a/input.ts b/input.ts\n' });
+    await cancellation; await notStarted;
+    expect(generateText).toHaveBeenCalledOnce();
+  });
 
   it('returns git diff data without emitting presentation events', async () => {
     const snapshot = createTestSnapshot();
@@ -190,7 +240,11 @@ describe('AppBackendServer', () => {
     }];
     const generateText = vi.fn()
       .mockResolvedValueOnce({ text: '{"message":"feat: describe selected changes"}' })
-      .mockResolvedValueOnce({ text: '{"title":"Improve Git drafts","body":"## Summary\\n- Generate drafts"}' });
+      .mockResolvedValueOnce({ text: '{"title":"Improve Git drafts","body":"## Summary\\n- Generate drafts"}' })
+      .mockResolvedValueOnce({ text: JSON.stringify(nativeViz([
+        { id: 'input', label: 'Request intake', status: 'unchanged', paths: [] },
+        { id: 'result', label: 'Draft generation', status: 'changed', paths: ['src/output.ts', 'src/input.ts'] },
+      ])) });
     const sendPrompt = vi.fn();
     const driver: AgentBackendDriver = {
       backend,
@@ -209,7 +263,7 @@ describe('AppBackendServer', () => {
       version: 'test-version',
       snapshot,
       driverRpc: new BackendDriverRpc(new Map([[backend, driver]])),
-      agentGitService: { commitMessageContext, pullRequestMessageContext, workflow: async () => ({ remoteUrl: `git@${provider}.com:owner/repo.git` }) } as unknown as AgentGitService,
+      agentGitService: { diff: vi.fn(async (_folder, target) => ({ target, sections: [], diff: ['src/input.ts', 'src/output.ts'].map(path => `diff --git a/${path} b/${path}\n`).join('') + '+LARGE_PATCH_SENTINEL'.repeat(20_000) })), commitMessageContext, pullRequestMessageContext, workflow: async () => ({ remoteUrl: `git@${provider}.com:owner/repo.git` }) } as unknown as AgentGitService,
     });
 
     await expect(server.handleMessage({
@@ -227,7 +281,18 @@ describe('AppBackendServer', () => {
 
     expect(commitMessageContext).toHaveBeenCalledWith('/repo', { includeUnstaged: false, includeUntracked: true });
     expect(pullRequestMessageContext).toHaveBeenCalledWith('/repo');
-    expect(generateText).toHaveBeenCalledTimes(2);
+    const viz = await server.handleMessage({ jsonrpc: '2.0', id: 'viz', method: backendMethods.agentGitMessageGenerate,
+      params: { agentId: 'agent-dina', input: { kind: 'viz', target: { type: 'branch', baseRef: 'origin/main' } } } });
+    expect(viz).toMatchObject({ result: { kind: 'viz', diagram: { nodes: [
+      { label: 'Request intake', status: 'unchanged', paths: [] }, { label: 'Draft generation', status: 'changed', paths: ['src/output.ts', 'src/input.ts'] },
+    ] } } });
+    expect(generateText).toHaveBeenCalledTimes(3);
+    expect(generateText.mock.calls[2]?.[1].prompt).not.toMatch(/LARGE_PATCH_SENTINEL|diff --git/);
+    expect(generateText.mock.calls[2]?.[1]).toMatchObject({ complexity: 'normal', cwd: '/repo', tools: true, prompt: expect.stringContaining('origin/main'),
+      developerInstructions: expect.stringMatching(/system impact.*not files/i), outputSchema: { properties: { elements: { minItems: 1 } } } });
+    generateText.mockResolvedValueOnce({ text: JSON.stringify(nativeViz([{ id: 'outside', label: 'Invented work', status: 'changed', paths: ['/outside'] }])) });
+    await expect(server.handleMessage({ jsonrpc: '2.0', id: 'bad-viz', method: backendMethods.agentGitMessageGenerate,
+      params: { agentId: 'agent-dina', input: { kind: 'viz', target: { type: 'branch', baseRef: 'origin/main' } } } })).resolves.toMatchObject({result:{kind:'viz',diagram:{nodes:[{id:'outside',paths:[]}]}}});
     expect(generateText.mock.calls[0]?.[1].developerInstructions).toContain('Use lowercase conventional commits.');
     expect(generateText.mock.calls[0]?.[1].developerInstructions).not.toContain('deployment checklist');
     expect(generateText.mock.calls[1]?.[1].developerInstructions).toContain('Include a deployment checklist.');

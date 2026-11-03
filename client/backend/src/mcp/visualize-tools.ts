@@ -1,3 +1,4 @@
+import { registerFetchIconTool } from '../diagram-icons/mcp';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import * as z from 'zod/v4';
 import { visualizationSuggestionLimits } from '@workspace/core/visualize';
@@ -8,7 +9,7 @@ import { loggedToolResult, type AppMcpToolModuleProvider } from './tool-modules'
 const visualizationContent = z.discriminatedUnion('kind', [
   z.object({
     kind: z.enum(['mermaid', 'svg', 'excalidraw']),
-    source: z.string().trim().min(1).max(250_000),
+    source: z.string().trim().min(1).max(8*1024*1024),
   }),
   z.object({
     kind: z.literal('image'),
@@ -28,6 +29,7 @@ export function createVisualizeToolModuleProvider(visualize: VisualizeService): 
 }
 
 function registerVisualizeTools(server: McpServer, visualize: VisualizeService, agentId: string): void {
+  registerFetchIconTool(server, icon => visualize.fetchIcon(agentId, icon));
   server.registerTool('read-visualization-canvas', {
     description: 'Read current selected canvas elements and revision. Set selectedOnly false only when the whole canvas is needed.',
     inputSchema: { visualizationId: z.string().min(1), selectedOnly: z.boolean().default(true) },
