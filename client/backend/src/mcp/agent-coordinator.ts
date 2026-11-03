@@ -264,7 +264,10 @@ export class AppMcpAgentCoordinator {
 
   sendMessage(from: string, to: string, content: string): SendMessageResponse {
     const sender = this.requireAgent(from);
-    const recipient = this.findAgentInSameTeam(sender, to);
+    // Accept ID labels such as agent: or id: without changing literal name/folder lookup.
+    const recipientId = to.slice(to.lastIndexOf(':') + 1).trim();
+    const recipient = this.findAgentInSameTeam(sender, to)
+      ?? this.agentsInSameTeam(sender).find(agent => agent.id === recipientId);
     if (!recipient) {
       throw new McpToolError('Failed to send message: Recipient not found');
     }

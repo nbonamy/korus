@@ -162,6 +162,13 @@ describe('AppMcpAgentCoordinator', () => {
     expect(onInboxMessage).toHaveBeenCalledTimes(3);
   });
 
+  it.each(['agent:agent-jesse', 'id:agent-jesse', 'recipient:agent-jesse', ' id: agent: agent-jesse '])('delivers to the canonical agent ID when the recipient is %s', to => {
+    const { coordinator, onInboxMessage } = fixture();
+    expect(coordinator.sendMessage('agent-dina', to, 'hello')).toMatchObject({ success: true, recipientId: 'agent-jesse' });
+    expect(coordinator.checkMessages('agent-jesse').messages).toMatchObject([{ fromId: 'agent-dina', content: 'hello' }]);
+    expect(onInboxMessage).toHaveBeenCalledExactlyOnceWith('agent-jesse', 'message-1');
+  });
+
   it('checks without marking, marks selected messages, and takes the remainder', () => {
     const { coordinator } = fixture();
     coordinator.sendMessage('agent-dina', 'agent-jesse', 'one');
@@ -213,6 +220,8 @@ describe('AppMcpAgentCoordinator', () => {
     agents.push(agent({ id: 'agent-jesse-2', name: 'Jesse', folder: '/tmp/jesse-2' }));
 
     expect(() => coordinator.sendMessage('agent-dina', 'Other', 'nope'))
+      .toThrowError('Failed to send message: Recipient not found');
+    expect(() => coordinator.sendMessage('agent-dina', 'agent:agent-other', 'nope'))
       .toThrowError('Failed to send message: Recipient not found');
     expect(() => coordinator.sendMessage('agent-dina', 'Jesse', 'ambiguous'))
       .toThrowError("Recipient name 'Jesse' is ambiguous");
