@@ -4,6 +4,7 @@ import type { MissionStage } from '@workspace/core/missions';
 import html from './korus-inline-html/SKILL.md?raw';
 import computerUse from './korus-computer-use/SKILL.md?raw';
 import visualize from './korus-visualize/SKILL.md?raw';
+import stackDiagram from './korus-stack-diagram/SKILL.md?raw';
 import requirements from './mission-shape-requirements/SKILL.md?raw';
 import tickets from './mission-to-tickets/SKILL.md?raw';
 import implementation from './mission-implement-ticket/SKILL.md?raw';
@@ -29,7 +30,7 @@ function skill(source: string): Skill {
   return { name, description, markdown };
 }
 
-const generalSkills = [skill(html), skill(visualize), skill(delegation)];
+const generalSkills = [skill(html), skill(visualize), skill(stackDiagram), skill(delegation)];
 const computerUseSkill = skill(computerUse);
 const moduleSkills = [
   ['image-generation', skill(imagegen)],

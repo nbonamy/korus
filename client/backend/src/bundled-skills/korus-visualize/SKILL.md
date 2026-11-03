@@ -21,9 +21,8 @@ Requires an open pane; tool availability is not activation. Closed pane: ask to 
 
 ## Architecture and stack diagrams
 
-Adapted from caru-ini/stack-diagram (MIT). Use native excalidraw.
-
-- Model: nodes are a name plus a short lowercase role. Groups wrap things sharing a runtime, vendor or repo, one level of nesting at most. Edges: accent for the primary flow, neutral for internal links, dashed for deploy or dev-time. Infer groups and flows from a flat tool list.
-- Style: white rounded tile with a line pictogram, bold name, monospace role beneath; tinted group box with its label top-left; one or two word edge labels. No emoji; never recolor or redraw a brand logo.
-- Layout: a node is its tile plus its text. Node centers at least 140px apart. Arrows run tile side to tile side, or from below the text to the next tile's top, never through a label. Route elbows through gaps; crossing edges is fine, crossing nodes is not.
-- Verify: after adding, call view-visualization-canvas and fix arrows through text, clipped labels or elements outside their group in one edit batch before reporting.
+Before composing a stack, architecture or service-topology diagram, load
+`korus-stack-diagram` through read-skill. It owns the shared visual language,
+geometry, icon policy and worked examples; use native excalidraw for that style.
+Keep this skill's pane activation, output, editing and permission rules. After
+adding, use view-visualization-canvas and repair the current canvas before reporting.

@@ -1,3 +1,4 @@
+import { readBundledSkill } from '../../bundled-skills/catalog';
 import path from 'node:path';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { generateDiffViz } from '../generate-diff-viz';
@@ -101,6 +102,9 @@ it('sends only the working folder and selected scope with the normal tool-enable
   expect(input.prompt).toContain('origin/main');
   expect(input.prompt).toContain('unstaged');
   expect(input.prompt).not.toMatch(/diff --git|Current working-tree context/);
+  const shared=readBundledSkill('korus-stack-diagram',{}).markdown;
+  expect(input.developerInstructions).toContain(shared);
+  expect(input.developerInstructions.indexOf(shared)).toBe(input.developerInstructions.lastIndexOf(shared));
 });
 
 it('rejects an empty comparison or unsafe navigation paths before asking the provider', async () => {
@@ -129,6 +133,7 @@ it('generates Fast Mermaid with the same navigation contract', async () => {
   const generate = vi.fn().mockResolvedValue({ text: JSON.stringify(fast) });
   await expect(generateDiffViz(comparison, '/repo', generate, 'fast')).resolves.toStrictEqual({ format: 'mermaid', ...fast });
   expect(generate.mock.calls[0]![0].attachments).toBeUndefined();
+  expect(generate.mock.calls[0]![0].developerInstructions).not.toContain('korus-stack-diagram');
   expect(generate.mock.calls[0]![0]).toMatchObject({ complexity: 'normal', outputSchema: { properties: { source: { type: 'string' } } } });
   generate.mockResolvedValueOnce({ text: JSON.stringify({ ...fast, source: fast.source + '\nclick choices "https://outside.test"' }) });
   await expect(generateDiffViz(comparison, '/repo', generate, 'fast')).rejects.toThrow(/unsafe/);

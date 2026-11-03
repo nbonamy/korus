@@ -136,6 +136,11 @@ describe('AppMcpService', () => {
     const html = (await read('korus-inline-html')).result;
     expect(html).toMatchObject({ isError: false, structuredContent: { name: 'korus-inline-html', loaded: true } });
     expect(html.content[0].text).toMatch(/^<artifact title="[^"]+">\n<!doctype html><html>[\s\S]*?<\/html>\n<\/artifact>$/m);
+    const stack = (await read('korus-stack-diagram')).result;
+    expect(stack).toMatchObject({isError:false,structuredContent:{name:'korus-stack-diagram',loaded:true}});
+    expect(stack.content).toStrictEqual([{type:'text',text:stack.structuredContent.markdown}]);
+    expect((await read('korus-visualize')).result.content[0].text).toContain('read-skill');
+    expect((await read('korus-visualize')).result.content[0].text).toContain('korus-stack-diagram');
     for (const name of ['../../settings.json', '/etc/passwd', 'missing', 'korus-computer-use', 'mission-review']) {
       expect((await read(name)).result.isError).toBe(true);
     }
