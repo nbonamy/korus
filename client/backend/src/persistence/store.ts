@@ -1,3 +1,4 @@
+import { RepositoryStore } from '../repository-store';
 import type { TelemetryConsentState } from '@workspace/core/telemetry-consent';
 import { createHash } from 'node:crypto';
 import type { DelegatedTask } from '@workspace/core/delegated-task';
@@ -69,7 +70,9 @@ export class AppStateStore {
     this.taskWrites = operation.catch(() => undefined);
     return operation;
   }
-  private pending: Map<string, string> | null = null;
+  private pending: { files: Map<string, string>; icons: Record<string, string> } | null = null;
+  private writtenIcons: Record<string, string> = {};
+  private get repositories() { return new RepositoryStore(this.absolute('repositories.json')); }
   private waiters: Array<{ resolve(): void; reject(error: unknown): void }> = [];
   private writeInFlight = false;
   /** Relative path to the content last known to be on disk. */
@@ -92,8 +95,9 @@ export class AppStateStore {
 
   save(snapshot: AppSnapshot): Promise<void> {
     const desired = this.serialize(snapshot);
-    if (!this.writeInFlight && this.pending === null && sameFiles(desired, this.written)) return Promise.resolve();
-    this.pending = desired;
+    const effective = projectClientSnapshot(snapshot, 'desktop');
+    if (!this.writeInFlight && this.pending === null && sameFiles(desired, this.written) && JSON.stringify(effective.general.repositoryIcons) === JSON.stringify(this.writtenIcons)) return Promise.resolve();
+    this.pending = { files: desired, icons: { ...effective.general.repositoryIcons } };
     const operation = new Promise<void>((resolve, reject) => {
       this.waiters.push({ resolve, reject });
     });
@@ -121,7 +125,7 @@ export class AppStateStore {
     const backup = await backupFile(this.absolute(legacyFile), this.absolute(backupsDirectory), 'state-v0');
     await this.archiveExistingLayout();
     this.written = new Map();
-    await this.apply(this.serialize(snapshot));
+    await this.apply(this.serialize(snapshot), snapshot.general.repositoryIcons);
     const migrated = await this.readLayout(await readFile(this.absolute(rosterFile), 'utf8'));
     await writeFileAtomically(this.absolute(legacyFile), retiredMarker);
     this.options.log?.(`Migrated ${legacyFile} to ${rosterFile}, ${settingsFile} and ${visualizationsDirectory}/. Backup: ${backup}`);
@@ -142,7 +146,7 @@ export class AppStateStore {
 
   private async readLayout(rosterText: string): Promise<AppSnapshot> {
     const rosterEnvelope = parseStoreFile(rosterFile, rosterText, rosterSchemaVersion);
-    const settingsText = await readIfExists(this.absolute(settingsFile));
+    let settingsText = await readIfExists(this.absolute(settingsFile));
     if (settingsText === null) throw new StoreFormatError(`${settingsFile} is missing. Restore it from the ${backupsDirectory} folder.`);
     const settingsEnvelope = parseStoreFile(settingsFile, settingsText);
     const files: StoreFiles = {
@@ -151,6 +155,17 @@ export class AppStateStore {
       visualizations: [],
     };
     this.telemetrySettings = files.settings.telemetry;
+    const raw = settingsEnvelope.data as { settings: Record<string, unknown> };
+    // TODO(remove-after: 2026-11-30): Remove settings.repositoryIcons import and retirement; retain the client projection. https://github.com/nbonamy/korus/issues/74
+    const legacyIcons = raw.settings.repositoryIcons as Record<string, string> | undefined;
+    const icons = await this.repositories.icons(legacyIcons);
+    if (legacyIcons !== undefined) {
+      delete raw.settings.repositoryIcons;
+      settingsText = serializeStoreFile(raw);
+      await writeFileAtomically(this.absolute(settingsFile), settingsText);
+    }
+    files.settings.settings.repositoryIcons = icons;
+    this.writtenIcons = icons;
     const unsupported = files.roster.agents.filter(agent => !isSupportedRosterAgent(agent));
     this.unsupportedRoster = unsupported.length ? files.roster : null;
     for (const agent of unsupported) {
@@ -175,7 +190,9 @@ export class AppStateStore {
       }
     }
     this.written = written;
-    return snapshotFromPersistedState(joinPersistedState(files));
+    const snapshot = snapshotFromPersistedState(joinPersistedState(files));
+    snapshot.general.repositoryIcons = icons;
+    return snapshot;
   }
 
   private async readVisualizationFiles(): Promise<Array<{ relative: string; text: string }>> {
@@ -199,6 +216,7 @@ export class AppStateStore {
     const { roster, settings, visualizations } = splitPersistedState(persistedStateFromSnapshot(projectClientSnapshot(snapshot, 'desktop')));
     const files = new Map<string, string>();
     for (const visualization of visualizations) files.set(visualizationPath(visualization), serializeStoreFile(visualization));
+    delete (settings.settings as Partial<typeof settings.settings>).repositoryIcons;
     files.set(settingsFile, serializeStoreFile({ ...settings, ...(this.telemetrySettings !== undefined ? { telemetry: this.telemetrySettings } : {}) }));
     files.set(rosterFile, serializeStoreFile(this.unsupportedRoster ? preserveUnsupportedAgents(roster, this.unsupportedRoster) : roster, rosterSchemaVersion));
     return files;
@@ -213,7 +231,7 @@ export class AppStateStore {
         this.pending = null;
         const waiters = this.waiters.splice(0);
         try {
-          await this.apply(desired);
+          await this.apply(desired.files, desired.icons);
           for (const waiter of waiters) waiter.resolve();
         } catch (error) {
           for (const waiter of waiters) waiter.reject(error);
@@ -226,7 +244,11 @@ export class AppStateStore {
   }
 
   /** Writes what changed, then removes visualization files that no longer exist. */
-  private async apply(desired: Map<string, string>): Promise<void> {
+  private async apply(desired: Map<string, string>, icons: Record<string, string>): Promise<void> {
+    if (JSON.stringify(icons) !== JSON.stringify(this.writtenIcons)) {
+      await this.repositories.replaceIcons(icons);
+      this.writtenIcons = icons;
+    }
     for (const [relative, content] of desired) {
       if (this.written.get(relative) === content) continue;
       await writeFileAtomically(this.absolute(...relative.split('/')), content);

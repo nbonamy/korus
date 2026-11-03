@@ -78,7 +78,7 @@ async function fixture(beforeCreationReturns: (id: string) => Promise<void> = as
   } };
   const initial = new CompanionManager(directory, backend, {});
   await initial.control({ action: 'status' }); await initial.stop();
-  const file = path.join(directory, 'state.json');
+  const file = path.join(directory, 'companions.json');
   const saved = JSON.parse(await readFile(file, 'utf8'));
   saved.gateway.grants = [{ peerId: 'phone', name: 'Phone', createdAt: 1 }];
   await writeFile(file, JSON.stringify(saved));

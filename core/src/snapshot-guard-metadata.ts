@@ -198,7 +198,7 @@ function isAgentGitPullRequest(value: Record<string, unknown>): boolean {
 }
 
 function isAgentWorkspaceIdentity(value: unknown): boolean {
-  if (!isRecord(value) || typeof value.folder !== 'string' || typeof value.updatedAt !== 'string') return false;
+  if (!isRecord(value) || typeof value.folder !== 'string' || typeof value.updatedAt !== 'string' || !optional(value, 'repositoryKey', isString)) return false;
   if (value.kind === 'folder') return typeof value.label === 'string';
   return value.kind === 'git' &&
     typeof value.repositoryName === 'string' &&

@@ -40,6 +40,29 @@ async function fixture(session: import('@workspace/core/contracts').BackendSessi
   return { root, directory, snapshot, events, start, target, request };
 }
 describe('owner conversation sharing RPC and protected persistence', () => {
+  it('keeps owner shares and guest identity together across concurrent updates and restart, without importing old stores', async () => {
+    const f = await fixture();
+    await mkdir(path.join(f.directory, 'conversation-shares'), { recursive: true });
+    await writeFile(path.join(f.directory, 'conversation-shares/state.json'), '{obsolete}');
+    const server = f.start();
+    let joins = new GuestJoins({ directory: f.directory, relay });
+    try {
+      const [share] = await Promise.all([f.request(server, { action: 'create', target: f.target }), joins.control({ action: 'state' })]);
+      const file = path.join(f.directory, 'collaboration.json');
+      const saved = JSON.parse(await readFile(file, 'utf8'));
+      expect(saved.sharing.links).toHaveLength(1);
+      expect(saved.guestJoins.identity).toEqual(expect.any(String));
+      expect((await stat(file)).mode & 0o777).toBe(0o600);
+      await joins.close(); joins = new GuestJoins({ directory: f.directory, relay });
+      await joins.control({ action: 'state' });
+      await f.request(server, { action: 'revoke', target: f.target, handle: share.state.handle });
+      const updated = JSON.parse(await readFile(file, 'utf8'));
+      expect(updated.guestJoins).toStrictEqual(saved.guestJoins);
+      expect(updated.sharing.links[0].revokedAt).toEqual(expect.any(String));
+      expect(await readFile(path.join(f.directory, 'conversation-shares/state.json'), 'utf8')).toBe('{obsolete}');
+    } finally { await joins.close(); await server.close(); }
+  });
+
   it('admits approved text through the normal owner boundary with a canonical identity and no app command', async () => {
     const f = await fixture(); const sendPrompt = vi.fn(async (_agent: import('@workspace/core/contracts').Agent, _text: string) => ({ backendSession: { kind: 'codex' as const, threadId: 'original' }, turnId: 'native-turn', messageId: 'native-message' }));
     const commands = vi.fn();
@@ -63,17 +86,17 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       await vi.waitFor(() => expect(sendPrompt.mock.calls.length, JSON.stringify(f.snapshot.agents[0]?.status)).toBe(1));
       await vi.waitFor(async () => expect((await f.request(server, { action: 'status', target: f.target })).state.authors).toContainEqual(expect.objectContaining({ messageId: 'native-message', name: 'Guest' })));
       expect(sendPrompt).toHaveBeenCalledTimes(1); expect(sendPrompt.mock.calls[0]?.[1]).toBe(text); expect(commands).not.toHaveBeenCalled();
-      const stateFile = path.join(f.directory, 'state.json');
-      const saved = JSON.parse(await readFile(stateFile, 'utf8'));
+      const stateFile = path.join(f.directory, 'collaboration.json');
+      const saved = JSON.parse(await readFile(stateFile, 'utf8')).sharing;
       expect(saved.proposals[0]).not.toHaveProperty('backendSession');
       await server.close();
       // Recover the exact historical leak without changing invitations or delivery receipts.
-      await writeFile(stateFile, JSON.stringify({ ...saved, proposals: saved.proposals.map((proposal: object) => ({ ...proposal, backendSession: { kind: 'codex', threadId: 'original' } })) }));
+      await writeFile(stateFile, JSON.stringify({ v: 1, sharing: { ...saved, proposals: saved.proposals.map((proposal: object) => ({ ...proposal, backendSession: { kind: 'codex', threadId: 'original' } })) } }));
       server = f.start(new BackendDriverRpc(new Map([['codex', driver]])));
       const recovered = await f.request(server, { action: 'copy', target: f.target });
       expect(recovered.link).toBe(share.link);
       expect(recovered.state.authors).toContainEqual(expect.objectContaining({ messageId: 'native-message', name: 'Guest' }));
-      expect(JSON.parse(await readFile(stateFile, 'utf8'))).toStrictEqual(saved);
+      expect(JSON.parse(await readFile(stateFile, 'utf8')).sharing).toStrictEqual(saved);
       expect(sendPrompt).toHaveBeenCalledTimes(1);
       const stopped = await f.request(server, { action: 'revoke', target: f.target, handle: share.state.handle! });
       expect(stopped.state.authors).toContainEqual(expect.objectContaining({ messageId: 'native-message' }));
@@ -115,7 +138,7 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       expect(sendPrompt.mock.calls[0]?.[0] ?? steerPrompt.mock.calls[0]?.[0]).toBe(input.text);
       await vi.waitFor(async () => expect((await server.conversationGuestProposals(share.state.handle!, ownerId)).proposals).toContainEqual(expect.objectContaining({ id: input.id, status: 'submitted', messageId: message.id, text: '' })));
       expect((await f.request(server, { action: 'status', target: f.target })).state.authors).toStrictEqual([{ messageId: message.id, identity: ownerId, name: 'Alex', discriminator: expect.any(String) }]);
-      const persisted = JSON.parse(await readFile(path.join(f.directory, 'state.json'), 'utf8'));
+      const persisted = JSON.parse(await readFile(path.join(f.directory, 'collaboration.json'), 'utf8')).sharing;
       expect(persisted.proposals).toContainEqual(expect.objectContaining({ id: input.id, status: 'submitted', messageId: message.id, text: '' }));
       for (const event of f.events.filter(event => event.type === 'conversation.shareChanged')) expect(decodeAppBackendEvent(event)).toStrictEqual(event);
       if (preference === 'steer') {
@@ -230,7 +253,7 @@ describe('owner conversation sharing RPC and protected persistence', () => {
     const routing = {
       update: vi.fn(async (value: unknown[]) => {
         // The protected file already exists whenever a new handle is advertised.
-        if (value.length) expect(JSON.parse(await readFile(path.join(f.directory, 'state.json'), 'utf8')).links.some((link: { revokedAt?: string }) => !link.revokedAt)).toBe(true);
+        if (value.length) expect(JSON.parse(await readFile(path.join(f.directory, 'collaboration.json'), 'utf8')).sharing.links.some((link: { revokedAt?: string }) => !link.revokedAt)).toBe(true);
         routes.push(value); return status;
       }),
       subscribe: (listener: typeof statusListener) => { statusListener = listener; return () => { statusListener = undefined; }; },
@@ -266,11 +289,11 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       expect(decoded.ownerId).toBeUndefined();
       expect(first.invitation).toBe(decoded.credential);
       expect(decoded.credential).toMatch(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
-      const saved = JSON.parse(await readFile(path.join(f.directory, 'state.json'), 'utf8'));
+      const saved = JSON.parse(await readFile(path.join(f.directory, 'collaboration.json'), 'utf8')).sharing;
       expect(saved.links).toHaveLength(1);
       expect(saved.links[0].ownerId).toBe(ownerId);
       expect(saved.links[0].target).toStrictEqual(f.target);
-      expect((await stat(path.join(f.directory, 'state.json'))).mode & 0o777).toBe(0o600);
+      expect((await stat(path.join(f.directory, 'collaboration.json'))).mode & 0o777).toBe(0o600);
       expect((await stat(f.directory)).mode & 0o777).toBe(0o700);
       expect(JSON.stringify(f.events)).not.toContain(decoded.credential);
       expect(JSON.stringify(f.events)).not.toContain(first.link);
@@ -288,7 +311,7 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       expect((await f.request(server, { action: 'copy', target: f.target })).link === replacement.link).toBe(true);
       await server.close(); server = f.start();
       expect((await f.request(server, { action: 'copy', target: f.target })).link === replacement.link).toBe(true);
-      const restored = JSON.parse(await readFile(path.join(f.directory, 'state.json'), 'utf8'));
+      const restored = JSON.parse(await readFile(path.join(f.directory, 'collaboration.json'), 'utf8')).sharing;
       expect(restored.links.find((link: { handle: string }) => link.handle === decoded.handle).revokedAt).toEqual(expect.any(String));
     } finally { await server.close(); }
   });
@@ -360,7 +383,7 @@ describe('owner conversation sharing RPC and protected persistence', () => {
         f.snapshot.agents.push(next);
         await f.request(server, { action: 'create', target: conversationShareTarget(next)! });
       }
-      const saved = JSON.parse(await readFile(path.join(f.directory, 'state.json'), 'utf8'));
+      const saved = JSON.parse(await readFile(path.join(f.directory, 'collaboration.json'), 'utf8')).sharing;
       expect(saved.links.filter((link: { revokedAt?: string }) => !link.revokedAt)).toHaveLength(51);
     } finally { await server.close(); }
   });
@@ -370,12 +393,12 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       await expect(f.request(server, { action: 'create', target: f.target })).rejects.toThrow('Share storage is unavailable');
       expect(f.events).toHaveLength(0);
       await server.close(); await rm(f.directory); await mkdir(f.directory);
-      await writeFile(path.join(f.directory, 'state.json'), '{broken-secret'); server = f.start();
+      await writeFile(path.join(f.directory, 'collaboration.json'), '{broken-secret'); server = f.start();
       await expect(f.request(server, { action: 'create', target: f.target })).rejects.toThrow('Share storage is unavailable');
     } finally { await server.close(); }
   });
   it('keeps persisting snapshots when share storage is unavailable', async () => {
-    const f = await fixture(); await mkdir(f.directory, { recursive: true }); await writeFile(path.join(f.directory, 'state.json'), '{broken-secret');
+    const f = await fixture(); await mkdir(f.directory, { recursive: true }); await writeFile(path.join(f.directory, 'collaboration.json'), '{broken-secret');
     const saved = vi.fn(async () => undefined);
     const server = new AppBackendServer({ version: 'test', snapshot: f.snapshot, saveSnapshot: saved, conversationSharing: { directory: f.directory, endpoint: async () => ({ ownerId, relay }) } });
     try {

@@ -1,6 +1,5 @@
 import { shareInvitationPattern, type ShareRoutingStatus } from '@workspace/core/conversation-share-relay';
-import { chmod, lstat, mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
-import path from 'node:path';
+import { CollaborationStore } from './collaboration-store';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import type { GuestParticipant } from '@workspace/core/guest-conversation';
@@ -55,6 +54,7 @@ const sameTarget = (a: ConversationShareTarget, b: ConversationShareTarget) => a
 /** Daemon-owned, serialized durable authority. No phone grants, renderer minting or expiry. */
 export class ConversationShares {
   private saved?: Store;
+  private get storage() { return new CollaborationStore(this.options.directory); }
   private operations = Promise.resolve();
   private dispatching = false;
   private closed = false;
@@ -323,16 +323,9 @@ export class ConversationShares {
   private async load() {
     if (this.saved) return;
     try {
-      await mkdir(this.options.directory, { recursive: true, mode: 0o700 });
-      const directory = await lstat(this.options.directory);
-      if (!directory.isDirectory() || directory.isSymbolicLink()) throw new Error();
-      await chmod(this.options.directory, 0o700);
-      const file = path.join(this.options.directory, 'state.json');
-      try {
-        const stats = await lstat(file);
-        if (!stats.isFile() || stats.isSymbolicLink()) throw new Error();
-        await chmod(file, 0o600);
-        const raw: unknown = JSON.parse(await readFile(file, 'utf8'));
+      {
+        const raw = await this.storage.read('sharing');
+        if (raw === undefined) { this.saved = { v: 2, links: [] }; return; }
         // Big-bang switch: withdraw all legacy grants rather than accepting old invitations.
         if (raw && typeof raw === 'object' && 'v' in raw && raw.v === 1) { await this.write({ v: 2, links: [] }); return; }
         const decoded = storeSchema.parse(raw);
@@ -348,22 +341,13 @@ export class ConversationShares {
         }
         this.saved = saved;
         if (needsRepair || saved.proposals?.some(record => record.status === 'dispatching' || (record.status === 'queued' && record.accessId))) await this.write({ ...saved, proposals: saved.proposals?.map(record => record.status === 'dispatching' ? { ...record, status: 'unresolved' } : record.status === 'queued' && record.accessId ? { ...record, status: 'pending', followUpBehavior: undefined, accessId: undefined } : record) });
-      } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; this.saved = { v: 2, links: [] }; }
+      }
     } catch { throw new Error('Share storage is unavailable. Check local storage and try again.'); }
   }
   private async write(next: Store) {
-    const file = path.join(this.options.directory, 'state.json');
-    const temporary = `${file}.${randomUUID()}.tmp`;
     try {
-      const handle = await open(temporary, 'wx', 0o600);
-      try { await handle.writeFile(JSON.stringify(next)); await handle.sync(); } finally { await handle.close(); }
-      await rename(temporary, file);
-      if (process.platform !== 'win32') {
-        const directory = await open(this.options.directory, 'r');
-        try { await directory.sync(); } finally { await directory.close(); }
-      }
+      await this.storage.update('sharing', next);
       this.saved = next;
     } catch { this.saved = undefined; throw new Error('Share storage is unavailable. Check local storage and try again.'); }
-    finally { await unlink(temporary).catch(() => {}); }
   }
 }

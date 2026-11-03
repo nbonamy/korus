@@ -217,7 +217,7 @@ The protocol is transport-neutral JSON-RPC 2.0, one message per line.
 The daemon owns one durable bearer link for each immutable provider conversation
 and execution session. Agent entries referring to the same binding reuse that
 link. Protected share records live separately from roster/preferences and paired
-phone grants, under `APP_HOME/conversation-shares`, with private directory/file
+phone grants, in the `sharing` section of `APP_HOME/collaboration.json`, with private directory/file
 permissions and serialized atomic, synced writes. Creation and revocation persist
 before success; revoked records retain their identity, and replacement links use
 fresh credentials. Session changes and deletion invalidate the original binding.
@@ -227,13 +227,12 @@ Invitations are cryptographically random UUIDv4 bearer secrets, also accepted as
 invites cannot choose a relay. A domain-separated SHA-256 digest, truncated to 128
 bits, is the routing handle. The UUID itself travels only inside the encrypted
 owner channel. Share status events exclude credentials and full links; only
-explicit create/copy replies return bearer material. Sharing uses protocol and
-store version 2; legacy invitations, owner grants and saved joins are discarded.
-The guest app identity is retained. Reusing the companion identity does not enable
+explicit create/copy replies return bearer material. Sharing uses protocol and section version 2. The collaboration store serializes
+atomic section updates so owner and guest writes preserve each other. Reusing the companion identity does not enable
 paired-phone access.
 
 Installed desktop guests keep a separate protected app identity and joined-link
-store under `APP_HOME/guest-joins`. It stores the UUID link, a relay-bound join
+store in the `guestJoins` section of `APP_HOME/collaboration.json`. It stores the UUID link, a relay-bound join
 identity, owner pin, display name, original team and an immutable target fingerprint,
 never transcript content. The discovered owner pin persists before the UUID is
 sent; reconnection rejects a different owner.

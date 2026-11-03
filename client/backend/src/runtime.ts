@@ -1,3 +1,4 @@
+import { cleanupPromptUploads } from './companion/uploads';
 import { DesignService } from './design-service';
 import { createDesignToolModuleProvider } from './mcp/design-tools';
 import { GuestJoins } from './sharing/guest-joins';
@@ -159,7 +160,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     publish: () => server?.emitEvent({ type: 'snapshot.updated', payload: snapshot }),
   });
   const documents = new DocumentWorkspaceService(path.join(backendHomeDir(), "document-workspaces.json"));
-  const pricing = new PricingCatalog({ cacheFile: path.join(backendHomeDir(), 'pricing/catalog.json') });
+  const pricing = new PricingCatalog({ cacheFile: path.join(backendHomeDir(), 'pricing.json') });
   const localUsage = new UsageLedger(path.join(backendHomeDir(), 'usage.sqlite'), Date.now, () => pricing.history);
   await localUsage.load({ interruptOpenExecutions: true });
   await pricing.start();
@@ -323,6 +324,10 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   scheduler.register({ id: 'provider-updates', intervalMs: 2_000, run: () => providerUpdates.tick() });
   if (telemetryUpload) scheduler.register({ id: 'telemetry-upload', intervalMs: 60_000, runOnStart: true, run: () => telemetryUpload!.tick() });
   scheduler.register({ id: 'pricing-updates', intervalMs: 60_000, runOnStart: true, run: () => pricing.refresh() });
+  scheduler.register({ id: 'companion-upload-cleanup', intervalMs: 3_600_000, runOnStart: true, run: () => cleanupPromptUploads(path.join(backendHomeDir(), 'companion'), {
+    activeAgentIds: snapshot.agents.filter(agent => agent.status.type === 'working' || agent.status.type === 'awaitingInput').map(agent => agent.id),
+    protectedPaths: (snapshot.queuedPrompts ?? []).flatMap(prompt => prompt.options?.attachments?.map(attachment => attachment.path) ?? []),
+  }) });
   const pullRequestMonitor = new PullRequestMonitor({
     getSnapshot: () => snapshot,
     notifySnapshotUpdated: () => server.emitEvent({
@@ -344,7 +349,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     runOnStart: true,
     run: () => pullRequestMonitor.check(),
   });
-  const companion = new CompanionManager(path.join(backendHomeDir(), 'companion'), {
+  const companion = new CompanionManager(backendHomeDir(), {
     authorizeGuest: (handle, credential) => server.authorizeConversationGuest(handle, credential),
     proposeGuest: (handle, identity, name, input) => server.proposeConversationGuest(handle, identity, name, input),
     guestProposals: (handle, identity) => server.conversationGuestProposals(handle, identity),
@@ -365,8 +370,8 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     usage,
     telemetryConsent,
     telemetryActivity: telemetryUpload,
-    guestJoins: new GuestJoins({ directory: path.join(backendHomeDir(), 'guest-joins'), relay: relayFromEnvironment(process.env).relay ?? undefined }),
-    conversationSharing: { directory: path.join(backendHomeDir(), 'conversation-shares'), endpoint: () => companion.shareEndpoint(), routing: { update: routes => companion.updateShareRoutes(routes), subscribe: listener => companion.onShareRoutingStatus(listener) } },
+    guestJoins: new GuestJoins({ directory: backendHomeDir(), relay: relayFromEnvironment(process.env).relay ?? undefined }),
+    conversationSharing: { directory: backendHomeDir(), endpoint: () => companion.shareEndpoint(), routing: { update: routes => companion.updateShareRoutes(routes), subscribe: listener => companion.onShareRoutingStatus(listener) } },
     companionControl: (input) => companion.control(input),
     documents,
     tasks,

@@ -247,7 +247,7 @@ describe('encrypted guest conversation authorization', () => {
     expect(submit.mock.calls[0]).toEqual([f.target, direct.text, { followUpBehavior: 'steer' }]);
     expect((await one.client.proposals()).proposals).toContainEqual(expect.objectContaining({ id: readonly.id, status: 'pending' }));
     await expect(one.client.propose({ ...direct, followUpBehavior: 'queue' })).rejects.toThrow();
-    const storedReadOnly = JSON.parse(await readFile(path.join(f.directory, 'shares/state.json'), 'utf8')).proposals.find((record: { id: string }) => record.id === readonly.id);
+    const storedReadOnly = JSON.parse(await readFile(path.join(f.directory, 'shares/collaboration.json'), 'utf8')).sharing.proposals.find((record: { id: string }) => record.id === readonly.id);
     expect(storedReadOnly).not.toHaveProperty('followUpBehavior');
     await one.client.propose({ ...readonly, followUpBehavior: 'queue' });
     f.snapshot.agents[0]!.status = { type: 'working' };
@@ -299,7 +299,7 @@ describe('encrypted guest conversation authorization', () => {
     await one.client.withdraw(withdrawn.id);
     await one.client.propose(withdrawn);
     expect((await one.client.proposals()).proposals).toContainEqual(expect.objectContaining({ id: withdrawn.id, status: 'dismissed', text: '' }));
-    expect(await readFile(path.join(f.directory, 'shares/state.json'), 'utf8')).not.toContain(withdrawn.text);
+    expect(await readFile(path.join(f.directory, 'shares/collaboration.json'), 'utf8')).not.toContain(withdrawn.text);
     const dismissed = { id: randomUUID(), text: 'Private draft' };
     await one.client.propose(dismissed);
     await vi.waitFor(() => expect(one.client.proposalState?.proposals).toContainEqual(expect.objectContaining({ id: dismissed.id, status: 'pending' })));
@@ -307,7 +307,7 @@ describe('encrypted guest conversation authorization', () => {
     expect((await two.client.proposals()).proposals).toStrictEqual([]);
     await f.shares.control({ action: 'dismiss', target: f.target, handle: f.link.handle, proposalId: dismissed.id });
     expect(submit).not.toHaveBeenCalled();
-    expect(await readFile(path.join(f.directory, 'shares/state.json'), 'utf8')).not.toContain(dismissed.text);
+    expect(await readFile(path.join(f.directory, 'shares/collaboration.json'), 'utf8')).not.toContain(dismissed.text);
     expect((await one.client.proposals()).proposals).toEqual([expect.objectContaining({ id: withdrawn.id, status: 'dismissed' }), expect.objectContaining({ id: dismissed.id, status: 'dismissed' })]);
     const accepted = { id: randomUUID(), text: 'Identical prompt', followUpBehavior: 'steer' as const };
     await Promise.all([one.client.propose(accepted), one.client.propose(accepted)]);
@@ -320,7 +320,7 @@ describe('encrypted guest conversation authorization', () => {
     expect(other.authors).toContainEqual(expect.objectContaining({ messageId: 'native-user-id', name: 'Alex' }));
     expect(JSON.stringify(other)).not.toContain('Private draft');
     await expect(one.client.propose({ ...accepted, text: 'Changed on retry' })).rejects.toThrow();
-    const saved = JSON.parse(await readFile(path.join(f.directory, 'shares/state.json'), 'utf8'));
+    const saved = JSON.parse(await readFile(path.join(f.directory, 'shares/collaboration.json'), 'utf8')).sharing;
     expect(saved.proposals.filter((p: { status: string }) => p.status === 'submitted')).toHaveLength(1);
     expect(saved.proposals.find((p: { id: string }) => p.id === accepted.id).messageId).toBe('native-user-id');
     await f.shares.control({ action: 'dismiss', target: f.target, handle: f.link.handle, proposalId: accepted.id });
@@ -398,11 +398,11 @@ describe('encrypted guest conversation authorization', () => {
     await Promise.all([joins.control({ action: 'prepare', link: url }), joins.control({ action: 'open', id }), joins.control({ action: 'open', id })]);
     expect(f.listeners.size).toBe(1);
     const identity = joined.view!.participant!.identity;
-    const saved = await readFile(path.join(directory, 'state.json'), 'utf8');
+    const saved = await readFile(path.join(directory, 'collaboration.json'), 'utf8');
     expect(saved).toContain(f.link.credential); expect(saved).not.toContain('before-share');
-    const ownerPin = JSON.parse(saved).joins[0].ownerId;
+    const ownerPin = JSON.parse(saved).guestJoins.joins[0].ownerId;
     expect(ownerPin).toMatch(/^12D3KooW/);
-    expect((await stat(path.join(directory, 'state.json'))).mode & 0o777).toBe(0o600);
+    expect((await stat(path.join(directory, 'collaboration.json'))).mode & 0o777).toBe(0o600);
     await joins.close(); await vi.waitFor(() => expect(f.listeners.size).toBe(0));
     joins = new GuestJoins({ directory, relay: f.pin });
     expect((await joins.control({ action: 'state' })).entries).toHaveLength(1);
@@ -412,7 +412,7 @@ describe('encrypted guest conversation authorization', () => {
     await f.shares.control({ action: 'revoke', handle: f.link.handle, target: f.target });
     await vi.waitFor(async () => expect((await joins.control({ action: 'state' })).view?.status).toBe('rejected'));
     expect((await joins.control({ action: 'state' })).entries).toHaveLength(1);
-    expect(await readFile(path.join(directory, 'state.json'), 'utf8')).not.toContain(f.link.credential);
+    expect(await readFile(path.join(directory, 'collaboration.json'), 'utf8')).not.toContain(f.link.credential);
     expect((await joins.control({ action: 'state' })).view?.frame).toBeNull();
     const other = await f.addLink(2);
     const otherId = (await joins.control({ action: 'prepare', link: encodeConversationShareLink(other) })).view!.id;
@@ -423,7 +423,7 @@ describe('encrypted guest conversation authorization', () => {
     expect(reopened.view).toMatchObject({ id, status: 'rejected', frame: null });
     await joins.control({ action: 'leave', id });
     expect((await joins.control({ action: 'state' })).entries.map(entry => entry.id)).toStrictEqual([otherId]);
-    expect(await readFile(path.join(directory, 'state.json'), 'utf8')).not.toContain(f.link.credential);
+    expect(await readFile(path.join(directory, 'collaboration.json'), 'utf8')).not.toContain(f.link.credential);
   }, 30_000);
   it('blocks access and reports failed authorization removal when local storage becomes inaccessible during revocation', async () => {
     const f = await fixture(); const directory = path.join(f.directory, 'joined');
@@ -438,7 +438,7 @@ describe('encrypted guest conversation authorization', () => {
     await joins.control({ action: 'open', id }); expect(f.listeners.size).toBe(0);
     await unlink(directory); await rename(directory + '-held', directory);
     await joins.control({ action: 'leave', id });
-    expect(await readFile(path.join(directory, 'state.json'), 'utf8')).not.toContain(f.link.credential);
+    expect(await readFile(path.join(directory, 'collaboration.json'), 'utf8')).not.toContain(f.link.credential);
   }, 30_000);
   it('switches saved conversations without leaving background sessions or a stale ready view', async () => {
     const f = await fixture(); const directory = path.join(f.directory, 'joined');
@@ -482,9 +482,9 @@ describe('encrypted guest conversation authorization', () => {
     ]);
     expect(duplicates.view?.title).toBe(duplicates.entries[1]!.title);
     await joins.close();
-    const legacy = JSON.parse(await readFile(path.join(directory, 'state.json'), 'utf8'));
+    const legacy = JSON.parse(await readFile(path.join(directory, 'collaboration.json'), 'utf8')).guestJoins;
     for (const record of legacy.joins) delete record.title;
-    await writeFile(path.join(directory, 'state.json'), JSON.stringify(legacy));
+    await writeFile(path.join(directory, 'collaboration.json'), JSON.stringify({ v: 1, guestJoins: legacy }));
     joins = new GuestJoins({ directory, relay: f.pin });
     expect((await joins.control({ action: 'state' })).entries.map(entry => entry.title)).toStrictEqual([
       'Shared conversation',
@@ -508,7 +508,7 @@ describe('encrypted guest conversation authorization', () => {
     await vi.waitFor(() => expect(release).toBeTypeOf('function'));
     await joins.control({ action: 'leave', id }); release(); await older.catch(() => {});
     expect(await joins.control({ action: 'state' })).toStrictEqual({ entries: [], view: null });
-    expect(await readFile(path.join(f.directory, 'joined/state.json'), 'utf8')).not.toContain(f.link.credential);
+    expect(await readFile(path.join(f.directory, 'joined/collaboration.json'), 'utf8')).not.toContain(f.link.credential);
   }, 30_000);
   it('rejects malformed invitations and relay overrides before networking and fails closed on storage', async () => {
     const f = await fixture(); const joins = new GuestJoins({ directory: path.join(f.directory, 'joined'), relay: f.pin }); cleanup.push(() => joins.close());

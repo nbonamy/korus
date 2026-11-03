@@ -1,3 +1,5 @@
+import { realpath } from 'node:fs/promises';
+import { fileRepositoryKey, gitRepositoryKey } from '@workspace/core/repository-key';
 import { addFileToKindStats, emptyKindStats, mergeKindStats } from '@workspace/core/file-kind';
 import { summarizeUnifiedDiff } from '@workspace/core/unified-diff-stats';
 import { product } from '@workspace/core/product';
@@ -62,6 +64,7 @@ export class AgentGitService {
 
       return {
         kind: 'git',
+        repositoryKey: (originUrl ? gitRepositoryKey(originUrl) : undefined) ?? fileRepositoryKey(await realpath(primaryWorktreeRoot).catch(() => primaryWorktreeRoot)),
         folder,
         repositoryName: fileName(primaryWorktreeRoot),
         repositoryRoot,
@@ -75,6 +78,7 @@ export class AgentGitService {
     } catch {
       return {
         kind: 'folder',
+        repositoryKey: fileRepositoryKey(await realpath(folder).catch(() => resolve(folder))),
         folder,
         label: fileName(resolve(folder)),
         updatedAt,

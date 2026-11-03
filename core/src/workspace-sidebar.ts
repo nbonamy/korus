@@ -1,3 +1,4 @@
+import { fileRepositoryKey, repositoryIconAliases, workspaceRepositoryKey } from './repository-key';
 import { featureLabel } from './feature-groups';
 import type { Agent, AgentPullRequestTracking, AgentStatus } from './contracts';
 import { agentDisplayName } from './agent-display';
@@ -63,17 +64,24 @@ export function workspaceSidebarGroupIdForAgent(agent: Agent): string {
   return agent.folder ? `folder:${host}${agent.folder}` : `agent:${agent.id}`;
 }
 
+export function repositoryMetadataKeyForAgent(agent: Agent): string | null {
+  if (agent.sessionKind === 'quickChat' || !agent.folder) return null;
+  const key = agent.workspace ? workspaceRepositoryKey(agent.workspace) : fileRepositoryKey(agent.folder);
+  if (!agent.remoteConnectionId || !key.startsWith('file:')) return key;
+  const url = new URL(key); url.hostname = agent.remoteConnectionId; return url.href;
+}
+
 export function repositoryIconForAgent(
   agent: Agent | null | undefined,
   repositoryIcons: Readonly<Record<string, string>>,
 ): string | undefined {
   const workspace = agent?.workspace;
-  if (workspace?.kind !== 'git') return undefined;
+  if (!agent || agent.sessionKind === 'quickChat') return undefined;
 
+  const metadataKey = repositoryMetadataKeyForAgent(agent);
   const keys = [
-    workspace.originUrl ? repositoryIconKeyForRemote(workspace.originUrl) : undefined,
-    workspace.primaryWorktreeRoot,
-    workspace.repositoryRoot,
+    ...(metadataKey ? repositoryIconAliases(metadataKey) : []),
+    ...(workspace?.kind === 'git' ? [workspace.originUrl ? repositoryIconKeyForRemote(workspace.originUrl) : undefined, workspace.primaryWorktreeRoot, workspace.repositoryRoot] : [agent.folder]),
   ]
     .filter((key): key is string => Boolean(key));
   for (const key of keys) {
@@ -118,6 +126,7 @@ export function projectWorkspaceSidebar(input: {
           } : {
             id,
             kind: 'folder',
+            ...(agent.folder ? { repositoryRoot: agent.folder, repositoryKey: repositoryMetadataKeyForAgent(agent)!, repositoryAgentId: agent.id } : {}),
             label: workspace?.kind === 'folder'
               ? workspace.label
               : agent.folder?.replace(/\\/gu, '/').split('/').filter(Boolean).at(-1) ?? agentDisplayName(agent),

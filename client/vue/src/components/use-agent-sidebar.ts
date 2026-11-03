@@ -1,3 +1,4 @@
+import { gitRepositoryKey, fileRepositoryKey, repositoryIconAliases } from '@workspace/core/repository-key';
 import { supportsConversationSharing } from '@workspace/core/conversation-sharing';
 import type { Mission } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
@@ -256,7 +257,9 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
 
   function repositoryIcon(repositoryKey: string | undefined, repositoryRoot: string | undefined): string | undefined {
     if (!repositoryRoot) return undefined;
-    return props.repositoryIcons?.[repositoryKey ?? repositoryRoot] ?? props.repositoryIcons?.[repositoryRoot];
+    const raw = repositoryKey ?? repositoryRoot;
+    const canonical = raw.startsWith('file:') ? raw : gitRepositoryKey(raw) ?? fileRepositoryKey(raw);
+    return [raw, ...repositoryIconAliases(canonical), repositoryRoot].map(key => props.repositoryIcons?.[key]).find(icon => icon !== undefined);
   }
 
   function updateRepositoryIcon(repositoryKey: string | undefined, repositoryRoot: string | undefined, icon: string | undefined): void {

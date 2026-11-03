@@ -1,6 +1,5 @@
-import { chmod, lstat, mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
-import path from 'node:path';
-import { createHash, randomUUID } from 'node:crypto';
+import { CollaborationStore } from './collaboration-store';
+import { createHash } from 'node:crypto';
 import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from '@libp2p/crypto/keys';
 import type { PrivateKey } from '@libp2p/interface';
 import { z } from 'zod';
@@ -35,6 +34,7 @@ const emptyView = (id: string, name = '', title?: string): GuestJoinView => ({ i
 /** Installed guest authority. One protected app identity, durable pins/authorization, memory-only transcripts. */
 export class GuestJoins {
   private saved?: Store;
+  private get storage() { return new CollaborationStore(this.options.directory); }
   private key?: PrivateKey;
   private operations = Promise.resolve();
   private readonly sessions = new Map<string, Session>();
@@ -232,12 +232,12 @@ export class GuestJoins {
   private async load() {
     if (this.saved) return;
     try {
-      await mkdir(this.options.directory, { recursive: true, mode: 0o700 });
-      const directory = await lstat(this.options.directory); if (!directory.isDirectory() || directory.isSymbolicLink()) throw new Error(); await chmod(this.options.directory, 0o700);
-      const file = path.join(this.options.directory, 'state.json');
-      try {
-        const stats = await lstat(file); if (!stats.isFile() || stats.isSymbolicLink() || stats.size > 16 * 1024 * 1024) throw new Error(); await chmod(file, 0o600);
-        const raw = JSON.parse(await readFile(file, 'utf8')) as unknown;
+      {
+        const raw = await this.storage.read('guestJoins');
+        if (raw === undefined) {
+          this.key = await generateKeyPair('Ed25519');
+          await this.write({ v: 2, identity: Buffer.from(privateKeyToProtobuf(this.key)).toString('base64'), joins: [] }); return;
+        }
         // Legacy joins are intentionally discarded; retain only the protected app identity.
         if (raw && typeof raw === 'object' && 'v' in raw && raw.v === 1 && 'identity' in raw && typeof raw.identity === 'string') {
           this.key = privateKeyFromProtobuf(Buffer.from(raw.identity, 'base64'));
@@ -249,21 +249,14 @@ export class GuestJoins {
           const link = decodeConversationShareLink(record.link, this.relay); if (!link || keyFor(link) !== record.id || seen.has(record.id)) throw new Error(); seen.add(record.id);
         }
         this.key = privateKeyFromProtobuf(Buffer.from(saved.identity, 'base64')); this.saved = saved as Store;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-        this.key = await generateKeyPair('Ed25519'); await this.write({ v: 2, identity: Buffer.from(privateKeyToProtobuf(this.key)).toString('base64'), joins: [] });
       }
     } catch { throw new Error('Guest storage is unavailable. Check local storage and try again.'); }
   }
   private async write(next: Store) {
-    const file = path.join(this.options.directory, 'state.json'); const temporary = `${file}.${randomUUID()}.tmp`;
     try {
-      const encoded = JSON.stringify(next); if (Buffer.byteLength(encoded) > 16 * 1024 * 1024) throw new Error();
-      const handle = await open(temporary, 'wx', 0o600); try { await handle.writeFile(encoded); await handle.sync(); } finally { await handle.close(); }
-      await rename(temporary, file);
-      if (process.platform !== 'win32') { const directory = await open(this.options.directory, 'r'); try { await directory.sync(); } finally { await directory.close(); } }
-      this.saved = next;
-    } catch { throw new Error('Guest storage is unavailable. Check local storage and try again.'); }
-    finally { await unlink(temporary).catch(() => {}); }
+      if (Buffer.byteLength(JSON.stringify(next)) > 16 * 1024 * 1024) throw new Error('Guest state is too large.');
+      await this.storage.update('guestJoins', next); this.saved = next;
+    }
+    catch { throw new Error('Guest storage is unavailable. Check local storage and try again.'); }
   }
 }

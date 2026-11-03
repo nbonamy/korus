@@ -8,6 +8,7 @@ import type { ProviderLifecycle } from '../provider-lifecycle';
 import type { ProviderSetup } from '../provider-setup';
 import { createCodexLifecycle } from '../codex/provider-lifecycle';
 import { buildAppMcpConfigOverrides } from '../mcp/codex-config';
+import { storePromptUploads } from '../companion/uploads';
 import { ProviderUpdateRuntime } from '../provider-update-runtime';
 import type { ProviderUpdates } from '../provider-updates';
 import { RemoteTeamService } from '../connections/remote-team-service';
@@ -425,6 +426,33 @@ describe('daemon runtime', () => {
     }
   });
 
+  it('sweeps expired companion uploads using live queued and active work from the runtime snapshot', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'runtime-uploads-'));
+    mocks.backendHomeDir.mockReturnValue(directory);
+    const root = path.join(directory, 'companion');
+    const upload = [{ type: 'file' as const, name: 'notes.txt', mimeType: 'text/plain', data: Buffer.from('notes') }];
+    const stale = Date.now() - 2 * 86_400_000;
+    const [expired] = await storePromptUploads(root, upload, stale, 'idle');
+    const [active] = await storePromptUploads(root, upload, stale, 'agent-dina');
+    const [queued] = await storePromptUploads(root, upload, stale, 'queued');
+    mocks.snapshot.agents[0]!.status = { type: 'working' };
+    Object.assign(mocks.snapshot, { queuedPrompts: [{ id: 'pending', agentId: 'agent-dina', text: 'later', createdAt: stale, options: { attachments: [queued!] } }] });
+    const runtime = await createDaemonRuntime({ emitEvent, requestClient, version: 'test' });
+    try {
+      const cleanup = (mocks.schedulerTasks as SchedulerTask[]).find(task => task.id === 'companion-upload-cleanup')!;
+      expect(cleanup.runOnStart).toBe(true);
+      await cleanup.run();
+      await expect(stat(expired!.path)).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(await readFile(active!.path, 'utf8')).toBe('notes');
+      expect(await readFile(queued!.path, 'utf8')).toBe('notes');
+      mocks.snapshot.agents[0]!.status = { type: 'idle' };
+      Object.assign(mocks.snapshot, { queuedPrompts: [] });
+      await cleanup.run();
+      await expect(stat(active!.path)).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(stat(queued!.path)).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally { await runtime.stop(); await rm(directory, { recursive: true, force: true }); }
+  });
+
   it('owns exactly one local uploader and delegates consent, activity, sealed preview and shutdown', async () => {
     vi.stubEnv('APP_TELEMETRY_ENDPOINT', 'https://runtime.example/v1/telemetry/daily');
     const directory = await mkdtemp(path.join(tmpdir(), 'runtime-local-services-'));
@@ -481,6 +509,7 @@ describe('daemon runtime', () => {
       expect.objectContaining({ id: 'provider-updates', intervalMs: 2_000 }),
       expect.objectContaining({ id: 'telemetry-upload', intervalMs: 60000, runOnStart: true }),
       expect.objectContaining({ id: 'pricing-updates', intervalMs: 60_000, runOnStart: true }),
+      expect.objectContaining({ id: 'companion-upload-cleanup', intervalMs: 3_600_000, runOnStart: true }),
       expect.objectContaining({ id: 'pull-request-monitor', intervalMs: 300_000, runOnStart: true }),
     ]);
     await (mocks.schedulerTasks.find(task => (task as SchedulerTask).id === 'pricing-updates') as SchedulerTask).run();

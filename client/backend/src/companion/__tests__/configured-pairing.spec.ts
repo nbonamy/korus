@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rename, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -93,6 +93,8 @@ describe('shared configured companion pairing', () => {
     expect(status.pending).toStrictEqual([]);
     expect(status.devices.map(device => device.peerId).sort()).toStrictEqual([first.peerId.toString(), second.peerId.toString()].sort());
     await f.manager.stop();
+    await mkdir(path.join(f.state, 'companion'), { recursive: true });
+    await rename(path.join(f.state, 'companions.json'), path.join(f.state, 'companion/state.json'));
     const restarted = new CompanionManager(f.state, f.backend, f.runtime);
     cleanup.push(() => restarted.stop());
     expect((await restarted.control({ action: 'status' })).status.devices).toStrictEqual(status.devices);
@@ -122,7 +124,7 @@ describe('shared configured companion pairing', () => {
 
   it('never authorizes a phone when saving its grant fails', async () => {
     const f = await fixture(); const node = await phone();
-    const stateFile = path.join(f.state, 'state.json'); const saved = await readFile(stateFile, 'utf8');
+    const stateFile = path.join(f.state, 'companions.json'); const saved = await readFile(stateFile, 'utf8');
     await rm(stateFile); await mkdir(stateFile);
     const circuit = `${f.address}/p2p-circuit/p2p/${await lookup(node, f.address)}`;
     await expect(call(node, circuit, 'pair.claim', { code, name: 'Phone' })).rejects.toThrow();

@@ -79,9 +79,12 @@ desktop preference cannot enable a tool the host does not provide.
 Cross-package imports use package names, never deep relative paths. `core` stays
 runtime-thin so every client shares one contract without inheriting file authority.
 
-Repository run profiles are user-authored definitions in the owning daemon's private
-`run-profiles.json` store, shared by worktrees through their primary repository
-identity. Explicit imports read script and target names from confined package,
+Repository icons and run profiles belong to the owning daemon's private
+`repositories.json` store. Git entries use the normalized origin identity, shared
+by clones and worktrees on that host; repositories without an origin and ordinary
+folders use canonical file URLs. Command working directories resolve against the
+selected worktree rather than the primary checkout.
+Explicit imports read script and target names from confined package,
 Make and Just files without evaluating recipes or copying their bodies. Discovery
 does not save or execute actions. The daemon admits
 only a saved profile whose command and resolved directory match the user's reviewed
@@ -270,8 +273,12 @@ the daemon remains the owner of review execution and findings. Opening setup doe
 start a review, and automatic fixes and local commits require explicit selection.
 The companion engine validates the target before submission and reports admission
 back to the native draft; only accepted sends clear their captured text and attachments.
-The laptop stores uploads privately and passes ordinary provider attachment paths
-through its existing prompt route. Remote agents remain text-only until their
+The laptop stores uploads privately under `companion/uploads/` and passes stable
+provider attachment paths through its existing prompt route. Startup and hourly
+cleanup expire uploads after a day, retaining queued attachments and those owned
+by active agents; uploads without ownership metadata are retained while any agent
+is active. Companion state is stored separately in `companions.json`; importing
+`companion/state.json` preserves identity and grants before retiring the old file. Remote agents remain text-only until their
 owning host supports trusted file transfer. Reconnect reconciles available command receipts without replaying prompts
 and retains the last loaded snapshot while rehydrating the same provider session.
 
@@ -352,13 +359,27 @@ blank. Electron never passes its data directory.
 | `settings.json` | preferences, theme, source folder, remote connections, work integrations, private telemetry choice and identity |
 | `document-workspaces.json` | per-client, per-agent open tab references and transient Markdown backing bytes |
 | `tasks.json` | durable delegated tasks (additive; absent means none) |
+| `repositories.json` | canonical repository/folder metadata: icons and saved run commands |
 | `visualizations/<repo>-<hash>/<id>.json` | user content, one file per visualization |
 | `backups/` | verified copies taken before a migration |
+| `companions.json` | companion identity, paired-device grants, receipts and Live Activity registrations |
+| `collaboration.json` | protected owner-sharing and guest-join sections |
+| `pricing.json` | validated downloadable pricing cache, with bundled offline fallback |
 | `provider-tokens.json` | work-integration tokens, owner-readable, behind a token-store port |
+
+Agent closure removes its document workspace references across clients and
+garbage-collects unreferenced transient Markdown. Saved files remain on disk.
+Worktree cleanup retains the workspace until closure succeeds; a disconnected
+remote host alone does not establish that an agent was closed.
+
+Repository metadata has one serialized writer for icon and command updates. Icons
+remain projected through the existing settings contract for clients; they are not
+stored in `settings.json`. Legacy inputs are retired only after the repository
+file has been validated, durably written and verified.
 
 Rules:
 
-- Durable state files use `{ schemaVersion, writtenBy, data }`. A build refuses to
+- Roster, settings, tasks, document workspaces and visualizations use `{ schemaVersion, writtenBy, data }`. A build refuses to
   read or rewrite a newer `schemaVersion`; a file that fails to parse stops startup rather
   than becoming empty (except an unreadable visualization, which is skipped).
 - Within a supported schema version, additive fields do not block loading agents,
