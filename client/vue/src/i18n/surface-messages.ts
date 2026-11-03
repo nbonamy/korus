@@ -1071,7 +1071,7 @@ export const surfaceMessages = {
     "letAgentsInspectAndControlMacOSAppsThroughTheLocalComput": "Let agents inspect and control macOS apps through the local Computer Use helper",
     "enableComputerUse": "Enable Computer Use",
     "keepMacUnlockedDuringComputerUse": "Keep Mac unlocked during Computer Use",
-    "keepTheScreenOnWhileAnAgentUsesYourMacSoItDoesNotLockTurnO": "Keep the screen on while an agent uses your Mac, so it does not lock. Turn off to follow your system's display sleep and lock settings.",
+    "keepTheScreenOnWhileAnAgentUsesYourMacSoItDoesNotLockTurnO": "Keep the screen on while an agent uses your Mac, so it does not lock. Computer Use cannot work while your Mac is locked.",
     "codex": "Codex",
     "chrome": "Chrome",
     "letAgentsWorkWithYourExistingChromeTabsSessionsAndExtens": "Let agents work with your existing Chrome tabs, sessions, and extensions",

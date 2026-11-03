@@ -34,7 +34,7 @@
       >
         <template #control>
           <el-switch
-            :model-value="pluginSettings.computerUseKeepUnlocked !== false"
+            :model-value="pluginSettings.computerUseKeepUnlocked === true"
             :aria-label="$t('surface.settingsPluginsPanel.keepMacUnlockedDuringComputerUse')"
             @update:model-value="updateKeepUnlocked"
           />

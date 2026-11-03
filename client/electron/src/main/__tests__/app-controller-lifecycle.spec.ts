@@ -190,9 +190,14 @@ describe('controller desktop lifecycle', () => {
     expect(powerSaveBlocker.stop).toHaveBeenCalledExactlyOnceWith(1);
   });
 
-  it('holds the display awake while Computer Use is in use so the session cannot lock, then falls back', async () => {
+  const keepUnlocked = (state: { snapshot: { general: { plugins?: unknown } } }, value: boolean) => {
+    state.snapshot.general.plugins = { computerUseEnabled: true, chromeEnabled: false, computerUseKeepUnlocked: value };
+  };
+
+  it('holds the display awake while Computer Use is in use, when the user opted in, then falls back', async () => {
     vi.useFakeTimers();
     const { controller, state } = setup();
+    keepUnlocked(state, true);
     state.clientState.shouldPreventDisplaySleep = true;
     await controller.initialize();
     expect(powerSaveBlocker.start).toHaveBeenLastCalledWith('prevent-app-suspension');
@@ -205,21 +210,20 @@ describe('controller desktop lifecycle', () => {
     await controller.shutdown();
   });
 
-  it('leaves display sleep and locking to the system when the user turns off keeping the Mac unlocked', async () => {
+  it('leaves display sleep and locking to the system unless the user opts in to keeping the Mac unlocked', async () => {
     vi.useFakeTimers();
     const { controller, state } = setup();
-    state.snapshot.general.plugins = { computerUseEnabled: true, chromeEnabled: false, computerUseKeepUnlocked: false };
     state.clientState.shouldPreventDisplaySleep = true;
     await controller.initialize();
     computerUseActivity.touch();
     expect(powerSaveBlocker.start).toHaveBeenCalledExactlyOnceWith('prevent-app-suspension');
-    vi.advanceTimersByTime(5 * 60_000);
     await controller.shutdown();
   });
 
-  it('holds the display awake for Computer Use even when no agent or remote access asks for protection', async () => {
+  it('holds the display awake for Computer Use when opted in, even with no agent or remote access asking for protection', async () => {
     vi.useFakeTimers();
-    const { controller } = setup();
+    const { controller, state } = setup();
+    keepUnlocked(state, true);
     await controller.initialize();
     expect(powerSaveBlocker.start).not.toHaveBeenCalled();
     computerUseActivity.touch();

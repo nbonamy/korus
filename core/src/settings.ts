@@ -14,7 +14,7 @@ import { normalizeBrowserBookmarks } from './browser-bookmarks';
 export const defaultPluginSettings: AppPluginSettings = {
   computerUseEnabled: false,
   chromeEnabled: false,
-  computerUseKeepUnlocked: true,
+  computerUseKeepUnlocked: false,
 };
 
 export const defaultAppshotSettings: AppshotSettings = {
@@ -339,7 +339,7 @@ export function normalizePluginSettings(value: unknown): AppPluginSettings {
   return {
     computerUseEnabled: value.computerUseEnabled === true,
     chromeEnabled: value.chromeEnabled === true,
-    computerUseKeepUnlocked: value.computerUseKeepUnlocked !== false,
+    computerUseKeepUnlocked: value.computerUseKeepUnlocked === true,
   };
 }
 

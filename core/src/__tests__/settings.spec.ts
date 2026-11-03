@@ -340,18 +340,18 @@ describe('settings contracts', () => {
     expect(snapshot.general.plugins).toStrictEqual({
       computerUseEnabled: true,
       chromeEnabled: true,
-      computerUseKeepUnlocked: true,
+      computerUseKeepUnlocked: false,
     });
   });
 
-  it('keeps the Mac unlocked for Computer Use unless the user turns that off', () => {
+  it('leaves keeping the Mac unlocked for Computer Use off until the user turns it on', () => {
     const snapshot = createEmptySnapshot();
-    expect(snapshot.general.plugins?.computerUseKeepUnlocked).toBe(true);
-    updateSettingsInSnapshot(snapshot, { general: { plugins: { computerUseKeepUnlocked: false } } });
-    expect(snapshot.general.plugins).toMatchObject({ computerUseEnabled: false, computerUseKeepUnlocked: false });
-    updateSettingsInSnapshot(snapshot, { general: { plugins: { computerUseEnabled: true } } });
     expect(snapshot.general.plugins?.computerUseKeepUnlocked).toBe(false);
-    expect(normalizePluginSettings({ computerUseEnabled: true, chromeEnabled: false })).toMatchObject({ computerUseKeepUnlocked: true });
+    updateSettingsInSnapshot(snapshot, { general: { plugins: { computerUseKeepUnlocked: true } } });
+    expect(snapshot.general.plugins).toMatchObject({ computerUseEnabled: false, computerUseKeepUnlocked: true });
+    updateSettingsInSnapshot(snapshot, { general: { plugins: { computerUseEnabled: true } } });
+    expect(snapshot.general.plugins?.computerUseKeepUnlocked).toBe(true);
+    expect(normalizePluginSettings({ computerUseEnabled: true, chromeEnabled: false })).toMatchObject({ computerUseKeepUnlocked: false });
   });
 
   it('updates GitHub provider settings without replacing connection state', () => {

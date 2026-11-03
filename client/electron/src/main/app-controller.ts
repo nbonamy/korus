@@ -2149,7 +2149,7 @@ export class AppController {
   private syncPowerSaveBlocker(): void {
     const isOnBattery = powerMonitor?.isOnBatteryPower?.() ?? false;
     // Computer Use needs an unlocked screen; everything else only needs the system kept available.
-    const keepUnlocked = this.snapshot?.general.plugins?.computerUseKeepUnlocked !== false;
+    const keepUnlocked = this.snapshot?.general.plugins?.computerUseKeepUnlocked === true;
     this.powerSaveBlocker.sync(computerUseActivity.isActive() && keepUnlocked ? 'display'
       : shouldBlockDisplaySleep(this.clientState, isOnBattery) ? 'suspension' : 'none');
   }
