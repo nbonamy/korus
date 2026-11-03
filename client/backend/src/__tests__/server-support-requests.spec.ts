@@ -193,6 +193,7 @@ describe('AppBackendServer', () => {
   it('separates backend policy from client presentation settings', async () => {
     const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=';
     const snapshot = createTestSnapshot();
+    const durable = { githubStarPrompt: { sentPrompts: 5, dismissed: true }, preferredProviders: { local: 'claude' as const }, gitMergeCleanup: { deleteWorktree: true, deleteBranch: false } };
     const saveSnapshot = vi.fn().mockResolvedValue(undefined);
     const server = new AppBackendServer({
       version: 'test-version',
@@ -202,7 +203,7 @@ describe('AppBackendServer', () => {
     });
 
     await server.handleMessage({ jsonrpc: '2.0', id: 'preferences', method: 'client/preferences/update', params: { input: {
-      general: { repositoryIcons: { 'git@github.com:nbonamy/agent-workspace.git': '🦞', '/src/image-repository': image } },
+      general: { ...durable, repositoryIcons: { 'git@github.com:nbonamy/agent-workspace.git': '🦞', '/src/image-repository': image } },
       theme: { id: 'app-dark', mode: 'dark', uiFontSize: 18 },
     } } });
     await expect(server.handleMessage({
@@ -241,6 +242,17 @@ describe('AppBackendServer', () => {
       },
     });
 
+    expect(snapshot.clientPreferences?.desktop?.general).toMatchObject(durable);
+    const reloaded = new AppBackendServer({ version: 'test', snapshot: structuredClone(snapshot) });
+    try {
+      // Released clients keep using their existing preferences request shape.
+      const oldPhone = await reloaded.handleMessage({ jsonrpc: '2.0', id: 'old-phone', method: 'client/preferences/update', params: { _clientId: 'phone', input: { general: { agentListCompact: true } } } });
+      expect(oldPhone).toMatchObject({ result: { general: { agentListCompact: true, followUpBehavior: 'queue' } } });
+      const phoneGeneral = (oldPhone as { result: { general: Record<string, unknown> } }).result.general;
+      for (const field of Object.keys(durable)) expect(phoneGeneral[field]).toBeUndefined();
+      const desktop = await reloaded.handleMessage({ jsonrpc: '2.0', id: 'reload', method: backendMethods.snapshotGet });
+      expect(desktop).toMatchObject({ result: { snapshot: { general: durable } } });
+    } finally { await reloaded.close(); }
     expect(saveSnapshot).toHaveBeenCalledWith(snapshot);
     expect(snapshot.general.repositoryIcons).toStrictEqual({});
     expect(snapshot.clientPreferences?.desktop?.general?.repositoryIcons).toStrictEqual({ 'git@github.com:nbonamy/agent-workspace.git': '🦞', '/src/image-repository': image });

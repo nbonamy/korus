@@ -3,12 +3,14 @@ import { createCodexConversationPaneController } from '@codex-app-sdk/vue';
 import { describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { product } from '@workspace/core/product';
+import { updateSettingsInSnapshot } from '@workspace/core/settings';
+import { createGeneralPreferences, generalPreferencesKey } from '../../general-preferences';
 import { useAppState } from '../../app-state';
 import { stubElectronTestWindow } from '../../test/client';
 import ConversationPane from '../ConversationPane.vue';
 
 // Exercise the real submission boundary and composer slot: failed/empty sends must
-// not count, and a client-local dismissal must survive switching panes/reloading.
+// not count, and a persisted dismissal must survive switching panes/reloading.
 describe('GitHub star composer prompt', () => {
   it('appears after five successful human prompts across agents and stays dismissed', async () => {
     const snapshot = createInitialSnapshot();
@@ -17,14 +19,16 @@ describe('GitHub star composer prompt', () => {
     const steerPrompt = vi.fn(async () => structuredClone(snapshot));
     stubElectronTestWindow({ app: {
       getSnapshot: async () => structuredClone(snapshot), sendPrompt, steerPrompt,
+      updateSettings: async input => { updateSettingsInSnapshot(snapshot, input); return structuredClone(snapshot); },
     } });
     const state = useAppState();
     await state.loadSnapshot();
+    const global = { provide: { [generalPreferencesKey as symbol]: createGeneralPreferences(() => state.snapshot.value.general, general => state.updateSettings({ general })) } };
     const props = {
       controller: createCodexConversationPaneController({ state: { identity: { conversationKey: 'star', messages: [] } }, actions: {} }),
       agent: snapshot.agents[0]!,
     };
-    const pane = mount(ConversationPane, { props });
+    const pane = mount(ConversationPane, { props, global });
     const notice = () => pane.find('.github-star-prompt');
     expect(notice().exists()).toBe(false);
     await state.sendPrompt('   ');
@@ -42,9 +46,12 @@ describe('GitHub star composer prompt', () => {
     expect(notice().exists()).toBe(false);
     await pane.setProps({ keyboardActive: true });
     await notice().get('button[aria-label="Dismiss star reminder"]').trigger('click');
+    await flushPromises();
     expect(notice().exists()).toBe(false);
+    expect(snapshot.general.githubStarPrompt).toStrictEqual({ sentPrompts: 5, dismissed: true });
     pane.unmount();
-    const restored = mount(ConversationPane, { props });
+    await state.loadSnapshot();
+    const restored = mount(ConversationPane, { props, global });
     await state.sendPrompt('Another prompt');
     await flushPromises();
     expect(restored.find('.github-star-prompt').exists()).toBe(false);
@@ -56,23 +63,29 @@ describe('GitHub star composer prompt', () => {
     stubElectronTestWindow({ app: {
       getSnapshot: async () => structuredClone(snapshot),
       sendPrompt: async () => structuredClone(snapshot),
+      updateSettings: vi.fn().mockRejectedValueOnce(new Error('Temporary disk failure'))
+        .mockImplementation(async input => { updateSettingsInSnapshot(snapshot, input); return structuredClone(snapshot); }),
     } });
     const open = vi.spyOn(window, 'open').mockReturnValue(null);
     const state = useAppState();
     await state.loadSnapshot();
+    const global = { provide: { [generalPreferencesKey as symbol]: createGeneralPreferences(() => state.snapshot.value.general, general => state.updateSettings({ general })) } };
     const props = {
       controller: createCodexConversationPaneController({ state: { identity: { conversationKey: 'star', messages: [] } }, actions: {} }),
       agent: snapshot.agents[0]!,
     };
-    const pane = mount(ConversationPane, { props });
+    const pane = mount(ConversationPane, { props, global });
     expect(pane.find('.github-star-prompt').exists()).toBe(false);
     await state.sendPrompt('Fifth prompt after restarting');
     await flushPromises();
     await pane.get('.github-star-prompt button').trigger('click');
+    await flushPromises();
+    expect(localStorage.getItem('app:githubStarPrompt:v1')).toBeNull();
+    expect(snapshot.general.githubStarPrompt).toStrictEqual({ sentPrompts: 5, dismissed: true });
     expect(open).toHaveBeenCalledWith(product.repositoryUrl, '_blank', 'noopener,noreferrer');
     expect(pane.find('.github-star-prompt').exists()).toBe(false);
     pane.unmount();
-    expect(mount(ConversationPane, { props }).find('.github-star-prompt').exists()).toBe(false);
+    expect(mount(ConversationPane, { props, global }).find('.github-star-prompt').exists()).toBe(false);
     open.mockRestore();
   });
 });

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { serializeStoreFile } from '../persistence/store-format';
 import { RunProfileService } from '../run-profile-service';
 
 const exec = promisify(execFile);
@@ -29,11 +30,50 @@ beforeEach(async () => {
   await exec('git', ['init', repo]);
   await exec('git', ['-C', repo, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.com', 'commit', '--allow-empty', '-m', 'fixture']);
   await exec('git', ['-C', repo, 'worktree', 'add', '-b', 'fixture', worktree]);
-  service = new RunProfileService(path.join(root, 'home', 'run-profiles.json'));
+  service = new RunProfileService(path.join(root, 'home', 'repositories.json'));
 });
 afterEach(async () => { await service.close(); await rm(root, { recursive: true, force: true }); });
 
 describe('repository run profiles', () => {
+  it('migrates commands from separate clones into one Git identity and resolves each selected worktree locally', async () => {
+    await exec('git', ['-C', repo, 'remote', 'add', 'origin', 'git@github.com:fixture/project.git']);
+    const clone = path.join(root, 'second');
+    await exec('git', ['clone', repo, clone]);
+    await exec('git', ['-C', clone, 'remote', 'set-url', 'origin', 'https://github.com/fixture/project.git']);
+    const first = { ...profile, id: '11111111-1111-4111-8111-111111111111' };
+    const second = { ...profile, name: 'Tests', command: 'node test.cjs', id: '22222222-2222-4222-8222-222222222222' };
+    const home = path.join(root, 'home'); await mkdir(home);
+    const conflicting = { ...first, name: 'Alternate dev', command: 'node alternate.cjs' };
+    const legacy = serializeStoreFile({ repositories: { [repo]: [first], [clone]: [second, conflicting] } });
+    await writeFile(path.join(home, 'run-profiles.json'), legacy);
+    await service.close(); service = new RunProfileService(path.join(home, 'repositories.json'));
+    const migrated = (await service.get(agent, repo)).profiles;
+    expect(migrated.slice(0, 2)).toStrictEqual([first, second]);
+    expect(migrated[2]).toMatchObject({ name: conflicting.name, command: conflicting.command });
+    expect(new Set(migrated.map(command => command.id)).size).toBe(3);
+    for (const folder of [repo, worktree, clone]) {
+      const catalog = await service.get(agent, folder);
+      expect(catalog.profiles).toStrictEqual(migrated);
+      expect(catalog.targets[first.id]).toStrictEqual({ cwd: await realpath(folder) });
+    }
+    const saved = JSON.parse(await readFile(path.join(home, 'repositories.json'), 'utf8'));
+    expect(saved.data.repositories['git:github.com/fixture/project'].commands).toStrictEqual(migrated);
+    // Replaying the old source after a successful write cannot duplicate definitions.
+    await writeFile(path.join(home, 'run-profiles.json'), legacy);
+    expect((await service.get(agent, repo)).profiles).toStrictEqual(migrated);
+    await expect(readFile(path.join(home, 'run-profiles.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('stores ordinary-folder commands under a file URL and preserves them when the folder gains a remote', async () => {
+    const folder = path.join(root, 'plain folder'); await mkdir(folder);
+    const saved = await service.save(agent, folder, profile);
+    const before = JSON.parse(await readFile(path.join(root, 'home/repositories.json'), 'utf8'));
+    expect(Object.keys(before.data.repositories)).toContain(new URL(`file://${folder.replaceAll(' ', '%20')}`).href);
+    await exec('git', ['init', folder]);
+    await exec('git', ['-C', folder, 'remote', 'add', 'origin', 'https://github.com/fixture/plain.git']);
+    expect((await service.get(agent, folder)).profiles).toStrictEqual(saved.profiles);
+  });
+
   it('imports selected-worktree script and target names without executing or copying their recipes', async () => {
     await writeFile(path.join(worktree, 'package.json'), JSON.stringify({ scripts: { dev: 'TOKEN=private node server.cjs', test: 'touch package-marker', 'bad;name': 'echo unsafe' } }));
     await writeFile(path.join(worktree, 'Makefile'), '.PHONY: build check\nbuild check:\n\t@touch make-marker\nVALUE := $(shell touch evaluated-marker)\n%.o: %.c\n');
@@ -71,7 +111,7 @@ describe('repository run profiles', () => {
     const linked = await service.get(agent, worktree);
     expect(linked).toStrictEqual({ ...saved, worktree, targets: { [saved.profiles[0].id]: { cwd: worktree } }, runs: [] });
     await service.close();
-    service = new RunProfileService(path.join(root, 'home', 'run-profiles.json'));
+    service = new RunProfileService(path.join(root, 'home', 'repositories.json'));
     expect(await service.get(agent, worktree)).toStrictEqual(linked);
     await service.delete(agent, worktree, saved.profiles[0].id);
     expect((await service.get(agent, repo)).profiles).toStrictEqual([]);
@@ -83,7 +123,7 @@ describe('repository run profiles', () => {
     await service.start(agent, repo, { profileId: p.id, command: p.command, cwd: repo });
     await waitFor(async () => (await service.get(agent, repo)).runs[0].state === 'completed');
     await service.close();
-    service = new RunProfileService(path.join(root, 'home', 'run-profiles.json'));
+    service = new RunProfileService(path.join(root, 'home', 'repositories.json'));
     expect((await service.get(agent, repo)).runs).toStrictEqual([]);
     await new Promise(resolve => setTimeout(resolve, 100));
     expect(await readFile(path.join(repo, 'marker'), 'utf8')).toBe('run\n');
@@ -180,7 +220,7 @@ describe('repository run profiles', () => {
       const result = (await service.get(agent, repo)).runs[0];
       expect(result.output.length).toBeLessThanOrEqual(65536);
       expect(result.output).not.toContain('fixture-private-secret');
-      expect(await readFile(path.join(root, 'home', 'run-profiles.json'), 'utf8')).not.toContain('fixture-private-secret');
+      expect(await readFile(path.join(root, 'home', 'repositories.json'), 'utf8')).not.toContain('fixture-private-secret');
       await service.retainAgents(new Set());
       expect((await service.get(agent, repo)).runs[0]).toMatchObject({ id: run.id, state: 'stopped' });
       await service.close();

@@ -311,8 +311,8 @@ describe('workspace sidebar projection', () => {
     })).toBe('🦞');
     expect(repositoryIconForAgent(agent, {})).toBeUndefined();
     expect(repositoryIconForAgent(baseAgent('agent-folder', 'Folder', '/src/folder'), {
-      '/src/folder': '📁',
-    })).toBeUndefined();
+      'file:///src/folder': '📁',
+    })).toBe('📁');
   });
 
   it('falls back to persisted repository roots when migrating icon keys', () => {

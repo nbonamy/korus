@@ -173,9 +173,9 @@ describe('AgentSidebar interactions', () => {
       },
     });
 
-    expect(wrapper.attributes('style')).toContain('--agent-sidebar-width: 220px');
-    expect(wrapper.attributes('style')).toContain('--agent-sidebar-min-width: 220px');
-    expect(wrapper.attributes('style')).toContain('--agent-sidebar-max-width: 420px');
+    expect(wrapper.get('.agent-sidebar').attributes('style')).toContain('--agent-sidebar-width: 220px');
+    expect(wrapper.get('.agent-sidebar').attributes('style')).toContain('--agent-sidebar-min-width: 220px');
+    expect(wrapper.get('.agent-sidebar').attributes('style')).toContain('--agent-sidebar-max-width: 420px');
   });
 
   it('keeps the expanded sidebar readable when given an undersized width', async () => {
@@ -191,7 +191,7 @@ describe('AgentSidebar interactions', () => {
       },
     });
 
-    expect(wrapper.attributes('style')).toContain('--agent-sidebar-width: 200px');
+    expect(wrapper.get('.agent-sidebar').attributes('style')).toContain('--agent-sidebar-width: 200px');
     const handle = wrapper.get('[aria-label="Resize agent sidebar"]');
     expect(handle.attributes('aria-valuemin')).toBe('200');
     await handle.trigger('keydown', { key: 'ArrowLeft' });

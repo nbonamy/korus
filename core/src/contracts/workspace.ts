@@ -1,6 +1,7 @@
 export type AgentWorkspaceIdentity =
   | {
       kind: 'git';
+      repositoryKey?: string;
       folder: string;
       repositoryName: string;
       repositoryRoot: string;
@@ -13,6 +14,7 @@ export type AgentWorkspaceIdentity =
     }
   | {
       kind: 'folder';
+      repositoryKey?: string;
       folder: string;
       label: string;
       updatedAt: string;

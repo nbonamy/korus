@@ -7,7 +7,7 @@ import type { AppSnapshot } from '@workspace/core/contracts';
 import type { Visualization } from '@workspace/core/visualize';
 import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../../state-persistence';
 import { AppStateStore } from '../store';
-import { StoreFormatError, parseStoreFile, rosterSchemaVersion } from '../store-format';
+import { StoreFormatError, parseStoreFile, serializeStoreFile, rosterSchemaVersion } from '../store-format';
 import { projectClientSnapshot } from '@workspace/core/client-preferences';
 import { readyRemoteConnection } from '../../__tests__/server-test-fixtures';
 
@@ -37,6 +37,64 @@ function snapshotWithCalendar(): AppSnapshot {
 }
 
 describe('AppStateStore', () => {
+  it('persists icon removal from the existing desktop client-preferences contract', async () => {
+    const initial = createInitialSnapshot();
+    initial.general.repositoryIcons = { 'remote:github.com/fixture/project': '🎾' };
+    await new AppStateStore(home).save(initial);
+    const store = new AppStateStore(home);
+    const snapshot = await store.load();
+    await store.save(snapshot);
+    snapshot.clientPreferences = { desktop: { general: { repositoryIcons: {} } } };
+    await store.save(snapshot);
+    expect((await new AppStateStore(home).load()).general.repositoryIcons).toStrictEqual({});
+  });
+
+  it('retains legacy icons and commands when repository storage is corrupt and safely retries', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.general.repositoryIcons = { 'remote:github.com/fixture/project': '🎾' };
+    await new AppStateStore(home).save(snapshot);
+    const legacySettings = await readJson('settings.json');
+    (legacySettings.data.settings as Record<string, unknown>).repositoryIcons = snapshot.general.repositoryIcons;
+    await writeFile(file('settings.json'), JSON.stringify(legacySettings));
+    const command = { id: '11111111-1111-4111-8111-111111111111', name: 'Dev', command: 'npm run dev', directory: '.' };
+    const legacyCommands = serializeStoreFile({ repositories: { '/plain folder': [command] } });
+    await writeFile(file('run-profiles.json'), legacyCommands);
+    await writeFile(file('repositories.json'), '{broken');
+    await expect(new AppStateStore(home).load()).rejects.toThrow(StoreFormatError);
+    expect((await readJson('settings.json')).data.settings).toHaveProperty('repositoryIcons', snapshot.general.repositoryIcons);
+    expect(await readFile(file('run-profiles.json'), 'utf8')).toBe(legacyCommands);
+    await rm(file('repositories.json'));
+    const loaded = await new AppStateStore(home).load();
+    expect(loaded.general.repositoryIcons).toStrictEqual(snapshot.general.repositoryIcons);
+    expect((await readJson('settings.json')).data.settings).not.toHaveProperty('repositoryIcons');
+    await expect(readFile(file('run-profiles.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('moves icons out of settings and preserves commands across icon saves and reload', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.general.repositoryIcons = { 'remote:github.com/fixture/project': '🎾', '/plain folder': '📁' };
+    const store = new AppStateStore(home);
+    await store.save(snapshot);
+    const settings = await readJson('settings.json');
+    const legacySettings = structuredClone(settings);
+    (legacySettings.data.settings as Record<string, unknown>).repositoryIcons = snapshot.general.repositoryIcons;
+    await writeFile(file('settings.json'), JSON.stringify(legacySettings));
+    const command = { id: '11111111-1111-4111-8111-111111111111', name: 'Dev', command: 'npm run dev', directory: '.' };
+    await writeFile(file('run-profiles.json'), serializeStoreFile({ repositories: { '/plain folder': [command] } }));
+    const loaded = await new AppStateStore(home).load();
+    expect(loaded.general.repositoryIcons['remote:github.com/fixture/project']).toBe('🎾');
+    expect(loaded.general.repositoryIcons['/plain folder']).toBe('📁');
+    expect((await readJson('settings.json')).data.settings).not.toHaveProperty('repositoryIcons');
+    let repositories = (await readJson('repositories.json')).data.repositories as Record<string, { icon: string; commands: unknown[] }>;
+    expect(repositories['git:github.com/fixture/project']!.icon).toBe('🎾');
+    expect(repositories['file:///plain%20folder']!.commands).toStrictEqual([command]);
+    loaded.general.repositoryIcons = { 'git:github.com/fixture/project': '⭐' };
+    await new AppStateStore(home).save(loaded);
+    repositories = (await readJson('repositories.json')).data.repositories as typeof repositories;
+    expect(repositories['git:github.com/fixture/project']!.icon).toBe('⭐');
+    expect(repositories['file:///plain%20folder']!.commands).toStrictEqual([command]);
+    expect((await new AppStateStore(home).load()).general.repositoryIcons['remote:github.com/fixture/project']).toBe('⭐');
+  });
   it('keeps private telemetry choices in settings across ordinary and concurrent saves without publishing them', async () => {
     const store = new AppStateStore(home);
     const snapshot = await store.load();

@@ -198,7 +198,7 @@ function isAgentGitPullRequest(value: Record<string, unknown>): boolean {
 }
 
 function isAgentWorkspaceIdentity(value: unknown): boolean {
-  if (!isRecord(value) || typeof value.folder !== 'string' || typeof value.updatedAt !== 'string') return false;
+  if (!isRecord(value) || typeof value.folder !== 'string' || typeof value.updatedAt !== 'string' || !optional(value, 'repositoryKey', isString)) return false;
   if (value.kind === 'folder') return typeof value.label === 'string';
   return value.kind === 'git' &&
     typeof value.repositoryName === 'string' &&
@@ -567,6 +567,9 @@ function isGeneralSettings(value: unknown): boolean {
     optional(value, 'codeReviewDefaults', isCodeReviewPreferences) &&
     optional(value, 'providerApprovalDefaults', candidate => isRecord(candidate)
       && optional(candidate, 'codex', isApprovalPreset) && optional(candidate, 'claude', isString) && optional(candidate, 'antigravity', isString)) &&
+    optional(value, 'githubStarPrompt', candidate => isRecord(candidate) && Number.isSafeInteger(candidate.sentPrompts) && (candidate.sentPrompts as number) >= 0 && (candidate.sentPrompts as number) <= 5 && isBoolean(candidate.dismissed)) &&
+    optional(value, 'preferredProviders', candidate => isRecord(candidate) && Object.entries(candidate).every(([host, backend]) => host.trim().length > 0 && (backend === 'codex' || backend === 'claude' || backend === 'antigravity'))) &&
+    optional(value, 'gitMergeCleanup', candidate => isRecord(candidate) && isBoolean(candidate.deleteWorktree) && isBoolean(candidate.deleteBranch)) &&
     optional(value, 'providerModelDefaults', candidate => isRecord(candidate) && Object.entries(candidate).every(([backend, selection]) =>
       isExecutionSelection(selection) && selection.backend === backend)) &&
     optional(value, 'providerHomes', candidate => isRecord(candidate) && Object.entries(candidate).every(([backend, home]) =>

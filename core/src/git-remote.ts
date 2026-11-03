@@ -51,9 +51,10 @@ export function cloneUrlForRemote(value: string): string | undefined {
 export function canonicalGitRemoteIdentity(value: string): string | undefined {
   const trimmed = value.trim();
   if (!trimmed) return undefined;
+  if (/^[A-Za-z]:[\\/]/.test(trimmed) || trimmed.startsWith('\\\\')) return undefined;
 
-  if (trimmed.startsWith(REMOTE_KEY_PREFIX)) {
-    const identity = trimmed.slice(REMOTE_KEY_PREFIX.length).trim();
+  if (trimmed.startsWith(REMOTE_KEY_PREFIX) || trimmed.startsWith('git:')) {
+    const identity = trimmed.slice(trimmed.startsWith('git:') ? 4 : REMOTE_KEY_PREFIX.length).trim();
     return isCanonicalIdentity(identity) ? identity : undefined;
   }
 

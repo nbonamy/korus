@@ -260,6 +260,7 @@ describe('agent git service parsers', () => {
 
     await expect(service.identity('/src/agent-workspace')).resolves.toStrictEqual({
       kind: 'git',
+      repositoryKey: 'file:///src/agent-workspace',
       folder: '/src/agent-workspace',
       repositoryName: 'agent-workspace',
       repositoryRoot: '/src/agent-workspace',
@@ -283,6 +284,7 @@ describe('agent git service parsers', () => {
 
     await expect(service.identity('/src/agent-workspace-feature')).resolves.toStrictEqual({
       kind: 'git',
+      repositoryKey: 'git:github.com/nbonamy/agent-workspace',
       folder: '/src/agent-workspace-feature',
       repositoryName: 'agent-workspace',
       repositoryRoot: '/src/agent-workspace-feature',
@@ -320,6 +322,7 @@ describe('agent git service parsers', () => {
 
     await expect(service.identity('/src/notes')).resolves.toStrictEqual({
       kind: 'folder',
+      repositoryKey: 'file:///src/notes',
       folder: '/src/notes',
       label: 'notes',
       updatedAt: '2026-08-27T12:00:00.000Z',

@@ -13,7 +13,7 @@ vi.mock('../connector', () => ({ CompanionOutboundConnector: class {
   disablePhone() {}
 } }));
 import { CompanionManager } from '../manager';
-import { generateKeyPair } from '@libp2p/crypto/keys';
+import { generateKeyPair, privateKeyToProtobuf } from '@libp2p/crypto/keys';
 import { peerIdFromPrivateKey } from '@libp2p/peer-id';
 import { AppBackendServer } from '../../server';
 import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
@@ -25,9 +25,43 @@ async function fixture(onAccessChanged?: (enabled: boolean) => void) {
   return { directory, manager };
 }
 describe('daemon companion persistence', () => {
+  it('migrates the legacy companion identity and grants, then restores them from companions.json', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'companion-migration-')); directories.push(directory);
+    const key = await generateKeyPair('Ed25519');
+    const phone = peerIdFromPrivateKey(await generateKeyPair('Ed25519')).toString();
+    const saved = { v: 1, identity: Buffer.from(privateKeyToProtobuf(key)).toString('base64'), enabled: false, relayOrigin: '', relayPeerId: '', gateway: { grants: [{ peerId: phone, name: 'Existing phone', createdAt: 1 }], commands: {} } };
+    const legacy = path.join(directory, 'companion/state.json');
+    await mkdir(path.dirname(legacy)); await writeFile(legacy, JSON.stringify(saved));
+    let manager = new CompanionManager(directory, { request: vi.fn() }, {});
+    try {
+      const status = await manager.control({ action: 'status' });
+      expect(status.status.hostId).toBe(peerIdFromPrivateKey(key).toString());
+      expect(status.status.devices).toMatchObject([{ peerId: phone, name: 'Existing phone' }]);
+      const file = path.join(directory, 'companions.json');
+      expect(JSON.parse(await readFile(file, 'utf8'))).toStrictEqual(saved);
+      expect((await stat(file)).mode & 0o777).toBe(0o600);
+      await expect(stat(legacy)).rejects.toMatchObject({ code: 'ENOENT' });
+      await manager.stop(); manager = new CompanionManager(directory, { request: vi.fn() }, {});
+      expect((await manager.control({ action: 'status' })).status).toStrictEqual(status.status);
+    } finally { await manager.stop(); }
+  });
+
+  it('does not discard the legacy identity when the destination cannot be written', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'companion-migration-')); directories.push(directory);
+    const saved = { v: 1, identity: Buffer.from(privateKeyToProtobuf(await generateKeyPair('Ed25519'))).toString('base64'), enabled: false, gateway: { grants: [], commands: {} } };
+    const legacy = path.join(directory, 'companion/state.json');
+    await mkdir(path.dirname(legacy)); await writeFile(legacy, JSON.stringify(saved));
+    await mkdir(path.join(directory, 'companions.json'));
+    const manager = new CompanionManager(directory, { request: vi.fn() }, {});
+    try {
+      await expect(manager.control({ action: 'status' })).rejects.toThrow();
+      expect(JSON.parse(await readFile(legacy, 'utf8'))).toStrictEqual(saved);
+    } finally { await manager.stop(); }
+  });
+
   it('publishes authoritative aggregate counts after an event and removes activity registration when mobile access is disabled', async () => {
     const { directory, manager } = await fixture(); await manager.control({ action: 'status' }); await manager.stop();
-    const file = path.join(directory, 'state.json'); const saved = JSON.parse(await readFile(file, 'utf8'));
+    const file = path.join(directory, 'companions.json'); const saved = JSON.parse(await readFile(file, 'utf8'));
     saved.enabled = true;
     saved.gateway.grants = [{ peerId: 'phone', name: 'Phone', createdAt: 1 }];
     saved.activities = { phone: { start: { kind: 'start', token: 'ab'.repeat(32), environment: 'development' } } };
@@ -68,7 +102,7 @@ describe('daemon companion persistence', () => {
     await manager.updateShareRoutes(routes);
     expect(transport.start).toHaveBeenCalledOnce();
     expect((await manager.control({ action: 'status' })).status.enabled).toBe(false);
-    expect(JSON.parse(await readFile(path.join(directory, 'state.json'), 'utf8')).enabled).toBe(false);
+    expect(JSON.parse(await readFile(path.join(directory, 'companions.json'), 'utf8')).enabled).toBe(false);
     await manager.control({ action: 'resume' });
     const stops = transport.stop.mock.calls.length;
     await manager.control({ action: 'disable' });
@@ -112,25 +146,25 @@ describe('daemon companion persistence', () => {
   });
   it('keeps a protected stable host identity across daemon restart and refuses corrupt identity replacement', async () => {
     const { directory, manager } = await fixture(); const first = await manager.control({ action: 'status' });
-    expect((await stat(path.join(directory, 'state.json'))).mode & 0o777).toBe(0o600);
+    expect((await stat(path.join(directory, 'companions.json'))).mode & 0o777).toBe(0o600);
     await manager.stop();
     const restored = new CompanionManager(directory, { request: vi.fn() }, {});
     expect((await restored.control({ action: 'status' })).status.hostId).toBe(first.status.hostId);
     await restored.stop();
-    await writeFile(path.join(directory, 'state.json'), '{broken');
+    await writeFile(path.join(directory, 'companions.json'), '{broken');
     await expect(new CompanionManager(directory, { request: vi.fn() }, {}).control({ action: 'status' })).rejects.toThrow('identity cannot be loaded');
-    expect(await readFile(path.join(directory, 'state.json'), 'utf8')).toBe('{broken');
+    expect(await readFile(path.join(directory, 'companions.json'), 'utf8')).toBe('{broken');
   });
   it('does not enable access or mutate saved settings when the durable write fails', async () => {
     const onAccessChanged = vi.fn();
     const { directory, manager } = await fixture(onAccessChanged); await manager.control({ action: 'status' });
-    await rm(path.join(directory, 'state.json')); await mkdir(path.join(directory, 'state.json'));
+    await rm(path.join(directory, 'companions.json')); await mkdir(path.join(directory, 'companions.json'));
     const relayPeerId = peerIdFromPrivateKey(await generateKeyPair('Ed25519')).toString();
     await expect(manager.control({ action: 'enable', relayOrigin: 'wss://relay.example', relayPeerId })).rejects.toThrow();
     expect((await manager.control({ action: 'status' })).status).toMatchObject({ enabled: false, connected: false, relayOrigin: 'wss://relay.meetkorus.dev' });
     expect(transport.start).not.toHaveBeenCalled();
     expect(onAccessChanged).not.toHaveBeenCalledWith(true);
-    await expect((await import('node:fs/promises')).readdir(directory)).resolves.toEqual(['state.json']);
+    await expect((await import('node:fs/promises')).readdir(directory)).resolves.toEqual(['companions.json']);
     await manager.stop();
   });
 
@@ -143,7 +177,7 @@ describe('daemon companion persistence', () => {
       const relayPeerId = peerIdFromPrivateKey(await generateKeyPair('Ed25519')).toString();
       const initial = await manager.control({ action: 'enable', relayOrigin: 'ws://localhost:47800', relayPeerId });
       await manager.stop(); transport.start.mockClear();
-      const file = path.join(directory, 'state.json');
+      const file = path.join(directory, 'companions.json');
       const saved = JSON.parse(await readFile(file, 'utf8'));
       const grant = { peerId: peerIdFromPrivateKey(await generateKeyPair('Ed25519')).toString(), name: 'My phone', createdAt: 1 };
       saved.gateway.grants = [grant];
@@ -198,7 +232,7 @@ describe('daemon companion persistence', () => {
       const { directory, manager, relayPeerId } = await configured();
       await manager.control({ action: 'status' });
       await manager.stop();
-      const file = path.join(directory, 'state.json');
+      const file = path.join(directory, 'companions.json');
       const saved = JSON.parse(await readFile(file, 'utf8'));
       const grant = { peerId: peerIdFromPrivateKey(await generateKeyPair('Ed25519')).toString(), name: 'My phone', createdAt: 1 };
       saved.gateway.grants = [grant];

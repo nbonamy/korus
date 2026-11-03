@@ -1,7 +1,8 @@
 import { computed, inject, provide, ref, watch, type ComputedRef, type InjectionKey, type Ref } from 'vue';
 import { enabledAgentBackends, providerConnectionsForHost } from '@workspace/core/agent-backends';
 import type { AgentBackend, ExecutionSelection, AppSnapshot } from '@workspace/core/contracts';
-import { isAgentBackend } from '@workspace/core/contracts/shared';
+import { useGeneralPreferences } from '../general-preferences';
+import { ElMessage } from 'element-plus';
 import type { ProviderConnection } from '@workspace/core/contracts/provider-setup';
 
 export const backendChoicesKey: InjectionKey<ComputedRef<AgentBackend[]>> = Symbol('backendChoices');
@@ -10,8 +11,6 @@ const backendSwitchKey: InjectionKey<BackendSwitch> = Symbol('backendSwitch');
 export const backendSnapshotKey: InjectionKey<() => AppSnapshot> = Symbol('backendSnapshot');
 const connectEngineKey: InjectionKey<() => void> = Symbol('connectEngine');
 const backendHostKey: InjectionKey<() => { host: string; connections: ProviderConnection[] } | null> = Symbol('backendHost');
-const remembered = ref<Record<string, AgentBackend>>({});
-const preferenceKey = 'app:preferredEngines';
 
 export function provideBackendSwitch(update: (id: string, backend: AgentBackend) => Promise<void>) {
   const busy = ref(false);
@@ -37,12 +36,6 @@ export function useBackendSwitch() {
 export function provideBackendChoices(snapshot: () => AppSnapshot, connect: () => void = () => undefined): void {
   provide(backendSnapshotKey, snapshot);
   provide(connectEngineKey, connect);
-  try {
-    const value: unknown = JSON.parse(localStorage.getItem(preferenceKey) ?? '{}');
-    remembered.value = value && typeof value === 'object' && !Array.isArray(value)
-      ? Object.fromEntries(Object.entries(value).filter(([, backend]) => isAgentBackend(backend)))
-      : {};
-  } catch { remembered.value = {}; }
   provide(backendChoicesKey, computed(() => enabledAgentBackends({ providerConnections: providerConnectionsForHost(snapshot()) })));
 }
 
@@ -60,13 +53,15 @@ export function useNewAgentBackend(backend: Ref<AgentBackend | undefined>, choic
 /** Engines usable on one host; local when no connection is given. */
 export function useBackendChoices(host?: () => string | null | undefined): ComputedRef<AgentBackend[]> {
   const snapshot = inject(backendSnapshotKey, undefined);
+  const preferences = useGeneralPreferences();
   const hostOverride = inject(backendHostKey, undefined);
   const fallback = inject(backendChoicesKey, computed<AgentBackend[]>(() => []));
   return computed(() => {
     const override = hostOverride?.();
-    if (override) return preferredChoices(enabledAgentBackends({ providerConnections: override.connections }), override.host);
+    const remembered = preferences?.general().preferredProviders ?? snapshot?.().general.preferredProviders;
+    if (override) return preferredChoices(enabledAgentBackends({ providerConnections: override.connections }), override.host, remembered);
     const state = snapshot?.();
-    return state ? preferredBackendChoices(state, host?.()) : fallback.value;
+    return state ? preferredChoices(enabledAgentBackends({ providerConnections: providerConnectionsForHost(state, host?.()) }), host?.() || 'local', remembered) : fallback.value;
   });
 }
 
@@ -106,20 +101,21 @@ export function useAgentHost(agentId: () => string): ComputedRef<string> {
 
 export function preferredBackendChoices(state: AppSnapshot, remoteConnectionId?: string | null): AgentBackend[] {
   const choices = enabledAgentBackends({ providerConnections: providerConnectionsForHost(state, remoteConnectionId) });
-  return preferredChoices(choices, remoteConnectionId || 'local');
+  return preferredChoices(choices, remoteConnectionId || 'local', state.general.preferredProviders);
 }
 
-function preferredChoices(choices: AgentBackend[], host: string): AgentBackend[] {
-  const preferred = remembered.value[host];
+function preferredChoices(choices: AgentBackend[], host: string, remembered?: Record<string, AgentBackend>): AgentBackend[] {
+  const preferred = remembered?.[host];
   return preferred && choices.includes(preferred) ? [preferred, ...choices.filter(choice => choice !== preferred)] : choices;
 }
 
 export function useRememberBackend(remoteConnectionId?: () => string | null | undefined) {
   const hostOverride = inject(backendHostKey, undefined);
+  const preferences = useGeneralPreferences();
   return (backend: AgentBackend) => {
     const host = hostOverride?.()?.host ?? remoteConnectionId?.() ?? 'local';
-    remembered.value = { ...remembered.value, [host]: backend };
-    try { localStorage.setItem(preferenceKey, JSON.stringify(remembered.value)); } catch { /* Session preference remains usable. */ }
+    void preferences?.update(general => ({ preferredProviders: { ...general.preferredProviders, [host]: backend } }))
+      .catch(cause => ElMessage.error(cause instanceof Error ? cause.message : String(cause)));
   };
 }
 

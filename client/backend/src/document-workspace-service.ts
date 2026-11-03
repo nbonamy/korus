@@ -56,6 +56,17 @@ export class DocumentWorkspaceService {
     return this.transaction(store => store.clients[clientId] ??= {});
   }
 
+  removeAgents(agentIds: Iterable<string>): Promise<void> {
+    const ids = [...agentIds];
+    ids.forEach(assertKey);
+    if (!ids.length) return Promise.resolve();
+    return this.transaction(store => {
+      for (const client of Object.values(store.clients)) {
+        for (const id of ids) delete client[id];
+      }
+    });
+  }
+
   display(agentId: string, request: SidePanelMarkdownRequest): Promise<SidePanelMarkdownRequest> {
     assertKey(agentId);
     return this.transaction(store => {

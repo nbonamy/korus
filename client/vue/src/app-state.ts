@@ -41,6 +41,7 @@ import { createWorkProviderState, isRemoteAutomationLocation } from './work-prov
 import { createAgentComposerState, type AgentComposerConfiguration } from './agent-composer-state';
 import { createAgentUnreadState } from './agent-unread-state';
 import { recordSentPrompt } from './github-star-prompt';
+import { createGeneralPreferences } from './general-preferences';
 import { createAgentThreadFlagState } from './agent-thread-flag-state';
 import { createAgentHistoryState } from './agent-history-state';
 import { createSourceRepositoryState } from './source-repository-state';
@@ -48,6 +49,13 @@ import { workspaceSidebarRepositoryKeyForAgent } from '@workspace/core/workspace
 import { isSnapshotEventOwnedBy, type RendererOnlySnapshotEvent } from '@workspace/core/snapshot-event-ownership';
 
 const snapshot = ref<AppSnapshot>(createEmptySnapshot());
+const generalPreferences = createGeneralPreferences(() => snapshot.value.general, async general => {
+  const api = appApi;
+  if (!api?.updateSettings) throw new Error('Settings are unavailable.');
+  const updated = await api.updateSettings({ general });
+  if (api !== appApi) throw new Error('Settings connection changed.');
+  adoptBackgroundSnapshot(updated);
+});
 const threadFlagState = createAgentThreadFlagState({ getSnapshot: () => snapshot.value });
 const hasLoadedSnapshot = ref(false);
 const isLoading = ref(false);
@@ -525,6 +533,7 @@ export function useAppState() {
 
     try {
       await synchronizeRendererSnapshot(false);
+      await generalPreferences.migrate();
       if (snapshot.value.activeAgentId) restoreComposerConfiguration(snapshot.value.activeAgentId);
       // The SDK publishes a bounded initial page immediately. Older pages stay
       // behind the conversation's demand-paging cursor until the user reaches
@@ -693,7 +702,7 @@ export function useAppState() {
     await submitWithClearedThreadFlags(agentId, () => options
       ? api.steerPrompt!(agentId, trimmed, options)
       : api.steerPrompt!(agentId, trimmed));
-    recordSentPrompt();
+    await recordSentPrompt(generalPreferences);
   }
 
   async function interruptActiveAgent(): Promise<void> {
@@ -853,7 +862,7 @@ export function useAppState() {
       await submitWithClearedThreadFlags(agentId, () => options
         ? api.sendPrompt(agentId, prompt, options)
         : api.sendPrompt(agentId, prompt));
-      recordSentPrompt();
+      await recordSentPrompt(generalPreferences);
     } finally {
       markAgentSending(agentId, false);
     }

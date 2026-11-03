@@ -4,13 +4,23 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// Simulates other git processes (status refreshes, other agents) holding the index lock for a while.
+const indexLock = vi.hoisted(() => ({ busy: 0 }));
+vi.mock('node:fs/promises', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...actual, open: (async (file: Parameters<typeof actual.open>[0], ...rest: unknown[]) => {
+    if (String(file).endsWith('index.lock') && indexLock.busy > 0) { indexLock.busy--; throw Object.assign(new Error(`EEXIST: file already exists, open '${file}'`), { code: 'EEXIST' }); }
+    return (actual.open as (...args: unknown[]) => unknown)(file, ...rest);
+  }) as typeof actual.open };
+});
 import { BranchCurrentWorkService } from '../branch-current-work-service';
 import type { BranchWorkInput } from '@workspace/core/branch-current-work';
 import type { Agent } from '@workspace/core/contracts';
 
 const exec = promisify(execFile);
 const roots: string[] = [];
-afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
+afterEach(async () => { indexLock.busy = 0; await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'korus-branch-test-')); roots.push(root);
   const source = join(root, 'source');
@@ -257,5 +267,32 @@ describe('worktree identity', () => {
     expect(await readlink(join(result.folder, 'link'))).toBe(external);
     expect(await readFile(external, 'utf8')).toBe('private target\n');
     await expect(readlink(join(f.source, 'link'))).rejects.toThrow();
+  });
+});
+
+describe('index lock contention', () => {
+  it('waits for another git process to release the index lock instead of abandoning the cleanup', async () => {
+    const f = await fixture();
+    indexLock.busy = 6;
+    const result = await f.service.execute(f.agent, f.input);
+    expect(result.state, result.detail).toBe('completed');
+    expect(indexLock.busy).toBe(0);
+    expect(await f.git('status', '--porcelain')).toBe('');
+  });
+
+  it('keeps unfinished paths recoverable when the lock stays held, and finishes the reset when retried', async () => {
+    const f = await fixture();
+    const service = new BranchCurrentWorkService({ provision: f.provision, lockWaitMs: 120 });
+    indexLock.busy = Infinity;
+    const stuck = await service.execute(f.agent, f.input);
+    expect(stuck.state).toBe('recovery');
+    expect(stuck.detail).toContain('EEXIST');
+    expect(stuck.retainedPaths?.length).toBeGreaterThan(0);
+    expect(await readFile(join(f.source, 'mixed'), 'utf8')).toBe('final\n');
+    indexLock.busy = 0;
+    const resumed = await service.execute(f.agent, f.input);
+    expect(resumed.state, resumed.detail).toBe('completed');
+    expect(await f.git('status', '--porcelain')).toBe('');
+    expect(new Set(f.provision.mock.calls.map(call => call[3])).size).toBe(1);
   });
 });

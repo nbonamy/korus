@@ -592,6 +592,7 @@ export class AppBackendServer {
   private readonly remoteTeams: RemoteTeamService;
   private readonly runProfiles: RunProfileService;
   private readonly documents: DocumentWorkspaceService;
+  private readonly documentWorkspaceAgents = new Set<string>();
   private unsubscribeUsage?:()=>void;
   private unsubscribeRequestUsage?: () => void;
   private readonly clientPreferences: ClientPreferencesService;
@@ -659,6 +660,7 @@ export class AppBackendServer {
     this.version = options.version;
     this.pid = options.pid ?? process.pid;
     this.snapshot = options.snapshot ?? createEmptySnapshot();
+    for (const agent of this.snapshot.agents) this.documentWorkspaceAgents.add(agent.id);
     if (options.providerSetup) {
       this.providerConnections = new ProviderConnections({
         detect: () => options.providerSetup!.list(),
@@ -676,7 +678,10 @@ export class AppBackendServer {
         },
       });
     }
-    this.missions = new MissionService(this.snapshot, async snapshot => { await options.saveSnapshot?.(snapshot); });
+    this.missions = new MissionService(this.snapshot, async snapshot => {
+      await options.saveSnapshot?.(snapshot);
+      await this.cleanupClosedDocumentWorkspaces(snapshot);
+    });
     this.agentCreation = options.agentCreation ?? new AgentCreationService(this.snapshot);
     this.projectCreation = new ProjectCreationService({
       createRepository: name => this.createLocalSourceRepository(name),
@@ -898,7 +903,7 @@ export class AppBackendServer {
       onForwardedEvent: (connectionId, event) => this.forwardRemoteBackendEvent(connectionId, event),
       onProjectedSnapshotChanged: () => { void this.emitProjectedSnapshot(); },
     });
-    this.runProfiles = options.runProfiles ?? new RunProfileService(path.join(backendHomeDir(), "run-profiles.json"), this.agentGitService, (id, folder) => this.snapshot.agents.some(agent => agent.id === id && agent.folder === folder));
+    this.runProfiles = options.runProfiles ?? new RunProfileService(path.join(backendHomeDir(), "repositories.json"), this.agentGitService, (id, folder) => this.snapshot.agents.some(agent => agent.id === id && agent.folder === folder));
     this.documents = options.documents ?? new DocumentWorkspaceService(path.join(backendHomeDir(), "document-workspaces.json"));
     this.clientPreferences = new ClientPreferencesService({
       snapshot: () => this.remoteTeams.clientSnapshot(),
@@ -1407,7 +1412,10 @@ export class AppBackendServer {
       try {
         if (message.method === backendMethods.clientWorkspaceGet) return createAppRpcResult(message.id, await this.documents.get(clientId));
         const agentId = requireString(params?.agentId, 'agentId');
-        if (message.method === backendMethods.clientWorkspaceApply) return createAppRpcResult(message.id, await this.documents.apply(clientId, agentId, requireRecord(params?.change) as DocumentWorkspaceChange));
+        if (message.method === backendMethods.clientWorkspaceApply) {
+          if (!await this.locationForAgentId(agentId)) throw new Error('Agent not found.');
+          return createAppRpcResult(message.id, await this.documents.apply(clientId, agentId, requireRecord(params?.change) as DocumentWorkspaceChange));
+        }
         if (message.method === backendMethods.clientDocumentRead) return createAppRpcResult(message.id, await this.documents.read(clientId, agentId, requireString(params?.tabId, 'tabId'), async filePath => {
           const location = await this.locationForAgentId(agentId);
           if (!location) throw new Error('Agent not found.');
@@ -2347,6 +2355,7 @@ export class AppBackendServer {
             if (!agent) {
               throw new Error(`Agent not found: ${agentId}`);
             }
+            this.agentClosuresInFlight.delete(agentId);
             return this.persistAndEmitSnapshot();
           } finally {
             this.agentClosuresInFlight.delete(agentId);
@@ -3953,10 +3962,12 @@ export class AppBackendServer {
       const options = requireRecord(params).options as SendPromptOptions | undefined;
       if (options?.attachments?.length) throw new Error('Remote attachments require a trusted file transfer. Send text or use a local agent.');
     }
+    const previousAgents = this.remoteTeams.knownSnapshot(route.connectionId)?.agents.map(agent => agent.id) ?? [agentId];
     const result = await this.backendHandleForAgentLocation(route).request<AppSnapshot>(method, params, () => localHandler(route.agent));
     const decodedSnapshot = decodeAppSnapshot(result);
     if (decodedSnapshot) {
       this.remoteTeams.rememberSnapshot(route.connectionId, decodedSnapshot.value);
+      await this.documents.removeAgents(previousAgents.filter(id => !decodedSnapshot.value.agents.some(agent => agent.id === id)));
       if (decodedSnapshot.value.activeAgentId) onCreated?.(decodedSnapshot.value.activeAgentId);
     }
     return createAppRpcResult(messageId, await this.remoteTeams.clientSnapshot());
@@ -3980,7 +3991,11 @@ export class AppBackendServer {
       const input = requireRecordParam(params, 'input') as unknown as import('@workspace/core/design').DesignRequest<import('@workspace/core/contracts').PromptAttachment>;
       if (input.type === 'open' && input.attachments?.length) throw new Error('Remote attachments require a trusted file transfer. Send text or use a local agent.');
     }
-    return createAppRpcResult(messageId, await this.backendHandleForAgentLocation(route).request<Result>(method, params, () => localHandler(route.agent)));
+    const previousAgents = this.remoteTeams.knownSnapshot(route.connectionId)?.agents.map(agent => agent.id) ?? [agentId];
+    const result = await this.backendHandleForAgentLocation(route).request<Result>(method, params, () => localHandler(route.agent));
+    const current = this.remoteTeams.knownSnapshot(route.connectionId);
+    if (current) await this.documents.removeAgents(previousAgents.filter(id => !current.agents.some(agent => agent.id === id)));
+    return createAppRpcResult(messageId, result);
   }
 
   private locationFromRemoteConnectionId(remoteConnectionId: string | null | undefined): BackendLocation {
@@ -4074,6 +4089,7 @@ export class AppBackendServer {
     // Background worktree cleanup can temporarily hide an agent, then restore it on failure.
     if (this.runProfiles.hasRuns) await this.runProfiles.retainAgents(new Set([...this.snapshot.agents.map(agent => agent.id), ...this.agentClosuresInFlight]));
     await this.saveSnapshot?.(this.snapshot);
+    await this.cleanupClosedDocumentWorkspaces(this.snapshot);
     const snapshot = await this.remoteTeams.clientSnapshot();
     this.emitSnapshotUpdated(snapshot);
     return snapshot;
@@ -4083,7 +4099,17 @@ export class AppBackendServer {
     this.reconcileShares();
     if (this.runProfiles.hasRuns) await this.runProfiles.retainAgents(new Set([...this.snapshot.agents.map(agent => agent.id), ...this.agentClosuresInFlight]));
     await this.saveSnapshot?.(this.snapshot);
+    await this.cleanupClosedDocumentWorkspaces(this.snapshot);
     return this.snapshot;
+  }
+
+  private async cleanupClosedDocumentWorkspaces(snapshot: AppSnapshot): Promise<void> {
+    const retained = new Set(snapshot.agents.map(agent => agent.id));
+    // A worktree close temporarily hides the agent and may restore it on failure.
+    const removed = [...this.documentWorkspaceAgents].filter(id => !retained.has(id) && !this.agentClosuresInFlight.has(id));
+    for (const id of retained) this.documentWorkspaceAgents.add(id);
+    await this.documents.removeAgents(removed);
+    for (const id of removed) this.documentWorkspaceAgents.delete(id);
   }
 
   private async emitProjectedSnapshot(): Promise<void> {

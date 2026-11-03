@@ -147,14 +147,9 @@
             :data-session-kind="worktreeGroupKind(group)"
             aria-hidden="true"
           />
-          <FolderIcon
-            v-else-if="group.kind === 'folder'"
-            class="agent-sidebar__workspace-icon"
-            data-icon="folder"
-            aria-hidden="true"
-          />
           <RepositoryIconPicker
-            v-else-if="group.kind === 'repository'"
+            v-else-if="group.kind === 'repository' || group.kind === 'folder'"
+            :data-icon="group.kind === 'folder' ? 'folder' : undefined"
             :label="group.label"
             :expanded="!isWorkspaceCollapsed(group)"
             :model-value="repositoryIcon(group.repositoryKey, group.repositoryRoot)"

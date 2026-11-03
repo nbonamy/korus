@@ -51,7 +51,7 @@ async function fixture(driver: AgentBackendDriver, agent: Agent, desktopFocused?
   } };
   const initial = new CompanionManager(directory, backend, {});
   const { status: host } = await initial.control({ action: 'status' }); await initial.stop();
-  const file = path.join(directory, 'state.json');
+  const file = path.join(directory, 'companions.json');
   const saved = JSON.parse(await readFile(file, 'utf8'));
   saved.enabled = true;
   saved.gateway.grants = [{ peerId: 'phone', name: 'Phone', createdAt: 1 }];

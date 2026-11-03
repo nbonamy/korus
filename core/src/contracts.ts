@@ -528,6 +528,10 @@ export type AppGeneralSettings = {
   providerEnabled?: Partial<Record<AgentBackend, boolean>>;
   /** Last model selection made in a chat, per provider; seeds new agents. */
   providerModelDefaults?: Partial<Record<AgentBackend, ExecutionSelection>>;
+  /** Durable client preferences; absence allows legacy renderer migration. */
+  githubStarPrompt?: { sentPrompts: number; dismissed: boolean };
+  preferredProviders?: Record<string, AgentBackend>;
+  gitMergeCleanup?: { deleteWorktree: boolean; deleteBranch: boolean };
   codeReviewInstructions?: string;
   codeReviewDiscussWithOriginalThread?: boolean;
   missionInstructions?: string;

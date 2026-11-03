@@ -682,6 +682,7 @@ import RemoteTargetDialog from './RemoteTargetDialog.vue';
 import { useRemoteTarget, type RemoteTargetRequest } from './use-remote-target';
 import NewProjectDialog from './NewProjectDialog.vue';
 import { preferredBackendChoices, provideBackendChoices, provideBackendSwitch } from './backend-selection';
+import { createGeneralPreferences, generalPreferencesKey } from '../general-preferences';
 import BacklogView from './BacklogView.vue';
 import ConversationHistoryDialog from './ConversationHistoryDialog.vue';
 import AgentHandoffDialog from './AgentHandoffDialog.vue';
@@ -1148,6 +1149,7 @@ type PendingMissionReviewDiscussion = {
 };
 
 type AppSurface = 'mission' | 'agent' | 'backlog' | 'automations' | 'settings';
+provide(generalPreferencesKey, createGeneralPreferences(() => props.snapshot.general, general => props.updateSettings({ general })));
 provideBackendChoices(() => props.snapshot, openSettings);
 const reviewSettings = useCodeReviewSettings();
 provide(codeReviewSettingsKey, { ...reviewSettings, preferences: () => props.snapshot.general.codeReviewDefaults });

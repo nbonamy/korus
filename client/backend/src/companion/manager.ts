@@ -7,7 +7,7 @@ import { PromptRejectedError } from '../agents/prompt-rejected';
 import { product } from '@workspace/core/product';
 import { CompanionNotifications } from './notifications';
 import { CompanionLiveActivities, type SavedLiveActivities } from './live-activities';
-import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
+import { chmod, lstat, mkdir, open, readFile, rename, rmdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from '@libp2p/crypto/keys';
@@ -133,7 +133,9 @@ export class CompanionManager {
   }
   private readonly conversations = new ConversationSource((agentId) => this.loadConversation(agentId));
   private readonly environment: ReturnType<typeof relayFromEnvironment>;
-  constructor(private readonly directory: string, private readonly backend: CompanionBackendPort, private readonly env: NodeJS.ProcessEnv = process.env) {
+  private readonly directory: string;
+  constructor(private readonly home: string, private readonly backend: CompanionBackendPort, private readonly env: NodeJS.ProcessEnv = process.env) {
+    this.directory = path.join(home, 'companion');
     this.environment = relayFromEnvironment(env);
   }
   /** Explicit deployment choices take precedence over the bundled public relay. */
@@ -247,10 +249,23 @@ export class CompanionManager {
   private initialize() { return this.ready ??= this.load(); }
   private async load() {
     const pairing = await readConfiguredPairing(this.env);
-    await mkdir(this.directory, { recursive: true, mode: 0o700 });
+    await mkdir(this.home, { recursive: true, mode: 0o700 });
     let saved: Saved;
+    let migrated = false;
     try {
-      saved = JSON.parse(await readFile(path.join(this.directory, 'state.json'), 'utf8')) as Saved;
+      const read = async (file: string): Promise<Saved> => {
+        const stats = await lstat(file);
+        if (!stats.isFile() || stats.isSymbolicLink() || stats.size > 32 * 1024 * 1024) throw new Error('Invalid companion state file.');
+        await chmod(file, 0o600);
+        return JSON.parse(await readFile(file, 'utf8')) as Saved;
+      };
+      try { saved = await read(path.join(this.home, 'companions.json')); }
+      // TODO(remove-after: 2026-11-30): Remove the legacy fallback and migrated-source retirement below. https://github.com/nbonamy/korus/issues/74
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        saved = await read(path.join(this.directory, 'state.json'));
+        migrated = true;
+      }
       if (saved.v !== 1 || typeof saved.enabled !== 'boolean' || !Array.isArray(saved.gateway?.grants) || !saved.gateway?.commands) throw new Error('Invalid companion state.');
       this.key = privateKeyFromProtobuf(Buffer.from(saved.identity, 'base64'));
     } catch (error) {
@@ -307,7 +322,7 @@ export class CompanionManager {
         catch (error) { warnMain('companion', 'conversation unavailable', { agentId, message: error instanceof Error ? error.message : String(error) }); throw error; }
       },
       submit: async (target, prompt, clientId, options, uploads) => {
-        const attachments = uploads ? await storePromptUploads(this.directory, uploads).catch(() => { throw new PromptRejectedError('Attachments could not be stored.'); }) : undefined;
+        const attachments = uploads ? await storePromptUploads(this.directory, uploads, Date.now(), target.agentId).catch(() => { throw new PromptRejectedError('Attachments could not be stored.'); }) : undefined;
         const { followUpBehavior = 'steer', ...composerOptions } = options ?? {};
         const promptOptions = options || attachments ? { ...composerOptions, ...(attachments ? { attachments } : {}) } : undefined;
         const method = followUpBehavior === 'queue' ? backendMethods.agentPromptSend : backendMethods.agentPromptSteer;
@@ -380,6 +395,12 @@ export class CompanionManager {
       push: (peerId, registration, activity) => this.connector.liveActivity(peerId, registration, activity) });
     this.activityHeartbeat = setInterval(() => this.scheduleActivity(), 30_000); this.activityHeartbeat.unref();
     await this.persist();
+    if (migrated) {
+      const verified = JSON.parse(await readFile(path.join(this.home, 'companions.json'), 'utf8'));
+      if (JSON.stringify(verified) !== JSON.stringify(this.saved)) throw new Error('Companion migration verification failed.');
+      await unlink(path.join(this.directory, 'state.json'));
+      await rmdir(this.directory).catch(error => { if (!['ENOTEMPTY', 'EEXIST', 'ENOENT'].includes(error.code)) throw error; });
+    }
     const relay = this.relay;
     this.backend.onAccessChanged?.(saved.enabled && Boolean(relay));
     if (saved.enabled && relay) await this.startTransport();
@@ -395,13 +416,13 @@ export class CompanionManager {
     const write = this.writes.then(async () => {
       const next = update(this.saved);
       const content = JSON.stringify(next);
-      const file = path.join(this.directory, 'state.json'); const temporary = `${file}.${randomUUID()}.tmp`;
+      const file = path.join(this.home, 'companions.json'); const temporary = `${file}.${randomUUID()}.tmp`;
       const handle = await open(temporary, 'wx', 0o600);
       try {
         try { await handle.writeFile(content); await handle.sync(); } finally { await handle.close(); }
         await rename(temporary, file);
         if (process.platform !== 'win32') {
-          const directory = await open(this.directory, 'r');
+          const directory = await open(this.home, 'r');
           try { await directory.sync(); } finally { await directory.close(); }
         }
         const accessChanged = this.saved.enabled !== next.enabled;

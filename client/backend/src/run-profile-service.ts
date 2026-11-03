@@ -1,19 +1,17 @@
 import { spawn, execFile, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { z } from 'zod';
+import { RepositoryStore } from './repository-store';
+import { runProfileInputSchema as inputSchema, runProfileText as text } from './run-profile-schema';
+import { fileRepositoryKey, workspaceRepositoryKey } from '@workspace/core/repository-key';
 import { withDiscoveredRuntimePath } from '@workspace/core/runtime-discovery';
 import type { ProfileRun, RunProfileCatalog, RunProfileInput, RunProfileStartInput } from '@workspace/core/run-profiles';
 import { AgentGitService } from './git/agent-git-service';
-import { parseStoreFile, serializeStoreFile } from './persistence/store-format';
 import { discoverRunProfileActions } from './run-profile-actions';
 
-const text = z.string().trim().min(1).max(4096).refine(value => !/[\x00-\x1f\x7f]/.test(value), 'Use a single-line command without control characters.');
-const inputSchema = z.strictObject({ id: z.string().uuid().optional(), name: text.max(100), command: text, directory: text.default('.'), previewUrl: text.optional() });
-const storeSchema = z.strictObject({ repositories: z.record(z.string(), z.array(inputSchema.extend({ id: z.string().uuid() })).max(100)) });
-type Store = z.infer<typeof storeSchema>;
+type Store = { repositories: Record<string, import('@workspace/core/run-profiles').RunProfile[]> };
 type OwnedRun = { run: ProfileRun; child: ChildProcess; done: Promise<void>; stop?: Promise<void>; stopRequested?: boolean; secrets: string[]; pendingOutput: string; root: string };
 const MAX_OUTPUT = 65536;
 const exec = promisify(execFile);
@@ -24,23 +22,16 @@ export class RunProfileService {
   private readonly runs = new Map<string, OwnedRun>();
   private closed = false;
   private readonly releasedAgents = new Set<string>();
-  constructor(private readonly filename: string, private readonly git = new AgentGitService(), private readonly ownerAvailable: (agentId: string, folder: string) => boolean = () => true) {}
+  private readonly repositories: RepositoryStore;
+  constructor(filename: string, private readonly git = new AgentGitService(), private readonly ownerAvailable: (agentId: string, folder: string) => boolean = () => true) { this.repositories = new RepositoryStore(filename, git); }
 
   private transaction<T>(action: (store: Store) => Promise<T> | T): Promise<T> {
-    const next = this.pending.catch(() => undefined).then(async () => {
-      let store: Store;
-      try { store = storeSchema.parse(parseStoreFile(this.filename, await readFile(this.filename, 'utf8')).data); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new Error('Run profiles could not be read. Restore the private run-profiles.json file or remove its invalid entry.', { cause: error }); store = { repositories: {} }; }
-      const before = JSON.stringify(store);
+    const next = this.pending.catch(() => undefined).then(() => this.repositories.transaction(async entries => {
+      const store: Store = { repositories: Object.fromEntries(Object.entries(entries).map(([key, entry]) => [key, entry.commands ?? []])) };
       const result = await action(store);
-      if (JSON.stringify(store) !== before) {
-        await mkdir(path.dirname(this.filename), { recursive: true, mode: 0o700 });
-        const temporary = `${this.filename}.${randomUUID()}.tmp`;
-        try { await writeFile(temporary, serializeStoreFile(store), { mode: 0o600, flag: 'wx' }); await rename(temporary, this.filename); }
-        finally { await rm(temporary, { force: true }); }
-      }
-      return structuredClone(result);
-    });
+      for (const [key, commands] of Object.entries(store.repositories)) (entries[key] ??= {}).commands = commands;
+      return result;
+    }));
     this.pending = next;
     return next;
   }
@@ -49,15 +40,17 @@ export class RunProfileService {
     const identity = await this.git.identity(folder);
     const worktree = await realpath(identity.kind === 'git' ? identity.repositoryRoot : folder);
     const repository = await realpath(identity.kind === 'git' ? identity.primaryWorktreeRoot : folder);
-    return { repository, worktree };
+    const key = workspaceRepositoryKey(identity);
+    await this.repositories.transaction(entries => { this.repositories.reconcile(entries, key, [fileRepositoryKey(repository)]); });
+    return { repository, worktree, key };
   }
 
   async get(agentId: string, folder: string): Promise<RunProfileCatalog> {
     const target = await this.target(folder);
-    return this.transaction(async store => ({ ...target, targets: Object.fromEntries(await Promise.all((store.repositories[target.repository] ?? []).map(async profile => {
+    return this.transaction(async store => ({ repository: target.repository, worktree: target.worktree, targets: Object.fromEntries(await Promise.all((store.repositories[target.key] ?? []).map(async profile => {
       try { return [profile.id, { cwd: await this.directory(target.worktree, profile.directory) }]; }
       catch (error) { return [profile.id, { error: (error as Error).message }]; }
-    }))), profiles: store.repositories[target.repository] ?? [], runs: [...this.runs.values()].filter(owned => owned.run.agentId === agentId && owned.root === target.worktree).map(owned => this.snapshot(owned)) }));
+    }))), profiles: store.repositories[target.key] ?? [], runs: [...this.runs.values()].filter(owned => owned.run.agentId === agentId && owned.root === target.worktree).map(owned => this.snapshot(owned)) }));
   }
 
   async discover(folder: string, directory: string) {
@@ -87,7 +80,7 @@ export class RunProfileService {
     const target = await this.target(folder);
     await this.directory(target.worktree, profile.directory);
     await this.transaction(store => {
-      const profiles = store.repositories[target.repository] ??= [];
+      const profiles = store.repositories[target.key] ??= [];
       const index = profiles.findIndex(candidate => candidate.id === profile.id);
       if (parsed.data.id && index < 0) throw new Error('Run profile not found. Refresh the list.');
       if (index < 0) { if (profiles.length >= 100) throw new Error('Remove a profile before adding another.'); profiles.push(profile); } else profiles[index] = profile;
@@ -96,8 +89,8 @@ export class RunProfileService {
   }
 
   async delete(agentId: string, folder: string, profileId: string): Promise<RunProfileCatalog> {
-    const { repository } = await this.target(folder);
-    await this.transaction(store => { store.repositories[repository] = (store.repositories[repository] ?? []).filter(profile => profile.id !== profileId); });
+    const { key } = await this.target(folder);
+    await this.transaction(store => { store.repositories[key] = (store.repositories[key] ?? []).filter(profile => profile.id !== profileId); });
     return this.get(agentId, folder);
   }
 
@@ -107,7 +100,7 @@ export class RunProfileService {
     return this.transaction(async store => {
       if (this.closed) throw new Error('Run profile service is closed. Reconnect to the owning host.');
       if (this.releasedAgents.has(agentId) || !this.ownerAvailable(agentId, folder)) throw new Error('This agent has been removed. Select an open agent.');
-      const profile = store.repositories[target.repository]?.find(profile => profile.id === input.profileId);
+      const profile = store.repositories[target.key]?.find(profile => profile.id === input.profileId);
       if (!profile) throw new Error('Run profile not found. Refresh the list.');
       this.validateCommand(profile.command);
       const cwd = await this.directory(target.worktree, profile.directory);

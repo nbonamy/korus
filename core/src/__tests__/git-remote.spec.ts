@@ -1,7 +1,20 @@
+import { fileRepositoryKey, gitRepositoryKey } from '../repository-key';
 import { describe, expect, it } from 'vitest';
 import { cloneUrlForRemote, matchingBranchUpstream, canonicalGitRemoteIdentity, repositoryIconKeyForRemote, sanitizeGitRemoteUrl } from '../git-remote';
 
 describe('git remote identity', () => {
+  it('builds unambiguous Git and file metadata keys including Windows and escaped paths', () => {
+    expect(gitRepositoryKey('git@github.com:team/app.git')).toBe('git:github.com/team/app');
+    expect(gitRepositoryKey('https://gitlab.com/team/app.git')).toBe('git:gitlab.com/team/app');
+    expect(fileRepositoryKey('/src/a #%.txt')).toBe('file:///src/a%20%23%25.txt');
+    expect(fileRepositoryKey('C:\\src\\app')).toBe('file:///C:/src/app');
+    expect(canonicalGitRemoteIdentity('C:\\src\\app')).toBeUndefined();
+    expect(fileRepositoryKey('C:\\')).toBe('file:///C:/');
+    expect(fileRepositoryKey('\\\\server\\share\\app')).toBe('file://server/share/app');
+  });
+  it('accepts canonical git metadata keys without mistaking git for the remote host', () => {
+    expect(canonicalGitRemoteIdentity('git:github.com/fixture/project')).toBe('github.com/fixture/project');
+  });
   it('removes credentials and non-identity URL parts before persistence', () => {
     expect(sanitizeGitRemoteUrl('https://oauth2:secret@GitHub.com/openai/codex.git?token=secret#main')).toBe(
       'https://github.com/openai/codex.git',

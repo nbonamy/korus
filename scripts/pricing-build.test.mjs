@@ -95,12 +95,15 @@ console.log(JSON.stringify(history));
       const rates = cachedHistory.openai['gpt-6-sol'].cost.at(-1).rates.text;
       rates.input.price *= 2; rates.output.price *= 2;
       const cachedManifest = createPricingManifest(cachedHistory, new Date().toISOString());
+      // A cache at the retired location is deliberately not imported.
       await mkdir(path.join(home, 'pricing'), { recursive: true });
       await writeFile(path.join(home, 'pricing/catalog.json'), JSON.stringify({ schemaVersion: 1, checkedAt: Date.now(), catalog: { manifest: cachedManifest, history: cachedHistory } }));
+      assert.deepEqual((await query()).result.cost, response.result.cost);
+      await writeFile(path.join(home, 'pricing.json'), JSON.stringify({ schemaVersion: 1, checkedAt: Date.now(), catalog: { manifest: cachedManifest, history: cachedHistory } }));
       const refreshed = await query();
       assert.deepEqual(refreshed.result.cost, { ...response.result.cost, usd: .006 });
       // The independent released usage/get request still works after a damaged cache.
-      await writeFile(path.join(home, 'pricing/catalog.json'), '{');
+      await writeFile(path.join(home, 'pricing.json'), '{');
       assert.deepEqual((await query()).result.cost, response.result.cost);
 
     }
