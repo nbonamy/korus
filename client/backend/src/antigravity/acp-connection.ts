@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 
 type RpcId = string | number;
 type Handler = (method: string, params: unknown) => Promise<unknown>;
-type Pending = { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> };
+type Pending = { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> | undefined };
 
 /** One duplex ACP process. Provider requests and client responses have independent ID spaces. */
 export class AcpConnection {
@@ -56,12 +56,12 @@ export class AcpConnection {
     });
   }
 
-  request(method: string, params: unknown, timeoutMs = 60_000): Promise<unknown> {
+  request(method: string, params: unknown, timeoutMs: number | null = 60_000): Promise<unknown> {
     if (this.ended) return Promise.reject(this.ended);
     if (!this.child) return Promise.reject(new Error('ACP connection is not started.'));
     const id = ++this.sequence;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
+      const timer = timeoutMs === null ? undefined : setTimeout(() => {
         this.fail(new Error(`Antigravity request timed out: ${method}`));
         void this.close();
       }, timeoutMs);

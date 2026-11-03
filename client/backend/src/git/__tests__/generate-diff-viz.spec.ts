@@ -3,6 +3,7 @@ import { readBundledSkill } from '../../bundled-skills/catalog';
 import path from 'node:path';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { generateDiffViz } from '../generate-diff-viz';
+import { diffVizReference } from '../diff-viz-reference';
 
 const assets = path.resolve(import.meta.dirname, '../../../../electron/assets');
 beforeEach(() => vi.stubEnv('APP_ASSETS_PATH', assets));
@@ -107,7 +108,7 @@ it('sends only the working folder and selected scope with the normal tool-enable
   const selected = { ...comparison, target: { type: 'branch' as const, baseRef: 'origin/main' }, scopes: ['unstaged' as const] };
   await generateDiffViz(selected, '/repo/worktree', generate);
   const input = generate.mock.calls[0]![0];
-  expect(input).toMatchObject({ cwd: '/repo/worktree', complexity: 'normal', tools: true, attachments: [{type:'image',path:path.join(assets,'viz/reference.png'),mimeType:'image/png'}] });
+  expect(input).toMatchObject({ cwd: '/repo/worktree', complexity: 'normal', tools: true, timeoutMs: null });
   expect(input.prompt).toContain('/repo/worktree');
   expect(input.prompt).toContain('origin/main');
   expect(input.prompt).toContain('unstaged');
@@ -149,11 +150,9 @@ it('generates Fast Mermaid with the same navigation contract', async () => {
   await expect(generateDiffViz(comparison, '/repo', generate, 'fast')).rejects.toThrow(/unsafe/);
 });
 
-it('fails before calling the provider when the bundled visual reference is unavailable', async () => {
+it('validates the bundled visual reference when requested', async () => {
   vi.stubEnv('APP_ASSETS_PATH', '/missing-viz-assets');
-  const generate=vi.fn();
-  await expect(generateDiffViz(comparison,'/repo',generate)).rejects.toThrow(/reference/i);
-  expect(generate).not.toHaveBeenCalled();
+  await expect(diffVizReference()).rejects.toThrow(/reference/i);
 });
 
 it('embeds fetched payloads directly in polished output and closes the tool endpoint on every exit', async () => {

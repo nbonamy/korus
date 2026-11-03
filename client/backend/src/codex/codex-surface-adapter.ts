@@ -371,6 +371,7 @@ export class CodexSurfaceAgentAdapter {
     const selection = utilityTextModel('codex', await this.listModels(), input.complexity);
     input.signal?.throwIfAborted();
     return this.surface.generateText(input.prompt, {
+      ...(input.timeoutMs === null ? { timeoutMs: null } : {}),
       ...(input.signal ? { signal: input.signal } : {}),
       cwd: expandHome(input.cwd),
       ...selection,

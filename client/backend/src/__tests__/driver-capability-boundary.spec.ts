@@ -56,9 +56,9 @@ describe('unified driver capability boundary', () => {
     const {driver,rpc}=fixture();
     driver.generateText=vi.fn().mockResolvedValue({text:'ok'});
     const image=path.resolve(import.meta.dirname,'../../../electron/assets/viz/reference.png');
-    const request={agent,cwd:'/repo',prompt:'Inspect',mcpServers:[{name:'diagram_icons_job',url:'http://127.0.0.1:1234/mcp/token',enabledTools:['fetch_tech_icon']}],attachments:[{type:'image',path:image,mimeType:'image/png'}]};
+    const request={agent,cwd:'/repo',prompt:'Inspect',timeoutMs:null,mcpServers:[{name:'diagram_icons_job',url:'http://127.0.0.1:1234/mcp/token',enabledTools:['fetch_tech_icon']}],attachments:[{type:'image',path:image,mimeType:'image/png'}]};
     await expect(rpc.handle(backendMethods.driverTextGenerate,request)).resolves.toEqual({text:'ok'});
-    expect(driver.generateText).toHaveBeenCalledWith(agent,expect.objectContaining({attachments:request.attachments,mcpServers:request.mcpServers}));
+    expect(driver.generateText).toHaveBeenCalledWith(agent,expect.objectContaining({timeoutMs:null,attachments:request.attachments,mcpServers:request.mcpServers}));
     for(const attachments of [[{type:'file',path:image}],[{type:'image',path:'relative.png'}],[{type:'image',path:image,mimeType:'image/jpeg'}],Array(5).fill({type:'image',path:image})]) {
       await expect(rpc.handle(backendMethods.driverTextGenerate,{...request,attachments})).rejects.toThrow(/image|attachment/i);
     }

@@ -56,7 +56,9 @@ log and socket paths, npm scripts and launchd labels stay brand-neutral.
   generation and cleanup. Cancellable utilities carry request IDs across RPC;
   their owning host maps those IDs to local abort signals. Cancellation targets
   the isolated provider conversation and acknowledges its settlement, independently
-  of the agent's main conversation. A separate tools flag opts inspection utilities
+  of the agent's main conversation. Diff visualization sets `timeoutMs: null`
+  across utility RPC and provider generation to wait until completion or cancellation.
+  A separate tools flag opts inspection utilities
   into read-only workspace inspection; omission disables workspace-tool access. This
   policy does not control provider-configured tools unrelated to the workspace.
   Diff visualization supplies the agent's working folder and selected Git scope,
@@ -235,9 +237,10 @@ The protocol is transport-neutral JSON-RPC 2.0, one message per line.
 - `stdout` is reserved for JSON-RPC in stdio mode; diagnostics go to stderr and
   `$APP_HOME/logs/daemon.log` (structured JSONL, size-rotated). Redact prompts,
   tokens, OAuth codes, command secrets and file contents from logs.
-- Requests carry deadlines (`core/src/backend-protocol/request-timeout.ts`) so no
-  client waits forever; Electron adds a grace period so a remote timeout reaches
-  the desktop first.
+- Request deadline policy lives in `core/src/backend-protocol/request-timeout.ts`.
+  Diff visualization explicitly waits until completion or cancellation; other
+  requests retain bounded deadlines. Electron adds a grace period so a remote
+  timeout reaches the desktop first.
 
 ### Conversation share authority
 

@@ -443,7 +443,7 @@ describe('Antigravity native session', () => {
     const events: BackendEvent[] = [];
     host.onEvent(event => events.push(event));
     try {
-      const pending = host.generateText(agent, { cwd: root, prompt: 'utility-wait', signal: controller.signal });
+      const pending = host.generateText(agent, { cwd: root, prompt: 'utility-wait', timeoutMs: null, signal: controller.signal });
       const stopped = expect(pending).rejects.toThrow(/cancel/i);
       await vi.waitFor(async () => expect(await readFile(path.join(root, 'fixture-prompt.json'), 'utf8')).toContain('wait'));
       controller.abort(new Error('Generation cancelled.'));

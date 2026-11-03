@@ -288,7 +288,7 @@ describe('AppBackendServer', () => {
     ] } } });
     expect(generateText).toHaveBeenCalledTimes(3);
     expect(generateText.mock.calls[2]?.[1].prompt).not.toMatch(/LARGE_PATCH_SENTINEL|diff --git/);
-    expect(generateText.mock.calls[2]?.[1]).toMatchObject({ complexity: 'normal', cwd: '/repo', tools: true, attachments:[{type:'image',path:path.join(assets,'viz/reference.png'),mimeType:'image/png'}], prompt: expect.stringContaining('origin/main'),
+    expect(generateText.mock.calls[2]?.[1]).toMatchObject({ complexity: 'normal', cwd: '/repo', tools: true, prompt: expect.stringContaining('origin/main'),
       developerInstructions: expect.stringMatching(/system impact.*not files/i), outputSchema: { properties: { elements: { minItems: 1 } } } });
     generateText.mockResolvedValueOnce({ text: JSON.stringify(nativeViz([{ id: 'outside', label: 'Invented work', status: 'changed', paths: ['/outside'] }])) });
     await expect(server.handleMessage({ jsonrpc: '2.0', id: 'bad-viz', method: backendMethods.agentGitMessageGenerate,

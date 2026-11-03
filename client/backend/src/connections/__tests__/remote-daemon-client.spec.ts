@@ -14,6 +14,23 @@ describe('RemoteDaemonClientManager', () => {
     vi.restoreAllMocks();
   });
 
+  it.each([
+    [backendMethods.agentGitMessageGenerate, { agentId: 'a', input: { kind: 'viz' } }],
+    [backendMethods.driverTextGenerate, { agent: { id: 'a' }, prompt: 'Inspect', cwd: '/repo', timeoutMs: null }],
+  ])('delivers remote %s results after an hour', async (method, params) => {
+    vi.useFakeTimers();
+    const child = createChildProcess();
+    const manager = new RemoteDaemonClientManager({ spawnProcess: vi.fn(() => child.process) as never });
+    const pending = manager.request(readyConnection(), method, params).then(value => ({ value }), error => ({ error }));
+    try {
+      await vi.waitFor(() => expect(child.stdinLines()).toHaveLength(1));
+      const request = JSON.parse(child.stdinLines()[0]);
+      await vi.advanceTimersByTimeAsync(60 * 60_000);
+      child.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { text: 'completed' } })}\n`);
+      expect(await pending).toEqual({ value: { text: 'completed' } });
+    } finally { await manager.close(); }
+  });
+
   it('allows remote catalogs to finish after the old fifteen-second deadline', async () => {
     vi.useFakeTimers();
     const child = createChildProcess();

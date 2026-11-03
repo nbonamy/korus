@@ -18,6 +18,7 @@ type SessionOptions = {
   agentId: string; cwd: string; home?: string; sessionId?: string;
   mcpServers: unknown[];
   tools?: boolean | 'read-only';
+  promptTimeoutMs?: number | null;
   utilityMcpTools?: readonly {server: string; tools: readonly string[]}[];
   /** Not a user conversation: persist no prompts and hide it from history. */
   ephemeral?: boolean;
@@ -125,7 +126,7 @@ export class AcpSession {
       this.promptSent = true;
       startedAt = Date.now();
       observe('started');
-      return this.runtime.connection.request('session/prompt', { sessionId: this.sessionId, prompt: content }, 30 * 60_000);
+      return this.runtime.connection.request('session/prompt', { sessionId: this.sessionId, prompt: content }, this.options.promptTimeoutMs === undefined ? 30 * 60_000 : this.options.promptTimeoutMs);
     })
       .then(result => {
         if (!record(result) || typeof result.stopReason !== 'string') throw new Error('Invalid Antigravity turn completion.');

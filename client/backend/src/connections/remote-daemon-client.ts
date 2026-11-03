@@ -30,7 +30,7 @@ export type RemoteDaemonClientOptions = {
 type PendingRequest = {
   resolve(value: unknown): void;
   reject(error: Error): void;
-  timeout: NodeJS.Timeout;
+  timeout: NodeJS.Timeout | undefined;
 };
 
 export class RemoteDaemonClientManager {
@@ -188,11 +188,11 @@ class RemoteDaemonClient {
       throw new Error('remote daemon is not running.');
     }
 
-    const requestTimeoutMs = backendRequestTimeoutMs(method);
+    const requestTimeoutMs = backendRequestTimeoutMs(method, params);
     const id = this.nextRequestId++;
     const message = createAppRpcRequest(id, method, { ...(params as Record<string,unknown> ?? {}), _clientId:'remote-unsynchronized' });
     const result = new Promise<Result>((resolve, reject) => {
-      const timeout = setTimeout(() => {
+      const timeout = requestTimeoutMs === null ? undefined : setTimeout(() => {
         this.pending.delete(id);
         reject(new Error(`remote daemon request timed out: ${method}`));
       }, requestTimeoutMs);

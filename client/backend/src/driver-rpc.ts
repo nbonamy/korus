@@ -321,9 +321,11 @@ export class BackendDriverRpc {
           const driver = this.requireDriver(agent.backend);
           if (!driver.generateText) throw unsupportedBackendFeature(agent, 'ephemeral text generation');
           if (record.complexity !== undefined && !utilityTaskComplexities.includes(record.complexity as UtilityTaskComplexity)) throw new Error('Invalid utility task complexity.');
+          if (record.timeoutMs !== undefined && record.timeoutMs !== null) throw new Error('Invalid utility timeout.');
           if (record.tools !== undefined && typeof record.tools !== 'boolean') throw new Error('Invalid utility tool flag.');
           controller.signal.throwIfAborted();
           const input = {
+            ...(record.timeoutMs === null ? { timeoutMs: null } : {}),
             prompt: requireString(record.prompt, 'prompt'),
             cwd: requireString(record.cwd, 'cwd'),
             ...(record.complexity !== undefined ? { complexity: record.complexity as UtilityTaskComplexity } : {}),

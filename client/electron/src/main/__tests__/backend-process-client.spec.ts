@@ -5,6 +5,25 @@ import * as mainLog from '../log';
 import { AppBackendProcessClient } from '../backend-process-client';
 
 describe('AppBackendProcessClient', () => {
+  it('delivers a long-running Viz response after an hour', async () => {
+    vi.useFakeTimers();
+    const child = createFakeChildProcess();
+    const client = new AppBackendProcessClient({
+      command: { command: 'node', args: ['daemon', '--stdio'] },
+      spawnProcess: vi.fn().mockReturnValue(child),
+    });
+    await client.start();
+    try {
+      const pending = client.request(backendMethods.agentGitMessageGenerate, {
+        agentId: 'a', input: { kind: 'viz', generationId: 'long' },
+      }).then(value => ({ value }), error => ({ error }));
+      const request = JSON.parse(child.stdin.writes[0]);
+      await vi.advanceTimersByTimeAsync(60 * 60_000);
+      child.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { kind: 'viz' } })}\n`);
+      expect(await pending).toEqual({ value: { kind: 'viz' } });
+    } finally { await client.close(); }
+  });
+
   it('waits for provider history flush before finishing shutdown', async () => {
     vi.useFakeTimers();
     const child = createFakeChildProcess();

@@ -8,13 +8,15 @@ const EXTENDED_REQUEST_TIMEOUT_MS = 10 * 60_000;
 const REMOTE_SETUP_REQUEST_TIMEOUT_MS = 15 * 60_000;
 
 /**
- * Every backend action must have an intentional timeout budget.
+ * Every backend action must have an intentional deadline policy.
  *
  * Do not add a fallback here: when a method is added to backendMethods,
  * TypeScript must force its author to classify the operation based on the work
  * it actually performs. Use QUICK for in-memory state, IO for bounded local
  * filesystem/process work, LONG_RUNNING for provider/network/git operations,
  * and EXTENDED only for operations designed to run for several minutes.
+ * Diff Viz explicitly runs until completion or cancellation instead of using
+ * the method's ordinary deadline.
  */
 const requestTimeoutByMethod = {
   [backendMethods.collaborationTaskAccess]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
@@ -301,10 +303,16 @@ const requestTimeoutByMethod = {
   [backendMethods.workProviderBranchesList]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
 } satisfies Record<BackendMethod, number>;
 
-export function backendRequestTimeoutMs(method: string): number {
+export function backendRequestTimeoutMs(method: string, params?: unknown): number | null {
   const timeoutMs = requestTimeoutByMethod[method as BackendMethod];
   if (timeoutMs === undefined) {
     throw new Error(`No backend request timeout configured for ${method}.`);
+  }
+  if (params && typeof params === 'object') {
+    const request = params as Record<string, unknown>;
+    if (method === backendMethods.driverTextGenerate && request.timeoutMs === null) return null;
+    if (method === backendMethods.agentGitMessageGenerate && request.input && typeof request.input === 'object'
+      && (request.input as Record<string, unknown>).kind === 'viz') return null;
   }
   return timeoutMs;
 }

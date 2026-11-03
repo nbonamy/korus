@@ -155,7 +155,7 @@ export class AntigravityHost implements AgentBackendDriver {
     input.signal?.throwIfAborted();
     const inspect = input.tools === true;
     const servers = utilityMcpServers(input.mcpServers);
-    const session = await this.openSession({ agentId: `generation-${randomUUID()}`, cwd: input.cwd, mcpServers: servers.map(server => sessionMcpServer(server.url, server.name, [...server.enabledTools])), utilityMcpTools: servers.map(server => ({server:server.name, tools:server.enabledTools})), tools: inspect ? 'read-only' : false, ephemeral: true, changed: () => {}, usage: event => this.observeUsage({ ...event, agentId: agent.id }) });
+    const session = await this.openSession({ agentId: `generation-${randomUUID()}`, cwd: input.cwd, mcpServers: servers.map(server => sessionMcpServer(server.url, server.name, [...server.enabledTools])), utilityMcpTools: servers.map(server => ({server:server.name, tools:server.enabledTools})), tools: inspect ? 'read-only' : false, ...(input.timeoutMs === null ? {promptTimeoutMs:null} : {}), ephemeral: true, changed: () => {}, usage: event => this.observeUsage({ ...event, agentId: agent.id }) });
     this.auxiliary.add(session);
     const abort = () => { void session.interrupt().catch(() => session.close()); };
     input.signal?.addEventListener('abort', abort, { once: true });

@@ -1,6 +1,6 @@
 import { openIconMcpScope } from '../diagram-icons/mcp';
 import { readBundledSkill } from '../bundled-skills/catalog';
-import { diffVizReference } from './diff-viz-reference';
+// import { diffVizReference } from './diff-viz-reference';
 import { z } from 'zod';
 import { diffVizIcons, diffVizStatuses, type DiffVizDiagram, type DiffVisualizationMode } from '@workspace/core/git-diff-viz';
 import type { AgentGitDiffTarget, AgentGitDiffScope } from '@workspace/core/contracts';
@@ -40,11 +40,12 @@ export async function generateDiffViz(comparison: { target: AgentGitDiffTarget; 
   const paths = new Set(comparison.paths);
   if (!paths.size) throw new Error('There are no changed files to visualize.');
   if ([...paths].some(path => path.startsWith('/') || path.split('/').includes('..'))) throw new Error('The patch contains an invalid changed file path.');
-  const attachments = mode === 'polished' ? await diffVizReference() : undefined;
+  // Text-only comparison: retain the reference setup so it is easy to restore.
+  // const attachments = mode === 'polished' ? await diffVizReference() : undefined;
   const iconJob = mode === 'polished' ? await openIconMcpScope() : undefined;
   try {
-  const response = await generate({ cwd, complexity: 'normal', tools: true,
-    ...(attachments ? {attachments} : {}),
+  const response = await generate({ cwd, complexity: 'normal', tools: true, timeoutMs: null,
+    // ...(attachments ? {attachments} : {}),
     ...(iconJob ? {mcpServers:[{name:iconJob.name, url:iconJob.url, enabledTools:['fetch_tech_icon'] as const}]} : {}),
     developerInstructions: [
       'Explain the system impact of this change, not files or a coding-task checklist. Start by identifying what a reviewer needs to understand about the change. Draw the affected system: its responsibilities, real dependencies, subsystem boundaries, and necessary unchanged context. Aim for four to eight boxes; include additional components when essential to explain the real structure and relationships. Group repeated components and omit incidental files, tests and helpers. Preserve important architectural distinctions instead of collapsing the system into a generic input, AI, output or user journey.',
@@ -56,7 +57,7 @@ export async function generateDiffViz(comparison: { target: AgentGitDiffTarget; 
         'Return a Mermaid flowchart TB source plus nodes metadata with matching component ids and labels. Define every component on its own line, use named subgraphs for subsystem boundaries, and use short labeled connections. Keep concept labels to one to four words and at most two short lines; no paragraphs. No coordinates, styling, class definitions, directives, HTML, links, icons or external assets. The app owns change styling and click targets.',
       ] : [
       readBundledSkill('korus-stack-diagram', {}).markdown,
-      'Apply the shared stack-diagram skill to the attached composition reference, while deriving every component and relationship from the selected comparison. Return native structured geometry matching the provided schema. The app owns fonts, theme colors, icons, captions and bookkeeping; do not return colors, image elements, HTML, links or a full Excalidraw document. Fetched bytes belong only in component.iconImage.',
+      'Apply the shared stack-diagram skill for composition, while deriving every component and relationship from the selected comparison. Return native structured geometry matching the provided schema. The app owns fonts, theme colors, icons, captions and bookkeeping; do not return colors, image elements, HTML, links or a full Excalidraw document. Fetched bytes belong only in component.iconImage.',
       'Each semantic component is one native shape. Put its visible label in that shape\'s text field and its status and changed file paths in that same shape\'s component field. Add a short component.subtitle for a useful technical role or technology established by inspected source, such as renderer, node backend or sqlite; omit it when it adds no information. Keep it to one short line, without repeating the title or describing the change. The app creates native text from the shape label and derives its click target from the shape id. Do not return a separate nodes list or duplicate component ids or labels. A component can span multiple files; unchanged context has an empty paths array. Use null component for decorative elements, text and connections.',
       `Choose component.icon from: ${diffVizIcons.join(', ')}. Use the shared tile geometry. Put each component's label only in its shape text; do not return separate component captions or substitute icon glyphs. For named technologies, call fetch_tech_icon and copy its returned mimeType, base64, source, sourceUrl and whiteFill into component.iconImage. Keep component.icon as the fallback when fetching is unavailable or finds no exact match. The image payload is embedded directly in the output; the app supplies its caption.`,
       'For a background subsystem boundary, set group true on its shape and put its short title in text; its component is null. Arrow points are relative to x/y; startBinding and endBinding reference connected shape ids. Native text outside semantic shapes is only for short connection labels. Set containerId on each relationship label to its arrow id; the app uses Nunito for names/headings and Cascadia Code for technical subtitles and relationship labels, matching each label to its arrow color. Background groups come first, then connections, then semantic components.',
