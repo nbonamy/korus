@@ -247,33 +247,30 @@ it("hatches only partial bars and relabels the day in progress", () => {
       createPattern: vi.fn(() => pattern),
     };
   tile.getContext.mockReturnValue(ctx);
-  vi.stubGlobal("document", { createElement: () => tile });
-  try {
-    const spec = make("count");
-    const result = buildAnalyticsChart(
-      {
-        ...spec,
-        variant: "bar",
-        series: [{ ...spec.series[0]!, partial: [false, false, true] }],
-        dayLabels: { "2026-10-31": "Oct 31 · today" },
-      },
-      theme,
-    );
-    const background = result.data.datasets[0]!.backgroundColor as (
-      context: unknown,
-    ) => unknown;
-    expect(background({ dataIndex: 0 })).toBe("#2274df");
-    expect(background({ dataIndex: 2 })).toBe(pattern);
-    const tick = (
-      result.options.scales!.x!.ticks as {
-        callback: (value: number, index: number) => string;
-      }
-    ).callback;
-    expect(tick(0, 0)).toBe("Oct 29");
-    expect(tick(2, 2)).toBe("Oct 31 · today");
-  } finally {
-    vi.unstubAllGlobals();
-  }
+  const chart = { canvas: { ownerDocument: { createElement: () => tile } } };
+  const spec = make("count");
+  const result = buildAnalyticsChart(
+    {
+      ...spec,
+      variant: "bar",
+      series: [{ ...spec.series[0]!, partial: [false, false, true] }],
+      dayLabels: { "2026-10-31": "Oct 31 · today" },
+    },
+    theme,
+  );
+  const background = result.data.datasets[0]!.backgroundColor as (
+    context: unknown,
+  ) => unknown;
+  expect(background({ dataIndex: 0, chart })).toBe("#2274df");
+  expect(background({ dataIndex: 2, chart })).toBe(pattern);
+  expect(background({ dataIndex: 2, chart: {} })).toBe("#2274df");
+  const tick = (
+    result.options.scales!.x!.ticks as {
+      callback: (value: number, index: number) => string;
+    }
+  ).callback;
+  expect(tick(0, 0)).toBe("Oct 29");
+  expect(tick(2, 2)).toBe("Oct 31 · today");
 });
 
 // The browser pixel regression owns seamless geometry. This drawing-boundary

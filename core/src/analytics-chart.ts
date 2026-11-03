@@ -77,12 +77,16 @@ export function analyticsNumber(
     ? number
     : null;
 }
-function hatched(color: string, surface: string): string | CanvasPattern {
-  if (typeof document === "undefined") return color;
-  const tile = document.createElement("canvas");
+// The tile comes from the chart's own document so the core stays DOM-free.
+function hatched(
+  color: string,
+  surface: string,
+  owner: ScriptableContext<"line">["chart"]["canvas"] | undefined,
+) {
+  const tile = owner?.ownerDocument?.createElement("canvas");
+  const ctx = tile?.getContext("2d");
+  if (!tile || !ctx) return color;
   tile.width = tile.height = 8;
-  const ctx = tile.getContext("2d");
-  if (!ctx) return color;
   ctx.fillStyle = color;
   ctx.fillRect(0, 0, 8, 8);
   ctx.strokeStyle = surface;
@@ -225,7 +229,7 @@ export function buildAnalyticsChart(
           borderWidth: 2,
           backgroundColor: (context: ScriptableContext<"line">) => {
             if (type === "bar" && row.partial?.[context.dataIndex])
-              return hatched(color, theme.surface);
+              return hatched(color, theme.surface, context.chart?.canvas);
             if (rate || type === "bar" || spec.area === "solid") return color;
             const { chart } = context,
               area = chart.chartArea;
