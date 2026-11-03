@@ -241,6 +241,15 @@ describe('app menu', () => {
     expect(menuItem(menu, 'Agent', 'Compact Session')?.accelerator).toBe('CommandOrControl+Shift+K');
   });
 
+  it('offers a performance capture in Help only when the app can run one', () => {
+    expect(menuLabels(submenu(buildAppMenuTemplate({ reload: vi.fn(), sendAppCommand: vi.fn(), toggleDeveloperTools: vi.fn() }, { debugMode: false }), 'Help'))).not.toContain('Capture Performance Profile…');
+    const capturePerformanceProfile = vi.fn();
+    const menu = buildAppMenuTemplate({ reload: vi.fn(), sendAppCommand: vi.fn(), toggleDeveloperTools: vi.fn(), capturePerformanceProfile }, { debugMode: false });
+    expect(menuLabels(submenu(menu, 'Help'))).toContain('Capture Performance Profile…');
+    clickItem(menu, 'Help', 'Capture Performance Profile…');
+    expect(capturePerformanceProfile).toHaveBeenCalledOnce();
+  });
+
   it('sends app commands from menu items', () => {
     const nextCallbacks = callbacks();
     const menu = buildAppMenuTemplate(nextCallbacks, { debugMode: false }, 'darwin');

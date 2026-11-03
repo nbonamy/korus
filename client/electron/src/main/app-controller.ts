@@ -29,6 +29,7 @@ import { spokenAnnouncementVoices, type AddSshConnectionInput, type AgentFilePre
 import { ipcChannels, type AppIpcRequests } from '@workspace/core/ipc';
 import { sendAppCommand, sendRendererEvent } from './ipc-events';
 import { installAppMenu, type AppMenuCallbacks, type DebugCodeReviewScenario } from './app-menu';
+import { runPerformanceCapture } from './performance-capture-dialog';
 import type { ThreadFlagId } from '@workspace/core/thread-flags';
 import { DesktopAutoUpdateService } from './auto-update';
 import { BrowserPane, browserPaneKey } from './browser-pane';
@@ -1790,11 +1791,15 @@ export class AppController {
     updateStatus: DesktopUpdateStatus;
     checkForUpdates: () => void;
     installUpdate: () => void;
+    capturePerformanceProfile: () => void;
   } {
     return {
       updateStatus: this.desktopUpdateStatus,
       checkForUpdates: () => this.runManualUpdateCheck(),
       installUpdate: () => this.requestInstallUpdate(),
+      capturePerformanceProfile: () => {
+        if (this.mainWindow && !this.mainWindow.isDestroyed()) void runPerformanceCapture(this.mainWindow);
+      },
     };
   }
 
