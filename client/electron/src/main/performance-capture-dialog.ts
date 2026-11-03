@@ -23,6 +23,7 @@ export async function runPerformanceCapture(window: BrowserWindow): Promise<void
       directory: path.join(app.getPath('logs'), 'profiles'),
       durationMs: recordingMs,
       includeHeapSnapshot: choice.response === 1,
+      appVersion: app.getVersion(),
       metrics: () => app.getAppMetrics(),
     });
     if (window.isDestroyed()) return;

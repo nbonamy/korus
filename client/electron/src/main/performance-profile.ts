@@ -20,6 +20,8 @@ export type PerformanceCaptureOptions = {
   directory: string;
   durationMs: number;
   includeHeapSnapshot: boolean;
+  /** Names the release whose source maps are needed to read the profile. */
+  appVersion?: string;
   /** Process CPU and memory figures, read before and after the recording. */
   metrics?: () => unknown;
   now?: () => Date;
@@ -59,7 +61,7 @@ export async function capturePerformanceProfile(options: PerformanceCaptureOptio
     const result: PerformanceCaptureResult = { directory, cpuProfilePath };
     if (options.metrics) {
       result.metricsPath = path.join(directory, `${prefix}-metrics-${stamp}.json`);
-      await writeFile(result.metricsPath, JSON.stringify({ capturedAt: now().toISOString(), durationMs: options.durationMs, before, after: options.metrics() }, null, 2));
+      await writeFile(result.metricsPath, JSON.stringify({ capturedAt: now().toISOString(), ...(options.appVersion ? { appVersion: options.appVersion } : {}), durationMs: options.durationMs, before, after: options.metrics() }, null, 2));
     }
     if (options.includeHeapSnapshot) {
       result.heapSnapshotPath = path.join(directory, `${prefix}-heap-${stamp}.heapsnapshot`);

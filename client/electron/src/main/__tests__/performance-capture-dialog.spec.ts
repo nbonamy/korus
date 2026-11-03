@@ -6,7 +6,7 @@ const electron = vi.hoisted(() => ({
   showItemInFolder: vi.fn(),
 }));
 vi.mock('electron', () => ({
-  app: { getPath: vi.fn(() => '/logs'), getAppMetrics: vi.fn(() => [{ pid: 1 }]) },
+  app: { getPath: vi.fn(() => '/logs'), getVersion: vi.fn(() => '0.50.6'), getAppMetrics: vi.fn(() => [{ pid: 1 }]) },
   dialog: { showMessageBox: electron.showMessageBox },
   shell: { showItemInFolder: electron.showItemInFolder },
 }));
@@ -22,7 +22,7 @@ describe('runPerformanceCapture', () => {
   it('records for ten seconds into the logs folder and reveals the result on request', async () => {
     electron.showMessageBox.mockResolvedValueOnce({ response: 0 }).mockResolvedValueOnce({ response: 0 });
     await runPerformanceCapture(window());
-    expect(capture).toHaveBeenCalledWith(expect.objectContaining({ directory: '/logs/profiles', durationMs: 10_000, includeHeapSnapshot: false }));
+    expect(capture).toHaveBeenCalledWith(expect.objectContaining({ directory: '/logs/profiles', durationMs: 10_000, includeHeapSnapshot: false, appVersion: '0.50.6' }));
     expect(electron.showItemInFolder).toHaveBeenCalledWith('/logs/profiles/cpu.cpuprofile');
   });
 

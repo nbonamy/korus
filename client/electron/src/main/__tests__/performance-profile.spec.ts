@@ -41,13 +41,13 @@ describe('capturePerformanceProfile', () => {
     const { debuggerLike, calls } = fakeDebugger();
     const sleep = vi.fn(async () => { calls.push('sleep'); });
     const metrics = vi.fn().mockReturnValueOnce({ cpu: 'before' }).mockReturnValueOnce({ cpu: 'after' });
-    const result = await capturePerformanceProfile({ debugger: debuggerLike, directory, durationMs: 10_000, includeHeapSnapshot: false, now, sleep, metrics });
+    const result = await capturePerformanceProfile({ debugger: debuggerLike, directory, durationMs: 10_000, includeHeapSnapshot: false, now, sleep, metrics, appVersion: '0.50.6' });
     expect(calls).toStrictEqual(['attach', 'Profiler.enable', 'Profiler.start', 'sleep', 'Profiler.stop', 'Profiler.disable', 'detach']);
     expect(sleep).toHaveBeenCalledWith(10_000);
     expect(result.heapSnapshotPath).toBeUndefined();
     expect((await readdir(directory)).sort()).toStrictEqual([`${prefix}-cpu-2026-11-02T22-40-05.cpuprofile`, `${prefix}-metrics-2026-11-02T22-40-05.json`]);
     expect(JSON.parse(await readFile(result.cpuProfilePath, 'utf8')).samples).toStrictEqual([1]);
-    expect(JSON.parse(await readFile(result.metricsPath!, 'utf8'))).toStrictEqual({ capturedAt: '2026-11-02T22:40:05.000Z', durationMs: 10_000, before: { cpu: 'before' }, after: { cpu: 'after' } });
+    expect(JSON.parse(await readFile(result.metricsPath!, 'utf8'))).toStrictEqual({ capturedAt: '2026-11-02T22:40:05.000Z', appVersion: '0.50.6', durationMs: 10_000, before: { cpu: 'before' }, after: { cpu: 'after' } });
   });
 
   it('streams a heap snapshot to disk when asked', async () => {
