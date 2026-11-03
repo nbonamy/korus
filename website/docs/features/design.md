@@ -28,11 +28,11 @@ Exploration does not start implementation. Continue the design discussion until 
 
 An artboard holds one proposal or screen. Use the **Artboard** menu to focus a board, or the zoom menu's **Fit all artboards** to compare the whole canvas. **Pan canvas** moves your view without changing the design.
 
-In **Artboard actions**, duplicate a proposal to explore a variation, add a screen, or change its name, dimensions, and notes. Drag artboards to arrange the comparison; moving a board does not rearrange its contents.
+Ask your agent to duplicate a proposal, add a screen, or refine its name, dimensions, and notes. Drag artboards to arrange the comparison; moving a board does not rearrange its contents.
 
 ## Refine together
 
-Use **Comment** for feedback on the overall direction. For a specific detail, choose **Select elements**, select it on the canvas or in **Layers**, and write an **Element comment**. Choose **Send to agent** to continue the discussion with that target attached.
+Use **Comment** for feedback on the overall direction, then **Send to agent** to continue the discussion. Select elements on the canvas or in **Layers** to inspect and edit them.
 
 For example:
 
@@ -40,12 +40,12 @@ For example:
 
 You can also edit directly in the inspector:
 
-- **Properties** changes text, colors, spacing, sizing, layout, and click actions. Choose **Apply** to save your draft.
-- **Layers** helps you select nested elements, add content, and move, duplicate, or remove elements.
+- **Properties** changes text, colors, spacing, sizing, layout, and click actions. Changes save automatically after you pause typing.
+- **Layers** helps you navigate and select nested elements.
 - **Tweaks** offers controls generated for the design, such as a spacing slider, color picker, or layout choice. Ask the agent to add controls for decisions you want to compare quickly.
-- **Code** shows the selected element's HTML and the artboard's CSS, with copy actions.
+- **Code** shows the selected element's HTML and applied CSS properties, with copy actions.
 
-Apply or discard an inspector draft before switching boards. If an agent update conflicts with your pending edit, inspect the current design before choosing **Apply my canvas edit**, **Apply my tweak**, or **Discard draft and reload**, where offered.
+Let pending edits save before switching boards. If an agent update conflicts with your pending edit, inspect the current design before choosing **Apply my canvas edit**, **Apply my tweak**, or **Discard draft and reload**, where offered.
 
 ## Try the flow
 

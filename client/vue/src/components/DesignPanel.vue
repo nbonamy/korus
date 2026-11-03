@@ -13,29 +13,26 @@
     <template v-else>
       <div ref="body" class="design-panel__body" :class="{ 'design-panel__body--resizing': inspectorResizing }">
         <div class="design-panel__canvas-shell">
-          <DesignTools :artboards="current.document.content.artboards" :selected-artboard-id="canvas?.activeArtboardId ?? board?.id ?? null" :locked="locked" :interacting="interacting" :play="play" :pan="pan" :inspector-visible="inspectorVisible" :zoom="canvas?.zoom ?? 1" :zoom-choice="zoomChoice" @focus="focusBoard" @pan="pan = $event" @play="togglePlay" @inspector="inspectorVisible = !inspectorVisible" @zoom="changeZoom">
+          <DesignTools :artboards="current.document.content.artboards" :selected-artboard-id="canvas?.activeArtboardId ?? board?.id ?? null" :locked="locked" :interacting="interacting" :play="play" :pan="pan" :inspector-visible="inspectorVisible" :zoom="canvas?.zoom ?? 1" :zoom-choice="zoomChoice" @focus="focusBoard" @pan="changePan" @play="togglePlay" @inspector="inspectorVisible = !inspectorVisible" @zoom="changeZoom">
             <template #actions>
+              <button class="app-icon-button" type="button" :aria-label="t('design.undo')" :title="t('design.undo')" :disabled="locked || !current.undo.length" @click="historyAction('undo')"><UndoIcon /></button>
+              <button class="app-icon-button" type="button" :aria-label="t('design.redo')" :title="t('design.redo')" :disabled="locked || !current.redo?.length" @click="historyAction('redo')"><RedoIcon /></button>
+              <span class="design-panel__toolbar-divider" />
+              <AppMenuButton v-if="current.document" v-model:open="historyVisible" :items="historyItems" :ariaLabel="t('design.history')" :width="280" placement="bottom-start" @select="historyAction">
+                <template #trigger="{ attrs }"><button v-bind="attrs" class="app-icon-button" type="button" :aria-label="t('design.history')" :title="`${t('design.history')} · ${t('design.revision', { revision })}`"><HistoryIcon /></button></template>
+                <template #before>
+                  <form class="design-panel__history" @submit.prevent="checkpoint">
+                    <ClearableTextInput v-model="checkpointTitle" subtle :aria-label="t('design.checkpoint')" :placeholder="t('design.checkpoint')" :disabled="locked" />
+                    <button class="app-button app-button--secondary app-button--small" type="submit" :aria-label="t('design.saveCheckpoint')" :title="t('design.saveCheckpoint')" :disabled="locked || !checkpointTitle.trim()">{{ t('design.save') }}</button>
+                  </form>
+                </template>
+              </AppMenuButton>
               <AppMenuButton :items="exportItems" :ariaLabel="t('design.export')" :width="190" @select="exportSelection">
                 <template #trigger="{ attrs }"><button v-bind="attrs" class="app-icon-button" type="button" :disabled="locked" :aria-label="t('design.export')" :title="t('design.export')"><DownloadIcon /></button></template>
               </AppMenuButton>
             </template>
           </DesignTools>
-          <DesignCanvas ref="canvas" :content="canvasContent ?? current.document.content" :document-id="current.document.id" :revision="revision" :selected-artboard-id="board?.id ?? null" :selected-node-id="current.selectedNodeId" :play="play" :locked="locked" :interacting="interacting" :pan="pan" :zoom-choice="zoomChoice" :pending-change="pendingCanvas" @focus="focusBoard" @select="selectCanvasNode" @edit="saveCanvas" @interaction="canvasInteraction" @zoom="zoomChoice = $event">
-            <template #history>
-              <AppMenuButton v-if="current.document" v-model:open="historyVisible" :items="historyItems" :ariaLabel="t('design.history')" :width="280" placement="bottom-start" @select="historyAction">
-                <template #trigger="{ attrs }"><button v-bind="attrs" class="app-icon-button" type="button" :aria-label="t('design.history')" :title="`${t('design.history')} · ${t('design.revision', { revision })}`"><HistoryIcon /></button></template>
-                <template #before>
-                  <form class="design-panel__history" @submit.prevent="checkpoint">
-                    <FormField density="compact" :label="t('design.checkpoint')">
-                      <div class="design-panel__actions">
-                        <input v-model="checkpointTitle" :aria-label="t('design.checkpoint')" />
-                        <button class="app-button app-button--secondary" type="submit" :disabled="locked || !checkpointTitle.trim()">{{ t('design.saveCheckpoint') }}</button>
-                      </div>
-                    </FormField>
-                  </form>
-                </template>
-              </AppMenuButton>
-            </template>
+          <DesignCanvas ref="canvas" :content="canvasContent ?? current.document.content" :document-id="current.document.id" :revision="revision" :selected-artboard-id="board?.id ?? null" :selected-node-id="pan ? null : current.selectedNodeId" :play="play" :locked="locked" :interacting="interacting" :pan="pan" :zoom-choice="zoomChoice" :pending-change="pendingCanvas" @focus="focusBoard" @select="selectCanvasNode" @styles="receiveStyles" @edit="saveCanvas" @interaction="canvasInteraction" @zoom="zoomChoice = $event">
           </DesignCanvas>
           <DesignReviewBar v-if="board && !play" :board="board" :disabled="locked || !!reviewCommentDraft" :commenting="!!reviewCommentDraft" @comment="beginComment" @build="reviewBuild">
             <template #comment>
@@ -54,49 +51,28 @@
         </div>
         <PaneTransition :enabled="!inspectorResizing">
         <div v-if="!play" v-show="inspectorVisible" ref="inspector" class="design-panel__inspector-shell" :style="{ '--design-inspector-width': `${inspectorWidth}px` }">
-          <div class="design-panel__inspector-resizer" role="separator" :aria-label="t('design.resizeInspector')" aria-orientation="vertical" tabindex="0" aria-valuemin="220" aria-valuemax="560" :aria-valuenow="inspectorWidth" @pointerdown="startInspectorResize" @keydown.left.prevent="resizeInspector(inspectorWidth + 16)" @keydown.right.prevent="resizeInspector(inspectorWidth - 16)" />
+          <div class="design-panel__inspector-resizer" role="separator" :aria-label="t('design.resizeInspector')" aria-orientation="vertical" tabindex="0" aria-valuemin="220" :aria-valuemax="body?.clientWidth || 800" :aria-valuenow="inspectorWidth" @pointerdown="startInspectorResize" @keydown.left.prevent="resizeInspector(inspectorWidth + 16)" @keydown.right.prevent="resizeInspector(inspectorWidth - 16)" />
         <div class="design-panel__inspector" :inert="interacting || !!pendingCanvas">
-          <button class="app-icon-button design-panel__close-inspector" type="button" :aria-label="t('design.closeInspector')" :title="t('design.closeInspector')" :disabled="interacting" @click="inspectorVisible = false"><XIcon /></button>
           <el-tabs v-model="inspectorTab" class="design-panel__tabs">
             <el-tab-pane name="properties" :label="t('design.properties')" :disabled="!!tweakDraft">
-              <fieldset class="design-panel__fields" :disabled="busy">
-                <AppMenuButton :items="artboardItems" :ariaLabel="t('design.artboardActions')" :width="210" @select="artboardAction">
-                  <template #trigger="{ attrs }"><button v-bind="attrs" class="app-button app-button--tertiary" type="button" :disabled="locked" :aria-label="t('design.artboardActions')">{{ t('design.artboardActions') }}<ChevronDown /></button></template>
-                </AppMenuButton>
-                <DesignLayers v-if="board" :board="board" :selected-id="current.selectedNodeId" :disabled="locked" @select="selectNode" @edit="editElements" />
-                <template v-if="selected || elementCommentDraft">
-                  <FormField density="compact" :label="elementCommentDraft ? t('design.commentOn', { title: elementCommentDraft.title }) : t('design.comment')">
-                    <textarea v-model="commentDraft" :aria-label="t('design.comment')" rows="2" />
-                  </FormField>
-                  <div class="design-panel__actions">
-                    <button v-if="elementCommentDraft" class="app-button app-button--secondary" type="button" data-action="discard-comment" @click="elementCommentDraft = undefined">{{ t('common.cancel') }}</button>
-                    <button class="app-button app-button--secondary" type="button" data-action="comment" :disabled="locked || !commentDraft.trim()" @click="comment">{{ t('design.sendComment') }}</button>
-                  </div>
-                  <ul v-if="comments.length" class="design-panel__comments">
-                    <li v-for="item in comments" :key="item.id">{{ item.text }}</li>
-                  </ul>
-                </template>
+              <fieldset class="design-panel__fields" :disabled="busy && !autoSaving">
+                <DesignLayers v-if="board" class="design-panel__tree" :board="board" :selected-id="current.selectedNodeId" :disabled="locked" @select="selectNode" />
                 <template v-if="selected">
-                  <FormField v-if="!selected.children?.length && !['img', 'input', 'br', 'hr'].includes(selected.tag)" density="compact" :label="t('design.text')">
-                    <textarea v-model="textDraft" :aria-label="t('design.text')" rows="2" @input="dirty = true" />
-                  </FormField>
-                  <div class="design-panel__properties">
-                    <FormField v-for="property in properties" :key="property.key" density="compact" :label="t(property.label)">
-                      <input v-model="styleDraft[property.key]" :aria-label="t(property.label)" @input="dirty = true" />
-                    </FormField>
-                  </div>
-                  <DesignLayout :styles="styleDraft" @change="styleDraft = $event; dirty = true" />
-                  <DesignInteraction :model-value="interactionDraft" :artboards="current.document.content.artboards" :nodes="nodes" @update:model-value="interactionDraft = $event; dirty = true" />
-                  <div class="design-panel__actions">
-                    <span role="status">{{ t(busy ? 'design.saving' : dirty ? 'design.unsaved' : 'design.saved') }}</span>
-                    <button v-if="dirty" class="app-button app-button--secondary" type="button" @click="reload">{{ t('common.cancel') }}</button>
-                    <button class="app-button app-button--primary" type="button" data-action="apply" :disabled="busy || !dirty" @click="apply">{{ t('design.apply') }}</button>
-                  </div>
+                  <FormSection v-if="!selected.children?.length && !['img', 'input', 'br', 'hr'].includes(selected.tag)" class="design-panel__section" density="compact" :title="t('design.text')">
+                    <textarea v-model="textDraft" :aria-label="t('design.text')" rows="3" @input="queueApply" @change="apply" />
+                  </FormSection>
+                  <FormSection v-for="section in propertySections" :key="section.title" class="design-panel__section" density="compact" :title="t(section.title)">
+                    <FormRow v-for="property in section.fields" :key="property.key" as="label" :title="t(property.label)">
+                      <template #control><input v-model="styleDraft[property.key]" :aria-label="t(property.label)" @input="queueApply" @change="apply" /></template>
+                    </FormRow>
+                  </FormSection>
+                  <DesignLayout class="design-panel__section" :styles="styleDraft" @change="styleDraft = $event; queueApply()" />
+                  <DesignInteraction class="design-panel__section" :model-value="interactionDraft" :artboards="current.document.content.artboards" :nodes="nodes" @update:model-value="interactionDraft = $event; queueApply()" />
                 </template>
               </fieldset>
             </el-tab-pane>
             <el-tab-pane name="code" :label="t('design.code')" :disabled="dirty || !!tweakDraft">
-              <DesignCode v-if="board && inspectorTab === 'code'" :node="selected ?? board.root" :css="board.css ?? current.document.content.css" />
+              <DesignCode v-if="board && inspectorTab === 'code'" :node="selected ?? board.root" :styles="codeStyles?.nodeId === (selected ?? board.root).id && codeStyles.revision === revision ? codeStyles.styles : undefined" />
             </el-tab-pane>
             <el-tab-pane name="tweaks" :label="t('design.tweaks')" :disabled="dirty">
               <DesignTweaks :tweaks="tweaks" :nodes="nodes" :draft="tweakDraft" :disabled="busy || dirty || interacting || !!pendingCanvas || !!tweakDraft && !!error" @preview="previewTweak" @commit="saveTweak" />
@@ -119,26 +95,11 @@
         <button class="app-button app-button--primary" type="button" data-action="implement" :disabled="busy" @click="implement">{{ t('design.sendForCoding') }}</button>
       </template>
     </FormDialog>
-    <FormDialog v-model="boardDialog" :title="t(addingBoard ? 'design.addArtboard' : 'design.artboardSettings')" width="420px">
-      <form class="design-panel__board-form" @submit.prevent="saveBoard">
-        <FormField :label="t('design.artboardName')"><input v-model="boardDraft.title" :aria-label="t('design.artboardName')" autofocus maxlength="200" required /></FormField>
-        <div class="design-panel__dimensions">
-          <FormField :label="t('design.width')"><input v-model.number="boardDraft.width" type="number" :aria-label="t('design.width')" min="240" max="3840" required /></FormField>
-          <FormField :label="t('design.height')"><input v-model.number="boardDraft.height" type="number" :aria-label="t('design.height')" min="160" max="3840" required /></FormField>
-        </div>
-        <FormField :label="t('design.notes')"><textarea v-model="boardDraft.notes" :aria-label="t('design.notes')" rows="3" maxlength="4000" /></FormField>
-        <p v-if="error" role="alert" class="design-panel__error">{{ error }}</p>
-      </form>
-      <template #footer>
-        <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="boardDialog = false">{{ t('common.cancel') }}</button>
-        <button class="app-button app-button--primary" type="button" :disabled="busy || !boardDraft.title.trim()" @click="saveBoard">{{ t('design.save') }}</button>
-      </template>
-    </FormDialog>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import DesignReviewBar from './DesignReviewBar.vue';
 import DesignCode from './DesignCode.vue';
@@ -146,13 +107,15 @@ import type { DesignEdit, DesignInteraction as DesignInteractionValue, DesignReq
 import { designNodes } from '@workspace/core/design';
 import { designTweakCss, type DesignTweak, type DesignTweakValue } from '@workspace/core/design-tweaks';
 import { translate as t } from '../i18n';
-import FormField from '../shared/form/FormField.vue';
+import ClearableTextInput from '../shared/form/ClearableTextInput.vue';
+import FormSection from '../shared/form/FormSection.vue';
+import FormRow from '../shared/form/FormRow.vue';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import PaneTransition from '../shared/PaneTransition.vue';
 import { useCollapsiblePaneResize } from '../shared/use-collapsible-pane-resize';
 import type { AppMenuItem } from '../shared/menu/app-menu';
-import { ArrowBackUpIcon as UndoIcon, ArrowForwardUpIcon as RedoIcon, HistoryIcon, DownloadIcon, XIcon, ChevronDown } from '../shared/icons/app-icons';
+import { ArrowBackUpIcon as UndoIcon, ArrowForwardUpIcon as RedoIcon, HistoryIcon, DownloadIcon } from '../shared/icons/app-icons';
 import DesignCanvas from './DesignCanvas.vue';
 import DesignTools from './DesignTools.vue';
 import DesignTweaks from './DesignTweaks.vue';
@@ -169,7 +132,7 @@ const body = ref<HTMLElement>();
 const inspector = ref<HTMLElement>();
 const { resizing: inspectorResizing, start: startPaneResize } = useCollapsiblePaneResize();
 function resizeInspector(width: number) {
-  inspectorWidth.value = Math.round(Math.max(220, Math.min(width, 560, (body.value?.getBoundingClientRect().width ?? 800) - 240)));
+  inspectorWidth.value = Math.round(Math.max(220, Math.min(width, body.value?.getBoundingClientRect().width || 800)));
 }
 function startInspectorResize(event: PointerEvent) {
   const width = inspector.value?.getBoundingClientRect().width || inspectorWidth.value;
@@ -188,23 +151,23 @@ const buildVisible = ref(false);
 const buildDraft = ref<{ artboardId: string; title: string; notes?: string; revision: number }>();
 const historyVisible = ref(false);
 const inspectorTab = ref('properties');
+const codeStyles = ref<{ nodeId: string; revision: number; styles: Record<string, string> }>();
+function receiveStyles(artboardId: string, nodeId: string, frameRevision: number, styles: Record<string, string>) {
+  if (artboardId === board.value?.id && nodeId === (selected.value ?? board.value?.root)?.id && frameRevision === revision.value) codeStyles.value = { nodeId, revision: frameRevision, styles };
+}
 const tweakDraft = ref<{ tweakId: string; value: DesignTweakValue; expectedRevision: number; definition: DesignTweak } | null>(null);
 const canvas = ref<InstanceType<typeof DesignCanvas>>();
 const pan = ref(false);
-const boardDialog = ref(false);
-const addingBoard = ref(false);
-const boardDraft = ref({ title: '', width: 800, height: 600, notes: '' });
-let boardDraftId = '';
-let boardDraftRevision = 0;
 const play = ref(false);
 const zoomChoice = ref<number | 'fit' | 'selection'>(props.workspace.selectedNodeId ? 'selection' : 'fit');
 const busy = ref(false);
 const dirty = ref(false);
+const autoSaving = ref(false);
+let applyTimer: ReturnType<typeof setTimeout> | undefined;
 const error = ref('');
 const textDraft = ref('');
 const styleDraft = ref<Record<string, string>>({});
 const interactionDraft = ref<DesignInteractionValue | null>(null);
-const elementCommentDraft = ref<{ nodeId: string; title: string; revision: number; text: string }>();
 const checkpointTitle = ref('');
 const draftRevision = ref(0);
 const draftNodeId = ref<string | null>(null);
@@ -231,40 +194,18 @@ const canvasContent = computed(() => {
   return preview;
 });
 const selected = computed(() => nodes.value.find(node => node.id === current.value.selectedNodeId));
-const commentDraft = computed({
-  get: () => elementCommentDraft.value?.text ?? '',
-  set: (text: string) => {
-    if (busy.value) return;
-    if (!text) { elementCommentDraft.value = undefined; return; }
-    if (elementCommentDraft.value) elementCommentDraft.value.text = text;
-    else if (selected.value) elementCommentDraft.value = { nodeId: selected.value.id, title: `${selected.value.tag} · ${selected.value.text?.slice(0, 35) || selected.value.id}`, revision: revision.value, text };
-  },
-});
-const comments = computed(() => current.value.document?.content.comments.filter(item => item.nodeId === (elementCommentDraft.value?.nodeId ?? selected.value?.id)) ?? []);
 const reviewComments = computed(() => current.value.document?.content.comments.filter(item => item.nodeId === reviewCommentDraft.value?.nodeId) ?? []);
-const artboardItems = computed<AppMenuItem[]>(() => [
-  { type: 'action', id: 'add', label: t('design.addArtboard'), disabled: (current.value.document?.content.artboards.length ?? 0) >= 12 },
-  { type: 'action', id: 'duplicate', label: t('design.duplicateArtboard'), disabled: !board.value || (current.value.document?.content.artboards.length ?? 0) >= 12 },
-  { type: 'action', id: 'settings', label: t('design.artboardSettings'), disabled: !board.value },
-  { type: 'action', id: 'arrange', label: t('design.arrangeArtboards') },
-  { type: 'action', id: 'remove', label: t('design.removeArtboard'), disabled: (current.value.document?.content.artboards.length ?? 0) < 2 },
-]);
 const historyItems = computed<AppMenuItem[]>(() => [
-  { type: 'action', id: 'undo', label: t('design.undo'), icon: UndoIcon, disabled: locked.value || !current.value.undo.length },
-  { type: 'action', id: 'redo', label: t('design.redo'), icon: RedoIcon, disabled: locked.value || !current.value.redo?.length },
-  ...(current.value.checkpoints.length ? [{ type: 'separator' as const, id: 'checkpoints' }] : []),
   ...current.value.checkpoints.map(item => ({ type: 'action' as const, id: `restore:${item.id}`, label: t('design.restoreNamed', { name: item.title }), disabled: locked.value })),
 ]);
 const exportItems = computed<AppMenuItem[]>(() => [
   { type: 'action', id: 'selected', label: t('design.exportArtboard') },
   { type: 'action', id: 'all', label: t('design.exportAll') },
 ]);
-const properties = [
-  { key: 'color', label: 'design.color' }, { key: 'background-color', label: 'design.fill' },
-  { key: 'font-size', label: 'design.fontSize' }, { key: 'font-family', label: 'design.fontFamily' },
-  { key: 'padding', label: 'design.padding' }, { key: 'gap', label: 'design.gap' },
-  { key: 'width', label: 'design.width' }, { key: 'height', label: 'design.height' },
-  { key: 'border-radius', label: 'design.radius' },
+const propertySections = [
+  { title: 'design.typography', fields: [{ key: 'font-family', label: 'design.fontFamily' }, { key: 'font-size', label: 'design.fontSize' }, { key: 'color', label: 'design.color' }] },
+  { title: 'design.size', fields: [{ key: 'width', label: 'design.width' }, { key: 'height', label: 'design.height' }] },
+  { title: 'design.appearance', fields: [{ key: 'background-color', label: 'design.fill' }, { key: 'border-radius', label: 'design.radius' }] },
 ];
 watch(() => props.workspace, workspace => { current.value = workspace; });
 watch([selected, revision], () => { if (!dirty.value) resetDraft(); }, { immediate: true });
@@ -289,7 +230,9 @@ async function mutate(request: DesignRequest): Promise<boolean> {
   finally { busy.value = false; }
 }
 async function apply() {
-  if (!draftNodeId.value) return;
+  clearTimeout(applyTimer);
+  if (!dirty.value || !draftNodeId.value || autoSaving.value) return;
+  if (busy.value) { queueApply(); return; }
   const edits: DesignEdit[] = [];
   const original = nodes.value.find(node => node.id === draftNodeId.value);
   if (!original) { error.value = t('design.targetRemoved'); return; }
@@ -299,9 +242,24 @@ async function apply() {
   const originalAction = original.interaction ?? (original.toggleTargetId ? { type: 'toggle', nodeId: original.toggleTargetId } : null);
   if (JSON.stringify(interactionDraft.value) !== JSON.stringify(originalAction)) edits.push({ type: 'interaction', nodeId: draftNodeId.value, interaction: interactionDraft.value });
   if (!edits.length) { resetDraft(); return; }
-  if (await mutate({ type: 'edit', expectedRevision: draftRevision.value, edits })) { dirty.value = false; resetDraft(); }
+  const submitted = draftSignature();
+  const submittedRevision = draftRevision.value;
+  autoSaving.value = true;
+  try {
+    if (await mutate({ type: 'edit', expectedRevision: submittedRevision, edits })) {
+      if (draftSignature() === submitted) resetDraft();
+      else { draftRevision.value = submittedRevision + 1; queueApply(); }
+    }
+  } finally { autoSaving.value = false; }
 }
-async function reload() { if (await mutate({ type: 'read' })) { pendingCanvas.value = null; tweakDraft.value = null; elementCommentDraft.value = undefined; interacting.value = false; interactingArtboardId = null; dirty.value = false; resetDraft(); } }
+function draftSignature() { return JSON.stringify([draftNodeId.value, textDraft.value, styleDraft.value, interactionDraft.value]); }
+function queueApply() {
+  dirty.value = true;
+  clearTimeout(applyTimer);
+  applyTimer = setTimeout(() => void apply(), 400);
+}
+onBeforeUnmount(() => { clearTimeout(applyTimer); if (dirty.value && !busy.value) void apply(); });
+async function reload() { if (await mutate({ type: 'read' })) { pendingCanvas.value = null; tweakDraft.value = null; interacting.value = false; interactingArtboardId = null; dirty.value = false; resetDraft(); } }
 function previewTweak(tweak: DesignTweak, value: DesignTweakValue) {
   if (busy.value || dirty.value || interacting.value || pendingCanvas.value) return;
   if (tweakDraft.value && tweakDraft.value.tweakId !== tweak.id) return;
@@ -327,14 +285,6 @@ async function selectNode(nodeId: string) {
   if (dirty.value || !board.value) return;
   await mutate({ type: 'select', artboardId: board.value.id, nodeId });
 }
-async function editElements(edits: DesignEdit[]) {
-  if (dirty.value) return;
-  const ids = new Set(nodes.value.map(node => node.id));
-  if (await mutate({ type: 'edit', expectedRevision: revision.value, edits })) {
-    const added = nodes.value.find(node => !ids.has(node.id));
-    if (added) await selectNode(added.id);
-  }
-}
 async function selectBoard(artboardId: string) {
   if (dirty.value) { error.value = t('design.applyFirst'); return; }
   await mutate({ type: 'select', artboardId, nodeId: null });
@@ -347,7 +297,11 @@ async function focusBoard(artboardId: string) {
 }
 function changeZoom(value: number | 'fit' | 'selection') { if (value === 'fit') { play.value = false; pan.value = false; } zoomChoice.value = value; }
 function togglePlay() { play.value = !play.value; pan.value = false; zoomChoice.value = 'selection'; }
-async function selectCanvasNode(artboardId: string, nodeId: string) {
+async function changePan(value: boolean) {
+  pan.value = value;
+  if (value && board.value && current.value.selectedNodeId) await selectCanvasNode(board.value.id, null);
+}
+async function selectCanvasNode(artboardId: string, nodeId: string | null) {
   if (locked.value) return;
   if (artboardId !== board.value?.id && zoomChoice.value === 'selection' && canvas.value) zoomChoice.value = canvas.value.zoom;
   await mutate({ type: 'select', artboardId, nodeId });
@@ -356,41 +310,6 @@ function canvasInteraction(artboardId: string, active: boolean) {
   if (active && locked.value || interactingArtboardId && interactingArtboardId !== artboardId) return;
   interactingArtboardId = active ? artboardId : null;
   interacting.value = active;
-}
-async function artboardAction(action: string) {
-  if (action === 'arrange') {
-    let x = 0;
-    const edits: DesignEdit[] = current.value.document!.content.artboards.map(artboard => {
-      const position = { x, y: 0 }; x += artboard.width + 80;
-      return { type: 'artboard-update', artboardId: artboard.id, changes: { position } };
-    });
-    if (await mutate({ type: 'edit', expectedRevision: revision.value, edits })) zoomChoice.value = 'fit';
-    return;
-  }
-  if (action === 'add' || action === 'settings') {
-    addingBoard.value = action === 'add';
-    boardDraftId = board.value?.id ?? '';
-    boardDraftRevision = revision.value;
-    boardDraft.value = action === 'add' ? { title: t('design.newArtboard'), width: board.value?.width ?? 800, height: board.value?.height ?? 600, notes: '' } : { title: board.value!.title, width: board.value!.width, height: board.value!.height, notes: board.value!.notes ?? '' };
-    error.value = '';
-    boardDialog.value = true;
-  } else if (board.value && (action === 'duplicate' || action === 'remove')) {
-    const ids = new Set(current.value.document!.content.artboards.map(item => item.id));
-    if (await mutate({ type: 'edit', expectedRevision: revision.value, edits: [{ type: action === 'duplicate' ? 'artboard-duplicate' : 'artboard-remove', artboardId: board.value.id }] })) {
-      const added = current.value.document!.content.artboards.find(item => !ids.has(item.id));
-      if (added) await focusBoard(added.id);
-    }
-  }
-}
-async function saveBoard() {
-  const changes = { ...boardDraft.value, title: boardDraft.value.title.trim() };
-  if (!changes.title || !Number.isInteger(changes.width) || !Number.isInteger(changes.height) || changes.width < 240 || changes.width > 3840 || changes.height < 160 || changes.height > 3840) { error.value = t('design.invalidArtboard'); return; }
-  const id = `artboard-${crypto.randomUUID()}`;
-  const edit: DesignEdit = addingBoard.value ? { type: 'artboard-add', artboard: { ...changes, id, root: { id: `node-${crypto.randomUUID()}`, tag: 'main', children: [] } } } : { type: 'artboard-update', artboardId: boardDraftId, changes };
-  if (await mutate({ type: 'edit', expectedRevision: boardDraftRevision, edits: [edit] })) {
-    boardDialog.value = false;
-    if (addingBoard.value) await focusBoard(id);
-  }
 }
 async function beginComment() {
   if (locked.value || !board.value) return;
@@ -417,10 +336,6 @@ async function implement() {
   buildVisible.value = false;
   buildDraft.value = undefined;
   if (accepted) ElMessage.success(t('design.sentForCoding'));
-}
-async function comment() {
-  const draft = elementCommentDraft.value;
-  if (draft && await mutate({ type: 'comment', expectedRevision: draft.revision, nodeId: draft.nodeId, text: draft.text })) elementCommentDraft.value = undefined;
 }
 async function checkpoint() {
   if (await mutate({ type: 'checkpoint', expectedRevision: revision.value, title: checkpointTitle.value })) { checkpointTitle.value = ''; historyVisible.value = false; }
@@ -488,6 +403,8 @@ async function retryCanvas() {
   gap: var(--space-2);
 }
 
+.design-panel__toolbar-divider { width: 1px; height: var(--space-8); margin-inline: var(--space-2); flex: none; background: var(--color-border); }
+
 .design-panel__canvas-shell {
   container: design-canvas-controls / inline-size;
   display: flex;
@@ -512,6 +429,7 @@ async function retryCanvas() {
 .design-panel__inspector-shell {
   --design-inspector-width: 280px;
 
+  background: var(--color-surface-lowest);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -544,7 +462,8 @@ async function retryCanvas() {
 
   .design-panel__inspector-shell {
     flex-direction: row;
-    width: min(var(--design-inspector-width), calc(100% - 240px));
+    flex-basis: min(var(--design-inspector-width), 100%);
+    width: min(var(--design-inspector-width), 100%);
     max-height: none;
     border-top: 0;
   }
@@ -569,22 +488,14 @@ async function retryCanvas() {
 .design-panel__fields {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: 0;
   min-width: 0;
   margin: 0;
   padding: 0;
   border: 0;
 }
 
-.design-panel__close-inspector {
-  position: absolute;
-  top: var(--space-3);
-  right: var(--space-3);
-  z-index: 1;
-}
-
 .design-panel__tabs :deep(.el-tabs__header) {
-  padding-right: 32px;
   margin-bottom: var(--space-3);
 }
 
@@ -593,11 +504,20 @@ async function retryCanvas() {
   font-size: var(--font-size-13);
 }
 
-.design-panel__properties {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-2);
-}
+.design-panel__tree { padding-bottom: var(--space-6); margin-bottom: var(--space-4); border-bottom: 1px solid var(--color-border); }
+.design-panel__section { padding-block: var(--space-3); }
+.design-panel__fields :deep(.form-section + .form-section) { margin-top: 0; }
+.design-panel__section :deep(.form-section__group) { border: 0; border-radius: 0; background: transparent; overflow: visible; }
+.design-panel__section :deep(.form-section__header) { min-height: 0; padding-bottom: var(--space-2); }
+.design-panel__section :deep(.app-section-label) { margin: 0; color: var(--color-text); font-size: var(--font-size-12); font-weight: var(--font-weight-semibold); text-transform: none; letter-spacing: normal; }
+.design-panel__inspector .design-panel__fields :deep(.form-section--compact .form-row) { grid-template-columns: 80px minmax(0, 1fr); min-height: 0; gap: var(--space-2); padding: var(--space-1) 0; }
+.design-panel__fields .design-panel__section :deep(.form-row + .form-row) { border-top: 0; }
+.design-panel__section :deep(.form-row__copy strong) { color: var(--color-text-muted); font-size: var(--font-size-12); font-weight: var(--font-weight-regular); }
+.design-panel__section :deep(.form-row__control) { width: 100%; min-width: 0; }
+.design-panel .design-panel__inspector input,
+.design-panel .design-panel__inspector textarea { background: var(--color-surface-lowest); }
+.design-panel .design-panel__inspector input,
+.design-panel__inspector .design-panel__fields :deep(select) { height: 24px; padding: var(--space-1) var(--space-3); font-size: var(--font-size-12); line-height: 18px; }
 
 .design-panel input,
 .design-panel textarea,
@@ -617,10 +537,21 @@ async function retryCanvas() {
   resize: vertical;
 }
 
-.design-panel input:focus-visible,
-.design-panel textarea:focus-visible {
+.design-panel :deep(input:focus-visible),
+.design-panel :deep(textarea:focus-visible),
+.design-panel :deep(select:focus-visible) {
   outline: 2px solid var(--color-primary);
-  outline-offset: 1px;
+  outline-offset: -2px;
+}
+
+.design-panel__review-comment textarea,
+.design-panel__review-comment textarea:focus-visible {
+  padding: var(--space-4) 0;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  box-shadow: none;
 }
 
 .design-panel__actions [role="status"] {
@@ -660,14 +591,17 @@ async function retryCanvas() {
 }
 
 .design-panel__history {
-  padding: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
   border-bottom: 1px solid var(--color-border);
 }
 
-.design-panel__history .design-panel__actions {
-  align-items: stretch;
-  flex-direction: column;
-}
+.design-panel__history > :first-child { flex: 1; min-width: 0; }
+.design-panel__history :deep(.clearable-text-input--subtle) { min-height: 28px; }
+.design-panel__history :deep(input) { font-size: var(--font-size-13); }
+.design-panel__history > button { flex: none; height: 28px; }
 
 .design-panel__board-form {
   display: flex;

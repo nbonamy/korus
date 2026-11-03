@@ -1,98 +1,63 @@
 <template>
-  <details class="design-layers" open>
-    <summary>{{ t('design.layers') }}</summary>
-    <div class="design-layers__body" :inert="disabled">
-      <el-tree :data="tree" node-key="id" :current-node-key="selectedId ?? undefined" default-expand-all highlight-current :expand-on-click-node="false" :aria-label="t('design.layers')" @node-click="select" />
-      <div class="design-layers__actions">
-        <AppMenuButton :items="items" :ariaLabel="t('design.elementActions')" :width="200" @select="action">
-          <template #trigger="{ attrs }"><button v-bind="attrs" class="app-button app-button--secondary" type="button" :disabled="disabled">{{ t('design.elementActions') }}</button></template>
-        </AppMenuButton>
-        <el-select v-if="parent" :model-value="parent.id" :aria-label="t('design.parentLayer')" :disabled="disabled" @change="reparent">
-          <el-option v-for="node in containers" :key="node.id" :value="node.id" :label="label(node)" />
-        </el-select>
-      </div>
-    </div>
-  </details>
+  <div class="design-layers" :inert="disabled">
+    <el-tree :data="tree" node-key="id" :current-node-key="selectedId ?? undefined" :default-expanded-keys="[board.root.id]" :indent="14" highlight-current :expand-on-click-node="false" :aria-label="t('design.layers')" @node-click="select">
+      <template #default="{ data }">
+        <span class="design-layers__node" :title="data.tooltip">
+          <component :is="icons[data.kind as LayerKind]" class="design-layers__icon" stroke="1.5" aria-hidden="true" />
+          <span class="design-layers__name">{{ data.name }}</span>
+          <span v-if="data.preview" class="design-layers__preview">{{ data.preview }}</span>
+        </span>
+      </template>
+    </el-tree>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { DesignArtboard, DesignEdit, DesignNode } from '@workspace/core/design';
+import type { DesignArtboard, DesignNode } from '@workspace/core/design';
 import { translate as t } from '../i18n';
-import AppMenuButton from '../shared/menu/AppMenuButton.vue';
-import type { AppMenuItem } from '../shared/menu/app-menu';
+import { ArrowsHorizontalIcon, ArrowsVerticalIcon, HeadingIcon, LinkIcon, PhotoIcon, RectangleIcon, TextIcon } from '../shared/icons/app-icons';
 
 const props = defineProps<{ board: DesignArtboard; selectedId: string | null; disabled: boolean }>();
-const emit = defineEmits<{ select: [id: string]; edit: [edits: DesignEdit[]] }>();
-const flatten = (node: DesignNode): DesignNode[] => [node, ...(node.children ?? []).flatMap(flatten)];
-const label = (node: DesignNode) => `${node.tag} · ${node.text?.slice(0, 35) || node.id}`;
-type Layer = { id: string; label: string; children: Layer[] };
-const layer = (node: DesignNode): Layer => ({ id: node.id, label: label(node), children: (node.children ?? []).map(layer) });
+const emit = defineEmits<{ select: [id: string] }>();
+const icons = { group: RectangleIcon, heading: HeadingIcon, text: TextIcon, button: RectangleIcon, image: PhotoIcon, input: TextIcon, link: LinkIcon, row: ArrowsHorizontalIcon, column: ArrowsVerticalIcon };
+type LayerKind = keyof typeof icons;
+type Layer = { id: string; label: string; name: string; preview: string; tooltip: string; kind: LayerKind; children: Layer[] };
+function kind(node: DesignNode): LayerKind {
+  if (/^h[1-6]$/.test(node.tag)) return 'heading';
+  if (node.tag === 'img' || node.tag === 'svg') return 'image';
+  if (node.tag === 'button') return 'button';
+  if (node.tag === 'a') return 'link';
+  if (['input', 'textarea', 'select'].includes(node.tag)) return 'input';
+  if (node.text !== undefined) return 'text';
+  if (['flex', 'inline-flex'].includes(node.styles?.display ?? '')) return node.styles?.['flex-direction']?.startsWith('column') ? 'column' : 'row';
+  return 'group';
+}
+function layer(node: DesignNode): Layer {
+  const type = kind(node);
+  const name = node.id === props.board.root.id ? props.board.title : t(`design.layer_${type}`);
+  const preview = (node.text ?? node.attributes?.['aria-label'] ?? node.attributes?.alt ?? '').replace(/\s+/g, ' ').trim();
+  return { id: node.id, label: `${name}${preview ? ` ${preview}` : ''}`, name, preview, tooltip: `${node.tag} · ${node.id}${preview ? ` — ${preview}` : ''}`, kind: type, children: (node.children ?? []).map(layer) };
+}
 const tree = computed(() => [layer(props.board.root)]);
-const nodes = computed(() => flatten(props.board.root));
-const selected = computed(() => nodes.value.find(node => node.id === props.selectedId));
-const parent = computed(() => nodes.value.find(node => node.children?.some(child => child.id === props.selectedId)));
-const index = computed(() => parent.value?.children?.findIndex(node => node.id === props.selectedId) ?? -1);
-const isContainer = (node: DesignNode) => node.text === undefined && !['img', 'input', 'br', 'hr'].includes(node.tag);
-const containers = computed(() => {
-  const descendants = new Set(selected.value ? flatten(selected.value).map(node => node.id) : []);
-  return nodes.value.filter(node => !descendants.has(node.id) && isContainer(node));
-});
-const items = computed<AppMenuItem[]>(() => [
-  { type: 'action', id: 'text', label: t('design.addText') },
-  { type: 'action', id: 'container', label: t('design.addContainer') },
-  { type: 'action', id: 'button', label: t('design.addButton') },
-  { type: 'separator', id: 'element-structure' },
-  { type: 'action', id: 'duplicate', label: t('design.duplicateElement'), disabled: !parent.value },
-  { type: 'action', id: 'up', label: t('design.moveUp'), disabled: index.value <= 0 },
-  { type: 'action', id: 'down', label: t('design.moveDown'), disabled: !parent.value || index.value >= (parent.value.children?.length ?? 0) - 1 },
-  { type: 'action', id: 'remove', label: t('design.removeElement'), disabled: !parent.value },
-]);
 function select(node: Layer) { if (!props.disabled) emit('select', node.id); }
-function reparent(parentId: string) {
-  const target = nodes.value.find(node => node.id === parentId);
-  if (target && selected.value && !props.disabled) emit('edit', [{ type: 'move', nodeId: selected.value.id, parentId, index: target.children?.length ?? 0 }]);
-}
-function action(id: string) {
-  if (props.disabled) return;
-  if (['text', 'container', 'button'].includes(id)) {
-    const target = selected.value && isContainer(selected.value) ? selected.value : parent.value ?? props.board.root;
-    const node: DesignNode = { id: `node-${crypto.randomUUID()}`, tag: id === 'container' ? 'div' : id === 'button' ? 'button' : 'p' };
-    if (id === 'container') { node.children = []; node.styles = { padding: '16px', 'min-height': '48px' }; }
-    else node.text = t(id === 'button' ? 'design.newButton' : 'design.newText');
-    emit('edit', [{ type: 'insert', nodeId: target.id, node }]);
-  } else if (selected.value && parent.value) {
-    if (id === 'duplicate' || id === 'remove') emit('edit', [{ type: id, nodeId: selected.value.id }]);
-    else if (id === 'up' || id === 'down') emit('edit', [{ type: 'move', nodeId: selected.value.id, parentId: parent.value.id, index: index.value + (id === 'up' ? -1 : 1) }]);
-  }
-}
 </script>
 
 <style scoped>
-.design-layers summary {
-  cursor: pointer;
-  font-weight: 500;
-  padding-block: var(--space-1);
-}
-.design-layers__body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding-top: var(--space-2);
-}
-.design-layers .el-tree {
-  max-height: 180px;
+.design-layers :deep(.el-tree) {
+  max-height: 240px;
   overflow: auto;
   background: transparent;
+  color: var(--color-text-muted);
   font-size: var(--font-size-12);
+  --el-tree-node-hover-bg-color: var(--color-surface-low);
 }
-.design-layers__actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-.design-layers__actions .el-select {
-  flex: 1;
-  min-width: 0;
-}
+.design-layers :deep(.el-tree-node__content) { height: 28px; border-radius: var(--radius-md); }
+.design-layers :deep(.el-tree-node__expand-icon) { padding: var(--space-2); color: var(--color-text-muted); font-size: var(--font-size-12); }
+.design-layers :deep(.el-tree-node__expand-icon.is-leaf) { color: transparent; }
+.design-layers :deep(.el-tree-node.is-current > .el-tree-node__content) { background: var(--color-surface-high); color: var(--color-text); }
+.design-layers__node { display: flex; align-items: center; gap: var(--space-3); min-width: 0; flex: 1; padding-right: var(--space-4); overflow: hidden; }
+.design-layers__icon { flex: none; width: var(--icon-sm); height: var(--icon-sm); color: var(--color-text-muted); opacity: .75; }
+.design-layers__name { flex: none; font-weight: var(--font-weight-regular); }
+.design-layers__preview { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-muted); opacity: .75; }
 </style>

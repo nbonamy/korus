@@ -412,8 +412,8 @@ also removes its comments and clears links to its removed targets. Element style
 and attribute patches use null to remove an authored override. Structural edits
 cannot move artboard roots, create cycles, or insert children into text/void nodes.
 
-The inspector retains dirty drafts when a newer document arrives; applying a stale
-draft fails without replacing either version. Pane state and selection belong to
+The inspector serializes debounced saves and retains edits typed during a pending
+save. Revision checks reject stale drafts without replacing either version. Pane state and selection belong to
 the agent. A missing provider reference does not discard the design; opening the
 pane can attach its saved document to the agent's current conversation.
 

@@ -8,18 +8,21 @@
           </button>
         </template>
       </AppMenuButton>
-      <span v-if="!play" class="design-tools__divider" />
+      <span class="design-tools__divider" />
       <button v-if="!play" class="app-icon-button" type="button" :aria-label="t('design.selectElements')" :title="t('design.selectElements')" :aria-pressed="!pan" :disabled="interacting" @click="emit('pan', false)"><PointerIcon /></button>
       <button v-if="!play" class="app-icon-button" type="button" :aria-label="t('design.panCanvas')" :title="t('design.panCanvas')" :aria-pressed="pan" :disabled="interacting" @click="emit('pan', true)"><HandMoveIcon /></button>
+      <span v-if="!play" class="design-tools__divider" />
+      <slot name="actions" />
     </div>
     <div class="design-tools__group" data-design-tools>
       <button class="app-icon-button" type="button" data-action="play" :aria-label="t(play ? 'design.edit' : 'design.play')" :title="t(play ? 'design.edit' : 'design.play')" :aria-pressed="play" :disabled="locked" @click="emit('play')"><PointerIcon v-if="play" /><PlayerPlayIcon v-else /></button>
       <button v-if="!play" class="app-icon-button" type="button" :aria-label="t(inspectorVisible ? 'design.hideInspector' : 'design.showInspector')" :title="t(inspectorVisible ? 'design.hideInspector' : 'design.showInspector')" :aria-pressed="inspectorVisible" :disabled="interacting" @click="emit('inspector')"><LayoutSidebarRightIcon /></button>
       <span class="design-tools__divider" />
+      <button class="app-icon-button" type="button" :aria-label="t('design.fitAll')" :title="t('design.fitAll')" :disabled="interacting" @click="emit('zoom', 'fit')"><ArrowsMaximizeIcon /></button>
+      <button class="app-icon-button" type="button" :aria-label="t('design.fitArtboard')" :title="t('design.fitArtboard')" :disabled="interacting || !selectedArtboardId" @click="emit('zoom', 'selection')"><ArrowsMinimizeIcon /></button>
       <AppMenuButton :items="zoomItems" :ariaLabel="t('design.zoom')" :width="180" @select="changeZoom">
         <template #trigger="{ attrs }"><button v-bind="attrs" class="design-tools__menu design-tools__zoom" type="button" :disabled="interacting" :aria-label="t('design.zoom')" :title="t('design.zoom')"><span>{{ zoom < 0.1 ? Math.round(zoom * 1000) / 10 : Math.round(zoom * 100) }}%</span><ChevronDown /></button></template>
       </AppMenuButton>
-      <slot name="actions" />
     </div>
   </div>
 </template>
@@ -30,7 +33,7 @@ import type { DesignArtboard } from '@workspace/core/design';
 import { translate as t } from '../i18n';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
-import { ChevronDown, HandMoveIcon, LayoutSidebarRightIcon, PlayerPlayIcon, PointerIcon, RectangleIcon } from '../shared/icons/app-icons';
+import { ArrowsMaximizeIcon, ArrowsMinimizeIcon, ChevronDown, HandMoveIcon, LayoutSidebarRightIcon, PlayerPlayIcon, PointerIcon, RectangleIcon } from '../shared/icons/app-icons';
 
 const props = defineProps<{ artboards: DesignArtboard[]; selectedArtboardId: string | null; locked: boolean; interacting: boolean; play: boolean; pan: boolean; inspectorVisible: boolean; zoom: number; zoomChoice: number | 'fit' | 'selection' }>();
 const emit = defineEmits<{ focus: [artboardId: string]; pan: [value: boolean]; play: []; inspector: []; zoom: [value: number | 'fit' | 'selection'] }>();

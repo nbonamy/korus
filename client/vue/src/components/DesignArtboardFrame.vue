@@ -9,7 +9,7 @@ import { translate as t } from '../i18n';
 import { designFrame, type DesignCanvasChange } from './design-frame';
 
 const props = defineProps<{ board: DesignArtboard; css: string; documentId: string; revision: number; play: boolean; selectedNodeId: string | null; zoom: number; locked: boolean; frozen: boolean }>();
-const emit = defineEmits<{ select: [nodeId: string]; edit: [change: DesignCanvasChange]; interaction: [active: boolean]; prototype: [action: DesignInteraction] }>();
+const emit = defineEmits<{ select: [nodeId: string | null]; styles: [nodeId: string, revision: number, styles: Record<string, string>]; edit: [change: DesignCanvasChange]; interaction: [active: boolean]; prototype: [action: DesignInteraction] }>();
 const frame = ref<HTMLIFrameElement>();
 const source = ref('');
 const token = crypto.randomUUID().replaceAll('-', '');
@@ -24,7 +24,11 @@ watch([() => props.revision, () => props.documentId, () => JSON.stringify(props.
     source.value = designFrame(props.board, props.board.css ?? props.css, token, props.revision, props.play, props.selectedNodeId, { width: t('design.resizeWidth'), height: t('design.resizeHeight'), size: t('design.resizeSize') });
   }
 }, { immediate: true });
-function highlight() { frame.value?.contentWindow?.postMessage({ token, kind: 'highlight', nodeId: props.selectedNodeId, locked: props.locked, zoom: props.zoom }, '*'); }
+function highlight() {
+  const element = frame.value;
+  if (!element) return;
+  element.contentWindow?.postMessage({ token, kind: 'highlight', nodeId: props.selectedNodeId, inspectNodeId: props.selectedNodeId ?? props.board.root.id, locked: props.locked, zoom: props.zoom, selectionColor: getComputedStyle(element).getPropertyValue('--color-secondary').trim() }, '*');
+}
 watch([() => props.selectedNodeId, () => props.locked, () => props.zoom], highlight);
 function receive(event: MessageEvent) {
   const data = event.data;
@@ -35,8 +39,14 @@ function receive(event: MessageEvent) {
     if (action?.type === 'navigate' || action?.type === 'back') emit('prototype', action);
     return;
   }
+  if (data.kind === 'styles' && frameNodeIds.has(data.nodeId) && data.styles && typeof data.styles === 'object' && !Array.isArray(data.styles)) {
+    const entries = Object.entries(data.styles);
+    if (entries.length <= 512 && entries.every(([key, value]) => key.length <= 160 && typeof value === 'string' && value.length <= 4000)) emit('styles', data.nodeId, frameRevision, data.styles);
+    return;
+  }
   if (data.kind === 'interaction-end') { emit('interaction', false); return; }
   if (props.locked && !props.frozen) return;
+  if (data.kind === 'select' && data.nodeId === null) { if (!props.frozen) emit('select', null); return; }
   if (typeof data.nodeId !== 'string' || !frameNodeIds.has(data.nodeId)) return;
   if (data.kind === 'interaction-start') { emit('interaction', true); return; }
   if (data.kind === 'select') { if (!props.frozen) emit('select', data.nodeId); return; }

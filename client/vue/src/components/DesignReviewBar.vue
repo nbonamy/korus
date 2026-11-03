@@ -23,7 +23,7 @@ const emit = defineEmits<{ comment: []; build: [] }>();
 .design-review-bar {
   position: absolute;
   z-index: 2;
-  bottom: var(--space-4);
+  bottom: var(--space-8);
   left: 50%;
   transform: translateX(-50%);
   width: max-content;
@@ -31,8 +31,8 @@ const emit = defineEmits<{ comment: []; build: [] }>();
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-3) var(--space-4);
+  gap: var(--space-12);
+  padding: var(--space-6) var(--space-8);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-surface);
@@ -65,7 +65,7 @@ const emit = defineEmits<{ comment: []; build: [] }>();
 .design-review-bar__actions {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-4);
   flex: none;
 }
 .design-review-bar__actions .app-button {

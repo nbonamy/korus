@@ -9,6 +9,12 @@ const editableWorkspace = (): DesignWorkspace => ({
   document: { id: 'design-a', revision: 1, content: { title: 'Page', css: '', comments: [], artboards: [{ id: 'desktop', title: 'Desktop', width: 800, height: 600, root: { id: 'page', tag: 'main', children: [{ id: 'heading', tag: 'h1', text: 'Hello' }, { id: 'cta', tag: 'button', text: 'Continue' }] } }] } },
 });
 
+const typeText = async (wrapper: ReturnType<typeof mount>, value: string) => {
+  const input = wrapper.get('textarea[aria-label="Text"]');
+  (input.element as HTMLTextAreaElement).value = value;
+  await input.trigger('input');
+};
+
 it('fits once and preserves zoom through sidebar resizes until the next explicit fit', async () => {
   let resize!: (width: number, height?: number) => void;
   vi.stubGlobal('ResizeObserver', class {
@@ -65,11 +71,12 @@ it('fits once and preserves zoom through sidebar resizes until the next explicit
 });
 
 it('resizes and drags the inspector closed without losing drafts or its restored width', async () => {
+  vi.useFakeTimers();
   const workspace = editableWorkspace();
-  const wrapper = mount(DesignPanel, { attachTo: document.body, props: { agentId: 'designer', workspace, execute: vi.fn(async () => ({ workspace })) } });
+  const wrapper = mount(DesignPanel, { attachTo: document.body, props: { agentId: 'designer', workspace, execute: vi.fn(async () => ({ workspace })) }, global: { plugins: [ElementPlus] } });
   try {
     vi.spyOn(wrapper.get('.design-panel__body').element, 'getBoundingClientRect').mockReturnValue({ width: 1000 } as DOMRect);
-    await wrapper.get('textarea[aria-label="Text"]').setValue('Keep this draft');
+    await typeText(wrapper, 'Keep this draft');
     const pointer = (type: string, clientX: number) => new PointerEvent(type, { bubbles: true, pointerId: 7, button: 0, clientX });
     const divider = wrapper.get('[role="separator"][aria-label="Resize inspector"]');
     divider.element.dispatchEvent(pointer('pointerdown', 720));
@@ -95,71 +102,70 @@ it('resizes and drags the inspector closed without losing drafts or its restored
     expect(shell.isVisible()).toBe(true);
     expect(shell.attributes('style')).toContain('--design-inspector-width: 376px');
     expect((wrapper.get('textarea[aria-label="Text"]').element as HTMLTextAreaElement).value).toBe('Keep this draft');
-  } finally { wrapper.unmount(); }
+  } finally { wrapper.unmount(); vi.useRealTimers(); }
 });
 
-// Unsent feedback must keep its original identity/revision after selection or
-// content changes, and remain available to discard after a rejected submission.
-it('keeps an element comment attached to its original target until sent or discarded', async () => {
+it('clears element selection from the canvas background and on entering Pan', async () => {
   const workspace = editableWorkspace();
-  const execute = vi.fn(async () => ({ workspace: structuredClone(workspace) }));
-  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace, execute } });
+  const execute = vi.fn(async (request: DesignRequest) => {
+    if (request.type === 'select') { workspace.selectedArtboardId = request.artboardId; workspace.selectedNodeId = request.nodeId; }
+    return { workspace: structuredClone(workspace) };
+  });
+  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace, execute }, global: { plugins: [ElementPlus] } });
   try {
-    await wrapper.get('textarea[aria-label="Element comment"]').setValue('Make the heading larger');
-    const changed = structuredClone(workspace);
-    changed.selectedNodeId = 'cta';
-    changed.document!.revision = 2;
-    changed.document!.content.artboards[0].root.children!.shift();
-    await wrapper.setProps({ workspace: changed });
-    expect(wrapper.text()).toContain('Comment on h1 · Hello');
-    execute.mockRejectedValueOnce(new Error('Stale design revision'));
-    await wrapper.get('[data-action="comment"]').trigger('click');
+    await wrapper.get('.design-canvas').trigger('click');
     await flushPromises();
-    expect(execute).toHaveBeenLastCalledWith({ type: 'comment', expectedRevision: 1, nodeId: 'heading', text: 'Make the heading larger' });
-    expect((wrapper.get('textarea[aria-label="Element comment"]').element as HTMLTextAreaElement).value).toBe('Make the heading larger');
-    // Losing selection must not hide the only way to recover this draft.
-    await wrapper.setProps({ workspace: { ...changed, selectedNodeId: null } });
-    await wrapper.get('[data-action="discard-comment"]').trigger('click');
-    expect(wrapper.find('textarea[aria-label="Element comment"]').exists()).toBe(false);
-    await wrapper.setProps({ workspace: changed });
-    await wrapper.get('textarea[aria-label="Element comment"]').setValue('Clarify the next step');
-    execute.mockResolvedValueOnce({ workspace: changed });
-    await wrapper.get('[data-action="comment"]').trigger('click');
+    expect(execute).toHaveBeenLastCalledWith({ type: 'select', artboardId: 'desktop', nodeId: null });
+    expect(wrapper.find('textarea[aria-label="Text"]').exists()).toBe(false);
+    await wrapper.get('[title="h1 · heading — Hello"]').trigger('click');
     await flushPromises();
-    expect(execute).toHaveBeenLastCalledWith({ type: 'comment', expectedRevision: 2, nodeId: 'cta', text: 'Clarify the next step' });
-    expect((wrapper.get('textarea[aria-label="Element comment"]').element as HTMLTextAreaElement).value).toBe('');
+    expect(wrapper.find('textarea[aria-label="Text"]').exists()).toBe(true);
+    await wrapper.get('button[aria-label="Pan canvas"]').trigger('click');
+    await flushPromises();
+    expect(execute).toHaveBeenLastCalledWith({ type: 'select', artboardId: 'desktop', nodeId: null });
+    expect(wrapper.find('textarea[aria-label="Text"]').exists()).toBe(false);
   } finally { wrapper.unmount(); }
 });
 
-// A pending save must not accept input that its response would then discard;
-// success and failure must both restore editing, with failed drafts retained.
-it.each([true, false])('prevents inspector edits during Apply and restores editing after success=%s', async success => {
+it.each([true, false])('preserves edits typed during autosave and recovers after success=%s', async success => {
+  vi.useFakeTimers();
   const workspace = editableWorkspace();
   let resolve!: (result: DesignResult) => void;
   let reject!: (error: Error) => void;
   const pending = new Promise<DesignResult>((done, fail) => { resolve = done; reject = fail; });
-  const execute = vi.fn(() => pending);
-  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace, execute } });
+  const execute = vi.fn(async (request: DesignRequest) => {
+    if (request.type === 'edit') {
+      workspace.document!.revision++;
+      workspace.document!.content.artboards[0].root.children![0].text = success ? 'Second edit' : 'Retry edit';
+    }
+    return { workspace: structuredClone(workspace) };
+  }).mockImplementationOnce(() => pending);
+  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace, execute }, global: { plugins: [ElementPlus] } });
   try {
-    await wrapper.get('textarea[aria-label="Text"]').setValue('First edit');
-    await wrapper.get('[data-action="apply"]').trigger('click');
-    const controls = ['textarea[aria-label="Text"]', 'input[aria-label="Text color"]', 'select[aria-label="Display"]', 'select[aria-label="On click"]'];
-    for (const selector of controls) expect(wrapper.get(selector).element.matches(':disabled')).toBe(true);
+    expect(wrapper.find('[data-action="apply"]').exists()).toBe(false);
+    await typeText(wrapper, 'First edit');
+    await vi.advanceTimersByTimeAsync(400);
     expect(execute).toHaveBeenCalledWith({ type: 'edit', expectedRevision: 1, edits: [{ type: 'text', nodeId: 'heading', text: 'First edit' }] });
+    await typeText(wrapper, 'Second edit');
+    await vi.advanceTimersByTimeAsync(400);
+    expect(execute).toHaveBeenCalledOnce();
+    expect(wrapper.get('textarea[aria-label="Text"]').element.matches(':disabled')).toBe(false);
     if (success) {
-      const saved = structuredClone(workspace);
-      saved.document!.revision = 2;
-      saved.document!.content.artboards[0].root.children![0].text = 'First edit';
-      resolve({ workspace: saved });
+      workspace.document!.revision = 2;
+      workspace.document!.content.artboards[0].root.children![0].text = 'First edit';
+      resolve({ workspace: structuredClone(workspace) });
     } else reject(new Error('Save failed'));
     await flushPromises();
-    for (const selector of controls) expect(wrapper.get(selector).element.matches(':disabled')).toBe(false);
-    expect((wrapper.get('textarea[aria-label="Text"]').element as HTMLTextAreaElement).value).toBe('First edit');
-    expect(wrapper.get('[data-action="apply"]').element.matches(':disabled')).toBe(success);
-    await wrapper.get('textarea[aria-label="Text"]').setValue('Second edit');
     expect((wrapper.get('textarea[aria-label="Text"]').element as HTMLTextAreaElement).value).toBe('Second edit');
-    expect(wrapper.get('[data-action="apply"]').element.matches(':disabled')).toBe(false);
-  } finally { wrapper.unmount(); }
+    if (!success) {
+      expect(wrapper.get('[role="alert"]').text()).toContain('Save failed');
+      await typeText(wrapper, 'Retry edit');
+    }
+    await vi.advanceTimersByTimeAsync(400);
+    await flushPromises();
+    expect(execute).toHaveBeenLastCalledWith({ type: 'edit', expectedRevision: success ? 2 : 1, edits: [{ type: 'text', nodeId: 'heading', text: success ? 'Second edit' : 'Retry edit' }] });
+    expect((wrapper.get('textarea[aria-label="Text"]').element as HTMLTextAreaElement).value).toBe(success ? 'Second edit' : 'Retry edit');
+  } finally { wrapper.unmount(); vi.useRealTimers(); }
 });
 
 // Isolated editor failure modes: saving the wrong stable target, dropping a draft
@@ -170,7 +176,7 @@ it('edits a stable selected node, retains conflicting drafts, routes comments an
     document: { id: 'design-a', revision: 1, content: { title: 'Page', css: '', comments: [], chosenArtboardId: 'desktop', artboards: [{ id: 'desktop', title: 'Desktop', notes: 'Proposal details stay out of the review bar.', width: 800, height: 600, root: { id: 'page', tag: 'main', children: [{ id: 'heading', tag: 'h1', text: 'Hello' }] } }] } },
   };
   const execute = vi.fn(async () => ({ workspace: structuredClone(workspace) }));
-  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace, execute } });
+  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace, execute }, global: { plugins: [ElementPlus] } });
   expect(wrapper.get('.design-review-bar__actions').findAll('button')).toHaveLength(2);
   expect(wrapper.find('[aria-label="Chosen"]').exists()).toBe(false);
   expect(wrapper.get('.design-review-bar__summary').text()).toBe('Desktop');
@@ -179,22 +185,24 @@ it('edits a stable selected node, retains conflicting drafts, routes comments an
   expect(commentAction.text()).toBe('Comment');
   expect(commentAction.find('svg').exists()).toBe(true);
   const text = wrapper.get('textarea[aria-label="Text"]');
-  await text.setValue('My draft');
+  await typeText(wrapper, 'My draft');
   await wrapper.setProps({ workspace: { ...workspace, document: { ...workspace.document!, revision: 2 } } });
   expect((text.element as HTMLTextAreaElement).value).toBe('My draft');
   execute.mockRejectedValueOnce(new Error('Stale design revision. Reread before editing.'));
-  await wrapper.get('button[data-action="apply"]').trigger('click');
+  await text.trigger('change');
   await flushPromises();
   expect(execute).toHaveBeenLastCalledWith({ type: 'edit', expectedRevision: 1, edits: [{ type: 'text', nodeId: 'heading', text: 'My draft' }] });
   expect(wrapper.get('[role="alert"]').text()).toContain('Stale');
   expect((text.element as HTMLTextAreaElement).value).toBe('My draft');
   await wrapper.get('button[data-action="reload"]').trigger('click');
   await flushPromises();
-  await wrapper.get('textarea[aria-label="Element comment"]').setValue('Keep this');
-  await wrapper.get('button[data-action="comment"]').trigger('click');
-  await flushPromises();
-  expect(execute).toHaveBeenLastCalledWith({ type: 'comment', expectedRevision: 1, nodeId: 'heading', text: 'Keep this' });
   const frame = wrapper.get('iframe');
+  await wrapper.findAll('.el-tabs__item').find(tab => tab.text() === 'Code')!.trigger('click');
+  const token = frame.attributes('srcdoc')!.match(/<script nonce="([^"]+)"/)![1];
+  window.dispatchEvent(new MessageEvent('message', { source: (frame.element as HTMLIFrameElement).contentWindow, data: { kind: 'styles', token, revision: 1, nodeId: 'heading', styles: { 'font-size': '24px' } } }));
+  await vi.waitFor(() => expect(wrapper.get('.design-code').text()).toContain('font-size: 24px;'));
+  expect(wrapper.get('.design-code').text()).not.toContain('body {');
+  await wrapper.findAll('.el-tabs__item').find(tab => tab.text() === 'Properties')!.trigger('click');
   expect(wrapper.find('.design-tools button[aria-label="Artboard actions"]').exists()).toBe(false);
   await wrapper.get('button[aria-label="Hide inspector"]').trigger('click');
   await wrapper.get('button[aria-label="Comment on this proposal"]').trigger('click');
@@ -218,6 +226,40 @@ it('edits a stable selected node, retains conflicting drafts, routes comments an
   wrapper.unmount();
 });
 
+it('edits generated color and numeric controls while rejecting invalid values', async () => {
+  const workspace = editableWorkspace();
+  const root = workspace.document!.content.artboards[0].root;
+  root.styles = { '--accent': '#123456', '--radius': '12px' };
+  workspace.document!.content.tweaks = [
+    { id: 'accent', label: 'Chart accent', type: 'color', nodeId: 'page', property: '--accent' },
+    { id: 'radius', label: 'Panel radius', type: 'range', nodeId: 'page', property: '--radius', min: 0, max: 32, step: 1, unit: 'px' },
+  ];
+  const execute = vi.fn(async (request: DesignRequest) => {
+    if (request.type === 'edit') {
+      for (const edit of request.edits) if (edit.type === 'tweak-value') root.styles![edit.tweakId === 'accent' ? '--accent' : '--radius'] = edit.tweakId === 'accent' ? String(edit.value) : `${edit.value}px`;
+      workspace.document!.revision++;
+    }
+    return { workspace: structuredClone(workspace) };
+  });
+  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace, execute }, global: { plugins: [ElementPlus] } });
+  try {
+    await wrapper.findAll('.el-tabs__item').find(tab => tab.text() === 'Tweaks')!.trigger('click');
+    const hex = wrapper.get('input[aria-label="Chart accent hex color"]');
+    await hex.setValue('#2a78d6');
+    await flushPromises();
+    expect(execute).toHaveBeenLastCalledWith({ type: 'edit', expectedRevision: 1, edits: [{ type: 'tweak-value', tweakId: 'accent', value: '#2a78d6' }] });
+    const number = wrapper.get('input[aria-label="Panel radius value"]');
+    await number.setValue('20');
+    await flushPromises();
+    expect(execute).toHaveBeenLastCalledWith({ type: 'edit', expectedRevision: 2, edits: [{ type: 'tweak-value', tweakId: 'radius', value: 20 }] });
+    await hex.setValue('#oops');
+    await number.setValue('99');
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect((hex.element as HTMLInputElement).value).toBe('#2a78d6');
+    expect((number.element as HTMLInputElement).value).toBe('20');
+  } finally { wrapper.unmount(); }
+});
+
 // Rejection may follow a persisted handoff. Retrying must review fresh state,
 // retain revision checks, and submit only after another explicit confirmation.
 it('returns rejected coding handoffs to review and confirms the latest saved direction', async () => {
@@ -234,7 +276,7 @@ it('returns rejected coding handoffs to review and confirms the latest saved dir
     }
     return { workspace: structuredClone(workspace) };
   });
-  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace: structuredClone(workspace), execute } });
+  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace: structuredClone(workspace), execute }, global: { plugins: [ElementPlus] } });
   try {
     const review = async () => { await wrapper.get('[data-action="build"]').trigger('click'); await flushPromises(); };
     const send = async () => { await wrapper.get('[data-action="implement"]').trigger('click'); await flushPromises(); };
