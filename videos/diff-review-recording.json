@@ -1,0 +1,762 @@
+{
+  "id": "diff-review",
+  "title": ["See the change.", "Review with confidence."],
+  "endingTitle": ["Less noise.", "More context."],
+  "subtitle": "Diff review with Korus",
+  "duration": 148.3,
+  "video": "local/diff-review/raw.mp4",
+  "audio": "local/diff-review/narration.wav",
+  "captions": "local/exports/korus-diff-review.vtt",
+  "scenes": [
+    {
+      "start": 0,
+      "duration": 2.5,
+      "card": "opening"
+    },
+    {
+      "start": 2.5,
+      "duration": 6.5,
+      "sourceStart": 0,
+      "freeze": true
+    },
+    {
+      "start": 9.0,
+      "duration": 52.2,
+      "sourceStart": 0
+    },
+    {
+      "start": 61.2,
+      "duration": 9,
+      "sourceStart": 112.571
+    },
+    {
+      "start": 70.2,
+      "duration": 5.8,
+      "card": "ending"
+    }
+  ],
+  "clicks": [
+    {
+      "time": 12.022,
+      "x": 0.863125,
+      "y": 0.026111111111111113,
+      "focus": {
+        "x": 0.855625,
+        "y": 0.009444444444444445,
+        "width": 0.015,
+        "height": 0.03333333333333333
+      }
+    },
+    {
+      "time": 14.515,
+      "x": 0.789375,
+      "y": 0.16486111111111112,
+      "label": "Choose the scope",
+      "focus": {
+        "x": 0.71125,
+        "y": 0.14930555555555555,
+        "width": 0.15625,
+        "height": 0.03111111111111111
+      }
+    },
+    {
+      "time": 17.012,
+      "x": 0.789375,
+      "y": 0.10208333333333333,
+      "focus": {
+        "x": 0.71125,
+        "y": 0.08652777777777777,
+        "width": 0.15625,
+        "height": 0.03111111111111111
+      }
+    },
+    {
+      "time": 20.007,
+      "x": 0.789375,
+      "y": 0.37157986111111113,
+      "label": "Exclude lockfiles",
+      "focus": {
+        "x": 0.71125,
+        "y": 0.35602430555555553,
+        "width": 0.15625,
+        "height": 0.03111111111111111
+      }
+    },
+    {
+      "time": 30.037,
+      "x": 0.81880859375,
+      "y": 0.026111111111111113,
+      "label": "Open Changes",
+      "focus": {
+        "x": 0.7819921875,
+        "y": 0.009444444444444445,
+        "width": 0.0736328125,
+        "height": 0.03333333333333333
+      }
+    },
+    {
+      "time": 31.031,
+      "x": 0.9575,
+      "y": 0.026111111111111113,
+      "focus": {
+        "x": 0.9475,
+        "y": 0.008333333333333333,
+        "width": 0.02,
+        "height": 0.035555555555555556
+      }
+    },
+    {
+      "time": 32.516,
+      "x": 0.985,
+      "y": 0.12944444444444445,
+      "label": "Group by file type",
+      "focus": {
+        "x": 0.9775,
+        "y": 0.11611111111111111,
+        "width": 0.015,
+        "height": 0.02666666666666667
+      }
+    },
+    {
+      "time": 33.412,
+      "x": 0.92375,
+      "y": 0.3376388888888889,
+      "focus": {
+        "x": 0.858125,
+        "y": 0.32208333333333333,
+        "width": 0.13125,
+        "height": 0.03111111111111111
+      }
+    },
+    {
+      "time": 37.307,
+      "x": 0.5875,
+      "y": 0.21666666666666667,
+      "focus": {
+        "x": 0.1975,
+        "y": 0.19666666666666666,
+        "width": 0.78,
+        "height": 0.04
+      }
+    },
+    {
+      "time": 41.507,
+      "x": 0.385625,
+      "y": 0.6922222222222222,
+      "label": "Add feedback",
+      "focus": {
+        "x": 0.378125,
+        "y": 0.6788888888888889,
+        "width": 0.015,
+        "height": 0.02666666666666667
+      }
+    },
+    {
+      "time": 42.41,
+      "x": 0.9575,
+      "y": 0.026111111111111113,
+      "focus": {
+        "x": 0.9475,
+        "y": 0.008333333333333333,
+        "width": 0.02,
+        "height": 0.035555555555555556
+      }
+    },
+    {
+      "time": 45.818,
+      "x": 0.9575,
+      "y": 0.026111111111111113,
+      "focus": {
+        "x": 0.9475,
+        "y": 0.008333333333333333,
+        "width": 0.02,
+        "height": 0.035555555555555556
+      }
+    },
+    {
+      "time": 48.011,
+      "x": 0.64244384765625,
+      "y": 0.12944444444444445,
+      "label": "See the change map",
+      "focus": {
+        "x": 0.6197216796875,
+        "y": 0.11388888888888889,
+        "width": 0.0454443359375,
+        "height": 0.03111111111111111
+      }
+    },
+    {
+      "time": 51.017,
+      "x": 0.2710595703125,
+      "y": 0.19333333333333333,
+      "label": "Filter by file type",
+      "focus": {
+        "x": 0.2471630859375,
+        "y": 0.17444444444444446,
+        "width": 0.04779296875,
+        "height": 0.03777777777777778
+      }
+    },
+    {
+      "time": 54.01,
+      "x": 0.6184375,
+      "y": 0.43569444444444444,
+      "focus": {
+        "x": 0.456015625,
+        "y": 0.22111111111111112,
+        "width": 0.32484375,
+        "height": 0.42916666666666664
+      }
+    },
+    {
+      "time": 56.65,
+      "x": 0.5993310546875,
+      "y": 0.12944444444444445,
+      "focus": {
+        "x": 0.5789404296875,
+        "y": 0.11388888888888889,
+        "width": 0.04078125,
+        "height": 0.03111111111111111
+      },
+      "label": "Open Viz"
+    },
+    {
+      "time": 60.013,
+      "x": 0.5987451171875,
+      "y": 0.6583333333333333,
+      "label": "Generate Viz",
+      "focus": {
+        "x": 0.5703271484375,
+        "y": 0.6405555555555555,
+        "width": 0.0568359375,
+        "height": 0.035555555555555556
+      }
+    },
+    {
+      "time": 67.208,
+      "x": 0.4163720703125,
+      "y": 0.3053298611111111,
+      "label": "Go to the diff",
+      "focus": {
+        "x": 0.3963720703125,
+        "y": 0.26977430555555554,
+        "width": 0.04,
+        "height": 0.07111111111111111
+      }
+    }
+  ],
+  "drags": [
+    {
+      "time": 38.309,
+      "duration": 0.7,
+      "from": {
+        "x": 0.20375,
+        "y": 0.5822222222222222
+      },
+      "to": {
+        "x": 0.20375,
+        "y": 0.6488888888888888
+      }
+    }
+  ],
+  "narration": {
+    "voice": "american-male",
+    "model": "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16",
+    "revision": "a6eb4f68e4b056f1215157bb696209bc82a6db48",
+    "referenceSha256": "b6647d4a6b70bf0b6f075d57d4199c5d51409a75ecdd7a0a2b09f419c42d5c52",
+    "pacedAudioSha256": "faf902b5ff44beb56609cab6d876fefe8c99be4de834b02470906c3d5783db3f",
+    "text": "My coding agent just finished implementing a feature. Let's see how Korus can help me review its work. Five thousand changed lines. Right here in the header, I can switch between the branch, uncommitted changes, and staged work. Before I review any of it, I exclude dependency lockfiles. They add a lot of noise. Now I have three hundred lines to focus on. The breakdown shows how much is code, tests, and documentation. I can quickly compare the implementation changes with the tests that support them. I open Changes and review each file type together. I can fold the groups I do not need and focus on the code. When something needs attention, I select the lines and add my feedback. My feedback carries the code and its location back into the conversation. Map gives me the shape of the change. Each tile is a file, and its size shows how many lines changed. The green and red bars along the bottom show added and deleted lines. I can filter by file type, then click a tile to jump straight to its diff. For the bigger picture, I generate a visualization. This helps me understand how the change affects the system, beyond individual files. Korus color-codes the parts that were added, changed, deleted, or left unchanged. I can follow those connections, then click through to the code I want to check. Coding with agents changes how I review code. Korus helps me cut through the noise, understand what changed, and make the final call.",
+    "groups": [
+      {
+        "name": "intro",
+        "start": 2.5,
+        "duration": 8.5,
+        "sentenceIndices": [0, 1]
+      },
+      {
+        "name": "noise",
+        "start": 11.0,
+        "duration": 4.5,
+        "sentenceIndices": [2]
+      },
+      {
+        "name": "scopes",
+        "start": 15.5,
+        "duration": 10.0,
+        "sentenceIndices": [3]
+      },
+      {
+        "name": "lockfiles",
+        "start": 25.5,
+        "duration": 12.5,
+        "sentenceIndices": [4, 5, 6]
+      },
+      {
+        "name": "kinds",
+        "start": 38.0,
+        "duration": 11.43333333333333,
+        "sentenceIndices": [7, 8]
+      },
+      {
+        "name": "files",
+        "start": 49.43333333333333,
+        "duration": 17.000000000000007,
+        "sentenceIndices": [9, 10]
+      },
+      {
+        "name": "annotation",
+        "start": 66.43333333333334,
+        "duration": 17.0,
+        "sentenceIndices": [11, 12]
+      },
+      {
+        "name": "map",
+        "start": 83.43333333333334,
+        "duration": 27.133333333333326,
+        "sentenceIndices": [13, 14, 15, 16]
+      },
+      {
+        "name": "viz",
+        "start": 110.56666666666666,
+        "duration": 26.73333333333332,
+        "sentenceIndices": [17, 18, 19, 20]
+      },
+      {
+        "name": "ending",
+        "start": 137.29999999999998,
+        "duration": 11.0,
+        "sentenceIndices": [21, 22]
+      }
+    ],
+    "speechTempo": 0.82,
+    "sourceTakes": [
+      {
+        "role": "approved walkthrough",
+        "source": "local/diff-review/source-narration.wav",
+        "sha256": "9350e781c56611faa56094b0341403270ef06c69fdb266321ec936d2ab7efcf9"
+      },
+      {
+        "role": "closing",
+        "source": "local/diff-review/closing-source-narration.wav",
+        "sha256": "ac676c4f95ebe7087ff91a94795bfe9bed5aa4c4a1b53b9f0e8f4b30853fe5c3"
+      },
+      {
+        "role": "expanded file-type, Map and Viz explanations",
+        "source": "local/diff-review/explanations-source-narration.wav",
+        "sha256": "81255094f35f35ca1b12ca5a945bd430d77aca235e77d4ca4725ddefe01537bf"
+      }
+    ],
+    "closingEdit": {
+      "outputStart": 137.29999999999998,
+      "sourceCuts": [49.08, 51.64, 55.76],
+      "tempo": 0.82
+    },
+    "actionPacing": {
+      "sourceEditSha256": "148e4ae1c8d578350efa0f0c96e21023e3f580f556f7ede1c5ee3c94750e5b44",
+      "speechSamplesUnchanged": false,
+      "pauseSeconds": [1, 11.533333333333333],
+      "unchangedSentenceSamplesPreserved": 13
+    }
+  },
+  "capture": {
+    "kind": "real desktop recording",
+    "fixture": "synthetic Storefront repository",
+    "framing": "fixed full window",
+    "generationWait": "removed with a cut; visible actions stay at normal speed",
+    "pacing": "Actions play at normal speed, with reading pauses; non-code groups collapse in one continuous sequence.",
+    "directFileToViz": {
+      "sourceCut": [56.8, 58.2],
+      "removedSeconds": 2.4000000000000057,
+      "speechSamplesUnchanged": true
+    }
+  },
+  "timeMap": [
+    {
+      "start": 0.0,
+      "duration": 2.5,
+      "sourceStart": 0.0
+    },
+    {
+      "start": 2.5,
+      "duration": 3.1,
+      "sourceStart": 2.5
+    },
+    {
+      "start": 5.6,
+      "duration": 2.0,
+      "sourceStart": 5.6,
+      "freeze": true
+    },
+    {
+      "start": 7.6,
+      "duration": 3.4,
+      "sourceStart": 5.6
+    },
+    {
+      "start": 11.0,
+      "duration": 2.2,
+      "sourceStart": 9.0
+    },
+    {
+      "start": 13.2,
+      "duration": 1.5,
+      "sourceStart": 11.2,
+      "freeze": true
+    },
+    {
+      "start": 14.7,
+      "duration": 0.8,
+      "sourceStart": 11.2
+    },
+    {
+      "start": 15.5,
+      "duration": 0.7,
+      "sourceStart": 12.0
+    },
+    {
+      "start": 16.2,
+      "duration": 1.5,
+      "sourceStart": 12.7,
+      "freeze": true
+    },
+    {
+      "start": 17.7,
+      "duration": 2.5,
+      "sourceStart": 12.7
+    },
+    {
+      "start": 20.2,
+      "duration": 1.2,
+      "sourceStart": 15.2,
+      "freeze": true
+    },
+    {
+      "start": 21.4,
+      "duration": 2.5,
+      "sourceStart": 15.2
+    },
+    {
+      "start": 23.9,
+      "duration": 1.3,
+      "sourceStart": 17.7,
+      "freeze": true
+    },
+    {
+      "start": 25.2,
+      "duration": 0.3,
+      "sourceStart": 17.7
+    },
+    {
+      "start": 25.5,
+      "duration": 1.2,
+      "sourceStart": 18.0
+    },
+    {
+      "start": 26.7,
+      "duration": 2.0,
+      "sourceStart": 19.2,
+      "freeze": true
+    },
+    {
+      "start": 28.7,
+      "duration": 1.6,
+      "sourceStart": 19.2
+    },
+    {
+      "start": 30.3,
+      "duration": 3.5,
+      "sourceStart": 20.8,
+      "freeze": true
+    },
+    {
+      "start": 33.8,
+      "duration": 4.2,
+      "sourceStart": 20.8
+    },
+    {
+      "start": 38.0,
+      "duration": 4.1,
+      "sourceStart": 25.0
+    },
+    {
+      "start": 42.1,
+      "duration": 6.433333333333334,
+      "sourceStart": 29.1,
+      "freeze": true
+    },
+    {
+      "start": 48.53333333333333,
+      "duration": 0.9,
+      "sourceStart": 29.1
+    },
+    {
+      "start": 49.43333333333333,
+      "duration": 0.5333333333333333,
+      "sourceStart": 30.0
+    },
+    {
+      "start": 49.96666666666667,
+      "duration": 1.5,
+      "sourceStart": 30.533333333333335,
+      "freeze": true
+    },
+    {
+      "start": 51.46666666666667,
+      "duration": 1.0,
+      "sourceStart": 30.533333333333335
+    },
+    {
+      "start": 52.46666666666667,
+      "duration": 1.0,
+      "sourceStart": 31.533333333333335,
+      "freeze": true
+    },
+    {
+      "start": 53.46666666666667,
+      "duration": 1.4666666666666666,
+      "sourceStart": 31.533333333333335
+    },
+    {
+      "start": 54.93333333333333,
+      "duration": 1.5,
+      "sourceStart": 33.0,
+      "freeze": true
+    },
+    {
+      "start": 56.43333333333333,
+      "duration": 0.8666666666666667,
+      "sourceStart": 33.0
+    },
+    {
+      "start": 57.3,
+      "duration": 1.5,
+      "sourceStart": 33.86666666666667,
+      "freeze": true
+    },
+    {
+      "start": 58.8,
+      "duration": 3.933333333333333,
+      "sourceStart": 33.86666666666667
+    },
+    {
+      "start": 62.733333333333334,
+      "duration": 3.5,
+      "sourceStart": 37.8,
+      "freeze": true
+    },
+    {
+      "start": 66.23333333333333,
+      "duration": 0.2,
+      "sourceStart": 37.8
+    },
+    {
+      "start": 66.43333333333334,
+      "duration": 1.1333333333333333,
+      "sourceStart": 38.0
+    },
+    {
+      "start": 67.56666666666666,
+      "duration": 1.5,
+      "sourceStart": 39.13333333333333,
+      "freeze": true
+    },
+    {
+      "start": 69.06666666666666,
+      "duration": 2.8666666666666667,
+      "sourceStart": 39.13333333333333
+    },
+    {
+      "start": 71.93333333333334,
+      "duration": 2.0,
+      "sourceStart": 42.0,
+      "freeze": true
+    },
+    {
+      "start": 73.93333333333334,
+      "duration": 1.2,
+      "sourceStart": 42.0
+    },
+    {
+      "start": 75.13333333333334,
+      "duration": 2.0,
+      "sourceStart": 43.2,
+      "freeze": true
+    },
+    {
+      "start": 77.13333333333334,
+      "duration": 3.2,
+      "sourceStart": 43.2
+    },
+    {
+      "start": 80.33333333333333,
+      "duration": 1.5,
+      "sourceStart": 46.4,
+      "freeze": true
+    },
+    {
+      "start": 81.83333333333333,
+      "duration": 1.6,
+      "sourceStart": 46.4
+    },
+    {
+      "start": 83.43333333333334,
+      "duration": 0.7,
+      "sourceStart": 48.0
+    },
+    {
+      "start": 84.13333333333334,
+      "duration": 11.533333333333333,
+      "sourceStart": 48.7,
+      "freeze": true
+    },
+    {
+      "start": 95.66666666666667,
+      "duration": 3.0,
+      "sourceStart": 48.7
+    },
+    {
+      "start": 98.66666666666667,
+      "duration": 2.0,
+      "sourceStart": 51.7,
+      "freeze": true
+    },
+    {
+      "start": 100.66666666666667,
+      "duration": 3.0,
+      "sourceStart": 51.7
+    },
+    {
+      "start": 103.66666666666667,
+      "duration": 2.5,
+      "sourceStart": 54.7,
+      "freeze": true
+    },
+    {
+      "start": 106.16666666666667,
+      "duration": 2.1,
+      "sourceStart": 54.7
+    },
+    {
+      "start": 108.26666666666667,
+      "duration": 0.4,
+      "sourceStart": 58.2
+    },
+    {
+      "start": 108.66666666666667,
+      "duration": 1.5,
+      "sourceStart": 58.6,
+      "freeze": true
+    },
+    {
+      "start": 110.16666666666667,
+      "duration": 0.4,
+      "sourceStart": 58.6
+    },
+    {
+      "start": 110.56666666666666,
+      "duration": 1.7333333333333334,
+      "sourceStart": 59.0
+    },
+    {
+      "start": 112.3,
+      "duration": 1.0,
+      "sourceStart": 60.733333333333334,
+      "freeze": true
+    },
+    {
+      "start": 113.3,
+      "duration": 4.266666666666667,
+      "sourceStart": 60.733333333333334
+    },
+    {
+      "start": 117.56666666666666,
+      "duration": 10.733333333333333,
+      "sourceStart": 65.0,
+      "freeze": true
+    },
+    {
+      "start": 128.3,
+      "duration": 3.0,
+      "sourceStart": 65.0
+    },
+    {
+      "start": 131.3,
+      "duration": 3.0,
+      "sourceStart": 68.0,
+      "freeze": true
+    },
+    {
+      "start": 134.3,
+      "duration": 3.0,
+      "sourceStart": 68.0
+    },
+    {
+      "start": 137.3,
+      "duration": 2.6,
+      "sourceStart": 71.0
+    },
+    {
+      "start": 139.9,
+      "duration": 6.0,
+      "sourceStart": 73.6,
+      "freeze": true
+    },
+    {
+      "start": 145.9,
+      "duration": 2.4,
+      "sourceStart": 73.6
+    }
+  ],
+  "focusAreas": [
+    {
+      "start": 38.37195121951219,
+      "duration": 10.434861788617887,
+      "bounds": {
+        "x": 0.71125,
+        "y": 0.19111111111111112,
+        "width": 0.15625,
+        "height": 0.15333333333333332
+      }
+    },
+    {
+      "start": 87.03429979674797,
+      "duration": 4.532926829268291,
+      "bounds": {
+        "x": 0.53375,
+        "y": 0.2222222222222222,
+        "width": 0.23,
+        "height": 0.4411111111111111
+      }
+    },
+    {
+      "start": 92.07112398373984,
+      "duration": 4.654878048780489,
+      "bounds": {
+        "x": 0.53375,
+        "y": 0.6511111111111111,
+        "width": 0.23,
+        "height": 0.01888888888888889
+      }
+    },
+    {
+      "start": 115.19268089430894,
+      "duration": 5.264634146341464,
+      "bounds": {
+        "x": 0.35375,
+        "y": 0.21333333333333335,
+        "width": 0.5,
+        "height": 0.7
+      }
+    },
+    {
+      "start": 120.49970833333333,
+      "duration": 6.215853658536588,
+      "bounds": {
+        "x": 0.513125,
+        "y": 0.9177777777777778,
+        "width": 0.17125,
+        "height": 0.03222222222222222
+      }
+    }
+  ]
+}

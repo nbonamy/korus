@@ -455,6 +455,39 @@ npm run render --prefix videos/remotion -- visualize-film --silent
 
 The source thumbnail is `videos/assets/visualize-film-thumbnail.png`.
 
+### Recorded diff review demo
+
+`videos/diff-review.html` previews the real desktop recording, with optional
+English captions. It shows diff scopes, excluding lockfiles, file-type groups,
+line feedback, Map navigation and generated Viz navigation. The demo uses a
+synthetic repository in a separately identified desktop build; the product
+interactions are recorded, while the opening/closing cards and click cues are
+authored overlays.
+
+The edit is `videos/diff-review-recording.json`. Its ignored source assets live
+under `videos/local/diff-review/`: `raw.mp4` is the window-only capture normalized
+to 30 fps with timestamps starting at zero, and `narration.wav` is the paced edit
+of the checked American male narration. Rendering reuses that audio and does not
+synthesize another take.
+
+The recording edit's `timeMap` holds settled screen states between actions while
+keeping clicks, typing and dragging at normal speed. Narration and captions use
+the paced timeline; the captured footage and click cues retain their source clock.
+Before key clicks, a soft spotlight dims the surrounding screen and leaves the
+target control clear. Its cutout uses the control's recorded bounds; it follows
+the paced timeline so the cue lasts long enough even beside a held frame.
+Narrated `focusAreas` use the same spotlight to emphasize a region while it is
+explained, independently of clicks.
+
+```bash
+npm run render --prefix videos/remotion -- --recording diff-review
+npx vite . --host 127.0.0.1 --port 4174 --strictPort
+```
+
+Open <http://127.0.0.1:4174/videos/diff-review.html>. The MP4 and WebVTT track are
+`videos/local/exports/korus-diff-review.mp4` and `korus-diff-review.vtt`; the
+tracked thumbnail is `videos/assets/diff-review-thumbnail.png`.
+
 ## Conversation sharing product film
 
 `videos/sharing-film.html` shows two Korus windows side by side: the conversation
