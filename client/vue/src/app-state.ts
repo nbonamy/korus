@@ -600,12 +600,12 @@ export function useAppState() {
   // transport gaps fans out once. Callers only wait for the snapshot sync and the
   // enqueue, never for provider loads.
   let conversationRepair: Promise<void> | null = null;
-  let conversationRepairEnqueued: Promise<void> | null = null;
   synchronizeRendererSnapshotRequest = () => {
     if (conversationRepair) {
-      // A second sequence gap still needs its fence repaired and buffered
-      // events drained, even while provider hydration is already queued.
-      return bufferedMainEvents ? synchronizeRendererSnapshot(true) : conversationRepairEnqueued!;
+      // Later gaps, client repairs and reconnects still need the app snapshot
+      // re-read and buffered events drained, even while provider hydration is
+      // queued. Only the per-pane invalidation is already pending.
+      return synchronizeRendererSnapshot(true);
     }
     const enqueued = (async () => {
       const cachedCodexAgentIds = Object.keys(codexConversationFramesByAgentId.value);
@@ -622,9 +622,8 @@ export function useAppState() {
       }
       antigravityConversations.recoverAll();
     })();
-    conversationRepairEnqueued = enqueued;
     const repair = enqueued.then(() => conversationRecoveryTail).catch(() => undefined).finally(() => {
-      if (conversationRepair === repair) conversationRepair = conversationRepairEnqueued = null;
+      if (conversationRepair === repair) conversationRepair = null;
     });
     conversationRepair = repair;
     return enqueued;
@@ -2531,10 +2530,14 @@ function syncFileActivityFromMainEvent(event: Extract<RendererOnlySnapshotEvent,
 function agentNeedsHistory(agentId: string): boolean {
   const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
   if (!agent?.backendSession) return false;
-  if (agent.backendSession.kind === 'antigravity') return !antigravityConversations.select(agent);
-  return agent.backendSession.kind === 'codex'
-    ? codexConversationFramesByAgentId.value[agentId]?.threadId !== agent.backendSession.threadId
-    : claudeConversationFramesByAgentId.value[agentId]?.snapshot.sessionId !== agent.backendSession.sessionId;
+  // A retained frame still awaiting its recovery replay is not hydrated yet.
+  if (agent.backendSession.kind === 'antigravity') return !antigravityConversations.select(agent) || antigravityConversations.awaitingRecovery(agentId);
+  if (agent.backendSession.kind === 'codex') {
+    const frame = codexConversationFramesByAgentId.value[agentId];
+    return frame?.threadId !== agent.backendSession.threadId || frame.revision === AWAITING_RECOVERY_REVISION;
+  }
+  const frame = claudeConversationFramesByAgentId.value[agentId];
+  return frame?.snapshot.sessionId !== agent.backendSession.sessionId || frame.revision === AWAITING_RECOVERY_REVISION;
 }
 
 async function refreshTeamSelection(

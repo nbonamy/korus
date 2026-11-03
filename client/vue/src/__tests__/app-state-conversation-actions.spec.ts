@@ -1236,10 +1236,14 @@ describe('useAppState', () => {
     first.resolve(remote);
     await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(2));
     expect(load.mock.calls.map(call => call[0])).toEqual([codex.id, claude.id]);
+    getSnapshotState.mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 6, connection: { status: 'connected' } });
     for (let n = 0; n < 20; n++) repair();
-    getSnapshotState.mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 5, connection: { status: 'connected' } });
     receive({ seq: 5, source: 'backend', occurredAt: '', agentId: codex.id, type: 'agent.statusChanged', payload: { type: 'working' } });
-    await vi.waitFor(() => expect(getSnapshotState).toHaveBeenCalledTimes(3));
+    // Repairs in the window re-read the app snapshot, but concurrent ones coalesce.
+    await vi.waitFor(() => expect(getSnapshotState.mock.calls.length).toBeGreaterThanOrEqual(3));
+    await nextTick();
+    const snapshotFetches = getSnapshotState.mock.calls.length;
+    expect(snapshotFetches).toBeLessThan(8);
     receive({ seq: 6, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: claude.id, busy: true }) } });
     await vi.waitFor(() => expect(state.agentConversationFor(claude.id)?.claudeSnapshot?.busy).toBe(true));
     // Only the first replay bypasses the revision fence.
@@ -1249,7 +1253,7 @@ describe('useAppState', () => {
     await nextTick();
     await nextTick();
     expect(load).toHaveBeenCalledTimes(2);
-    expect(getSnapshotState).toHaveBeenCalledTimes(3);
+    expect(getSnapshotState).toHaveBeenCalledTimes(snapshotFetches);
     receive({ seq: 8, source: 'backend', occurredAt: '', agentId: codex.id, type: 'agent.statusChanged', payload: { type: 'working' } });
     expect(state.activeAgent.value?.status.type).toBe('working');
     expect(state.activeCodexConversationSnapshot.value?.busy).toBe(true);
@@ -1317,6 +1321,36 @@ describe('useAppState', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('re-reads the app snapshot and hydrates a marked pane on selection while recovery is queued', async () => {
+    const remote = createInitialSnapshot();
+    const codex = remote.agents[0]!;
+    codex.backendSession = { kind: 'codex', threadId: 'thread-1' };
+    let receive!: (event: MainToRendererEvent) => void;
+    const load = vi.fn().mockResolvedValue(remote);
+    const getSnapshotState = vi.fn().mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 0, connection: { status: 'connected' } });
+    stubElectronTestWindow({ app: { getSnapshotState, loadConversationHistory: load, onEvent: listener => { receive = listener; return () => {}; } } });
+    const state = useAppState();
+    await state.loadSnapshot();
+    receive({ seq: 1, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 40, snapshot: codexConversationSnapshot() } });
+    getSnapshotState.mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 1, connection: { status: 'connected' } });
+    const stuck = deferred<ReturnType<typeof createInitialSnapshot>>();
+    load.mockReset().mockReturnValueOnce(stuck.promise).mockResolvedValue(remote);
+    try {
+      receive({ seq: 0, source: 'client', occurredAt: '', type: 'snapshot.updated', payload: structuredClone(remote) });
+      await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(1));
+      const fetches = getSnapshotState.mock.calls.length;
+      // The recovery window is still open: a later repair must still re-read the app snapshot.
+      receive({ seq: 0, source: 'client', occurredAt: '', type: 'snapshot.updated', payload: structuredClone(remote) });
+      await vi.waitFor(() => expect(getSnapshotState.mock.calls.length).toBeGreaterThan(fetches));
+      // The marked frame is not hydrated: selecting the pane loads it without waiting for the queue.
+      await state.prepareAgentConversation(codex.id);
+      expect(load).toHaveBeenCalledTimes(2);
+    } finally {
+      stuck.resolve(remote);
+    }
+    await nextTick();
   });
 
   it('invalidates and rehydrates a Codex frame after a revision gap', async () => {

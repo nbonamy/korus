@@ -2718,9 +2718,13 @@ export class AppBackendServer {
         // response and workspace refresh. Remote routes keep their composite snapshot
         // projection for compatibility with older owning daemons.
         if (requireRecord(message.params).omitSnapshot === true && (await this.locationForAgentId(agentId))?.kind === 'local') {
-          return this.routeAgentResultRequest(message.id, agentId, backendMethods.agentConversationLoad, { agentId, omitSnapshot: true }, async () => {
+          return this.routeAgentResultRequest(message.id, agentId, backendMethods.agentConversationLoad, { agentId, omitSnapshot: true }, async (agent) => {
+            if (handoffInProgress(agent)) throw new Error('Wait for the handoff to finish.');
+            const boundSession = JSON.stringify(agent.backendSession ?? null);
             await this.agentConversations.hydrate(agentId);
-            return null;
+            // A rebound session reference is only delivered by the snapshot, and
+            // provider frames carrying the new identity would not match without it.
+            return JSON.stringify(this.localAgentForId(agentId)?.backendSession ?? null) === boundSession ? null : this.snapshot;
           });
         }
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentConversationLoad, { agentId }, async () => {

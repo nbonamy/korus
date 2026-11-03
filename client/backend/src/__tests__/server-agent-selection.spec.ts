@@ -111,6 +111,16 @@ describe('AppBackendServer', () => {
     expect(decoded.result.agents[0].backendSession).toEqual({ kind: 'codex', threadId: 'thread-hydrated' });
     expect(decoded.result.missions[0].execution.runs[0].proposal.requirements.problem).toHaveLength(6_000_000);
     expect(getGitStatus).toHaveBeenCalledTimes(2);
+    // A rebound session reference reaches the renderer; the compact response stays null otherwise.
+    loadConversation.mockResolvedValueOnce({ kind: 'codex', threadId: 'thread-rebound' });
+    const rebound = JSON.parse(JSON.stringify(await server.handleMessage({ jsonrpc: '2.0', id: 'rebound', method: 'agent/conversation/load', params: { agentId: 'agent-dina', omitSnapshot: true } })));
+    expect(rebound.result.agents[0].backendSession).toEqual({ kind: 'codex', threadId: 'thread-rebound' });
+    // Recovery hydration must not run while a handoff owns the conversation.
+    snapshot.agents[0]!.handoff = { operationId: 'op', selection: {} as never, sourceAgentId: 'agent-dina', sourceTitle: 'Dina', sourceRef: {} as never, phase: 'closing' };
+    const callsBeforeHandoff = loadConversation.mock.calls.length;
+    await expect(server.handleMessage({ jsonrpc: '2.0', id: 'handoff', method: 'agent/conversation/load', params: { agentId: 'agent-dina', omitSnapshot: true } }))
+      .rejects.toThrow('Wait for the handoff to finish.');
+    expect(loadConversation).toHaveBeenCalledTimes(callsBeforeHandoff);
     await server.close();
   });
 

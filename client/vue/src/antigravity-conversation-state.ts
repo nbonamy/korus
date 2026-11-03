@@ -45,6 +45,7 @@ export function createAntigravityConversationState(recover: (agentId: string) =>
         frames.value = { ...frames.value, [event.agentId]: { ...current, snapshot: current.replica.apply(event.payload.event), revision: event.payload.revision } };
       } catch { invalidate(event.agentId); }
     },
+    awaitingRecovery(agentId: string): boolean { return frames.value[agentId]?.revision === Number.NEGATIVE_INFINITY; },
     reset() { frames.value = {}; pending.clear(); lastAttachedSessions.clear(); },
     recoverAll() { for (const id of Object.keys(frames.value)) invalidate(id); },
     reconcile(agents: Agent[]) {
