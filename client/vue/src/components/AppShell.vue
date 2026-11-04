@@ -62,6 +62,7 @@
       @login="startChatGptLogin"
     />
     <div
+      v-if="!agentWindow"
       class="app-shell__nav"
       :class="{ 'app-shell__nav--compact': compactViewport, 'app-shell__nav--open': compactNavOpen }"
     >
@@ -113,6 +114,7 @@
       @open-on-remote="openOnRemote"
       @create-quick-chat="createQuickChat"
       @duplicate-agent="$emit('duplicate-agent', $event)"
+      @open-agent-window="openAgentWindow"
       @edit-agent="openEditAgent"
       @edit-team="openEditTeam"
       @fork-agent="$emit('fork-agent', $event)"
@@ -143,7 +145,7 @@
     />
     </div>
     <div
-      v-if="compactViewport && compactNavOpen"
+      v-if="!agentWindow && compactViewport && compactNavOpen"
       class="app-shell__nav-backdrop"
       aria-hidden="true"
       @click="compactNavOpen = false"
@@ -269,7 +271,7 @@
         :add-visualization-annotation="addFocusedVisualizationAnnotation"
         :add-code-annotation="addFocusedCodeAnnotation"
         :agent-files="agentFiles"
-        :agent-sidebar-collapsed="agentSidebarCollapsed || compactViewport"
+        :agent-sidebar-collapsed="agentSidebarCollapsed || compactViewport || agentWindow"
         :close-right-workspace-tab="closeRightWorkspaceTab"
         :save-document-as="saveDocumentAs"
         :commit-agent-git-changes="props.commitAgentGitChanges"
@@ -670,6 +672,7 @@ import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { defaultTeamColor } from '@workspace/core/team-colors';
 import { agentMentionGroups as projectAgentMentionGroups } from './agent-mention-groups';
 import { appApi, appHostCapabilities, appClientPlatform, appPlatformActions } from '../platform-api';
+import { windowState } from '../window-state';
 import { codeReviewSettingsKey, useCodeReviewSettings } from './code-review-settings';
 import { diffVizSettingsKey } from './diff-viz-settings';
 import AgentDialog from './AgentDialog.vue';
@@ -1167,6 +1170,10 @@ provide(diffVizSettingsKey, () => props.snapshot.general);
 provideBacklogConnections(() => props.snapshot.workBacklog.connections);
 const backendSwitch = provideBackendSwitch((id, backend) => props.updateAgent({ id, selection: { backend } }));
 const agentSidebarCollapsed = ref(false);
+const agentWindow = computed(() => windowState.scope.value === 'agent');
+function openAgentWindow(agentId: string): void {
+  void appApi?.openWindow?.({ agentId, scope: 'agent' }).catch((error) => ElMessage.error(localizedErrorMessage(error, t)));
+}
 const compactViewport = useCompactViewport();
 const compactNavOpen = ref(false);
 function collapseSidebar(): void {
@@ -1174,7 +1181,9 @@ function collapseSidebar(): void {
   else agentSidebarCollapsed.value = true;
 }
 function expandSidebar(): void {
-  if (compactViewport.value) compactNavOpen.value = true;
+  // In a window that shows one agent, the control that would reveal the sidebar brings the whole workspace back.
+  if (agentWindow.value) windowState.setScope(appApi, 'workspace');
+  else if (compactViewport.value) compactNavOpen.value = true;
   else agentSidebarCollapsed.value = false;
 }
 const pendingReviewClarification = ref<PendingReviewClarification | null>(null);
@@ -2778,12 +2787,14 @@ const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
     currentAgent: () => hasFocusedConversation.value ? currentAgent.value : null,
     canReplaceConversation: () => Boolean(currentAgent.value && summaryReplacementAgentIds.value.includes(currentAgent.value.id)),
     isAgentWorkspaceVisible: () => isAgentWorkspaceVisible.value,
+    agentWindow: () => agentWindow.value,
     isModalDialogVisible: () => isModalDialogVisible.value,
     showOnboardingGate: () => showOnboardingGate.value,
     teams: () => props.snapshot.teams,
   },
   actions: {
     closeAgent: (agentId) => emit('close-agent', agentId),
+    closeWindow: () => window.close(),
     compactSession: compactAgentSession,
     replaceConversationWithSummary: (agentId) => emit('compress-session', agentId),
     closeTeam: (teamId) => emit('close-team', teamId),

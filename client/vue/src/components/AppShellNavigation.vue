@@ -79,6 +79,7 @@
       :remote-connections="snapshot.remoteConnections.connections"
       :list-repository-branches="listRepositorySessionBranches"
       @duplicate-agent="$emit('duplicate-agent', $event)"
+      @open-agent-window="$emit('open-agent-window', $event)"
       @fork-agent="$emit('fork-agent', $event)"
       @share-agent="$emit('share-agent', $event)"
       @handoff-agent="$emit('handoff-agent', $event)"
@@ -182,6 +183,7 @@ const emit = defineEmits<{
   'delete-repository': [agentId: string];
   'select-mission': [id: string];
   'duplicate-agent': [agentId: string];
+  'open-agent-window': [agentId: string];
   'edit-agent': [agentId: string];
   'edit-team': [teamId: string];
   'fork-agent': [agentId: string];

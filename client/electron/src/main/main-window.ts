@@ -16,6 +16,9 @@ import { sendAppCommand } from './ipc-events';
 /** Tall enough for every activity section in the agent sidebar to show two rows without scrolling the sidebar. */
 const MIN_WINDOW_HEIGHT = 800;
 const MIN_WINDOW_WIDTH = 1024;
+/** A window that shows one agent needs no sidebar, so it can be much smaller. */
+const COMPACT_WINDOW_SIZE = { width: 1000, height: 880 };
+const COMPACT_MIN_SIZE = { width: 640, height: 560 };
 
 type MainWindowState = {
   bounds: Rectangle;
@@ -25,7 +28,16 @@ type MainWindowState = {
 export type WindowPlacement = {
   /** Bounds of the window this one is opened from; the new window is offset from them. */
   cascadeFrom?: Rectangle;
+  /** A window that shows a single agent: smaller, and never the one whose frame is restored. */
+  compact?: boolean;
 };
+
+/** Gives a window that grew from one agent to the whole workspace the room the sidebar needs. */
+export function ensureWorkspaceWindowSize(window: Pick<BrowserWindow, 'getSize' | 'setMinimumSize' | 'setSize'>): void {
+  window.setMinimumSize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT);
+  const [width, height] = window.getSize();
+  if (width! < MIN_WINDOW_WIDTH || height! < MIN_WINDOW_HEIGHT) window.setSize(Math.max(width!, MIN_WINDOW_WIDTH), Math.max(height!, MIN_WINDOW_HEIGHT));
+}
 
 const CASCADE_OFFSET = 28;
 
@@ -45,10 +57,12 @@ export function createMainWindow(placement: WindowPlacement = {}): BrowserWindow
   }
   const workAreas = screen.getAllDisplays().map((display) => display.workArea);
   // Only the first window restores the last session's frame; the others open beside the one they came from.
-  const savedState = placement.cascadeFrom ? null : readWindowState(windowStatePath());
+  const compact = placement.compact === true;
+  const savedState = placement.cascadeFrom || compact ? null : readWindowState(windowStatePath());
   const restoredState = savedState && isWindowBoundsVisible(savedState.bounds, workAreas) ? savedState : undefined;
-  const bounds = placement.cascadeFrom ? cascadedBounds(placement.cascadeFrom, workAreas) : restoredState?.bounds;
-  const window = new BrowserWindow(createMainWindowOptions(releaseMode, bounds));
+  const cascaded = placement.cascadeFrom ? cascadedBounds(placement.cascadeFrom, workAreas) : undefined;
+  const bounds = compact && cascaded ? { ...cascaded, ...COMPACT_WINDOW_SIZE } : cascaded ?? restoredState?.bounds;
+  const window = new BrowserWindow(createMainWindowOptions(releaseMode, bounds, process.platform, nativeTheme.shouldUseDarkColors, compact));
   const updateBackground = (): void => {
     window.setBackgroundColor(mainWindowBackground(process.platform, nativeTheme.shouldUseDarkColors));
   };
@@ -56,6 +70,7 @@ export function createMainWindow(placement: WindowPlacement = {}): BrowserWindow
   window.once('closed', () => nativeTheme.removeListener('updated', updateBackground));
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   const saveState = (): void => {
+    if (compact) return;
     if (saveTimer) {
       clearTimeout(saveTimer);
       saveTimer = null;
@@ -66,6 +81,7 @@ export function createMainWindow(placement: WindowPlacement = {}): BrowserWindow
     });
   };
   const scheduleSave = (): void => {
+    if (compact) return;
     if (saveTimer) {
       clearTimeout(saveTimer);
     }
@@ -156,6 +172,7 @@ export function createMainWindowOptions(
   bounds?: Rectangle,
   platform = process.platform,
   dark = nativeTheme.shouldUseDarkColors,
+  compact = false,
 ): BrowserWindowConstructorOptions {
   const macOSWindowOptions: BrowserWindowConstructorOptions = platform === 'darwin'
     ? {
@@ -172,11 +189,11 @@ export function createMainWindowOptions(
       };
 
   return {
-    width: bounds?.width ?? 1440,
-    height: bounds?.height ?? 960,
+    width: bounds?.width ?? (compact ? COMPACT_WINDOW_SIZE.width : 1440),
+    height: bounds?.height ?? (compact ? COMPACT_WINDOW_SIZE.height : 960),
     ...(bounds ? { x: bounds.x, y: bounds.y } : {}),
-    minWidth: MIN_WINDOW_WIDTH,
-    minHeight: MIN_WINDOW_HEIGHT,
+    minWidth: compact ? COMPACT_MIN_SIZE.width : MIN_WINDOW_WIDTH,
+    minHeight: compact ? COMPACT_MIN_SIZE.height : MIN_WINDOW_HEIGHT,
     ...macOSWindowOptions,
     show: false,
     title: product.name,

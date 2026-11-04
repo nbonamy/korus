@@ -194,6 +194,19 @@ describe('main window lifecycle', () => {
     expect(window.maximize).not.toHaveBeenCalled();
   });
 
+  it('never restores or saves the workspace frame for an agent window', () => {
+    const file = path.join(host.userData, 'window-state.json');
+    const saved = { bounds: { x: 10, y: 20, width: 1400, height: 900 }, isMaximized: false };
+    writeFileSync(file, JSON.stringify(saved));
+    const window = createMainWindow({ compact: true }) as unknown as { options: Record<string, unknown>; emit(name: string): void };
+    expect(window.options).toMatchObject({ width: 1000, height: 880 });
+    expect(window.options).not.toHaveProperty('x');
+    window.emit('move');
+    vi.advanceTimersByTime(500);
+    window.emit('close');
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toStrictEqual(saved);
+  });
+
   it('keeps the cycle-teams shortcut registered while focus moves to another window', () => {
     host.registered = true;
     const first = openWindow();

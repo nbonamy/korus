@@ -111,6 +111,12 @@ describe('app menu', () => {
     expect(newWindow).toHaveBeenCalledOnce();
     expect(menuItem(buildAppMenuTemplate(callbacks(), { debugMode: false }), 'Window', 'New Window')).toBeUndefined();
   });
+  it('offers Show Workspace next to New Window', () => {
+    const showWorkspace = vi.fn();
+    const template = buildAppMenuTemplate({ ...callbacks(), newWindow: vi.fn(), showWorkspace }, { debugMode: false });
+    menuItem(template, 'Window', 'Show Workspace')!.click!({} as never, undefined as never, {} as never);
+    expect(showWorkspace).toHaveBeenCalledOnce();
+  });
   it('sends menu commands to whichever window is current when the menu is shared by several', () => {
     const first = { webContents: { reload: vi.fn(), toggleDevTools: vi.fn() } };
     const second = { webContents: { reload: vi.fn(), toggleDevTools: vi.fn() } };

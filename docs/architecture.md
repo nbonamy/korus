@@ -62,8 +62,16 @@ the local desktop to show UI or use an OS affordance belongs in Electron main.
   views exist once per agent: the first window to mount one owns it, other windows
   offer to move it, and a closed window gives its views up. Composer drafts are one per
   agent, relayed live through main so every window shows the same text. A window is
-  always opened with an initial view state, so New Window and any later detach
-  entry point share one call.
+  always opened with an initial view state, so New Window and every "Open in New
+  Window" entry share one call.
+- A window has a scope. A workspace window shows everything. An agent window shows one
+  agent with no rail or sidebar: it is smaller, never restores or saves the workspace
+  frame, ignores agent and team navigation, and its Close shortcut closes the window,
+  never the agent. Opening in a new window is a view, not a move: the source stays
+  visible where it was. Windows are equal, with no special main window. Window > Show
+  Workspace, a Dock click with only agent windows open, and the sidebar control of an
+  agent window all bring the full workspace back (the last one widens the window in
+  place). Deep links and captures go to a workspace window.
 
 The local mobile simulator host owns device attachments and native command execution
 in Electron. Its pane and provider-independent MCP tool share that authority;

@@ -449,6 +449,9 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
       case 'duplicate-agent':
         emit('duplicate-agent', agentId);
         break;
+      case 'open-agent-window':
+        emit('open-agent-window', agentId);
+        break;
       case 'compress-session':
         emit('compress-session', agentId);
         break;

@@ -36,12 +36,15 @@ type AppShellCommandOptions = {
     currentAgent: () => Agent | null;
     canReplaceConversation?: () => boolean;
     isAgentWorkspaceVisible: () => boolean;
+    /** A window opened on one agent: no navigation between agents or teams. */
+    agentWindow?: () => boolean;
     isModalDialogVisible: () => boolean;
     showOnboardingGate: () => boolean;
     teams: () => Team[];
   };
   actions: {
     closeAgent: (agentId: string) => void;
+    closeWindow?: () => void;
     compactSession: (agentId: string) => void;
     replaceConversationWithSummary: (agentId: string) => void;
     closeTeam: (teamId: string) => void;
@@ -123,7 +126,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     }
 
     if (
-      matchesShellShortcut('palette', input)
+      matchesShellShortcut('palette', input) && !inAgentWindow()
     ) {
       event.preventDefault();
       resetQuickAgentShortcuts();
@@ -151,7 +154,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
       return;
     }
 
-    if (matchesShellShortcut(`agent${event.key}`, input)) {
+    if (!inAgentWindow() && matchesShellShortcut(`agent${event.key}`, input)) {
       const agentId = options.state.quickSwitchAgentIds()[Number(event.key) - 1];
       if (agentId) {
         event.preventDefault();
@@ -289,7 +292,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     }
 
     if (command.type === 'open-agent-palette') {
-      if (showOnboardingGate.value || isModalDialogVisible.value) return;
+      if (showOnboardingGate.value || isModalDialogVisible.value || inAgentWindow()) return;
       options.actions.openAgentPalette();
       return;
     }
@@ -455,7 +458,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     }
 
     if (command.type === 'cycle-teams') {
-      if (!isAgentWorkspaceVisible.value) {
+      if (!isAgentWorkspaceVisible.value || inAgentWindow()) {
         return;
       }
       cycleTeams();
@@ -478,6 +481,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     }
 
     if (command.type === 'new-team') {
+      if (inAgentWindow()) return;
       options.actions.newTeam();
       return;
     }
@@ -507,7 +511,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     }
 
     if (command.type === 'close-active-team') {
-      if (!isAgentWorkspaceVisible.value) {
+      if (!isAgentWorkspaceVisible.value || inAgentWindow()) {
         return;
       }
       void closeActiveTeam();
@@ -515,7 +519,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     }
 
     if (command.type === 'cycle-agents') {
-      if (!isAgentWorkspaceVisible.value) {
+      if (!isAgentWorkspaceVisible.value || inAgentWindow()) {
         return;
       }
       cycleAgents(command.direction);
@@ -609,7 +613,17 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     options.actions.duplicateAgent(agent.id);
   }
 
+  function inAgentWindow(): boolean {
+    return options.state.agentWindow?.() === true;
+  }
+
   function closeActiveAgent(event?: KeyboardEvent): void {
+    // Closing the window of an agent only closes the window; the agent stays in the workspace.
+    if (inAgentWindow()) {
+      event?.preventDefault();
+      options.actions.closeWindow?.();
+      return;
+    }
     const agent = currentAgent.value;
     if (!agent) {
       return;

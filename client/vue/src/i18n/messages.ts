@@ -515,6 +515,7 @@ export const messages = {
       edit: 'Rename agent',
       fork: 'Fork Agent',
       moveToTeam: 'Move to Other Team',
+      openInNewWindow: 'Open in New Window',
       openIn: 'Open In…',
       noAgent: 'No agent',
       restart: 'Restart Agent',

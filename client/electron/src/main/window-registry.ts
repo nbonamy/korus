@@ -1,4 +1,4 @@
-import { isEmptyComposerDraft, type ComposerDraft, type NativeOwnerEntry, type NativeResource, type WindowViewState } from '@workspace/core/windows';
+import { isEmptyComposerDraft, type ComposerDraft, type NativeOwnerEntry, type NativeResource, type WindowScope, type WindowViewState } from '@workspace/core/windows';
 
 export type ManagedWindow = {
   readonly id: number;
@@ -9,6 +9,7 @@ export type ManagedWindow = {
 type Entry<W extends ManagedWindow> = {
   window: W;
   ready: boolean;
+  scope: WindowScope;
   selectedAgentId: string | null;
   viewState: WindowViewState | null;
 };
@@ -31,7 +32,7 @@ export class WindowRegistry<W extends ManagedWindow> {
 
   add(window: W, viewState: WindowViewState | null = null): void {
     if (this.entryOf(window)) return;
-    this.entries.push({ window, ready: false, selectedAgentId: viewState?.agentId ?? null, viewState });
+    this.entries.push({ window, ready: false, scope: viewState?.scope ?? 'workspace', selectedAgentId: viewState?.agentId ?? null, viewState });
   }
 
   /** Forgets the window and returns the native views it owned. */
@@ -93,7 +94,24 @@ export class WindowRegistry<W extends ManagedWindow> {
   viewStateOf(window: W): WindowViewState | null {
     const entry = this.entryOf(window);
     if (!entry) return null;
-    return entry.selectedAgentId ? { ...entry.viewState, agentId: entry.selectedAgentId } : entry.viewState;
+    const { scope: _initialScope, ...rest } = entry.viewState ?? {};
+    const state: WindowViewState = { ...rest, ...(entry.selectedAgentId ? { agentId: entry.selectedAgentId } : {}), ...(entry.scope === 'workspace' ? {} : { scope: entry.scope }) };
+    return Object.keys(state).length ? state : null;
+  }
+
+  scopeOf(window: W): WindowScope {
+    return this.entryOf(window)?.scope ?? 'workspace';
+  }
+
+  setScope(window: W, scope: WindowScope): void {
+    const entry = this.entryOf(window);
+    if (entry) entry.scope = scope;
+  }
+
+  /** The window that shows the whole workspace: the focused one, else the one last focused. */
+  focusedWorkspace(): W | undefined {
+    const workspaces = this.live().filter(window => this.scopeOf(window) === 'workspace');
+    return workspaces.find(window => window.isFocused()) ?? workspaces[workspaces.length - 1];
   }
 
   setSelectedAgent(window: W, agentId: string | null): void {

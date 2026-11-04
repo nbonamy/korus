@@ -59,6 +59,28 @@ describe('WindowRegistry', () => {
     expect(registry.selectedAgentIds()).toEqual(new Set(['agent-a', 'agent-b']));
   });
 
+  it('tells scoped windows from workspace windows and prefers the focused workspace', () => {
+    const registry = new WindowRegistry<FakeWindow>();
+    const workspace = new FakeWindow(1);
+    const agent = new FakeWindow(2);
+    registry.add(workspace);
+    registry.add(agent, { agentId: 'agent-a', scope: 'agent' });
+    expect(registry.scopeOf(agent)).toBe('agent');
+    expect(registry.viewStateOf(agent)).toEqual({ agentId: 'agent-a', scope: 'agent' });
+    expect(registry.focusedWorkspace()).toBe(workspace);
+
+    agent.focused = true;
+    expect(registry.focusedWorkspace()).toBe(workspace);
+
+    registry.setScope(agent, 'workspace');
+    expect(registry.viewStateOf(agent)).toEqual({ agentId: 'agent-a' });
+    expect(registry.focusedWorkspace()).toBe(agent);
+
+    workspace.destroyed = true;
+    agent.destroyed = true;
+    expect(registry.focusedWorkspace()).toBeUndefined();
+  });
+
   describe('native ownership', () => {
     it('grants the first claimant and refuses the others until they take over', () => {
       const { registry, windows: [first, second] } = registryWith(2);

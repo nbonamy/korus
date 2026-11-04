@@ -9,7 +9,19 @@ import type { CodexPromptPart } from '@codex-app-sdk/core/surface';
  */
 export type WindowViewState = {
   agentId?: string;
+  /** What the window shows: the whole workspace (default), or one agent without the navigation around it. */
+  scope?: WindowScope;
 };
+
+export type WindowScope = 'workspace' | 'agent';
+
+export function isWindowViewState(value: unknown): value is WindowViewState {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const { agentId, scope } = value as { agentId?: unknown; scope?: unknown };
+  if (agentId !== undefined && typeof agentId !== 'string') return false;
+  if (scope !== undefined && scope !== 'workspace' && scope !== 'agent') return false;
+  return scope !== 'agent' || typeof agentId === 'string';
+}
 
 /** Native views that exist once per agent: only the owning window mounts them. */
 export type NativeResource = 'browser' | 'simulator';

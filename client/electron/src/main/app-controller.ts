@@ -19,9 +19,9 @@ import { realpath } from 'node:fs/promises';
 import { registerCodexNativeIpc, sendIpcEvent, TypedIpcMain } from '@codex-app-sdk/electron';
 import { AgentActivityPowerSaveBlocker } from './agent-activity-power-save-blocker';
 import { initializeMainLogging, installProcessErrorLogging, logMain, warnMain } from './log';
-import { createMainWindow } from './main-window';
+import { createMainWindow, ensureWorkspaceWindowSize } from './main-window';
 import { WindowRegistry } from './window-registry';
-import { type ComposerDraft, type NativeResource, type WindowContext, type WindowViewState } from '@workspace/core/windows';
+import { isWindowViewState, type ComposerDraft, type NativeResource, type WindowContext, type WindowScope, type WindowViewState } from '@workspace/core/windows';
 import { createRuntimeAppBackendClient, type AppBackendClientPort } from './backend-client';
 import { getDaemonStatus, refreshDaemon, setDaemonEnabled } from './daemon-launch-agent';
 import { ensureCurrentDaemonForStartup } from './daemon-startup-maintenance';
@@ -622,6 +622,8 @@ export class AppController {
     ipc.handle(ipcChannels.restartApp, () => this.restartApp());
     ipc.handle(ipcChannels.reloadRenderer, (event) => this.reloadRenderer(this.windowOf(event)));
     ipc.handle(ipcChannels.getWindowContext, (event) => this.getWindowContext(this.windowOf(event)));
+    ipc.handle(ipcChannels.openWindow, (_event, viewState) => this.openWindowFromRenderer(viewState));
+    ipc.handle(ipcChannels.setWindowScope, (event, scope) => this.setWindowScope(this.windowOf(event), scope));
     ipc.handle(ipcChannels.setWindowSelection, (event, agentId) => {
       const window = this.windowOf(event);
       if (window) this.windows.setSelectedAgent(window, agentId);
@@ -806,12 +808,29 @@ export class AppController {
     }
   }
 
+  /** Brings the workspace forward, opening it when only agent windows (or none) are left. */
   createWindow(): void {
-    if (this.windows.live().length) {
-      this.focusMainWindow();
+    this.showWorkspace();
+  }
+
+  private showWorkspace(): void {
+    if (!this.windows.focusedWorkspace()) {
+      this.openWindow();
       return;
     }
-    this.openWindow();
+    this.focusMainWindow();
+  }
+
+  private openWindowFromRenderer(viewState: unknown): void {
+    if (!isWindowViewState(viewState)) return;
+    if (viewState.agentId && !this.snapshot?.agents.some(agent => agent.id === viewState.agentId)) return;
+    this.openWindow(viewState);
+  }
+
+  private setWindowScope(window: BrowserWindow | undefined, scope: WindowScope): void {
+    if (!window || (scope !== 'workspace' && scope !== 'agent')) return;
+    this.windows.setScope(window, scope);
+    if (scope === 'workspace') ensureWorkspaceWindowSize(window);
   }
 
   /**
@@ -820,7 +839,10 @@ export class AppController {
    */
   openWindow(viewState: WindowViewState | null = null): BrowserWindow {
     const origin = this.windows.focused();
-    const window = createMainWindow(origin ? { cascadeFrom: origin.getNormalBounds() } : {});
+    const window = createMainWindow({
+      ...(origin ? { cascadeFrom: origin.getNormalBounds() } : {}),
+      ...(viewState?.scope === 'agent' ? { compact: true } : {}),
+    });
     this.windows.add(window, viewState);
     logMain('window', 'created main window');
     window.webContents.on('did-start-loading', () => {
@@ -860,7 +882,7 @@ export class AppController {
   openDeepLink(value: string): boolean {
     const command = appCommandFromDeepLink(value, process.env.APP_DEV_PROTOCOL_SCHEME);
     if (!command) return false;
-    const window = this.windows.focused();
+    const window = this.commandWindow();
     if (!window || !this.windows.isReady(window)) {
       this.pendingDeepLinkCommands.push(command);
     } else {
@@ -1868,6 +1890,7 @@ export class AppController {
     checkForUpdates: () => void;
     installUpdate: () => void;
     newWindow: () => void;
+    showWorkspace: () => void;
     capturePerformanceProfile: () => void;
   } {
     return {
@@ -1875,6 +1898,7 @@ export class AppController {
       checkForUpdates: () => this.runManualUpdateCheck(),
       installUpdate: () => this.requestInstallUpdate(),
       newWindow: () => this.openNewWindow(),
+      showWorkspace: () => this.showWorkspace(),
       capturePerformanceProfile: () => {
         const window = this.windows.focused();
         if (window) void runPerformanceCapture(window);
@@ -2259,15 +2283,20 @@ export class AppController {
   }
 
   private flushPendingDeepLinkCommands(): void {
-    const window = this.windows.focused();
+    const window = this.commandWindow();
     if (!window || !this.windows.isReady(window)) return;
     for (const command of this.pendingDeepLinkCommands.splice(0)) {
       sendAppCommand(window.webContents, command);
     }
   }
 
+  /** Deep links and captures act on the workspace; a window that shows one agent cannot navigate to another. */
+  private commandWindow(): BrowserWindow | undefined {
+    return this.windows.focusedWorkspace();
+  }
+
   private focusMainWindow(): void {
-    const window = this.windows.focused();
+    const window = this.commandWindow() ?? this.windows.focused();
     if (!window) return;
     if (window.isMinimized()) window.restore();
     window.show();
@@ -2390,7 +2419,7 @@ export class AppController {
   }
 
   private sendOrQueueAppCommand(command: AppCommand): void {
-    const window = this.windows.focused();
+    const window = this.commandWindow();
     if (!window || !this.windows.isReady(window)) {
       this.pendingDeepLinkCommands.push(command);
       if (app.isReady()) this.createWindow();

@@ -5,13 +5,13 @@ import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { ipcChannels } from '@workspace/core/ipc';
 import type { ComposerDraft } from '@workspace/core/windows';
 
-const host = vi.hoisted(() => ({ createWindow: vi.fn(), installMenu: vi.fn() }));
+const host = vi.hoisted(() => ({ createWindow: vi.fn(), installMenu: vi.fn(), ensureSize: vi.fn() }));
 vi.mock('electron', () => ({
   app: { isPackaged: false, isReady: () => true, getAppPath: () => '/app' },
   powerMonitor: { isOnBatteryPower: () => false, on: vi.fn(), removeListener: vi.fn() },
   nativeTheme: { themeSource: 'system' },
 }));
-vi.mock('../main-window', () => ({ createMainWindow: host.createWindow }));
+vi.mock('../main-window', () => ({ createMainWindow: host.createWindow, ensureWorkspaceWindowSize: host.ensureSize }));
 vi.mock('../app-menu', () => ({ installAppMenu: host.installMenu }));
 import { AppController } from '../app-controller';
 import { addTestWindow, createBackendClient, emitBackendEvent } from './app-controller-test-harness';
@@ -54,6 +54,9 @@ type Private = {
   flushPendingDeepLinkCommands(): void;
   openWindow(viewState?: unknown): unknown;
   openNewWindow(): void;
+  openWindowFromRenderer(viewState: unknown): void;
+  setWindowScope(window: unknown, scope: string): void;
+  showWorkspace(): void;
   handleWindowClosed(window: unknown): void;
   updateMenuOptions(): { newWindow(): void };
   browserPane: { closeHostedBy(window: unknown, agentId?: string): Promise<void>; isHostedBy(agentId: string, browserId: string, window: unknown): boolean };
@@ -263,6 +266,52 @@ describe('AppController with several windows', () => {
 
       expect(host.createWindow).toHaveBeenLastCalledWith({ cascadeFrom: created[0]!.getNormalBounds() });
       expect(internals(controller).getWindowContext(created[1])).toMatchObject({ viewState: { agentId: 'agent-dina' } });
+    });
+
+    it('opens an agent window compact, on a known agent only', () => {
+      const { controller, created } = openedWindows();
+      internals(controller).openWindow();
+      internals(controller).openWindowFromRenderer({ agentId: 'agent-dina', scope: 'agent' });
+      expect(host.createWindow).toHaveBeenLastCalledWith(expect.objectContaining({ compact: true, cascadeFrom: expect.anything() }));
+      expect(internals(controller).getWindowContext(created[1])).toMatchObject({ viewState: { agentId: 'agent-dina', scope: 'agent' } });
+
+      host.createWindow.mockClear();
+      internals(controller).openWindowFromRenderer({ agentId: 'agent-gone', scope: 'agent' });
+      internals(controller).openWindowFromRenderer({ scope: 'agent' });
+      internals(controller).openWindowFromRenderer('nope');
+      expect(host.createWindow).not.toHaveBeenCalled();
+    });
+
+    it('opens the workspace when only agent windows are left, and reuses it otherwise', () => {
+      const { controller, created } = openedWindows();
+      internals(controller).openWindow({ agentId: 'agent-dina', scope: 'agent' });
+      expect(created).toHaveLength(1);
+      controller.createWindow();
+      expect(created).toHaveLength(2);
+      expect(host.createWindow).toHaveBeenLastCalledWith(expect.not.objectContaining({ compact: true }));
+      controller.createWindow();
+      expect(created).toHaveLength(2);
+    });
+
+    it('sends deep links to the workspace window, not to an agent window', () => {
+      const { controller, created } = openedWindows();
+      internals(controller).openWindow();
+      internals(controller).openWindow({ agentId: 'agent-dina', scope: 'agent' });
+      created[1]!.focused = true;
+      for (const window of created) window.webContents.emit('did-finish-load');
+      controller.openDeepLink(`${product.protocolScheme}://new?prompt=hi`);
+      expect(sentChannels(created[0]!, ipcChannels.appCommand)).toHaveLength(1);
+      expect(sentChannels(created[1]!, ipcChannels.appCommand)).toHaveLength(0);
+    });
+
+    it('turns an agent window into a workspace window with room for the sidebar', () => {
+      const { controller, created } = openedWindows();
+      internals(controller).openWindow({ agentId: 'agent-dina', scope: 'agent' });
+      internals(controller).setWindowScope(created[0], 'workspace');
+      expect(host.ensureSize).toHaveBeenCalledWith(created[0]);
+      expect(internals(controller).getWindowContext(created[0])).toMatchObject({ viewState: { agentId: 'agent-dina' } });
+      expect(internals(controller).getWindowContext(created[0]).viewState).not.toHaveProperty('scope');
+      internals(controller).setWindowScope(created[0], 'bogus');
     });
 
     it('keeps one window when asked to create the main window again, and loads each window on its own', () => {

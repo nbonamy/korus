@@ -1093,6 +1093,10 @@ export type AppApi = {
   /** Desktop windows only: this window's identity, initial view state and the shared native owners and drafts. */
   getWindowContext?(): Promise<import('./windows').WindowContext>;
   /** Desktop windows only: true when this window now owns the agent's native view. */
+  /** Desktop windows only: opens another window that starts from this view state. */
+  openWindow?(viewState: import('./windows').WindowViewState): Promise<void>;
+  /** Desktop windows only: widens or narrows what this window shows. */
+  setWindowScope?(scope: import('./windows').WindowScope): Promise<void>;
   /** Desktop windows only: tells main which agent this window shows. */
   setWindowSelection?(agentId: string | null): Promise<void>;
   claimNativeResource?(resource: import('./windows').NativeResource, agentId: string, takeOver?: boolean): Promise<boolean>;

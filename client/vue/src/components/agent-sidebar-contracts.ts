@@ -45,6 +45,7 @@ export type AgentSidebarEvents = {
   'create-feature-worktree': [repositories: SidebarRepositoryTarget[]];
   'open-on-remote': [payload: { action: 'main' | 'new-worktree'; repositoryName: string; repositoryKey: string; originUrl?: string }];
   'duplicate-agent': [agentId: string];
+  'open-agent-window': [agentId: string];
   'fork-agent': [agentId: string];
   'share-agent': [agentId: string];
   'handoff-agent': [agentId: string];
