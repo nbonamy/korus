@@ -22,7 +22,7 @@ describe('window layout', () => {
     try {
       const file = path.join(dir, 'nested', 'window-layout.json');
       const saved = layout(
-        { viewState: null, frame },
+        { viewState: { setup: { [agentA]: { open: true, width: 420, activeTab: 'browser', tabs: ['review', 'browser'], browserUrl: 'https://example.com/' } } }, frame },
         { viewState: { agentId: agentA, scope: 'agent' }, frame: { ...frame, isMaximized: true } },
         { viewState: { teamId, scope: 'team' }, frame },
         { viewState: { teamId, branch: 'feat1', agentId: agentA, scope: 'feature' }, frame },
@@ -44,6 +44,12 @@ describe('window layout', () => {
   it('keeps the usable windows of a damaged layout and caps how many it restores', () => {
     const windows = [{ viewState: null, frame }, { viewState: { scope: 'team' }, frame }, ...Array.from({ length: 20 }, () => ({ viewState: null, frame }))];
     expect(parseWindowLayout(JSON.stringify({ version: 1, windows }))!.windows).toHaveLength(11);
+  });
+
+  it('drops a window whose setup cannot be read rather than restoring it half-way', () => {
+    const bad = { viewState: { setup: { a: { open: 'yes' } } }, frame };
+    const good = { viewState: null, frame };
+    expect(parseWindowLayout(JSON.stringify({ version: 1, windows: [bad, good] }))!.windows).toEqual([good]);
   });
 
   it('returns nothing for a missing file', () => {

@@ -1094,6 +1094,8 @@ export type AppApi = {
   /** Desktop windows only: true when this window now owns the agent's native view. */
   /** Desktop windows only: opens another window that starts from this view state. */
   openWindow?(viewState: import('./windows').WindowViewState): Promise<void>;
+  /** Desktop windows only: tells main what panes this window has open, for new windows, relaunches and a moved Browser. */
+  setWindowSetup?(setup: import('./windows').WindowSetup): Promise<void>;
   /** Desktop windows only: tells main which agent this window shows. */
   setWindowSelection?(agentId: string | null): Promise<void>;
   claimNativeResource?(resource: import('./windows').NativeResource, agentId: string, takeOver?: boolean): Promise<boolean>;
@@ -1138,5 +1140,7 @@ export type AppApi = {
   onAppCommand(listener: (command: AppCommand) => void): () => void;
   onUpdateStatusChanged(listener: (status: DesktopUpdateStatus) => void): () => void;
   onNativeOwnersChanged?(listener: (owners: import('./windows').NativeOwnerEntry[]) => void): () => void;
+  /** Desktop windows only: pane setup handed to this window, e.g. the page of a Browser moved here from another window. */
+  onWindowSetupApply?(listener: (setup: import('./windows').WindowSetup) => void): () => void;
   onComposerDraftChanged?(listener: (change: import('./windows').ComposerDraftChange) => void): () => void;
 };

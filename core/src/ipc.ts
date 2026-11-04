@@ -202,6 +202,7 @@ export const ipcChannels = {
   getWindowContext: 'window:context:get',
   openWindow: 'window:open',
   setWindowSelection: 'window:selection:set',
+  setWindowSetup: 'window:setup:set',
   claimNativeResource: 'window:native-resource:claim',
   releaseNativeResource: 'window:native-resource:release',
   syncComposerDraft: 'window:composer-draft:sync',
@@ -243,9 +244,10 @@ export const ipcChannels = {
   updateStatusChanged: 'app:update-status-changed',
   nativeOwnersChanged: 'window:native-owners-changed',
   composerDraftChanged: 'window:composer-draft-changed',
+  windowSetupApply: 'window:setup-apply',
 } as const;
 
-type AppIpcRequestApi = Omit<AppApi, 'onAppCommand' | 'onEvent' | 'onUpdateStatusChanged' | 'onNativeOwnersChanged' | 'onComposerDraftChanged'>;
+type AppIpcRequestApi = Omit<AppApi, 'onAppCommand' | 'onEvent' | 'onUpdateStatusChanged' | 'onNativeOwnersChanged' | 'onComposerDraftChanged' | 'onWindowSetupApply'>;
 
 type IpcRequestFor<Method> = Method extends (...args: infer Arguments) => infer Result
   ? { args: Arguments; result: Awaited<Result> }
@@ -263,4 +265,5 @@ export type AppIpcEvents = {
   [ipcChannels.updateStatusChanged]: import('./contracts').DesktopUpdateStatus;
   [ipcChannels.nativeOwnersChanged]: import('./windows').NativeOwnerEntry[];
   [ipcChannels.composerDraftChanged]: import('./windows').ComposerDraftChange;
+  [ipcChannels.windowSetupApply]: import('./windows').WindowSetup;
 };

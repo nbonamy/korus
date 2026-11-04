@@ -23,7 +23,7 @@ import { createMainWindow } from './main-window';
 import { featureAgentIds } from '@workspace/core/feature-groups';
 import { WindowRegistry } from './window-registry';
 import { readWindowLayout, restorableWindows, writeWindowLayout, type WindowFrame, type WindowLayout } from './window-layout';
-import { isWindowViewState, type ComposerDraft, type NativeResource, type WindowContext, type WindowViewState } from '@workspace/core/windows';
+import { isWindowSetup, isWindowViewState, type ComposerDraft, type NativeResource, type WindowContext, type WindowViewState } from '@workspace/core/windows';
 import { createRuntimeAppBackendClient, type AppBackendClientPort } from './backend-client';
 import { getDaemonStatus, refreshDaemon, setDaemonEnabled } from './daemon-launch-agent';
 import { ensureCurrentDaemonForStartup } from './daemon-startup-maintenance';
@@ -628,6 +628,7 @@ export class AppController {
     ipc.handle(ipcChannels.reloadRenderer, (event) => this.reloadRenderer(this.windowOf(event)));
     ipc.handle(ipcChannels.getWindowContext, (event) => this.getWindowContext(this.windowOf(event)));
     ipc.handle(ipcChannels.openWindow, (_event, viewState) => this.openWindowFromRenderer(viewState));
+    ipc.handle(ipcChannels.setWindowSetup, (event, setup) => this.setWindowSetup(this.windowOf(event), setup));
     ipc.handle(ipcChannels.setWindowSelection, (event, agentId) => {
       const window = this.windowOf(event);
       if (window) this.windows.setSelectedAgent(window, agentId);
@@ -887,6 +888,9 @@ export class AppController {
    */
   openWindow(viewState: WindowViewState | null = null, frame?: WindowFrame): BrowserWindow {
     const origin = this.windows.focused();
+    // A window opened from another starts with a copy of its panes, and then goes its own way.
+    const originSetup = !frame && origin ? this.windows.setupOf(origin) : null;
+    if (originSetup && Object.keys(originSetup).length && !viewState?.setup) viewState = { ...viewState, setup: originSetup };
     const window = createMainWindow({
       ...(frame ? { frame } : origin ? { cascadeFrom: origin.getNormalBounds() } : {}),
       ...(viewState?.scope === 'agent' ? { compact: true } : {}),
@@ -2399,6 +2403,12 @@ export class AppController {
   }
 
   /** Resolves the window an IPC request came from. Senders that are not a known window act as the current one. */
+  private setWindowSetup(window: BrowserWindow | undefined, setup: unknown): void {
+    if (!window || !isWindowSetup(setup)) return;
+    this.windows.setSetup(window, setup);
+    this.scheduleLayoutSave();
+  }
+
   private windowOf(event: unknown): BrowserWindow | undefined {
     const sender = (event as { sender?: unknown } | undefined)?.sender;
     return this.windows.live().find(window => window.webContents === sender) ?? this.windows.focused();
@@ -2447,7 +2457,12 @@ export class AppController {
     const claim = this.windows.claim(window, resource, agentId, takeOver);
     if (!claim.granted) return false;
     // The displaced window unmounts its view only after main has let go of the old guest.
-    if (claim.displaced && resource === 'browser') await this.browserPane.closeHostedBy(claim.displaced, agentId);
+    if (claim.displaced && resource === 'browser') {
+      await this.browserPane.closeHostedBy(claim.displaced, agentId);
+      // The Browser carries its pages with it: the new owner opens where the old one was.
+      const carried = this.windows.setupOf(claim.displaced)?.[agentId];
+      if (carried) sendIpcEvent<AppIpcEvents, typeof ipcChannels.windowSetupApply>(window.webContents, ipcChannels.windowSetupApply, { [agentId]: carried });
+    }
     this.broadcastNativeOwners();
     return true;
   }

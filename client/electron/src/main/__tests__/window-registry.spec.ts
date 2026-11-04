@@ -79,6 +79,27 @@ describe('WindowRegistry', () => {
     expect(registry.focusedWorkspace()).toBeUndefined();
   });
 
+  it('remembers what each window has open, starting from a copy and then drifting', () => {
+    const pane = (tab: string) => ({ open: true, width: 420, activeTab: tab, tabs: [tab] });
+    const registry = new WindowRegistry<FakeWindow>();
+    const source = new FakeWindow(1);
+    const copy = new FakeWindow(2);
+    registry.add(source);
+    registry.add(copy, { agentId: 'agent-a', setup: { 'agent-a': pane('review') } });
+
+    expect(registry.setupOf(source)).toBeNull();
+    expect(registry.viewStateOf(source)).toBeNull();
+    expect(registry.setupOf(copy)).toEqual({ 'agent-a': pane('review') });
+    expect(registry.viewStateOf(copy)).toEqual({ agentId: 'agent-a', setup: { 'agent-a': pane('review') } });
+
+    registry.setSetup(copy, { 'agent-a': pane('browser') });
+    expect(registry.viewStateOf(copy)).toEqual({ agentId: 'agent-a', setup: { 'agent-a': pane('browser') } });
+    expect(registry.setupOf(source)).toBeNull();
+
+    registry.setSetup(copy, {});
+    expect(registry.viewStateOf(copy)).toEqual({ agentId: 'agent-a' });
+  });
+
   describe('native ownership', () => {
     it('grants the first claimant and refuses the others until they take over', () => {
       const { registry, windows: [first, second] } = registryWith(2);

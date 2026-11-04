@@ -88,6 +88,44 @@ describe('window state', () => {
     expect(state.branch.value).toBe('feat1');
   });
 
+  describe('panes a window starts with, or is handed', () => {
+    const pane = { open: true, width: 420, activeTab: 'browser', tabs: ['browser'], browserUrl: 'https://example.com/' };
+
+    it('gives the starting panes to the first listener once, whether it comes before or after the window starts', async () => {
+      const early = setup({ windowId: 1, viewState: { setup: { 'agent-1': pane } }, nativeOwners: [], composerDrafts: {} });
+      const first = vi.fn();
+      early.state.onSetup(first);
+      await early.state.start(early.host);
+      expect(first).toHaveBeenCalledExactlyOnceWith({ 'agent-1': pane }, 'replace');
+      await early.state.start(early.host);
+      expect(first).toHaveBeenCalledOnce();
+      const second = vi.fn();
+      early.state.onSetup(second);
+      expect(second).not.toHaveBeenCalled();
+
+      const late = setup({ windowId: 1, viewState: { setup: { 'agent-1': pane } }, nativeOwners: [], composerDrafts: {} });
+      await late.state.start(late.host);
+      const listener = vi.fn();
+      late.state.onSetup(listener);
+      expect(listener).toHaveBeenCalledExactlyOnceWith({ 'agent-1': pane }, 'replace');
+    });
+
+    it('passes on panes handed over later as a patch, to every listener, until it stops listening', async () => {
+      const { api, host, state } = setup({ windowId: 1, viewState: null, nativeOwners: [], composerDrafts: {} });
+      let handOver: (setup: Record<string, typeof pane>) => void = () => undefined;
+      Object.assign(api, { onWindowSetupApply: vi.fn((listener: typeof handOver) => { handOver = listener; return vi.fn(); }) });
+      const listener = vi.fn();
+      const stop = state.onSetup(listener);
+      await state.start(host);
+      expect(listener).not.toHaveBeenCalled();
+      handOver({ 'agent-1': pane });
+      expect(listener).toHaveBeenCalledExactlyOnceWith({ 'agent-1': pane }, 'patch');
+      stop();
+      handOver({ 'agent-1': pane });
+      expect(listener).toHaveBeenCalledOnce();
+    });
+  });
+
   it('is inert without a desktop host', async () => {
     const state = createWindowState();
     await state.start({ api: () => undefined, agentExists: () => true, showAgent: vi.fn(), teamExists: () => true, showTeam: vi.fn(), applyDraft: vi.fn() });

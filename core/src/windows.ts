@@ -14,7 +14,51 @@ export type WindowViewState = {
   /** The Git branch that makes a feature: its agents are the team's agents working on it. */
   branch?: string;
   scope?: WindowScope;
+  /** The panes each agent has open in this window. A new window starts from a copy of its source's, then drifts. */
+  setup?: WindowSetup;
 };
+
+/** The right panel of one agent in a window: what is worth bringing to a new window or back after a relaunch. */
+export type AgentPaneSetup = {
+  open: boolean;
+  width: number;
+  activeTab: string | null;
+  tabs: string[];
+  /** The page of the agent's primary Browser tab. */
+  browserUrl?: string;
+  /** The pages of its other Browser tabs, by tab. */
+  browserPanels?: Record<string, { browserId: string; url: string; title: string }>;
+};
+
+export type WindowSetup = Record<string, AgentPaneSetup>;
+
+const maxSetupAgents = 64;
+const maxSetupTabs = 32;
+const maxSetupText = 4096;
+
+function isSetupText(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= maxSetupText;
+}
+
+export function isAgentPaneSetup(value: unknown): value is AgentPaneSetup {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const { open, width, activeTab, tabs, browserUrl, browserPanels } = value as Record<string, unknown>;
+  if (typeof open !== 'boolean' || typeof width !== 'number' || !Number.isFinite(width)) return false;
+  if (activeTab !== null && !isSetupText(activeTab)) return false;
+  if (!Array.isArray(tabs) || tabs.length > maxSetupTabs || !tabs.every(isSetupText)) return false;
+  if (browserUrl !== undefined && !isSetupText(browserUrl)) return false;
+  if (browserPanels === undefined) return true;
+  if (typeof browserPanels !== 'object' || browserPanels === null || Array.isArray(browserPanels)) return false;
+  const panels = Object.entries(browserPanels);
+  return panels.length <= maxSetupTabs && panels.every(([tab, panel]) => isSetupText(tab) && typeof panel === 'object' && panel !== null
+    && isSetupText((panel as Record<string, unknown>).browserId) && isSetupText((panel as Record<string, unknown>).url) && isSetupText((panel as Record<string, unknown>).title));
+}
+
+export function isWindowSetup(value: unknown): value is WindowSetup {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const entries = Object.entries(value);
+  return entries.length <= maxSetupAgents && entries.every(([agentId, setup]) => isSetupText(agentId) && isAgentPaneSetup(setup));
+}
 
 /**
  * What a window shows. `workspace` is everything. `team` is one team with its sidebar but no rail.
@@ -25,10 +69,11 @@ export type WindowScope = 'workspace' | 'team' | 'agent' | 'feature';
 
 export function isWindowViewState(value: unknown): value is WindowViewState {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const { agentId, teamId, branch, scope } = value as { agentId?: unknown; teamId?: unknown; branch?: unknown; scope?: unknown };
+  const { agentId, teamId, branch, scope, setup } = value as { agentId?: unknown; teamId?: unknown; branch?: unknown; scope?: unknown; setup?: unknown };
   if (agentId !== undefined && typeof agentId !== 'string') return false;
   if (teamId !== undefined && typeof teamId !== 'string') return false;
   if (branch !== undefined && typeof branch !== 'string') return false;
+  if (setup !== undefined && !isWindowSetup(setup)) return false;
   if (scope !== undefined && scope !== 'workspace' && scope !== 'team' && scope !== 'agent' && scope !== 'feature') return false;
   if (scope === 'agent') return typeof agentId === 'string';
   if (scope === 'team') return typeof teamId === 'string';

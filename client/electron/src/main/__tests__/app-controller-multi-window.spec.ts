@@ -55,6 +55,7 @@ type Private = {
   browserOpen(window: unknown, agentId: string, browserId: string, url: string, guestId: number): Promise<unknown>;
   hostsBrowserPane(event: unknown, agentId: string, browserId: string): boolean;
   windowOf(event: unknown): unknown;
+  setWindowSetup(window: unknown, setup: unknown): void;
   focusWindowById(id: number): void;
   cycleWindow(direction: 1 | -1): void;
   flushPendingDeepLinkCommands(): void;
@@ -244,6 +245,20 @@ describe('AppController with several windows', () => {
       expect(second!.webContents.send).toHaveBeenLastCalledWith(ipcChannels.nativeOwnersChanged, []);
     });
 
+    it('hands the Browser’s pages to the window that takes it over, and sends nothing when there is nothing to carry', async () => {
+      const { controller, windows: [first, second] } = controllerWithWindows(2);
+      vi.spyOn(internals(controller).browserPane, 'closeHostedBy').mockResolvedValue(undefined);
+      const carried = { open: true, width: 420, activeTab: 'browser', tabs: ['browser'], browserUrl: 'https://example.com/docs' };
+      await internals(controller).claimNativeResource(first, 'browser', 'agent-1', false);
+      await internals(controller).claimNativeResource(second, 'browser', 'agent-1', true);
+      expect(sentChannels(second!, ipcChannels.windowSetupApply)).toHaveLength(0);
+
+      internals(controller).setWindowSetup(second, { 'agent-1': carried });
+      await internals(controller).claimNativeResource(first, 'browser', 'agent-1', true);
+      expect(first!.webContents.send).toHaveBeenCalledWith(ipcChannels.windowSetupApply, { 'agent-1': carried });
+      expect(sentChannels(second!, ipcChannels.windowSetupApply)).toHaveLength(0);
+    });
+
     it('closes the previous owner’s browser before another window takes it over', async () => {
       const { controller, windows: [first, second] } = controllerWithWindows(2);
       const closeHostedBy = vi.spyOn(internals(controller).browserPane, 'closeHostedBy').mockResolvedValue(undefined);
@@ -338,6 +353,35 @@ describe('AppController with several windows', () => {
       internals(controller).openWindowFromRenderer({ teamId, branch: 'feat-gone', scope: 'feature' });
       internals(controller).openWindowFromRenderer({ teamId: 'team-gone', branch: 'feat1', scope: 'feature' });
       expect(host.createWindow).not.toHaveBeenCalled();
+    });
+
+    it('copies the source window’s panes into a new window, which then drifts on its own', () => {
+      const { controller, created } = openedWindows();
+      internals(controller).openWindow();
+      const pane = (activeTab: string) => ({ open: true, width: 420, activeTab, tabs: [activeTab], browserUrl: 'https://example.com/' });
+      internals(controller).setWindowSetup(created[0], { 'agent-dina': pane('browser') });
+      created[0]!.focused = true;
+      internals(controller).windows.markFocused(created[0]);
+
+      internals(controller).openWindowFromRenderer({ agentId: 'agent-dina', scope: 'agent' });
+      internals(controller).updateMenuOptions().newWindow();
+
+      for (const copy of [created[1], created[2]]) {
+        expect(internals(controller).getWindowContext(copy).viewState).toMatchObject({ setup: { 'agent-dina': pane('browser') } });
+      }
+      internals(controller).setWindowSetup(created[1], { 'agent-dina': pane('review') });
+      expect(internals(controller).getWindowContext(created[0]).viewState).toMatchObject({ setup: { 'agent-dina': pane('browser') } });
+      expect(internals(controller).getWindowContext(created[1]).viewState).toMatchObject({ setup: { 'agent-dina': pane('review') } });
+    });
+
+    it('keeps only a setup it can read, from the window that sent it', () => {
+      const { controller, windows: [first] } = controllerWithWindows(1);
+      internals(controller).setWindowSetup(first, { 'agent-dina': { open: true } });
+      internals(controller).setWindowSetup(first, 'nope');
+      internals(controller).setWindowSetup(undefined, { 'agent-dina': { open: true, width: 1, activeTab: null, tabs: [] } });
+      expect(internals(controller).getWindowContext(first).viewState).toBeNull();
+      internals(controller).setWindowSetup(first, { 'agent-dina': { open: true, width: 1, activeTab: null, tabs: [] } });
+      expect(internals(controller).getWindowContext(first).viewState).toMatchObject({ setup: { 'agent-dina': { open: true } } });
     });
 
     it('opens an agent window compact, on a known agent only', () => {

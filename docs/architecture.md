@@ -90,7 +90,13 @@ the local desktop to show UI or use an OS affordance belongs in Electron main.
   The layout is rewritten shortly after any change and once more as the app quits, and it
   keeps what it had when the last window closes. A window whose team, agent or feature
   is gone is skipped, a feature keeps its remaining agents, and without anything usable
-  the default workspace window opens. Pane and tab state inside a window is not kept.
+  the default workspace window opens.
+- Each window reports the panes it has open per agent (right-panel tabs that carry nothing
+  but where to look, and the pages of its Browser tabs) and main keeps the latest. A window
+  opened from another starts with a copy of its source's panes and then drifts on its own;
+  the layout file and a reload start a window from its own; a Browser moved to another
+  window brings its pages with it. Tabs holding a file, diff, image, plan or subagent
+  conversation stay in their window.
 
 The local mobile simulator host owns device attachments and native command execution
 in Electron. Its pane and provider-independent MCP tool share that authority;

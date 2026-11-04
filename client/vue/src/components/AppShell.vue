@@ -677,6 +677,7 @@ import { defaultTeamColor } from '@workspace/core/team-colors';
 import { agentMentionGroups as projectAgentMentionGroups } from './agent-mention-groups';
 import { appApi, appHostCapabilities, appClientPlatform, appPlatformActions } from '../platform-api';
 import { windowState } from '../window-state';
+import { applyAgentSetup, exportWorkspaceSetup } from './right-workspace-setup';
 import { featureAgentIds, featureLabel } from '@workspace/core/feature-groups';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { orderAgentsLikeWorktreeSidebar } from '@workspace/core/workspace-sidebar';
@@ -2043,6 +2044,28 @@ const {
   workspaceFor: rightWorkspaceFor,
   workspaces: rightWorkspaces,
 } = rightWorkspaceState;
+// The panes a window opens with come from the window it was opened from (or from its last run); from then on they are its own.
+// Main keeps what each window reports, so a new window, a relaunch and a Browser moved here can all start from it.
+const stopFollowingSetup = windowState.onSetup((setup, mode) => {
+  for (const [agentId, pane] of Object.entries(setup)) {
+    if (props.snapshot.agents.some(agent => agent.id === agentId)) applyAgentSetup(rightWorkspaceState.workspaceFor(agentId), pane, mode);
+  }
+});
+onBeforeUnmount(stopFollowingSetup);
+const workspaceSetup = computed(() => exportWorkspaceSetup(rightWorkspaces));
+let reportedSetup = '{}';
+let reportSetupTimer: ReturnType<typeof setTimeout> | undefined;
+watch(workspaceSetup, (setup) => {
+  clearTimeout(reportSetupTimer);
+  reportSetupTimer = setTimeout(() => {
+    const key = JSON.stringify(setup);
+    if (key === reportedSetup) return;
+    reportedSetup = key;
+    void appApi?.setWindowSetup?.(JSON.parse(key)).catch(() => undefined);
+  }, 300);
+});
+onBeforeUnmount(() => clearTimeout(reportSetupTimer));
+
 
 const missionPreviewAgentId = ref<string | null>(null);
 const missionWorkspaceVisible = computed(() => {

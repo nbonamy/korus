@@ -1,4 +1,4 @@
-import { isEmptyComposerDraft, type ComposerDraft, type NativeOwnerEntry, type NativeResource, type WindowScope, type WindowViewState } from '@workspace/core/windows';
+import { isEmptyComposerDraft, type ComposerDraft, type NativeOwnerEntry, type NativeResource, type WindowScope, type WindowSetup, type WindowViewState } from '@workspace/core/windows';
 
 export type ManagedWindow = {
   readonly id: number;
@@ -10,6 +10,7 @@ type Entry<W extends ManagedWindow> = {
   window: W;
   ready: boolean;
   scope: WindowScope;
+  setup: WindowSetup | null;
   selectedAgentId: string | null;
   viewState: WindowViewState | null;
 };
@@ -32,7 +33,7 @@ export class WindowRegistry<W extends ManagedWindow> {
 
   add(window: W, viewState: WindowViewState | null = null): void {
     if (this.entryOf(window)) return;
-    this.entries.push({ window, ready: false, scope: viewState?.scope ?? 'workspace', selectedAgentId: viewState?.agentId ?? null, viewState });
+    this.entries.push({ window, ready: false, scope: viewState?.scope ?? 'workspace', setup: viewState?.setup ?? null, selectedAgentId: viewState?.agentId ?? null, viewState });
   }
 
   /** Forgets the window and returns the native views it owned. */
@@ -94,7 +95,19 @@ export class WindowRegistry<W extends ManagedWindow> {
   viewStateOf(window: W): WindowViewState | null {
     const entry = this.entryOf(window);
     if (!entry) return null;
-    return entry.selectedAgentId ? { ...entry.viewState, agentId: entry.selectedAgentId } : entry.viewState;
+    const { setup: _initialSetup, ...rest } = entry.viewState ?? {};
+    const state: WindowViewState = { ...rest, ...(entry.selectedAgentId ? { agentId: entry.selectedAgentId } : {}), ...(entry.setup && Object.keys(entry.setup).length ? { setup: entry.setup } : {}) };
+    return Object.keys(state).length ? state : null;
+  }
+
+  /** What the window last said it has open: its own, drifting from the setup it started with. */
+  setupOf(window: W): WindowSetup | null {
+    return this.entryOf(window)?.setup ?? null;
+  }
+
+  setSetup(window: W, setup: WindowSetup): void {
+    const entry = this.entryOf(window);
+    if (entry) entry.setup = setup;
   }
 
   scopeOf(window: W): WindowScope {

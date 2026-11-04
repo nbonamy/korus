@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { nextTick } from 'vue';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { windowState } from '../../window-state';
 import { agentDisplayName } from '@workspace/core/agent-display';
@@ -119,6 +120,39 @@ describe('AppShell in a window that shows less than the workspace', () => {
       windowState.teamId.value = team.id;
       windowState.branch.value = 'feat1';
       expect(titled(snapshot).title()).toBe(`Account settings · ${team.name}`);
+    });
+  });
+
+  describe('panes a window starts with', () => {
+    const startWindow = (snapshot: ReturnType<typeof createInitialSnapshot>, setup: Record<string, unknown>) => {
+      Object.assign(window.app!, { getWindowContext: vi.fn().mockResolvedValue({ windowId: 2, viewState: { setup }, nativeOwners: [], composerDrafts: {} }) });
+      return windowState.start({
+        api: () => window.app, agentExists: id => snapshot.agents.some(agent => agent.id === id),
+        showAgent: vi.fn(), teamExists: () => true, showTeam: vi.fn(), applyDraft: vi.fn(),
+      });
+    };
+
+    it('opens the tabs it was given and reports them back to main, so a relaunch and a new window can start from them', async () => {
+      vi.useFakeTimers();
+      try {
+        const snapshot = createInitialSnapshot();
+        const agentId = snapshot.agents[0]!.id;
+        const pane = { open: true, width: 520, activeTab: 'browser', tabs: ['review', 'browser'], browserUrl: 'https://example.com/' };
+        mountShell({ stubAgentWorkspace: true, snapshot });
+        await startWindow(snapshot, { [agentId]: pane, 'agent-gone': pane });
+        await nextTick();
+        vi.advanceTimersByTime(300);
+        expect(window.app!.setWindowSetup).toHaveBeenCalledExactlyOnceWith({ [agentId]: pane });
+      } finally { windowState.stop(); vi.useRealTimers(); }
+    });
+
+    it('reports nothing for a window that has nothing open', async () => {
+      vi.useFakeTimers();
+      try {
+        mountShell({ stubAgentWorkspace: true });
+        vi.advanceTimersByTime(1000);
+        expect(window.app!.setWindowSetup).not.toHaveBeenCalled();
+      } finally { vi.useRealTimers(); }
     });
   });
 

@@ -202,6 +202,7 @@ const api: AppApi = {
   reloadRenderer: () => ipc.invoke(ipcChannels.reloadRenderer),
   getWindowContext: () => ipc.invoke(ipcChannels.getWindowContext),
   openWindow: (viewState) => ipc.invoke(ipcChannels.openWindow, viewState),
+  setWindowSetup: (setup) => ipc.invoke(ipcChannels.setWindowSetup, setup),
   setWindowSelection: (agentId) => ipc.invoke(ipcChannels.setWindowSelection, agentId),
   claimNativeResource: (resource, agentId, takeOver) => ipc.invoke(ipcChannels.claimNativeResource, resource, agentId, takeOver),
   releaseNativeResource: (resource, agentId) => ipc.invoke(ipcChannels.releaseNativeResource, resource, agentId),
@@ -253,6 +254,7 @@ const api: AppApi = {
   },
   onNativeOwnersChanged: (listener) => ipc.on(ipcChannels.nativeOwnersChanged, listener),
   onComposerDraftChanged: (listener) => ipc.on(ipcChannels.composerDraftChanged, listener),
+  onWindowSetupApply: (listener) => ipc.on(ipcChannels.windowSetupApply, listener),
 };
 
 contextBridge.exposeInMainWorld('app', api);

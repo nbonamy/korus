@@ -26,6 +26,7 @@ export function createClientApiMock(
   const commands = channel<Parameters<Parameters<Api['onAppCommand']>[0]>[0]>();
   const updates = channel<Parameters<Parameters<Api['onUpdateStatusChanged']>[0]>[0]>();
   const nativeOwners = channel<Parameters<Parameters<Api['onNativeOwnersChanged']>[0]>[0]>();
+  const setups = channel<Parameters<Parameters<Api['onWindowSetupApply']>[0]>[0]>();
   const drafts = channel<Parameters<Parameters<Api['onComposerDraftChanged']>[0]>[0]>();
   // Enumerating the public interface makes new required AND optional methods a type error here.
   const api = {
@@ -226,6 +227,7 @@ export function createClientApiMock(
     getWindowContext: unscripted<'getWindowContext'>('getWindowContext'),
     openWindow: unscripted<'openWindow'>('openWindow'),
     setWindowSelection: unscripted<'setWindowSelection'>('setWindowSelection'),
+    setWindowSetup: unscripted<'setWindowSetup'>('setWindowSetup'),
     claimNativeResource: unscripted<'claimNativeResource'>('claimNativeResource'),
     releaseNativeResource: unscripted<'releaseNativeResource'>('releaseNativeResource'),
     syncComposerDraft: unscripted<'syncComposerDraft'>('syncComposerDraft'),
@@ -270,6 +272,7 @@ export function createClientApiMock(
     onUpdateStatusChanged: unscripted<'onUpdateStatusChanged'>('onUpdateStatusChanged'),
     onNativeOwnersChanged: unscripted<'onNativeOwnersChanged'>('onNativeOwnersChanged'),
     onComposerDraftChanged: unscripted<'onComposerDraftChanged'>('onComposerDraftChanged'),
+    onWindowSetupApply: unscripted<'onWindowSetupApply'>('onWindowSetupApply'),
   } satisfies ApiMocks;
 
   api.getSnapshot.mockImplementation(async () => structuredClone(snapshot));
@@ -282,6 +285,7 @@ export function createClientApiMock(
   api.onUpdateStatusChanged.mockImplementation(updates.subscribe);
   api.onNativeOwnersChanged.mockImplementation(nativeOwners.subscribe);
   api.onComposerDraftChanged.mockImplementation(drafts.subscribe);
+  api.onWindowSetupApply.mockImplementation(setups.subscribe);
 
   // Harmless reads have explicit values; writes and consequential operations must be scripted.
   api.listSshHosts.mockResolvedValue([]);
@@ -319,6 +323,7 @@ export function createClientApiMock(
   // A lone window: it owns every native view and has nothing to mirror.
   api.getWindowContext.mockResolvedValue({ windowId: 1, viewState: null, nativeOwners: [], composerDrafts: {} });
   api.setWindowSelection.mockResolvedValue(undefined);
+  api.setWindowSetup.mockResolvedValue(undefined);
   api.openWindow.mockResolvedValue(undefined);
   api.claimNativeResource.mockResolvedValue(true);
   api.releaseNativeResource.mockResolvedValue(undefined);
@@ -331,6 +336,7 @@ export function createClientApiMock(
     emitUpdateStatus: updates.emit,
     emitNativeOwners: nativeOwners.emit,
     emitComposerDraft: drafts.emit,
-    dispose() { events.clear(); commands.clear(); updates.clear(); nativeOwners.clear(); drafts.clear(); },
+    emitWindowSetup: setups.emit,
+    dispose() { events.clear(); commands.clear(); updates.clear(); nativeOwners.clear(); drafts.clear(); setups.clear(); },
   };
 }
