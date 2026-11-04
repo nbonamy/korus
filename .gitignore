@@ -52,3 +52,6 @@ server/backend/dist/
 /mobile/android/app/src/main/res/drawable/app_launcher_*.xml
 /mobile/android/app/src/main/res/mipmap-anydpi-v*/app_launcher.xml
 /mobile/android/app/google-services.json
+
+# Standalone terminal CLI package
+client/cli/dist/

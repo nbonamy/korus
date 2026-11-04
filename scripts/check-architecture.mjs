@@ -7,6 +7,7 @@ const root = process.cwd();
 const areas = [
   ["core/src", "core"],
   ["client/backend/src", "backend"],
+  ["client/cli/src", "cli"],
   ["client/electron/src/main", "electron-main"],
   ["client/electron/src/preload", "preload"],
   ["mobile/src", "mobile"],
@@ -358,8 +359,8 @@ function forbiddenImport(area, file, specifier) {
       return "core cannot use Node filesystem APIs";
     }
   }
-  if (area === "backend" && isPackage(specifier, "electron")) {
-    return "backend cannot depend on Electron";
+  if (["backend", "cli"].includes(area) && isPackage(specifier, "electron")) {
+    return `${area} cannot depend on Electron`;
   }
   if (
     area === "electron-main" &&

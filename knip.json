@@ -52,6 +52,12 @@
         "src/telemetry/__tests__/desktop-stack-workflow.ts"
       ]
     },
+    "client/cli": {
+      "entry": [
+        "src/main.ts",
+        "*.mjs"
+      ]
+    },
     "mobile": {
       "entry": [
         "src/relay-connector.ts",

@@ -821,6 +821,35 @@ Unlinked tools and dangling links fall back to full discovery, so a failed link
 only makes startup slower. A link is a cache: an engine moved by a version manager
 is picked up at the next reconnect.
 
+## Standalone CLI
+
+`client/cli` owns the standalone terminal diagnostics and control workspace, with
+its own package, build and tests. It can bundle reusable backend modules; imports
+must not require Electron or start the daemon at module load. `client/cli/build.mjs`
+emits a dependency-free installable package under `client/cli/dist` and rejects
+Electron or external runtime dependencies. Product metadata supplies the public
+package name; the internal workspace is `@workspace/cli`.
+The CLI uses the repository Node reference runtime rather than the desktop's private runtime.
+
+Doctor reads state envelopes without migrations or writes and bounds every process,
+socket and MCP probe. The MCP check uses a loopback GET without an agent identity;
+reachability does not establish provider tool-delivery correctness. Saved-state
+inspection is labelled separately from live state. Agent and Mission commands are
+read-only and can fall back to saved metadata without a running daemon.
+
+Triage selects the first installed, authenticated terminal client in the order
+Claude, Codex, Antigravity (`agy`), unless explicitly overridden. Bounded
+non-interactive login-status probes are used for Claude and Codex; Antigravity
+is checked through its model catalog. Account details and probe errors are
+discarded. Selection does not start model turns or read credential files.
+Triage runs the chosen external CLI with private context/playbook files. Support
+bundles contain redacted metadata by default; log excerpts require an explicit flag.
+Neither operation uploads data. Log following emits complete lines before redaction
+and tracks file replacement. Background service control is limited to an installed
+macOS LaunchAgent whose APP_HOME matches the selected installation, and requires
+confirmation. A missing socket can also mean a desktop-owned stdio backend;
+diagnostics never start or replace a daemon implicitly.
+
 ## Development
 
 Use the Node 26 reference toolchain for local development and verification.
