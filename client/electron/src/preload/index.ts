@@ -202,7 +202,6 @@ const api: AppApi = {
   reloadRenderer: () => ipc.invoke(ipcChannels.reloadRenderer),
   getWindowContext: () => ipc.invoke(ipcChannels.getWindowContext),
   openWindow: (viewState) => ipc.invoke(ipcChannels.openWindow, viewState),
-  setWindowScope: (scope) => ipc.invoke(ipcChannels.setWindowScope, scope),
   setWindowSelection: (agentId) => ipc.invoke(ipcChannels.setWindowSelection, agentId),
   claimNativeResource: (resource, agentId, takeOver) => ipc.invoke(ipcChannels.claimNativeResource, resource, agentId, takeOver),
   releaseNativeResource: (resource, agentId) => ipc.invoke(ipcChannels.releaseNativeResource, resource, agentId),

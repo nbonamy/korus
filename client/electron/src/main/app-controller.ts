@@ -19,9 +19,9 @@ import { realpath } from 'node:fs/promises';
 import { registerCodexNativeIpc, sendIpcEvent, TypedIpcMain } from '@codex-app-sdk/electron';
 import { AgentActivityPowerSaveBlocker } from './agent-activity-power-save-blocker';
 import { initializeMainLogging, installProcessErrorLogging, logMain, warnMain } from './log';
-import { createMainWindow, ensureWorkspaceWindowSize } from './main-window';
+import { createMainWindow } from './main-window';
 import { WindowRegistry } from './window-registry';
-import { isWindowViewState, type ComposerDraft, type NativeResource, type WindowContext, type WindowScope, type WindowViewState } from '@workspace/core/windows';
+import { isWindowViewState, type ComposerDraft, type NativeResource, type WindowContext, type WindowViewState } from '@workspace/core/windows';
 import { createRuntimeAppBackendClient, type AppBackendClientPort } from './backend-client';
 import { getDaemonStatus, refreshDaemon, setDaemonEnabled } from './daemon-launch-agent';
 import { ensureCurrentDaemonForStartup } from './daemon-startup-maintenance';
@@ -623,7 +623,6 @@ export class AppController {
     ipc.handle(ipcChannels.reloadRenderer, (event) => this.reloadRenderer(this.windowOf(event)));
     ipc.handle(ipcChannels.getWindowContext, (event) => this.getWindowContext(this.windowOf(event)));
     ipc.handle(ipcChannels.openWindow, (_event, viewState) => this.openWindowFromRenderer(viewState));
-    ipc.handle(ipcChannels.setWindowScope, (event, scope) => this.setWindowScope(this.windowOf(event), scope));
     ipc.handle(ipcChannels.setWindowSelection, (event, agentId) => {
       const window = this.windowOf(event);
       if (window) this.windows.setSelectedAgent(window, agentId);
@@ -823,14 +822,13 @@ export class AppController {
 
   private openWindowFromRenderer(viewState: unknown): void {
     if (!isWindowViewState(viewState)) return;
-    if (viewState.agentId && !this.snapshot?.agents.some(agent => agent.id === viewState.agentId)) return;
-    this.openWindow(viewState);
-  }
-
-  private setWindowScope(window: BrowserWindow | undefined, scope: WindowScope): void {
-    if (!window || (scope !== 'workspace' && scope !== 'agent')) return;
-    this.windows.setScope(window, scope);
-    if (scope === 'workspace') ensureWorkspaceWindowSize(window);
+    const snapshot = this.snapshot;
+    if (!snapshot) return;
+    if (viewState.agentId && !snapshot.agents.some(agent => agent.id === viewState.agentId)) return;
+    if (viewState.teamId && !snapshot.teams.some(team => team.id === viewState.teamId)) return;
+    const agentIds = viewState.agentIds?.filter(id => snapshot.agents.some(agent => agent.id === id));
+    if (viewState.agentIds && !agentIds?.length) return;
+    this.openWindow({ ...viewState, ...(agentIds ? { agentIds } : {}) });
   }
 
   /**

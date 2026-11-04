@@ -36,8 +36,8 @@ type AppShellCommandOptions = {
     currentAgent: () => Agent | null;
     canReplaceConversation?: () => boolean;
     isAgentWorkspaceVisible: () => boolean;
-    /** A window opened on one agent: no navigation between agents or teams. */
-    agentWindow?: () => boolean;
+    /** What this window shows; a window for one agent or feature has no navigation between agents, and any scoped window none between teams. */
+    windowScope?: () => import('@workspace/core/windows').WindowScope;
     isModalDialogVisible: () => boolean;
     showOnboardingGate: () => boolean;
     teams: () => Team[];
@@ -458,7 +458,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     }
 
     if (command.type === 'cycle-teams') {
-      if (!isAgentWorkspaceVisible.value || inAgentWindow()) {
+      if (!isAgentWorkspaceVisible.value || inScopedWindow()) {
         return;
       }
       cycleTeams();
@@ -481,7 +481,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     }
 
     if (command.type === 'new-team') {
-      if (inAgentWindow()) return;
+      if (inScopedWindow()) return;
       options.actions.newTeam();
       return;
     }
@@ -511,7 +511,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     }
 
     if (command.type === 'close-active-team') {
-      if (!isAgentWorkspaceVisible.value || inAgentWindow()) {
+      if (!isAgentWorkspaceVisible.value || inScopedWindow()) {
         return;
       }
       void closeActiveTeam();
@@ -613,8 +613,14 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     options.actions.duplicateAgent(agent.id);
   }
 
+  // Windows about one agent or feature have no way to move to another agent, and scoped windows none between teams.
   function inAgentWindow(): boolean {
-    return options.state.agentWindow?.() === true;
+    const scope = options.state.windowScope?.();
+    return scope === 'agent' || scope === 'feature';
+  }
+
+  function inScopedWindow(): boolean {
+    return (options.state.windowScope?.() ?? 'workspace') !== 'workspace';
   }
 
   function closeActiveAgent(event?: KeyboardEvent): void {

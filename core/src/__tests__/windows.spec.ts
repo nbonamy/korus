@@ -7,9 +7,15 @@ describe('window view state', () => {
     { agentId: 'agent-1' },
     { scope: 'workspace' },
     { agentId: 'agent-1', scope: 'agent' },
+    { teamId: 'team-1', scope: 'team' },
+    { agentIds: ['agent-1', 'agent-2'], scope: 'feature' },
   ])('accepts %j', (value) => expect(isWindowViewState(value)).toBe(true));
 
-  it.each([null, 'agent', [], { agentId: 1 }, { scope: 'team' }, { scope: 'agent' }])('rejects %j', (value) => {
+  it.each([
+    null, 'agent', [], { agentId: 1 }, { teamId: 3 }, { scope: 'bogus' },
+    { scope: 'agent' }, { scope: 'team' }, { scope: 'feature' }, { scope: 'feature', agentIds: [] },
+    { scope: 'feature', agentIds: [1] }, { scope: 'feature', agentIds: Array.from({ length: 17 }, (_, index) => `agent-${index}`) },
+  ])('rejects %j', (value) => {
     expect(isWindowViewState(value)).toBe(false);
   });
 });

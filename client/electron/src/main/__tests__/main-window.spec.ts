@@ -6,7 +6,6 @@ vi.mock('electron', () => ({ app: { getAppPath: () => '/app' }, nativeTheme: { s
 import {
   cascadedBounds,
   createMainWindowOptions,
-  ensureWorkspaceWindowSize,
   handleExternalWindowOpen,
   isWindowBoundsVisible,
   parseWindowState,
@@ -168,16 +167,5 @@ describe('agent windows', () => {
   it('open smaller than the workspace and may shrink further', () => {
     expect(createMainWindowOptions(false, undefined, 'darwin', false, true)).toMatchObject({ width: 1000, height: 880, minWidth: 640, minHeight: 560 });
     expect(createMainWindowOptions(false, undefined, 'darwin', false)).toMatchObject({ width: 1440, height: 960, minWidth: 1024, minHeight: 800 });
-  });
-
-  it('get the workspace minimum size and room for the sidebar when they grow into a workspace', () => {
-    const window = { getSize: () => [900, 700], setMinimumSize: vi.fn(), setSize: vi.fn() };
-    ensureWorkspaceWindowSize(window as never);
-    expect(window.setMinimumSize).toHaveBeenCalledWith(1024, 800);
-    expect(window.setSize).toHaveBeenCalledWith(1024, 800);
-    window.setSize.mockClear();
-    window.getSize = () => [1500, 1000];
-    ensureWorkspaceWindowSize(window as never);
-    expect(window.setSize).not.toHaveBeenCalled();
   });
 });

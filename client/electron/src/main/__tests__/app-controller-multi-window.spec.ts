@@ -5,13 +5,13 @@ import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { ipcChannels } from '@workspace/core/ipc';
 import type { ComposerDraft } from '@workspace/core/windows';
 
-const host = vi.hoisted(() => ({ createWindow: vi.fn(), installMenu: vi.fn(), ensureSize: vi.fn() }));
+const host = vi.hoisted(() => ({ createWindow: vi.fn(), installMenu: vi.fn() }));
 vi.mock('electron', () => ({
   app: { isPackaged: false, isReady: () => true, getAppPath: () => '/app' },
   powerMonitor: { isOnBatteryPower: () => false, on: vi.fn(), removeListener: vi.fn() },
   nativeTheme: { themeSource: 'system' },
 }));
-vi.mock('../main-window', () => ({ createMainWindow: host.createWindow, ensureWorkspaceWindowSize: host.ensureSize }));
+vi.mock('../main-window', () => ({ createMainWindow: host.createWindow }));
 vi.mock('../app-menu', () => ({ installAppMenu: host.installMenu }));
 import { AppController } from '../app-controller';
 import { addTestWindow, createBackendClient, emitBackendEvent } from './app-controller-test-harness';
@@ -55,7 +55,6 @@ type Private = {
   openWindow(viewState?: unknown): unknown;
   openNewWindow(): void;
   openWindowFromRenderer(viewState: unknown): void;
-  setWindowScope(window: unknown, scope: string): void;
   showWorkspace(): void;
   handleWindowClosed(window: unknown): void;
   updateMenuOptions(): { newWindow(): void };
@@ -268,6 +267,26 @@ describe('AppController with several windows', () => {
       expect(internals(controller).getWindowContext(created[1])).toMatchObject({ viewState: { agentId: 'agent-dina' } });
     });
 
+    it('opens team and feature windows full size, only on teams and agents that exist', () => {
+      const { controller, created } = openedWindows();
+      internals(controller).openWindow();
+      const snapshot = (controller as unknown as { snapshot: { teams: Array<{ id: string }>; agents: Array<{ id: string }> } }).snapshot;
+      const teamId = snapshot.teams[0]!.id;
+      const [first, second] = snapshot.agents.map(agent => agent.id);
+
+      internals(controller).openWindowFromRenderer({ teamId, scope: 'team' });
+      expect(host.createWindow).toHaveBeenLastCalledWith(expect.not.objectContaining({ compact: true }));
+      expect(internals(controller).getWindowContext(created[1])).toMatchObject({ viewState: { teamId, scope: 'team' } });
+
+      internals(controller).openWindowFromRenderer({ agentIds: [first, 'agent-gone', second], agentId: first, scope: 'feature' });
+      expect(internals(controller).getWindowContext(created[2])).toMatchObject({ viewState: { agentIds: [first, second], scope: 'feature' } });
+
+      host.createWindow.mockClear();
+      internals(controller).openWindowFromRenderer({ teamId: 'team-gone', scope: 'team' });
+      internals(controller).openWindowFromRenderer({ agentIds: ['agent-gone'], scope: 'feature' });
+      expect(host.createWindow).not.toHaveBeenCalled();
+    });
+
     it('opens an agent window compact, on a known agent only', () => {
       const { controller, created } = openedWindows();
       internals(controller).openWindow();
@@ -302,16 +321,6 @@ describe('AppController with several windows', () => {
       controller.openDeepLink(`${product.protocolScheme}://new?prompt=hi`);
       expect(sentChannels(created[0]!, ipcChannels.appCommand)).toHaveLength(1);
       expect(sentChannels(created[1]!, ipcChannels.appCommand)).toHaveLength(0);
-    });
-
-    it('turns an agent window into a workspace window with room for the sidebar', () => {
-      const { controller, created } = openedWindows();
-      internals(controller).openWindow({ agentId: 'agent-dina', scope: 'agent' });
-      internals(controller).setWindowScope(created[0], 'workspace');
-      expect(host.ensureSize).toHaveBeenCalledWith(created[0]);
-      expect(internals(controller).getWindowContext(created[0])).toMatchObject({ viewState: { agentId: 'agent-dina' } });
-      expect(internals(controller).getWindowContext(created[0]).viewState).not.toHaveProperty('scope');
-      internals(controller).setWindowScope(created[0], 'bogus');
     });
 
     it('keeps one window when asked to create the main window again, and loads each window on its own', () => {

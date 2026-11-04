@@ -13,6 +13,9 @@ export type WindowStateHost = {
   /** Selects an agent in this window only. */
   showAgent(agentId: string): void;
   agentExists(agentId: string): boolean;
+  /** Selects a team in this window only. */
+  showTeam(teamId: string): void;
+  teamExists(teamId: string): boolean;
   /** Puts a draft that was edited in another window into this window's composer. */
   applyDraft(agentId: string, draft: ComposerDraft | null): void;
 };
@@ -20,8 +23,13 @@ export type WindowStateHost = {
 export function createWindowState() {
   const windowId = ref<number | null>(null);
   const nativeOwners = ref<NativeOwnerEntry[]>([]);
-  /** 'agent' windows show one agent without the sidebar, rail or any other surface. */
   const scope = ref<WindowScope>('workspace');
+  /** The team a team window is about; it stays selected whatever the other windows do. */
+  const teamId = ref<string | null>(null);
+  /** The agent an agent window is about. */
+  const agentId = ref<string | null>(null);
+  /** The agents of a feature window. */
+  const agentIds = ref<string[]>([]);
   let unsubscribe: Array<() => void> = [];
   let reportedAgentId: string | null | undefined;
   // Main learns this window's selection only after the initial view state was applied, or it would overwrite it.
@@ -36,7 +44,11 @@ export function createWindowState() {
     windowId.value = context.windowId;
     nativeOwners.value = context.nativeOwners;
     scope.value = context.viewState?.scope ?? 'workspace';
+    teamId.value = scope.value === 'team' ? context.viewState?.teamId ?? null : null;
+    agentId.value = scope.value === 'agent' ? context.viewState?.agentId ?? null : null;
+    agentIds.value = scope.value === 'feature' ? context.viewState?.agentIds?.filter(host.agentExists) ?? [] : [];
     for (const [agentId, draft] of Object.entries(context.composerDrafts)) host.applyDraft(agentId, draft);
+    if (teamId.value && host.teamExists(teamId.value)) host.showTeam(teamId.value);
     const initialAgentId = context.viewState?.agentId;
     if (initialAgentId && host.agentExists(initialAgentId)) host.showAgent(initialAgentId);
     reportedAgentId = undefined;
@@ -60,19 +72,13 @@ export function createWindowState() {
     void api.setWindowSelection(agentId).catch(() => undefined);
   }
 
-  /** Widens or narrows this window; main resizes it and treats it as a workspace from then on. */
-  function setScope(api: AppApi | undefined, next: WindowScope): void {
-    scope.value = next;
-    void api?.setWindowScope?.(next)?.catch(() => undefined);
-  }
-
   /** True while no other window holds the agent's native view. */
   function ownsNative(resource: NativeResource, agentId: string): boolean {
     const owner = nativeOwners.value.find((entry) => entry.resource === resource && entry.agentId === agentId);
     return !owner || owner.windowId === windowId.value;
   }
 
-  return { windowId, nativeOwners, scope, setScope, start, stop, reportSelection, ownsNative };
+  return { windowId, nativeOwners, scope, teamId, agentId, agentIds, start, stop, reportSelection, ownsNative };
 }
 
 export const windowState = createWindowState();

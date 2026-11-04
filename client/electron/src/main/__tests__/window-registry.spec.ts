@@ -63,21 +63,19 @@ describe('WindowRegistry', () => {
     const registry = new WindowRegistry<FakeWindow>();
     const workspace = new FakeWindow(1);
     const agent = new FakeWindow(2);
+    const team = new FakeWindow(3);
     registry.add(workspace);
     registry.add(agent, { agentId: 'agent-a', scope: 'agent' });
+    registry.add(team, { teamId: 'team-a', scope: 'team' });
     expect(registry.scopeOf(agent)).toBe('agent');
+    expect(registry.scopeOf(team)).toBe('team');
     expect(registry.viewStateOf(agent)).toEqual({ agentId: 'agent-a', scope: 'agent' });
     expect(registry.focusedWorkspace()).toBe(workspace);
 
     agent.focused = true;
     expect(registry.focusedWorkspace()).toBe(workspace);
 
-    registry.setScope(agent, 'workspace');
-    expect(registry.viewStateOf(agent)).toEqual({ agentId: 'agent-a' });
-    expect(registry.focusedWorkspace()).toBe(agent);
-
     workspace.destroyed = true;
-    agent.destroyed = true;
     expect(registry.focusedWorkspace()).toBeUndefined();
   });
 

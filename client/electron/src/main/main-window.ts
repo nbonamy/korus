@@ -32,12 +32,6 @@ export type WindowPlacement = {
   compact?: boolean;
 };
 
-/** Gives a window that grew from one agent to the whole workspace the room the sidebar needs. */
-export function ensureWorkspaceWindowSize(window: Pick<BrowserWindow, 'getSize' | 'setMinimumSize' | 'setSize'>): void {
-  window.setMinimumSize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT);
-  const [width, height] = window.getSize();
-  if (width! < MIN_WINDOW_WIDTH || height! < MIN_WINDOW_HEIGHT) window.setSize(Math.max(width!, MIN_WINDOW_WIDTH), Math.max(height!, MIN_WINDOW_HEIGHT));
-}
 
 const CASCADE_OFFSET = 28;
 

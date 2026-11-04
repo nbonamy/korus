@@ -65,6 +65,7 @@ export type AgentSidebarEvents = {
   'delete-mission': [id: string];
   'create-agent-in-mission-worktree': [payload: { missionId: string; worktreePath: string }];
   'open-feature': [agentIds: string[]];
+  'open-feature-window': [agentIds: string[]];
   'rename-feature': [feature: { branch: string; label: string }];
   'delete-feature': [feature: { branch: string; label: string }];
   'delete-repository': [agentId: string];

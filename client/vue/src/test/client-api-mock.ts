@@ -225,7 +225,6 @@ export function createClientApiMock(
     reloadRenderer: unscripted<'reloadRenderer'>('reloadRenderer'),
     getWindowContext: unscripted<'getWindowContext'>('getWindowContext'),
     openWindow: unscripted<'openWindow'>('openWindow'),
-    setWindowScope: unscripted<'setWindowScope'>('setWindowScope'),
     setWindowSelection: unscripted<'setWindowSelection'>('setWindowSelection'),
     claimNativeResource: unscripted<'claimNativeResource'>('claimNativeResource'),
     releaseNativeResource: unscripted<'releaseNativeResource'>('releaseNativeResource'),
@@ -320,7 +319,6 @@ export function createClientApiMock(
   // A lone window: it owns every native view and has nothing to mirror.
   api.getWindowContext.mockResolvedValue({ windowId: 1, viewState: null, nativeOwners: [], composerDrafts: {} });
   api.setWindowSelection.mockResolvedValue(undefined);
-  api.setWindowScope.mockResolvedValue(undefined);
   api.openWindow.mockResolvedValue(undefined);
   api.claimNativeResource.mockResolvedValue(true);
   api.releaseNativeResource.mockResolvedValue(undefined);

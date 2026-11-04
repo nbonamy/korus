@@ -1210,6 +1210,7 @@ export const surfaceMessages = {
   },
   "teamContextMenu": {
     "teamActions": "Team actions",
+    "openInNewWindow": "Open in New Window",
     "editTeam": "Edit Team",
     "disconnect": "Disconnect",
     "deleteTeam": "Delete Team",

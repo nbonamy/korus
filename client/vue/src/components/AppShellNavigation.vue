@@ -1,5 +1,6 @@
 <template>
   <TeamRail
+    v-if="!hideTeamRail"
     :teams="snapshot.teams"
     :unread-team-ids="unreadTeamIds"
     :working-team-ids="workingTeamIds"
@@ -20,6 +21,7 @@
     @close-team="$emit('close-team', $event)"
     @edit-team="openEditTeam"
     @new-team="openNewTeam"
+    @open-team-window="$emit('open-team-window', $event)"
     @open-settings="openSettings"
     @open-analytics="emit('open-settings', 'usage')"
     @open-whats-new="openWhatsNew"
@@ -48,6 +50,7 @@
       :phone-scope="phoneScope"
       @create-mission="$emit('create-mission')"
       @open-feature="$emit('open-feature', $event)"
+      @open-feature-window="$emit('open-feature-window', $event)"
       @rename-feature="$emit('rename-feature', $event)"
       @delete-feature="$emit('delete-feature', $event)"
       @delete-repository="$emit('delete-repository', $event)"
@@ -138,6 +141,7 @@ const props = defineProps<{
   missionCreationError?: string;
   missionCreationPending?: boolean;
   phoneScope?: boolean;
+  hideTeamRail?: boolean;
   activeTeam: Team | null;
   activeTeamAgents: Agent[];
   activeTeamName: string;
@@ -178,6 +182,8 @@ const emit = defineEmits<{
   'delete-mission': [id: string];
   'create-agent-in-mission-worktree': [payload: { missionId: string; worktreePath: string }];
   'open-feature': [agentIds: string[]];
+  'open-feature-window': [agentIds: string[]];
+  'open-team-window': [teamId: string];
   'rename-feature': [feature: { branch: string; label: string }];
   'delete-feature': [feature: { branch: string; label: string }];
   'delete-repository': [agentId: string];

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import AgentContextMenu from '../AgentContextMenu.vue';
 import { ViewportShortIcon } from '../../shared/icons/app-icons';
 import type { Team } from '@workspace/core/contracts';
+import { setElectronTestClient } from '../../test/client';
 
 let mountedWrappers: ReturnType<typeof mount>[] = [];
 
@@ -20,6 +21,18 @@ describe('AgentContextMenu', () => {
     expect(wrapper.findAll('[role="menuitem"]').map(item => item.text())).toStrictEqual(['Leave']);
     await wrapper.get('[role="menuitem"]').trigger('click');
     expect(wrapper.emitted('action')).toStrictEqual([['close-agent']]);
+  });
+  it('offers to open the agent in a new window when the host can', async () => {
+    setElectronTestClient({ openWindow: vi.fn() });
+    try {
+      const wrapper = mountMenu();
+      const item = wrapper.findAll('[role="menuitem"]').find(entry => entry.text() === 'Open in New Window');
+      expect(item).toBeDefined();
+      await item!.trigger('click');
+      expect(wrapper.emitted('action')).toStrictEqual([['open-agent-window']]);
+    } finally {
+      setElectronTestClient(undefined);
+    }
   });
   it('renders grouped agent actions at the requested position', () => {
     const wrapper = mountMenu();

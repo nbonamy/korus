@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import TeamContextMenu from '../TeamContextMenu.vue';
 import type { Team } from '@workspace/core/contracts';
+import { setElectronTestClient } from '../../test/client';
 
 const team: Team = {
   id: 'team-app',
@@ -33,6 +34,18 @@ describe('TeamContextMenu', () => {
       'Edit Team',
       'Close Team',
     ]);
+  });
+
+  it('offers to open the team in a new window when the host can', async () => {
+    setElectronTestClient({ openWindow: vi.fn() });
+    try {
+      const wrapper = mountMenu();
+      expect(wrapper.findAll('[role="menuitem"]').map((item) => item.text())).toStrictEqual(['Open in New Window', 'Edit Team', 'Close Team']);
+      await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Open in New Window')?.trigger('click');
+      expect(wrapper.emitted('open-team-window')).toStrictEqual([['team-app']]);
+    } finally {
+      setElectronTestClient(undefined);
+    }
   });
 
   it('emits edit requests for the selected team', async () => {

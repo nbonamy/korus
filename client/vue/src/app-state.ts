@@ -630,6 +630,7 @@ export function useAppState() {
       if (activeAgentId && state.snapshot.agents.some((agent) => agent.id === activeAgentId)) {
         selectAgentInSnapshot(state.snapshot, activeAgentId);
       }
+      pinWindowTeam(state.snapshot);
       threadFlagState.project(state.snapshot);
       snapshot.value = state.snapshot;
       pruneUnreadAgentIds();
@@ -2447,6 +2448,7 @@ function adoptBackgroundSnapshot(nextSnapshot: AppSnapshot): void {
   if (activeAgentId && nextSnapshot.agents.some((agent) => agent.id === activeAgentId)) {
     selectAgentInSnapshot(nextSnapshot, activeAgentId);
   }
+  pinWindowTeam(nextSnapshot);
   if (nextSnapshot.activeAgentId !== activeAgentId) {
     adoptNavigationSnapshot(nextSnapshot);
     if (nextSnapshot.activeAgentId) void loadActiveAgentCatalogs(nextSnapshot.activeAgentId);
@@ -2456,6 +2458,12 @@ function adoptBackgroundSnapshot(nextSnapshot: AppSnapshot): void {
   snapshot.value = nextSnapshot;
   pruneUnreadAgentIds();
   pruneConversationFrames();
+}
+
+// A team window keeps its team even when its team has no agent to select and another window navigates elsewhere.
+function pinWindowTeam(next: AppSnapshot): void {
+  const teamId = windowState.teamId.value;
+  if (teamId && next.activeTeamId !== teamId && next.teams.some((team) => team.id === teamId)) selectTeamInSnapshot(next, teamId);
 }
 
 function adoptNavigationSnapshot(nextSnapshot: AppSnapshot): void {
@@ -2611,6 +2619,8 @@ async function startWindowState(): Promise<void> {
       api: () => appApi,
       agentExists: (agentId) => snapshot.value.agents.some((agent) => agent.id === agentId),
       showAgent: (agentId) => { snapshot.value = selectAgentInSnapshot(snapshot.value, agentId); },
+      teamExists: (teamId) => snapshot.value.teams.some((team) => team.id === teamId),
+      showTeam: (teamId) => { snapshot.value = selectTeamInSnapshot(snapshot.value, teamId); },
       applyDraft: applySharedComposerDraft,
     });
     windowState.reportSelection(appApi, snapshot.value.activeAgentId);

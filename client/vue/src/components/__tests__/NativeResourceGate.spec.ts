@@ -19,7 +19,7 @@ async function mountGate(overrides: Partial<AppApi> = {}, owners: Array<{ resour
     ...overrides,
   } satisfies Partial<AppApi>;
   setElectronTestClient(api);
-  await windowState.start({ api: () => window.app, agentExists: () => true, showAgent: vi.fn(), applyDraft: vi.fn() });
+  await windowState.start({ api: () => window.app, agentExists: () => true, showAgent: vi.fn(), teamExists: () => true, showTeam: vi.fn(), applyDraft: vi.fn() });
   const wrapper = mount(NativeResourceGate, { props: { resource: 'browser', agentId: 'agent-1' }, slots: { default: View } });
   await flushPromises();
   return { api, wrapper, changeOwners: async (entries: typeof owners) => { changeOwners(entries); await flushPromises(); } };

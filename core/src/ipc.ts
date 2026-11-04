@@ -201,7 +201,6 @@ export const ipcChannels = {
   reloadRenderer: 'app:renderer:reload',
   getWindowContext: 'window:context:get',
   openWindow: 'window:open',
-  setWindowScope: 'window:scope:set',
   setWindowSelection: 'window:selection:set',
   claimNativeResource: 'window:native-resource:claim',
   releaseNativeResource: 'window:native-resource:release',

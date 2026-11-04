@@ -9,18 +9,31 @@ import type { CodexPromptPart } from '@codex-app-sdk/core/surface';
  */
 export type WindowViewState = {
   agentId?: string;
-  /** What the window shows: the whole workspace (default), or one agent without the navigation around it. */
+  teamId?: string;
+  /** The agents of a feature, shown together. */
+  agentIds?: string[];
   scope?: WindowScope;
 };
 
-export type WindowScope = 'workspace' | 'agent';
+/**
+ * What a window shows. `workspace` is everything. `team` is one team with its sidebar but no rail.
+ * `agent` is a single agent and `feature` the agents of one feature, both with no navigation around them.
+ */
+export type WindowScope = 'workspace' | 'team' | 'agent' | 'feature';
+
+const maxFeatureWindowAgents = 16;
 
 export function isWindowViewState(value: unknown): value is WindowViewState {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const { agentId, scope } = value as { agentId?: unknown; scope?: unknown };
+  const { agentId, teamId, agentIds, scope } = value as { agentId?: unknown; teamId?: unknown; agentIds?: unknown; scope?: unknown };
   if (agentId !== undefined && typeof agentId !== 'string') return false;
-  if (scope !== undefined && scope !== 'workspace' && scope !== 'agent') return false;
-  return scope !== 'agent' || typeof agentId === 'string';
+  if (teamId !== undefined && typeof teamId !== 'string') return false;
+  if (agentIds !== undefined && (!Array.isArray(agentIds) || agentIds.length > maxFeatureWindowAgents || agentIds.some(id => typeof id !== 'string'))) return false;
+  if (scope !== undefined && scope !== 'workspace' && scope !== 'team' && scope !== 'agent' && scope !== 'feature') return false;
+  if (scope === 'agent') return typeof agentId === 'string';
+  if (scope === 'team') return typeof teamId === 'string';
+  if (scope === 'feature') return Array.isArray(agentIds) && agentIds.length > 0;
+  return true;
 }
 
 /** Native views that exist once per agent: only the owning window mounts them. */

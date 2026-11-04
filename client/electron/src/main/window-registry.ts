@@ -94,18 +94,11 @@ export class WindowRegistry<W extends ManagedWindow> {
   viewStateOf(window: W): WindowViewState | null {
     const entry = this.entryOf(window);
     if (!entry) return null;
-    const { scope: _initialScope, ...rest } = entry.viewState ?? {};
-    const state: WindowViewState = { ...rest, ...(entry.selectedAgentId ? { agentId: entry.selectedAgentId } : {}), ...(entry.scope === 'workspace' ? {} : { scope: entry.scope }) };
-    return Object.keys(state).length ? state : null;
+    return entry.selectedAgentId ? { ...entry.viewState, agentId: entry.selectedAgentId } : entry.viewState;
   }
 
   scopeOf(window: W): WindowScope {
     return this.entryOf(window)?.scope ?? 'workspace';
-  }
-
-  setScope(window: W, scope: WindowScope): void {
-    const entry = this.entryOf(window);
-    if (entry) entry.scope = scope;
   }
 
   /** The window that shows the whole workspace: the focused one, else the one last focused. */

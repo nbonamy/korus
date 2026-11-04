@@ -1,7 +1,7 @@
 <template>
   <main
     class="app-shell"
-    :class="{ 'app-shell--auth-gated': showOnboardingGate }"
+    :class="{ 'app-shell--auth-gated': showOnboardingGate, 'app-shell--no-rail': hideTeamRail }"
     @contextmenu.capture="conversationFileActions.capture"
   >
     <AppContextMenu
@@ -62,7 +62,7 @@
       @login="startChatGptLogin"
     />
     <div
-      v-if="!agentWindow"
+      v-if="!chromeless"
       class="app-shell__nav"
       :class="{ 'app-shell__nav--compact': compactViewport, 'app-shell__nav--open': compactNavOpen }"
     >
@@ -72,6 +72,7 @@
       :mission-creation-error="missionCreationError"
       :mission-creation-pending="missionCreationPending"
       :phone-scope="compactViewport"
+      :hide-team-rail="hideTeamRail"
       @create-mission="createNewMission"
       @delete-mission="deleteMissionFromSidebar"
       @create-agent-in-mission-worktree="createAgentInMissionWorktree"
@@ -115,6 +116,8 @@
       @create-quick-chat="createQuickChat"
       @duplicate-agent="$emit('duplicate-agent', $event)"
       @open-agent-window="openAgentWindow"
+      @open-team-window="openTeamWindow"
+      @open-feature-window="openFeatureWindow"
       @edit-agent="openEditAgent"
       @edit-team="openEditTeam"
       @fork-agent="$emit('fork-agent', $event)"
@@ -145,7 +148,7 @@
     />
     </div>
     <div
-      v-if="!agentWindow && compactViewport && compactNavOpen"
+      v-if="!chromeless && compactViewport && compactNavOpen"
       class="app-shell__nav-backdrop"
       aria-hidden="true"
       @click="compactNavOpen = false"
@@ -271,7 +274,7 @@
         :add-visualization-annotation="addFocusedVisualizationAnnotation"
         :add-code-annotation="addFocusedCodeAnnotation"
         :agent-files="agentFiles"
-        :agent-sidebar-collapsed="agentSidebarCollapsed || compactViewport || agentWindow"
+        :agent-sidebar-collapsed="agentSidebarCollapsed || compactViewport"
         :close-right-workspace-tab="closeRightWorkspaceTab"
         :save-document-as="saveDocumentAs"
         :commit-agent-git-changes="props.commitAgentGitChanges"
@@ -1170,10 +1173,16 @@ provide(diffVizSettingsKey, () => props.snapshot.general);
 provideBacklogConnections(() => props.snapshot.workBacklog.connections);
 const backendSwitch = provideBackendSwitch((id, backend) => props.updateAgent({ id, selection: { backend } }));
 const agentSidebarCollapsed = ref(false);
-const agentWindow = computed(() => windowState.scope.value === 'agent');
-function openAgentWindow(agentId: string): void {
-  void appApi?.openWindow?.({ agentId, scope: 'agent' }).catch((error) => ElMessage.error(localizedErrorMessage(error, t)));
+// A window can show less than the whole workspace: one team without the rail, or one agent or feature without any navigation.
+const windowScope = computed(() => windowState.scope.value);
+const chromeless = computed(() => windowScope.value === 'agent' || windowScope.value === 'feature');
+const hideTeamRail = computed(() => windowScope.value !== 'workspace');
+function openInNewWindow(viewState: import('@workspace/core/windows').WindowViewState): void {
+  void appApi?.openWindow?.(viewState).catch((error) => ElMessage.error(localizedErrorMessage(error, t)));
 }
+const openAgentWindow = (agentId: string): void => openInNewWindow({ agentId, scope: 'agent' });
+const openTeamWindow = (teamId: string): void => openInNewWindow({ teamId, scope: 'team' });
+const openFeatureWindow = (agentIds: string[]): void => openInNewWindow({ agentIds, agentId: agentIds[0], scope: 'feature' });
 const compactViewport = useCompactViewport();
 const compactNavOpen = ref(false);
 function collapseSidebar(): void {
@@ -1181,9 +1190,7 @@ function collapseSidebar(): void {
   else agentSidebarCollapsed.value = true;
 }
 function expandSidebar(): void {
-  // In a window that shows one agent, the control that would reveal the sidebar brings the whole workspace back.
-  if (agentWindow.value) windowState.setScope(appApi, 'workspace');
-  else if (compactViewport.value) compactNavOpen.value = true;
+  if (compactViewport.value) compactNavOpen.value = true;
   else agentSidebarCollapsed.value = false;
 }
 const pendingReviewClarification = ref<PendingReviewClarification | null>(null);
@@ -1389,6 +1396,17 @@ function openFeatureAgents(agentIds: string[]): void {
   selectedMissionId.value = null;
   split.openAgents(agentIds);
 }
+// A feature window starts with its agents side by side.
+watch(() => windowState.agentIds.value, (agentIds) => { if (agentIds.length) openFeatureAgents(agentIds); });
+// A window about a team, an agent or a feature closes with it.
+watch(() => [windowScope.value, windowState.teamId.value, props.snapshot.teams, props.snapshot.agents] as const, ([scope, teamId, teams, agents]) => {
+  if (!windowState.windowId.value || scope === 'workspace' || agents.length === 0) return;
+  const exists = (id: string | null) => agents.some((agent) => agent.id === id);
+  const gone = scope === 'team' ? !teams.some((team) => team.id === teamId)
+    : scope === 'agent' ? !exists(windowState.agentId.value)
+      : !windowState.agentIds.value.some(exists);
+  if (gone) window.close();
+});
 function deleteMissionFromSidebar(id: string): void {
   if (!props.snapshot.missions?.some(candidate => candidate.id === id)) return;
   missionDeleteTargetId.value = id;
@@ -1900,6 +1918,7 @@ const split = useSplitWorkspace({
   currentAgentId: () => cockpitScope.value && activeSurface.value === 'mission' ? undefined : currentAgent.value?.id,
   teamId: () => cockpitScope.value ? 'surface:cockpit' : activeTeam.value?.id,
   selectAgent: id => emit('select-agent', id),
+  persist: () => windowScope.value !== 'feature',
 });
 // Compact screens display one conversation without changing the saved team layout.
 const splitLayout = computed(() => compactViewport.value ? 'single' : split.layout.value);
@@ -2787,7 +2806,7 @@ const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
     currentAgent: () => hasFocusedConversation.value ? currentAgent.value : null,
     canReplaceConversation: () => Boolean(currentAgent.value && summaryReplacementAgentIds.value.includes(currentAgent.value.id)),
     isAgentWorkspaceVisible: () => isAgentWorkspaceVisible.value,
-    agentWindow: () => agentWindow.value,
+    windowScope: () => windowScope.value,
     isModalDialogVisible: () => isModalDialogVisible.value,
     showOnboardingGate: () => showOnboardingGate.value,
     teams: () => props.snapshot.teams,
@@ -3709,6 +3728,12 @@ watch(() => props.fileActivity, (activity) => {
 
 .app-shell__nav {
   display: contents;
+}
+
+/* Without the rail, nothing keeps the macOS window controls clear of the first row of content. */
+html[data-platform='macos'] .app-shell--no-rail :deep(.workspace-header),
+html[data-platform='macos'] .app-shell--no-rail :deep(.agent-sidebar__header) {
+  padding-left: calc(var(--team-rail-width) + var(--space-8));
 }
 
 .app-shell__compact-bar {
