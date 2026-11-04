@@ -16,7 +16,7 @@ vi.mock('electron', () => ({
   powerMonitor: { isOnBatteryPower: () => false, on: vi.fn(), removeListener: vi.fn() },
   nativeTheme: { themeSource: 'system' },
 }));
-vi.mock('../main-window', () => ({ createMainWindow: host.createWindow }));
+vi.mock('../main-window', async importOriginal => ({ ...await importOriginal<typeof import('../main-window')>(), createMainWindow: host.createWindow }));
 vi.mock('../app-menu', () => ({ installAppMenu: host.installMenu }));
 import { AppController } from '../app-controller';
 import { addTestWindow, createBackendClient, emitBackendEvent } from './app-controller-test-harness';
@@ -308,6 +308,7 @@ describe('AppController with several windows', () => {
       const mission = createMission(snapshot, { outcome: 'Ship billing', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
       const viewState = { scope: 'mission', missionId: mission.id, teamId: mission.teamId };
       internals(controller).openWindowFromRenderer(viewState);
+      expect(host.createWindow).toHaveBeenLastCalledWith(expect.objectContaining({ minimumSize: { width: 640, height: 560 } }));
       expect(internals(controller).getWindowContext(created[0])).toMatchObject({ viewState });
       host.createWindow.mockClear();
       internals(controller).openWindowFromRenderer({ ...viewState, missionId: 'missing' });

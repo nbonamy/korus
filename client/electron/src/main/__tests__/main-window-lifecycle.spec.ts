@@ -182,13 +182,13 @@ describe('main window lifecycle', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('opens a further window beside its source instead of restoring the saved frame', () => {
+  it('opens a further window beside its source with its requested minimum size', () => {
     const file = path.join(host.userData, 'window-state.json');
     writeFileSync(file, JSON.stringify({ bounds: { x: 10, y: 20, width: 1400, height: 900 }, isMaximized: true }));
-    const window = createMainWindow({ cascadeFrom: { x: 100, y: 80, width: 1280, height: 800 } }) as unknown as {
+    const window = createMainWindow({ cascadeFrom: { x: 100, y: 80, width: 1280, height: 800 }, minimumSize: { width: 640, height: 560 } }) as unknown as {
       options: Record<string, unknown>; maximize: ReturnType<typeof vi.fn>; emit(name: string): void;
     };
-    expect(window.options).toMatchObject({ x: 128, y: 108, width: 1280, height: 800 });
+    expect(window.options).toMatchObject({ x: 128, y: 108, width: 1280, height: 800, minWidth: 640, minHeight: 560 });
     window.emit('ready-to-show');
     expect(window.maximize).not.toHaveBeenCalled();
   });

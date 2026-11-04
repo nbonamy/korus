@@ -14,7 +14,7 @@ const MIN_WINDOW_HEIGHT = 800;
 const MIN_WINDOW_WIDTH = 1024;
 /** A window that shows one agent needs no sidebar, so it can be much smaller. */
 const COMPACT_WINDOW_SIZE = { width: 1000, height: 880 };
-const COMPACT_MIN_SIZE = { width: 640, height: 560 };
+export const COMPACT_MIN_SIZE = { width: 640, height: 560 };
 
 type MainWindowState = {
   bounds: Rectangle;
@@ -22,6 +22,7 @@ type MainWindowState = {
 };
 
 export type WindowPlacement = {
+  minimumSize?: Pick<Rectangle, 'width' | 'height'>;
   /** Bounds of the window this one is opened from; the new window is offset from them. */
   cascadeFrom?: Rectangle;
   /** A window that shows a single agent: smaller, and never the one whose frame is restored. */
@@ -55,7 +56,7 @@ export function createMainWindow(placement: WindowPlacement = {}): BrowserWindow
   const restoredState = frame ?? (savedState && isWindowBoundsVisible(savedState.bounds, workAreas) ? savedState : undefined);
   const cascaded = placement.cascadeFrom ? cascadedBounds(placement.cascadeFrom, workAreas) : undefined;
   const bounds = frame?.bounds ?? (compact && cascaded ? { ...cascaded, ...COMPACT_WINDOW_SIZE } : cascaded ?? restoredState?.bounds);
-  const window = new BrowserWindow(createMainWindowOptions(releaseMode, bounds, process.platform, nativeTheme.shouldUseDarkColors, compact));
+  const window = new BrowserWindow(createMainWindowOptions(releaseMode, bounds, process.platform, nativeTheme.shouldUseDarkColors, compact, placement.minimumSize));
   const updateBackground = (): void => {
     window.setBackgroundColor(mainWindowBackground(process.platform, nativeTheme.shouldUseDarkColors));
   };
@@ -165,6 +166,7 @@ export function createMainWindowOptions(
   platform = process.platform,
   dark = nativeTheme.shouldUseDarkColors,
   compact = false,
+  minimumSize?: WindowPlacement['minimumSize'],
 ): BrowserWindowConstructorOptions {
   const macOSWindowOptions: BrowserWindowConstructorOptions = platform === 'darwin'
     ? {
@@ -184,8 +186,8 @@ export function createMainWindowOptions(
     width: bounds?.width ?? (compact ? COMPACT_WINDOW_SIZE.width : 1440),
     height: bounds?.height ?? (compact ? COMPACT_WINDOW_SIZE.height : 960),
     ...(bounds ? { x: bounds.x, y: bounds.y } : {}),
-    minWidth: compact ? COMPACT_MIN_SIZE.width : MIN_WINDOW_WIDTH,
-    minHeight: compact ? COMPACT_MIN_SIZE.height : MIN_WINDOW_HEIGHT,
+    minWidth: minimumSize?.width ?? (compact ? COMPACT_MIN_SIZE.width : MIN_WINDOW_WIDTH),
+    minHeight: minimumSize?.height ?? (compact ? COMPACT_MIN_SIZE.height : MIN_WINDOW_HEIGHT),
     ...macOSWindowOptions,
     show: false,
     title: product.name,

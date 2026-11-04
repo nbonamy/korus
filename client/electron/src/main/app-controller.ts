@@ -19,7 +19,7 @@ import { realpath } from 'node:fs/promises';
 import { registerCodexNativeIpc, sendIpcEvent, TypedIpcMain } from '@codex-app-sdk/electron';
 import { AgentActivityPowerSaveBlocker } from './agent-activity-power-save-blocker';
 import { initializeMainLogging, installProcessErrorLogging, logMain, warnMain } from './log';
-import { createMainWindow } from './main-window';
+import { COMPACT_MIN_SIZE, createMainWindow } from './main-window';
 import { featureAgentIds } from '@workspace/core/feature-groups';
 import { WindowRegistry } from './window-registry';
 import { readWindowLayout, restorableWindows, writeWindowLayout, type WindowFrame, type WindowLayout } from './window-layout';
@@ -896,6 +896,7 @@ export class AppController {
     const window = createMainWindow({
       ...(frame ? { frame } : origin ? { cascadeFrom: origin.getNormalBounds() } : {}),
       ...(viewState?.scope === 'agent' ? { compact: true } : {}),
+      ...(viewState?.scope === 'mission' ? { minimumSize: COMPACT_MIN_SIZE } : {}),
     });
     this.windows.add(window, viewState);
     logMain('window', 'created main window');
