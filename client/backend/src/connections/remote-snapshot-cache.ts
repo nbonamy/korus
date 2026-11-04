@@ -3,6 +3,7 @@ import { mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { AppSnapshot } from '@workspace/core/contracts';
 import { decodeAppSnapshot } from '@workspace/core/snapshot-guards';
+import { UnchangedWrites } from '../persistence/unchanged-writes';
 import type { RemoteSnapshotCache } from './remote-team-service';
 
 const writeDelayMs = 500;
@@ -10,6 +11,7 @@ const writeDelayMs = 500;
 /** Remote agents of the last session, kept in one private file next to the roster. */
 export function createFileRemoteSnapshotCache(file: string): RemoteSnapshotCache & { flush: () => Promise<void> } {
   const entries = new Map<string, AppSnapshot>();
+  const written = new UnchangedWrites();
   let loaded = false;
   let timer: NodeJS.Timeout | undefined;
   let writing: Promise<void> = Promise.resolve();
@@ -18,7 +20,9 @@ export function createFileRemoteSnapshotCache(file: string): RemoteSnapshotCache
     if (!loaded) {
       loaded = true;
       try {
-        const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
+        const text = readFileSync(file, 'utf8');
+        written.remember(file, text);
+        const parsed: unknown = JSON.parse(text);
         const stored = parsed && typeof parsed === 'object' ? (parsed as { snapshots?: unknown }).snapshots : undefined;
         for (const [connectionId, value] of Object.entries(stored && typeof stored === 'object' ? stored : {})) {
           const decoded = decodeAppSnapshot(value);
@@ -34,9 +38,11 @@ export function createFileRemoteSnapshotCache(file: string): RemoteSnapshotCache
   async function write(): Promise<void> {
     const temporary = `${file}.${process.pid}.tmp`;
     try {
-      await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
-      await writeFile(temporary, JSON.stringify({ version: 1, snapshots: Object.fromEntries(entries) }), { encoding: 'utf8', mode: 0o600 });
-      await rename(temporary, file);
+      await written.writeIfChanged(file, JSON.stringify({ version: 1, snapshots: Object.fromEntries(entries) }), async (target, content) => {
+        await mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
+        await writeFile(temporary, content, { encoding: 'utf8', mode: 0o600 });
+        await rename(temporary, target);
+      });
     } catch {
       await unlink(temporary).catch(() => undefined);
     }

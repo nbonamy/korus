@@ -403,6 +403,44 @@ describe('state persistence', () => {
     expect(reloaded.agents.some(candidate => candidate.id === agent.id)).toBe(false);
   });
 
+  describe('Design undo and redo history', () => {
+    const content = { title: 'Launch', css: '', comments: [], artboards: [{ id: 'desktop', title: 'Desktop', width: 960, height: 640, root: { id: 'root', tag: 'main', children: [{ id: 'heading', tag: 'h1', text: 'Hello' }] } }] };
+    const workspace = () => ({
+      conversationRef: null, isOpen: true, selectedArtboardId: null, selectedNodeId: null,
+      document: { id: 'design-1', revision: 3, content },
+      undo: [content, content], redo: [content], checkpoints: [{ id: 'checkpoint-1', title: 'Saved', revision: 2, content }],
+    });
+    it('stays in memory: saving keeps the live history but writes none of it', () => {
+      const snapshot = createInitialSnapshot();
+      snapshot.agents[0]!.designWorkspace = workspace();
+      const persisted = persistedStateFromSnapshot(snapshot).agents[0]!.designWorkspace!;
+      expect(persisted.undo).toEqual([]);
+      expect(persisted).not.toHaveProperty('redo');
+      expect(persisted.document).toStrictEqual(snapshot.agents[0]!.designWorkspace.document);
+      expect(persisted.checkpoints).toHaveLength(1);
+      expect(snapshot.agents[0]!.designWorkspace.undo).toHaveLength(2);
+      expect(snapshot.agents[0]!.designWorkspace.redo).toHaveLength(1);
+    });
+    it('is dropped from files saved by earlier versions, which are rewritten without it', async () => {
+      const home = await tempHome();
+      const snapshot = createInitialSnapshot();
+      snapshot.agents[0]!.designWorkspace = workspace();
+      const store = new AppStateStore(home);
+      await store.save(snapshot);
+      const roster = path.join(home, 'roster.json');
+      const legacy = JSON.parse(await readFile(roster, 'utf8'));
+      Object.assign(legacy.data.agents[0].designWorkspace, { undo: [content, content], redo: [content] });
+      await writeFile(roster, JSON.stringify(legacy));
+      const reloadedStore = new AppStateStore(home);
+      const reloaded = await reloadedStore.load();
+      expect(reloaded.agents[0]!.designWorkspace).toMatchObject({ undo: [], document: { revision: 3 } });
+      expect(reloaded.agents[0]!.designWorkspace).not.toHaveProperty('redo');
+      await reloadedStore.save(reloaded);
+      expect(await readFile(roster, 'utf8')).not.toContain('"redo"');
+      expect(JSON.parse(await readFile(roster, 'utf8')).data.agents[0].designWorkspace.undo).toEqual([]);
+    });
+  });
+
   it('migrates a persisted Design session to Visualize state', () => {
     const snapshot = createInitialSnapshot();
     const persisted = structuredClone(persistedStateFromSnapshot(snapshot)) as unknown as { agents: Array<Record<string, unknown>> };
