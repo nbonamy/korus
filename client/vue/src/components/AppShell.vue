@@ -1,7 +1,7 @@
 <template>
   <main
     class="app-shell"
-    :class="{ 'app-shell--auth-gated': showOnboardingGate, 'app-shell--no-rail': hideTeamRail, 'app-shell--chromeless': chromeless }"
+    :class="{ 'app-shell--auth-gated': showOnboardingGate, 'app-shell--no-rail': hideTeamRail, 'app-shell--chromeless': chromeless, 'app-shell--sidebar-collapsed': agentSidebarCollapsed }"
     @contextmenu.capture="conversationFileActions.capture"
   >
     <AppContextMenu
@@ -3730,14 +3730,12 @@ watch(() => props.fileActivity, (activity) => {
   display: contents;
 }
 
-/* Without the rail, nothing keeps the macOS window controls clear of the first row of content. */
-html[data-platform='macos'] .app-shell--no-rail :deep(.workspace-header),
-html[data-platform='macos'] .app-shell--no-rail :deep(.agent-sidebar__header) {
-  padding-left: calc(var(--team-rail-width) + var(--space-8));
-}
-
-/* A window for one agent or feature has only its header up there, so it gets more room, and only in the leftmost pane. */
-html[data-platform='macos'] .app-shell--chromeless :deep(.workspace-header) {
+/* Without the rail, nothing keeps the macOS window controls clear of the first row of content: the sidebar header of a team
+   window, the header of a window for one agent or feature (only in its leftmost pane), or the header of a team window whose
+   sidebar is collapsed. */
+html[data-platform='macos'] .app-shell--no-rail :deep(.agent-sidebar__header),
+html[data-platform='macos'] .app-shell--chromeless :deep(.workspace-header),
+html[data-platform='macos'] .app-shell--no-rail.app-shell--sidebar-collapsed :deep(.workspace-header) {
   padding-left: calc(var(--team-rail-width) + var(--space-16));
 }
 
