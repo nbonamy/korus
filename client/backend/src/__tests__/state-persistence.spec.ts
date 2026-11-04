@@ -410,7 +410,7 @@ describe('state persistence', () => {
       document: { id: 'design-1', revision: 3, content },
       undo: [content, content], redo: [content], checkpoints: [{ id: 'checkpoint-1', title: 'Saved', revision: 2, content }],
     });
-    it('stays in memory: saving keeps the live history but writes none of it', () => {
+    it('never writes history carried by an older workspace', () => {
       const snapshot = createInitialSnapshot();
       snapshot.agents[0]!.designWorkspace = workspace();
       const persisted = persistedStateFromSnapshot(snapshot).agents[0]!.designWorkspace!;
@@ -419,7 +419,7 @@ describe('state persistence', () => {
       expect(persisted.document).toStrictEqual(snapshot.agents[0]!.designWorkspace.document);
       expect(persisted.checkpoints).toHaveLength(1);
       expect(snapshot.agents[0]!.designWorkspace.undo).toHaveLength(2);
-      expect(snapshot.agents[0]!.designWorkspace.redo).toHaveLength(1);
+      expect((snapshot.agents[0]!.designWorkspace as { redo?: unknown[] }).redo).toHaveLength(1);
     });
     it('is dropped from files saved by earlier versions, which are rewritten without it', async () => {
       const home = await tempHome();

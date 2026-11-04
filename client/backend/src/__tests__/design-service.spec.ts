@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
-import { designNodes, type DesignContent, type DesignEdit, type DesignRequest, type DesignWorkspace } from '@workspace/core/design';
+import { designNodes, type DesignContent, type DesignEdit, type DesignRequest } from '@workspace/core/design';
 import { AppStateStore } from '../persistence/store';
 import { DesignService } from '../design-service';
 
@@ -16,8 +16,6 @@ const content: DesignContent = {
     ],
   } }],
 };
-// Undo and redo history lives in memory only; a reload keeps everything else.
-const withoutHistory = ({ redo: _redo, ...workspace }: DesignWorkspace): DesignWorkspace => ({ ...workspace, undo: [] });
 let directory: string | undefined;
 afterEach(async () => { if (directory) await rm(directory, { recursive: true, force: true }); directory = undefined; });
 
@@ -72,7 +70,7 @@ it('preserves generated tweaks, manual content and recovery across agent edits a
   const removed = (await run({ type: 'read' })).workspace;
   expect(removed.document!.content.tweaks!.some(tweak => tweak.nodeId === 'heading')).toBe(false);
   expect(removed.document!.content.artboards[0].root.styles).toMatchObject({ '--spacing': '40px' });
-  await run({ type: 'undo', expectedRevision: removed.document!.revision });
+  await run({ type: 'replace', expectedRevision: removed.document!.revision, content: copy });
   expect((await run({ type: 'read' })).workspace.document!.content).toStrictEqual(copy);
   await edit([{ type: 'tweak-remove', tweakId: 'accent' }]);
   expect(designNodes((await run({ type: 'read' })).workspace.document!.content).find(node => node.id === 'heading')!.styles!.color).toBe('#336699');
@@ -109,16 +107,16 @@ it('persists prototype actions and maintains their targets through copy, removal
   expect(copy.root.children![2].interaction).toStrictEqual({ type: 'show', nodeId: copy.root.children![3].id });
   await edit([{ type: 'remove', nodeId: 'extra' }]);
   expect(designNodes((await run({ type: 'read' })).workspace.document!.content).find(node => node.id === 'show')!.interaction).toBeUndefined();
+  const withBoard = (await run({ type: 'read' })).workspace.document!.content;
   await edit([{ type: 'artboard-remove', artboardId: 'detail' }]);
   const removedBoard = (await run({ type: 'read' })).workspace;
-  await run({ type: 'undo', expectedRevision: removedBoard.document!.revision });
+  await run({ type: 'replace', expectedRevision: removedBoard.document!.revision, content: withBoard });
   expect(designNodes((await run({ type: 'read' })).workspace.document!.content).find(node => node.id === 'cta')!.interaction).toStrictEqual({ type: 'navigate', artboardId: 'detail' });
-  await run({ type: 'redo', expectedRevision: removedBoard.document!.revision + 1 });
+  await run({ type: 'replace', expectedRevision: removedBoard.document!.revision + 1, content: removedBoard.document!.content });
   snapshot = await store.load();
   service = new DesignService({ snapshot, persist: () => store.save(snapshot), publish: () => undefined });
   const saved = (await run({ type: 'read' })).workspace;
   expect(designNodes(saved.document!.content).find(node => node.id === 'cta')!.interaction).toBeUndefined();
-  await expect(run({ type: 'undo', expectedRevision: saved.document!.revision })).rejects.toThrow('Nothing to undo');
   await edit([{ type: 'interaction', nodeId: 'cta', interaction: null }]);
   expect(designNodes((await store.load()).agents[0].designWorkspace!.document!.content).find(node => node.id === 'cta')!.interaction).toBeUndefined();
 });
@@ -172,12 +170,13 @@ it('edits layers without losing manual content, linked targets or recovery acros
     await expect(edit([{ type: 'text', nodeId: copiedHeading.id, text: 'Must roll back' }, invalid])).rejects.toThrow();
     expect((await run({ type: 'read' })).workspace).toStrictEqual(beforeInvalid);
   }
+  const withDetails = (await run({ type: 'read' })).workspace.document!.content;
   await edit([{ type: 'remove', nodeId: 'details' }]);
   const removedDetails = (await run({ type: 'read' })).workspace;
-  await run({ type: 'undo', expectedRevision: removedDetails.document!.revision });
+  await run({ type: 'replace', expectedRevision: removedDetails.document!.revision, content: withDetails });
   const restored = (await run({ type: 'read' })).workspace;
   expect(designNodes(restored.document!.content).find(node => node.id === 'toggle')!.toggleTargetId).toBe('details');
-  await run({ type: 'redo', expectedRevision: restored.document!.revision });
+  await run({ type: 'replace', expectedRevision: restored.document!.revision, content: removedDetails.document!.content });
   snapshot = await store.load();
   service = new DesignService({ snapshot, persist: () => store.save(snapshot), publish: () => undefined });
   const saved = (await run({ type: 'read' })).workspace;
@@ -189,7 +188,6 @@ it('edits layers without losing manual content, linked targets or recovery acros
   expect(nodes.find(node => node.id === 'toggle')!.toggleTargetId).toBeUndefined();
   expect(nodes.find(node => node.id === copiedToggle.id)!.toggleTargetId).toBe(copiedDetails.id);
   expect(saved.document!.content.comments[0].nodeId).toBe('heading');
-  await expect(run({ type: 'undo', expectedRevision: saved.document!.revision })).rejects.toThrow('Nothing to undo');
   expect((await store.load()).agents[0].designWorkspace!.document!.content).toStrictEqual(saved.document!.content);
 });
 
@@ -227,7 +225,6 @@ it('preserves user changes through agent edits, reload, undo, checkpoint recover
     { id: 'cta', tag: 'button', text: 'Explore' },
   ]);
   expect(saved.document!.content.comments).toMatchObject([{ nodeId: 'heading', text: 'Keep this headline', revision: 3 }]);
-  await expect(run({ type: 'undo', expectedRevision: 4 })).rejects.toThrow('Nothing to undo');
   await run({ type: 'edit', expectedRevision: 4, edits: [{ type: 'text', nodeId: 'cta', text: 'Another version' }] });
   await run({ type: 'restore', expectedRevision: 5, checkpointId: checkpoint.id });
   const exported = await run({ type: 'export' });
@@ -238,7 +235,7 @@ it('preserves user changes through agent edits, reload, undo, checkpoint recover
   expect(exported.handoff).toContain('Keep this headline');
   expect(exported.html).not.toContain('Another version');
   await writeFile(path.join(directory, 'acceptance.html'), exported.html!);
-  expect((await store.load()).agents[0].designWorkspace).toStrictEqual(withoutHistory(exported.workspace));
+  expect((await store.load()).agents[0].designWorkspace).toStrictEqual(exported.workspace);
   await expect(run({ type: 'create', content })).rejects.toThrow('already');
   delete reloaded.agents[0].backendSession;
   await expect(run({ type: 'read' })).resolves.toMatchObject({ workspace: { document: { revision: 6 } } });
@@ -332,12 +329,14 @@ it('branches independent artboards, retains legacy metadata and recovers explora
   expect(saved.artboards[1].position).toStrictEqual({ x: 240, y: -160 });
   expect(saved.artboards[1].root.children![0].text).toBe('Different direction');
   await run({ type: 'select', artboardId: copy.id, nodeId: heading.id });
+  const withCopy = (await run({ type: 'read' })).workspace.document!.content;
   await edit([{ type: 'artboard-remove', artboardId: copy.id }]);
+  const withoutCopy = (await run({ type: 'read' })).workspace.document!.content;
   expect((await run({ type: 'read' })).workspace.selectedArtboardId).toBe('desktop');
-  await run({ type: 'undo', expectedRevision: revision + 1 });
+  await run({ type: 'replace', expectedRevision: revision + 1, content: withCopy });
   expect((await run({ type: 'read' })).workspace.document!.content.artboards).toHaveLength(3);
   expect((await run({ type: 'read' })).workspace.document!.content.artboards[1].position).toStrictEqual({ x: 240, y: -160 });
-  await run({ type: 'redo', expectedRevision: revision + 2 });
+  await run({ type: 'replace', expectedRevision: revision + 2, content: withoutCopy });
   expect((await run({ type: 'read' })).workspace.document!.content.artboards).toHaveLength(2);
   await edit([{ type: 'artboard-remove', artboardId: 'third' }]);
   await expect(edit([{ type: 'artboard-remove', artboardId: 'desktop' }])).rejects.toThrow('last artboard');
@@ -346,5 +345,25 @@ it('branches independent artboards, retains legacy metadata and recovers explora
   expect(exported.html).not.toContain('Different direction');
   expect(exported.handoff).toContain('Editorial hierarchy');
   expect(exported.handoff).not.toContain('Chosen direction:');
-  expect((await store.load()).agents[0].designWorkspace).toStrictEqual(withoutHistory(exported.workspace));
+  expect((await store.load()).agents[0].designWorkspace).toStrictEqual(exported.workspace);
+});
+
+// The client owns undo and redo; the daemon only accepts the earlier content it is handed.
+it('replaces content at the expected revision, rejects stale or invalid content and never keeps history', async () => {
+  directory = await mkdtemp(path.join(os.tmpdir(), 'design-replace-'));
+  const store = new AppStateStore(directory);
+  const snapshot = createInitialSnapshot();
+  const agentId = snapshot.agents[0].id;
+  const service = new DesignService({ snapshot, persist: () => store.save(snapshot), publish: () => undefined });
+  const run = (request: DesignRequest) => service.execute(agentId, request);
+  await run({ type: 'open' });
+  await run({ type: 'create', content });
+  await run({ type: 'edit', expectedRevision: 1, edits: [{ type: 'text', nodeId: 'heading', text: 'Second' }] });
+  const replaced = await run({ type: 'replace', expectedRevision: 2, content });
+  expect(replaced.workspace.document).toMatchObject({ revision: 3, content });
+  expect(replaced.workspace.undo).toEqual([]);
+  expect(replaced.workspace).not.toHaveProperty('redo');
+  await expect(run({ type: 'replace', expectedRevision: 2, content })).rejects.toThrow('Stale design revision');
+  await expect(run({ type: 'replace', expectedRevision: 3, content: { ...content, artboards: [] } })).rejects.toThrow('Invalid design content');
+  expect((await run({ type: 'read' })).workspace.document!.revision).toBe(3);
 });

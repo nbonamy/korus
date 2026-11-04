@@ -15,8 +15,8 @@
         <div class="design-panel__canvas-shell">
           <DesignTools :artboards="current.document.content.artboards" :selected-artboard-id="canvas?.activeArtboardId ?? board?.id ?? null" :locked="locked" :interacting="interacting" :play="play" :pan="pan" :inspector-visible="inspectorVisible" :zoom="canvas?.zoom ?? 1" :zoom-choice="zoomChoice" @focus="focusBoard" @pan="changePan" @play="togglePlay" @inspector="inspectorVisible = !inspectorVisible" @zoom="changeZoom">
             <template #actions>
-              <button class="app-icon-button" type="button" :aria-label="t('design.undo')" :title="t('design.undo')" :disabled="locked || !current.undo.length" @click="historyAction('undo')"><UndoIcon /></button>
-              <button class="app-icon-button" type="button" :aria-label="t('design.redo')" :title="t('design.redo')" :disabled="locked || !current.redo?.length" @click="historyAction('redo')"><RedoIcon /></button>
+              <button class="app-icon-button" type="button" :aria-label="t('design.undo')" :title="t('design.undo')" :disabled="locked || !history.canUndo.value" @click="historyAction('undo')"><UndoIcon /></button>
+              <button class="app-icon-button" type="button" :aria-label="t('design.redo')" :title="t('design.redo')" :disabled="locked || !history.canRedo.value" @click="historyAction('redo')"><RedoIcon /></button>
               <span class="design-panel__toolbar-divider" />
               <AppMenuButton v-if="current.document" v-model:open="historyVisible" :items="historyItems" :ariaLabel="t('design.history')" :width="280" placement="bottom-start" @select="historyAction">
                 <template #trigger="{ attrs }"><button v-bind="attrs" class="app-icon-button" type="button" :aria-label="t('design.history')" :title="`${t('design.history')} · ${t('design.revision', { revision })}`"><HistoryIcon /></button></template>
@@ -116,7 +116,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, toRaw, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import DesignReviewBar from './DesignReviewBar.vue';
 import DesignCode from './DesignCode.vue';
@@ -138,9 +138,17 @@ import DesignTools from './DesignTools.vue';
 import DesignTweaks from './DesignTweaks.vue';
 import DesignLayers from './DesignLayers.vue';
 import type { DesignCanvasChange } from './design-frame';
+import { createDesignHistory } from './design-history';
 
 const props = defineProps<{ agentId: string; workspace: DesignWorkspace; execute: (request: DesignRequest) => Promise<DesignResult> }>();
 const current = ref(props.workspace);
+// Undo and redo are the client's: the daemon only ever receives the content to restore.
+const history = createDesignHistory(props.agentId);
+const savedDocument = () => {
+  const document = current.value.document;
+  return document ? { id: document.id, revision: document.revision, content: toRaw(document.content) } : null;
+};
+watch(() => current.value.document, () => history.observe(savedDocument()), { immediate: true, flush: 'sync' });
 const inspectorVisible = ref(!!props.workspace.selectedNodeId);
 const inspectorWidth = ref(280);
 const body = ref<HTMLElement>();
@@ -395,7 +403,7 @@ async function checkpoint() {
   if (await mutate({ type: 'checkpoint', expectedRevision: revision.value, title: checkpointTitle.value })) { checkpointTitle.value = ''; historyVisible.value = false; }
 }
 async function historyAction(action: string) {
-  if (action === 'undo' || action === 'redo') await mutate({ type: action, expectedRevision: revision.value });
+  if (action === 'undo' || action === 'redo') await history.step(action, async content => await mutate({ type: 'replace', expectedRevision: revision.value, content }) && savedDocument());
   else if (action.startsWith('restore:')) await mutate({ type: 'restore', expectedRevision: revision.value, checkpointId: action.slice(8) });
 }
 function exportSelection(action: string) { void download(action === 'selected' ? canvas.value?.activeArtboardId ?? board.value?.id : undefined); }

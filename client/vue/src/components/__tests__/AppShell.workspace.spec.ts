@@ -1660,3 +1660,23 @@ describe('AppShell workspace and plans', () => {
     expect(wrapper.get('.plan-review-footer').findAll('button').every(b => b.attributes('disabled') !== undefined)).toBe(true);
   });
 });
+
+it('clears Design undo history of removed agents, including ones removed while the app was closed', async () => {
+  const entry = { documentId: 'design-a', revision: 2, undo: [], redo: [] };
+  const snapshot = createInitialSnapshot();
+  const [kept, removed] = [snapshot.agents[0]!, snapshot.agents[1]!];
+  window.localStorage.setItem(`design-history:${kept.id}`, JSON.stringify(entry));
+  window.localStorage.setItem(`design-history:${removed.id}`, JSON.stringify(entry));
+  window.localStorage.setItem('design-history:gone-while-closed', JSON.stringify(entry));
+  const wrapper = mountShell({ snapshot }); await flushPromises();
+  try {
+    expect(window.localStorage.getItem('design-history:gone-while-closed')).toBeNull();
+    expect(window.localStorage.getItem(`design-history:${kept.id}`)).not.toBeNull();
+    window.localStorage.setItem('design-history:added-later', JSON.stringify(entry));
+    await wrapper.setProps({ snapshot: { ...snapshot, agents: snapshot.agents.filter(agent => agent.id !== removed.id) } }); await flushPromises();
+    expect(window.localStorage.getItem(`design-history:${removed.id}`)).toBeNull();
+    expect(window.localStorage.getItem(`design-history:${kept.id}`)).not.toBeNull();
+    // Only a removal clears an entry; later sweeps are not needed.
+    expect(window.localStorage.getItem('design-history:added-later')).not.toBeNull();
+  } finally { wrapper.unmount(); for (const key of Object.keys(window.localStorage)) if (key.startsWith('design-history:')) window.localStorage.removeItem(key); }
+});

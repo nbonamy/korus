@@ -349,3 +349,30 @@ it('returns rejected coding handoffs to review and confirms the latest saved dir
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   } finally { wrapper.unmount(); }
 });
+
+it('undoes and redoes from the client\'s own history, including agent edits, by sending content to the daemon', async () => {
+  localStorage.clear();
+  const first = editableWorkspace();
+  const second: DesignWorkspace = { ...first, document: { ...first.document!, revision: 2, content: { ...first.document!.content, title: 'Agent edit' } } };
+  const execute = vi.fn(async (request: DesignRequest): Promise<DesignResult> => {
+    if (request.type !== 'replace') throw new Error(`Unexpected ${request.type}`);
+    return { workspace: { ...first, document: { ...first.document!, revision: request.expectedRevision + 1, content: request.content } } };
+  });
+  const wrapper = mount(DesignPanel, { attachTo: document.body, props: { agentId: 'designer', workspace: first, execute }, global: { plugins: [ElementPlus] } });
+  const undo = () => wrapper.get('button[aria-label="Undo"]');
+  const redo = () => wrapper.get('button[aria-label="Redo"]');
+  try {
+    expect(undo().attributes('disabled')).toBeDefined();
+    await wrapper.setProps({ workspace: second }); // an edit made by the agent
+    expect(undo().attributes('disabled')).toBeUndefined();
+    await undo().trigger('click');
+    await flushPromises();
+    expect(execute).toHaveBeenLastCalledWith({ type: 'replace', expectedRevision: 2, content: first.document!.content });
+    expect(undo().attributes('disabled')).toBeDefined();
+    expect(redo().attributes('disabled')).toBeUndefined();
+    await redo().trigger('click');
+    await flushPromises();
+    expect(execute).toHaveBeenLastCalledWith({ type: 'replace', expectedRevision: 3, content: second.document!.content });
+    expect(JSON.parse(localStorage.getItem('design-history:designer')!)).toMatchObject({ documentId: 'design-a', revision: 4, redo: [] });
+  } finally { wrapper.unmount(); localStorage.clear(); }
+});

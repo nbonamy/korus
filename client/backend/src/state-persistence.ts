@@ -132,11 +132,11 @@ export function persistedStateFromSnapshot(snapshot: AppSnapshot): FullPersisted
 }
 
 /**
- * Undo and redo history lives in memory only: it is ten times the size of the design it protects, and checkpoints
- * cover recovery across restarts. The empty `undo` keeps the file readable by versions that require it.
+ * Undo and redo history belongs to the client and is never stored here. Files and snapshots from earlier versions
+ * carried it, so it is dropped on load. The empty `undo` keeps the file readable by versions that require it.
  * TODO(remove-after: 2026-11-30): Stop stripping undo and redo from loaded files. https://github.com/nbonamy/korus/issues/74
  */
-function persistedDesignWorkspace({ redo: _redo, ...workspace }: DesignWorkspace): DesignWorkspace {
+function persistedDesignWorkspace({ redo: _redo, ...workspace }: DesignWorkspace & { redo?: unknown }): DesignWorkspace {
   return { ...workspace, undo: [] };
 }
 
