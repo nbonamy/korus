@@ -678,6 +678,7 @@ import { agentMentionGroups as projectAgentMentionGroups } from './agent-mention
 import { appApi, appHostCapabilities, appClientPlatform, appPlatformActions } from '../platform-api';
 import { windowState } from '../window-state';
 import { featureAgentIds } from '@workspace/core/feature-groups';
+import { orderAgentsLikeWorktreeSidebar } from '@workspace/core/workspace-sidebar';
 import { codeReviewSettingsKey, useCodeReviewSettings } from './code-review-settings';
 import { diffVizSettingsKey } from './diff-viz-settings';
 import AgentDialog from './AgentDialog.vue';
@@ -2805,7 +2806,7 @@ const navigation = ref<InstanceType<typeof AppShellNavigation> | null>(null);
 const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
   state: {
     activeTeam: () => activeTeam.value,
-    activeTeamAgents: () => featureWindow.value ? activeTeamAgents.value.filter(agent => featureAgents.value.includes(agent.id)) : activeTeamAgents.value,
+    activeTeamAgents: () => featureWindow.value ? orderAgentsLikeWorktreeSidebar(activeTeamAgents.value, featureAgents.value) : activeTeamAgents.value,
     quickSwitchAgentIds: () => navigation.value?.quickSwitchAgentIds ?? activeTeamAgents.value.map(agent => agent.id),
     agents: () => props.snapshot.agents,
     attachmentsEnabled: () => props.backendCapabilities.attachments,

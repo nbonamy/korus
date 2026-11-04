@@ -48,6 +48,26 @@ describe('AppShell in a window that shows less than the workspace', () => {
       expect(wrapper.text()).not.toMatch(/Quick chat|New mission|Add project/);
     });
 
+    it('lists its agents in the order the team’s own sidebar does', () => {
+      const snapshot = createInitialSnapshot();
+      const teamId = snapshot.teams[0]!.id;
+      const make = (id: string, repository: string, branch: string) => ({
+        ...structuredClone(snapshot.agents[0]!), id, name: id, teamId,
+        workspace: { kind: 'git', repositoryName: repository, primaryWorktreeRoot: `/src/${repository}`, branch, isLinkedWorktree: branch !== 'main' } as never,
+      });
+      // The team lists the api repository first, so its feature agent comes before web's even though web is earlier in the list.
+      snapshot.agents = [make('api-main', 'api', 'main'), make('web-feature', 'web', 'feat1'), make('api-feature', 'api', 'feat1')];
+      snapshot.teams[0]!.agentIds = snapshot.agents.map(agent => agent.id);
+      windowState.scope.value = 'feature';
+      windowState.teamId.value = teamId;
+      windowState.branch.value = 'feat1';
+      const wrapper = mountShell({ realAgentSidebar: true, stubAgentWorkspace: true, snapshot });
+      expect(wrapper.findAll('.agent-sidebar__agent').map(row => row.text())).toEqual([
+        expect.stringContaining('api-feature'),
+        expect.stringContaining('web-feature'),
+      ]);
+    });
+
     it('shows an agent added to the branch afterwards, and not one added to another', async () => {
       const snapshot = featureSnapshot();
       const wrapper = mountShell({ realAgentSidebar: true, stubAgentWorkspace: true, snapshot });

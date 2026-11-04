@@ -1,10 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import type { Agent } from '../contracts';
-import { projectAgentMentionLabels, projectWorkspaceSidebar, projectWorktreeSidebar, repositoryIconForAgent } from '../workspace-sidebar';
+import { orderAgentsLikeWorktreeSidebar, projectAgentMentionLabels, projectWorkspaceSidebar, projectWorktreeSidebar, repositoryIconForAgent } from '../workspace-sidebar';
 
 const projectSidebar = (input: Omit<Parameters<typeof projectWorkspaceSidebar>[0], 'quickChatsLabel'>) => (
   projectWorkspaceSidebar({ ...input, quickChatsLabel: 'Quick chats' })
 );
+
+describe('ordering a feature like the worktree sidebar', () => {
+  it('lists a feature as the whole team does, not as its own few agents would group', () => {
+    // The team lists the api checkout first, so its feature agent comes before the web one even though web is earlier in the list.
+    const apiMain = gitAgent('api-main', null, '/src/api', 'main', false, '/src/api');
+    const web = gitAgent('web', null, '/src/web-feature', 'feat/one', true, '/src/web');
+    const api = gitAgent('api', null, '/src/api-feature', 'feat/one', true, '/src/api');
+    const other = gitAgent('other', null, '/src/api-other', 'feat/two', true, '/src/api');
+    const team = [apiMain, web, api, other];
+
+    const alone = projectWorktreeSidebar(projectSidebar({ agents: [web, api], activeAgentId: null }))[0]!.sessions.map(session => session.agentId);
+    expect(alone).toStrictEqual(['web', 'api']);
+    expect(orderAgentsLikeWorktreeSidebar(team, ['web', 'api']).map(agent => agent.id)).toStrictEqual(['api', 'web']);
+  });
+
+  it('keeps only the wanted agents and skips ids it does not know', () => {
+    const a = gitAgent('a', null, '/src/a', 'feat/one', true, '/src/a');
+    const b = gitAgent('b', null, '/src/b', 'feat/two', true, '/src/b');
+    expect(orderAgentsLikeWorktreeSidebar([a, b], ['b', 'missing']).map(agent => agent.id)).toStrictEqual(['b']);
+  });
+});
 
 describe('workspace sidebar projection', () => {
   it('groups exact branch names across repositories without losing quick chats, detached or folder agents', () => {

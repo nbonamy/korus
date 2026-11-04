@@ -109,6 +109,7 @@
 import PaneTransition from '../shared/PaneTransition.vue';
 import { missionAgentIds } from '@workspace/core/mission-attention';
 import { enabledAgentBackends } from '@workspace/core/agent-backends';
+import { orderAgentsLikeWorktreeSidebar } from '@workspace/core/workspace-sidebar';
 import type {
   Agent,
   AppSnapshot,
@@ -229,8 +230,12 @@ const emit = defineEmits<{
 }>();
 
 const missionOwnedAgentIds = computed(() => new Set((props.snapshot.missions ?? []).flatMap(missionAgentIds)));
-const sidebarAgents = computed(() => (props.cockpitVisible ? props.snapshot.agents : props.activeTeamAgents)
-  .filter(agent => !missionOwnedAgentIds.value.has(agent.id) && (!props.featureAgentIds || props.featureAgentIds.includes(agent.id))));
+const teamSidebarAgents = computed(() => (props.cockpitVisible ? props.snapshot.agents : props.activeTeamAgents)
+  .filter(agent => !missionOwnedAgentIds.value.has(agent.id)));
+// A feature window lists its agents in the order the team's own sidebar shows them.
+const sidebarAgents = computed(() => props.featureAgentIds
+  ? orderAgentsLikeWorktreeSidebar(teamSidebarAgents.value, props.featureAgentIds)
+  : teamSidebarAgents.value);
 const agentSidebar = ref<InstanceType<typeof AgentSidebar> | null>(null);
 const quickSwitchAgentIds = computed(() => agentSidebar.value?.quickSwitchAgentIds ?? sidebarAgents.value.map(agent => agent.id));
 defineExpose({ quickSwitchAgentIds });
