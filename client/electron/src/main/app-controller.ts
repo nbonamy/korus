@@ -56,6 +56,7 @@ type SpokenAnnouncementQueuePort = Pick<SpokenAnnouncementQueue, 'dispose' | 'qu
 type ClientEventInput<Event extends MainToRendererEvent = MainToRendererEvent> = Event extends MainToRendererEvent
   ? Omit<Event, 'seq' | 'source' | 'occurredAt'>
   : never;
+type DebugFlags = { missingEngines?: boolean; providerUpgrades?: boolean; reviewUncommitted?: boolean };
 type PendingBrowserOpen = {
   agentId: string;
   browserId: string;
@@ -92,9 +93,8 @@ export class AppController {
   private reconnectAttempt = 0;
   private shuttingDown = false;
   private connectionState: BackendConnectionState = { status: 'connecting' };
-  private debugMissingEngines = false;
-  private debugProviderUpgrades = false;
-  private debugReviewUncommitted = false;
+  /** Debug fixtures live in one window's renderer, so their menu state follows that window. */
+  private readonly debugFlags = new WeakMap<BrowserWindow, DebugFlags>();
   private readonly pendingDeepLinkCommands: AppCommand[] = [];
   private readonly pendingBrowserOpens = new Map<string, PendingBrowserOpen>();
   private autoUpdateService: DesktopAutoUpdateService | null = null;
@@ -826,12 +826,7 @@ export class AppController {
     logMain('window', 'created main window');
     window.webContents.on('did-start-loading', () => {
       this.windows.setReady(window, false);
-      if (this.debugMissingEngines || this.debugProviderUpgrades || this.debugReviewUncommitted) {
-        this.debugMissingEngines = false;
-        this.debugProviderUpgrades = false;
-        this.debugReviewUncommitted = false;
-        this.refreshAppMenu();
-      }
+      if (this.debugFlags.delete(window)) this.refreshAppMenu();
     });
     window.webContents.on('did-finish-load', () => {
       this.windows.setReady(window, true);
@@ -839,6 +834,7 @@ export class AppController {
     });
     window.on('focus', () => {
       this.windows.markFocused(window);
+      if (!app?.isPackaged) this.refreshAppMenu();
       this.policyAwareSpokenAnnouncements.refresh();
       this.handleTelemetryActivity();
     });
@@ -1901,26 +1897,20 @@ export class AppController {
       restartBackend: () => {
         if (!this.debugBackendRestartPending) void this.requestDebugBackendRestart().catch(error => this.reportDebugBackendRestartError(error));
       },
-      getDebugProviderUpgrades: () => this.debugProviderUpgrades,
+      getDebugProviderUpgrades: () => this.currentDebugFlags().providerUpgrades === true,
       setDebugProviderUpgrades: enabled => {
         if (app.isPackaged) return;
-        this.debugProviderUpgrades = enabled;
-        this.broadcastAppCommand({ type: 'debug-provider-upgrades', enabled });
-        this.refreshAppMenu();
+        this.setDebugFlag('providerUpgrades', 'debug-provider-upgrades', enabled);
       },
-      getDebugReviewUncommitted: () => this.debugReviewUncommitted,
+      getDebugReviewUncommitted: () => this.currentDebugFlags().reviewUncommitted === true,
       setDebugReviewUncommitted: enabled => {
         if (app.isPackaged) return;
-        this.debugReviewUncommitted = enabled;
-        this.broadcastAppCommand({ type: 'debug-review-uncommitted', enabled });
-        this.refreshAppMenu();
+        this.setDebugFlag('reviewUncommitted', 'debug-review-uncommitted', enabled);
       },
-      getDebugMissingEngines: () => this.debugMissingEngines,
+      getDebugMissingEngines: () => this.currentDebugFlags().missingEngines === true,
       setDebugMissingEngines: enabled => {
         if (app.isPackaged) return;
-        this.debugMissingEngines = enabled;
-        this.broadcastAppCommand({ type: 'debug-missing-engines', enabled });
-        this.refreshAppMenu();
+        this.setDebugFlag('missingEngines', 'debug-missing-engines', enabled);
       },
       sendDebugAgentMessage: () => this.sendDebugAgentMessage(),
       toggleDebugExecutionPlan: () => this.toggleDebugExecutionPlan(),
@@ -1974,6 +1964,19 @@ export class AppController {
   private isDebugThreadFlagSet(id: ThreadFlagId, snapshot = this.snapshot): boolean {
     const activeAgent = snapshot?.agents.find((agent) => agent.id === snapshot.activeAgentId);
     return activeAgent?.threadFlags?.[id] === true;
+  }
+
+  private currentDebugFlags(): DebugFlags {
+    const window = this.windows.focused();
+    return (window && this.debugFlags.get(window)) || {};
+  }
+
+  private setDebugFlag(flag: keyof DebugFlags, type: 'debug-provider-upgrades' | 'debug-review-uncommitted' | 'debug-missing-engines', enabled: boolean): void {
+    const window = this.windows.focused();
+    if (!window) return;
+    this.debugFlags.set(window, { ...this.debugFlags.get(window), [flag]: enabled });
+    sendAppCommand(window.webContents, { type, enabled });
+    this.refreshAppMenu();
   }
 
   private debugMenuState(snapshot = this.snapshot): string {

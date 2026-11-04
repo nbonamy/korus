@@ -1047,7 +1047,8 @@ export function useAppState() {
     if (!appHostCapabilities.openInApplications || !appApi?.openAgentPath) {
       throw new Error(translate('surface.app-state.openInIsNotAvailable'));
     }
-    adoptNavigationSnapshot(await appApi.openAgentPath(agentId, application, filePath));
+    // Opening a path never navigates; the daemon's result carries the last selection of any window.
+    adoptBackgroundSnapshot(await appApi.openAgentPath(agentId, application, filePath));
   }
 
   async function createAgent(input: CreateAgentInput, navigation?: { select?: boolean }): Promise<Agent | null> {
@@ -1110,7 +1111,7 @@ export function useAppState() {
 
   async function updateMission(input: import('@workspace/core/missions').UpdateMissionInput) {
     if (!appApi) throw new Error('Backend unavailable.');
-    adoptNavigationSnapshot(await appApi.updateMission(input));
+    adoptBackgroundSnapshot(await appApi.updateMission(input));
   }
 
   async function createQuickChat(input: CreateQuickChatInput): Promise<Agent | null> {

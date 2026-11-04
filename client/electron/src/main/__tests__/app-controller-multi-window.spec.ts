@@ -153,6 +153,26 @@ describe('AppController with several windows', () => {
     });
   });
 
+  describe('debug toggles', () => {
+    it('apply to the current window only and are remembered per window', () => {
+      const { controller, windows: [first, second] } = controllerWithWindows(2);
+      const menu = () => (host.installMenu.mock.lastCall![1]) as { getDebugMissingEngines(): boolean; setDebugMissingEngines(enabled: boolean): void };
+      first!.focused = true;
+      (controller as unknown as { refreshAppMenu(): void }).refreshAppMenu();
+      menu().setDebugMissingEngines(true);
+      expect(first!.webContents.send).toHaveBeenCalledWith(ipcChannels.appCommand, { type: 'debug-missing-engines', enabled: true });
+      expect(sentChannels(second!, ipcChannels.appCommand)).toHaveLength(0);
+      expect(menu().getDebugMissingEngines()).toBe(true);
+
+      first!.focused = false;
+      second!.focused = true;
+      expect(menu().getDebugMissingEngines()).toBe(false);
+      first!.focused = true;
+      second!.focused = false;
+      expect(menu().getDebugMissingEngines()).toBe(true);
+    });
+  });
+
   describe('native views', () => {
     it('lets one window own an agent’s browser and refuses the others', async () => {
       const { controller, windows: [first, second] } = controllerWithWindows(2);

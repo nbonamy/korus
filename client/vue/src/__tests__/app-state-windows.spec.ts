@@ -8,21 +8,24 @@ import { stubElectronTestWindow } from '../test/client';
 const draft = (text: string): ComposerDraft => ({ state: { text, selectionStart: text.length, selectionEnd: text.length }, attachments: [] });
 const composerState = (text: string) => draft(text).state;
 
-async function loadWindow(context: Partial<WindowContext> = {}) {
+async function loadWindow(context: Partial<WindowContext> = {}, overrides: Partial<AppApi> = {}) {
   let onDraft: (change: ComposerChange) => void = () => undefined;
+  const syncComposerDraft = vi.fn().mockResolvedValue(undefined);
+  const setWindowSelection = vi.fn().mockResolvedValue(undefined);
   const app = {
     getSnapshot: vi.fn().mockResolvedValue(createInitialSnapshot()),
     onEvent: vi.fn(() => () => undefined),
     getWindowContext: vi.fn().mockResolvedValue({ windowId: 7, viewState: null, nativeOwners: [], composerDrafts: {}, ...context }),
-    setWindowSelection: vi.fn().mockResolvedValue(undefined),
-    syncComposerDraft: vi.fn().mockResolvedValue(undefined),
+    setWindowSelection,
+    syncComposerDraft,
     onComposerDraftChanged: vi.fn((listener: (change: ComposerChange) => void) => { onDraft = listener; return () => undefined; }),
     onNativeOwnersChanged: vi.fn(() => () => undefined),
+    ...overrides,
   } satisfies Partial<AppApi>;
   stubElectronTestWindow({ app });
   const state = useAppState();
   await state.loadSnapshot();
-  return { app, state, receiveDraft: (change: ComposerChange) => onDraft(change) };
+  return { app: { setWindowSelection, syncComposerDraft }, state, receiveDraft: (change: ComposerChange) => onDraft(change) };
 }
 
 describe('useAppState in one of several windows', () => {
@@ -37,6 +40,17 @@ describe('useAppState in one of several windows', () => {
     expect(plain.state.activeAgent.value?.id).toBe(createInitialSnapshot().activeAgentId);
     const unknown = await loadWindow({ viewState: { agentId: 'agent-gone' } });
     expect(unknown.state.activeAgent.value?.id).toBe(createInitialSnapshot().activeAgentId);
+  });
+
+  it.each(['openAgentPath', 'updateMission'] as const)('keeps its own agent when %s returns the daemon’s last selection from another window', async (call) => {
+    const fromOtherWindow = { ...createInitialSnapshot(), activeAgentId: 'agent-dina' };
+    const { state } = await loadWindow({ viewState: { agentId: 'agent-jesse' } }, {
+      openAgentPath: vi.fn().mockResolvedValue(fromOtherWindow),
+      updateMission: vi.fn().mockResolvedValue(fromOtherWindow),
+    });
+    if (call === 'openAgentPath') await state.openAgentPath('agent-jesse', 'finder');
+    else await state.updateMission({ missionId: 'm', stage: 'requirements' } as never);
+    expect(state.activeAgent.value?.id).toBe('agent-jesse');
   });
 
   it('tells main which agent this window shows as the user switches', async () => {
