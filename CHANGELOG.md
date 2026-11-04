@@ -10,6 +10,7 @@ All notable Korus changes are recorded here.
 
 - **Diff Viz:** Generate Fast Mermaid or editable Excalidraw diagrams from a Git comparison, navigate to source files, save diagrams to Visualize, and export native, SVG or PNG files.
 - **Diff reviews:** Optionally hide dependency lockfiles from diffs and reviews.
+- **Prevent automatic locking:** Choose Off, On demand or Always for Computer Use. In On demand mode, use the sidebar lock to keep your Mac unlocked for an hour, until the next morning or until you turn it off.
 
 ### Improvements and fixes
 
@@ -19,7 +20,6 @@ All notable Korus changes are recorded here.
 - **Clone repository:** Show progress and let cloning continue in the background without choosing an agent provider first.
 - **Local files:** Open and reveal explicitly selected local files outside the agent workspace.
 - **Android TV simulators:** Add a television frame and stand, remote-key navigation, click-to-select and directional drag controls.
-- **Computer Use:** Offer an opt-in setting to keep the Mac awake and prevent automatic locking while Computer Use is enabled, including idle periods.
 - **Computer Use with Claude:** Make accessibility trees available in readable tool results.
 - **Worktrees:** Run configured setup after moving work into an isolated branch.
 - **Attachments:** Send attached content when pressing Enter instead of accepting a suggested prompt.
@@ -27,6 +27,7 @@ All notable Korus changes are recorded here.
 - Keep historical file patches available when opening file-change previews.
 - **Teammate messages:** Accept agent references with ID prefixes when sending messages.
 - **Continue:** Resume proposed work in the current conversation with wording that also fits investigation, writing and other tasks.
+- Avoid “Agent not found” errors from saved panels after an agent is deleted.
 
 ## [0.50.6] - 2026-11-02
 
