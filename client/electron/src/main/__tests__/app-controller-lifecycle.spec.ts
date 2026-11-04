@@ -97,7 +97,6 @@ vi.mock('../auto-update', () => ({
   },
 }));
 import { app, powerMonitor, powerSaveBlocker, BrowserWindow } from 'electron';
-import { computerUseActivity } from '../computer-use-activity';
 import { AppController, startMainApp } from '../app-controller';
 import { AppshotsKeyMonitor } from '../appshots-key-monitor';
 import { installAppMenu } from '../app-menu';
@@ -165,7 +164,6 @@ beforeEach(() => {
   vi.mocked(app.isInApplicationsFolder).mockReturnValue(true);
 });
 afterEach(async () => {
-  computerUseActivity.reset();
   if (originalResourcesPath) Object.defineProperty(process, 'resourcesPath', originalResourcesPath);
   else delete (process as unknown as Record<string, unknown>).resourcesPath;
   for (const controller of controllers) await controller.shutdown();
@@ -257,43 +255,50 @@ describe('controller desktop lifecycle', () => {
     state.snapshot.general.plugins = { computerUseEnabled: true, chromeEnabled: false, computerUseKeepUnlocked: value };
   };
 
-  it('holds the display awake while Computer Use is in use, when the user opted in, then falls back', async () => {
+  it('prevents automatic locking from startup through idle hours, then releases when disabled', async () => {
     vi.useFakeTimers();
-    const { controller, state } = setup();
+    const { controller, state, emit } = setup();
     keepUnlocked(state, true);
-    state.clientState.shouldPreventDisplaySleep = true;
+    vi.mocked(powerMonitor.isOnBatteryPower).mockReturnValue(true);
     await controller.initialize();
-    expect(powerSaveBlocker.start).toHaveBeenLastCalledWith('prevent-app-suspension');
-    computerUseActivity.touch();
-    expect(powerSaveBlocker.stop).toHaveBeenCalledExactlyOnceWith(1);
-    expect(powerSaveBlocker.start).toHaveBeenLastCalledWith('prevent-display-sleep');
-    vi.advanceTimersByTime(5 * 60_000);
-    expect(powerSaveBlocker.start).toHaveBeenLastCalledWith('prevent-app-suspension');
-    expect(powerSaveBlocker.start).toHaveBeenCalledTimes(3);
-    await controller.shutdown();
-  });
-
-  it('leaves display sleep and locking to the system unless the user opts in to keeping the Mac unlocked', async () => {
-    vi.useFakeTimers();
-    const { controller, state } = setup();
-    state.clientState.shouldPreventDisplaySleep = true;
-    await controller.initialize();
-    computerUseActivity.touch();
-    expect(powerSaveBlocker.start).toHaveBeenCalledExactlyOnceWith('prevent-app-suspension');
-    await controller.shutdown();
-  });
-
-  it('holds the display awake for Computer Use when opted in, even with no agent or remote access asking for protection', async () => {
-    vi.useFakeTimers();
-    const { controller, state } = setup();
-    keepUnlocked(state, true);
-    await controller.initialize();
-    expect(powerSaveBlocker.start).not.toHaveBeenCalled();
-    computerUseActivity.touch();
     expect(powerSaveBlocker.start).toHaveBeenCalledExactlyOnceWith('prevent-display-sleep');
-    vi.advanceTimersByTime(5 * 60_000);
+    await vi.advanceTimersByTimeAsync(2 * 60 * 60_000);
+    expect(powerSaveBlocker.stop).not.toHaveBeenCalled();
+    keepUnlocked(state, false);
+    emit({ seq: 1, occurredAt: '2026-11-04T00:00:00Z', type: 'snapshot.updated',
+      payload: state.snapshot, clientState: state.clientState });
     expect(powerSaveBlocker.stop).toHaveBeenCalledExactlyOnceWith(1);
     await controller.shutdown();
+  });
+
+  it('releases display protection when Computer Use is disabled, retaining agent suspension protection', async () => {
+    const { controller, state, emit } = setup();
+    keepUnlocked(state, true);
+    state.clientState.shouldPreventDisplaySleep = true;
+    await controller.initialize();
+    expect(powerSaveBlocker.start).toHaveBeenLastCalledWith('prevent-display-sleep');
+    state.snapshot.general.plugins!.computerUseEnabled = false;
+    emit({ seq: 1, occurredAt: '2026-11-04T00:00:00Z', type: 'snapshot.updated',
+      payload: state.snapshot, clientState: state.clientState });
+    expect(powerSaveBlocker.stop).toHaveBeenCalledExactlyOnceWith(1);
+    expect(powerSaveBlocker.start).toHaveBeenLastCalledWith('prevent-app-suspension');
+    await controller.shutdown();
+    expect(powerSaveBlocker.stop).toHaveBeenCalledTimes(2);
+  });
+
+  it('applies the keep-unlocked preference immediately and releases it on quit', async () => {
+    const { controller, state, emit } = setup();
+    vi.mocked(powerSaveBlocker.start).mockReturnValueOnce(11).mockReturnValueOnce(22);
+    state.clientState.shouldPreventDisplaySleep = true;
+    await controller.initialize();
+    expect(powerSaveBlocker.start).toHaveBeenCalledExactlyOnceWith('prevent-app-suspension');
+    keepUnlocked(state, true);
+    emit({ seq: 1, occurredAt: '2026-11-04T00:00:00Z', type: 'snapshot.updated',
+      payload: state.snapshot, clientState: state.clientState });
+    expect(powerSaveBlocker.stop).toHaveBeenCalledExactlyOnceWith(11);
+    expect(powerSaveBlocker.start).toHaveBeenLastCalledWith('prevent-display-sleep');
+    await controller.shutdown();
+    expect(powerSaveBlocker.stop).toHaveBeenLastCalledWith(22);
   });
 
   it('composes agent and remote protection across power changes and releases it on shutdown', async () => {

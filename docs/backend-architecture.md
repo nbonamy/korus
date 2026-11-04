@@ -487,10 +487,11 @@ Electron applies the remote-access policy only on AC power. Agent activity and
 remote access share a native `prevent-app-suspension` assertion, which protects
 system availability while allowing display sleep and configured automatic locking.
 Computer Use cannot operate a locked session. When the user opts in under
-Settings → Plugins → Computer Use (off by default), any Computer Use action upgrades
-the single native blocker to `prevent-display-sleep` for five minutes after the
-last action (on battery too), then it falls back to the policy above. Otherwise
-display sleep and locking follow the system.
+Settings → Plugins → Computer Use (off by default), Electron holds the single native
+blocker at `prevent-display-sleep` continuously while Computer Use is enabled,
+including idle periods and battery power. Disabling the preference or Computer Use,
+or quitting Korus, releases that protection and falls back to the policy above.
+This prevents automatic locking; manual locking and lid-close sleep remain available.
 
 Mobile updates use one authenticated duplex stream per phone. A workspace reset
 and a subscribe-before-read conversation barrier precede ordered provider-native

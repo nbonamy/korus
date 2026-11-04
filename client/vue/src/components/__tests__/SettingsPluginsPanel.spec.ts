@@ -89,17 +89,17 @@ describe('SettingsPluginsPanel', () => {
   it('lets the user choose whether Computer Use keeps the Mac unlocked, only while Computer Use is on', async () => {
     const updateSettings = vi.fn().mockResolvedValue(undefined);
     const off = mount(SettingsPluginsPanel, { props: { settings: { computerUseEnabled: false, chromeEnabled: false }, updateSettings } });
-    expect(off.find('[aria-label="Keep Mac unlocked during Computer Use"]').exists()).toBe(false);
+    expect(off.find('[aria-label="Keep Mac unlocked for Computer Use"]').exists()).toBe(false);
     const wrapper = mount(SettingsPluginsPanel, {
       props: { settings: { computerUseEnabled: true, chromeEnabled: false }, updateSettings },
     });
-    const toggle = wrapper.get('input[aria-label="Keep Mac unlocked during Computer Use"]');
+    const toggle = wrapper.get('input[aria-label="Keep Mac unlocked for Computer Use"]');
     expect((toggle.element as HTMLInputElement).checked).toBe(false);
-    await wrapper.get('[aria-label="Keep Mac unlocked during Computer Use"]').trigger('click');
+    await wrapper.get('[aria-label="Keep Mac unlocked for Computer Use"]').trigger('click');
     await flushPromises();
     expect(updateSettings).toHaveBeenCalledWith({ general: { plugins: { computerUseKeepUnlocked: true } } });
     await wrapper.setProps({ settings: { computerUseEnabled: true, chromeEnabled: false, computerUseKeepUnlocked: true } });
-    expect((wrapper.get('input[aria-label="Keep Mac unlocked during Computer Use"]').element as HTMLInputElement).checked).toBe(true);
+    expect((wrapper.get('input[aria-label="Keep Mac unlocked for Computer Use"]').element as HTMLInputElement).checked).toBe(true);
   });
 
   it('enables Computer Use directly without opening the plugin manager', async () => {
