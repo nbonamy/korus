@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, reactive } from 'vue';
 import { mount } from '@vue/test-utils';
-import { createCodexConversationPaneController } from '@codex-app-sdk/vue';
+import { CodexUserText, createCodexConversationPaneController } from '@codex-app-sdk/vue';
 import ConversationPane from '../components/ConversationPane.vue';
 import { agentConversationState } from '../components/use-agent-conversation';
 import { useAppState } from '../app-state';
@@ -18,25 +18,29 @@ import { codexConversationSnapshot } from '../test/codex-conversation-fixtures';
 import { claudeConversationSnapshot } from '../test/claude-conversation-fixtures';
 import { clearFirstRunOnboardingStage, setFirstRunOnboardingStage } from '../onboarding-session';
 describe('useAppState', () => {
-  it('loads workspace catalogs only for the opened agent at startup and loads another agent on selection', async () => {
+  it('loads workspace files only for the opened agent and leaves skills unloaded on selection', async () => {
     const snapshot = createInitialSnapshot();
     const template = snapshot.agents[0]!;
     snapshot.agents = Array.from({ length: 24 }, (_, index) => ({ ...template, id: `catalog-agent-${index}`, folder: `/repo/${index}`, backendSession: undefined }));
+    snapshot.agents[1]!.backend = 'antigravity';
+    snapshot.agents[1]!.backendDefaults = { kind: 'antigravity' };
     snapshot.activeAgentId = snapshot.agents[0]!.id;
     snapshot.teams = [{ ...snapshot.teams[0]!, agentIds: snapshot.agents.map(agent => agent.id), activeAgentId: snapshot.activeAgentId }];
     snapshot.activeTeamId = snapshot.teams[0]!.id;
-    // A real installed skill catalog can approach 2 MB; unopened folders must not
-    // multiply that traffic in every renderer during startup.
-    const skills = [{ name: 'large-catalog', path: '/skills/SKILL.md', enabled: true, description: 'x'.repeat(1_900_000) }];
-    const listBackendSkills = vi.fn(async (_agentId: string) => skills);
-    stubElectronTestWindow({ app: { getSnapshot: async () => snapshot, listBackendSkills,
+    const listAgentFiles = vi.fn(async (_agentId: string) => []);
+    const listBackendSkills = vi.fn(async () => []);
+    stubElectronTestWindow({ app: { getSnapshot: async () => snapshot, listAgentFiles, listBackendSkills,
       selectAgent: async agentId => ({ ...snapshot, activeAgentId: agentId,
         teams: [{ ...snapshot.teams[0]!, activeAgentId: agentId }] }) } satisfies Partial<AppApi> });
     const state = useAppState();
     await state.loadSnapshot();
-    expect(listBackendSkills.mock.calls.map(([agentId]) => agentId)).toStrictEqual(['catalog-agent-0']);
+    expect(listAgentFiles.mock.calls.map(([agentId]) => agentId)).toStrictEqual(['catalog-agent-0']);
     await state.selectAgent('catalog-agent-1');
-    expect(listBackendSkills.mock.calls.map(([agentId]) => agentId)).toStrictEqual(['catalog-agent-0', 'catalog-agent-1']);
+    expect(listAgentFiles.mock.calls.map(([agentId]) => agentId)).toStrictEqual(['catalog-agent-0', 'catalog-agent-1']);
+    expect(listBackendSkills).not.toHaveBeenCalled();
+    // App-owned skills are available even without native provider skill support.
+    await state.loadBackendSkills('catalog-agent-1');
+    await vi.waitFor(() => expect(listBackendSkills).toHaveBeenCalledWith('catalog-agent-1'));
   });
   afterEach(() => {
     clearConfetti();
@@ -553,7 +557,7 @@ describe('useAppState', () => {
     expect(sendPrompt).toHaveBeenCalledWith('agent-dina', 'use the selected model', { planMode: false, selection: { model: 'gpt-5.1-codex-fast', reasoningEffort: 'low', serviceTier: null } });
   });
 
-  it('loads active agent skills and includes dollar-selected skills in prompt options', async () => {
+  it('loads skills on demand and sends selected skill references in prompt options', async () => {
     const remoteSnapshot = createInitialSnapshot();
     const updatedSnapshot = createInitialSnapshot();
     const listBackendSkills = vi.fn().mockResolvedValue([
@@ -594,6 +598,11 @@ describe('useAppState', () => {
     await state.loadSnapshot();
     state.setPlanMode(false);
 
+    expect(listBackendSkills).not.toHaveBeenCalled();
+    state.updateComposerState('agent-dina', { text: 'ordinary text', selectionStart: 13, selectionEnd: 13 });
+    expect(listBackendSkills).not.toHaveBeenCalled();
+    await state.loadBackendSkills('agent-dina');
+    await vi.waitFor(() => expect(state.skillCatalogStatus.value).toBe('loaded'));
     expect(state.skillCatalogStatus.value).toBe('loaded');
     expect(listBackendSkills).toHaveBeenCalledWith('agent-dina');
     expect(listBackendPlugins).toHaveBeenCalledWith('agent-dina');
@@ -607,6 +616,8 @@ describe('useAppState', () => {
       'frontend-design',
       'skill-creator',
     ]);
+    await state.loadBackendSkills('agent-dina');
+    expect(listBackendSkills).toHaveBeenCalledTimes(1);
 
     await state.sendPrompt('$frontend-design make the dialog beautiful');
     expect(sendPrompt).toHaveBeenLastCalledWith('agent-dina', '$frontend-design make the dialog beautiful');
@@ -688,18 +699,21 @@ describe('useAppState', () => {
     const snapshot = createInitialSnapshot();
     const skill = { name: 'prepare-release', path: `${snapshot.agents[0]!.folder}/.agents/skills/prepare-release/SKILL.md`, enabled: true };
     const globalSkill = { name: 'cp', path: '/skills/cp/SKILL.md', enabled: true };
+    const listBackendSkills = vi.fn(async () => [skill, globalSkill]);
     stubElectronTestWindow({ app: {
       getSnapshot: async () => snapshot,
-      listBackendSkills: async () => [skill, globalSkill],
+      listBackendSkills,
       onEvent: listener => { listeners.push(listener); return () => undefined; },
     } satisfies Partial<AppApi> });
     const state = useAppState();
     await state.loadSnapshot();
-    expect(state.backendSkills.value).toStrictEqual([skill, globalSkill]);
+    expect(listBackendSkills).not.toHaveBeenCalled();
+    const mention = mount(CodexUserText, { props: { content: 'Use [$prepare-release](/skills/prepare-release/SKILL.md)' } });
+    expect(mention.get('.chat-user-text__mention--skill').text()).toBe('Prepare Release');
     const agent = snapshot.agents[0]!;
     const controller = createCodexConversationPaneController({
       state: agentConversationState(() => state.agentConversationFor(agent.id)!),
-      actions: { updateComposerState: value => state.updateComposerState(agent.id, value) },
+      actions: { updateComposerState: value => state.updateComposerState(agent.id, value), requestSkills: () => state.loadBackendSkills(agent.id) },
     });
     const wrapper = mount(ConversationPane, { attachTo: document.body, props: { agent, controller } });
     const editor = wrapper.get<HTMLElement>('.chat-rich-text-editor');
@@ -710,6 +724,8 @@ describe('useAppState', () => {
     selection.collapseToEnd();
     await editor.trigger('input');
     await editor.trigger('keyup');
+    await vi.waitFor(() => expect(wrapper.find('[role="option"]').exists()).toBe(true));
+    expect(listBackendSkills).toHaveBeenCalledTimes(1);
     expect(wrapper.get('[role="option"]').text()).toContain('prepare-release');
 
     listeners[0]?.({

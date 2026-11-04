@@ -1641,14 +1641,20 @@ export class AppController {
   }
 
   private async loadConversationHistory(agentId: string, options?: { recovery?: boolean }): Promise<AppSnapshot> {
+    const started = performance.now();
+    const finish = (snapshot: AppSnapshot) => {
+      if (process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1') warnMain('conversation-load', 'electron.history.snapshot-adopted', { agentId, recovery: Boolean(options?.recovery),
+        at: performance.timeOrigin + performance.now(), elapsedMs: performance.now() - started });
+      return snapshot;
+    };
     if (!options?.recovery) {
-      return this.adoptBackendMutationSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentConversationLoad, { agentId, reportFailure: true }));
+      return finish(await this.adoptBackendMutationSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentConversationLoad, { agentId, reportFailure: true })));
     }
     const result = await this.requireBackendClient().request<AppSnapshot | null>(backendMethods.agentConversationLoad, { agentId, omitSnapshot: true, reportFailure: true });
     // Older remote daemons may ignore the opt-in and return their snapshot.
-    if (result) return this.adoptBackendMutationSnapshot(result);
+    if (result) return finish(await this.adoptBackendMutationSnapshot(result));
     if (!this.snapshot) throw new Error('daemon snapshot is not available.');
-    return withRendererMediaUrls(this.snapshot, this.localMediaRegistry);
+    return finish(withRendererMediaUrls(this.snapshot, this.localMediaRegistry));
   }
 
   private async loadOlderAgentHistory(agentId: string): Promise<{ hasOlder: boolean }> {

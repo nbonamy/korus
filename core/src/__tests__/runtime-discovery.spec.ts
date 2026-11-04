@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  clearRuntimeDiscoveryCache,
   discoveredRuntimePath,
   discoveredRuntimePathEntries,
   resolveRuntimeExecutable,
@@ -8,6 +9,11 @@ import {
 } from '../runtime-discovery';
 
 const shellPath = (value: string) => `__APP_RUNTIME_PATH_START__${value}__APP_RUNTIME_PATH_END__`;
+/** What the one login shell prints: the PATH, then `nvm which current` (empty when nvm is not loaded). */
+const shellOutput = (value: string, nvmNode = '') => `${shellPath(value)}__APP_RUNTIME_NVM_START__${nvmNode}__APP_RUNTIME_NVM_END__`;
+
+beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); clearRuntimeDiscoveryCache(); });
+afterEach(() => vi.useRealTimers());
 
 describe('runtime discovery', () => {
   describe('engines linked into the private bin', () => {
@@ -74,9 +80,7 @@ describe('runtime discovery', () => {
   });
 
   it('merges login-shell PATH, current PATH, common user bins, and nvm command bin', () => {
-    const execFileSync = vi.fn()
-      .mockReturnValueOnce(shellPath('/usr/local/bin:/usr/bin'))
-      .mockReturnValueOnce('/Users/nicolas/.nvm/versions/node/v22.19.0/bin/node');
+    const execFileSync = vi.fn(() => shellOutput('/usr/local/bin:/usr/bin', '/Users/nicolas/.nvm/versions/node/v22.19.0/bin/node'));
     const existsSync = vi.fn((filePath: string) => [
       '/Users/nicolas/.local/bin',
       '/Users/nicolas/bin',
@@ -107,11 +111,7 @@ describe('runtime discovery', () => {
   });
 
   it('falls back to nvm files when the nvm shell command is unavailable', () => {
-    const execFileSync = vi.fn()
-      .mockReturnValueOnce(shellPath('/usr/bin:/bin'))
-      .mockImplementationOnce(() => {
-        throw new Error('nvm missing');
-      });
+    const execFileSync = vi.fn(() => shellOutput('/usr/bin:/bin'));
     const existsSync = vi.fn((filePath: string) => [
       '/Users/nicolas/.nvm/alias/default',
       '/Users/nicolas/.nvm/versions/node',
@@ -195,9 +195,7 @@ describe('runtime discovery', () => {
   });
 
   it('handles nushell paths and unusable nvm aliases', () => {
-    const execFileSync = vi.fn()
-      .mockReturnValueOnce(shellPath('/nu/bin'))
-      .mockImplementationOnce(() => { throw new Error('nvm unavailable'); });
+    const execFileSync = vi.fn((_file: string, _args: string[]) => shellPath('/nu/bin'));
     expect(discoveredRuntimePathEntries({
       env: { SHELL: '/opt/nu' },
       execFileSync,
@@ -206,6 +204,8 @@ describe('runtime discovery', () => {
       pathDelimiter: ':',
       platform: 'linux',
     })).toStrictEqual(['/nu/bin']);
+    expect(execFileSync).toHaveBeenCalledTimes(1);
+    expect(execFileSync.mock.calls[0]![1]).toStrictEqual(['-l', '-c', expect.stringContaining("print '__APP_RUNTIME_PATH_START__'")]);
 
     expect(discoveredRuntimePathEntries({
       env: { PATH: '/usr/bin' },
@@ -227,5 +227,75 @@ describe('runtime discovery', () => {
       readFileSync: () => { throw new Error('unreadable'); },
       readdirSync: () => [],
     })).toStrictEqual(['/usr/bin']);
+  });
+
+  describe('one login shell, remembered', () => {
+    type Shell = (file: string, args: string[]) => string;
+    const dependencies = (execFileSync: Shell, overrides: Record<string, unknown> = {}) => ({
+      env: { PATH: '/usr/bin', SHELL: '/bin/zsh', HOME: '/user' },
+      execFileSync, existsSync: () => false, homedir: () => '/user', pathDelimiter: ':', platform: 'darwin' as const, ...overrides,
+    });
+
+    it('asks for the PATH and the nvm node in a single login shell', () => {
+      const execFileSync = vi.fn((_file: string, _args: string[]) => shellOutput('/user/bin', '/user/.nvm/versions/node/v22/bin/node'));
+      discoveredRuntimePathEntries(dependencies(execFileSync, { existsSync: (file: string) => file === '/user/.nvm/versions/node/v22/bin/node' }));
+      expect(execFileSync).toHaveBeenCalledTimes(1);
+      expect(execFileSync.mock.calls[0]![1]).toStrictEqual(['-l', '-c', expect.stringContaining('nvm which current')]);
+    });
+
+    it('starts the login shell once however many lookups follow', () => {
+      const execFileSync = vi.fn((_file: string, _args: string[]) => shellOutput('/user/bin'));
+      const deps = dependencies(execFileSync);
+      for (let call = 0; call < 5; call++) {
+        discoveredRuntimePathEntries(deps);
+        resolveRuntimeExecutable('codex', deps);
+        resolveRuntimeLaunch('claude', deps.env, deps);
+        withDiscoveredRuntimePath(deps.env, deps);
+      }
+      expect(execFileSync).toHaveBeenCalledTimes(1);
+    });
+
+    it('remembers a shell that failed, so a broken profile costs one attempt and not one per lookup', () => {
+      const execFileSync = vi.fn((_file: string, _args: string[]): string => { throw new Error('shell timed out'); });
+      const deps = dependencies(execFileSync);
+      expect(discoveredRuntimePathEntries(deps)).toStrictEqual(['/usr/bin']);
+      discoveredRuntimePathEntries(deps);
+      expect(execFileSync).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks again after five minutes and whenever the cache is cleared', () => {
+      const execFileSync = vi.fn((_file: string, _args: string[]) => shellOutput('/user/bin'));
+      const deps = dependencies(execFileSync);
+      discoveredRuntimePathEntries(deps);
+      vi.advanceTimersByTime(4 * 60_000);
+      discoveredRuntimePathEntries(deps);
+      expect(execFileSync).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(61_000);
+      discoveredRuntimePathEntries(deps);
+      expect(execFileSync).toHaveBeenCalledTimes(2);
+      clearRuntimeDiscoveryCache();
+      discoveredRuntimePathEntries(deps);
+      expect(execFileSync).toHaveBeenCalledTimes(3);
+    });
+
+    it('keeps a separate answer for each shell and home', () => {
+      const execFileSync = vi.fn((shell: string, _args: string[]) => shellOutput(shell === '/bin/zsh' ? '/zsh/bin' : '/bash/bin'));
+      expect(discoveredRuntimePathEntries(dependencies(execFileSync))[0]).toBe('/zsh/bin');
+      expect(discoveredRuntimePathEntries(dependencies(execFileSync, { env: { PATH: '/usr/bin', SHELL: '/bin/bash', HOME: '/user' } }))[0]).toBe('/bash/bin');
+      expect(discoveredRuntimePathEntries(dependencies(execFileSync, { env: { PATH: '/usr/bin', SHELL: '/bin/zsh', HOME: '/other' }, homedir: () => '/other' }))[0]).toBe('/zsh/bin');
+      expect(execFileSync).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not let injected shells from different callers share answers', () => {
+      const first = vi.fn((_file: string, _args: string[]) => shellOutput('/first/bin'));
+      const second = vi.fn((_file: string, _args: string[]) => shellOutput('/second/bin'));
+      expect(discoveredRuntimePathEntries(dependencies(first))[0]).toBe('/first/bin');
+      expect(discoveredRuntimePathEntries(dependencies(second))[0]).toBe('/second/bin');
+    });
+
+    it('ignores an nvm answer that is not an executable', () => {
+      const execFileSync = vi.fn((_file: string, _args: string[]) => shellOutput('/user/bin', 'nvm: command not found'));
+      expect(discoveredRuntimePathEntries(dependencies(execFileSync))).toStrictEqual(['/user/bin', '/usr/bin']);
+    });
   });
 });

@@ -18,6 +18,7 @@ export type AppHostCapabilities = {
 export type AppClient = {
   api: AppApi;
   platform: AppClientPlatform;
+  traceConversationLoad?: boolean;
 };
 
 export const desktopAppHostCapabilities: Readonly<AppHostCapabilities> = Object.freeze({

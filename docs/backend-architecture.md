@@ -237,6 +237,12 @@ The protocol is transport-neutral JSON-RPC 2.0, one message per line.
 - `stdout` is reserved for JSON-RPC in stdio mode; diagnostics go to stderr and
   `$APP_HOME/logs/daemon.log` (structured JSONL, size-rotated). Redact prompts,
   tokens, OAuth codes, command secrets and file contents from logs.
+- `CODEX_APP_SDK_TRACE_CONVERSATION_LOAD=1` enables conversation-load timings
+  across Electron, the daemon, the renderer and the SDK backend. It is disabled
+  by default. Set it in the desktop/daemon launch environment (or the development
+  `.env`) and restart those processes; a reused daemon keeps its own environment.
+  Preload exposes only the boolean opt-in to the renderer. Trace records contain
+  stages, IDs, durations, byte counts and render counts, not conversation content.
 - Request deadline policy lives in `core/src/backend-protocol/request-timeout.ts`.
   Diff visualization explicitly waits until completion or cancellation; other
   requests retain bounded deadlines. Electron adds a grace period so a remote

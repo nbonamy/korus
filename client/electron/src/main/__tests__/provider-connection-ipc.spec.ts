@@ -25,6 +25,14 @@ vi.mock('electron', () => ({
 }));
 
 describe('provider sign-out IPC', () => {
+  it.each([undefined, '0', '1'])('exposes only the conversation tracing opt-in from the environment (%s)', async flag => {
+    vi.stubEnv('CODEX_APP_SDK_TRACE_CONVERSATION_LOAD', flag);
+    vi.resetModules();
+    try {
+      await import('../../preload/index');
+      expect(bridge.exposed.get('appTraceConversationLoad')).toBe(flag === '1');
+    } finally { vi.unstubAllEnvs(); vi.resetModules(); }
+  });
   it('routes desktop consent and preview through the typed preload without identity or interval input', async () => {
     const state = { enabled:false,eligibleFrom:null,noticePending:true };
     const request = vi.fn().mockResolvedValue(state);

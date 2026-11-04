@@ -285,7 +285,6 @@ export function createAgentComposerState(options: {
     const load = Promise.all([
       loadModels(agentId),
       loadPlugins(agentId),
-      loadSkills(agentId),
       loadFiles(agentId),
     ]).then(() => undefined).finally(() => {
       if (loadsByAgentId.get(key) === load) loadsByAgentId.delete(key);

@@ -62,10 +62,10 @@ adding steering, forks, goals, turn mutations or context controls.
   provisional). An asynchronous interrupt callback settles only its own turn and
   cannot clear a newer one on the same session. Readiness and task success are
   separate.
-- Native text has no work/final phase. The shared grouping rule treats text before
-  later tool work or continuation input as Working content and trailing text as the
-  final answer; explicit
-  phases and reasoning parts retain their provider semantics.
+- Native text has no work/final phase. The shared grouping rule keeps all text
+  after the last work tool visible as the answer, or all response text when there
+  are no work tools. Korus status/completion tools, reasoning and continuation
+  input do not move that cutoff. Explicit phases retain their provider semantics.
 
 ## Homes And Authentication
 

@@ -258,4 +258,5 @@ const api: AppApi = {
 };
 
 contextBridge.exposeInMainWorld('app', api);
+contextBridge.exposeInMainWorld('appTraceConversationLoad', process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1');
 exposeCodexNativeRendererApi(contextBridge, ipcRenderer);

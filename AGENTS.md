@@ -99,6 +99,9 @@ Use the Node 26 reference toolchain (`.nvmrc`, `package.json`). Keep build outpu
 generated bindings and packaged resources separate from source. Packaging and
 signing are in [client/AGENTS.md](client/AGENTS.md).
 
+**SDK.** Dev builds run the `~/src/codex-app-sdk` source (`CODEX_APP_SDK_SOURCE=1`), so
+SDK changes are live: never cite publishing or the pinned version outside release prep.
+
 ## Project Skills
 
 Repo-local skills live in `.agents/skills/`; read the matching `SKILL.md` before

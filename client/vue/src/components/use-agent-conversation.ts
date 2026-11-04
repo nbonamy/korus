@@ -22,6 +22,7 @@ export type AgentConversationActions = {
   prepare: (agentId: string) => void | Promise<void>;
   loadOlder: (agentId: string) => void | Promise<void>;
   loadTurn?: (agentId: string, turnId: string) => Promise<void>;
+  requestSkills?: (agentId: string) => void | Promise<void>;
   send: (agentId: string, prompt: string, options?: RendererSendPromptOptions) => void | Promise<void>;
   steer: (agentId: string, prompt: string, options?: RendererSendPromptOptions) => void | Promise<void>;
   interrupt: (agentId: string) => void | Promise<void>;
@@ -219,6 +220,7 @@ export function useAgentConversation(options: {
     steer: (prompt, sendOptions) => forward(prompt, sendOptions, options.actions.steer),
     loadOlderHistory: () => options.actions.loadOlder(agentId()),
     loadTurnHistory: (turnId) => options.actions.loadTurn?.(agentId(), turnId),
+    requestSkills: () => options.actions.requestSkills?.(agentId()),
     deleteQueuedPrompt: (promptId) => options.actions.deleteQueuedPrompt(agentId(), promptId),
     updateQueuedPrompt: (promptId, prompt, contentOptions) => contentOptions ? options.actions.updateQueuedPrompt(agentId(), promptId, prompt, contentOptions) : options.actions.updateQueuedPrompt(agentId(), promptId, prompt),
     steerQueuedPrompt: (promptId, prompt, contentOptions) => contentOptions ? options.actions.steerQueuedPrompt(agentId(), promptId, prompt, contentOptions) : options.actions.steerQueuedPrompt(agentId(), promptId, prompt),

@@ -24,6 +24,7 @@ import type { AgentConversationView } from '../../app-state';
 import { agentConversationState } from '../use-agent-conversation';
 import { claudeConversationSnapshot } from '../../test/claude-conversation-fixtures';
 import { translate } from '../../i18n';
+import { configureAppClient } from '../../platform-api';
 
 const agent: Agent = {
   id: 'agent-dina',
@@ -72,6 +73,25 @@ const executionPlan: ThreadPlan = {
 const nativeWindow = window as Window & { codexAppSdkNative?: CodexNativeRendererApi };
 
 describe('ConversationPane', () => {
+  it.each([false, true])('records initial render timing only when the host enables tracing (%s)', async enabled => {
+    configureAppClient({ api: window.app!, platform: 'desktop', traceConversationLoad: enabled });
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => frames.push(callback));
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const state = shallowReactive({ identity: { conversationKey: agent.id, messages } });
+    const controller = createCodexConversationPaneController({ state, actions: {} });
+    const wrapper = mountPane({ controller, agent });
+    const marks = (stage: string) => warning.mock.calls.filter(([message]) => String(message).includes(`"stage":"${stage}"`));
+    try {
+      await flushPromises();
+      expect(marks('content.dom-committed')).toHaveLength(enabled ? 1 : 0);
+      state.identity = { ...state.identity, messages: [...messages] };
+      await flushPromises();
+      expect(marks('content.dom-committed')).toHaveLength(enabled ? 1 : 0);
+      for (const tick of [0, 16]) frames.splice(0).forEach(callback => callback(tick));
+      expect(marks('content.paint-opportunity')).toHaveLength(enabled ? 1 : 0);
+    } finally { wrapper.unmount(); warning.mockRestore(); configureAppClient({ api: window.app!, platform: 'desktop' }); }
+  });
   afterEach(() => { delete nativeWindow.codexAppSdkNative; vi.unstubAllGlobals(); });
   it('loads consecutive older Claude pages when more history remains', async () => {
     const snapshot = createInitialSnapshot();

@@ -4,7 +4,7 @@ import type {
   MainToRendererEvent,
 } from '@workspace/core/contracts';
 import { computed, ref } from 'vue';
-import { appApi } from './platform-api';
+import { appApi, traceConversationLoad } from './platform-api';
 
 export function createAgentHistoryState(options: {
   adoptSnapshot: (snapshot: AppSnapshot) => void;
@@ -48,14 +48,20 @@ export function createAgentHistoryState(options: {
       return;
     }
     markHydrating(agent.id, true);
+    const timingStarted = performance.now();
+    const timing = (stage: string) => traceConversationLoad && console.warn('[conversation-load] ' + JSON.stringify({ layer: 'renderer', stage, agentId,
+      rendererId: performance.timeOrigin, at: performance.timeOrigin + performance.now(), elapsedMs: performance.now() - timingStarted }));
+    timing('history.request');
     try {
       options.adoptSnapshot(await appApi.loadConversationHistory(agent.id));
+      timing('history.response-adopted');
       options.synchronizeComposerSelection(agent.id);
     } catch (error) {
       failedAgentIds.value = new Set(failedAgentIds.value).add(agent.id);
       throw error;
     } finally {
       markHydrating(agent.id, false);
+      timing(failedAgentIds.value.has(agent.id) ? 'history.failed' : 'history.settled');
     }
   }
 

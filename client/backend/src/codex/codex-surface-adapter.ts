@@ -835,11 +835,18 @@ export class CodexSurfaceAgentAdapter {
   async loadConversation(agent: Agent): Promise<string | null> {
     const threadId = codexThreadId(agent);
     if (!threadId) return null;
+    const started = performance.now();
+    const mark = (stage: string) => {
+      if (process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1') console.warn('[conversation-load] ' + JSON.stringify({ layer: 'korus-adapter', stage,
+        agentId: agent.id, threadId, at: performance.timeOrigin + performance.now(), elapsedMs: performance.now() - started }));
+    };
+    mark('load.begin');
     const pending = this.sessionInitializations.get(agent.id);
     if (pending) {
       const session = await pending;
       if (session.handle.id === threadId && this.sessionsByAgentId.get(agent.id) === session) {
         this.publishInitial(session, session.handle.getSnapshot());
+        mark('load.shared-initialization');
         return threadId;
       }
     }
@@ -852,11 +859,13 @@ export class CodexSurfaceAgentAdapter {
         // the background. Keep that richer in-memory transcript authoritative
         // instead of replacing it with load's five-turn bootstrap page.
         this.publishConversationSnapshot(existing, currentSnapshot);
+        mark('load.live-cache');
         return threadId;
       }
       const hydratedAt = this.historyHydratedAtByAgentId.get(agent.id) ?? 0;
       if (Date.now() - hydratedAt < AGENT_HISTORY_CACHE_TTL_MS) {
         this.publishConversationSnapshot(existing, currentSnapshot);
+        mark('load.ttl-cache');
         return threadId;
       }
 
@@ -865,11 +874,14 @@ export class CodexSurfaceAgentAdapter {
       try {
         const requestedDefaults = agent.backendDefaults?.kind === 'codex' ? { ...agent.backendDefaults } : undefined;
         await existing.handle.load({ ...agentCwd(agent), extensionContext: agent });
+        mark('load.sdk-ready');
         this.historyHydratedAtByAgentId.set(agent.id, Date.now());
         const snapshot = await this.restoreConversationSettings(existing, existing.handle.getSnapshot(), requestedDefaults);
+        mark('load.settings-restored');
         // Publish load's full initial page now. Older messages remain behind
         // the SDK's demand-paging cursor until the conversation requests them.
         this.publishInitial(existing, snapshot);
+        mark('load.published');
         existing.suppressEvents = wasSuppressingEvents;
       } finally {
         existing.suppressEvents = wasSuppressingEvents;
@@ -877,6 +889,7 @@ export class CodexSurfaceAgentAdapter {
       return threadId;
     }
     await this.bindAndLoad(agent, threadId);
+    mark('load.cold-ready');
     this.historyHydratedAtByAgentId.set(agent.id, Date.now());
     return threadId;
   }
@@ -1115,6 +1128,14 @@ export class CodexSurfaceAgentAdapter {
   }
 
   private async loadBoundConversation(agent: Agent, threadId: string, isCurrent: () => boolean): Promise<AgentConversation> {
+    const started = performance.now();
+    let previous = started;
+    const mark = (stage: string) => {
+      const now = performance.now();
+      if (process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1') console.warn('[conversation-load] ' + JSON.stringify({ layer: 'korus-adapter', stage,
+        agentId: agent.id, threadId, at: performance.timeOrigin + now, stageMs: now - previous, elapsedMs: now - started }));
+      previous = now;
+    };
     const existing = this.sessionsByAgentId.get(agent.id);
     if (existing && existing.handle.id === threadId) {
       existing.agent = agent;
@@ -1124,13 +1145,16 @@ export class CodexSurfaceAgentAdapter {
     }
 
     await this.start();
+    mark('bind.driver-connected');
     if (!isCurrent()) throw new Error('Conversation load was cancelled.');
     const requestedDefaults = agent.backendDefaults?.kind === 'codex'
       ? { ...agent.backendDefaults }
       : undefined;
     const session = this.bindRuntime(agent, threadId, false, true);
+    mark('bind.runtime-bound');
     try {
       let snapshot = await session.handle.load({ ...agentCwd(agent), extensionContext: agent });
+      mark('bind.sdk-ready');
       if (!isCurrent() || this.sessionsByAgentId.get(agent.id) !== session) throw new Error('Conversation load was cancelled.');
       const interruptedTurnId = snapshot.activeTurnId;
       const resumedActiveGoal = snapshot.goal?.status === 'active';
@@ -1147,8 +1171,10 @@ export class CodexSurfaceAgentAdapter {
         (conversation) => conversation.id === threadId,
       ));
       snapshot = await this.restoreConversationSettings(session, snapshot, requestedDefaults);
+      mark('bind.settings-restored');
       if (!isCurrent() || this.sessionsByAgentId.get(agent.id) !== session) throw new Error('Conversation load was cancelled.');
       this.publishInitial(session, snapshot);
+      mark('bind.published');
       session.suppressEvents = false;
       return session;
     } catch (error) {
@@ -1252,16 +1278,22 @@ export class CodexSurfaceAgentAdapter {
     snapshot: CodexConversationSnapshot,
   ): void {
     if (this.sessionsByAgentId.get(session.agent.id) !== session) return;
+    const started = performance.now();
     this.reconcilePending(session, snapshot);
     const revision = (this.conversationRevisionsByAgentId.get(session.agent.id) ?? 0) + 1;
     this.conversationRevisionsByAgentId.set(session.agent.id, revision);
+    const projected = conversationSnapshotForTransport(session.images.project(snapshot));
+    const projectedAt = performance.now();
     this.emitThread(session, {
       type: 'codex.conversationSnapshotChanged',
       payload: {
         revision,
-        snapshot: conversationSnapshotForTransport(session.images.project(snapshot)),
+        snapshot: projected,
       },
     });
+    if (process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1') console.warn('[conversation-load] ' + JSON.stringify({ layer: 'korus-adapter', stage: 'frame.projected-and-emitted',
+      agentId: session.agent.id, threadId: session.handle.id, revision, messages: snapshot.messages.length,
+      startAt: performance.timeOrigin + started, at: performance.timeOrigin + performance.now(), projectMs: projectedAt - started, emitMs: performance.now() - projectedAt }));
   }
 
   private reconcilePending(

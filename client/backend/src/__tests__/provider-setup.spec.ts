@@ -9,11 +9,12 @@ import { backupProviderSetup, loadBackendSnapshot, saveBackendSnapshot } from '.
 import type { Agent } from '@workspace/core/contracts';
 import { createMission } from '@workspace/core/missions';
 
-const cli = vi.hoisted(() => ({ installed: new Set<string>(), fail: false, installs: 0 }));
+const cli = vi.hoisted(() => ({ installed: new Set<string>(), fail: false, installs: 0, cacheCleared: 0 }));
 vi.mock('@workspace/core/runtime-discovery', () => ({
   resolveRuntimeExecutable: (command: string) => cli.installed.has(command) ? command : null,
   withDiscoveredRuntimePath: () => ({}),
   resolveRuntimeLaunch: (command: string) => ({ command, env: {} }),
+  clearRuntimeDiscoveryCache: () => { cli.cacheCleared++; },
 }));
 vi.mock('../claude/claude-command', async original => ({
   ...await original<typeof import('../claude/claude-command')>(),
@@ -287,7 +288,9 @@ describe('provider onboarding setup', () => {
     const setup = new ProviderSetup(snapshot, vi.fn(), reconnect, new Map([['claude', lifecycle]]));
     await setup.initialize();
     expect(setup.list()).toEqual([{ backend: 'claude', installed: false, locked: false, affectedAgentIds: [], homePath: '/engine-owned/home', isolated: true, shareSkills: false }]);
+    const clearedBefore = cli.cacheCleared;
     expect(await setup.refresh('claude')).toMatchObject({ installed: false });
+    expect(cli.cacheCleared).toBe(clearedBefore + 1); // a refresh asks the shell afresh
     expect(reconnect).not.toHaveBeenCalled();
     installed = true;
     expect(await setup.refresh('claude')).toMatchObject({ installed: true });

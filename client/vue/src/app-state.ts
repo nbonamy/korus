@@ -36,7 +36,7 @@ import { workItemAssignmentPrompt } from '@workspace/core/work-item-prompts';
 import { decodeAppSnapshot, isAppSnapshot } from '@workspace/core/snapshot-guards';
 import { appText } from '@workspace/core/app-text';
 import { useConfetti } from './shared/confetti/use-confetti';
-import { appHostCapabilities, appApi } from './platform-api';
+import { appHostCapabilities, appApi, traceConversationLoad } from './platform-api';
 import { createWorkProviderState, isRemoteAutomationLocation } from './work-provider-state';
 import { createAgentComposerState, type AgentComposerConfiguration } from './agent-composer-state';
 import { createAgentUnreadState } from './agent-unread-state';
@@ -551,6 +551,10 @@ export function useAppState() {
     if (!appApi) {
       return;
     }
+    const loadStarted = performance.now();
+    const markLoad = (stage: string) => traceConversationLoad && console.warn('[conversation-load] ' + JSON.stringify({ layer: 'renderer', stage,
+      rendererId: performance.timeOrigin, agentId: snapshot.value.activeAgentId, at: performance.timeOrigin + performance.now(), elapsedMs: performance.now() - loadStarted }));
+    markLoad('startup.snapshot-request');
 
     resetCatalogStateIfSourceChanged(appApi);
     resetUnreadAgentIds();
@@ -567,8 +571,10 @@ export function useAppState() {
 
     try {
       await synchronizeRendererSnapshot(false);
+      markLoad('startup.snapshot-ready');
       await startWindowState();
       await generalPreferences.migrate();
+      markLoad('startup.preferences-ready');
       if (snapshot.value.activeAgentId) restoreComposerConfiguration(snapshot.value.activeAgentId);
       // The SDK publishes a bounded initial page immediately. Older pages stay
       // behind the conversation's demand-paging cursor until the user reaches
@@ -582,6 +588,7 @@ export function useAppState() {
         loadDaemonStatus(),
         loadCodexResourceSharingStatus(),
       ]);
+      markLoad('startup.catalogs-and-status-ready');
     } catch (error) {
       connectionState.value = {
         status: 'error',
@@ -591,6 +598,7 @@ export function useAppState() {
       const pendingConnectionEvents = bufferedMainEvents?.filter(event => event.type === 'client.connectionChanged') ?? [];
       bufferedMainEvents = null;
       isLoading.value = false;
+      markLoad('startup.shell-unblocked');
       for (const event of pendingConnectionEvents) handleMainEvent(event);
     }
 
@@ -2155,6 +2163,9 @@ function subscribeToMainEvents(): void {
 
   unsubscribeMainEvents?.();
   unsubscribeMainEvents = appApi.onEvent((event: MainToRendererEvent) => {
+    if (traceConversationLoad && event.type === 'codex.conversationSnapshotChanged') console.warn('[conversation-load] ' + JSON.stringify({ layer: 'renderer',
+      stage: 'frame.received', agentId: event.agentId, threadId: event.threadId, revision: event.payload.revision, seq: event.seq,
+      rendererId: performance.timeOrigin, buffered: Boolean(bufferedMainEvents), at: performance.timeOrigin + performance.now() }));
     if (bufferedMainEvents) {
       bufferedMainEvents.push(event);
       return;
@@ -2216,6 +2227,7 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
       syncComposerStateFromMainEvent(event);
       return;
     case 'codex.conversationSnapshotChanged': {
+      const applyStarted = performance.now();
       const current = codexConversationFramesByAgentId.value[event.agentId];
       if (
         current?.threadId === event.threadId
@@ -2233,6 +2245,9 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
       if (current?.threadId !== event.threadId || current.snapshot.planMode !== event.payload.snapshot.planMode) {
         syncComposerPlanMode(event.agentId, event.payload.snapshot.planMode);
       }
+      if (traceConversationLoad) console.warn('[conversation-load] ' + JSON.stringify({ layer: 'renderer', stage: 'frame.applied', agentId: event.agentId,
+        threadId: event.threadId, revision: event.payload.revision, seq: event.seq, messages: event.payload.snapshot.messages.length,
+        rendererId: performance.timeOrigin, at: performance.timeOrigin + performance.now(), durationMs: performance.now() - applyStarted }));
       return;
     }
     case 'codex.conversationEventReceived': {

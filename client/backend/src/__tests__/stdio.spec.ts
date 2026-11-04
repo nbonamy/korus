@@ -1,9 +1,26 @@
 import { PassThrough } from 'node:stream';
+import { once } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 import { startStdioRpcServer, StdioRpcPeer } from '../stdio';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 
 describe('stdio JSON-RPC transport', () => {
+  it.each([undefined, '0', '1'])('emits conversation timing only for an explicit opt-in (%s)', async flag => {
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('CODEX_APP_SDK_TRACE_CONVERSATION_LOAD', flag);
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const input = new PassThrough();
+    const output = new PassThrough();
+    const peer = new StdioRpcPeer({ input, output, onMessage: message => ({ jsonrpc: '2.0', id: 'id' in message ? message.id! : 1, result: {} }) });
+    peer.start();
+    try {
+      const response = once(output, 'data');
+      input.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: backendMethods.agentConversationLoad, params: { agentId: 'agent-1' } }) + '\n');
+      expect(JSON.parse(String((await response)[0])).result).toStrictEqual({});
+      const timings = warning.mock.calls.filter(([value]) => String(value).startsWith('[conversation-load]'));
+      expect(timings.length > 0).toBe(flag === '1');
+    } finally { peer.stop(); warning.mockRestore(); vi.unstubAllEnvs(); }
+  });
   it('delivers an unbounded utility result over stdio and rejects pending work on disconnect', async () => {
     vi.useFakeTimers();
     const input = new PassThrough();
