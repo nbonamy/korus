@@ -131,32 +131,80 @@ function executableFromPath(
   return null;
 }
 
-function loginShellPath(dependencies: RuntimeDiscoveryDependencies): string | null {
+const pathStart = '__APP_RUNTIME_PATH_START__';
+const pathEnd = '__APP_RUNTIME_PATH_END__';
+const nvmStart = '__APP_RUNTIME_NVM_START__';
+const nvmEnd = '__APP_RUNTIME_NVM_END__';
+
+/** What one login shell reports: its PATH and the node `nvm which current` names. Either is null when unavailable. */
+type LoginShellProbe = { path: string | null; nvmNode: string | null };
+
+/**
+ * A login shell takes a second or more to start, and every launch lookup needs the same answer, so the answer is
+ * kept for a few minutes. Environment changes (a new nvm default, a fresh install) show up on expiry, or at once when
+ * the cache is cleared by an explicit re-detection.
+ */
+const probeLifetimeMs = 5 * 60_000;
+let probeGeneration = 0;
+const probesByShellRunner = new WeakMap<ExecFileSync, Map<string, { generation: number; at: number; probe: LoginShellProbe }>>();
+
+/** Forget the remembered login-shell answers, so the next lookup asks the shell again. */
+export function clearRuntimeDiscoveryCache(): void {
+  probeGeneration += 1;
+}
+
+function loginShellProbe(dependencies: RuntimeDiscoveryDependencies): LoginShellProbe {
   if ((dependencies.platform ?? process.platform) === 'win32') {
-    return null;
+    return { path: null, nvmNode: null };
   }
 
   const shell = dependencies.shell ?? dependencies.env?.SHELL ?? process.env.SHELL ?? '/bin/bash';
+  const env = dependencies.env ?? process.env;
   const execFileSync = dependencies.execFileSync ?? nodeExecFileSync;
-  const start = '__APP_RUNTIME_PATH_START__';
-  const end = '__APP_RUNTIME_PATH_END__';
-  const command = shell.endsWith('/nu') || shell === 'nu'
-    ? `print '${start}'; print ($env.PATH | str join ':'); print '${end}'`
-    : `printf '${start}%s${end}' "$PATH"`;
+  const key = `${shell}\n${homeDir(dependencies)}`;
+  let remembered = probesByShellRunner.get(execFileSync);
+  if (!remembered) {
+    remembered = new Map();
+    probesByShellRunner.set(execFileSync, remembered);
+  }
+  const known = remembered.get(key);
+  if (known && known.generation === probeGeneration && Date.now() - known.at < probeLifetimeMs) {
+    return known.probe;
+  }
 
+  const probe = askLoginShell(shell, env, execFileSync);
+  remembered.set(key, { generation: probeGeneration, at: Date.now(), probe });
+  return probe;
+}
+
+/** One login shell for both answers. Nushell has no nvm, so it is only asked for its PATH. */
+function askLoginShell(shell: string, env: NodeJS.ProcessEnv, execFileSync: ExecFileSync): LoginShellProbe {
+  const nushell = shell.endsWith('/nu') || shell === 'nu';
+  const command = nushell
+    ? `print '${pathStart}'; print ($env.PATH | str join ':'); print '${pathEnd}'`
+    : `printf '${pathStart}%s${pathEnd}' "$PATH"; printf '${nvmStart}%s${nvmEnd}' "$(nvm which current 2>/dev/null)"`;
   try {
     const output = execFileSync(shell, ['-l', '-c', command], {
       encoding: 'utf8',
-      env: dependencies.env ?? process.env,
+      env,
       stdio: 'pipe',
       timeout: 5_000,
     }).toString();
-    const from = output.lastIndexOf(start);
-    const to = output.indexOf(end, from + start.length);
-    return from >= 0 && to >= 0 ? output.slice(from + start.length, to).trim() : null;
+    return { path: between(output, pathStart, pathEnd), nvmNode: between(output, nvmStart, nvmEnd) };
   } catch {
-    return null;
+    return { path: null, nvmNode: null };
   }
+}
+
+/** The text between the last start marker and its end marker; shell startup output around them is ignored. */
+function between(output: string, start: string, end: string): string | null {
+  const from = output.lastIndexOf(start);
+  const to = output.indexOf(end, from + start.length);
+  return from >= 0 && to >= 0 ? output.slice(from + start.length, to).trim() : null;
+}
+
+function loginShellPath(dependencies: RuntimeDiscoveryDependencies): string | null {
+  return loginShellProbe(dependencies).path;
 }
 
 function commonUserBinaryPaths(dependencies: RuntimeDiscoveryDependencies): string[] {
@@ -185,19 +233,8 @@ function nvmBinaryPaths(dependencies: RuntimeDiscoveryDependencies): string[] {
 }
 
 function nvmBinaryPathFromCommand(dependencies: RuntimeDiscoveryDependencies): string | null {
-  const shell = dependencies.shell ?? dependencies.env?.SHELL ?? process.env.SHELL ?? '/bin/bash';
-  const execFileSync = dependencies.execFileSync ?? nodeExecFileSync;
-  try {
-    const nodePath = execFileSync(shell, ['-l', '-c', 'nvm which current'], {
-      encoding: 'utf8',
-      env: dependencies.env ?? process.env,
-      stdio: 'pipe',
-      timeout: 5_000,
-    }).toString().trim();
-    return executableExists(nodePath, dependencies) ? path.dirname(nodePath) : null;
-  } catch {
-    return null;
-  }
+  const nodePath = loginShellProbe(dependencies).nvmNode;
+  return nodePath && executableExists(nodePath, dependencies) ? path.dirname(nodePath) : null;
 }
 
 function nvmBinaryPathFromFiles(dependencies: RuntimeDiscoveryDependencies): string | null {

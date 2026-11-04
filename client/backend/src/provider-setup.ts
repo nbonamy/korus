@@ -1,4 +1,5 @@
 import type { AgentBackend, AppSnapshot, SetCodexResourceSharingInput } from '@workspace/core/contracts';
+import { clearRuntimeDiscoveryCache } from '@workspace/core/runtime-discovery';
 import type { ProviderHomeSettings, ProviderSetupChange, ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
 import { createProviderLifecycles, type ProviderLifecycle } from './provider-lifecycle';
 import { localProviderAgents, resetProviderRoster, validateProviderReset } from './provider-roster-reset';
@@ -93,6 +94,8 @@ export class ProviderSetup {
 
   async refresh(backend: AgentBackend): Promise<ProviderSetupStatus> {
     if (this.busy) throw new Error('Provider setup is already in progress.');
+    // An explicit refresh must see the shell as it is now, not the answer remembered for the last few minutes.
+    clearRuntimeDiscoveryCache();
     const wasInstalled = this.status(backend).installed;
     this.busy = true;
     try {
@@ -109,6 +112,7 @@ export class ProviderSetup {
     if (this.busy) throw new Error('Provider setup is already in progress.');
     const lifecycle = this.lifecycle(backend);
     if (!lifecycle.install) throw new Error('Install this provider using its official instructions.');
+    clearRuntimeDiscoveryCache();
     this.invalidateInstallation(backend);
     if (this.status(backend).installed) return this.status(backend);
     this.busy = true;
