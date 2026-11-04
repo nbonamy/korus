@@ -34,6 +34,8 @@ describe('Claude tool titles', () => {
     ['notification', 'send', {}, 'completed', 'Sent notification'],
     ['agent', 'delegate', { target: 'Review auth' }, 'running', 'Running subagent Review auth'],
     ['agent', 'delegate', { target: 'Review auth' }, 'completed', 'Ran subagent Review auth'],
+    ['user', 'ask', {}, 'running', 'Asking user question'],
+    ['user', 'ask', {}, 'completed', 'Asked user question'],
     ['agent', 'delegate', { target: 'Review auth' }, 'failed', 'Subagent failed: Review auth'],
   ] as const)('titles %s %s (%j) while %s', (scope, operation, params, phase, title) => {
     expect(presentClaudeToolTitle(call(scope, operation, params, phase), translate)).toBe(title);

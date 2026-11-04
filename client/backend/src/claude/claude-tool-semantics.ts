@@ -50,6 +50,8 @@ export function claudeToolSemantics(name: string, input: Record<string, unknown>
       return semantics('worktree', input.action === 'remove' ? 'remove' : 'exit');
     case 'PushNotification':
       return semantics('notification', 'send');
+    case 'AskUserQuestion':
+      return semantics('user', 'ask');
     case 'Agent':
     case 'Task': {
       const description = target(input.description);

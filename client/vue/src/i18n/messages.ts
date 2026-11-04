@@ -1362,6 +1362,13 @@ export const messages = {
               failed: 'Subagent failed: {target}',
             },
           },
+          user: {
+            ask: {
+              running: 'Asking user question',
+              completed: 'Asked user question',
+              failed: 'Could not ask user question',
+            },
+          },
         },
         fallback: {
           completed: 'Ran {name}',
