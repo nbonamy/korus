@@ -1,7 +1,7 @@
 <template>
   <main
     class="app-shell"
-    :class="{ 'app-shell--auth-gated': showOnboardingGate, 'app-shell--no-rail': hideTeamRail }"
+    :class="{ 'app-shell--auth-gated': showOnboardingGate, 'app-shell--no-rail': hideTeamRail, 'app-shell--chromeless': chromeless }"
     @contextmenu.capture="conversationFileActions.capture"
   >
     <AppContextMenu
@@ -3734,6 +3734,15 @@ watch(() => props.fileActivity, (activity) => {
 html[data-platform='macos'] .app-shell--no-rail :deep(.workspace-header),
 html[data-platform='macos'] .app-shell--no-rail :deep(.agent-sidebar__header) {
   padding-left: calc(var(--team-rail-width) + var(--space-8));
+}
+
+/* A window for one agent or feature has only its header up there, so it gets more room, and only in the leftmost pane. */
+html[data-platform='macos'] .app-shell--chromeless :deep(.workspace-header) {
+  padding-left: calc(var(--team-rail-width) + var(--space-16));
+}
+
+html[data-platform='macos'] .app-shell--chromeless :deep(.agent-split-grid__pane:not(:first-child) .workspace-header) {
+  padding-left: var(--space-8);
 }
 
 .app-shell__compact-bar {
