@@ -227,6 +227,7 @@ const agentHistory = createAgentHistoryState({
   adoptSnapshot: adoptBackgroundSnapshot,
   getSnapshot: () => snapshot.value,
   synchronizeComposerSelection: synchronizeComposerSelectionForAgent,
+  hasHistory: agentId => !agentNeedsHistory(agentId),
 });
 const {
   activeHistoryHasOlder,
@@ -1951,7 +1952,10 @@ export function useAppState() {
     updateComposerState,
     updateComposerAttachments,
     selectAgent,
-    setRendererWindowFocused,
+    setRendererWindowFocused: (focused: boolean) => {
+      setRendererWindowFocused(focused);
+      if (focused && hasLoadedSnapshot.value && isActiveAgentHistoryFailed.value) void hydrateActiveAgentHistory().catch(() => undefined);
+    },
     markDebugAgentsUnread,
     selectTeam,
     clearActiveGoal,

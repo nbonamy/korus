@@ -1642,9 +1642,9 @@ export class AppController {
 
   private async loadConversationHistory(agentId: string, options?: { recovery?: boolean }): Promise<AppSnapshot> {
     if (!options?.recovery) {
-      return this.adoptBackendMutationSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentConversationLoad, { agentId }));
+      return this.adoptBackendMutationSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentConversationLoad, { agentId, reportFailure: true }));
     }
-    const result = await this.requireBackendClient().request<AppSnapshot | null>(backendMethods.agentConversationLoad, { agentId, omitSnapshot: true });
+    const result = await this.requireBackendClient().request<AppSnapshot | null>(backendMethods.agentConversationLoad, { agentId, omitSnapshot: true, reportFailure: true });
     // Older remote daemons may ignore the opt-in and return their snapshot.
     if (result) return this.adoptBackendMutationSnapshot(result);
     if (!this.snapshot) throw new Error('daemon snapshot is not available.');
@@ -2629,7 +2629,7 @@ function createEmptyClientState(): ClientState {
 const maxTimerDelayMs = 2 ** 31 - 1;
 
 /** Computer Use needs the Mac awake and unlocked: always in Always mode, and while a hold lasts in On demand mode. */
-export function preventsAutomaticLock(plugins: AppSnapshot['general']['plugins'], now: number): boolean {
+function preventsAutomaticLock(plugins: AppSnapshot['general']['plugins'], now: number): boolean {
   if (plugins?.computerUseEnabled !== true) return false;
   if (plugins.computerUseLockPrevention === 'always') return true;
   const hold = plugins.computerUseLockHold;

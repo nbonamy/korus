@@ -14,6 +14,8 @@ import { workItemAssignmentPrompt } from '@workspace/core/work-item-prompts';
 import { clearConfetti, useConfetti } from '../shared/confetti/use-confetti';
 import { stubElectronTestWindow } from '../test/client';
 import { configureAppClient } from '../platform-api';
+import { codexConversationSnapshot } from '../test/codex-conversation-fixtures';
+import { claudeConversationSnapshot } from '../test/claude-conversation-fixtures';
 import { clearFirstRunOnboardingStage, setFirstRunOnboardingStage } from '../onboarding-session';
 describe('useAppState', () => {
   afterEach(() => {
@@ -274,6 +276,9 @@ describe('useAppState', () => {
     await state.loadSnapshot();
     state.selectServiceTier('fast');
     const agent = persisted.agents[0]!;
+    listeners[0]?.(backend === 'codex'
+      ? { seq: 1, occurredAt: '', backend, agentId: agent.id, threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 1, snapshot: codexConversationSnapshot([]) } }
+      : { seq: 1, occurredAt: '', backend, agentId: agent.id, type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: agent.id, sessionId: 'thread-1' }) } });
     const controller = createCodexConversationPaneController({
       state: agentConversationState(() => state.agentConversationFor(agent.id)!),
       actions: { updateSettings: settings => {
@@ -291,7 +296,7 @@ describe('useAppState', () => {
     state.selectReasoningEffort('high');
     await vi.waitFor(() => expect(updateAgent).toHaveBeenCalledTimes(1));
     listeners[0]?.({
-      seq: 1, agentId: persisted.agents[0]!.id, backend: 'codex', threadId: 'thread-1',
+      seq: 2, agentId: persisted.agents[0]!.id, backend: 'codex', threadId: 'thread-1',
       conversationId: 'thread-1', type: 'conversation.settingsUpdated',
       payload: { settings: { model: 'astra', reasoningEffort: 'medium' } },
       occurredAt: '2026-09-26T00:00:00.000Z',
@@ -384,6 +389,8 @@ describe('useAppState', () => {
     } satisfies Partial<AppApi> });
     const state = useAppState();
     await state.loadSnapshot();
+    receive({ seq: 1, occurredAt: '', backend: 'claude', agentId: agent.id, type: 'claude.conversationSnapshotChanged',
+      payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: agent.id, sessionId: 'delegated-session' }) } });
     const controller = createCodexConversationPaneController({
       state: agentConversationState(() => state.agentConversationFor(agent.id)!),
       actions: { updateComposerState: value => state.updateComposerState(agent.id, value) },
@@ -391,7 +398,7 @@ describe('useAppState', () => {
     const wrapper = mount(ConversationPane, { props: { agent, controller } });
     try {
       expect(wrapper.text()).toContain('Sonnet 5.5');
-      receive({ seq: 1, agentId: agent.id, backend: 'claude', type: 'conversation.settingsUpdated',
+      receive({ seq: 2, agentId: agent.id, backend: 'claude', type: 'conversation.settingsUpdated',
         payload: { settings: { model: 'claude-sonnet-5-5' } }, occurredAt: '2026-10-07T13:46:28Z' });
       await nextTick();
       expect(wrapper.text()).toContain('Sonnet 5.5');

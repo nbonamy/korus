@@ -78,12 +78,12 @@ export function agentConversationState(view: () => AgentConversationView, extens
       get turns() { return provider()?.turns; },
       get messages() { return (provider()?.messages ?? []); },
       get busy() { return provider()?.busy ?? view().sending; },
-      get disabled() { return view().history.failed && (provider()?.messages ?? []).length === 0; },
+      get disabled() { return Boolean(view().history.failed || view().history.hydrating) && (provider()?.messages ?? []).length === 0; },
       get error() { return provider()?.error ?? null; },
     },
     history: {
       get hasOlder() { return provider()?.historyState?.hasOlder ?? view().history.hasOlder; },
-      get loading() { return Boolean(view().agent.backendSession) && !(provider()?.messages.length) && (provider()?.historyLoading ?? view().history.hydrating); },
+      get loading() { return Boolean(view().agent.backendSession) && !(provider()?.messages.length) && Boolean(provider()?.historyLoading || view().history.hydrating); },
       get loadingOlder() { return Boolean(provider()?.historyState?.loadingOlder || view().history.loadingOlder); },
     },
     thread: {

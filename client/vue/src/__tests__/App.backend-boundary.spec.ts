@@ -1,5 +1,5 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App.vue';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
 import { installBackendFixture } from '../test/backend-fixture';
@@ -18,6 +18,41 @@ function planAction(wrapper: VueWrapper, label: 'Approve' | 'Cancel') {
 }
 
 describe('Unified backend → mounted application', () => {
+  it('shows a history error after a startup event is covered by the roster, and Retry loads the transcript', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    agent.backendSession = { kind: 'codex', threadId: 'restored-history' };
+    const { api, emitSequenced } = installBackendFixture(snapshot);
+    let fail!: (error: Error) => void;
+    api.loadConversationHistory.mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject; }));
+    api.getSnapshotState.mockImplementationOnce(async () => {
+      emitSequenced({ seq: 54, occurredAt: '', agentId: agent.id, type: 'conversation.historyLoadFailed', payload: { error: 'Unable to load conversation history.' } });
+      return { snapshot, lastBackendEventSeq: 55, connection: { status: 'connected' } };
+    });
+    const wrapper = mount(App);
+    try {
+      await flushPromises();
+      expect(wrapper.find('.conversation-pane__empty').exists()).toBe(false);
+      fail(new Error('Unable to load conversation history.'));
+      await flushPromises();
+      expect(wrapper.text()).toContain('Conversation couldn’t be loaded.');
+      api.loadConversationHistory.mockRejectedValueOnce(new Error('Unable to load conversation history.'));
+      const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      try { window.dispatchEvent(new Event('focus')); await flushPromises(); }
+      finally { focus.mockRestore(); }
+      expect(api.loadConversationHistory).toHaveBeenCalledTimes(2);
+      expect(wrapper.text()).toContain('Conversation couldn’t be loaded.');
+      api.loadConversationHistory.mockImplementationOnce(async () => {
+        emitSequenced({ seq: 56, occurredAt: '', backend: 'codex', agentId: agent.id, threadId: 'restored-history', type: 'codex.conversationSnapshotChanged',
+          payload: { revision: 1, snapshot: codexConversationSnapshot([{ id: 'restored-answer', role: 'assistant', status: 'complete', parts: [{ type: 'text', text: 'Recovered saved conversation.' }] }]) } });
+        return snapshot;
+      });
+      await wrapper.getComponent({ name: 'ConversationLoadError' }).get('button').trigger('click');
+      await flushPromises();
+      expect(wrapper.text()).toContain('Recovered saved conversation.');
+      expect(wrapper.text()).not.toContain('Conversation couldn’t be loaded.');
+    } finally { wrapper.unmount(); }
+  });
   it.each(['', '/code'])('creates a new team project after saving its source folder (configured: %s)', async sourceFolder => {
     const snapshot = createEmptySnapshot();
     snapshot.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];

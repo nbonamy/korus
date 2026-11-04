@@ -163,6 +163,9 @@
   --ideas-explorer-width: 44px;
   --team-rail-scale: 1.1;
   --team-rail-width: calc((var(--space-24) + var(--space-32)) / 2);
+  --team-rail-button-size: calc(var(--space-16) * var(--team-rail-scale));
+  --team-rail-icon-color: var(--color-text-muted);
+  --team-rail-icon-hover-color: var(--color-text);
 
   --icon-sm: 14px;
   --icon-md: 16px;

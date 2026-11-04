@@ -835,6 +835,14 @@ export class CodexSurfaceAgentAdapter {
   async loadConversation(agent: Agent): Promise<string | null> {
     const threadId = codexThreadId(agent);
     if (!threadId) return null;
+    const pending = this.sessionInitializations.get(agent.id);
+    if (pending) {
+      const session = await pending;
+      if (session.handle.id === threadId && this.sessionsByAgentId.get(agent.id) === session) {
+        this.publishInitial(session, session.handle.getSnapshot());
+        return threadId;
+      }
+    }
     const existing = this.sessionsByAgentId.get(agent.id);
     if (existing?.handle.id === threadId) {
       existing.agent = agent;
@@ -1091,6 +1099,22 @@ export class CodexSurfaceAgentAdapter {
     agent: Agent,
     threadId: string,
   ): Promise<AgentConversation> {
+    const pending = this.sessionInitializations.get(agent.id);
+    if (pending) {
+      const session = await pending;
+      if (session.handle.id === threadId) return session;
+      return this.bindAndLoad(agent, threadId);
+    }
+    let initialization!: Promise<AgentConversation>;
+    initialization = this.loadBoundConversation(agent, threadId, () => !this.closed && this.sessionInitializations.get(agent.id) === initialization);
+    this.sessionInitializations.set(agent.id, initialization);
+    try { return await initialization; }
+    finally {
+      if (this.sessionInitializations.get(agent.id) === initialization) this.sessionInitializations.delete(agent.id);
+    }
+  }
+
+  private async loadBoundConversation(agent: Agent, threadId: string, isCurrent: () => boolean): Promise<AgentConversation> {
     const existing = this.sessionsByAgentId.get(agent.id);
     if (existing && existing.handle.id === threadId) {
       existing.agent = agent;
@@ -1100,12 +1124,14 @@ export class CodexSurfaceAgentAdapter {
     }
 
     await this.start();
+    if (!isCurrent()) throw new Error('Conversation load was cancelled.');
     const requestedDefaults = agent.backendDefaults?.kind === 'codex'
       ? { ...agent.backendDefaults }
       : undefined;
     const session = this.bindRuntime(agent, threadId, false, true);
     try {
       let snapshot = await session.handle.load({ ...agentCwd(agent), extensionContext: agent });
+      if (!isCurrent() || this.sessionsByAgentId.get(agent.id) !== session) throw new Error('Conversation load was cancelled.');
       const interruptedTurnId = snapshot.activeTurnId;
       const resumedActiveGoal = snapshot.goal?.status === 'active';
       if (interruptedTurnId && !resumedActiveGoal) {
@@ -1121,11 +1147,12 @@ export class CodexSurfaceAgentAdapter {
         (conversation) => conversation.id === threadId,
       ));
       snapshot = await this.restoreConversationSettings(session, snapshot, requestedDefaults);
+      if (!isCurrent() || this.sessionsByAgentId.get(agent.id) !== session) throw new Error('Conversation load was cancelled.');
       this.publishInitial(session, snapshot);
       session.suppressEvents = false;
       return session;
     } catch (error) {
-      this.releaseConversation(agent.id);
+      if (this.sessionsByAgentId.get(agent.id) === session) this.releaseConversation(agent.id);
       throw error;
     }
   }
@@ -1162,7 +1189,9 @@ export class CodexSurfaceAgentAdapter {
   ): AgentConversation {
     const otherAgentId = this.agentIdsByThreadId.get(threadId);
     if (otherAgentId && otherAgentId !== agent.id) this.releaseConversation(otherAgentId);
+    const initialization = this.sessionInitializations.get(agent.id);
     this.releaseConversation(agent.id);
+    if (initialization) this.sessionInitializations.set(agent.id, initialization);
     const handle = this.surface.conversation(threadId);
     const session: AgentConversation = {
       agent,

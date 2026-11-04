@@ -7,6 +7,31 @@ import { BackendDriverRpc } from '../driver-rpc';
 import { createTestSnapshot } from './server-test-fixtures';
 import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../state-persistence';
 
+it('does not retry startup continuation after an explicit Stop during writer backoff', async () => {
+  vi.useFakeTimers();
+  const snapshot = createTestSnapshot();
+  snapshot.sourceFolder.initialized = true;
+  const agent: Agent = { id: 'recovering', name: 'Recovering', teamId: 'team-test', folder: '/tmp', backend: 'codex',
+    backendSession: { kind: 'codex', threadId: 'recovery' }, status: { type: 'idle' }, autoResumePending: true, createdAt: '', updatedAt: '' };
+  snapshot.agents = [agent];
+  const continued = vi.fn().mockRejectedValue(new Error('Codex app-server request timed out: thread/resume'));
+  const driver: AgentBackendDriver = { backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
+    getCapabilities: () => codexBackendCapabilities, sendPrompt: async () => ({ backendSession: agent.backendSession! }),
+    interrupt: async () => ({ backendSession: agent.backendSession! }), respondToAgentRequest: async () => {},
+    continueInterruptedTurn: continued, onEvent: () => () => {}, close: async () => {} };
+  const server = new AppBackendServer({ version: 'test', snapshot, saveSnapshot: async () => {}, driverRpc: new BackendDriverRpc(new Map([['codex', driver]])) });
+  try {
+    const startup = server.initialize();
+    await vi.waitFor(() => expect(continued).toHaveBeenCalledOnce());
+    await server.handleMessage({ jsonrpc: '2.0', id: 'stop', method: 'agent/interrupt', params: { agentId: agent.id } });
+    await vi.advanceTimersByTimeAsync(7500);
+    await startup;
+    expect(continued).toHaveBeenCalledOnce();
+    expect(agent.status.type).toBe('idle');
+    expect(agent.autoResumePending).toBeUndefined();
+  } finally { await server.close(); vi.useRealTimers(); }
+});
+
 it('persists active work, clears a user stop, and resumes only marked agents after restart', async () => {
   const snapshot = createTestSnapshot();
   snapshot.sourceFolder.initialized = true;

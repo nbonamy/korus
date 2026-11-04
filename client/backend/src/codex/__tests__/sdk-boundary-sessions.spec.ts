@@ -10,6 +10,40 @@ describe(`Codex SDK → ${product.name} session policy`, () => {
   const setup = () => { const fixture = codexSdkFixture(); fixtures.push(fixture); return fixture; };
   afterEach(async () => { await Promise.all(fixtures.splice(0).map(({ driver }) => driver.close())); });
 
+  it('shares a cold bind with hydration instead of loading an unfinished handle again', async () => {
+    const { driver, conversation } = setup();
+    const agent = sdkAgent();
+    const session = conversation('conversation-a');
+    let finish!: (snapshot: ReturnType<typeof sdkSnapshot>) => void;
+    session.handle.load.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const continuation = driver.continueInterruptedTurn(agent);
+    await vi.waitFor(() => expect(session.handle.load).toHaveBeenCalledOnce());
+    const hydration = driver.loadConversation(agent);
+    expect(session.handle.load).toHaveBeenCalledOnce();
+    session.setSnapshot({ messages: [{ id: 'saved', role: 'assistant', status: 'complete', parts: [{ type: 'text', text: 'Saved history' }] }] });
+    finish(session.handle.getSnapshot());
+    await Promise.all([continuation, hydration]);
+    expect(session.handle.load).toHaveBeenCalledOnce();
+  });
+
+  it('does not detach a newer session when a released cold load finishes', async () => {
+    const { driver, conversation } = setup();
+    const agent = sdkAgent();
+    const old = conversation('conversation-a');
+    let finish!: (snapshot: ReturnType<typeof sdkSnapshot>) => void;
+    old.handle.load.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const loading = driver.loadConversation(agent);
+    const failure = expect(loading).rejects.toThrow('cancelled');
+    await vi.waitFor(() => expect(old.handle.load).toHaveBeenCalledOnce());
+    driver.releaseConversation(agent.id);
+    const replacement = sdkAgent(agent.id, 'replacement');
+    await driver.loadConversation(replacement);
+    finish(old.handle.getSnapshot());
+    await failure;
+    await driver.loadConversation(replacement);
+    expect(conversation('replacement').handle.load).toHaveBeenCalledOnce();
+  });
+
   it('lists current and archived conversations in the exact folder, hiding other attached agents', async () => {
     const { driver, surface } = setup();
     surface.listConversations.mockResolvedValueOnce([sdkSummary('conversation-a'), sdkSummary('another-live')])

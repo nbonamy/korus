@@ -8,6 +8,7 @@ import { clearConfetti } from '../shared/confetti/use-confetti';
 import { stubElectronTestWindow } from '../test/client';
 import { clearFirstRunOnboardingStage } from '../onboarding-session';
 import { deferred } from './app-state-test-harness';
+import { codexConversationSnapshot } from '../test/codex-conversation-fixtures';
 
 describe('useAppState', () => {
   it('restores the original composer and next prompt options when a completed reviewer disappears', async () => {
@@ -392,7 +393,8 @@ describe('useAppState', () => {
     const hydration = deferred<AppSnapshot>();
     const loadConversationHistory = vi.fn().mockReturnValue(hydration.promise);
     const selectAgent = vi.fn();
-    const onEvent = vi.fn();
+    let receive!: (event: MainToRendererEvent) => void;
+    const onEvent = vi.fn(listener => { receive = listener; return () => undefined; });
     stubElectronTestWindow({
       app: {
         getSnapshot: vi.fn().mockResolvedValue(remoteSnapshot),
@@ -416,6 +418,9 @@ describe('useAppState', () => {
     await loading;
 
     expect(state.isLoading.value).toBe(false);
+    expect(state.isHydratingActiveAgentHistory.value).toBe(true);
+    receive({ seq: 1, occurredAt: '', type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: 'agent-dina', threadId: 'thread-persisted',
+      payload: { revision: 1, snapshot: codexConversationSnapshot([]) } });
     expect(state.isHydratingActiveAgentHistory.value).toBe(false);
   });
 

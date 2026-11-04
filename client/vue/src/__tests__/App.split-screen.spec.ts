@@ -603,6 +603,9 @@ describe('split-screen conversations', () => {
       attachTo: document.body,
     });
     await flushPromises();
+    emit({ type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: first!.id, threadId: 'background-thread',
+      payload: { revision: 1, snapshot: codexConversationSnapshot([]) } });
+    await flushPromises();
     await chooseLayout(wrapper, 'Vertical Split');
     const editor = wrapper.findAll('[contenteditable="true"]')[1]!;
     (editor.element as HTMLElement).focus();

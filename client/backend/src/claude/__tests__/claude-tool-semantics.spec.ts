@@ -27,6 +27,7 @@ describe('Claude tool semantics', () => {
     ['ExitWorktree', { action: 'keep' }, 'run', 'worktree', 'exit', {}],
     ['ExitWorktree', { action: 'remove' }, 'run', 'worktree', 'remove', {}],
     ['PushNotification', { message: 'done', status: 'proactive' }, 'run', 'notification', 'send', {}],
+    ['AskUserQuestion', { questions: [] }, 'run', 'user', 'ask', {}],
     ['Agent', { description: 'Review auth', prompt: 'p' }, 'run', 'agent', 'delegate', { target: 'Review auth' }],
     ['Task', { description: 'Review auth', prompt: 'p' }, 'run', 'agent', 'delegate', { target: 'Review auth' }],
     ['Agent', { prompt: 'p' }, 'run', 'agent', 'delegate', {}],
