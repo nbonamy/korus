@@ -376,3 +376,62 @@ it('undoes and redoes from the client\'s own history, including agent edits, by 
     expect(JSON.parse(localStorage.getItem('design-history:designer')!)).toMatchObject({ documentId: 'design-a', revision: 4, redo: [] });
   } finally { wrapper.unmount(); localStorage.clear(); }
 });
+
+it('records one undo step for a text field edited across several autosaves', async () => {
+  localStorage.clear();
+  vi.useFakeTimers();
+  const original = editableWorkspace();
+  let saved = original;
+  const execute = vi.fn(async (request: DesignRequest): Promise<DesignResult> => {
+    if (request.type === 'edit') {
+      const text = request.edits.find(edit => edit.type === 'text');
+      saved = { ...saved, document: { ...saved.document!, revision: saved.document!.revision + 1, content: { ...saved.document!.content, title: `Page ${text && 'text' in text ? text.text : ''}` } } };
+    } else if (request.type === 'replace') {
+      saved = { ...saved, document: { ...saved.document!, revision: saved.document!.revision + 1, content: request.content } };
+    }
+    return { workspace: saved };
+  });
+  const wrapper = mount(DesignPanel, { attachTo: document.body, props: { agentId: 'designer', workspace: original, execute }, global: { plugins: [ElementPlus] } });
+  try {
+    for (const value of ['Hel', 'Hello wor', 'Hello world']) {
+      await typeText(wrapper, value);
+      await vi.advanceTimersByTimeAsync(450); // the autosave fires after each pause
+      await flushPromises();
+    }
+    expect(execute.mock.calls.filter(([request]) => request.type === 'edit')).toHaveLength(3);
+    expect(JSON.parse(localStorage.getItem('design-history:designer')!).undo).toHaveLength(1);
+    await wrapper.get('button[aria-label="Undo"]').trigger('click');
+    await flushPromises();
+    expect(execute).toHaveBeenLastCalledWith({ type: 'replace', expectedRevision: 4, content: original.document!.content });
+    expect(wrapper.get('button[aria-label="Undo"]').attributes('disabled')).toBeDefined();
+  } finally { wrapper.unmount(); vi.useRealTimers(); localStorage.clear(); }
+});
+
+it('records separate undo steps for a text edit followed by a color edit', async () => {
+  localStorage.clear();
+  vi.useFakeTimers();
+  const original = editableWorkspace();
+  let saved = original;
+  const execute = vi.fn(async (request: DesignRequest): Promise<DesignResult> => {
+    if (request.type === 'edit') {
+      const content = structuredClone(saved.document!.content);
+      content.title = `${content.title}+${JSON.stringify(request.edits)}`;
+      saved = { ...saved, document: { ...saved.document!, revision: saved.document!.revision + 1, content } };
+    }
+    return { workspace: saved };
+  });
+  const wrapper = mount(DesignPanel, { attachTo: document.body, props: { agentId: 'designer', workspace: original, execute }, global: { plugins: [ElementPlus] } });
+  try {
+    await typeText(wrapper, 'New headline');
+    await vi.advanceTimersByTimeAsync(450);
+    await flushPromises();
+    const color = wrapper.get('input[aria-label="Text color"]');
+    (color.element as HTMLInputElement).value = '#ff0000';
+    await color.trigger('input');
+    await vi.advanceTimersByTimeAsync(450);
+    await flushPromises();
+    const edits = execute.mock.calls.filter(([request]) => request.type === 'edit').map(([request]) => (request as { edits: Array<{ type: string }> }).edits.map(edit => edit.type));
+    expect(edits).toEqual([['text'], ['style']]);
+    expect(JSON.parse(localStorage.getItem('design-history:designer')!).undo).toHaveLength(2);
+  } finally { wrapper.unmount(); vi.useRealTimers(); localStorage.clear(); }
+});

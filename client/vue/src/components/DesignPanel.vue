@@ -148,7 +148,9 @@ const savedDocument = () => {
   const document = current.value.document;
   return document ? { id: document.id, revision: document.revision, content: toRaw(document.content) } : null;
 };
-watch(() => current.value.document, () => history.observe(savedDocument()), { immediate: true, flush: 'sync' });
+// Autosaves of one field arrive as many revisions; the history keeps them as one undo step.
+let coalesceKey: string | undefined;
+watch(() => current.value.document, () => history.observe(savedDocument(), coalesceKey), { immediate: true, flush: 'sync' });
 const inspectorVisible = ref(!!props.workspace.selectedNodeId);
 const inspectorWidth = ref(280);
 const body = ref<HTMLElement>();
@@ -307,12 +309,13 @@ async function apply() {
   const submittedStyles = { ...styleDraft.value };
   const submittedRevision = draftRevision.value;
   autoSaving.value = true;
+  coalesceKey = `${draftNodeId.value}:${edits.map(edit => edit.type === 'style' ? `style(${Object.keys(edit.styles).sort()})` : edit.type === 'attributes' ? `attributes(${Object.keys(edit.attributes).sort()})` : edit.type).join('|')}`;
   try {
     if (await mutate({ type: 'edit', expectedRevision: submittedRevision, edits })) {
       if (draftSignature() === submitted) resetDraft();
       else { styleBaseline.value = submittedStyles; draftRevision.value = submittedRevision + 1; queueApply(); }
     }
-  } finally { autoSaving.value = false; }
+  } finally { autoSaving.value = false; coalesceKey = undefined; }
 }
 function draftSignature() { return JSON.stringify([draftNodeId.value, textDraft.value, styleDraft.value, interactionDraft.value, controlTypeDraft.value]); }
 function queueApply() {

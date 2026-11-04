@@ -399,7 +399,8 @@ operations. Text changes target leaves; structural operations preserve unrelated
 nodes. Full-document replacement is unavailable after creation. Undo and redo are
 client-owned: the panel stacks the previous content of every new revision it sees, its own or the agent's, in one
 localStorage entry per agent, and restores it through a user-only `replace` request at the expected revision. The daemon
-never stores or sends that history. It survives a restart only while the saved revision still matches the design, and
+never stores or sends that history. Autosaves of one field made within five seconds of each other are one undo step.
+It survives a restart only while the saved revision still matches the design, and
 it is removed with its agent. Named checkpoints recover saved content across restarts while revisions remain monotonic.
 Saved Design changes publish only the owning agent's workspace state; they never
 replace the client roster containing projected remote agents. Desktop reference

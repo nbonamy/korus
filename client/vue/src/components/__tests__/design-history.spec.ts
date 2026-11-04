@@ -1,5 +1,5 @@
 import type { DesignContent, DesignDocument } from '@workspace/core/design';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDesignHistory, forgetDesignHistory, pruneDesignHistory } from '../design-history';
 
 const content = (title: string): DesignContent => ({ title, css: '', comments: [], artboards: [{ id: 'desktop', title: 'Desktop', width: 960, height: 640, root: { id: 'root', tag: 'main' } }] });
@@ -7,7 +7,8 @@ const document = (revision: number, title = `v${revision}`, id = 'design-1'): De
 const key = (agentId: string) => `design-history:${agentId}`;
 const stored = (agentId: string) => JSON.parse(localStorage.getItem(key(agentId)) ?? 'null');
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => { localStorage.clear(); vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(0); });
+afterEach(() => vi.useRealTimers());
 
 describe('design history', () => {
   it('stacks the previous content whenever a new revision is seen, whoever made the edit', () => {
@@ -125,5 +126,38 @@ describe('design history', () => {
     expect(localStorage.getItem(key('b'))).toBeNull();
     expect(localStorage.getItem(key('c'))).not.toBeNull();
     expect(localStorage.getItem('unrelated')).toBe('kept');
+  });
+
+  describe('autosaves of one field', () => {
+    it('are one undo step while the same field keeps being edited', () => {
+      const history = createDesignHistory('agent-1');
+      history.observe(document(1));
+      for (const revision of [2, 3, 4, 5, 6]) { vi.advanceTimersByTime(900); history.observe(document(revision), 'text:heading'); }
+      expect(stored('agent-1').undo).toEqual([content('v1')]);
+      expect(stored('agent-1').revision).toBe(6);
+    });
+    it('start a new step after a pause, for another field, or after any other kind of edit', () => {
+      const history = createDesignHistory('agent-1');
+      history.observe(document(1));
+      history.observe(document(2), 'text:heading');
+      vi.advanceTimersByTime(6000);
+      history.observe(document(3), 'text:heading');
+      expect(stored('agent-1').undo).toEqual([content('v1'), content('v2')]);
+      history.observe(document(4), 'style:heading:color');
+      expect(stored('agent-1').undo).toHaveLength(3);
+      history.observe(document(5), 'style:heading:color');
+      history.observe(document(6));
+      history.observe(document(7), 'style:heading:color');
+      expect(stored('agent-1').undo).toHaveLength(5);
+    });
+    it('end when the user undoes, so the next edit is its own step', async () => {
+      const history = createDesignHistory('agent-1');
+      history.observe(document(1));
+      history.observe(document(2), 'text:heading');
+      await history.step('undo', async target => ({ id: 'design-1', revision: 3, content: target }));
+      history.observe(document(4), 'text:heading');
+      expect(stored('agent-1').undo).toEqual([content('v1')]);
+      expect(history.canRedo.value).toBe(false);
+    });
   });
 });

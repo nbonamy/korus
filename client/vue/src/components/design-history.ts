@@ -3,6 +3,8 @@ import { computed, shallowRef, type ComputedRef } from 'vue';
 
 const prefix = 'design-history:';
 const limit = 30;
+/** Autosaves of one field closer together than this are a single undo step. */
+const coalesceMs = 5000;
 
 type Stored = { documentId: string; revision: number; undo: DesignContent[]; redo: DesignContent[] };
 type Seen = { id: string; revision: number; content: DesignContent };
@@ -10,8 +12,11 @@ type Seen = { id: string; revision: number; content: DesignContent };
 export type DesignHistory = {
   canUndo: ComputedRef<boolean>;
   canRedo: ComputedRef<boolean>;
-  /** Report the design as the client currently sees it; every new revision stacks the previous content. */
-  observe(document: DesignDocument | null): void;
+  /**
+   * Report the design as the client currently sees it; every new revision stacks the previous content.
+   * Consecutive revisions with the same `coalesceKey` (autosaves of one field) share one step.
+   */
+  observe(document: DesignDocument | null, coalesceKey?: string): void;
   /** Sends the earlier or later content through `apply`; both stacks move only if it returns the saved document. */
   step(direction: 'undo' | 'redo', apply: (content: DesignContent) => Promise<DesignDocument | null | false>): Promise<void>;
 };
@@ -36,6 +41,7 @@ export function createDesignHistory(agentId: string): DesignHistory {
   const redo = shallowRef<DesignContent[]>([]);
   let seen: Seen | undefined;
   let stepping = false;
+  let last: { key: string; at: number } | undefined;
 
   function save(): void {
     const store = storage();
@@ -51,6 +57,7 @@ export function createDesignHistory(agentId: string): DesignHistory {
 
   function start(document: DesignDocument): void {
     seen = { id: document.id, revision: document.revision, content: document.content };
+    last = undefined;
     undo.value = [];
     redo.value = [];
     const saved = readStored(agentId);
@@ -64,9 +71,10 @@ export function createDesignHistory(agentId: string): DesignHistory {
   return {
     canUndo: computed(() => undo.value.length > 0),
     canRedo: computed(() => redo.value.length > 0),
-    observe(document) {
+    observe(document, coalesceKey) {
       if (!document) {
         seen = undefined;
+        last = undefined;
         undo.value = [];
         redo.value = [];
         save();
@@ -75,8 +83,10 @@ export function createDesignHistory(agentId: string): DesignHistory {
       if (!seen || seen.id !== document.id || document.revision < seen.revision) { start(document); return; }
       if (document.revision === seen.revision) return;
       if (!stepping) {
-        undo.value = [...undo.value, seen.content].slice(-limit);
+        const joins = coalesceKey !== undefined && last?.key === coalesceKey && Date.now() - last.at < coalesceMs;
+        if (!joins) undo.value = [...undo.value, seen.content].slice(-limit);
         redo.value = [];
+        last = coalesceKey === undefined ? undefined : { key: coalesceKey, at: Date.now() };
       }
       seen = { id: document.id, revision: document.revision, content: document.content };
       save();
@@ -88,6 +98,7 @@ export function createDesignHistory(agentId: string): DesignHistory {
       const before = seen;
       if (!target || !before || stepping) return;
       stepping = true;
+      last = undefined;
       try {
         const saved = await apply(target);
         if (!saved) return;
