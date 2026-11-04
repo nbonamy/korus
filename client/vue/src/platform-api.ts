@@ -19,12 +19,14 @@ export type AppPlatformActions = {
 };
 
 export let appApi: AppApi | undefined;
+export let traceConversationLoad = false;
 export let appHostCapabilities: Readonly<AppHostCapabilities> = webAppHostCapabilities;
 export let appClientPlatform: AppClient['platform'] = 'web';
 export let appPlatformActions: Readonly<AppPlatformActions> = webPlatformActions();
 
 export function configureAppClient(client?: AppClient): void {
   appApi = client?.api;
+  traceConversationLoad = client?.traceConversationLoad === true;
   appClientPlatform = client?.platform ?? 'web';
   if (client?.platform === 'desktop') {
     appHostCapabilities = desktopAppHostCapabilities;

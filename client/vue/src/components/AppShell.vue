@@ -2559,6 +2559,7 @@ const conversationPaneActions: CodexConversationPaneActions = {
   interrupt: () => emit('interrupt-agent'),
   loadOlderHistory: () => props.loadOlderAgentHistory?.(currentAgent.value?.id ?? ''),
   loadTurnHistory: (turnId) => props.loadAgentTurnHistory?.(currentAgent.value?.id ?? '', turnId),
+  requestSkills: () => currentAgent.value ? props.agentConversationActions?.requestSkills?.(currentAgent.value.id) : undefined,
   menuSelect: (item) => {
     const composerCommand = conversationMenuCommand(item.payload);
     if (composerCommand && currentAgent.value) return runConversationMenuCommand(currentAgent.value.id, composerCommand);

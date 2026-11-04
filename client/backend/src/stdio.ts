@@ -37,6 +37,7 @@ type QueuedFrame = {
   frame: string;
   bytes: number;
   message: AppRpcMessage;
+  loadTiming?: { at: number; metadata: Record<string, unknown> };
 };
 
 const DEFAULT_MAX_BUFFERED_OUTPUT_BYTES = 128 * 1024 * 1024;
@@ -142,6 +143,14 @@ export class StdioRpcPeer {
         this.handleResponse(message);
         return;
       }
+      const loadReceivedAt = performance.now();
+      const isLoad = isAppRpcRequest(message) && message.method === backendMethods.agentConversationLoad;
+      const markLoad = (stage: string) => {
+        if (isLoad && process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1') console.warn('[conversation-load] ' + JSON.stringify({ layer: 'daemon-transport', stage,
+          id: message.id, agentId: (message.params as { agentId?: string } | undefined)?.agentId, at: performance.timeOrigin + performance.now(),
+          elapsedMs: performance.now() - loadReceivedAt, outputBackpressured: this.outputBackpressured, queuedBytes: this.outputQueueBytes }));
+      };
+      markLoad('request.received');
 
       // Recovery must not generate replay frames while the transport is still
       // dropping notifications. Legacy requests retain their existing behavior.
@@ -152,6 +161,7 @@ export class StdioRpcPeer {
         if (!running) return;
       }
       let response: AppRpcResponse | undefined;
+      markLoad('request.dispatch');
       try {
         response = await this.options.onMessage(message);
       } catch (error) {
@@ -163,6 +173,7 @@ export class StdioRpcPeer {
         );
       }
       if (response) {
+        markLoad('request.handled');
         this.write(response, message.method);
       }
     } catch (error) {
@@ -193,18 +204,25 @@ export class StdioRpcPeer {
   }
 
   private write(message: AppRpcMessage, responseMethod?: string): void {
+    const metadata = conversationLoadFrameMetadata(message, responseMethod);
+    const started = performance.now();
     const frame = `${JSON.stringify(message)}\n`;
+    const serializedAt = performance.now();
     const bytes = Buffer.byteLength(frame);
     const maxBufferedBytes = this.options.maxBufferedOutputBytes ?? DEFAULT_MAX_BUFFERED_OUTPUT_BYTES;
     if (bytes > maxBufferedBytes) {
       this.reportOutputOverflow(message, bytes, responseMethod);
     }
     if (this.outputBackpressured) {
-      this.enqueueOutput(message, frame, responseMethod);
+      const queued = this.enqueueOutput(message, frame, responseMethod, metadata);
+      if (metadata && process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1') console.warn('[conversation-load] ' + JSON.stringify({ ...metadata, layer: 'daemon-transport', stage: queued ? 'output.queued' : 'output.dropped',
+        at: performance.timeOrigin + serializedAt, bytes, serializeMs: serializedAt - started, queuedBytes: this.outputQueueBytes }));
       return;
     }
 
     const accepted = this.options.output.write(frame);
+    if (metadata && process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1') console.warn('[conversation-load] ' + JSON.stringify({ ...metadata, layer: 'daemon-transport', stage: 'output.written',
+      at: performance.timeOrigin + serializedAt, bytes, serializeMs: serializedAt - started, accepted, writableBytes: this.options.output.writableLength }));
     if (accepted) return;
     this.outputBackpressured = true;
     this.options.onOutputBackpressure?.({
@@ -223,7 +241,11 @@ export class StdioRpcPeer {
     while (this.outputQueue.length > 0) {
       const queued = this.outputQueue.shift()!;
       this.outputQueueBytes -= queued.bytes;
-      if (!this.options.output.write(queued.frame)) {
+      const at = performance.now();
+      const accepted = this.options.output.write(queued.frame);
+      if (queued.loadTiming && process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1') console.warn('[conversation-load] ' + JSON.stringify({ ...queued.loadTiming.metadata, layer: 'daemon-transport', stage: 'output.flushed',
+        at: performance.timeOrigin + at, bytes: queued.bytes, queueMs: at - queued.loadTiming.at, accepted }));
+      if (!accepted) {
         this.outputBackpressured = true;
         this.options.output.once('drain', this.onOutputDrain);
         return;
@@ -235,7 +257,7 @@ export class StdioRpcPeer {
     this.outputIdleWaiters.clear();
   }
 
-  private enqueueOutput(message: AppRpcMessage, frame: string, responseMethod?: string): void {
+  private enqueueOutput(message: AppRpcMessage, frame: string, responseMethod?: string, metadata?: Record<string, unknown>): boolean {
     const bytes = Buffer.byteLength(frame);
     if (isAppRpcNotification(message) && message.method === 'backend/event/notify') {
       const existingSnapshotIndex = this.outputQueue.findIndex((queued) => (
@@ -248,7 +270,7 @@ export class StdioRpcPeer {
         const previous = this.outputQueue[existingSnapshotIndex]!;
         this.outputQueue[existingSnapshotIndex] = { frame, bytes, message };
         this.outputQueueBytes += bytes - previous.bytes;
-        return;
+        return true;
       }
     }
 
@@ -260,10 +282,11 @@ export class StdioRpcPeer {
       // Notifications are replayable state/event signals; dropping a new one
       // keeps daemon alive and prevents an unbounded Node writable buffer. RPC
       // responses must remain ordered and are allowed to exceed the soft cap.
-      if (isAppRpcNotification(message)) return;
+      if (isAppRpcNotification(message)) return false;
     }
-    this.outputQueue.push({ frame, bytes, message });
+    this.outputQueue.push({ frame, bytes, message, ...(metadata ? { loadTiming: { at: performance.now(), metadata } } : {}) });
     this.outputQueueBytes += bytes;
+    return true;
   }
 
   private reportOutputOverflow(message: AppRpcMessage, frameBytes: number, responseMethod?: string): void {
@@ -273,6 +296,15 @@ export class StdioRpcPeer {
       ...outputFrameDetails(message, responseMethod),
     });
   }
+}
+
+function conversationLoadFrameMetadata(message: AppRpcMessage, responseMethod?: string): Record<string, unknown> | undefined {
+  if (process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD !== '1') return undefined;
+  if (isAppRpcResponse(message) && responseMethod === backendMethods.agentConversationLoad) return { id: message.id, kind: 'history-response' };
+  if (!isAppRpcNotification(message) || message.method !== backendMethods.backendEventNotify) return undefined;
+  const event = message.params as { type?: unknown; agentId?: string; threadId?: string; seq?: number; payload?: { revision?: number } } | undefined;
+  if (event?.type !== 'codex.conversationSnapshotChanged') return undefined;
+  return { agentId: event.agentId, threadId: event.threadId, seq: event.seq, revision: event.payload?.revision, kind: 'conversation-frame' };
 }
 
 function outputFrameDetails(message: AppRpcMessage, responseMethod?: string): OutputFrameDetails {

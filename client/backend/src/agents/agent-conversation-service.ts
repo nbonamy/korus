@@ -118,9 +118,12 @@ export class AgentConversationService {
     if (!agent?.backendSession) return;
     try {
       const session = await this.hydrateSessionWithTransientRetry(agentId, agent);
+      const persistStarted = performance.now();
       if (isBackendSession(session)) {
         agent.backendSession = session;
         await this.options.persistSnapshot();
+        if (process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1') console.warn('[conversation-load] ' + JSON.stringify({ layer: 'daemon', stage: 'session-binding.persisted', agentId,
+          at: performance.timeOrigin + performance.now(), durationMs: performance.now() - persistStarted }));
       }
     } catch (error) {
       warnMain('agent-conversation', 'history hydration failed', {
@@ -147,19 +150,37 @@ export class AgentConversationService {
   }
 
   async hydrateAndRefresh(agentId: string, reportFailure = false): Promise<void> {
+    const started = performance.now();
+    let previous = started;
+    const mark = (stage: string) => {
+      const now = performance.now();
+      if (process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1') console.warn('[conversation-load] ' + JSON.stringify({ layer: 'daemon', stage, agentId,
+        at: performance.timeOrigin + now, stageMs: now - previous, elapsedMs: now - started }));
+      previous = now;
+    };
     await this.hydrate(agentId, reportFailure);
+    mark('history.hydrated');
     await this.options.refreshWorkspaceIdentity(agentId);
+    mark('workspace-identity.refreshed');
     await this.options.refreshGitStatus(agentId);
+    mark('git-status.refreshed');
   }
 
   private async withConversations<T>(agents: Agent[], operation: string, action: () => Promise<T>): Promise<T> {
+    const queuedAt = performance.now();
+    let enteredAt = queuedAt;
     const keys = [...new Set(agents.map(conversationKey))];
     const previous = keys.flatMap(key => this.conversationOperations.get(key) ?? []);
     if (previous.length) debugMain('agent-conversation', 'waiting for conversation operation', { operation, conversations: keys, daemonPid: process.pid });
-    const pending = Promise.all(previous.map(request => request.catch(() => undefined))).then(action);
+    const pending = Promise.all(previous.map(request => request.catch(() => undefined))).then(() => { enteredAt = performance.now(); return action(); });
     for (const key of keys) this.conversationOperations.set(key, pending);
     try { return await pending; }
-    finally { for (const key of keys) if (this.conversationOperations.get(key) === pending) this.conversationOperations.delete(key); }
+    finally {
+      if (process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1') console.warn('[conversation-load] ' + JSON.stringify({ layer: 'daemon', stage: 'conversation.operation', operation,
+        agentIds: agents.map(agent => agent.id), at: performance.timeOrigin + performance.now(), startAt: performance.timeOrigin + queuedAt,
+        queueMs: enteredAt - queuedAt, workMs: performance.now() - enteredAt, predecessors: previous.length }));
+      for (const key of keys) if (this.conversationOperations.get(key) === pending) this.conversationOperations.delete(key);
+    }
   }
 
   private async retryTransient<T>(operation: string, agents: Agent[], action: () => Promise<T>, shouldContinue = () => true): Promise<T | undefined> {

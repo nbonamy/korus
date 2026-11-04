@@ -11,5 +11,6 @@ mountAppVueApp({
   client: {
     api: window.app,
     platform: 'desktop',
+    traceConversationLoad: window.appTraceConversationLoad === true,
   },
 });

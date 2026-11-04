@@ -1,5 +1,5 @@
 <template>
-  <div class="conversation-pane" :data-conversation-agent-id="agent?.id" @keydown.capture="handleDraftShortcut" @focusin.capture="handleDraftFocusIn">
+  <div ref="loadTimingRoot" class="conversation-pane" :data-conversation-agent-id="agent?.id" @keydown.capture="handleDraftShortcut" @focusin.capture="handleDraftFocusIn">
     <TelemetryConsentNotice v-if="appClientPlatform === 'desktop' && keyboardActive" />
     <WorktreeInitializationIndicator :agent="agent" />
     <div v-if="agent?.handoff?.phase === 'failed'" class="conversation-pane__handoff" role="status">
@@ -150,12 +150,12 @@ import { slicePromptContent, replacePromptContentRange } from '@codex-app-sdk/co
 import ConversationShareActivity from './ConversationShareActivity.vue';
 import TelemetryConsentNotice from './TelemetryConsentNotice.vue';
 import GithubStarPrompt from './GithubStarPrompt.vue';
-import { appClientPlatform } from '../platform-api';
+import { appClientPlatform, traceConversationLoad } from '../platform-api';
 import { supportsConversationSharing, conversationShareTarget, type GuestProposal } from '@workspace/core/conversation-sharing';
 import { useConversationShareActivity } from './use-conversation-share-activity';
 import { matchesShellShortcut } from '@workspace/core/keyboard-shortcuts';
 import { translate } from '../i18n';
-import { computed, nextTick, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onUnmounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   CodexConversationPane,
@@ -280,6 +280,27 @@ const emit = defineEmits<{
 }>();
 
 const conversationKey = computed(() => props.agent?.id ?? 'no-agent');
+const loadTimingRoot = ref<HTMLElement | null>(null);
+let loadTimingRevision = 0;
+onUnmounted(() => { loadTimingRevision += 1; });
+if (traceConversationLoad) watch([
+  () => props.agent?.id,
+  () => resolveCodexConversationPaneValue(props.controller.state).history?.loading ?? props.historyLoading,
+  () => resolveCodexConversationPaneValue(props.controller.state).identity.messages.length > 0,
+], async ([agentId, loading, hasMessages]) => {
+  const revision = ++loadTimingRevision;
+  if (!agentId || loading || !hasMessages) return;
+  await nextTick();
+  if (revision !== loadTimingRevision || !loadTimingRoot.value) return;
+  const mark = (stage: string) => console.warn('[conversation-load] ' + JSON.stringify({ layer: 'renderer', stage, agentId,
+    rendererId: performance.timeOrigin, mountedMessages: loadTimingRoot.value?.querySelectorAll('.chat-message').length ?? 0,
+    visibility: document.visibilityState, focused: document.hasFocus(),
+    at: performance.timeOrigin + performance.now() }));
+  mark('content.dom-committed');
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (revision === loadTimingRevision && loadTimingRoot.value) mark('content.paint-opportunity');
+  }));
+}, { immediate: true, flush: 'post' });
 const contentSessionId = computed(() => props.agent?.backendSession?.kind === 'claude' ? props.agent.backendSession.sessionId : null);
 const shareTarget = computed(() => props.agent && supportsConversationSharing(props.agent) ? conversationShareTarget(props.agent) : null);
 const { proposals: shareProposals, authors: guestAuthors, busy: shareBusy, failed: shareFailed, dismiss: dismissSuggestion } = useConversationShareActivity(() => shareTarget.value);

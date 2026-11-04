@@ -78,6 +78,12 @@ export class BackendRpcSession {
 
     const requestTimeoutMs = backendRequestTimeoutMs(method, params);
     const id = this.nextRequestId++;
+    const timingStarted = performance.now();
+    const isHistoryLoad = process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1' && method === backendMethods.agentConversationLoad;
+    const timing = (stage: string) => {
+      if (isHistoryLoad) warnMain('conversation-load', stage, { id, agentId: (params as { agentId?: string } | undefined)?.agentId,
+        at: performance.timeOrigin + performance.now(), startAt: performance.timeOrigin + timingStarted, elapsedMs: performance.now() - timingStarted });
+    };
     const message = params === undefined
       ? { jsonrpc: '2.0' as const, id, method }
       : { jsonrpc: '2.0' as const, id, method, params };
@@ -88,12 +94,13 @@ export class BackendRpcSession {
         reject(new Error(`daemon request timed out: ${method}`));
       }, requestTimeoutMs);
       this.pending.set(id, {
-        resolve: (value) => resolve(value as Result),
-        reject,
+        resolve: (value) => { timing('electron.rpc.resolved'); resolve(value as Result); },
+        reject: (error) => { timing('electron.rpc.failed'); reject(error); },
         timeout,
       });
     });
 
+    timing('electron.rpc.send');
     this.write(`${JSON.stringify(message)}\n`);
     return result;
   }
@@ -109,10 +116,16 @@ export class BackendRpcSession {
   }
 
   private handleLine(line: string): void {
+    const parseStarted = performance.now();
     let response: AppRpcResponse;
     try {
       const message = parseAppRpcMessage(JSON.parse(line));
       if (isAppRpcNotification(message)) {
+        const params = message.params as { type?: string; agentId?: string; threadId?: string; seq?: number } | undefined;
+        if (process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1' && typeof params?.type === 'string' && params.type.endsWith('.conversationSnapshotChanged')) warnMain('conversation-load', 'electron.frame.received', {
+          agentId: params.agentId, threadId: params.threadId, seq: params.seq, bytes: Buffer.byteLength(line),
+          at: performance.timeOrigin + performance.now(), parseMs: performance.now() - parseStarted,
+        });
         this.handleNotification(message);
         return;
       }
@@ -185,6 +198,7 @@ export class BackendRpcSession {
       return;
     }
     let event: AppBackendEvent;
+    const started = performance.now();
     try {
       event = decodeAppBackendEvent(message.params);
     } catch (error) {
@@ -194,6 +208,10 @@ export class BackendRpcSession {
       return;
     }
     for (const listener of this.eventListeners) listener(event);
+    if (process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1' && event.type === 'codex.conversationSnapshotChanged') warnMain('conversation-load', 'electron.frame.decoded-and-forwarded', {
+      agentId: event.agentId, threadId: event.threadId, seq: event.seq, revision: event.payload.revision,
+      at: performance.timeOrigin + performance.now(), durationMs: performance.now() - started,
+    });
   }
 
   private rejectPending(error: Error): void {
