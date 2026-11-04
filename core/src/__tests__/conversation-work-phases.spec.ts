@@ -14,21 +14,28 @@ describe('withInferredWorkPhases', () => {
     expect(phases(result)).toEqual(['commentary', 'tool', 'commentary', 'tool', 'final_answer']);
   });
 
-  it('keeps earlier answers and steering inside Working across assistant message boundaries', () => {
+  it('keeps all response text visible across steering when there are no tool calls', () => {
     const messages = [
       { role: 'assistant', parts: [{ type: 'text', text: 'First attempt' }] },
       { role: 'user', kind: 'steer', parts: [{ type: 'text', text: 'Try another approach' }] },
       { role: 'assistant', parts: [{ type: 'text', text: 'Final result' }] },
     ];
     const result = withInferredTurnWorkPhases(messages);
-    expect(phases(result[0] as never)).toStrictEqual(['commentary']);
-    expect(phases(result[2] as never)).toStrictEqual(['final_answer']);
+    expect(phases(result[0] as never)).toStrictEqual(['none']);
+    expect(phases(result[2] as never)).toStrictEqual(['none']);
     expect(result[1]).toBe(messages[1]);
   });
 
   it('handles chat messages whose text parts carry content', () => {
     const result = withInferredWorkPhases({ id: 'a1', role: 'assistant', content: '', turnId: 'turn-1', parts: [tool, { type: 'text', content: 'Done.' }] } as never) as never;
     expect(phases(result)).toEqual(['tool', 'final_answer']);
+  });
+
+  it('does not move the last-tool cutoff for later reasoning', () => {
+    const result = withInferredTurnWorkPhases([{ role: 'assistant', parts: [
+      tool, { type: 'text', text: 'Complete findings' }, { type: 'reasoning', text: 'Thinking' },
+    ] }]);
+    expect(phases(result[0]!)).toStrictEqual(['tool', 'final_answer', 'reasoning']);
   });
 
   it('leaves work without trailing text as work only', () => {

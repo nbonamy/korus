@@ -23,6 +23,49 @@ function transcript(turns: number, output: string) {
 }
 
 describe('Claude history paging', () => {
+  it('keeps conclusions after the last work tool visible through completion and continuation records', async () => {
+    const rows = [
+      { type: 'user', uuid: 'request', message: { content: 'Explain the startup cost' } },
+      { type: 'assistant', message: { content: [
+        { type: 'text', text: 'I will inspect the trace.' },
+        { type: 'tool_use', id: 'read', name: 'Read', input: { file_path: '/synthetic/trace' } },
+      ] } },
+      { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'read', content: 'trace data' }] } },
+      { type: 'assistant', message: { content: [
+        { type: 'text', text: 'Detailed conclusions: synchronous shells dominate startup.' },
+        { type: 'tool_use', id: 'finish', name: 'mcp__korus__finish_turn', input: {} },
+      ] } },
+      { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'finish', content: 'Done' }] } },
+      { type: 'assistant', message: { content: [{ type: 'text', text: 'The biggest cost is shell discovery.' }] } },
+      { type: 'user', uuid: 'follow-up', promptId: 'request', message: { content: 'Any other conclusions?' } },
+      { type: 'assistant', message: { content: [{ type: 'text', text: 'Cache the result.' }] } },
+      { type: 'user', uuid: 'no-tools', message: { content: 'Explain without tools' } },
+      { type: 'assistant', message: { content: [{ type: 'text', text: 'Complete response without tools.' }] } },
+    ];
+    const turns: import('@workspace/core/contracts').ClaudeConversationTurn[] = [];
+    const messages = claudeTranscriptToRendererMessages(rows.map(row => JSON.stringify(row)).join('\n'), agent.id, session.sessionId, undefined, undefined, false, undefined, turns);
+    const driver = new ClaudeBackendDriver({ startTurn: vi.fn(), close: async () => {} }, async () => ({ backendSession: session, messages, turns }));
+    let replica!: ClaudeConversationReplica;
+    driver.onEvent(frame => {
+      if (frame.type === 'claude.conversationSnapshotChanged') replica = createClaudeConversationReplica(frame.payload.snapshot);
+      if (frame.type === 'claude.conversationEventReceived') replica.apply(frame.payload.event);
+    });
+    try {
+      await driver.loadConversation(agent);
+      const visibleText = () => replica.getSnapshot().messages.flatMap(message => message.role === 'assistant'
+        ? message.parts.flatMap(part => part.type === 'text' ? [part.text] : []) : []);
+      expect(visibleText()).toStrictEqual([
+        'Detailed conclusions: synchronous shells dominate startup.',
+        'The biggest cost is shell discovery.',
+        'Cache the result.',
+        'Complete response without tools.',
+      ]);
+      await driver.loadTurnHistory(agent, turns[0]!.id);
+      expect(visibleText()).toContain('I will inspect the trace.');
+      expect(visibleText()).toContain('Detailed conclusions: synchronous shells dominate startup.');
+    } finally { await driver.close(); }
+  });
+
   it('opens the SDK recent chain before materializing the archive and joins older turns without changing details or live rows', async () => {
     const home = await mkdtemp(path.join(os.tmpdir(), 'claude-dual-history-'));
     const project = path.join(home, '-synthetic'); await mkdir(project);

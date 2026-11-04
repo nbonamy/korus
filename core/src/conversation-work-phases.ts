@@ -1,9 +1,11 @@
+import { isAppMcpServerName } from './product';
+
 type Message = { role?: string; kind?: string; parts?: readonly Part[] };
-type Part = { type: string; phase?: string; text?: string; content?: string };
+type Part = { type: string; phase?: string; text?: string; content?: string; metadata?: Record<string, unknown> };
 
 /**
  * Gives backends that do not tag work phases (Claude) the Working / Done grouping Codex has:
- * text followed by more tool work is commentary, text after the last tool is the final answer.
+ * text after the last work tool is the final answer. Completion bookkeeping is not work.
  */
 export function withInferredWorkPhases<T extends Message>(message: T): T {
   const parts = message.parts as Part[] | undefined;
@@ -13,20 +15,18 @@ export function withInferredWorkPhases<T extends Message>(message: T): T {
   return withInferredTurnWorkPhases([message])[0]!;
 }
 
-/** Classify unphased historical text using the whole turn, including continuation inputs. */
+/** Classify unphased historical text using only the last work tool in the whole turn. */
 export function withInferredTurnWorkPhases<T extends Message>(messages: T[]): T[] {
   let position = 0; let lastWork = -1;
   for (const message of messages) {
-    if (message.kind === 'steer') lastWork = position++;
     for (const part of message.parts ?? []) {
-      if (message.role === 'assistant' && (part.type === 'tool' || part.type === 'reasoning')) lastWork = position;
+      if (message.role === 'assistant' && isWorkTool(part)) lastWork = position;
       position++;
     }
   }
   if (lastWork < 0) return messages;
   position = 0;
   return messages.map(message => {
-    if (message.kind === 'steer') position++;
     const parts = message.parts?.map(part => {
       const index = position++;
       if (message.role !== 'assistant' || part.type !== 'text' || part.phase !== undefined) return part;
@@ -35,4 +35,12 @@ export function withInferredTurnWorkPhases<T extends Message>(messages: T[]): T[
     });
     return message.role === 'assistant' && parts ? { ...message, parts } as T : message;
   });
+}
+
+function isWorkTool(part: Part): boolean {
+  if (part.type !== 'tool') return false;
+  const tool = part.metadata?.tool;
+  return !isAppMcpServerName(part.metadata?.server)
+    || typeof tool !== 'string'
+    || !['finish-turn', 'set-status'].includes(tool.replaceAll('_', '-'));
 }
