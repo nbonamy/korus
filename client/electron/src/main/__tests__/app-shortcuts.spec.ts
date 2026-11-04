@@ -1,24 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import {
-  appCommandFromInput,
-  cycleTeamsAccelerator,
-  registerCycleTeamsShortcut,
-  type AppShortcutRegistrar,
-} from '../app-shortcuts';
+import { appCommandFromInput } from '../app-shortcuts';
 
 describe('appCommandFromInput', () => {
-  it('maps command backtick keydown to cycle teams', () => {
-    expect(appCommandFromInput({
-      type: 'keyDown',
-      meta: true,
-      key: '`',
-    })).toStrictEqual({ type: 'cycle-teams' });
-    expect(appCommandFromInput({
-      type: 'keyDown',
-      meta: true,
-      code: 'Backquote',
-      key: 'Dead',
-    })).toStrictEqual({ type: 'cycle-teams' });
+  it('maps control backtick to cycle teams, and with shift to cycle them back', () => {
+    expect(appCommandFromInput({ type: 'keyDown', control: true, key: '`' })).toStrictEqual({ type: 'cycle-teams', direction: 1 });
+    expect(appCommandFromInput({ type: 'keyDown', control: true, code: 'Backquote', key: 'Dead' })).toStrictEqual({ type: 'cycle-teams', direction: 1 });
+    expect(appCommandFromInput({ type: 'keyDown', control: true, shift: true, key: '~', code: 'Backquote' })).toStrictEqual({ type: 'cycle-teams', direction: -1 });
+  });
+
+  it('leaves command backtick to the system and the Window menu, which cycle windows', () => {
+    expect(appCommandFromInput({ type: 'keyDown', meta: true, key: '`' })).toBeNull();
+    expect(appCommandFromInput({ type: 'keyDown', meta: true, shift: true, key: '~', code: 'Backquote' })).toBeNull();
   });
 
   it('maps command g and b to workspace tabs without restarting an agent on command r', () => {
@@ -50,8 +42,10 @@ describe('appCommandFromInput', () => {
   it('maps file and edit menu command shortcuts', () => {
     expect(appCommandFromInput({ type: 'keyDown', meta: true, key: 'n' })).toStrictEqual({ type: 'new-team' });
     expect(appCommandFromInput({ type: 'keyDown', meta: true, key: 't' })).toBeNull();
-    expect(appCommandFromInput({ type: 'keyDown', meta: true, key: 'w' })).toStrictEqual({ type: 'close-active-agent' });
-    expect(appCommandFromInput({ type: 'keyDown', meta: true, shift: true, key: 'w' })).toStrictEqual({ type: 'close-active-team' });
+    // Close is the window's, handled by the menu; closing an agent deletes it, so it needs Shift.
+    expect(appCommandFromInput({ type: 'keyDown', meta: true, key: 'w' })).toBeNull();
+    expect(appCommandFromInput({ type: 'keyDown', meta: true, shift: true, key: 'w' })).toBeNull();
+    expect(appCommandFromInput({ type: 'keyDown', meta: true, shift: true, key: 'D' })).toStrictEqual({ type: 'close-active-agent' });
     expect(appCommandFromInput({ type: 'keyDown', meta: true, shift: true, key: 'm' })).toStrictEqual({ type: 'toggle-spoken-announcements-muted' });
     expect(appCommandFromInput({ type: 'keyDown', meta: true, key: 'q' })).toStrictEqual({ type: 'quit' });
     expect(appCommandFromInput({ type: 'keyDown', meta: true, key: 'e' })).toStrictEqual({ type: 'edit-active-agent' });
@@ -79,34 +73,9 @@ describe('appCommandFromInput', () => {
   });
 
   it('ignores non-matching shortcut input', () => {
-    expect(appCommandFromInput({ type: 'keyUp', meta: true, key: '`' })).toBeNull();
-    expect(appCommandFromInput({ type: 'keyDown', meta: true, shift: true, key: '`' })).toBeNull();
+    expect(appCommandFromInput({ type: 'keyUp', control: true, key: '`' })).toBeNull();
     expect(appCommandFromInput({ type: 'keyDown', meta: true, shift: true, key: 'r' })).toBeNull();
     expect(appCommandFromInput({ type: 'keyDown', meta: false, key: '`' })).toBeNull();
     expect(appCommandFromInput({ type: 'keyDown', meta: true, key: 'x' })).toBeNull();
-  });
-
-  it('registers command backtick with the native shortcut registrar', () => {
-    let callback: () => void = () => undefined;
-    const commands: unknown[] = [];
-    const registered = new Set<string>();
-    const registrar: AppShortcutRegistrar = {
-      isRegistered: (accelerator) => registered.has(accelerator),
-      register: (accelerator, nextCallback) => {
-        registered.add(accelerator);
-        callback = nextCallback;
-        return true;
-      },
-      unregister: (accelerator) => {
-        registered.delete(accelerator);
-      },
-    };
-
-    expect(registerCycleTeamsShortcut(registrar, (command) => commands.push(command))).toBe(true);
-    expect(registered.has(cycleTeamsAccelerator)).toBe(true);
-
-    callback();
-
-    expect(commands).toStrictEqual([{ type: 'cycle-teams' }]);
   });
 });

@@ -9,7 +9,7 @@ import type { AppSnapshot, CodexAuthentication, CodexChatGptLogin, SetCodexResou
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import type { OpenInProvider } from '../open-in';
 import { createOpenInProvider } from '../open-in';
-import { callPrivate, currentSnapshot, fakeAppLifecycle, createBackendClient, updateSettings } from './app-controller-test-harness';
+import { addTestWindow, callPrivate, currentSnapshot, fakeAppLifecycle, createBackendClient, updateSettings } from './app-controller-test-harness';
 
 describe('AppController', () => {
   it('enforces the single-instance lock only for packaged builds', () => {
@@ -186,15 +186,15 @@ describe('AppController', () => {
     const controller = new AppController(createInitialSnapshot(), null);
     const lifecycle: string[] = [];
     vi.spyOn((controller as unknown as {
-      browserPane: { closeAll(): Promise<void> };
-    }).browserPane, 'closeAll').mockImplementation(async () => {
+      browserPane: { closeHostedBy(window: unknown): Promise<void> };
+    }).browserPane, 'closeHostedBy').mockImplementation(async () => {
       lifecycle.push('browser-panes-close');
     });
-    setRendererReloadWindow(controller, () => {
+    const window = setRendererReloadWindow(controller, () => {
       lifecycle.push('renderer-reload');
     });
 
-    await callPrivate(controller, 'reloadRenderer');
+    await (controller as unknown as { reloadRenderer(window: unknown): Promise<void> }).reloadRenderer(window);
 
     expect(lifecycle).toStrictEqual(['browser-panes-close', 'renderer-reload']);
   });
@@ -441,13 +441,8 @@ describe('AppController', () => {
   });
 });
 
-function setRendererReloadWindow(controller: AppController, reload: () => void): void {
-  (controller as unknown as {
-    mainWindow: { isDestroyed(): boolean; webContents: { reload(): void } };
-  }).mainWindow = {
-    isDestroyed: () => false,
-    webContents: { reload },
-  };
+function setRendererReloadWindow(controller: AppController, reload: () => void) {
+  return addTestWindow(controller, { webContents: { reload } });
 }
 
 function restartApp(controller: AppController): Promise<void> {

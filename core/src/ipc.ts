@@ -199,6 +199,13 @@ export const ipcChannels = {
   quit: 'app:quit',
   restartApp: 'app:restart',
   reloadRenderer: 'app:renderer:reload',
+  getWindowContext: 'window:context:get',
+  openWindow: 'window:open',
+  setWindowSelection: 'window:selection:set',
+  setWindowSetup: 'window:setup:set',
+  claimNativeResource: 'window:native-resource:claim',
+  releaseNativeResource: 'window:native-resource:release',
+  syncComposerDraft: 'window:composer-draft:sync',
   setAgentGoal: 'agent:goal:set',
   clearAgentGoal: 'agent:goal:clear',
   setAgentApprovalPreset: 'agent:approval-preset:set',
@@ -235,9 +242,12 @@ export const ipcChannels = {
   event: 'app:event',
   appCommand: 'app:command',
   updateStatusChanged: 'app:update-status-changed',
+  nativeOwnersChanged: 'window:native-owners-changed',
+  composerDraftChanged: 'window:composer-draft-changed',
+  windowSetupApply: 'window:setup-apply',
 } as const;
 
-type AppIpcRequestApi = Omit<AppApi, 'onAppCommand' | 'onEvent' | 'onUpdateStatusChanged'>;
+type AppIpcRequestApi = Omit<AppApi, 'onAppCommand' | 'onEvent' | 'onUpdateStatusChanged' | 'onNativeOwnersChanged' | 'onComposerDraftChanged' | 'onWindowSetupApply'>;
 
 type IpcRequestFor<Method> = Method extends (...args: infer Arguments) => infer Result
   ? { args: Arguments; result: Awaited<Result> }
@@ -253,4 +263,7 @@ export type AppIpcEvents = {
   [ipcChannels.event]: MainToRendererEvent;
   [ipcChannels.appCommand]: AppCommand;
   [ipcChannels.updateStatusChanged]: import('./contracts').DesktopUpdateStatus;
+  [ipcChannels.nativeOwnersChanged]: import('./windows').NativeOwnerEntry[];
+  [ipcChannels.composerDraftChanged]: import('./windows').ComposerDraftChange;
+  [ipcChannels.windowSetupApply]: import('./windows').WindowSetup;
 };

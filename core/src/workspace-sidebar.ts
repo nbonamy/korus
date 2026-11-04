@@ -203,6 +203,19 @@ export function projectWorktreeSidebar(repositoryGroups: readonly WorkspaceSideb
   });
 }
 
+/**
+ * `agents` restricted to `ids`, in the order the worktree sidebar of the whole list shows them. A subset listed
+ * on its own would group its repositories by their first appearance among fewer agents, and come out in another order.
+ */
+export function orderAgentsLikeWorktreeSidebar<T extends Agent>(agents: readonly T[], ids: readonly string[]): T[] {
+  const wanted = new Set(ids);
+  const byId = new Map(agents.map(agent => [agent.id, agent]));
+  return projectWorktreeSidebar(projectWorkspaceSidebar({ agents, activeAgentId: null, quickChatsLabel: '' }))
+    .flatMap(group => group.sessions.map(session => session.agentId))
+    .filter(id => wanted.has(id))
+    .flatMap(id => byId.get(id) ?? []);
+}
+
 export function projectAgentMentionLabels(agents: readonly Agent[], quickChatsLabel: string): AgentMentionProjection[] {
   const labels = projectWorkspaceSidebar({ agents, activeAgentId: null, quickChatsLabel })
     .flatMap((group) => group.sessions.map((session) => {

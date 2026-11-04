@@ -31,7 +31,7 @@
       </button>
     </header>
 
-    <section v-if="!allTeams" class="agent-sidebar__workspace-group agent-sidebar__section agent-sidebar__creation-section" data-group-kind="create">
+    <section v-if="!allTeams && !featureOnly" class="agent-sidebar__workspace-group agent-sidebar__section agent-sidebar__creation-section" data-group-kind="create">
       <header class="agent-sidebar__workspace-header">
         <PlusIcon class="agent-sidebar__workspace-icon" aria-hidden="true" />
         <strong class="agent-sidebar__activity-heading">{{ t('sidebar.create') }}</strong>
@@ -292,6 +292,7 @@ const {
   emit,
   organizationMode,
   phoneScope,
+  featureOnly,
   missions,
   missionsCollapsed,
   missionCreationPending,

@@ -1,40 +1,61 @@
-import { app, BrowserWindow, globalShortcut, nativeTheme, screen, shell, type BrowserWindowConstructorOptions, type Rectangle } from 'electron';
+import { app, BrowserWindow, nativeTheme, screen, shell, type BrowserWindowConstructorOptions, type Rectangle } from 'electron';
 import { closeSync, fstatSync, mkdirSync, openSync, readSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { isBrowserGuestPartition } from '@workspace/core/browser-guest';
 import { product } from '@workspace/core/product';
 import { desktopIconPath } from './desktop-identity';
-import {
-  appCommandFromInput,
-  cycleTeamsAccelerator,
-  registerCycleTeamsShortcut,
-  unregisterCycleTeamsShortcut,
-} from './app-shortcuts';
-import { installAppMenu, type AppMenuCallbacks, type AppMenuOptions } from './app-menu';
+import { appCommandFromInput } from './app-shortcuts';
 import { logRendererConsole, warnMain } from './log';
 import { sendAppCommand } from './ipc-events';
+import type { WindowFrame } from './window-layout';
 
 /** Tall enough for every activity section in the agent sidebar to show two rows without scrolling the sidebar. */
 const MIN_WINDOW_HEIGHT = 800;
 const MIN_WINDOW_WIDTH = 1024;
+/** A window that shows one agent needs no sidebar, so it can be much smaller. */
+const COMPACT_WINDOW_SIZE = { width: 1000, height: 880 };
+const COMPACT_MIN_SIZE = { width: 640, height: 560 };
 
 type MainWindowState = {
   bounds: Rectangle;
   isMaximized: boolean;
 };
 
-export function createMainWindow(
-  appMenuOptions: Partial<Pick<AppMenuOptions, 'updateStatus'>> & Partial<Pick<AppMenuCallbacks, 'restartBackend' | 'checkForUpdates' | 'installUpdate' | 'capturePerformanceProfile' | 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag'>> = {},
-): BrowserWindow {
+export type WindowPlacement = {
+  /** Bounds of the window this one is opened from; the new window is offset from them. */
+  cascadeFrom?: Rectangle;
+  /** A window that shows a single agent: smaller, and never the one whose frame is restored. */
+  compact?: boolean;
+  /** A saved frame to reopen in; ignored when it is no longer on any display. */
+  frame?: WindowFrame;
+};
+
+
+const CASCADE_OFFSET = 28;
+
+/** Offsets a new window from the one it was opened from, wrapping back to the work area's corner at its edges. */
+export function cascadedBounds(from: Rectangle, workAreas: Rectangle[]): Rectangle {
+  const workArea = workAreas.find((area) => isWindowBoundsVisible(from, [area])) ?? workAreas[0];
+  const next = { ...from, x: from.x + CASCADE_OFFSET, y: from.y + CASCADE_OFFSET };
+  if (!workArea) return next;
+  const fits = next.x + next.width <= workArea.x + workArea.width && next.y + next.height <= workArea.y + workArea.height;
+  return fits ? next : { ...from, x: workArea.x, y: workArea.y };
+}
+
+export function createMainWindow(placement: WindowPlacement = {}): BrowserWindow {
   const releaseMode = isReleaseMode();
   if (process.platform === 'darwin' && !releaseMode) {
     app.dock?.setIcon(desktopIconPath(app));
   }
-  const savedState = readWindowState(windowStatePath());
-  const restoredState = savedState && isWindowBoundsVisible(savedState.bounds, screen.getAllDisplays().map((display) => display.workArea))
-    ? savedState
-    : undefined;
-  const window = new BrowserWindow(createMainWindowOptions(releaseMode, restoredState?.bounds));
+  const workAreas = screen.getAllDisplays().map((display) => display.workArea);
+  // Only the first window restores the last session's frame; the others open beside the one they came from.
+  const compact = placement.compact === true;
+  const frame = placement.frame && isWindowBoundsVisible(placement.frame.bounds, workAreas) ? placement.frame : undefined;
+  const savedState = frame || placement.cascadeFrom || compact ? null : readWindowState(windowStatePath());
+  const restoredState = frame ?? (savedState && isWindowBoundsVisible(savedState.bounds, workAreas) ? savedState : undefined);
+  const cascaded = placement.cascadeFrom ? cascadedBounds(placement.cascadeFrom, workAreas) : undefined;
+  const bounds = frame?.bounds ?? (compact && cascaded ? { ...cascaded, ...COMPACT_WINDOW_SIZE } : cascaded ?? restoredState?.bounds);
+  const window = new BrowserWindow(createMainWindowOptions(releaseMode, bounds, process.platform, nativeTheme.shouldUseDarkColors, compact));
   const updateBackground = (): void => {
     window.setBackgroundColor(mainWindowBackground(process.platform, nativeTheme.shouldUseDarkColors));
   };
@@ -42,6 +63,7 @@ export function createMainWindow(
   window.once('closed', () => nativeTheme.removeListener('updated', updateBackground));
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   const saveState = (): void => {
+    if (compact) return;
     if (saveTimer) {
       clearTimeout(saveTimer);
       saveTimer = null;
@@ -52,6 +74,7 @@ export function createMainWindow(
     });
   };
   const scheduleSave = (): void => {
+    if (compact) return;
     if (saveTimer) {
       clearTimeout(saveTimer);
     }
@@ -86,11 +109,6 @@ export function createMainWindow(
   window.webContents.on('console-message', (_event, level, message, line, sourceId) => {
     logRendererConsole(level, message, { line, sourceId });
   });
-  installAppMenu(window, {
-    debugMode: !releaseMode,
-    ...appMenuOptions,
-  });
-  installFocusedAppShortcuts(window);
   window.webContents.on('before-input-event', (event, input) => {
     const command = appCommandFromInput(input);
     if (!command) {
@@ -146,6 +164,7 @@ export function createMainWindowOptions(
   bounds?: Rectangle,
   platform = process.platform,
   dark = nativeTheme.shouldUseDarkColors,
+  compact = false,
 ): BrowserWindowConstructorOptions {
   const macOSWindowOptions: BrowserWindowConstructorOptions = platform === 'darwin'
     ? {
@@ -162,11 +181,11 @@ export function createMainWindowOptions(
       };
 
   return {
-    width: bounds?.width ?? 1440,
-    height: bounds?.height ?? 960,
+    width: bounds?.width ?? (compact ? COMPACT_WINDOW_SIZE.width : 1440),
+    height: bounds?.height ?? (compact ? COMPACT_WINDOW_SIZE.height : 960),
     ...(bounds ? { x: bounds.x, y: bounds.y } : {}),
-    minWidth: MIN_WINDOW_WIDTH,
-    minHeight: MIN_WINDOW_HEIGHT,
+    minWidth: compact ? COMPACT_MIN_SIZE.width : MIN_WINDOW_WIDTH,
+    minHeight: compact ? COMPACT_MIN_SIZE.height : MIN_WINDOW_HEIGHT,
     ...macOSWindowOptions,
     show: false,
     title: product.name,
@@ -267,31 +286,4 @@ function isExternalHttpUrl(url: string): boolean {
 
 function isReleaseMode(): boolean {
   return app.isPackaged;
-}
-
-function installFocusedAppShortcuts(window: BrowserWindow): void {
-  const sendCycleTeamsCommand = (): void => {
-    if (window.isFocused()) {
-      sendAppCommand(window.webContents, { type: 'cycle-teams' });
-    }
-  };
-
-  const register = (): void => {
-    if (!registerCycleTeamsShortcut(globalShortcut, sendCycleTeamsCommand)) {
-      warnMain('shortcuts', 'failed to register cycle teams shortcut', {
-        accelerator: cycleTeamsAccelerator,
-      });
-    }
-  };
-  const unregister = (): void => {
-    unregisterCycleTeamsShortcut(globalShortcut);
-  };
-
-  window.on('focus', register);
-  window.on('blur', unregister);
-  window.on('closed', unregister);
-
-  if (window.isFocused()) {
-    register();
-  }
 }

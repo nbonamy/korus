@@ -1,7 +1,7 @@
 <template>
   <main
     class="app-shell"
-    :class="{ 'app-shell--auth-gated': showOnboardingGate }"
+    :class="{ 'app-shell--auth-gated': showOnboardingGate, 'app-shell--no-rail': hideTeamRail, 'app-shell--chromeless': chromeless, 'app-shell--sidebar-collapsed': agentSidebarCollapsed }"
     @contextmenu.capture="conversationFileActions.capture"
   >
     <AppContextMenu
@@ -62,6 +62,7 @@
       @login="startChatGptLogin"
     />
     <div
+      v-if="!chromeless"
       class="app-shell__nav"
       :class="{ 'app-shell__nav--compact': compactViewport, 'app-shell__nav--open': compactNavOpen }"
     >
@@ -71,6 +72,8 @@
       :mission-creation-error="missionCreationError"
       :mission-creation-pending="missionCreationPending"
       :phone-scope="compactViewport"
+      :hide-team-rail="hideTeamRail"
+      :feature-agent-ids="featureWindow ? featureAgents : undefined"
       @create-mission="createNewMission"
       @delete-mission="deleteMissionFromSidebar"
       @create-agent-in-mission-worktree="createAgentInMissionWorktree"
@@ -113,6 +116,9 @@
       @open-on-remote="openOnRemote"
       @create-quick-chat="createQuickChat"
       @duplicate-agent="$emit('duplicate-agent', $event)"
+      @open-agent-window="openAgentWindow"
+      @open-team-window="openTeamWindow"
+      @open-feature-window="openFeatureWindow"
       @edit-agent="openEditAgent"
       @edit-team="openEditTeam"
       @fork-agent="$emit('fork-agent', $event)"
@@ -143,7 +149,7 @@
     />
     </div>
     <div
-      v-if="compactViewport && compactNavOpen"
+      v-if="!chromeless && compactViewport && compactNavOpen"
       class="app-shell__nav-backdrop"
       aria-hidden="true"
       @click="compactNavOpen = false"
@@ -631,8 +637,8 @@
     />
     <AgentQuickOpen
       v-if="agentQuickOpenVisible"
-      :agents="snapshot.agents.filter(agent => !missionOwnedAgentIds.has(agent.id))"
-      :missions="snapshot.missions ?? []"
+      :agents="quickOpenAgents"
+      :missions="quickOpenMissions"
       :repository-icons="snapshot.general.repositoryIcons"
       :teams="snapshot.teams"
       :unread-agent-ids="unreadAgentIds ?? []"
@@ -670,6 +676,11 @@ import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { defaultTeamColor } from '@workspace/core/team-colors';
 import { agentMentionGroups as projectAgentMentionGroups } from './agent-mention-groups';
 import { appApi, appHostCapabilities, appClientPlatform, appPlatformActions } from '../platform-api';
+import { windowState } from '../window-state';
+import { applyAgentSetup, exportWorkspaceSetup } from './right-workspace-setup';
+import { featureAgentIds, featureLabel } from '@workspace/core/feature-groups';
+import { agentDisplayName } from '@workspace/core/agent-display';
+import { orderAgentsLikeWorktreeSidebar } from '@workspace/core/workspace-sidebar';
 import { codeReviewSettingsKey, useCodeReviewSettings } from './code-review-settings';
 import { diffVizSettingsKey } from './diff-viz-settings';
 import AgentDialog from './AgentDialog.vue';
@@ -1167,6 +1178,23 @@ provide(diffVizSettingsKey, () => props.snapshot.general);
 provideBacklogConnections(() => props.snapshot.workBacklog.connections);
 const backendSwitch = provideBackendSwitch((id, backend) => props.updateAgent({ id, selection: { backend } }));
 const agentSidebarCollapsed = ref(false);
+// A window can show less than the whole workspace: a team or a feature without the rail, or one agent without any navigation.
+const windowScope = computed(() => windowState.scope.value);
+const featureWindow = computed(() => windowScope.value === 'feature');
+// A feature is a branch of a team: its agents are whatever the team has on it now, so new ones show up.
+const featureAgents = computed(() => featureAgentIds(props.snapshot.agents, windowState.teamId.value, windowState.branch.value ?? ''));
+const chromeless = computed(() => windowScope.value === 'agent');
+const hideTeamRail = computed(() => windowScope.value !== 'workspace');
+function openInNewWindow(viewState: import('@workspace/core/windows').WindowViewState): void {
+  void appApi?.openWindow?.(viewState).catch((error) => ElMessage.error(localizedErrorMessage(error, t)));
+}
+const openAgentWindow = (agentId: string): void => openInNewWindow({ agentId, scope: 'agent' });
+const openTeamWindow = (teamId: string): void => openInNewWindow({ teamId, scope: 'team' });
+function openFeatureWindow(branch: string): void {
+  const teamId = activeTeam.value?.id;
+  const agentId = featureAgentIds(props.snapshot.agents, teamId, branch)[0];
+  if (teamId && agentId) openInNewWindow({ scope: 'feature', teamId, branch, agentId });
+}
 const compactViewport = useCompactViewport();
 const compactNavOpen = ref(false);
 function collapseSidebar(): void {
@@ -1380,6 +1408,15 @@ function openFeatureAgents(agentIds: string[]): void {
   selectedMissionId.value = null;
   split.openAgents(agentIds);
 }
+// A window about a team, an agent or a feature closes with it.
+watch(() => [windowScope.value, windowState.teamId.value, props.snapshot.teams, props.snapshot.agents] as const, ([scope, teamId, teams, agents]) => {
+  if (!windowState.windowId.value || scope === 'workspace' || agents.length === 0) return;
+  const exists = (id: string | null) => agents.some((agent) => agent.id === id);
+  const gone = scope === 'team' ? !teams.some((team) => team.id === teamId)
+    : scope === 'agent' ? !exists(windowState.agentId.value)
+      : !featureAgentIds(agents, teamId, windowState.branch.value ?? '').length;
+  if (gone) window.close();
+});
 function deleteMissionFromSidebar(id: string): void {
   if (!props.snapshot.missions?.some(candidate => candidate.id === id)) return;
   missionDeleteTargetId.value = id;
@@ -1812,6 +1849,19 @@ const activeTeamAgents = computed(() => {
     .filter((agent): agent is Agent => Boolean(agent));
 });
 const missionOwnedAgentIds = computed(() => new Set((props.snapshot.missions ?? []).flatMap(missionAgentIds)));
+const quickOpenAgents = computed(() => props.snapshot.agents.filter(agent => {
+  if (missionOwnedAgentIds.value.has(agent.id)) return false;
+  if (windowScope.value === 'feature') return featureAgents.value.includes(agent.id);
+  if (windowScope.value === 'team') return props.snapshot.teams.find(team => team.id === windowState.teamId.value)?.agentIds.includes(agent.id) === true;
+  if (windowScope.value === 'agent') return agent.id === windowState.agentId.value;
+  return true;
+}));
+const quickOpenMissions = computed(() => {
+  const missions = props.snapshot.missions ?? [];
+  if (windowScope.value === 'workspace') return missions;
+  if (windowScope.value === 'team') return missions.filter(mission => mission.teamId === windowState.teamId.value);
+  return [];
+});
 const workspaceAgents = computed(() => (cockpitScope.value ? props.snapshot.agents : activeTeamAgents.value)
   .filter(agent => !missionOwnedAgentIds.value.has(agent.id)));
 const agentMentionGroups = computed<readonly CodexComposerMentionGroup[]>(() => projectAgentMentionGroups({
@@ -1869,6 +1919,19 @@ const currentAgent = computed(() => {
 
   return activeTeamAgents.value.find((agent) => agent.id === team.activeAgentId) ?? activeTeamAgents.value[0] ?? null;
 });
+// The window title is what the Window menu lists, so each window is named for what it shows.
+const windowTitle = computed(() => {
+  const agentName = currentAgent.value ? agentDisplayName(currentAgent.value) : null;
+  const teamName = activeTeam.value?.name;
+  if (windowScope.value === 'agent') return agentName ?? product.name;
+  if (windowScope.value === 'team') return teamName ?? product.name;
+  if (windowScope.value === 'feature') {
+    const feature = featureLabel(activeTeam.value?.featureLabels, windowState.branch.value ?? '');
+    return teamName ? `${feature} · ${teamName}` : feature || product.name;
+  }
+  return agentName && teamName ? `${agentName} · ${teamName}` : product.name;
+});
+watch(windowTitle, (title) => { document.title = title; }, { immediate: true });
 watch(
   [compactViewport, activeSurface],
   ([compact, surface]) => {
@@ -1887,13 +1950,14 @@ watch(() => currentAgent.value?.id, (agentId) => {
   }
 });
 const split = useSplitWorkspace({
-  agentIds: () => (cockpitScope.value ? workspaceAgents.value : activeTeamAgents.value).map(agent => agent.id),
+  agentIds: () => chromeless.value ? [currentAgent.value?.id].filter((id): id is string => Boolean(id)) : (cockpitScope.value ? workspaceAgents.value : activeTeamAgents.value).map(agent => agent.id),
   currentAgentId: () => cockpitScope.value && activeSurface.value === 'mission' ? undefined : currentAgent.value?.id,
   teamId: () => cockpitScope.value ? 'surface:cockpit' : activeTeam.value?.id,
   selectAgent: id => emit('select-agent', id),
+  persist: () => !featureWindow.value && !chromeless.value,
 });
 // Compact screens display one conversation without changing the saved team layout.
-const splitLayout = computed(() => compactViewport.value ? 'single' : split.layout.value);
+const splitLayout = computed(() => compactViewport.value || featureWindow.value || chromeless.value ? 'single' : split.layout.value);
 const hasFocusedConversation = computed(() => compactViewport.value || Boolean(split.focusedPane.value.agentId));
 const rightWorkspaceState = useRightWorkspaceState({
   currentAgentId: () => currentAgent.value?.id,
@@ -1993,6 +2057,28 @@ const {
   workspaceFor: rightWorkspaceFor,
   workspaces: rightWorkspaces,
 } = rightWorkspaceState;
+// The panes a window opens with come from the window it was opened from (or from its last run); from then on they are its own.
+// Main keeps what each window reports, so a new window, a relaunch and a Browser moved here can all start from it.
+const stopFollowingSetup = windowState.onSetup((setup, mode) => {
+  for (const [agentId, pane] of Object.entries(setup)) {
+    if (props.snapshot.agents.some(agent => agent.id === agentId)) applyAgentSetup(rightWorkspaceState.workspaceFor(agentId), pane, mode);
+  }
+});
+onBeforeUnmount(stopFollowingSetup);
+const workspaceSetup = computed(() => exportWorkspaceSetup(rightWorkspaces));
+let reportedSetup = '{}';
+let reportSetupTimer: ReturnType<typeof setTimeout> | undefined;
+watch(workspaceSetup, (setup) => {
+  clearTimeout(reportSetupTimer);
+  reportSetupTimer = setTimeout(() => {
+    const key = JSON.stringify(setup);
+    if (key === reportedSetup) return;
+    reportedSetup = key;
+    void appApi?.setWindowSetup?.(JSON.parse(key)).catch(() => undefined);
+  }, 300);
+});
+onBeforeUnmount(() => clearTimeout(reportSetupTimer));
+
 
 const missionPreviewAgentId = ref<string | null>(null);
 const missionWorkspaceVisible = computed(() => {
@@ -2771,7 +2857,7 @@ const navigation = ref<InstanceType<typeof AppShellNavigation> | null>(null);
 const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
   state: {
     activeTeam: () => activeTeam.value,
-    activeTeamAgents: () => activeTeamAgents.value,
+    activeTeamAgents: () => featureWindow.value ? orderAgentsLikeWorktreeSidebar(activeTeamAgents.value, featureAgents.value) : activeTeamAgents.value,
     quickSwitchAgentIds: () => navigation.value?.quickSwitchAgentIds ?? activeTeamAgents.value.map(agent => agent.id),
     agents: () => props.snapshot.agents,
     attachmentsEnabled: () => props.backendCapabilities.attachments,
@@ -2779,6 +2865,7 @@ const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
     currentAgent: () => hasFocusedConversation.value ? currentAgent.value : null,
     canReplaceConversation: () => Boolean(currentAgent.value && summaryReplacementAgentIds.value.includes(currentAgent.value.id)),
     isAgentWorkspaceVisible: () => isAgentWorkspaceVisible.value,
+    windowScope: () => windowScope.value,
     isModalDialogVisible: () => isModalDialogVisible.value,
     showOnboardingGate: () => showOnboardingGate.value,
     teams: () => props.snapshot.teams,
@@ -2787,7 +2874,6 @@ const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
     closeAgent: (agentId) => emit('close-agent', agentId),
     compactSession: compactAgentSession,
     replaceConversationWithSummary: (agentId) => emit('compress-session', agentId),
-    closeTeam: (teamId) => emit('close-team', teamId),
     debugMarkUnread: () => emit('debug-mark-unread'),
     duplicateAgent: (agentId) => emit('duplicate-agent', agentId),
     editAgent: openEditAgent,
@@ -3295,16 +3381,19 @@ function selectAgentFromBacklog(payload: { agentId: string; teamId: string }): v
 }
 
 function selectAgentFromPalette(payload: { agentId: string; teamId: string }): void {
+  const agent = quickOpenAgents.value.find(candidate => candidate.id === payload.agentId);
+  const teamId = agent?.teamId ?? props.snapshot.teams.find(team => team.agentIds.includes(payload.agentId))?.id;
+  if (!agent || !teamId) return;
   pendingMissionFocusId.value = null;
   activeSurface.value = 'agent';
   pendingComposerFocusAgentId.value = payload.agentId;
-  if (payload.teamId === activeTeam.value?.id) split.select(payload.agentId);
-  if (payload.teamId !== activeTeam.value?.id) emit('select-team', payload.teamId);
+  if (teamId === activeTeam.value?.id) split.select(payload.agentId);
+  if (teamId !== activeTeam.value?.id) emit('select-team', teamId);
   emit('select-agent', payload.agentId);
 }
 
 function selectMissionFromPalette(missionId: string): void {
-  const mission = props.snapshot.missions?.find(candidate => candidate.id === missionId);
+  const mission = quickOpenMissions.value.find(candidate => candidate.id === missionId);
   if (!mission) return;
   if (!cockpitScope.value && mission.teamId !== activeTeam.value?.id) {
     pendingMissionFocusId.value = mission.id;
@@ -3699,6 +3788,14 @@ watch(() => props.fileActivity, (activity) => {
 
 .app-shell__nav {
   display: contents;
+}
+
+/* Without the rail, nothing keeps the macOS window controls clear of the first row of content: the sidebar header of a team
+   or feature window, the header of a window for one agent, or the header of a window whose sidebar is collapsed. */
+html[data-platform='macos'] .app-shell--no-rail :deep(.agent-sidebar__header),
+html[data-platform='macos'] .app-shell--chromeless :deep(.workspace-header),
+html[data-platform='macos'] .app-shell--no-rail.app-shell--sidebar-collapsed :deep(.workspace-header) {
+  padding-left: calc(var(--team-rail-width) + var(--space-16));
 }
 
 .app-shell__compact-bar {

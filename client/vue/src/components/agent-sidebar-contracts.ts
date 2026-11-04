@@ -23,6 +23,8 @@ export interface AgentSidebarProps {
   missionCreationPending?: boolean;
   /** Phones expose conversations and the cockpit only. */
   phoneScope?: boolean;
+  /** A window about one feature: its agents only, and nothing that creates or opens anything else. */
+  featureOnly?: boolean;
   quickSwitchShortcutsVisible?: boolean;
   repositoryIcons?: Record<string, string>;
   listRepositoryBranches?: (input: { agentId: string; repositoryRoot: string; remoteConnectionId?: string }) => Promise<SourceBranch[]>;
@@ -45,6 +47,7 @@ export type AgentSidebarEvents = {
   'create-feature-worktree': [repositories: SidebarRepositoryTarget[]];
   'open-on-remote': [payload: { action: 'main' | 'new-worktree'; repositoryName: string; repositoryKey: string; originUrl?: string }];
   'duplicate-agent': [agentId: string];
+  'open-agent-window': [agentId: string];
   'fork-agent': [agentId: string];
   'share-agent': [agentId: string];
   'handoff-agent': [agentId: string];
@@ -64,6 +67,7 @@ export type AgentSidebarEvents = {
   'delete-mission': [id: string];
   'create-agent-in-mission-worktree': [payload: { missionId: string; worktreePath: string }];
   'open-feature': [agentIds: string[]];
+  'open-feature-window': [branch: string];
   'rename-feature': [feature: { branch: string; label: string }];
   'delete-feature': [feature: { branch: string; label: string }];
   'delete-repository': [agentId: string];

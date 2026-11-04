@@ -5,6 +5,7 @@ import { computed, ref } from 'vue';
 import { backendChoicesKey } from '../backend-selection';
 import { describe, expect, it, vi } from 'vitest';
 import AgentSidebar from '../AgentSidebar.vue';
+import { setElectronTestClient } from '../../test/client';
 import type { Agent, AgentBackend } from '@workspace/core/contracts';
 
 import { agents } from './agent-sidebar-test-harness';
@@ -287,6 +288,50 @@ describe('AgentSidebar sessions', () => {
       await main.get('header').trigger('contextmenu', { clientX: 80, clientY: 160 });
       expect(document.body.querySelector('[role="menu"]')).toBeNull();
     } finally { wrapper.unmount(); localStorage.removeItem('app:agentOrganization:feature-actions'); }
+  });
+
+  it('opens a feature, or main, in a new window from its header menu when the host can', async () => {
+    localStorage.setItem('app:agentOrganization:feature-window', 'worktree');
+    setElectronTestClient({ openWindow: vi.fn() });
+    const source = agents[0]!;
+    if (source.workspace?.kind !== 'git') throw new Error('Expected Git fixture');
+    const feature = { ...source, id: 'feature-agent', name: null, workspace: { ...source.workspace, branch: 'feat1', isLinkedWorktree: true } };
+    const wrapper = mount(AgentSidebar, { attachTo: document.body,
+      props: { agents: [source, feature], teams: [{ id: 'feature-window', name: 'Team', agentIds: [source.id, feature.id] }], teamId: 'feature-window', teamName: 'Team', activeAgentId: source.id } });
+    try {
+      const sections = wrapper.findAll('[data-group-kind="worktree"]');
+      const main = sections.find(section => section.get('header strong').text() === 'main')!;
+      const group = sections.find(section => section.get('header strong').text() === 'feat1')!;
+      const labels = () => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].map(item => item.textContent?.trim());
+
+      await group.get('header').trigger('contextmenu', { clientX: 80, clientY: 120 });
+      await flushPromises();
+      expect(labels()).toStrictEqual(['Open in New Window', 'Rename', 'Delete']);
+      document.body.querySelector<HTMLElement>('[role="menuitem"]')!.click(); await flushPromises();
+      expect(wrapper.emitted('open-feature-window')?.at(-1)).toStrictEqual(['feat1']);
+
+      await main.get('header').trigger('contextmenu', { clientX: 80, clientY: 160 });
+      await flushPromises();
+      expect(labels()).toStrictEqual(['Open in New Window']);
+      document.body.querySelector<HTMLElement>('[role="menuitem"]')!.click(); await flushPromises();
+      expect(wrapper.emitted('open-feature-window')?.at(-1)).toStrictEqual(['main']);
+    } finally { wrapper.unmount(); setElectronTestClient(undefined); localStorage.removeItem('app:agentOrganization:feature-window'); }
+  });
+
+  it.each(['worktree', 'repository', 'activity'] as const)('lists only what a feature window shows, with nothing that creates or opens anything else (%s)', async (mode) => {
+    localStorage.setItem('app:agentOrganization:feature-only', mode);
+    const source = agents[0]!;
+    const wrapper = mount(AgentSidebar, { attachTo: document.body,
+      props: { agents: [source], teams: [{ id: 'feature-only', name: 'Team', agentIds: [source.id] }], teamId: 'feature-only', teamName: 'feat1', activeAgentId: source.id, featureOnly: true } });
+    try {
+      expect(wrapper.find('.agent-sidebar__start-work').exists()).toBe(false);
+      expect(wrapper.find('[data-group-kind="create"]').exists()).toBe(false);
+      expect(wrapper.find('[data-group-kind="missions"]').exists()).toBe(false);
+      for (const label of ['New worktree', 'Quick chat', 'New mission', 'Add project']) {
+        expect(wrapper.find(`button[aria-label="${label}"]`).exists(), label).toBe(false);
+      }
+      expect(wrapper.findAll('.agent-sidebar__agent').length).toBe(1);
+    } finally { wrapper.unmount(); localStorage.removeItem('app:agentOrganization:feature-only'); }
   });
 
   it('offers new worktrees from the default branch group for all team repositories', async () => {

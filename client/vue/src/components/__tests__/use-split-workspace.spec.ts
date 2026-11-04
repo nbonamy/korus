@@ -26,6 +26,20 @@ describe('split workspace selection', () => {
     } finally { scope.stop(); localStorage.removeItem(`app:splitWorkspace:v1:feature-open-${count}`); }
   });
 
+  it('leaves the team’s saved layout alone when a window does not persist its own', async () => {
+    const key = 'app:splitWorkspace:v1:no-persist-team';
+    const current = ref('a');
+    const scope = effectScope();
+    try {
+      const split = scope.run(() => useSplitWorkspace({ agentIds: () => ['a', 'b'], currentAgentId: () => current.value,
+        teamId: () => 'no-persist-team', selectAgent: (id: string) => { current.value = id; }, persist: () => false }))!;
+      split.openAgents(['a', 'b']);
+      await nextTick();
+      expect(split.layout.value).toBe('2-vertical');
+      expect(localStorage.getItem(key)).toBeNull();
+    } finally { scope.stop(); localStorage.removeItem(key); }
+  });
+
   it('restores occupied focus before following selection and clears departed agents on restart', async () => {
     const agents = ref(['a', 'b', 'c']);
     const current = ref('a');

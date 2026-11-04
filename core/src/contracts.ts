@@ -760,11 +760,10 @@ export type AppCommand =
   }
   | { type: 'appshot-failed'; message: string }
   | { type: 'close-active-agent' }
-  | { type: 'close-active-team' }
   | { type: 'compress-active-session' }
   | { type: 'compact-active-session' }
   | { type: 'cycle-agents'; direction: -1 | 1 }
-  | { type: 'cycle-teams' }
+  | { type: 'cycle-teams'; direction?: -1 | 1 }
   | { type: 'duplicate-active-agent' }
   | { type: 'fork-active-agent' }
   | { type: 'handoff-active-agent' }
@@ -1090,6 +1089,18 @@ export type AppApi = {
   quit(): Promise<void>;
   restartApp(): Promise<void>;
   reloadRenderer(): Promise<void>;
+  /** Desktop windows only: this window's identity, initial view state and the shared native owners and drafts. */
+  getWindowContext?(): Promise<import('./windows').WindowContext>;
+  /** Desktop windows only: true when this window now owns the agent's native view. */
+  /** Desktop windows only: opens another window that starts from this view state. */
+  openWindow?(viewState: import('./windows').WindowViewState): Promise<void>;
+  /** Desktop windows only: tells main what panes this window has open, for new windows, relaunches and a moved Browser. */
+  setWindowSetup?(setup: import('./windows').WindowSetup): Promise<void>;
+  /** Desktop windows only: tells main which agent this window shows. */
+  setWindowSelection?(agentId: string | null): Promise<void>;
+  claimNativeResource?(resource: import('./windows').NativeResource, agentId: string, takeOver?: boolean): Promise<boolean>;
+  releaseNativeResource?(resource: import('./windows').NativeResource, agentId: string): Promise<void>;
+  syncComposerDraft?(agentId: string, draft: import('./windows').ComposerDraft | null): Promise<void>;
   setAgentGoal(agentId: string, objective: string): Promise<AppSnapshot>;
   clearAgentGoal(agentId: string): Promise<AppSnapshot>;
   setAgentApprovalPreset(agentId: string, preset: ApprovalPreset): Promise<AppSnapshot>;
@@ -1128,4 +1139,8 @@ export type AppApi = {
   onEvent(listener: (event: MainToRendererEvent) => void): () => void;
   onAppCommand(listener: (command: AppCommand) => void): () => void;
   onUpdateStatusChanged(listener: (status: DesktopUpdateStatus) => void): () => void;
+  onNativeOwnersChanged?(listener: (owners: import('./windows').NativeOwnerEntry[]) => void): () => void;
+  /** Desktop windows only: pane setup handed to this window, e.g. the page of a Browser moved here from another window. */
+  onWindowSetupApply?(listener: (setup: import('./windows').WindowSetup) => void): () => void;
+  onComposerDraftChanged?(listener: (change: import('./windows').ComposerDraftChange) => void): () => void;
 };

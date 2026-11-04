@@ -26,15 +26,17 @@ export function emitBackendEvent(
   }).emitBackendEvent(fullEvent);
 }
 
+let testWindowId = 0;
+
+/** Registers a stand-in window with the controller. Windows start focused and not yet loaded. */
+export function addTestWindow<W extends object>(controller: AppController, window: W): W & { id: number; isDestroyed(): boolean; isFocused(): boolean } {
+  const registered = { id: ++testWindowId, isDestroyed: () => false, isFocused: () => true, ...window };
+  (controller as unknown as { windows: { add(window: unknown): void } }).windows.add(registered);
+  return registered;
+}
+
 export function setMainWindowSend(controller: AppController, send: ReturnType<typeof vi.fn>): void {
-  (controller as unknown as {
-    mainWindow: { isDestroyed(): boolean; webContents: { send: ReturnType<typeof vi.fn> } };
-  }).mainWindow = {
-    isDestroyed: () => false,
-    webContents: {
-      send,
-    },
-  };
+  addTestWindow(controller, { webContents: { send } });
 }
 
 export function currentSnapshot(controller: AppController): AppSnapshot {

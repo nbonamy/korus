@@ -238,35 +238,47 @@
       :visible="visible && activeTab === 'backlog'"
     />
 
-    <MobileSimulatorPanel v-if="simulatorAvailable && presentedTabs.includes('simulator')" v-show="activeTab === 'simulator'" :agent-id="agent.id" :visible="activeTab === 'simulator' && visible" />
-    <BrowserPanel
+    <NativeResourceGate v-if="simulatorAvailable && presentedTabs.includes('simulator')" v-show="activeTab === 'simulator'" resource="simulator" :agent-id="agent.id">
+      <MobileSimulatorPanel :agent-id="agent.id" :visible="activeTab === 'simulator' && visible" />
+    </NativeResourceGate>
+    <NativeResourceGate
       v-if="browserAvailable && presentedTabs.includes('browser')"
       :key="browserVisualization ? 'visualization' : 'browser'"
       v-show="activeTab === 'browser'"
+      resource="browser"
       :agent-id="agent.id"
-      :browser-id="browserId"
-      :initial-url="browserInitialUrl"
-      :open-request-id="browserOpenRequestId"
-      :visualization="browserVisualization"
-      :visible="visible && activeTab === 'browser'"
-      @send-prompt="emit('sendPrompt', $event)"
-      @open-browser-settings="emit('openBrowserSettings')"
-      @url-change="updateBrowserUrl('browser', $event)"
-    />
+    >
+      <BrowserPanel
+        :agent-id="agent.id"
+        :browser-id="browserId"
+        :initial-url="browserInitialUrl"
+        :open-request-id="browserOpenRequestId"
+        :visualization="browserVisualization"
+        :visible="visible && activeTab === 'browser'"
+        @send-prompt="emit('sendPrompt', $event)"
+        @open-browser-settings="emit('openBrowserSettings')"
+        @url-change="updateBrowserUrl('browser', $event)"
+      />
+    </NativeResourceGate>
 
     <template v-if="browserAvailable">
-      <BrowserPanel
+      <NativeResourceGate
         v-for="tab in browserTabs"
         :key="tab"
         v-show="activeTab === tab"
+        resource="browser"
         :agent-id="agent.id"
-        :browser-id="browserPanels[tab]!.browserId"
-        :initial-url="browserPanels[tab]!.url"
-        :visible="visible && activeTab === tab"
-        @send-prompt="emit('sendPrompt', $event)"
-        @open-browser-settings="emit('openBrowserSettings')"
-        @url-change="updateBrowserUrl(tab, $event)"
-      />
+      >
+        <BrowserPanel
+          :agent-id="agent.id"
+          :browser-id="browserPanels[tab]!.browserId"
+          :initial-url="browserPanels[tab]!.url"
+          :visible="visible && activeTab === tab"
+          @send-prompt="emit('sendPrompt', $event)"
+          @open-browser-settings="emit('openBrowserSettings')"
+          @url-change="updateBrowserUrl(tab, $event)"
+        />
+      </NativeResourceGate>
     </template>
 
         <div
@@ -417,6 +429,7 @@ import OpenInControl from '../shared/OpenInControl.vue';
 import { effectiveOpenInApplication } from '../shared/open-in';
 import BrowserPanel from './BrowserPanel.vue';
 import MobileSimulatorPanel from './MobileSimulatorPanel.vue';
+import NativeResourceGate from './NativeResourceGate.vue';
 
 import WorkspaceLinkDropTarget from './WorkspaceLinkDropTarget.vue';
 import { externalBrowserUrl, openInExternalBrowser } from './browser-external';

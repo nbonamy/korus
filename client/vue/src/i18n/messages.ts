@@ -156,7 +156,7 @@ export const messages = {
     shortcuts: {
       title: 'Keyboard Shortcuts', search: 'Search actions or keys…', noResults: 'No matching shortcuts.', empty: 'No shortcuts available in this context.', close: 'Close',
       groups: { navigation: 'Navigation', agents: 'Agents', application: 'Application' },
-      actions: { commands: 'Command palette', help: 'Keyboard shortcuts', palette: 'Go to agent', files: 'Go to file', review: 'Open changes', browser: 'Open browser', nextAgent: 'Next agent', previousAgent: 'Previous agent', nextTeam: 'Next team', agent: 'Go to agent {number}', duplicate: 'Duplicate agent', restart: 'Restart agent', closeAgent: 'Close agent', edit: 'Rename agent', compact: 'Compact session', saveDraft: 'Save draft for later', drafts: 'Saved drafts', newTeam: 'New team', closeTeam: 'Close team', settings: 'Settings', quit: 'Quit', mute: 'Mute or unmute spoken announcements' },
+      actions: { commands: 'Command palette', help: 'Keyboard shortcuts', palette: 'Go to agent', files: 'Go to file', review: 'Open changes', browser: 'Open browser', nextAgent: 'Next agent', previousAgent: 'Previous agent', nextTeam: 'Next team', previousTeam: 'Previous team', nextWindow: 'Next window', previousWindow: 'Previous window', closeWindow: 'Close window', agent: 'Go to agent {number}', duplicate: 'Duplicate agent', restart: 'Restart agent', closeAgent: 'Close agent', edit: 'Rename agent', compact: 'Compact session', saveDraft: 'Save draft for later', drafts: 'Saved drafts', newTeam: 'New team', settings: 'Settings', quit: 'Quit', mute: 'Mute or unmute spoken announcements' },
     },
     antigravity: { name: 'Antigravity', connect: 'Connect Antigravity', connected: 'Antigravity connected', enable: 'Enable Antigravity', remoteLogin: 'Sign in to Antigravity on the remote host, then retry the connection.', install: 'Install Antigravity' },
     branchWork: {
@@ -515,6 +515,7 @@ export const messages = {
       edit: 'Rename agent',
       fork: 'Fork Agent',
       moveToTeam: 'Move to Other Team',
+      openInNewWindow: 'Open in New Window',
       openIn: 'Open In…',
       noAgent: 'No agent',
       restart: 'Restart Agent',
@@ -565,6 +566,7 @@ export const messages = {
       rename: 'Rename', renameTitle: 'Rename feature', label: 'Label', actions: 'Feature actions',
       newWorktree: 'New worktree', repositories: 'Repositories', branch: 'New branch', retry: 'Retry',
       noBackend: 'No agent backend is available.', defaultBranchUnavailable: 'Default branch not found.', creationFailed: 'Could not create the agent.',
+      openInNewWindow: 'Open in New Window',
       open: 'Open feature in split view', openLimited: 'Open the first 4 of {count} agents in split view',
       deleteTitle: 'Delete {feature}?', deleteDescription: 'Remove this feature’s agents and delete the listed worktrees and local branches. Uncommitted changes in these worktrees will be discarded.',
       deleteAction: 'Delete feature and worktrees', worktrees: 'Worktrees to delete',

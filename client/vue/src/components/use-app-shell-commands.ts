@@ -16,7 +16,6 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { translate } from '../i18n';
 import { appApi, appHostCapabilities } from '../platform-api';
 import { useConfetti } from '../shared/confetti/use-confetti';
-import { confirmCloseTeam } from './team-close-confirmation';
 import { imageDataUrlArrayBuffer } from './image-annotation';
 import type { RightWorkspaceTab } from './right-workspace';
 
@@ -36,6 +35,8 @@ type AppShellCommandOptions = {
     currentAgent: () => Agent | null;
     canReplaceConversation?: () => boolean;
     isAgentWorkspaceVisible: () => boolean;
+    /** What this window shows; a window for one agent has no navigation between agents, and any scoped window none between teams. */
+    windowScope?: () => import('@workspace/core/windows').WindowScope;
     isModalDialogVisible: () => boolean;
     showOnboardingGate: () => boolean;
     teams: () => Team[];
@@ -44,7 +45,6 @@ type AppShellCommandOptions = {
     closeAgent: (agentId: string) => void;
     compactSession: (agentId: string) => void;
     replaceConversationWithSummary: (agentId: string) => void;
-    closeTeam: (teamId: string) => void;
     debugMarkUnread: () => void;
     setDebugMissingEngines: (enabled: boolean) => void;
     setDebugProviderUpgrades: (enabled: boolean) => void;
@@ -123,7 +123,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     }
 
     if (
-      matchesShellShortcut('palette', input)
+      matchesShellShortcut('palette', input) && !inAgentWindow()
     ) {
       event.preventDefault();
       resetQuickAgentShortcuts();
@@ -151,7 +151,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
       return;
     }
 
-    if (matchesShellShortcut(`agent${event.key}`, input)) {
+    if (!inAgentWindow() && matchesShellShortcut(`agent${event.key}`, input)) {
       const agentId = options.state.quickSwitchAgentIds()[Number(event.key) - 1];
       if (agentId) {
         event.preventDefault();
@@ -195,10 +195,8 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
       return;
     }
 
-    if (
-      matchesShellShortcut('nextTeam', input)
-    ) {
-      if (cycleTeams()) {
+    if (matchesShellShortcut('nextTeam', input) || matchesShellShortcut('previousTeam', input)) {
+      if (!inScopedWindow() && cycleTeams(input.shift ? -1 : 1)) {
         event.preventDefault();
       }
       return;
@@ -289,7 +287,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     }
 
     if (command.type === 'open-agent-palette') {
-      if (showOnboardingGate.value || isModalDialogVisible.value) return;
+      if (showOnboardingGate.value || isModalDialogVisible.value || inAgentWindow()) return;
       options.actions.openAgentPalette();
       return;
     }
@@ -455,10 +453,10 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     }
 
     if (command.type === 'cycle-teams') {
-      if (!isAgentWorkspaceVisible.value) {
+      if (!isAgentWorkspaceVisible.value || inScopedWindow()) {
         return;
       }
-      cycleTeams();
+      cycleTeams(command.direction ?? 1);
       return;
     }
 
@@ -478,6 +476,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     }
 
     if (command.type === 'new-team') {
+      if (inScopedWindow()) return;
       options.actions.newTeam();
       return;
     }
@@ -506,16 +505,8 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
       return;
     }
 
-    if (command.type === 'close-active-team') {
-      if (!isAgentWorkspaceVisible.value) {
-        return;
-      }
-      void closeActiveTeam();
-      return;
-    }
-
     if (command.type === 'cycle-agents') {
-      if (!isAgentWorkspaceVisible.value) {
+      if (!isAgentWorkspaceVisible.value || inAgentWindow()) {
         return;
       }
       cycleAgents(command.direction);
@@ -609,6 +600,15 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     options.actions.duplicateAgent(agent.id);
   }
 
+  // A window about one agent has no way to move to another agent, and scoped windows none between teams.
+  function inAgentWindow(): boolean {
+    return options.state.windowScope?.() === 'agent';
+  }
+
+  function inScopedWindow(): boolean {
+    return (options.state.windowScope?.() ?? 'workspace') !== 'workspace';
+  }
+
   function closeActiveAgent(event?: KeyboardEvent): void {
     const agent = currentAgent.value;
     if (!agent) {
@@ -617,17 +617,6 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
 
     event?.preventDefault();
     options.actions.closeAgent(agent.id);
-  }
-
-  async function closeActiveTeam(): Promise<void> {
-    const team = activeTeam.value;
-    if (!team || options.state.teams().length <= 1) {
-      return;
-    }
-
-    if (await confirmCloseTeam(team) === 'close') {
-      options.actions.closeTeam(team.id);
-    }
   }
 
   function restartActiveAgent(): void {
@@ -648,7 +637,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     options.actions.editAgent(agent.id);
   }
 
-  function cycleTeams(): boolean {
+  function cycleTeams(direction: 1 | -1 = 1): boolean {
     const teams = options.state.teams();
     if (teams.length < 2) {
       return false;
@@ -658,7 +647,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
       teams.findIndex((team) => team.id === activeTeam.value?.id),
       0,
     );
-    const nextTeam = teams[(activeIndex + 1) % teams.length];
+    const nextTeam = teams[(activeIndex + direction + teams.length) % teams.length];
     if (!nextTeam) {
       return false;
     }

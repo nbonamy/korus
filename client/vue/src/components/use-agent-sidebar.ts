@@ -9,7 +9,8 @@ import { useI18n } from 'vue-i18n';
 import type { Agent, OpenInApplication, OpenInApplicationCatalog, RemoteConnection } from '@workspace/core/contracts';
 import { projectWorkspaceSidebar, type SidebarActivity, type WorkspaceSidebarGroup, type WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar';
 import { formatCompactAge, formatElapsed } from '../shared/compact-age';
-import { BellIcon, CircleCheckIcon, ClockHour8Icon, LoaderIcon, MoonIcon, FolderIcon, GitBranchIcon, GitForkIcon, NetworkIcon, PencilIcon, Trash2Icon } from '../shared/icons/app-icons';
+import { BellIcon, CircleCheckIcon, ClockHour8Icon, ExternalLinkIcon, LoaderIcon, MoonIcon, FolderIcon, GitBranchIcon, GitForkIcon, NetworkIcon, PencilIcon, Trash2Icon } from '../shared/icons/app-icons';
+import { appApi } from '../platform-api';
 import { useBackendChoices } from './backend-selection';
 import { backendDisplayName } from '@workspace/core/backend-driver';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
@@ -34,12 +35,18 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     { id: 'worktree', type: 'radio', checked: organizationMode.value === 'worktree', label: t('sidebar.worktree'), icon: GitForkIcon },
   ]);
   const featureMenuItems = computed<AppMenuItem[]>(() => [
-    { id: 'rename', type: 'action', label: t('features.rename'), icon: PencilIcon },
-    { id: 'delete', type: 'action', label: t('common.delete'), icon: Trash2Icon, danger: true },
+    ...(appApi?.openWindow && contextMenuFeature.value?.sessions.length ? [{ id: 'open-window', type: 'action', label: t('features.openInNewWindow'), icon: ExternalLinkIcon } satisfies AppMenuItem] : []),
+    // The protected group (main) can be opened but not renamed or deleted.
+    ...(contextMenuFeature.value?.protected ? [] : [
+      ...(appApi?.openWindow ? [{ id: 'group-feature', type: 'separator' } satisfies AppMenuItem] : []),
+      { id: 'rename', type: 'action', label: t('features.rename'), icon: PencilIcon } satisfies AppMenuItem,
+      { id: 'delete', type: 'action', label: t('common.delete'), icon: Trash2Icon, danger: true } satisfies AppMenuItem,
+    ]),
   ]);
   function featureAction(action: string): void {
     const group = contextMenuFeature.value;
     contextMenuFeature.value = null;
+    if (action === 'open-window' && group?.branch) emit('open-feature-window', group.branch);
     if (!group?.branch || group.protected) return;
     if (action === 'rename') emit('rename-feature', { branch: group.branch, label: group.label });
     if (action === 'delete') emit('delete-feature', { branch: group.branch, label: group.label });
@@ -380,7 +387,7 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     contextMenuMissionId.value = null;
     contextMenuRepositoryAgentId.value = null;
     contextMenuFeature.value = null;
-    if (group.kind === 'worktree' && group.protected) return;
+    if (group.kind === 'worktree' && group.protected && !appApi?.openWindow) return;
     event.preventDefault();
     if (group.kind === 'worktree') contextMenuFeature.value = group;
     else contextMenuRepositoryAgentId.value = group.sessions[0]?.agentId ?? null;
@@ -448,6 +455,9 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
         break;
       case 'duplicate-agent':
         emit('duplicate-agent', agentId);
+        break;
+      case 'open-agent-window':
+        emit('open-agent-window', agentId);
         break;
       case 'compress-session':
         emit('compress-session', agentId);

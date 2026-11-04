@@ -53,6 +53,50 @@ the local desktop to show UI or use an OS affordance belongs in Electron main.
 - The renderer owns visual state. It never talks to a provider, spawns tools,
   reads local files, or imports provider protocol types.
 - Preload is a small typed bridge and the only renderer path to Electron.
+- Several windows can be open at once. Each window is its own renderer with its own
+  replica of the daemon's state and its own view state (selected agent, panes);
+  `WindowRegistry` in Electron main tracks what belongs to a window. Daemon events,
+  connection changes and update status fan out to every window. Commands about the
+  current window (menu, deep links, debug fixtures) go to the focused one, and
+  commands about an agent's browser or simulator go to the window that owns it. Native
+  views exist once per agent: the first window to mount one owns it, other windows
+  offer to move it, and a closed window gives its views up. Composer drafts are one per
+  agent, relayed live through main so every window shows the same text. A window is
+  always opened with an initial view state, so New Window and every "Open in New
+  Window" entry share one call.
+- A window has a scope. A workspace window shows everything. A team window shows one
+  team with its sidebar and no rail. A feature window is the same for one feature, which
+  is a team and a Git branch: its sidebar lists the team's agents on that branch as they
+  are now, so agents added to it appear, with nothing that creates or opens anything
+  else, and the conversation is always a single pane. An agent window shows one agent
+  with no rail or sidebar; it is smaller and never restores or saves the workspace
+  frame. Scoped windows ignore navigation they cannot show, never overwrite the team's
+  saved split layout, and close when their team, agent or feature is deleted. The Close
+  shortcut of an agent window closes the window, never the agent. Opening in a new
+  window is a view, not a move: the source stays visible where it was. Windows are
+  equal, with no special main window. Window > Show Workspace and a Dock click with
+  only scoped windows open both bring a workspace window back. Each window is titled for
+  what it shows, and the Window menu lists the windows by title so any of them can be
+  brought forward (macOS lists them itself; elsewhere main builds the list). Deep links
+  and captures go to a workspace window.
+- Navigation keys follow what they move through: Control+Tab cycles agents (the feature's,
+  in a feature window), Control+\` cycles teams in a workspace window, and Command+\`
+  cycles windows through the Window menu, each reversed with Shift. Command+W closes the
+  window, whatever it shows; closing an agent deletes it and takes Command+Shift+D. Closing
+  a team is only in the team's own menu, behind a confirmation.
+- The open windows are remembered and reopened at launch: for each, its scope, what it
+  shows (team, agent or feature, and the selected agent of a workspace window) and its
+  frame, listed from least to most recently focused so the last one opened is in front.
+  The layout is rewritten shortly after any change and once more as the app quits, and it
+  keeps what it had when the last window closes. A window whose team, agent or feature
+  is gone is skipped, a feature keeps its remaining agents, and without anything usable
+  the default workspace window opens.
+- Each window reports the panes it has open per agent (right-panel tabs that carry nothing
+  but where to look, and the pages of its Browser tabs) and main keeps the latest. A window
+  opened from another starts with a copy of its source's panes and then drifts on its own;
+  the layout file and a reload start a window from its own; a Browser moved to another
+  window brings its pages with it. Tabs holding a file, diff, image, plan or subagent
+  conversation stay in their window.
 
 The local mobile simulator host owns device attachments and native command execution
 in Electron. Its pane and provider-independent MCP tool share that authority;

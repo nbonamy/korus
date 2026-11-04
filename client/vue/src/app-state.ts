@@ -46,6 +46,8 @@ import { createAgentThreadFlagState } from './agent-thread-flag-state';
 import { createAgentHistoryState } from './agent-history-state';
 import { createSourceRepositoryState } from './source-repository-state';
 import { workspaceSidebarRepositoryKeyForAgent } from '@workspace/core/workspace-sidebar';
+import { windowState } from './window-state';
+import { isEmptyComposerDraft, type ComposerDraft } from '@workspace/core/windows';
 import { isSnapshotEventOwnedBy, type RendererOnlySnapshotEvent } from '@workspace/core/snapshot-event-ownership';
 
 const snapshot = ref<AppSnapshot>(createEmptySnapshot());
@@ -483,6 +485,7 @@ export function useAppState() {
       ...composerStatesByAgentId.value,
       [agentId]: { ...state },
     };
+    shareComposerDraft(agentId);
   }
 
   function updateComposerAttachments(agentId: string, attachments: readonly CodexNativeAttachment[]): void {
@@ -491,6 +494,7 @@ export function useAppState() {
       ...composerAttachmentsByAgentId.value,
       [agentId]: attachments.map((attachment) => ({ ...attachment })),
     };
+    shareComposerDraft(agentId);
   }
 
   const activeBackendApprovals = computed(() => {
@@ -568,6 +572,7 @@ export function useAppState() {
     try {
       await synchronizeRendererSnapshot(false);
       markLoad('startup.snapshot-ready');
+      await startWindowState();
       await generalPreferences.migrate();
       markLoad('startup.preferences-ready');
       if (snapshot.value.activeAgentId) restoreComposerConfiguration(snapshot.value.activeAgentId);
@@ -641,6 +646,7 @@ export function useAppState() {
       if (activeAgentId && state.snapshot.agents.some((agent) => agent.id === activeAgentId)) {
         selectAgentInSnapshot(state.snapshot, activeAgentId);
       }
+      pinWindowTeam(state.snapshot);
       threadFlagState.project(state.snapshot);
       snapshot.value = state.snapshot;
       pruneUnreadAgentIds();
@@ -1058,7 +1064,8 @@ export function useAppState() {
     if (!appHostCapabilities.openInApplications || !appApi?.openAgentPath) {
       throw new Error(translate('surface.app-state.openInIsNotAvailable'));
     }
-    adoptNavigationSnapshot(await appApi.openAgentPath(agentId, application, filePath));
+    // Opening a path never navigates; the daemon's result carries the last selection of any window.
+    adoptBackgroundSnapshot(await appApi.openAgentPath(agentId, application, filePath));
   }
 
   async function createAgent(input: CreateAgentInput, navigation?: { select?: boolean }): Promise<Agent | null> {
@@ -1111,7 +1118,8 @@ export function useAppState() {
 
   async function deleteMission(input: import('@workspace/core/missions').DeleteMissionInput) {
     if (!appApi) throw new Error('Missions unavailable.');
-    adoptNavigationSnapshot(await appApi.deleteMission(input));
+    // Deleting a mission does not navigate; a window whose agent is still there stays on it.
+    adoptBackgroundSnapshot(await appApi.deleteMission(input));
   }
 
   async function readMissionArtifact(missionId: string, stage: import('@workspace/core/missions').MissionStage) {
@@ -1121,7 +1129,7 @@ export function useAppState() {
 
   async function updateMission(input: import('@workspace/core/missions').UpdateMissionInput) {
     if (!appApi) throw new Error('Backend unavailable.');
-    adoptNavigationSnapshot(await appApi.updateMission(input));
+    adoptBackgroundSnapshot(await appApi.updateMission(input));
   }
 
   async function createQuickChat(input: CreateQuickChatInput): Promise<Agent | null> {
@@ -1170,7 +1178,8 @@ export function useAppState() {
       return;
     }
 
-    adoptNavigationSnapshot(await appApi.closeTeam(teamId));
+    // A window on another team stays put; one whose agent went with the team falls back to the daemon's selection.
+    adoptBackgroundSnapshot(await appApi.closeTeam(teamId));
     await loadActiveAgentCatalogs();
   }
 
@@ -2467,6 +2476,7 @@ function adoptBackgroundSnapshot(nextSnapshot: AppSnapshot): void {
   if (activeAgentId && nextSnapshot.agents.some((agent) => agent.id === activeAgentId)) {
     selectAgentInSnapshot(nextSnapshot, activeAgentId);
   }
+  pinWindowTeam(nextSnapshot);
   if (nextSnapshot.activeAgentId !== activeAgentId) {
     adoptNavigationSnapshot(nextSnapshot);
     if (nextSnapshot.activeAgentId) void loadActiveAgentCatalogs(nextSnapshot.activeAgentId);
@@ -2476,6 +2486,12 @@ function adoptBackgroundSnapshot(nextSnapshot: AppSnapshot): void {
   snapshot.value = nextSnapshot;
   pruneUnreadAgentIds();
   pruneConversationFrames();
+}
+
+// A team window keeps its team even when its team has no agent to select and another window navigates elsewhere.
+function pinWindowTeam(next: AppSnapshot): void {
+  const teamId = windowState.teamId.value;
+  if (teamId && next.activeTeamId !== teamId && next.teams.some((team) => team.id === teamId)) selectTeamInSnapshot(next, teamId);
 }
 
 function adoptNavigationSnapshot(nextSnapshot: AppSnapshot): void {
@@ -2597,6 +2613,52 @@ async function refreshAgentSelection(agentId: string, requestId: number, needsHi
     if (needsHistory) markAgentHistoryHydrating(agentId, false);
   }
 }
+
+// A draft belongs to its agent, not to a window: every edit is shared with the other windows, and
+// theirs are applied here without being echoed back. Equal drafts are never re-sent.
+const sharedDraftKeys = new Map<string, string>();
+
+function composerDraftOf(agentId: string): ComposerDraft {
+  return {
+    state: { ...(composerStatesByAgentId.value[agentId] ?? emptyComposerState()) },
+    attachments: [...(composerAttachmentsByAgentId.value[agentId] ?? [])],
+  };
+}
+
+function shareComposerDraft(agentId: string): void {
+  const draft = composerDraftOf(agentId);
+  const key = isEmptyComposerDraft(draft) ? '' : JSON.stringify(draft);
+  if ((sharedDraftKeys.get(agentId) ?? '') === key) return;
+  if (key) sharedDraftKeys.set(agentId, key); else sharedDraftKeys.delete(agentId);
+  // The draft holds reactive objects, which IPC cannot clone; the serialized key is the plain copy.
+  try { void appApi?.syncComposerDraft?.(agentId, key ? JSON.parse(key) : null)?.catch(() => undefined); } catch { /* Sharing a draft never blocks editing it. */ }
+}
+
+function applySharedComposerDraft(agentId: string, draft: ComposerDraft | null): void {
+  if (!snapshot.value.agents.some((agent) => agent.id === agentId)) return;
+  const next = draft ?? { state: emptyComposerState(), attachments: [] };
+  if (draft) sharedDraftKeys.set(agentId, JSON.stringify(draft)); else sharedDraftKeys.delete(agentId);
+  composerStatesByAgentId.value = { ...composerStatesByAgentId.value, [agentId]: { ...next.state } };
+  composerAttachmentsByAgentId.value = { ...composerAttachmentsByAgentId.value, [agentId]: next.attachments.map((attachment) => ({ ...attachment })) };
+}
+
+async function startWindowState(): Promise<void> {
+  try {
+    await windowState.start({
+      api: () => appApi,
+      agentExists: (agentId) => snapshot.value.agents.some((agent) => agent.id === agentId),
+      showAgent: (agentId) => { snapshot.value = selectAgentInSnapshot(snapshot.value, agentId); },
+      teamExists: (teamId) => snapshot.value.teams.some((team) => team.id === teamId),
+      showTeam: (teamId) => { snapshot.value = selectTeamInSnapshot(snapshot.value, teamId); },
+      applyDraft: applySharedComposerDraft,
+    });
+    windowState.reportSelection(appApi, snapshot.value.activeAgentId);
+  } catch {
+    // Without window context this window behaves as the only one.
+  }
+}
+
+watch(() => snapshot.value.activeAgentId, (agentId) => windowState.reportSelection(appApi, agentId));
 
 function markAgentSending(agentId: string, sending: boolean): void {
   const next = new Set(sendingAgentIds.value);

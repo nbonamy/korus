@@ -1,11 +1,10 @@
 import { product } from '@workspace/core/product';
-import { app, clipboard, Menu, MenuItem, type BaseWindow, type BrowserWindow, type MenuItemConstructorOptions } from 'electron';
+import { app, clipboard, Menu, MenuItem, type BrowserWindow, type MenuItemConstructorOptions } from 'electron';
 import type { AppCommand, DesktopUpdateStatus } from '@workspace/core/contracts';
 import type { VisualizeDebugScenario } from '@workspace/core/visualize';
 import type { MissionReviewDebugState, MissionStage } from '@workspace/core/missions';
 import type { ThreadFlagId } from '@workspace/core/thread-flags';
 import { shortcutAccelerator } from '@workspace/core/keyboard-shortcuts';
-import { cycleTeamsAccelerator } from './app-shortcuts';
 import { detectPngRetinaPixelRatio, readClipboardPngBuffer } from './clipboard-image';
 import { sendAppCommand } from './ipc-events';
 import { mainT } from './i18n';
@@ -22,6 +21,12 @@ export type AppMenuCallbacks = {
   checkForUpdates?: () => void;
   installUpdate?: () => void;
   capturePerformanceProfile?: () => void;
+  newWindow?: () => void;
+  showWorkspace?: () => void;
+  /** The open windows, for platforms whose Window menu does not list them itself. */
+  listWindows?: () => Array<{ id: number; title: string; focused: boolean }>;
+  focusWindow?: (id: number) => void;
+  cycleWindow?: (direction: 1 | -1) => void;
   sendDebugAgentMessage?: () => void;
   toggleDebugExecutionPlan?: () => void;
   hasDebugExecutionPlan?: () => boolean;
@@ -42,27 +47,33 @@ export type AppMenuCallbacks = {
   reload(): void;
   sendAppCommand(command: AppCommand): void;
   toggleDeveloperTools(): void;
-  closeAuxiliaryWindow?(focusedWindow: BaseWindow | undefined): boolean;
 };
 
-type AppMenuInstallOptions = AppMenuOptions & Partial<Pick<AppMenuCallbacks, 'restartBackend' | 'checkForUpdates' | 'installUpdate' | 'capturePerformanceProfile' | 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'hasDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'getDebugMissionReviewState' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag' | 'getDebugMissingEngines' | 'setDebugMissingEngines' | 'getDebugProviderUpgrades' | 'setDebugProviderUpgrades' | 'getDebugReviewUncommitted' | 'setDebugReviewUncommitted'>>;
+type AppMenuInstallOptions = AppMenuOptions & Partial<Pick<AppMenuCallbacks, 'restartBackend' | 'checkForUpdates' | 'installUpdate' | 'capturePerformanceProfile' | 'newWindow' | 'showWorkspace' | 'listWindows' | 'focusWindow' | 'cycleWindow' | 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'hasDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'getDebugMissionReviewState' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag' | 'getDebugMissingEngines' | 'setDebugMissingEngines' | 'getDebugProviderUpgrades' | 'setDebugProviderUpgrades' | 'getDebugReviewUncommitted' | 'setDebugReviewUncommitted'>>;
 const editMenuId = 'app-edit-menu';
 
-export function installAppMenu(window: BrowserWindow, options: AppMenuInstallOptions): void {
-  const { checkForUpdates, installUpdate, capturePerformanceProfile, ...menuOptions } = options;
+/** The application menu is shared by every window, so its commands go to whichever window is current. */
+export type AppMenuWindow = BrowserWindow | (() => BrowserWindow | undefined);
+
+export function installAppMenu(host: AppMenuWindow, options: AppMenuInstallOptions): void {
+  const { checkForUpdates, installUpdate, capturePerformanceProfile, newWindow, showWorkspace, listWindows, focusWindow, cycleWindow, ...menuOptions } = options;
+  const current = (): BrowserWindow | undefined => typeof host === 'function' ? host() : host;
   const callbacks: AppMenuCallbacks = {
     restartBackend: options.restartBackend,
     checkForUpdates,
     installUpdate,
     capturePerformanceProfile,
-    reload: () => window.webContents.reload(),
-    sendAppCommand: (command) => sendAppCommand(window.webContents, command),
-    toggleDeveloperTools: () => window.webContents.toggleDevTools(),
-    closeAuxiliaryWindow: focusedWindow => {
-      if (!focusedWindow || focusedWindow === window) return false;
-      focusedWindow.close();
-      return true;
+    newWindow,
+    showWorkspace,
+    listWindows,
+    focusWindow,
+    cycleWindow,
+    reload: () => current()?.webContents.reload(),
+    sendAppCommand: (command) => {
+      const window = current();
+      if (window) sendAppCommand(window.webContents, command);
     },
+    toggleDeveloperTools: () => current()?.webContents.toggleDevTools(),
     sendDebugAgentMessage: options.sendDebugAgentMessage,
     toggleDebugExecutionPlan: options.toggleDebugExecutionPlan,
     hasDebugExecutionPlan: options.hasDebugExecutionPlan,
@@ -484,19 +495,12 @@ function buildFileMenu(callbacks: AppMenuCallbacks): MenuItemConstructorOptions 
         click: () => callbacks.sendAppCommand({ type: 'new-team' }),
       },
       { type: 'separator' },
+      // Closing a window never closes an agent: that is its own command, behind Shift.
+      { label: mainT('menu.closeWindow'), accelerator: shortcutAccelerator('closeWindow'), role: 'close' },
       {
         label: mainT('menu.closeAgent'),
         accelerator: shortcutAccelerator('closeAgent'),
-        click: (_item, focusedWindow) => {
-          if (!callbacks.closeAuxiliaryWindow?.(focusedWindow)) callbacks.sendAppCommand({ type: 'close-active-agent' });
-        },
-      },
-      {
-        label: mainT('menu.closeTeam'),
-        accelerator: shortcutAccelerator('closeTeam'),
-        click: (_item, focusedWindow) => {
-          if (!callbacks.closeAuxiliaryWindow?.(focusedWindow)) callbacks.sendAppCommand({ type: 'close-active-team' });
-        },
+        click: () => callbacks.sendAppCommand({ type: 'close-active-agent' }),
       },
       { type: 'separator' },
       {
@@ -611,8 +615,13 @@ function buildViewMenu(callbacks: AppMenuCallbacks, options: AppMenuOptions): Me
       { type: 'separator' },
       {
         label: mainT('menu.nextTeam'),
-        accelerator: cycleTeamsAccelerator,
-        click: () => callbacks.sendAppCommand({ type: 'cycle-teams' }),
+        accelerator: shortcutAccelerator('nextTeam'),
+        click: () => callbacks.sendAppCommand({ type: 'cycle-teams', direction: 1 }),
+      },
+      {
+        label: mainT('menu.previousTeam'),
+        accelerator: shortcutAccelerator('previousTeam'),
+        click: () => callbacks.sendAppCommand({ type: 'cycle-teams', direction: -1 }),
       },
       ...(options.debugMode ? [
         { type: 'separator' as const },
@@ -632,22 +641,38 @@ function buildViewMenu(callbacks: AppMenuCallbacks, options: AppMenuOptions): Me
 }
 
 function buildWindowMenu(callbacks: AppMenuCallbacks, platform: NodeJS.Platform): MenuItemConstructorOptions {
+  // macOS lists the open windows in a menu it knows as the Window menu; elsewhere the list is built here.
+  const windows = platform === 'darwin' ? [] : callbacks.listWindows?.() ?? [];
   return {
     label: mainT('menu.window'),
+    ...(platform === 'darwin' ? { role: 'window' as const } : {}),
     submenu: [
+      ...(callbacks.newWindow ? [{
+        label: mainT('menu.newWindow'),
+        accelerator: 'CommandOrControl+Shift+N',
+        click: () => callbacks.newWindow?.(),
+      }, ...(callbacks.showWorkspace ? [{
+        label: mainT('menu.showWorkspace'),
+        click: () => callbacks.showWorkspace?.(),
+      }] : []), { type: 'separator' as const }] : []),
       { role: 'minimize' },
       ...(platform === 'darwin' ? [{ role: 'zoom' as const }] : []),
-      { type: 'separator' },
-      {
-        label: mainT('menu.nextTeam'),
-        accelerator: cycleTeamsAccelerator,
-        acceleratorWorksWhenHidden: true,
-        visible: false,
-        click: () => callbacks.sendAppCommand({ type: 'cycle-teams' }),
-      },
-      ...(platform === 'darwin'
-        ? [{ type: 'separator' as const }, { role: 'front' as const }]
-        : [{ role: 'close' as const }]),
+      ...(callbacks.cycleWindow ? [{ type: 'separator' as const }, {
+        label: mainT('menu.nextWindow'),
+        ...(platform === 'darwin' ? { accelerator: shortcutAccelerator('nextWindow') } : {}),
+        click: () => callbacks.cycleWindow?.(1),
+      }, {
+        label: mainT('menu.previousWindow'),
+        ...(platform === 'darwin' ? { accelerator: shortcutAccelerator('previousWindow') } : {}),
+        click: () => callbacks.cycleWindow?.(-1),
+      }] : []),
+      ...(platform === 'darwin' ? [{ type: 'separator' as const }, { role: 'front' as const }] : []),
+      ...(windows.length ? [{ type: 'separator' as const }, ...windows.map((window): MenuItemConstructorOptions => ({
+        label: window.title,
+        type: 'checkbox',
+        checked: window.focused,
+        click: () => callbacks.focusWindow?.(window.id),
+      }))] : []),
     ],
   };
 }

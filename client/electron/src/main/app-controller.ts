@@ -16,10 +16,14 @@ import { mainT } from './i18n';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, net, powerMonitor, protocol, shell } from 'electron';
 import path from 'node:path';
 import { realpath } from 'node:fs/promises';
-import { registerCodexNativeIpc, TypedIpcMain } from '@codex-app-sdk/electron';
+import { registerCodexNativeIpc, sendIpcEvent, TypedIpcMain } from '@codex-app-sdk/electron';
 import { AgentActivityPowerSaveBlocker } from './agent-activity-power-save-blocker';
 import { initializeMainLogging, installProcessErrorLogging, logMain, warnMain } from './log';
 import { createMainWindow } from './main-window';
+import { featureAgentIds } from '@workspace/core/feature-groups';
+import { WindowRegistry } from './window-registry';
+import { readWindowLayout, restorableWindows, writeWindowLayout, type WindowFrame, type WindowLayout } from './window-layout';
+import { isWindowSetup, isWindowViewState, type ComposerDraft, type NativeResource, type WindowContext, type WindowViewState } from '@workspace/core/windows';
 import { createRuntimeAppBackendClient, type AppBackendClientPort } from './backend-client';
 import { getDaemonStatus, refreshDaemon, setDaemonEnabled } from './daemon-launch-agent';
 import { ensureCurrentDaemonForStartup } from './daemon-startup-maintenance';
@@ -27,7 +31,7 @@ import { isAppSnapshotGetResult, type AppBackendEvent } from '@workspace/core/ba
 import { decodeAppSnapshot, isClientState, type DecodedAppSnapshot } from '@workspace/core/snapshot-guards';
 import { applyMainEventToSnapshot, replaceAppSnapshot } from '@workspace/core/snapshot';
 import { spokenAnnouncementVoices, type AddSshConnectionInput, type AgentFilePreviewResult, type AgentFileSearchItem, type ApprovalPreset, type AppCommand, type AppPluginStatus, type AppSnapshot, type BackendConnectionState, type BackendModelOption, type BackendPluginSummary, type BackendSkillSummary, type BrowserAnnotation, type BrowserBounds, type BrowserState, type BrowserViewportBounds, type DaemonStatus, type ClaudeAuthentication, type ClientRequestResponse, type CodexAuthentication, type CodexChatGptLogin, type CodexResourceSharingStatus, type ConversationListInput, type ConversationResumeTarget, type ConversationSummary, type CreateAgentInput, type CreateAutomationInput, type CreateQuickChatInput, type CreateSourceWorktreeInput, type CreateTeamInput, type ClientState, type DesktopUpdateStatus, type DevicePairingSession, type DevicePairingStatus, type DuplicateAgentOptions, type AutomationLocation, type MainToRendererEvent, type MoveAgentToTeamInput, type OpenInApplication, type OpenInApplicationCatalog, type PairedDevice, type RendererMessage, type RendererSendPromptOptions, type RendererSnapshotState, type ReorderAgentsInput, type ReorderRepositoriesInput, type ReorderTeamsInput, type SendPromptOptions, type SetCodexResourceSharingInput, type SourceFolderListing, type SourceFolderListInput, type SourceRepository, type SourceWorktree, type SpokenAnnouncementQueueResult, type SpokenAnnouncementVoice, type SshHostCandidate, type SystemPermissionsStatus, type UpdateAgentInput, type UpdateAutomationInput, type UpdateRemoteConnectionInput, type UpdateSettingsInput, type UpdateTeamInput, type WorkBacklogConfigurationInput, type WorkItem, type WorkProviderConnectResult, type WorkProviderKind, type WorkSource } from '@workspace/core/contracts';
-import { ipcChannels, type AppIpcRequests } from '@workspace/core/ipc';
+import { ipcChannels, type AppIpcEvents, type AppIpcRequests } from '@workspace/core/ipc';
 import { sendAppCommand, sendRendererEvent } from './ipc-events';
 import { installAppMenu, type AppMenuCallbacks, type DebugCodeReviewScenario } from './app-menu';
 import { runPerformanceCapture } from './performance-capture-dialog';
@@ -53,6 +57,7 @@ type SpokenAnnouncementQueuePort = Pick<SpokenAnnouncementQueue, 'dispose' | 'qu
 type ClientEventInput<Event extends MainToRendererEvent = MainToRendererEvent> = Event extends MainToRendererEvent
   ? Omit<Event, 'seq' | 'source' | 'occurredAt'>
   : never;
+type DebugFlags = { missingEngines?: boolean; providerUpgrades?: boolean; reviewUncommitted?: boolean };
 type PendingBrowserOpen = {
   agentId: string;
   browserId: string;
@@ -66,11 +71,16 @@ export class AppController {
   private extensionService: BrowserExtensions | null = null;
   private extensions(): BrowserExtensions {
     return this.extensionService ??= new BrowserExtensions({
-      parent: () => this.mainWindow,
+      parent: () => this.currentWindow() ?? null,
       request: (input) => this.requireBackendClient().request(backendMethods.browserExtensionPackages, { input }),
     });
   }
-  private mainWindow: BrowserWindow | null = null;
+  /** Every open window. The daemon owns product state; this only tracks what belongs to a window. */
+  private readonly windows = new WindowRegistry<BrowserWindow>();
+  private readonly nativeLifecycles = new WeakMap<BrowserWindow, { cleanup: Promise<void> }>();
+  /** Where the open windows are remembered. Unset until the app asks for it, so nothing else writes there. */
+  private layoutFile: string | null = null;
+  private layoutSaveTimer: ReturnType<typeof setTimeout> | null = null;
   /** Main retains product metadata only; full transcripts are transient IPC values. */
   private snapshot: AppSnapshot | null = null;
   private clientState: ClientState = createEmptyClientState();
@@ -88,10 +98,8 @@ export class AppController {
   private reconnectAttempt = 0;
   private shuttingDown = false;
   private connectionState: BackendConnectionState = { status: 'connecting' };
-  private rendererReady = false;
-  private debugMissingEngines = false;
-  private debugProviderUpgrades = false;
-  private debugReviewUncommitted = false;
+  /** Debug fixtures live in one window's renderer, so their menu state follows that window. */
+  private readonly debugFlags = new WeakMap<BrowserWindow, DebugFlags>();
   private readonly pendingDeepLinkCommands: AppCommand[] = [];
   private readonly pendingBrowserOpens = new Map<string, PendingBrowserOpen>();
   private autoUpdateService: DesktopAutoUpdateService | null = null;
@@ -111,9 +119,9 @@ export class AppController {
     onGuestReady: (agentId, browserId, contents, window) => this.extensions().attachGuest(agentId, browserId, contents, window),
     onGuestSelected: (agentId, browserId) => { void this.extensions().selectGuest(agentId, browserId).catch(() => {}); },
     onAnnotation: (annotation) => this.emitBrowserAnnotation(annotation),
-    onViewportRequest: (request) => {
-      if (!this.mainWindow || this.mainWindow.isDestroyed()) throw new Error('Browser window is not available.');
-      sendAppCommand(this.mainWindow.webContents, { type: 'set-browser-viewport', ...request });
+    onViewportRequest: (request, window) => {
+      if (window.isDestroyed()) throw new Error('Browser window is not available.');
+      sendAppCommand(window.webContents, { type: 'set-browser-viewport', ...request });
     },
   });
 
@@ -149,9 +157,9 @@ export class AppController {
     this.policyAwareSpokenAnnouncements = new PolicyAwareSpokenAnnouncementQueue(
       this.spokenAnnouncements,
       () => ({
-        activeAgentId: this.snapshot?.activeAgentId ?? null,
+        activeAgentId: this.currentSelectedAgentId(),
         enabled: this.snapshot?.general.spokenAnnouncementsEnabled === true,
-        focused: this.mainWindow?.isFocused?.() === true,
+        focused: this.windows.anyFocused(),
         muted: this.snapshot?.general.spokenAnnouncementsMuted === true,
         onlyWhenFocused: this.snapshot?.general.spokenAnnouncementsOnlyWhenFocused === true,
         scope: this.snapshot?.general.spokenAnnouncementScope ?? 'selected',
@@ -192,7 +200,7 @@ export class AppController {
     this.autoUpdateService = service;
     this.desktopUpdateStatus = service.getStatus();
     this.manualUpdateCheckController = new ManualUpdateCheckController({
-      getWindow: () => this.mainWindow,
+      getWindow: () => this.currentWindow() ?? null,
       installUpdate: () => this.installUpdate(),
       showMessageBox: (window, options) => window
         ? dialog.showMessageBox(window, options)
@@ -202,8 +210,8 @@ export class AppController {
 
   setDesktopUpdateStatus(status: DesktopUpdateStatus): void {
     this.desktopUpdateStatus = status;
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.mainWindow.webContents.send(ipcChannels.updateStatusChanged, status);
+    if (this.windows.live().length) {
+      for (const window of this.windows.live()) window.webContents.send(ipcChannels.updateStatusChanged, status);
       this.refreshAppMenu();
     }
     this.manualUpdateCheckController?.handleStatus(status);
@@ -618,7 +626,18 @@ export class AppController {
     });
 
     ipc.handle(ipcChannels.restartApp, () => this.restartApp());
-    ipc.handle(ipcChannels.reloadRenderer, () => this.reloadRenderer());
+    ipc.handle(ipcChannels.reloadRenderer, (event) => this.reloadRenderer(this.windowOf(event)));
+    ipc.handle(ipcChannels.getWindowContext, (event) => this.getWindowContext(this.windowOf(event)));
+    ipc.handle(ipcChannels.openWindow, (_event, viewState) => this.openWindowFromRenderer(viewState));
+    ipc.handle(ipcChannels.setWindowSetup, (event, setup) => this.setWindowSetup(this.windowOf(event), setup));
+    ipc.handle(ipcChannels.setWindowSelection, (event, agentId) => {
+      const window = this.windowOf(event);
+      if (window) this.windows.setSelectedAgent(window, agentId);
+      this.scheduleLayoutSave();
+    });
+    ipc.handle(ipcChannels.claimNativeResource, (event, resource, agentId, takeOver) => this.claimNativeResource(this.windowOf(event), resource, agentId, takeOver === true));
+    ipc.handle(ipcChannels.releaseNativeResource, (event, resource, agentId) => this.releaseNativeResource(this.windowOf(event), resource, agentId));
+    ipc.handle(ipcChannels.syncComposerDraft, (event, agentId, draft) => this.syncComposerDraft(this.windowOf(event), agentId, draft));
 
     ipc.handle(ipcChannels.setAgentGoal, (_event, agentId: string, objective: string) => {
       return this.setAgentGoal(agentId, objective);
@@ -747,8 +766,8 @@ export class AppController {
       this.requireMobileAgent(agentId);
       return this.mobileSimulator.view(agentId, input);
     });
-    ipc.handle(ipcChannels.browserOpen, (_event, agentId: string, browserId: string, url: string, guestWebContentsId: number) => this.browserOpen(agentId, browserId, url, guestWebContentsId));
-    ipc.handle(ipcChannels.browserOpenVisualization, (_event, agentId: string, browserId: string, filePath: string, title: string, guestWebContentsId: number) => this.browserOpenVisualization(agentId, browserId, filePath, title, guestWebContentsId));
+    ipc.handle(ipcChannels.browserOpen, (event, agentId: string, browserId: string, url: string, guestWebContentsId: number) => this.browserOpen(this.windowOf(event), agentId, browserId, url, guestWebContentsId));
+    ipc.handle(ipcChannels.browserOpenVisualization, (event, agentId: string, browserId: string, filePath: string, title: string, guestWebContentsId: number) => this.browserOpenVisualization(this.windowOf(event), agentId, browserId, filePath, title, guestWebContentsId));
     ipc.handle(ipcChannels.browserNavigate, (_event, agentId: string, browserId: string, url: string) => this.browserNavigate(agentId, browserId, url));
     ipc.handle(ipcChannels.browserGoBack, (_event, agentId: string, browserId: string) => this.browserPane.goBack(agentId, browserId));
     ipc.handle(ipcChannels.browserGoForward, (_event, agentId: string, browserId: string) => this.browserPane.goForward(agentId, browserId));
@@ -758,13 +777,18 @@ export class AppController {
     ipc.handle(ipcChannels.browserGetZoom, (_event, agentId: string, browserId: string) => this.browserPane.getZoom(agentId, browserId));
     ipc.handle(ipcChannels.browserSetZoom, (_event, agentId: string, browserId: string, percent: number) => this.browserPane.setZoom(agentId, browserId, percent));
     ipc.handle(ipcChannels.browserCopyScreenshot, (_event, agentId: string, browserId: string, rect?: BrowserBounds) => this.browserPane.copyScreenshot(agentId, browserId, rect));
-    ipc.handle(ipcChannels.browserSetBounds, (_event, agentId: string, browserId: string, bounds: BrowserViewportBounds) => this.browserPane.setBounds(agentId, browserId, bounds));
+    ipc.handle(ipcChannels.browserSetBounds, (event, agentId: string, browserId: string, bounds: BrowserViewportBounds) => {
+      if (this.hostsBrowserPane(event, agentId, browserId)) this.browserPane.setBounds(agentId, browserId, bounds);
+    });
     ipc.handle(ipcChannels.browserViewportApplied, (_event, agentId: string, browserId: string, requestId: string, error?: string) => this.browserPane.viewportApplied(agentId, browserId, requestId, error));
-    ipc.handle(ipcChannels.browserSetVisible, (_event, agentId: string, browserId: string, visible: boolean) => this.browserPane.setVisible(agentId, browserId, visible));
+    ipc.handle(ipcChannels.browserSetVisible, (event, agentId: string, browserId: string, visible: boolean) => {
+      if (this.hostsBrowserPane(event, agentId, browserId)) this.browserPane.setVisible(agentId, browserId, visible);
+    });
     ipc.handle(ipcChannels.browserSetAnnotationMode, (_event, agentId: string, browserId: string, enabled: boolean) => this.browserPane.setAnnotationMode(agentId, browserId, enabled));
     ipc.handle(ipcChannels.browserResolveAnnotation, (_event, token: string, comment: string | null) => this.browserPane.resolveAnnotation(token, comment));
     ipc.handle(ipcChannels.browserClearAnnotations, (_event, agentId: string, browserId: string) => this.browserPane.clearAnnotations(agentId, browserId));
-    ipc.handle(ipcChannels.browserClose, (_event, agentId: string, browserId: string) => this.browserPane.close(agentId, browserId));
+    // A window that lost the pane to another one must not close it on its way out.
+    ipc.handle(ipcChannels.browserClose, (event, agentId: string, browserId: string) => this.hostsBrowserPane(event, agentId, browserId) ? this.browserPane.close(agentId, browserId) : undefined);
 
     ipc.handle(ipcChannels.respondToClientRequest, async (_event, response: ClientRequestResponse) => {
       try {
@@ -784,47 +808,170 @@ export class AppController {
 
   setMenuBarVisible(visible: boolean): void {
     if (typeof visible !== 'boolean') throw new Error('Menu bar visibility must be a boolean.');
-    if (process.platform === 'darwin' || !this.mainWindow || this.mainWindow.isDestroyed()) return;
-    this.mainWindow.setAutoHideMenuBar(!visible);
-    this.mainWindow.setMenuBarVisibility(visible);
+    if (process.platform === 'darwin') return;
+    for (const window of this.windows.live()) {
+      window.setAutoHideMenuBar(!visible);
+      window.setMenuBarVisibility(visible);
+    }
   }
 
-  createWindow(): void {
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.focusMainWindow();
+  /** Remembers the open windows in this file, and lets {@link openStartupWindows} bring them back. */
+  enableWindowLayout(filePath: string): void {
+    this.layoutFile = filePath;
+  }
+
+  /** Opens the windows the app was left with, or the default workspace window when there is nothing usable to restore. */
+  openStartupWindows(): void {
+    const layout = this.layoutFile && this.snapshot ? readWindowLayout(this.layoutFile) : null;
+    const saved = layout && this.snapshot ? restorableWindows(layout, this.snapshot) : [];
+    if (!saved.length) {
+      this.createWindow();
       return;
     }
-    this.mainWindow = createMainWindow({
-      ...this.updateMenuOptions(),
-      ...this.debugMenuOptions(),
+    for (const { viewState, frame } of saved) this.openWindow(viewState, frame);
+    // A deep link that opened the app needs a workspace to land in.
+    if (this.pendingDeepLinkCommands.length && !this.windows.focusedWorkspace()) this.openWindow();
+  }
+
+  private scheduleLayoutSave(): void {
+    if (!this.layoutFile || this.shuttingDown) return;
+    if (this.layoutSaveTimer) clearTimeout(this.layoutSaveTimer);
+    this.layoutSaveTimer = setTimeout(() => this.saveWindowLayout(), 500);
+    this.layoutSaveTimer.unref?.();
+  }
+
+  private saveWindowLayout(): void {
+    if (this.layoutSaveTimer) clearTimeout(this.layoutSaveTimer);
+    this.layoutSaveTimer = null;
+    const live = this.windows.live();
+    // With no window left the app is being quit: keep the layout it had.
+    if (!this.layoutFile || !live.length) return;
+    try {
+      const layout: WindowLayout = {
+        version: 1,
+        windows: live.map(window => ({
+          viewState: this.windows.viewStateOf(window),
+          frame: { bounds: window.getNormalBounds(), isMaximized: window.isMaximized() },
+        })),
+      };
+      writeWindowLayout(this.layoutFile, layout);
+    } catch (error) {
+      warnMain('window', 'failed to save the window layout', { detail: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  /** Brings the workspace forward, opening it when only agent windows (or none) are left. */
+  createWindow(): void {
+    this.showWorkspace();
+  }
+
+  private showWorkspace(): void {
+    if (!this.windows.focusedWorkspace()) {
+      this.openWindow();
+      return;
+    }
+    this.focusMainWindow();
+  }
+
+  private openWindowFromRenderer(viewState: unknown): void {
+    if (!isWindowViewState(viewState)) return;
+    const snapshot = this.snapshot;
+    if (!snapshot) return;
+    if (viewState.agentId && !snapshot.agents.some(agent => agent.id === viewState.agentId)) return;
+    if (viewState.teamId && !snapshot.teams.some(team => team.id === viewState.teamId)) return;
+    if (viewState.scope === 'feature' && !featureAgentIds(snapshot.agents, viewState.teamId, viewState.branch ?? '').length) return;
+    this.openWindow(viewState);
+  }
+
+  /**
+   * Opens a window that starts from `viewState`. Every way of getting a new window (New Window,
+   * and later detaching an agent, a feature or a team) is this call with a different state.
+   */
+  openWindow(viewState: WindowViewState | null = null, frame?: WindowFrame): BrowserWindow {
+    const origin = this.windows.focused();
+    // A window opened from another starts with a copy of its panes, and then goes its own way.
+    const originSetup = !frame && origin ? this.windows.setupOf(origin) : null;
+    if (originSetup && Object.keys(originSetup).length && !viewState?.setup) viewState = { ...viewState, setup: originSetup };
+    const window = createMainWindow({
+      ...(frame ? { frame } : origin ? { cascadeFrom: origin.getNormalBounds() } : {}),
+      ...(viewState?.scope === 'agent' ? { compact: true } : {}),
     });
+    this.windows.add(window, viewState);
     logMain('window', 'created main window');
-    this.rendererReady = false;
-    this.mainWindow.webContents.on('did-start-loading', () => {
-      this.rendererReady = false;
-      if (this.debugMissingEngines || this.debugProviderUpgrades || this.debugReviewUncommitted) {
-        this.debugMissingEngines = false;
-        this.debugProviderUpgrades = false;
-        this.debugReviewUncommitted = false;
-        this.refreshAppMenu();
-      }
+    window.webContents.on('did-start-navigation', (navigation) => {
+      if (!navigation.isMainFrame || navigation.isSameDocument) return;
+      this.windows.setReady(window, false);
+      this.resetNativeResources(window);
+      if (this.debugFlags.delete(window)) this.refreshAppMenu();
     });
-    this.mainWindow.webContents.on('did-finish-load', () => {
-      this.rendererReady = true;
+    window.webContents.on('did-finish-load', () => {
+      this.windows.setReady(window, true);
       this.flushPendingDeepLinkCommands();
     });
-    this.mainWindow.on('focus', () => { this.policyAwareSpokenAnnouncements.refresh(); this.handleTelemetryActivity(); });
-    this.mainWindow.on('blur', () => this.policyAwareSpokenAnnouncements.refresh());
+    const saveLayout = (): void => this.scheduleLayoutSave();
+    window.on('move', saveLayout);
+    window.on('resize', saveLayout);
+    window.on('maximize', saveLayout);
+    window.on('unmaximize', saveLayout);
+    window.on('focus', () => {
+      this.windows.markFocused(window);
+      if (process.platform !== 'darwin') this.refreshAppMenu();
+      this.scheduleLayoutSave();
+      if (!app?.isPackaged) this.refreshAppMenu();
+      this.policyAwareSpokenAnnouncements.refresh();
+      this.handleTelemetryActivity();
+    });
+    window.on('blur', () => this.policyAwareSpokenAnnouncements.refresh());
+    window.once('closed', () => this.handleWindowClosed(window));
+    // Where the Window menu is built here rather than by the system, it follows window titles.
+    window.on('page-title-updated', () => { if (process.platform !== 'darwin') this.refreshAppMenu(); });
+    this.scheduleLayoutSave();
+    this.refreshAppMenu();
     this.handleTelemetryActivity();
+    return window;
+  }
+
+  /** Moves to the next or previous window, in the order they were opened. */
+  private cycleWindow(direction: 1 | -1): void {
+    const windows = [...this.windows.live()].sort((left, right) => left.id - right.id);
+    if (windows.length < 2) return;
+    const current = this.windows.focused();
+    const index = Math.max(windows.findIndex(window => window === current), 0);
+    this.focusWindowById(windows[(index + direction + windows.length) % windows.length]!.id);
+  }
+
+  private focusWindowById(id: number): void {
+    const window = this.windows.byId(id);
+    if (!window) return;
+    if (window.isMinimized()) window.restore();
+    window.show();
+    window.focus();
+  }
+
+  /** New Window: opens beside the current one on the agent it shows. */
+  private openNewWindow(): void {
+    const agentId = this.currentSelectedAgentId();
+    this.openWindow(agentId ? { agentId } : null);
+  }
+
+  private handleWindowClosed(window: BrowserWindow): void {
+    this.nativeLifecycles.delete(window);
+    void this.browserPane.closeHostedBy(window);
+    const released = this.windows.remove(window);
+    this.scheduleLayoutSave();
+    if (process.platform !== 'darwin') this.refreshAppMenu();
+    if (released.length) this.broadcastNativeOwners();
+    this.policyAwareSpokenAnnouncements.refresh();
   }
 
   openDeepLink(value: string): boolean {
     const command = appCommandFromDeepLink(value, process.env.APP_DEV_PROTOCOL_SCHEME);
     if (!command) return false;
-    if (!this.mainWindow || this.mainWindow.isDestroyed() || !this.rendererReady) {
+    const window = this.commandWindow();
+    if (!window || !this.windows.isReady(window)) {
       this.pendingDeepLinkCommands.push(command);
     } else {
-      sendAppCommand(this.mainWindow.webContents, command);
+      sendAppCommand(window.webContents, command);
     }
     this.focusMainWindow();
     return true;
@@ -832,6 +979,8 @@ export class AppController {
 
   async shutdown(): Promise<void> {
     logMain('shutdown', 'closing application');
+    // Windows are still open here, so this is the layout to come back to.
+    this.saveWindowLayout();
     this.shuttingDown = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
@@ -876,7 +1025,7 @@ export class AppController {
   }
 
   private readonly handleTelemetryActivity = (): void => {
-    if (this.shuttingDown || this.connectionState.status !== 'connected' || this.mainWindow?.isDestroyed() || this.mainWindow?.isFocused?.() !== true) return;
+    if (this.shuttingDown || this.connectionState.status !== 'connected' || !this.windows.anyFocused()) return;
     // Native lifecycle signal only. The backend owns day markers and all delivery.
     void this.backendClient?.request(backendMethods.telemetryActivity).catch(() => undefined);
   };
@@ -1204,11 +1353,10 @@ export class AppController {
     this.appLifecycle.exit(0);
   }
 
-  private async reloadRenderer(): Promise<void> {
-    await this.browserPane.closeAll();
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.mainWindow.webContents.reload();
-    }
+  private async reloadRenderer(window: BrowserWindow | undefined): Promise<void> {
+    if (!window) return;
+    await this.browserPane.closeHostedBy(window);
+    if (!window.isDestroyed()) window.webContents.reload();
   }
 
   private async restartBackend(): Promise<void> {
@@ -1387,25 +1535,24 @@ export class AppController {
   private async executeMobileSimulator(agentId: string, input: MobileRequest, userInitiated = false): Promise<MobileResult> {
     this.requireMobileAgent(agentId);
     const result = await this.mobileSimulator.execute(agentId, input, userInitiated);
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+    const window = this.nativeTargetWindow('simulator', agentId);
+    if (window) {
       // The pane follows an agent's lifecycle; a user detaching or powering off in the pane keeps it open.
-      if (input.action === 'attach') sendAppCommand(this.mainWindow.webContents, { type: 'open-simulator', agentId });
+      if (input.action === 'attach') sendAppCommand(window.webContents, { type: 'open-simulator', agentId });
       else if (!userInitiated && (input.action === 'detach' || input.action === 'shutdown'))
-        sendAppCommand(this.mainWindow.webContents, { type: 'close-simulator', agentId });
+        sendAppCommand(window.webContents, { type: 'close-simulator', agentId });
     }
     return result;
   }
 
-  private async browserOpen(agentId: string, browserId: string, url: string, guestWebContentsId: number): Promise<BrowserState> {
-    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
-      throw new Error('Browser window is not available.');
-    }
+  private async browserOpen(window: BrowserWindow | undefined, agentId: string, browserId: string, url: string, guestWebContentsId: number): Promise<BrowserState> {
+    await this.requireBrowserWindow(window, agentId);
     try {
       const agent = this.snapshot?.agents.find((candidate) => candidate.id === agentId);
       if (!agent) {
         throw new Error(`Agent not found: ${agentId}`);
       }
-      const state = await this.browserPane.open(this.mainWindow!, agentId, browserId, url, agent.folder ?? '', guestWebContentsId);
+      const state = await this.browserPane.open(window!, agentId, browserId, url, agent.folder ?? '', guestWebContentsId);
       this.resolvePendingBrowserOpen(agentId, browserId, url, state);
       return state;
     } catch (error) {
@@ -1415,20 +1562,19 @@ export class AppController {
   }
 
   private async browserOpenVisualization(
+    window: BrowserWindow | undefined,
     agentId: string,
     browserId: string,
     filePath: string,
     title: string,
     guestWebContentsId: number,
   ): Promise<BrowserState> {
-    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
-      throw new Error('Browser window is not available.');
-    }
+    await this.requireBrowserWindow(window, agentId);
     const agent = this.snapshot?.agents.find((candidate) => candidate.id === agentId);
     if (!agent) {
       throw new Error(`Agent not found: ${agentId}`);
     }
-    return this.browserPane.openVisualization(this.mainWindow, agentId, browserId, filePath, title, guestWebContentsId);
+    return this.browserPane.openVisualization(window!, agentId, browserId, filePath, title, guestWebContentsId);
   }
 
   private async browserNavigate(agentId: string, browserId: string, url: string): Promise<BrowserState> {
@@ -1443,9 +1589,8 @@ export class AppController {
   }
 
   private requestBrowserOpen(agentId: string, browserId: string, url: string): Promise<BrowserState> {
-    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
-      return Promise.reject(new Error('Browser window is not available.'));
-    }
+    const window = this.nativeTargetWindow('browser', agentId);
+    if (!window) return Promise.reject(new Error('Browser window is not available.'));
 
     this.rejectPendingBrowserOpen(agentId, browserId, new Error('Browser open request was superseded.'));
     return new Promise<BrowserState>((resolve, reject) => {
@@ -1453,7 +1598,7 @@ export class AppController {
         this.rejectPendingBrowserOpen(agentId, browserId, new Error('Timed out opening the in-app browser.'));
       }, 30_000);
       this.pendingBrowserOpens.set(browserPaneKey(agentId, browserId), { agentId, browserId, url, resolve, reject, timeout });
-      sendAppCommand(this.mainWindow!.webContents, { type: 'open-browser', agentId, browserId, url });
+      sendAppCommand(window.webContents, { type: 'open-browser', agentId, browserId, url });
     });
   }
 
@@ -1837,21 +1982,32 @@ export class AppController {
     updateStatus: DesktopUpdateStatus;
     checkForUpdates: () => void;
     installUpdate: () => void;
+    newWindow: () => void;
+    showWorkspace: () => void;
+    listWindows: () => Array<{ id: number; title: string; focused: boolean }>;
+    focusWindow: (id: number) => void;
+    cycleWindow: (direction: 1 | -1) => void;
     capturePerformanceProfile: () => void;
   } {
     return {
       updateStatus: this.desktopUpdateStatus,
       checkForUpdates: () => this.runManualUpdateCheck(),
       installUpdate: () => this.requestInstallUpdate(),
+      newWindow: () => this.openNewWindow(),
+      showWorkspace: () => this.showWorkspace(),
+      listWindows: () => this.windows.live().map(window => ({ id: window.id, title: window.getTitle(), focused: window.isFocused() })),
+      focusWindow: (id: number) => this.focusWindowById(id),
+      cycleWindow: (direction: 1 | -1) => this.cycleWindow(direction),
       capturePerformanceProfile: () => {
-        if (this.mainWindow && !this.mainWindow.isDestroyed()) void runPerformanceCapture(this.mainWindow);
+        const window = this.windows.focused();
+        if (window) void runPerformanceCapture(window);
       },
     };
   }
 
   private refreshAppMenu(): void {
-    if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
-    installAppMenu(this.mainWindow, {
+    if (!this.windows.live().length) return;
+    installAppMenu(() => this.windows.focused(), {
       debugMode: !app.isPackaged,
       ...this.updateMenuOptions(),
       ...this.debugMenuOptions(),
@@ -1863,32 +2019,20 @@ export class AppController {
       restartBackend: () => {
         if (!this.debugBackendRestartPending) void this.requestDebugBackendRestart().catch(error => this.reportDebugBackendRestartError(error));
       },
-      getDebugProviderUpgrades: () => this.debugProviderUpgrades,
+      getDebugProviderUpgrades: () => this.currentDebugFlags().providerUpgrades === true,
       setDebugProviderUpgrades: enabled => {
         if (app.isPackaged) return;
-        this.debugProviderUpgrades = enabled;
-        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-          sendAppCommand(this.mainWindow.webContents, { type: 'debug-provider-upgrades', enabled });
-        }
-        this.refreshAppMenu();
+        this.setDebugFlag('providerUpgrades', 'debug-provider-upgrades', enabled);
       },
-      getDebugReviewUncommitted: () => this.debugReviewUncommitted,
+      getDebugReviewUncommitted: () => this.currentDebugFlags().reviewUncommitted === true,
       setDebugReviewUncommitted: enabled => {
         if (app.isPackaged) return;
-        this.debugReviewUncommitted = enabled;
-        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-          sendAppCommand(this.mainWindow.webContents, { type: 'debug-review-uncommitted', enabled });
-        }
-        this.refreshAppMenu();
+        this.setDebugFlag('reviewUncommitted', 'debug-review-uncommitted', enabled);
       },
-      getDebugMissingEngines: () => this.debugMissingEngines,
+      getDebugMissingEngines: () => this.currentDebugFlags().missingEngines === true,
       setDebugMissingEngines: enabled => {
         if (app.isPackaged) return;
-        this.debugMissingEngines = enabled;
-        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-          sendAppCommand(this.mainWindow.webContents, { type: 'debug-missing-engines', enabled });
-        }
-        this.refreshAppMenu();
+        this.setDebugFlag('missingEngines', 'debug-missing-engines', enabled);
       },
       sendDebugAgentMessage: () => this.sendDebugAgentMessage(),
       toggleDebugExecutionPlan: () => this.toggleDebugExecutionPlan(),
@@ -1944,6 +2088,19 @@ export class AppController {
     return activeAgent?.threadFlags?.[id] === true;
   }
 
+  private currentDebugFlags(): DebugFlags {
+    const window = this.windows.focused();
+    return (window && this.debugFlags.get(window)) || {};
+  }
+
+  private setDebugFlag(flag: keyof DebugFlags, type: 'debug-provider-upgrades' | 'debug-review-uncommitted' | 'debug-missing-engines', enabled: boolean): void {
+    const window = this.windows.focused();
+    if (!window) return;
+    this.debugFlags.set(window, { ...this.debugFlags.get(window), [flag]: enabled });
+    sendAppCommand(window.webContents, { type, enabled });
+    this.refreshAppMenu();
+  }
+
   private debugMenuState(snapshot = this.snapshot): string {
     return `${this.isDebugThreadFlagSet('work_proposed', snapshot)}:${this.isDebugThreadFlagSet('ready_for_review', snapshot)}:${this.hasDebugExecutionPlan(snapshot)}`;
   }
@@ -1957,7 +2114,7 @@ export class AppController {
   }
 
   private toggleDebugExecutionPlan(): void {
-    const agentId = this.snapshot?.activeAgentId;
+    const agentId = this.currentSelectedAgentId();
     if (!agentId || !this.backendClient || app?.isPackaged) {
       return;
     }
@@ -1972,7 +2129,7 @@ export class AppController {
   }
 
   private sendDebugAgentMessage(): void {
-    const agentId = this.snapshot?.activeAgentId;
+    const agentId = this.currentSelectedAgentId();
     if (!agentId || !this.backendClient || app?.isPackaged) {
       return;
     }
@@ -1985,7 +2142,7 @@ export class AppController {
   }
 
   private injectDebugPlanReview(format: 'text' | 'choices'): void {
-    const agentId = this.snapshot?.activeAgentId;
+    const agentId = this.currentSelectedAgentId();
     if (!agentId || !this.backendClient || app?.isPackaged) {
       return;
     }
@@ -1999,15 +2156,13 @@ export class AppController {
   }
 
   private injectDebugCodeReview(scenario: DebugCodeReviewScenario): void {
-    const agentId = this.snapshot?.activeAgentId;
+    const agentId = this.currentSelectedAgentId();
     if (!agentId || !this.backendClient || app?.isPackaged) return;
 
     void this.backendClient.request<AppSnapshot>(backendMethods.debugCodeReviewSet, { agentId, scenario })
       .then(async (snapshot) => {
         await this.adoptBackendSnapshot(snapshot);
-        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-          sendAppCommand(this.mainWindow.webContents, { type: 'debug-open-code-review' });
-        }
+        this.sendAppCommandToFocusedWindow({ type: 'debug-open-code-review' });
       })
       .catch((error) => warnMain('debug', 'failed to inject code review fixture', {
         agentId,
@@ -2017,15 +2172,13 @@ export class AppController {
   }
 
   private populateDebugVisualize(scenario: import('@workspace/core/visualize').VisualizeDebugScenario): void {
-    const agentId = this.snapshot?.activeAgentId;
+    const agentId = this.currentSelectedAgentId();
     if (!agentId || !this.backendClient || app?.isPackaged) return;
 
     void this.backendClient.request<AppSnapshot>(backendMethods.debugVisualizePopulate, { agentId, scenario })
       .then(async (snapshot) => {
         await this.adoptBackendSnapshot(snapshot);
-        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-          sendAppCommand(this.mainWindow.webContents, { type: 'debug-open-visualize' });
-        }
+        this.sendAppCommandToFocusedWindow({ type: 'debug-open-visualize' });
       })
       .catch((error) => warnMain('debug', 'failed to populate Visualize fixture', {
         agentId,
@@ -2035,7 +2188,7 @@ export class AppController {
   }
 
   private setDebugThreadFlag(id: ThreadFlagId, value: boolean): void {
-    const agentId = this.snapshot?.activeAgentId;
+    const agentId = this.currentSelectedAgentId();
     if (!agentId || !this.backendClient || app?.isPackaged) return;
 
     void this.backendClient.request<AppSnapshot>(backendMethods.debugThreadFlagSet, { agentId, id, value })
@@ -2073,8 +2226,8 @@ export class AppController {
 
   // Product snapshots cover metadata only. Provider revisions are checked by the renderer.
   private forwardProviderFrame(event: AppBackendEvent): void {
-    if (!isConversationFrame(event) || !this.mainWindow || this.mainWindow.isDestroyed()) return;
-    sendRendererEvent(this.mainWindow.webContents, withRendererMediaUrls(eventForRenderer(event), this.localMediaRegistry));
+    if (!isConversationFrame(event)) return;
+    this.broadcastRendererEvent(withRendererMediaUrls(eventForRenderer(event), this.localMediaRegistry));
   }
 
   private applyBackendEvent(event: AppBackendEvent, notifyRenderer: boolean): void {
@@ -2100,9 +2253,7 @@ export class AppController {
     this.syncPowerSaveBlocker();
     this.syncNativeAppearance();
     this.refreshDebugMenuIfChanged(previousDebugMenuState);
-    if (notifyRenderer && this.mainWindow && !this.mainWindow.isDestroyed()) {
-      sendRendererEvent(this.mainWindow.webContents, withRendererMediaUrls(rendererEvent, this.localMediaRegistry));
-    }
+    if (notifyRenderer) this.broadcastRendererEvent(withRendererMediaUrls(rendererEvent, this.localMediaRegistry));
   }
 
   private handleBackendDisconnect(error?: Error): void {
@@ -2173,7 +2324,7 @@ export class AppController {
   }
 
   private emitClientEvent(event: ClientEventInput): void {
-    if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+    if (!this.windows.live().length) return;
     this.clientEventSeq += 1;
     const rendererEvent: MainToRendererEvent = {
       ...event,
@@ -2181,7 +2332,7 @@ export class AppController {
       source: 'client',
       occurredAt: new Date().toISOString(),
     };
-    sendRendererEvent(this.mainWindow.webContents, withRendererMediaUrls(rendererEvent, this.localMediaRegistry));
+    this.broadcastRendererEvent(withRendererMediaUrls(rendererEvent, this.localMediaRegistry));
   }
 
   // Window vibrancy (rail and sidebar) is drawn by the OS, so it only follows the app's appearance setting through nativeTheme.
@@ -2231,17 +2382,142 @@ export class AppController {
   }
 
   private flushPendingDeepLinkCommands(): void {
-    if (!this.mainWindow || this.mainWindow.isDestroyed() || !this.rendererReady) return;
+    const window = this.commandWindow();
+    if (!window || !this.windows.isReady(window)) return;
     for (const command of this.pendingDeepLinkCommands.splice(0)) {
-      sendAppCommand(this.mainWindow.webContents, command);
+      sendAppCommand(window.webContents, command);
     }
   }
 
+  /** Deep links and captures act on the workspace; a window that shows one agent cannot navigate to another. */
+  private commandWindow(): BrowserWindow | undefined {
+    return this.windows.focusedWorkspace();
+  }
+
   private focusMainWindow(): void {
-    if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
-    if (this.mainWindow.isMinimized()) this.mainWindow.restore();
-    this.mainWindow.show();
-    this.mainWindow.focus();
+    const window = this.commandWindow() ?? this.windows.focused();
+    if (!window) return;
+    if (window.isMinimized()) window.restore();
+    window.show();
+    window.focus();
+  }
+
+  /** The window commands without a target act on: the focused one, else the one last focused. */
+  private currentWindow(): BrowserWindow | undefined {
+    return this.windows.focused();
+  }
+
+  /** The agent the user is looking at: the current window's selection, else the daemon's last selection. */
+  private currentSelectedAgentId(): string | null {
+    return this.windows.selectedAgentOf(this.windows.focused()) ?? this.snapshot?.activeAgentId ?? null;
+  }
+
+  /** Resolves the window an IPC request came from. Senders that are not a known window act as the current one. */
+  private setWindowSetup(window: BrowserWindow | undefined, setup: unknown): void {
+    if (!window || !isWindowSetup(setup)) return;
+    this.windows.setSetup(window, setup);
+    this.scheduleLayoutSave();
+  }
+
+  private windowOf(event: unknown): BrowserWindow | undefined {
+    const sender = (event as { sender?: unknown } | undefined)?.sender;
+    return this.windows.live().find(window => window.webContents === sender) ?? this.windows.focused();
+  }
+
+  private broadcastRendererEvent(event: MainToRendererEvent): void {
+    for (const window of this.windows.live()) sendRendererEvent(window.webContents, event);
+  }
+
+  private broadcastAppCommand(command: AppCommand): void {
+    for (const window of this.windows.live()) sendAppCommand(window.webContents, command);
+  }
+
+  private sendAppCommandToFocusedWindow(command: AppCommand): void {
+    const window = this.windows.focused();
+    if (window) sendAppCommand(window.webContents, command);
+  }
+
+  /** The window a command about an agent's native view goes to: its owner, else the current window. */
+  private nativeTargetWindow(resource: NativeResource, agentId: string): BrowserWindow | undefined {
+    return this.windows.ownerOf(resource, agentId) ?? this.windows.focused();
+  }
+
+  private async requireBrowserWindow(window: BrowserWindow | undefined, agentId: string): Promise<void> {
+    if (!window || window.isDestroyed()) throw new Error('Browser window is not available.');
+    const lifecycle = this.nativeLifecycles.get(window);
+    await lifecycle?.cleanup;
+    if (window.isDestroyed() || this.nativeLifecycles.get(window) !== lifecycle) throw new Error('Browser window was reloaded.');
+    const owner = this.windows.ownerOf('browser', agentId);
+    if (owner && owner !== window) throw new Error('This agent’s browser is open in another window.');
+  }
+
+  private hostsBrowserPane(event: unknown, agentId: string, browserId: string): boolean {
+    const window = this.windowOf(event);
+    return window !== undefined && this.browserPane.isHostedBy(agentId, browserId, window);
+  }
+
+  private getWindowContext(window: BrowserWindow | undefined): WindowContext {
+    return {
+      windowId: window?.id ?? 0,
+      viewState: window ? this.windows.viewStateOf(window) : null,
+      nativeOwners: this.windows.nativeOwners(),
+      composerDrafts: this.windows.composerDrafts(),
+    };
+  }
+
+  private async claimNativeResource(window: BrowserWindow | undefined, resource: NativeResource, agentId: string, takeOver: boolean): Promise<boolean> {
+    if (!window) return false;
+    const lifecycle = this.nativeLifecycles.get(window);
+    if (lifecycle) await lifecycle.cleanup;
+    const owner = this.windows.ownerOf(resource, agentId);
+    const ownerLifecycle = owner && this.nativeLifecycles.get(owner);
+    if (ownerLifecycle) await ownerLifecycle.cleanup;
+    const current = (): boolean => !window.isDestroyed() && this.windows.has(window) && this.nativeLifecycles.get(window) === lifecycle;
+    if (!current()) return false;
+    const claim = this.windows.claim(window, resource, agentId, takeOver);
+    if (!claim.granted) return false;
+    // The displaced window unmounts its view only after main has let go of the old guest.
+    if (claim.displaced && resource === 'browser') {
+      await this.browserPane.closeHostedBy(claim.displaced, agentId);
+      if (!current() || this.windows.ownerOf(resource, agentId) !== window) return false;
+      // The Browser carries its pages with it: the new owner opens where the old one was.
+      const carried = this.windows.setupOf(claim.displaced)?.[agentId];
+      if (carried) sendIpcEvent<AppIpcEvents, typeof ipcChannels.windowSetupApply>(window.webContents, ipcChannels.windowSetupApply, { [agentId]: carried });
+    }
+    this.broadcastNativeOwners();
+    return true;
+  }
+
+  private resetNativeResources(window: BrowserWindow): void {
+    const previous = this.nativeLifecycles.get(window);
+    // Finish closing the old guests before any restored gate can mount its replacement.
+    const lifecycle = { cleanup: Promise.resolve() };
+    this.nativeLifecycles.set(window, lifecycle);
+    lifecycle.cleanup = (previous?.cleanup ?? Promise.resolve())
+      .then(() => this.browserPane.closeHostedBy(window))
+      .then(() => { this.windows.releaseAll(window); })
+      .catch(error => warnMain('window', 'failed to close reloaded native views', { detail: String(error) }));
+    void lifecycle.cleanup.then(() => {
+      if (this.nativeLifecycles.get(window) === lifecycle) this.broadcastNativeOwners();
+    });
+  }
+
+  private releaseNativeResource(window: BrowserWindow | undefined, resource: NativeResource, agentId: string): void {
+    if (window && this.windows.release(window, resource, agentId)) this.broadcastNativeOwners();
+  }
+
+  private broadcastNativeOwners(): void {
+    const owners = this.windows.nativeOwners();
+    for (const window of this.windows.live()) sendIpcEvent<AppIpcEvents, typeof ipcChannels.nativeOwnersChanged>(window.webContents, ipcChannels.nativeOwnersChanged, owners);
+  }
+
+  /** Drafts are one per agent: every other window mirrors the change as it happens. */
+  private syncComposerDraft(origin: BrowserWindow | undefined, agentId: string, draft: ComposerDraft | null): void {
+    this.windows.setDraft(agentId, draft);
+    for (const window of this.windows.live()) {
+      if (window === origin) continue;
+      sendIpcEvent<AppIpcEvents, typeof ipcChannels.composerDraftChanged>(window.webContents, ipcChannels.composerDraftChanged, { agentId, draft });
+    }
   }
 
   private syncAppshotsKeyMonitor(): void {
@@ -2278,12 +2554,13 @@ export class AppController {
   }
 
   private sendOrQueueAppCommand(command: AppCommand): void {
-    if (!this.mainWindow || this.mainWindow.isDestroyed() || !this.rendererReady) {
+    const window = this.commandWindow();
+    if (!window || !this.windows.isReady(window)) {
       this.pendingDeepLinkCommands.push(command);
       if (app.isReady()) this.createWindow();
       return;
     }
-    sendAppCommand(this.mainWindow.webContents, command);
+    sendAppCommand(window.webContents, command);
   }
 
 }
@@ -2339,6 +2616,7 @@ export function startMainApp(): void {
     } else if (process.argv[1]) {
       app.setAsDefaultProtocolClient(appDeepLinkScheme, process.execPath, [path.resolve(process.argv[1])]);
     }
+    controller.enableWindowLayout(path.join(app.getPath('userData'), 'window-layout.json'));
     try {
       await controller.initialize();
     } catch (error) {
@@ -2346,7 +2624,7 @@ export function startMainApp(): void {
         detail: error instanceof Error ? error.message : String(error),
       });
     } finally {
-      controller.createWindow();
+      controller.openStartupWindows();
     }
   });
 

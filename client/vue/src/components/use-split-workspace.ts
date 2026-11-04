@@ -40,6 +40,8 @@ export function useSplitWorkspace(options: {
   currentAgentId: () => string | undefined;
   teamId: () => string | undefined;
   selectAgent: (agentId: string) => void;
+  /** False for a window whose layout is not the team's: it neither reads nor overwrites the saved one. */
+  persist?: () => boolean;
 }) {
   const layout = ref<SplitLayout>('single');
   const panes = ref<SplitPane[]>([
@@ -66,7 +68,7 @@ export function useSplitWorkspace(options: {
     };
     teamWorkspaces.set(activeTeamId, saved);
     try {
-      if (activeTeamId) localStorage.setItem(storageKey(activeTeamId), JSON.stringify(saved));
+      if (activeTeamId && options.persist?.() !== false) localStorage.setItem(storageKey(activeTeamId), JSON.stringify(saved));
     } catch { /* Keep session layouts when storage is unavailable or full. */ }
   }
 
@@ -126,7 +128,7 @@ export function useSplitWorkspace(options: {
         if (initialized) saveWorkspace();
         initialized = true;
         activeTeamId = teamId;
-        saved = teamWorkspaces.get(teamId) ?? readWorkspace(teamId);
+        saved = teamWorkspaces.get(teamId) ?? (options.persist?.() === false ? undefined : readWorkspace(teamId));
         layout.value = saved?.layout ?? 'single';
         panes.value = saved?.panes.map(pane => ({ ...pane })) ?? [
           { id: nextPaneId++, agentId: agentId ?? null },

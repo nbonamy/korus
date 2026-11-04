@@ -34,6 +34,7 @@ import {
   X,
 } from '../shared/icons/app-icons';
 import { openInApplicationFromMenuItem, openInMenuItems } from '../shared/open-in';
+import { appApi } from '../platform-api';
 
 export type AgentContextMenuAction =
   | 'share-agent'
@@ -44,6 +45,7 @@ export type AgentContextMenuAction =
   | 'edit-agent'
   | 'fork-agent'
   | 'handoff-agent'
+  | 'open-agent-window'
   | 'resume-session'
   | 'restart-agent';
 
@@ -101,6 +103,7 @@ const menuItems = computed<AppMenuItem[]>(() => props.shared ? [{ id: 'close-age
   },
   ...(props.shareAvailable ? [{ id: 'share-agent', type: 'action', label: t('sharing.title'), icon: ExternalLinkIcon } satisfies AppMenuItem] : []),
   { id: 'group-primary', type: 'separator' },
+  ...(appApi?.openWindow ? [{ id: 'open-agent-window', type: 'action', label: t('agents.openInNewWindow'), icon: ExternalLinkIcon } satisfies AppMenuItem] : []),
   { id: 'handoff-agent', type: 'action', label: t('handoff.action'), icon: SwitchHorizontalIcon },
   ...(props.openInCatalog?.applications.length ? [{
     id: 'open-in',
@@ -243,6 +246,7 @@ function isAgentContextMenuAction(itemId: string): itemId is AgentContextMenuAct
     itemId === 'edit-agent' ||
     itemId === 'fork-agent' ||
     itemId === 'handoff-agent' ||
+    itemId === 'open-agent-window' ||
     itemId === 'resume-session' ||
     itemId === 'restart-agent';
 }

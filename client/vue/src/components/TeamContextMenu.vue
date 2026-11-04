@@ -18,7 +18,8 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { Team } from '@workspace/core/contracts';
 import AppMenu from '../shared/menu/AppMenu.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
-import { PencilIcon, X } from '../shared/icons/app-icons';
+import { ExternalLinkIcon, PencilIcon, X } from '../shared/icons/app-icons';
+import { appApi } from '../platform-api';
 
 const props = defineProps<{
   canClose: boolean;
@@ -30,6 +31,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
   'edit-team': [teamId: string];
+  'open-team-window': [teamId: string];
   'request-close-team': [teamId: string];
 }>();
 
@@ -39,6 +41,12 @@ const menuStyle = computed<Record<string, string>>(() => ({
   top: `${props.y}px`,
 }));
 const menuItems = computed<AppMenuItem[]>(() => [
+  ...(appApi?.openWindow ? [{
+    id: 'open-team-window',
+    type: 'action',
+    label: translate('surface.teamContextMenu.openInNewWindow'),
+    icon: ExternalLinkIcon,
+  } satisfies AppMenuItem, { id: 'group-window', type: 'separator' } satisfies AppMenuItem] : []),
   {
     id: 'edit-team',
     type: 'action',
@@ -67,7 +75,9 @@ onBeforeUnmount(() => {
 });
 
 function selectMenuItem(itemId: string): void {
-  if (itemId === 'edit-team') {
+  if (itemId === 'open-team-window') {
+    emit('open-team-window', props.team.id);
+  } else if (itemId === 'edit-team') {
     emit('edit-team', props.team.id);
   } else if (itemId === 'close-team' && props.canClose) {
     emit('request-close-team', props.team.id);

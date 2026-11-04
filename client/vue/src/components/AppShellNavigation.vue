@@ -1,5 +1,6 @@
 <template>
   <TeamRail
+    v-if="!hideTeamRail"
     :teams="snapshot.teams"
     :unread-team-ids="unreadTeamIds"
     :working-team-ids="workingTeamIds"
@@ -20,6 +21,7 @@
     @close-team="$emit('close-team', $event)"
     @edit-team="openEditTeam"
     @new-team="openNewTeam"
+    @open-team-window="$emit('open-team-window', $event)"
     @open-settings="openSettings"
     @open-analytics="emit('open-settings', 'usage')"
     @open-whats-new="openWhatsNew"
@@ -46,8 +48,10 @@
       :mission-creation-error="missionCreationError"
       :mission-creation-pending="missionCreationPending"
       :phone-scope="phoneScope"
+      :feature-only="featureAgentIds !== undefined"
       @create-mission="$emit('create-mission')"
       @open-feature="$emit('open-feature', $event)"
+      @open-feature-window="$emit('open-feature-window', $event)"
       @rename-feature="$emit('rename-feature', $event)"
       @delete-feature="$emit('delete-feature', $event)"
       @delete-repository="$emit('delete-repository', $event)"
@@ -79,6 +83,7 @@
       :remote-connections="snapshot.remoteConnections.connections"
       :list-repository-branches="listRepositorySessionBranches"
       @duplicate-agent="$emit('duplicate-agent', $event)"
+      @open-agent-window="$emit('open-agent-window', $event)"
       @fork-agent="$emit('fork-agent', $event)"
       @share-agent="$emit('share-agent', $event)"
       @handoff-agent="$emit('handoff-agent', $event)"
@@ -104,6 +109,7 @@
 import PaneTransition from '../shared/PaneTransition.vue';
 import { missionAgentIds } from '@workspace/core/mission-attention';
 import { enabledAgentBackends } from '@workspace/core/agent-backends';
+import { orderAgentsLikeWorktreeSidebar } from '@workspace/core/workspace-sidebar';
 import type {
   Agent,
   AppSnapshot,
@@ -137,6 +143,9 @@ const props = defineProps<{
   missionCreationError?: string;
   missionCreationPending?: boolean;
   phoneScope?: boolean;
+  hideTeamRail?: boolean;
+  /** Set in a feature window: the only agents the sidebar lists. */
+  featureAgentIds?: string[];
   activeTeam: Team | null;
   activeTeamAgents: Agent[];
   activeTeamName: string;
@@ -177,11 +186,14 @@ const emit = defineEmits<{
   'delete-mission': [id: string];
   'create-agent-in-mission-worktree': [payload: { missionId: string; worktreePath: string }];
   'open-feature': [agentIds: string[]];
+  'open-feature-window': [branch: string];
+  'open-team-window': [teamId: string];
   'rename-feature': [feature: { branch: string; label: string }];
   'delete-feature': [feature: { branch: string; label: string }];
   'delete-repository': [agentId: string];
   'select-mission': [id: string];
   'duplicate-agent': [agentId: string];
+  'open-agent-window': [agentId: string];
   'edit-agent': [agentId: string];
   'edit-team': [teamId: string];
   'fork-agent': [agentId: string];
@@ -218,11 +230,16 @@ const emit = defineEmits<{
 }>();
 
 const missionOwnedAgentIds = computed(() => new Set((props.snapshot.missions ?? []).flatMap(missionAgentIds)));
-const sidebarAgents = computed(() => (props.cockpitVisible ? props.snapshot.agents : props.activeTeamAgents).filter(agent => !missionOwnedAgentIds.value.has(agent.id)));
+const teamSidebarAgents = computed(() => (props.cockpitVisible ? props.snapshot.agents : props.activeTeamAgents)
+  .filter(agent => !missionOwnedAgentIds.value.has(agent.id)));
+// A feature window lists its agents in the order the team's own sidebar shows them.
+const sidebarAgents = computed(() => props.featureAgentIds
+  ? orderAgentsLikeWorktreeSidebar(teamSidebarAgents.value, props.featureAgentIds)
+  : teamSidebarAgents.value);
 const agentSidebar = ref<InstanceType<typeof AgentSidebar> | null>(null);
 const quickSwitchAgentIds = computed(() => agentSidebar.value?.quickSwitchAgentIds ?? sidebarAgents.value.map(agent => agent.id));
 defineExpose({ quickSwitchAgentIds });
-const teamMissions = computed(() => (props.snapshot.missions ?? []).filter(mission => props.cockpitVisible || mission.teamId === props.activeTeam?.id));
+const teamMissions = computed(() => props.featureAgentIds ? [] : (props.snapshot.missions ?? []).filter(mission => props.cockpitVisible || mission.teamId === props.activeTeam?.id));
 
 const agentSidebarMinWidth = 200;
 const agentSidebarMaxWidth = 420;

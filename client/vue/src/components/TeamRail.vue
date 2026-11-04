@@ -142,6 +142,7 @@
       :x="contextMenuPosition.x"
       :y="contextMenuPosition.y"
       @edit-team="selectEditTeam"
+      @open-team-window="openTeamWindow"
       @request-close-team="requestCloseTeam"
       @close="contextMenuTeamId = null"
     />
@@ -193,6 +194,7 @@ const emit = defineEmits<{
   'reorder-teams': [input: ReorderTeamsInput];
   'select-cockpit': [];
   'select-backlog': [];
+  'open-team-window': [teamId: string];
   'select-automations': [];
   'select-team': [teamId: string];
   'toggle-speech-mute': [];
@@ -228,6 +230,11 @@ onBeforeUnmount(() => {
   document.removeEventListener('click', closeFloatingUiOnDocumentClick);
   document.removeEventListener('keydown', closeFloatingUiOnEscape);
 });
+
+function openTeamWindow(teamId: string): void {
+  emit('open-team-window', teamId);
+  contextMenuTeamId.value = null;
+}
 
 function selectEditTeam(teamId: string): void {
   emit('edit-team', teamId);
