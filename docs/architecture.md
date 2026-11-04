@@ -65,12 +65,13 @@ the local desktop to show UI or use an OS affordance belongs in Electron main.
   always opened with an initial view state, so New Window and every "Open in New
   Window" entry share one call.
 - A window has a scope. A workspace window shows everything. A team window shows one
-  team with its sidebar and no rail. An agent window shows one agent, and a feature
-  window the agents of one feature side by side, both with no rail or sidebar: the
-  agent window is smaller, and neither restores or saves the workspace frame. Scoped
-  windows ignore navigation they cannot show, never overwrite the team's saved split
-  layout, and close when their team, agent or feature is deleted. The Close shortcut of
-  an agent or feature window closes the window, never the agent. Opening in a new
+  team with its sidebar and no rail. A feature window is the same for one feature: its
+  sidebar lists only that feature's agents, with nothing that creates or opens anything
+  else, and the conversation is always a single pane. An agent window shows one agent
+  with no rail or sidebar; it is smaller and never restores or saves the workspace
+  frame. Scoped windows ignore navigation they cannot show, never overwrite the team's
+  saved split layout, and close when their team, agent or feature is deleted. The Close
+  shortcut of an agent window closes the window, never the agent. Opening in a new
   window is a view, not a move: the source stays visible where it was. Windows are
   equal, with no special main window. Window > Show Workspace and a Dock click with
   only scoped windows open both bring a workspace window back. Deep links and captures

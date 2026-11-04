@@ -318,6 +318,22 @@ describe('AgentSidebar sessions', () => {
     } finally { wrapper.unmount(); setElectronTestClient(undefined); localStorage.removeItem('app:agentOrganization:feature-window'); }
   });
 
+  it.each(['worktree', 'repository', 'activity'] as const)('lists only what a feature window shows, with nothing that creates or opens anything else (%s)', async (mode) => {
+    localStorage.setItem('app:agentOrganization:feature-only', mode);
+    const source = agents[0]!;
+    const wrapper = mount(AgentSidebar, { attachTo: document.body,
+      props: { agents: [source], teams: [{ id: 'feature-only', name: 'Team', agentIds: [source.id] }], teamId: 'feature-only', teamName: 'feat1', activeAgentId: source.id, featureOnly: true } });
+    try {
+      expect(wrapper.find('.agent-sidebar__start-work').exists()).toBe(false);
+      expect(wrapper.find('[data-group-kind="create"]').exists()).toBe(false);
+      expect(wrapper.find('[data-group-kind="missions"]').exists()).toBe(false);
+      for (const label of ['New worktree', 'Quick chat', 'New mission', 'Add project']) {
+        expect(wrapper.find(`button[aria-label="${label}"]`).exists(), label).toBe(false);
+      }
+      expect(wrapper.findAll('.agent-sidebar__agent').length).toBe(1);
+    } finally { wrapper.unmount(); localStorage.removeItem('app:agentOrganization:feature-only'); }
+  });
+
   it('offers new worktrees from the default branch group for all team repositories', async () => {
     localStorage.setItem('app:agentOrganization:feature-create', 'worktree');
     const wrapper = mount(AgentSidebar, { attachTo: document.body,

@@ -73,6 +73,7 @@
       :mission-creation-pending="missionCreationPending"
       :phone-scope="compactViewport"
       :hide-team-rail="hideTeamRail"
+      :feature-agent-ids="featureWindow ? windowState.agentIds.value : undefined"
       @create-mission="createNewMission"
       @delete-mission="deleteMissionFromSidebar"
       @create-agent-in-mission-worktree="createAgentInMissionWorktree"
@@ -1173,9 +1174,10 @@ provide(diffVizSettingsKey, () => props.snapshot.general);
 provideBacklogConnections(() => props.snapshot.workBacklog.connections);
 const backendSwitch = provideBackendSwitch((id, backend) => props.updateAgent({ id, selection: { backend } }));
 const agentSidebarCollapsed = ref(false);
-// A window can show less than the whole workspace: one team without the rail, or one agent or feature without any navigation.
+// A window can show less than the whole workspace: a team or a feature without the rail, or one agent without any navigation.
 const windowScope = computed(() => windowState.scope.value);
-const chromeless = computed(() => windowScope.value === 'agent' || windowScope.value === 'feature');
+const featureWindow = computed(() => windowScope.value === 'feature');
+const chromeless = computed(() => windowScope.value === 'agent');
 const hideTeamRail = computed(() => windowScope.value !== 'workspace');
 function openInNewWindow(viewState: import('@workspace/core/windows').WindowViewState): void {
   void appApi?.openWindow?.(viewState).catch((error) => ElMessage.error(localizedErrorMessage(error, t)));
@@ -1396,8 +1398,6 @@ function openFeatureAgents(agentIds: string[]): void {
   selectedMissionId.value = null;
   split.openAgents(agentIds);
 }
-// A feature window starts with its agents side by side.
-watch(() => windowState.agentIds.value, (agentIds) => { if (agentIds.length) openFeatureAgents(agentIds); });
 // A window about a team, an agent or a feature closes with it.
 watch(() => [windowScope.value, windowState.teamId.value, props.snapshot.teams, props.snapshot.agents] as const, ([scope, teamId, teams, agents]) => {
   if (!windowState.windowId.value || scope === 'workspace' || agents.length === 0) return;
@@ -1921,7 +1921,7 @@ const split = useSplitWorkspace({
   persist: () => windowScope.value !== 'feature',
 });
 // Compact screens display one conversation without changing the saved team layout.
-const splitLayout = computed(() => compactViewport.value ? 'single' : split.layout.value);
+const splitLayout = computed(() => compactViewport.value || featureWindow.value ? 'single' : split.layout.value);
 const hasFocusedConversation = computed(() => compactViewport.value || Boolean(split.focusedPane.value.agentId));
 const rightWorkspaceState = useRightWorkspaceState({
   currentAgentId: () => currentAgent.value?.id,
@@ -2798,7 +2798,7 @@ const navigation = ref<InstanceType<typeof AppShellNavigation> | null>(null);
 const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
   state: {
     activeTeam: () => activeTeam.value,
-    activeTeamAgents: () => activeTeamAgents.value,
+    activeTeamAgents: () => featureWindow.value ? activeTeamAgents.value.filter(agent => windowState.agentIds.value.includes(agent.id)) : activeTeamAgents.value,
     quickSwitchAgentIds: () => navigation.value?.quickSwitchAgentIds ?? activeTeamAgents.value.map(agent => agent.id),
     agents: () => props.snapshot.agents,
     attachmentsEnabled: () => props.backendCapabilities.attachments,
@@ -3731,16 +3731,11 @@ watch(() => props.fileActivity, (activity) => {
 }
 
 /* Without the rail, nothing keeps the macOS window controls clear of the first row of content: the sidebar header of a team
-   window, the header of a window for one agent or feature (only in its leftmost pane), or the header of a team window whose
-   sidebar is collapsed. */
+   or feature window, the header of a window for one agent, or the header of a window whose sidebar is collapsed. */
 html[data-platform='macos'] .app-shell--no-rail :deep(.agent-sidebar__header),
 html[data-platform='macos'] .app-shell--chromeless :deep(.workspace-header),
 html[data-platform='macos'] .app-shell--no-rail.app-shell--sidebar-collapsed :deep(.workspace-header) {
   padding-left: calc(var(--team-rail-width) + var(--space-16));
-}
-
-html[data-platform='macos'] .app-shell--chromeless :deep(.agent-split-grid__pane:not(:first-child) .workspace-header) {
-  padding-left: var(--space-8);
 }
 
 .app-shell__compact-bar {

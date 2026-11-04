@@ -30,7 +30,7 @@
       </button>
     </header>
 
-    <div class="agent-sidebar__start-work">
+    <div v-if="!featureOnly" class="agent-sidebar__start-work">
       <StartWorkMenu @select="emit('start-work', $event)" />
       <button
         v-if="!quickChatGroup"
@@ -167,7 +167,7 @@
             <RemoteHostIndicator v-if="group.kind === 'repository' && group.remoteConnectionId" class="agent-sidebar__host" :connection-id="group.remoteConnectionId" :connection="remoteConnection(group.remoteConnectionId)" />
           </button>
           <span
-            v-if="group.kind === 'quickChats'"
+            v-if="group.kind === 'quickChats' && !featureOnly"
             class="agent-sidebar__workspace-actions agent-sidebar__workspace-actions--persistent"
           >
             <button
@@ -179,7 +179,7 @@
               <PlusIcon aria-hidden="true" />
             </button>
           </span>
-          <span v-else-if="group.kind === 'worktree'" class="agent-sidebar__workspace-actions">
+          <span v-else-if="group.kind === 'worktree' && !featureOnly" class="agent-sidebar__workspace-actions">
             <el-tooltip :content="group.sessions.length > 4 ? t('features.openLimited', { count: group.sessions.length }) : t('features.open')" placement="right" :show-after="300">
               <button type="button" :aria-label="t('features.open')" @click.stop="emit('open-feature', group.sessions.map(session => session.agentId))">
                 <OpenFeatureIcon aria-hidden="true" />
@@ -198,7 +198,7 @@
               </template>
             </AppMenuButton>
           </span>
-          <span v-else-if="group.kind === 'repository'" class="agent-sidebar__workspace-actions">
+          <span v-else-if="group.kind === 'repository' && !featureOnly" class="agent-sidebar__workspace-actions">
             <button
               type="button"
               :aria-label="t('sidebar.createFromRepository')"
@@ -354,6 +354,7 @@ const {
   emit,
   quickChatGroup,
   phoneScope,
+  featureOnly,
   missions,
   missionCreationPending,
   missionCreationError,

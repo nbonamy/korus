@@ -48,6 +48,7 @@
       :mission-creation-error="missionCreationError"
       :mission-creation-pending="missionCreationPending"
       :phone-scope="phoneScope"
+      :feature-only="featureAgentIds !== undefined"
       @create-mission="$emit('create-mission')"
       @open-feature="$emit('open-feature', $event)"
       @open-feature-window="$emit('open-feature-window', $event)"
@@ -142,6 +143,8 @@ const props = defineProps<{
   missionCreationPending?: boolean;
   phoneScope?: boolean;
   hideTeamRail?: boolean;
+  /** Set in a feature window: the only agents the sidebar lists. */
+  featureAgentIds?: string[];
   activeTeam: Team | null;
   activeTeamAgents: Agent[];
   activeTeamName: string;
@@ -226,11 +229,12 @@ const emit = defineEmits<{
 }>();
 
 const missionOwnedAgentIds = computed(() => new Set((props.snapshot.missions ?? []).flatMap(missionAgentIds)));
-const sidebarAgents = computed(() => (props.cockpitVisible ? props.snapshot.agents : props.activeTeamAgents).filter(agent => !missionOwnedAgentIds.value.has(agent.id)));
+const sidebarAgents = computed(() => (props.cockpitVisible ? props.snapshot.agents : props.activeTeamAgents)
+  .filter(agent => !missionOwnedAgentIds.value.has(agent.id) && (!props.featureAgentIds || props.featureAgentIds.includes(agent.id))));
 const agentSidebar = ref<InstanceType<typeof AgentSidebar> | null>(null);
 const quickSwitchAgentIds = computed(() => agentSidebar.value?.quickSwitchAgentIds ?? sidebarAgents.value.map(agent => agent.id));
 defineExpose({ quickSwitchAgentIds });
-const teamMissions = computed(() => (props.snapshot.missions ?? []).filter(mission => props.cockpitVisible || mission.teamId === props.activeTeam?.id));
+const teamMissions = computed(() => props.featureAgentIds ? [] : (props.snapshot.missions ?? []).filter(mission => props.cockpitVisible || mission.teamId === props.activeTeam?.id));
 
 const agentSidebarMinWidth = 200;
 const agentSidebarMaxWidth = 420;

@@ -36,7 +36,7 @@ type AppShellCommandOptions = {
     currentAgent: () => Agent | null;
     canReplaceConversation?: () => boolean;
     isAgentWorkspaceVisible: () => boolean;
-    /** What this window shows; a window for one agent or feature has no navigation between agents, and any scoped window none between teams. */
+    /** What this window shows; a window for one agent has no navigation between agents, and any scoped window none between teams. */
     windowScope?: () => import('@workspace/core/windows').WindowScope;
     isModalDialogVisible: () => boolean;
     showOnboardingGate: () => boolean;
@@ -613,10 +613,9 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     options.actions.duplicateAgent(agent.id);
   }
 
-  // Windows about one agent or feature have no way to move to another agent, and scoped windows none between teams.
+  // A window about one agent has no way to move to another agent, and scoped windows none between teams.
   function inAgentWindow(): boolean {
-    const scope = options.state.windowScope?.();
-    return scope === 'agent' || scope === 'feature';
+    return options.state.windowScope?.() === 'agent';
   }
 
   function inScopedWindow(): boolean {

@@ -23,6 +23,8 @@ export interface AgentSidebarProps {
   missionCreationPending?: boolean;
   /** Phones expose conversations and the cockpit only. */
   phoneScope?: boolean;
+  /** A window about one feature: its agents only, and nothing that creates or opens anything else. */
+  featureOnly?: boolean;
   quickSwitchShortcutsVisible?: boolean;
   repositoryIcons?: Record<string, string>;
   listRepositoryBranches?: (input: { agentId: string; repositoryRoot: string; remoteConnectionId?: string }) => Promise<SourceBranch[]>;
