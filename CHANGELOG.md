@@ -4,6 +4,30 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.51.0] - 2026-11-04
+
+### New features
+
+- **Diff Viz:** Generate Fast Mermaid or editable Excalidraw diagrams from a Git comparison, navigate to source files, save diagrams to Visualize, and export native, SVG or PNG files.
+- **Diff reviews:** Optionally hide dependency lockfiles from diffs and reviews.
+
+### Improvements and fixes
+
+- **Conversation performance:** Reduce redundant updates and render streaming Markdown and code incrementally in long conversations.
+- **Design:** Edit applied properties in compact sections with automatic saving, cleaner layers and selection controls, refined toolbars and tweaks, and clearer HTML and CSS previews. Undo and redo stay responsive and group successive edits to the same field into one step.
+- **Missions:** Keep the lead informed of supervisor decisions and retry workers with unfinished tickets within bounded limits, while preserving explicit Stop requests.
+- **Clone repository:** Show progress and let cloning continue in the background without choosing an agent provider first.
+- **Local files:** Open and reveal explicitly selected local files outside the agent workspace.
+- **Android TV simulators:** Add a television frame and stand, remote-key navigation, click-to-select and directional drag controls.
+- **Computer Use:** Offer an opt-in setting to keep the Mac awake and prevent automatic locking while Computer Use is enabled, including idle periods.
+- **Computer Use with Claude:** Make accessibility trees available in readable tool results.
+- **Worktrees:** Run configured setup after moving work into an isolated branch.
+- **Attachments:** Send attached content when pressing Enter instead of accepting a suggested prompt.
+- Keep streamed assistant text together when you send a steering message, including after reloading the conversation.
+- Keep historical file patches available when opening file-change previews.
+- **Teammate messages:** Accept agent references with ID prefixes when sending messages.
+- **Continue:** Resume proposed work in the current conversation with wording that also fits investigation, writing and other tasks.
+
 ## [0.50.6] - 2026-11-02
 
 ### Improvements and fixes

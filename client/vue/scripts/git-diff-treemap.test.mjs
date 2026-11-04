@@ -122,11 +122,14 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
     browser = await chromium.launch();
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     page.setDefaultTimeout(10_000);
+    // Cold Vite transforms and dependency optimization are fixture setup, not UI latency.
+    page.setDefaultNavigationTimeout(60_000);
     // Remote font stylesheets must not hold this local rendering workflow open.
     await page.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto(`${origin}/diff-map`);
+    await page.goto(`${origin}/diff-map`, { waitUntil: 'domcontentloaded' });
+    await page.locator('.git-review-panel__toolbar').waitFor({ timeout: 60_000 });
     const toggleMap = async () => {
       await page.locator('.git-review-panel__toolbar .el-segmented__item').filter({ hasText: /^Map$/ }).click();
     };
