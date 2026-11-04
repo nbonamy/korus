@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
+import { createMission } from '@workspace/core/missions';
 import { windowState } from '../../window-state';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { mountShell } from './app-shell-test-harness';
@@ -26,6 +27,53 @@ describe('AppShell in a window that shows less than the workspace', () => {
     expect(wrapper.find('.team-rail').exists()).toBe(false);
     expect(wrapper.find('.agent-sidebar').exists()).toBe(true);
     expect(wrapper.classes()).toContain('app-shell--no-rail');
+  });
+
+  it.each(['team', 'feature', 'workspace'] as const)('limits quick-open choices and selection to the %s scope', async scope => {
+    const snapshot = createInitialSnapshot();
+    const team = snapshot.teams[0]!;
+    const first = snapshot.agents[0]!;
+    first.name = 'Inside feature';
+    first.teamId = team.id;
+    first.workspace = { kind: 'git', folder: '/src/repo', repositoryName: 'repo', repositoryRoot: '/src/repo', primaryWorktreeRoot: '/src/repo', isLinkedWorktree: false, updatedAt: '', branch: 'feature' };
+    const otherBranch = { ...first, id: 'other-branch', name: 'Other branch', workspace: { ...first.workspace, branch: 'other' } };
+    const otherTeam = { ...first, id: 'other-team-agent', name: 'Other team agent', teamId: 'other-team' };
+    snapshot.agents = [first, otherBranch, otherTeam];
+    team.agentIds = [first.id, otherBranch.id];
+    snapshot.teams.push({ id: 'other-team', name: 'Other team', agentIds: [otherTeam.id] });
+    snapshot.activeAgentId = first.id;
+    const localMission = createMission(snapshot, { outcome: 'Local mission', workflowType: 'shapeAndShipFeature', teamId: team.id, orchestratorMemberId: first.id });
+    const outsideMission = createMission(snapshot, { outcome: 'Outside mission', workflowType: 'shapeAndShipFeature', teamId: otherTeam.teamId, orchestratorMemberId: otherTeam.id });
+    windowState.scope.value = scope;
+    windowState.teamId.value = scope === 'workspace' ? null : team.id;
+    windowState.branch.value = scope === 'feature' ? 'feature' : null;
+    const wrapper = mountShell({ snapshot, stubAgentWorkspace: true });
+    try {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }));
+      await nextTick();
+      const palette = wrapper.getComponent({ name: 'AgentQuickOpen' });
+      expect(palette.text()).toContain('Inside feature');
+      expect(palette.text().includes('Other branch')).toBe(scope !== 'feature');
+      expect(palette.text().includes('Other team agent')).toBe(scope === 'workspace');
+      expect(palette.text().includes('Local mission')).toBe(scope !== 'feature');
+      expect(palette.text().includes('Outside mission')).toBe(scope === 'workspace');
+      // A selection that was queued before choices changed must still obey the scope.
+      if (scope !== 'workspace') {
+        palette.vm.$emit('select', { agentId: otherTeam.id, teamId: otherTeam.teamId });
+        palette.vm.$emit('select-mission', outsideMission.id);
+        if (scope === 'feature') {
+          palette.vm.$emit('select', { agentId: otherBranch.id, teamId: team.id });
+          palette.vm.$emit('select-mission', localMission.id);
+        }
+        await nextTick();
+        expect(wrapper.emitted('select-team') ?? []).toEqual([]);
+        expect(wrapper.emitted('select-agent') ?? []).toEqual([]);
+      }
+      await palette.get('input').setValue('Inside feature');
+      await palette.get('input').trigger('keydown.enter');
+      await nextTick();
+      expect(wrapper.emitted('select-agent')?.at(-1)).toEqual([first.id]);
+    } finally { wrapper.unmount(); }
   });
 
   describe('a feature window', () => {

@@ -311,6 +311,28 @@ describe('AppController with several windows', () => {
       return { controller, created };
     }
 
+    it.each([
+      { isMainFrame: false, isSameDocument: false },
+      { isMainFrame: true, isSameDocument: true },
+    ])('preserves native guests during navigation within the document: %j', async navigation => {
+      const { controller, created } = openedWindows();
+      internals(controller).openWindow();
+      const window = created[0]!;
+      window.webContents.emit('did-finish-load');
+      await internals(controller).claimNativeResource(window, 'browser', 'agent-1', false);
+      await internals(controller).claimNativeResource(window, 'simulator', 'agent-1', false);
+      const owners = internals(controller).windows.nativeOwners();
+      const close = vi.spyOn(internals(controller).browserPane, 'closeHostedBy').mockResolvedValue(undefined);
+      window.webContents.emit('did-start-navigation', navigation);
+      window.webContents.emit('did-start-loading');
+      await Promise.resolve();
+      expect(close).not.toHaveBeenCalled();
+      expect(internals(controller).windows.nativeOwners()).toEqual(owners);
+      window.webContents.send.mockClear();
+      controller.openDeepLink(`${product.protocolScheme}://new?prompt=hi`);
+      expect(sentChannels(window, ipcChannels.appCommand)).toHaveLength(1);
+    });
+
     it('drops reloaded document claims and waits for its guests to close before restoring them', async () => {
       const { controller, created } = openedWindows();
       internals(controller).openWindow();
@@ -322,7 +344,7 @@ describe('AppController with several windows', () => {
       let closeGuests!: () => void;
       const closing = new Promise<void>(resolve => { closeGuests = resolve; });
       vi.spyOn(internals(controller).browserPane, 'closeHostedBy').mockReturnValueOnce(closing);
-      first!.webContents.emit('did-start-loading');
+      first!.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false });
       let restored = false;
       const claiming = internals(controller).claimNativeResource(first, 'browser', 'agent-1', false).then(result => { restored = result; });
       let moved = false;
@@ -356,7 +378,7 @@ describe('AppController with several windows', () => {
         .mockResolvedValue(undefined);
       const takeover = internals(controller).claimNativeResource(first, 'browser', 'agent-1', true);
       await started;
-      first!.webContents.emit('did-start-loading');
+      first!.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false });
       expect(await internals(controller).claimNativeResource(first, 'browser', 'agent-1', false)).toBe(true);
       closeGuests();
       expect(await takeover).toBe(false);

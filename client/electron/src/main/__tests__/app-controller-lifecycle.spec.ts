@@ -622,7 +622,7 @@ describe('controller desktop lifecycle', () => {
       menu[set](false);
       expect(window.webContents.send).toHaveBeenLastCalledWith(ipcChannels.appCommand, { type, enabled: false });
       menu[set](true);
-      window.webContents.emit('did-start-loading');
+      window.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false });
       expect(vi.mocked(installAppMenu).mock.lastCall![1][get]!()).toBe(false);
       Object.defineProperty(app, 'isPackaged', { value: true, configurable: true });
       window.webContents.send.mockClear();
@@ -930,7 +930,7 @@ describe('controller desktop lifecycle', () => {
     expect(window.webContents.send).not.toHaveBeenCalled();
     window.webContents.emit('did-finish-load');
     expect(window.webContents.send).toHaveBeenCalledWith(ipcChannels.appCommand, { type: 'open-shared-conversation', link });
-    window.webContents.send.mockClear(); window.webContents.emit('did-start-loading');
+    window.webContents.send.mockClear(); window.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false });
     expect(controller.openDeepLink(link)).toBe(true); expect(window.webContents.send).not.toHaveBeenCalled();
     window.webContents.emit('did-finish-load');
     expect(window.webContents.send).toHaveBeenCalledTimes(1);
@@ -949,7 +949,7 @@ describe('controller desktop lifecycle', () => {
       type: 'open-agent-composer', prompt: 'first', submit: true,
     });
     window.webContents.send.mockClear();
-    window.webContents.emit('did-start-loading');
+    window.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false });
     controller.openDeepLink(`${product.protocolScheme}://new?prompt=second`);
     expect(window.webContents.send).not.toHaveBeenCalled();
     window.webContents.emit('did-finish-load');

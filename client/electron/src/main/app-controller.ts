@@ -898,7 +898,8 @@ export class AppController {
     });
     this.windows.add(window, viewState);
     logMain('window', 'created main window');
-    window.webContents.on('did-start-loading', () => {
+    window.webContents.on('did-start-navigation', (navigation) => {
+      if (!navigation.isMainFrame || navigation.isSameDocument) return;
       this.windows.setReady(window, false);
       this.resetNativeResources(window);
       if (this.debugFlags.delete(window)) this.refreshAppMenu();

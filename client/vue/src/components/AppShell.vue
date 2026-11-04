@@ -637,8 +637,8 @@
     />
     <AgentQuickOpen
       v-if="agentQuickOpenVisible"
-      :agents="snapshot.agents.filter(agent => !missionOwnedAgentIds.has(agent.id))"
-      :missions="snapshot.missions ?? []"
+      :agents="quickOpenAgents"
+      :missions="quickOpenMissions"
       :repository-icons="snapshot.general.repositoryIcons"
       :teams="snapshot.teams"
       :unread-agent-ids="unreadAgentIds ?? []"
@@ -1849,6 +1849,19 @@ const activeTeamAgents = computed(() => {
     .filter((agent): agent is Agent => Boolean(agent));
 });
 const missionOwnedAgentIds = computed(() => new Set((props.snapshot.missions ?? []).flatMap(missionAgentIds)));
+const quickOpenAgents = computed(() => props.snapshot.agents.filter(agent => {
+  if (missionOwnedAgentIds.value.has(agent.id)) return false;
+  if (windowScope.value === 'feature') return featureAgents.value.includes(agent.id);
+  if (windowScope.value === 'team') return props.snapshot.teams.find(team => team.id === windowState.teamId.value)?.agentIds.includes(agent.id) === true;
+  if (windowScope.value === 'agent') return agent.id === windowState.agentId.value;
+  return true;
+}));
+const quickOpenMissions = computed(() => {
+  const missions = props.snapshot.missions ?? [];
+  if (windowScope.value === 'workspace') return missions;
+  if (windowScope.value === 'team') return missions.filter(mission => mission.teamId === windowState.teamId.value);
+  return [];
+});
 const workspaceAgents = computed(() => (cockpitScope.value ? props.snapshot.agents : activeTeamAgents.value)
   .filter(agent => !missionOwnedAgentIds.value.has(agent.id)));
 const agentMentionGroups = computed<readonly CodexComposerMentionGroup[]>(() => projectAgentMentionGroups({
@@ -3368,16 +3381,19 @@ function selectAgentFromBacklog(payload: { agentId: string; teamId: string }): v
 }
 
 function selectAgentFromPalette(payload: { agentId: string; teamId: string }): void {
+  const agent = quickOpenAgents.value.find(candidate => candidate.id === payload.agentId);
+  const teamId = agent?.teamId ?? props.snapshot.teams.find(team => team.agentIds.includes(payload.agentId))?.id;
+  if (!agent || !teamId) return;
   pendingMissionFocusId.value = null;
   activeSurface.value = 'agent';
   pendingComposerFocusAgentId.value = payload.agentId;
-  if (payload.teamId === activeTeam.value?.id) split.select(payload.agentId);
-  if (payload.teamId !== activeTeam.value?.id) emit('select-team', payload.teamId);
+  if (teamId === activeTeam.value?.id) split.select(payload.agentId);
+  if (teamId !== activeTeam.value?.id) emit('select-team', teamId);
   emit('select-agent', payload.agentId);
 }
 
 function selectMissionFromPalette(missionId: string): void {
-  const mission = props.snapshot.missions?.find(candidate => candidate.id === missionId);
+  const mission = quickOpenMissions.value.find(candidate => candidate.id === missionId);
   if (!mission) return;
   if (!cockpitScope.value && mission.teamId !== activeTeam.value?.id) {
     pendingMissionFocusId.value = mission.id;
