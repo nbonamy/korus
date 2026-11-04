@@ -713,7 +713,7 @@ describe('AppShell dialogs and commands', () => {
     expect(wrapper.emitted('send-agent-prompt')).toBeUndefined();
     await wrapper.get('.agent-sidebar__agent').trigger('contextmenu');
     const items = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.agent-context-menu [role="menuitem"]'));
-    expect(items.find(item => item.textContent?.startsWith('Compact Session'))?.disabled).toBe(true);
+    expect(items.find(item => item.textContent?.startsWith('Compact'))?.disabled).toBe(true);
   });
 
   it('compacts the active session from the native shortcut and a targeted agent from its menu', async () => {
@@ -1593,7 +1593,7 @@ describe('AppShell dialogs and commands', () => {
     const wrapper = mountShell({ snapshot, realAgentSidebar: true });
 
     await wrapper.findAll('.agent-sidebar__agent')[0]!.trigger('contextmenu');
-    await clickPortaledMenuItem('Rename agent');
+    await clickPortaledMenuItem('Rename');
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', metaKey: true, cancelable: true }));
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', ctrlKey: true, cancelable: true }));
 

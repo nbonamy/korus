@@ -352,29 +352,29 @@ describe('AgentSidebar actions', () => {
 
     expect(document.body.querySelector('.agent-context-menu')).not.toBeNull();
     expect(portaledMenuItems().map((item) => item.textContent?.trim())).toStrictEqual([
-      'Rename agent',
-      'Duplicate Agent',
-      'Fork Agent',
-      'Hand off…',
+      'Rename',
+      'Duplicate',
+      'Fork',
+      'Hand off',
       'Move to Other Team',
-      'Compact Session⇧⌘K',
-      'Compress Session',
-      'Resume Session',
-      'Restart Agent',
-      'Close Agent',
+      'Compact⇧⌘K',
+      'Compress',
+      'Resume',
+      'Restart',
+      'Close',
     ]);
 
-    await clickPortaledMenuItem('Rename agent');
+    await clickPortaledMenuItem('Rename');
 
     expect(wrapper.emitted('edit-agent')).toStrictEqual([['agent-dina']]);
     expect(document.body.querySelector('.agent-context-menu')).toBeNull();
 
     const expectedActions = [
-      ['Hand off…', 'handoff-agent'],
-      ['Duplicate Agent', 'duplicate-agent'],
-      ['Resume Session', 'resume-session'],
-      ['Restart Agent', 'restart-agent'],
-      ['Close Agent', 'close-agent'],
+      ['Hand off', 'handoff-agent'],
+      ['Duplicate', 'duplicate-agent'],
+      ['Resume', 'resume-session'],
+      ['Restart', 'restart-agent'],
+      ['Close', 'close-agent'],
     ] as const;
 
     for (const [label, eventName] of expectedActions) {
@@ -432,7 +432,7 @@ describe('AgentSidebar actions', () => {
       clientX: 120,
       clientY: 80,
     });
-    await clickPortaledMenuItem('Compress Session');
+    await clickPortaledMenuItem('Compress');
 
     expect(wrapper.emitted('compress-session')).toStrictEqual([['agent-dina']]);
   });
@@ -447,7 +447,7 @@ describe('AgentSidebar actions', () => {
       global: { components: { ElPopover } },
     });
     await wrapper.get('.agent-sidebar__agent').trigger('contextmenu');
-    await clickPortaledMenuItem('Compact Session⇧⌘K');
+    await clickPortaledMenuItem('Compact⇧⌘K');
     expect(wrapper.emitted('compact-session')).toStrictEqual([['agent-dina']]);
   });
 });

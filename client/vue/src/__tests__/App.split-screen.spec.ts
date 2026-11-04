@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import App from '../App.vue';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { installBackendFixture } from '../test/backend-fixture';
+import { windowState } from '../window-state';
 import {
   codexConversationSnapshot,
   codexTextMessage,
@@ -21,6 +22,48 @@ async function chooseLayout(wrapper: ReturnType<typeof mount>, label: string) {
 }
 
 describe('split-screen conversations', () => {
+  it('splits a feature window using only its branch agents without overwriting the team layout', async () => {
+    const snapshot = createInitialSnapshot();
+    const team = snapshot.teams[0]!;
+    const [first, second] = snapshot.agents;
+    for (const agent of [first!, second!]) {
+      agent.teamId = team.id;
+      agent.workspace = { kind: 'git', folder: agent.folder!, repositoryName: 'repo', repositoryRoot: '/workspace/repo', primaryWorktreeRoot: '/workspace/repo', isLinkedWorktree: true, branch: 'feature-split', updatedAt: '' };
+    }
+    const outside = structuredClone(first!);
+    outside.id = 'other-branch'; outside.name = 'Other branch';
+    if (outside.workspace?.kind !== 'git') throw new Error('Expected Git workspace');
+    outside.workspace.branch = 'main';
+    snapshot.agents = [first!, outside, second!];
+    team.agentIds = snapshot.agents.map(agent => agent.id);
+    snapshot.activeAgentId = first!.id;
+    const key = `app:splitWorkspace:v1:${team.id}`;
+    const saved = JSON.stringify({ layout: 'single', panes: [{ id: 10, agentId: outside.id }], focusedPaneId: 10, ratios: { columns: 0.6, rows: 0.5 } });
+    localStorage.setItem(key, saved);
+    const { api } = installBackendFixture(snapshot);
+    api.getWindowContext.mockResolvedValue({ windowId: 2, viewState: { scope: 'feature', teamId: team.id, branch: 'feature-split', agentId: first!.id }, nativeOwners: [], composerDrafts: {} });
+    const wrapper = mount(App, { attachTo: document.body });
+    try {
+      await flushPromises();
+      for (const [label, layout, ids] of [
+        ['Vertical Split', '2-vertical', [first!.id, second!.id]],
+        ['Horizontal Split', '2-horizontal', [first!.id, second!.id]],
+        ['4-Pane Split', '4-quadrant', [first!.id, second!.id, null, null]],
+      ] as const) {
+        await chooseLayout(wrapper, label);
+        expect(wrapper.get('.agent-split-grid').attributes('data-layout')).toBe(layout);
+        expect(wrapper.findAll('.agent-split-grid__pane').map(pane => pane.attributes('data-agent-id') ?? null)).toStrictEqual(ids);
+      }
+      expect(localStorage.getItem(key)).toBe(saved);
+    } finally {
+      wrapper.unmount();
+      localStorage.removeItem(key);
+      windowState.scope.value = 'workspace';
+      windowState.branch.value = null;
+      windowState.teamId.value = null;
+    }
+  });
+
   it.each(['Single Pane', 'Vertical Split'])('opens message links for the sending agent in %s', async layout => {
     const snapshot = createInitialSnapshot();
     const [first, second] = snapshot.agents;

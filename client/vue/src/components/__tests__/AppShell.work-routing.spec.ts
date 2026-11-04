@@ -1186,7 +1186,7 @@ describe('AppShell work routing', () => {
     });
 
     await wrapper.get(`[aria-label="${product.defaultTeamName}"]`).trigger('contextmenu');
-    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Edit Team')?.trigger('click');
+    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Edit')?.trigger('click');
 
     expect(wrapper.text()).toContain('Edit Team');
     await wrapper.get('#team-dialog-name').setValue('Skwad Core');
@@ -1213,7 +1213,7 @@ describe('AppShell work routing', () => {
     const wrapper = mountShell({ snapshot });
 
     await wrapper.get('[aria-label="Skwad"]').trigger('contextmenu');
-    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Close Team')?.trigger('click');
+    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Close')?.trigger('click');
     await flushPromises();
 
     expect(confirm).toHaveBeenCalledWith(
@@ -1241,7 +1241,7 @@ describe('AppShell work routing', () => {
     const wrapper = mountShell({ snapshot });
 
     await wrapper.get('[aria-label="Skwad"]').trigger('contextmenu');
-    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Close Team')?.trigger('click');
+    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Close')?.trigger('click');
     await flushPromises();
 
     expect(wrapper.emitted('close-team')).toBeUndefined();
@@ -1260,7 +1260,7 @@ describe('AppShell work routing', () => {
       clientX: 120,
       clientY: 80,
     });
-    await clickPortaledMenuItem('Rename agent');
+    await clickPortaledMenuItem('Rename');
 
     expect(wrapper.text()).toContain('Rename agent');
     await wrapper.get('#agent-dialog-name').setValue('Dina Prime');
@@ -1281,12 +1281,12 @@ describe('AppShell work routing', () => {
       clientX: 120,
       clientY: 80,
     });
-    await clickPortaledMenuItem('Duplicate Agent');
+    await clickPortaledMenuItem('Duplicate');
 
     expect(wrapper.emitted('duplicate-agent')).toStrictEqual([['agent-dina']]);
 
     await wrapper.findAll('.agent-sidebar__agent')[0].trigger('contextmenu');
-    await clickPortaledMenuItem('Fork Agent');
+    await clickPortaledMenuItem('Fork');
 
     expect(wrapper.emitted('fork-agent')).toStrictEqual([['agent-dina']]);
 
@@ -1294,7 +1294,7 @@ describe('AppShell work routing', () => {
       clientX: 120,
       clientY: 80,
     });
-    await clickPortaledMenuItem('Restart Agent');
+    await clickPortaledMenuItem('Restart');
 
     expect(wrapper.emitted('restart-agent')).toStrictEqual([['agent-dina']]);
   });

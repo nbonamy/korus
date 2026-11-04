@@ -1211,10 +1211,10 @@ export const surfaceMessages = {
   "teamContextMenu": {
     "teamActions": "Team actions",
     "openInNewWindow": "Open in New Window",
-    "editTeam": "Edit Team",
+    "editTeam": "Edit",
     "disconnect": "Disconnect",
     "deleteTeam": "Delete Team",
-    "closeTeam": "Close Team"
+    "closeTeam": "Close"
   },
   "teamDialog": {
     "connection": "Connection",

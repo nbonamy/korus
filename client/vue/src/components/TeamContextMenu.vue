@@ -53,7 +53,6 @@ const menuItems = computed<AppMenuItem[]>(() => [
     label: translate('surface.teamContextMenu.editTeam'),
     icon: PencilIcon,
   },
-  { id: 'group-danger', type: 'separator' },
   {
     id: 'close-team',
     type: 'action',

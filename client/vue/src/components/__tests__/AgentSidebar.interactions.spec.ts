@@ -25,7 +25,7 @@ describe('AgentSidebar interactions', () => {
     });
 
     await wrapper.findAll('.agent-sidebar__agent')[0].trigger('contextmenu');
-    await clickPortaledMenuItem('Fork Agent');
+    await clickPortaledMenuItem('Fork');
 
     expect(wrapper.emitted('fork-agent')).toStrictEqual([['agent-dina']]);
   });

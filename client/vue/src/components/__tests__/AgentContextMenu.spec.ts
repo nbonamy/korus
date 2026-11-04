@@ -25,7 +25,10 @@ describe('AgentContextMenu', () => {
   it('offers to open the agent in a new window when the host can', async () => {
     setElectronTestClient({ openWindow: vi.fn() });
     try {
-      const wrapper = mountMenu();
+      const wrapper = mountMenu({ shareAvailable: true });
+      const primary = wrapper.findAll('[role="menuitem"], [role="separator"]');
+      expect(primary.slice(0, 7).map(item => item.attributes('role') === 'separator' ? 'divider' : item.text()))
+        .toStrictEqual(['Rename', 'Duplicate', 'Fork', 'Share', 'Hand off', 'divider', 'Open in New Window']);
       const item = wrapper.findAll('[role="menuitem"]').find(entry => entry.text() === 'Open in New Window');
       expect(item).toBeDefined();
       await item!.trigger('click');
@@ -40,15 +43,15 @@ describe('AgentContextMenu', () => {
     expect(wrapper.get('.agent-context-menu').attributes('style')).toContain('left: 120px');
     expect(wrapper.get('.agent-context-menu').attributes('style')).toContain('top: 80px');
     expect(wrapper.findAll('[role="menuitem"]').map((item) => item.text())).toStrictEqual([
-      'Rename agent',
-      'Duplicate Agent',
-      'Fork Agent',
-      'Hand off…',
+      'Rename',
+      'Duplicate',
+      'Fork',
+      'Hand off',
       'Move to Other Team',
-      'Compact Session⇧⌘K',
-      'Resume Session',
-      'Restart Agent',
-      'Close Agent',
+      'Compact⇧⌘K',
+      'Resume',
+      'Restart',
+      'Close',
     ]);
     expect(wrapper.findAll('[role="separator"]')).toHaveLength(3);
   });
@@ -78,7 +81,7 @@ describe('AgentContextMenu', () => {
   it('emits the selected action', async () => {
     const wrapper = mountMenu();
 
-    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Duplicate Agent')?.trigger('click');
+    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Duplicate')?.trigger('click');
 
     expect(wrapper.emitted('action')).toStrictEqual([['duplicate-agent']]);
   });
@@ -88,18 +91,18 @@ describe('AgentContextMenu', () => {
     const items = wrapper.findAll('[role="menuitem"]');
 
     expect(items.map((item) => item.text()).slice(0, 4)).toStrictEqual([
-      'Rename agent',
-      'Duplicate Agent',
-      'Fork Agent',
-      'Hand off…',
+      'Rename',
+      'Duplicate',
+      'Fork',
+      'Hand off',
     ]);
-    expect(items.find((item) => item.text() === 'Fork Agent')?.attributes()).toHaveProperty('disabled');
+    expect(items.find((item) => item.text() === 'Fork')?.attributes()).toHaveProperty('disabled');
   });
 
   it('emits fork when available', async () => {
     const wrapper = mountMenu();
 
-    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Fork Agent')?.trigger('click');
+    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Fork')?.trigger('click');
 
     expect(wrapper.emitted('action')).toStrictEqual([['fork-agent']]);
   });
@@ -107,7 +110,7 @@ describe('AgentContextMenu', () => {
   it('shows session compression only when supported and emits it as a product action', async () => {
     const wrapper = mountMenu({ compressVisible: true });
 
-    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Compress Session')?.trigger('click');
+    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Compress')?.trigger('click');
 
     expect(wrapper.emitted('action')).toStrictEqual([['compress-session']]);
   });
@@ -116,11 +119,11 @@ describe('AgentContextMenu', () => {
     const wrapper = mountMenu({ compressVisible: true });
     const items = wrapper.findAll('[role="menuitem"]');
     expect(items.map((item) => item.text()).slice(5, 7)).toStrictEqual([
-      'Compact Session⇧⌘K',
-      'Compress Session',
+      'Compact⇧⌘K',
+      'Compress',
     ]);
     expect(items[5]?.findComponent(ViewportShortIcon).exists()).toBe(true);
-    await items.find((item) => item.text().startsWith('Compact Session'))?.trigger('click');
+    await items.find((item) => item.text().startsWith('Compact'))?.trigger('click');
     expect(wrapper.emitted('action')).toStrictEqual([['compact-session']]);
   });
 
@@ -201,7 +204,7 @@ describe('AgentContextMenu', () => {
 });
 
 function mountMenu(
-  props: { shared?: boolean; compactDisabled?: boolean; compressDisabled?: boolean; compressVisible?: boolean; forkDisabled?: boolean; moveTargets?: Team[]; x?: number; y?: number } = {},
+  props: { shared?: boolean; shareAvailable?: boolean; compactDisabled?: boolean; compressDisabled?: boolean; compressVisible?: boolean; forkDisabled?: boolean; moveTargets?: Team[]; x?: number; y?: number } = {},
   stubTeleport = true,
 ) {
   const wrapper = mount(AgentContextMenu, {

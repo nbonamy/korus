@@ -267,7 +267,7 @@ describe('AppShell authentication and conversation', () => {
     const wrapper = mountShell({ realAgentSidebar: true });
     await flushPromises();
     await wrapper.findAll('.agent-sidebar__agent')[0]!.trigger('contextmenu', { clientX: 100, clientY: 100 });
-    await clickPortaledMenuItem('Hand off…');
+    await clickPortaledMenuItem('Hand off');
     await flushPromises();
     expect(wrapper.find('#agent-handoff-form').exists()).toBe(true);
     expect(wrapper.find('#handoff-instructions').exists()).toBe(true);

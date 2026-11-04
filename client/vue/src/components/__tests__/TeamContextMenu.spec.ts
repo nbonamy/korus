@@ -31,8 +31,8 @@ describe('TeamContextMenu', () => {
     expect(wrapper.attributes('style')).toContain('left: 120px');
     expect(wrapper.attributes('style')).toContain('top: 80px');
     expect(wrapper.findAll('[role="menuitem"]').map((item) => item.text())).toStrictEqual([
-      'Edit Team',
-      'Close Team',
+      'Edit',
+      'Close',
     ]);
   });
 
@@ -40,7 +40,8 @@ describe('TeamContextMenu', () => {
     setElectronTestClient({ openWindow: vi.fn() });
     try {
       const wrapper = mountMenu();
-      expect(wrapper.findAll('[role="menuitem"]').map((item) => item.text())).toStrictEqual(['Open in New Window', 'Edit Team', 'Close Team']);
+      expect(wrapper.findAll('[role="menuitem"], [role="separator"]').map(item => item.attributes('role') === 'separator' ? 'divider' : item.text()))
+        .toStrictEqual(['Open in New Window', 'divider', 'Edit', 'Close']);
       await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Open in New Window')?.trigger('click');
       expect(wrapper.emitted('open-team-window')).toStrictEqual([['team-app']]);
     } finally {
@@ -51,7 +52,7 @@ describe('TeamContextMenu', () => {
   it('emits edit requests for the selected team', async () => {
     const wrapper = mountMenu();
 
-    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Edit Team')?.trigger('click');
+    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Edit')?.trigger('click');
 
     expect(wrapper.emitted('edit-team')).toStrictEqual([['team-app']]);
   });
@@ -59,7 +60,7 @@ describe('TeamContextMenu', () => {
   it('requests close for the selected team', async () => {
     const wrapper = mountMenu();
 
-    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Close Team')?.trigger('click');
+    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Close')?.trigger('click');
 
     expect(wrapper.emitted('request-close-team')).toStrictEqual([['team-app']]);
   });
@@ -67,7 +68,7 @@ describe('TeamContextMenu', () => {
   it('disables close when the rail has only one team', async () => {
     const wrapper = mountMenu({ canClose: false });
 
-    const closeItem = wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Close Team');
+    const closeItem = wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Close');
     expect(closeItem?.attributes()).toHaveProperty('disabled');
 
     await closeItem?.trigger('click');
