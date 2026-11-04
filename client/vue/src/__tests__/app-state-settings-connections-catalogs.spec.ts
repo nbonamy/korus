@@ -18,6 +18,26 @@ import { codexConversationSnapshot } from '../test/codex-conversation-fixtures';
 import { claudeConversationSnapshot } from '../test/claude-conversation-fixtures';
 import { clearFirstRunOnboardingStage, setFirstRunOnboardingStage } from '../onboarding-session';
 describe('useAppState', () => {
+  it('loads workspace catalogs only for the opened agent at startup and loads another agent on selection', async () => {
+    const snapshot = createInitialSnapshot();
+    const template = snapshot.agents[0]!;
+    snapshot.agents = Array.from({ length: 24 }, (_, index) => ({ ...template, id: `catalog-agent-${index}`, folder: `/repo/${index}`, backendSession: undefined }));
+    snapshot.activeAgentId = snapshot.agents[0]!.id;
+    snapshot.teams = [{ ...snapshot.teams[0]!, agentIds: snapshot.agents.map(agent => agent.id), activeAgentId: snapshot.activeAgentId }];
+    snapshot.activeTeamId = snapshot.teams[0]!.id;
+    // A real installed skill catalog can approach 2 MB; unopened folders must not
+    // multiply that traffic in every renderer during startup.
+    const skills = [{ name: 'large-catalog', path: '/skills/SKILL.md', enabled: true, description: 'x'.repeat(1_900_000) }];
+    const listBackendSkills = vi.fn(async (_agentId: string) => skills);
+    stubElectronTestWindow({ app: { getSnapshot: async () => snapshot, listBackendSkills,
+      selectAgent: async agentId => ({ ...snapshot, activeAgentId: agentId,
+        teams: [{ ...snapshot.teams[0]!, activeAgentId: agentId }] }) } satisfies Partial<AppApi> });
+    const state = useAppState();
+    await state.loadSnapshot();
+    expect(listBackendSkills.mock.calls.map(([agentId]) => agentId)).toStrictEqual(['catalog-agent-0']);
+    await state.selectAgent('catalog-agent-1');
+    expect(listBackendSkills.mock.calls.map(([agentId]) => agentId)).toStrictEqual(['catalog-agent-0', 'catalog-agent-1']);
+  });
   afterEach(() => {
     clearConfetti();
     clearFirstRunOnboardingStage();
@@ -658,8 +678,7 @@ describe('useAppState', () => {
     const state = useAppState();
     await state.loadSnapshot();
 
-    expect(listAgentFiles).not.toHaveBeenCalledWith(activeAgent.id);
-    expect(listAgentFiles).toHaveBeenCalledWith('agent-jesse');
+    expect(listAgentFiles).not.toHaveBeenCalled();
     expect(state.fileCatalogStatus.value).toBe('loaded');
     expect(state.agentFiles.value).toStrictEqual([]);
   });
