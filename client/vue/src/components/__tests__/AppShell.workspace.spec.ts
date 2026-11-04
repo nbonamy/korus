@@ -228,6 +228,19 @@ describe('AppShell workspace and plans', () => {
     wrapper.unmount();
   });
 
+  it('never saves panels for an agent the snapshot does not contain, so a restart cannot raise Agent not found errors', async () => {
+    const tabId = 'file:markdown:ghost';
+    // A saved tab the renderer does not persist (a diff) makes the restored panels differ from what the daemon holds.
+    const ghost = { tabs: [{ id: tabId, title: 'Ghost', documentId: 'ghost' }, { id: 'diff:abc', title: 'Diff' }], activeTab: tabId, open: true, width: 420, filesPaneOpen: false, filesPaneWidth: 280 };
+    const update = vi.fn(async (agentId: string) => { if (agentId === 'removed-agent') throw new Error('Agent not found.'); return ghost; });
+    setElectronTestClient({ getDocumentWorkspaces: vi.fn().mockResolvedValue({ 'removed-agent': ghost }), readWorkspaceDocument: vi.fn().mockResolvedValue({ content: '# Ghost' }), updateDocumentWorkspace: update });
+    const wrapper = mountShell(); await flushPromises();
+    await settlePersistence();
+    expect(update.mock.calls.filter(([agentId]) => agentId === 'removed-agent')).toEqual([]);
+    expect(document.body.textContent).not.toContain('Agent not found');
+    wrapper.unmount();
+  });
+
   it('does not resurrect a tab closed while restoration is still pending', async () => {
     const tabId = 'file:markdown:race';
     const saved = { tabs: [{ id: tabId, title: 'Race proposal', documentId: 'race' }], activeTab: tabId, open: true, width: 420, filesPaneOpen: false, filesPaneWidth: 280 };

@@ -1896,6 +1896,7 @@ const documentWorkspaces = useDocumentWorkspaces({
   api: appApi,
   workspaces: rightWorkspaceState.workspaces,
   canUseWorkspace: agentId => !props.snapshot.agents.find(agent => agent.id === agentId)?.sharedConversation,
+  agentExists: agentId => props.snapshot.agents.some(agent => agent.id === agentId),
   workspaceFor: rightWorkspaceState.workspaceFor,
   reportError: message => ElMessage.error(message),
 });

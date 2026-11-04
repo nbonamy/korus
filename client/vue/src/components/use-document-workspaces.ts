@@ -11,6 +11,8 @@ export function useDocumentWorkspaces(options: {
   api?: Pick<AppApi, 'getDocumentWorkspaces' | 'updateDocumentWorkspace' | 'readWorkspaceDocument' | 'saveWorkspaceDocument'>;
   workspaces: Record<string, AgentRightWorkspaceState>;
   canUseWorkspace: (agentId: string) => boolean;
+  /** Whether the agent is currently known. Saved panels of agents that are gone are never sent back to the daemon. */
+  agentExists?: (agentId: string) => boolean;
   workspaceFor: (agentId: string) => AgentRightWorkspaceState;
   reportError: (error: string) => void;
 }) {
@@ -142,9 +144,10 @@ export function useDocumentWorkspaces(options: {
         filesPaneOpen: workspace.filesPaneOpen, filesPaneWidth: workspace.filesPaneWidth,
       };
       pending = pending.catch(() => undefined).then(() => {
-        if (options.canUseWorkspace(agentId)) return api!.updateDocumentWorkspace(agentId, change);
+        if (options.canUseWorkspace(agentId) && options.agentExists?.(agentId) !== false) return api!.updateDocumentWorkspace(agentId, change);
       });
-      void pending.catch(error => options.reportError(String(error)));
+      // An agent removed between the change and the save has nothing left to keep: not worth a toast.
+      void pending.catch(error => { if (!/Agent not found/.test(String(error))) options.reportError(String(error)); });
     }
     previous = next;
   }
