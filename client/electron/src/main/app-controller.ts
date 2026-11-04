@@ -21,6 +21,7 @@ import { AgentActivityPowerSaveBlocker } from './agent-activity-power-save-block
 import { initializeMainLogging, installProcessErrorLogging, logMain, warnMain } from './log';
 import { createMainWindow } from './main-window';
 import { WindowRegistry } from './window-registry';
+import { readWindowLayout, restorableWindows, writeWindowLayout, type WindowFrame, type WindowLayout } from './window-layout';
 import { isWindowViewState, type ComposerDraft, type NativeResource, type WindowContext, type WindowViewState } from '@workspace/core/windows';
 import { createRuntimeAppBackendClient, type AppBackendClientPort } from './backend-client';
 import { getDaemonStatus, refreshDaemon, setDaemonEnabled } from './daemon-launch-agent';
@@ -75,6 +76,9 @@ export class AppController {
   }
   /** Every open window. The daemon owns product state; this only tracks what belongs to a window. */
   private readonly windows = new WindowRegistry<BrowserWindow>();
+  /** Where the open windows are remembered. Unset until the app asks for it, so nothing else writes there. */
+  private layoutFile: string | null = null;
+  private layoutSaveTimer: ReturnType<typeof setTimeout> | null = null;
   /** Main retains product metadata only; full transcripts are transient IPC values. */
   private snapshot: AppSnapshot | null = null;
   private clientState: ClientState = createEmptyClientState();
@@ -626,6 +630,7 @@ export class AppController {
     ipc.handle(ipcChannels.setWindowSelection, (event, agentId) => {
       const window = this.windowOf(event);
       if (window) this.windows.setSelectedAgent(window, agentId);
+      this.scheduleLayoutSave();
     });
     ipc.handle(ipcChannels.claimNativeResource, (event, resource, agentId, takeOver) => this.claimNativeResource(this.windowOf(event), resource, agentId, takeOver === true));
     ipc.handle(ipcChannels.releaseNativeResource, (event, resource, agentId) => this.releaseNativeResource(this.windowOf(event), resource, agentId));
@@ -807,6 +812,51 @@ export class AppController {
     }
   }
 
+  /** Remembers the open windows in this file, and lets {@link openStartupWindows} bring them back. */
+  enableWindowLayout(filePath: string): void {
+    this.layoutFile = filePath;
+  }
+
+  /** Opens the windows the app was left with, or the default workspace window when there is nothing usable to restore. */
+  openStartupWindows(): void {
+    const layout = this.layoutFile && this.snapshot ? readWindowLayout(this.layoutFile) : null;
+    const saved = layout && this.snapshot ? restorableWindows(layout, this.snapshot) : [];
+    if (!saved.length) {
+      this.createWindow();
+      return;
+    }
+    for (const { viewState, frame } of saved) this.openWindow(viewState, frame);
+    // A deep link that opened the app needs a workspace to land in.
+    if (this.pendingDeepLinkCommands.length && !this.windows.focusedWorkspace()) this.openWindow();
+  }
+
+  private scheduleLayoutSave(): void {
+    if (!this.layoutFile || this.shuttingDown) return;
+    if (this.layoutSaveTimer) clearTimeout(this.layoutSaveTimer);
+    this.layoutSaveTimer = setTimeout(() => this.saveWindowLayout(), 500);
+    this.layoutSaveTimer.unref?.();
+  }
+
+  private saveWindowLayout(): void {
+    if (this.layoutSaveTimer) clearTimeout(this.layoutSaveTimer);
+    this.layoutSaveTimer = null;
+    const live = this.windows.live();
+    // With no window left the app is being quit: keep the layout it had.
+    if (!this.layoutFile || !live.length) return;
+    try {
+      const layout: WindowLayout = {
+        version: 1,
+        windows: live.map(window => ({
+          viewState: this.windows.viewStateOf(window),
+          frame: { bounds: window.getNormalBounds(), isMaximized: window.isMaximized() },
+        })),
+      };
+      writeWindowLayout(this.layoutFile, layout);
+    } catch (error) {
+      warnMain('window', 'failed to save the window layout', { detail: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
   /** Brings the workspace forward, opening it when only agent windows (or none) are left. */
   createWindow(): void {
     this.showWorkspace();
@@ -835,10 +885,10 @@ export class AppController {
    * Opens a window that starts from `viewState`. Every way of getting a new window (New Window,
    * and later detaching an agent, a feature or a team) is this call with a different state.
    */
-  openWindow(viewState: WindowViewState | null = null): BrowserWindow {
+  openWindow(viewState: WindowViewState | null = null, frame?: WindowFrame): BrowserWindow {
     const origin = this.windows.focused();
     const window = createMainWindow({
-      ...(origin ? { cascadeFrom: origin.getNormalBounds() } : {}),
+      ...(frame ? { frame } : origin ? { cascadeFrom: origin.getNormalBounds() } : {}),
       ...(viewState?.scope === 'agent' ? { compact: true } : {}),
     });
     this.windows.add(window, viewState);
@@ -851,14 +901,21 @@ export class AppController {
       this.windows.setReady(window, true);
       this.flushPendingDeepLinkCommands();
     });
+    const saveLayout = (): void => this.scheduleLayoutSave();
+    window.on('move', saveLayout);
+    window.on('resize', saveLayout);
+    window.on('maximize', saveLayout);
+    window.on('unmaximize', saveLayout);
     window.on('focus', () => {
       this.windows.markFocused(window);
+      this.scheduleLayoutSave();
       if (!app?.isPackaged) this.refreshAppMenu();
       this.policyAwareSpokenAnnouncements.refresh();
       this.handleTelemetryActivity();
     });
     window.on('blur', () => this.policyAwareSpokenAnnouncements.refresh());
     window.once('closed', () => this.handleWindowClosed(window));
+    this.scheduleLayoutSave();
     this.refreshAppMenu();
     this.handleTelemetryActivity();
     return window;
@@ -873,6 +930,7 @@ export class AppController {
   private handleWindowClosed(window: BrowserWindow): void {
     void this.browserPane.closeHostedBy(window);
     const released = this.windows.remove(window);
+    this.scheduleLayoutSave();
     if (released.length) this.broadcastNativeOwners();
     this.policyAwareSpokenAnnouncements.refresh();
   }
@@ -892,6 +950,8 @@ export class AppController {
 
   async shutdown(): Promise<void> {
     logMain('shutdown', 'closing application');
+    // Windows are still open here, so this is the layout to come back to.
+    this.saveWindowLayout();
     this.shuttingDown = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
@@ -2479,6 +2539,7 @@ export function startMainApp(): void {
     } else if (process.argv[1]) {
       app.setAsDefaultProtocolClient(appDeepLinkScheme, process.execPath, [path.resolve(process.argv[1])]);
     }
+    controller.enableWindowLayout(path.join(app.getPath('userData'), 'window-layout.json'));
     try {
       await controller.initialize();
     } catch (error) {
@@ -2486,7 +2547,7 @@ export function startMainApp(): void {
         detail: error instanceof Error ? error.message : String(error),
       });
     } finally {
-      controller.createWindow();
+      controller.openStartupWindows();
     }
   });
 

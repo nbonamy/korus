@@ -76,6 +76,13 @@ the local desktop to show UI or use an OS affordance belongs in Electron main.
   equal, with no special main window. Window > Show Workspace and a Dock click with
   only scoped windows open both bring a workspace window back. Deep links and captures
   go to a workspace window.
+- The open windows are remembered and reopened at launch: for each, its scope, what it
+  shows (team, agent or feature, and the selected agent of a workspace window) and its
+  frame, listed from least to most recently focused so the last one opened is in front.
+  The layout is rewritten shortly after any change and once more as the app quits, and it
+  keeps what it had when the last window closes. A window whose team, agent or feature
+  is gone is skipped, a feature keeps its remaining agents, and without anything usable
+  the default workspace window opens. Pane and tab state inside a window is not kept.
 
 The local mobile simulator host owns device attachments and native command execution
 in Electron. Its pane and provider-independent MCP tool share that authority;

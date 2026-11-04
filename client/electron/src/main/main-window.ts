@@ -12,6 +12,7 @@ import {
 } from './app-shortcuts';
 import { logRendererConsole, warnMain } from './log';
 import { sendAppCommand } from './ipc-events';
+import type { WindowFrame } from './window-layout';
 
 /** Tall enough for every activity section in the agent sidebar to show two rows without scrolling the sidebar. */
 const MIN_WINDOW_HEIGHT = 800;
@@ -30,6 +31,8 @@ export type WindowPlacement = {
   cascadeFrom?: Rectangle;
   /** A window that shows a single agent: smaller, and never the one whose frame is restored. */
   compact?: boolean;
+  /** A saved frame to reopen in; ignored when it is no longer on any display. */
+  frame?: WindowFrame;
 };
 
 
@@ -52,10 +55,11 @@ export function createMainWindow(placement: WindowPlacement = {}): BrowserWindow
   const workAreas = screen.getAllDisplays().map((display) => display.workArea);
   // Only the first window restores the last session's frame; the others open beside the one they came from.
   const compact = placement.compact === true;
-  const savedState = placement.cascadeFrom || compact ? null : readWindowState(windowStatePath());
-  const restoredState = savedState && isWindowBoundsVisible(savedState.bounds, workAreas) ? savedState : undefined;
+  const frame = placement.frame && isWindowBoundsVisible(placement.frame.bounds, workAreas) ? placement.frame : undefined;
+  const savedState = frame || placement.cascadeFrom || compact ? null : readWindowState(windowStatePath());
+  const restoredState = frame ?? (savedState && isWindowBoundsVisible(savedState.bounds, workAreas) ? savedState : undefined);
   const cascaded = placement.cascadeFrom ? cascadedBounds(placement.cascadeFrom, workAreas) : undefined;
-  const bounds = compact && cascaded ? { ...cascaded, ...COMPACT_WINDOW_SIZE } : cascaded ?? restoredState?.bounds;
+  const bounds = frame?.bounds ?? (compact && cascaded ? { ...cascaded, ...COMPACT_WINDOW_SIZE } : cascaded ?? restoredState?.bounds);
   const window = new BrowserWindow(createMainWindowOptions(releaseMode, bounds, process.platform, nativeTheme.shouldUseDarkColors, compact));
   const updateBackground = (): void => {
     window.setBackgroundColor(mainWindowBackground(process.platform, nativeTheme.shouldUseDarkColors));

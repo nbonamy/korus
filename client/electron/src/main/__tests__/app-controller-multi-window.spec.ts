@@ -1,5 +1,8 @@
 import { EventEmitter } from 'node:events';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { product } from '@workspace/core/product';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { ipcChannels } from '@workspace/core/ipc';
@@ -30,6 +33,7 @@ function windowFixture(overrides: { focused?: boolean } = {}) {
     isFocused() { return this.focused; },
     isMinimized: () => false, restore: vi.fn(), show: vi.fn(), focus: vi.fn(),
     getNormalBounds: () => ({ x: 100, y: 100, width: 1200, height: 800 }),
+    isMaximized: (): boolean => false,
     setAutoHideMenuBar: vi.fn(), setMenuBarVisibility: vi.fn(),
   });
 }
@@ -57,6 +61,8 @@ type Private = {
   openWindowFromRenderer(viewState: unknown): void;
   showWorkspace(): void;
   handleWindowClosed(window: unknown): void;
+  enableWindowLayout(file: string): void;
+  openStartupWindows(): void;
   updateMenuOptions(): { newWindow(): void };
   browserPane: { closeHostedBy(window: unknown, agentId?: string): Promise<void>; isHostedBy(agentId: string, browserId: string, window: unknown): boolean };
 };
@@ -356,6 +362,150 @@ describe('AppController with several windows', () => {
       emitBackendEvent(controller, { type: 'snapshot.updated', payload: createInitialSnapshot() } as never);
       expect(sentChannels(created[1]!, ipcChannels.event)).toHaveLength(1);
       expect(sentChannels(created[0]!, ipcChannels.event)).toHaveLength(0);
+    });
+  });
+
+  describe('saving and restoring the windows', () => {
+    const frame = (x: number) => ({ bounds: { x, y: 40, width: 1100, height: 820 }, isMaximized: false });
+    let dir = '';
+    let file = '';
+
+    function layoutController() {
+      dir = mkdtempSync(path.join(os.tmpdir(), 'korus-layout-'));
+      file = path.join(dir, 'window-layout.json');
+      const controller = new AppController(createInitialSnapshot(), createBackendClient());
+      internals(controller).enableWindowLayout(file);
+      const created: TestWindow[] = [];
+      host.createWindow.mockImplementation(() => {
+        const window = windowFixture();
+        created.push(window);
+        return window;
+      });
+      return { controller, created };
+    }
+    const saved = () => JSON.parse(readFileSync(file, 'utf8')) as { windows: Array<{ viewState: unknown; frame: unknown }> };
+
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); rmSync(dir, { recursive: true, force: true }); });
+
+    it('writes every window with what it shows and where it is, once things settle', () => {
+      const { controller, created } = layoutController();
+      const snapshot = (controller as unknown as { snapshot: { agents: Array<{ id: string }>; teams: Array<{ id: string }> } }).snapshot;
+      const [agentA, agentB] = snapshot.agents.map(agent => agent.id) as [string, string];
+      const teamId = snapshot.teams[0]!.id;
+      internals(controller).openWindow();
+      internals(controller).openWindow({ agentId: agentA, scope: 'agent' });
+      internals(controller).openWindow({ teamId, scope: 'team' });
+      internals(controller).openWindow({ agentIds: [agentA, agentB], agentId: agentA, scope: 'feature' });
+      created.forEach((window, index) => { window.getNormalBounds = () => frame(index * 50).bounds; });
+      created[1]!.isMaximized = () => true;
+
+      expect(() => readFileSync(file)).toThrow();
+      created[0]!.emit('move');
+      created[0]!.emit('resize');
+      vi.advanceTimersByTime(499);
+      expect(() => readFileSync(file)).toThrow();
+      vi.advanceTimersByTime(1);
+
+      expect(saved().windows).toEqual([
+        { viewState: null, frame: frame(0) },
+        { viewState: { agentId: agentA, scope: 'agent' }, frame: { ...frame(50), isMaximized: true } },
+        { viewState: { teamId, scope: 'team' }, frame: frame(100) },
+        { viewState: { agentIds: [agentA, agentB], agentId: agentA, scope: 'feature' }, frame: frame(150) },
+      ]);
+    });
+
+    it('lists windows from the least to the most recently focused, and follows what a window selects', () => {
+      const { controller, created } = layoutController();
+      internals(controller).openWindow();
+      internals(controller).openWindow();
+      created[0]!.emit('focus');
+      vi.advanceTimersByTime(500);
+      expect(saved().windows.map(window => window.frame)).toHaveLength(2);
+      expect(internals(controller).windows.focused()).toBe(created[0]);
+
+      const [first] = created as [TestWindow];
+      (controller as unknown as { windows: { setSelectedAgent(window: unknown, id: string): void } }).windows.setSelectedAgent(first, 'agent-jesse');
+      first.emit('focus');
+      vi.advanceTimersByTime(500);
+      expect(saved().windows.at(-1)!.viewState).toEqual({ agentId: 'agent-jesse' });
+    });
+
+    it('forgets a closed window, but keeps the layout when the last one closes with the app', () => {
+      const { controller, created } = layoutController();
+      internals(controller).openWindow();
+      internals(controller).openWindow();
+      vi.advanceTimersByTime(500);
+      expect(saved().windows).toHaveLength(2);
+
+      created[1]!.destroyed = true;
+      created[1]!.emit('closed');
+      vi.advanceTimersByTime(500);
+      expect(saved().windows).toHaveLength(1);
+
+      created[0]!.destroyed = true;
+      created[0]!.emit('closed');
+      vi.advanceTimersByTime(500);
+      expect(saved().windows).toHaveLength(1);
+    });
+
+    it('writes the final layout when the app quits, with its windows still open', async () => {
+      const { controller, created } = layoutController();
+      internals(controller).openWindow();
+      created[0]!.getNormalBounds = () => frame(300).bounds;
+      created[0]!.emit('move');
+      await controller.shutdown();
+      expect(saved().windows).toEqual([{ viewState: null, frame: frame(300) }]);
+      created[0]!.emit('move');
+      vi.advanceTimersByTime(1000);
+      expect(saved().windows).toHaveLength(1);
+    });
+
+    it('brings every saved window back in its place, skipping those that cannot open again', () => {
+      const { controller, created } = layoutController();
+      const snapshot = (controller as unknown as { snapshot: { agents: Array<{ id: string }> } }).snapshot;
+      const agentA = snapshot.agents[0]!.id;
+      writeFileSync(file, JSON.stringify({ version: 1, windows: [
+        { viewState: null, frame: frame(0) },
+        { viewState: { agentId: agentA, scope: 'agent' }, frame: frame(40) },
+        { viewState: { agentId: 'agent-gone', scope: 'agent' }, frame: frame(80) },
+        { viewState: { agentIds: [agentA], agentId: agentA, scope: 'feature' }, frame: { ...frame(120), isMaximized: true } },
+      ] }));
+
+      internals(controller).openStartupWindows();
+
+      expect(created).toHaveLength(3);
+      expect(host.createWindow.mock.calls.map(([placement]) => placement)).toEqual([
+        { frame: frame(0) },
+        { frame: frame(40), compact: true },
+        { frame: { ...frame(120), isMaximized: true } },
+      ]);
+      expect(created.map(window => internals(controller).getWindowContext(window).viewState)).toEqual([
+        null,
+        { agentId: agentA, scope: 'agent' },
+        { agentIds: [agentA], agentId: agentA, scope: 'feature' },
+      ]);
+    });
+
+    it.each([
+      ['there is nothing saved', () => undefined],
+      ['the saved layout is damaged', () => writeFileSync(file, '{"version":1,"windows":"x"}')],
+      ['nothing in it can open again', () => writeFileSync(file, JSON.stringify({ version: 1, windows: [{ viewState: { teamId: 'team-gone', scope: 'team' }, frame: frame(0) }] }))],
+    ])('opens the default workspace window when %s', (_name, prepare) => {
+      const { controller, created } = layoutController();
+      prepare();
+      internals(controller).openStartupWindows();
+      expect(created).toHaveLength(1);
+      expect(host.createWindow).toHaveBeenCalledWith({});
+    });
+
+    it('adds a workspace window when only agent windows come back and a link is waiting for one', () => {
+      const { controller, created } = layoutController();
+      const agentA = (controller as unknown as { snapshot: { agents: Array<{ id: string }> } }).snapshot.agents[0]!.id;
+      writeFileSync(file, JSON.stringify({ version: 1, windows: [{ viewState: { agentId: agentA, scope: 'agent' }, frame: frame(0) }] }));
+      controller.openDeepLink(`${product.protocolScheme}://new?prompt=hi`);
+      internals(controller).openStartupWindows();
+      expect(created).toHaveLength(2);
     });
   });
 });
