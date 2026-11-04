@@ -101,11 +101,15 @@ function migrateGeneralSettings(value: unknown): AppGeneralSettings {
   return settings;
 }
 
+/**
+ * The result shares large nested values with the snapshot instead of copying them, because every caller serializes it
+ * straight away. Do not keep it across an await or mutate it.
+ */
 export function persistedStateFromSnapshot(snapshot: AppSnapshot): FullPersistedState {
   return {
-    ...(snapshot.clientPreferences ? { clientPreferences: structuredClone(snapshot.clientPreferences) } : {}),
-    ...(snapshot.missions ? { missions: structuredClone(snapshot.missions) } : {}),
-    ...(snapshot.repositoryVisualizations ? { repositoryVisualizations: structuredClone(snapshot.repositoryVisualizations) } : {}),
+    ...(snapshot.clientPreferences ? { clientPreferences: snapshot.clientPreferences } : {}),
+    ...(snapshot.missions ? { missions: snapshot.missions } : {}),
+    ...(snapshot.repositoryVisualizations ? { repositoryVisualizations: snapshot.repositoryVisualizations } : {}),
     teams: snapshot.teams.map((team) => ({ ...team, agentIds: [...team.agentIds] })),
     agents: snapshot.agents.map(agent => persistedAgentFromSnapshot(agent, snapshot.repositoryVisualizations)),
     automations: snapshot.automations.map(cloneAutomation),
@@ -127,6 +131,15 @@ export function persistedStateFromSnapshot(snapshot: AppSnapshot): FullPersisted
   };
 }
 
+/**
+ * Undo and redo history belongs to the client and is never stored here. Files and snapshots from earlier versions
+ * carried it, so it is dropped on load. The empty `undo` keeps the file readable by versions that require it.
+ * TODO(remove-after: 2026-11-30): Stop stripping undo and redo from loaded files. https://github.com/nbonamy/korus/issues/74
+ */
+function persistedDesignWorkspace({ redo: _redo, ...workspace }: DesignWorkspace & { redo?: unknown }): DesignWorkspace {
+  return { ...workspace, undo: [] };
+}
+
 function persistedAgentFromSnapshot(agent: Agent, libraries?: RepositoryVisualizations): PersistedAgent {
   const root = visualizationRepositoryRoot(agent);
   const visualize = agent.visualize ? cloneVisualizeSession(agent.visualize) : undefined;
@@ -137,7 +150,7 @@ function persistedAgentFromSnapshot(agent: Agent, libraries?: RepositoryVisualiz
   }
   return {
     id: agent.id,
-    ...(agent.handoff ? { handoff: structuredClone(agent.handoff) } : {}),
+    ...(agent.handoff ? { handoff: agent.handoff } : {}),
     ...(agent.worktreeInitialization ? { worktreeInitialization: { ...agent.worktreeInitialization } } : {}),
     teamId: agent.teamId,
     ...(agent.delegationContext ? { delegationContext: { ...agent.delegationContext } } : {}),
@@ -161,14 +174,14 @@ function persistedAgentFromSnapshot(agent: Agent, libraries?: RepositoryVisualiz
     ...(agent.gitDiffTarget ? { gitDiffTarget: { ...agent.gitDiffTarget } } : {}),
     ...(agent.contextUsage ? { contextUsage: { ...agent.contextUsage } } : {}),
     ...(agent.plan ? { plan: cloneThreadPlan(agent.plan) } : {}),
-    ...(agent.threadFlags ? { threadFlags: structuredClone(agent.threadFlags) } : {}),
+    ...(agent.threadFlags ? { threadFlags: agent.threadFlags } : {}),
     ...(agent.rateLimitPause ? { rateLimitPause: { ...agent.rateLimitPause } } : {}),
     ...(agent.autoResumePending ? { autoResumePending: true } : {}),
     ...(agent.suggestedPrompt ? { suggestedPrompt: agent.suggestedPrompt } : {}),
     ...(agent.planReview ? { planReview: { ...agent.planReview } } : {}),
     ...(agent.codeReview ? { codeReview: cloneCodeReviewSession(agent.codeReview) } : {}),
     ...(agent.goal ? { goal: { ...agent.goal } } : {}),
-    ...(agent.designWorkspace ? { designWorkspace: structuredClone(agent.designWorkspace) } : {}),
+    ...(agent.designWorkspace ? { designWorkspace: persistedDesignWorkspace(agent.designWorkspace) } : {}),
     ...(persistedVisualize ? { visualize: persistedVisualize } : {}),
     statusText: agent.statusText,
     createdAt: agent.createdAt,
@@ -433,7 +446,7 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
       ? { codeReview: cloneCodeReviewSession(value.codeReview) }
       : {}),
     ...(goal ? { goal } : {}),
-    ...(isDesignWorkspace(value.designWorkspace) ? { designWorkspace: structuredClone(value.designWorkspace) } : {}),
+    ...(isDesignWorkspace(value.designWorkspace) ? { designWorkspace: persistedDesignWorkspace(structuredClone(value.designWorkspace)) } : {}),
     ...(visualize ? { visualize } : {}),
     ...(typeof value.statusText === 'string' ? { statusText: value.statusText } : {}),
     status: { type: 'idle' },

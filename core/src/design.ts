@@ -29,8 +29,8 @@ export type DesignWorkspace = {
   document: DesignDocument | null;
   selectedArtboardId: string | null;
   selectedNodeId: string | null;
+  /** Always empty. Undo and redo history belongs to the client; older clients still require the field. */
   undo: DesignContent[];
-  redo?: DesignContent[];
   checkpoints: DesignCheckpoint[];
 };
 export type DesignEdit =
@@ -62,8 +62,8 @@ export type DesignRequest<Attachment = RendererPromptAttachment> =
   | { type: 'comment'; expectedRevision: number; nodeId: string; text: string }
   | { type: 'checkpoint'; expectedRevision: number; title: string }
   | { type: 'restore'; expectedRevision: number; checkpointId: string }
-  | { type: 'undo'; expectedRevision: number }
-  | { type: 'redo'; expectedRevision: number };
+  /** Replaces the whole content, for a client restoring an earlier version from its own history. Not offered to agents. */
+  | { type: 'replace'; expectedRevision: number; content: DesignContent };
 export type DesignCaptureInput = { html: string; width: number; height: number };
 export type DesignResult = { workspace: DesignWorkspace; html?: string; handoff?: string; screenshot?: string };
 
@@ -137,7 +137,6 @@ export function isDesignContent(value: unknown): value is DesignContent {
 
 export function isDesignWorkspace(value: unknown): value is DesignWorkspace {
   if (!record(value) || typeof value.isOpen !== 'boolean' || !Array.isArray(value.undo) || value.undo.length > 30
-    || (value.redo !== undefined && (!Array.isArray(value.redo) || value.redo.length > 30 || !value.redo.every(isDesignContent)))
     || !Array.isArray(value.checkpoints) || value.checkpoints.length > 10) return false;
   const ref = value.conversationRef;
   if (ref !== null && (!record(ref) || !['codex', 'claude', 'antigravity'].includes(String(ref.backend)))) return false;

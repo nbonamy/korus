@@ -3,6 +3,7 @@
   "companionName": "Korus Mobile",
   "defaultTeamName": "Korus",
   "slug": "korus",
+  "cliPackageName": "korus-cli",
   "daemonName": "korusd",
   "homeDirectory": ".korus",
   "appId": "com.nabocorp.korus",

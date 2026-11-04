@@ -157,6 +157,51 @@ environment instead. A separate setup requires its own sign-in.
 You can also share existing provider skills with a separate setup. Settings shows
 each engine's account, conversation location, and enabled state.
 
+## Terminal recovery
+
+The standalone CLI can inspect an installation and prepare a support session even
+when the desktop app or backend cannot start. It requires Node 26; terminal triage
+automatically uses an installed, authenticated client in this order: Claude,
+Codex, then Antigravity (`agy`). It can also prepare prompt files for another agent.
+
+Build it from this checkout:
+
+```bash
+npm run build:cli
+node client/cli/dist/cli.mjs doctor
+node client/cli/dist/cli.mjs triage
+```
+
+`doctor` performs bounded, read-only probes. `triage --no-launch` prepares private
+context and troubleshooting instructions without starting an agent. Its playbook
+requires approval before recovery actions or uploads.
+
+Use `--agent claude`, `--agent codex`, or `--agent antigravity` to choose a client
+explicitly. Authentication checks are bounded and do not start a model turn;
+clients whose authentication cannot be confirmed are skipped during automatic
+selection. If none is ready, the generated prompt and context remain available.
+
+| Command | Purpose |
+| --- | --- |
+| `doctor --json` | Inspect state envelopes, versions, provider executables, daemon socket and an advertised loopback MCP endpoint. |
+| `backend status` | Check the daemon socket. A desktop-owned stdio backend can run separately. |
+| `backend start`, `stop`, `restart` | Control the installed macOS background service, with confirmation or `--yes`. |
+| `logs --since 15m --follow` | Tail recent redacted logs; `--agent ID` filters one agent. |
+| `support bundle` | Prepare a redacted metadata bundle locally. `--include-logs` adds excerpts to inspect before sharing. |
+| `agents list`, `missions list` | Inspect live state, with saved-state fallback clearly labelled. `--offline` skips connection attempts. |
+| `missions show ID` | Inspect ticket progress and worker recovery counts. |
+
+Use `--home` or the existing `APP_HOME`/`KORUS_HOME` override to select an
+installation. `--socket` or `APP_BACKEND_SOCKET` selects an existing daemon socket.
+No command starts a daemon implicitly. Use `--help` for limits and other options.
+On Windows, native provider executables can launch triage; `.cmd`/`.bat` wrappers
+can use `--no-launch` and open the generated prompt in their provider manually.
+
+For an installable package, run `npm pack ./client/cli/dist` and install the
+resulting tarball with `npm install --global /path/to/the-tarball.tgz`. The `korus`
+command then works outside the checkout, without Electron or provider SDK packages.
+Support bundles are never uploaded automatically; inspect their contents before sharing.
+
 ## Development
 
 Requirements:

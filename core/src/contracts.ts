@@ -450,9 +450,17 @@ export type AppThemeSettings = {
 export type AppPluginSettings = {
   computerUseEnabled: boolean;
   chromeEnabled: boolean;
-  /** Keep the screen awake, so the Mac cannot lock, while an agent uses Computer Use. Defaults to off. */
-  computerUseKeepUnlocked?: boolean;
+  /**
+   * Whether Korus stops the Mac from locking automatically while Computer Use is enabled. `onDemand` follows the
+   * hold below, `always` holds it whenever Korus runs. Defaults to off.
+   */
+  computerUseLockPrevention?: ComputerUseLockPrevention;
+  /** The on-demand hold: `until` is an expiry timestamp in milliseconds, or null for until the user turns it off. */
+  computerUseLockHold?: ComputerUseLockHold;
 };
+
+export type ComputerUseLockPrevention = 'off' | 'onDemand' | 'always';
+export type ComputerUseLockHold = { until: number | null } | false;
 
 export type AppPluginStatus = {
   chromeEnabled: boolean;

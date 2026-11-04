@@ -75,7 +75,7 @@ If a system must be tested in isolation, write down all the ways it could fail
 first. If a test cannot be run or a change is truly untestable or docs-only, say
 so explicitly and name what to run next.
 
-All seven workspaces (`core`, `client/backend`, `client/vue`, `client/electron`, `mobile`,
+All eight workspaces (`core`, `client/backend`, `client/cli`, `client/vue`, `client/electron`, `mobile`,
 `server/backend`, `server/frontend`) gate on exactly
 **85% statements**; lines, branches and functions are diagnostics. Never lower the
 threshold or shrink includes/exclusions to land a change. Coverage is evidence of

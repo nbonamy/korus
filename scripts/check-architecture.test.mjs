@@ -12,6 +12,7 @@ const script = fileURLToPath(
 const directories = [
   "core/src",
   "client/backend/src",
+  "client/cli/src",
   "client/electron/src/main",
   "client/electron/src/preload",
   "mobile/src",
@@ -87,6 +88,18 @@ test("architecture lint accepts legitimate host imports and ignores source-like 
       "import { readFile } from 'node:fs/promises';\n",
   });
   assert.equal(result.status, 0, result.stderr);
+});
+
+test("standalone CLI can reuse backend modules while staying independent of Electron", async () => {
+  const accepted = await checkFixture({
+    "client/cli/src/main.ts": "import { helper } from '../../backend/src/helper'; import { product } from '@workspace/core/product'; import fs from 'node:fs';",
+  });
+  assert.equal(accepted.status, 0, accepted.stderr);
+  const rejected = await checkFixture({
+    "client/cli/src/main.ts": "import { app } from 'electron';",
+  });
+  assert.equal(rejected.status, 1);
+  assert.match(rejected.stderr, /client\/cli\/src\/main.ts/);
 });
 
 test("architecture lint rejects imports across owned process boundaries", async () => {

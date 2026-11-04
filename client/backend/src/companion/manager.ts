@@ -10,6 +10,7 @@ import { CompanionLiveActivities, type SavedLiveActivities } from './live-activi
 import { chmod, lstat, mkdir, open, readFile, rename, rmdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { UnchangedWrites } from '../persistence/unchanged-writes';
 import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from '@libp2p/crypto/keys';
 import { peerIdFromPrivateKey } from '@libp2p/peer-id';
 import type { PrivateKey } from '@libp2p/interface';
@@ -412,23 +413,26 @@ export class CompanionManager {
     const { snapshot } = await this.backend.request<{ snapshot: AppSnapshot }>(backendMethods.snapshotGet, { _clientId: 'companion-read' });
     return companionWorkspaceOf(snapshot);
   }
+  private readonly written = new UnchangedWrites();
   private persist(update: (saved: Saved) => Saved = (saved) => saved) {
     const write = this.writes.then(async () => {
       const next = update(this.saved);
       const content = JSON.stringify(next);
-      const file = path.join(this.home, 'companions.json'); const temporary = `${file}.${randomUUID()}.tmp`;
-      const handle = await open(temporary, 'wx', 0o600);
-      try {
-        try { await handle.writeFile(content); await handle.sync(); } finally { await handle.close(); }
-        await rename(temporary, file);
-        if (process.platform !== 'win32') {
-          const directory = await open(this.home, 'r');
-          try { await directory.sync(); } finally { await directory.close(); }
-        }
-        const accessChanged = this.saved.enabled !== next.enabled;
-        this.saved = next;
-        if (accessChanged) this.backend.onAccessChanged?.(next.enabled && Boolean(this.relay));
-      } finally { await unlink(temporary).catch(() => {}); }
+      await this.written.writeIfChanged(path.join(this.home, 'companions.json'), content, async (file, text) => {
+        const temporary = `${file}.${randomUUID()}.tmp`;
+        const handle = await open(temporary, 'wx', 0o600);
+        try {
+          try { await handle.writeFile(text); await handle.sync(); } finally { await handle.close(); }
+          await rename(temporary, file);
+          if (process.platform !== 'win32') {
+            const directory = await open(this.home, 'r');
+            try { await directory.sync(); } finally { await directory.close(); }
+          }
+        } finally { await unlink(temporary).catch(() => {}); }
+      });
+      const accessChanged = this.saved.enabled !== next.enabled;
+      this.saved = next;
+      if (accessChanged) this.backend.onAccessChanged?.(next.enabled && Boolean(this.relay));
     });
     this.writes = write.catch(() => {});
     return write;

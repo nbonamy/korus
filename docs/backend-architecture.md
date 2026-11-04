@@ -486,11 +486,21 @@ daemon client state, including after restart; relay reconnects do not release it
 Electron applies the remote-access policy only on AC power. Agent activity and
 remote access share a native `prevent-app-suspension` assertion, which protects
 system availability while allowing display sleep and configured automatic locking.
-Computer Use cannot operate a locked session. When the user opts in under
-Settings → Plugins → Computer Use (off by default), any Computer Use action upgrades
-the single native blocker to `prevent-display-sleep` for five minutes after the
-last action (on battery too), then it falls back to the policy above. Otherwise
-display sleep and locking follow the system.
+Computer Use cannot operate a locked session. Under Settings → Plugins → Computer Use,
+`computerUseLockPrevention` chooses when Electron holds the single native blocker at
+`prevent-display-sleep`, including idle periods and battery power: Off (default),
+On demand or Always. Always holds it whenever Korus runs with Computer Use enabled.
+On demand holds it only while a hold lasts; the lock in the sidebar rail, above the Korus button (shown only in
+this mode, only while Computer Use is enabled) starts one for an hour, until the next
+morning (9:00 local time, or the same day's 9:00 before 5 AM) or until the user turns it
+off, and its open-lock state turns protection back on at once. A hold is the stored
+setting `computerUseLockHold` (`{ until }`, a millisecond expiry or null, or `false`), so it
+survives a restart. Electron ends it by writing `false` through the ordinary settings
+path at the expiry, with no prompt, and also when Computer Use is disabled or another
+mode is chosen; an expiry that passed while Korus was closed is cleared at startup without
+ever holding the display. Quitting Korus releases the blocker and falls back to the policy
+above. The earlier boolean `computerUseKeepUnlocked` migrates to Always. Preventing
+automatic locking does not stop manual locking or lid-close sleep, which macOS controls.
 
 Mobile updates use one authenticated duplex stream per phone. A workspace reset
 and a subscribe-before-read conversation barrier precede ordered provider-native
@@ -820,6 +830,35 @@ and starts no login shell, which otherwise costs seconds per probe on slow hosts
 Unlinked tools and dangling links fall back to full discovery, so a failed link
 only makes startup slower. A link is a cache: an engine moved by a version manager
 is picked up at the next reconnect.
+
+## Standalone CLI
+
+`client/cli` owns the standalone terminal diagnostics and control workspace, with
+its own package, build and tests. It can bundle reusable backend modules; imports
+must not require Electron or start the daemon at module load. `client/cli/build.mjs`
+emits a dependency-free installable package under `client/cli/dist` and rejects
+Electron or external runtime dependencies. Product metadata supplies the public
+package name; the internal workspace is `@workspace/cli`.
+The CLI uses the repository Node reference runtime rather than the desktop's private runtime.
+
+Doctor reads state envelopes without migrations or writes and bounds every process,
+socket and MCP probe. The MCP check uses a loopback GET without an agent identity;
+reachability does not establish provider tool-delivery correctness. Saved-state
+inspection is labelled separately from live state. Agent and Mission commands are
+read-only and can fall back to saved metadata without a running daemon.
+
+Triage selects the first installed, authenticated terminal client in the order
+Claude, Codex, Antigravity (`agy`), unless explicitly overridden. Bounded
+non-interactive login-status probes are used for Claude and Codex; Antigravity
+is checked through its model catalog. Account details and probe errors are
+discarded. Selection does not start model turns or read credential files.
+Triage runs the chosen external CLI with private context/playbook files. Support
+bundles contain redacted metadata by default; log excerpts require an explicit flag.
+Neither operation uploads data. Log following emits complete lines before redaction
+and tracks file replacement. Background service control is limited to an installed
+macOS LaunchAgent whose APP_HOME matches the selected installation, and requires
+confirmation. A missing socket can also mean a desktop-owned stdio backend;
+diagnostics never start or replace a daemon implicitly.
 
 ## Development
 

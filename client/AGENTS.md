@@ -3,7 +3,9 @@
 The desktop product. Follow the root [AGENTS.md](../AGENTS.md) too; shared contracts
 live in [`core/`](../core/AGENTS.md). `backend` is the local daemon (`daemon`),
 `electron` is desktop main, preload and packaging, `vue` is the shared Vue UI (also
-used by the mobile web views). Electron Forge, TypeScript, Vue 3 with Element Plus,
+used by the mobile web views), and `cli` owns standalone terminal recovery and
+control. The CLI may reuse backend modules while remaining runnable without
+Electron or a running daemon. Electron Forge, TypeScript, Vue 3 with Element Plus,
 Vitest.
 
 ## Process Boundaries

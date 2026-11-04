@@ -21,7 +21,7 @@ panes beside the conversation).
 | Area | What it owns | Guide |
 | --- | --- | --- |
 | `core/` | Platform-neutral product contracts, backend protocol, state primitives. | [core](core/AGENTS.md) |
-| `client/` | Desktop: `backend` (local daemon), `electron` (main, preload, packaging), `vue` (shared UI). | [client](client/AGENTS.md) |
+| `client/` | Desktop: `backend` (local daemon), `electron` (main, preload, packaging), `vue` (shared UI); `cli` (standalone terminal recovery and control). | [client](client/AGENTS.md) |
 | `mobile/` | iOS and Android companion apps and their shared engine. | [mobile](mobile/AGENTS.md) |
 | `native/` | Native helper binaries shipped with the desktop app. | [native](native/AGENTS.md) |
 | `server/` | Hosted telemetry collector and private admin console. | [server](server/AGENTS.md) |

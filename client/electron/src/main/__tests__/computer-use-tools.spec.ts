@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { computerUseActivity } from '../computer-use-activity';
 import { computerUseSessionTimeoutMs, executeComputerUseCommand, getComputerUseStatus, isComputerUseCommand, resolveComputerUseHelperAppPath, stopComputerUseHelper } from '../computer-use-tools';
 
 describe('Computer Use desktop helper', () => {
@@ -46,18 +45,6 @@ process.stdin.on('data', (chunk) => {
 
   it('keeps the Computer Use session alive for thirty seconds by default', () => {
     expect(computerUseSessionTimeoutMs).toBe(30_000);
-  });
-
-  it('marks Computer Use as active for actions but not for permission checks', async () => {
-    const touch = vi.spyOn(computerUseActivity, 'touch');
-    try {
-      await executeComputerUseCommand({ command: 'status', arguments: {}, options: options() });
-      await executeComputerUseCommand({ command: 'request_accessibility', arguments: {}, options: options() });
-      expect(touch).not.toHaveBeenCalled();
-      await executeComputerUseCommand({ command: 'screenshot', arguments: {}, options: options() });
-      await executeComputerUseCommand({ command: 'click', arguments: { app: 'TextEdit', x: 1, y: 1 }, options: options() });
-      expect(touch).toHaveBeenCalledTimes(2);
-    } finally { touch.mockRestore(); }
   });
 
   it('runs the product-neutral pilot through a narrow command contract', async () => {

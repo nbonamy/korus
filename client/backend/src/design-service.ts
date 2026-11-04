@@ -20,7 +20,7 @@ export class DesignService {
   private async apply(agentId: string, request: DesignRequest<unknown>): Promise<DesignResult> {
     const agent = this.options.snapshot.agents.find(item => item.id === agentId);
     if (!agent) throw new Error('Design agent not found.');
-    if (!request || !['read', 'open', 'close', 'export', 'capture', 'create', 'select', 'edit', 'implement', 'comment', 'checkpoint', 'restore', 'undo', 'redo'].includes(request.type)) throw new Error('Invalid design request.');
+    if (!request || !['read', 'open', 'close', 'export', 'capture', 'create', 'select', 'edit', 'implement', 'comment', 'checkpoint', 'restore', 'replace'].includes(request.type)) throw new Error('Invalid design request.');
     if (request.type === 'open' && request.prompt !== undefined && (typeof request.prompt !== 'string' || request.prompt.length > 20_000)) throw new Error('Invalid design prompt.');
     const before = agent.designWorkspace;
     const currentRef = conversationRefFromAgent(agent);
@@ -78,16 +78,9 @@ export class DesignService {
             workspace.checkpoints.push({ id: createEntityId('checkpoint'), title: request.title.trim(), revision: document.revision, content: structuredClone(document.content) });
             workspace.checkpoints = workspace.checkpoints.slice(-10);
           } else {
-            const previous = structuredClone(document.content);
-            if (request.type === 'undo') {
-              const recovered = workspace.undo.pop();
-              if (!recovered) throw new Error('Nothing to undo.');
-              document.content = recovered;
-              workspace.redo = [...(workspace.redo ?? []), previous].slice(-30);
-            } else if (request.type === 'redo') {
-              const recovered = workspace.redo?.pop();
-              if (!recovered) throw new Error('Nothing to redo.');
-              document.content = recovered;
+            if (request.type === 'replace') {
+              if (!isDesignContent(request.content)) throw new Error('Invalid design content.');
+              document.content = structuredClone(request.content);
             } else if (request.type === 'restore') {
               const checkpoint = workspace.checkpoints.find(item => item.id === request.checkpointId);
               if (!checkpoint) throw new Error('Checkpoint not found.');
@@ -109,8 +102,6 @@ export class DesignService {
               }
             } else throw new Error('Invalid design request.');
             if (!isDesignContent(document.content)) throw new Error('Invalid design content.');
-            if (request.type !== 'undo') workspace.undo = [...workspace.undo, previous].slice(-30);
-            if (request.type !== 'undo' && request.type !== 'redo') workspace.redo = [];
             document.revision++;
             if (!document.content.artboards.some(board => board.id === workspace.selectedArtboardId)) workspace.selectedArtboardId = document.content.artboards[0].id;
             if (workspace.selectedNodeId && !nodes().some(node => node.id === workspace.selectedNodeId)) workspace.selectedNodeId = null;

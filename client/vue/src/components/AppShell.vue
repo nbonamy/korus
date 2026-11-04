@@ -655,6 +655,8 @@ import { workProviderLabel, workItemDisplayIdentifier } from '@workspace/core/wo
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, shallowRef, watch } from 'vue';
 import { providerUpdatePreviewKey } from './provider-update-preview';
+import { forgetDesignHistory, pruneDesignHistory } from './design-history';
+import { computerUseLockKey } from './computer-use-lock';
 import { codeReviewUncommittedPreviewKey } from './code-review-preview';
 import { useI18n } from 'vue-i18n';
 import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
@@ -1150,6 +1152,13 @@ type PendingMissionReviewDiscussion = {
 };
 
 type AppSurface = 'mission' | 'agent' | 'backlog' | 'automations' | 'settings';
+provide(computerUseLockKey, {
+  state: computed(() => {
+    const plugins = props.snapshot.general.plugins;
+    return { visible: plugins?.computerUseEnabled === true && plugins.computerUseLockPrevention === 'onDemand', hold: plugins?.computerUseLockHold ?? false };
+  }),
+  setHold: hold => props.updateSettings({ general: { plugins: { computerUseLockHold: hold } } }).catch(error => { ElMessage.error(localizedErrorMessage(error, t)); }),
+});
 provide(generalPreferencesKey, createGeneralPreferences(() => props.snapshot.general, general => props.updateSettings({ general })));
 provideBackendChoices(() => props.snapshot, openSettings);
 const reviewSettings = useCodeReviewSettings();
@@ -1895,6 +1904,7 @@ const documentWorkspaces = useDocumentWorkspaces({
   api: appApi,
   workspaces: rightWorkspaceState.workspaces,
   canUseWorkspace: agentId => !props.snapshot.agents.find(agent => agent.id === agentId)?.sharedConversation,
+  agentExists: agentId => props.snapshot.agents.some(agent => agent.id === agentId),
   workspaceFor: rightWorkspaceState.workspaceFor,
   reportError: message => ElMessage.error(message),
 });
@@ -2064,6 +2074,17 @@ watch(
       else if (design && !design.isOpen && workspace.tabs.includes('design')) closeRightWorkspaceTabLocal(agentId, 'design');
     }
   }, { immediate: true, flush: 'sync' },
+);
+// A removed agent takes its Design history with it; the first snapshot also clears what was left by agents removed while the app was closed.
+let sweptDesignHistory = false;
+watch(
+  () => props.snapshot.agents.map(agent => agent.id),
+  (agentIds, previous) => {
+    if (!agentIds.length) return;
+    const live = new Set(agentIds);
+    if (!sweptDesignHistory) { sweptDesignHistory = true; pruneDesignHistory(live); return; }
+    for (const agentId of previous ?? []) if (!live.has(agentId)) forgetDesignHistory(agentId);
+  }, { immediate: true },
 );
 watch(
   () => props.snapshot.agents.map(agent => ({ agentId: agent.id, visualize: agent.visualize })),

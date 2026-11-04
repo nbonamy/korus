@@ -396,8 +396,12 @@ implementation authority.
 Design keeps authored HTML node trees, stable IDs, embedded CSS and data-image assets
 in daemon-owned documents. User and agent edits share serialized, revision-checked
 operations. Text changes target leaves; structural operations preserve unrelated
-nodes. Full-document replacement is unavailable after creation. Persistent undo and
-named checkpoints recover saved content while revisions remain monotonic.
+nodes. Full-document replacement is unavailable after creation. Undo and redo are
+client-owned: the panel stacks the previous content of every new revision it sees, its own or the agent's, in one
+localStorage entry per agent, and restores it through a user-only `replace` request at the expected revision. The daemon
+never stores or sends that history. Autosaves of one field made within five seconds of each other are one undo step.
+It survives a restart only while the saved revision still matches the design, and
+it is removed with its agent. Named checkpoints recover saved content across restarts while revisions remain monotonic.
 Saved Design changes publish only the owning agent's workspace state; they never
 replace the client roster containing projected remote agents. Desktop reference
 attachments pass through the native attachment registry before provider dispatch.
@@ -407,7 +411,7 @@ IDs, CSS selectors and interaction targets; it leaves comments on their original
 targets. Each artboard can own its stylesheet, with the document stylesheet as a
 legacy fallback. Design notes are saved content, distinct
 from the editor's current selection. Undo/redo retain both document content and
-artboard operations across reloads.
+artboard operations while the stored revision still matches.
 
 Artboard coordinates belong to saved content; viewport pan and zoom do not.
 Artboards without explicit coordinates retain their derived horizontal positions.
@@ -460,5 +464,5 @@ remains valid and is displayed as a custom value.
 
 Dragging a control previews locally and commits one revision-checked edit on
 release. A concurrent edit leaves the preview available for explicit retry or
-discard; retry cannot reinterpret a changed control definition. The same persistent
-undo and checkpoint history recovers both controls and their authored values.
+discard; retry cannot reinterpret a changed control definition. The same
+undo history (client-side) and checkpoints (durable) recover both controls and their authored values.

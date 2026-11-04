@@ -604,7 +604,9 @@ function isPluginSettings(value: unknown): boolean {
   return isRecord(value) &&
     typeof value.computerUseEnabled === 'boolean' &&
     typeof value.chromeEnabled === 'boolean' &&
-    (value.computerUseKeepUnlocked === undefined || typeof value.computerUseKeepUnlocked === 'boolean');
+    (value.computerUseLockPrevention === undefined || ['off', 'onDemand', 'always'].includes(value.computerUseLockPrevention as string)) &&
+    (value.computerUseLockHold === undefined || value.computerUseLockHold === false
+      || (isRecord(value.computerUseLockHold) && (value.computerUseLockHold.until === null || Number.isFinite(value.computerUseLockHold.until))));
 }
 
 function isSourceFolder(value: unknown): boolean {

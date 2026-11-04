@@ -33,11 +33,14 @@
         :description="$t('surface.settingsPluginsPanel.keepTheScreenOnWhileAnAgentUsesYourMacSoItDoesNotLockTurnO')"
       >
         <template #control>
-          <el-switch
-            :model-value="pluginSettings.computerUseKeepUnlocked === true"
+          <el-select
+            :model-value="pluginSettings.computerUseLockPrevention ?? 'off'"
+            class="settings-plugins__lock-mode"
             :aria-label="$t('surface.settingsPluginsPanel.keepMacUnlockedDuringComputerUse')"
-            @update:model-value="updateKeepUnlocked"
-          />
+            @update:model-value="updateLockPrevention"
+          >
+            <el-option v-for="mode in lockPreventionModes" :key="mode.value" :value="mode.value" :label="$t(mode.label)" />
+          </el-select>
         </template>
       </FormRow>
     </FormSection>
@@ -149,9 +152,16 @@ function updatePlugin(plugin: PendingPlugin, enabled: boolean): void {
   void persistPlugin(plugin, false);
 }
 
-function updateKeepUnlocked(value: unknown): void {
+const lockPreventionModes = [
+  { value: 'off', label: 'surface.settingsPluginsPanel.lockPreventionOff' },
+  { value: 'onDemand', label: 'surface.settingsPluginsPanel.lockPreventionOnDemand' },
+  { value: 'always', label: 'surface.settingsPluginsPanel.lockPreventionAlways' },
+] as const;
+
+function updateLockPrevention(value: unknown): void {
   computerUseError.value = null;
-  props.updateSettings({ general: { plugins: { computerUseKeepUnlocked: value === true } } }).catch((error: unknown) => {
+  // Leaving On demand also ends any hold; the app would clear it anyway, this just avoids a stale value in between.
+  props.updateSettings({ general: { plugins: { computerUseLockPrevention: value as 'off' | 'onDemand' | 'always', computerUseLockHold: false } } }).catch((error: unknown) => {
     computerUseError.value = error instanceof Error ? error.message : String(error);
   });
 }
@@ -182,6 +192,10 @@ async function managePlugins(source: 'chrome' | 'install'): Promise<void> {
 </script>
 
 <style scoped>
+.settings-plugins__lock-mode {
+  width: 170px;
+}
+
 .settings-plugins-panel :deep(.el-button.is-circle svg) {
   width: var(--icon-sm);
   height: var(--icon-sm);

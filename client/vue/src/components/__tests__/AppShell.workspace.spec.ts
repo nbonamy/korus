@@ -228,6 +228,19 @@ describe('AppShell workspace and plans', () => {
     wrapper.unmount();
   });
 
+  it('never saves panels for an agent the snapshot does not contain, so a restart cannot raise Agent not found errors', async () => {
+    const tabId = 'file:markdown:ghost';
+    // A saved tab the renderer does not persist (a diff) makes the restored panels differ from what the daemon holds.
+    const ghost = { tabs: [{ id: tabId, title: 'Ghost', documentId: 'ghost' }, { id: 'diff:abc', title: 'Diff' }], activeTab: tabId, open: true, width: 420, filesPaneOpen: false, filesPaneWidth: 280 };
+    const update = vi.fn(async (agentId: string) => { if (agentId === 'removed-agent') throw new Error('Agent not found.'); return ghost; });
+    setElectronTestClient({ getDocumentWorkspaces: vi.fn().mockResolvedValue({ 'removed-agent': ghost }), readWorkspaceDocument: vi.fn().mockResolvedValue({ content: '# Ghost' }), updateDocumentWorkspace: update });
+    const wrapper = mountShell(); await flushPromises();
+    await settlePersistence();
+    expect(update.mock.calls.filter(([agentId]) => agentId === 'removed-agent')).toEqual([]);
+    expect(document.body.textContent).not.toContain('Agent not found');
+    wrapper.unmount();
+  });
+
   it('does not resurrect a tab closed while restoration is still pending', async () => {
     const tabId = 'file:markdown:race';
     const saved = { tabs: [{ id: tabId, title: 'Race proposal', documentId: 'race' }], activeTab: tabId, open: true, width: 420, filesPaneOpen: false, filesPaneWidth: 280 };
@@ -1659,4 +1672,43 @@ describe('AppShell workspace and plans', () => {
 
     expect(wrapper.get('.plan-review-footer').findAll('button').every(b => b.attributes('disabled') !== undefined)).toBe(true);
   });
+});
+
+it('clears Design undo history of removed agents, including ones removed while the app was closed', async () => {
+  const entry = { documentId: 'design-a', revision: 2, undo: [], redo: [] };
+  const snapshot = createInitialSnapshot();
+  const [kept, removed] = [snapshot.agents[0]!, snapshot.agents[1]!];
+  window.localStorage.setItem(`design-history:${kept.id}`, JSON.stringify(entry));
+  window.localStorage.setItem(`design-history:${removed.id}`, JSON.stringify(entry));
+  window.localStorage.setItem('design-history:gone-while-closed', JSON.stringify(entry));
+  const wrapper = mountShell({ snapshot }); await flushPromises();
+  try {
+    expect(window.localStorage.getItem('design-history:gone-while-closed')).toBeNull();
+    expect(window.localStorage.getItem(`design-history:${kept.id}`)).not.toBeNull();
+    window.localStorage.setItem('design-history:added-later', JSON.stringify(entry));
+    await wrapper.setProps({ snapshot: { ...snapshot, agents: snapshot.agents.filter(agent => agent.id !== removed.id) } }); await flushPromises();
+    expect(window.localStorage.getItem(`design-history:${removed.id}`)).toBeNull();
+    expect(window.localStorage.getItem(`design-history:${kept.id}`)).not.toBeNull();
+    // Only a removal clears an entry; later sweeps are not needed.
+    expect(window.localStorage.getItem('design-history:added-later')).not.toBeNull();
+  } finally { wrapper.unmount(); for (const key of Object.keys(window.localStorage)) if (key.startsWith('design-history:')) window.localStorage.removeItem(key); }
+});
+
+it('puts the on-demand lock in the rail above the Korus button and saves its hold through settings', async () => {
+  const snapshot = createInitialSnapshot();
+  snapshot.general.plugins = { computerUseEnabled: true, chromeEnabled: false, computerUseLockPrevention: 'onDemand', computerUseLockHold: false };
+  const updateSettings = vi.fn().mockResolvedValue(undefined);
+  const wrapper = mountRealShell({ snapshot, updateSettings }); await flushPromises();
+  try {
+    // Popovers render inline in this harness.
+    const item = wrapper.findAll('[role="menuitem"]').find(entry => entry.text() === 'Until I turn it off');
+    expect(item).toBeDefined();
+    await item!.trigger('click');
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith({ general: { plugins: { computerUseLockHold: { until: null } } } });
+    await wrapper.setProps({ snapshot: { ...snapshot, general: { ...snapshot.general, plugins: { ...snapshot.general.plugins, computerUseLockHold: { until: null } } } } });
+    expect(wrapper.find('button[aria-label="Auto-lock is off"]').exists()).toBe(true);
+    await wrapper.setProps({ snapshot: { ...snapshot, general: { ...snapshot.general, plugins: { ...snapshot.general.plugins, computerUseLockPrevention: 'always' } } } });
+    expect(wrapper.find('button[aria-label="Prevent automatic locking"]').exists()).toBe(false);
+  } finally { wrapper.unmount(); }
 });

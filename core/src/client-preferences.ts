@@ -39,7 +39,15 @@ export function splitSettingsInput(input: UpdateSettingsInput): { policy: Update
 export function projectClientSnapshot(snapshot: AppSnapshot, clientId: string): AppSnapshot {
   const preferences = snapshot.clientPreferences?.[clientId];
   if (!preferences) return snapshot;
-  const projected = structuredClone(snapshot);
+  // Structural sharing: only what the preferences change is copied, so a projection never costs a deep clone.
+  const projected: AppSnapshot = {
+    ...snapshot,
+    teams: snapshot.teams.map((team) => ({ ...team, agentIds: [...team.agentIds] })),
+    agents: snapshot.agents.map((agent) => {
+      const application = preferences.externalApplications?.[agent.id];
+      return application ? { ...agent, openInApplication: application } : agent;
+    }),
+  };
   const order = preferences.teamOrder ?? [];
   projected.teams.sort((left, right) => rank(order, left.id) - rank(order, right.id));
   for (const team of projected.teams) {
@@ -55,10 +63,6 @@ export function projectClientSnapshot(snapshot: AppSnapshot, clientId: string): 
     team.agentIds.sort((left, right) => rank(agentOrder, left) - rank(agentOrder, right));
     const selected = preferences.activeAgentByTeam?.[team.id];
     if (selected && team.agentIds.includes(selected)) team.activeAgentId = selected;
-  }
-  for (const agent of projected.agents) {
-    const application = preferences.externalApplications?.[agent.id];
-    if (application) agent.openInApplication = application;
   }
   if (preferences.activeTeamId && projected.teams.some((team) => team.id === preferences.activeTeamId)) projected.activeTeamId = preferences.activeTeamId;
   const selectedAgent = projected.agents.find((agent) => agent.id === preferences.activeAgentId);

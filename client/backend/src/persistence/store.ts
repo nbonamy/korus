@@ -10,6 +10,7 @@ import { projectClientSnapshot } from '@workspace/core/client-preferences';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../state-persistence';
 import { backupFile } from './backup';
+import { UnchangedWrites } from './unchanged-writes';
 import { isSupportedRosterAgent, joinPersistedState, preserveUnsupportedAgents, splitPersistedState, type RosterData, type StoreFiles, type VisualizationData } from './layout';
 import { migrateData, rosterMigrations, type Migration } from './migrations';
 import { parseData, rosterSchema, settingsSchema, visualizationSchema } from './schema';
@@ -55,10 +56,12 @@ export class AppStateStore {
   }
 
   private taskWrites: Promise<void> = Promise.resolve();
+  private readonly files = new UnchangedWrites();
 
   async loadTasks(): Promise<DelegatedTask[]> {
     const content = await readIfExists(this.absolute('tasks.json'));
     if (content === null) return [];
+    this.files.remember(this.absolute('tasks.json'), content);
     const envelope = parseStoreFile('tasks.json', content);
     return parseData('tasks.json', tasksSchema, migrateData('tasks.json', envelope.data, envelope.schemaVersion, storeSchemaVersion, [])).tasks;
   }
@@ -66,7 +69,7 @@ export class AppStateStore {
   saveTasks(tasks: DelegatedTask[]): Promise<void> {
     // Capture and validate now; tasks have a separate lifetime from roster snapshots.
     const content = serializeStoreFile(parseData('tasks.json', tasksSchema, { tasks }));
-    const operation = this.taskWrites.then(() => writeFileAtomically(this.absolute('tasks.json'), content));
+    const operation = this.taskWrites.then(() => this.files.writeIfChanged(this.absolute('tasks.json'), content, writeFileAtomically).then(() => undefined));
     this.taskWrites = operation.catch(() => undefined);
     return operation;
   }
@@ -124,6 +127,7 @@ export class AppStateStore {
     // Nothing else is touched unless a verified copy of the original exists.
     const backup = await backupFile(this.absolute(legacyFile), this.absolute(backupsDirectory), 'state-v0');
     await this.archiveExistingLayout();
+    for (const name of [rosterFile, settingsFile]) this.files.forget(this.absolute(name));
     this.written = new Map();
     await this.apply(this.serialize(snapshot), snapshot.general.repositoryIcons);
     const migrated = await this.readLayout(await readFile(this.absolute(rosterFile), 'utf8'));
@@ -190,6 +194,7 @@ export class AppStateStore {
       }
     }
     this.written = written;
+    for (const [relative, text] of written) this.files.remember(this.absolute(...relative.split('/')), text);
     const snapshot = snapshotFromPersistedState(joinPersistedState(files));
     snapshot.general.repositoryIcons = icons;
     return snapshot;
@@ -250,13 +255,13 @@ export class AppStateStore {
       this.writtenIcons = icons;
     }
     for (const [relative, content] of desired) {
-      if (this.written.get(relative) === content) continue;
-      await writeFileAtomically(this.absolute(...relative.split('/')), content);
+      await this.files.writeIfChanged(this.absolute(...relative.split('/')), content, writeFileAtomically);
       this.written.set(relative, content);
     }
     for (const relative of [...this.written.keys()]) {
       if (desired.has(relative) || !relative.startsWith(`${visualizationsDirectory}/`)) continue;
       await unlink(this.absolute(...relative.split('/'))).catch(ignoreMissing(undefined));
+      this.files.forget(this.absolute(...relative.split('/')));
       this.written.delete(relative);
       await rmdir(path.dirname(this.absolute(...relative.split('/')))).catch(() => undefined);
     }

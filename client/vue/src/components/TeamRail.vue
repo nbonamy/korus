@@ -118,6 +118,8 @@
           />
         </button>
 
+        <TeamRailLockControl v-if="!phoneScope" />
+
         <SettingsMenu
           v-if="!phoneScope"
           :active="settingsActive"
@@ -156,6 +158,7 @@ import { teamInitials } from '@workspace/core/team-manager';
 import { ClockHour8Icon, GitPullRequestIcon, CockpitIcon, PlusIcon, ProductMarkIcon, VolumeIcon, VolumeOffIcon } from '../shared/icons/app-icons';
 import { useListReorderDrag } from '../shared/use-list-reorder-drag';
 import SettingsMenu from './SettingsMenu.vue';
+import TeamRailLockControl from './TeamRailLockControl.vue';
 import TeamContextMenu from './TeamContextMenu.vue';
 import { confirmCloseTeam } from './team-close-confirmation';
 

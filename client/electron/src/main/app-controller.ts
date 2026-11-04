@@ -18,7 +18,6 @@ import path from 'node:path';
 import { realpath } from 'node:fs/promises';
 import { registerCodexNativeIpc, sendIpcEvent, TypedIpcMain } from '@codex-app-sdk/electron';
 import { AgentActivityPowerSaveBlocker } from './agent-activity-power-save-blocker';
-import { computerUseActivity } from './computer-use-activity';
 import { initializeMainLogging, installProcessErrorLogging, logMain, warnMain } from './log';
 import { createMainWindow } from './main-window';
 import { WindowRegistry } from './window-registry';
@@ -121,11 +120,12 @@ export class AppController {
   });
 
   private readonly powerSaveBlocker = new AgentActivityPowerSaveBlocker();
+  private lockHoldTimer: ReturnType<typeof setTimeout> | undefined;
+  private clearingLockHold = false;
   private readonly handlePowerSourceChanged = (): void => {
     this.syncPowerSaveBlocker();
   };
   private powerSourceListenersInstalled = false;
-  private stopWatchingComputerUse: (() => void) | null = null;
   private readonly backendClient: AppBackendClientPort | null;
   private readonly policyAwareSpokenAnnouncements: PolicyAwareSpokenAnnouncementQueue;
 
@@ -171,7 +171,6 @@ export class AppController {
 
   async initialize(): Promise<void> {
     logMain('startup', 'initializing application');
-    this.stopWatchingComputerUse ??= computerUseActivity.onChange(() => this.syncPowerSaveBlocker());
     if (!this.powerSourceListenersInstalled && powerMonitor) {
       powerMonitor.on('on-battery', this.handlePowerSourceChanged);
       powerMonitor.on('on-ac', this.handlePowerSourceChanged);
@@ -879,8 +878,8 @@ export class AppController {
     this.rejectAllPendingBrowserOpens(new Error('Application is shutting down.'));
     await this.browserPane.closeAll();
     await this.extensionService?.dispose();
-    this.stopWatchingComputerUse?.();
-    this.stopWatchingComputerUse = null;
+    clearTimeout(this.lockHoldTimer);
+    this.lockHoldTimer = undefined;
     this.powerSaveBlocker.stop();
     if (this.powerSourceListenersInstalled && powerMonitor) {
       powerMonitor.removeListener('on-battery', this.handlePowerSourceChanged);
@@ -2222,9 +2221,41 @@ export class AppController {
   private syncPowerSaveBlocker(): void {
     const isOnBattery = powerMonitor?.isOnBatteryPower?.() ?? false;
     // Computer Use needs an unlocked screen; everything else only needs the system kept available.
-    const keepUnlocked = this.snapshot?.general.plugins?.computerUseKeepUnlocked === true;
-    this.powerSaveBlocker.sync(computerUseActivity.isActive() && keepUnlocked ? 'display'
+    const plugins = this.snapshot?.general.plugins;
+    this.powerSaveBlocker.sync(preventsAutomaticLock(plugins, Date.now()) ? 'display'
       : shouldBlockDisplaySleep(this.clientState, isOnBattery) ? 'suspension' : 'none');
+    this.syncLockHold(plugins);
+  }
+
+  /**
+   * An on-demand hold outlives restarts as a stored expiry. It ends at that time, and also when it no longer applies
+   * (Computer Use disabled or another mode chosen). Ending it is a settings change, so every client sees it.
+   */
+  private syncLockHold(plugins: AppSnapshot['general']['plugins']): void {
+    clearTimeout(this.lockHoldTimer);
+    this.lockHoldTimer = undefined;
+    const hold = plugins?.computerUseLockHold;
+    if (!hold || this.shuttingDown) return;
+    const applies = plugins.computerUseEnabled === true && plugins.computerUseLockPrevention === 'onDemand';
+    if (!applies || (hold.until !== null && hold.until <= Date.now())) {
+      void this.clearLockHold();
+      return;
+    }
+    if (hold.until !== null) {
+      this.lockHoldTimer = setTimeout(() => void this.clearLockHold(), Math.min(hold.until - Date.now(), maxTimerDelayMs));
+    }
+  }
+
+  private async clearLockHold(): Promise<void> {
+    if (this.clearingLockHold) return;
+    this.clearingLockHold = true;
+    try {
+      await this.updateSettings({ general: { plugins: { computerUseLockHold: false } } });
+    } catch (error) {
+      warnMain('power', 'could not end the lock prevention hold', { message: error instanceof Error ? error.message : String(error) });
+    } finally {
+      this.clearingLockHold = false;
+    }
   }
 
   private flushPendingDeepLinkCommands(): void {
@@ -2464,6 +2495,17 @@ function createEmptyClientState(): ClientState {
 }
 
 // Client-state field names are retained for compatibility; native protection allows display sleep.
+/** Longest delay a timer takes; a hold never gets near it, but the clamp keeps a malformed expiry from firing at once. */
+const maxTimerDelayMs = 2 ** 31 - 1;
+
+/** Computer Use needs the Mac awake and unlocked: always in Always mode, and while a hold lasts in On demand mode. */
+export function preventsAutomaticLock(plugins: AppSnapshot['general']['plugins'], now: number): boolean {
+  if (plugins?.computerUseEnabled !== true) return false;
+  if (plugins.computerUseLockPrevention === 'always') return true;
+  const hold = plugins.computerUseLockHold;
+  return plugins.computerUseLockPrevention === 'onDemand' && !!hold && (hold.until === null || hold.until > now);
+}
+
 export function shouldBlockDisplaySleep(clientState: ClientState, isOnBattery: boolean): boolean {
   return clientState.shouldPreventDisplaySleep ||
     (clientState.shouldPreventDisplaySleepForRemoteAccess === true && !isOnBattery);

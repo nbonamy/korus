@@ -1,6 +1,6 @@
 {
   "name": "agent-workspace",
-  "version": "0.50.6",
+  "version": "0.51.0",
   "private": true,
   "packageManager": "npm@10.9.4",
   "overrides": {
@@ -38,6 +38,7 @@
   "workspaces": [
     "core",
     "client/backend",
+    "client/cli",
     "client/vue",
     "client/electron",
     "mobile",
@@ -48,6 +49,8 @@
     "postinstall": "node scripts/patch-relay-timers.mjs && node scripts/patch-cross-zip.mjs && npm run setup:tools",
     "pricing:update": "node scripts/update-pricing.mjs",
     "build": "npm run build:electron",
+    "build:cli": "npm run build -w @workspace/cli",
+    "cli": "npm run dev -w @workspace/cli --",
     "build:backend": "npm run build:sdk && npm run build -w @workspace/core && npm run build -w @workspace/backend && node scripts/package-backend.mjs",
     "build:computer-use": "node scripts/prepare-computer-use.mjs",
     "build:computer-use:local": "node scripts/prepare-computer-use.mjs --local",
@@ -97,7 +100,7 @@
     "test:integration": "npm test -w @workspace/backend -- sdk-boundary driver-capability-boundary server-conversation-requests server-client-isolation-regressions && npm test -w @workspace/vue -- backend-boundary",
     "test:server:e2e": "node --test server/test/e2e/console.test.mjs",
     "test:server:infrastructure": "node --test server/test/e2e/infrastructure.test.mjs",
-    "test:scripts": "node --test scripts/*.test.mjs server/test/*.test.mjs server/test/e2e/console.test.mjs client/vue/scripts/*.test.mjs",
+    "test:scripts": "node --test scripts/*.test.mjs server/test/*.test.mjs server/test/e2e/console.test.mjs client/vue/scripts/*.test.mjs client/cli/*.test.mjs",
     "test:watch:electron": "npm run test:watch -w @workspace/electron",
     "test:website": "node --test website/site.test.mjs",
     "test:website:browser": "npm run build:website && node --test website/navigation.test.mjs",

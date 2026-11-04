@@ -3,7 +3,7 @@ import { normalizePromptContent } from '@codex-app-sdk/core/surface';
 import { MAX_DELEGATION_INSTRUCTIONS_LENGTH } from './delegation-context';
 import { workProviderKinds } from './work-providers';
 import { isAgentBackend } from './contracts/shared';
-import { spokenAnnouncementVoices, type AgentBackend, type AppGeneralSettings, type AppPluginSettings, type AppshotSettings, type AppSnapshot, type AppThemeSettings, type ModelFavorite, type SavedPromptDraft, type SourceFolderState, type SpokenAnnouncementVoice, type UpdateSettingsInput, type WorkProviderSettings } from './contracts';
+import { spokenAnnouncementVoices, type AgentBackend, type AppGeneralSettings, type AppPluginSettings, type AppshotSettings, type AppSnapshot, type AppThemeSettings, type ComputerUseLockHold, type ComputerUseLockPrevention, type ModelFavorite, type SavedPromptDraft, type SourceFolderState, type SpokenAnnouncementVoice, type UpdateSettingsInput, type WorkProviderSettings } from './contracts';
 import { repositoryIconKeyForRemote } from './git-remote';
 import { isApprovalPreset } from './approval-presets';
 import { claudeBackendCapabilities } from './backend-capabilities';
@@ -14,7 +14,8 @@ import { normalizeBrowserBookmarks } from './browser-bookmarks';
 export const defaultPluginSettings: AppPluginSettings = {
   computerUseEnabled: false,
   chromeEnabled: false,
-  computerUseKeepUnlocked: false,
+  computerUseLockPrevention: 'off',
+  computerUseLockHold: false,
 };
 
 export const defaultAppshotSettings: AppshotSettings = {
@@ -341,8 +342,25 @@ export function normalizePluginSettings(value: unknown): AppPluginSettings {
   return {
     computerUseEnabled: value.computerUseEnabled === true,
     chromeEnabled: value.chromeEnabled === true,
-    computerUseKeepUnlocked: value.computerUseKeepUnlocked === true,
+    computerUseLockPrevention: normalizeLockPrevention(value),
+    computerUseLockHold: normalizeLockHold(value.computerUseLockHold),
   };
+}
+
+const lockPreventionModes: readonly string[] = ['off', 'onDemand', 'always'];
+
+/** The earlier on/off switch (`computerUseKeepUnlocked`) becomes Always. */
+function normalizeLockPrevention(value: Record<string, unknown>): ComputerUseLockPrevention {
+  if (typeof value.computerUseLockPrevention === 'string' && lockPreventionModes.includes(value.computerUseLockPrevention)) {
+    return value.computerUseLockPrevention as ComputerUseLockPrevention;
+  }
+  return value.computerUseKeepUnlocked === true ? 'always' : 'off';
+}
+
+function normalizeLockHold(value: unknown): ComputerUseLockHold {
+  if (!isRecord(value) || !('until' in value)) return false;
+  if (value.until === null) return { until: null };
+  return typeof value.until === 'number' && Number.isFinite(value.until) ? { until: value.until } : false;
 }
 
 export function normalizeSourceFolderState(value: unknown): SourceFolderState {
