@@ -532,6 +532,28 @@ describe('useAppState', () => {
     expect(state.activeAgent.value).toBeNull();
   });
 
+  it('replays a missing first history frame after an event gap, even without a cached conversation', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    agent.backendSession = { kind: 'codex', threadId: 'dropped-initial-frame' };
+    let receive!: (event: MainToRendererEvent) => void;
+    const getSnapshotState = vi.fn().mockResolvedValueOnce({ snapshot, lastBackendEventSeq: 0, connection: { status: 'connected' } })
+      .mockResolvedValue({ snapshot, lastBackendEventSeq: 3, connection: { status: 'connected' } });
+    const loadConversationHistory = vi.fn(async (_agentId: string, options?: { recovery?: boolean }) => {
+      if (options?.recovery) receive({ seq: 4, occurredAt: '', backend: 'codex', type: 'codex.conversationSnapshotChanged', agentId: agent.id,
+        threadId: 'dropped-initial-frame', payload: { revision: 1, snapshot: codexConversationSnapshot([]) } });
+      return snapshot;
+    });
+    stubElectronTestWindow({ app: { getSnapshotState, loadConversationHistory,
+      onEvent: listener => { receive = listener; return () => {}; } } satisfies Partial<AppApi> });
+    const state = useAppState();
+    await state.loadSnapshot();
+    expect(state.isHydratingActiveAgentHistory.value).toBe(true);
+    receive({ seq: 3, occurredAt: '', source: 'backend', type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, name: agent.name } });
+    await vi.waitFor(() => expect(loadConversationHistory).toHaveBeenCalledWith(agent.id, { recovery: true }));
+    expect(state.isHydratingActiveAgentHistory.value).toBe(false);
+  });
+
   it('loads persisted thread metadata without hydration when the preload bridge cannot hydrate agents', async () => {
     const remoteSnapshot = createInitialSnapshot();
     remoteSnapshot.agents[0].backendSession = { kind: 'codex', threadId: 'thread-persisted' };

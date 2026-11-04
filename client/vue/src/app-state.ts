@@ -183,7 +183,7 @@ const {
   handleMainEvent: syncComposerStateFromMainEvent,
   syncPlanMode: syncComposerPlanMode,
   loadActive: loadActiveAgentCatalogs,
-  loadAll: loadAllAgentCatalogs,
+  loadAllModels: loadAllAgentModels,
   loadFiles: loadAgentFilesForActiveAgent,
   loadModels: loadBackendModelsForActiveAgent,
   loadPlugins: loadBackendPluginsForActiveAgent,
@@ -569,7 +569,7 @@ export function useAppState() {
       // behind the conversation's demand-paging cursor until the user reaches
       // the top of the transcript.
       void hydrateActiveAgentHistory().catch(() => undefined);
-      void loadAllAgentCatalogs().catch(() => undefined);
+      void loadAllAgentModels().catch(() => undefined);
       await Promise.all([
         loadActiveAgentCatalogs(),
         loadConnectedWorkBacklogs(),
@@ -606,6 +606,13 @@ export function useAppState() {
     const cachedCodexAgentIds = Object.keys(codexConversationFramesByAgentId.value);
     const cachedClaudeAgentIds = Object.keys(claudeConversationFramesByAgentId.value);
     await synchronizeRendererSnapshot(true);
+    // The first provider reset can itself be dropped under transport pressure;
+    // an opened conversation without any cached frame still needs a replay.
+    const activeAgentId = snapshot.value.activeAgentId;
+    if (activeAgentId && agentNeedsHistory(activeAgentId)
+      && !cachedCodexAgentIds.includes(activeAgentId) && !cachedClaudeAgentIds.includes(activeAgentId)) {
+      void recoverConversation(activeAgentId);
+    }
     // App snapshots cannot repair provider events skipped by the global
     // sequence fence. Refresh every cached pane from its conversation owner,
     // including split panes and inactive agents, before trusting those frames.

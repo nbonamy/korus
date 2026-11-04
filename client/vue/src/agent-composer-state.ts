@@ -294,8 +294,8 @@ export function createAgentComposerState(options: {
     await load;
   }
 
-  async function loadAll(): Promise<void> {
-    await Promise.all(snapshot().agents.map((agent) => loadActive(agent.id)));
+  async function loadAllModels(): Promise<void> {
+    await Promise.all(snapshot().agents.map(agent => loadModels(agent.id)));
     const activeAgentId = snapshot().activeAgentId;
     if (activeAgentId) restore(activeAgentId);
   }
@@ -610,7 +610,7 @@ export function createAgentComposerState(options: {
     fileCatalogStatus,
     handleMainEvent,
     loadActive,
-    loadAll,
+    loadAllModels,
     loadFiles,
     loadModels,
     loadPlugins,
