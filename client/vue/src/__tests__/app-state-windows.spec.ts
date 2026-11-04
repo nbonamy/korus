@@ -73,6 +73,14 @@ describe('useAppState in one of several windows', () => {
     expect(app.syncComposerDraft).toHaveBeenLastCalledWith('agent-dina', null);
   });
 
+  it('shares drafts with attachments as plain data that IPC can clone', async () => {
+    const { app, state } = await loadWindow();
+    state.updateComposerAttachments('agent-dina', [{ id: 'a', type: 'image', reference: 'ref', name: 'pasted.png', mimeType: 'image/png', size: 3, previewUrl: 'data:image/png;base64,AAAA' }]);
+    state.updateComposerState('agent-dina', composerState('look'));
+    for (const [, shared] of app.syncComposerDraft.mock.calls) expect(() => structuredClone(shared)).not.toThrow();
+    expect(app.syncComposerDraft).toHaveBeenLastCalledWith('agent-dina', expect.objectContaining({ attachments: [expect.objectContaining({ name: 'pasted.png' })] }));
+  });
+
   it('shows a draft typed in another window without sending it back', async () => {
     const { app, state, receiveDraft } = await loadWindow();
     receiveDraft({ agentId: 'agent-dina', draft: draft('typed elsewhere') });

@@ -2602,7 +2602,8 @@ function shareComposerDraft(agentId: string): void {
   const key = isEmptyComposerDraft(draft) ? '' : JSON.stringify(draft);
   if ((sharedDraftKeys.get(agentId) ?? '') === key) return;
   if (key) sharedDraftKeys.set(agentId, key); else sharedDraftKeys.delete(agentId);
-  void appApi?.syncComposerDraft?.(agentId, key ? draft : null).catch(() => undefined);
+  // The draft holds reactive objects, which IPC cannot clone; the serialized key is the plain copy.
+  try { void appApi?.syncComposerDraft?.(agentId, key ? JSON.parse(key) : null)?.catch(() => undefined); } catch { /* Sharing a draft never blocks editing it. */ }
 }
 
 function applySharedComposerDraft(agentId: string, draft: ComposerDraft | null): void {
