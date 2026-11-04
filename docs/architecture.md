@@ -75,8 +75,10 @@ the local desktop to show UI or use an OS affordance belongs in Electron main.
   shortcut of an agent window closes the window, never the agent. Opening in a new
   window is a view, not a move: the source stays visible where it was. Windows are
   equal, with no special main window. Window > Show Workspace and a Dock click with
-  only scoped windows open both bring a workspace window back. Deep links and captures
-  go to a workspace window.
+  only scoped windows open both bring a workspace window back. Each window is titled for
+  what it shows, and the Window menu lists the windows by title so any of them can be
+  brought forward (macOS lists them itself; elsewhere main builds the list). Deep links
+  and captures go to a workspace window.
 - The open windows are remembered and reopened at launch: for each, its scope, what it
   shows (team, agent or feature, and the selected agent of a workspace window) and its
   frame, listed from least to most recently focused so the last one opened is in front.

@@ -677,7 +677,8 @@ import { defaultTeamColor } from '@workspace/core/team-colors';
 import { agentMentionGroups as projectAgentMentionGroups } from './agent-mention-groups';
 import { appApi, appHostCapabilities, appClientPlatform, appPlatformActions } from '../platform-api';
 import { windowState } from '../window-state';
-import { featureAgentIds } from '@workspace/core/feature-groups';
+import { featureAgentIds, featureLabel } from '@workspace/core/feature-groups';
+import { agentDisplayName } from '@workspace/core/agent-display';
 import { orderAgentsLikeWorktreeSidebar } from '@workspace/core/workspace-sidebar';
 import { codeReviewSettingsKey, useCodeReviewSettings } from './code-review-settings';
 import { diffVizSettingsKey } from './diff-viz-settings';
@@ -1904,6 +1905,19 @@ const currentAgent = computed(() => {
 
   return activeTeamAgents.value.find((agent) => agent.id === team.activeAgentId) ?? activeTeamAgents.value[0] ?? null;
 });
+// The window title is what the Window menu lists, so each window is named for what it shows.
+const windowTitle = computed(() => {
+  const agentName = currentAgent.value ? agentDisplayName(currentAgent.value) : null;
+  const teamName = activeTeam.value?.name;
+  if (windowScope.value === 'agent') return agentName ?? product.name;
+  if (windowScope.value === 'team') return teamName ?? product.name;
+  if (windowScope.value === 'feature') {
+    const feature = featureLabel(activeTeam.value?.featureLabels, windowState.branch.value ?? '');
+    return teamName ? `${feature} · ${teamName}` : feature || product.name;
+  }
+  return agentName && teamName ? `${agentName} · ${teamName}` : product.name;
+});
+watch(windowTitle, (title) => { document.title = title; }, { immediate: true });
 watch(
   [compactViewport, activeSurface],
   ([compact, surface]) => {

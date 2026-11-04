@@ -908,6 +908,7 @@ export class AppController {
     window.on('unmaximize', saveLayout);
     window.on('focus', () => {
       this.windows.markFocused(window);
+      if (process.platform !== 'darwin') this.refreshAppMenu();
       this.scheduleLayoutSave();
       if (!app?.isPackaged) this.refreshAppMenu();
       this.policyAwareSpokenAnnouncements.refresh();
@@ -915,10 +916,20 @@ export class AppController {
     });
     window.on('blur', () => this.policyAwareSpokenAnnouncements.refresh());
     window.once('closed', () => this.handleWindowClosed(window));
+    // Where the Window menu is built here rather than by the system, it follows window titles.
+    window.on('page-title-updated', () => { if (process.platform !== 'darwin') this.refreshAppMenu(); });
     this.scheduleLayoutSave();
     this.refreshAppMenu();
     this.handleTelemetryActivity();
     return window;
+  }
+
+  private focusWindowById(id: number): void {
+    const window = this.windows.byId(id);
+    if (!window) return;
+    if (window.isMinimized()) window.restore();
+    window.show();
+    window.focus();
   }
 
   /** New Window: opens beside the current one on the agent it shows. */
@@ -931,6 +942,7 @@ export class AppController {
     void this.browserPane.closeHostedBy(window);
     const released = this.windows.remove(window);
     this.scheduleLayoutSave();
+    if (process.platform !== 'darwin') this.refreshAppMenu();
     if (released.length) this.broadcastNativeOwners();
     this.policyAwareSpokenAnnouncements.refresh();
   }
@@ -1949,6 +1961,8 @@ export class AppController {
     installUpdate: () => void;
     newWindow: () => void;
     showWorkspace: () => void;
+    listWindows: () => Array<{ id: number; title: string; focused: boolean }>;
+    focusWindow: (id: number) => void;
     capturePerformanceProfile: () => void;
   } {
     return {
@@ -1957,6 +1971,8 @@ export class AppController {
       installUpdate: () => this.requestInstallUpdate(),
       newWindow: () => this.openNewWindow(),
       showWorkspace: () => this.showWorkspace(),
+      listWindows: () => this.windows.live().map(window => ({ id: window.id, title: window.getTitle(), focused: window.isFocused() })),
+      focusWindow: (id: number) => this.focusWindowById(id),
       capturePerformanceProfile: () => {
         const window = this.windows.focused();
         if (window) void runPerformanceCapture(window);

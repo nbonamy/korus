@@ -111,6 +111,22 @@ describe('app menu', () => {
     expect(newWindow).toHaveBeenCalledOnce();
     expect(menuItem(buildAppMenuTemplate(callbacks(), { debugMode: false }), 'Window', 'New Window')).toBeUndefined();
   });
+  it('lists the open windows in the Window menu where the system does not', () => {
+    const focusWindow = vi.fn();
+    const listWindows = () => [{ id: 1, title: 'Dina · Korus', focused: true }, { id: 2, title: 'Jesse', focused: false }];
+    const linux = buildAppMenuTemplate({ ...callbacks(), listWindows, focusWindow }, { debugMode: false }, 'linux');
+    const items = (linux.find(item => item.label === 'Window')!.submenu as Array<{ label?: string; type?: string; checked?: boolean; click?: () => void }>);
+    const windows = items.filter(item => item.type === 'checkbox');
+    expect(windows.map(item => [item.label, item.checked])).toEqual([['Dina · Korus', true], ['Jesse', false]]);
+    windows[1]!.click!();
+    expect(focusWindow).toHaveBeenCalledWith(2);
+  });
+  it('leaves listing the windows to macOS, which does it for a Window menu', () => {
+    const mac = buildAppMenuTemplate({ ...callbacks(), listWindows: () => [{ id: 1, title: 'Dina', focused: true }] }, { debugMode: false }, 'darwin');
+    const windowMenu = mac.find(item => item.label === 'Window')!;
+    expect(windowMenu.role).toBe('window');
+    expect((windowMenu.submenu as Array<{ type?: string }>).some(item => item.type === 'checkbox')).toBe(false);
+  });
   it('offers Show Workspace next to New Window', () => {
     const showWorkspace = vi.fn();
     const template = buildAppMenuTemplate({ ...callbacks(), newWindow: vi.fn(), showWorkspace }, { debugMode: false });

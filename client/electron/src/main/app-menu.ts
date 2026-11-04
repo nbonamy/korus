@@ -24,6 +24,9 @@ export type AppMenuCallbacks = {
   capturePerformanceProfile?: () => void;
   newWindow?: () => void;
   showWorkspace?: () => void;
+  /** The open windows, for platforms whose Window menu does not list them itself. */
+  listWindows?: () => Array<{ id: number; title: string; focused: boolean }>;
+  focusWindow?: (id: number) => void;
   sendDebugAgentMessage?: () => void;
   toggleDebugExecutionPlan?: () => void;
   hasDebugExecutionPlan?: () => boolean;
@@ -47,14 +50,14 @@ export type AppMenuCallbacks = {
   closeAuxiliaryWindow?(focusedWindow: BaseWindow | undefined): boolean;
 };
 
-type AppMenuInstallOptions = AppMenuOptions & Partial<Pick<AppMenuCallbacks, 'restartBackend' | 'checkForUpdates' | 'installUpdate' | 'capturePerformanceProfile' | 'newWindow' | 'showWorkspace' | 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'hasDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'getDebugMissionReviewState' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag' | 'getDebugMissingEngines' | 'setDebugMissingEngines' | 'getDebugProviderUpgrades' | 'setDebugProviderUpgrades' | 'getDebugReviewUncommitted' | 'setDebugReviewUncommitted'>>;
+type AppMenuInstallOptions = AppMenuOptions & Partial<Pick<AppMenuCallbacks, 'restartBackend' | 'checkForUpdates' | 'installUpdate' | 'capturePerformanceProfile' | 'newWindow' | 'showWorkspace' | 'listWindows' | 'focusWindow' | 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'hasDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'getDebugMissionReviewState' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag' | 'getDebugMissingEngines' | 'setDebugMissingEngines' | 'getDebugProviderUpgrades' | 'setDebugProviderUpgrades' | 'getDebugReviewUncommitted' | 'setDebugReviewUncommitted'>>;
 const editMenuId = 'app-edit-menu';
 
 /** The application menu is shared by every window, so its commands go to whichever window is current. */
 export type AppMenuWindow = BrowserWindow | (() => BrowserWindow | undefined);
 
 export function installAppMenu(host: AppMenuWindow, options: AppMenuInstallOptions): void {
-  const { checkForUpdates, installUpdate, capturePerformanceProfile, newWindow, showWorkspace, ...menuOptions } = options;
+  const { checkForUpdates, installUpdate, capturePerformanceProfile, newWindow, showWorkspace, listWindows, focusWindow, ...menuOptions } = options;
   const current = (): BrowserWindow | undefined => typeof host === 'function' ? host() : host;
   const callbacks: AppMenuCallbacks = {
     restartBackend: options.restartBackend,
@@ -63,6 +66,8 @@ export function installAppMenu(host: AppMenuWindow, options: AppMenuInstallOptio
     capturePerformanceProfile,
     newWindow,
     showWorkspace,
+    listWindows,
+    focusWindow,
     reload: () => current()?.webContents.reload(),
     sendAppCommand: (command) => {
       const window = current();
@@ -643,8 +648,11 @@ function buildViewMenu(callbacks: AppMenuCallbacks, options: AppMenuOptions): Me
 }
 
 function buildWindowMenu(callbacks: AppMenuCallbacks, platform: NodeJS.Platform): MenuItemConstructorOptions {
+  // macOS lists the open windows in a menu it knows as the Window menu; elsewhere the list is built here.
+  const windows = platform === 'darwin' ? [] : callbacks.listWindows?.() ?? [];
   return {
     label: mainT('menu.window'),
+    ...(platform === 'darwin' ? { role: 'window' as const } : {}),
     submenu: [
       ...(callbacks.newWindow ? [{
         label: mainT('menu.newWindow'),
@@ -667,6 +675,12 @@ function buildWindowMenu(callbacks: AppMenuCallbacks, platform: NodeJS.Platform)
       ...(platform === 'darwin'
         ? [{ type: 'separator' as const }, { role: 'front' as const }]
         : [{ role: 'close' as const }]),
+      ...(windows.length ? [{ type: 'separator' as const }, ...windows.map((window): MenuItemConstructorOptions => ({
+        label: window.title,
+        type: 'checkbox',
+        checked: window.focused,
+        click: () => callbacks.focusWindow?.(window.id),
+      }))] : []),
     ],
   };
 }

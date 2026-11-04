@@ -55,6 +55,7 @@ type Private = {
   browserOpen(window: unknown, agentId: string, browserId: string, url: string, guestId: number): Promise<unknown>;
   hostsBrowserPane(event: unknown, agentId: string, browserId: string): boolean;
   windowOf(event: unknown): unknown;
+  focusWindowById(id: number): void;
   flushPendingDeepLinkCommands(): void;
   openWindow(viewState?: unknown): unknown;
   openNewWindow(): void;
@@ -150,6 +151,22 @@ describe('AppController with several windows', () => {
         Object.defineProperty(process, 'platform', platform);
       }
       for (const window of windows) expect(window.setMenuBarVisibility).toHaveBeenCalledWith(true);
+    });
+
+    it('lists the windows by title for the Window menu and brings the chosen one forward', () => {
+      const { controller, windows: [first, second] } = controllerWithWindows(2);
+      Object.assign(first!, { getTitle: () => 'Dina · Korus' });
+      Object.assign(second!, { getTitle: () => 'Jesse' });
+      first!.focused = true;
+      const menu = internals(controller).updateMenuOptions() as unknown as { listWindows(): unknown[] };
+      expect(menu.listWindows()).toEqual([
+        { id: first!.id, title: 'Dina · Korus', focused: true },
+        { id: second!.id, title: 'Jesse', focused: false },
+      ]);
+      internals(controller).focusWindowById(second!.id);
+      expect(second!.show).toHaveBeenCalled();
+      expect(second!.focus).toHaveBeenCalled();
+      internals(controller).focusWindowById(9999);
     });
 
     it('resolves the window behind an IPC sender and falls back to the current one', () => {

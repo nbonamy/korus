@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { windowState } from '../../window-state';
+import { agentDisplayName } from '@workspace/core/agent-display';
 import { mountShell } from './app-shell-test-harness';
 
 afterEach(() => {
@@ -85,6 +86,39 @@ describe('AppShell in a window that shows less than the workspace', () => {
       withNew.teams[0]!.agentIds.push('agent-new');
       await wrapper.setProps({ snapshot: withNew });
       expect(wrapper.findAll('.agent-sidebar__agent')).toHaveLength(2);
+    });
+  });
+
+  describe('window titles, which the Window menu lists', () => {
+    const titled = (snapshot = createInitialSnapshot()) => {
+      const wrapper = mountShell({ stubAgentWorkspace: true, snapshot });
+      return { wrapper, title: () => document.title };
+    };
+
+    it('names a workspace window for its agent and team', () => {
+      const snapshot = createInitialSnapshot();
+      const agent = snapshot.agents.find(candidate => candidate.id === snapshot.activeAgentId)!;
+      const { title } = titled(snapshot);
+      expect(title()).toBe(`${agentDisplayName(agent)} · ${snapshot.teams.find(team => team.id === snapshot.activeTeamId)!.name}`);
+    });
+
+    it('names an agent window for its agent, and a team window for its team', () => {
+      const snapshot = createInitialSnapshot();
+      const agent = snapshot.agents.find(candidate => candidate.id === snapshot.activeAgentId)!;
+      windowState.scope.value = 'agent';
+      expect(titled(snapshot).title()).toBe(agentDisplayName(agent));
+      windowState.scope.value = 'team';
+      expect(titled(snapshot).title()).toBe(snapshot.teams.find(team => team.id === snapshot.activeTeamId)!.name);
+    });
+
+    it('names a feature window for its label and team', () => {
+      const snapshot = createInitialSnapshot();
+      const team = snapshot.teams.find(candidate => candidate.id === snapshot.activeTeamId)!;
+      team.featureLabels = { feat1: 'Account settings' };
+      windowState.scope.value = 'feature';
+      windowState.teamId.value = team.id;
+      windowState.branch.value = 'feat1';
+      expect(titled(snapshot).title()).toBe(`Account settings · ${team.name}`);
     });
   });
 
