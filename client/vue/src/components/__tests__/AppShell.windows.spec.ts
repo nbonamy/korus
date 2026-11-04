@@ -162,4 +162,30 @@ describe('AppShell in a window that shows less than the workspace', () => {
     expect(wrapper.find('.app-shell__nav').exists()).toBe(false);
     expect(wrapper.classes()).toContain('app-shell--chromeless');
   });
+
+  it('keeps an agent window on its agent without reading or overwriting the team split', async () => {
+    const snapshot = createInitialSnapshot();
+    const team = snapshot.teams[0]!;
+    const [first, second] = snapshot.agents;
+    snapshot.agents.forEach(agent => { agent.teamId = team.id; });
+    team.agentIds = snapshot.agents.map(agent => agent.id);
+    team.activeAgentId = first!.id;
+    snapshot.activeTeamId = team.id;
+    snapshot.activeAgentId = first!.id;
+    windowState.scope.value = 'agent';
+    windowState.agentId.value = first!.id;
+    const key = `app:splitWorkspace:v1:${team.id}`;
+    const saved = JSON.stringify({ layout: '2-vertical', panes: [{ id: 1, agentId: first!.id }, { id: 2, agentId: second!.id }], focusedPaneId: 2, ratios: { columns: 0.5, rows: 0.5 } });
+    localStorage.setItem(key, saved);
+    const wrapper = mountShell({ snapshot, stubAgentWorkspace: true });
+    try {
+      await nextTick();
+      expect(wrapper.emitted('select-agent') ?? []).toEqual([]);
+      expect(wrapper.findComponent({ name: 'AgentWorkspace' }).attributes('split-headers')).toBe('false');
+    } finally {
+      wrapper.unmount();
+      expect(localStorage.getItem(key)).toBe(saved);
+      localStorage.removeItem(key);
+    }
+  });
 });

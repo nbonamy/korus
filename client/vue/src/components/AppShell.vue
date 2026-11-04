@@ -1937,14 +1937,14 @@ watch(() => currentAgent.value?.id, (agentId) => {
   }
 });
 const split = useSplitWorkspace({
-  agentIds: () => (cockpitScope.value ? workspaceAgents.value : activeTeamAgents.value).map(agent => agent.id),
+  agentIds: () => chromeless.value ? [currentAgent.value?.id].filter((id): id is string => Boolean(id)) : (cockpitScope.value ? workspaceAgents.value : activeTeamAgents.value).map(agent => agent.id),
   currentAgentId: () => cockpitScope.value && activeSurface.value === 'mission' ? undefined : currentAgent.value?.id,
   teamId: () => cockpitScope.value ? 'surface:cockpit' : activeTeam.value?.id,
   selectAgent: id => emit('select-agent', id),
-  persist: () => windowScope.value !== 'feature',
+  persist: () => !featureWindow.value && !chromeless.value,
 });
 // Compact screens display one conversation without changing the saved team layout.
-const splitLayout = computed(() => compactViewport.value || featureWindow.value ? 'single' : split.layout.value);
+const splitLayout = computed(() => compactViewport.value || featureWindow.value || chromeless.value ? 'single' : split.layout.value);
 const hasFocusedConversation = computed(() => compactViewport.value || Boolean(split.focusedPane.value.agentId));
 const rightWorkspaceState = useRightWorkspaceState({
   currentAgentId: () => currentAgent.value?.id,

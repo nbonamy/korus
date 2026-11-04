@@ -311,6 +311,59 @@ describe('AppController with several windows', () => {
       return { controller, created };
     }
 
+    it('drops reloaded document claims and waits for its guests to close before restoring them', async () => {
+      const { controller, created } = openedWindows();
+      internals(controller).openWindow();
+      internals(controller).openWindow();
+      const [first, second] = created;
+      await internals(controller).claimNativeResource(first, 'browser', 'agent-1', false);
+      await internals(controller).claimNativeResource(first, 'simulator', 'agent-1', false);
+      await internals(controller).claimNativeResource(second, 'browser', 'agent-2', false);
+      let closeGuests!: () => void;
+      const closing = new Promise<void>(resolve => { closeGuests = resolve; });
+      vi.spyOn(internals(controller).browserPane, 'closeHostedBy').mockReturnValueOnce(closing);
+      first!.webContents.emit('did-start-loading');
+      let restored = false;
+      const claiming = internals(controller).claimNativeResource(first, 'browser', 'agent-1', false).then(result => { restored = result; });
+      let moved = false;
+      const competing = internals(controller).claimNativeResource(second, 'browser', 'agent-1', false).then(result => { moved = result; });
+      await Promise.resolve();
+      expect(restored).toBe(false);
+      expect(moved).toBe(false);
+      closeGuests();
+      await claiming;
+      await competing;
+      expect(restored).toBe(true);
+      expect(moved).toBe(false);
+      internals(controller).releaseNativeResource(first, 'browser', 'agent-1');
+      expect(internals(controller).windows.nativeOwners()).toEqual([{ resource: 'browser', agentId: 'agent-2', windowId: second!.id }]);
+      expect(await internals(controller).claimNativeResource(second, 'browser', 'agent-1', false)).toBe(true);
+      expect(await internals(controller).claimNativeResource(second, 'simulator', 'agent-1', false)).toBe(true);
+    });
+
+    it('does not finish an old document takeover after the window reloads', async () => {
+      const { controller, created } = openedWindows();
+      internals(controller).openWindow();
+      internals(controller).openWindow();
+      const [first, second] = created;
+      await internals(controller).claimNativeResource(second, 'browser', 'agent-1', false);
+      let closeGuests!: () => void;
+      let startClosing!: () => void;
+      const started = new Promise<void>(resolve => { startClosing = resolve; });
+      const closing = new Promise<void>(resolve => { closeGuests = resolve; });
+      vi.spyOn(internals(controller).browserPane, 'closeHostedBy')
+        .mockImplementationOnce(() => { startClosing(); return closing; })
+        .mockResolvedValue(undefined);
+      const takeover = internals(controller).claimNativeResource(first, 'browser', 'agent-1', true);
+      await started;
+      first!.webContents.emit('did-start-loading');
+      expect(await internals(controller).claimNativeResource(first, 'browser', 'agent-1', false)).toBe(true);
+      closeGuests();
+      expect(await takeover).toBe(false);
+      internals(controller).releaseNativeResource(first, 'browser', 'agent-1');
+      expect(internals(controller).windows.nativeOwners()).toEqual([]);
+    });
+
     it('opens every window through one call that takes its initial view state', () => {
       const { controller, created } = openedWindows();
       internals(controller).openWindow({ agentId: 'agent-1' });

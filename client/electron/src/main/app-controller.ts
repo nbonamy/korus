@@ -77,6 +77,7 @@ export class AppController {
   }
   /** Every open window. The daemon owns product state; this only tracks what belongs to a window. */
   private readonly windows = new WindowRegistry<BrowserWindow>();
+  private readonly nativeLifecycles = new WeakMap<BrowserWindow, { cleanup: Promise<void> }>();
   /** Where the open windows are remembered. Unset until the app asks for it, so nothing else writes there. */
   private layoutFile: string | null = null;
   private layoutSaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -899,6 +900,7 @@ export class AppController {
     logMain('window', 'created main window');
     window.webContents.on('did-start-loading', () => {
       this.windows.setReady(window, false);
+      this.resetNativeResources(window);
       if (this.debugFlags.delete(window)) this.refreshAppMenu();
     });
     window.webContents.on('did-finish-load', () => {
@@ -952,6 +954,7 @@ export class AppController {
   }
 
   private handleWindowClosed(window: BrowserWindow): void {
+    this.nativeLifecycles.delete(window);
     void this.browserPane.closeHostedBy(window);
     const released = this.windows.remove(window);
     this.scheduleLayoutSave();
@@ -1542,7 +1545,7 @@ export class AppController {
   }
 
   private async browserOpen(window: BrowserWindow | undefined, agentId: string, browserId: string, url: string, guestWebContentsId: number): Promise<BrowserState> {
-    this.requireBrowserWindow(window, agentId);
+    await this.requireBrowserWindow(window, agentId);
     try {
       const agent = this.snapshot?.agents.find((candidate) => candidate.id === agentId);
       if (!agent) {
@@ -1565,7 +1568,7 @@ export class AppController {
     title: string,
     guestWebContentsId: number,
   ): Promise<BrowserState> {
-    this.requireBrowserWindow(window, agentId);
+    await this.requireBrowserWindow(window, agentId);
     const agent = this.snapshot?.agents.find((candidate) => candidate.id === agentId);
     if (!agent) {
       throw new Error(`Agent not found: ${agentId}`);
@@ -2438,8 +2441,11 @@ export class AppController {
     return this.windows.ownerOf(resource, agentId) ?? this.windows.focused();
   }
 
-  private requireBrowserWindow(window: BrowserWindow | undefined, agentId: string): void {
+  private async requireBrowserWindow(window: BrowserWindow | undefined, agentId: string): Promise<void> {
     if (!window || window.isDestroyed()) throw new Error('Browser window is not available.');
+    const lifecycle = this.nativeLifecycles.get(window);
+    await lifecycle?.cleanup;
+    if (window.isDestroyed() || this.nativeLifecycles.get(window) !== lifecycle) throw new Error('Browser window was reloaded.');
     const owner = this.windows.ownerOf('browser', agentId);
     if (owner && owner !== window) throw new Error('This agent’s browser is open in another window.');
   }
@@ -2460,17 +2466,39 @@ export class AppController {
 
   private async claimNativeResource(window: BrowserWindow | undefined, resource: NativeResource, agentId: string, takeOver: boolean): Promise<boolean> {
     if (!window) return false;
+    const lifecycle = this.nativeLifecycles.get(window);
+    if (lifecycle) await lifecycle.cleanup;
+    const owner = this.windows.ownerOf(resource, agentId);
+    const ownerLifecycle = owner && this.nativeLifecycles.get(owner);
+    if (ownerLifecycle) await ownerLifecycle.cleanup;
+    const current = (): boolean => !window.isDestroyed() && this.windows.has(window) && this.nativeLifecycles.get(window) === lifecycle;
+    if (!current()) return false;
     const claim = this.windows.claim(window, resource, agentId, takeOver);
     if (!claim.granted) return false;
     // The displaced window unmounts its view only after main has let go of the old guest.
     if (claim.displaced && resource === 'browser') {
       await this.browserPane.closeHostedBy(claim.displaced, agentId);
+      if (!current() || this.windows.ownerOf(resource, agentId) !== window) return false;
       // The Browser carries its pages with it: the new owner opens where the old one was.
       const carried = this.windows.setupOf(claim.displaced)?.[agentId];
       if (carried) sendIpcEvent<AppIpcEvents, typeof ipcChannels.windowSetupApply>(window.webContents, ipcChannels.windowSetupApply, { [agentId]: carried });
     }
     this.broadcastNativeOwners();
     return true;
+  }
+
+  private resetNativeResources(window: BrowserWindow): void {
+    const previous = this.nativeLifecycles.get(window);
+    // Finish closing the old guests before any restored gate can mount its replacement.
+    const lifecycle = { cleanup: Promise.resolve() };
+    this.nativeLifecycles.set(window, lifecycle);
+    lifecycle.cleanup = (previous?.cleanup ?? Promise.resolve())
+      .then(() => this.browserPane.closeHostedBy(window))
+      .then(() => { this.windows.releaseAll(window); })
+      .catch(error => warnMain('window', 'failed to close reloaded native views', { detail: String(error) }));
+    void lifecycle.cleanup.then(() => {
+      if (this.nativeLifecycles.get(window) === lifecycle) this.broadcastNativeOwners();
+    });
   }
 
   private releaseNativeResource(window: BrowserWindow | undefined, resource: NativeResource, agentId: string): void {

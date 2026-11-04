@@ -40,18 +40,38 @@ describe('NativeResourceGate', () => {
     expect(api.releaseNativeResource).toHaveBeenCalledWith('browser', 'agent-1');
   });
 
+  it('releases a pending claim if its gate unmounts before the reply', async () => {
+    let complete!: (result: boolean) => void;
+    const { api, wrapper } = await mountGate({
+      claimNativeResource: vi.fn(() => new Promise<boolean>(resolve => { complete = resolve; })),
+    });
+    wrapper.unmount();
+    expect(api.releaseNativeResource).not.toHaveBeenCalled();
+    complete(true);
+    await flushPromises();
+    expect(api.releaseNativeResource).toHaveBeenCalledExactlyOnceWith('browser', 'agent-1');
+  });
+
   it('offers to move the view here instead of mounting it a second time', async () => {
-    const { api, wrapper } = await mountGate(
-      { claimNativeResource: vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true) },
+    const { api, wrapper, changeOwners } = await mountGate(
+      { claimNativeResource: vi.fn().mockResolvedValue(false) },
       [{ resource: 'browser', agentId: 'agent-1', windowId: 2 }],
     );
     expect(wrapper.find('.view').exists()).toBe(false);
     expect(wrapper.text()).toContain('open in another window');
 
+    vi.mocked(api.claimNativeResource).mockImplementation(async () => {
+      // Main announces the new owner before the claim response reaches this window.
+      await changeOwners([{ resource: 'browser', agentId: 'agent-1', windowId: 1 }]);
+      return true;
+    });
     await wrapper.get('button').trigger('click');
     await flushPromises();
     expect(api.claimNativeResource).toHaveBeenLastCalledWith('browser', 'agent-1', true);
-    expect(wrapper.find('.view').exists()).toBe(false);
+    expect(wrapper.find('.view').exists()).toBe(true);
+    expect(api.claimNativeResource).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
+    expect(api.releaseNativeResource).toHaveBeenCalledExactlyOnceWith('browser', 'agent-1');
   });
 
   it('hands the view over when another window takes it, and reclaims it once that window lets go', async () => {

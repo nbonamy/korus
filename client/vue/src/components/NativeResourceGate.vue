@@ -26,17 +26,37 @@ const props = defineProps<{ resource: NativeResource; agentId: string }>();
 const granted = ref(true);
 const refused = ref(false);
 const elsewhere = computed(() => !windowState.ownsNative(props.resource, props.agentId));
+const pendingClaims = new Set<string>();
+let disposed = false;
+let acquired = false;
 
 async function claim(agentId: string, takeOver = false): Promise<void> {
+  if (disposed || pendingClaims.has(agentId)) return;
+  pendingClaims.add(agentId);
   const api = appApi;
-  const result = api?.claimNativeResource ? await api.claimNativeResource(props.resource, agentId, takeOver) : true;
-  if (agentId !== props.agentId) return;
-  granted.value = result;
-  refused.value = !result;
+  const resource = props.resource;
+  try {
+    const result = api?.claimNativeResource ? await api.claimNativeResource(resource, agentId, takeOver) : true;
+    if (disposed || agentId !== props.agentId) {
+      if (result) void api?.releaseNativeResource?.(resource, agentId)?.catch(() => undefined);
+      return;
+    }
+    acquired = result && !elsewhere.value;
+    granted.value = acquired;
+    refused.value = !result;
+  } catch {
+    if (!disposed && agentId === props.agentId) {
+      granted.value = false;
+      refused.value = true;
+    }
+  } finally {
+    pendingClaims.delete(agentId);
+  }
 }
 
 function release(agentId: string): void {
-  if (granted.value) void appApi?.releaseNativeResource?.(props.resource, agentId)?.catch(() => undefined);
+  if (acquired) void appApi?.releaseNativeResource?.(props.resource, agentId)?.catch(() => undefined);
+  acquired = false;
   granted.value = false;
 }
 
@@ -46,7 +66,7 @@ function takeOver(): void {
 
 // Claimed during setup so the request reaches main before the view's own first call.
 void claim(props.agentId);
-onBeforeUnmount(() => release(props.agentId));
+onBeforeUnmount(() => { disposed = true; release(props.agentId); });
 watch(() => props.agentId, (next, previous) => {
   release(previous);
   void claim(next);
@@ -54,7 +74,7 @@ watch(() => props.agentId, (next, previous) => {
 // A window that lost the view to another one stops counting itself as the owner,
 // and claims the view again once the other window lets go of it.
 watch(elsewhere, (value) => {
-  if (value) granted.value = false;
+  if (value) { acquired = false; granted.value = false; }
   else if (!granted.value) void claim(props.agentId);
 });
 </script>

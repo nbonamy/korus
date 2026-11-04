@@ -40,6 +40,11 @@ export class WindowRegistry<W extends ManagedWindow> {
   remove(window: W): NativeOwnerEntry[] {
     const index = this.entries.findIndex(entry => entry.window === window);
     if (index >= 0) this.entries.splice(index, 1);
+    return this.releaseAll(window);
+  }
+
+  /** Drops every claim from a renderer document, without forgetting the window's selection or setup. */
+  releaseAll(window: W): NativeOwnerEntry[] {
     const released: NativeOwnerEntry[] = [];
     for (const [key, ownership] of this.owners) {
       if (ownership.window !== window) continue;
