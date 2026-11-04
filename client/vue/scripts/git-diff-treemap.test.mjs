@@ -527,6 +527,7 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
 
 test('ships native diagram fonts and editor licenses for production rendering', async t => {
   const root=fileURLToPath(new URL('../../..',import.meta.url));
+  await mkdir(path.join(root,'node_modules/.cache'),{recursive:true});
   const fixture=await mkdtemp(path.join(root,'node_modules/.cache/diagram-font-build-'));
   try {
     await writeFile(path.join(fixture,'index.html'),'<script type="module">window.fixture=true;</script>');
