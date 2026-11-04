@@ -99,13 +99,8 @@ Use the Node 26 reference toolchain (`.nvmrc`, `package.json`). Keep build outpu
 generated bindings and packaged resources separate from source. Packaging and
 signing are in [client/AGENTS.md](client/AGENTS.md).
 
-**Codex App SDK.** The development `.env` sets `CODEX_APP_SDK_SOURCE=1`, so development
-builds use the sibling `~/src/codex-app-sdk` source directly: an SDK change is live
-with no publish and no version bump. The pinned published packages (the default,
-`CODEX_APP_SDK_SOURCE=0`) only matter for release builds, CI and clean checkouts.
-Never raise SDK publishing or the pinned version as a blocker or caveat for
-development work; mention it only while preparing a release, where the SDK must be
-published and the pin bumped first.
+**SDK.** Dev builds run the `~/src/codex-app-sdk` source (`CODEX_APP_SDK_SOURCE=1`), so
+SDK changes are live: never cite publishing or the pinned version outside release prep.
 
 ## Project Skills
 
