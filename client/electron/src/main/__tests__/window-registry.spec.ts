@@ -55,6 +55,7 @@ describe('WindowRegistry', () => {
     expect(registry.selectedAgentOf(second)).toBe('agent-b');
 
     registry.setSelectedAgent(first, 'agent-a');
+    expect(registry.viewStateOf(first)).toEqual({ agentId: 'agent-a' });
     expect(registry.selectedAgentIds()).toEqual(new Set(['agent-a', 'agent-b']));
   });
 

@@ -46,6 +46,8 @@ import { createAgentThreadFlagState } from './agent-thread-flag-state';
 import { createAgentHistoryState } from './agent-history-state';
 import { createSourceRepositoryState } from './source-repository-state';
 import { workspaceSidebarRepositoryKeyForAgent } from '@workspace/core/workspace-sidebar';
+import { windowState } from './window-state';
+import { isEmptyComposerDraft, type ComposerDraft } from '@workspace/core/windows';
 import { isSnapshotEventOwnedBy, type RendererOnlySnapshotEvent } from '@workspace/core/snapshot-event-ownership';
 
 const snapshot = ref<AppSnapshot>(createEmptySnapshot());
@@ -482,6 +484,7 @@ export function useAppState() {
       ...composerStatesByAgentId.value,
       [agentId]: { ...state },
     };
+    shareComposerDraft(agentId);
   }
 
   function updateComposerAttachments(agentId: string, attachments: readonly CodexNativeAttachment[]): void {
@@ -490,6 +493,7 @@ export function useAppState() {
       ...composerAttachmentsByAgentId.value,
       [agentId]: attachments.map((attachment) => ({ ...attachment })),
     };
+    shareComposerDraft(agentId);
   }
 
   const activeBackendApprovals = computed(() => {
@@ -562,6 +566,7 @@ export function useAppState() {
 
     try {
       await synchronizeRendererSnapshot(false);
+      await startWindowState();
       await generalPreferences.migrate();
       if (snapshot.value.activeAgentId) restoreComposerConfiguration(snapshot.value.activeAgentId);
       // The SDK publishes a bounded initial page immediately. Older pages stay
@@ -2571,6 +2576,49 @@ async function refreshAgentSelection(agentId: string, requestId: number, needsHi
     if (needsHistory) markAgentHistoryHydrating(agentId, false);
   }
 }
+
+// A draft belongs to its agent, not to a window: every edit is shared with the other windows, and
+// theirs are applied here without being echoed back. Equal drafts are never re-sent.
+const sharedDraftKeys = new Map<string, string>();
+
+function composerDraftOf(agentId: string): ComposerDraft {
+  return {
+    state: { ...(composerStatesByAgentId.value[agentId] ?? emptyComposerState()) },
+    attachments: [...(composerAttachmentsByAgentId.value[agentId] ?? [])],
+  };
+}
+
+function shareComposerDraft(agentId: string): void {
+  const draft = composerDraftOf(agentId);
+  const key = isEmptyComposerDraft(draft) ? '' : JSON.stringify(draft);
+  if ((sharedDraftKeys.get(agentId) ?? '') === key) return;
+  if (key) sharedDraftKeys.set(agentId, key); else sharedDraftKeys.delete(agentId);
+  void appApi?.syncComposerDraft?.(agentId, key ? draft : null).catch(() => undefined);
+}
+
+function applySharedComposerDraft(agentId: string, draft: ComposerDraft | null): void {
+  if (!snapshot.value.agents.some((agent) => agent.id === agentId)) return;
+  const next = draft ?? { state: emptyComposerState(), attachments: [] };
+  if (draft) sharedDraftKeys.set(agentId, JSON.stringify(draft)); else sharedDraftKeys.delete(agentId);
+  composerStatesByAgentId.value = { ...composerStatesByAgentId.value, [agentId]: { ...next.state } };
+  composerAttachmentsByAgentId.value = { ...composerAttachmentsByAgentId.value, [agentId]: next.attachments.map((attachment) => ({ ...attachment })) };
+}
+
+async function startWindowState(): Promise<void> {
+  try {
+    await windowState.start({
+      api: () => appApi,
+      agentExists: (agentId) => snapshot.value.agents.some((agent) => agent.id === agentId),
+      showAgent: (agentId) => { snapshot.value = selectAgentInSnapshot(snapshot.value, agentId); },
+      applyDraft: applySharedComposerDraft,
+    });
+    windowState.reportSelection(appApi, snapshot.value.activeAgentId);
+  } catch {
+    // Without window context this window behaves as the only one.
+  }
+}
+
+watch(() => snapshot.value.activeAgentId, (agentId) => windowState.reportSelection(appApi, agentId));
 
 function markAgentSending(agentId: string, sending: boolean): void {
   const next = new Set(sendingAgentIds.value);

@@ -89,8 +89,11 @@ export class WindowRegistry<W extends ManagedWindow> {
     return this.live().filter(window => this.isReady(window));
   }
 
+  /** The state to open this window with again: its initial state, following what it has selected since. */
   viewStateOf(window: W): WindowViewState | null {
-    return this.entryOf(window)?.viewState ?? null;
+    const entry = this.entryOf(window);
+    if (!entry) return null;
+    return entry.selectedAgentId ? { ...entry.viewState, agentId: entry.selectedAgentId } : entry.viewState;
   }
 
   setSelectedAgent(window: W, agentId: string | null): void {

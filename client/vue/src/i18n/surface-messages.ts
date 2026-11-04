@@ -18,6 +18,11 @@ export const surfaceMessages = {
     deleteTitle: 'Delete {name}?', deleteMessage: 'Delete “{name}” from all configured agents? Its installed folders will be removed. Original sources of linked skills are kept.',
     unavailable: 'Skills client unavailable.', loading: 'Loading skills…', loadingDocument: 'Loading skill…', synced: 'Synced', kind: 'Skill type', deleting: 'Deleting {name}…', codingAgents: 'Coding agents', syncTitle: 'Sync skills?', syncOne: 'Sync this skill', uninstall: 'Uninstall', uninstallLabel: 'Uninstall {name}', refresh: 'Refresh', uninstalling: 'Uninstalling…', uninstallTitle: 'Uninstall {name}?', uninstallPackMessage: 'Remove the {count} installed skills of “{name}” from all configured agents? This deletes: {skills}. Original sources of linked skills are kept.', syncing: 'Syncing {name}…', syncMessage: 'This makes all your personal skills available in all your configured coding agents.',
   },
+  nativeResource: {
+    browserElsewhere: 'This browser is open in another window.',
+    simulatorElsewhere: 'This simulator is open in another window.',
+    moveHere: 'Move here',
+  },
   mobileSimulator: {
     "title": "Mobile simulator",
     "tab": "Simulator",

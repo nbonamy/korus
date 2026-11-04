@@ -25,6 +25,8 @@ export function createClientApiMock(
   const events = channel<Parameters<Parameters<Api['onEvent']>[0]>[0]>();
   const commands = channel<Parameters<Parameters<Api['onAppCommand']>[0]>[0]>();
   const updates = channel<Parameters<Parameters<Api['onUpdateStatusChanged']>[0]>[0]>();
+  const nativeOwners = channel<Parameters<Parameters<Api['onNativeOwnersChanged']>[0]>[0]>();
+  const drafts = channel<Parameters<Parameters<Api['onComposerDraftChanged']>[0]>[0]>();
   // Enumerating the public interface makes new required AND optional methods a type error here.
   const api = {
     design: unscripted<'design'>('design'),
@@ -221,6 +223,11 @@ export function createClientApiMock(
     setMenuBarVisible: vi.fn<AppApi['setMenuBarVisible']>().mockResolvedValue(undefined),
     restartApp: unscripted<'restartApp'>('restartApp'),
     reloadRenderer: unscripted<'reloadRenderer'>('reloadRenderer'),
+    getWindowContext: unscripted<'getWindowContext'>('getWindowContext'),
+    setWindowSelection: unscripted<'setWindowSelection'>('setWindowSelection'),
+    claimNativeResource: unscripted<'claimNativeResource'>('claimNativeResource'),
+    releaseNativeResource: unscripted<'releaseNativeResource'>('releaseNativeResource'),
+    syncComposerDraft: unscripted<'syncComposerDraft'>('syncComposerDraft'),
     setAgentGoal: unscripted<'setAgentGoal'>('setAgentGoal'),
     clearAgentGoal: unscripted<'clearAgentGoal'>('clearAgentGoal'),
     setAgentApprovalPreset: unscripted<'setAgentApprovalPreset'>('setAgentApprovalPreset'),
@@ -260,6 +267,8 @@ export function createClientApiMock(
     onEvent: unscripted<'onEvent'>('onEvent'),
     onAppCommand: unscripted<'onAppCommand'>('onAppCommand'),
     onUpdateStatusChanged: unscripted<'onUpdateStatusChanged'>('onUpdateStatusChanged'),
+    onNativeOwnersChanged: unscripted<'onNativeOwnersChanged'>('onNativeOwnersChanged'),
+    onComposerDraftChanged: unscripted<'onComposerDraftChanged'>('onComposerDraftChanged'),
   } satisfies ApiMocks;
 
   api.getSnapshot.mockImplementation(async () => structuredClone(snapshot));
@@ -270,6 +279,8 @@ export function createClientApiMock(
   api.guestConversationControl.mockImplementation(async input => { if (input.action === 'state') return { entries: [], view: null }; throw new Error('Unscripted guest operation.'); });
   api.onAppCommand.mockImplementation(commands.subscribe);
   api.onUpdateStatusChanged.mockImplementation(updates.subscribe);
+  api.onNativeOwnersChanged.mockImplementation(nativeOwners.subscribe);
+  api.onComposerDraftChanged.mockImplementation(drafts.subscribe);
 
   // Harmless reads have explicit values; writes and consequential operations must be scripted.
   api.listSshHosts.mockResolvedValue([]);
@@ -304,12 +315,20 @@ export function createClientApiMock(
   api.setDockBadgeCount.mockResolvedValue(undefined);
   api.browserSetVisible.mockResolvedValue(undefined);
   api.browserSetBounds.mockResolvedValue(undefined);
+  // A lone window: it owns every native view and has nothing to mirror.
+  api.getWindowContext.mockResolvedValue({ windowId: 1, viewState: null, nativeOwners: [], composerDrafts: {} });
+  api.setWindowSelection.mockResolvedValue(undefined);
+  api.claimNativeResource.mockResolvedValue(true);
+  api.releaseNativeResource.mockResolvedValue(undefined);
+  api.syncComposerDraft.mockResolvedValue(undefined);
 
   return {
     api,
     emit: events.emit,
     emitAppCommand: commands.emit,
     emitUpdateStatus: updates.emit,
-    dispose() { events.clear(); commands.clear(); updates.clear(); },
+    emitNativeOwners: nativeOwners.emit,
+    emitComposerDraft: drafts.emit,
+    dispose() { events.clear(); commands.clear(); updates.clear(); nativeOwners.clear(); drafts.clear(); },
   };
 }

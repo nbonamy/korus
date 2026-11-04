@@ -53,6 +53,17 @@ the local desktop to show UI or use an OS affordance belongs in Electron main.
 - The renderer owns visual state. It never talks to a provider, spawns tools,
   reads local files, or imports provider protocol types.
 - Preload is a small typed bridge and the only renderer path to Electron.
+- Several windows can be open at once. Each window is its own renderer with its own
+  replica of the daemon's state and its own view state (selected agent, panes);
+  `WindowRegistry` in Electron main tracks what belongs to a window. Daemon events,
+  connection changes and update status fan out to every window. Commands about the
+  current window (menu, deep links, debug fixtures) go to the focused one, and
+  commands about an agent's browser or simulator go to the window that owns it. Native
+  views exist once per agent: the first window to mount one owns it, other windows
+  offer to move it, and a closed window gives its views up. Composer drafts are one per
+  agent, relayed live through main so every window shows the same text. A window is
+  always opened with an initial view state, so New Window and any later detach
+  entry point share one call.
 
 The local mobile simulator host owns device attachments and native command execution
 in Electron. Its pane and provider-independent MCP tool share that authority;
