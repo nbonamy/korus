@@ -2380,7 +2380,7 @@ function createEmptyClientState(): ClientState {
 const maxTimerDelayMs = 2 ** 31 - 1;
 
 /** Computer Use needs the Mac awake and unlocked: always in Always mode, and while a hold lasts in On demand mode. */
-export function preventsAutomaticLock(plugins: AppSnapshot['general']['plugins'], now: number): boolean {
+function preventsAutomaticLock(plugins: AppSnapshot['general']['plugins'], now: number): boolean {
   if (plugins?.computerUseEnabled !== true) return false;
   if (plugins.computerUseLockPrevention === 'always') return true;
   const hold = plugins.computerUseLockHold;
