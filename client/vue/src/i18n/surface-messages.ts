@@ -1110,7 +1110,7 @@ export const surfaceMessages = {
     "untilClock": "Until {time}",
     "untilTurnedOff": "Until I turn it off",
     "activeUntil": "Auto-lock is off until {time}",
-    "activeIndefinitely": "Auto-lock is off",
+    "activeIndefinitely": "Auto-lock is off until you turn it back on",
     "turnOn": "Turn auto-lock back on"
   },
   "settingsMenu": {

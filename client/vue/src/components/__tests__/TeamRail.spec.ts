@@ -1,7 +1,8 @@
 import { product } from '@workspace/core/product';
-import { flushPromises, mount } from '@vue/test-utils';
-import { ElMessage, ElMessageBox } from 'element-plus';
-import { nextTick } from 'vue';
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
+import { ElMessage, ElMessageBox, ElPopover, ElTooltip } from 'element-plus';
+import { computed, nextTick, ref } from 'vue';
+import { computerUseLockKey } from '../computer-use-lock';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import TeamRail from '../TeamRail.vue';
 import type { AccountRateLimits, AgentBackend, RemoteConnection, Team } from '@workspace/core/contracts';
@@ -35,6 +36,58 @@ const teams: Team[] = [
 
 
 describe('TeamRail', () => {
+  it('shows rail tooltips on hover and focus, updates state labels, and keeps menu triggers usable', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const hold = ref<false | { until: number | null }>(false);
+    const setHold = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mount(TeamRail, { attachTo: document.body, props: { teams, activeTeamId: 'team-app', spokenAnnouncementsEnabled: true }, global: {
+      components: { ElTooltip, ElPopover },
+      provide: { [computerUseLockKey as symbol]: { state: computed(() => ({ visible: true, hold: hold.value })), setHold } },
+    } });
+    const visibleTooltip = (label: string) => Array.from(document.body.querySelectorAll<HTMLElement>('[role="tooltip"]'))
+      .find(node => node.textContent?.trim() === label && new DOMWrapper(node).isVisible());
+    const show = async (selector: string, label: string, event = 'mouseenter') => {
+      const button = wrapper.get(selector);
+      await button.trigger(event);
+      await vi.advanceTimersByTimeAsync(300);
+      await flushPromises();
+      expect(visibleTooltip(label), label).toBeDefined();
+      return button;
+    };
+    try {
+      for (const [selector, label] of [
+        ['.team-rail__backlog', 'Backlog'], ['.team-rail__cockpit', 'Cockpit'],
+        ['.team-rail__team', 'Skwad'], ['.team-rail__new', 'Create team'],
+        ['.team-rail__speech-mute', 'Mute spoken acknowledgments (⇧⌘M)'],
+        ['.team-rail__automations', 'Automations'], ['.team-rail__lock', 'Prevent automatic locking'],
+      ]) {
+        const button = await show(selector!, label!);
+        if (selector === '.team-rail__lock') {
+          await button.trigger('click'); await vi.advanceTimersByTimeAsync(300); await flushPromises();
+          expect(visibleTooltip(label!)).toBeUndefined();
+          const action = Array.from(document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')).find(item => item.textContent?.trim() === 'For 1 hour')!;
+          action.click(); await flushPromises();
+          expect(setHold).toHaveBeenCalledOnce();
+        }
+        await button.trigger('mouseleave'); await vi.advanceTimersByTimeAsync(300);
+      }
+      await wrapper.setProps({ spokenAnnouncementsMuted: true });
+      const mute = await show('.team-rail__speech-mute', 'Unmute spoken acknowledgments (⇧⌘M)', 'focus');
+      await mute.trigger('blur'); await vi.advanceTimersByTimeAsync(300);
+      const until = Date.now() + 60 * 60_000;
+      hold.value = { until }; await nextTick();
+      const endTime = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(until);
+      const timedLock = await show('.team-rail__lock', `Auto-lock is off until ${endTime}`);
+      await timedLock.trigger('mouseleave'); await vi.advanceTimersByTimeAsync(300);
+      hold.value = { until: null }; await nextTick();
+      const lock = await show('.team-rail__lock', 'Auto-lock is off until you turn it back on');
+      await lock.trigger('mouseleave'); await vi.advanceTimersByTimeAsync(300);
+      const settings = await show('.settings-menu__trigger', 'Settings menu');
+      await settings.trigger('click'); await vi.advanceTimersByTimeAsync(300); await flushPromises();
+      expect(visibleTooltip('Settings menu')).toBeUndefined();
+      expect(new DOMWrapper(document.body.querySelector<HTMLElement>('.settings-menu')!).isVisible()).toBe(true);
+    } finally { wrapper.unmount(); vi.useRealTimers(); }
+  });
   it('matches the selection ring to the selected team color', async () => {
     const wrapper = mountRail({ teams, activeTeamId: 'team-app' });
     expect(getComputedStyle(wrapper.get(`[aria-label="${product.name}"]`).element).outlineColor)
@@ -384,7 +437,7 @@ describe('TeamRail', () => {
     });
     expect(wrapper.get('.team-context-menu').attributes('style')).toContain('left: 42px');
     expect(wrapper.find('[aria-label="Team actions"]').exists()).toBe(true);
-    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Edit Team')?.trigger('click');
+    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Edit')?.trigger('click');
 
     expect(wrapper.emitted('edit-team')).toStrictEqual([['team-app']]);
   });
@@ -400,7 +453,7 @@ describe('TeamRail', () => {
     });
 
     await wrapper.get(`[aria-label="${product.name}"]`).trigger('contextmenu');
-    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Close Team')?.trigger('click');
+    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Close')?.trigger('click');
     await flushPromises();
 
     expect(confirm).toHaveBeenCalledWith(
@@ -444,7 +497,7 @@ describe('TeamRail', () => {
     vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue(new Error('cancel'));
 
     await wrapper.get(`[aria-label="${product.name}"]`).trigger('contextmenu');
-    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Close Team')?.trigger('click');
+    await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Close')?.trigger('click');
 
     expect(wrapper.emitted('close-team')).toBeUndefined();
   });
@@ -457,7 +510,7 @@ describe('TeamRail', () => {
 
     await wrapper.get('[aria-label="Skwad"]').trigger('contextmenu');
 
-    const closeItem = wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Close Team');
+    const closeItem = wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Close');
     expect(closeItem?.attributes()).toHaveProperty('disabled');
   });
 });

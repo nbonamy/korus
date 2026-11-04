@@ -1,20 +1,22 @@
 <template>
   <template v-if="lock?.state.value.visible">
-    <button
-      v-if="active"
-      type="button"
-      class="team-rail__lock team-rail__lock--active"
-      :aria-label="activeLabel"
-      :title="activeLabel"
-      @click="turnBackOn"
-    >
-      <LockOpenIcon aria-hidden="true" />
-    </button>
+    <el-tooltip v-if="active" :content="activeLabel" :trigger="['hover', 'focus']" placement="right" :show-after="300">
+      <button
+        type="button"
+        class="team-rail__lock team-rail__lock--active"
+        :aria-label="activeLabel"
+        @click="turnBackOn"
+      >
+        <LockOpenIcon aria-hidden="true" />
+      </button>
+    </el-tooltip>
     <AppMenuButton v-else :items="items" :ariaLabel="$t('surface.computerUseLock.enable')" :width="220" placement="right-end" @select="choose">
-      <template #trigger="{ attrs }">
-        <button v-bind="attrs" type="button" class="team-rail__lock" :aria-label="$t('surface.computerUseLock.enable')" :title="$t('surface.computerUseLock.enable')">
-          <LockIcon aria-hidden="true" />
-        </button>
+      <template #trigger="{ attrs, open }">
+        <el-tooltip :content="$t('surface.computerUseLock.enable')" :trigger="['hover', 'focus']" placement="right" :show-after="300" :disabled="open">
+          <button v-bind="attrs" type="button" class="team-rail__lock" :aria-label="$t('surface.computerUseLock.enable')">
+            <LockIcon aria-hidden="true" />
+          </button>
+        </el-tooltip>
       </template>
     </AppMenuButton>
   </template>

@@ -60,12 +60,11 @@ describe('rail lock control', () => {
     const { wrapper, setHold } = mountControl(true, { until });
     const button = wrapper.get('button');
     expect(button.attributes('aria-label')).toBe(`Auto-lock is off until ${clock(until)}`);
-    expect(button.attributes('title')).toBe(button.attributes('aria-label'));
     await button.trigger('click');
     expect(setHold).toHaveBeenCalledExactlyOnceWith(false);
     wrapper.unmount();
     const manual = mountControl(true, { until: null });
-    expect(manual.wrapper.get('button').attributes('aria-label')).toBe('Auto-lock is off');
+    expect(manual.wrapper.get('button').attributes('aria-label')).toBe('Auto-lock is off until you turn it back on');
     manual.wrapper.unmount();
   });
 

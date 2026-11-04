@@ -9,114 +9,120 @@
 
     <div class="team-rail__body">
 
-      <button
-        v-if="!phoneScope"
-        class="team-rail__backlog"
-        :class="{ 'team-rail__backlog--active': backlogActive }"
-        type="button"
-        :aria-label="$t('surface.teamRail.backlog')"
-        :aria-pressed="backlogActive"
-        @click="emit('select-backlog')"
-      >
-        <GitPullRequestIcon aria-hidden="true" />
-      </button>
+      <el-tooltip v-if="!phoneScope" :content="$t('surface.teamRail.backlog')" :trigger="['hover', 'focus']" placement="right" :show-after="300">
+        <button
+          class="team-rail__backlog"
+          :class="{ 'team-rail__backlog--active': backlogActive }"
+          type="button"
+          :aria-label="$t('surface.teamRail.backlog')"
+          :aria-pressed="backlogActive"
+          @click="emit('select-backlog')"
+        >
+          <GitPullRequestIcon aria-hidden="true" />
+        </button>
+      </el-tooltip>
 
-      <button
-        class="team-rail__cockpit"
-        :class="{ 'team-rail__cockpit--active': cockpitActive }"
-        type="button"
-        :aria-label="$t('surface.teamRail.cockpit')"
-        :aria-pressed="cockpitActive"
-        @click="emit('select-cockpit')"
-      >
-        <CockpitIcon aria-hidden="true" />
-      </button>
+      <el-tooltip :content="$t('surface.teamRail.cockpit')" :trigger="['hover', 'focus']" placement="right" :show-after="300">
+        <button
+          class="team-rail__cockpit"
+          :class="{ 'team-rail__cockpit--active': cockpitActive }"
+          type="button"
+          :aria-label="$t('surface.teamRail.cockpit')"
+          :aria-pressed="cockpitActive"
+          @click="emit('select-cockpit')"
+        >
+          <CockpitIcon aria-hidden="true" />
+        </button>
+      </el-tooltip>
 
-      <button
-        v-for="team in teams"
-        :key="team.id"
-        class="team-rail__team"
-        :class="[
-          { 'team-rail__team--active': isTeamActive(team.id) },
-          { 'team-rail__team--unread': isTeamUnread(team.id) },
-          clientTeamOrderUpdate.dropTargetClass(team.id),
-        ]"
-        type="button"
-        v-bind="clientTeamOrderUpdate.dragItemAttributes(team.id)"
-        :style="{
-          backgroundColor: team.color ?? defaultTeamColor,
-          outlineColor: isTeamActive(team.id) ? team.color ?? defaultTeamColor : undefined,
-        }"
-        :aria-label="teamAriaLabel(team)"
-        :aria-pressed="isTeamActive(team.id)"
-        @click="emit('select-team', team.id)"
-        @contextmenu.prevent="openTeamMenu(team.id, $event)"
-        @dragstart="clientTeamOrderUpdate.onDragStart(team.id, $event)"
-        @dragover="clientTeamOrderUpdate.onDragOver(team.id, $event)"
-        @dragleave="clientTeamOrderUpdate.onDragLeave(team.id, $event)"
-        @drop="clientTeamOrderUpdate.onDrop(team.id, $event)"
-        @dragend="clientTeamOrderUpdate.onDragEnd"
-      >
-        <ProductMarkIcon
-          v-if="team.name === product.name"
-          class="team-rail__product-mark"
-          fill="currentColor"
-          stroke="none"
-          aria-hidden="true"
-        />
-        <template v-else>{{ team.avatar ?? teamInitials(team.name) }}</template>
-        <span
-          v-if="showsTeamActivityIndicator(team.id)"
-          class="team-rail__unread-indicator"
-          :class="{ 'team-rail__unread-indicator--working': !isTeamUnread(team.id) }"
-          aria-hidden="true"
-        />
-      </button>
+      <el-tooltip v-for="team in teams" :key="team.id" :disabled="contextMenuTeamId === team.id" :content="team.name" :trigger="['hover', 'focus']" placement="right" :show-after="300">
+        <button
+          class="team-rail__team"
+          :class="[
+            { 'team-rail__team--active': isTeamActive(team.id) },
+            { 'team-rail__team--unread': isTeamUnread(team.id) },
+            clientTeamOrderUpdate.dropTargetClass(team.id),
+          ]"
+          type="button"
+          v-bind="clientTeamOrderUpdate.dragItemAttributes(team.id)"
+          :style="{
+            backgroundColor: team.color ?? defaultTeamColor,
+            outlineColor: isTeamActive(team.id) ? team.color ?? defaultTeamColor : undefined,
+          }"
+          :aria-label="teamAriaLabel(team)"
+          :aria-pressed="isTeamActive(team.id)"
+          @click="emit('select-team', team.id)"
+          @contextmenu.prevent="openTeamMenu(team.id, $event)"
+          @dragstart="clientTeamOrderUpdate.onDragStart(team.id, $event)"
+          @dragover="clientTeamOrderUpdate.onDragOver(team.id, $event)"
+          @dragleave="clientTeamOrderUpdate.onDragLeave(team.id, $event)"
+          @drop="clientTeamOrderUpdate.onDrop(team.id, $event)"
+          @dragend="clientTeamOrderUpdate.onDragEnd"
+        >
+          <ProductMarkIcon
+            v-if="team.name === product.name"
+            class="team-rail__product-mark"
+            fill="currentColor"
+            stroke="none"
+            aria-hidden="true"
+          />
+          <template v-else>{{ team.avatar ?? teamInitials(team.name) }}</template>
+          <span
+            v-if="showsTeamActivityIndicator(team.id)"
+            class="team-rail__unread-indicator"
+            :class="{ 'team-rail__unread-indicator--working': !isTeamUnread(team.id) }"
+            aria-hidden="true"
+          />
+        </button>
+      </el-tooltip>
 
-      <button
-        class="team-rail__new"
-        type="button"
-        :aria-label="$t('surface.teamRail.createTeam')"
-        @click="emit('new-team')"
-      >
-        <PlusIcon aria-hidden="true" />
-      </button>
+      <el-tooltip :content="$t('surface.teamRail.createTeam')" :trigger="['hover', 'focus']" placement="right" :show-after="300">
+        <button
+          class="team-rail__new"
+          type="button"
+          :aria-label="$t('surface.teamRail.createTeam')"
+          @click="emit('new-team')"
+        >
+          <PlusIcon aria-hidden="true" />
+        </button>
+      </el-tooltip>
 
       <div class="team-rail__bottom">
-        <button
-          v-if="spokenAnnouncementsEnabled"
-          class="team-rail__speech-mute"
-          :class="{ 'team-rail__speech-mute--active': spokenAnnouncementsMuted }"
-          type="button"
-          :title="spokenAnnouncementsToggleLabel"
-          :aria-label="spokenAnnouncementsToggleLabel"
-          :aria-pressed="spokenAnnouncementsMuted"
-          @click="emit('toggle-speech-mute')"
-        >
-          <VolumeOffIcon
-            v-if="spokenAnnouncementsMuted"
-            aria-hidden="true"
-          />
-          <VolumeIcon
-            v-else
-            aria-hidden="true"
-          />
-        </button>
+        <el-tooltip v-if="spokenAnnouncementsEnabled" :content="spokenAnnouncementsToggleLabel" :trigger="['hover', 'focus']" placement="right" :show-after="300">
+          <button
+            class="team-rail__speech-mute"
+            :class="{ 'team-rail__speech-mute--active': spokenAnnouncementsMuted }"
+            type="button"
+            :aria-label="spokenAnnouncementsToggleLabel"
+            :aria-pressed="spokenAnnouncementsMuted"
+            @click="emit('toggle-speech-mute')"
+          >
+            <VolumeOffIcon
+              v-if="spokenAnnouncementsMuted"
+              aria-hidden="true"
+            />
+            <VolumeIcon
+              v-else
+              aria-hidden="true"
+            />
+          </button>
+        </el-tooltip>
 
-        <button
-          v-if="!phoneScope"
-          class="team-rail__automations"
-          :class="{ 'team-rail__automations--active': automationsActive }"
-          type="button"
-          :aria-label="$t('surface.teamRail.automations')"
-          :aria-pressed="automationsActive"
-          @click="emit('select-automations')"
-        >
-          <ClockHour8Icon
-            class="team-rail__automations-icon"
-            aria-hidden="true"
-          />
-        </button>
+        <el-tooltip v-if="!phoneScope" :content="$t('surface.teamRail.automations')" :trigger="['hover', 'focus']" placement="right" :show-after="300">
+          <button
+            class="team-rail__automations"
+            :class="{ 'team-rail__automations--active': automationsActive }"
+            type="button"
+            :aria-label="$t('surface.teamRail.automations')"
+            :aria-pressed="automationsActive"
+            @click="emit('select-automations')"
+          >
+            <ClockHour8Icon
+              class="team-rail__automations-icon"
+              aria-hidden="true"
+            />
+          </button>
+        </el-tooltip>
 
         <TeamRailLockControl v-if="!phoneScope" />
 

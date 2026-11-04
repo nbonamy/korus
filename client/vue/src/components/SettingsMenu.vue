@@ -1,4 +1,5 @@
 <template>
+  <el-tooltip :virtual-ref="menuTrigger" virtual-triggering :content="account ? $t('surface.settingsMenu.accountMenu') : $t('surface.settingsMenu.settingsMenu')" :trigger="['hover', 'focus']" placement="right" :show-after="300" :disabled="popoverVisible" />
   <el-popover
     v-model:visible="popoverVisible"
     placement="right-end"
@@ -8,6 +9,7 @@
   >
     <template #reference>
       <button
+        ref="menuTrigger"
         class="settings-menu__trigger"
         :class="{ 'settings-menu__trigger--active': active }"
         type="button"
@@ -79,6 +81,7 @@ const emit = defineEmits<{
   quit: [];
 }>();
 const popoverVisible = ref(false);
+const menuTrigger = ref<HTMLElement | null>(null);
 const nowMs = ref(Date.now());
 const fetchedUsage = ref<Partial<Record<AgentBackend, AccountRateLimits | null>>>({});
 const usageErrors = ref<Partial<Record<AgentBackend, boolean>>>({});
