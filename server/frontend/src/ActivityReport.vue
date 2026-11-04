@@ -27,13 +27,13 @@
         area="gradient"
       />
       <MetricChart
-        title="Installation growth"
+        title="New activations per day"
         :days="days"
         :series="[
           {
-            label: 'Participating installs',
+            label: 'New activations',
             color: 'var(--chart-3)',
-            values: installGrowth(data),
+            values: data.activity.map((row) => row.firstReportedInstalls),
           },
         ]"
         measure="count"
@@ -47,7 +47,6 @@ import { computed } from "vue";
 import type { TelemetryMetrics } from "@workspace/core/telemetry-metrics";
 import MetricChart from "./MetricChart.vue";
 import { count } from "./format";
-import { installGrowth } from "./report-data";
 const props = defineProps<{ data: TelemetryMetrics }>();
 const days = computed(() => props.data.activity.map((row) => row.day));
 const activity = computed(() => [

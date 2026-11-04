@@ -76,7 +76,7 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
     activity: days.map((day, i) => ({
       day,
       activeInstalls: "3",
-      firstReportedInstalls: i < 7 ? "2" : "1",
+      firstReportedInstalls: i === 0 ? "0" : i === 1 ? "4" : i < 7 ? "2" : "1",
     })),
     models: [
       {
@@ -214,7 +214,7 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
     await wrapper.get('[aria-label="Weekly active installs"]').trigger("click");
     await flushPromises();
     expect(router.currentRoute.value.path).toBe("/activity");
-    for (const title of ["Daily activity", "Installation growth"])
+    for (const title of ["Daily activity", "New activations per day"])
       expect(wrapper.find(`[aria-label="${title}"] canvas`).exists()).toBe(
         true,
       );
@@ -225,11 +225,13 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
       "Active installs3",
     );
     expect(dailyActivity.text()).not.toContain("New installs");
-    expect(
-      wrapper
-        .find('[aria-label="2026-11-01 · Participating installs: 20"]')
-        .exists(),
-    ).toBe(true);
+    const activations = wrapper.get('[aria-label="New activations per day"]');
+    await activations.get("canvas").trigger("keydown", { key: "End" });
+    expect(activations.get('[role="status"]').text()).toContain("New activations1");
+    await activations.get("canvas").trigger("keydown", { key: "Home" });
+    expect(activations.get('[role="status"]').text()).toContain("New activations0");
+    await activations.get("canvas").trigger("keydown", { key: "ArrowRight" });
+    expect(activations.get('[role="status"]').text()).toContain("New activations4");
     await router.push("/overview");
     await flushPromises();
     await wrapper.get('[aria-label="Tokens last 7 days"]').trigger("click");

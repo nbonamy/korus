@@ -480,6 +480,12 @@ export async function dashboardWorkflow({
         ),
         label,
       );
+    const activations = page.getByRole("region", { name: "New activations per day", exact: true });
+    await activations.getByRole("img").focus();
+    await page.keyboard.press("End");
+    assert.match(await activations.getByRole("status").innerText(), /Oct 24.*New activations\s+1/is);
+    await page.keyboard.press("ArrowLeft");
+    assert.match(await activations.getByRole("status").innerText(), /Oct 23.*New activations\s+0/is);
     const global = await globalActivity();
     await visit("Spend");
     await finishMetricsRead();

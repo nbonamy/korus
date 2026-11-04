@@ -1,4 +1,3 @@
-import type { TelemetryMetrics } from "@workspace/core/telemetry-metrics";
 export const shiftDay = (day: string, offset: number) =>
   new Date(Date.parse(day) + offset * 86400000).toISOString().slice(0, 10);
 export const weekDays = (end: string) =>
@@ -22,15 +21,4 @@ export function addAmounts(values: (string | null)[]): string | null {
         "",
       )
     : total;
-}
-export function installGrowth(data: TelemetryMetrics) {
-  let total = BigInt(data.overview.participatingInstalls);
-  return [...data.activity]
-    .reverse()
-    .map((row) => {
-      const value = String(total);
-      total -= BigInt(row.firstReportedInstalls);
-      return value;
-    })
-    .reverse();
 }
