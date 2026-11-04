@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { vi } from 'vitest';
 vi.mock('electron', () => ({ app: { getAppPath: () => '/app' }, nativeTheme: { shouldUseDarkColors: false } }));
 import {
+  cascadedBounds,
   createMainWindowOptions,
   handleExternalWindowOpen,
   isWindowBoundsVisible,
@@ -141,5 +142,23 @@ describe('main window options', () => {
     })).toStrictEqual({ action: 'deny' });
 
     expect(opened).toStrictEqual([]);
+  });
+});
+
+describe('cascadedBounds', () => {
+  const workArea = { x: 0, y: 0, width: 1920, height: 1080 };
+
+  it('offsets a new window from the one it opens beside', () => {
+    expect(cascadedBounds({ x: 100, y: 80, width: 1280, height: 800 }, [workArea])).toStrictEqual({ x: 128, y: 108, width: 1280, height: 800 });
+  });
+
+  it('wraps back to the corner of the work area when the offset would leave it', () => {
+    expect(cascadedBounds({ x: 640, y: 280, width: 1280, height: 800 }, [workArea])).toStrictEqual({ x: 0, y: 0, width: 1280, height: 800 });
+  });
+
+  it('stays on the display the source window is on', () => {
+    const second = { x: 1920, y: 0, width: 1920, height: 1080 };
+    expect(cascadedBounds({ x: 2000, y: 40, width: 1280, height: 800 }, [workArea, second])).toStrictEqual({ x: 2028, y: 68, width: 1280, height: 800 });
+    expect(cascadedBounds({ x: 2560, y: 280, width: 1280, height: 800 }, [workArea, second])).toStrictEqual({ x: 1920, y: 0, width: 1280, height: 800 });
   });
 });

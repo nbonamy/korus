@@ -22,6 +22,7 @@ export type AppMenuCallbacks = {
   checkForUpdates?: () => void;
   installUpdate?: () => void;
   capturePerformanceProfile?: () => void;
+  newWindow?: () => void;
   sendDebugAgentMessage?: () => void;
   toggleDebugExecutionPlan?: () => void;
   hasDebugExecutionPlan?: () => boolean;
@@ -45,21 +46,29 @@ export type AppMenuCallbacks = {
   closeAuxiliaryWindow?(focusedWindow: BaseWindow | undefined): boolean;
 };
 
-type AppMenuInstallOptions = AppMenuOptions & Partial<Pick<AppMenuCallbacks, 'restartBackend' | 'checkForUpdates' | 'installUpdate' | 'capturePerformanceProfile' | 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'hasDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'getDebugMissionReviewState' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag' | 'getDebugMissingEngines' | 'setDebugMissingEngines' | 'getDebugProviderUpgrades' | 'setDebugProviderUpgrades' | 'getDebugReviewUncommitted' | 'setDebugReviewUncommitted'>>;
+type AppMenuInstallOptions = AppMenuOptions & Partial<Pick<AppMenuCallbacks, 'restartBackend' | 'checkForUpdates' | 'installUpdate' | 'capturePerformanceProfile' | 'newWindow' | 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'hasDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'getDebugMissionReviewState' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag' | 'getDebugMissingEngines' | 'setDebugMissingEngines' | 'getDebugProviderUpgrades' | 'setDebugProviderUpgrades' | 'getDebugReviewUncommitted' | 'setDebugReviewUncommitted'>>;
 const editMenuId = 'app-edit-menu';
 
-export function installAppMenu(window: BrowserWindow, options: AppMenuInstallOptions): void {
-  const { checkForUpdates, installUpdate, capturePerformanceProfile, ...menuOptions } = options;
+/** The application menu is shared by every window, so its commands go to whichever window is current. */
+export type AppMenuWindow = BrowserWindow | (() => BrowserWindow | undefined);
+
+export function installAppMenu(host: AppMenuWindow, options: AppMenuInstallOptions): void {
+  const { checkForUpdates, installUpdate, capturePerformanceProfile, newWindow, ...menuOptions } = options;
+  const current = (): BrowserWindow | undefined => typeof host === 'function' ? host() : host;
   const callbacks: AppMenuCallbacks = {
     restartBackend: options.restartBackend,
     checkForUpdates,
     installUpdate,
     capturePerformanceProfile,
-    reload: () => window.webContents.reload(),
-    sendAppCommand: (command) => sendAppCommand(window.webContents, command),
-    toggleDeveloperTools: () => window.webContents.toggleDevTools(),
+    newWindow,
+    reload: () => current()?.webContents.reload(),
+    sendAppCommand: (command) => {
+      const window = current();
+      if (window) sendAppCommand(window.webContents, command);
+    },
+    toggleDeveloperTools: () => current()?.webContents.toggleDevTools(),
     closeAuxiliaryWindow: focusedWindow => {
-      if (!focusedWindow || focusedWindow === window) return false;
+      if (!focusedWindow || focusedWindow === current()) return false;
       focusedWindow.close();
       return true;
     },
@@ -635,6 +644,11 @@ function buildWindowMenu(callbacks: AppMenuCallbacks, platform: NodeJS.Platform)
   return {
     label: mainT('menu.window'),
     submenu: [
+      ...(callbacks.newWindow ? [{
+        label: mainT('menu.newWindow'),
+        accelerator: 'CommandOrControl+Shift+N',
+        click: () => callbacks.newWindow?.(),
+      }, { type: 'separator' as const }] : []),
       { role: 'minimize' },
       ...(platform === 'darwin' ? [{ role: 'zoom' as const }] : []),
       { type: 'separator' },

@@ -10,7 +10,6 @@ import {
   registerCycleTeamsShortcut,
   unregisterCycleTeamsShortcut,
 } from './app-shortcuts';
-import { installAppMenu, type AppMenuCallbacks, type AppMenuOptions } from './app-menu';
 import { logRendererConsole, warnMain } from './log';
 import { sendAppCommand } from './ipc-events';
 
@@ -23,18 +22,33 @@ type MainWindowState = {
   isMaximized: boolean;
 };
 
-export function createMainWindow(
-  appMenuOptions: Partial<Pick<AppMenuOptions, 'updateStatus'>> & Partial<Pick<AppMenuCallbacks, 'restartBackend' | 'checkForUpdates' | 'installUpdate' | 'capturePerformanceProfile' | 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag'>> = {},
-): BrowserWindow {
+export type WindowPlacement = {
+  /** Bounds of the window this one is opened from; the new window is offset from them. */
+  cascadeFrom?: Rectangle;
+};
+
+const CASCADE_OFFSET = 28;
+
+/** Offsets a new window from the one it was opened from, wrapping back to the work area's corner at its edges. */
+export function cascadedBounds(from: Rectangle, workAreas: Rectangle[]): Rectangle {
+  const workArea = workAreas.find((area) => isWindowBoundsVisible(from, [area])) ?? workAreas[0];
+  const next = { ...from, x: from.x + CASCADE_OFFSET, y: from.y + CASCADE_OFFSET };
+  if (!workArea) return next;
+  const fits = next.x + next.width <= workArea.x + workArea.width && next.y + next.height <= workArea.y + workArea.height;
+  return fits ? next : { ...from, x: workArea.x, y: workArea.y };
+}
+
+export function createMainWindow(placement: WindowPlacement = {}): BrowserWindow {
   const releaseMode = isReleaseMode();
   if (process.platform === 'darwin' && !releaseMode) {
     app.dock?.setIcon(desktopIconPath(app));
   }
-  const savedState = readWindowState(windowStatePath());
-  const restoredState = savedState && isWindowBoundsVisible(savedState.bounds, screen.getAllDisplays().map((display) => display.workArea))
-    ? savedState
-    : undefined;
-  const window = new BrowserWindow(createMainWindowOptions(releaseMode, restoredState?.bounds));
+  const workAreas = screen.getAllDisplays().map((display) => display.workArea);
+  // Only the first window restores the last session's frame; the others open beside the one they came from.
+  const savedState = placement.cascadeFrom ? null : readWindowState(windowStatePath());
+  const restoredState = savedState && isWindowBoundsVisible(savedState.bounds, workAreas) ? savedState : undefined;
+  const bounds = placement.cascadeFrom ? cascadedBounds(placement.cascadeFrom, workAreas) : restoredState?.bounds;
+  const window = new BrowserWindow(createMainWindowOptions(releaseMode, bounds));
   const updateBackground = (): void => {
     window.setBackgroundColor(mainWindowBackground(process.platform, nativeTheme.shouldUseDarkColors));
   };
@@ -85,10 +99,6 @@ export function createMainWindow(
   });
   window.webContents.on('console-message', (_event, level, message, line, sourceId) => {
     logRendererConsole(level, message, { line, sourceId });
-  });
-  installAppMenu(window, {
-    debugMode: !releaseMode,
-    ...appMenuOptions,
   });
   installFocusedAppShortcuts(window);
   window.webContents.on('before-input-event', (event, input) => {
@@ -287,9 +297,14 @@ function installFocusedAppShortcuts(window: BrowserWindow): void {
     unregisterCycleTeamsShortcut(globalShortcut);
   };
 
+  // Focus moves between windows as blur then focus, so a blur only releases the shortcut when no other window took it.
+  const releaseUnlessFocusMoved = (): void => {
+    if (!BrowserWindow.getAllWindows().some((other) => other !== window && !other.isDestroyed() && other.isFocused())) unregister();
+  };
+
   window.on('focus', register);
-  window.on('blur', unregister);
-  window.on('closed', unregister);
+  window.on('blur', releaseUnlessFocusMoved);
+  window.on('closed', releaseUnlessFocusMoved);
 
   if (window.isFocused()) {
     register();

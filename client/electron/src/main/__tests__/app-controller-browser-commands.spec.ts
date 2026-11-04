@@ -8,7 +8,7 @@ import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { ipcChannels } from '@workspace/core/ipc';
 import { createMission, type MissionStage } from '@workspace/core/missions';
 import type { OpenInProvider } from '../open-in';
-import { setMainWindowSend, createBackendClient } from './app-controller-test-harness';
+import { addTestWindow, setMainWindowSend, createBackendClient } from './app-controller-test-harness';
 
 describe('AppController', () => {
 
@@ -132,7 +132,8 @@ describe('AppController', () => {
     expect(show).toHaveBeenCalledOnce();
     expect(focus).toHaveBeenCalledOnce();
 
-    (controller as unknown as { rendererReady: boolean }).rendererReady = true;
+    const windows = (controller as unknown as { windows: { focused(): unknown; setReady(window: unknown, ready: boolean): void } }).windows;
+    windows.setReady(windows.focused(), true);
     (controller as unknown as { flushPendingDeepLinkCommands(): void }).flushPendingDeepLinkCommands();
 
     expect(send).toHaveBeenCalledWith('app:command', {
@@ -293,23 +294,13 @@ function setDeepLinkWindow(
   controller: AppController,
   callbacks: { send(...args: unknown[]): void; show(): void; focus(): void },
 ): void {
-  (controller as unknown as {
-    mainWindow: {
-      isDestroyed(): boolean;
-      isMinimized(): boolean;
-      restore(): void;
-      show(): void;
-      focus(): void;
-      webContents: { send(...args: unknown[]): void };
-    };
-  }).mainWindow = {
-    isDestroyed: () => false,
+  addTestWindow(controller, {
     isMinimized: () => false,
     restore: vi.fn(),
     show: callbacks.show,
     focus: callbacks.focus,
     webContents: { send: callbacks.send },
-  };
+  });
 }
 
 function requestBrowserOpen(controller: AppController, agentId: string, browserId: string, url: string) {
@@ -320,8 +311,8 @@ function requestBrowserOpen(controller: AppController, agentId: string, browserI
 
 function openBrowser(controller: AppController, agentId: string, browserId: string, url: string): Promise<BrowserState> {
   return (controller as unknown as {
-    browserOpen(agentId: string, browserId: string, url: string, guestWebContentsId: number): Promise<BrowserState>;
-  }).browserOpen(agentId, browserId, url, 42);
+    browserOpen(window: unknown, agentId: string, browserId: string, url: string, guestWebContentsId: number): Promise<BrowserState>;
+  }).browserOpen(focusedWindow(controller), agentId, browserId, url, 42);
 }
 
 function openBrowserVisualization(
@@ -333,13 +324,18 @@ function openBrowserVisualization(
 ): Promise<BrowserState> {
   return (controller as unknown as {
     browserOpenVisualization(
+      window: unknown,
       agentId: string,
       browserId: string,
       filePath: string,
       title: string,
       guestWebContentsId: number,
     ): Promise<BrowserState>;
-  }).browserOpenVisualization(agentId, browserId, filePath, title, 42);
+  }).browserOpenVisualization(focusedWindow(controller), agentId, browserId, filePath, title, 42);
+}
+
+function focusedWindow(controller: AppController): unknown {
+  return (controller as unknown as { windows: { focused(): unknown } }).windows.focused();
 }
 
 function resolvePendingBrowserOpen(controller: AppController, agentId: string, browserId: string, url: string, state: BrowserState): void {

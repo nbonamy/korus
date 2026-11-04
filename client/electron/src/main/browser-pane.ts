@@ -14,7 +14,7 @@ type BrowserPaneOptions = {
   onGuestReady?(agentId: string, browserId: string, contents: WebContents, window: BrowserWindow): Promise<void>;
   onGuestSelected?(agentId: string, browserId: string): void;
   onAnnotation(annotation: BrowserAnnotation): void;
-  onViewportRequest?(request: BrowserViewportRequest): void;
+  onViewportRequest?(request: BrowserViewportRequest, window: BrowserWindow): void;
 };
 
 type HostedBrowserPane = {
@@ -364,6 +364,18 @@ export class BrowserPane {
     await Promise.all([...this.panes.values()].map((pane) => this.close(pane.agentId, pane.browserId)));
   }
 
+  /** True when the pane exists and its guest lives in this window. Calls from any other window must not touch it. */
+  isHostedBy(agentId: string, browserId: string, window: BrowserWindow): boolean {
+    return this.panes.get(browserPaneKey(agentId, browserId))?.browserWindow === window;
+  }
+
+  /** Closes the panes hosted by one window, for a window that closes or reloads while others keep theirs. */
+  async closeHostedBy(window: BrowserWindow, agentId?: string): Promise<void> {
+    await Promise.all([...this.panes.values()]
+      .filter((pane) => pane.browserWindow === window && (agentId === undefined || pane.agentId === agentId))
+      .map((pane) => this.close(pane.agentId, pane.browserId)));
+  }
+
   private async click(pane: HostedBrowserPane, input: Record<string, unknown>): Promise<unknown> {
     if (!pane.visible) throw new Error('Open this agent’s Browser pane before clicking.');
     const selector = typeof input.selector === 'string' ? input.selector.trim() : undefined;
@@ -427,7 +439,7 @@ export class BrowserPane {
         const request = { agentId, browserId, requestId: crypto.randomUUID(), viewport };
         const timer = setTimeout(() => this.rejectViewportRequest(agentId, browserId, 'Timed out resizing the browser viewport.'), 10_000);
         this.viewportRequests.set(browserPaneKey(agentId, browserId), { request, resolve, reject, timer });
-        try { notify(request); } catch (error) {
+        try { notify(request, pane.browserWindow); } catch (error) {
           this.rejectViewportRequest(agentId, browserId, error instanceof Error ? error.message : String(error));
         }
       });

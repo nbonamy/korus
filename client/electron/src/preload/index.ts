@@ -200,6 +200,11 @@ const api: AppApi = {
   setMenuBarVisible: (visible) => ipc.invoke(ipcChannels.setMenuBarVisible, visible),
   restartApp: () => ipc.invoke(ipcChannels.restartApp),
   reloadRenderer: () => ipc.invoke(ipcChannels.reloadRenderer),
+  getWindowContext: () => ipc.invoke(ipcChannels.getWindowContext),
+  setWindowSelection: (agentId) => ipc.invoke(ipcChannels.setWindowSelection, agentId),
+  claimNativeResource: (resource, agentId, takeOver) => ipc.invoke(ipcChannels.claimNativeResource, resource, agentId, takeOver),
+  releaseNativeResource: (resource, agentId) => ipc.invoke(ipcChannels.releaseNativeResource, resource, agentId),
+  syncComposerDraft: (agentId, draft) => ipc.invoke(ipcChannels.syncComposerDraft, agentId, draft),
   setAgentGoal: (agentId: string, objective: string) => ipc.invoke(ipcChannels.setAgentGoal, agentId, objective),
   clearAgentGoal: (agentId: string) => ipc.invoke(ipcChannels.clearAgentGoal, agentId),
   setAgentApprovalPreset: (agentId: string, preset: ApprovalPreset) => ipc.invoke(ipcChannels.setAgentApprovalPreset, agentId, preset),
@@ -245,6 +250,8 @@ const api: AppApi = {
   onUpdateStatusChanged: (listener: (status: DesktopUpdateStatus) => void) => {
     return ipc.on(ipcChannels.updateStatusChanged, listener);
   },
+  onNativeOwnersChanged: (listener) => ipc.on(ipcChannels.nativeOwnersChanged, listener),
+  onComposerDraftChanged: (listener) => ipc.on(ipcChannels.composerDraftChanged, listener),
 };
 
 contextBridge.exposeInMainWorld('app', api);

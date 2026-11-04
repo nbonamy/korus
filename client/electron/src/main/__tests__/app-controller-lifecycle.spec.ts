@@ -104,8 +104,12 @@ import { installAppMenu } from '../app-menu';
 import type { DesktopAutoUpdateService } from '../auto-update';
 
 let controllers: AppController[] = [];
+let windowIds = 0;
+/** The callbacks of the shared application menu, as last installed. */
+const lastMenu = () => vi.mocked(installAppMenu).mock.lastCall![1] as unknown as Record<string, (...args: any[]) => any>;
 function windowFixture() {
   return Object.assign(new EventEmitter(), {
+    id: ++windowIds, getNormalBounds: () => ({ x: 100, y: 100, width: 1200, height: 800 }),
     webContents: Object.assign(new EventEmitter(), { send: vi.fn(), reload: vi.fn() }),
     isDestroyed: vi.fn(() => false), isMinimized: vi.fn(() => false),
     isFocused: (): boolean => true, restore: vi.fn(), show: vi.fn(), focus: vi.fn(),
@@ -222,7 +226,7 @@ describe('controller desktop lifecycle', () => {
     try {
       await controller.initialize();
       controller.createWindow();
-      const menu = native.createWindow.mock.calls[0]![0];
+      const menu = lastMenu();
       menu.restartBackend();
       menu.restartBackend();
       await vi.advanceTimersByTimeAsync(0);
@@ -478,7 +482,7 @@ describe('controller desktop lifecycle', () => {
       state.snapshot = snapshot;
       await controller.initialize();
       controller.createWindow();
-      const menu = native.createWindow.mock.lastCall![0];
+      const menu = lastMenu();
       expect(menu.hasDebugExecutionPlan()).toBe(true);
       const withoutPlan = structuredClone(snapshot);
       delete withoutPlan.agents[0]!.plan;
@@ -515,7 +519,7 @@ describe('controller desktop lifecycle', () => {
     Object.defineProperty(app, 'isPackaged', { value: false, configurable: true });
     try {
       controller.createWindow();
-      const menu = native.createWindow.mock.calls[0]![0];
+      const menu = lastMenu();
       expect(menu[get]()).toBe(false);
       menu[set](true);
       expect(window.webContents.send).toHaveBeenLastCalledWith(ipcChannels.appCommand, { type, enabled: true });
@@ -791,7 +795,7 @@ describe('controller desktop lifecycle', () => {
     };
     controller.setAutoUpdateService(service as unknown as DesktopAutoUpdateService);
     controller.createWindow();
-    native.createWindow.mock.calls[0]![0].checkForUpdates();
+    lastMenu().checkForUpdates!();
     await vi.advanceTimersByTimeAsync(0);
     expect(native.shell.openExternal).toHaveBeenCalledWith(`${product.repositoryUrl}/releases/latest`);
     expect(service.check).not.toHaveBeenCalled();
@@ -806,7 +810,7 @@ describe('controller desktop lifecycle', () => {
     };
     controller.setAutoUpdateService(service as unknown as DesktopAutoUpdateService);
     controller.createWindow();
-    const menu = native.createWindow.mock.calls[0]![0];
+    const menu = lastMenu();
     menu.checkForUpdates();
     expect(service.check).toHaveBeenCalledOnce();
     native.dialog.showMessageBox.mockResolvedValue({ response: 0 });

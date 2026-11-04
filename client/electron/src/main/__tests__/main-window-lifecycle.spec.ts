@@ -22,7 +22,9 @@ vi.mock('electron', () => ({
     bounds = { x: 120, y: 80, width: 1280, height: 800 };
     maximized = false;
     focused = false;
+    static getAllWindows = () => host.windows;
     constructor(public options: unknown) { super(); host.windows.push(this); }
+    isDestroyed = () => false;
     getNormalBounds = () => this.bounds;
     isMaximized = () => this.maximized;
     isFocused = () => this.focused;
@@ -53,6 +55,7 @@ function openWindow() {
 }
 beforeEach(() => {
   vi.clearAllMocks();
+  host.windows.length = 0;
   vi.useFakeTimers();
   host.userData = mkdtempSync(path.join(os.tmpdir(), 'app-window-'));
   host.packaged = false;
@@ -178,6 +181,33 @@ describe('main window lifecycle', () => {
     window.emit('close');
     expect(JSON.parse(readFileSync(file, 'utf8'))).toStrictEqual({ bounds: window.bounds, isMaximized: false });
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('opens a further window beside its source instead of restoring the saved frame', () => {
+    const file = path.join(host.userData, 'window-state.json');
+    writeFileSync(file, JSON.stringify({ bounds: { x: 10, y: 20, width: 1400, height: 900 }, isMaximized: true }));
+    const window = createMainWindow({ cascadeFrom: { x: 100, y: 80, width: 1280, height: 800 } }) as unknown as {
+      options: Record<string, unknown>; maximize: ReturnType<typeof vi.fn>; emit(name: string): void;
+    };
+    expect(window.options).toMatchObject({ x: 128, y: 108, width: 1280, height: 800 });
+    window.emit('ready-to-show');
+    expect(window.maximize).not.toHaveBeenCalled();
+  });
+
+  it('keeps the cycle-teams shortcut registered while focus moves to another window', () => {
+    host.registered = true;
+    const first = openWindow();
+    const second = openWindow();
+    first.focused = true;
+    first.emit('focus');
+    first.focused = false;
+    second.focused = true;
+    first.emit('blur');
+    expect(host.unregister).not.toHaveBeenCalled();
+    second.emit('focus');
+    second.focused = false;
+    second.emit('blur');
+    expect(host.unregister).toHaveBeenCalledWith(cycleTeamsAccelerator);
   });
 
   it('opens off-screen state at default bounds and persists a private first-run state file', () => {

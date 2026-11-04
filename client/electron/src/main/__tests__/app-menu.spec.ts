@@ -104,6 +104,25 @@ describe('app menu', () => {
     menuItem(template, 'File', 'Close Agent')!.click!({} as never, main as never, {} as never);
     expect(sendAppCommand).toHaveBeenCalledWith(main.webContents, { type: 'close-active-agent' });
   });
+  it('offers New Window in the Window menu only when it can open one', () => {
+    const newWindow = vi.fn();
+    const withNewWindow = buildAppMenuTemplate({ ...callbacks(), newWindow }, { debugMode: false });
+    menuItem(withNewWindow, 'Window', 'New Window')!.click!({} as never, undefined as never, {} as never);
+    expect(newWindow).toHaveBeenCalledOnce();
+    expect(menuItem(buildAppMenuTemplate(callbacks(), { debugMode: false }), 'Window', 'New Window')).toBeUndefined();
+  });
+  it('sends menu commands to whichever window is current when the menu is shared by several', () => {
+    const first = { webContents: { reload: vi.fn(), toggleDevTools: vi.fn() } };
+    const second = { webContents: { reload: vi.fn(), toggleDevTools: vi.fn() } };
+    let current: unknown = first;
+    installAppMenu(() => current as never, { debugMode: false });
+    const template = electronMenuMocks.buildFromTemplate.mock.calls.at(-1)![0];
+    menuItem(template, 'File', 'Close Agent')!.click!({} as never, first as never, {} as never);
+    expect(sendAppCommand).toHaveBeenLastCalledWith(first.webContents, { type: 'close-active-agent' });
+    current = second;
+    menuItem(template, 'File', 'Close Agent')!.click!({} as never, second as never, {} as never);
+    expect(sendAppCommand).toHaveBeenLastCalledWith(second.webContents, { type: 'close-active-agent' });
+  });
   it('shows Execution Plan as a checkbox reflecting the selected agent plan', () => {
     const cb = callbacks();
     cb.hasDebugExecutionPlan = () => true;

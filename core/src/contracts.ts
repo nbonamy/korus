@@ -1082,6 +1082,14 @@ export type AppApi = {
   quit(): Promise<void>;
   restartApp(): Promise<void>;
   reloadRenderer(): Promise<void>;
+  /** Desktop windows only: this window's identity, initial view state and the shared native owners and drafts. */
+  getWindowContext?(): Promise<import('./windows').WindowContext>;
+  /** Desktop windows only: true when this window now owns the agent's native view. */
+  /** Desktop windows only: tells main which agent this window shows. */
+  setWindowSelection?(agentId: string | null): Promise<void>;
+  claimNativeResource?(resource: import('./windows').NativeResource, agentId: string, takeOver?: boolean): Promise<boolean>;
+  releaseNativeResource?(resource: import('./windows').NativeResource, agentId: string): Promise<void>;
+  syncComposerDraft?(agentId: string, draft: import('./windows').ComposerDraft | null): Promise<void>;
   setAgentGoal(agentId: string, objective: string): Promise<AppSnapshot>;
   clearAgentGoal(agentId: string): Promise<AppSnapshot>;
   setAgentApprovalPreset(agentId: string, preset: ApprovalPreset): Promise<AppSnapshot>;
@@ -1120,4 +1128,6 @@ export type AppApi = {
   onEvent(listener: (event: MainToRendererEvent) => void): () => void;
   onAppCommand(listener: (command: AppCommand) => void): () => void;
   onUpdateStatusChanged(listener: (status: DesktopUpdateStatus) => void): () => void;
+  onNativeOwnersChanged?(listener: (owners: import('./windows').NativeOwnerEntry[]) => void): () => void;
+  onComposerDraftChanged?(listener: (change: import('./windows').ComposerDraftChange) => void): () => void;
 };

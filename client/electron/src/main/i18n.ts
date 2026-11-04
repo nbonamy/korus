@@ -31,6 +31,7 @@ const messages = {
     'menu.commandPalette': 'Command Palette…',
     'menu.installUpdate': 'Install Update and Relaunch',
     'menu.newTeam': 'New Team',
+    'menu.newWindow': 'New Window',
     'menu.nextAgent': 'Next Agent',
     'menu.nextTeam': 'Next Team',
     'menu.previousAgent': 'Previous Agent',
