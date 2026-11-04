@@ -760,11 +760,10 @@ export type AppCommand =
   }
   | { type: 'appshot-failed'; message: string }
   | { type: 'close-active-agent' }
-  | { type: 'close-active-team' }
   | { type: 'compress-active-session' }
   | { type: 'compact-active-session' }
   | { type: 'cycle-agents'; direction: -1 | 1 }
-  | { type: 'cycle-teams' }
+  | { type: 'cycle-teams'; direction?: -1 | 1 }
   | { type: 'duplicate-active-agent' }
   | { type: 'fork-active-agent' }
   | { type: 'handoff-active-agent' }

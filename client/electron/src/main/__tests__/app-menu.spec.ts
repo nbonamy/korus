@@ -92,15 +92,12 @@ describe('app menu', () => {
     expect(window.webContents.reload).not.toHaveBeenCalled();
     expect(buildAppMenuTemplate(callbacks(), { debugMode: false }).some(item => item.label === 'Debug')).toBe(false);
   });
-  it('closes a focused extension window without closing the agent or team', () => {
-    const main = { webContents: {} }, auxiliary = { close: vi.fn() };
+  it('closes the focused window of any kind with Close, and only closes an agent on its own command', () => {
+    const main = { webContents: {} };
     installAppMenu(main as never, { debugMode: false });
     const template = electronMenuMocks.buildFromTemplate.mock.calls.at(-1)![0];
-    for (const label of ['Close Agent', 'Close Team']) {
-      menuItem(template, 'File', label)!.click!({} as never, auxiliary as never, {} as never);
-    }
-    expect(auxiliary.close).toHaveBeenCalledTimes(2);
-    expect(sendAppCommand).not.toHaveBeenCalled();
+    expect(menuItem(template, 'File', 'Close Window')).toMatchObject({ role: 'close', accelerator: 'CommandOrControl+W' });
+    expect(menuItem(template, 'File', 'Close Team')).toBeUndefined();
     menuItem(template, 'File', 'Close Agent')!.click!({} as never, main as never, {} as never);
     expect(sendAppCommand).toHaveBeenCalledWith(main.webContents, { type: 'close-active-agent' });
   });
@@ -126,6 +123,21 @@ describe('app menu', () => {
     const windowMenu = mac.find(item => item.label === 'Window')!;
     expect(windowMenu.role).toBe('window');
     expect((windowMenu.submenu as Array<{ type?: string }>).some(item => item.type === 'checkbox')).toBe(false);
+  });
+  it('cycles windows from the Window menu, with the system accelerators on macOS only', () => {
+    const cycleWindow = vi.fn();
+    const items = (platform: NodeJS.Platform) => submenu(buildAppMenuTemplate({ ...callbacks(), cycleWindow }, { debugMode: false }, platform), 'Window');
+    const mac = items('darwin');
+    expect(mac.find(item => item.label === 'Next Window')?.accelerator).toBe('Command+`');
+    expect(mac.find(item => item.label === 'Previous Window')?.accelerator).toBe('Command+Shift+`');
+    mac.find(item => item.label === 'Previous Window')!.click!({} as never, undefined as never, {} as never);
+    expect(cycleWindow).toHaveBeenLastCalledWith(-1);
+    mac.find(item => item.label === 'Next Window')!.click!({} as never, undefined as never, {} as never);
+    expect(cycleWindow).toHaveBeenLastCalledWith(1);
+    const linux = items('linux');
+    expect(linux.find(item => item.label === 'Next Window')).toBeDefined();
+    expect(linux.find(item => item.label === 'Next Window')?.accelerator).toBeUndefined();
+    expect(linux.some(item => item.label === 'Next Team')).toBe(false);
   });
   it('offers Show Workspace next to New Window', () => {
     const showWorkspace = vi.fn();
@@ -202,8 +214,8 @@ describe('app menu', () => {
 
     expect(menuLabels(submenu(menu, 'File'))).toStrictEqual([
       'New Team',
+      'Close Window',
       'Close Agent',
-      'Close Team',
       'Quit',
     ]);
     expect(menu.find((item) => item.role === 'editMenu')).toBeDefined();
@@ -219,6 +231,7 @@ describe('app menu', () => {
       'Next Agent',
       'Previous Agent',
       'Next Team',
+      'Previous Team',
     ]);
     expect(submenu(menu, 'Agent').map((item) => item.type ?? item.label)).toStrictEqual([
       'Rename agent',
@@ -308,26 +321,26 @@ describe('app menu', () => {
     [
       ['File', 'New Team'],
       ['File', 'Close Agent'],
-      ['File', 'Close Team'],
       ['View', 'Go to Agent...'],
       ['View', 'Changes'],
       ['View', 'Browser'],
       ['View', 'Next Team'],
+      ['View', 'Previous Team'],
       ['View', 'Next Agent'],
       ['View', 'Previous Agent'],
     ].forEach(([menuLabel, itemLabel]) => clickItem(menu, menuLabel, itemLabel));
 
     expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(1, { type: 'new-team' });
     expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(2, { type: 'close-active-agent' });
-    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(3, { type: 'close-active-team' });
     clickItem(menu, 'File', 'Quit');
     clickItem(menu, product.name, `Quit ${product.name}`);
     expect(app.quit).toHaveBeenCalledTimes(2);
     expect(menuItem(menu, 'File', 'Quit')?.accelerator).toBe('CommandOrControl+Q');
-    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(4, { type: 'open-agent-palette' });
-    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(5, { type: 'open-review' });
-    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(6, { type: 'open-browser' });
-    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(7, { type: 'cycle-teams' });
+    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(3, { type: 'open-agent-palette' });
+    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(4, { type: 'open-review' });
+    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(5, { type: 'open-browser' });
+    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(6, { type: 'cycle-teams', direction: 1 });
+    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(7, { type: 'cycle-teams', direction: -1 });
     expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(8, { type: 'cycle-agents', direction: 1 });
     expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(9, { type: 'cycle-agents', direction: -1 });
     clickItem(menu, 'Help', 'What’s New');
@@ -350,8 +363,10 @@ describe('app menu', () => {
     const menu = buildAppMenuTemplate(callbacks(), { debugMode: false }, 'darwin');
 
     expect(menuItem(menu, 'File', 'New Team')?.accelerator).toBe('CommandOrControl+N');
-    expect(menuItem(menu, 'File', 'Close Agent')?.accelerator).toBe('CommandOrControl+W');
-    expect(menuItem(menu, 'File', 'Close Team')?.accelerator).toBe('CommandOrControl+Shift+W');
+    expect(menuItem(menu, 'File', 'Close Window')?.accelerator).toBe('CommandOrControl+W');
+    expect(menuItem(menu, 'File', 'Close Agent')?.accelerator).toBe('CommandOrControl+Shift+D');
+    expect(menuItem(menu, 'View', 'Next Team')?.accelerator).toBe('Control+`');
+    expect(menuItem(menu, 'View', 'Previous Team')?.accelerator).toBe('Control+Shift+`');
     expect(menuItem(menu, 'File', 'Quit')?.accelerator).toBe('CommandOrControl+Q');
     expect(menuItem(menu, 'View', 'Go to Agent...')?.accelerator).toBe('CommandOrControl+K');
     expect(menuItem(menu, 'View', 'Changes')?.accelerator).toBe('CommandOrControl+G');
@@ -505,6 +520,7 @@ describe('app menu', () => {
       'Next Agent',
       'Previous Agent',
       'Next Team',
+      'Previous Team',
       'Reload',
       'Toggle Developer Tools',
     ]);
@@ -608,7 +624,7 @@ describe('app menu', () => {
       'Merge Progress',
       'Merge Conflicts',
     ]);
-    expect(menuItem(debugMenu, 'View', 'Next Team')?.accelerator).toBe('Command+`');
+    expect(menuItem(debugMenu, 'View', 'Next Team')?.accelerator).toBe('Control+`');
     expect(menuItem(debugMenu, 'View', 'Next Agent')?.accelerator).toBe('Control+Tab');
     expect(menuItem(debugMenu, 'View', 'Previous Agent')?.accelerator).toBe('Control+Shift+Tab');
     expect(menuItem(debugMenu, 'View', 'Reload')?.accelerator).toBe('CommandOrControl+Shift+R');

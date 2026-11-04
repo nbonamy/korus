@@ -38,7 +38,6 @@ vi.mock('electron', () => ({
 vi.mock('../app-menu', () => ({ installAppMenu: vi.fn() }));
 vi.mock('../log', () => ({ logRendererConsole: vi.fn(), warnMain: vi.fn() }));
 import { createMainWindow } from '../main-window';
-import { cycleTeamsAccelerator } from '../app-shortcuts';
 import { ipcChannels } from '@workspace/core/ipc';
 import { logRendererConsole, warnMain } from '../log';
 import { app, nativeTheme } from 'electron';
@@ -207,22 +206,6 @@ describe('main window lifecycle', () => {
     expect(JSON.parse(readFileSync(file, 'utf8'))).toStrictEqual(saved);
   });
 
-  it('keeps the cycle-teams shortcut registered while focus moves to another window', () => {
-    host.registered = true;
-    const first = openWindow();
-    const second = openWindow();
-    first.focused = true;
-    first.emit('focus');
-    first.focused = false;
-    second.focused = true;
-    first.emit('blur');
-    expect(host.unregister).not.toHaveBeenCalled();
-    second.emit('focus');
-    second.focused = false;
-    second.emit('blur');
-    expect(host.unregister).toHaveBeenCalledWith(cycleTeamsAccelerator);
-  });
-
   it('opens off-screen state at default bounds and persists a private first-run state file', () => {
     const file = path.join(host.userData, 'window-state.json');
     writeFileSync(file, JSON.stringify({ x: 9000, y: 0, width: 1400, height: 900 }));
@@ -238,22 +221,9 @@ describe('main window lifecycle', () => {
     if (process.platform !== 'win32') expect(statSync(file).mode & 0o777).toBe(0o600);
   });
 
-  it('releases focused shortcuts and enforces popup and renderer console boundaries', () => {
+  it('enforces popup and renderer console boundaries', () => {
     const window = openWindow();
     expect(window.loadURL).toHaveBeenCalledWith('http://localhost:5173');
-    window.focused = true;
-    window.emit('focus');
-    const callback = host.register.mock.calls[0]?.[1] as unknown as () => void;
-    callback();
-    expect(window.webContents.send).toHaveBeenCalledWith(ipcChannels.appCommand, { type: 'cycle-teams' });
-    window.webContents.send.mockClear();
-    window.focused = false;
-    host.registered = true;
-    callback();
-    expect(window.webContents.send).not.toHaveBeenCalled();
-    window.emit('blur');
-    window.emit('closed');
-    expect(host.unregister).toHaveBeenCalledWith(cycleTeamsAccelerator);
     const popup = window.webContents.setWindowOpenHandler.mock.calls[0]![0];
     expect(popup({ url: 'https://example.com' })).toStrictEqual({ action: 'deny' });
     expect(host.openExternal).toHaveBeenCalledWith('https://example.com');
@@ -264,15 +234,12 @@ describe('main window lifecycle', () => {
     expect(logRendererConsole).toHaveBeenCalledWith(3, 'failure', { line: 12, sourceId: 'renderer.js' });
   });
 
-  it('keeps the window usable when saving state or registering a shortcut fails', () => {
+  it('keeps the window usable when saving its state fails', () => {
     const window = openWindow();
     rmSync(host.userData, { recursive: true });
     writeFileSync(host.userData, 'not a directory');
     expect(() => window.emit('close')).not.toThrow();
-    host.register.mockReturnValue(false);
-    window.emit('focus');
     expect(warnMain).toHaveBeenCalledWith('window', expect.any(String), expect.objectContaining({ detail: expect.any(String) }));
-    expect(warnMain).toHaveBeenCalledWith('shortcuts', expect.any(String), { accelerator: cycleTeamsAccelerator });
     window.emit('ready-to-show');
     expect(window.show).toHaveBeenCalledOnce();
   });

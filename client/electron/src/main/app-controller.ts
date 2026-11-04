@@ -924,6 +924,15 @@ export class AppController {
     return window;
   }
 
+  /** Moves to the next or previous window, in the order they were opened. */
+  private cycleWindow(direction: 1 | -1): void {
+    const windows = [...this.windows.live()].sort((left, right) => left.id - right.id);
+    if (windows.length < 2) return;
+    const current = this.windows.focused();
+    const index = Math.max(windows.findIndex(window => window === current), 0);
+    this.focusWindowById(windows[(index + direction + windows.length) % windows.length]!.id);
+  }
+
   private focusWindowById(id: number): void {
     const window = this.windows.byId(id);
     if (!window) return;
@@ -1963,6 +1972,7 @@ export class AppController {
     showWorkspace: () => void;
     listWindows: () => Array<{ id: number; title: string; focused: boolean }>;
     focusWindow: (id: number) => void;
+    cycleWindow: (direction: 1 | -1) => void;
     capturePerformanceProfile: () => void;
   } {
     return {
@@ -1973,6 +1983,7 @@ export class AppController {
       showWorkspace: () => this.showWorkspace(),
       listWindows: () => this.windows.live().map(window => ({ id: window.id, title: window.getTitle(), focused: window.isFocused() })),
       focusWindow: (id: number) => this.focusWindowById(id),
+      cycleWindow: (direction: 1 | -1) => this.cycleWindow(direction),
       capturePerformanceProfile: () => {
         const window = this.windows.focused();
         if (window) void runPerformanceCapture(window);

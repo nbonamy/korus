@@ -1,15 +1,10 @@
-import { app, BrowserWindow, globalShortcut, nativeTheme, screen, shell, type BrowserWindowConstructorOptions, type Rectangle } from 'electron';
+import { app, BrowserWindow, nativeTheme, screen, shell, type BrowserWindowConstructorOptions, type Rectangle } from 'electron';
 import { closeSync, fstatSync, mkdirSync, openSync, readSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { isBrowserGuestPartition } from '@workspace/core/browser-guest';
 import { product } from '@workspace/core/product';
 import { desktopIconPath } from './desktop-identity';
-import {
-  appCommandFromInput,
-  cycleTeamsAccelerator,
-  registerCycleTeamsShortcut,
-  unregisterCycleTeamsShortcut,
-} from './app-shortcuts';
+import { appCommandFromInput } from './app-shortcuts';
 import { logRendererConsole, warnMain } from './log';
 import { sendAppCommand } from './ipc-events';
 import type { WindowFrame } from './window-layout';
@@ -114,7 +109,6 @@ export function createMainWindow(placement: WindowPlacement = {}): BrowserWindow
   window.webContents.on('console-message', (_event, level, message, line, sourceId) => {
     logRendererConsole(level, message, { line, sourceId });
   });
-  installFocusedAppShortcuts(window);
   window.webContents.on('before-input-event', (event, input) => {
     const command = appCommandFromInput(input);
     if (!command) {
@@ -292,36 +286,4 @@ function isExternalHttpUrl(url: string): boolean {
 
 function isReleaseMode(): boolean {
   return app.isPackaged;
-}
-
-function installFocusedAppShortcuts(window: BrowserWindow): void {
-  const sendCycleTeamsCommand = (): void => {
-    if (window.isFocused()) {
-      sendAppCommand(window.webContents, { type: 'cycle-teams' });
-    }
-  };
-
-  const register = (): void => {
-    if (!registerCycleTeamsShortcut(globalShortcut, sendCycleTeamsCommand)) {
-      warnMain('shortcuts', 'failed to register cycle teams shortcut', {
-        accelerator: cycleTeamsAccelerator,
-      });
-    }
-  };
-  const unregister = (): void => {
-    unregisterCycleTeamsShortcut(globalShortcut);
-  };
-
-  // Focus moves between windows as blur then focus, so a blur only releases the shortcut when no other window took it.
-  const releaseUnlessFocusMoved = (): void => {
-    if (!BrowserWindow.getAllWindows().some((other) => other !== window && !other.isDestroyed() && other.isFocused())) unregister();
-  };
-
-  window.on('focus', register);
-  window.on('blur', releaseUnlessFocusMoved);
-  window.on('closed', releaseUnlessFocusMoved);
-
-  if (window.isFocused()) {
-    register();
-  }
 }

@@ -56,6 +56,7 @@ type Private = {
   hostsBrowserPane(event: unknown, agentId: string, browserId: string): boolean;
   windowOf(event: unknown): unknown;
   focusWindowById(id: number): void;
+  cycleWindow(direction: 1 | -1): void;
   flushPendingDeepLinkCommands(): void;
   openWindow(viewState?: unknown): unknown;
   openNewWindow(): void;
@@ -167,6 +168,31 @@ describe('AppController with several windows', () => {
       expect(second!.show).toHaveBeenCalled();
       expect(second!.focus).toHaveBeenCalled();
       internals(controller).focusWindowById(9999);
+    });
+
+    it('cycles windows in the order they were opened, wrapping around, whichever has focus', () => {
+      const { controller, windows: [first, second, third] } = controllerWithWindows(3);
+      const shown = () => [first, second, third].findIndex(window => window!.focus.mock.calls.length > 0);
+      second!.focused = true;
+      internals(controller).windows.markFocused(second);
+      internals(controller).cycleWindow(1);
+      expect(third!.focus).toHaveBeenCalled();
+      third!.focused = true; second!.focused = false;
+      internals(controller).windows.markFocused(third);
+      internals(controller).cycleWindow(1);
+      expect(first!.focus).toHaveBeenCalled();
+      first!.focused = true; third!.focused = false;
+      internals(controller).windows.markFocused(first);
+      internals(controller).cycleWindow(-1);
+      expect(third!.focus).toHaveBeenCalledTimes(2);
+      expect(shown()).toBeGreaterThanOrEqual(0);
+    });
+
+    it('does nothing to cycle windows when there is only one', () => {
+      const { controller, windows: [only] } = controllerWithWindows(1);
+      only!.focused = true;
+      internals(controller).cycleWindow(1);
+      expect(only!.focus).not.toHaveBeenCalled();
     });
 
     it('resolves the window behind an IPC sender and falls back to the current one', () => {

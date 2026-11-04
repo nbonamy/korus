@@ -64,7 +64,7 @@ describe('CommandPalette', () => {
       await wrapper.get('input').setValue('');
       expect(sectionRows(wrapper, 'Conversation')).toContain('Save draft for later');
       expect(sectionRows(wrapper, 'Conversation')).toContain('Saved drafts');
-      expect(sectionRows(wrapper, 'Team')).toContain('Close team');
+      expect(sectionRows(wrapper, 'Team')).not.toContain('Close team');
     } finally {
       menu.unmount(); wrapper.unmount();
     }

@@ -2835,10 +2835,8 @@ const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
   },
   actions: {
     closeAgent: (agentId) => emit('close-agent', agentId),
-    closeWindow: () => window.close(),
     compactSession: compactAgentSession,
     replaceConversationWithSummary: (agentId) => emit('compress-session', agentId),
-    closeTeam: (teamId) => emit('close-team', teamId),
     debugMarkUnread: () => emit('debug-mark-unread'),
     duplicateAgent: (agentId) => emit('duplicate-agent', agentId),
     editAgent: openEditAgent,

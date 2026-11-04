@@ -5,9 +5,9 @@ import { ArrowsMinimizeIcon, ArrowRightIcon, BacklogIcon, BoltIcon, ClockHour8Ic
 // Shared presentation for command results and their keyboard reference rows.
 const icons: Record<string, Component> = {
   commands: IconCommand, help: IconKeyboard, palette: UserIcon, files: FileTextIcon,
-  review: FileDiffIcon, browser: IconWorld, simulator: IconDeviceMobile, nextAgent: ArrowRightIcon, previousAgent: IconArrowLeft, nextTeam: SwitchHorizontalIcon,
+  review: FileDiffIcon, browser: IconWorld, simulator: IconDeviceMobile, nextAgent: ArrowRightIcon, previousAgent: IconArrowLeft, nextTeam: SwitchHorizontalIcon, previousTeam: SwitchHorizontalIcon, nextWindow: ArrowRightIcon, previousWindow: IconArrowLeft, closeWindow: X,
   duplicate: CopyIcon, restart: RefreshIcon, closeAgent: X, edit: PencilIcon, compact: ArrowsMinimizeIcon,
-  saveDraft: FileTextIcon, drafts: ListDetailsIcon, newTeam: PlusIcon, closeTeam: X, settings: SettingsIcon, quit: QuitIcon, mute: VolumeIcon,
+  saveDraft: FileTextIcon, drafts: ListDetailsIcon, newTeam: PlusIcon, settings: SettingsIcon, quit: QuitIcon, mute: VolumeIcon,
   newAgent: PlusIcon, fork: GitForkIcon, resume: ClockHour8Icon, design: IconPalette, visualize: IconSitemap, plan: ListDetailsIcon,
   filesPane: FoldersIcon, codeReview: IconChecklist, cockpit: AiAgentsIcon, backlog: BacklogIcon, automations: ClockHour8Icon, quickChat: MessageIcon,
 };

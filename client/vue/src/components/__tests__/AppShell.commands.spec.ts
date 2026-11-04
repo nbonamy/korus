@@ -14,6 +14,7 @@ import { createMission } from '@workspace/core/missions';
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import type { AppCommand, AppApi, Team } from '@workspace/core/contracts';
 import { useConfetti } from '../../shared/confetti/use-confetti';
+import { windowState } from '../../window-state';
 import { codexConversationSnapshot, codexTextMessage } from '../../test/codex-conversation-fixtures';
 import { claudeConversationSnapshot } from '../../test/claude-conversation-fixtures';
 
@@ -524,8 +525,13 @@ describe('AppShell dialogs and commands', () => {
     expect(getAgentGitDiff).toHaveBeenCalledWith('agent-dina');
     expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toStrictEqual(['Changes', 'Browser']);
 
+    // Plain Command-W is the window's; closing an agent deletes it, so it takes Shift.
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', metaKey: true, cancelable: true }));
+    expect(wrapper.emitted('close-agent')).toBeUndefined();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'D', metaKey: true, shiftKey: true, cancelable: true }));
     window.dispatchEvent(new KeyboardEvent('keydown', { key: '`', code: 'Backquote', metaKey: true, cancelable: true }));
+    expect(wrapper.emitted('select-team')).toBeUndefined();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '`', code: 'Backquote', ctrlKey: true, cancelable: true }));
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', ctrlKey: true, cancelable: true }));
     await wrapper.setProps({ activeAgent: snapshot.agents[1] } as Record<string, unknown>);
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', ctrlKey: true, shiftKey: true, cancelable: true }));
@@ -535,6 +541,30 @@ describe('AppShell dialogs and commands', () => {
     expect(wrapper.emitted('close-agent')).toStrictEqual([['agent-dina']]);
     expect(wrapper.emitted('select-team')).toStrictEqual([['team-skwad']]);
     expect(wrapper.emitted('select-agent')).toStrictEqual([['agent-jesse'], ['agent-dina']]);
+  });
+
+  it('cycles teams forward and back with Control-backtick, and not in a window about one team', async () => {
+    let listener: (command: AppCommand) => void = () => undefined;
+    window.app = { onAppCommand: vi.fn((next: (command: AppCommand) => void) => { listener = next; return () => undefined; }), onEvent: vi.fn(() => vi.fn()) } as Partial<AppApi> as AppApi;
+    const snapshot = createInitialSnapshot();
+    for (const id of ['team-b', 'team-c']) snapshot.teams.push({ id, name: id, avatar: id, color: '#46A857', agentIds: [] });
+    const wrapper = mountRealShell({ snapshot });
+    await flushPromises();
+    const firstTeam = snapshot.teams[0]!.id;
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '`', code: 'Backquote', ctrlKey: true, cancelable: true }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '~', code: 'Backquote', ctrlKey: true, shiftKey: true, cancelable: true }));
+    listener({ type: 'cycle-teams', direction: -1 });
+    listener({ type: 'cycle-teams' });
+    expect(wrapper.emitted('select-team')).toStrictEqual([['team-b'], ['team-c'], ['team-c'], ['team-b']]);
+    expect(firstTeam).toBeDefined();
+
+    windowState.scope.value = 'team';
+    try {
+      listener({ type: 'cycle-teams' });
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '`', code: 'Backquote', ctrlKey: true, cancelable: true }));
+      expect(wrapper.emitted('select-team')).toHaveLength(4);
+    } finally { windowState.scope.value = 'workspace'; }
   });
 
   it('opens active-agent quick file search with Command-P and previews the keyboard selection', async () => {
@@ -931,7 +961,6 @@ describe('AppShell dialogs and commands', () => {
     await wrapper.findAll('button').find((button) => button.text() === 'Cancel')?.trigger('click');
     await nextTick();
     listener({ type: 'close-active-agent' });
-    listener({ type: 'close-active-team' });
     listener({ type: 'quit' });
     listener({ type: 'cycle-teams' });
     listener({ type: 'cycle-agents', direction: 1 });
@@ -947,16 +976,6 @@ describe('AppShell dialogs and commands', () => {
     expect(wrapper.emitted('select-team')).toStrictEqual([['team-skwad']]);
     expect(wrapper.emitted('select-agent')).toStrictEqual([['agent-jesse']]);
     expect(wrapper.emitted('close-agent')).toStrictEqual([['agent-dina']]);
-    expect(confirm).toHaveBeenCalledWith(
-      expect.stringContaining('missions and quick chats will be removed'),
-      `Close ${product.defaultTeamName}?`,
-      {
-        cancelButtonText: 'Cancel',
-        confirmButtonText: 'Close Team',
-        type: 'warning',
-      },
-    );
-    expect(wrapper.emitted('close-team')).toStrictEqual([['team-app']]);
     expect(quit).toHaveBeenCalledOnce();
     expect(wrapper.emitted('duplicate-agent')).toStrictEqual([['agent-dina']]);
     expect(wrapper.emitted('restart-agent')).toStrictEqual([['agent-dina']]);
@@ -1560,7 +1579,6 @@ describe('AppShell dialogs and commands', () => {
     listener({ type: 'restart-active-agent' });
     listener({ type: 'resume-active-session' });
     listener({ type: 'edit-active-agent' });
-    listener({ type: 'close-active-team' });
 
     expect(wrapper.emitted('close-agent')).toBeUndefined();
     expect(wrapper.emitted('duplicate-agent')).toBeUndefined();
@@ -1568,7 +1586,6 @@ describe('AppShell dialogs and commands', () => {
     expect(wrapper.emitted('restart-agent')).toBeUndefined();
     expect(wrapper.findComponent({ name: 'ConversationHistoryDialog' }).exists()).toBe(false);
     expect(wrapper.text()).not.toContain('Rename agent');
-    expect(wrapper.emitted('close-team')).toBeUndefined();
   });
 
   it('does not fire keyboard shortcuts while a dialog is open', async () => {

@@ -16,7 +16,6 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { translate } from '../i18n';
 import { appApi, appHostCapabilities } from '../platform-api';
 import { useConfetti } from '../shared/confetti/use-confetti';
-import { confirmCloseTeam } from './team-close-confirmation';
 import { imageDataUrlArrayBuffer } from './image-annotation';
 import type { RightWorkspaceTab } from './right-workspace';
 
@@ -44,10 +43,8 @@ type AppShellCommandOptions = {
   };
   actions: {
     closeAgent: (agentId: string) => void;
-    closeWindow?: () => void;
     compactSession: (agentId: string) => void;
     replaceConversationWithSummary: (agentId: string) => void;
-    closeTeam: (teamId: string) => void;
     debugMarkUnread: () => void;
     setDebugMissingEngines: (enabled: boolean) => void;
     setDebugProviderUpgrades: (enabled: boolean) => void;
@@ -198,10 +195,8 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
       return;
     }
 
-    if (
-      matchesShellShortcut('nextTeam', input)
-    ) {
-      if (cycleTeams()) {
+    if (matchesShellShortcut('nextTeam', input) || matchesShellShortcut('previousTeam', input)) {
+      if (!inScopedWindow() && cycleTeams(input.shift ? -1 : 1)) {
         event.preventDefault();
       }
       return;
@@ -461,7 +456,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
       if (!isAgentWorkspaceVisible.value || inScopedWindow()) {
         return;
       }
-      cycleTeams();
+      cycleTeams(command.direction ?? 1);
       return;
     }
 
@@ -507,14 +502,6 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
       if (currentAgent.value.status.type === 'idle' && currentAgent.value.backendSession) {
         options.actions.compactSession(currentAgent.value.id);
       }
-      return;
-    }
-
-    if (command.type === 'close-active-team') {
-      if (!isAgentWorkspaceVisible.value || inScopedWindow()) {
-        return;
-      }
-      void closeActiveTeam();
       return;
     }
 
@@ -623,12 +610,6 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
   }
 
   function closeActiveAgent(event?: KeyboardEvent): void {
-    // Closing the window of an agent only closes the window; the agent stays in the workspace.
-    if (inAgentWindow()) {
-      event?.preventDefault();
-      options.actions.closeWindow?.();
-      return;
-    }
     const agent = currentAgent.value;
     if (!agent) {
       return;
@@ -636,17 +617,6 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
 
     event?.preventDefault();
     options.actions.closeAgent(agent.id);
-  }
-
-  async function closeActiveTeam(): Promise<void> {
-    const team = activeTeam.value;
-    if (!team || options.state.teams().length <= 1) {
-      return;
-    }
-
-    if (await confirmCloseTeam(team) === 'close') {
-      options.actions.closeTeam(team.id);
-    }
   }
 
   function restartActiveAgent(): void {
@@ -667,7 +637,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     options.actions.editAgent(agent.id);
   }
 
-  function cycleTeams(): boolean {
+  function cycleTeams(direction: 1 | -1 = 1): boolean {
     const teams = options.state.teams();
     if (teams.length < 2) {
       return false;
@@ -677,7 +647,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
       teams.findIndex((team) => team.id === activeTeam.value?.id),
       0,
     );
-    const nextTeam = teams[(activeIndex + 1) % teams.length];
+    const nextTeam = teams[(activeIndex + direction + teams.length) % teams.length];
     if (!nextTeam) {
       return false;
     }

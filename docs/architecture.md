@@ -79,6 +79,11 @@ the local desktop to show UI or use an OS affordance belongs in Electron main.
   what it shows, and the Window menu lists the windows by title so any of them can be
   brought forward (macOS lists them itself; elsewhere main builds the list). Deep links
   and captures go to a workspace window.
+- Navigation keys follow what they move through: Control+Tab cycles agents (the feature's,
+  in a feature window), Control+\` cycles teams in a workspace window, and Command+\`
+  cycles windows through the Window menu, each reversed with Shift. Command+W closes the
+  window, whatever it shows; closing an agent deletes it and takes Command+Shift+D. Closing
+  a team is only in the team's own menu, behind a confirmation.
 - The open windows are remembered and reopened at launch: for each, its scope, what it
   shows (team, agent or feature, and the selected agent of a workspace window) and its
   frame, listed from least to most recently focused so the last one opened is in front.

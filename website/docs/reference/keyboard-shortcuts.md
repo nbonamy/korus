@@ -19,9 +19,12 @@ Open **View → Keyboard Shortcuts** for a searchable reference to actions and k
 | ⌘K | Open the agent and Mission picker; a Mission returns to its last selected agent. |
 | ⌘N | Create a team. |
 | ⌘1–9 | Select the corresponding agent in the active team. |
-| Control Tab | Cycle forward through agents. |
+| Control Tab | Cycle forward through the agents of the team, or of the feature in a feature window. |
 | Control Shift Tab | Cycle backward through agents. |
-| ⌘\` | Cycle teams. |
+| Control \` | Cycle forward through teams in a full window. |
+| Control Shift \` | Cycle backward through teams. |
+| ⌘\` | Cycle forward through windows. |
+| ⌘Shift \` | Cycle backward through windows. |
 
 Hold Command briefly to reveal the quick agent shortcut hints.
 
@@ -36,8 +39,8 @@ Hold Command briefly to reveal the quick agent shortcut hints.
 | ⌘D | Duplicate the active agent. This does not create an isolated Git worktree. |
 | ⌘R | Restart the active agent with a fresh conversation. |
 | ⌘Shift K | Compact the active session when it is idle. |
-| ⌘W | Close the active agent. |
-| ⌘Shift W | Close the active team. |
+| ⌘W | Close the window. |
+| ⌘Shift D | Close the active agent. This deletes it, so it takes Shift. |
 | ⌘Shift M | Toggle muting spoken announcements. |
 
 Some shortcuts require an active agent workspace and are suspended while a modal dialog is open. Browser access requires a host that supports the embedded browser.
