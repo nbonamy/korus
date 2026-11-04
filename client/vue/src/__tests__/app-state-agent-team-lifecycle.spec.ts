@@ -13,6 +13,7 @@ import { stubElectronTestWindow, stubLegacyElectronTestWindow } from '../test/cl
 import { clearFirstRunOnboardingStage } from '../onboarding-session';
 import { workItem, deferred } from './app-state-test-harness';
 import { claudeConversationSnapshot } from '../test/claude-conversation-fixtures';
+import { codexConversationSnapshot } from '../test/codex-conversation-fixtures';
 import { emptyAntigravitySnapshot } from '@workspace/core/antigravity-conversation-replica';
 
 describe('useAppState', () => {
@@ -384,6 +385,7 @@ describe('useAppState', () => {
     });
     const agentSelection = deferred<AppSnapshot>();
     const clientNavigationSelectTeamion = deferred<AppSnapshot>();
+    let receive!: (event: MainToRendererEvent) => void;
     const selectAgent = vi.fn().mockReturnValue(agentSelection.promise);
     const selectTeam = vi.fn().mockReturnValue(clientNavigationSelectTeamion.promise);
     stubElectronTestWindow({
@@ -391,7 +393,7 @@ describe('useAppState', () => {
         getSnapshot: vi.fn().mockResolvedValue(remoteSnapshot),
         selectAgent,
         selectTeam,
-        onEvent: vi.fn(),
+        onEvent: vi.fn(listener => { receive = listener; return () => undefined; }),
       } satisfies Partial<AppApi>,
     });
 
@@ -421,6 +423,8 @@ describe('useAppState', () => {
       activeTeamId: 'team-other',
     });
     await teamPromise;
+    receive({ seq: 1, occurredAt: '', type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: 'agent-joel', threadId: 'thread-joel',
+      payload: { revision: 1, snapshot: codexConversationSnapshot([]) } });
     expect(state.isLoading.value).toBe(false);
     expect(state.activeAgent.value?.id).toBe('agent-joel');
     expect(state.isHydratingActiveAgentHistory.value).toBe(false);

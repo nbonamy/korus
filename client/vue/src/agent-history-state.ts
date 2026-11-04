@@ -10,6 +10,7 @@ export function createAgentHistoryState(options: {
   adoptSnapshot: (snapshot: AppSnapshot) => void;
   getSnapshot: () => AppSnapshot;
   synchronizeComposerSelection: (agentId: string) => void;
+  hasHistory: (agentId: string) => boolean;
 }) {
   const hydratingAgentIds = ref(new Set<string>());
   const failedAgentIds = ref(new Set<string>());
@@ -18,7 +19,7 @@ export function createAgentHistoryState(options: {
 
   const isHydratingActiveAgentHistory = computed(() => {
     const agentId = options.getSnapshot().activeAgentId;
-    return Boolean(agentId && hydratingAgentIds.value.has(agentId));
+    return Boolean(agentId && statusFor(agentId).hydrating);
   });
   const isActiveAgentHistoryFailed = computed(() => {
     const agentId = options.getSnapshot().activeAgentId;
@@ -59,10 +60,12 @@ export function createAgentHistoryState(options: {
   }
 
   function statusFor(agentId: string): { failed: boolean; hasOlder: boolean; hydrating: boolean; loadingOlder: boolean } {
+    const failed = failedAgentIds.value.has(agentId);
+    const pending = Boolean(options.getSnapshot().agents.find(agent => agent.id === agentId)?.backendSession) && !options.hasHistory(agentId);
     return {
-      failed: failedAgentIds.value.has(agentId),
+      failed,
       hasOlder: hasOlderByAgentId.value[agentId] ?? true,
-      hydrating: hydratingAgentIds.value.has(agentId),
+      hydrating: hydratingAgentIds.value.has(agentId) || (!failed && pending),
       loadingOlder: loadingOlderAgentIds.value.has(agentId),
     };
   }

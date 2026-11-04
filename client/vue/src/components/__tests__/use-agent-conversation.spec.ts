@@ -48,6 +48,16 @@ describe('useAgentConversation image annotations', () => {
 });
 
 describe('agentConversationState identity', () => {
+  it('keeps an unhydrated conversation loading even if a bootstrap provider frame says not loading', () => {
+    const view = { agent: { id: 'restored', backendSession: { kind: 'codex', threadId: 'restored' } },
+      codexSnapshot: { messages: [], historyLoading: false }, history: { hydrating: true } } as unknown as AgentConversationView;
+    const state = agentConversationState(() => view);
+    expect(state.history!.loading).toBe(true);
+    expect(state.identity.disabled).toBe(true);
+    view.history.hydrating = false;
+    expect(state.history!.loading).toBe(false);
+    expect(state.identity.disabled).toBe(false);
+  });
   it('hands the pane the same answered-request set until its members change, so message blocks are not re-rendered by every update', () => {
     const answered = ref<ReadonlySet<string>>(new Set(['a']));
     const state = agentConversationState(() => ({

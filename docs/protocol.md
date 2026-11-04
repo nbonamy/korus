@@ -41,6 +41,10 @@ shape; client navigation remains separate from the shared product operation.
   rejected while a handoff is in progress. Stdio waits for queued
   output to drain before executing this opt-in so replay frames can be delivered.
   Remote agents retain the full composite snapshot response.
+  Clients opt into `reportFailure: true` to receive a safe request error when
+  hydration fails, independently of event delivery. Without this flag, failed
+  hydration retains its snapshot response and `conversation.historyLoadFailed`
+  event for compatibility with released clients.
   Unnegotiated clients retain the default request, response and event semantics.
 - Location-scoped methods take optional `remoteConnectionId` / `location`; omitted
   means local. Agent-scoped methods route through the agent's owning location.

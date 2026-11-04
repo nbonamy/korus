@@ -130,18 +130,21 @@ describe('AgentConversationService', () => {
     );
   });
 
-  it('reports hydration failures without exposing diagnostics and deduplicates concurrent requests', async () => {
+  it.each([
+    ['thread thread-root already has an active writer: sensitive provider detail', 4],
+    ['Codex app-server request timed out: thread/resume', 2],
+  ])('reports hydration failures safely and bounds concurrent retries: %s', async (message, attempts) => {
     vi.useFakeTimers();
     try {
-      const { agent, driverRequest, events, service } = createService();
-      driverRequest.mockRejectedValue(new Error('thread thread-root already has an active writer: sensitive provider detail'));
+      const { agent, driverRequest, events, service, writerDiagnostics } = createService();
+      driverRequest.mockRejectedValue(new Error(message));
 
       const first = service.hydrate(agent.id);
       const second = service.hydrate(agent.id);
       await vi.runAllTimersAsync();
 
       await expect(Promise.all([first, second])).resolves.toStrictEqual([undefined, undefined]);
-      expect(driverRequest).toHaveBeenCalledTimes(2);
+      expect(driverRequest).toHaveBeenCalledTimes(attempts);
       expect(events).toContainEqual({
         agentId: agent.id,
         type: 'conversation.historyLoadFailed',
@@ -149,6 +152,7 @@ describe('AgentConversationService', () => {
         payload: { error: 'Unable to load conversation history.' },
       });
       expect(JSON.stringify(events)).not.toContain('active writer');
+      expect(writerDiagnostics).toHaveBeenCalledTimes(attempts === 4 ? 1 : 0);
     } finally {
       vi.useRealTimers();
     }
@@ -195,6 +199,36 @@ describe('AgentConversationService', () => {
       payload: { error: 'Unable to load conversation history.' },
     });
   });
+
+  it.each([false, true])('waits for startup continuation before hydrating the same conversation (other agent: %s)', async otherAgent => {
+    const { agent, driverRequest, service, snapshot } = createService();
+    const target = otherAgent ? { ...agent, id: 'alias-of-same-thread' } : agent;
+    if (otherAgent) snapshot.agents.push(target);
+    let finish!: (value: unknown) => void;
+    driverRequest.mockImplementation(async (_agent, method) => method === backendMethods.driverTurnContinueInterrupted
+      ? new Promise(resolve => { finish = resolve; }) : agent.backendSession);
+    const continuation = service.continueInterruptedTurn(agent.id);
+    const hydration = service.hydrate(target.id);
+    await vi.waitFor(() => expect(driverRequest).toHaveBeenCalledTimes(1));
+    expect(driverRequest.mock.calls[0]![1]).toBe(backendMethods.driverTurnContinueInterrupted);
+    finish({ backendSession: agent.backendSession, activeTurnId: null });
+    await Promise.all([continuation, hydration]);
+    expect(driverRequest.mock.calls.map(call => call[1])).toStrictEqual([
+      backendMethods.driverTurnContinueInterrupted, backendMethods.driverConversationLoad,
+    ]);
+  });
+
+  it('does not add automatic retries to a manual Continue request', async () => {
+    vi.useFakeTimers();
+    try {
+      const { agent, driverRequest, service } = createService();
+      driverRequest.mockRejectedValue(new Error('thread thread-root already has an active writer'));
+      const failure = expect(service.continueInterruptedTurn(agent.id)).rejects.toThrow('active writer');
+      await vi.runAllTimersAsync();
+      await failure;
+      expect(driverRequest).toHaveBeenCalledOnce();
+    } finally { vi.useRealTimers(); }
+  });
 });
 
 function createService() {
@@ -219,6 +253,7 @@ function createService() {
   const persistSnapshot = vi.fn(async () => snapshot);
   const refreshGitStatus = vi.fn(async () => undefined);
   const refreshWorkspaceIdentity = vi.fn(async () => undefined);
+  const writerDiagnostics = vi.fn(async () => ({ processes: [] }));
   const service = new AgentConversationService({
     applyEvent: (event) => events.push(event),
     driverRequest,
@@ -226,6 +261,7 @@ function createService() {
     persistSnapshot,
     refreshGitStatus,
     refreshWorkspaceIdentity,
+    writerDiagnostics,
   });
-  return { agent, driverRequest, events, persistSnapshot, refreshGitStatus, refreshWorkspaceIdentity, service, snapshot };
+  return { agent, driverRequest, events, persistSnapshot, refreshGitStatus, refreshWorkspaceIdentity, service, snapshot, writerDiagnostics };
 }

@@ -34,7 +34,7 @@ describe('AppController', () => {
     await expect(loadConversationHistory(controller, 'agent-dina')).resolves.toBe(backendSnapshot);
 
     expect(request).toHaveBeenCalledOnce();
-    expect(request).toHaveBeenCalledWith('agent/conversation/load', { agentId: 'agent-dina' });
+    expect(request).toHaveBeenCalledWith('agent/conversation/load', { agentId: 'agent-dina', reportFailure: true });
     expect(currentSnapshot(controller)).toStrictEqual(backendSnapshot);
   });
 
@@ -44,7 +44,7 @@ describe('AppController', () => {
     const controller = new AppController(snapshot, createBackendClient({ request }));
     await controller.initialize();
     await expect(loadConversationHistory(controller, 'agent-dina', { recovery: true })).resolves.toMatchObject({ activeAgentId: snapshot.activeAgentId });
-    expect(request).toHaveBeenCalledExactlyOnceWith('agent/conversation/load', { agentId: 'agent-dina', omitSnapshot: true });
+    expect(request).toHaveBeenCalledExactlyOnceWith('agent/conversation/load', { agentId: 'agent-dina', omitSnapshot: true, reportFailure: true });
   });
 
   it('routes agent goal mutations through daemon', async () => {

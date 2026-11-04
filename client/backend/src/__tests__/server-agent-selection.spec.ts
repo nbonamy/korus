@@ -240,6 +240,12 @@ describe('AppBackendServer', () => {
       payload: { error: 'Unable to load conversation history.' },
     }));
     expect(JSON.stringify(events)).not.toContain('provider-only detail');
+    // A new desktop opts into a request-level error; released/mobile clients
+    // above retain their successful snapshot response and safe failure event.
+    await expect(server.handleMessage({ jsonrpc: '2.0', id: 'strict-history', method: 'agent/conversation/load',
+      params: { agentId: snapshot.agents[0]!.id, reportFailure: true } })).rejects.toThrow('Unable to load conversation history.');
+    await expect(server.handleMessage({ jsonrpc: '2.0', id: 'strict-recovery', method: 'agent/conversation/load',
+      params: { agentId: snapshot.agents[0]!.id, omitSnapshot: true, reportFailure: true } })).rejects.toThrow('Unable to load conversation history.');
     await server.close();
   });
 

@@ -626,6 +626,7 @@ export class AppBackendServer {
   private readonly recoveryTurns = new Map<string, string>();
   private readonly flagResetTurns = new WeakMap<Agent, Set<string>>();
   private readonly stoppingAgents = new Set<string>();
+  private readonly cancelledStartupResumes = new Set<string>();
   private closing = false;
   private readonly providerConnections?: ProviderConnections;
 
@@ -1271,11 +1272,14 @@ export class AppBackendServer {
       delete agent.autoResumePending;
       await this.persistSnapshotOnly();
       if (this.closing || this.snapshot.general.autoResumeOnStartup === false || !conversationId || !this.snapshot.agents.includes(agent)
-        || agent.backend !== backend || agentConversationId(agent) !== conversationId || agent.status.type !== 'idle') continue;
-      try { await this.agentConversations.continueInterruptedTurn(agent.id); }
+        || agent.backend !== backend || agentConversationId(agent) !== conversationId || agent.status.type !== 'idle'
+        || this.cancelledStartupResumes.has(agent.id)) continue;
+      try { await this.agentConversations.continueInterruptedTurn(agent.id, () => !this.closing
+        && !this.cancelledStartupResumes.has(agent.id) && this.snapshot.agents.includes(agent)
+        && agentConversationId(agent) === conversationId); }
       catch (error) {
         warnMain('startup', 'could not resume interrupted work', { agentId: agent.id, message: String(error) });
-        if (!this.closing && this.snapshot.agents.includes(agent) && agent.status.type === 'idle' && !agent.autoResumePending) {
+        if (!this.closing && !this.cancelledStartupResumes.has(agent.id) && this.snapshot.agents.includes(agent) && agent.status.type === 'idle' && !agent.autoResumePending) {
           this.applyAndEmitBackendEvent({ agentId: agent.id, type: 'agent.statusChanged',
             payload: { type: 'error', message: 'Could not resume interrupted work. Try again manually.' } });
         }
@@ -2732,26 +2736,28 @@ export class AppBackendServer {
       }
       case backendMethods.agentConversationLoad: {
         const agentId = requireAgentId(message.params);
+        const reportFailure = requireRecord(message.params).reportFailure === true;
+        const loadParams = { agentId, ...(reportFailure ? { reportFailure: true } : {}) };
         // Explicit desktop opt-in: legacy/mobile loads retain their full snapshot
         // response and workspace refresh. Remote routes keep their composite snapshot
         // projection for compatibility with older owning daemons.
         if (requireRecord(message.params).omitSnapshot === true && (await this.locationForAgentId(agentId))?.kind === 'local') {
-          return this.routeAgentResultRequest(message.id, agentId, backendMethods.agentConversationLoad, { agentId, omitSnapshot: true }, async (agent) => {
+          return this.routeAgentResultRequest(message.id, agentId, backendMethods.agentConversationLoad, { ...loadParams, omitSnapshot: true }, async (agent) => {
             if (handoffInProgress(agent)) throw new Error('Wait for the handoff to finish.');
             const boundSession = JSON.stringify(agent.backendSession ?? null);
-            await this.agentConversations.hydrate(agentId);
+            await this.agentConversations.hydrate(agentId, reportFailure);
             // A rebound session reference is only delivered by the snapshot, and
             // provider frames carrying the new identity would not match without it.
             return JSON.stringify(this.localAgentForId(agentId)?.backendSession ?? null) === boundSession ? null : this.snapshot;
           });
         }
-        return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentConversationLoad, { agentId }, async () => {
+        return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentConversationLoad, loadParams, async () => {
           const fixture = missionScreenshotConversation(this.snapshot, agentId);
           if (fixture) {
             this.applyAndEmitBackendEvent({ agentId, backend: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: fixture } });
             return this.snapshot;
           }
-          await this.agentConversations.hydrateAndRefresh(agentId);
+          await this.agentConversations.hydrateAndRefresh(agentId, reportFailure);
           return this.snapshot;
         });
       }
@@ -3114,6 +3120,7 @@ export class AppBackendServer {
         if (location?.kind === 'remote') await this.tasks?.blockParent(agentId);
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentInterrupt, { agentId }, async (agent) => {
           this.stoppingAgents.add(agent.id);
+          this.cancelledStartupResumes.add(agent.id);
           try {
             await this.missionExecution.stopAgent(agent.id);
             this.recoveryTurns.delete(agent.id);
@@ -4228,10 +4235,10 @@ export class AppBackendServer {
     const reconciliation = (async () => {
       const localCodexAgents = this.snapshot.agents.filter((agent) => agent.backend === 'codex' && !agent.sharedConversation && !this.remoteTeams.connectionIdForAgent(agent));
       try {
-        await this.driverRpc!.handle(backendMethods.driverConversationsReconcile, {
+        await this.agentConversations.reconcile(localCodexAgents, async () => { await this.driverRpc!.handle(backendMethods.driverConversationsReconcile, {
           backend: 'codex',
           agents: localCodexAgents,
-        });
+        }); });
       } catch (error) {
         this.conversationsReconciliation = undefined;
         warnMain('sessions', 'conversation archive reconciliation failed', {
