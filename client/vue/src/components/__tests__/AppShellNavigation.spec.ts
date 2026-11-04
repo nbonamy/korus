@@ -54,6 +54,17 @@ describe('AppShellNavigation', () => {
     expect(animating()).toBeGreaterThan(0);
   });
 
+  it('lists only the agents of a feature, with no rail and nothing that creates anything', async () => {
+    const snapshot = createInitialSnapshot();
+    const wrapper = mountNavigation(snapshot, true, true);
+    await wrapper.setProps({ hideTeamRail: true, featureAgentIds: [snapshot.agents[0]!.id] });
+    expect(wrapper.find('.team-rail').exists()).toBe(false);
+    expect(wrapper.findAll('.agent-sidebar__agent')).toHaveLength(1);
+    expect(wrapper.find('.agent-sidebar__start-work').exists()).toBe(false);
+    expect(wrapper.find('[data-group-kind="create"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toMatch(/Quick chat|New mission|Add project/);
+  });
+
   it('forwards team-rail navigation as semantic shell actions', () => {
     const wrapper = mountNavigation();
     const rail = wrapper.getComponent({ name: 'TeamRail' });
