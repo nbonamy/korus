@@ -16,6 +16,12 @@ export type FeatureAgentRequest = { agentId: string; branch: string } & (
 export function isDefaultFeatureBranch(branch: string, agents: readonly Agent[]): boolean {
   return branch === 'main' || branch === 'master' || agents.some(agent => agent.workspace?.kind === 'git' && agent.workspace.defaultBranch === branch);
 }
+/** The agents of a feature: the team's agents working on that Git branch, as the worktree sidebar groups them. */
+export function featureAgentIds(agents: readonly Agent[], teamId: string | null | undefined, branch: string): string[] {
+  return agents
+    .filter(agent => agent.teamId === teamId && agent.sessionKind !== 'quickChat' && agent.workspace?.kind === 'git' && agent.workspace.branch === branch)
+    .map(agent => agent.id);
+}
 export function featureLabel(labels: Readonly<Record<string, string>> | undefined, branch: string): string {
   const value = labels?.[branch];
   return typeof value === 'string' && value.trim() ? value : branch;

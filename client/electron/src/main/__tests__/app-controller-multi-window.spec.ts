@@ -278,18 +278,22 @@ describe('AppController with several windows', () => {
       internals(controller).openWindow();
       const snapshot = (controller as unknown as { snapshot: { teams: Array<{ id: string }>; agents: Array<{ id: string }> } }).snapshot;
       const teamId = snapshot.teams[0]!.id;
-      const [first, second] = snapshot.agents.map(agent => agent.id);
+      const [first] = snapshot.agents.map(agent => agent.id);
+      // The first agent works on feat1.
+      (snapshot.agents[0] as unknown as { teamId: string; workspace: unknown }).teamId = teamId;
+      (snapshot.agents[0] as unknown as { teamId: string; workspace: unknown }).workspace = { kind: 'git', branch: 'feat1' };
 
       internals(controller).openWindowFromRenderer({ teamId, scope: 'team' });
       expect(host.createWindow).toHaveBeenLastCalledWith(expect.not.objectContaining({ compact: true }));
       expect(internals(controller).getWindowContext(created[1])).toMatchObject({ viewState: { teamId, scope: 'team' } });
 
-      internals(controller).openWindowFromRenderer({ agentIds: [first, 'agent-gone', second], agentId: first, scope: 'feature' });
-      expect(internals(controller).getWindowContext(created[2])).toMatchObject({ viewState: { agentIds: [first, second], scope: 'feature' } });
+      internals(controller).openWindowFromRenderer({ teamId, branch: 'feat1', agentId: first, scope: 'feature' });
+      expect(internals(controller).getWindowContext(created[2])).toMatchObject({ viewState: { teamId, branch: 'feat1', scope: 'feature' } });
 
       host.createWindow.mockClear();
       internals(controller).openWindowFromRenderer({ teamId: 'team-gone', scope: 'team' });
-      internals(controller).openWindowFromRenderer({ agentIds: ['agent-gone'], scope: 'feature' });
+      internals(controller).openWindowFromRenderer({ teamId, branch: 'feat-gone', scope: 'feature' });
+      internals(controller).openWindowFromRenderer({ teamId: 'team-gone', branch: 'feat1', scope: 'feature' });
       expect(host.createWindow).not.toHaveBeenCalled();
     });
 
@@ -396,7 +400,7 @@ describe('AppController with several windows', () => {
       internals(controller).openWindow();
       internals(controller).openWindow({ agentId: agentA, scope: 'agent' });
       internals(controller).openWindow({ teamId, scope: 'team' });
-      internals(controller).openWindow({ agentIds: [agentA, agentB], agentId: agentA, scope: 'feature' });
+      internals(controller).openWindow({ teamId, branch: 'feat1', agentId: agentA, scope: 'feature' });
       created.forEach((window, index) => { window.getNormalBounds = () => frame(index * 50).bounds; });
       created[1]!.isMaximized = () => true;
 
@@ -411,7 +415,7 @@ describe('AppController with several windows', () => {
         { viewState: null, frame: frame(0) },
         { viewState: { agentId: agentA, scope: 'agent' }, frame: { ...frame(50), isMaximized: true } },
         { viewState: { teamId, scope: 'team' }, frame: frame(100) },
-        { viewState: { agentIds: [agentA, agentB], agentId: agentA, scope: 'feature' }, frame: frame(150) },
+        { viewState: { teamId, branch: 'feat1', agentId: agentA, scope: 'feature' }, frame: frame(150) },
       ]);
     });
 
@@ -463,13 +467,16 @@ describe('AppController with several windows', () => {
 
     it('brings every saved window back in its place, skipping those that cannot open again', () => {
       const { controller, created } = layoutController();
-      const snapshot = (controller as unknown as { snapshot: { agents: Array<{ id: string }> } }).snapshot;
+      const snapshot = (controller as unknown as { snapshot: { agents: Array<{ id: string; teamId?: string; workspace?: unknown }>; teams: Array<{ id: string }> } }).snapshot;
       const agentA = snapshot.agents[0]!.id;
+      const teamId = snapshot.teams[0]!.id;
+      snapshot.agents[0]!.teamId = teamId;
+      snapshot.agents[0]!.workspace = { kind: 'git', branch: 'feat1' };
       writeFileSync(file, JSON.stringify({ version: 1, windows: [
         { viewState: null, frame: frame(0) },
         { viewState: { agentId: agentA, scope: 'agent' }, frame: frame(40) },
         { viewState: { agentId: 'agent-gone', scope: 'agent' }, frame: frame(80) },
-        { viewState: { agentIds: [agentA], agentId: agentA, scope: 'feature' }, frame: { ...frame(120), isMaximized: true } },
+        { viewState: { teamId, branch: 'feat1', agentId: agentA, scope: 'feature' }, frame: { ...frame(120), isMaximized: true } },
       ] }));
 
       internals(controller).openStartupWindows();
@@ -483,7 +490,7 @@ describe('AppController with several windows', () => {
       expect(created.map(window => internals(controller).getWindowContext(window).viewState)).toEqual([
         null,
         { agentId: agentA, scope: 'agent' },
-        { agentIds: [agentA], agentId: agentA, scope: 'feature' },
+        { teamId, branch: 'feat1', agentId: agentA, scope: 'feature' },
       ]);
     });
 

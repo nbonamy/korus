@@ -73,7 +73,7 @@
       :mission-creation-pending="missionCreationPending"
       :phone-scope="compactViewport"
       :hide-team-rail="hideTeamRail"
-      :feature-agent-ids="featureWindow ? windowState.agentIds.value : undefined"
+      :feature-agent-ids="featureWindow ? featureAgents : undefined"
       @create-mission="createNewMission"
       @delete-mission="deleteMissionFromSidebar"
       @create-agent-in-mission-worktree="createAgentInMissionWorktree"
@@ -677,6 +677,7 @@ import { defaultTeamColor } from '@workspace/core/team-colors';
 import { agentMentionGroups as projectAgentMentionGroups } from './agent-mention-groups';
 import { appApi, appHostCapabilities, appClientPlatform, appPlatformActions } from '../platform-api';
 import { windowState } from '../window-state';
+import { featureAgentIds } from '@workspace/core/feature-groups';
 import { codeReviewSettingsKey, useCodeReviewSettings } from './code-review-settings';
 import { diffVizSettingsKey } from './diff-viz-settings';
 import AgentDialog from './AgentDialog.vue';
@@ -1177,6 +1178,8 @@ const agentSidebarCollapsed = ref(false);
 // A window can show less than the whole workspace: a team or a feature without the rail, or one agent without any navigation.
 const windowScope = computed(() => windowState.scope.value);
 const featureWindow = computed(() => windowScope.value === 'feature');
+// A feature is a branch of a team: its agents are whatever the team has on it now, so new ones show up.
+const featureAgents = computed(() => featureAgentIds(props.snapshot.agents, windowState.teamId.value, windowState.branch.value ?? ''));
 const chromeless = computed(() => windowScope.value === 'agent');
 const hideTeamRail = computed(() => windowScope.value !== 'workspace');
 function openInNewWindow(viewState: import('@workspace/core/windows').WindowViewState): void {
@@ -1184,7 +1187,11 @@ function openInNewWindow(viewState: import('@workspace/core/windows').WindowView
 }
 const openAgentWindow = (agentId: string): void => openInNewWindow({ agentId, scope: 'agent' });
 const openTeamWindow = (teamId: string): void => openInNewWindow({ teamId, scope: 'team' });
-const openFeatureWindow = (agentIds: string[]): void => openInNewWindow({ agentIds, agentId: agentIds[0], scope: 'feature' });
+function openFeatureWindow(branch: string): void {
+  const teamId = activeTeam.value?.id;
+  const agentId = featureAgentIds(props.snapshot.agents, teamId, branch)[0];
+  if (teamId && agentId) openInNewWindow({ scope: 'feature', teamId, branch, agentId });
+}
 const compactViewport = useCompactViewport();
 const compactNavOpen = ref(false);
 function collapseSidebar(): void {
@@ -1404,7 +1411,7 @@ watch(() => [windowScope.value, windowState.teamId.value, props.snapshot.teams, 
   const exists = (id: string | null) => agents.some((agent) => agent.id === id);
   const gone = scope === 'team' ? !teams.some((team) => team.id === teamId)
     : scope === 'agent' ? !exists(windowState.agentId.value)
-      : !windowState.agentIds.value.some(exists);
+      : !featureAgentIds(agents, teamId, windowState.branch.value ?? '').length;
   if (gone) window.close();
 });
 function deleteMissionFromSidebar(id: string): void {
@@ -2798,7 +2805,7 @@ const navigation = ref<InstanceType<typeof AppShellNavigation> | null>(null);
 const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
   state: {
     activeTeam: () => activeTeam.value,
-    activeTeamAgents: () => featureWindow.value ? activeTeamAgents.value.filter(agent => windowState.agentIds.value.includes(agent.id)) : activeTeamAgents.value,
+    activeTeamAgents: () => featureWindow.value ? activeTeamAgents.value.filter(agent => featureAgents.value.includes(agent.id)) : activeTeamAgents.value,
     quickSwitchAgentIds: () => navigation.value?.quickSwitchAgentIds ?? activeTeamAgents.value.map(agent => agent.id),
     agents: () => props.snapshot.agents,
     attachmentsEnabled: () => props.backendCapabilities.attachments,

@@ -9,6 +9,11 @@ const frame = { bounds: { x: 10, y: 20, width: 1200, height: 800 }, isMaximized:
 const snapshot = createInitialSnapshot();
 const [agentA, agentB] = snapshot.agents.map(agent => agent.id) as [string, string];
 const teamId = snapshot.teams[0]!.id;
+// Two features of the team: agent A works on feat1, agent B on feat2.
+snapshot.agents[0]!.teamId = teamId;
+snapshot.agents[1]!.teamId = teamId;
+snapshot.agents[0]!.workspace = { kind: 'git', branch: 'feat1' } as never;
+snapshot.agents[1]!.workspace = { kind: 'git', branch: 'feat2' } as never;
 const layout = (...windows: WindowLayout['windows']): WindowLayout => ({ version: 1, windows });
 
 describe('window layout', () => {
@@ -20,7 +25,7 @@ describe('window layout', () => {
         { viewState: null, frame },
         { viewState: { agentId: agentA, scope: 'agent' }, frame: { ...frame, isMaximized: true } },
         { viewState: { teamId, scope: 'team' }, frame },
-        { viewState: { agentIds: [agentA, agentB], agentId: agentA, scope: 'feature' }, frame },
+        { viewState: { teamId, branch: 'feat1', agentId: agentA, scope: 'feature' }, frame },
       );
       writeWindowLayout(file, saved);
       expect(readWindowLayout(file)).toEqual(saved);
@@ -47,19 +52,20 @@ describe('window layout', () => {
 });
 
 describe('restorable windows', () => {
-  it('drops windows whose team or agent is gone, and keeps the rest of a feature', () => {
+  it('drops windows whose team, agent or feature is gone', () => {
     const restored = restorableWindows(layout(
       { viewState: { agentId: agentA, scope: 'agent' }, frame },
       { viewState: { agentId: 'agent-gone', scope: 'agent' }, frame },
       { viewState: { teamId: 'team-gone', scope: 'team' }, frame },
       { viewState: { teamId, scope: 'team' }, frame },
-      { viewState: { agentIds: ['agent-gone', agentB], agentId: 'agent-gone', scope: 'feature' }, frame },
-      { viewState: { agentIds: ['agent-gone'], scope: 'feature' }, frame },
+      { viewState: { teamId, branch: 'feat2', agentId: 'agent-gone', scope: 'feature' }, frame },
+      { viewState: { teamId, branch: 'feat-gone', scope: 'feature' }, frame },
+      { viewState: { teamId: 'team-gone', branch: 'feat1', scope: 'feature' }, frame },
     ), snapshot);
     expect(restored.map(window => window.viewState)).toEqual([
       { agentId: agentA, scope: 'agent' },
       { teamId, scope: 'team' },
-      { agentIds: [agentB], agentId: agentB, scope: 'feature' },
+      { teamId, branch: 'feat2', agentId: agentB, scope: 'feature' },
     ]);
   });
 

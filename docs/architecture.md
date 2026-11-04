@@ -65,8 +65,9 @@ the local desktop to show UI or use an OS affordance belongs in Electron main.
   always opened with an initial view state, so New Window and every "Open in New
   Window" entry share one call.
 - A window has a scope. A workspace window shows everything. A team window shows one
-  team with its sidebar and no rail. A feature window is the same for one feature: its
-  sidebar lists only that feature's agents, with nothing that creates or opens anything
+  team with its sidebar and no rail. A feature window is the same for one feature, which
+  is a team and a Git branch: its sidebar lists the team's agents on that branch as they
+  are now, so agents added to it appear, with nothing that creates or opens anything
   else, and the conversation is always a single pane. An agent window shows one agent
   with no rail or sidebar; it is smaller and never restores or saves the workspace
   frame. Scoped windows ignore navigation they cannot show, never overwrite the team's

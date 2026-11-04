@@ -308,13 +308,13 @@ describe('AgentSidebar sessions', () => {
       await flushPromises();
       expect(labels()).toStrictEqual(['Open in New Window', 'Rename', 'Delete']);
       document.body.querySelector<HTMLElement>('[role="menuitem"]')!.click(); await flushPromises();
-      expect(wrapper.emitted('open-feature-window')?.at(-1)).toStrictEqual([['feature-agent']]);
+      expect(wrapper.emitted('open-feature-window')?.at(-1)).toStrictEqual(['feat1']);
 
       await main.get('header').trigger('contextmenu', { clientX: 80, clientY: 160 });
       await flushPromises();
       expect(labels()).toStrictEqual(['Open in New Window']);
       document.body.querySelector<HTMLElement>('[role="menuitem"]')!.click(); await flushPromises();
-      expect(wrapper.emitted('open-feature-window')?.at(-1)).toStrictEqual([[source.id]]);
+      expect(wrapper.emitted('open-feature-window')?.at(-1)).toStrictEqual(['main']);
     } finally { wrapper.unmount(); setElectronTestClient(undefined); localStorage.removeItem('app:agentOrganization:feature-window'); }
   });
 

@@ -7,7 +7,7 @@ afterEach(() => {
   windowState.scope.value = 'workspace';
   windowState.teamId.value = null;
   windowState.agentId.value = null;
-  windowState.agentIds.value = [];
+  windowState.branch.value = null;
   document.body.innerHTML = '';
 });
 
@@ -26,15 +26,46 @@ describe('AppShell in a window that shows less than the workspace', () => {
     expect(wrapper.classes()).toContain('app-shell--no-rail');
   });
 
-  it('shows only the agents of a feature, with nothing that creates anything', () => {
-    const snapshot = createInitialSnapshot();
-    windowState.scope.value = 'feature';
-    windowState.agentIds.value = [snapshot.agents[0]!.id];
-    const wrapper = mountShell({ realAgentSidebar: true, stubAgentWorkspace: true, snapshot });
-    expect(wrapper.find('.team-rail').exists()).toBe(false);
-    expect(wrapper.findAll('.agent-sidebar__agent')).toHaveLength(1);
-    expect(wrapper.find('.agent-sidebar__start-work').exists()).toBe(false);
-    expect(wrapper.text()).not.toMatch(/Quick chat|New mission|Add project/);
+  describe('a feature window', () => {
+    function featureSnapshot() {
+      const snapshot = createInitialSnapshot();
+      const teamId = snapshot.teams[0]!.id;
+      snapshot.agents.forEach((agent, index) => {
+        agent.teamId = teamId;
+        agent.workspace = { kind: 'git', branch: index === 0 ? 'feat1' : 'feat2' } as never;
+      });
+      windowState.scope.value = 'feature';
+      windowState.teamId.value = teamId;
+      windowState.branch.value = 'feat1';
+      return snapshot;
+    }
+
+    it('shows only the agents of its branch, with nothing that creates anything', () => {
+      const wrapper = mountShell({ realAgentSidebar: true, stubAgentWorkspace: true, snapshot: featureSnapshot() });
+      expect(wrapper.find('.team-rail').exists()).toBe(false);
+      expect(wrapper.findAll('.agent-sidebar__agent')).toHaveLength(1);
+      expect(wrapper.find('.agent-sidebar__start-work').exists()).toBe(false);
+      expect(wrapper.text()).not.toMatch(/Quick chat|New mission|Add project/);
+    });
+
+    it('shows an agent added to the branch afterwards, and not one added to another', async () => {
+      const snapshot = featureSnapshot();
+      const wrapper = mountShell({ realAgentSidebar: true, stubAgentWorkspace: true, snapshot });
+      expect(wrapper.findAll('.agent-sidebar__agent')).toHaveLength(1);
+
+      const added = (id: string, branch: string) => ({ ...structuredClone(snapshot.agents[0]!), id, name: id, workspace: { kind: 'git', branch } as never });
+      const next = structuredClone(snapshot);
+      next.agents.push(added('agent-other', 'feat2'));
+      next.teams[0]!.agentIds.push('agent-other');
+      await wrapper.setProps({ snapshot: next });
+      expect(wrapper.findAll('.agent-sidebar__agent')).toHaveLength(1);
+
+      const withNew = structuredClone(next);
+      withNew.agents.push(added('agent-new', 'feat1'));
+      withNew.teams[0]!.agentIds.push('agent-new');
+      await wrapper.setProps({ snapshot: withNew });
+      expect(wrapper.findAll('.agent-sidebar__agent')).toHaveLength(2);
+    });
   });
 
   it('has no navigation at all in a window for one agent', () => {

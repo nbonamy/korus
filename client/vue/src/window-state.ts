@@ -24,12 +24,12 @@ export function createWindowState() {
   const windowId = ref<number | null>(null);
   const nativeOwners = ref<NativeOwnerEntry[]>([]);
   const scope = ref<WindowScope>('workspace');
-  /** The team a team window is about; it stays selected whatever the other windows do. */
+  /** The team a team or feature window is about; it stays selected whatever the other windows do. */
   const teamId = ref<string | null>(null);
   /** The agent an agent window is about. */
   const agentId = ref<string | null>(null);
-  /** The agents of a feature window. */
-  const agentIds = ref<string[]>([]);
+  /** The Git branch a feature window is about. Its agents are worked out from what the team has on it, so new ones appear. */
+  const branch = ref<string | null>(null);
   let unsubscribe: Array<() => void> = [];
   let reportedAgentId: string | null | undefined;
   // Main learns this window's selection only after the initial view state was applied, or it would overwrite it.
@@ -44,9 +44,9 @@ export function createWindowState() {
     windowId.value = context.windowId;
     nativeOwners.value = context.nativeOwners;
     scope.value = context.viewState?.scope ?? 'workspace';
-    teamId.value = scope.value === 'team' ? context.viewState?.teamId ?? null : null;
+    teamId.value = scope.value === 'team' || scope.value === 'feature' ? context.viewState?.teamId ?? null : null;
     agentId.value = scope.value === 'agent' ? context.viewState?.agentId ?? null : null;
-    agentIds.value = scope.value === 'feature' ? context.viewState?.agentIds?.filter(host.agentExists) ?? [] : [];
+    branch.value = scope.value === 'feature' ? context.viewState?.branch ?? null : null;
     for (const [agentId, draft] of Object.entries(context.composerDrafts)) host.applyDraft(agentId, draft);
     if (teamId.value && host.teamExists(teamId.value)) host.showTeam(teamId.value);
     const initialAgentId = context.viewState?.agentId;
@@ -78,7 +78,7 @@ export function createWindowState() {
     return !owner || owner.windowId === windowId.value;
   }
 
-  return { windowId, nativeOwners, scope, teamId, agentId, agentIds, start, stop, reportSelection, ownsNative };
+  return { windowId, nativeOwners, scope, teamId, agentId, branch, start, stop, reportSelection, ownsNative };
 }
 
 export const windowState = createWindowState();

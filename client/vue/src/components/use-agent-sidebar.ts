@@ -46,7 +46,7 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
   function featureAction(action: string): void {
     const group = contextMenuFeature.value;
     contextMenuFeature.value = null;
-    if (action === 'open-window' && group?.sessions.length) emit('open-feature-window', group.sessions.map(session => session.agentId));
+    if (action === 'open-window' && group?.branch) emit('open-feature-window', group.branch);
     if (!group?.branch || group.protected) return;
     if (action === 'rename') emit('rename-feature', { branch: group.branch, label: group.label });
     if (action === 'delete') emit('delete-feature', { branch: group.branch, label: group.label });

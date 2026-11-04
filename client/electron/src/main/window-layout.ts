@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { AppSnapshot } from '@workspace/core/contracts';
+import { featureAgentIds } from '@workspace/core/feature-groups';
 import { isWindowViewState, type WindowViewState } from '@workspace/core/windows';
 
 export type WindowFrame = {
@@ -51,8 +52,8 @@ function savedWindow(entry: unknown): SavedWindow | null {
 }
 
 /**
- * The saved windows that can open again: a window about a team, an agent or a feature that is gone is dropped,
- * and a feature keeps the agents that remain. Windows that show the workspace forget a selection that is gone.
+ * The saved windows that can open again: a window about a team, an agent or a feature that is gone is dropped.
+ * Windows that show the workspace, or a feature, forget a selection that is gone.
  */
 export function restorableWindows(layout: WindowLayout, snapshot: AppSnapshot): SavedWindow[] {
   const hasAgent = (id: string | undefined): id is string => id !== undefined && snapshot.agents.some(agent => agent.id === id);
@@ -62,9 +63,9 @@ export function restorableWindows(layout: WindowLayout, snapshot: AppSnapshot): 
     if (scope === 'agent') return hasAgent(state?.agentId) ? [saved] : [];
     if (scope === 'team') return snapshot.teams.some(team => team.id === state?.teamId) ? [saved] : [];
     if (scope === 'feature') {
-      const agentIds = (state?.agentIds ?? []).filter(hasAgent);
+      const agentIds = featureAgentIds(snapshot.agents, state?.teamId, state?.branch ?? '');
       if (!agentIds.length) return [];
-      return [{ ...saved, viewState: { ...state, agentIds, ...(hasAgent(state?.agentId) ? {} : { agentId: agentIds[0]! }) } }];
+      return [hasAgent(state?.agentId) ? saved : { ...saved, viewState: { ...state, agentId: agentIds[0]! } }];
     }
     if (state?.agentId && !hasAgent(state.agentId)) return [{ ...saved, viewState: null }];
     return [saved];

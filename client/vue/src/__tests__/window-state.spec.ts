@@ -80,11 +80,12 @@ describe('window state', () => {
     expect(state.teamId.value).toBe('team-1');
   });
 
-  it('keeps the agents of a feature window that still exist', async () => {
-    const { host, state } = setup({ windowId: 1, viewState: { agentIds: ['agent-1', 'agent-2'], scope: 'feature' }, nativeOwners: [], composerDrafts: {} });
-    (host as { agentExists: (id: string) => boolean }).agentExists = (id) => id !== 'agent-2';
+  it('selects the team of a feature window and remembers its branch', async () => {
+    const { host, state } = setup({ windowId: 1, viewState: { teamId: 'team-1', branch: 'feat1', scope: 'feature' }, nativeOwners: [], composerDrafts: {} });
     await state.start(host);
-    expect(state.agentIds.value).toEqual(['agent-1']);
+    expect(host.showTeam).toHaveBeenCalledWith('team-1');
+    expect(state.teamId.value).toBe('team-1');
+    expect(state.branch.value).toBe('feat1');
   });
 
   it('is inert without a desktop host', async () => {

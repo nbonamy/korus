@@ -9,30 +9,30 @@ import type { CodexPromptPart } from '@codex-app-sdk/core/surface';
  */
 export type WindowViewState = {
   agentId?: string;
+  /** The team of a team window, and of a feature window. */
   teamId?: string;
-  /** The agents of a feature, shown together. */
-  agentIds?: string[];
+  /** The Git branch that makes a feature: its agents are the team's agents working on it. */
+  branch?: string;
   scope?: WindowScope;
 };
 
 /**
  * What a window shows. `workspace` is everything. `team` is one team with its sidebar but no rail.
- * `agent` is a single agent and `feature` the agents of one feature, both with no navigation around them.
+ * `feature` is the same for one feature, listing only the agents on its branch. `agent` is a single agent
+ * with no navigation around it.
  */
 export type WindowScope = 'workspace' | 'team' | 'agent' | 'feature';
 
-const maxFeatureWindowAgents = 16;
-
 export function isWindowViewState(value: unknown): value is WindowViewState {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const { agentId, teamId, agentIds, scope } = value as { agentId?: unknown; teamId?: unknown; agentIds?: unknown; scope?: unknown };
+  const { agentId, teamId, branch, scope } = value as { agentId?: unknown; teamId?: unknown; branch?: unknown; scope?: unknown };
   if (agentId !== undefined && typeof agentId !== 'string') return false;
   if (teamId !== undefined && typeof teamId !== 'string') return false;
-  if (agentIds !== undefined && (!Array.isArray(agentIds) || agentIds.length > maxFeatureWindowAgents || agentIds.some(id => typeof id !== 'string'))) return false;
+  if (branch !== undefined && typeof branch !== 'string') return false;
   if (scope !== undefined && scope !== 'workspace' && scope !== 'team' && scope !== 'agent' && scope !== 'feature') return false;
   if (scope === 'agent') return typeof agentId === 'string';
   if (scope === 'team') return typeof teamId === 'string';
-  if (scope === 'feature') return Array.isArray(agentIds) && agentIds.length > 0;
+  if (scope === 'feature') return typeof teamId === 'string' && typeof branch === 'string' && branch.length > 0;
   return true;
 }
 

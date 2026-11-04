@@ -185,7 +185,7 @@ const emit = defineEmits<{
   'delete-mission': [id: string];
   'create-agent-in-mission-worktree': [payload: { missionId: string; worktreePath: string }];
   'open-feature': [agentIds: string[]];
-  'open-feature-window': [agentIds: string[]];
+  'open-feature-window': [branch: string];
   'open-team-window': [teamId: string];
   'rename-feature': [feature: { branch: string; label: string }];
   'delete-feature': [feature: { branch: string; label: string }];

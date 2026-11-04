@@ -20,6 +20,7 @@ import { registerCodexNativeIpc, sendIpcEvent, TypedIpcMain } from '@codex-app-s
 import { AgentActivityPowerSaveBlocker } from './agent-activity-power-save-blocker';
 import { initializeMainLogging, installProcessErrorLogging, logMain, warnMain } from './log';
 import { createMainWindow } from './main-window';
+import { featureAgentIds } from '@workspace/core/feature-groups';
 import { WindowRegistry } from './window-registry';
 import { readWindowLayout, restorableWindows, writeWindowLayout, type WindowFrame, type WindowLayout } from './window-layout';
 import { isWindowViewState, type ComposerDraft, type NativeResource, type WindowContext, type WindowViewState } from '@workspace/core/windows';
@@ -876,9 +877,8 @@ export class AppController {
     if (!snapshot) return;
     if (viewState.agentId && !snapshot.agents.some(agent => agent.id === viewState.agentId)) return;
     if (viewState.teamId && !snapshot.teams.some(team => team.id === viewState.teamId)) return;
-    const agentIds = viewState.agentIds?.filter(id => snapshot.agents.some(agent => agent.id === id));
-    if (viewState.agentIds && !agentIds?.length) return;
-    this.openWindow({ ...viewState, ...(agentIds ? { agentIds } : {}) });
+    if (viewState.scope === 'feature' && !featureAgentIds(snapshot.agents, viewState.teamId, viewState.branch ?? '').length) return;
+    this.openWindow(viewState);
   }
 
   /**
