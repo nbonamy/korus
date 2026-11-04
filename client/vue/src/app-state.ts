@@ -1102,7 +1102,8 @@ export function useAppState() {
 
   async function deleteMission(input: import('@workspace/core/missions').DeleteMissionInput) {
     if (!appApi) throw new Error('Missions unavailable.');
-    adoptNavigationSnapshot(await appApi.deleteMission(input));
+    // Deleting a mission does not navigate; a window whose agent is still there stays on it.
+    adoptBackgroundSnapshot(await appApi.deleteMission(input));
   }
 
   async function readMissionArtifact(missionId: string, stage: import('@workspace/core/missions').MissionStage) {
@@ -1161,7 +1162,8 @@ export function useAppState() {
       return;
     }
 
-    adoptNavigationSnapshot(await appApi.closeTeam(teamId));
+    // A window on another team stays put; one whose agent went with the team falls back to the daemon's selection.
+    adoptBackgroundSnapshot(await appApi.closeTeam(teamId));
     await loadActiveAgentCatalogs();
   }
 

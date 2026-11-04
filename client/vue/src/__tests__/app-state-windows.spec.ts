@@ -53,6 +53,33 @@ describe('useAppState in one of several windows', () => {
     expect(state.activeAgent.value?.id).toBe('agent-jesse');
   });
 
+  it('keeps its own agent when another window closes a team or a mission is deleted, and follows the daemon only when its agent is gone', async () => {
+    const initial = createInitialSnapshot();
+    initial.teams.push({ id: 'team-extra', name: 'Extra', avatar: 'EX', color: '#46A857', agentIds: [] });
+    const afterClose = { ...createInitialSnapshot(), activeAgentId: 'agent-dina' };
+    const { state } = await loadWindow({ viewState: { agentId: 'agent-jesse' } }, {
+      getSnapshot: vi.fn().mockResolvedValue(initial),
+      closeTeam: vi.fn().mockResolvedValue(afterClose),
+      deleteMission: vi.fn().mockResolvedValue(afterClose),
+    });
+    await state.closeTeam('team-extra');
+    expect(state.activeAgent.value?.id).toBe('agent-jesse');
+    await state.deleteMission({ missionId: 'mission-1' } as never);
+    expect(state.activeAgent.value?.id).toBe('agent-jesse');
+
+    // When this window's own agent is what went away, it takes the daemon's selection.
+    const withoutJesse = { ...createInitialSnapshot(), activeAgentId: 'agent-dina' };
+    withoutJesse.agents = withoutJesse.agents.filter(agent => agent.id !== 'agent-jesse');
+    withoutJesse.teams.forEach(team => { team.agentIds = team.agentIds.filter(id => id !== 'agent-jesse'); });
+    Object.assign(initial, { teams: [...initial.teams] });
+    const second = await loadWindow({ viewState: { agentId: 'agent-jesse' } }, {
+      getSnapshot: vi.fn().mockResolvedValue(initial),
+      closeTeam: vi.fn().mockResolvedValue(withoutJesse),
+    });
+    await second.state.closeTeam('team-extra');
+    expect(second.state.activeAgent.value?.id).toBe('agent-dina');
+  });
+
   it('tells main which agent this window shows as the user switches', async () => {
     const { app, state } = await loadWindow();
     await state.selectAgent('agent-jesse');
