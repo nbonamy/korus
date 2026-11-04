@@ -441,6 +441,30 @@ describe('state persistence', () => {
     });
   });
 
+  it('migrates the earlier keep-unlocked switch to the Always lock prevention mode and rewrites it on the next save', async () => {
+    const home = await tempHome();
+    const store = new AppStateStore(home);
+    await store.save(createInitialSnapshot());
+    const file = path.join(home, 'settings.json');
+    const legacy = JSON.parse(await readFile(file, 'utf8'));
+    legacy.data.settings.plugins = { computerUseEnabled: true, chromeEnabled: false, computerUseKeepUnlocked: true };
+    await writeFile(file, JSON.stringify(legacy));
+    const reloadedStore = new AppStateStore(home);
+    const reloaded = await reloadedStore.load();
+    expect(reloaded.general.plugins).toStrictEqual({ computerUseEnabled: true, chromeEnabled: false, computerUseLockPrevention: 'always', computerUseLockHold: false });
+    await reloadedStore.save(reloaded);
+    const written = JSON.parse(await readFile(file, 'utf8')).data.settings.plugins;
+    expect(written).toMatchObject({ computerUseLockPrevention: 'always' });
+    expect(written).not.toHaveProperty('computerUseKeepUnlocked');
+  });
+  it('keeps an on-demand hold through a restart', async () => {
+    const home = await tempHome();
+    const snapshot = createInitialSnapshot();
+    snapshot.general.plugins = { computerUseEnabled: true, chromeEnabled: false, computerUseLockPrevention: 'onDemand', computerUseLockHold: { until: 1_800_000_000_000 } };
+    await new AppStateStore(home).save(snapshot);
+    expect((await new AppStateStore(home).load()).general.plugins).toStrictEqual(snapshot.general.plugins);
+  });
+
   it('migrates a persisted Design session to Visualize state', () => {
     const snapshot = createInitialSnapshot();
     const persisted = structuredClone(persistedStateFromSnapshot(snapshot)) as unknown as { agents: Array<Record<string, unknown>> };

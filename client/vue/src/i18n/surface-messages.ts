@@ -1099,6 +1099,15 @@ export const surfaceMessages = {
     "gitHubOAuthIsNotConfigured": "GitHub OAuth is not configured",
     "issuesAndPullRequests": "Issues and pull requests"
   },
+  "computerUseLock": {
+    "enable": "Prevent automatic locking",
+    "forOneHour": "For 1 hour",
+    "untilClock": "Until {time}",
+    "untilTurnedOff": "Until I turn it off",
+    "activeUntil": "Auto-lock is off until {time}",
+    "activeIndefinitely": "Auto-lock is off",
+    "turnOn": "Turn auto-lock back on"
+  },
   "settingsMenu": {
     "loadFailed": "Couldn’t load usage",
     "remainingValue": "{value} remaining",
@@ -1125,8 +1134,11 @@ export const surfaceMessages = {
     "computerUse": "Computer Use",
     "letAgentsInspectAndControlMacOSAppsThroughTheLocalComput": "Let agents inspect and control macOS apps through the local Computer Use helper",
     "enableComputerUse": "Enable Computer Use",
-    "keepMacUnlockedDuringComputerUse": "Keep Mac unlocked for Computer Use",
-    "keepTheScreenOnWhileAnAgentUsesYourMacSoItDoesNotLockTurnO": `Keep your Mac awake and prevent automatic locking while ${product.name} is running, even when idle. This weakens your Mac’s security.`,
+    "keepMacUnlockedDuringComputerUse": "Prevent automatic locking",
+    "keepTheScreenOnWhileAnAgentUsesYourMacSoItDoesNotLockTurnO": "Computer Use needs an unlocked screen. With On demand, use the lock in the sidebar to hold off automatic locking for a while. This weakens your Mac’s security.",
+    "lockPreventionOff": "Off",
+    "lockPreventionOnDemand": "On demand",
+    "lockPreventionAlways": "Always",
     "codex": "Codex",
     "chrome": "Chrome",
     "letAgentsWorkWithYourExistingChromeTabsSessionsAndExtens": "Let agents work with your existing Chrome tabs, sessions, and extensions",

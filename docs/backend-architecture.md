@@ -486,12 +486,21 @@ daemon client state, including after restart; relay reconnects do not release it
 Electron applies the remote-access policy only on AC power. Agent activity and
 remote access share a native `prevent-app-suspension` assertion, which protects
 system availability while allowing display sleep and configured automatic locking.
-Computer Use cannot operate a locked session. When the user opts in under
-Settings → Plugins → Computer Use (off by default), Electron holds the single native
-blocker at `prevent-display-sleep` continuously while Computer Use is enabled,
-including idle periods and battery power. Disabling the preference or Computer Use,
-or quitting Korus, releases that protection and falls back to the policy above.
-This prevents automatic locking; manual locking and lid-close sleep remain available.
+Computer Use cannot operate a locked session. Under Settings → Plugins → Computer Use,
+`computerUseLockPrevention` chooses when Electron holds the single native blocker at
+`prevent-display-sleep`, including idle periods and battery power: Off (default),
+On demand or Always. Always holds it whenever Korus runs with Computer Use enabled.
+On demand holds it only while a hold lasts; the lock in the sidebar rail, above the Korus button (shown only in
+this mode, only while Computer Use is enabled) starts one for an hour, until the next
+morning (9:00 local time, or the same day's 9:00 before 5 AM) or until the user turns it
+off, and its open-lock state turns protection back on at once. A hold is the stored
+setting `computerUseLockHold` (`{ until }`, a millisecond expiry or null, or `false`), so it
+survives a restart. Electron ends it by writing `false` through the ordinary settings
+path at the expiry, with no prompt, and also when Computer Use is disabled or another
+mode is chosen; an expiry that passed while Korus was closed is cleared at startup without
+ever holding the display. Quitting Korus releases the blocker and falls back to the policy
+above. The earlier boolean `computerUseKeepUnlocked` migrates to Always. Preventing
+automatic locking does not stop manual locking or lid-close sleep, which macOS controls.
 
 Mobile updates use one authenticated duplex stream per phone. A workspace reset
 and a subscribe-before-read conversation barrier precede ordered provider-native

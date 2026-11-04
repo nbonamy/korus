@@ -1693,3 +1693,22 @@ it('clears Design undo history of removed agents, including ones removed while t
     expect(window.localStorage.getItem('design-history:added-later')).not.toBeNull();
   } finally { wrapper.unmount(); for (const key of Object.keys(window.localStorage)) if (key.startsWith('design-history:')) window.localStorage.removeItem(key); }
 });
+
+it('puts the on-demand lock in the rail above the Korus button and saves its hold through settings', async () => {
+  const snapshot = createInitialSnapshot();
+  snapshot.general.plugins = { computerUseEnabled: true, chromeEnabled: false, computerUseLockPrevention: 'onDemand', computerUseLockHold: false };
+  const updateSettings = vi.fn().mockResolvedValue(undefined);
+  const wrapper = mountRealShell({ snapshot, updateSettings }); await flushPromises();
+  try {
+    // Popovers render inline in this harness.
+    const item = wrapper.findAll('[role="menuitem"]').find(entry => entry.text() === 'Until I turn it off');
+    expect(item).toBeDefined();
+    await item!.trigger('click');
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith({ general: { plugins: { computerUseLockHold: { until: null } } } });
+    await wrapper.setProps({ snapshot: { ...snapshot, general: { ...snapshot.general, plugins: { ...snapshot.general.plugins, computerUseLockHold: { until: null } } } } });
+    expect(wrapper.find('button[aria-label="Auto-lock is off"]').exists()).toBe(true);
+    await wrapper.setProps({ snapshot: { ...snapshot, general: { ...snapshot.general, plugins: { ...snapshot.general.plugins, computerUseLockPrevention: 'always' } } } });
+    expect(wrapper.find('button[aria-label="Prevent automatic locking"]').exists()).toBe(false);
+  } finally { wrapper.unmount(); }
+});

@@ -86,20 +86,22 @@ describe('SettingsPluginsPanel', () => {
     expect(builtInLaunchChatGpt).not.toHaveBeenCalled();
   });
 
-  it('lets the user choose whether Computer Use keeps the Mac unlocked, only while Computer Use is on', async () => {
+  it('lets the user choose when Computer Use prevents automatic locking, only while Computer Use is on', async () => {
     const updateSettings = vi.fn().mockResolvedValue(undefined);
+    const label = 'Prevent automatic locking';
     const off = mount(SettingsPluginsPanel, { props: { settings: { computerUseEnabled: false, chromeEnabled: false }, updateSettings } });
-    expect(off.find('[aria-label="Keep Mac unlocked for Computer Use"]').exists()).toBe(false);
+    expect(off.find(`[aria-label="${label}"]`).exists()).toBe(false);
     const wrapper = mount(SettingsPluginsPanel, {
       props: { settings: { computerUseEnabled: true, chromeEnabled: false }, updateSettings },
     });
-    const toggle = wrapper.get('input[aria-label="Keep Mac unlocked for Computer Use"]');
-    expect((toggle.element as HTMLInputElement).checked).toBe(false);
-    await wrapper.get('[aria-label="Keep Mac unlocked for Computer Use"]').trigger('click');
+    const select = () => wrapper.getComponent({ name: 'ElSelect' });
+    expect(select().props('modelValue')).toBe('off');
+    expect(select().findAllComponents({ name: 'ElOption' }).map(option => option.props('label'))).toEqual(['Off', 'On demand', 'Always']);
+    select().vm.$emit('update:modelValue', 'onDemand');
     await flushPromises();
-    expect(updateSettings).toHaveBeenCalledWith({ general: { plugins: { computerUseKeepUnlocked: true } } });
-    await wrapper.setProps({ settings: { computerUseEnabled: true, chromeEnabled: false, computerUseKeepUnlocked: true } });
-    expect((wrapper.get('input[aria-label="Keep Mac unlocked for Computer Use"]').element as HTMLInputElement).checked).toBe(true);
+    expect(updateSettings).toHaveBeenCalledWith({ general: { plugins: { computerUseLockPrevention: 'onDemand', computerUseLockHold: false } } });
+    await wrapper.setProps({ settings: { computerUseEnabled: true, chromeEnabled: false, computerUseLockPrevention: 'always' } });
+    expect(select().props('modelValue')).toBe('always');
   });
 
   it('enables Computer Use directly without opening the plugin manager', async () => {

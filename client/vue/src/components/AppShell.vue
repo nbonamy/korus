@@ -656,6 +656,7 @@ import { workItemAssignmentKey } from '@workspace/core/work-assignments';
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, shallowRef, watch } from 'vue';
 import { providerUpdatePreviewKey } from './provider-update-preview';
 import { forgetDesignHistory, pruneDesignHistory } from './design-history';
+import { computerUseLockKey } from './computer-use-lock';
 import { codeReviewUncommittedPreviewKey } from './code-review-preview';
 import { useI18n } from 'vue-i18n';
 import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
@@ -1151,6 +1152,13 @@ type PendingMissionReviewDiscussion = {
 };
 
 type AppSurface = 'mission' | 'agent' | 'backlog' | 'automations' | 'settings';
+provide(computerUseLockKey, {
+  state: computed(() => {
+    const plugins = props.snapshot.general.plugins;
+    return { visible: plugins?.computerUseEnabled === true && plugins.computerUseLockPrevention === 'onDemand', hold: plugins?.computerUseLockHold ?? false };
+  }),
+  setHold: hold => props.updateSettings({ general: { plugins: { computerUseLockHold: hold } } }).catch(error => { ElMessage.error(localizedErrorMessage(error, t)); }),
+});
 provide(generalPreferencesKey, createGeneralPreferences(() => props.snapshot.general, general => props.updateSettings({ general })));
 provideBackendChoices(() => props.snapshot, openSettings);
 const reviewSettings = useCodeReviewSettings();

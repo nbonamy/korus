@@ -351,18 +351,33 @@ describe('settings contracts', () => {
     expect(snapshot.general.plugins).toStrictEqual({
       computerUseEnabled: true,
       chromeEnabled: true,
-      computerUseKeepUnlocked: false,
+      computerUseLockPrevention: 'off',
+      computerUseLockHold: false,
     });
   });
 
-  it('leaves keeping the Mac unlocked for Computer Use off until the user turns it on', () => {
+  it('leaves preventing automatic locking for Computer Use off until the user chooses a mode', () => {
     const snapshot = createEmptySnapshot();
-    expect(snapshot.general.plugins?.computerUseKeepUnlocked).toBe(false);
-    updateSettingsInSnapshot(snapshot, { general: { plugins: { computerUseKeepUnlocked: true } } });
-    expect(snapshot.general.plugins).toMatchObject({ computerUseEnabled: false, computerUseKeepUnlocked: true });
-    updateSettingsInSnapshot(snapshot, { general: { plugins: { computerUseEnabled: true } } });
-    expect(snapshot.general.plugins?.computerUseKeepUnlocked).toBe(true);
-    expect(normalizePluginSettings({ computerUseEnabled: true, chromeEnabled: false })).toMatchObject({ computerUseKeepUnlocked: false });
+    expect(snapshot.general.plugins).toMatchObject({ computerUseLockPrevention: 'off', computerUseLockHold: false });
+    updateSettingsInSnapshot(snapshot, { general: { plugins: { computerUseLockPrevention: 'onDemand' } } });
+    expect(snapshot.general.plugins).toMatchObject({ computerUseEnabled: false, computerUseLockPrevention: 'onDemand' });
+    updateSettingsInSnapshot(snapshot, { general: { plugins: { computerUseLockHold: { until: 1_800_000_000_000 } } } });
+    expect(snapshot.general.plugins?.computerUseLockHold).toStrictEqual({ until: 1_800_000_000_000 });
+    updateSettingsInSnapshot(snapshot, { general: { plugins: { computerUseLockHold: { until: null } } } });
+    expect(snapshot.general.plugins?.computerUseLockHold).toStrictEqual({ until: null });
+    updateSettingsInSnapshot(snapshot, { general: { plugins: { computerUseLockHold: false } } });
+    expect(snapshot.general.plugins?.computerUseLockHold).toBe(false);
+  });
+
+  it('migrates the earlier keep-unlocked switch to the Always mode and ignores invalid lock settings', () => {
+    expect(normalizePluginSettings({ computerUseEnabled: true, computerUseKeepUnlocked: true })).toMatchObject({ computerUseLockPrevention: 'always' });
+    expect(normalizePluginSettings({ computerUseEnabled: true, computerUseKeepUnlocked: false })).toMatchObject({ computerUseLockPrevention: 'off' });
+    expect(normalizePluginSettings({ computerUseKeepUnlocked: true, computerUseLockPrevention: 'onDemand' })).toMatchObject({ computerUseLockPrevention: 'onDemand' });
+    expect(normalizePluginSettings({ computerUseLockPrevention: 'sometimes' })).toMatchObject({ computerUseLockPrevention: 'off' });
+    expect(normalizePluginSettings({ computerUseKeepUnlocked: true })).not.toHaveProperty('computerUseKeepUnlocked');
+    for (const hold of [{ until: 'soon' }, { until: Number.NaN }, { until: Infinity }, 'yes', 7, { }]) {
+      expect(normalizePluginSettings({ computerUseLockHold: hold })).toMatchObject({ computerUseLockHold: false });
+    }
   });
 
   it('updates GitHub provider settings without replacing connection state', () => {

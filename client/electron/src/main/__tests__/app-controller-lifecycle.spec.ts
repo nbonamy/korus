@@ -7,6 +7,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
+import { updateSettingsInSnapshot } from '@workspace/core/settings';
 import { ipcChannels } from '@workspace/core/ipc';
 import type { AppBackendClientPort } from '../backend-client';
 import type { ClientState } from '@workspace/core/contracts';
@@ -121,9 +122,13 @@ function backendFixture() {
   const backend = {
     start: vi.fn().mockResolvedValue(undefined),
     health: vi.fn().mockResolvedValue({ ok: true, name: 'daemon', version: 'test', pid: 123 }),
-    request: vi.fn(async (method: string): Promise<unknown> => {
+    request: vi.fn(async (method: string, params?: unknown): Promise<unknown> => {
       if (method === 'snapshot/get') return state;
       if (method === 'client/state/get') return state.clientState;
+      if (method === 'settings/update') {
+        updateSettingsInSnapshot(state.snapshot, (params as { input: Parameters<typeof updateSettingsInSnapshot>[1] }).input);
+        return state.snapshot;
+      }
       throw new Error('Unexpected request: ' + method);
     }),
     onEvent: vi.fn((listener: typeof emit) => { emit = listener; return unsubscribe; }),
@@ -252,8 +257,93 @@ describe('controller desktop lifecycle', () => {
   });
 
   const keepUnlocked = (state: { snapshot: { general: { plugins?: unknown } } }, value: boolean) => {
-    state.snapshot.general.plugins = { computerUseEnabled: true, chromeEnabled: false, computerUseKeepUnlocked: value };
+    state.snapshot.general.plugins = { computerUseEnabled: true, chromeEnabled: false, computerUseLockPrevention: value ? 'always' : 'off', computerUseLockHold: false };
   };
+  const onDemand = (state: { snapshot: { general: { plugins?: unknown } } }, hold: { until: number | null } | false, enabled = true) => {
+    state.snapshot.general.plugins = { computerUseEnabled: enabled, chromeEnabled: false, computerUseLockPrevention: 'onDemand', computerUseLockHold: hold };
+  };
+  const publish = (emit: (event: never) => void, state: { snapshot: unknown; clientState: unknown }, seq = 1) => (emit as (event: unknown) => void)({
+    seq, occurredAt: '2026-11-04T00:00:00Z', type: 'snapshot.updated', payload: state.snapshot, clientState: state.clientState });
+  const clearHold = { input: { general: { plugins: { computerUseLockHold: false } } } };
+
+  describe('on-demand lock prevention', () => {
+    it('does nothing without a hold, then holds the display until the stored expiry and lets the Mac lock again', async () => {
+      const { controller, state, emit, backend } = setup();
+      onDemand(state, false);
+      await controller.initialize();
+      expect(powerSaveBlocker.start).not.toHaveBeenCalled();
+      onDemand(state, { until: Date.now() + 60 * 60_000 });
+      publish(emit, state);
+      expect(powerSaveBlocker.start).toHaveBeenCalledExactlyOnceWith('prevent-display-sleep');
+      await vi.advanceTimersByTimeAsync(59 * 60_000);
+      expect(powerSaveBlocker.stop).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(2 * 60_000);
+      expect(backend.request).toHaveBeenCalledWith(backendMethods.settingsUpdate, clearHold);
+      expect(powerSaveBlocker.stop).toHaveBeenCalledExactlyOnceWith(1);
+      expect(state.snapshot.general.plugins).toMatchObject({ computerUseLockHold: false });
+      await controller.shutdown();
+    });
+
+    it('keeps a hold with no expiry for as long as the user leaves it on', async () => {
+      const { controller, state, backend } = setup();
+      onDemand(state, { until: null });
+      await controller.initialize();
+      expect(powerSaveBlocker.start).toHaveBeenCalledExactlyOnceWith('prevent-display-sleep');
+      await vi.advanceTimersByTimeAsync(48 * 60 * 60_000);
+      expect(powerSaveBlocker.stop).not.toHaveBeenCalled();
+      expect(backend.request).not.toHaveBeenCalledWith(backendMethods.settingsUpdate, expect.anything());
+      await controller.shutdown();
+    });
+
+    it('resumes a hold that outlived a restart, and ends it at its stored time', async () => {
+      const { controller, state, backend } = setup();
+      onDemand(state, { until: Date.now() + 30 * 60_000 });
+      await controller.initialize();
+      expect(powerSaveBlocker.start).toHaveBeenCalledExactlyOnceWith('prevent-display-sleep');
+      await vi.advanceTimersByTimeAsync(31 * 60_000);
+      expect(backend.request).toHaveBeenCalledWith(backendMethods.settingsUpdate, clearHold);
+      expect(powerSaveBlocker.stop).toHaveBeenCalledExactlyOnceWith(1);
+      await controller.shutdown();
+    });
+
+    it('drops a hold that expired while Korus was not running without ever holding the display', async () => {
+      const { controller, state, backend } = setup();
+      onDemand(state, { until: Date.now() - 1000 });
+      await controller.initialize();
+      expect(backend.request).toHaveBeenCalledWith(backendMethods.settingsUpdate, clearHold);
+      expect(powerSaveBlocker.start).not.toHaveBeenCalled();
+      await controller.shutdown();
+    });
+
+    it('ends the hold when it is replaced by a later one, when Computer Use is disabled or when the mode changes', async () => {
+      const { controller, state, emit, backend } = setup();
+      onDemand(state, { until: Date.now() + 10 * 60_000 });
+      await controller.initialize();
+      onDemand(state, { until: Date.now() + 120 * 60_000 });
+      publish(emit, state, 1);
+      await vi.advanceTimersByTimeAsync(11 * 60_000);
+      expect(powerSaveBlocker.stop).not.toHaveBeenCalled(); // the first timer must not end the second hold
+      onDemand(state, { until: Date.now() + 120 * 60_000 }, false);
+      publish(emit, state, 2);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(backend.request).toHaveBeenCalledWith(backendMethods.settingsUpdate, clearHold);
+      expect(powerSaveBlocker.stop).toHaveBeenCalledExactlyOnceWith(1);
+      backend.request.mockClear();
+      state.snapshot.general.plugins = { computerUseEnabled: true, chromeEnabled: false, computerUseLockPrevention: 'off', computerUseLockHold: { until: null } };
+      publish(emit, state, 3);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(backend.request).toHaveBeenCalledWith(backendMethods.settingsUpdate, clearHold);
+      await controller.shutdown();
+    });
+
+    it('releases the display on quit', async () => {
+      const { controller, state } = setup();
+      onDemand(state, { until: null });
+      await controller.initialize();
+      await controller.shutdown();
+      expect(powerSaveBlocker.stop).toHaveBeenCalledExactlyOnceWith(1);
+    });
+  });
 
   it('prevents automatic locking from startup through idle hours, then releases when disabled', async () => {
     vi.useFakeTimers();
