@@ -1083,7 +1083,7 @@ export const messages = {
       threadFlags: {
         workProposed: {
           prompt: 'Turn this into work?',
-          implement: 'Implement',
+          implement: 'Continue',
           delegate: 'Delegate',
           createMission: 'Mission',
           dismiss: 'Discard',

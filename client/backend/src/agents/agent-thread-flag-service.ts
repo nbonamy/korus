@@ -28,7 +28,7 @@ export class AgentThreadFlagService {
     this.inFlight.add(key);
     try {
       if (id === 'work_proposed' && response.action === 'implement') {
-        await this.options.submit(agent, 'Implement the proposed work in this conversation using the current agent and workspace.');
+        await this.options.submit(agent, 'Continue the work here.');
       }
       if (id === 'work_proposed' && response.action === 'delegate') {
         await this.options.submit(agent, PROPOSED_WORK_DELEGATION_PROMPT);
