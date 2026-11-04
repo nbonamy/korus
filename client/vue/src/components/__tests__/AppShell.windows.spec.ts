@@ -11,10 +11,42 @@ afterEach(() => {
   windowState.teamId.value = null;
   windowState.agentId.value = null;
   windowState.branch.value = null;
+  windowState.missionId.value = null;
   document.body.innerHTML = '';
 });
 
 describe('AppShell in a window that shows less than the workspace', () => {
+  it.each([false, true])('opens its mission, restricts navigation, and closes when deleted (compact=%s)', async compact => {
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: compact, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+    const snapshot = createInitialSnapshot();
+    const team = snapshot.teams[0]!;
+    const mission = createMission(snapshot, { outcome: 'Ship billing', workflowType: 'shapeAndShipFeature', teamId: team.id, orchestratorMemberId: snapshot.agents[0]!.id });
+    const other = createMission(snapshot, { outcome: 'Other mission', workflowType: 'shapeAndShipFeature', teamId: team.id, orchestratorMemberId: snapshot.agents[0]!.id });
+    localStorage.setItem('app.activeMissionId', other.id);
+    windowState.scope.value = 'mission';
+    windowState.teamId.value = team.id;
+    windowState.missionId.value = mission.id;
+    windowState.windowId.value = 2;
+    const close = vi.spyOn(window, 'close').mockImplementation(() => undefined);
+    const wrapper = mountShell({ snapshot });
+    try {
+      await nextTick();
+      expect(wrapper.get('.mission-workspace h1').text()).toBe('Ship billing');
+      expect(document.title).toBe(`Ship billing · ${team.name}`);
+      expect(wrapper.find('.team-rail').exists()).toBe(false);
+      expect(wrapper.find('.agent-sidebar').exists()).toBe(false);
+      expect(localStorage.getItem('app.activeMissionId')).toBe(other.id);
+      const next = structuredClone(snapshot);
+      next.missions = next.missions!.filter(candidate => candidate.id !== other.id);
+      await wrapper.setProps({ snapshot: next });
+      expect(close).not.toHaveBeenCalled();
+      next.missions = [];
+      next.agents = [];
+      next.teams[0]!.agentIds = [];
+      await wrapper.setProps({ snapshot: { ...next } });
+      expect(close).toHaveBeenCalledOnce();
+    } finally { wrapper.unmount(); close.mockRestore(); windowState.windowId.value = null; vi.unstubAllGlobals(); }
+  });
   it('shows everything in a workspace window', () => {
     const wrapper = mountShell({ realAgentSidebar: true, stubAgentWorkspace: true });
     expect(wrapper.find('.team-rail').exists()).toBe(true);

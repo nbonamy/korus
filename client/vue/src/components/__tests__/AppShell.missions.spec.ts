@@ -24,6 +24,20 @@ function representGitHubRepository(agent: ReturnType<typeof createInitialSnapsho
 }
 
 describe('AppShell missions', () => {
+  it('opens a mission in its own window from the sidebar menu', async () => {
+    const snapshot = createInitialSnapshot();
+    const mission = createMission(snapshot, { outcome: 'Ship billing', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
+    const openWindow = vi.spyOn(window.app!, 'openWindow').mockResolvedValue(undefined);
+    const wrapper = mountShell({ snapshot, realAgentSidebar: true, stubAgentWorkspace: true });
+    try {
+      await wrapper.get('[data-group-kind="missions"] .agent-sidebar__agent').trigger('contextmenu');
+      const item = document.body.querySelector<HTMLElement>('[aria-label="Mission actions"] [role="menuitem"]')!;
+      expect(item.textContent?.trim()).toBe('Open in New Window');
+      item.click();
+      await flushPromises();
+      expect(openWindow).toHaveBeenCalledExactlyOnceWith({ scope: 'mission', teamId: mission.teamId, missionId: mission.id });
+    } finally { wrapper.unmount(); openWindow.mockRestore(); }
+  });
   it('groups teammate mentions by Mission, prioritizes the open Mission, and keeps stable targets', async () => {
     const snapshot = createInitialSnapshot();
     const ordinary = snapshot.agents[0]!;

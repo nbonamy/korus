@@ -429,6 +429,12 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     closeMissionContextMenu();
   }
 
+  function openContextMissionWindow(): void {
+    const missionId = contextMenuMissionId.value;
+    if (missionId) emit('open-mission-window', missionId);
+    closeMissionContextMenu();
+  }
+
   function createAgentInContextMissionWorktree(worktreePath: string): void {
     const missionId = contextMenuMissionId.value;
     if (!missionId) return;
@@ -568,6 +574,7 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     deleteContextRepository,
     contextMenuMissionId,
     deleteContextMission,
+    openContextMissionWindow,
     contextMissionWorkspaces,
     createAgentInContextMissionWorktree,
     closeMissionContextMenu,

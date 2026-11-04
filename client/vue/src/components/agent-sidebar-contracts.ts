@@ -65,6 +65,7 @@ export type AgentSidebarEvents = {
   'create-quick-chat': [];
   'create-mission': [];
   'delete-mission': [id: string];
+  'open-mission-window': [id: string];
   'create-agent-in-mission-worktree': [payload: { missionId: string; worktreePath: string }];
   'open-feature': [agentIds: string[]];
   'open-feature-window': [branch: string];

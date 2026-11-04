@@ -9,10 +9,11 @@ import type { CodexPromptPart } from '@codex-app-sdk/core/surface';
  */
 export type WindowViewState = {
   agentId?: string;
-  /** The team of a team window, and of a feature window. */
+  /** The team of a team, feature or Mission window. */
   teamId?: string;
   /** The Git branch that makes a feature: its agents are the team's agents working on it. */
   branch?: string;
+  missionId?: string;
   scope?: WindowScope;
   /** The panes each agent has open in this window. A new window starts from a copy of its source's, then drifts. */
   setup?: WindowSetup;
@@ -63,21 +64,23 @@ export function isWindowSetup(value: unknown): value is WindowSetup {
 /**
  * What a window shows. `workspace` is everything. `team` is one team with its sidebar but no rail.
  * `feature` is the same for one feature, listing only the agents on its branch. `agent` is a single agent
- * with no navigation around it.
+ * with no navigation around it. `mission` shows one Mission's workbench and conversations.
  */
-export type WindowScope = 'workspace' | 'team' | 'agent' | 'feature';
+export type WindowScope = 'workspace' | 'team' | 'agent' | 'feature' | 'mission';
 
 export function isWindowViewState(value: unknown): value is WindowViewState {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const { agentId, teamId, branch, scope, setup } = value as { agentId?: unknown; teamId?: unknown; branch?: unknown; scope?: unknown; setup?: unknown };
+  const { agentId, teamId, branch, missionId, scope, setup } = value as { agentId?: unknown; teamId?: unknown; branch?: unknown; missionId?: unknown; scope?: unknown; setup?: unknown };
   if (agentId !== undefined && typeof agentId !== 'string') return false;
   if (teamId !== undefined && typeof teamId !== 'string') return false;
   if (branch !== undefined && typeof branch !== 'string') return false;
+  if (missionId !== undefined && typeof missionId !== 'string') return false;
   if (setup !== undefined && !isWindowSetup(setup)) return false;
-  if (scope !== undefined && scope !== 'workspace' && scope !== 'team' && scope !== 'agent' && scope !== 'feature') return false;
+  if (scope !== undefined && scope !== 'workspace' && scope !== 'team' && scope !== 'agent' && scope !== 'feature' && scope !== 'mission') return false;
   if (scope === 'agent') return typeof agentId === 'string';
   if (scope === 'team') return typeof teamId === 'string';
   if (scope === 'feature') return typeof teamId === 'string' && typeof branch === 'string' && branch.length > 0;
+  if (scope === 'mission') return typeof teamId === 'string' && typeof missionId === 'string' && missionId.length > 0;
   return true;
 }
 

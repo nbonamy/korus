@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
+import { createMission } from '@workspace/core/missions';
 import { parseWindowLayout, readWindowLayout, restorableWindows, writeWindowLayout, type WindowLayout } from '../window-layout';
 
 const frame = { bounds: { x: 10, y: 20, width: 1200, height: 800 }, isMaximized: false };
@@ -58,6 +59,16 @@ describe('window layout', () => {
 });
 
 describe('restorable windows', () => {
+  it('restores a mission window without a departed selection and drops it when its mission is deleted', () => {
+    const state = structuredClone(snapshot);
+    const mission = createMission(state, { outcome: 'Ship billing', workflowType: 'shapeAndShipFeature', teamId, orchestratorMemberId: agentA });
+    const viewState = { scope: 'mission' as const, teamId, missionId: mission.id, agentId: 'agent-gone' };
+    const saved = parseWindowLayout(JSON.stringify(layout({ viewState, frame })))!;
+    expect(saved).not.toBeNull();
+    expect(restorableWindows(saved, state).map(window => window.viewState)).toStrictEqual([{ scope: 'mission', teamId, missionId: mission.id }]);
+    state.missions = [];
+    expect(restorableWindows(saved, state)).toStrictEqual([]);
+  });
   it('drops windows whose team, agent or feature is gone', () => {
     const restored = restorableWindows(layout(
       { viewState: { agentId: agentA, scope: 'agent' }, frame },

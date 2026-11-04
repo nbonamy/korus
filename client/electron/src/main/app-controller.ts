@@ -880,6 +880,7 @@ export class AppController {
     if (viewState.agentId && !snapshot.agents.some(agent => agent.id === viewState.agentId)) return;
     if (viewState.teamId && !snapshot.teams.some(team => team.id === viewState.teamId)) return;
     if (viewState.scope === 'feature' && !featureAgentIds(snapshot.agents, viewState.teamId, viewState.branch ?? '').length) return;
+    if (viewState.scope === 'mission' && !snapshot.missions?.some(mission => mission.id === viewState.missionId && mission.teamId === viewState.teamId)) return;
     this.openWindow(viewState);
   }
 

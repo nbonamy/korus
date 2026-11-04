@@ -5,6 +5,8 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { product } from '@workspace/core/product';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
+import { createMission } from '@workspace/core/missions';
+import type { AppSnapshot } from '@workspace/core/contracts';
 import { ipcChannels } from '@workspace/core/ipc';
 import type { ComposerDraft } from '@workspace/core/windows';
 
@@ -300,6 +302,18 @@ describe('AppController with several windows', () => {
   });
 
   describe('opening and closing windows', () => {
+    it('opens a mission window only for a mission in its existing team', () => {
+      const { controller, created } = openedWindows();
+      const snapshot = (controller as unknown as { snapshot: AppSnapshot }).snapshot;
+      const mission = createMission(snapshot, { outcome: 'Ship billing', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
+      const viewState = { scope: 'mission', missionId: mission.id, teamId: mission.teamId };
+      internals(controller).openWindowFromRenderer(viewState);
+      expect(internals(controller).getWindowContext(created[0])).toMatchObject({ viewState });
+      host.createWindow.mockClear();
+      internals(controller).openWindowFromRenderer({ ...viewState, missionId: 'missing' });
+      internals(controller).openWindowFromRenderer({ ...viewState, teamId: snapshot.teams[1]?.id ?? 'missing-team' });
+      expect(host.createWindow).not.toHaveBeenCalled();
+    });
     function openedWindows() {
       const controller = new AppController(createInitialSnapshot(), createBackendClient());
       const created: TestWindow[] = [];

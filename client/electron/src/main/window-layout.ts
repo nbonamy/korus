@@ -62,6 +62,15 @@ export function restorableWindows(layout: WindowLayout, snapshot: AppSnapshot): 
     const scope = state?.scope ?? 'workspace';
     if (scope === 'agent') return hasAgent(state?.agentId) ? [saved] : [];
     if (scope === 'team') return snapshot.teams.some(team => team.id === state?.teamId) ? [saved] : [];
+    if (scope === 'mission') {
+      if (!snapshot.teams.some(team => team.id === state?.teamId)
+        || !snapshot.missions?.some(mission => mission.id === state?.missionId && mission.teamId === state?.teamId)) return [];
+      if (state?.agentId && !hasAgent(state.agentId)) {
+        const { agentId: _departed, ...viewState } = state;
+        return [{ ...saved, viewState }];
+      }
+      return [saved];
+    }
     if (scope === 'feature') {
       const agentIds = featureAgentIds(snapshot.agents, state?.teamId, state?.branch ?? '');
       if (!agentIds.length) return [];

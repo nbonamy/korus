@@ -76,6 +76,7 @@
       :feature-agent-ids="featureWindow ? featureAgents : undefined"
       @create-mission="createNewMission"
       @delete-mission="deleteMissionFromSidebar"
+      @open-mission-window="openMissionWindow"
       @create-agent-in-mission-worktree="createAgentInMissionWorktree"
       @open-feature="openFeatureAgents"
       @rename-feature="showFeatureDialog('rename', $event)"
@@ -1181,9 +1182,10 @@ const agentSidebarCollapsed = ref(false);
 // A window can show less than the whole workspace: a team or a feature without the rail, or one agent without any navigation.
 const windowScope = computed(() => windowState.scope.value);
 const featureWindow = computed(() => windowScope.value === 'feature');
+const missionWindow = computed(() => windowScope.value === 'mission');
 // A feature is a branch of a team: its agents are whatever the team has on it now, so new ones show up.
 const featureAgents = computed(() => featureAgentIds(props.snapshot.agents, windowState.teamId.value, windowState.branch.value ?? ''));
-const chromeless = computed(() => windowScope.value === 'agent');
+const chromeless = computed(() => windowScope.value === 'agent' || missionWindow.value);
 const hideTeamRail = computed(() => windowScope.value !== 'workspace');
 function openInNewWindow(viewState: import('@workspace/core/windows').WindowViewState): void {
   void appApi?.openWindow?.(viewState).catch((error) => ElMessage.error(localizedErrorMessage(error, t)));
@@ -1194,6 +1196,10 @@ function openFeatureWindow(branch: string): void {
   const teamId = activeTeam.value?.id;
   const agentId = featureAgentIds(props.snapshot.agents, teamId, branch)[0];
   if (teamId && agentId) openInNewWindow({ scope: 'feature', teamId, branch, agentId });
+}
+function openMissionWindow(missionId: string): void {
+  const mission = props.snapshot.missions?.find(candidate => candidate.id === missionId);
+  if (mission) openInNewWindow({ scope: 'mission', teamId: mission.teamId, missionId });
 }
 const compactViewport = useCompactViewport();
 const compactNavOpen = ref(false);
@@ -1349,7 +1355,7 @@ function selectMissionSurface(id: string): void {
 }
 watch(
   () => activeSurface.value === 'mission' ? selectedMissionId.value : null,
-  missionId => { closeMissionIssuePicker(); rememberMissionId(missionId); void props.selectMission(missionId); },
+  missionId => { closeMissionIssuePicker(); if (!missionWindow.value) rememberMissionId(missionId); void props.selectMission(missionId); },
 );
 function missionTeamContext(): { team: Team; orchestrator: Agent } {
   const team = activeTeam.value;
@@ -1361,6 +1367,7 @@ function missionTeamContext(): { team: Team; orchestrator: Agent } {
   return { team, orchestrator };
 }
 async function selectMission(id: string): Promise<void> {
+  if (missionWindow.value && id !== windowState.missionId.value) return;
   const mission = props.snapshot.missions?.find(mission => mission.id === id);
   if (!mission || (!cockpitScope.value && mission.teamId !== activeTeam.value?.id)) return;
   if (mission.teamId !== activeTeam.value?.id) emit('select-team', mission.teamId);
@@ -1409,10 +1416,11 @@ function openFeatureAgents(agentIds: string[]): void {
   split.openAgents(agentIds);
 }
 // A window about a team, an agent or a feature closes with it.
-watch(() => [windowScope.value, windowState.teamId.value, props.snapshot.teams, props.snapshot.agents] as const, ([scope, teamId, teams, agents]) => {
-  if (!windowState.windowId.value || scope === 'workspace' || agents.length === 0) return;
+watch(() => [windowScope.value, windowState.teamId.value, props.snapshot.teams, props.snapshot.agents, props.snapshot.missions, props.connectionState.status] as const, ([scope, teamId, teams, agents, missions, connection]) => {
+  if (!windowState.windowId.value || scope === 'workspace' || (agents.length === 0 && (scope !== 'mission' || connection !== 'connected'))) return;
   const exists = (id: string | null) => agents.some((agent) => agent.id === id);
-  const gone = scope === 'team' ? !teams.some((team) => team.id === teamId)
+  const gone = scope === 'mission' ? !missions?.some(mission => mission.id === windowState.missionId.value)
+    : scope === 'team' ? !teams.some((team) => team.id === teamId)
     : scope === 'agent' ? !exists(windowState.agentId.value)
       : !featureAgentIds(agents, teamId, windowState.branch.value ?? '').length;
   if (gone) window.close();
@@ -1605,6 +1613,11 @@ const activeTeam = computed<Team | null>(() => {
 
   return props.snapshot.teams[0] ?? null;
 });
+watch([() => windowState.missionId.value, () => props.snapshot.missions], ([missionId, missions]) => {
+  if (!missionWindow.value || !missionId || !missions?.some(mission => mission.id === missionId)) return;
+  pendingMissionRestoreId = null;
+  selectMissionSurface(missionId);
+}, { immediate: true });
 watch([selectedMission, activeTeam], ([mission, team], [previousMission]) => {
   if (activeSurface.value === 'mission' && ((previousMission && !mission) || (!cockpitScope.value && mission && mission.teamId !== team?.id))) {
     selectedMissionId.value = null;
@@ -1616,13 +1629,14 @@ const pendingMissionFocusId = ref<string | null>(null);
 watch(() => props.missionFocusRequest, request => { pendingMissionFocusId.value = request?.missionId ?? null; });
 watch([pendingMissionFocusId, () => props.snapshot.missions, activeTeam], () => {
   const missionId = pendingMissionFocusId.value;
+  if (missionWindow.value && missionId !== windowState.missionId.value) return;
   const mission = missionId ? props.snapshot.missions?.find(candidate => candidate.id === missionId) : undefined;
   if (!mission || (!cockpitScope.value && mission.teamId !== activeTeam.value?.id)) return;
   pendingMissionFocusId.value = null;
   selectMissionSurface(mission.id);
 });
 watch(() => props.connectionState.status, (status) => {
-  if (status !== 'connected' || !pendingMissionRestoreId) return;
+  if (missionWindow.value || status !== 'connected' || !pendingMissionRestoreId) return;
   const missionId = pendingMissionRestoreId;
   pendingMissionRestoreId = null;
   const mission = props.snapshot.missions?.find(candidate => candidate.id === missionId);
@@ -1850,6 +1864,7 @@ const activeTeamAgents = computed(() => {
 });
 const missionOwnedAgentIds = computed(() => new Set((props.snapshot.missions ?? []).flatMap(missionAgentIds)));
 const quickOpenAgents = computed(() => props.snapshot.agents.filter(agent => {
+  if (missionWindow.value) return selectedMission.value ? missionAgentIds(selectedMission.value).includes(agent.id) : false;
   if (missionOwnedAgentIds.value.has(agent.id)) return false;
   if (windowScope.value === 'feature') return featureAgents.value.includes(agent.id);
   if (windowScope.value === 'team') return props.snapshot.teams.find(team => team.id === windowState.teamId.value)?.agentIds.includes(agent.id) === true;
@@ -1858,6 +1873,7 @@ const quickOpenAgents = computed(() => props.snapshot.agents.filter(agent => {
 }));
 const quickOpenMissions = computed(() => {
   const missions = props.snapshot.missions ?? [];
+  if (missionWindow.value) return missions.filter(mission => mission.id === windowState.missionId.value);
   if (windowScope.value === 'workspace') return missions;
   if (windowScope.value === 'team') return missions.filter(mission => mission.teamId === windowState.teamId.value);
   return [];
@@ -1908,6 +1924,11 @@ const currentAgent = computed(() => {
   if (!team) {
     return null;
   }
+  if (missionWindow.value) {
+    const ids = selectedMission.value ? missionAgentIds(selectedMission.value) : [];
+    return activeTeamAgents.value.find(agent => ids.includes(agent.id) && agent.id === props.activeAgent?.id)
+      ?? activeTeamAgents.value.find(agent => ids.includes(agent.id)) ?? null;
+  }
 
   if (activeSurface.value !== 'mission' && cockpitScope.value) {
     return workspaceAgents.value.find(agent => agent.id === props.activeAgent?.id) ?? workspaceAgents.value[0] ?? null;
@@ -1925,6 +1946,7 @@ const windowTitle = computed(() => {
   const teamName = activeTeam.value?.name;
   if (windowScope.value === 'agent') return agentName ?? product.name;
   if (windowScope.value === 'team') return teamName ?? product.name;
+  if (missionWindow.value) return selectedMission.value ? `${selectedMission.value.outcome} · ${teamName ?? product.name}` : product.name;
   if (windowScope.value === 'feature') {
     const feature = featureLabel(activeTeam.value?.featureLabels, windowState.branch.value ?? '');
     return teamName ? `${feature} · ${teamName}` : feature || product.name;
@@ -1935,7 +1957,7 @@ watch(windowTitle, (title) => { document.title = title; }, { immediate: true });
 watch(
   [compactViewport, activeSurface],
   ([compact, surface]) => {
-    if (compact && surface !== 'agent') activeSurface.value = 'agent';
+    if (compact && surface !== 'agent' && !missionWindow.value) activeSurface.value = 'agent';
   },
   { immediate: true },
 );
@@ -3385,7 +3407,7 @@ function selectAgentFromPalette(payload: { agentId: string; teamId: string }): v
   const teamId = agent?.teamId ?? props.snapshot.teams.find(team => team.agentIds.includes(payload.agentId))?.id;
   if (!agent || !teamId) return;
   pendingMissionFocusId.value = null;
-  activeSurface.value = 'agent';
+  activeSurface.value = missionWindow.value ? 'mission' : 'agent';
   pendingComposerFocusAgentId.value = payload.agentId;
   if (teamId === activeTeam.value?.id) split.select(payload.agentId);
   if (teamId !== activeTeam.value?.id) emit('select-team', teamId);

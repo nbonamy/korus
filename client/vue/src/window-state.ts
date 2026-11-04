@@ -30,6 +30,7 @@ export function createWindowState() {
   const agentId = ref<string | null>(null);
   /** The Git branch a feature window is about. Its agents are worked out from what the team has on it, so new ones appear. */
   const branch = ref<string | null>(null);
+  const missionId = ref<string | null>(null);
   /** `replace` is a window starting from its saved panes; `patch` is panes handed over later, such as a Browser moved here. */
   type SetupMode = 'replace' | 'patch';
   const setupListeners = new Set<(setup: WindowSetup, mode: SetupMode) => void>();
@@ -50,9 +51,10 @@ export function createWindowState() {
     windowId.value = context.windowId;
     nativeOwners.value = context.nativeOwners;
     scope.value = context.viewState?.scope ?? 'workspace';
-    teamId.value = scope.value === 'team' || scope.value === 'feature' ? context.viewState?.teamId ?? null : null;
+    teamId.value = scope.value === 'team' || scope.value === 'feature' || scope.value === 'mission' ? context.viewState?.teamId ?? null : null;
     agentId.value = scope.value === 'agent' ? context.viewState?.agentId ?? null : null;
     branch.value = scope.value === 'feature' ? context.viewState?.branch ?? null : null;
+    missionId.value = scope.value === 'mission' ? context.viewState?.missionId ?? null : null;
     for (const [agentId, draft] of Object.entries(context.composerDrafts)) host.applyDraft(agentId, draft);
     if (teamId.value && host.teamExists(teamId.value)) host.showTeam(teamId.value);
     const initialAgentId = context.viewState?.agentId;
@@ -104,7 +106,7 @@ export function createWindowState() {
     return !owner || owner.windowId === windowId.value;
   }
 
-  return { windowId, nativeOwners, scope, teamId, agentId, branch, onSetup, start, stop, reportSelection, ownsNative };
+  return { windowId, nativeOwners, scope, teamId, agentId, branch, missionId, onSetup, start, stop, reportSelection, ownsNative };
 }
 
 export const windowState = createWindowState();

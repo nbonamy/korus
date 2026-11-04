@@ -68,10 +68,11 @@ the local desktop to show UI or use an OS affordance belongs in Electron main.
   team with its sidebar and no rail. A feature window is the same for one feature, which
   is a team and a Git branch: its sidebar lists the team's agents on that branch as they
   are now, so agents added to it appear, with nothing that creates or opens anything
-  else, and the conversation is always a single pane. An agent window shows one agent
+  else. Feature windows keep their own split layout. A Mission window shows one
+  Mission's workbench and conversations without the rail or sidebar. An agent window shows one agent
   with no rail or sidebar; it is smaller and never restores or saves the workspace
   frame. Scoped windows ignore navigation they cannot show, never overwrite the team's
-  saved split layout, and close when their team, agent or feature is deleted. The Close
+  saved split layout, and close when their team, agent, feature or Mission is deleted. The Close
   shortcut of an agent window closes the window, never the agent. Opening in a new
   window is a view, not a move: the source stays visible where it was. Windows are
   equal, with no special main window. Window > Show Workspace and a Dock click with

@@ -15,12 +15,17 @@ import { useI18n } from 'vue-i18n';
 import type { MissionWorkspace } from '@workspace/core/mission-execution';
 import AppContextMenu from '../shared/menu/AppContextMenu.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
-import { PlusIcon, Trash2Icon } from '../shared/icons/app-icons';
+import { ExternalLinkIcon, PlusIcon, Trash2Icon } from '../shared/icons/app-icons';
+import { appApi } from '../platform-api';
 
 const props = defineProps<{ x: number; y: number; workspaces?: MissionWorkspace[] }>();
-const emit = defineEmits<{ close: []; delete: []; 'create-agent': [worktreePath: string] }>();
+const emit = defineEmits<{ close: []; delete: []; 'open-window': []; 'create-agent': [worktreePath: string] }>();
 const { t } = useI18n();
 const menuItems = computed<AppMenuItem[]>(() => [
+  ...(appApi?.openWindow ? [
+    { id: 'open-window', type: 'action', label: t('agents.openInNewWindow'), icon: ExternalLinkIcon } satisfies AppMenuItem,
+    { id: 'mission-window-divider', type: 'separator' } satisfies AppMenuItem,
+  ] : []),
   ...(props.workspaces?.length ? [{
     id: 'new-agent-in-worktree',
     type: 'submenu' as const,
@@ -36,7 +41,8 @@ const menuItems = computed<AppMenuItem[]>(() => [
 ]);
 
 function selectMenuItem(itemId: string): void {
-  if (itemId === 'delete-mission') emit('delete');
+  if (itemId === 'open-window') emit('open-window');
+  else if (itemId === 'delete-mission') emit('delete');
   else {
     const workspace = props.workspaces?.find(candidate => `worktree:${candidate.path}` === itemId);
     if (workspace) emit('create-agent', workspace.path);

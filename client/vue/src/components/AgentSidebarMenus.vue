@@ -43,6 +43,7 @@
       :x="contextMenuPosition.x"
       :y="contextMenuPosition.y"
       @delete="deleteContextMission"
+      @open-window="openContextMissionWindow"
       :workspaces="contextMissionWorkspaces"
       @create-agent="createAgentInContextMissionWorktree"
       @close="closeMissionContextMenu"
@@ -82,6 +83,7 @@ const {
   featureAction,
   contextMenuMissionId,
   deleteContextMission,
+  openContextMissionWindow,
   contextMissionWorkspaces,
   createAgentInContextMissionWorktree,
   closeMissionContextMenu,

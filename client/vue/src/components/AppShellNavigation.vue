@@ -56,6 +56,7 @@
       @delete-feature="$emit('delete-feature', $event)"
       @delete-repository="$emit('delete-repository', $event)"
       @delete-mission="$emit('delete-mission', $event)"
+      @open-mission-window="$emit('open-mission-window', $event)"
       @create-agent-in-mission-worktree="$emit('create-agent-in-mission-worktree', $event)"
       @select-mission="$emit('select-mission', $event)"
       :unread-agent-ids="unreadAgentIds"
@@ -184,6 +185,7 @@ const emit = defineEmits<{
   'create-quick-chat': [];
   'create-mission': [];
   'delete-mission': [id: string];
+  'open-mission-window': [id: string];
   'create-agent-in-mission-worktree': [payload: { missionId: string; worktreePath: string }];
   'open-feature': [agentIds: string[]];
   'open-feature-window': [branch: string];

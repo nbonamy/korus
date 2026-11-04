@@ -88,6 +88,14 @@ describe('window state', () => {
     expect(state.branch.value).toBe('feat1');
   });
 
+  it('starts a mission window on its team and remembers its mission', async () => {
+    const { host, state } = setup({ windowId: 2, viewState: { scope: 'mission', teamId: 'team-1', missionId: 'mission-1' }, nativeOwners: [], composerDrafts: {} });
+    await state.start(host);
+    expect(host.showTeam).toHaveBeenCalledWith('team-1');
+    expect(state.teamId.value).toBe('team-1');
+    expect(state.missionId.value).toBe('mission-1');
+  });
+
   describe('panes a window starts with, or is handed', () => {
     const pane = { open: true, width: 420, activeTab: 'browser', tabs: ['browser'], browserUrl: 'https://example.com/' };
 
