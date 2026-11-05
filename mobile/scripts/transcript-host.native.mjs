@@ -19,6 +19,9 @@ try {
   if (!existsSync(path.join(ios, 'Web/transcript.html'))) throw new Error('Run npm run build:web -w @workspace/mobile first.');
   mkdirSync(app);
   cpSync(path.join(ios, 'Web'), path.join(app, 'Web'), { recursive: true });
+  for (const name of ['runtime', 'mobile-diff', 'automation']) {
+    cpSync(path.join(root, `website/assets/screens/${name}.webp`), path.join(app, `${name}.webp`));
+  }
   cpSync(path.join(root, 'client/electron/assets/icon.png'), path.join(app, 'icon.png'));
   writeFileSync(path.join(app, 'Info.plist'), `<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict>
     <key>CFBundleIdentifier</key><string>${identifier}</string><key>CFBundleName</key><string>Transcript tests</string>

@@ -32,7 +32,7 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
         window.makeKeyAndVisible()
         host.onLifecycle = { [weak self] stage in self?.lifecycle.append(stage) }
         host.onRendered = { [weak self] id, revision, generation in
-            guard let self, id == "transcript-probe" else { return }
+            guard let self, id == "transcript-probe" || id == "other-conversation" else { return }
             self.receipts += 1
             self.lastReceipt = (revision, generation)
             self.loading.rendered()
@@ -122,6 +122,98 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
         check(!loading.isLoading && !loading.failed && content, "retry reloads and replays the cached transcript without a new engine frame")
     }
 
+    func imageCacheChecks() async {
+        let names = ["runtime", "mobile-diff", "automation"]
+        var reads = 0
+        var blocked: [[String: Any]] = []
+        func reply(_ request: [String: Any]) {
+            let index = Int((request["path"] as! String).suffix(1))! % names.count
+            let data = try! Data(contentsOf: Bundle.main.url(forResource: names[index], withExtension: "webp")!)
+            let response: [String: Any] = ["type": "conversationImage", "requestId": request["requestId"]!,
+                "agentId": request["agentId"]!, "dataUrl": "data:image/webp;base64,\(data.base64EncodedString())"]
+            host.receiveContent(String(data: try! JSONSerialization.data(withJSONObject: response), encoding: .utf8)!)
+        }
+        host.onReadContent = { request in
+            guard request["type"] as? String == "readConversationImage",
+                  let path = request["path"] as? String,
+                  let index = Int(path.suffix(1)) else { return }
+            reads += 1
+            if index >= 3 { blocked.append(request) } else { reply(request) }
+        }
+        func conversation(_ images: Bool, revision: Int) -> String {
+            var object = try! JSONSerialization.jsonObject(with: Data(frame(revision).utf8)) as! [String: Any]
+            object["engineInstance"] = "native-image-engine"
+            object["imageCacheScope"] = "native-paired-host"
+            var agent = object["agent"] as! [String: Any]
+            let id = images ? "transcript-probe" : "other-conversation"
+            object["agentId"] = id; agent["id"] = id
+            agent["backendSession"] = ["kind": "codex", "threadId": "native-images"]
+            object["agent"] = agent
+            if images {
+                let parts: [[String: Any]] = names.enumerated().map { index, name in
+                    ["type": "media", "media": ["url": "conversation-image:native-images:\(String(repeating: "0", count: 63))\(index)",
+                        "title": name, "width": index == 1 ? 780 : 1510, "height": index == 1 ? 1696 : 900]]
+                }
+                object["frame"] = ["agentId": "transcript-probe", "backend": "codex", "payload": ["snapshot": [
+                    "messages": [["id": "recorded-screenshots", "role": "assistant", "status": "complete", "parts": parts]],
+                    "turns": [], "busy": false]]]
+            }
+            var payload = object["frame"] as! [String: Any]
+            payload["agentId"] = id; object["frame"] = payload
+            return String(data: try! JSONSerialization.data(withJSONObject: object), encoding: .utf8)!
+        }
+        host.submit(.conversation, conversation(true, revision: 70))
+        await wait { self.lastReceipt?.revision == 70 }
+        for name in names {
+            _ = await js("document.querySelector('[aria-label=\"Open \(name)\"]')?.scrollIntoView({block:'center'})")
+            for _ in 0..<100 {
+                if await js("document.querySelector('[aria-label=\"Open \(name)\"] img')?.naturalWidth > 0") as? Bool == true { break }
+                await pause(50)
+            }
+        }
+        let sources = await js("JSON.stringify(Array.from(document.querySelectorAll('button[aria-label^=\"Open \"] img'), image => image.src))") as? String
+        check(reads == 3 && sources != nil, "native WebView renders the three real screenshots through the image bridge")
+        let coldReads = reads
+        for revision in 71...74 {
+            host.beginSelection()
+            host.submit(.conversation, conversation(false, revision: revision))
+            await wait { self.lastReceipt?.revision == revision }
+            host.beginSelection()
+            host.submit(.conversation, conversation(true, revision: revision + 10))
+            await wait { self.lastReceipt?.revision == revision + 10 }
+            let returned = await js("JSON.stringify(Array.from(document.querySelectorAll('button[aria-label^=\"Open \"] img'), image => image.src))") as? String
+            check(reads == coldReads && returned == sources,
+                "native conversation return \(revision) paints the same cached image URLs without another bridge read")
+        }
+        // Cached previews must not queue behind unrelated cold image transfers.
+        let pressure = await js("""
+        (() => {
+        window.cachePressureConversation = \(conversation(true, revision: 90));
+        const snapshot = window.cachePressureConversation.frame.payload.snapshot;
+        snapshot.messages = snapshot.messages[0].parts.map((part, index) => ({id:'pressure-'+index,role:'assistant',status:'complete',parts:[{type:'text',text:'Context paragraph\\n\\n'.repeat(60)},part]}));
+        snapshot.messages.push({id:'cold-images',role:'assistant',status:'complete',parts:[{type:'text',text:'Other context\\n\\n'.repeat(60)},...[3,4].map(index => ({type:'media',media:{url:'conversation-image:native-images:'+String(index).padStart(64,'0'),title:'Cold '+index,width:100,height:100}}))]});
+        return JSON.stringify(window.cachePressureConversation);
+        })()
+        """) as! String
+        host.submit(.conversation, pressure)
+        await wait { self.lastReceipt?.revision == 90 }
+        _ = await js("document.querySelector('[aria-label=\"Open Cold 4\"]')?.scrollIntoView({block:'center'})")
+        await wait { blocked.count == 2 }
+        check(blocked.count == 2, "native cache probe holds two unrelated image reads in flight")
+        _ = await js("document.querySelector('[aria-label=\"Open automation\"]')?.scrollIntoView({block:'center'})")
+        var warmReady = false
+        for _ in 0..<40 {
+            warmReady = await js("document.querySelector('[aria-label=\"Open automation\"] img')?.naturalWidth > 0") as? Bool == true
+            if warmReady { break }
+            await pause(50)
+        }
+        check(warmReady && blocked.count == 2 && reads == coldReads + 2,
+            "cached preview paints with zero extra reads while both cold image reads remain blocked")
+        for request in blocked { reply(request) }
+        blocked.removeAll()
+        host.onReadContent = nil
+    }
+
     // Failure modes: accepting into a nonempty draft, swallowing normal typing,
     // stale native text after acceptance, or a cursor left before the inserted text.
     func checkComposerSuggestions() async {
@@ -194,6 +286,7 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
             await pause(100)
         }
         await transferChecks()
+        await imageCacheChecks()
         lifecycle.removeAll()
         select()
         host.submit(.conversation, frame(0, ready: false))
