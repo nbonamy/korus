@@ -188,14 +188,21 @@ describe('standalone CLI', () => {
     expect(await readFile(path.join(f.home, 'settings.json'), 'utf8')).toBe('{"secret":"DO_NOT_PRINT"');
     expect((await readdir(f.home)).sort()).toStrictEqual(['roster.json', 'settings.json']);
   });
-  it('labels offline agent and Mission inspection and never exposes provider sessions or settings', async () => {
+  it('inspects agents and Missions without source labels or private provider data', async () => {
     const f = await fixture(); await f.seed();
     expect(await f.command(['agents', 'list', '--offline', '--json'])).toBe(0);
     expect(JSON.parse(f.out.pop()!)).toMatchObject({ source: 'saved', agents: [{ id: 'agent-one', backend: 'codex' }] });
+    expect(await f.command(['agents', 'list', '--offline'])).toBe(0);
+    expect(f.out.pop()).toBe('Agents\nagent-one\tBuilder\tcodex\tworking');
     expect(await f.command(['missions', 'show', 'mission-one', '--offline', '--json'])).toBe(0);
     expect(JSON.parse(f.out.pop()!)).toMatchObject({ source: 'saved', mission: { id: 'mission-one', tickets: [{ title: 'Checkout', done: false }] } });
     expect(f.out.join('')).not.toMatch(/private-thread|PRIVATE_SETTINGS/);
     expect(f.launch).not.toHaveBeenCalled();
+    const roster = JSON.parse(await readFile(path.join(f.home, 'roster.json'), 'utf8'));
+    roster.data.missions = [];
+    await writeFile(path.join(f.home, 'roster.json'), JSON.stringify(roster));
+    expect(await f.command(['missions', 'list', '--offline'])).toBe(0);
+    expect(f.out.pop()).toBe('Missions\nNo missions found.');
   });
   it('rejects removed agent send and stop commands without contacting the daemon', async () => {
     const f = await fixture(); const seeded = await f.seed();
@@ -265,13 +272,21 @@ describe('standalone CLI', () => {
     expect(logs).toContain('ECONNRESET');
     expect(logs).not.toMatch(/PRIVATE_CONVERSATION|PRIVATE_INLINE|sk-secret-token/);
   });
-  it('refuses service restart without confirmation and never touches another home', async () => {
-    const f = await fixture(); const launchAgents = path.join(f.directory, 'Library', 'LaunchAgents'); await mkdir(launchAgents, { recursive: true });
-    await writeFile(path.join(launchAgents, `${product.appId}.daemon.plist`), '<plist/>');
+  it('checks service availability and home before requesting confirmation', async () => {
+    const f = await fixture(); f.context.interactive = true;
+    for (const action of ['start', 'stop', 'restart']) expect(await f.command(['backend', action])).toBe(1);
+    expect(f.err.join('')).toContain('not installed');
+    expect(f.ask).not.toHaveBeenCalled();
+    const launchAgents = path.join(f.directory, 'Library', 'LaunchAgents'); await mkdir(launchAgents, { recursive: true });
+    const file = path.join(launchAgents, `${product.appId}.daemon.plist`);
+    await writeFile(file, '<plist/>');
     expect(await f.command(['backend', 'restart'])).toBe(1);
+    expect(f.ask).not.toHaveBeenCalled();
+    expect(f.err.pop()).toMatch(/home|APP_HOME/i);
+    await writeFile(file, `<plist><key>APP_HOME</key><string>${f.home}</string></plist>`);
+    expect(await f.command(['backend', 'restart'])).toBe(1);
+    expect(f.ask).toHaveBeenCalledOnce();
     expect(f.exec).not.toHaveBeenCalled();
-    expect(await f.command(['backend', 'restart', '--yes'])).toBe(1);
-    expect(f.err.join('')).toMatch(/home|APP_HOME/i);
   });
   it('uses the canonical socket override and reports a healthy installed setup without writing state', async () => {
     const f = await fixture(); await f.seed();
@@ -405,6 +420,8 @@ describe('standalone CLI', () => {
     expect(JSON.parse(f.out.pop()!)).toStrictEqual({ source: 'live', agents: ['one', 'two'].map(id => ({ id, name: 'Builder', backend: 'codex', status: 'idle' })) });
     expect(await f.command(['missions', 'list', '--json'])).toBe(0);
     expect(JSON.parse(f.out.pop()!)).toStrictEqual({ source: 'live', missions: [] });
+    expect(await f.command(['missions', 'list'])).toBe(0);
+    expect(f.out.pop()).toBe('Missions\nNo missions found.');
   });
 
   it('rejects unknown commands and invalid limits without mutating state', async () => {

@@ -856,8 +856,7 @@ and `NO_COLOR` disables colour. Each coding client reports its version, effectiv
 and authentication through bounded status commands. Persisted provider-home choices
 take precedence over environment defaults, and probes and triage use that same home; credentials and account details
 are not included in the report. The MCP check uses a loopback GET without an agent identity;
-reachability does not establish provider tool-delivery correctness. Saved-state
-inspection is labelled separately from live state. Agent and Mission commands are
+reachability does not establish provider tool-delivery correctness. Structured inspection output retains its data source. Agent and Mission commands are
 read-only and can fall back to saved metadata without a running daemon.
 
 Triage selects the first installed, authenticated terminal client in the order

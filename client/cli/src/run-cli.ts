@@ -18,7 +18,7 @@ Usage: ${product.slug} <command> [options]
   backend start|stop|restart  Control the installed macOS background service (--yes)
   logs                       Show redacted recent logs (--since 15m --agent ID --follow)
   support bundle             Prepare a private diagnostic bundle; never uploads
-  agents list                List agents (saved state is labelled offline)
+  agents list                List agents
   missions list|show ID       Inspect Mission progress without changing its stage
 
 Options:
@@ -83,14 +83,14 @@ export async function runCli(args: string[], overrides: Partial<CliContext> = {}
     if (command === 'agents') {
       if ((action ?? 'list') !== 'list') throw new CliError('Use agents list.', 2);
       const state = await loadState(options);
-      print(context, options, { source: state.source, agents: state.agents }, `${state.source === 'saved' ? 'Saved state (not live)' : 'Live agents'}\n${state.agents.map(agent => `${agent.id}\t${agent.name}\t${agent.backend}\t${agent.status}${state.source === 'saved' ? ' (saved)' : ''}`).join('\n')}`); return 0;
+      print(context, options, { source: state.source, agents: state.agents }, `Agents\n${state.agents.map(agent => `${agent.id}\t${agent.name}\t${agent.backend}\t${agent.status}`).join('\n')}`); return 0;
     }
     if (command === 'missions' && ['list', 'show'].includes(action ?? 'list')) {
       const state = await loadState(options);
       const mission = action === 'show' ? state.missions.find(mission => mission.id === rest[0]) : undefined;
       if (action === 'show' && !mission) throw new CliError('Mission not found. Run missions list.');
       const data = mission ? { source: state.source, mission } : { source: state.source, missions: state.missions };
-      print(context, options, data, `${state.source === 'saved' ? 'Saved state (not live)' : 'Live Missions'}\n${mission ? JSON.stringify(mission, null, 2) : state.missions.map(mission => `${mission.id}\t${mission.outcome}\t${mission.stage}\t${mission.tickets.filter(ticket => ticket.done).length}/${mission.tickets.length}`).join('\n')}`); return 0;
+      print(context, options, data, `Missions\n${mission ? JSON.stringify(mission, null, 2) : state.missions.map(mission => `${mission.id}\t${mission.outcome}\t${mission.stage}\t${mission.tickets.filter(ticket => ticket.done).length}/${mission.tickets.length}`).join('\n') || 'No missions found.'}`); return 0;
     }
     throw new CliError(`Unknown command. Run ${product.slug} --help.`, 2);
   } catch (error) {

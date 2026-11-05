@@ -29,15 +29,15 @@ export async function backendCommand(context: CliContext, options: CliOptions, a
     return 0;
   }
   if (!['start', 'stop', 'restart'].includes(action)) throw new CliError('Use backend status, start, stop, or restart.', 2);
-  if (!options.yes && (!context.interactive || !/^(y|yes)$/iu.test((await context.ask(`${action} the background backend? Active agent turns may be interrupted. [y/N] `)).trim()))) {
-    throw new CliError('No change made. Pass --yes to confirm backend service control.');
-  }
   if (context.platform !== 'darwin') throw new CliError('Background service control is supported on macOS. Doctor and live daemon commands remain available.');
   if (!await fileExists(file)) throw new CliError('The background backend is not installed. Enable it in desktop Settings first.');
   const plist = await readFile(file, 'utf8');
   const configured = /<key>APP_HOME<\/key>\s*<string>([^<]+)<\/string>/u.exec(plist)?.[1]
     ?.replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', '"').replaceAll('&apos;', "'").replaceAll('&amp;', '&');
   if (!configured || path.resolve(configured) !== options.home) throw new CliError('LaunchAgent APP_HOME does not match the selected home; refusing to control another installation.');
+  if (!options.yes && (!context.interactive || !/^(y|yes)$/iu.test((await context.ask(`${action} the background backend? Active agent turns may be interrupted. [y/N] `)).trim()))) {
+    throw new CliError('No change made. Pass --yes to confirm backend service control.');
+  }
   const domain = `gui/${process.getuid?.() ?? 501}`;
   if (action === 'stop') await context.exec('launchctl', ['bootout', domain, file], { timeout: options.timeout });
   else {
