@@ -54,7 +54,7 @@ process.stdin.on('end', () => {
   await writeFile(path.join(root, 'state.json'), JSON.stringify({ login: 'alice' }));
   vi.stubEnv('GH_DEBUG', 'api');
 });
-afterEach(async () => { vi.unstubAllEnvs(); vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); });
+afterEach(async () => { vi.unstubAllEnvs(); vi.restoreAllMocks(); await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }); });
 
 function fixture() {
   const snapshot = createInitialSnapshot();
