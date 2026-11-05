@@ -844,11 +844,18 @@ its own package, build and tests. It can bundle reusable backend modules; import
 must not require Electron or start the daemon at module load. `client/cli/build.mjs`
 emits a dependency-free installable package under `client/cli/dist` and rejects
 Electron or external runtime dependencies. Product metadata supplies the public
-package name; the internal workspace is `@workspace/cli`.
+package name; the internal workspace is `@workspace/cli`. Its version is independent
+of the desktop release, while its internal core dependency follows the desktop version.
 The CLI uses the repository Node reference runtime rather than the desktop's private runtime.
 
 Doctor reads state envelopes without migrations or writes and bounds every process,
-socket and MCP probe. The MCP check uses a loopback GET without an agent identity;
+socket and MCP probe. Warnings and absent optional services do not fail the command;
+invalid state, unsupported runtimes and failed explicitly requested MCP probes do.
+Terminal reports use coloured sections; redirected output and JSON remain plain,
+and `NO_COLOR` disables colour. Each coding client reports its version, effective home
+and authentication through bounded status commands. Persisted provider-home choices
+take precedence over environment defaults, and probes and triage use that same home; credentials and account details
+are not included in the report. The MCP check uses a loopback GET without an agent identity;
 reachability does not establish provider tool-delivery correctness. Saved-state
 inspection is labelled separately from live state. Agent and Mission commands are
 read-only and can fall back to saved metadata without a running daemon.

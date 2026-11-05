@@ -10,8 +10,8 @@ import { configuredAppHome } from '@workspace/core/app-home';
 type CommandResult = { stdout: string; stderr: string };
 export type CliContext = {
   env: NodeJS.ProcessEnv; userHome: string; cwd: string; platform: NodeJS.Platform; interactive: boolean; signal?: AbortSignal;
-  out(text: string): void; err(text: string): void; ask(question: string): Promise<string>; now(): Date;
-  exec(file: string, args: string[], options?: { timeout?: number }): Promise<CommandResult>;
+  write(text: string): void; out(text: string): void; err(text: string): void; ask(question: string): Promise<string>; now(): Date;
+  exec(file: string, args: string[], options?: { timeout?: number; env?: NodeJS.ProcessEnv }): Promise<CommandResult>;
   launch(file: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv }): Promise<number>;
 };
 export type CliOptions = { home: string; socket: string; timeout: number; json: boolean; offline: boolean; yes: boolean; lines: number; since?: number; agent?: string; model?: string; noLaunch: boolean; output?: string; follow: boolean; mcpUrl?: string; includeLogs: boolean };
@@ -20,9 +20,11 @@ export const record = (value: unknown): value is Record<string, unknown> => !!va
 export const string = (value: unknown): string | undefined => typeof value === 'string' ? value : undefined;
 
 export function nodeContext(overrides: Partial<CliContext>): CliContext {
+  const env = overrides.env ?? process.env;
   return {
-    env: process.env, userHome: homedir(), cwd: process.cwd(), platform: process.platform,
+    env, userHome: homedir(), cwd: process.cwd(), platform: process.platform,
     interactive: !!process.stdin.isTTY && !!process.stdout.isTTY,
+    write: text => { process.stdout.write(text); },
     out: text => { process.stdout.write(text.endsWith('\n') ? text : `${text}\n`); },
     err: text => { process.stderr.write(text.endsWith('\n') ? text : `${text}\n`); },
     now: () => new Date(),
@@ -31,7 +33,7 @@ export function nodeContext(overrides: Partial<CliContext>): CliContext {
       try { return await input.question(question); } finally { input.close(); }
     },
     exec: (file, args, options) => new Promise((resolve, reject) => {
-      execFile(file, args, { encoding: 'utf8', timeout: options?.timeout ?? 2500, maxBuffer: 128 * 1024, windowsHide: true }, (error, stdout, stderr) => error ? reject(error) : resolve({ stdout, stderr }));
+      execFile(file, args, { env: options?.env ?? env, encoding: 'utf8', timeout: options?.timeout ?? 2500, maxBuffer: 128 * 1024, windowsHide: true }, (error, stdout, stderr) => error ? reject(error) : resolve({ stdout, stderr }));
     }),
     launch: (file, args, options) => new Promise((resolve, reject) => {
       const child = spawn(file, args, { ...options, stdio: 'inherit', shell: false });

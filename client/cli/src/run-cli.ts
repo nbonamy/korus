@@ -3,7 +3,7 @@ import path from 'node:path';
 import { product } from '@workspace/core/product';
 import metadata from '../package.json';
 import { appHome, CliError, nodeContext, print, redact, type CliContext, type CliOptions } from './context';
-import { diagnose, doctorText } from './doctor';
+import { runDoctor } from './doctor';
 import { followLogs, readLogs } from './logs';
 import { backendCommand } from './service';
 import { loadState } from './state';
@@ -70,9 +70,7 @@ export async function runCli(args: string[], overrides: Partial<CliContext> = {}
       lines: positive(text('lines'), 100, 10000, '--lines'), since: since(text('since'), context.now().getTime()), agent: text('agent'), model: text('model'),
       noLaunch: !!values['no-launch'], output: text('output') ? path.resolve(context.cwd, text('output')!) : undefined, follow: !!values.follow, mcpUrl: text('mcp-url'), includeLogs: !!values['include-logs'] };
     const [command, action, ...rest] = parsed.positionals;
-    if (command === 'doctor') {
-      const report = await diagnose(context, options); print(context, options, report, doctorText(report)); return report.healthy ? 0 : 1;
-    }
+    if (command === 'doctor') return await runDoctor(context, options);
     if (command === 'triage') return await triage(context, options, [action, ...rest].filter(Boolean).join(' '));
     if (command === 'support' && action === 'bundle') return await supportBundle(context, options);
     if (command === 'backend') return await backendCommand(context, options, action ?? 'status');

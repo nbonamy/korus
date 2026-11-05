@@ -9,20 +9,24 @@ test('release validation includes every declared workspace and its locked core d
   const root = mkdtempSync(path.join(tmpdir(), 'release-workspaces-'));
   const writeJson = (file, value) => writeFileSync(path.join(root, file), JSON.stringify(value));
   const manifest = { version: '1.2.3', dependencies: { '@workspace/core': '1.2.3' } };
-  const workspaces = ['core', 'client/backend', 'client/vue', 'client/electron', 'service'];
+  const workspaces = ['core', 'client/backend', 'client/vue', 'client/electron', 'client/cli', 'service'];
   const lockfile = {
     version: '1.2.3',
-    packages: { '': { version: '1.2.3' }, ...Object.fromEntries(workspaces.map((workspace) => [workspace, manifest])) },
+    packages: { '': { version: '1.2.3' }, ...Object.fromEntries(workspaces.map((workspace) => [workspace, workspace === 'client/cli' ? { ...manifest, version: '0.1.0' } : manifest])) },
   };
   try {
     for (const workspace of workspaces) {
       mkdirSync(path.join(root, workspace), { recursive: true });
-      writeJson(`${workspace}/package.json`, manifest);
+      writeJson(`${workspace}/package.json`, workspace === 'client/cli' ? { ...manifest, version: '0.1.0' } : manifest);
     }
     writeJson('package.json', { version: '1.2.3', workspaces });
     writeJson('package-lock.json', lockfile);
     writeFileSync(path.join(root, 'CHANGELOG.md'), '## [1.2.3] - 2026-10-15\n\n- Improved startup.\n');
     assert.equal(JSON.parse(expectedReleaseNotes(root)).currentVersion, '1.2.3');
+
+    writeJson('package-lock.json', { ...lockfile, packages: { ...lockfile.packages, 'client/cli': manifest } });
+    assert.throws(() => expectedReleaseNotes(root), /client\/cli\/package.json.*0.1.0/);
+    writeJson('package-lock.json', lockfile);
 
     writeJson('service/package.json', { ...manifest, dependencies: { '@workspace/core': '1.2.2' } });
     assert.throws(() => expectedReleaseNotes(root), /service\/package.json depends on @workspace\/core 1.2.2/);

@@ -87,7 +87,8 @@ asked for local-only preparation, stop before pushing and hand him the command.
 
 Move reviewed Unreleased notes under `## [<version>] - YYYY-MM-DD`. Update
 the root and declared workspace package versions and internal `@workspace/*`
-dependencies together using `apply_patch`. Then run:
+dependencies together using `apply_patch`. Preserve the independently released
+`client/cli` package version; update its internal core dependency with the desktop. Then run:
 
 ```bash
 npm install --package-lock-only --ignore-scripts

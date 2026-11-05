@@ -1,11 +1,11 @@
 {
   "name": "@workspace/cli",
-  "version": "0.51.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "dev": "node build.mjs && node dist/cli.mjs",
+    "dev": "node build.mjs --quiet && node dist/cli.mjs",
     "typecheck": "node ../../scripts/typecheck.mjs plain --noEmit",
     "lint": "node ../../scripts/typecheck.mjs plain --noEmit",
     "test": "vitest run",

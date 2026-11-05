@@ -41,7 +41,7 @@ export function assertVersionConsistency({ rootPackage, workspaces, lockfile }) 
   }
 
   for (const workspace of workspaces) {
-    if (workspace.manifest.version !== version) {
+    if (workspace.path !== 'client/cli/package.json' && workspace.manifest.version !== version) {
       throw new Error(`${workspace.path} version ${workspace.manifest.version ?? '(missing)'} does not match root version ${version}.`);
     }
     const sharedVersion = workspace.manifest.dependencies?.['@workspace/core'];
@@ -55,8 +55,8 @@ export function assertVersionConsistency({ rootPackage, workspaces, lockfile }) 
   }
   for (const workspace of workspaces) {
     const lockManifest = lockfile.packages?.[workspace.path.replace('/package.json', '')];
-    if (lockManifest?.version !== version) {
-      throw new Error(`package-lock.json entry for ${workspace.path} does not match ${version}. Run npm install after bumping versions.`);
+    if (lockManifest?.version !== workspace.manifest.version) {
+      throw new Error(`package-lock.json entry for ${workspace.path} does not match ${workspace.manifest.version}. Run npm install after bumping versions.`);
     }
     const sharedVersion = lockManifest?.dependencies?.['@workspace/core'];
     if (sharedVersion !== undefined && sharedVersion !== version) {

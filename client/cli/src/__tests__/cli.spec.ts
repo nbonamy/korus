@@ -19,7 +19,7 @@ async function fixture() {
   const launch = vi.fn().mockResolvedValue(0);
   const ask = vi.fn().mockResolvedValue('no');
   const context = { env: { APP_HOME: home, PATH: '', KORUS_APP_PATH: path.join(directory, 'NoApp.app') } as NodeJS.ProcessEnv, userHome: directory, cwd: directory, platform: 'darwin' as const,
-    out: (text: string) => out.push(text), err: (text: string) => err.push(text), exec, launch, ask, interactive: false, signal: undefined as AbortSignal | undefined, now: () => new Date('2026-11-04T12:00:00Z') };
+    write: vi.fn(), out: (text: string) => out.push(text), err: (text: string) => err.push(text), exec, launch, ask, interactive: false, signal: undefined as AbortSignal | undefined, now: () => new Date('2026-11-04T12:00:00Z') };
   const command = (args: string[]) => runCli(args, context);
   const seed = async () => {
     await mkdir(home, { recursive: true });
@@ -64,13 +64,120 @@ describe('standalone CLI', () => {
   });
   it('runs read-only doctor when both the daemon and application state are absent', async () => {
     const f = await fixture();
-    expect(await f.command(['doctor', '--json', '--timeout', '30'])).toBe(1);
+    expect(await f.command(['doctor', '--json', '--timeout', '30'])).toBe(0);
     const report = JSON.parse(f.out.join(''));
     expect(report).toMatchObject({ home: f.home, daemon: { running: false }, providers: [{ id: 'codex', installed: false }, { id: 'claude', installed: false }, { id: 'antigravity', installed: false }] });
     expect(report.daemon.detail).not.toMatch(/stdio|Enable the background backend|terminal control/);
     expect(await readdir(f.directory)).toStrictEqual([]);
     expect(f.launch).not.toHaveBeenCalled();
     expect(f.exec).not.toHaveBeenCalled();
+  });
+  it('groups diagnostics into coloured sections only for terminals and keeps JSON clean', async () => {
+    const f = await fixture(); await f.seed();
+    expect(await f.command(['doctor', '--timeout', '20'])).toBe(0);
+    const plain = f.out.pop()!;
+    expect(plain).toMatch(/^Korus doctor/m);
+    for (const section of ['Installation', 'Codex', 'Claude Code', 'Antigravity', 'Integrations', 'Checks']) expect(plain).toContain(`\n${section}\n\n`);
+    expect(plain).toMatch(/^ {2}Desktop\s/m);
+    expect(plain).toMatch(/^ {2}Version\s/m);
+    expect(plain).not.toContain('\u001b[');
+    expect(plain).not.toMatch(/WARNING daemon|Daemon socket unavailable/);
+    expect(f.err).toStrictEqual([]);
+    f.context.interactive = true; f.context.env.TERM = 'xterm-256color';
+    expect(await f.command(['doctor', '--timeout', '20'])).toBe(0);
+    const coloured = f.out.splice(0).join('\n');
+    for (const section of ['Installation', 'Codex', 'Claude Code', 'Antigravity', 'Checks']) expect(coloured).toContain(`\u001b[1;36m${section}\u001b[0m`);
+    f.context.env.NO_COLOR = '';
+    expect(await f.command(['doctor', '--timeout', '20'])).toBe(0);
+    expect(f.out.splice(0).join('\n')).not.toContain('\u001b[');
+    delete f.context.env.NO_COLOR;
+    expect(await f.command(['doctor', '--json', '--timeout', '20'])).toBe(0);
+    expect(JSON.parse(f.out.pop()!)).toMatchObject({ healthy: true, daemon: { running: false } });
+  });
+  it('reports each client home and safe auth status without exposing account data', async () => {
+    const f = await fixture(); await f.seed();
+    const bin = path.join(f.directory, 'bin'); await mkdir(bin); f.context.env.PATH = bin;
+    for (const id of ['codex', 'claude', 'agy']) { await writeFile(path.join(bin, id), '#!/bin/sh\n'); await chmod(path.join(bin, id), 0o755); }
+    f.context.env.CODEX_HOME = path.join(f.directory, 'custom-codex');
+    f.context.env.CLAUDE_CONFIG_DIR = path.join(f.directory, 'custom-claude');
+    f.context.env.GEMINI_HOME = path.join(f.directory, 'custom-gemini');
+    f.exec.mockImplementation(async (_file: string, args: string[]) => ({ stdout: args[0] === 'auth' ? '{"loggedIn":false,"email":"PRIVATE_ACCOUNT"}' : args[0] === 'models' ? 'gemini-test\tGemini Test' : args[0] === 'login' ? '' : 'provider 1.2.3', stderr: args[0] === 'login' ? 'Logged in using ChatGPT' : '' }));
+    expect(await f.command(['doctor', '--json', '--timeout', '20'])).toBe(0);
+    const json = f.out.pop()!;
+    expect(JSON.parse(json).providers).toMatchObject([
+      { id: 'codex', home: f.context.env.CODEX_HOME, auth: 'authenticated' },
+      { id: 'claude', home: f.context.env.CLAUDE_CONFIG_DIR, auth: 'signed-out' },
+      { id: 'antigravity', home: f.context.env.GEMINI_HOME, auth: 'authenticated' },
+    ]);
+    expect(json).not.toContain('PRIVATE_ACCOUNT');
+    const homes = Object.fromEntries(['codex', 'claude', 'antigravity'].map(id => [id, { homePath: path.join(f.home, `${id}-home`), isolated: true, shareSkills: false }]));
+    await writeFile(path.join(f.home, 'settings.json'), JSON.stringify({ schemaVersion: 1, data: { settings: { providerHomes: homes, apiKey: 'PRIVATE_SETTINGS' } } }));
+    f.exec.mockClear();
+    expect(await f.command(['doctor', '--json', '--timeout', '20'])).toBe(0);
+    const configured = f.out.pop()!;
+    expect(JSON.parse(configured).providers.map((provider: { home: string }) => provider.home)).toStrictEqual(['codex', 'claude', 'antigravity'].map(id => homes[id]!.homePath));
+    expect(f.exec).toHaveBeenCalledWith(path.join(bin, 'codex'), ['login', 'status'], expect.objectContaining({ env: expect.objectContaining({ CODEX_HOME: homes.codex!.homePath }) }));
+    expect(f.exec).toHaveBeenCalledWith(path.join(bin, 'claude'), ['auth', 'status', '--json'], expect.objectContaining({ env: expect.objectContaining({ CLAUDE_CONFIG_DIR: homes.claude!.homePath }) }));
+    expect(f.exec).toHaveBeenCalledWith(path.join(bin, 'agy'), ['models'], expect.objectContaining({ env: expect.objectContaining({ GEMINI_HOME: homes.antigravity!.homePath }) }));
+    expect(configured).not.toMatch(/PRIVATE_ACCOUNT|PRIVATE_SETTINGS/);
+
+    f.exec.mockImplementation(async (_file: string, args: string[]) => {
+      if (args[0] === 'auth') throw Object.assign(new Error('PRIVATE_AUTH_ERROR'), { stdout: '{"loggedIn":false,"email":"PRIVATE_ACCOUNT"}' });
+      if (args[0] === 'login') throw Object.assign(new Error('PRIVATE_AUTH_ERROR'), { stderr: 'Not logged in' });
+      return { stdout: 'provider 1.2.3', stderr: '' };
+    });
+    expect(await f.command(['doctor', '--json', '--timeout', '20'])).toBe(0);
+    expect(JSON.parse(f.out.pop()!).providers).toMatchObject([{ auth: 'signed-out' }, { auth: 'signed-out' }, { auth: 'unknown' }]);
+    f.exec.mockRejectedValue(new Error('PRIVATE_AUTH_ERROR'));
+    expect(await f.command(['doctor', '--timeout', '20'])).toBe(0);
+    const plain = f.out.pop()!;
+    expect(plain).toContain('Unable to verify');
+    expect(plain).not.toContain('PRIVATE_AUTH_ERROR');
+    expect(f.launch).not.toHaveBeenCalled();
+    expect((await readdir(f.home)).sort()).toStrictEqual(['roster.json', 'settings.json']);
+  });
+  it('prints installation details while auth is pending and clears its temporary terminal spinner', async () => {
+    const f = await fixture(); await f.seed(); f.context.interactive = true; f.context.env.TERM = 'xterm';
+    const bin = path.join(f.directory, 'bin'); await mkdir(bin); f.context.env.PATH = bin;
+    await writeFile(path.join(bin, 'codex'), '#!/bin/sh\n'); await chmod(path.join(bin, 'codex'), 0o755);
+    let resolveAuth!: (result: { stdout: string; stderr: string }) => void;
+    const auth = new Promise<{ stdout: string; stderr: string }>(resolve => { resolveAuth = resolve; });
+    f.exec.mockImplementation(async (_file: string, args: string[]) => args[0] === 'login' ? auth : { stdout: 'provider 1.2.3', stderr: '' });
+    const running = f.command(['doctor', '--timeout', '1000']);
+    try {
+      await vi.waitFor(() => expect(f.exec).toHaveBeenCalledWith(expect.any(String), ['login', 'status'], expect.any(Object)));
+      expect(f.out.join('')).toContain('Installation');
+      expect(f.out.join('')).toContain('\u001b[1;36mCodex\u001b[0m\n\n');
+      expect(f.out.join('')).not.toContain('All checks passed');
+      expect(f.context.write).toHaveBeenCalledWith(expect.stringContaining('Checking Codex'));
+    } finally { resolveAuth({ stdout: 'Logged in using ChatGPT', stderr: '' }); }
+    expect(await running).toBe(0);
+    expect(f.out.join('')).toContain('Signed in');
+    expect(f.context.write).toHaveBeenLastCalledWith('\r\u001b[2K');
+    f.context.write.mockClear(); f.out.length = 0;
+    expect(await f.command(['doctor', '--json'])).toBe(0);
+    expect(JSON.parse(f.out.pop()!).healthy).toBe(true);
+    expect(f.context.write).not.toHaveBeenCalled();
+  });
+  it('shows the source folder and saved integration connection modes before checks without account details', async () => {
+    const f = await fixture(); await f.seed();
+    await writeFile(path.join(f.home, 'settings.json'), JSON.stringify({ schemaVersion: 1, data: {
+      settings: {}, sourceFolder: { path: '~/src' }, workIntegrations: { connections: [
+        { provider: 'github', status: 'connected', source: 'cli', accountLabel: 'PRIVATE_ACCOUNT' },
+        { provider: 'gitlab', status: 'disconnected', source: 'none' },
+        { provider: 'linear', status: 'connected', source: 'api', detail: 'PRIVATE_DETAIL' },
+      ] },
+    } }));
+    expect(await f.command(['doctor', '--timeout', '20'])).toBe(0);
+    const text = f.out.pop()!;
+    expect(text).toMatch(/Source folder\s+~\/src/);
+    expect(text).toMatch(/GitHub\s+Using CLI/);
+    expect(text).toMatch(/GitLab\s+Not connected/);
+    expect(text).toMatch(/Linear\s+Connected/);
+    expect(text.indexOf('Integrations')).toBeLessThan(text.indexOf('Checks'));
+    expect(text).not.toMatch(/PRIVATE_ACCOUNT|PRIVATE_DETAIL/);
+    expect(await f.command(['doctor', '--json', '--timeout', '20'])).toBe(0);
+    expect(f.out.pop()).not.toMatch(/PRIVATE_ACCOUNT|PRIVATE_DETAIL/);
   });
   it('reports corrupt state without migrating, rewriting, or leaking its contents', async () => {
     const f = await fixture(); await f.seed();
@@ -184,7 +291,7 @@ describe('standalone CLI', () => {
     const port = (server.address() as net.AddressInfo).port;
     const url = `http://127.0.0.1:${port}/mcp`;
     await writeFile(path.join(f.home, 'logs', 'daemon.log'), JSON.stringify({ area: 'mcp-http', msg: 'listening', url }) + '\n');
-    expect(await f.command(['doctor', '--json', '--timeout', '100'])).toBe(1);
+    expect(await f.command(['doctor', '--json', '--timeout', '100'])).toBe(0);
     expect(JSON.parse(f.out.pop()!)).toMatchObject({ mcp: { reachable: true, endpoint: url } });
     expect(received).toStrictEqual(['/mcp']);
     expect(await f.command(['doctor', '--mcp-url', 'https://example.com/mcp', '--timeout', '20', '--json'])).toBe(1);
@@ -229,7 +336,8 @@ describe('standalone CLI', () => {
     await writeFile(path.join(bin, 'codex'), '#!/bin/sh\nif [ "$1" = "--version" ]; then echo provider-version; exit 0; fi\nif [ "$1" = "login" ] && [ "$2" = "status" ]; then echo "Logged in using ChatGPT" >&2; exit 0; fi\nprintf "%s\\n" "$@" > "$TRIAGE_CAPTURE"\nexit 7\n');
     await chmod(path.join(bin, 'codex'), 0o755);
     const { exec: _exec, launch: _launch, ...context } = f.context;
-    expect(await runCli(['triage', '--agent', 'codex', '--model', 'model with spaces', '--timeout', '50'], context)).toBe(7);
+    const exitCode = await runCli(['triage', '--agent', 'codex', '--model', 'model with spaces', '--timeout', '1000'], context);
+    expect(exitCode, f.err.join('\n')).toBe(7);
     expect(await readFile(capture, 'utf8')).toMatch(/--model\nmodel with spaces\nRead the file/);
   });
 

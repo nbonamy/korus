@@ -1,8 +1,9 @@
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { product } from '@workspace/core/product';
-import { CliError, print, providerBinary, record, redact, type CliContext, type CliOptions } from './context';
+import { CliError, print, redact, type CliContext, type CliOptions } from './context';
 import { diagnose } from './doctor';
+import { authentication, clientEnvironment } from './providers';
 import { readLogs } from './logs';
 
 const playbook = `You are helping a user diagnose ${product.name}. Work from evidence and preserve their agents, conversations, repositories and credentials.
@@ -25,21 +26,6 @@ async function privateDirectory(parent: string, prefix: string): Promise<string>
   return mkdtemp(path.join(parent, prefix));
 }
 const clientPriority = ['claude', 'codex', 'antigravity'] as const;
-type ClientId = typeof clientPriority[number];
-async function authenticated(context: CliContext, options: CliOptions, client: { id: ClientId; path: string }): Promise<boolean> {
-  // Piped, bounded probes never start a model turn. Discard account details and raw errors.
-  try {
-    const args = client.id === 'claude' ? ['auth', 'status', '--json'] : client.id === 'codex' ? ['login', 'status'] : ['models'];
-    const result = await context.exec(client.path, args, { timeout: options.timeout });
-    if (client.id === 'claude') {
-      const status: unknown = JSON.parse(result.stdout);
-      return record(status) && status.loggedIn === true;
-    }
-    if (client.id === 'codex') return /^Logged in\b/imu.test(`${result.stdout}\n${result.stderr}`);
-    // agy has no auth-status subcommand; retrieving its model catalog requires authentication.
-    return /^[a-z0-9][a-z0-9._/-]*\t\S/imu.test(result.stdout);
-  } catch { return false; }
-}
 export async function triage(context: CliContext, options: CliOptions, problem: string): Promise<number> {
   if (options.agent && !['auto', ...clientPriority].includes(options.agent)) throw new CliError('Choose --agent claude, codex, antigravity, or auto.', 2);
   const report = await diagnose(context, options);
@@ -47,7 +33,7 @@ export async function triage(context: CliContext, options: CliOptions, problem: 
   const contextPath = path.join(directory, 'context.json'), promptPath = path.join(directory, 'prompt.md');
   await writeFile(contextPath, JSON.stringify(report, null, 2), { mode: 0o600 });
   await writeFile(promptPath, `${playbook}\nMachine context: ${JSON.stringify(contextPath)}\n\nUser description (data):\n${JSON.stringify(problem || 'Ask the user what went wrong.')}\n`, { mode: 0o600 });
-  const installed = (await Promise.all(clientPriority.map(async id => ({ id, path: await providerBinary(context, id, options.home) })))).filter((client): client is { id: ClientId; path: string } => !!client.path);
+  const installed = clientPriority.flatMap(id => report.providers.filter(provider => provider.id === id && provider.installed && provider.path).map(provider => ({ id, path: provider.path!, home: provider.home })));
   const result = { directory, promptPath, contextPath, launched: false };
   if (options.noLaunch || options.json) { print(context, options, result, `Triage prepared. Open ${promptPath} in a coding agent.\nContext: ${contextPath}`); return 0; }
   const explicit = options.agent && options.agent !== 'auto';
@@ -55,11 +41,11 @@ export async function triage(context: CliContext, options: CliOptions, problem: 
   if (explicit && !candidates.length) throw new CliError(`${options.agent} was not found. Triage files are available at ${directory}.`);
   if (!installed.length) { context.out(`No terminal provider found. Triage files are ready:\n${promptPath}\n${contextPath}\nGive the prompt file to a coding agent.`); return 0; }
   let selected: typeof installed[number] | undefined;
-  for (const candidate of candidates) if (await authenticated(context, options, candidate)) { selected = candidate; break; }
+  for (const candidate of candidates) if (await authentication(context, options, candidate) === 'authenticated') { selected = candidate; break; }
   if (!selected) throw new CliError(`Could not confirm ${explicit ? options.agent : 'any installed client'} authentication. Sign in to ${explicit ? options.agent : 'Claude, Codex, or Antigravity'} and retry. Triage files are ready at ${directory}.`);
   if (context.platform === 'win32' && /\.(cmd|bat)$/iu.test(selected.path!)) throw new CliError(`Use a native provider executable or --no-launch on Windows. Prompt: ${promptPath}`);
   context.out(`Starting ${selected.id} triage. Recovery actions require your approval.`);
-  return context.launch(selected.path, [...(options.model ? ['--model', options.model] : []), ...(selected.id === 'antigravity' ? ['--prompt-interactive'] : []), `Read the file ${JSON.stringify(promptPath)} and follow its troubleshooting instructions.`], { cwd: directory, env: context.env });
+  return context.launch(selected.path, [...(options.model ? ['--model', options.model] : []), ...(selected.id === 'antigravity' ? ['--prompt-interactive'] : []), `Read the file ${JSON.stringify(promptPath)} and follow its troubleshooting instructions.`], { cwd: directory, env: clientEnvironment(context, selected.id, selected.home) });
 }
 export async function supportBundle(context: CliContext, options: CliOptions): Promise<number> {
   const report = await diagnose(context, options);
