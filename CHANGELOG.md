@@ -4,6 +4,12 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.52.4] - 2026-11-05
+
+### Improvements and fixes
+
+- **Conversations:** Hide empty instruction placeholders in messages and previews.
+
 ## [0.52.3] - 2026-11-05
 
 ### Improvements and fixes

@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.52.3",
+  "currentVersion": "0.52.4",
   "releases": [
+    {
+      "version": "0.52.4",
+      "releasedAt": "2026-11-05",
+      "sourceSha256": "20227642f532a4777413b16f2062bba2b7ea437e93328a007404c21d94c3d8fd",
+      "markdown": "### Improvements and fixes\n\n- **Conversations:** Hide empty instruction placeholders in messages and previews."
+    },
     {
       "version": "0.52.3",
       "releasedAt": "2026-11-05",
