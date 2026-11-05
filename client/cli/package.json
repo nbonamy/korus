@@ -14,7 +14,7 @@
     "test:package": "node --test build.test.mjs package-workflows.test.mjs"
   },
   "dependencies": {
-    "@workspace/core": "0.52.1"
+    "@workspace/core": "0.52.2"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",

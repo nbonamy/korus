@@ -4,6 +4,13 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.52.2] - 2026-11-05
+
+### Improvements and fixes
+
+- **Queued prompts:** Show readable mention names and hide attached context in previews.
+- **Automatic updates:** Prevent source-map archives from being mistaken for app updates.
+
 ## [0.52.1] - 2026-11-04
 
 ### Improvements and fixes

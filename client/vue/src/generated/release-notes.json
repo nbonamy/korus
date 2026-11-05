@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.52.1",
+  "currentVersion": "0.52.2",
   "releases": [
+    {
+      "version": "0.52.2",
+      "releasedAt": "2026-11-05",
+      "sourceSha256": "312af47bc51d771da3a91be0621738c6d7253f2f48737ba92221cb00cf5ed0dc",
+      "markdown": "### Improvements and fixes\n\n- **Queued prompts:** Show readable mention names and hide attached context in previews.\n- **Automatic updates:** Prevent source-map archives from being mistaken for app updates."
+    },
     {
       "version": "0.52.1",
       "releasedAt": "2026-11-04",
