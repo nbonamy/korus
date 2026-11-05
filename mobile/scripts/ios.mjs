@@ -24,6 +24,12 @@ export function generatedConfig(product, env, dotenv) {
 
 function readIfPresent(file) { try { return readFileSync(file, 'utf8'); } catch (error) { if (error.code === 'ENOENT') return ''; throw error; } }
 
+export function runXcode(args, { env = process.env, execute = execFileSync } = {}) {
+  // Xcode's system rsync starts a second rsync through PATH; both must use Apple's flags.
+  const toolPath = ['/usr/bin', '/bin', '/usr/sbin', '/sbin', env.PATH].filter(Boolean).join(':');
+  return execute('/usr/bin/xcodebuild', args, { stdio: 'inherit', env: { ...env, PATH: toolPath } });
+}
+
 function prepare() {
   const product = JSON.parse(readFileSync(path.join(root, 'core/src/product.json'), 'utf8'));
   mkdirSync(path.join(ios, 'Config'), { recursive: true });
@@ -35,13 +41,14 @@ function build(configuration, destination) {
   execFileSync('npm', ['run', 'build:web', '-w', '@workspace/mobile'], { cwd: root, stdio: 'inherit' });
   // Ad-hoc simulator signing preserves access to the app's Keychain pairing.
   // Linker-only signing with CODE_SIGNING_ALLOWED=NO cannot read those entries.
-  execFileSync('xcodebuild', ['-project', path.join(ios, 'Companion.xcodeproj'), '-scheme', 'Companion', '-configuration', configuration, '-destination', destination,
-    '-derivedDataPath', path.join(ios, 'Build'), 'CODE_SIGNING_ALLOWED=YES', 'CODE_SIGN_IDENTITY=-', 'build'], { stdio: 'inherit' });
+  runXcode(['-project', path.join(ios, 'Companion.xcodeproj'), '-scheme', 'Companion', '-configuration', configuration, '-destination', destination,
+    '-derivedDataPath', path.join(ios, 'Build'), 'CODE_SIGNING_ALLOWED=YES', 'CODE_SIGN_IDENTITY=-', 'build']);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const command = process.argv[2];
   if (command === 'prepare') prepare();
   else if (command === 'build') build(process.argv.includes('--release') ? 'Release' : 'Debug', 'generic/platform=iOS Simulator');
-  else { console.error('Usage: node scripts/ios.mjs prepare | build [--release]'); process.exit(1); }
+  else if (command === 'xcode') runXcode(process.argv.slice(3));
+  else { console.error('Usage: node scripts/ios.mjs prepare | build [--release] | xcode <xcodebuild arguments>'); process.exit(1); }
 }

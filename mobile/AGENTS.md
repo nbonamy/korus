@@ -32,6 +32,10 @@ well; shared contracts live in [`core/`](../core/AGENTS.md).
 - **Keep the native shells thin.** Product logic, state and caching live in the
   engine so iOS and Android behave the same and can be tested in Vitest. Native
   code owns platform concerns: secure storage, notifications, dictation, layout.
+- **Apple toolchain.** Run Xcode commands through
+  `node mobile/scripts/ios.mjs xcode <arguments>`, including archives and exports.
+  The wrapper gives Apple's system tools precedence over user-installed copies
+  so distribution packaging uses compatible tools.
 
 ## Verify
 
