@@ -18,8 +18,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/nbonamy/korus/releases/latest">
-    <img src="https://img.shields.io/github/v/release/nbonamy/korus" alt="Latest Korus release" />
+  <a href="https://github.com/Korus-Dev/korus/releases/latest">
+    <img src="https://img.shields.io/github/v/release/Korus-Dev/korus" alt="Latest Korus release" />
   </a>
   <a href="https://github.com/nbonamy/korus/actions/workflows/quality.yml">
     <img src="https://github.com/nbonamy/korus/actions/workflows/quality.yml/badge.svg?branch=main&amp;event=push" alt="Quality checks" />
@@ -27,7 +27,7 @@
   <a href="https://github.com/nbonamy/korus/actions/workflows/quality.yml">
     <img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fnbonamy%2Fkorus%2Fbadges%2Fcoverage.json" alt="Statement coverage across all workspaces" />
   </a>
-  <a href="https://github.com/nbonamy/korus/releases">
+  <a href="https://github.com/Korus-Dev/korus/releases">
     <img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fnbonamy%2Fkorus%2Fbadges%2Fdownloads.json" alt="Application package downloads" />
   </a>
 </p>
@@ -133,7 +133,7 @@ calculations stay on your computer.
 ## Get Korus
 
 Korus is available for macOS on Apple silicon, Windows x64, and Linux
-x64/ARM64. Download it from [GitHub Releases](https://github.com/nbonamy/korus/releases).
+x64/ARM64. Download it from [GitHub Releases](https://github.com/Korus-Dev/korus/releases).
 Prereleases require manual downloads; automatic updates
 on macOS and installed Windows copies follow stable releases only. Windows
 installers are unsigned. Linux and portable Windows updates are manual.

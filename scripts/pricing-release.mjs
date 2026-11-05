@@ -31,7 +31,7 @@ export async function publishPricing(options = {}) {
   const outputDir = options.outputDir ?? path.join(root, '.app-dev/pricing-release');
   const manifest = await preparePricing({ ...options, outputDir });
   const product = JSON.parse(await readFile(path.join(root, 'core/src/product.json'), 'utf8'));
-  const repository = options.repository ?? product.repository;
+  const repository = options.repository ?? product.releaseRepository;
   const run = options.run ?? ((args, input) => execFileSync('gh', args, { input, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }));
   let release;
   try { release = JSON.parse(run(['api', `repos/${repository}/releases/tags/${pricingReleaseTag}`])); }

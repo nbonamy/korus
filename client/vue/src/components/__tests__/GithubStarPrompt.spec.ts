@@ -82,6 +82,7 @@ describe('GitHub star composer prompt', () => {
     await flushPromises();
     expect(localStorage.getItem('app:githubStarPrompt:v1')).toBeNull();
     expect(snapshot.general.githubStarPrompt).toStrictEqual({ sentPrompts: 5, dismissed: true });
+    expect(product.repositoryUrl).toBe('https://github.com/Korus-Dev/korus');
     expect(open).toHaveBeenCalledWith(product.repositoryUrl, '_blank', 'noopener,noreferrer');
     expect(pane.find('.github-star-prompt').exists()).toBe(false);
     pane.unmount();

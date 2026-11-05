@@ -1969,7 +1969,7 @@ export class AppController {
     if (!this.autoUpdateService || !this.manualUpdateCheckController) return;
     const status = this.autoUpdateService.getStatus();
     if (status.state === 'disabled' && process.platform !== 'darwin') {
-      void this.openExternal(`${product.repositoryUrl}/releases/latest`)
+      void this.openExternal(`https://github.com/${product.releaseRepository}/releases/latest`)
         .catch((error) => warnMain('updates', 'failed to open release downloads', {
           error: error instanceof Error ? error.message : String(error),
         }));

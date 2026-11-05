@@ -18,6 +18,9 @@ test('the distributable CLI runs in an empty directory without app, daemon, prov
     const metadata = JSON.parse(await readFile(path.join(target, 'package.json'), 'utf8'));
     assert.equal(Object.keys(metadata.dependencies ?? {}).length, 0);
     assert.equal(metadata.name, product.cliPackageName);
+    assert.equal(metadata.name, '@korus-dev/cli');
+    assert.deepEqual(metadata.publishConfig, { access: 'public' });
+    assert.equal(metadata.repository.url, 'https://github.com/Korus-Dev/korus');
     assert.equal(metadata.bin[product.slug], 'cli.mjs');
     assert.equal(metadata.version, workspace.version);
     assert.deepEqual(metadata.engines, { node: '>=22' });

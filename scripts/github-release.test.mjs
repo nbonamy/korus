@@ -55,7 +55,7 @@ test('a release tags the pushed commit, dispatches that tag, and shows the progr
   assert.equal(f.panels.length, 2);
   assert.match(f.panels[0], /v0\.27\.0 · latest · in_progress/);
   assert.match(f.panels[1], /✓ quality +success/);
-  assert.match(f.lines.at(-1), /Published latest: .*\/releases\/tag\/v0\.27\.0/);
+  assert.match(f.lines.at(-1), /Published latest: https:\/\/github\.com\/Korus-Dev\/korus\/releases\/tag\/v0\.27\.0/);
 });
 
 test('the run is found by ref when gh does not print it', async () => {

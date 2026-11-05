@@ -12,7 +12,7 @@ it('updates the worktree initialization policy', async () => {
     .find((candidate) => candidate.text().includes('Worktrees'));
   expect(section).toBeDefined();
   const guide = section!.get('a');
-  const guideUrl = 'https://github.com/nbonamy/korus/wiki/Automatic-worktree-initialization';
+  const guideUrl = 'https://github.com/Korus-Dev/korus/wiki/Automatic-worktree-initialization';
   expect(guide.attributes('href')).toBe(guideUrl);
   await guide.trigger('click');
   expect(openExternal).toHaveBeenCalledWith(guideUrl, '_blank', 'noopener,noreferrer');

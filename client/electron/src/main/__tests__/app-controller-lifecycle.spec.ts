@@ -892,7 +892,7 @@ describe('controller desktop lifecycle', () => {
     controller.createWindow();
     lastMenu().checkForUpdates!();
     await vi.advanceTimersByTimeAsync(0);
-    expect(native.shell.openExternal).toHaveBeenCalledWith(`${product.repositoryUrl}/releases/latest`);
+    expect(native.shell.openExternal).toHaveBeenCalledWith('https://github.com/Korus-Dev/korus/releases/latest');
     expect(service.check).not.toHaveBeenCalled();
     expect(native.dialog.showMessageBox).not.toHaveBeenCalled();
   });

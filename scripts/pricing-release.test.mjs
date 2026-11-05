@@ -52,4 +52,11 @@ test('prepares reproducible pricing assets and publishes them only to a non-late
     uploaded.push(args); throw new Error('upload failed');
   } }), /upload failed/);
   assert.equal(uploaded.length, 1);
+  const productionCalls = [];
+  await publishPricing({ ...options, run: (args, input) => {
+    productionCalls.push(args);
+    if (args[0] === 'api') return JSON.stringify({ id: 42, prerelease: true, assets: [] });
+    return '';
+  } });
+  assert.equal(productionCalls[0][1], 'repos/Korus-Dev/korus/releases/tags/pricing-data-v1');
 });

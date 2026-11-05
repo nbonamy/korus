@@ -14,7 +14,7 @@ concurrency:
 jobs:
   pricing:
     name: Refresh model pricing
-    if: github.repository == 'nbonamy/korus' && github.ref == 'refs/heads/main'
+    if: github.repository == 'Korus-Dev/korus' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

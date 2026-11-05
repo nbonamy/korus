@@ -18,7 +18,7 @@ export async function buildCli({ outdir = path.join(root, 'client/cli/dist') } =
   for (const output of result.outputFiles) await writeFile(output.path, output.contents);
   await chmod(path.join(outdir, 'cli.mjs'), 0o755);
   await writeFile(path.join(outdir, 'package.json'), JSON.stringify({ name: product.cliPackageName, version: metadata.version, license: 'Apache-2.0', description: `${product.name} standalone diagnostics and terminal control`,
-    type: 'module', bin: { [product.slug]: 'cli.mjs' }, engines: metadata.engines, files: ['cli.mjs', 'README.md', 'LICENSE'], repository: { type: 'git', url: product.repositoryUrl } }, null, 2) + '\n');
+    type: 'module', bin: { [product.slug]: 'cli.mjs' }, engines: metadata.engines, files: ['cli.mjs', 'README.md', 'LICENSE'], publishConfig: { access: 'public' }, repository: { type: 'git', url: product.repositoryUrl } }, null, 2) + '\n');
   await copyFile(path.join(root, 'client/cli/README.md'), path.join(outdir, 'README.md'));
   await copyFile(path.join(root, 'LICENSE'), path.join(outdir, 'LICENSE'));
   return outdir;

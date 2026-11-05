@@ -41,6 +41,12 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      - name: Check release destination access
+        if: inputs.channel != 'none'
+        run: node scripts/publish-desktop.mjs --check-destinations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DESKTOP_RELEASE_TOKEN: ${{ secrets.DESKTOP_RELEASE_TOKEN }}
       - name: Validate release ref
         if: inputs.channel != 'none'
         shell: bash
@@ -191,4 +197,5 @@ jobs:
         run: node scripts/publish-desktop.mjs out/downloaded
         env:
           GH_TOKEN: ${{ github.token }}
+          DESKTOP_RELEASE_TOKEN: ${{ secrets.DESKTOP_RELEASE_TOKEN }}
           RELEASE_CHANNEL: ${{ inputs.channel }}

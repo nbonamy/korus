@@ -1012,6 +1012,10 @@ one line per job state change. Never move a release tag.
   ship its full installer set, stages them on a draft release, then publishes the
   requested channel. Published releases are never modified; an interrupted run
   leaves a draft that a rerun completes.
+- The publisher stages and verifies the same artifacts in the update repository and
+  the source repository before publishing either release. `DESKTOP_RELEASE_TOKEN`
+  grants Contents write access to the update repository; the workflow token owns
+  the source release. Mirror tags reference the update repository's default branch.
 - Artifact names carry no run attempt, so `gh run rerun <id> --failed` yields a
   complete set. Resume watching with `npm run release:watch -- <run-id>`.
 - Source-map ZIPs use underscores around platform and architecture names so the
@@ -1092,9 +1096,9 @@ past prices; reappearance appends another event. The baseline is effective Octob
 1, 2026 UTC. Automatic refreshes record when a change was observed. A launch-date
 entry for a newly listed model requires published pricing evidence.
 
-The pricing workflow runs daily and supports manual dispatch on `main`. It
-validates the collector, publisher and offline bundles before committing changed
-history and its content-addressed manifest with the repository's Actions token;
+The pricing workflow runs daily in the public release repository and supports
+manual dispatch on `main`. It validates the collector and publisher before
+committing changed history and its content-addressed manifest with the repository's Actions token;
 unchanged prices preserve the manifest revision and publication time.
 Concurrent pricing runs are serialized. If `main` advances during collection,
 the push fails rather than replacing newer repository changes. Bot pushes do not

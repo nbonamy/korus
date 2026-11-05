@@ -3,8 +3,8 @@
 Diagnose Korus and get help from a coding agent, even when the desktop app cannot open.
 
 ```sh
-npx korus-cli@latest doctor
-npx korus-cli@latest triage
+npx @korus-dev/cli@latest doctor
+npx @korus-dev/cli@latest triage
 ```
 
 Requires Node.js 22 or newer. Runs independently of Electron and the Korus backend.
@@ -16,10 +16,10 @@ Requires Node.js 22 or newer. Runs independently of Electron and the Korus backe
 - **backend status**, **backend start**, **backend restart**, and **backend stop** inspect or control an installed macOS background service. Changes require confirmation.
 - **agents list** and **missions list** inspect live metadata when available and fall back to saved state. Use `--offline` to read saved state directly.
 
-Run `npx korus-cli@latest --help` for all options. To install the `korus` command:
+Run `npx @korus-dev/cli@latest --help` for all options. To install the `korus` command:
 
 ```sh
-npm install --global korus-cli
+npm install --global @korus-dev/cli
 korus doctor
 ```
 

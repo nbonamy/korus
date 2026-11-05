@@ -40,7 +40,7 @@ export function resolveDesktopUpdateFeedUrl(
 
   parsedUrl.pathname = [
     parsedUrl.pathname.replace(/\/+$/, ''),
-    product.repository,
+    product.releaseRepository,
     `${platform}-${arch}`,
     encodeURIComponent(version),
   ].join('/');

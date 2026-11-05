@@ -54,6 +54,16 @@ async function fixture() {
   return { directory, state, bundled, updated, manifest, open, cacheFile, advance: (elapsed = day) => { now += elapsed; } };
 }
 
+it('fetches pricing from the public repository', async () => {
+  const f = await fixture();
+  const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 503 }));
+  const catalog = new PricingCatalog({ cacheFile: f.cacheFile, bundled: f.bundled });
+  try {
+    await catalog.refresh();
+    expect(String(fetch.mock.calls[0]![0])).toMatch(/^https:\/\/github\.com\/Korus-Dev\/korus\/releases\/download\//);
+  } finally { catalog.stop(); fetch.mockRestore(); }
+});
+
 it('reprices saved usage through the released usage/get contract, then keeps prices offline across restart', async () => {
   const f = await fixture();
   const catalog = f.open();

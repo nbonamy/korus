@@ -228,7 +228,7 @@ describe('standalone CLI', () => {
     const prompt = await readFile(result.promptPath, 'utf8');
     const context = await readFile(result.contextPath, 'utf8');
     expect(prompt).toContain('Messages fail with ECONNRESET');
-    expect(prompt).toContain(product.repositoryUrl);
+    expect(prompt).toContain('Official project: https://github.com/Korus-Dev/korus');
     expect(prompt).toMatch(/approval|permission/i);
     expect(context).not.toMatch(/PRIVATE_SETTINGS|private-thread/);
     expect((await stat(result.promptPath)).mode & 0o777).toBe(0o600);
