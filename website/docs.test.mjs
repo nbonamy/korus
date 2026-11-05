@@ -146,6 +146,95 @@ async function files(directory, prefix = "") {
   return nested.flat();
 }
 
+test("search crawlers receive a sitemap, canonical pages, and app metadata", async () => {
+  const robots = await readFile(new URL("robots.txt", artifact), "utf8");
+  assert.match(robots, /User-agent: \*/);
+  assert.ok(robots.includes(`Sitemap: ${origin}/sitemap.xml`));
+  const sitemap = new JSDOM(
+    await readFile(new URL("sitemap.xml", artifact), "utf8"),
+    { contentType: "application/xml" },
+  );
+  try {
+    const urls = [...sitemap.window.document.querySelectorAll("url > loc")].map(
+      (node) => node.textContent,
+    );
+    assert.equal(new Set(urls).size, urls.length);
+    const htmlPages = (await files(artifact)).filter(
+      (path) => path.endsWith(".html") && !path.endsWith("/404.html"),
+    );
+    const expected = htmlPages.map(
+      (path) =>
+        new URL(path.replace(/(^|\/)index\.html$/, "$1"), `${origin}/`).href,
+    );
+    assert.deepEqual(
+      [...urls].sort(),
+      expected.sort(),
+      "Every public page is discoverable, with directory indexes normalized",
+    );
+    for (const url of urls) {
+      const path = new URL(url).pathname;
+      const page = new JSDOM(
+        await readFile(
+          new URL(
+            `.${path}${path.endsWith("/") ? "index.html" : ""}`,
+            artifact,
+          ),
+          "utf8",
+        ),
+      );
+      try {
+        const document = page.window.document;
+        assert.equal(
+          document.querySelectorAll('link[rel="canonical"]').length,
+          1,
+          url,
+        );
+        assert.equal(
+          document.querySelector('link[rel="canonical"]').getAttribute("href"),
+          url,
+        );
+        assert.ok(document.title.trim(), url);
+        assert.ok(
+          document.querySelector('meta[name="description"]')?.content,
+          url,
+        );
+        if (path === "/") {
+          assert.match(document.title, /harness orchestrator/i);
+          assert.match(
+            document.querySelector("main").textContent,
+            /harness orchestrator/i,
+          );
+          const app = JSON.parse(
+            document.querySelector('script[type="application/ld+json"]')
+              .textContent,
+          );
+          assert.equal(app["@type"], "SoftwareApplication");
+          assert.equal(app.name, product.name);
+          assert.equal(app.url, `${origin}/`);
+          assert.equal(app.offers.price, "0");
+          assert.deepEqual(app.operatingSystem, ["macOS", "Windows", "Linux"]);
+        }
+      } finally {
+        page.window.close();
+      }
+    }
+    const notFound = new JSDOM(
+      await readFile(new URL("docs/404.html", artifact), "utf8"),
+    );
+    try {
+      assert.match(
+        notFound.window.document.querySelector('meta[name="robots"]')
+          ?.content ?? "",
+        /noindex/,
+      );
+    } finally {
+      notFound.window.close();
+    }
+  } finally {
+    sitemap.window.close();
+  }
+});
+
 // Protect the deployed /docs/ navigation boundary, including direct page loads.
 // Inspect built HTML, never the Markdown or VitePress implementation source.
 test("the built website has reachable documentation pages, anchors, and assets", async () => {

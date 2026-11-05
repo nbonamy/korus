@@ -21,6 +21,24 @@ expands the product name, canonical URL, and GitHub download links; VitePress re
 same definition and sends `__PRODUCT_DOWNLOAD_URL__` guide links to the platform chooser. Preview
 the built artifact so the name and documentation are both available.
 
+## Search visibility
+
+The homepage describes Korus as a **harness orchestrator for AI coding agents**
+in its title, description, social metadata and visible introduction. The headline
+states the benefit: see, follow and steer work beyond the wall of text.
+The docs introduction uses the same category and names the supported engines.
+
+The build generates `/robots.txt` and `/sitemap.xml` from the published HTML,
+including the guide and privacy policy. Directory indexes use their trailing-slash
+URLs. Every public page declares its canonical URL; the documentation error page
+is excluded from the sitemap and marked `noindex`. The homepage includes
+`SoftwareApplication` structured data describing the desktop app and its free
+download, without ratings or claims about provider pricing.
+
+After publication, submit the sitemap in Google Search Console and inspect the
+homepage for indexing. Search Console access and submission are separate actions;
+the build does not submit URLs to search engines.
+
 ## Documentation
 
 The public privacy policy is authored in `privacy/index.html` and published at

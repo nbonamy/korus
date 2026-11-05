@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -144,6 +144,22 @@ for (const asset of media)
 await writeFile(
   new URL("index.html", output),
   landing
+    .replaceAll(
+      "__PRODUCT_STRUCTURED_DATA__",
+      JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        name: product.name,
+        url: `${product.websiteUrl}/`,
+        description:
+          "A harness orchestrator for Codex, Claude Code, and Antigravity.",
+        applicationCategory: "DeveloperApplication",
+        operatingSystem: ["macOS", "Windows", "Linux"],
+        image: `${product.websiteUrl}/assets/og.png?v=mark-2`,
+        sameAs: [`https://github.com/${product.releaseRepository}`],
+        offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+      }).replaceAll("<", "\\u003c"),
+    )
     .replaceAll("__PRODUCT_NAME__", product.name)
     .replaceAll("__PRODUCT_WEBSITE_URL__", product.websiteUrl)
     .replaceAll(
@@ -167,5 +183,25 @@ await writeFile(
     .replaceAll("__PRODUCT_NAME__", product.name)
     .replaceAll("__PRODUCT_COMPANION_NAME__", product.companionName)
     .replaceAll("__PRODUCT_WEBSITE_URL__", product.websiteUrl),
+);
+// Discover the published pages rather than maintaining a second docs inventory.
+const pages = (await readdir(output, { recursive: true }))
+  .map((path) => path.replaceAll("\\", "/"))
+  .filter((path) => path.endsWith(".html") && !path.endsWith("/404.html"))
+  .map(
+    (path) =>
+      new URL(
+        path.replace(/(^|\/)index\.html$/, "$1"),
+        `${product.websiteUrl}/`,
+      ).href,
+  )
+  .sort();
+await writeFile(
+  new URL("sitemap.xml", output),
+  `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${pages.map((url) => `  <url><loc>${url.replaceAll("&", "&amp;")}</loc></url>`).join("\n")}\n</urlset>\n`,
+);
+await writeFile(
+  new URL("robots.txt", output),
+  `User-agent: *\nAllow: /\n\nSitemap: ${product.websiteUrl}/sitemap.xml\n`,
 );
 console.log("Website and documentation built in dist/website");

@@ -5,8 +5,24 @@ import product from "../../../core/src/product.json";
 export default defineConfig({
   lang: "en-US",
   title: product.name,
-  description: `Set up your coding agents, coordinate work, and review the results in ${product.name}.`,
+  description: `Use ${product.name} to orchestrate coding agent harnesses, coordinate parallel tasks, and review the results.`,
   base: "/docs/",
+  transformHead({ pageData }) {
+    if (pageData.relativePath === "404.md")
+      return [["meta", { name: "robots", content: "noindex" }]];
+    const path = pageData.relativePath
+      .replace(/\.md$/, ".html")
+      .replace(/(^|\/)index\.html$/, "$1");
+    return [
+      [
+        "link",
+        {
+          rel: "canonical",
+          href: new URL(`/docs/${path}`, product.websiteUrl).href,
+        },
+      ],
+    ];
+  },
   markdown: {
     config(md) {
       md.core.ruler.before("normalize", "product-download", (state) => {
