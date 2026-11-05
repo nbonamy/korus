@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.51.0",
+  "currentVersion": "0.52.0",
   "releases": [
+    {
+      "version": "0.52.0",
+      "releasedAt": "2026-11-04",
+      "sourceSha256": "4d1e605c6c9334472d1002c3c95aa09ba218dfd90e093ebfaf9a4469571cf33c",
+      "markdown": "### New features\n\n- **Multiple windows:** Open teams, agents, features and Missions in separate windows, with independent navigation and restored window layouts after restarting.\n\n### Improvements and fixes\n\n- **Startup:** Load conversations with less background work, recover missing history, and show a retry option when loading fails.\n- **Claude conversations:** Keep conclusions after the last tool call visible outside the collapsed Working section.\n- **Missions:** Replace unavailable execution members without losing requirements, proposals, history or workspaces.\n- **Navigation:** Simplify context menus, add rail tooltips, show when automatic screen locking resumes, and fix split views in feature windows.\n- **Image previews:** Keep recently viewed conversation images available when scrolling back to them."
+    },
     {
       "version": "0.51.0",
       "releasedAt": "2026-11-04",

@@ -4,6 +4,20 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.52.0] - 2026-11-04
+
+### New features
+
+- **Multiple windows:** Open teams, agents, features and Missions in separate windows, with independent navigation and restored window layouts after restarting.
+
+### Improvements and fixes
+
+- **Startup:** Load conversations with less background work, recover missing history, and show a retry option when loading fails.
+- **Claude conversations:** Keep conclusions after the last tool call visible outside the collapsed Working section.
+- **Missions:** Replace unavailable execution members without losing requirements, proposals, history or workspaces.
+- **Navigation:** Simplify context menus, add rail tooltips, show when automatic screen locking resumes, and fix split views in feature windows.
+- **Image previews:** Keep recently viewed conversation images available when scrolling back to them.
+
 ## [0.51.0] - 2026-11-04
 
 ### New features
