@@ -58,15 +58,17 @@ internal data class RequestDraft(val text: Map<String,String> = emptyMap(), val 
         val selected = when { label in current -> current - label; question.multiple -> current + label; else -> setOf(label) }
         return copy(selections = selections + (question.id to selected),text = if (question.multiple) text else text - question.id)
     }
-    fun answers(questions: List<PendingRequest.Question>): JSONObject? {
+    fun answers(questions: List<PendingRequest.Question>, allowUnanswered: Boolean = false): JSONObject? {
         val answers = JSONObject()
+        var hasAnswer = false
         for (question in questions) {
             val custom = text[question.id].orEmpty().trim()
             val selected = question.options.map { it.label }.filter { it in selections[question.id].orEmpty() }
             val values = if (custom.isEmpty()) selected else if (question.multiple) selected + custom else listOf(custom)
-            if (values.isEmpty()) return null
+            if (values.isEmpty() && !allowUnanswered) return null
+            if (values.isNotEmpty()) hasAnswer = true
             answers.put(question.id,json("answers" to JSONArray(values)))
         }
-        return answers.takeIf { questions.isNotEmpty() }
+        return answers.takeIf { hasAnswer }
     }
 }

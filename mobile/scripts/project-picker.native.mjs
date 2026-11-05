@@ -16,11 +16,12 @@ project = Xcodeproj::Project.new(File.join(work, 'Picker.xcodeproj'))
 app = project.new_target(:application, 'PickerFixture', :ios, '26.0')
 tests = project.new_target(:ui_test_bundle, 'PickerTests', :ios, '26.0')
 tests.add_dependency(app)
-['Views/NewProjectSheet.swift', 'Views/RenameAgentSheet.swift', 'Views/SheetStyle.swift', 'Views/ForgetLaptopConfirmation.swift'].each do |file|
+['Views/NewProjectSheet.swift', 'Views/RenameAgentSheet.swift', 'Views/SheetStyle.swift', 'Views/ForgetLaptopConfirmation.swift', 'Views/RequestSheet.swift', 'Requests/PendingRequest.swift'].each do |file|
   app.add_file_references([project.main_group.new_file(File.join(root, 'mobile/ios/Sources', file))])
 end
 app.add_file_references([project.main_group.new_file(File.join(root, 'mobile/ios/Tests/ProjectAcquisition/ProjectPickerFixture.swift'))])
 tests.add_file_references([project.main_group.new_file(File.join(root, 'mobile/ios/Tests/ProjectAcquisition/ProjectPickerUITests.swift'))])
+tests.add_file_references([project.main_group.new_file(File.join(root, 'mobile/ios/Tests/Requests/RequestSheetUITests.swift'))])
 [app, tests].each do |target|
   target.build_configurations.each do |config|
     config.build_settings.merge!({'PRODUCT_BUNDLE_IDENTIFIER' => 'dev.korus.' + target.name.downcase,
@@ -40,8 +41,9 @@ let device;
 try {
   run('ruby', ['-e', ruby, root, work]);
   const runtimes = JSON.parse(run('xcrun', ['simctl', 'list', 'runtimes', '--json'])).runtimes;
-  const runtime = runtimes.filter(r => r.isAvailable && r.name.startsWith('iOS ') && Number(r.version.split('.')[0]) >= 26)
-    .sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }))[0];
+  const candidates = runtimes.filter(r => r.isAvailable && r.name.startsWith('iOS ') && Number(r.version.split('.')[0]) >= 26)
+    .sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }));
+  const runtime = candidates.find(r => r.supportedDeviceTypes.some(type => type.productFamily === 'iPhone' && !type.name.includes('Duo'))) ?? candidates[0];
   if (!runtime) throw new Error('An iOS 26+ simulator runtime is required.');
   const deviceType = runtime.supportedDeviceTypes.find(type => type.productFamily === 'iPhone' && !type.name.includes('Duo'))
     ?? runtime.supportedDeviceTypes.find(type => type.productFamily === 'iPhone');

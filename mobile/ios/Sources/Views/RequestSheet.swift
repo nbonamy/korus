@@ -4,6 +4,8 @@ struct RequestSheet: View {
     @Environment(AppModel.self) private var model
     let pending: PendingRequest
     @State private var draft = RequestDraft()
+    @State private var questionIndex = 0
+    private var page: Int { min(questionIndex, max(0, (pending.request.question?.questions.count ?? 0) - 1)) }
     private var busy: Bool { model.respondingRequest == pending.key }
     private var unavailable: Bool { busy || model.connection != .connected }
 
@@ -20,11 +22,21 @@ struct RequestSheet: View {
             .toolbar {
                 if !busy {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("Done") { model.presentedRequest = nil }
+                        Button(pending.request.kind == "question" ? (page == 0 ? "Close" : "Back") : "Done") {
+                            if pending.request.kind == "question" && page > 0 { questionIndex = page - 1 }
+                            else { model.presentedRequest = nil }
+                        }
                     }
-                    if pending.request.kind == "question" {
+                    if let group = pending.request.question {
+                        let hasNext = page + 1 < group.questions.count
+                        let answers = draft.answers(for: group.questions, allowUnanswered: true)
                         ToolbarItem(placement: .topBarTrailing) {
-                            Button("Dismiss") { model.command("dismissRequest", ["key": pending.key]) }
+                            Button(hasNext ? "Next" : (answers == nil ? "Skip" : "Save")) {
+                                if hasNext { questionIndex = page + 1 }
+                                else if let answers { respond(["kind": "answered", "answers": answers]) }
+                                else { respond(["kind": "cancelled"]) }
+                            }
+                            .disabled(unavailable)
                         }
                     }
                 }
@@ -39,13 +51,16 @@ struct RequestSheet: View {
     private var form: some View {
         AppSheetList {
             if let group = pending.request.question {
-                ForEach(group.questions) { question in
+                ForEach(group.questions.dropFirst(page).prefix(1)) { question in
                     Section {
                         Text(question.question).font(.body)
                         ForEach(question.options ?? [], id: \.label) { option in
                             Button {
-                                draft.toggle(option.label, for: question)
-                                if question.multiSelect != true { draft.text[question.id] = "" }
+                                if question.multiSelect == true { draft.toggle(option.label, for: question) }
+                                else {
+                                    draft.selections[question.id] = [option.label]
+                                    draft.text[question.id] = ""
+                                }
                             } label: {
                                 HStack(alignment: .top, spacing: 12) {
                                     Image(systemName: draft.selections[question.id]?.contains(option.label) == true ? "checkmark.circle.fill" : "circle")
@@ -66,14 +81,13 @@ struct RequestSheet: View {
                             TextField(question.options?.isEmpty == false ? "Or write your own answer" : "Your answer", text: answer, axis: .vertical)
                                 .lineLimit(2...6)
                         }
-                    } header: { Text(question.header) }
-                }
-                Section {
-                    Button("Send Answer") {
-                        if let answers = draft.answers(for: group.questions) { respond(["kind": "answered", "answers": answers]) }
+                    } header: {
+                        HStack {
+                            Text(question.header)
+                            Spacer()
+                            if group.questions.count > 1 { Text("\(page + 1) of \(group.questions.count)") }
+                        }
                     }
-                    .disabled(draft.answers(for: group.questions) == nil)
-                    Button("Skip Question", role: .cancel) { respond(["kind": "cancelled"]) }
                 }
             } else if let approval = pending.request.approval {
                 Section {

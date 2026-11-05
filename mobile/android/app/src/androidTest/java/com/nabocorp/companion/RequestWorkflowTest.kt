@@ -40,7 +40,7 @@ class RequestWorkflowTest {
     private fun reveal(tag: String) = app.onNodeWithTag("request-form").performScrollToNode(hasTestTag(tag)).let { app.onNodeWithTag(tag) }
     private fun answer(id: String, value: String) { reveal("request-answer-$id").performTextInput(value) }
     private fun option(id: String, label: String) { reveal("request-option-$id-$label").performClick() }
-    private fun action(label: String) { app.onNodeWithTag("request-form").performScrollToNode(hasText(label)); app.onNodeWithText(label).performClick(); app.waitForIdle() }
+    private fun action(label: String) { if (label !in listOf("Save","Next","Back","Close","Skip")) app.onNodeWithTag("request-form").performScrollToNode(hasText(label)); app.onNodeWithText(label).performClick(); app.waitForIdle() }
     private fun replies(engine: NativeEngineFixture) = engine.commands().filter { it.string("type") == "respondRequest" }
     private fun tree(v: Any?): Any? = when(v) { JSONObject.NULL -> null; is JSONObject -> v.keys().asSequence().associateWith { tree(v.get(it)) }; is JSONArray -> (0 until v.length()).map { tree(v.get(it)) }; else -> v }
 
@@ -51,16 +51,23 @@ class RequestWorkflowTest {
             app.onNodeWithTag("composer").performTextInput("Unsent conversation draft")
             app.onNodeWithTag("composer").assertTextContains("Unsent conversation draft")
             open()
-            action("Send Answer")
+            app.onNodeWithText("Next").assertIsDisplayed()
+            app.onNodeWithText("Save").assertDoesNotExist()
+            app.onNodeWithText("Send Answer").assertDoesNotExist()
+            app.onNodeWithText("Skip Question").assertDoesNotExist()
             assertTrue(replies(e).isEmpty())
-            option("single","One"); option("single","Two"); answer("single"," Custom ")
+            option("single","One")
+            app.onNodeWithTag("request-answer-single").assertExists()
+            option("single","Two"); answer("single"," Custom "); action("Next")
             option("multi","Two"); option("multi","One"); answer("multi"," Third ")
-            answer("secret","private-answer")
+            action("Next"); answer("secret","private-answer")
             reveal("request-answer-secret").assert(SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.Password))
             app.activityRule.scenario.recreate(); mount(e)
-            reveal("request-answer-single").assertTextContains(" Custom ")
             reveal("request-answer-secret").assertTextContains("private-answer")
-            action("Send Answer")
+            action("Back"); action("Back")
+            reveal("request-answer-single").assertTextContains(" Custom ")
+            action("Next"); action("Next")
+            action("Save")
             val expected = json("type" to "respondRequest","reply" to json("target" to target().toJson(),"id" to "same-id","conversationId" to "conversation","outcome" to json("kind" to "answered","answers" to json(
                 "single" to json("answers" to JSONArray(listOf("Custom"))),"multi" to json("answers" to JSONArray(listOf("One","Two","Third"))),"secret" to json("answers" to JSONArray(listOf("private-answer")))))))
             assertEquals(tree(expected),tree(replies(e).single()))
@@ -73,7 +80,7 @@ class RequestWorkflowTest {
             app.onNodeWithTag("request-form").performScrollToNode(hasText("The response wasn’t confirmed.",substring = true))
             app.onNodeWithText("The response wasn’t confirmed.",substring = true).assertIsDisplayed()
             assertEquals(1,replies(e).size)
-            action("Send Answer"); assertEquals(2,replies(e).size)
+            action("Save"); assertEquals(2,replies(e).size)
             e.state(state(emptyList()))
             app.onNodeWithTag("composer").assertTextContains("Unsent conversation draft")
             app.onNodeWithContentDescription("Review request: Your input is needed").assertDoesNotExist()
@@ -116,7 +123,7 @@ class RequestWorkflowTest {
         }
     }
 
-    @Test fun aQuestionCanBeDismissedFromChatOrItsFormWithoutSendingASkipOrHidingApprovals() {
+    @Test fun aQuestionCanBeHiddenFromChatOrSkippedFromItsFormWithoutHidingApprovals() {
         NativeEngineFixture(app.activityRule.scenario).use { e ->
             app.waitUntil(20_000) { e.model.state.string("startup") == "ready" }
             val request = pending()
@@ -129,29 +136,65 @@ class RequestWorkflowTest {
             e.state(state(emptyList()))
             app.onNodeWithContentDescription("Review request: Your input is needed").assertDoesNotExist()
             e.state(state(listOf(request))); open()
-            app.onNodeWithText("Dismiss").performClick()
-            app.waitUntil(5_000) { e.commands().count { it.string("type") == "dismissRequest" } == 2 }
+            action("Next"); action("Next")
+            app.onNodeWithText("Skip").performClick()
+            assertEquals(tree(json("kind" to "cancelled")), tree(replies(e).single().obj("reply").obj("outcome")))
             e.state(state(emptyList())); e.state(state(listOf(pending("approval"))))
             app.onNodeWithContentDescription("Dismiss question").assertDoesNotExist()
             app.onNodeWithContentDescription("Review request: Approval needed").assertIsDisplayed()
-            assertTrue(replies(e).isEmpty())
+            assertEquals(1,replies(e).size)
         }
     }
 
-    @Test fun questionCancellationAndAuthoritativeRemovalNeverReplayOldAnswers() {
+    @Test fun pagesRetainAnswersAndRequireExplicitNextAfterChoosingAnAnswer() {
+        NativeEngineFixture(app.activityRule.scenario).use { e ->
+            app.waitUntil(20_000) { e.model.state.string("startup") == "ready" }
+            e.state(state()); mount(e); open()
+            app.onNodeWithTag("request-answer-multi").assertDoesNotExist()
+            answer("single","Typed answer"); action("Next")
+            app.onNodeWithTag("request-answer-single").assertDoesNotExist()
+            action("Back")
+            reveal("request-answer-single").assertTextContains("Typed answer")
+            option("single","One")
+            app.onNodeWithTag("request-option-single-One").assertIsSelected()
+            app.onNodeWithTag("request-answer-single").assertExists()
+            app.onNodeWithTag("request-answer-multi").assertDoesNotExist()
+            action("Next")
+            app.onNodeWithTag("request-answer-multi").assertExists()
+            action("Next")
+            app.onNodeWithText("Save").assertIsEnabled()
+            assertTrue(replies(e).isEmpty())
+            action("Save")
+            assertEquals(tree(json("kind" to "answered","answers" to json("single" to json("answers" to JSONArray(listOf("One"))),"multi" to json("answers" to JSONArray()),"secret" to json("answers" to JSONArray())))),tree(replies(e).single().obj("reply").obj("outcome")))
+        }
+    }
+
+    @Test fun closingLeavesTheQuestionPendingAndAuthoritativeRemovalNeverReplaysOldAnswers() {
         NativeEngineFixture(app.activityRule.scenario).use { e ->
             app.waitUntil(20_000) { e.model.state.string("startup") == "ready" }
             val request=pending(details=json("blocking" to true,"questions" to JSONArray().put(question("single"))))
-            e.state(state(listOf(request))); mount(e); open(); option("single","One")
-            app.onNodeWithText("Done").performClick()
+            e.state(state(listOf(request))); mount(e); open()
+            app.onNodeWithText("Close").assertIsDisplayed().performClick()
+            app.onNodeWithContentDescription("Review request: Your input is needed").assertIsDisplayed()
+            assertTrue(e.commands().none { it.string("type") in listOf("respondRequest","dismissRequest") })
+            open(); answer("single","Custom")
+            app.onNodeWithText("Save").assertIsDisplayed().assertIsEnabled()
+            reveal("request-answer-single").performTextClearance()
+            app.onNodeWithText("Skip").assertIsDisplayed()
+            option("single","One")
+            app.onNodeWithText("Save").assertIsEnabled()
+            e.state(state(listOf(request),connected=false))
+            app.onNodeWithText("Save").assertIsNotEnabled()
+            app.onNodeWithText("Close").performClick()
             assertTrue(replies(e).isEmpty())
-            open(); action("Skip Question")
-            assertEquals(tree(json("type" to "respondRequest","reply" to json("target" to target().toJson(),"id" to "same-id","conversationId" to "conversation","outcome" to json("kind" to "cancelled")))),tree(replies(e).single()))
             e.state(state(emptyList())); e.state(state(listOf(request)))
             open()
-            app.onNodeWithTag("request-form").performScrollToNode(hasText("Send Answer"))
-            app.onNodeWithText("Send Answer").assertIsNotEnabled()
-            assertEquals(1,replies(e).size)
+            app.onNodeWithText("Skip").assertIsDisplayed()
+            app.onNodeWithText("Save").assertDoesNotExist()
+            e.state(state(listOf(request),connected=false))
+            app.onNodeWithText("Skip").assertIsNotEnabled()
+            app.onNodeWithText("Close").assertIsDisplayed()
+            assertTrue(replies(e).isEmpty())
         }
     }
 }

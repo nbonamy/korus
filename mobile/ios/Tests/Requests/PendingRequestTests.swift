@@ -18,6 +18,10 @@ final class PendingRequestTests: XCTestCase {
         let multi = question("multi", multi: true)
         var draft = RequestDraft()
         XCTAssertNil(draft.answers(for: [single, multi]))
+        XCTAssertNil(draft.answers(for: [single, multi], allowUnanswered: true))
+        draft.text["single"] = "Only the first"
+        XCTAssertEqual(draft.answers(for: [single, multi], allowUnanswered: true), ["single": ["answers": ["Only the first"]], "multi": ["answers": []]])
+        draft.text = [:]
         draft.toggle("One", for: single)
         draft.toggle("Two", for: single)
         draft.toggle("Two", for: multi)

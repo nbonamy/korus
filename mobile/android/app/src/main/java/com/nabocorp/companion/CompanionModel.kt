@@ -93,6 +93,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     private var requestOpen by mutableStateOf(false)
     internal var requestDraft by mutableStateOf(RequestDraft())
         private set
+    internal var requestQuestionIndex by mutableIntStateOf(0)
     private var requestPending by mutableStateOf<String?>(null)
     private var requestWasBusy = false
     internal val requests get() = state.items("requests").mapNotNull(PendingRequest::parse)
@@ -341,7 +342,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     internal fun openRequest(key: String) {
         if (!screenUnlocked) return
         val pending = requests.firstOrNull { it.key == key } ?: return
-        if (requestSelection?.sameIdentity(pending) != true) requestDraft = RequestDraft()
+        if (requestSelection?.sameIdentity(pending) != true) { requestDraft = RequestDraft(); requestQuestionIndex = 0 }
         requestSelection = pending; requestOpen = true
         dictation.cancel(); sheet = null; acknowledge()
     }
@@ -358,7 +359,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     internal fun respondRequest(pending: PendingRequest, decision: String? = null, cancel: Boolean = false) {
         if (!canRespond || presentedRequest?.sameContent(pending) != true) return
         val outcome = if (pending.kind == "question") {
-            if (cancel) json("kind" to "cancelled") else json("kind" to "answered","answers" to (requestDraft.answers(pending.questions) ?: return))
+            if (cancel) json("kind" to "cancelled") else json("kind" to "answered","answers" to (requestDraft.answers(pending.questions,allowUnanswered = true) ?: return))
         } else {
             if (decision == null || pending.decisions.none { it.value == decision }) return
             json("kind" to "decision","decision" to decision)
@@ -367,7 +368,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         command("respondRequest","reply" to pending.reply(outcome))
     }
     private fun clearRequest() {
-        requestSelection = null; requestOpen = false; requestDraft = RequestDraft(); requestPending = null; requestWasBusy = false
+        requestSelection = null; requestOpen = false; requestDraft = RequestDraft(); requestQuestionIndex = 0; requestPending = null; requestWasBusy = false
     }
     private fun reconcileRequest(next: JSONObject) {
         val selected = requestSelection ?: return

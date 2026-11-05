@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.PanTool
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -60,44 +61,49 @@ import androidx.compose.ui.unit.dp
     val pending = model.presentedRequest ?: return
     val busy = model.requestBusy
     val enabled = model.canRespond
-    BackHandler { if (!busy) model.dismissRequest() }
-    AppSheetFrame(if (busy) "" else pending.title, Modifier.imePadding(), leading = if (busy) null else ({ AppBarPill("Done", onClick = model::dismissRequest) }),
-        trailing = if (!busy && pending.kind == "question") ({ AppBarPill("Dismiss", onClick = { model.command("dismissRequest", "key" to pending.key) }) }) else null, scroll = !busy) {
+    val page = model.requestQuestionIndex.coerceIn(0, (pending.questions.size - 1).coerceAtLeast(0))
+    val hasNext = page + 1 < pending.questions.size
+    val answers = model.requestDraft.answers(pending.questions, allowUnanswered = true)
+    val closeOrBack = { if (pending.kind == "question" && page > 0) model.requestQuestionIndex = page - 1 else model.dismissRequest() }
+    BackHandler { if (!busy) closeOrBack() }
+    AppSheetFrame(if (busy) "" else pending.title, Modifier.imePadding(), leading = if (busy) null else ({ AppBarPill(if (pending.kind == "question") (if (page == 0) "Close" else "Back") else "Done", onClick = closeOrBack) }),
+        trailing = if (!busy && pending.kind == "question") ({ AppBarPill(if (hasNext) "Next" else if (answers == null) "Skip" else "Save", enabled = enabled,
+            onClick = { if (hasNext) model.requestQuestionIndex = page + 1 else model.respondRequest(pending, cancel = answers == null) }) }) else null, scroll = !busy) {
         if (busy) AppProgress("Sending your response", Icons.AutoMirrored.Outlined.Send, "Waiting for ${model.productName} to confirm the response.")
         else Column(Modifier.fillMaxWidth().padding(bottom = 24.dp).testTag("request-form")) {
             if (pending.kind == "question") {
-                pending.questions.forEach { question ->
-                    AppSection(question.header) {
-                        Text(question.text, Modifier.padding(16.dp), fontSize = 17.sp)
-                        question.options.forEach { option ->
-                            AppDivider()
-                            val selected = option.label in model.requestDraft.selections[question.id].orEmpty()
-                            val select = { model.toggleRequestOption(pending,question,option.label) }
-                            val choice = if (question.multiple) Modifier.toggleable(value = selected,enabled = enabled,role = Role.Checkbox,onValueChange = { select() })
-                                else Modifier.selectable(selected = selected,enabled = enabled,role = Role.RadioButton,onClick = select)
-                            Row(Modifier.fillMaxWidth().then(choice).testTag("request-option-${question.id}-${option.label}").padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Icon(if (selected) Icons.Outlined.CheckCircle else Icons.Outlined.RadioButtonUnchecked, null, Modifier.size(24.dp), tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
-                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text(option.label, fontSize = 17.sp)
-                                    if (option.description.isNotBlank()) Text(option.description, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                pending.questions.drop(page).take(1).forEach { question ->
+                    key(question.id) {
+                        AppSection(if (pending.questions.size > 1) "${question.header} (${page + 1} of ${pending.questions.size})" else question.header) {
+                            Text(question.text, Modifier.padding(16.dp), fontSize = 17.sp)
+                            question.options.forEach { option ->
+                                AppDivider()
+                                val selected = option.label in model.requestDraft.selections[question.id].orEmpty()
+                                val select = {
+                                    if (!question.multiple && selected) model.editRequest(pending,question,"")
+                                    else model.toggleRequestOption(pending,question,option.label)
+                                }
+                                val choice = if (question.multiple) Modifier.toggleable(value = selected,enabled = enabled,role = Role.Checkbox,onValueChange = { select() })
+                                    else Modifier.selectable(selected = selected,enabled = enabled,role = Role.RadioButton,onClick = select)
+                                Row(Modifier.fillMaxWidth().then(choice).testTag("request-option-${question.id}-${option.label}").padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Icon(if (selected) Icons.Outlined.CheckCircle else Icons.Outlined.RadioButtonUnchecked, null, Modifier.size(24.dp), tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(option.label, fontSize = 17.sp)
+                                        if (option.description.isNotBlank()) Text(option.description, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
                                 }
                             }
+                            AppDivider()
+                            OutlinedTextField(value = model.requestDraft.text[question.id].orEmpty(),onValueChange = { model.editRequest(pending,question,it) },
+                                placeholder = { Text(if (question.options.isEmpty()) "Your answer" else "Or write your own answer") },enabled = enabled,
+                                singleLine = question.secret,minLines = if (question.secret) 1 else 2,maxLines = if (question.secret) 1 else 6,
+                                visualTransformation = if (question.secret) PasswordVisualTransformation() else VisualTransformation.None,
+                                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color.Transparent, focusedBorderColor = Color.Transparent, disabledBorderColor = Color.Transparent),
+                                keyboardOptions = KeyboardOptions(capitalization = if (question.secret) KeyboardCapitalization.None else KeyboardCapitalization.Sentences,
+                                    autoCorrectEnabled = !question.secret,keyboardType = if (question.secret) KeyboardType.Password else KeyboardType.Text),
+                                modifier = Modifier.fillMaxWidth().testTag("request-answer-${question.id}"))
                         }
-                        AppDivider()
-                        OutlinedTextField(value = model.requestDraft.text[question.id].orEmpty(),onValueChange = { model.editRequest(pending,question,it) },
-                            placeholder = { Text(if (question.options.isEmpty()) "Your answer" else "Or write your own answer") },enabled = enabled,
-                            singleLine = question.secret,minLines = if (question.secret) 1 else 2,maxLines = if (question.secret) 1 else 6,
-                            visualTransformation = if (question.secret) PasswordVisualTransformation() else VisualTransformation.None,
-                            colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color.Transparent, focusedBorderColor = Color.Transparent, disabledBorderColor = Color.Transparent),
-                            keyboardOptions = KeyboardOptions(capitalization = if (question.secret) KeyboardCapitalization.None else KeyboardCapitalization.Sentences,
-                                autoCorrectEnabled = !question.secret,keyboardType = if (question.secret) KeyboardType.Password else KeyboardType.Text),
-                            modifier = Modifier.fillMaxWidth().testTag("request-answer-${question.id}"))
                     }
-                }
-                AppSection {
-                    AppRow("Send Answer", titleColor = MaterialTheme.colorScheme.primary, enabled = enabled && model.requestDraft.answers(pending.questions) != null, onClick = { model.respondRequest(pending) })
-                    AppDivider()
-                    AppRow("Skip Question", titleColor = MaterialTheme.colorScheme.primary, enabled = enabled, onClick = { model.respondRequest(pending,cancel = true) })
                 }
             } else {
                 AppSection {

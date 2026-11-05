@@ -77,16 +77,16 @@ struct RequestDraft {
         selections[question.id] = selected
     }
 
-    func answers(for questions: [PendingRequest.Question]) -> [String: [String: [String]]]? {
+    func answers(for questions: [PendingRequest.Question], allowUnanswered: Bool = false) -> [String: [String: [String]]]? {
         var answers: [String: [String: [String]]] = [:]
         for question in questions {
             let freeform = (text[question.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let selected = (question.options ?? []).map(\.label).filter { selections[question.id]?.contains($0) == true }
             // A custom single-choice answer replaces the selected suggestion; multi-select can combine both.
             let values = !freeform.isEmpty ? (question.multiSelect == true ? selected + [freeform] : [freeform]) : selected
-            guard !values.isEmpty else { return nil }
+            guard allowUnanswered || !values.isEmpty else { return nil }
             answers[question.id] = ["answers": values]
         }
-        return answers
+        return answers.values.contains { $0["answers"]?.isEmpty == false } ? answers : nil
     }
 }

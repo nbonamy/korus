@@ -26,6 +26,20 @@ enum EngineState {
     var projectBranches = EngineState.ProjectBranches()
     var newProjectSource: NewProjectSource?
     var selection = ""
+    var presentedRequest: PendingRequest?
+    var respondingRequest: String?
+    var failedRequest: String?
+    var questionResponses = 0
+    var questionOutcome = "none"
+    var questionAnswers = ""
+    func openQuestion() {
+        connection = scenario == "--question-offline" ? .disconnected : .connected
+        let extra = scenario == "--question-multi" ? ",{\"id\":\"second\",\"header\":\"Second\",\"question\":\"Anything else?\",\"isSecret\":false}" : ""
+        let value = """
+        {"key":"question","target":{"hostId":"host","locationId":"local","teamId":"team","agentId":"agent"},"request":{"id":"request","conversationId":"conversation","kind":"question","question":{"blocking":false,"questions":[{"id":"first","header":"Choice","question":"Which approach?","isSecret":false,"options":[{"label":"One","description":"First approach"},{"label":"Two","description":"Second approach"}]}\(extra)]}}}
+        """
+        presentedRequest = try! JSONDecoder().decode(PendingRequest.self, from: Data(value.utf8))
+    }
     var laptopID = "first-host"
     let newChatBackend: String? = "codex"
     let productName = "Korus"
@@ -39,6 +53,14 @@ enum EngineState {
     private var catalogGeneration = 0
     private var scenario: String { ProcessInfo.processInfo.arguments.last ?? "" }
     func command(_ type: String, _ fields: [String: Any] = [:]) {
+        if type == "respondRequest" {
+            questionResponses += 1
+            questionOutcome = ((fields["reply"] as? [String: Any])?["outcome"] as? [String: Any])?["kind"] as? String ?? "invalid"
+            if let answers = ((fields["reply"] as? [String: Any])?["outcome"] as? [String: Any])?["answers"] as? [String: [String: [String]]] {
+                questionAnswers = answers.keys.sorted().map { "\($0)=\(answers[$0]?["answers"]?.joined(separator: ",") ?? "")" }.joined(separator: ";")
+            }
+            presentedRequest = nil; return
+        }
         if type == "loadProjectRepositories" {
             catalogGeneration += 1
             catalogAttempts += 1
@@ -89,6 +111,9 @@ enum EngineState {
         WindowGroup {
             @Bindable var model = model
             VStack {
+                Button("Question") { model.openQuestion() }
+                Text("Responses: \(model.questionResponses), last: \(model.questionOutcome)")
+                Text(model.questionAnswers)
                 Button("Existing Project") { model.newProjectSource = .existing }
                 NewAgentMenu(enabled: true, allTeams: allTeams, quickChat: {}, select: { model.newProjectSource = $0 })
                 if allTeams { Button("Switch to Team") { allTeams = false } }
@@ -99,6 +124,7 @@ enum EngineState {
                 Text(forgotten ? "Laptop forgotten" : "Laptop retained")
             }
             .forgetLaptopConfirmation($forgetting) { _ in forgotten = true }
+            .sheet(item: $model.presentedRequest) { pending in RequestSheet(pending: pending).environment(model) }
             .sheet(item: $model.newProjectSource) { source in
                 NewProjectSheet(source: source).environment(model)
                     .overlay(alignment: .bottomTrailing) {
