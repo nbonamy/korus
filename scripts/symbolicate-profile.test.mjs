@@ -101,7 +101,7 @@ test('reads maps from a published source map zip, matching the bundle by its has
   const directory = mkdtempSync(path.join(os.tmpdir(), 'symbolicate-'));
   try {
     const { outfile, minifiedName, column } = await minifiedBundle(directory);
-    const archive = path.join(directory, 'korus-linux-x64-sourcemaps.zip');
+    const archive = path.join(directory, 'korus_linux_x64-sourcemaps.zip');
     writeFileSync(archive, createZip([
       { name: 'sourcemaps.json', data: Buffer.from('{}') },
       { name: 'renderer/main_window/assets/index-OTHER.js.map', data: Buffer.from('{"version":3,"sources":[],"names":[],"mappings":""}') },

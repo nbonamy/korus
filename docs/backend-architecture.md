@@ -1014,6 +1014,9 @@ one line per job state change. Never move a release tag.
   leaves a draft that a rerun completes.
 - Artifact names carry no run attempt, so `gh run rerun <id> --failed` yields a
   complete set. Resume watching with `npm run release:watch -- <run-id>`.
+- Source-map ZIPs use underscores around platform and architecture names so the
+  update service cannot mistake them for installers. They retain the
+  `-sourcemaps.zip` suffix for profile symbolication and do not satisfy installer checks.
 - Build-only validation: `npm run release:build` dispatches the current pushed
   branch with `channel=none`, which skips the tag check and publication.
 - Install dependencies with `npm ci` and run `node node_modules/electron/install.js`

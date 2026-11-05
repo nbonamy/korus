@@ -6,7 +6,7 @@
 //
 // Bundle file names carry a content hash, so a map can only match the exact build that produced the profile,
 // and renderer bundles differ between macOS, Windows and Linux. Releases publish one source map zip per target
-// (korus-<target>-sourcemaps.zip). --release downloads them all with gh and picks the one whose hash matches.
+// (korus_<platform>_<arch>-sourcemaps.zip). --release downloads them all with gh and picks the one whose hash matches.
 // Without --maps or --release the script reads the maps from the app.asar the profile was recorded against,
 // which works when that build is installed on this Mac.
 import { execFileSync } from 'node:child_process';

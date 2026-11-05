@@ -14,8 +14,13 @@ const requiredExtensions = {
 // A target directory is publishable only when it holds every installer type its platform ships.
 export async function listTarget(directory, target) {
   const names = await fs.readdir(directory).catch(() => []);
+  const sourceMapName = `${product.slug}_${target.replaceAll('-', '_')}-sourcemaps.zip`;
+  for (const name of names.filter(name => name.endsWith('-sourcemaps.zip'))) {
+    if (name !== sourceMapName) throw new Error(`Unsafe source-map artifact for ${target}: ${name}`);
+  }
+  const installers = names.filter(name => !name.endsWith('-sourcemaps.zip'));
   for (const extension of requiredExtensions[target.split('-')[0]]) {
-    if (!names.some(name => name.endsWith(extension))) throw new Error(`Missing ${extension} artifact for ${target}.`);
+    if (!installers.some(name => name.endsWith(extension))) throw new Error(`Missing ${extension} artifact for ${target}.`);
   }
   return names.sort().map(name => path.join(directory, name));
 }
@@ -50,7 +55,8 @@ export async function collectArtifacts({ source, output, target, sourcemaps, ver
   if (sourcemaps) {
     const asarPath = findPackagedAsar(sourcemaps);
     if (!asarPath) throw new Error(`Packaged app.asar not found under ${sourcemaps}; cannot publish source maps.`);
-    const name = `${product.slug}-${target}-sourcemaps.zip`;
+    // Hyphenated platform tokens make update.electronjs.org treat a ZIP as an installer.
+    const name = `${product.slug}_${target.replaceAll('-', '_')}-sourcemaps.zip`;
     await fs.writeFile(path.join(output, name), sourcemapZip({ asarPath, version: version ?? await packageVersion(), target }));
   }
   await listTarget(output, target);

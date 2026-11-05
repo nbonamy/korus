@@ -42,12 +42,23 @@ test('a new release is staged as a draft, filled with every installer, then publ
   assert.equal(create[create.indexOf('--notes') + 1], notes);
 });
 
-test('each target\'s source map zip is uploaded with its installers', async t => {
+test('source maps upload without matching the update service platform patterns', async t => {
   const f = setup(t, null);
-  for (const target of ['darwin-arm64', 'win32-x64', 'linux-x64', 'linux-arm64']) fs.writeFileSync(path.join(f.directory, `desktop-${target}`, `korus-${target}-sourcemaps.zip`), 'maps');
+  for (const target of ['darwin-arm64', 'win32-x64', 'linux-x64', 'linux-arm64']) fs.writeFileSync(path.join(f.directory, `desktop-${target}`, `korus_${target.replaceAll('-', '_')}-sourcemaps.zip`), 'maps');
   await publishDesktop({ directory: f.directory, tag: 'v0.27.0', channel: 'prerelease', changelog, run: f.run });
   const uploaded = f.remote.calls.find(call => call[1] === 'upload').filter(arg => arg.endsWith('-sourcemaps.zip')).map(arg => path.basename(arg)).sort();
-  assert.deepEqual(uploaded, ['korus-darwin-arm64-sourcemaps.zip', 'korus-linux-arm64-sourcemaps.zip', 'korus-linux-x64-sourcemaps.zip', 'korus-win32-x64-sourcemaps.zip']);
+  assert.deepEqual(uploaded, ['korus_darwin_arm64-sourcemaps.zip', 'korus_linux_arm64-sourcemaps.zip', 'korus_linux_x64-sourcemaps.zip', 'korus_win32_x64-sourcemaps.zip']);
+  // update.electronjs.org classifies assets using these platform tokens.
+  for (const name of uploaded) assert.doesNotMatch(name, /-(?:mac|darwin|osx)|-win32-(?:ia32|x64|arm64)/i);
+});
+
+test('an installer-looking source map archive stops publication before GitHub changes', async t => {
+  for (const target of ['darwin-arm64', 'win32-x64']) {
+    const f = setup(t, null);
+    fs.writeFileSync(path.join(f.directory, `desktop-${target}`, `korus-${target}-sourcemaps.zip`), 'maps');
+    await assert.rejects(publishDesktop({ directory: f.directory, tag: 'v0.27.0', channel: 'latest', changelog, run: f.run }), /Unsafe source-map artifact/);
+    assert.deepEqual(f.remote.calls, []);
+  }
 });
 
 test('latest publishes a leftover draft without recreating it', async t => {

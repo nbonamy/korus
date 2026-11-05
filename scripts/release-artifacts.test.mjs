@@ -32,6 +32,11 @@ test('installers are renamed for download except Squirrel files, which keep the 
 test('a platform missing an installer type is not publishable', async t => {
   await assert.rejects(collect(t, 'win32-x64', 'exe'), /Missing \.exe artifact for win32-x64/);
   await assert.rejects(listTarget('/nonexistent-artifact-directory', 'linux-x64'), /Missing \.zip artifact for linux-x64/);
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'app-artifacts-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  await fs.writeFile(path.join(directory, 'korus_darwin_arm64-sourcemaps.zip'), 'maps');
+  await fs.writeFile(path.join(directory, 'korus-macos-arm64.dmg'), 'installer');
+  await assert.rejects(listTarget(directory, 'darwin-arm64'), /Missing \.zip artifact for darwin-arm64/);
 });
 
 test('the shipped source maps are published beside each target\'s installers, and a build without them is not publishable', async t => {
@@ -46,8 +51,8 @@ test('the shipped source maps are published beside each target\'s installers, an
   await fs.writeFile(path.join(packaged, 'korus-linux-x64/resources/app.asar'), buildAsar({ '.vite/renderer/main_window/assets/index-ABC.js.map': '{"version":3,"mappings":""}' }));
   const output = path.join(root, 'out');
   await collectArtifacts({ source, output, target: 'linux-x64', sourcemaps: packaged, version: '0.27.0' });
-  assert.deepEqual((await fs.readdir(output)).sort(), ['korus-linux-x64-sourcemaps.zip', 'korus-linux-x64.deb', 'korus-linux-x64.rpm', 'korus-linux-x64.zip']);
-  const zip = readZip(await fs.readFile(path.join(output, 'korus-linux-x64-sourcemaps.zip')));
+  assert.deepEqual((await fs.readdir(output)).sort(), ['korus-linux-x64.deb', 'korus-linux-x64.rpm', 'korus-linux-x64.zip', 'korus_linux_x64-sourcemaps.zip']);
+  const zip = readZip(await fs.readFile(path.join(output, 'korus_linux_x64-sourcemaps.zip')));
   assert.deepEqual(zip.names, ['sourcemaps.json', 'renderer/main_window/assets/index-ABC.js.map']);
   assert.equal(JSON.parse(zip.read('sourcemaps.json')).version, '0.27.0');
 });
