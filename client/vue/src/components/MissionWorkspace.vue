@@ -80,6 +80,14 @@
         </header>
 
         <div class="mission-workspace__workbench-scroll" :class="{ 'mission-workspace__workbench-scroll--requirements': viewedStage === 'requirements', 'mission-workspace__workbench-scroll--stage-loading': showStageLoading }">
+          <form v-if="membershipUnavailable && !debugFixture" class="mission-workspace__member-recovery" @submit.prevent="reassignMembers">
+            <p role="alert">{{ t('missions.memberUnavailable') }}</p>
+            <select v-model="replacementMemberId" :aria-label="t('missions.replacementMember')" :disabled="busy || !!activeStageRun">
+              <option value="" disabled>{{ t('missions.replacementMember') }}</option>
+              <option v-for="member in localMembers" :key="member.id" :value="member.id">{{ member.name }}</option>
+            </select>
+            <button class="app-button app-button--small" type="submit" data-testid="reassign-mission-member" :disabled="busy || !!activeStageRun || !replacementMemberId || !executeMission">{{ t('missions.reassignMembers') }}</button>
+          </form>
           <p v-if="error || artifactError" class="mission-workspace__error" role="alert">{{ error || artifactError }}</p>
           <MissionImplementationBoard
             v-if="viewedStage === 'implementation' && mission.artifacts.tickets.length"
@@ -387,6 +395,20 @@ watch(() => props.conversationOnly, () => {
 onBeforeUnmount(() => { stopChatResize(); workspaceObserver?.disconnect(); });
 const busy = ref(false);
 const error = ref('');
+const replacementMemberId = ref('');
+const localMembers = computed(() => props.agents.filter(agent => agent.teamId === props.mission.teamId && !agent.remoteConnectionId));
+const membershipUnavailable = computed(() => !!props.mission.execution && (!props.mission.execution.memberIds.length
+  || props.mission.execution.memberIds.some(id => !localMembers.value.some(member => member.id === id))));
+async function reassignMembers(): Promise<void> {
+  if (!props.executeMission || !replacementMemberId.value) return;
+  busy.value = true; error.value = '';
+  try {
+    const memberIds = [...new Set([...(props.mission.execution?.memberIds ?? []).filter(id => localMembers.value.some(member => member.id === id)), replacementMemberId.value])];
+    await props.executeMission({ id: props.mission.id, revision: props.mission.revision, action: 'configure', teamId: props.mission.teamId, memberIds });
+    replacementMemberId.value = '';
+  } catch (cause) { error.value = String(cause); }
+  finally { busy.value = false; }
+}
 const artifactError = ref('');
 const feedbackBusy = ref(false);
 const feedbackReset = ref(0);

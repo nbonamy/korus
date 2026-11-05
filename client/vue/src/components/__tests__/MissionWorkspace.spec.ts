@@ -79,6 +79,28 @@ const ticketDialogText = () => openTicketDialog()?.textContent ?? '';
 const inTicketDialog = (selector: string) => openTicketDialog()?.querySelector<HTMLElement>(selector) ?? null;
 
 describe('MissionWorkspace', () => {
+  it('offers explicit local member reassignment when saved membership is unavailable', async () => {
+    const mission = missionWithRun('awaitingReview', true);
+    mission.execution!.memberIds = ['removed-member'];
+    const agents = createInitialSnapshot().agents;
+    const replacement = agents[1]!;
+    const executeMission = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mountWorkspace(mission, { attachTo: document.body, agents: [...agents, { ...replacement, id: 'remote', remoteConnectionId: 'host' }, { ...replacement, id: 'outside', teamId: 'other' }], executeMission });
+    expect(wrapper.text()).toContain('A Mission member is unavailable');
+    const select = wrapper.get('select[aria-label="Replacement member"]');
+    expect(select.findAll('option').map(option => option.attributes('value'))).not.toContain('remote');
+    expect(select.findAll('option').map(option => option.attributes('value'))).not.toContain('outside');
+    await select.setValue(replacement.id);
+    await wrapper.get('[data-testid="reassign-mission-member"]').trigger('click');
+    await flushPromises();
+    expect(executeMission).toHaveBeenCalledExactlyOnceWith({ id: mission.id, revision: mission.revision, action: 'configure', teamId: mission.teamId, memberIds: [replacement.id] });
+    const repaired = structuredClone(mission);
+    repaired.execution!.memberIds = [replacement.id];
+    await wrapper.setProps({ mission: repaired });
+    expect(wrapper.find('select[aria-label="Replacement member"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it('expands either pane and restores the split without remounting content or losing its width', async () => {
     window.localStorage.setItem('app.missionChatWidth', '420');
     const wrapper = mountWorkspace(missionWithRun('awaitingReview', true), { attachTo: document.body });

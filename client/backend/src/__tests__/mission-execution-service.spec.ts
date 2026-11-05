@@ -1838,6 +1838,70 @@ describe('mission execution', () => {
     expect(h.current().teamId).toBe('team-app');
   });
 
+  it.each([false, true])('recovers removed Tickets membership without replacing history or the lead (multiple=%s)', async multiple => {
+    const h = setup();
+    const removed = h.originalAgents[0]!;
+    const replacement = h.originalAgents[1]!;
+    await h.store.change(h.current().id, mission => {
+      mission.artifacts.requirements = { problem: 'Billing', acceptance: 'Owner pays' };
+      mission.execution!.memberIds = multiple ? [removed.id, replacement.id] : [removed.id];
+    });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const requirements = h.current().execution!.runs[0]!;
+    await h.service.writeArtifact(requirements.workerId!, { stage: 'requirements', content: '# Billing requirements' });
+    await h.service.submit(requirements.workerId!, { artifacts: structuredClone(h.current().artifacts), summary: 'Requirements ready' });
+    await h.command({ action: 'accept', runId: requirements.id }); await h.service.waitForLaunches();
+    const run = h.current().execution!.runs.at(-1)!;
+    await h.service.upsertTicket(run.workerId!, { title: 'Billing', body: 'Implement billing.', repositoryPath: replacement.folder! });
+    await h.service.submit(run.workerId!, { artifacts: structuredClone(h.current().artifacts), summary: 'Tickets ready' });
+    h.snapshot.agents = h.snapshot.agents.filter(agent => agent.id !== removed.id);
+    const before = structuredClone(h.current());
+    await expect(h.command({ action: 'accept', runId: run.id })).rejects.toThrow('member');
+    expect(h.ports.createWorktree).not.toHaveBeenCalled();
+    expect(h.current()).toStrictEqual(before);
+
+    const remote = { ...replacement, id: 'remote-member', remoteConnectionId: 'connection' };
+    const outsider = { ...replacement, id: 'outside-member', teamId: 'another-team' };
+    h.snapshot.agents.push(remote, outsider);
+    for (const memberId of [removed.id, remote.id, outsider.id]) {
+      await expect(h.command({ action: 'configure', teamId: before.teamId, memberIds: [memberId] })).rejects.toThrow('local team');
+    }
+    await h.command({ action: 'configure', teamId: before.teamId, memberIds: [replacement.id] });
+    expect(h.current().execution!.runs).toStrictEqual(before.execution!.runs);
+    expect(h.current().artifacts).toStrictEqual(before.artifacts);
+    h.snapshot.missions = snapshotFromPersistedState(persistedStateFromSnapshot(h.snapshot)).missions;
+    h.service = new MissionExecutionService(h.ports);
+    await h.service.execute({ id: before.id, revision: h.current().revision, action: 'accept', runId: run.id }); await h.service.waitForLaunches();
+    const implementation = h.current().execution!.runs.at(-1)!;
+    expect(implementation).toMatchObject({ stage: 'implementation', memberId: replacement.id, status: 'running' });
+    await h.service.submit(implementation.workerId!, { summary: 'Done', ticketId: implementation.ticketId!, implementation: { changes: 'Billing implemented', tests: 'Passed' } });
+    await h.service.agentFinished(implementation.workerId!); await h.service.waitForLaunches();
+    await h.service.execute({ id: before.id, revision: h.current().revision, action: 'continueToReview' }); await h.service.waitForLaunches();
+    expect(h.current().execution!.runs.at(-1)).toMatchObject({ stage: 'review', memberId: replacement.id, workerId: run.workerId, status: 'running' });
+    for (const historical of h.current().execution!.runs.slice(0, 2)) {
+      expect(historical).toMatchObject({ memberId: removed.id, workerId: run.workerId, status: 'accepted' });
+    }
+  });
+
+  it('reuses an implementation conversation after reassigning its missing historical member', async () => {
+    const h = setup();
+    const replacement = h.originalAgents[1]!;
+    const repositoryPath = replacement.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.execution!.memberIds = ['removed-member'];
+      mission.execution!.workspaces = [{ repositoryPath, path: '/mission/checkout', branch: 'mission/billing' }];
+      mission.artifacts.tickets = [{ id: 'next', title: 'Billing', repositoryPath, done: false }];
+      mission.execution!.runs = [{ id: 'history', stage: 'implementation', memberId: 'removed-member', workerId: replacement.id, repositoryPath, status: 'accepted', skills: [], feedback: '', startedAt: 'before' }];
+    });
+    const before = structuredClone(h.current().execution);
+    await h.command({ action: 'configure', teamId: h.current().teamId, memberIds: [replacement.id] });
+    expect(h.current().execution).toStrictEqual({ ...before, memberIds: [replacement.id] });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    expect(h.current().execution!.runs.at(-1)).toMatchObject({ stage: 'implementation', memberId: replacement.id, workerId: replacement.id, status: 'running' });
+    await expect(h.command({ action: 'configure', teamId: h.current().teamId, memberIds: [replacement.id] })).rejects.toThrow('active Mission runs');
+  });
+
   it('keeps the backlog reviewable when an affected repository worktree cannot be created', async () => {
     const h = setup();
     await h.store.change(h.current().id, mission => {
