@@ -29,7 +29,7 @@ describe('rail lock control', () => {
   it('offers one hour, the next morning or until turned off, and stores each as a hold', async () => {
     vi.setSystemTime(new Date(2026, 10, 4, 21, 30));
     const { wrapper, setHold } = mountControl(true);
-    const trigger = wrapper.get('button[aria-label="Prevent automatic locking"]');
+    const trigger = wrapper.get('button[aria-label="Disable screen lock"]');
     const choose = async (label: string) => {
       await trigger.trigger('click');
       await flushPromises();
@@ -59,19 +59,19 @@ describe('rail lock control', () => {
     const until = new Date(2026, 10, 5, 9, 0).getTime();
     const { wrapper, setHold } = mountControl(true, { until });
     const button = wrapper.get('button');
-    expect(button.attributes('aria-label')).toBe(`Auto-lock is off until ${clock(until)}`);
+    expect(button.attributes('aria-label')).toBe(`Screen lock disabled until ${clock(until)}`);
     await button.trigger('click');
     expect(setHold).toHaveBeenCalledExactlyOnceWith(false);
     wrapper.unmount();
     const manual = mountControl(true, { until: null });
-    expect(manual.wrapper.get('button').attributes('aria-label')).toBe('Auto-lock is off until you turn it back on');
+    expect(manual.wrapper.get('button').attributes('aria-label')).toBe('Screen lock disabled until you turn it back on');
     manual.wrapper.unmount();
   });
 
   it('treats an expired hold as inactive', () => {
     vi.setSystemTime(new Date(2026, 10, 4, 21, 30));
     const { wrapper } = mountControl(true, { until: Date.now() - 1000 });
-    expect(wrapper.find('button[aria-label="Prevent automatic locking"]').exists()).toBe(true);
+    expect(wrapper.find('button[aria-label="Disable screen lock"]').exists()).toBe(true);
     wrapper.unmount();
   });
 });

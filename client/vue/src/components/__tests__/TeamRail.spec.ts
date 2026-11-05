@@ -59,7 +59,7 @@ describe('TeamRail', () => {
         ['.team-rail__backlog', 'Backlog'], ['.team-rail__cockpit', 'Cockpit'],
         ['.team-rail__team', 'Skwad'], ['.team-rail__new', 'Create team'],
         ['.team-rail__speech-mute', 'Mute spoken acknowledgments (⇧⌘M)'],
-        ['.team-rail__automations', 'Automations'], ['.team-rail__lock', 'Prevent automatic locking'],
+        ['.team-rail__automations', 'Automations'], ['.team-rail__lock', 'Disable screen lock'],
       ]) {
         const button = await show(selector!, label!);
         if (selector === '.team-rail__lock') {
@@ -77,10 +77,10 @@ describe('TeamRail', () => {
       const until = Date.now() + 60 * 60_000;
       hold.value = { until }; await nextTick();
       const endTime = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(until);
-      const timedLock = await show('.team-rail__lock', `Auto-lock is off until ${endTime}`);
+      const timedLock = await show('.team-rail__lock', `Screen lock disabled\nuntil ${endTime}`);
       await timedLock.trigger('mouseleave'); await vi.advanceTimersByTimeAsync(300);
       hold.value = { until: null }; await nextTick();
-      const lock = await show('.team-rail__lock', 'Auto-lock is off until you turn it back on');
+      const lock = await show('.team-rail__lock', 'Screen lock disabled\nuntil you turn it back on');
       await lock.trigger('mouseleave'); await vi.advanceTimersByTimeAsync(300);
       const settings = await show('.settings-menu__trigger', 'Settings menu');
       await settings.trigger('click'); await vi.advanceTimersByTimeAsync(300); await flushPromises();

@@ -1,10 +1,10 @@
 <template>
   <template v-if="lock?.state.value.visible">
-    <el-tooltip v-if="active" :content="activeLabel" :trigger="['hover', 'focus']" placement="right" :show-after="300">
+    <el-tooltip v-if="active" :content="activeLabel" :trigger="['hover', 'focus']" placement="right" :show-after="300" popper-class="team-rail-lock-tooltip">
       <button
         type="button"
         class="team-rail__lock team-rail__lock--active"
-        :aria-label="activeLabel"
+        :aria-label="activeAriaLabel"
         @click="turnBackOn"
       >
         <LockOpenIcon aria-hidden="true" />
@@ -12,7 +12,7 @@
     </el-tooltip>
     <AppMenuButton v-else :items="items" :ariaLabel="$t('surface.computerUseLock.enable')" :width="220" placement="right-end" @select="choose">
       <template #trigger="{ attrs, open }">
-        <el-tooltip :content="$t('surface.computerUseLock.enable')" :trigger="['hover', 'focus']" placement="right" :show-after="300" :disabled="open">
+        <el-tooltip :content="$t('surface.computerUseLock.enable')" :trigger="['hover', 'focus']" placement="right" :show-after="300" :disabled="open" popper-class="team-rail-lock-tooltip">
           <button v-bind="attrs" type="button" class="team-rail__lock" :aria-label="$t('surface.computerUseLock.enable')">
             <LockIcon aria-hidden="true" />
           </button>
@@ -43,6 +43,8 @@ const activeLabel = computed(() => {
     ? translate('surface.computerUseLock.activeUntil', { time: formatClock(current.until) })
     : translate('surface.computerUseLock.activeIndefinitely');
 });
+// The tooltip breaks its own line, so the box is as wide as its longest line; assistive technology reads one sentence.
+const activeAriaLabel = computed(() => activeLabel.value.replace(/\s+/g, ' '));
 
 // A clock face for each hour, starting at 12, so the one-hour choice shows the hour it will end.
 const hourIcons = [IconClockHour12, IconClockHour1, IconClockHour2, IconClockHour3, IconClockHour4, IconClockHour5,
@@ -107,5 +109,12 @@ function turnBackOn(): void {
   height: var(--icon-xl);
   /* The lock glyph is taller than it is wide, so it reads narrower than the other rail icons. */
   transform: scaleX(1.12);
+}
+</style>
+
+<style>
+/* The tooltip is teleported out of the rail, so it needs its own rule: the message carries its own line break. */
+.el-popper.team-rail-lock-tooltip {
+  white-space: pre-line;
 }
 </style>

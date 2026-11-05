@@ -1105,13 +1105,13 @@ export const surfaceMessages = {
     "issuesAndPullRequests": "Issues and pull requests"
   },
   "computerUseLock": {
-    "enable": "Prevent automatic locking",
+    "enable": "Disable screen lock",
     "forOneHour": "For 1 hour",
     "untilClock": "Until {time}",
     "untilTurnedOff": "Until I turn it off",
-    "activeUntil": "Auto-lock is off until {time}",
-    "activeIndefinitely": "Auto-lock is off until you turn it back on",
-    "turnOn": "Turn auto-lock back on"
+    "activeUntil": "Screen lock disabled\nuntil {time}",
+    "activeIndefinitely": "Screen lock disabled\nuntil you turn it back on",
+    "turnOn": "Enable screen lock"
   },
   "settingsMenu": {
     "loadFailed": "Couldn’t load usage",

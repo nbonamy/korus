@@ -1707,8 +1707,8 @@ it('puts the on-demand lock in the rail above the Korus button and saves its hol
     await flushPromises();
     expect(updateSettings).toHaveBeenCalledWith({ general: { plugins: { computerUseLockHold: { until: null } } } });
     await wrapper.setProps({ snapshot: { ...snapshot, general: { ...snapshot.general, plugins: { ...snapshot.general.plugins, computerUseLockHold: { until: null } } } } });
-    expect(wrapper.find('button[aria-label="Auto-lock is off"]').exists()).toBe(true);
+    expect(wrapper.find('button[aria-label="Screen lock disabled until you turn it back on"]').exists()).toBe(true);
     await wrapper.setProps({ snapshot: { ...snapshot, general: { ...snapshot.general, plugins: { ...snapshot.general.plugins, computerUseLockPrevention: 'always' } } } });
-    expect(wrapper.find('button[aria-label="Prevent automatic locking"]').exists()).toBe(false);
+    expect(wrapper.find('button[aria-label="Disable screen lock"]').exists()).toBe(false);
   } finally { wrapper.unmount(); }
 });
