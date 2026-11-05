@@ -526,7 +526,7 @@ test('image previews follow the viewport with stable geometry, bounded caching a
         window.imageReads.push(event); window.peakReads = Math.max(window.peakReads, ++window.activeReads);
         queueMicrotask(() => {
           window.activeReads--;
-          const canvas = document.createElement('canvas'); const index = Number(/shot-(\d+)/.exec(event.path)?.[1] ?? 2);
+          const canvas = document.createElement('canvas'); const index = event.path.startsWith('conversation-image:images-budget:') ? parseInt(event.path.split(':').at(-1), 16) : Number(/shot-(\d+)/.exec(event.path)?.[1] ?? 2);
           canvas.width = event.path.endsWith('large.png') ? 3072 : index % 3 === 0 ? 2048 : index % 3 === 1 ? 512 : 1024;
           canvas.height = event.path.endsWith('large.png') ? 3072 : 1024 * 1024 / canvas.width;
           window.companionTranscript.setImage(JSON.stringify({requestId:event.requestId,agentId:event.agentId,dataUrl:canvas.toDataURL('image/png')}));
@@ -536,7 +536,8 @@ test('image previews follow the viewport with stable geometry, bounded caching a
     await page.goto(`${server.resolvedUrls.local[0]}transcript.html`); await page.waitForFunction(() => window.companionTranscript);
     await page.evaluate(async () => {
       const agent = {id:'images-budget',name:'Images',backend:'codex',status:{type:'idle'}};
-      window.imageBudgetConversation = {agentId:agent.id,agent,ready:true,frame:{agentId:agent.id,backend:'codex',payload:{snapshot:{messages:Array.from({length:12},(_,i)=>({id:`shot-${i}`,role:'assistant',parts:[{type:'text',text:'Context for screenshot '+i+'\n\n'+('Context line\n\n'.repeat(12))}, i % 2 ? {type:'attachment',attachment:{kind:'image',path:`/tmp/shot-${i}.png`,name:`Shot ${i}`,width:i%3===0?2048:i%3===1?512:1024,height:i%3===0?512:i%3===1?2048:1024}} : {type:'media',media:{url:`/tmp/shot-${i}.png`,title:`Shot ${i}`,width:i%3===0?2048:i%3===1?512:1024,height:i%3===0?512:i%3===1?2048:1024}}]})),turns:[],busy:false}}}};
+      window.imageBudgetConversation = {agentId:agent.id,agent,ready:true,frame:{agentId:agent.id,backend:'codex',payload:{snapshot:{messages:Array.from({length:12},(_,i)=>({id:`shot-${i}`,role:'assistant',parts:[{type:'text',text:'Context for screenshot '+i+'\n\n'+('Context line\n\n'.repeat(12))}, i % 2 ? {type:'attachment',attachment:{kind:'image',path:`conversation-image:images-budget:${i.toString(16).padStart(64,'0')}`,name:`Shot ${i}`,width:i%3===0?2048:i%3===1?512:1024,height:i%3===0?512:i%3===1?2048:1024}} : {type:'media',media:{url:`conversation-image:images-budget:${i.toString(16).padStart(64,'0')}`,title:`Shot ${i}`,width:i%3===0?2048:i%3===1?512:1024,height:i%3===0?512:i%3===1?2048:1024}}]})),turns:[],busy:false}}}};
+      window.imageBudgetConversation.imageCacheScope = 'paired-laptop-a';
       await window.companionTranscript.setConversation(JSON.stringify(window.imageBudgetConversation));
     });
     await page.waitForFunction(() => window.imageReads.length > 0 && window.activeReads === 0);
@@ -562,15 +563,37 @@ test('image previews follow the viewport with stable geometry, bounded caching a
     assert.ok(await page.evaluate(() => window.peakReads <= 2), 'preview reads must be bounded');
     await page.waitForFunction(() => !document.body.textContent.includes('Loading image…'));
     assert.ok(await page.evaluate(() => [...window.imageBytes.values()].reduce((a,b)=>a+b,0)+[...document.querySelectorAll('img')].reduce((a,x)=>a+x.naturalWidth*x.naturalHeight*4,0)<=64*1024*1024), 'compressed originals and decoded thumbnails share the 64 MiB bound');
-    const readsBeforeReturn = await page.evaluate(() => window.imageReads.filter(e => e.path === '/tmp/shot-0.png').length);
+    const readsBeforeReturn = await page.evaluate(() => window.imageReads.filter(e => e.path === 'conversation-image:images-budget:' + '0'.repeat(64)).length);
     await shot(0).evaluate(el => el.scrollIntoView({block:'center'}));
     await page.waitForFunction(() => document.querySelector('[aria-label="Open Shot 0"] img')?.naturalWidth > 0);
-    assert.ok(await page.evaluate(count => window.imageReads.filter(e => e.path === '/tmp/shot-0.png').length === count, readsBeforeReturn), 'returning previews reuse downloaded bytes without a host read');
+    assert.ok(await page.evaluate(count => window.imageReads.filter(e => e.path === 'conversation-image:images-budget:' + '0'.repeat(64)).length === count, readsBeforeReturn), 'returning previews reuse downloaded bytes without a host read');
     const settledReads = await page.evaluate(() => window.imageReads.length);
     await page.clock.runFor(300);
     assert.equal(await page.evaluate(() => window.imageReads.length), settledReads, 'memory pressure must not cause a fetch loop');
     const evidence = await page.evaluate(() => ({peakReads:window.peakReads,retainedImages:window.imageUrls.size,evictions:window.revokedImages}));
-    await page.evaluate(async () => { const c = window.imageBudgetConversation; c.frame.payload.snapshot.messages=[]; await window.companionTranscript.setConversation(JSON.stringify(c)); });
+    const warmSource = await shot(0).locator('img').getAttribute('src');
+    await page.evaluate(async () => {
+      const c = structuredClone(window.imageBudgetConversation);
+      c.agentId = c.agent.id = c.frame.agentId = 'other-image-conversation';
+      c.frame.payload.snapshot.messages = [{id:'other-image',role:'assistant',parts:[{type:'media',media:{url:'/tmp/other.png',title:'Other conversation',width:1024,height:1024}}]}];
+      await window.companionTranscript.setConversation(JSON.stringify(c));
+    });
+    await page.waitForFunction(() => document.querySelector('[aria-label="Open Other conversation"] img')?.naturalWidth > 0);
+    const readsBeforeSwitchBack = await page.evaluate(() => window.imageReads.length);
+    await page.evaluate(async () => window.companionTranscript.setConversation(JSON.stringify(window.imageBudgetConversation)));
+    await shot(0).evaluate(el => el.scrollIntoView({block:'center'}));
+    assert.equal(await shot(0).locator('img').getAttribute('src'), warmSource, 'switching back immediately reuses the rendered preview URL');
+    assert.equal(await page.evaluate(() => window.imageReads.length), readsBeforeSwitchBack, 'switching conversations does not repeat the native image bridge read');
+    // A different paired host must never inherit previews from this owner.
+    await page.evaluate(async () => {
+      window.imageBudgetConversation.imageCacheScope = 'paired-laptop-b';
+      await window.companionTranscript.setConversation(JSON.stringify(window.imageBudgetConversation));
+    });
+    await shot(0).evaluate(el => el.scrollIntoView({block:'center'}));
+    await page.waitForFunction(() => document.querySelector('[aria-label="Open Shot 0"] img')?.naturalWidth > 0);
+    assert.notEqual(await shot(0).locator('img').getAttribute('src'), warmSource, 'changing owner revokes and replaces the old preview');
+    assert.equal(await page.evaluate(source => window.imageUrls.has(source), warmSource), false);
+    await page.evaluate(async () => window.companionTranscript.setConversation(JSON.stringify({agentId:'',agent:null,ready:false,frame:null,imageCacheScope:null})));
     await page.waitForFunction(() => window.imageUrls.size === 0);
     await page.evaluate(async () => { const c = window.imageBudgetConversation; c.frame.payload.snapshot.messages=[{id:'large',role:'assistant',parts:[{type:'media',media:{url:'/tmp/large.png',title:'Large image'}}]}]; await window.companionTranscript.setConversation(JSON.stringify(c)); });
     await page.waitForFunction(() => window.imageReads.some(e => e.path === '/tmp/large.png') && window.activeReads === 0 && !document.body.textContent.includes('Loading image…'));

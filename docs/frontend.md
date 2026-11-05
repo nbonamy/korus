@@ -136,6 +136,11 @@ file paths bypass this cache, and missing, corrupt or unavailable entries fall
 back to the authorized host reader. Disk caching leaves viewport loading and the
 renderer memory budget independent.
 
+The mobile preview pool survives conversation switches within one connected
+host and engine instance. Recent previews share the 64 MiB renderer budget and
+are evicted before visible images. Disconnecting, changing the paired host, or
+restarting the engine disposes the pool and its object URLs.
+
 The native transcript and shared conversation pane must resolve one SDK Vue
 instance: host capabilities use module-local injection keys. The mobile bundler
 deduplicates SDK modules across workspace installations to preserve that context.

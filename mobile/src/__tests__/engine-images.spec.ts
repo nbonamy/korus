@@ -36,12 +36,16 @@ describe('conversation image bridge', () => {
     let current = make();
     const reference = `conversation-image:demo-agent:${'a'.repeat(64)}`;
     const open = (path = reference, requestId = 'image') => current.engine.dispatch({ type: 'readConversationImage', requestId, agentId: 'demo-agent', path });
+    const previewScope = () => current.events.filter(event => event.type === 'conversation' || event.type === 'conversationTransfer' || event.type === 'conversationContext').at(-1)?.imageCacheScope;
     try {
       await current.engine.start(); await current.engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      const firstScope = previewScope();
+      expect(firstScope).toBeTypeOf('string');
       expect(read).not.toHaveBeenCalled();
       await Promise.all([open(), open()]); expect(read).toHaveBeenCalledTimes(1);
       await current.engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
       await current.engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      expect(previewScope()).toBe(firstScope);
       await open(); expect(read).toHaveBeenCalledTimes(1);
       current.engine.dispose(); current = make(); await current.engine.start();
       await current.engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
@@ -51,6 +55,7 @@ describe('conversation image bridge', () => {
       expect(read).toHaveBeenCalledTimes(3);
       current.engine.dispose(); current = make('other-laptop'); await current.engine.start();
       await current.engine.dispatch({ type: 'selectAgent', id: 'demo-agent' }); await open();
+      expect(previewScope()).not.toBe(firstScope);
       expect(read).toHaveBeenCalledTimes(4);
       let finishLookup!: (value: string | null) => void;
       imageCache.read.mockImplementationOnce(() => new Promise(resolve => { finishLookup = resolve; }));
@@ -75,6 +80,7 @@ describe('conversation image bridge', () => {
       const forgotten = open(`conversation-image:demo-agent:${'d'.repeat(64)}`, 'forgotten');
       await vi.waitFor(() => expect(finishForgottenLookup).toBeTypeOf('function'));
       await current.engine.dispatch({ type: 'forget', laptopId: 'other-laptop' });
+      expect(previewScope()).toBeNull();
       finishForgottenLookup(null); await forgotten;
       expect(read).toHaveBeenCalledTimes(7);
       expect(current.events.filter(event => event.type === 'conversationImage').at(-1)).toMatchObject({ requestId: 'forgotten', error: 'Image is unavailable.' });

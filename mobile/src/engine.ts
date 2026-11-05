@@ -115,6 +115,8 @@ export type EngineEvent =
 export type TranscriptContext = {
   /** Selection counters belong to one engine page, which can restart independently. */
   engineInstance?: string;
+  /** Renderer-local preview ownership; changes on reconnecting to another host. */
+  imageCacheScope?: string | null;
   generation: number;
   ready: boolean; agent: Agent | null; peers: { id: string; label: string }[]; history: CompanionHistoryState;
   /** An empty chat's engine and the ones it may switch to. */
@@ -404,7 +406,8 @@ export function createEngine(port: EnginePort) {
     return { frame: { ...frame, payload: { ...frame.payload, snapshot: { ...snapshot, messages } } } as CompanionConversation, key: shown.map((entry) => entry.id).join() };
   }
   const peers = computed(() => state.agents.value.map((agent) => ({ id: agent.id, label: agentDisplayName(agent) })));
-  const contextNow = (): TranscriptContext => ({ engineInstance, generation: state.conversationGeneration.value, ready: state.conversationReady.value, agent: state.agent.value, peers: peers.value, history: state.history.value, engines: engines() });
+  const contextNow = (): TranscriptContext => ({ engineInstance, imageCacheScope: state.status.value === 'connected' ? JSON.stringify([engineInstance, state.laptopId.value]) : null,
+    generation: state.conversationGeneration.value, ready: state.conversationReady.value, agent: state.agent.value, peers: peers.value, history: state.history.value, engines: engines() });
 
   // Pace presentation work. Incremental hosts send every event since the last paint acknowledgment;
   // other hosts send the latest snapshot. Either payload subsumes older pending presentation work.

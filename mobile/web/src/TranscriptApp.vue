@@ -3,6 +3,7 @@
   <div class="transcript">
     <button v-if="history.failed" class="app-button app-button--tertiary transcript__history-retry" @click="loadOlder">Couldn’t load earlier messages. Retry</button>
     <div v-if="imageLoading" class="transcript__media-status" role="status">Loading image…</div>
+    <ImagePreviewScope :key="imageCacheScope">
     <ConversationPane
       v-if="agent && (frame || ready)"
       :controller="controller"
@@ -24,13 +25,14 @@
         </div>
       </template>
     </ConversationPane>
+    </ImagePreviewScope>
   </div>
   <FilePreviewPane v-if="files.state.value" :state="files.state.value" @close="files.close" @refresh="files.refresh" @mode="files.mode" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, provide, reactive, shallowRef } from 'vue';
+import { computed, defineComponent, nextTick, provide, reactive, shallowRef } from 'vue';
 import { createCodexConversationPaneController, provideCodexHostCapabilities, type CodexConversationPaneState } from '@codex-app-sdk/vue';
 import type { Agent } from '@workspace/core/contracts';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
@@ -79,7 +81,10 @@ function setImage(json: string) {
   if (reply.agentId !== pending.agentId || agent.value?.id !== pending.agentId || reply.error || !reply.dataUrl) pending.reject(new Error('Image is unavailable.'));
   else pending.resolve(reply.dataUrl);
 }
-provideCodexHostCapabilities({
+const imageCacheScope = shallowRef('');
+// The pool survives thread switches; changing its host/engine owner disposes it.
+const ImagePreviewScope = defineComponent({ setup(_props, { slots }) {
+  provideCodexHostCapabilities({
   capabilities: { attachments: false, clipboard: false, externalLinks: true, transcription: false },
   readImagePreview: readImage,
   async copyToClipboard(content) { await navigator.clipboard.writeText(content.text); },
@@ -87,6 +92,8 @@ provideCodexHostCapabilities({
   async transcribeAudio() { throw new Error('Native composer owns dictation.'); },
   async openExternal(url) { await handler('transcript').postMessage(JSON.stringify({ type: 'openExternal', url })); },
 }, { imagePreviewBudgetBytes: 64 * 1024 * 1024, viewportImageLoading: true });
+  return () => slots.default?.();
+} });
 async function openFileImage(path: string, title: string) {
   const agentId = agent.value?.id;
   const epoch = ++imageOpenEpoch;
@@ -177,11 +184,12 @@ function loadOlder() {
   void handler('transcript').postMessage(JSON.stringify({ type: 'loadOlder', agentId: agent.value.id }));
 }
 
-type Context = { engineInstance?: string; agentId: string; generation: number; ready: boolean; agent: Agent | null; peers: { id: string; label: string }[]; history: CompanionHistoryState; engines: { current: string; choices: string[] } | null };
+type Context = { engineInstance?: string; imageCacheScope?: string | null; agentId: string; generation: number; ready: boolean; agent: Agent | null; peers: { id: string; label: string }[]; history: CompanionHistoryState; engines: { current: string; choices: string[] } | null };
 // The pane only needs the names of the agents a message may mention.
 const peerAgents = (peers: Context['peers'] = []) => peers.map((peer) => ({ id: peer.id, name: peer.label }) as Agent);
 let currentAgentId = '';
 function applyContext(message: Context) {
+  imageCacheScope.value = message.imageCacheScope === undefined ? message.engineInstance ?? '' : message.imageCacheScope ?? '';
   if (!message.ready || agent.value?.id !== message.agent?.id || JSON.stringify(agent.value?.backendSession) !== JSON.stringify(message.agent?.backendSession) || (fileGeneration !== message.generation)) files.reset();
   fileGeneration = message.generation;
   if (agent.value?.id !== message.agent?.id || JSON.stringify(agent.value?.backendSession) !== JSON.stringify(message.agent?.backendSession)) { ++imageOpenEpoch; imageLoading.value = false; }
