@@ -93,6 +93,12 @@ test('missing release notes stop publication before any GitHub change', async t 
 
 function mirrored(t) {
   const f = setup(t, null);
+  const originalToken = process.env.DESKTOP_RELEASE_TOKEN;
+  if (!originalToken) process.env.DESKTOP_RELEASE_TOKEN = 'test-mirror-token';
+  t.after(() => {
+    if (originalToken === undefined) delete process.env.DESKTOP_RELEASE_TOKEN;
+    else process.env.DESKTOP_RELEASE_TOKEN = originalToken;
+  });
   const repositories = ['Korus-Dev/korus', 'nbonamy/korus'];
   const releases = new Map();
   const calls = [];
@@ -163,8 +169,9 @@ test('a workflow without the mirror credential fails before creating releases', 
     if (originalActions === undefined) delete process.env.GITHUB_ACTIONS; else process.env.GITHUB_ACTIONS = originalActions;
     if (originalToken === undefined) delete process.env.DESKTOP_RELEASE_TOKEN; else process.env.DESKTOP_RELEASE_TOKEN = originalToken;
   });
-  process.env.GITHUB_ACTIONS = 'true'; delete process.env.DESKTOP_RELEASE_TOKEN;
+  process.env.GITHUB_ACTIONS = 'true';
   const f = mirrored(t);
+  delete process.env.DESKTOP_RELEASE_TOKEN;
   await assert.rejects(f.publish(), /Set DESKTOP_RELEASE_TOKEN/);
   assert.ok(!f.calls.some(call => ['create', 'upload', 'edit'].includes(call.verb)));
 });
