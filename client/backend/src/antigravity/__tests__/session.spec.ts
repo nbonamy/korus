@@ -247,6 +247,12 @@ describe('Antigravity native session', () => {
     ]);
   });
 
+  it("disables run_workflow so the runtime never writes its skill file into the workspace", async () => {
+    await open();
+    expect(JSON.parse(await readFile(path.join(root, 'fixture-session.json'), 'utf8'))).toMatchObject({ _meta: { antigravity: { disabledTools: ['run_workflow'] } } });
+    await expect(readFile(path.join(root, 'skills/system/run-workflow/SKILL.md'), 'utf8')).rejects.toThrow();
+  });
+
   it("reports per-turn token categories and the selected model from PromptResponse.usage", async () => {
     const config = (currentValue: string) => [{ id: 'model', name: 'Model', type: 'select', category: 'model', currentValue, options: [{ value: currentValue, name: currentValue }] }];
     const measured = (usage: unknown) => ({ configuration: { models: { currentModelId: 'gemini-3.8-flash', availableModels: [{ modelId: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash' }] }, configOptions: config('gemini-3.8-flash') },

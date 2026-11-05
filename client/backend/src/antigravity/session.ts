@@ -58,7 +58,8 @@ export class AcpSession {
       if (options.sessionId) await validateAcpSession(session.runtime.connection, options.sessionId, options.cwd);
       const result = await session.runtime.connection.request(options.sessionId ? 'session/load' : 'session/new', {
         ...(options.sessionId ? { sessionId: options.sessionId } : {}), cwd: options.cwd, mcpServers: options.mcpServers,
-        ...(options.tools === false ? { _meta: { agy: { enabledTools: [] } } } : {}),
+        // ACP 1.4.2+ writes skills/system/run-workflow/SKILL.md into the workspace unless the tool is disabled.
+        _meta: { antigravity: { disabledTools: ['run_workflow'] }, ...(options.tools === false ? { agy: { enabledTools: [] } } : {}) },
       }, 120_000);
       if (!record(result)) throw new Error('Invalid Antigravity session response.');
       const id = options.sessionId ?? result.sessionId;
