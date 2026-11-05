@@ -4,6 +4,12 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.52.3] - 2026-11-05
+
+### Improvements and fixes
+
+- Misc fixes.
+
 ## [0.52.2] - 2026-11-05
 
 ### Improvements and fixes

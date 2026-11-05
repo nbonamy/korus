@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.52.2",
+  "currentVersion": "0.52.3",
   "releases": [
+    {
+      "version": "0.52.3",
+      "releasedAt": "2026-11-05",
+      "sourceSha256": "3d0aa519b75e23df067a2309c53f8f710d067076be279565e8f2b939c61a6ef7",
+      "markdown": "### Improvements and fixes\n\n- Misc fixes."
+    },
     {
       "version": "0.52.2",
       "releasedAt": "2026-11-05",
