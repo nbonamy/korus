@@ -349,7 +349,7 @@ test("navigation, films, and cards work at desktop and phone widths", async () =
       );
       assert.equal(
         await github.getAttribute("href"),
-        "https://github.com/nbonamy/korus",
+        "https://github.com/Korus-Dev/korus",
       );
       await github.focus();
       assert.equal(

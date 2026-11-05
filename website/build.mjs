@@ -151,7 +151,10 @@ await writeFile(
       product.companionAppStoreUrl,
     )
     .replaceAll("__PRODUCT_COMPANION_NAME__", product.companionName)
-    .replaceAll("__PRODUCT_REPOSITORY_URL__", product.repositoryUrl)
+    .replaceAll(
+      "__PRODUCT_REPOSITORY_URL__",
+      `https://github.com/${product.releaseRepository}`,
+    )
     .replaceAll("__PRODUCT_RELEASE_URL__", downloads.releaseUrl),
 );
 await cp(new URL("docs/.vitepress/dist/", source), new URL("docs/", output), {

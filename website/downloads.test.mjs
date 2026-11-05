@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { resolveDownloads } from "./downloads.mjs";
 
-const product = { repository: "example/app", slug: "app" };
+const product = {
+  repository: "private/source",
+  releaseRepository: "example/app",
+  slug: "app",
+};
 const releaseUrl = "https://github.com/example/app/releases/latest";
 const assetUrl =
   "https://github.com/example/app/releases/latest/download/app-macos-arm64.dmg";

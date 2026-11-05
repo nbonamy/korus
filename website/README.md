@@ -537,6 +537,8 @@ without JavaScript.
 
 Public download URLs use `/releases/latest/download/<filename>` so they follow
 GitHub's latest stable release without a version pin or website redeployment.
+The GitHub link and desktop downloads use `releaseRepository` from product
+metadata, independently of the source repository.
 The build queries the public latest-release API and verifies asset names,
 completed uploads, canonical URLs, and download responses before exposing links.
 Missing formats link to `/releases/latest`; if no stable release exists, all

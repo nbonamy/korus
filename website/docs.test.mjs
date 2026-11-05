@@ -232,6 +232,12 @@ test("the built website has reachable documentation pages, anchors, and assets",
       landing.querySelector('a[href="/docs/"]'),
       "Landing page links to the docs",
     );
+    assert.equal(
+      [...landing.querySelectorAll("header a")].find(
+        (link) => link.textContent.trim() === "GitHub",
+      )?.href,
+      "https://github.com/Korus-Dev/korus",
+    );
     const home = documents.get("docs/index.html").window.document;
     assert.equal(
       landing.querySelector('[data-platform="ios"] a')?.href,
@@ -249,7 +255,9 @@ test("the built website has reachable documentation pages, anchors, and assets",
       "Each platform and Linux architecture has a download entry",
     );
     for (const link of downloads) {
-      assert.ok(link.href.startsWith(`${product.repositoryUrl}/releases`));
+      assert.ok(
+        link.href.startsWith("https://github.com/Korus-Dev/korus/releases"),
+      );
       assert.doesNotMatch(
         link.href,
         /\/releases\/(?:tag|download)\//,
@@ -259,6 +267,11 @@ test("the built website has reachable documentation pages, anchors, and assets",
     for (const [path, dom] of documents) {
       for (const link of dom.window.document.querySelectorAll("a[href]")) {
         const url = new URL(link.href);
+        assert.doesNotMatch(
+          url.href,
+          /nbonamy/i,
+          `${path}: public links use the organization repository`,
+        );
         assert.ok(
           !url.pathname.startsWith("/desktop/downloads/"),
           `${path}: manual downloads go through the platform chooser or GitHub`,

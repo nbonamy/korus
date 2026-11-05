@@ -4,7 +4,7 @@ export async function resolveDownloads({
   verify = false,
   fetchImpl = fetch,
 }) {
-  const base = `https://github.com/${product.repository}/releases`;
+  const base = `https://github.com/${product.releaseRepository}/releases`;
   const names = {
     MACOS: `${product.slug}-macos-arm64.dmg`,
     WINDOWS: `${product.slug}-win32-x64-setup.exe`,
@@ -29,7 +29,7 @@ export async function resolveDownloads({
   let release;
   let releaseUrl = base;
   const response = await request(
-    `https://api.github.com/repos/${product.repository}/releases/latest`,
+    `https://api.github.com/repos/${product.releaseRepository}/releases/latest`,
     undefined,
     true,
   );
