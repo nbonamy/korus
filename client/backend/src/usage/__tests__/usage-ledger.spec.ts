@@ -403,3 +403,33 @@ it("reports the longest completed turn, preferring active time over wall-clock d
     expect(ledger.query({}).longestTurnMs).toBe(4000);
   } finally { await ledger.close(); }
 });
+
+it("prices Antigravity executions from reported token categories as a Google API-equivalent estimate", async () => {
+  const at = Date.parse("2026-10-15T12:00Z");
+  const ledger = new UsageLedger(":memory:", () => at);
+  const attribution = { teamId: null, repository: null };
+  const consumption = { input: 1_200_000, cacheRead: 200_000, cacheWrite: 0, output: 100_000, reasoning: 0 };
+  try {
+    await ledger.load();
+    for (const [turnId, model, tokens] of [
+      ["flash", "gemini-3.8-flash", consumption],
+      ["suffixed", "gemini-3.8-flash-high", consumption],
+      ["preview", "gemini-3.1-pro-high", consumption],
+      ["foreign", "claude-sonnet-4-6", consumption],
+      ["unmeasured", "gemini-3.1-flash-lite", null],
+    ] as const) {
+      const base = { provider: "antigravity" as const, agentId: "a", sessionId: "s", turnId, model, at,
+        requestCoverage: "partial" as const, requestCoverageReason: "acp-request-evidence-unavailable" as const };
+      await ledger.observe({ ...base, phase: "started" }, attribution);
+      await ledger.observe({ ...base, phase: "completed", tokens }, attribution);
+    }
+    const byModel = Object.fromEntries(ledger.query({ group: "model" }).rows.map(row => [row.label, row.cost]));
+    // 1.0M uncached input at $0.75 + 0.2M cached at $0.075 + 0.1M output at $3.75 per million.
+    expect(byModel["gemini-3.8-flash"]).toMatchObject({ usd: 1.14 });
+    expect(byModel["gemini-3.1-flash-lite"]).toMatchObject({ usd: null, coverage: "unavailable", reasons: [{ reason: "acp-request-evidence-unavailable", count: 1 }] });
+    expect(byModel["gemini-3.8-flash-high"]).toMatchObject({ usd: 1.14 });
+    expect(typeof byModel["gemini-3.1-pro-high"]?.usd).toBe("number");
+    expect(byModel["claude-sonnet-4-6"]).toMatchObject({ usd: null, coverage: "unavailable" });
+    expect(ledger.query({ group: "apiProvider" }).rows.map(row => row.label)).toContain("google");
+  } finally { await ledger.close(); }
+});

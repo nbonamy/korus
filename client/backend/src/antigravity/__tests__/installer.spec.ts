@@ -18,7 +18,7 @@ vi.mock('node:fs/promises', async original => {
   return { ...filesystem, statfs: vi.fn(filesystem.statfs) };
 });
 let root: string;
-const server = (version = '1.3.0') => Buffer.from(`#!/usr/bin/env node
+const server = (version = '1.4.5') => Buffer.from(`#!/usr/bin/env node
 require('node:readline').createInterface({input:process.stdin}).on('line', line => {
  const message=JSON.parse(line);
  if(message.method==='initialize') process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:message.id,result:{protocolVersion:2,agentInfo:{name:'antigravity-acp',version:'${version}'}}})+'\\n');
@@ -71,6 +71,7 @@ describe('Antigravity ACP installation', () => {
     const asset = actual.resolveAcpReleaseAsset(platform, arch)!;
     const published = registry.distribution.binary[distribution];
     expect(asset.url).toBe(published.archive);
+    expect(asset.sha256).toBe(published.sha256);
     vi.stubGlobal('process', { ...process, platform, arch });
     const { fetch } = download([[asset.executable.name, server()], [asset.harness.name, Buffer.from('harness')]], asset.executable.name, asset.harness.name);
     fixture.asset!.url = asset.url;
@@ -114,7 +115,7 @@ describe('Antigravity ACP installation', () => {
   });
 
   it.each(['missing harness', 'duplicate', 'unexpected file', 'symlink', 'wrong version'] as const)('rejects an archive with %s before publishing it', async failure => {
-    const entries: [string, Buffer, number?][] = [['agy_acp_server.par', server(failure === 'wrong version' ? '9.0.0' : '1.3.0')]];
+    const entries: [string, Buffer, number?][] = [['agy_acp_server.par', server(failure === 'wrong version' ? '9.0.0' : '1.4.5')]];
     if (failure !== 'missing harness') entries.push(['localharness_external', Buffer.from('harness'), failure === 'symlink' ? 0o120777 : undefined]);
     if (failure === 'duplicate') entries.push(['localharness_external', Buffer.from('harness')]);
     if (failure === 'unexpected file') entries.push(['../outside', Buffer.from('bad')]);

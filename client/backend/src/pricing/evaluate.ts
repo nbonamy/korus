@@ -325,6 +325,7 @@ export function priceExecution(
 ): RequestPrice {
   const t = record.tokens;
   if (!t) return { reason: "missing-token-usage" };
+  if (record.provider === "antigravity") return priceAntigravityExecution(record, t, history);
   const claude = record.provider === "claude";
   const tier =
     !record.serviceTier || ["normal", "default"].includes(record.serviceTier)
@@ -361,6 +362,53 @@ export function priceExecution(
       requestedServiceTier: record.serviceTier ?? null,
       reportedServiceTier: tier,
       reportedMode: claude && record.serviceTier === "fast" ? "fast" : null,
+    },
+    history,
+    { ignoreContextPremiums: true },
+  );
+}
+
+/** Antigravity labels models with a thinking level (`-high`); the API catalog does not. */
+function googleCatalogModel(model: string | null, history: PricingHistory): string | null {
+  if (!model?.startsWith("gemini-")) return model;
+  const base = model.replace(/-(?:low|medium|high)$/u, "");
+  for (const id of [model, base, `${base}-preview`])
+    if (Object.hasOwn(history.google, id)) return id;
+  return model;
+}
+
+/**
+ * The ACP reports per-turn totals for the model selected in the session, not
+ * individual billable requests or the served model, so this is the standard-tier
+ * Gemini API price of those tokens.
+ */
+function priceAntigravityExecution(
+  record: UsageRecord,
+  t: NonNullable<UsageRecord["tokens"]>,
+  history: PricingHistory,
+): RequestPrice {
+  return priceRequest(
+    {
+      at: record.startedAt,
+      status: "final",
+      apiProvider: "google",
+      model: googleCatalogModel(record.model, history),
+      modality: "text",
+      cacheMode: "implicit",
+      tokens: {
+        input: t.input,
+        output: t.output,
+        cacheRead: t.cacheRead,
+        cacheWrite: {},
+        reasoning: t.reasoning ?? null,
+        inputIncludesCacheRead: true,
+        inputIncludesCacheWrite: true,
+        outputIncludesReasoning: true,
+      },
+      pricingContext: { context: null, region: null },
+      requestedServiceTier: null,
+      reportedServiceTier: "standard",
+      reportedMode: null,
     },
     history,
     { ignoreContextPremiums: true },

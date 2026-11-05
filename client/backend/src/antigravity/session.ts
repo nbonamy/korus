@@ -9,6 +9,7 @@ import { permissionRequest } from './permissions';
 import { handleAcpFileRequest } from './filesystem';
 import { validateAcpSession } from './catalog';
 import { AcpPromptJournal } from './prompt-journal';
+import { acpConsumption, selectedModel } from './consumption';
 import type { RendererMessagePart } from '@workspace/core/contracts';
 import type { ExecutionObservation } from '@workspace/core/usage';
 import { product } from '@workspace/core/product';
@@ -96,6 +97,7 @@ export class AcpSession {
     const wireText = record(content[0]) && typeof content[0].text === 'string' ? content[0].text : text;
     let startedAt: number | undefined;
     let outcome: "completed" | "failed" | "interrupted" = "failed";
+    let tokens: ReturnType<typeof acpConsumption> = null;
     const observe = (
       phase: "started" | "completed" | "failed" | "interrupted",
     ) => {
@@ -107,10 +109,10 @@ export class AcpSession {
           turnId,
           phase,
           at: Date.now(),
-          model: null,
-          tokens: null,
-          // Qualified ACP reports context occupancy and selected settings, not
-          // billable request identities/categories or the model/tier served.
+          model: selectedModel(this.config),
+          tokens: phase === "started" ? null : tokens,
+          // The ACP reports per-turn token totals for the selected model, not
+          // billable request identities or the model/tier actually served.
           requestCoverage: "partial",
           requestCoverageReason: "acp-request-evidence-unavailable",
           ...(phase !== "started" && startedAt !== undefined
@@ -130,6 +132,7 @@ export class AcpSession {
     })
       .then(result => {
         if (!record(result) || typeof result.stopReason !== 'string') throw new Error('Invalid Antigravity turn completion.');
+        tokens = acpConsumption(result.usage);
         const status = this.interrupted || result.stopReason === 'cancelled' ? 'interrupted'
           : result.stopReason === 'end_turn' ? 'completed' : 'failed';
         outcome = status;

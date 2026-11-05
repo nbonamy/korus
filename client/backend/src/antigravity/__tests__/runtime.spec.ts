@@ -25,7 +25,7 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-async function fakeRuntime(authenticate: string, version = '1.3.0') {
+async function fakeRuntime(authenticate: string, version = '1.4.5') {
   await writeFile(path.join(root, 'harness'), '', { mode: 0o700 });
   await writeFile(path.join(root, 'runtime'), `#!/usr/bin/env node
 const rl = require('node:readline').createInterface({input:process.stdin});
@@ -112,7 +112,7 @@ describe('Antigravity native lifecycle', () => {
 
   it('rejects an unqualified runtime version and cleans the failed startup', async () => {
     await fakeRuntime('reply({})', '9.0.0');
-    await expect(open()).rejects.toThrow('qualified ACP 1.3.0');
+    await expect(open()).rejects.toThrow('qualified ACP 1.4.5');
     expect(await readdir(path.join(root, 'external/korus-tmp'))).toEqual([]);
   });
 

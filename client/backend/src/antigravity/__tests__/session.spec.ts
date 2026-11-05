@@ -75,7 +75,7 @@ async function review(text,reply) {
 }
 rl.on('line',line=>{
  const v=JSON.parse(line), reply=result=>send({id:v.id,result});
- if(v.method==='initialize') {fs.writeFileSync(require('node:path').join(process.cwd(),'fixture-initialize.json'),JSON.stringify(v.params));reply({protocolVersion:2,agentInfo:{name:'antigravity-acp',version:'1.3.0'}});}
+ if(v.method==='initialize') {fs.writeFileSync(require('node:path').join(process.cwd(),'fixture-initialize.json'),JSON.stringify(v.params));reply({protocolVersion:2,agentInfo:{name:'antigravity-acp',version:'1.4.5'}});}
  else if(v.method==='authenticate') reply({});
  else if(v.method==='session/new') {mcpServers=v.params.mcpServers;fs.writeFileSync(require('node:path').join(process.cwd(),'fixture-session.json'),JSON.stringify(v.params));fs.appendFileSync(catalogFile,JSON.stringify({sessionId,cwd:v.params.cwd,title:'Saved conversation'})+'\\n');reply({sessionId,...(usageFixture()?.configuration??{}),models:usageFixture()?.configuration.models??{currentModelId:'gemini-low',availableModels:[{modelId:'gemini-low',name:'Gemini Low'},{modelId:'opaque-oss-id',name:'GPT-OSS 120B (Medium)'}]}});}
  else if(v.method==='session/set_config_option') {fs.writeFileSync(require('node:path').join(process.cwd(),'fixture-model.json'),JSON.stringify(v.params));reply({});}
@@ -212,7 +212,7 @@ describe('Antigravity native session', () => {
     } finally { manager.close(); await host.close(); }
   });
 
-  it("observes only admitted live ACP executions, with unknown model and consumption", async () => {
+  it("observes only admitted live ACP executions, with the selected model and no consumption when the runtime reports none", async () => {
     const usage = vi.fn();
     const { session } = await open("stored-session", { usage });
     expect(usage).not.toHaveBeenCalled();
@@ -225,7 +225,7 @@ describe('Antigravity native session', () => {
       provider: "antigravity",
       agentId: "agent",
       tokens: null,
-      model: null,
+      model: "gemini-low",
       requestCoverage: "partial",
       requestCoverageReason: "acp-request-evidence-unavailable",
     });
@@ -245,6 +245,28 @@ describe('Antigravity native session', () => {
       "started",
       "failed",
     ]);
+  });
+
+  it("reports per-turn token categories and the selected model from PromptResponse.usage", async () => {
+    const config = (currentValue: string) => [{ id: 'model', name: 'Model', type: 'select', category: 'model', currentValue, options: [{ value: currentValue, name: currentValue }] }];
+    const measured = (usage: unknown) => ({ configuration: { models: { currentModelId: 'gemini-3.8-flash', availableModels: [{ modelId: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash' }] }, configOptions: config('gemini-3.8-flash') },
+      updates: [], completion: { stopReason: 'end_turn', usage }, lateUpdate: { sessionUpdate: 'usage_update', used: 1, size: 2 } });
+    const run = async (usage: unknown) => {
+      await writeFile(path.join(root, 'usage-fixture.json'), JSON.stringify(measured(usage)));
+      const observed = vi.fn();
+      const { session } = await open(undefined, { usage: observed });
+      await session.prompt('usage-fixture:tokens').completion;
+      return observed.mock.calls.map(([event]) => event).find(event => event.phase === 'completed');
+    };
+    // Wire input already includes cached reads; thoughts are separate from output and join it in Korus's model.
+    expect(await run({ inputTokens: 1000, outputTokens: 50, cachedReadTokens: 400, cachedWriteTokens: 0, thoughtTokens: 30, totalTokens: 1480 })).toMatchObject({
+      model: 'gemini-3.8-flash',
+      tokens: { input: 1000, cacheRead: 400, cacheWrite: 0, output: 80, reasoning: 30 },
+    });
+    // Anything the pricing model cannot represent stays unmeasured rather than guessed.
+    for (const usage of [undefined, { inputTokens: -1, outputTokens: 1 }, { inputTokens: 'many' }, { inputTokens: 10, outputTokens: 1, cachedWriteTokens: 5 }, { inputTokens: 10, outputTokens: 1, cachedReadTokens: 11 }]) {
+      expect(await run(usage)).toMatchObject({ model: 'gemini-3.8-flash', tokens: null });
+    }
   });
 
   // Boundary failures: context occupancy or selected models fabricated as consumption;
@@ -295,7 +317,7 @@ describe('Antigravity native session', () => {
       expect(summary.daily).toHaveLength(1);
       expect(summary.daily![0]!.cost).toStrictEqual(cost(6));
       expect(summary.daily![0]!.groups![0]!.cost).toStrictEqual(cost(6));
-      expect(ledger.query({ group: 'model' }).rows.map(row => [row.label, row.cost])).toStrictEqual([['Unknown', cost(6)]]);
+      expect(ledger.query({ group: 'model' }).rows.map(row => [row.label, row.cost])).toStrictEqual([['opaque-claude-choice', cost(6)]]);
       expect(ledger.query({ group: 'apiProvider' }).rows.map(row => [row.label, row.cost])).toStrictEqual([['Unknown', cost(6)]]);
       expect(await call('usage/get', { filter: { provider: 'antigravity' } })).toMatchObject({ result: { cost: cost(6) } });
       const db = new DatabaseSync(file);
@@ -305,7 +327,7 @@ describe('Antigravity native session', () => {
         expect(rows).toHaveLength(6);
         expect(rows.every(row => typeof row.duration_ms === 'number' && row.duration_ms >= 0)).toBe(true);
         expect(rows.some(row => JSON.parse(String(row.timing))?.activeMs > 0)).toBe(true);
-        expect(rows.every(row => row.model === null && row.tokens === null && row.request_coverage === 'partial' && row.request_coverage_reason === 'acp-request-evidence-unavailable')).toBe(true);
+        expect(rows.every(row => row.model === 'opaque-claude-choice' && row.tokens === null && row.request_coverage === 'partial' && row.request_coverage_reason === 'acp-request-evidence-unavailable')).toBe(true);
       } finally { db.close(); }
       // Releasing and loading history replays context notifications without new executions.
       await host.releaseConversation(agent.id);

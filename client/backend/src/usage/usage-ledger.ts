@@ -482,6 +482,7 @@ export class UsageLedger {
         // their request/provider evidence, including unresolved proxy routing.
         const executionEstimate =
           (record.provider === "codex" ||
+            (record.provider === "antigravity" && record.tokens !== null) ||
             (record.provider === "claude" &&
               record.tokens !== null &&
               record.requestCoverage == null)) &&
@@ -491,7 +492,9 @@ export class UsageLedger {
         const estimatedProvider = executionEstimate
           ? record.provider === "claude"
             ? "anthropic"
-            : "openai"
+            : record.provider === "antigravity"
+              ? "google"
+              : "openai"
           : null;
         if (filter.apiProvider && filter.apiProvider !== estimatedProvider)
           continue;
