@@ -370,6 +370,8 @@ function selectMenuItem(itemId: string): void {
 
 .settings-menu__usage-error {
   grid-column: 1 / -1;
+  padding-left: calc(var(--icon-sm) + var(--space-2));
+  font-size: var(--font-size-12);
   color: var(--color-text-muted);
 }
 
