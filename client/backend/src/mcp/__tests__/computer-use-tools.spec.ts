@@ -194,6 +194,21 @@ describe('Computer Use MCP tools', () => {
     expect(computerUse.execute).not.toHaveBeenCalled();
   });
 
+  it('accepts keystroke-only typing results without legacy clipboard fields', async () => {
+    const input = { app: product.name, window_id: 7, text: 'hello', replace: true };
+    const schema = normalizedInputSchema('computer-use-type-text');
+    expect(schema.safeParse(input).success).toBe(true);
+    expect(schema.safeParse({ ...input, method: 'paste' }).success).toBe(false);
+    vi.mocked(computerUse.execute).mockResolvedValue({ ok: true, result: { success: true, charactersTyped: 5 } });
+
+    await expect(handlers.get('computer-use-type-text')!(input)).resolves.toStrictEqual({
+      content: [{ type: 'text', text: STRUCTURED_TOOL_RESULT_NOTICE }],
+      structuredContent: { success: true, charactersTyped: 5 },
+      isError: false,
+    });
+    expect(computerUse.execute).toHaveBeenCalledWith({ command: 'type_text', arguments: input });
+  });
+
   it('keeps app-wide menu observations and full-screen screenshots exempt from window targeting', async () => {
     vi.mocked(computerUse.execute).mockResolvedValue({ ok: true, result: { text: 'menu' } });
     await handlers.get('computer-use-get-app-state')?.({ app: product.name, accessibilityScope: 'menu_bar' });
