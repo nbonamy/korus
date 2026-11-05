@@ -50,6 +50,8 @@ export type CodexThreadSettings = {
 };
 
 export type AccountRateLimitWindow = {
+  /** Names what the window limits when an engine has several of the same duration. */
+  label?: string | null;
   usedPercent: number;
   windowDurationMins: number | null;
   resetsAt: number | null;

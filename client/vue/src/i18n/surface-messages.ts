@@ -1117,7 +1117,7 @@ export const surfaceMessages = {
     "loadFailed": "Couldn’t load usage",
     "remainingValue": "{value} remaining",
     "resetValue": "Resets in {value}",
-    "engine": { "codex": "Codex", "claude": "Claude" },
+    "engine": { "codex": "Codex", "claude": "Claude", "antigravity": "Antigravity" },
     "settingsMenu": "Settings menu",
     "rateLimits": "Rate limits",
     "usageRemaining": "Usage remaining",
@@ -1129,6 +1129,15 @@ export const surfaceMessages = {
     "usage": "Usage",
     "accountMenu": "Account menu",
     "weekly": "Weekly",
+    "legend": {
+      "title": "What the colors mean",
+      "ahead": "Well under your pace",
+      "onPace": "On pace",
+      "low": "Using it faster than time passes",
+      "critical": "Almost out"
+    },
+    "hours": "{count} hour",
+    "minutes": "{count} min",
     "unknown": "Unknown"
   },
   "settingsPluginsPanel": {

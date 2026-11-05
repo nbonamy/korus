@@ -6,7 +6,7 @@ import type { ExecutionObservation } from '@workspace/core/usage';
 import { mkdir, realpath } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import type { Agent, BackendConversationRef, BackendModelOption, BackendRuntimeStatus, BackendSession, ConversationListInput, ConversationSummary, ConversationResumeTarget, SendPromptOptions } from '@workspace/core/contracts';
+import type { AccountRateLimits, Agent, BackendConversationRef, BackendModelOption, BackendRuntimeStatus, BackendSession, ConversationListInput, ConversationSummary, ConversationResumeTarget, SendPromptOptions } from '@workspace/core/contracts';
 import type { AgentBackendDriver, BackendEvent, BackendCodeReviewInput, BackendCodeReviewResult, BackendTextGenerationInput } from '@workspace/core/backend-driver';
 import { requestFromClientRequest, type AgentRequestResponse } from '@workspace/core/agent-request';
 import type { ProviderAuthentication, ProviderAuthenticationAction } from '@workspace/core/contracts/provider-setup';
@@ -24,6 +24,7 @@ import { sessionMcpServer } from './mcp-bridge';
 import { listAcpSessions } from './catalog';
 import { acpAttachments } from './attachments';
 import { AcpPromptJournal } from './prompt-journal';
+import { parseQuotaMessage } from './quota';
 
 export class AntigravityHost implements AgentBackendDriver {
   readonly backend = 'antigravity' as const;
@@ -40,6 +41,8 @@ export class AntigravityHost implements AgentBackendDriver {
   private observeUsage(event: ExecutionObservation) { for (const listener of this.usageListeners) { try { listener(event); } catch { /* Observer isolation. */ } } }
   private authentication?: AcpRuntime;
   private auth?: { action: ProviderAuthenticationAction['action']; abort: AbortController; done: Promise<ProviderAuthentication> };
+  private quota?: { at: number; limits: AccountRateLimits | null };
+  private quotaRead?: Promise<AccountRateLimits | null>;
   private closed = false;
   constructor(private readonly options: BackendDriverRegistryOptions = {}) {}
 
@@ -148,6 +151,27 @@ export class AntigravityHost implements AgentBackendDriver {
     const text = session.snapshot.messages.filter(message => message.turnId === turn.turnId && message.role === 'assistant')
       .flatMap(message => message.parts.flatMap(part => part.type === 'text' ? [part.text] : [])).join('\n');
     return { text, reviewerSession: this.reference(session) };
+  }
+
+  /** The runtime answers `/usage` without a model turn; every read opens a short-lived hidden session, so reads are shared and briefly reused. */
+  getAccountRateLimits(): Promise<AccountRateLimits | null> {
+    if (this.closed) return Promise.reject(new Error('Antigravity host is closed.'));
+    if (this.quota && Date.now() - this.quota.at < 120_000) return Promise.resolve(this.quota.limits);
+    return this.quotaRead ??= this.readQuota().then(limits => { this.quota = { at: Date.now(), limits }; return limits; })
+      .finally(() => { this.quotaRead = undefined; });
+  }
+
+  private async readQuota(): Promise<AccountRateLimits | null> {
+    const cwd = path.join(backendHomeDir(), 'antigravity-quota');
+    await mkdir(cwd, { recursive: true, mode: 0o700 });
+    const session = await this.openSession({ agentId: `quota-${randomUUID()}`, cwd, mcpServers: [], tools: false, ephemeral: true, changed: () => {} });
+    this.auxiliary.add(session);
+    try {
+      await session.prompt('/usage').completion;
+      if (session.snapshot.turns[0]?.status !== 'completed') throw new Error(session.snapshot.error ?? 'Antigravity quota is unavailable.');
+      return parseQuotaMessage(session.snapshot.messages.filter(message => message.role === 'assistant')
+        .flatMap(message => message.parts.flatMap(part => part.type === 'text' ? [part.text] : [])).join('\n'));
+    } finally { this.auxiliary.delete(session); await session.close(); }
   }
 
   async generateText(agent: Agent, input: BackendTextGenerationInput): Promise<{ text: string }> {

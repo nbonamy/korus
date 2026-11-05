@@ -43,7 +43,7 @@ async function fixture() {
 }
 
 describe('companion usage from the paired laptop', () => {
-  it('reads the same quota providers as desktop and isolates failures by provider', async () => {
+  it('reads the quota providers shipped mobile clients can display and isolates failures by provider', async () => {
     const f = await fixture();
     expect(await f.gateway.request('phone', 'usage.get', {})).toStrictEqual([
       { backend: 'codex', limits: f.limits, failed: false }, { backend: 'claude', limits: f.limits, failed: false },

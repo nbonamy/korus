@@ -114,6 +114,7 @@ rl.on('line',line=>{
      update({sessionUpdate:'tool_call',...permissionFixture.toolCall,status:'pending'});
      send({id:v.id,method:'session/request_permission',params:{sessionId,...permissionFixture}});return;
    }
+   if(text==='/usage') {fs.appendFileSync(require('node:path').join(process.env.GEMINI_HOME,'quota-reads'),'x');update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:'### Quota Limits\\n- **Gemini Models**\\n  - **Weekly Limit Remaining:** 97% remaining (resets Nov 12, 2026, 19:59 UTC)'}});reply({stopReason:'end_turn'});return;}
    if(text.endsWith('utility-fixture')) {utility=true;send({id:211,method:'fs/write_text_file',params:{sessionId,path:require('node:path').join(process.cwd(),'unwanted-write'),content:'bad'}});return;}
    fs.appendFileSync(require('node:path').join(process.env.GEMINI_HOME,sessionId+'.jsonl'),JSON.stringify(text)+'\\n');
    if(text.startsWith('/plan ')) {
@@ -245,6 +246,18 @@ describe('Antigravity native session', () => {
       "started",
       "failed",
     ]);
+  });
+
+  it("reads account quota through an ephemeral /usage turn and reuses it briefly", async () => {
+    const host = new AntigravityHost();
+    const reads = async () => (await readFile(path.join(root, 'home', 'quota-reads'), 'utf8').catch(() => '')).length;
+    try {
+      const [first, second] = await Promise.all([host.getAccountRateLimits(), host.getAccountRateLimits()]);
+      expect(first).toMatchObject({ primary: { label: 'Gemini', usedPercent: 3, windowDurationMins: 10_080 }, secondary: null });
+      expect(second).toStrictEqual(first);
+      expect(await host.getAccountRateLimits()).toStrictEqual(first);
+      expect(await reads()).toBe(1);
+    } finally { await host.close(); }
   });
 
   it("disables run_workflow so the runtime never writes its skill file into the workspace", async () => {

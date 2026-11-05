@@ -4,8 +4,8 @@ import type { AgentBackend } from '../contracts';
 
 describe('connected engines', () => {
   it('offers subscription quota for subscription providers, excluding Codex API keys and unsupported providers', () => {
-    expect((['codex', 'claude', 'antigravity'] as const).filter(backend => supportsSubscriptionQuota(backend, { type: 'chatgpt' }))).toStrictEqual(['codex', 'claude']);
-    expect((['codex', 'claude', 'antigravity'] as const).filter(backend => supportsSubscriptionQuota(backend, { type: 'apiKey' }))).toStrictEqual(['claude']);
+    expect((['codex', 'claude', 'antigravity'] as const).filter(backend => supportsSubscriptionQuota(backend, { type: 'chatgpt' }))).toStrictEqual(['codex', 'claude', 'antigravity']);
+    expect((['codex', 'claude', 'antigravity'] as const).filter(backend => supportsSubscriptionQuota(backend, { type: 'apiKey' }))).toStrictEqual(['claude', 'antigravity']);
   });
   it.each([
     { connected: [] }, { connected: ['codex'] }, { connected: ['claude'] }, { connected: ['codex', 'claude'] },

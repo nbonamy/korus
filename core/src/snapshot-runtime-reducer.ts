@@ -215,6 +215,7 @@ function accountRateLimits(
 function accountRateLimitWindow(value: AccountRateLimits['primary']): AccountRateLimits['primary'] {
   if (!value) return null;
   return {
+    ...(typeof value.label === 'string' ? { label: value.label } : {}),
     usedPercent: value.usedPercent,
     windowDurationMins: typeof value.windowDurationMins === 'number' ? value.windowDurationMins : null,
     resetsAt: typeof value.resetsAt === 'number' ? value.resetsAt : null,

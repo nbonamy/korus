@@ -360,6 +360,19 @@ describe('snapshot runtime reducer', () => {
     expect(decodeAppSnapshot({ ...snapshot, backendAccountRateLimits: { claude: 'invalid' } })).toBeNull();
   });
 
+  it('keeps the label that tells apart same-length quota windows', () => {
+    const snapshot = createInitialSnapshot();
+    const base = { limitId: null, limitName: null, credits: null, individualLimit: null, planType: null, rateLimitReachedType: null };
+    const rateLimits = { ...base,
+      primary: { label: 'Gemini', usedPercent: 3, windowDurationMins: 10_080, resetsAt: 1_780_000_000 },
+      secondary: { label: 'Claude and GPT', usedPercent: 0, windowDurationMins: 10_080, resetsAt: null } };
+    const event = { seq: 1, type: 'account.rateLimitsUpdated', backend: 'antigravity', payload: { rateLimits }, occurredAt: '' } as const;
+    expect(() => decodeAppBackendEvent(event)).not.toThrow();
+    applyMainEventToSnapshot(snapshot, event);
+    expect(snapshot.backendAccountRateLimits?.antigravity).toStrictEqual(rateLimits);
+    expect(decodeAppSnapshot(JSON.parse(JSON.stringify(snapshot)))?.value.backendAccountRateLimits?.antigravity).toStrictEqual(rateLimits);
+  });
+
   it('rejects legacy flat account rate-limit payloads', () => {
     const decode = () => decodeAppBackendEvent({
       seq: 1,

@@ -124,6 +124,13 @@ with implementation in a separate accepted turn. [The plan](../plans/antigravity
 records transport evidence, model restrictions, attachment support and unsupported
 capabilities.
 
+Account quotas come from the runtime's `/usage` command, which it answers without
+a model turn; the reply is text, so the quota section is parsed defensively and
+anything unfamiliar shows no limits. Each read opens a short-lived hidden session,
+so reads are shared and reused for two minutes. Quota windows carry the model group
+as their label, and mobile does not list this engine because its clients cannot show
+that label.
+
 ### Request pricing evidence
 
 Antigravity executions carry the model selected in the session and, when the runtime

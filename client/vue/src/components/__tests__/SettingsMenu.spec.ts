@@ -36,6 +36,66 @@ describe('SettingsMenu', () => {
     wrapper.unmount();
   });
 
+  it('names each Antigravity model-group quota instead of repeating the period', async () => {
+    const getProviderUsage = vi.fn().mockResolvedValue({
+      limitId: null, limitName: null, credits: null, individualLimit: null, planType: null, rateLimitReachedType: null,
+      primary: { label: 'Gemini', usedPercent: 3, windowDurationMins: 10_080, resetsAt: null },
+      secondary: { label: 'Claude and GPT', usedPercent: 0, windowDurationMins: 10_080, resetsAt: null },
+    });
+    setElectronTestClient({ getProviderUsage });
+    const wrapper = mountMenu(undefined, { enabledBackends: ['antigravity'] });
+    await openMenu(wrapper);
+    await flushPromises();
+    expect(getProviderUsage).toHaveBeenCalledWith('antigravity');
+    const text = wrapper.get('[aria-label="Antigravity"]').text();
+    expect(text).toMatch(/Gemini\s*97%/);
+    expect(text).toMatch(/Claude\/GPT\s*100%/);
+    expect(text).not.toContain('Weekly');
+    wrapper.unmount();
+  });
+
+  it('flags quotas that are off their pace, and almost-empty ones, without recolouring on-pace ones', async () => {
+    const halfway = Date.now() / 1000 + 150 * 60; // half of a 5 hour window has passed
+    const window = (usedPercent: number, resetsAt: number | null = halfway) => ({ usedPercent, windowDurationMins: 300, resetsAt });
+    const limits = (primary: ReturnType<typeof window>, secondary: ReturnType<typeof window> | null) => ({
+      limitId: null, limitName: null, credits: null, individualLimit: null, planType: null, rateLimitReachedType: null, primary, secondary });
+    const getProviderUsage = vi.fn().mockResolvedValue(limits(window(70), window(95)));
+    setElectronTestClient({ getProviderUsage });
+    const wrapper = mountMenu(undefined, { enabledBackends: ['claude'] });
+    const levels = () => wrapper.findAll('.settings-menu__rate-limit-remaining').map(item => item.classes().filter(name => name.includes('--')));
+    await openMenu(wrapper);
+    await flushPromises();
+    expect(levels()).toEqual([['settings-menu__rate-limit-remaining--low'], ['settings-menu__rate-limit-remaining--critical']]);
+    // Well under pace is good news; on pace, slightly off pace, or no reset time to judge by: no flag.
+    getProviderUsage.mockResolvedValue(limits(window(20), window(58)));
+    await openMenu(wrapper);
+    await openMenu(wrapper);
+    await flushPromises();
+    expect(levels()).toEqual([['settings-menu__rate-limit-remaining--ahead'], []]);
+    getProviderUsage.mockResolvedValue(limits(window(40), window(50)));
+    await openMenu(wrapper);
+    await openMenu(wrapper);
+    await flushPromises();
+    expect(levels()).toEqual([[], []]);
+    getProviderUsage.mockResolvedValue(limits(window(85, null), null));
+    await openMenu(wrapper);
+    await openMenu(wrapper);
+    await flushPromises();
+    expect(levels()).toEqual([[]]);
+    wrapper.unmount();
+  });
+
+  it('explains the usage colors from an info control in the title row', async () => {
+    setElectronTestClient({ getProviderUsage: vi.fn().mockResolvedValue({ limitId: null, limitName: null, credits: null, individualLimit: null, planType: null, rateLimitReachedType: null,
+      primary: { usedPercent: 10, windowDurationMins: 300, resetsAt: null }, secondary: null }) });
+    const wrapper = mountMenu(undefined, { enabledBackends: ['claude'] });
+    await openMenu(wrapper);
+    await flushPromises();
+    const header = wrapper.get('.settings-menu__rate-limits-header');
+    expect(header.find('button[aria-label="What the colors mean"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
   it('shows a safe failure state and ignores a response after the menu closes', async () => {
     const getProviderUsage = vi.fn().mockImplementation(() => { throw new Error('private transport details'); });
     setElectronTestClient({ getProviderUsage });
@@ -81,7 +141,7 @@ describe('SettingsMenu', () => {
 
     const rows = wrapper.findAll('.settings-menu__rate-limit');
     expect(rows).toHaveLength(2);
-    expect(rows[0]?.attributes('aria-label')).toBe('5h');
+    expect(rows[0]?.attributes('aria-label')).toBe('5 hour');
     expect(rows[0]?.text()).toContain('38%');
     expect(rows[0]?.get('.settings-menu__rate-limit-reset').text()).toBe('3h 0m');
     expect(rows[1]?.attributes('aria-label')).toBe('Weekly');
@@ -113,8 +173,8 @@ describe('SettingsMenu', () => {
       claude: { ...limits, primary: { usedPercent: 20, windowDurationMins: 300, resetsAt: null }, secondary: { usedPercent: 10, windowDurationMins: 10_080, resetsAt: null } },
     } });
     await openMenu(wrapper);
-    expect(wrapper.get('[aria-label="Codex"]').findAll('.settings-menu__rate-limit').map(row => row.text())).toEqual(['95%']);
-    expect(wrapper.get('[aria-label="Claude"]').findAll('.settings-menu__rate-limit').map(row => row.text())).toEqual(['80%', '90%']);
+    expect(wrapper.get('[aria-label="Codex"]').findAll('.settings-menu__rate-limit').map(row => row.text())).toEqual(['Weekly95%']);
+    expect(wrapper.get('[aria-label="Claude"]').findAll('.settings-menu__rate-limit').map(row => row.text())).toEqual(['5 hour80%', 'Weekly90%']);
     await wrapper.setProps({ enabledBackends: ['claude'], backendRateLimits: { codex: limits } });
     expect(wrapper.find('[aria-label="Codex"]').exists()).toBe(false);
     expect(wrapper.find('[aria-label="Claude"]').exists()).toBe(false);

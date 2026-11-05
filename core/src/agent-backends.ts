@@ -1,7 +1,7 @@
 import type { Agent, AgentBackend, AppSnapshot } from './contracts';
 
 export function supportsSubscriptionQuota(backend: AgentBackend, codexAccount?: { type: string } | null): boolean {
-  return backend !== 'antigravity' && (backend !== 'codex' || codexAccount?.type !== 'apiKey');
+  return backend !== 'codex' || codexAccount?.type !== 'apiKey';
 }
 
 export function enabledAgentBackends(snapshot: Pick<AppSnapshot, 'providerConnections'>): AgentBackend[] {
