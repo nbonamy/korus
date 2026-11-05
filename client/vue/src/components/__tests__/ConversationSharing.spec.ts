@@ -186,7 +186,7 @@ describe('owner Share workflow', () => {
       expect(wrapper.findComponent({ name: 'ConversationShareDialog' }).exists()).toBe(false);
       expect(wrapper.text()).not.toContain(link);
       await wrapper.findAll('.agent-sidebar__agent')[0]!.trigger('contextmenu', { clientX: 100, clientY: 100 });
-      await clickPortaledMenuItem('Share with guests'); await flushPromises();
+      await clickPortaledMenuItem('Share'); await flushPromises();
       expect(wrapper.findAll('.app-dialog__footer button').map(button => button.text())).toStrictEqual(['Close', 'Stop sharing', 'Copy link']);
       await button('Copy link').trigger('click'); await flushPromises();
       expect(writeText).toHaveBeenCalledTimes(2);
