@@ -10,7 +10,7 @@ export function checkReleaseRepositories(repositories, run = execFileSync) {
   const info = new Map();
   for (const repo of new Set(repositories)) {
     const metadata = JSON.parse(run('gh', ['api', `repos/${repo}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 900_000, env: releaseEnvironment(repo) }));
-    if (metadata.private || !metadata.permissions?.push) throw new Error(`Public release write access required for ${repo}.`);
+    if (metadata.private || (repo !== product.repository && !metadata.permissions?.push)) throw new Error(`Public release write access required for ${repo}.`);
     info.set(repo, metadata);
   }
   return info;

@@ -3,11 +3,31 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { publishDesktop } from './publish-desktop.mjs';
+import { checkReleaseRepositories, publishDesktop } from './publish-desktop.mjs';
 import { createHash } from 'node:crypto';
 
 const changelog = '# Changelog\n\n## [0.28.0] - 2026-10-07\n\n- Newer changes.\n\n## [0.27.0] - 2026-10-05\n\n### Fixes\n\n- Restored saved chats.\n';
 const notes = '### Fixes\n\n- Restored saved chats.';
+
+function fakeMirrorToken(t) {
+  const original = process.env.DESKTOP_RELEASE_TOKEN;
+  process.env.DESKTOP_RELEASE_TOKEN = 'test-mirror-token';
+  t.after(() => { if (original === undefined) delete process.env.DESKTOP_RELEASE_TOKEN; else process.env.DESKTOP_RELEASE_TOKEN = original; });
+}
+
+test('source repository metadata may omit permissions for the workflow token', t => {
+  fakeMirrorToken(t);
+  const repositories = ['Korus-Dev/korus', 'nbonamy/korus'];
+  const run = (_command, args) => JSON.stringify({ private: false, default_branch: 'main',
+    ...(args[1].endsWith('Korus-Dev/korus') ? { permissions: { push: true } } : {}) });
+  assert.equal(checkReleaseRepositories(repositories, run).size, 2);
+});
+
+test('destination preflight still rejects private repositories and an unwritable mirror', t => {
+  fakeMirrorToken(t);
+  assert.throws(() => checkReleaseRepositories(['nbonamy/korus'], () => JSON.stringify({ private: true })), /Public release write access/);
+  assert.throws(() => checkReleaseRepositories(['Korus-Dev/korus'], () => JSON.stringify({ private: false, permissions: { push: false } })), /Public release write access/);
+});
 
 // Publication policy against a fake gh, not proof of GitHub Actions or network behavior.
 function setup(t, release) {
