@@ -12,7 +12,15 @@ const useSdkSources = process.env.CODEX_APP_SDK_SOURCE === '1';
 export default defineConfig({
   root: __dirname,
   base: './',
-  plugins: [vue(), excalidrawAssets(), ...(android ? [] : [appleCryptoBuild()])],
+  plugins: [{
+    name: 'mobile-public-product',
+    enforce: 'pre',
+    transform(source, id) {
+      if (id !== path.resolve(__dirname, '../../core/src/product.json')) return;
+      const product = JSON.parse(source);
+      return JSON.stringify({ ...product, repository: product.releaseRepository });
+    },
+  }, vue(), excalidrawAssets(), ...(android ? [] : [appleCryptoBuild()])],
   resolve: { dedupe: ['vue', '@codex-app-sdk/core', '@codex-app-sdk/vue'], alias: {
     ...(android ? {} : {
       '@chainsafe/libp2p-noise': path.resolve(__dirname, '../src/apple-crypto/noise.ts'),
