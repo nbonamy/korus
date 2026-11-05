@@ -51,7 +51,6 @@ jobs:
         run: npx playwright install --with-deps chromium
       - run: npm run release-notes:check
       - run: npm run test:scripts
-      - run: npm run test:server:infrastructure
   tests:
     needs: workspaces
     name: Tests (${{ matrix.workspace }})

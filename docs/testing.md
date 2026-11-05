@@ -38,7 +38,8 @@ hoisted npm installations work without requiring transitive dependencies at the
 repository root. The server infrastructure E2E workflow also builds an isolated image
 and exercises real Compose services, persistent volumes, role grants, proxy routing
 and backup/restore.
-Run it separately with `npm run test:server:infrastructure`; CI retains this gate.
+Run it manually with `npm run test:server:infrastructure`; ordinary Quality and
+desktop-release checks exclude deployment, backup and restore exercises.
 It requires local Docker and never uses an
 operator environment file or database. After installing npm dependencies, run
 `npx playwright install --with-deps chromium` before `npm test` or

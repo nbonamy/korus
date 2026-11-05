@@ -48,14 +48,15 @@ describe('CommandPalette', () => {
     const menu = mount(AgentContextMenu, { props: { x: 0, y: 0 } });
     try {
       const menuLabels = Array.from(document.querySelectorAll('.agent-context-menu .app-menu__label')).map(item => item.textContent!.toLocaleLowerCase());
-      expect(menuLabels).toContain('restart agent');
-      expect(menuLabels).toContain('close agent');
+      expect(menuLabels).toContain('restart');
+      expect(menuLabels).toContain('close');
       for (const query of ['', 'agent']) {
         await wrapper.get('input').setValue(query);
         const agentLabels = sectionRows(wrapper, 'Agent').map(label => label.toLocaleLowerCase());
         expect(agentLabels).toContain('restart agent');
         expect(agentLabels).toContain('close agent');
-        expect(agentLabels.filter(label => menuLabels.includes(label))).toStrictEqual(menuLabels.filter(label => agentLabels.includes(label)));
+        const contextualLabels = agentLabels.map(label => label.replace(/ agent$/u, ''));
+        expect(contextualLabels.filter(label => menuLabels.includes(label))).toStrictEqual(menuLabels.filter(label => contextualLabels.includes(label)));
         expect(agentLabels.at(-1)).toBe('close agent');
         expect(agentLabels).not.toContain('open code review');
         expect(agentLabels).not.toContain('saved drafts');

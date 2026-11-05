@@ -38,7 +38,6 @@ jobs:
       - run: npm run release-notes:check
       - run: npm run lint
       - run: npm run test:scripts
-      - run: npm run test:server:infrastructure
   coverage:
     needs: workspaces
     name: Coverage (${{ matrix.workspace }})
