@@ -52,7 +52,8 @@ jobs:
       - name: Install the browser the workspace's browser tests drive
         if: matrix.workspace == 'client/vue' || matrix.workspace == 'server/frontend'
         run: npx playwright install --with-deps chromium
-      - run: npm run test:coverage --workspace ${{ matrix.workspace }} -- --maxWorkers=2
+      # Public runners have four cores; the Vue suite is the longest job and scales with workers (133 s at 2, 77 s at 4).
+      - run: npm run test:coverage --workspace ${{ matrix.workspace }} -- --maxWorkers=${{ matrix.workspace == 'client/vue' && 4 || 2 }}
       - name: Archive workspace coverage
         if: always()
         run: tar -cf coverage.tar "${{ matrix.workspace }}/coverage"
