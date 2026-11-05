@@ -4,6 +4,12 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.52.1] - 2026-11-04
+
+### Improvements and fixes
+
+- **Image previews:** Restore cached conversation images immediately when scrolling back, even while other images are still loading.
+
 ## [0.52.0] - 2026-11-04
 
 ### New features

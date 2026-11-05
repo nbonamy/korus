@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.52.0",
+  "currentVersion": "0.52.1",
   "releases": [
+    {
+      "version": "0.52.1",
+      "releasedAt": "2026-11-04",
+      "sourceSha256": "31655867ed641912e2e9a928898b2b7c0de3c051ccb09aeac03eb76199046a9b",
+      "markdown": "### Improvements and fixes\n\n- **Image previews:** Restore cached conversation images immediately when scrolling back, even while other images are still loading."
+    },
     {
       "version": "0.52.0",
       "releasedAt": "2026-11-04",
