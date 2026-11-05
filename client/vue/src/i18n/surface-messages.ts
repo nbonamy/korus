@@ -1130,10 +1130,9 @@ export const surfaceMessages = {
     "accountMenu": "Account menu",
     "weekly": "Weekly",
     "legend": {
-      "title": "What the colors mean",
-      "ahead": "Well under your pace",
-      "onPace": "On pace",
-      "low": "Using it faster than time passes",
+      "ahead": "Plenty to spare",
+      "onPace": "On track until reset",
+      "low": "May run out before reset",
       "critical": "Almost out"
     },
     "hours": "{count} hour",

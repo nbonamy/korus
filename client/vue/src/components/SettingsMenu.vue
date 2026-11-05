@@ -26,7 +26,7 @@
           <BrandSpeedTest />
           <span>{{ $t('surface.settingsMenu.usage') }}</span>
           <el-tooltip placement="top" :show-after="150" popper-class="settings-menu-legend-popper">
-            <button class="settings-menu__legend-trigger" type="button" :aria-label="$t('surface.settingsMenu.legend.title')">
+            <button class="settings-menu__legend-trigger" type="button" :aria-label="$t('surface.settingsMenu.usage')">
               <InfoCircleIcon aria-hidden="true" />
             </button>
             <template #content>

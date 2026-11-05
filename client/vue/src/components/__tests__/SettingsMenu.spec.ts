@@ -92,7 +92,7 @@ describe('SettingsMenu', () => {
     await openMenu(wrapper);
     await flushPromises();
     const header = wrapper.get('.settings-menu__rate-limits-header');
-    expect(header.find('button[aria-label="What the colors mean"]').exists()).toBe(true);
+    expect(header.find('button[aria-label="Usage"]').exists()).toBe(true);
     wrapper.unmount();
   });
 
