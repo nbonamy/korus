@@ -407,7 +407,7 @@ describe('TeamRail', () => {
       },
     });
 
-    expect(wrapper.find('[aria-label="5h"]').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="5 hour"]').exists()).toBe(true);
     expect(wrapper.text()).toContain('68%');
     expect(wrapper.find('[aria-label="Weekly"]').exists()).toBe(true);
     expect(wrapper.text()).toContain('50%');
