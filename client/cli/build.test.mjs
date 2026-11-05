@@ -20,6 +20,7 @@ test('the distributable CLI runs in an empty directory without app, daemon, prov
     assert.equal(metadata.name, product.cliPackageName);
     assert.equal(metadata.bin[product.slug], 'cli.mjs');
     assert.equal(metadata.version, workspace.version);
+    assert.deepEqual(metadata.engines, { node: '>=22' });
     assert.notEqual(metadata.private, true);
     assert.equal(metadata.license, 'Apache-2.0');
     const env = { ...process.env, APP_HOME: path.join(directory, 'missing-home'), PATH: '', KORUS_HOME: '', APP_BACKEND_SOCKET: '', KORUS_APP_PATH: path.join(directory, 'NoApp.app') };

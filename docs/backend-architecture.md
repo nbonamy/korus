@@ -846,7 +846,9 @@ emits a dependency-free installable package under `client/cli/dist` and rejects
 Electron or external runtime dependencies. Product metadata supplies the public
 package name; the internal workspace is `@workspace/cli`. Its version is independent
 of the desktop release, while its internal core dependency follows the desktop version.
-The CLI uses the repository Node reference runtime rather than the desktop's private runtime.
+The standalone CLI requires Node 22 or newer independently of the repository’s
+Node reference toolchain. Its workspace engine declaration supplies both the
+bundle target and runtime diagnostic minimum.
 
 Doctor reads state envelopes without migrations or writes and bounds every process,
 socket and MCP probe. Warnings and absent optional services do not fail the command;

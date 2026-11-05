@@ -15,7 +15,8 @@ type Progress = { checkAuth?: boolean; onInstallation?: (installation: Installat
 export async function diagnose(context: CliContext, options: CliOptions, { checkAuth = false, onInstallation, onProviderStart, onProvider }: Progress = {}) {
   const checks: { id: string; status: 'ok' | 'info' | 'warning' | 'error'; detail: string }[] = [];
   const check = (id: string, status: 'ok' | 'info' | 'warning' | 'error', detail: string) => checks.push({ id, status, detail });
-  check('runtime', Number(process.versions.node.split('.')[0]) >= 26 ? 'ok' : 'error', `Node ${process.version}; Node 26 or newer is required.`);
+  const minimumNode = Number(metadata.engines.node.slice(2));
+  check('runtime', Number(process.versions.node.split('.')[0]) >= minimumNode ? 'ok' : 'error', `Node ${process.version}; Node ${minimumNode} or newer is required.`);
   check('home', await fileExists(options.home) ? 'ok' : 'warning', options.home);
   let savedHomes: unknown;
   let sourceFolder: string | undefined;

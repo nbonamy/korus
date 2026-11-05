@@ -63,10 +63,27 @@ jobs:
           path: coverage.tar
           retention-days: 14
           if-no-files-found: error
+  cli-compatibility:
+    name: Packaged CLI (Node ${{ matrix.node }})
+    runs-on: macos-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22.0.0', '24', '26']
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm run test:package --workspace @workspace/cli
   quality:
     name: Quality checks
     if: always()
-    needs: [workspaces, checks, coverage]
+    needs: [workspaces, checks, coverage, cli-compatibility]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -75,7 +92,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: .nvmrc
-      - run: node scripts/check-ci-results.mjs workspaces checks coverage
+      - run: node scripts/check-ci-results.mjs workspaces checks coverage cli-compatibility
         env:
           CI_RESULTS: ${{ toJSON(needs) }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4

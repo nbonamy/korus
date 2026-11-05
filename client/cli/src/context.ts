@@ -31,7 +31,11 @@ export function nodeContext(overrides: Partial<CliContext>): CliContext {
     now: () => new Date(),
     ask: async question => {
       const input = createInterface({ input: process.stdin, output: process.stdout });
-      try { return await input.question(question, { signal }); } finally { input.close(); }
+      const interrupted = new AbortController();
+      const cancel = () => interrupted.abort(new CliError('Cancelled.', 130));
+      input.once('SIGINT', cancel); input.once('close', cancel);
+      try { return await input.question(question, { signal: AbortSignal.any([interrupted.signal, ...(signal ? [signal] : [])]) }); }
+      finally { input.off('SIGINT', cancel); input.off('close', cancel); input.close(); }
     },
     exec: (file, args, options) => new Promise((resolve, reject) => {
       execFile(file, args, { env: options?.env ?? env, signal, encoding: 'utf8', timeout: options?.timeout ?? 2500, maxBuffer: 128 * 1024, windowsHide: true }, (error, stdout, stderr) => error ? reject(Object.assign(error, { stdout, stderr })) : resolve({ stdout, stderr }));

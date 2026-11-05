@@ -211,7 +211,7 @@ code = os.waitstatus_to_exitcode(status)
 sys.exit(code if code >= 0 else 128 - code)
 `;
       const terminal = () => processOutput(spawn(python, ['-c', pty, process.execPath, cli, 'backend', 'stop'], { env: { ...env, TEST_CONTROL: capture, TERM: 'xterm' }, stdio: ['pipe', 'pipe', 'pipe'] }));
-      for (const [input, expected] of [['no\n', 0], ['\u0003', 130]]) {
+      for (const [input, expected] of [['no\n', 0], ['\u0003', 130], ['\u0004', 130]]) {
         const child = terminal(); children.add(child.child);
         try { await child.waitFor('[y/N]'); child.child.stdin.write(input); const result = await child.done; assert.equal(result.code, expected, result.stdout + result.stderr); assert.doesNotMatch(result.stdout, /AbortError|stack/); }
         finally { child.child.kill('SIGTERM'); await child.done; children.delete(child.child); }

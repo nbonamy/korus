@@ -7,7 +7,7 @@ npx korus-cli@latest doctor
 npx korus-cli@latest triage
 ```
 
-Requires Node.js 26 or newer. Runs independently of Electron and the Korus backend.
+Requires Node.js 22 or newer. Runs independently of Electron and the Korus backend.
 
 - **doctor** checks your installation, saved state and available connections. Each coding client has a section with its version, authentication status and home directory. It is read-only. Optional services and warnings do not cause a failing exit status; errors do. Use `--json` for structured output or `NO_COLOR=1` for plain text.
 - **triage** gathers local diagnostics and opens an installed, authenticated client: Claude Code, Codex, then Antigravity. Describe the problem after the command, or use `--agent` to choose a client. Recovery actions require your approval. Use `--no-launch` to prepare diagnostics without opening a client.
