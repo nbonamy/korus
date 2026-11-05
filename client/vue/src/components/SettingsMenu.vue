@@ -327,10 +327,11 @@ function selectMenuItem(itemId: string): void {
   display: grid;
   grid-column: 1 / -1;
   grid-template-columns: subgrid;
+  padding-left: calc(var(--icon-sm) + var(--space-2));
   align-items: baseline;
   column-gap: var(--space-2);
   min-width: 0;
-  font-size: var(--font-size-13);
+  font-size: var(--font-size-12);
 }
 
 .settings-menu__usage-group {
@@ -371,8 +372,6 @@ function selectMenuItem(itemId: string): void {
   grid-column: 1 / -1;
   color: var(--color-text-muted);
 }
-
-.settings-menu__rate-limit-reset { font-size: var(--font-size-12); }
 
 .settings-menu__rate-limit-remaining,
 .settings-menu__rate-limit-reset {
