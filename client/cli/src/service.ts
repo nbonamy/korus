@@ -14,6 +14,7 @@ export async function backendCommand(context: CliContext, options: CliOptions, a
     try { health = await request(options, backendMethods.backendHealthGet); } catch { health = { ok: false }; }
     const socketResponding = record(health) && health.ok === true;
     const mcp = socketResponding ? undefined : await mcpHealth(options);
+    context.signal?.throwIfAborted();
     const running = socketResponding || mcp?.reachable === true;
     const transport = socketResponding ? 'socket' : mcp?.reachable ? 'mcp' : null;
     const result = { running, transport, serviceInstalled: context.platform === 'darwin' && await fileExists(file), socket: options.socket, health, mcp };
@@ -35,8 +36,12 @@ export async function backendCommand(context: CliContext, options: CliOptions, a
   const configured = /<key>APP_HOME<\/key>\s*<string>([^<]+)<\/string>/u.exec(plist)?.[1]
     ?.replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', '"').replaceAll('&apos;', "'").replaceAll('&amp;', '&');
   if (!configured || path.resolve(configured) !== options.home) throw new CliError('LaunchAgent APP_HOME does not match the selected home; refusing to control another installation.');
-  if (!options.yes && (!context.interactive || !/^(y|yes)$/iu.test((await context.ask(`${action} the background backend? Active agent turns may be interrupted. [y/N] `)).trim()))) {
-    throw new CliError('No change made. Pass --yes to confirm backend service control.');
+  context.signal?.throwIfAborted();
+  if (!options.yes) {
+    if (!context.interactive) throw new CliError('Pass --yes to confirm backend service control.', 2);
+    if (!/^(y|yes)$/iu.test((await context.ask(`${action} the background backend? Active agent turns may be interrupted. [y/N] `)).trim())) {
+      context.out('Cancelled. No changes made.'); return 0;
+    }
   }
   const domain = `gui/${process.getuid?.() ?? 501}`;
   if (action === 'stop') await context.exec('launchctl', ['bootout', domain, file], { timeout: options.timeout });

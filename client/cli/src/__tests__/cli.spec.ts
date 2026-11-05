@@ -284,7 +284,7 @@ describe('standalone CLI', () => {
     expect(f.ask).not.toHaveBeenCalled();
     expect(f.err.pop()).toMatch(/home|APP_HOME/i);
     await writeFile(file, `<plist><key>APP_HOME</key><string>${f.home}</string></plist>`);
-    expect(await f.command(['backend', 'restart'])).toBe(1);
+    expect(await f.command(['backend', 'restart'])).toBe(0);
     expect(f.ask).toHaveBeenCalledOnce();
     expect(f.exec).not.toHaveBeenCalled();
   });
@@ -342,7 +342,7 @@ describe('standalone CLI', () => {
       await vi.waitFor(() => expect(f.out.join('')).toContain('pending'));
       expect(f.out.join('')).not.toContain('PRIVATE_TOKEN');
     } finally { abort.abort(); }
-    expect(await following).toBe(0);
+    expect(await following).toBe(130);
   });
   it('invokes a real provider process from the terminal adapter without a shell or application runtime', async () => {
     if (process.platform === 'win32') return;

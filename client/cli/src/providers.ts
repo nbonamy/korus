@@ -30,6 +30,7 @@ export async function authentication(context: CliContext, options: CliOptions, c
     // Antigravity exposes no auth-status command; fetching its model catalog requires authentication.
     return /^[a-z0-9][a-z0-9._/-]*\t\S/imu.test(result.stdout) ? 'authenticated' : 'unknown';
   } catch (error) {
+    context.signal?.throwIfAborted();
     if (client.id === 'claude' && record(error) && typeof error.stdout === 'string') {
       try { const status: unknown = JSON.parse(error.stdout); if (record(status) && status.loggedIn === false) return 'signed-out'; } catch { /* Not an authentication response. */ }
     }

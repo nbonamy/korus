@@ -17,6 +17,11 @@ Korus tests its adapter translations and product behavior, not either SDK. Wire
 framing, decoding and lifecycle tests for its own process/socket transports remain.
 Real provider smoke tests are opt-in and never part of the normal gate.
 
+Standalone CLI package tests install a local tarball into an isolated prefix and
+exercise real child processes. Private HOME and PATH fixtures keep provider and
+LaunchAgent operations isolated; macOS terminal checks use Python 3’s standard
+PTY module. They never control the installed desktop or start real model turns.
+
 The independently runnable telemetry collector in `server/backend` is a separate
 hosted boundary. Its workflows exercise actual HTTP and disposable real PostgreSQL, never
 SQLite or a database fake. Docker must be running for hosted backend test/coverage gates;

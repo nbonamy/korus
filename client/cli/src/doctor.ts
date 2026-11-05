@@ -33,7 +33,10 @@ export async function diagnose(context: CliContext, options: CliOptions, { check
       }
       const schemaVersion = typeof envelope.schemaVersion === 'number' ? envelope.schemaVersion : undefined;
       files.push({ name, exists, schemaVersion, writtenBy: string(envelope.writtenBy) });
-      check(name, record(envelope.data) && Number.isInteger(schemaVersion) ? 'ok' : 'error', record(envelope.data) && Number.isInteger(schemaVersion) ? `Readable envelope, schema ${schemaVersion}.` : 'Invalid state envelope; no migration was attempted.');
+      const data = envelope.data;
+      const valid = Number.isInteger(schemaVersion) && record(data) && (name === 'roster.json'
+        ? Array.isArray(data.agents) && (data.missions === undefined || Array.isArray(data.missions)) : record(data.settings));
+      check(name, valid ? 'ok' : 'error', valid ? `Readable envelope, schema ${schemaVersion}.` : 'Invalid saved state; no migration was attempted.');
     } catch (error) { files.push({ name, exists }); check(name, 'error', (error as Error).message); }
   }
   const appPath = context.env.KORUS_APP_PATH ?? path.join('/Applications', `${product.name}.app`);
@@ -50,6 +53,7 @@ export async function diagnose(context: CliContext, options: CliOptions, { check
   } catch (error) { daemon = { running: false, detail: (error as Error).message }; check('daemon', 'info', 'No local socket; optional for standalone diagnostics.'); }
   const providers: Provider[] = [];
   for (const id of ['codex', 'claude', 'antigravity'] as const) {
+    context.signal?.throwIfAborted();
     onProviderStart?.(id);
     const home = clientHome(context, id, savedHomes);
     const binary = await providerBinary(context, id, options.home);
@@ -65,6 +69,7 @@ export async function diagnose(context: CliContext, options: CliOptions, { check
   }
   check('providers', providers.some(provider => provider.installed) ? 'ok' : 'warning', providers.some(provider => provider.installed) ? 'Provider executables found.' : 'No supported terminal provider found on PATH or in the private bin directories.');
   const mcp = await mcpHealth(options);
+  context.signal?.throwIfAborted();
   if (mcp.endpoint || options.mcpUrl) check('mcp', mcp.reachable ? 'ok' : options.mcpUrl ? 'error' : 'info', mcp.detail);
   const integrations = ['github', 'gitlab', 'linear'].map(provider => {
     const connection = Array.isArray(savedConnections) ? savedConnections.filter(record).find(connection => connection.provider === provider) : undefined;
@@ -115,7 +120,7 @@ function doctorFormat(colour: boolean) {
   };
   return { heading, installation, provider, checks, section };
 }
-export function doctorText(report: DoctorReport, colour = false): string {
+function doctorText(report: DoctorReport, colour = false): string {
   const format = doctorFormat(colour);
   return [format.heading(), format.installation(report), ...report.providers.map(provider => format.provider(provider)), format.checks(report)].join('\n');
 }
@@ -163,7 +168,7 @@ export async function mcpHealth(options: CliOptions): Promise<{ reachable: boole
   }
   url.search = ''; url.hash = '';
   try {
-    const response = await fetch(url, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(options.timeout) });
+    const response = await fetch(url, { method: 'GET', redirect: 'manual', signal: AbortSignal.any([AbortSignal.timeout(options.timeout), ...(options.signal ? [options.signal] : [])]) });
     await response.body?.cancel();
     return { reachable: response.status === 405, endpoint: url.href, detail: response.status === 405 ? 'MCP endpoint responds. No agent was registered; this does not verify provider tool delivery.' : `MCP endpoint returned HTTP ${response.status}.` };
   } catch { return { reachable: false, endpoint: url.href, detail: 'MCP endpoint is unreachable or timed out.' }; }

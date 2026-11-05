@@ -3,16 +3,19 @@ import { randomUUID } from 'node:crypto';
 import { CliError, record, type CliOptions } from './context';
 
 /** A bounded one-shot connection; diagnostics never start or repair the daemon. */
-export function request(options: Pick<CliOptions, 'socket' | 'timeout'>, method: string, params?: unknown): Promise<unknown> {
+export function request(options: Pick<CliOptions, 'socket' | 'timeout' | 'signal'>, method: string, params?: unknown): Promise<unknown> {
   return new Promise((resolve, reject) => {
+    if (options.signal?.aborted) { reject(options.signal.reason); return; }
     const id = randomUUID(); let buffer = ''; let settled = false;
     const socket = net.createConnection(options.socket);
     socket.setEncoding('utf8');
     const finish = (error?: Error, result?: unknown) => {
-      if (settled) return; settled = true; clearTimeout(timer); socket.destroy();
+      if (settled) return; settled = true; clearTimeout(timer); options.signal?.removeEventListener('abort', abort); socket.destroy();
       if (error) reject(error); else resolve(result);
     };
     const timer = setTimeout(() => finish(new CliError(`Daemon request timed out (${method}).`)), options.timeout);
+    const abort = () => finish(options.signal?.reason ?? new CliError('Cancelled.', 130));
+    options.signal?.addEventListener('abort', abort, { once: true });
     socket.once('connect', () => socket.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, ...(params === undefined ? {} : { params }) })}\n`));
     socket.once('error', () => finish(new CliError(`Daemon socket unavailable at ${options.socket}.`)));
     socket.once('close', () => finish(new CliError('Daemon closed the connection before replying.')));

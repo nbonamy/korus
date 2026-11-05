@@ -25,13 +25,14 @@ Options:
   --home PATH       Application home (defaults to APP_HOME, KORUS_HOME, then ~/${product.homeDirectory})
   --socket PATH     Existing daemon socket
   --timeout MS      Bounded probe/request timeout, 1–60000 (default 2500)
-  --json            Machine-readable output; triage prepares files without launching
+  --json            JSON output (NDJSON while following logs); triage does not launch
   --offline         Read saved roster metadata without connecting (inspection only)
   --agent ID        Filter logs, or choose claude/codex/antigravity/auto for triage
   --model NAME      Pass a model to the selected triage provider
   --no-launch       Prepare triage files without starting a provider
   --output PATH     Parent directory for triage/support files
   --lines N         Maximum recent log rows, 1–10000 (default 100)
+  --follow          Stream new log entries until interrupted; works with pipes
   --since 15m       Filter logs by age (s, m, h, d) or ISO timestamp
   --mcp-url URL     Probe an explicit loopback MCP endpoint without registering an agent
   --include-logs    Include redacted log excerpts in a support bundle (review before sharing)
@@ -51,9 +52,26 @@ function since(value: string | undefined, now: number): number | undefined {
   if (!Number.isFinite(result)) throw new CliError('--since must be an age such as 15m or an ISO timestamp.', 2);
   return result;
 }
+function validateCommand(positionals: string[], flags: Record<string, unknown>): void {
+  const [command, action, id] = positionals;
+  const valid = command === 'triage'
+    || (['doctor', 'logs'].includes(command!) && positionals.length === 1)
+    || (command === 'backend' && positionals.length <= 2 && (!action || ['status', 'start', 'stop', 'restart'].includes(action)))
+    || (command === 'agents' && positionals.length <= 2 && (!action || action === 'list'))
+    || (command === 'missions' && (positionals.length <= 2 && (!action || action === 'list') || positionals.length === 3 && action === 'show' && !!id?.trim()))
+    || (command === 'support' && positionals.length === 2 && action === 'bundle');
+  if (!valid) throw new CliError(`Invalid command. Run ${product.slug} --help.`, 2);
+  const allowed: Record<string, string[]> = { doctor: ['mcp-url'], triage: ['agent', 'model', 'no-launch', 'output'],
+    backend: !action || action === 'status' ? ['mcp-url'] : ['yes'], logs: ['lines', 'since', 'agent', 'follow'],
+    support: ['output', 'include-logs'], agents: ['offline'], missions: ['offline'] };
+  for (const flag of Object.keys(flags)) if (!['home', 'socket', 'timeout', 'json', ...(allowed[command!] ?? [])].includes(flag)) {
+    throw new CliError(`--${flag} is not available for ${command}${action ? ` ${action}` : ''}.`, 2);
+  }
+}
 export async function runCli(args: string[], overrides: Partial<CliContext> = {}): Promise<number> {
   const context = nodeContext(overrides);
   try {
+    context.signal?.throwIfAborted();
     let parsed: ReturnType<typeof parseArgs>;
     try { parsed = parseArgs({ args, allowPositionals: true, options: {
       home: { type: 'string' }, socket: { type: 'string' }, timeout: { type: 'string' }, json: { type: 'boolean' }, offline: { type: 'boolean' },
@@ -64,26 +82,27 @@ export async function runCli(args: string[], overrides: Partial<CliContext> = {}
     const text = (key: string): string | undefined => typeof values[key] === 'string' ? values[key] as string : undefined;
     if (values.version) { context.out(`${product.slug} ${metadata.version}`); return 0; }
     if (values.help || !parsed.positionals.length) { context.out(help); return 0; }
+    validateCommand(parsed.positionals, values);
     const home = appHome(context, text('home'));
     const options: CliOptions = { home, socket: text('socket') ?? (context.env.APP_BACKEND_SOCKET?.trim() || path.join(home, 'daemon.sock')),
       timeout: positive(text('timeout'), 2500, 60000, '--timeout'), json: !!values.json, offline: !!values.offline, yes: !!values.yes,
       lines: positive(text('lines'), 100, 10000, '--lines'), since: since(text('since'), context.now().getTime()), agent: text('agent'), model: text('model'),
-      noLaunch: !!values['no-launch'], output: text('output') ? path.resolve(context.cwd, text('output')!) : undefined, follow: !!values.follow, mcpUrl: text('mcp-url'), includeLogs: !!values['include-logs'] };
+      noLaunch: !!values['no-launch'], output: text('output') ? path.resolve(context.cwd, text('output')!) : undefined, follow: !!values.follow, mcpUrl: text('mcp-url'), includeLogs: !!values['include-logs'], signal: context.signal };
     const [command, action, ...rest] = parsed.positionals;
     if (command === 'doctor') return await runDoctor(context, options);
     if (command === 'triage') return await triage(context, options, [action, ...rest].filter(Boolean).join(' '));
     if (command === 'support' && action === 'bundle') return await supportBundle(context, options);
     if (command === 'backend') return await backendCommand(context, options, action ?? 'status');
     if (command === 'logs') {
+      if (options.follow) { await followLogs(context, options); context.signal?.throwIfAborted(); return 0; }
       const entries = await readLogs(context, options);
       print(context, options, { entries }, entries.map(entry => `${entry.file}: ${entry.text}`).join('\n') || 'No matching logs.');
-      if (options.follow) { if (!context.interactive) throw new CliError('--follow needs an interactive terminal.', 2); await followLogs(context, options); }
       return 0;
     }
     if (command === 'agents') {
       if ((action ?? 'list') !== 'list') throw new CliError('Use agents list.', 2);
       const state = await loadState(options);
-      print(context, options, { source: state.source, agents: state.agents }, `Agents\n${state.agents.map(agent => `${agent.id}\t${agent.name}\t${agent.backend}\t${agent.status}`).join('\n')}`); return 0;
+      print(context, options, { source: state.source, agents: state.agents }, `Agents\n${state.agents.map(agent => `${agent.id}\t${agent.name}\t${agent.backend}\t${agent.status}`).join('\n') || 'No agents found.'}`); return 0;
     }
     if (command === 'missions' && ['list', 'show'].includes(action ?? 'list')) {
       const state = await loadState(options);
@@ -94,6 +113,8 @@ export async function runCli(args: string[], overrides: Partial<CliContext> = {}
     }
     throw new CliError(`Unknown command. Run ${product.slug} --help.`, 2);
   } catch (error) {
+    const cancelled = context.signal?.aborted || error instanceof Error && error.name === 'AbortError';
+    if (cancelled) { context.err('Cancelled.'); return context.signal?.reason instanceof CliError ? context.signal.reason.exitCode : 130; }
     const message = error instanceof Error ? error.message : 'Command failed.';
     context.err(redact(message, context, appHome(context)));
     return error instanceof CliError ? error.exitCode : 1;

@@ -1,5 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
-import { homedir } from 'node:os';
+import { constants as osConstants, homedir } from 'node:os';
 import { createInterface } from 'node:readline/promises';
 import path from 'node:path';
 import { access, readFile, stat } from 'node:fs/promises';
@@ -14,13 +14,14 @@ export type CliContext = {
   exec(file: string, args: string[], options?: { timeout?: number; env?: NodeJS.ProcessEnv }): Promise<CommandResult>;
   launch(file: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv }): Promise<number>;
 };
-export type CliOptions = { home: string; socket: string; timeout: number; json: boolean; offline: boolean; yes: boolean; lines: number; since?: number; agent?: string; model?: string; noLaunch: boolean; output?: string; follow: boolean; mcpUrl?: string; includeLogs: boolean };
+export type CliOptions = { home: string; socket: string; timeout: number; json: boolean; offline: boolean; yes: boolean; lines: number; since?: number; agent?: string; model?: string; noLaunch: boolean; output?: string; follow: boolean; mcpUrl?: string; includeLogs: boolean; signal?: AbortSignal };
 export class CliError extends Error { constructor(message: string, readonly exitCode = 1) { super(message); } }
 export const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 export const string = (value: unknown): string | undefined => typeof value === 'string' ? value : undefined;
 
 export function nodeContext(overrides: Partial<CliContext>): CliContext {
   const env = overrides.env ?? process.env;
+  const signal = overrides.signal;
   return {
     env, userHome: homedir(), cwd: process.cwd(), platform: process.platform,
     interactive: !!process.stdin.isTTY && !!process.stdout.isTTY,
@@ -30,21 +31,26 @@ export function nodeContext(overrides: Partial<CliContext>): CliContext {
     now: () => new Date(),
     ask: async question => {
       const input = createInterface({ input: process.stdin, output: process.stdout });
-      try { return await input.question(question); } finally { input.close(); }
+      try { return await input.question(question, { signal }); } finally { input.close(); }
     },
     exec: (file, args, options) => new Promise((resolve, reject) => {
-      execFile(file, args, { env: options?.env ?? env, encoding: 'utf8', timeout: options?.timeout ?? 2500, maxBuffer: 128 * 1024, windowsHide: true }, (error, stdout, stderr) => error ? reject(error) : resolve({ stdout, stderr }));
+      execFile(file, args, { env: options?.env ?? env, signal, encoding: 'utf8', timeout: options?.timeout ?? 2500, maxBuffer: 128 * 1024, windowsHide: true }, (error, stdout, stderr) => error ? reject(Object.assign(error, { stdout, stderr })) : resolve({ stdout, stderr }));
     }),
     launch: (file, args, options) => new Promise((resolve, reject) => {
-      const child = spawn(file, args, { ...options, stdio: 'inherit', shell: false });
-      child.once('error', reject); child.once('exit', code => resolve(code ?? 1));
+      const child = spawn(file, args, { ...options, signal, stdio: 'inherit', shell: false });
+      child.once('error', reject); child.once('exit', (code, killedBy) => resolve(code ?? (killedBy ? 128 + osConstants.signals[killedBy] : 1)));
     }), ...overrides,
   };
 }
 export function appHome(context: CliContext, explicit?: string): string {
   return path.resolve(context.cwd, explicit ?? configuredAppHome(context.env) ?? path.join(context.userHome, product.homeDirectory));
 }
-export async function fileExists(file: string): Promise<boolean> { try { await access(file); return true; } catch { return false; } }
+export async function fileExists(file: string): Promise<boolean> {
+  try { await access(file); return true; } catch (error) {
+    if (record(error) && ['ENOENT', 'ENOTDIR'].includes(String(error.code))) return false;
+    throw new CliError(`${path.basename(file)} could not be accessed.`);
+  }
+}
 export async function readJson(file: string): Promise<Record<string, unknown>> {
   try {
     if ((await stat(file)).size > 16 * 1024 * 1024) throw new CliError(`${path.basename(file)} is too large for a diagnostic read.`);
@@ -69,6 +75,7 @@ export async function providerBinary(context: CliContext, id: 'codex' | 'claude'
   return undefined;
 }
 export function print(context: CliContext, options: CliOptions, value: unknown, human: string): void {
+  context.signal?.throwIfAborted();
   context.out(options.json ? JSON.stringify(value, null, 2) : human);
 }
 export function redact(text: string, context: CliContext, home: string): string {

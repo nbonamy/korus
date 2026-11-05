@@ -29,6 +29,7 @@ const clientPriority = ['claude', 'codex', 'antigravity'] as const;
 export async function triage(context: CliContext, options: CliOptions, problem: string): Promise<number> {
   if (options.agent && !['auto', ...clientPriority].includes(options.agent)) throw new CliError('Choose --agent claude, codex, antigravity, or auto.', 2);
   const report = await diagnose(context, options);
+  context.signal?.throwIfAborted();
   const directory = await privateDirectory(options.output ?? path.join(options.home, 'triage'), 'session-');
   const contextPath = path.join(directory, 'context.json'), promptPath = path.join(directory, 'prompt.md');
   await writeFile(contextPath, JSON.stringify(report, null, 2), { mode: 0o600 });
@@ -42,6 +43,7 @@ export async function triage(context: CliContext, options: CliOptions, problem: 
   if (!installed.length) { context.out(`No terminal provider found. Triage files are ready:\n${promptPath}\n${contextPath}\nGive the prompt file to a coding agent.`); return 0; }
   let selected: typeof installed[number] | undefined;
   for (const candidate of candidates) if (await authentication(context, options, candidate) === 'authenticated') { selected = candidate; break; }
+  context.signal?.throwIfAborted();
   if (!selected) throw new CliError(`Could not confirm ${explicit ? options.agent : 'any installed client'} authentication. Sign in to ${explicit ? options.agent : 'Claude, Codex, or Antigravity'} and retry. Triage files are ready at ${directory}.`);
   if (context.platform === 'win32' && /\.(cmd|bat)$/iu.test(selected.path!)) throw new CliError(`Use a native provider executable or --no-launch on Windows. Prompt: ${promptPath}`);
   context.out(`Starting ${selected.id} triage. Recovery actions require your approval.`);
@@ -49,6 +51,7 @@ export async function triage(context: CliContext, options: CliOptions, problem: 
 }
 export async function supportBundle(context: CliContext, options: CliOptions): Promise<number> {
   const report = await diagnose(context, options);
+  context.signal?.throwIfAborted();
   const directory = await privateDirectory(options.output ?? path.join(options.home, 'support'), 'bundle-');
   const safeReport = JSON.parse(JSON.stringify(report), (_key, value) => typeof value === 'string' ? redact(value, context, options.home) : value);
   await writeFile(path.join(directory, 'diagnostics.json'), JSON.stringify(safeReport, null, 2), { mode: 0o600 });

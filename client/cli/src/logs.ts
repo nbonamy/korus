@@ -8,14 +8,16 @@ async function logFiles(context: CliContext, options: CliOptions): Promise<strin
   for (const directory of [path.join(options.home, 'logs'), ...(context.platform === 'darwin' ? [path.join(context.userHome, 'Library', 'Logs', product.name)] : [])]) {
     try { for (const entry of await readdir(directory, { withFileTypes: true })) {
       if (entry.isFile() && /^(?:daemon|main)(?:[.\w-]*)\.log$/u.test(entry.name)) files.push(path.join(directory, entry.name));
-    } } catch { /* A fresh install has no logs. */ }
+    } } catch (error) {
+      if (!record(error) || !['ENOENT', 'ENOTDIR'].includes(String(error.code))) throw new CliError(`Log directory could not be read: ${directory}`);
+    }
   }
   return files.sort().slice(-20);
 }
-export async function tail(file: string, limit = 1024 * 1024): Promise<string[]> {
+export async function tail(file: string, limit = 1024 * 1024, end?: number): Promise<string[]> {
   const handle = await open(file, 'r');
   try {
-    const size = (await handle.stat()).size; const start = Math.max(0, size - limit);
+    const size = Math.min((await handle.stat()).size, end ?? Infinity); const start = Math.max(0, size - limit);
     const bytes = Buffer.alloc(Math.min(size, limit)); const read = await handle.read(bytes, 0, bytes.length, start);
     const lines = bytes.subarray(0, read.bytesRead).toString('utf8').split('\n').slice(0, -1);
     return (start ? lines.slice(1) : lines).filter(Boolean);
@@ -27,11 +29,15 @@ function scrub(value: unknown): unknown {
   if (!record(value)) return value;
   return Object.fromEntries(Object.entries(value).filter(([key]) => !privateFields.test(key)).map(([key, child]) => [key, scrub(child)]));
 }
-export async function readLogs(context: CliContext, options: CliOptions) {
+export async function readLogs(context: CliContext, options: CliOptions, limits?: ReadonlyMap<string, number>) {
   const entries: { file: string; time?: string; text: string }[] = [];
   for (const file of await logFiles(context, options)) {
     let lines: string[];
-    try { lines = await tail(file); } catch { continue; }
+    if (limits && !limits.has(file)) continue;
+    try { lines = await tail(file, 1024 * 1024, limits?.get(file)); } catch (error) {
+      if (record(error) && error.code === 'ENOENT') continue;
+      throw new CliError(`${path.basename(file)} could not be read.`);
+    }
     for (const line of lines) {
       let value: unknown; try { value = JSON.parse(line); } catch { value = undefined; }
       const time = record(value) && typeof value.time === 'string' ? value.time : undefined;
@@ -51,7 +57,7 @@ export async function followLogs(context: CliContext, options: CliOptions): Prom
   const directories = [...new Set(initial.map(file => path.dirname(file)))];
   const daemonLogs = path.join(options.home, 'logs');
   if (await fileExists(daemonLogs) && !directories.includes(daemonLogs)) directories.push(daemonLogs);
-  if (!directories.length) throw new CliError('No log directories exist yet. No state was created.');
+  if (!directories.length) { context.out(options.json ? JSON.stringify({ event: 'empty' }) : 'No logs to follow yet.'); return; }
   const cursors = new Map<string, { offset: number; size: number; inode: number }>();
   for (const file of initial) {
     const handle = await open(file, 'r');
@@ -63,9 +69,11 @@ export async function followLogs(context: CliContext, options: CliOptions): Prom
     } finally { await handle.close(); }
   }
   const watchers = directories.map(directory => watch(directory));
+  const emit = (entry: { file: string; time?: string; text: string }) => context.out(options.json ? JSON.stringify({ event: 'log', ...entry }) : `${entry.file}: ${entry.text}`);
   let pending = Promise.resolve();
   const update = () => {
     pending = pending.then(async () => {
+      if (context.signal?.aborted) return;
       for (const file of await activeFiles()) {
         const handle = await open(file, 'r');
         try {
@@ -81,22 +89,30 @@ export async function followLogs(context: CliContext, options: CliOptions): Prom
           // Never emit a partial JSON row: its credential fields cannot be reliably redacted.
           for (const line of (start > offset ? lines.slice(1) : lines).filter(Boolean)) {
             let row: unknown; try { row = JSON.parse(line); } catch { row = undefined; }
+            const time = record(row) && typeof row.time === 'string' ? row.time : undefined;
+            if (options.since && (!time || !Number.isFinite(Date.parse(time)) || Date.parse(time) < options.since)) continue;
             const agent = options.agent?.slice(options.agent.lastIndexOf(':') + 1).trim();
             if (agent && (!record(row) || ![row.agentId, row.from, row.to].includes(agent))) continue;
-            context.out(redact(record(row) ? JSON.stringify(scrub(row)) : line, context, options.home));
+            emit({ file: path.basename(file), ...(time ? { time } : {}), text: redact(record(row) ? JSON.stringify(scrub(row)) : line, context, options.home) });
           }
         } finally { await handle.close(); }
       }
     }).catch(() => { context.err('A log changed during rotation; continuing.'); });
   };
-  for (const watcher of watchers) watcher.on('change', update);
+  let ready = false;
+  for (const watcher of watchers) watcher.on('change', () => { if (ready) update(); });
   const closed = Promise.all(watchers.map(watcher => once(watcher, 'close')));
   const stop = () => { for (const watcher of watchers) watcher.close(); };
   if (context.signal) context.signal.addEventListener('abort', stop, { once: true });
   else { process.once('SIGINT', stop); process.once('SIGTERM', stop); }
-  context.out(options.json ? JSON.stringify({ event: 'following' }) : 'Following logs. Press Ctrl+C to stop.');
-  if (context.signal?.aborted) stop();
-  try { await closed; await pending; } finally {
+  try {
+    const history = await readLogs(context, options, new Map([...cursors].map(([file, cursor]) => [file, cursor.offset])));
+    for (const entry of history) emit(entry);
+    context.out(options.json ? JSON.stringify({ event: 'following' }) : 'Following logs. Press Ctrl+C to stop.');
+    ready = true; update();
+    if (context.signal?.aborted) stop();
+    await closed; await pending;
+  } finally {
     context.signal?.removeEventListener('abort', stop); process.off('SIGINT', stop); process.off('SIGTERM', stop); stop();
   }
 }

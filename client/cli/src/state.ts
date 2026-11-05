@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import { CliError, readJson, record, string, type CliOptions } from './context';
+import { CliError, fileExists, readJson, record, string, type CliOptions } from './context';
 import { request } from './rpc';
 
 export type AgentInfo = { id: string; name: string; backend: string; folder?: string; teamId?: string; status: string };
@@ -14,7 +14,8 @@ function agents(value: unknown): AgentInfo[] {
     status: record(agent.status) ? string(agent.status.type) ?? 'unknown' : 'unknown' }));
 }
 function missions(value: unknown): MissionInfo[] {
-  if (!Array.isArray(value)) return [];
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new CliError('Mission roster is unavailable.');
   return value.filter(record).filter(mission => typeof mission.id === 'string').map(mission => {
     const tickets = record(mission.artifacts) && Array.isArray(mission.artifacts.tickets) ? mission.artifacts.tickets : [];
     const runs = record(mission.execution) && Array.isArray(mission.execution.runs) ? mission.execution.runs.filter(record) : [];
@@ -34,7 +35,10 @@ export async function loadState(options: CliOptions) {
       return { source: 'live' as const, agents: agents(result.snapshot.agents), missions: missions(result.snapshot.missions) };
     } catch { /* Saved metadata remains available when the daemon cannot be reached. */ }
   }
-  const envelope = await readJson(path.join(options.home, 'roster.json'));
+  options.signal?.throwIfAborted();
+  const roster = path.join(options.home, 'roster.json');
+  if (!await fileExists(roster)) return { source: 'saved' as const, agents: [], missions: [] };
+  const envelope = await readJson(roster);
   if (!record(envelope.data)) throw new CliError('roster.json has an invalid envelope; no migration was attempted.');
   return { source: 'saved' as const, agents: agents(envelope.data.agents), missions: missions(envelope.data.missions) };
 }

@@ -866,9 +866,13 @@ is checked through its model catalog. Account details and probe errors are
 discarded. Selection does not start model turns or read credential files.
 Triage runs the chosen external CLI with private context/playbook files. Support
 bundles contain redacted metadata by default; log excerpts require an explicit flag.
-Neither operation uploads data. Log following emits complete lines before redaction
-and tracks file replacement. Background service control is limited to an installed
-macOS LaunchAgent whose APP_HOME matches the selected installation, and requires
+Neither operation uploads data. Log following emits complete lines before redaction,
+preserves filters across file replacement and supports pipes. JSON following emits
+one event per line, including the initial tail. Cancellation propagates to requests,
+probes, prompts and launched clients; SIGINT and SIGTERM return 130 and 143.
+Declining an interactive confirmation is a successful no-op; non-interactive
+service control requires explicit confirmation. Background service control is limited
+to an installed macOS LaunchAgent whose APP_HOME matches the selected installation, and requires
 confirmation. A missing socket can also mean a desktop-owned stdio backend;
 diagnostics never start or replace a daemon implicitly. Backend status probes the
 socket first, then the advertised loopback MCP endpoint. An absent connection is
