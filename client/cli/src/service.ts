@@ -4,6 +4,7 @@ import { product } from '@workspace/core/product';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { CliError, fileExists, print, record, type CliContext, type CliOptions } from './context';
 import { request } from './rpc';
+import { mcpHealth } from './doctor';
 
 export async function backendCommand(context: CliContext, options: CliOptions, action: string): Promise<number> {
   const label = `${product.appId}.daemon`;
@@ -11,10 +12,21 @@ export async function backendCommand(context: CliContext, options: CliOptions, a
   if (action === 'status') {
     let health: unknown;
     try { health = await request(options, backendMethods.backendHealthGet); } catch { health = { ok: false }; }
-    const running = record(health) && health.ok === true;
-    const result = { running, serviceInstalled: context.platform === 'darwin' && await fileExists(file), socket: options.socket, health };
-    print(context, options, result, `${running ? 'Responding' : 'Unavailable'} at ${options.socket}\n${JSON.stringify(health)}`);
-    return running ? 0 : 1;
+    const socketResponding = record(health) && health.ok === true;
+    const mcp = socketResponding ? undefined : await mcpHealth(options);
+    const running = socketResponding || mcp?.reachable === true;
+    const transport = socketResponding ? 'socket' : mcp?.reachable ? 'mcp' : null;
+    const result = { running, transport, serviceInstalled: context.platform === 'darwin' && await fileExists(file), socket: options.socket, health, mcp };
+    const colour = context.interactive && context.env.NO_COLOR === undefined && context.env.TERM !== 'dumb';
+    const paint = (code: string, text: string) => colour ? `\u001b[${code}m${text}\u001b[0m` : text;
+    const lines = [paint('1;36', `${product.name} backend`), '',
+      `  Status          ${paint(running ? '32' : '2', running ? 'Responding' : 'No connection detected')}`,
+      `  Connection      ${socketResponding ? 'Local socket' : mcp?.reachable ? 'MCP' : '—'}`,
+      ...(socketResponding && record(health) && typeof health.version === 'string' ? [`  Version         ${health.version}`] : []),
+      `  Background      ${result.serviceInstalled ? 'Installed' : 'Not installed'}`, '',
+    ];
+    print(context, options, result, lines.join('\n'));
+    return 0;
   }
   if (!['start', 'stop', 'restart'].includes(action)) throw new CliError('Use backend status, start, stop, or restart.', 2);
   if (!options.yes && (!context.interactive || !/^(y|yes)$/iu.test((await context.ask(`${action} the background backend? Active agent turns may be interrupted. [y/N] `)).trim()))) {

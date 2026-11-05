@@ -871,7 +871,9 @@ Neither operation uploads data. Log following emits complete lines before redact
 and tracks file replacement. Background service control is limited to an installed
 macOS LaunchAgent whose APP_HOME matches the selected installation, and requires
 confirmation. A missing socket can also mean a desktop-owned stdio backend;
-diagnostics never start or replace a daemon implicitly.
+diagnostics never start or replace a daemon implicitly. Backend status probes the
+socket first, then the advertised loopback MCP endpoint. An absent connection is
+a successful status result, not a service-control failure.
 
 ## Development
 

@@ -145,7 +145,7 @@ export async function runDoctor(context: CliContext, options: CliOptions): Promi
   } finally { stop(); }
 }
 
-async function mcpHealth(options: CliOptions): Promise<{ reachable: boolean; endpoint?: string; detail: string }> {
+export async function mcpHealth(options: CliOptions): Promise<{ reachable: boolean; endpoint?: string; detail: string }> {
   let endpoint = options.mcpUrl;
   if (!endpoint) {
     try {

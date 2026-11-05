@@ -343,8 +343,21 @@ describe('standalone CLI', () => {
 
   it('shows reachable and unavailable backend status without invoking service control', async () => {
     const f = await fixture(); await f.seed();
-    expect(await f.command(['backend', 'status', '--json'])).toBe(1);
+    expect(await f.command(['backend', 'status', '--json'])).toBe(0);
     expect(JSON.parse(f.out.pop()!)).toMatchObject({ running: false });
+    expect(await f.command(['backend'])).toBe(0);
+    expect(f.out.pop()).not.toContain('{"ok":false}');
+    expect(f.err).toStrictEqual([]);
+    await mkdir(path.join(f.home, 'logs'));
+    const server = http.createServer((_req, res) => { res.writeHead(405); res.end(); });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    cleanups.push(() => new Promise<void>(resolve => server.close(() => resolve())));
+    const url = `http://127.0.0.1:${(server.address() as net.AddressInfo).port}/mcp`;
+    await writeFile(path.join(f.home, 'logs', 'daemon.log'), JSON.stringify({ area: 'mcp-http', msg: 'listening', url }) + '\n');
+    expect(await f.command(['backend', '--json'])).toBe(0);
+    expect(JSON.parse(f.out.pop()!)).toMatchObject({ running: true, transport: 'mcp' });
+    expect(await f.command(['backend'])).toBe(0);
+    expect(f.out.pop()).toMatch(/Connection\s+MCP/);
     await daemon(path.join(f.home, 'daemon.sock'), () => ({ ok: true, version: '0.50.6', name: product.daemonName }));
     expect(await f.command(['backend', 'status', '--json'])).toBe(0);
     expect(JSON.parse(f.out.pop()!)).toMatchObject({ running: true });
