@@ -346,6 +346,8 @@ export const messages = {
       resizeChat: 'Resize mission chat',
       expandWorkbench: 'Expand workbench', expandConversation: 'Expand conversation', restoreSplitView: 'Restore split view',
       approveAndContinue: 'Approve and continue', reviewInConversation: 'Review the artifact or ask for changes in chat.',
+      memberUnavailable: 'A Mission member is unavailable. Choose a replacement to continue.',
+      replacementMember: 'Replacement member', reassignMembers: 'Reassign members',
       approveTickets: 'Implement', startImplementation: 'Start implementation', startImplementationAction: 'Start',
       parallelImplementation: 'Allow parallel agents in the same repository',
       attempt: 'attempt {count}',

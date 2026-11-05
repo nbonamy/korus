@@ -73,8 +73,9 @@ export class MissionExecutionService {
       if (!team || !Array.isArray(input.memberIds) || !input.memberIds.length || input.memberIds.length > 20
         || input.memberIds.some(id => !this.ports.snapshot.agents.some(agent => agent.id === id && agent.teamId === team.id && !agent.remoteConnectionId))) throw new Error('Choose a local team and at least one of its agents.');
       await this.change(input, current => {
-        if (current.execution?.workspace || current.execution?.runs.length) throw new Error('Mission workspace configuration is locked after the first run.');
-        current.execution = { teamId: team.id, memberIds: [...new Set(input.memberIds)], workspaces: [], runs: [] };
+        if (current.execution?.runs.some(run => ['preparing', 'running'].includes(run.status))) throw new Error('Wait for active Mission runs to finish before reassigning members.');
+        if (current.execution) current.execution.memberIds = [...new Set(input.memberIds)];
+        else current.execution = { teamId: team.id, memberIds: [...new Set(input.memberIds)], workspaces: [], runs: [] };
       });
       return;
     }
@@ -355,6 +356,7 @@ export class MissionExecutionService {
         if (current.stage !== 'implementation' && workflow.stageReady(current.stage, current.artifacts)) {
           current.stage = workflow.stages[workflow.stages.indexOf(current.stage) + 1]!;
           if (current.stage === 'implementation') {
+            this.requireAvailableMembers(current);
             await this.workspaces.provisionImplementationWorkspaces(current, reportImplementationStartProgress);
             reportImplementationStartProgress('startingAgents');
           }
@@ -1016,6 +1018,18 @@ export class MissionExecutionService {
     if (!mission) throw new Error('Mission not found.');
     return mission;
   }
+  private availableMember(mission: Mission, id: string | undefined): boolean {
+    const member = this.agent(id);
+    return !!member && !member.remoteConnectionId && member.teamId === mission.execution!.teamId
+      && mission.execution!.memberIds.includes(member.id);
+  }
+
+  private requireAvailableMembers(mission: Mission): void {
+    if (!mission.execution?.memberIds.length || mission.execution.memberIds.some(id => !this.availableMember(mission, id))) {
+      throw new Error('A Mission member is unavailable. Reassign Mission members before continuing.');
+    }
+  }
+
   private enqueueRuns(mission: Mission, input: { memberId?: string; ticketIndex?: number; feedback?: string }): string[] {
     if (mission.stage === 'ship') return [];
     if (mission.stage !== 'implementation') return [this.enqueueRun(mission, input)];
@@ -1057,9 +1071,8 @@ export class MissionExecutionService {
       this.stoppedAgents.delete(previousOrchestratorRun.workerId);
       if (execution.stoppedAgentIds) execution.stoppedAgentIds = execution.stoppedAgentIds.filter(id => id !== previousOrchestratorRun.workerId);
     }
-    const memberId = input.memberId ?? previousOrchestratorRun?.memberId ?? execution.memberIds[0]!;
-    const member = this.agent(memberId);
-    if (!execution.memberIds.includes(memberId) || !member || member.teamId !== execution.teamId) throw new Error('The selected team member is unavailable.');
+    const memberId = input.memberId ?? (this.availableMember(mission, previousOrchestratorRun?.memberId) ? previousOrchestratorRun!.memberId : execution.memberIds[0]!);
+    if (!this.availableMember(mission, memberId)) throw new Error('The selected team member is unavailable.');
     if (input.feedback !== undefined && (typeof input.feedback !== 'string' || input.feedback.length > 20_000)) throw new Error('Invalid revision feedback.');
     const runId = createEntityId('mission-run');
     const previousDraft = execution.runs.slice().reverse().find(run => run.stage === 'tickets' && run.draftTickets);
@@ -1101,9 +1114,8 @@ export class MissionExecutionService {
         && execution.runs.slice().reverse().find(candidate => candidate.workerId === run.workerId)?.id === run.id
       ))
       : repositoryWorker;
-    const memberId = input.memberId ?? reusableWorker?.memberId ?? repositoryWorker?.memberId ?? execution.memberIds[ticketIndex % execution.memberIds.length]!;
-    const member = this.agent(memberId);
-    if (!execution.memberIds.includes(memberId) || !member || member.teamId !== execution.teamId) throw new Error('The selected team member is unavailable.');
+    const memberId = input.memberId ?? [reusableWorker?.memberId, repositoryWorker?.memberId, execution.memberIds[ticketIndex % execution.memberIds.length]].find(id => this.availableMember(mission, id))!;
+    if (!this.availableMember(mission, memberId)) throw new Error('The selected team member is unavailable.');
     if (input.feedback !== undefined && (typeof input.feedback !== 'string' || input.feedback.length > 20_000)) throw new Error('Invalid revision feedback.');
     const runId = createEntityId('mission-run');
     execution.runs.push({
