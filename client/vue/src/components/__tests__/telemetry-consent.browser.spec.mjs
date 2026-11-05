@@ -7,9 +7,12 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
-import product from "../../../core/src/product.json" with { type: "json" };
+import { test } from "vitest";
+import product from "../../../../../core/src/product.json" with { type: "json" };
 
-const root = path.resolve(import.meta.dirname, "../../..");
+// Real Vue/Element Plus DOM in Chromium, with a synthetic desktop API.
+test('sharing notice preserves choices, counts foreground time and stays unchanged after enabling', async () => {
+const root = path.resolve(import.meta.dirname, "../../../../..");
 const output =
   process.env.TELEMETRY_DOM_OUTPUT ||
   (await mkdtemp(path.join(os.tmpdir(), "telemetry-consent-dom-")));
@@ -265,8 +268,10 @@ try {
     path.join(output, "evidence.json"),
     JSON.stringify(evidence, null, 2) + "\n",
   );
-  console.log(JSON.stringify({ output, ...evidence }, null, 2));
+
 } finally {
   await browser?.close();
   await server.close();
 }
+
+});

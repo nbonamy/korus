@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import { createServer as createHttpServer } from 'node:http';
 import { mkdir, mkdtemp, writeFile, readFile, readdir, rm } from 'node:fs/promises';
 import os from 'node:os';
@@ -7,13 +7,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer, build } from 'vite';
 import vue from '@vitejs/plugin-vue';
-import { excalidrawAssets } from '../vite.excalidraw-assets.ts';
+import { excalidrawAssets } from '../../../vite.excalidraw-assets.ts';
 import { chromium } from 'playwright';
 
 // Owning rendered workflow: a dense map must preserve churn, scope and file identity
 // while resizing/filtering, and every small or non-textual file must stay reachable.
 test('diff treemap scales to hundreds of files and drills into the existing diff', { timeout: 90_000 }, async t => {
-  const root = fileURLToPath(new URL('../../..', import.meta.url));
+  const root = fileURLToPath(new URL('../../../../..', import.meta.url));
   const output = process.env.DIFF_TREEMAP_EVIDENCE || await mkdtemp(path.join(os.tmpdir(), 'diff-treemap-'));
   await mkdir(output, { recursive: true });
   const patch = (name, added, removed) => [
@@ -515,7 +515,7 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
     await page.getByText('No diff content.', { exact: true }).waitFor();
     assert.deepEqual(errors, []);
     await writeFile(path.join(output, 'evidence.json'), JSON.stringify({ measurements, pageErrors: errors, fileCount: 200, codeFileCount: 140, duplicateScopes: true, tooltip: true, keyboard: true, zeroLineFiles: true }, null, 2));
-    t.diagnostic(`Diff treemap evidence: ${output}`);
+    console.info(`Diff treemap evidence: ${output}`);
   } finally {
     await browser?.close();
     httpServer.closeAllConnections();
@@ -526,12 +526,12 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
 
 
 test('ships native diagram fonts and editor licenses for production rendering', async t => {
-  const root=fileURLToPath(new URL('../../..',import.meta.url));
+  const root=fileURLToPath(new URL('../../../../..',import.meta.url));
   await mkdir(path.join(root,'node_modules/.cache'),{recursive:true});
   const fixture=await mkdtemp(path.join(root,'node_modules/.cache/diagram-font-build-'));
   try {
     await writeFile(path.join(fixture,'index.html'),'<script type="module">window.fixture=true;</script>');
-    const {excalidrawAssets}=await import('../vite.excalidraw-assets.ts');
+    const {excalidrawAssets}=await import('../../../vite.excalidraw-assets.ts');
     await build({configFile:false,root,logLevel:'error',plugins:[excalidrawAssets()],build:{outDir:path.join(fixture,'dist'),rollupOptions:{input:path.join(fixture,'index.html')}}});
     const source=path.join(root,'node_modules/@excalidraw/excalidraw/dist/prod/fonts');
     for(const family of ['Nunito','Cascadia']){
@@ -540,6 +540,6 @@ test('ships native diagram fonts and editor licenses for production rendering', 
       for(const file of files) assert.deepEqual(await readFile(path.join(fixture,'dist/excalidraw/fonts',family,file)),await readFile(path.join(source,family,file)));
     }
     assert.deepEqual(await readFile(path.join(fixture,'dist/excalidraw/excalidraw-LICENSE.txt')),await readFile(path.join(root,'licenses/excalidraw-MIT.txt')));
-    t.diagnostic('Native Nunito/Cascadia font resources and editor license match the installed package.');
+    console.info('Native Nunito/Cascadia font resources and editor license match the installed package.');
   }finally{await rm(fixture,{recursive:true,force:true});}
 });

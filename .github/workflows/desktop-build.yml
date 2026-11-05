@@ -64,6 +64,9 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      - name: Install the browser the workspace's browser tests drive
+        if: matrix.workspace == 'client/vue' || matrix.workspace == 'server/frontend'
+        run: npx playwright install --with-deps chromium
       - run: npm run test --workspace ${{ matrix.workspace }} -- --maxWorkers=2
   quality:
     name: quality

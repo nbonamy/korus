@@ -337,7 +337,7 @@ restore including old history. It removes its containers, networks and volumes.
 Set `TELEMETRY_STACK_EVIDENCE` to an untracked output file for sanitized results.
 
 Run `npm run test:server:e2e` for the console browser workflow in
-`server/test/e2e/console.test.mjs`. It starts a disposable local stack without
+`server/frontend/src/__tests__/console-e2e.spec.mjs` (skipped without a Docker engine). It starts a disposable local stack without
 database restart, backup-expiry or restore exercises. Its fixture uses synthetic
 credentials and never reads an operator environment or connects to a deployed host.
 

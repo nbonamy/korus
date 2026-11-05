@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-const repo = fileURLToPath(new URL("../", import.meta.url));
+const repo = fileURLToPath(new URL("../../../", import.meta.url));
 const args = process.argv.slice(2);
 const value = (name, fallback) =>
   args.includes(name) ? args[args.indexOf(name) + 1] : fallback;
@@ -40,7 +40,7 @@ if (reportMode) {
 } else {
   await writeFile(
     path.join(root, "entry.js"),
-    `import {createApp} from 'vue';import {i18n} from '${source}/client/vue/src/i18n/index.ts';import App from '${repo}scripts/fixtures/AnalyticsChartCapture.vue';import '${source}/server/frontend/src/style.css';createApp(App).use(i18n).mount('#app');`,
+    `import {createApp} from 'vue';import {i18n} from '${source}/client/vue/src/i18n/index.ts';import App from '${repo}client/vue/scripts/fixtures/AnalyticsChartCapture.vue';import '${source}/server/frontend/src/style.css';createApp(App).use(i18n).mount('#app');`,
   );
 }
 const server = await createServer({

@@ -75,7 +75,11 @@
     },
     "client/vue": {
       "entry": [
-        "scripts/*.browser.mjs"
+        "scripts/*.browser.mjs",
+        "src/**/*.browser.spec.mjs"
+      ],
+      "ignore": [
+        "scripts/fixtures/**"
       ]
     },
     "server/backend": {

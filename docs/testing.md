@@ -42,22 +42,25 @@ Run it manually with `npm run test:server:infrastructure`; ordinary Quality and
 desktop-release checks exclude deployment, backup and restore exercises.
 It requires local Docker and never uses an
 operator environment file or database. After installing npm dependencies, run
-`npx playwright install --with-deps chromium` before `npm test` or
-`npm run test:scripts`. This installs the browser revision matching the locked
-Playwright package and, on Linux, its system libraries (which require elevated
-package-manager access). Both Quality and desktop-release quality jobs provision
-these dependencies explicitly; a system browser or an existing browser cache is
-not a prerequisite.
+`npx playwright install --with-deps chromium` before `npm test`. This installs the
+browser revision matching the locked Playwright package and, on Linux, its system
+libraries (which require elevated package-manager access). Browser tests live with
+the product they cover and run in that workspace's suite: `client/vue` has a `browser`
+Vitest project (`*.browser.spec.mjs`, also `npm run test:browser -w @workspace/vue`)
+and `server/frontend` has the console E2E. Quality and desktop-release jobs provision
+the browser explicitly for those workspaces and for `test:scripts`; a system browser or
+an existing browser cache is not a prerequisite. `test:scripts` is for the tooling
+scripts themselves (signing, packaging, publishing, CI gating), not for product UI.
 
-The independently runnable console E2E test at `server/test/e2e/console.test.mjs`
-builds `server/frontend/src` with operator-secret canaries
+The console E2E test at `server/frontend/src/__tests__/console-e2e.spec.mjs`
+(fixtures stay in `server/test/e2e/fixtures`) builds `server/frontend/src` with operator-secret canaries
 and runs a real browser through the authenticated console proxy and aggregate
 service against the executable Postgres seed. Set
 `TELEMETRY_DASHBOARD_EVIDENCE=<external-directory>` when running
 `npm run test:server:e2e` to retain desktop/mobile charts,
 loading/empty/failure/access states, geometry and exact aggregate response evidence.
-The console test runs in `test:scripts` without database restart, backup-expiry
-or restore exercises. It checks global-card filter scope, old retained history, corrected groups, missing
+The console test runs in the `server/frontend` suite, and is skipped where no Docker engine
+is running, without database restart, backup-expiry or restore exercises. It checks global-card filter scope, old retained history, corrected groups, missing
 spend gaps, keyboard inspection and absence of external browser requests or raw
 identities. The rendered `server/frontend` workflow covers request races and exact
 small/large measurements through the same production console component.

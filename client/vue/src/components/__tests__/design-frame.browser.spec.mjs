@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
 
 test('Design pointer hover previews element bounds without changing selection or intercepting clicks', async () => {
-  const { outputFiles } = await build({ entryPoints: [fileURLToPath(new URL('../src/components/design-frame.ts', import.meta.url))], bundle: true, platform: 'node', format: 'esm', write: false });
+  const { outputFiles } = await build({ entryPoints: [fileURLToPath(new URL('../design-frame.ts', import.meta.url))], bundle: true, platform: 'node', format: 'esm', write: false });
   const { designFrame } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
   const board = { id: 'board', title: 'Preview', width: 800, height: 600, root: { id: 'root', tag: 'main', children: [
     { id: 'heading', tag: 'h1', text: 'Heading' }, { id: 'action', tag: 'button', attributes: { class: 'target' }, text: 'Continue' },

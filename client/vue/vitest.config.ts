@@ -47,6 +47,19 @@ export default defineConfig({
         },
       },
       {
+        // Real Chromium through Playwright: layout, pointer and style behavior jsdom cannot show.
+        extends: true,
+        test: {
+          name: 'browser',
+          environment: 'node',
+          pool: 'forks',
+          include: ['src/**/*.browser.spec.mjs'],
+          setupFiles: [],
+          testTimeout: 120_000,
+          hookTimeout: 120_000,
+        },
+      },
+      {
         extends: true,
         test: {
           name: 'components',
