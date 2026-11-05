@@ -48,8 +48,8 @@ libraries (which require elevated package-manager access). Browser tests live wi
 the product they cover and run in that workspace's suite: `client/vue` has a `browser`
 Vitest project (`*.browser.spec.mjs`, also `npm run test:browser -w @workspace/vue`)
 and `server/frontend` has the console E2E. Quality and desktop-release jobs provision
-the browser explicitly for those workspaces and for `test:scripts`; a system browser or
-an existing browser cache is not a prerequisite. `test:scripts` is for the tooling
+the browser explicitly for those workspaces only; a system browser or an existing browser
+cache is not a prerequisite. `test:scripts` is for the tooling
 scripts themselves (signing, packaging, publishing, CI gating), not for product UI.
 
 The console E2E test at `server/frontend/src/__tests__/console-e2e.spec.mjs`
