@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.52.4",
+  "currentVersion": "0.52.5",
   "releases": [
+    {
+      "version": "0.52.5",
+      "releasedAt": "2026-11-05",
+      "sourceSha256": "12ab10d5853aae303941484f08b5e14d395465e487c4a42b1d55800928ab828a",
+      "markdown": "### Improvements and fixes\n\n- **GIF previews:** Preserve animation in attachments and assistant images.\n- **Tool calls:** Expand truncated rows and copy their full text from the tool icon. Shell tools copy the original command, and file links stay inline."
+    },
     {
       "version": "0.52.4",
       "releasedAt": "2026-11-05",

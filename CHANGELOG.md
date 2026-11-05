@@ -4,6 +4,13 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.52.5] - 2026-11-05
+
+### Improvements and fixes
+
+- **GIF previews:** Preserve animation in attachments and assistant images.
+- **Tool calls:** Expand truncated rows and copy their full text from the tool icon. Shell tools copy the original command, and file links stay inline.
+
 ## [0.52.4] - 2026-11-05
 
 ### Improvements and fixes
