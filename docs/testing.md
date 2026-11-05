@@ -21,8 +21,8 @@ Standalone CLI package tests install a local tarball into an isolated prefix and
 exercise real child processes. Private HOME and PATH fixtures keep provider and
 LaunchAgent operations isolated; macOS terminal checks use Python 3’s standard
 PTY module. They never control the installed desktop or start real model turns. Quality
-runs the packaged CLI workflows on macOS with Node 22, 24 and 26 independently of the
-repository’s reference development toolchain.
+runs the packaged CLI workflows on macOS at the minimum supported Node version,
+independently of the repository’s reference development toolchain.
 
 The independently runnable telemetry collector in `server/backend` is a separate
 hosted boundary. Its workflows exercise actual HTTP and disposable real PostgreSQL, never
