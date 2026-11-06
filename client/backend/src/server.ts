@@ -1,3 +1,4 @@
+import { isProviderSafetyReviewTarget, providerSafetyBlockMessage } from '@workspace/core/provider-safety-block';
 import type { AgentGitWorkflow } from '@workspace/core/contracts';
 import { FeatureGroupService } from './features/feature-group-service';
 import type { FeatureGroupRequest, FeatureAgentRequest } from '@workspace/core/feature-groups';
@@ -3200,8 +3201,10 @@ export class AppBackendServer {
       case backendMethods.agentTurnContinueInterrupted: {
         const params = requireRecord(message.params);
         const agentId = requireString(params.agentId, 'agentId');
-        return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentTurnContinueInterrupted, { agentId }, async () => {
-          const snapshot = await this.agentConversations.continueInterruptedTurn(agentId);
+        const safetyReview = params.safetyReview;
+        if (safetyReview !== undefined && !isProviderSafetyReviewTarget(safetyReview)) throw new Error('Invalid provider safety review.');
+        return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentTurnContinueInterrupted, { agentId, ...(safetyReview ? { safetyReview } : {}) }, async () => {
+          const snapshot = await this.agentConversations.continueInterruptedTurn(agentId, undefined, safetyReview);
           if (!snapshot) throw new Error(`Agent not found: ${agentId}`);
           return snapshot;
         });
@@ -4289,11 +4292,15 @@ export class AppBackendServer {
     this.observeRecoveryTurn(fullEvent);
     this.options.usage?.observeEvent(fullEvent);
     applyMainEventToSnapshot(this.snapshot, fullEvent);
+    const safetyBlock = this.conversationSafetyBlock(fullEvent);
     this.observeShareTargetChange(fullEvent);
     this.delegatedWorkReports?.handleEvent(fullEvent);
     for (const listener of this.handoffListeners) listener(fullEvent);
     this.agentRequests.record(fullEvent);
     this.emitBackendEvent(fullEvent);
+    if (safetyBlock && fullEvent.agentId) {
+      this.handleBackendEvent({ agentId: fullEvent.agentId, type: 'agent.statusChanged', payload: { type: 'error', message: safetyBlock } });
+    }
     this.clearTurnSuggestionsOnStart(fullEvent);
     this.emitDerivedDomainEvents(fullEvent);
     if (fullEvent.type !== 'agent.updated') this.autoResume?.observe(fullEvent);
@@ -4347,6 +4354,17 @@ export class AppBackendServer {
     this.clearTurnHints(agent);
   }
 
+  private conversationSafetyBlock(event: BackendPublishedEvent): string | null {
+    const view = providerConversationEventView(event);
+    if (!event.agentId || !['error', 'turn.error', 'turn.completed'].includes(view.type)) return null;
+    const payload = view.payload as { error?: unknown; message?: unknown; turn?: { error?: unknown } } | undefined;
+    const blocked = providerSafetyBlockMessage(payload?.error ?? payload?.turn?.error ?? payload?.message);
+    const agent = this.snapshot.agents.find(agent => agent.id === event.agentId);
+    if (!blocked || !agent || view.conversationId && view.conversationId !== agentConversationId(agent)) return null;
+    delete agent.autoResumePending;
+    return blocked;
+  }
+
   private handleBackendEvent(event: BackendEvent, options: { persist?: boolean } = {}): void {
     if (event.type === 'provider.authenticationChanged') {
       const authentication = event.payload;
@@ -4363,6 +4381,7 @@ export class AppBackendServer {
     this.observeRecoveryTurn(fullEvent);
     this.options.usage?.observeEvent(fullEvent);
     applyMainEventToSnapshot(this.snapshot, fullEvent);
+    const safetyBlock = this.conversationSafetyBlock(fullEvent);
     this.observeShareTargetChange(fullEvent);
     this.delegatedWorkReports.handleEvent(fullEvent);
     for (const listener of this.handoffListeners) listener(fullEvent);
@@ -4374,11 +4393,16 @@ export class AppBackendServer {
       const view = providerConversationEventView(fullEvent);
       const payload = view.payload as { status?: string; willRetry?: boolean; turn?: { status?: string } } | undefined;
       const status = payload?.status ?? payload?.turn?.status;
-      const recover = (status === 'completed' || status === 'failed') && !payload?.willRetry;
+      const agent = this.snapshot.agents.find(agent => agent.id === fullEvent.agentId);
+      const blocked = agent?.status.type === 'error' && providerSafetyBlockMessage(agent.status.message);
+      const recover = (status === 'completed' || status === 'failed') && !payload?.willRetry && !blocked && !safetyBlock;
       if (!payload?.willRetry) void this.missionExecution.agentFinished(fullEvent.agentId, view.turnId, recover).catch(error => warnMain('missions', 'failed to record mission completion', { message: String(error) }));
     }
     this.agentRequests.record(fullEvent);
     this.emitBackendEvent(fullEvent);
+    if (safetyBlock && fullEvent.agentId) {
+      this.handleBackendEvent({ agentId: fullEvent.agentId, type: 'agent.statusChanged', payload: { type: 'error', message: safetyBlock } });
+    }
     this.clearTurnSuggestionsOnStart(fullEvent);
     this.emitDerivedDomainEvents(fullEvent);
     if (fullEvent.type !== 'agent.updated') this.autoResume?.observe(fullEvent);

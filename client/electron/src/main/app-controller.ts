@@ -758,8 +758,8 @@ export class AppController {
       return this.retryTurn(agentId, turnId);
     });
 
-    ipc.handle(ipcChannels.continueInterruptedTurn, (_event, agentId: string) => {
-      return this.continueInterruptedTurn(agentId);
+    ipc.handle(ipcChannels.continueInterruptedTurn, (_event, agentId: string, safetyReview?: import('@workspace/core/provider-safety-block').ProviderSafetyReviewTarget) => {
+      return this.continueInterruptedTurn(agentId, safetyReview);
     });
 
     ipc.handle(ipcChannels.mobileSimulator, (_event, agentId, input) => this.executeMobileSimulator(agentId, input, true));
@@ -1784,8 +1784,8 @@ export class AppController {
     return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentTurnRetry, { agentId, turnId }));
   }
 
-  private async continueInterruptedTurn(agentId: string): Promise<AppSnapshot> {
-    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentTurnContinueInterrupted, { agentId }));
+  private async continueInterruptedTurn(agentId: string, safetyReview?: import('@workspace/core/provider-safety-block').ProviderSafetyReviewTarget): Promise<AppSnapshot> {
+    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentTurnContinueInterrupted, { agentId, ...(safetyReview ? { safetyReview } : {}) }));
   }
 
   private async chooseAgentFolder(): Promise<string | null> {

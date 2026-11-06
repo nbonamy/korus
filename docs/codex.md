@@ -123,6 +123,17 @@ threads, routed by `threadId` and `agentId`.
 - Continue on an interrupted turn is a dedicated action that starts a turn with empty
   input after confirming the latest turn is interrupted; it never submits the text
   "continue".
+- Provider safety findings remain attached to the error. Korus presents the full
+  provider explanation and offers explicit continuation only when the provider
+  also supplies a nonempty instruction. The backend revalidates the same
+  conversation, blocked turn and exact findings, then uses the SDK's dedicated
+  main-process continuation action. An opaque review target alone grants no
+  continuation. No acknowledgement metadata is fabricated and no blocked workflow
+  is retried automatically. Persisted findings remain readable; continuation is
+  disabled until fresh provider state has been loaded.
+  A safety stop replaces the composer with its warning and disables prompt-based
+  actions, including Hand off. Reading the conversation clears its sidebar
+  attention dot without clearing the provider block.
 - Review: independent or current-thread rules are in
   [architecture.md](architecture.md#code-review). Review rounds replace the normal
   MCP URL with the review-session URL ([mcp.md](mcp.md)). `review/start` uses inline

@@ -60,6 +60,7 @@ function conversationFixture(id: string) {
     deleteTurn: vi.fn<CodexConversation['deleteTurn']>(async () => snapshot),
     retryTurn: vi.fn<CodexConversation['retryTurn']>(async () => snapshot),
     continueInterruptedTurn: vi.fn<CodexConversation['continueInterruptedTurn']>(async () => snapshot),
+    continueAfterSafetyReview: vi.fn<NonNullable<CodexConversation['continueAfterSafetyReview']>>(async () => snapshot),
     fork: vi.fn<CodexConversation['fork']>(),
     forkTurn: vi.fn<CodexConversation['forkTurn']>(),
     readContent: vi.fn<CodexConversation['readContent']>(),

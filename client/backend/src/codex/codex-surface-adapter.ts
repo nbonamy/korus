@@ -1,3 +1,4 @@
+import { providerSafetyBlockMessage, type ProviderSafetyReviewTarget } from '@workspace/core/provider-safety-block';
 import { utilityMcpServers } from '../diagram-icons/utility-mcp';
 import { ConversationContentTransport } from '@codex-app-sdk/backend';
 import { promptWithSelectedReferences } from '../agents/prompt-content';
@@ -48,7 +49,7 @@ import { shouldSyncConversationTitleFromAgent } from '@workspace/core/conversati
 import type { CodexConversation, CodexSurface } from '@codex-app-sdk/backend';
 import { CodexImageGeneration } from './codex-image-generation';
 import { codexConversationDefaults } from './codex-model-defaults';
-import { statusFromSnapshot } from './codex-status';
+import { safetyReviewFromSnapshot, statusFromSnapshot } from './codex-status';
 import type {
   CodexConversationEvent,
   CodexConversationSummary,
@@ -637,8 +638,24 @@ export class CodexSurfaceAgentAdapter {
     };
   }
 
-  async continueInterruptedTurn(agent: Agent) {
+  async continueInterruptedTurn(agent: Agent, safetyReview?: ProviderSafetyReviewTarget) {
     const session = await this.ensureSession(agent);
+    if (safetyReview) return this.serializeSubmission(session, async () => {
+      const current = session.handle.getSnapshot();
+      const review = safetyReviewFromSnapshot(current);
+      if (current.busy || !review?.canContinue || review.id !== safetyReview.id
+        || session.handle.id !== safetyReview.conversationId || review.turnId !== safetyReview.turnId) {
+        throw new Error('Provider safety continuation is unavailable or these findings have changed. Review the latest provider error.');
+      }
+      if (!session.handle.continueAfterSafetyReview) throw new Error('This SDK does not support provider safety review continuation.');
+      const after = await session.handle.continueAfterSafetyReview({ turnId: review.turnId, findings: current.turns.find(turn => turn.id === review.turnId)!.error!.misalignment! });
+      if (this.sessionsByAgentId.get(agent.id) !== session || codexThreadId(agent) !== safetyReview.conversationId) throw new Error('Conversation changed during safety review.');
+      this.emitStatus(session, statusFromSnapshot(after));
+      if (after.error || after.turns.at(-1)?.status === 'failed') throw new Error(after.error ?? after.turns.at(-1)?.error?.message ?? 'Continuation failed. Review the latest provider error.');
+      return { threadId: session.handle.id, activeTurnId: after.activeTurnId };
+    });
+    if (providerSafetyBlockMessage(session.handle.getSnapshot().turns.at(-1)?.error)
+      || providerSafetyBlockMessage(session.handle.getSnapshot().error)) throw new Error('Review the provider safety findings before continuing.');
     const snapshot = await invokeCodexConversationBridgeOperation(
       this.surface, session.handle.id, 'continueInterruptedTurn', [],
     );
@@ -1553,7 +1570,11 @@ export class CodexSurfaceAgentAdapter {
         this.emitSubagentActivity(session, event);
         return;
       }
+      case 'turn.error':
+        if (providerSafetyBlockMessage(event.payload.error)) this.emitStatus(session, statusFromSnapshot(session.handle.getSnapshot()), event.occurredAt);
+        return;
       case 'turn.completed':
+        if (providerSafetyBlockMessage(event.payload.error)) this.emitStatus(session, statusFromSnapshot(session.handle.getSnapshot()), event.occurredAt);
         void this.refreshQuickChatConversationTitle(session);
         return;
       case 'file.activity':

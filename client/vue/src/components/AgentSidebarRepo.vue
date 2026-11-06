@@ -278,7 +278,7 @@
                 :aria-label="t('sidebar.switchShortcut', { session: session.displayTitle, number: session.quickSwitchIndex + 1 })"
               ><span aria-hidden="true">⌘</span>{{ session.quickSwitchIndex + 1 }}</span>
               <span
-                v-else-if="!isPullRequestFinished(session)"
+                v-else-if="!isPullRequestFinished(session) && !hasReadSafetyBlock(session)"
                 class="agent-sidebar__status"
                 :class="{ 'agent-sidebar__status--unread': session.isUnread }"
                 :data-status="session.status.type"
@@ -326,11 +326,12 @@
 
 <script setup lang="ts">
 import { toRefs } from 'vue';
+import { providerSafetyBlockMessage } from '@workspace/core/provider-safety-block';
 import OpenFeatureIcon from '../shared/icons/OpenFeatureIcon.vue';
 import AgentSidebarMenus from './AgentSidebarMenus.vue';
 import MissionProgressIcon from './MissionProgressIcon.vue';
 import type { AgentSidebarModel } from './use-agent-sidebar';
-import type { WorkspaceSidebarGroup } from '@workspace/core/workspace-sidebar';
+import type { WorkspaceSidebarGroup, WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar';
 import { AlertTriangleIcon, ArrowsSortIcon, FolderIcon, GitBranchIcon, GitForkIcon, MessageIcon, PanelLeftCloseIcon, PlusIcon, TargetArrowIcon } from '../shared/icons/app-icons';
 import BackendIcon from './BackendIcon.vue';
 import RepositoryIconPicker from './RepositoryIconPicker.vue';
@@ -338,6 +339,10 @@ import StartWorkMenu from './StartWorkMenu.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import RepositoryAgentRow from './RepositoryAgentRow.vue';
 import RemoteHostIndicator from './RemoteHostIndicator.vue';
+
+function hasReadSafetyBlock(session: WorkspaceSidebarSession): boolean {
+  return !session.isUnread && session.status.type === 'error' && Boolean(providerSafetyBlockMessage(session.status.message));
+}
 
 const props = defineProps<{ model: AgentSidebarModel }>();
 function worktreeGroupKind(group: WorkspaceSidebarGroup): 'main' | 'branch' | 'worktree' {

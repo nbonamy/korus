@@ -1,3 +1,4 @@
+import { providerSafetyBlockMessage } from '@workspace/core/provider-safety-block';
 import { PromptRejectedError } from './prompt-rejected';
 import { sendAgentPrompt } from '@workspace/core/agent-chat-service';
 import type { AgentBackendDriver, BackendEvent, BackendSendResult } from '@workspace/core/backend-driver';
@@ -25,7 +26,7 @@ export class AgentPromptManager {
   constructor(private readonly options: AgentPromptManagerOptions) {}
 
   canStart(agent: Agent): boolean {
-    return canStartPrompt(agent);
+    return canStartPrompt(agent) && !isSafetyBlocked(agent);
   }
 
   sendAndWaitForAcceptance(agent: Agent, prompt: string, options?: SendPromptOptions, expectedSessionId?: string | null, clientId?: string): Promise<void> {
@@ -76,7 +77,7 @@ export class AgentPromptManager {
   drain(agentId: string): void {
     const snapshot = this.options.getSnapshot();
     const agent = snapshot.agents.find((candidate) => candidate.id === agentId);
-    if (!agent || !canStartPrompt(agent)) return;
+    if (!agent || !canStartPrompt(agent) || isSafetyBlocked(agent)) return;
     const queued = (snapshot.queuedPrompts ?? []).find((candidate) => candidate.agentId === agentId);
     if (!queued) return;
     if (queued.retryAt) {
@@ -105,6 +106,11 @@ export class AgentPromptManager {
 
   private start(agent: Agent, prompt: string, promptOptions?: SendPromptOptions, queuedPromptId?: string, acceptance?: { resolve: (receipt: BackendSendResult) => void; reject: (error: Error) => void; expectedSessionId?: string | null; goal?: boolean }, clientId?: string): AppSnapshot {
     const snapshot = this.options.getSnapshot();
+    if (isSafetyBlocked(agent)) {
+      const error = new PromptRejectedError(providerSafetyBlockMessage(agent.status.type === 'error' ? agent.status.message : null)!);
+      if (acceptance) { acceptance.reject(error); return snapshot; }
+      throw error;
+    }
     if (this.options.isEngineConnected?.(agent) === false) {
       acceptance?.reject(new PromptRejectedError('Engine is not connected. Reconnect in Settings.'));
       return snapshot;
@@ -157,6 +163,7 @@ export class AgentPromptManager {
   }
 
   private scheduleRetry(agentId: string, promptId: string, error: Error): void {
+    if (providerSafetyBlockMessage(error) || this.options.getSnapshot().agents.some(agent => agent.id === agentId && isSafetyBlocked(agent))) return;
     const queued = (this.options.getSnapshot().queuedPrompts ?? []).find((candidate) => (
       candidate.agentId === agentId && candidate.id === promptId
     ));
@@ -179,7 +186,7 @@ export class AgentPromptManager {
       const snapshot = this.options.getSnapshot();
       const agent = snapshot.agents.find((candidate) => candidate.id === agentId);
       const head = (snapshot.queuedPrompts ?? []).find((candidate) => candidate.agentId === agentId);
-      if (agent && canStartPrompt(agent) && head?.id === promptId) {
+      if (agent && canStartPrompt(agent) && !isSafetyBlocked(agent) && head?.id === promptId) {
         this.start(agent, head.text, head.options, head.id);
       }
     }, Math.max(0, delay));
@@ -200,4 +207,8 @@ function canStartPrompt(agent: Agent): boolean {
 
 function queuedPromptKey(agentId: string, promptId: string): string {
   return `${agentId}:${promptId}`;
+}
+
+function isSafetyBlocked(agent: Agent): boolean {
+  return agent.status.type === 'error' && providerSafetyBlockMessage(agent.status.message) !== null;
 }

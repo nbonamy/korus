@@ -6,6 +6,14 @@ automations, work integrations and persistent state behind one app-owned protoco
 replacement for Codex app-server. Ownership rules live in
 [architecture.md](architecture.md); message contracts in [protocol.md](protocol.md).
 
+Provider safety stops are terminal conversation errors. The daemon preserves the
+provider details and blocked status across restarts, retains unsent prompts, and
+stops queue retries, quota continuation and automatic work recovery for that
+conversation. Provider history is preserved; the application does not unblock or
+rewrite provider safety decisions. An explicit user review can continue only
+when fresh provider findings include both an explanation and a continuation
+instruction; the backend validates that the reviewed findings are unchanged.
+
 The executable is `korusd` (`product.daemonName`). Source filenames, RPC methods,
 log and socket paths, npm scripts and launchd labels stay brand-neutral.
 

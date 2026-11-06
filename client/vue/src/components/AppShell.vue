@@ -702,6 +702,7 @@ import BacklogView from './BacklogView.vue';
 import ConversationHistoryDialog from './ConversationHistoryDialog.vue';
 import AgentHandoffDialog from './AgentHandoffDialog.vue';
 import { agentHandoffBlocker, type AgentHandoffInput } from '@workspace/core/agent-handoff';
+import { providerSafetyBlockMessage } from '@workspace/core/provider-safety-block';
 import ImageAnnotationDialog from './ImageAnnotationDialog.vue';
 import FileQuickOpen from './FileQuickOpen.vue';
 import AgentQuickOpen from './AgentQuickOpen.vue';
@@ -743,6 +744,7 @@ import RepositoryDeleteDialog from './RepositoryDeleteDialog.vue';
 import type { DeleteRepositoryInput } from '@workspace/core/contracts/workspace';
 import type { MissionWorkspaceOpenRequest } from './MissionWorkspaceOpenIn.vue';
 import ConversationPane from './ConversationPane.vue';
+import { useDebugProviderSafetyBlock } from './debug-provider-safety-block';
 import { useDebugWorktreeInitialization } from './debug-worktree-initialization';
 import AppMenu from '../shared/menu/AppMenu.vue';
 import { missionAgentIds, navigationUnreadAgentIds } from '@workspace/core/mission-attention';
@@ -1524,7 +1526,11 @@ const pendingHandoffOperationId = computed(() => {
   const intent = props.snapshot.teams.find(team => team.id === agent.teamId)?.delegationHandoffs?.[agent.id];
   return intent && !intent.targetAgentId ? intent.operationId : undefined;
 });
-function openHandoff(agentId: string) { handoffAgentId.value = agentId; }
+function openHandoff(agentId: string) {
+  const agent = props.snapshot.agents.find(agent => agent.id === agentId);
+  if (agent?.status.type === 'error' && providerSafetyBlockMessage(agent.status.message)) return;
+  handoffAgentId.value = agentId;
+}
 async function listHandoffModels(agentId: string | null, backend: AgentBackend) {
   return await appApi?.listBackendModels(agentId, backend) ?? [];
 }
@@ -2930,6 +2936,7 @@ const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
     sendAgentPrompt: (agentId, prompt) => emit('send-agent-prompt', { agentId, prompt }),
     setDebugApproval: (approval) => { debugApproval.value = approval; },
     showDebugUserQuestions,
+    showDebugProviderSafetyBlock: (agentId) => previewProviderSafetyBlock(agentId),
     toggleSpokenAnnouncementsMuted,
     updateComposerAttachments: (agentId, attachments) => emit('update:composerAttachments', { agentId, attachments }),
     updateComposerState: (agentId, state) => emit('update:composerState', { agentId, state }),
@@ -3062,6 +3069,7 @@ function showDebugUserQuestions(agentId: string): void {
   };
 }
 
+const previewProviderSafetyBlock = useDebugProviderSafetyBlock();
 const previewWorktreeInitialization = useDebugWorktreeInitialization();
 
 function openDebugOperationProgress(

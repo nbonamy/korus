@@ -1,3 +1,4 @@
+import { providerSafetyBlockMessage } from './provider-safety-block';
 import type { AgentStatus, AppSnapshot, SendPromptOptions } from './contracts';
 import type { AgentBackendDriver, BackendEvent, BackendSendResult } from './backend-driver';
 import { backendDisplayName } from './backend-driver';
@@ -102,7 +103,7 @@ export function sendAgentPrompt(
     .catch((error) => {
       if (delegationControls && agent.userDelegationOverrides === delegationControls) delete agent.userDelegationOverrides;
       const normalizedError = error instanceof Error ? error : new Error(String(error));
-      const message = normalizedError.message;
+      const message = providerSafetyBlockMessage(normalizedError) ?? normalizedError.message;
       updateAgentStatus(agentId, { type: 'error', message }, emit, snapshot);
       updateBackendRuntimeStatus({
         backend: backendDriver.backend,

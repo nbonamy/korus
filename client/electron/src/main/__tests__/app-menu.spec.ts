@@ -496,14 +496,14 @@ describe('app menu', () => {
     expect(actions.sendAppCommand).toHaveBeenLastCalledWith({ type: 'debug-github-star-reminder' });
   });
 
-  it('dispatches the multi-question fixture from the debug agent menu', () => {
+  it.each([['Multi-question Request', 'debug-user-questions'], ['Provider Safety Block', 'debug-provider-safety-block']])('dispatches the %s fixture from the debug agent menu', (label, type) => {
     const debugCallbacks = callbacks();
     const menu = buildAppMenuTemplate(debugCallbacks, { debugMode: true }, 'darwin');
 
-    clickNestedItem(menu, 'Debug', 'Agent Fixtures', 'Multi-question Request');
+    clickNestedItem(menu, 'Debug', 'Agent Fixtures', label);
 
     expect(debugCallbacks.sendAppCommand).toHaveBeenCalledOnce();
-    expect(debugCallbacks.sendAppCommand).toHaveBeenCalledWith({ type: 'debug-user-questions' });
+    expect(debugCallbacks.sendAppCommand).toHaveBeenCalledWith({ type });
   });
 
   it('adds reload and developer tools only in debug mode', () => {
@@ -543,6 +543,7 @@ describe('app menu', () => {
       'Send Message',
       'Approval Request',
       'Multi-question Request',
+      'Provider Safety Block',
       'Mark as Unread',
       'Execution Plan',
       'Text Plan Review',
@@ -607,6 +608,7 @@ describe('app menu', () => {
       'Send Message',
       'Approval Request',
       'Multi-question Request',
+      'Provider Safety Block',
       'separator',
       'Mark as Unread',
       'Execution Plan',

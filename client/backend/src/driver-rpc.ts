@@ -1,3 +1,4 @@
+import { isProviderSafetyReviewTarget } from '@workspace/core/provider-safety-block';
 import { utilityMcpServers } from './diagram-icons/utility-mcp';
 import { utilityImageAttachments } from './agents/utility-image-attachments';
 import type { ExecutionObservation, RequestObservation } from '@workspace/core/usage';
@@ -632,7 +633,9 @@ export class BackendDriverRpc {
         if (!driver.continueInterruptedTurn) {
           throw unsupportedBackendFeature(agent, 'interrupted turn continuation');
         }
-        return driver.continueInterruptedTurn(agent);
+        const review = requireRecord(params).safetyReview;
+        if (review !== undefined && (!isProviderSafetyReviewTarget(review) || agent.backend !== 'codex')) throw new Error('Invalid provider safety review.');
+        return review === undefined ? driver.continueInterruptedTurn(agent) : driver.continueInterruptedTurn(agent, review);
       }
       case backendMethods.driverModelsList: {
         const { agent } = requireAgentParams(params);

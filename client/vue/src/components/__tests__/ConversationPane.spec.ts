@@ -185,6 +185,39 @@ describe('ConversationPane', () => {
     expect(readConversationContent).toHaveBeenCalledExactlyOnceWith(agent.id, { sessionId: 'thread', contentId: 'a'.repeat(64), offset: 0 });
   });
 
+  it('shows a provider safety block with its original details and no automatic-resume control', async () => {
+    const detail = 'This request was blocked by our safety systems. Reason: Potentially unintended activity.';
+    const wrapper = mountPane({ controller: controllerFor(messages), agent: { ...agent, status: { type: 'error', message: `Conversation blocked by provider. Automatic retries are stopped.\n\n${detail}` } } });
+    const alert = wrapper.get('.codex-conversation-pane__footer [role="alert"]');
+    expect(alert.text()).toContain('Conversation blocked by provider');
+    expect(alert.get('pre').text()).toBe(detail);
+    expect(alert.text()).not.toContain('Automatic retries are stopped');
+    expect(alert.find('button').exists()).toBe(false);
+    expect(wrapper.find('[role="textbox"]').exists()).toBe(false);
+    expect(wrapper.find('form[aria-label="Prompt composer"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('Looking now.');
+    await wrapper.setProps({ agent: { ...agent, status: { type: 'error', message: 'Network unavailable' } } });
+    expect(wrapper.find('.conversation-pane__safety-block').exists()).toBe(false);
+    expect(wrapper.find('[role="textbox"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('shows provider findings and requires a click to continue the reviewed turn', async () => {
+    const continuation = vi.fn().mockResolvedValue({});
+    setElectronTestClient({ continueInterruptedTurn: continuation });
+    const review = { id: 'review-id', conversationId: 'thread', turnId: 'blocked', explanation: 'Review the provider finding before continuing.', canContinue: false };
+    const owner = { ...agent, status: { type: 'error' as const, message: 'This request was blocked by our safety systems.', safetyReview: review } };
+    const wrapper = mountPane({ controller: controllerFor(messages), agent: owner });
+    try {
+      expect(wrapper.get('[role="alert"]').text()).toContain(review.explanation);
+      expect(wrapper.find('button.safety-review-continue').exists()).toBe(false);
+      await wrapper.setProps({ agent: { ...owner, status: { ...owner.status, safetyReview: { ...review, canContinue: true } } } });
+      expect(continuation).not.toHaveBeenCalled();
+      await wrapper.get('button.safety-review-continue').trigger('click'); await flushPromises();
+      expect(continuation).toHaveBeenCalledExactlyOnceWith(agent.id, { id: review.id, conversationId: review.conversationId, turnId: review.turnId });
+    } finally { wrapper.unmount(); }
+  });
+
   it('shows the limit-reset notice above the composer and saves the auto-resume toggle', async () => {
     const setAutoResume = vi.fn().mockResolvedValue({});
     setElectronTestClient({ setAutoResume });

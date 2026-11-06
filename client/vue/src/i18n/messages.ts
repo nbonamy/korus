@@ -655,6 +655,8 @@ export const messages = {
       working: 'Working',
     },
     backend: {
+      providerSafetyBlocked: 'Conversation blocked by provider',
+      continueSafetyReview: 'Continue after review',
       awaitingApproval: 'Waiting for approval',
       awaitingUserInput: 'Waiting for user input',
       claudeConnected: 'Claude backend connected.',

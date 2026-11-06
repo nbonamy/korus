@@ -58,6 +58,7 @@ const props = defineProps<{
   resumeDisabled?: boolean;
   moveTargets?: Team[];
   forkDisabled?: boolean;
+  handoffDisabled?: boolean;
   openInCatalog?: OpenInApplicationCatalog;
   openInDisabled?: boolean;
   x: number;
@@ -102,7 +103,7 @@ const menuItems = computed<AppMenuItem[]>(() => props.shared ? [{ id: 'close-age
     disabled: props.forkDisabled === true,
   },
   ...(props.shareAvailable ? [{ id: 'share-agent', type: 'action', label: t('sharing.share'), icon: ExternalLinkIcon } satisfies AppMenuItem] : []),
-  { id: 'handoff-agent', type: 'action', label: t('handoff.submit'), icon: SwitchHorizontalIcon },
+  { id: 'handoff-agent', type: 'action', label: t('handoff.submit'), icon: SwitchHorizontalIcon, disabled: props.handoffDisabled === true },
   { id: 'group-primary', type: 'separator' },
   ...(appApi?.openWindow ? [{ id: 'open-agent-window', type: 'action', label: t('agents.openInNewWindow'), icon: ExternalLinkIcon } satisfies AppMenuItem] : []),
   ...(props.openInCatalog?.applications.length ? [{

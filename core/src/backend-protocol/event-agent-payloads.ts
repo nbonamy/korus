@@ -1,3 +1,4 @@
+import { isProviderSafetyReview } from '../provider-safety-block';
 import { isRateLimitPause } from '../auto-resume';
 import { isWorktreeInitializationState } from '../worktree-initialization';
 import { isAgentReadState } from '../agent-read-state';
@@ -44,7 +45,10 @@ function expectAgentStatus(value: unknown, path: string): void {
   );
   if (value.type === 'working' || value.type === 'awaitingInput')
     expectOptional(value, 'detail', path, expectAppText);
-  if (value.type === 'error') expectAppText(value.message, `${path}.message`);
+  if (value.type === 'error') {
+    expectAppText(value.message, `${path}.message`);
+    if (value.safetyReview !== undefined && !isProviderSafetyReview(value.safetyReview)) throw new Error(`Invalid safety review at ${path}.safetyReview`);
+  }
 }
 
 function expectWorkspace(value: unknown, path: string): void {

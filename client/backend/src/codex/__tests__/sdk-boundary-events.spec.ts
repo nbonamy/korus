@@ -1,3 +1,5 @@
+import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../../state-persistence';
+import { decodeAppBackendEvent } from '@workspace/core/backend-protocol/events';
 import { product } from '@workspace/core/product';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { CodexConversationEvent } from '@codex-app-sdk/core/surface';
@@ -13,6 +15,63 @@ describe(`Codex SDK → ${product.name} backend event contract`, () => {
   const fixtures: ReturnType<typeof codexSdkFixture>[] = [];
   const setup = () => { const fixture = codexSdkFixture(); fixtures.push(fixture); return fixture; };
   afterEach(async () => { await Promise.all(fixtures.splice(0).map(({ driver }) => driver.close())); });
+
+  it('projects structured provider safety blocks clearly and preserves them across restart', async () => {
+    const { driver, conversation, events } = setup();
+    const detail = 'Request stopped';
+    conversation('conversation-a').setSnapshot({ error: null, turns: [{ id: 'blocked', status: 'failed', error: { message: detail, codexErrorInfo: 'misalignment_policy_violation', additionalDetails: null }, willRetry: false, startedAt: null, completedAt: null, durationMs: null }] });
+    const snapshot = createTestSnapshot();
+    snapshot.agents = [sdkAgent()];
+    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new BackendDriverRpc(new Map([['codex', driver]])) });
+    try {
+      await driver.loadConversation(snapshot.agents[0]!);
+      expect(snapshot.agents[0]!.status).toMatchObject({ type: 'error', message: expect.stringContaining('Conversation blocked by provider') });
+      const restored = snapshotFromPersistedState(JSON.parse(JSON.stringify(persistedStateFromSnapshot(snapshot))));
+      expect(restored.agents[0]!.status).toStrictEqual(snapshot.agents[0]!.status);
+      expect(await server.handleMessage({ jsonrpc: '2.0', id: 'blocked-send', method: 'agent/prompt/send', params: { agentId: snapshot.agents[0]!.id, prompt: 'continue' } })).toMatchObject({ error: { message: expect.stringContaining('Conversation blocked by provider') } });
+      expect(conversation('conversation-a').handle.sendMessage).not.toHaveBeenCalled();
+      for (const [method, params] of [['agent/turn/retry', {}], ['agent/turn/delete', {}], ['agent/turn/edit', { content: 'replacement' }]] as const) {
+        await expect(server.handleMessage({ jsonrpc: '2.0', id: method, method, params: { agentId: snapshot.agents[0]!.id, turnId: 'blocked', ...params } })).rejects.toThrow('Conversation blocked by provider');
+      }
+      for (const event of events.filter(event => event.type === 'agent.statusChanged')) expect(() => decodeAppBackendEvent(JSON.parse(JSON.stringify({ ...event, seq: 1, occurredAt: '' })))).not.toThrow();
+    } finally { await server.close(); }
+  });
+
+  it('continues only the exact reviewed provider finding through the dedicated SDK action', async () => {
+    const { driver, conversation } = setup();
+    const snapshot = createTestSnapshot(); snapshot.agents = [sdkAgent()];
+    const c = conversation('conversation-a');
+    const findings = { errorType: 'reviewable', detailedExplanation: 'Review the file operation and its authorization.', steer: { message: 'Exact provider continuation instruction.' }, reviewTarget: 'opaque-target' };
+    const blocked = { id: 'blocked', status: 'failed' as const, error: { message: 'Request stopped', codexErrorInfo: 'misalignmentPolicyViolation', additionalDetails: null, misalignment: findings }, willRetry: false, startedAt: null, completedAt: null, durationMs: null };
+    c.setSnapshot({ turns: [blocked, { ...blocked, id: 'older', status: 'completed', error: null }], turnIds: ['older', 'blocked'] });
+    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new BackendDriverRpc(new Map([['codex', driver]])) });
+    try {
+      await driver.loadConversation(snapshot.agents[0]!);
+      const status = snapshot.agents[0]!.status;
+      expect(status).toMatchObject({ type: 'error', safetyReview: { explanation: findings.detailedExplanation, canContinue: true } });
+      if (status.type !== 'error' || !status.safetyReview) throw new Error('Missing review');
+      const restored = snapshotFromPersistedState(JSON.parse(JSON.stringify(persistedStateFromSnapshot(snapshot))));
+      expect(restored.agents[0]!.status).toMatchObject({ type: 'error', safetyReview: { ...status.safetyReview, canContinue: false } });
+      expect(() => decodeAppBackendEvent({ type: 'agent.statusChanged', agentId: snapshot.agents[0]!.id, seq: 1, occurredAt: '', payload: status })).not.toThrow();
+      const target = { id: status.safetyReview.id, conversationId: 'conversation-a', turnId: 'blocked' };
+      const submit = (review = target) => server.handleMessage({ jsonrpc: '2.0', id: 'review', method: 'agent/turn/continueInterrupted', params: { agentId: snapshot.agents[0]!.id, safetyReview: review } });
+      for (const misalignment of [undefined, { ...findings, detailedExplanation: null }, { ...findings, steer: null }, { ...findings, steer: { message: 'Changed instruction' } }]) {
+        c.setSnapshot({ turns: [{ ...blocked, error: { ...blocked.error, misalignment } }] });
+        await expect(submit()).rejects.toThrow('Provider safety continuation is unavailable');
+      }
+      c.setSnapshot({ turns: [blocked] });
+      await expect(submit({ ...target, conversationId: 'other' })).rejects.toThrow('Provider safety continuation is unavailable');
+      expect(c.handle.continueAfterSafetyReview).not.toHaveBeenCalled();
+      c.handle.continueAfterSafetyReview.mockImplementation(async () => {
+        c.setSnapshot({ busy: true, activeTurnId: 'approved', turnIds: ['blocked', 'approved'], turns: [{ ...blocked, id: 'approved', status: 'inProgress', error: null }] });
+        return c.handle.getSnapshot();
+      });
+      expect(await submit()).not.toHaveProperty('error');
+      expect(c.handle.continueAfterSafetyReview).toHaveBeenCalledExactlyOnceWith({ turnId: 'blocked', findings });
+      await expect(submit()).rejects.toThrow('Provider safety continuation is unavailable');
+      expect(c.handle.continueAfterSafetyReview).toHaveBeenCalledTimes(1);
+    } finally { await server.close(); }
+  });
 
   it('transports image references in snapshots and events and resolves bytes only for the current owning session', async () => {
     const { driver, conversation, events } = setup();
