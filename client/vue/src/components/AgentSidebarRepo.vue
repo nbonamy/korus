@@ -179,14 +179,14 @@
               <PlusIcon aria-hidden="true" />
             </button>
           </span>
-          <span v-else-if="group.kind === 'worktree' && !featureOnly" class="agent-sidebar__workspace-actions">
+          <span v-else-if="group.kind === 'worktree'" class="agent-sidebar__workspace-actions">
             <el-tooltip :content="group.sessions.length > 4 ? t('features.openLimited', { count: group.sessions.length }) : t('features.open')" placement="right" :show-after="300">
               <button type="button" :aria-label="t('features.open')" @click.stop="emit('open-feature', group.sessions.map(session => session.agentId))">
                 <OpenFeatureIcon aria-hidden="true" />
               </button>
             </el-tooltip>
             <AppMenuButton
-              v-if="group.protected && !phoneScope"
+              v-if="group.protected && !phoneScope && !featureOnly"
               :ariaLabel="t('features.newWorktree')"
               :items="[{ id: 'new-worktree', type: 'action', label: t('sidebar.newWorktree'), icon: GitForkIcon }]"
               @select="emit('create-feature-worktree', featureRepositoryTargets)"
