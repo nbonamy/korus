@@ -75,7 +75,7 @@ export class VisualizeService {
   }
 
   developerInstructions(): string {
-    return 'Visualize requires an open pane; load korus-visualize through read-skill before using its tools.';
+    return 'Small Excalidraw diagrams render in chat from excalidraw fenced JSON blocks. For larger or editable diagrams, load korus-visualize, call open-visualize, then add-visualization.';
   }
 
   async enter(agentId: string, choose = false): Promise<{ created: boolean; visualize: VisualizeSession }> {

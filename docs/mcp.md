@@ -271,8 +271,12 @@ Registered per authenticated request by independent modules
 
 - **Visualize** tools are advertised from session start because providers may cache
   tool catalogs. Publishing and editing require an open Visualize session for the
-  current conversation; `fetch_tech_icon` can run without an open pane. Instructions say tool availability alone
-  does not activate Visualize. Mermaid is limited to the families `beautiful-mermaid`
+  current conversation; `open-visualize` opens that pane without submitting another
+  model turn, and `fetch_tech_icon` can run without an open pane. Model guidance
+  keeps small diagrams in chat through Korus's `excalidraw` custom fenced-block
+  renderer and directs larger or editable diagrams to the pane. The SDK owns the
+  generic custom-block extension; Korus owns Excalidraw validation and rendering.
+  Mermaid is limited to the families `beautiful-mermaid`
   renders (flowchart, state, sequence, class, ER, XY); other types use SVG, and
   unsupported Mermaid is rejected before it reaches durable state. Generated-image
   inputs must resolve inside the generated-images root (10 MiB cap); snapshots keep

@@ -1,4 +1,5 @@
 import { createApp } from 'vue';
+import InlineExcalidrawBlock from './components/InlineExcalidrawBlock.vue';
 import type { AppClient } from '@workspace/core/client';
 import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
@@ -32,6 +33,8 @@ export function mountAppVueApp(options: MountAppVueAppOptions) {
   document.documentElement.dataset.surface = surface;
 
   return createApp(rootComponent)
+    // Public SDK extension key; older SDKs leave the fenced source as ordinary code.
+    .provide(Symbol.for('codex.custom-blocks'), { excalidraw: InlineExcalidrawBlock })
     .use(ElementPlus)
     .use(i18n)
     .mount(options.target ?? '#app');

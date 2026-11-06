@@ -1,11 +1,17 @@
 ---
 name: korus-visualize
-description: Create or edit diagrams and canvases in the open Korus Visualize pane, especially for design and architecture.
+description: Create or edit diagrams and canvases in Korus Visualize, especially for larger diagrams, design and architecture.
 ---
 
 # Visualize
 
-Requires an open pane; tool availability is not activation. Closed pane: ask to open or stay in chat.
+Keep small diagrams in chat using an `excalidraw` fenced JSON block containing
+`{elements, files}`. Load `korus-stack-diagram` for the shared typography, palette
+and composition, including its small-inline-diagram guidance. Aim for roughly 8 nodes and at most 40 elements including
+labels and arrows. Use no links or image assets. For larger diagrams or when
+an editable canvas helps, call `open-visualize`, then publish with
+`add-visualization`. Opening the pane continues this conversation without
+starting another model turn. Publishing and editing require the pane to be open.
 
 - list-visualizations for selection; get-visualization before replacement; add-visualization for new content.
 - Pick the format by need:

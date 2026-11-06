@@ -11,6 +11,7 @@ import { createVisualizeToolModuleProvider } from '../visualize-tools';
 describe('Visualize MCP tool module', () => {
   it('registers for every agent and delegates domain inputs to the owning session', async () => {
     const service = {
+      enter: vi.fn().mockResolvedValue({ created: true, visualize: { id: 'session' } }),
       fetchIcon: vi.fn().mockResolvedValue({found:false,icon:'vue'}),
       readCanvas: vi.fn().mockReturnValue({ revision: 2, elements: [], selectedElementIds: [] }),
       editCanvas: vi.fn().mockResolvedValue({ success: true, revision: 3 }),
@@ -34,6 +35,7 @@ describe('Visualize MCP tool module', () => {
     } as never, { proposedActions: true });
 
     expect([...handlers.keys()]).toStrictEqual([
+      'open-visualize',
       'fetch_tech_icon',
       'read-visualization-canvas',
       'edit-visualization-canvas',
@@ -86,6 +88,11 @@ it('keeps fetch_tech_icon listed and callable before opening and after closing V
   };
   const closed=await connect();
   expect((await closed.client.listTools()).tools.map(tool=>tool.name)).toContain('fetch_tech_icon');
+  expect((await closed.client.listTools()).tools.map(tool=>tool.name)).toContain('open-visualize');
+  expect((await closed.client.callTool({ name: 'open-visualize', arguments: {} })).isError).not.toBe(true);
+  expect(service.contextForAgent(agent.id)?.isOpen).toBe(true);
+  expect((await closed.client.callTool({ name: 'add-visualization', arguments: { title: 'Diagram', content: { kind: 'excalidraw', source: '{"elements":[{"id":"a","type":"rectangle","x":0,"y":0,"width":100,"height":50}]}' } } })).isError).not.toBe(true);
+  expect(service.list(agent.id).visualizations).toHaveLength(1);
   expect((await closed.client.callTool({name:'fetch_tech_icon',arguments:{icon:'vue'}})).isError).not.toBe(true);
   await closed.client.close();await closed.server.close();
   await service.enter(agent.id);

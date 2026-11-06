@@ -430,6 +430,10 @@ export const messages = {
       zoomOut: 'Zoom out',
       resetView: 'Reset view',
       zoomLevel: '{percent}% zoom',
+      inlineDiagram: 'Diagram',
+      diagramRendering: 'Diagram is rendering…',
+      diagramUnavailable: 'Diagram preview unavailable. The source is shown below.',
+      showSource: 'Show source',
       kind: { mermaid: 'Mermaid', svg: 'SVG', excalidraw: 'Excalidraw', image: 'Generated image' },
     },
     worktreeReuse: {

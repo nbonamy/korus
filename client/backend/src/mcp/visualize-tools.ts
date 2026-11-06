@@ -29,6 +29,12 @@ export function createVisualizeToolModuleProvider(visualize: VisualizeService): 
 }
 
 function registerVisualizeTools(server: McpServer, visualize: VisualizeService, agentId: string): void {
+  server.registerTool('open-visualize', {
+    description: 'Open the Visualize pane for this conversation without starting another model turn. Use for larger diagrams or when an editable canvas helps; then publish the diagram with add-visualization. Small diagrams can stay in chat as excalidraw fenced JSON blocks.',
+  }, () => loggedToolResult('open-visualize', { agentId }, async () => {
+    const { visualize: session } = await visualize.enter(agentId);
+    return { success: true, sessionId: session.id };
+  }));
   registerFetchIconTool(server, icon => visualize.fetchIcon(agentId, icon));
   server.registerTool('read-visualization-canvas', {
     description: 'Read current selected canvas elements and revision. Set selectedOnly false only when the whole canvas is needed.',

@@ -8,6 +8,7 @@ import type { ExcalidrawElement, FileId } from '@excalidraw/excalidraw/element/t
 import type { CanvasDocument, CanvasElement } from '@workspace/core/visualize-canvas';
 import type { Visualization } from '@workspace/core/visualize';
 import { sanitizeSvg } from './visualization-svg';
+import { parseInlineExcalidraw } from './inline-excalidraw';
 import '@excalidraw/excalidraw/index.css';
 
 Object.assign(window, { EXCALIDRAW_ASSET_PATH: new URL('./excalidraw/', document.baseURI).href });
@@ -15,6 +16,15 @@ Object.assign(window, { EXCALIDRAW_ASSET_PATH: new URL('./excalidraw/', document
 export type CanvasScene = Omit<CanvasDocument, 'revision'>;
 export type CanvasAnnotationTarget = { id: string; x: number; y: number; width: number; height: number };
 export type CanvasControlsState = { zoom: number };
+export async function renderInlineExcalidraw(source: string): Promise<string> {
+  const scene = parseInlineExcalidraw(source);
+  const svg = await exportToSvg({
+    elements: restoreSceneElements(normalizeCanvasFonts(scene.elements) as unknown as readonly ExcalidrawElement[]),
+    files: scene.files as BinaryFiles,
+    appState: { exportBackground: false, exportWithDarkMode: false },
+  });
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(sanitizeSvg(svg.outerHTML))}`;
+}
 export async function importVisualization(visualization: Visualization, imageSource: string): Promise<CanvasScene> {
   if (visualization.canvas) {
     const scene = structuredClone(visualization.canvas);

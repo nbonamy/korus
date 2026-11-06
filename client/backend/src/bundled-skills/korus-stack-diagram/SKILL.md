@@ -1,6 +1,6 @@
 ---
 name: korus-stack-diagram
-description: Compose stack and system architecture diagrams with icon tiles, subsystem groups, clear connections and deliberate native canvas geometry. Shared by Visualize and Polished Diff Viz.
+description: Shared diagram typography, colors and composition for inline chat diagrams, Visualize and Polished Diff Viz.
 ---
 
 # Stack diagrams
@@ -10,6 +10,18 @@ relationships. The caller supplies the facts, output schema and allowed tools.
 Keep those contracts: this skill does not grant browsing, filesystem access, script
 execution or a different output format. The examples illustrate composition, not
 facts to insert into the user's system.
+
+## Small inline diagrams
+
+Use the same visual language in chat: Nunito (`fontFamily: 6`) for names and
+Cascadia Code (`fontFamily: 3`) for relationship labels, with the reference palette
+below and `roughness: 0`. Use short 18px names and 14px relationship labels.
+Favor a compact, balanced composition with whitespace between shapes and arrows.
+Keep labels readable; move a larger diagram to Visualize instead of shrinking it.
+Inline output uses simple shapes and text with no image assets or links. Keep it
+within the caller's element budget; omit icon tiles, groups and secondary labels
+when they add clutter. This is a compact application of the shared style, not a
+requirement to turn every small diagram into a full architecture canvas.
 
 ## Content and hierarchy
 
