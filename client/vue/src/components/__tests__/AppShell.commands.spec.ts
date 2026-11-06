@@ -554,10 +554,11 @@ describe('AppShell dialogs and commands', () => {
     expect(getAgentGitDiff).toHaveBeenCalledWith('agent-dina');
     expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toStrictEqual(['Changes', 'Browser']);
 
-    // Plain Command-W is the window's; closing an agent deletes it, so it takes Shift.
+    // Closing windows and the old agent shortcut must not close an agent.
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', metaKey: true, cancelable: true }));
-    expect(wrapper.emitted('close-agent')).toBeUndefined();
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'D', metaKey: true, shiftKey: true, cancelable: true }));
+    expect(wrapper.emitted('close-agent')).toBeUndefined();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', metaKey: true, cancelable: true }));
     window.dispatchEvent(new KeyboardEvent('keydown', { key: '`', code: 'Backquote', metaKey: true, cancelable: true }));
     expect(wrapper.emitted('select-team')).toBeUndefined();
     window.dispatchEvent(new KeyboardEvent('keydown', { key: '`', code: 'Backquote', ctrlKey: true, cancelable: true }));
