@@ -364,7 +364,7 @@ describe('app menu', () => {
 
     expect(menuItem(menu, 'File', 'New Team')?.accelerator).toBe('CommandOrControl+N');
     expect(menuItem(menu, 'File', 'Close Window')?.accelerator).toBe('CommandOrControl+W');
-    expect(menuItem(menu, 'File', 'Close Agent')?.accelerator).toBe('CommandOrControl+Shift+D');
+    expect(menuItem(menu, 'File', 'Close Agent')?.accelerator).toBe('CommandOrControl+Backspace');
     expect(menuItem(menu, 'View', 'Next Team')?.accelerator).toBe('Control+`');
     expect(menuItem(menu, 'View', 'Previous Team')?.accelerator).toBe('Control+Shift+`');
     expect(menuItem(menu, 'File', 'Quit')?.accelerator).toBe('CommandOrControl+Q');

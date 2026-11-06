@@ -42,10 +42,12 @@ describe('appCommandFromInput', () => {
   it('maps file and edit menu command shortcuts', () => {
     expect(appCommandFromInput({ type: 'keyDown', meta: true, key: 'n' })).toStrictEqual({ type: 'new-team' });
     expect(appCommandFromInput({ type: 'keyDown', meta: true, key: 't' })).toBeNull();
-    // Close is the window's, handled by the menu; closing an agent deletes it, so it needs Shift.
+    // Close Window stays with the menu; Close Agent uses Command–Backspace.
     expect(appCommandFromInput({ type: 'keyDown', meta: true, key: 'w' })).toBeNull();
     expect(appCommandFromInput({ type: 'keyDown', meta: true, shift: true, key: 'w' })).toBeNull();
-    expect(appCommandFromInput({ type: 'keyDown', meta: true, shift: true, key: 'D' })).toStrictEqual({ type: 'close-active-agent' });
+    expect(appCommandFromInput({ type: 'keyDown', meta: true, shift: true, key: 'D' })).toBeNull();
+    expect(appCommandFromInput({ type: 'keyDown', meta: true, key: 'Backspace' })).toStrictEqual({ type: 'close-active-agent' });
+    expect(appCommandFromInput({ type: 'keyDown', key: 'Backspace' })).toBeNull();
     expect(appCommandFromInput({ type: 'keyDown', meta: true, shift: true, key: 'm' })).toStrictEqual({ type: 'toggle-spoken-announcements-muted' });
     expect(appCommandFromInput({ type: 'keyDown', meta: true, key: 'q' })).toStrictEqual({ type: 'quit' });
     expect(appCommandFromInput({ type: 'keyDown', meta: true, key: 'e' })).toStrictEqual({ type: 'edit-active-agent' });
