@@ -20,12 +20,14 @@ describe('AppBackendServer code review workflow', () => {
     snapshot.teams[0]!.agentIds = [owner.id];
     const interrupt = vi.fn();
     const runCodeReview = vi.fn();
+    const stopAgentMonitors = vi.fn();
     const driver: AgentBackendDriver = {
       backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
       getCapabilities: () => codexBackendCapabilities, runCodeReview, interrupt,
       sendPrompt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => undefined, close: vi.fn(),
     };
     const server = new AppBackendServer({
+      stopAgentMonitors,
       version: 'test', snapshot, saveSnapshot: vi.fn().mockResolvedValue(undefined),
       driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
       codeReviewTools: {
@@ -43,6 +45,7 @@ describe('AppBackendServer code review workflow', () => {
       expect(session).toMatchObject({ status: 'reviewing', automation: { enabled: false, state: 'manual' } });
       expect(owner.status.type).toBe('working');
       await request(server, backendMethods.agentInterrupt, { agentId: owner.id });
+      expect(stopAgentMonitors).toHaveBeenCalledExactlyOnceWith(owner.id);
       expect(owner.codeReview).toBe(session);
       expect(session.status).toBe('failed');
       expect(session.rounds[0]!.error).toBe('Review stopped. Retry to complete the inspection.');

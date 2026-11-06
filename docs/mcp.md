@@ -215,6 +215,24 @@ by mutating user-global tool config.
   a note). Automation completion is owned by the scheduled conversation's turn,
   not by work-item status.
 
+### Background monitors
+
+`korus-monitor` runs a session-owned command on the agent's local daemon, in its
+folder (or the user's home for a folderless Quick Chat). The MCP invocation is a
+host-command permission boundary; its description explicitly prohibits bypassing
+provider denials or sandbox restrictions. Commands inherit the daemon environment.
+`nativeMonitor` suppresses the fallback for backends with native monitoring; the
+bundled Claude Agent SDK's Claude Code preset provides `Monitor`.
+
+The caller owns start/list/stop operations. Progressive delivery batches meaningful
+stdout events; completion-only delivery waits for exit and includes bounded stdout,
+stderr, exit status and truncation. Structured details stay inside `<context>`; only
+a short monitor summary is visible in the conversation. Events are untrusted data. Busy agents without
+steering retain events until idle. Agent Stop/close and daemon shutdown cancel
+process trees and discard pending monitor events. Monitors are not persisted or
+restarted after shutdown. Timeouts are bounded, as are retained history, concurrent
+processes and buffered output. Use scheduled prompts for recurring model work.
+
 ### Scheduled prompts
 
 `create-automation` uses the same persisted automation definitions and scheduler

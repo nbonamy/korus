@@ -155,6 +155,7 @@ export type AppBackendServerOptions = {
   sshConnections?: SshConnectionService;
   remoteClients?: RemoteDaemonClientManager;
   remoteSnapshotCache?: RemoteSnapshotCache;
+  stopAgentMonitors?: (agentId: string) => void;
   sendAgentMessage?: (fromAgentId: string, toAgentId: string, content: string) => void;
   configureCodexResourceSharing?: (input: SetCodexResourceSharingInput) => Promise<void>;
   inspectCodexResourceSharing?: (enabled: boolean) => Promise<CodexResourceSharingStatus>;
@@ -2291,6 +2292,7 @@ export class AppBackendServer {
           ...(input ? { input } : {}),
         }, async (existingAgent) => {
           if (this.agentClosuresInFlight.has(agentId)) throw new Error('This agent is already closing.');
+          this.options.stopAgentMonitors?.(agentId);
           this.agentClosuresInFlight.add(agentId);
           try {
             const finishedPullRequest = input?.pullRequestCleanup === true
@@ -3119,6 +3121,7 @@ export class AppBackendServer {
         // Remote parents' durable tasks belong to this controller, before the host sees Stop.
         if (location?.kind === 'remote') await this.tasks?.blockParent(agentId);
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentInterrupt, { agentId }, async (agent) => {
+          this.options.stopAgentMonitors?.(agent.id);
           this.stoppingAgents.add(agent.id);
           this.cancelledStartupResumes.add(agent.id);
           try {

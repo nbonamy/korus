@@ -406,6 +406,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
       pluginStatus = await loadPluginStatus(snapshot.general.providerHomes?.codex?.homePath);
       return pluginStatus;
     },
+    stopAgentMonitors: agentId => mcpService.stopAgentMonitors(agentId),
     sendAgentMessage: (fromAgentId, toAgentId, content) => mcpService.sendMessage(fromAgentId, toAgentId, content),
     onPromptStarting: (agentId, promptOptions) => {
       mcpService.recordPromptInputMethod(agentId, promptOptions?.inputMethod);

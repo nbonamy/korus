@@ -1,3 +1,5 @@
+import { MonitorManager } from '../monitors/manager';
+import { createMonitorToolModuleProvider } from './monitor-tools';
 import { setFeatureLabel } from '@workspace/core/feature-groups';
 import type { ExecutionSelectionOverrides } from '@workspace/core/contracts/execution';
 import { applyExecutionSelection, defaultExecutionSelection, executionSelectionForAgent, resolveExecutionSelection } from '@workspace/core/execution-selection';
@@ -114,6 +116,7 @@ export class AppMcpService {
   private readonly remoteMessageDeliveries = new Set<string>();
   private readonly remoteMessageRetries = new Map<string, ReturnType<typeof setTimeout>>();
   private stopped = false;
+  private readonly monitors: MonitorManager;
   private readonly promptInputMethodsByAgentId = new Map<string, SendPromptOptions['inputMethod']>();
   private readonly reviewTools = new ReviewToolRegistry();
   private readonly agentCreation: AgentCreationService;
@@ -174,6 +177,16 @@ export class AppMcpService {
       onCreateAgent: (agent, input) => this.createAgentFromMcp(agent, input),
       onCloseAgent: options.closeAgent,
     });
+    this.monitors = new MonitorManager(async (owner, event) => {
+      const agent = this.snapshot.agents.find(agent => agent.id === owner);
+      if (!agent) { this.monitors.stopOwner(owner); return true; }
+      if (this.stopped || !this.driverRpc || (agent.status.type !== 'idle' && !(agent.status.type === 'working' && this.driverRpc.getCapabilities(agent).steerPrompt))) return false;
+      const state = { running: 'update', completed: 'completed', failed: 'failed', cancelled: 'stopped', timedOut: 'timed out' }[event.state];
+      const name = event.name.replace(/[\r\n]/gu, ' ').replace(/</gu, '&lt;').replace(/>/gu, '&gt;');
+      const details = JSON.stringify(event).replace(/</gu, '\\u003c');
+      this.coordinator.sendMessage(owner, owner, `<context>\n[Monitor event]\n${details}\n</context>\n\nMonitor ${state}: ${name}.`);
+      return true;
+    });
     this.server = new AppMcpHttpServer({
       forwardCollaboration: options.forwardCollaboration,
       coordinator: this.coordinator,
@@ -183,6 +196,7 @@ export class AppMcpService {
       hostedMcpGateway: options.hostedMcpGateway,
       reviewTools: this.reviewTools,
       toolModuleProviders: [
+        createMonitorToolModuleProvider({ agents: () => this.snapshot.agents, capabilities: agent => this.driverRpc?.getCapabilities(agent) ?? defaultBackendCapabilities(agent.backend), monitors: this.monitors }),
         createWorktreeInitializationToolModuleProvider(this.snapshot, this.worktreeManager),
         ...(options.persistSnapshot ? [createAutomationToolModuleProvider({ snapshot: this.snapshot, persist: options.persistSnapshot,
           notify: () => this.emit({ type: 'snapshot.updated', payload: this.snapshot }) })] : []),
@@ -205,6 +219,7 @@ export class AppMcpService {
 
   handleBackendEvent(event: BackendPublishedEvent): void {
     const view = providerConversationEventView(event);
+    if (event.agentId) void this.monitors.flush(event.agentId);
     if (event.agentId && view.type === 'turn.completed') {
       this.coordinator.clearStatus(event.agentId);
       // User-entered delegation controls belong to the turn they were submitted for.
@@ -244,10 +259,18 @@ export class AppMcpService {
     return this.snapshot.agents.find(agent => agent.id === request.agentId)!;
   }
 
-  stop(): Promise<void> {
+  stopAgentMonitors(agentId: string): void {
+    this.monitors.stopOwner(agentId);
+    const pending = this.coordinator.peekUnreadMessages(agentId).filter(message => message.fromId === agentId && message.content.startsWith('<context>\n[Monitor event]\n'));
+    this.coordinator.markMessagesRead(pending.map(message => message.id));
+    this.emitDequeuedMessages(agentId, pending.map(message => message.id));
+  }
+
+  async stop(): Promise<void> {
     this.stopped = true;
     for (const timer of this.remoteMessageRetries.values()) clearTimeout(timer);
     this.remoteMessageRetries.clear();
+    await this.monitors.close();
     return this.server.stop();
   }
 
