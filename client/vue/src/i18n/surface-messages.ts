@@ -1116,6 +1116,8 @@ export const surfaceMessages = {
   "settingsMenu": {
     "loadFailed": "Couldn’t load usage",
     "remainingValue": "{value} remaining",
+    "paceUnder": "Under pace by {duration}",
+    "paceOver": "Over pace by {duration}",
     "resetValue": "Resets in {value}",
     "engine": { "codex": "Codex", "claude": "Claude", "antigravity": "Antigravity" },
     "settingsMenu": "Settings menu",
