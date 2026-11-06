@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'vitest';
@@ -11,11 +13,16 @@ import { sdkSourceAliases, sdkSourceRoot } from '../../../../../vite.sdk-aliases
 test('inline renderer streams and renders diagrams, integrating with capable SDKs and preserving older code fallback', async () => {
   const root = fileURLToPath(new URL('../../../../..', import.meta.url));
   const useSource = process.env.CODEX_APP_SDK_SOURCE === '1';
+  const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'inline-diagram-vite-'));
   const server = await createServer({
-    configFile: false, root, logLevel: 'error',
+    configFile: false, root, logLevel: 'error', cacheDir,
     server: { host: '127.0.0.1', port: 0, fs: { allow: [root, ...(useSource ? [sdkSourceRoot] : [])] } },
     resolve: { alias: { '@workspace/core': path.join(root, 'core/src'), ...(useSource ? sdkSourceAliases : {}) }, dedupe: ['vue'] },
-    optimizeDeps: useSource ? { exclude: Object.keys(sdkSourceAliases) } : undefined,
+    optimizeDeps: {
+      // Lazy editor imports must not trigger an optimizer reload mid-interaction.
+      include: ['@excalidraw/excalidraw', '@excalidraw/mermaid-to-excalidraw', 'react', 'react-dom/client'],
+      ...(useSource ? { exclude: Object.keys(sdkSourceAliases) } : {}),
+    },
     plugins: [vue(), excalidrawAssets(), {
       name: 'inline-diagram-fixture',
       configureServer(server) {
@@ -86,5 +93,5 @@ test('inline renderer streams and renders diagrams, integrating with capable SDK
     assert.ok((await host.locator('pre').textContent()).includes('{broken'));
     assert.deepEqual(errors, []);
     await page.screenshot({ path: '/tmp/korus-inline-diagram-fallback.png' });
-  } finally { await browser.close(); await server.close(); }
+  } finally { await browser.close(); await server.close(); await rm(cacheDir, { recursive: true, force: true }); }
 });
