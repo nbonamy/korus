@@ -44,7 +44,7 @@ function fixture(autoAcceptCode?: string) {
     } };
 }
 describe('companion authorization gateway', () => {
-  it('keeps released phone subscriptions readable while a published Codex reset is still saving', async () => {
+  it.each([false, true])('keeps released phone subscriptions readable while a published Codex reset is still saving (safety findings: %s)', async (withFindings) => {
     const f = fixture(); await f.pair();
     const app = createTestSnapshot();
     const agent = { ...workspace.agents[0]!, backendSession: { kind: 'codex' as const, threadId: 'thread' } };
@@ -52,7 +52,12 @@ describe('companion authorization gateway', () => {
     f.port.workspace.mockResolvedValue({ teams: workspace.teams, agents: [agent] });
     const phoneTarget = { ...target, sessionId: JSON.stringify(agent.backendSession) };
     const frame = { type: 'codex.conversationSnapshotChanged' as const, agentId: agent.id, backend: 'codex' as const,
-      threadId: 'thread', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot: sdkSnapshot('thread') } };
+      threadId: 'thread', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot: sdkSnapshot('thread', withFindings ? {
+        turnIds: ['blocked'], turns: [{ id: 'blocked', status: 'failed', willRetry: false,
+          startedAt: null, completedAt: null, durationMs: null,
+          error: { message: 'Provider stopped this turn', additionalDetails: null, codexErrorInfo: 'misalignmentPolicyViolation',
+            misalignment: { errorType: 'reviewable', detailedExplanation: 'Provider findings', steer: null, reviewTarget: null } } }],
+      } : {}) } };
     let finishSave!: () => void;
     const saving = new Promise<void>(resolve => { finishSave = resolve; });
     let source!: ConversationSource;
@@ -75,6 +80,14 @@ describe('companion authorization gateway', () => {
     const results = await reads;
     expect(results.map(result => result.status)).toStrictEqual(['fulfilled', 'fulfilled']);
     expect(results.map(result => result.status === 'fulfilled' ? JSON.parse(JSON.stringify(result.value)) : null)).toStrictEqual([frame, frame]);
+    // Released phones read these established fields without negotiating the SDK's optional findings.
+    for (const result of results) {
+      if (result.status !== 'fulfilled') throw new Error('Subscription failed');
+      const decoded = JSON.parse(JSON.stringify(result.value));
+      expect(decoded.payload.snapshot.turns.map((turn: { id: string; status: string; error: { message: string } | null }) =>
+        ({ id: turn.id, status: turn.status, error: turn.error?.message ?? null }))).toStrictEqual(
+        withFindings ? [{ id: 'blocked', status: 'failed', error: 'Provider stopped this turn' }] : []);
+    }
     expect(driverRequest).toHaveBeenCalledOnce();
     driverRequest.mockRejectedValueOnce(new Error('History unavailable'));
     await expect(f.gateway.request('phone', 'conversation.subscribe', phoneTarget)).rejects.toThrow('unavailable');
