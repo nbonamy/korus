@@ -39,6 +39,7 @@ import type { ThreadFlagId } from '@workspace/core/thread-flags';
 import { DesktopAutoUpdateService } from './auto-update';
 import { BrowserPane, browserPaneKey } from './browser-pane';
 import { BrowserExtensions } from './browser-extensions';
+import { cleanupLegacyBrowserProfiles } from './browser-profile-cleanup';
 import { launchChatGptApp } from './chatgpt-app';
 import { appCommandFromDeepLink, appDeepLinkScheme, deepLinksFromArgv } from './deep-links';
 import { ManualUpdateCheckController } from './manual-update-check';
@@ -2610,6 +2611,12 @@ export function startMainApp(): void {
   controller.registerIpcHandlers();
 
   void app.whenReady().then(async () => {
+    // Old partitions are unused; reclaim them without delaying window startup.
+    void cleanupLegacyBrowserProfiles(app.getPath('userData')).catch((error) => {
+      warnMain('browser', 'obsolete browser profile cleanup failed', {
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    });
     controller.installLocalMediaProtocol();
     if (process.env.APP_DEV_PROTOCOL_SCHEME) {
       // The profile-specific native launcher owns its alias registration.
