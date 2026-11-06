@@ -235,6 +235,12 @@ processes and buffered output. Use scheduled prompts for recurring model work.
 
 ### Scheduled prompts
 
+`list-automations` inspects same-team schedules with exact target IDs and an
+explicit current-conversation indicator. Passing an ID includes the saved prompt.
+`update-automation` applies partial edits through the UI's normalization rules,
+requires the inspected `updatedAt` value, preserves omitted fields and execution
+history, and rolls back the edit when persistence fails.
+
 `create-automation` uses the same persisted automation definitions and scheduler
 as the UI. It is available to local agents and Quick Chats, excluding managed
 review and Mission workers. Targets stay within the caller's team. Existing
