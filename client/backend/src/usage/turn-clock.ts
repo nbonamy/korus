@@ -7,6 +7,7 @@ type Turn = {
   waiting: boolean;
   /** Tool calls in flight; parallel calls pause the clock once, until the last one ends. */
   tools: Set<string>;
+  generating: boolean;
 };
 /**
  * Measures how long a turn really worked, independent of the provider driver:
@@ -25,7 +26,15 @@ export class TurnClock {
         first: null,
         waiting: false,
         tools: new Set(),
+        generating: false,
       });
+  }
+  /** A response can still generate thinking or tool arguments while tool rows already exist. */
+  generation(agentId: string, running: boolean): void {
+    const turn = this.turns.get(agentId);
+    if (!turn) return;
+    turn.generating = running;
+    this.sync(turn);
   }
   /** Blocked on the user. */
   wait(agentId: string, waiting: boolean): void {
@@ -65,7 +74,7 @@ export class TurnClock {
     };
   }
   private sync(turn: Turn): void {
-    const blocked = turn.waiting || turn.tools.size > 0;
+    const blocked = turn.waiting || (turn.tools.size > 0 && !turn.generating);
     if (blocked && turn.pausedAt === null) turn.pausedAt = this.now();
     else if (!blocked && turn.pausedAt !== null) {
       turn.paused += this.now() - turn.pausedAt;

@@ -16,6 +16,8 @@ export type ExecutionObservation = {
   /** Why the producer cannot establish a complete request set. */
   requestCoverageReason?: RequestCoverageReason | null;
   durationMs?: number;
+  /** Transient provider stream activity, consumed by the daemon clock, never persisted or sent to clients. */
+  generation?: "started" | "output" | "ended";
   /** Measured by the backend, never by a driver. */
   timing?: ExecutionTiming | null;
 };
@@ -44,7 +46,7 @@ export type Consumption = {
   cacheWrite: number | null;
   reasoning?: number | null;
 };
-export type UsageRecord = Omit<ExecutionObservation, "phase"> & {
+export type UsageRecord = Omit<ExecutionObservation, "phase" | "generation"> & {
   phase: Exclude<ExecutionObservation["phase"], "usage">;
   startedAt: number;
   teamId: string | null;

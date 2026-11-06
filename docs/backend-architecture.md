@@ -1349,6 +1349,12 @@ It covers UTC bucket attribution, model changes, nulls and
 content/local-dimension canaries without an endpoint. Architecture AST lint limits
 projection dependencies and rejects direct network/timer operations.
 
+Claude throughput timing consumes transient SDK response activity, including thinking
+and tool-input generation. Tool rows can appear before their inputs finish streaming;
+response generation keeps the clock active until the response ends, then outstanding
+tools pause it. These numeric signals stay in the daemon and are not persisted or
+sent to clients. Stored historical timing samples retain their recorded values.
+
 Performance reuses the ledger's additive speed samples: measured output tokens,
 active generation milliseconds, summed time to first output, and their turn
 counts. Only hourly provider/model/tier sums enter the optional closed performance
