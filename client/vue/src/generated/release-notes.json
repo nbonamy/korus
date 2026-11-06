@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.52.5",
+  "currentVersion": "0.53.0",
   "releases": [
+    {
+      "version": "0.53.0",
+      "releasedAt": "2026-11-06",
+      "sourceSha256": "e4845935b9ca7e8ca60c4dd9b51c43c1ef37d7c87eb976ab390468965e3f3565",
+      "markdown": "### New features\n\n- **Diagrams:** View small diagrams directly in chat; agents can open Visualize for larger, editable diagrams.\n- **Antigravity usage:** See Gemini and Claude/GPT quotas and reset times in the Usage menu, plus Gemini API cost estimates in Analytics.\n- **Mission filters:** Filter Task and Implementation by status. Cmd/Ctrl-click to select multiple statuses; selections carry between stages.\n- **Diff Map filters:** Cmd/Ctrl-click file types to combine them in the map.\n\n### Improvements and fixes\n\n- **Analytics:** Keep token charts and activity totals consistent, including Antigravity usage.\n- **Antigravity:** Stop adding workflow skill files to projects.\n- **Usage menu:** Align detail rows and unavailable usage messages, with clearer quota colors and tooltips showing how far usage is under or over pace.\n- **Feature windows:** Open a feature's agents in Split from its own window's sidebar.\n- **Browser storage:** Remove obsolete browser profiles while preserving shared logins and extensions.\n- **Sidebar:** Keep the divider in place when hovering before a drag."
+    },
     {
       "version": "0.52.5",
       "releasedAt": "2026-11-05",

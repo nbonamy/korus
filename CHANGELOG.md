@@ -4,6 +4,24 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.53.0] - 2026-11-06
+
+### New features
+
+- **Diagrams:** View small diagrams directly in chat; agents can open Visualize for larger, editable diagrams.
+- **Antigravity usage:** See Gemini and Claude/GPT quotas and reset times in the Usage menu, plus Gemini API cost estimates in Analytics.
+- **Mission filters:** Filter Task and Implementation by status. Cmd/Ctrl-click to select multiple statuses; selections carry between stages.
+- **Diff Map filters:** Cmd/Ctrl-click file types to combine them in the map.
+
+### Improvements and fixes
+
+- **Analytics:** Keep token charts and activity totals consistent, including Antigravity usage.
+- **Antigravity:** Stop adding workflow skill files to projects.
+- **Usage menu:** Align detail rows and unavailable usage messages, with clearer quota colors and tooltips showing how far usage is under or over pace.
+- **Feature windows:** Open a feature's agents in Split from its own window's sidebar.
+- **Browser storage:** Remove obsolete browser profiles while preserving shared logins and extensions.
+- **Sidebar:** Keep the divider in place when hovering before a drag.
+
 ## [0.52.5] - 2026-11-05
 
 ### Improvements and fixes

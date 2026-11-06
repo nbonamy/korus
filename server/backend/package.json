@@ -1,6 +1,6 @@
 {
   "name": "@workspace/server-backend",
-  "version": "0.52.5",
+  "version": "0.53.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,7 +13,7 @@
     "migrate": "node dist/collector.mjs migrate"
   },
   "dependencies": {
-    "@workspace/core": "0.52.5",
+    "@workspace/core": "0.53.0",
     "pg": "8.23.1",
     "zod": "^4.4.3"
   },
