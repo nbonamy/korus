@@ -90,7 +90,7 @@ export function useUsageAnalytics() {
     () =>
       activity.value?.daily?.map((row) => ({
         day: row.day,
-        tokens: row.tokens?.total ?? null,
+        tokens: row.tokens?.total ?? 0,
       })) ?? null,
   );
 

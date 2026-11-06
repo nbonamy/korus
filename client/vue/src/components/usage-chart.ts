@@ -112,7 +112,9 @@ export const chartValue = (
         ? inputRatio(row.tokens)
         : measure === "turns"
           ? row.started
-          : (row.tokens?.[measure] ?? null);
+          : measure === "total"
+            ? (row.tokens?.total ?? 0)
+            : (row.tokens?.[measure] ?? null);
 export { providerColorForModel } from "@workspace/core/analytics-palette";
 /** A repository's folder name; when two share one, the folder above tells them apart. */
 function repositoryLabels(paths: string[]): Map<string, string> {
@@ -191,7 +193,7 @@ export function chartSeries(
         ),
         value: chartValue(row, measure),
         turns: row.started,
-        tokens: row.tokens?.total ?? null,
+        tokens: row.tokens?.total ?? 0,
         ...(row.cost ? { cost: row.cost } : {}),
       };
     }),

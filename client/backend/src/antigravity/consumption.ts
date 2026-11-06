@@ -16,7 +16,7 @@ export function acpConsumption(usage: unknown): Consumption | null {
   if (!count(inputTokens) || !count(outputTokens)) return null;
   const cached = cachedReadTokens ?? 0, thoughts = thoughtTokens ?? 0;
   if (!count(cached) || !count(thoughts) || cached > inputTokens || (cachedWriteTokens ?? 0) !== 0) return null;
-  return { input: inputTokens, output: outputTokens + thoughts, cacheRead: cached, cacheWrite: 0, reasoning: thoughts };
+  return { input: inputTokens, output: outputTokens + thoughts, total: inputTokens + outputTokens + thoughts, cacheRead: cached, cacheWrite: 0, reasoning: thoughts };
 }
 
 /** The model the session currently has selected; the ACP never reports the model that served a turn. */

@@ -21,7 +21,7 @@ import {
   shiftDay,
 } from "../usage-chart";
 
-it.each(["unmeasured", "partial", "unavailable"])(
+it.each(["unmeasured", "missing-total", "partial", "unavailable"])(
   "shows only the known token total for %s activity",
   async (state) => {
     const row = {
@@ -35,7 +35,9 @@ it.each(["unmeasured", "partial", "unavailable"])(
       tokens:
         state === "partial"
           ? { input: 8, output: 2, total: 10, cacheRead: 0, cacheWrite: 0 }
-          : null,
+          : state === "missing-total"
+            ? { input: 8, output: 2, cacheRead: 0, cacheWrite: 0 }
+            : null,
     };
     const summary = {
       recordedSince: 1,
@@ -58,20 +60,20 @@ it.each(["unmeasured", "partial", "unavailable"])(
         .findAll(".usage-stat__value")[1]!
         .text(),
     ).toBe(
-      state === "partial" ? "1.4" : "N/A",
+      state === "partial" ? "1.4" : "0",
     );
     expect(
       wrapper
         .findAll(".activity-stats .usage-stat__value")
         .slice(0, 2)
         .map((value) => value.text()),
-    ).toStrictEqual(state === "partial" ? ["10", "10"] : ["N/A", "N/A"]);
+    ).toStrictEqual(state === "partial" ? ["10", "10"] : state === "unavailable" ? ["N/A", "N/A"] : ["0", "0"]);
     await wrapper
       .findAll(".activity-cell:not(.activity-cell--future)")
       .at(-1)!
       .trigger("pointerenter");
     expect(wrapper.get(".activity-tooltip strong").text()).toBe(
-      state === "partial" ? "10 tokens" : "N/A",
+      state === "partial" ? "10 tokens" : state === "unavailable" ? "N/A" : "0 tokens",
     );
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   },
@@ -327,7 +329,7 @@ it("opens on total tokens by provider and regroups every chart from one toolbar 
   for (const label of ["Usage share", "Activity over time", "Usage breakdown"])
     expect(wrapper.get(`[aria-label="${label}"]`).text()).toContain("sonnet");
   expect(wrapper.get('[aria-label="Usage share"]').text()).toContain("100%");
-  expect(wrapper.get('[aria-label="Usage share"]').text()).toContain("N/A");
+  expect(wrapper.get('[aria-label="Usage share"]').text()).toContain("Unknown model0%0");
   expect(
     wrapper
       .get("#usage-measure")
@@ -393,7 +395,7 @@ it("opens on total tokens by provider and regroups every chart from one toolbar 
       .map((row) => row.findAll("td").map((cell) => cell.text())),
   ).toStrictEqual([
     ["sonnet", "1", "300", "Unavailable", "100%"],
-    ["Unknown model", "3", "N/A", "Unavailable", "N/A"],
+    ["Unknown model", "3", "0", "Unavailable", "0%"],
   ]);
   expect(
     wrapper

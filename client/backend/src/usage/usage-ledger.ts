@@ -692,10 +692,7 @@ export class UsageLedger {
       ] as (keyof Consumption)[]) {
         const value =
           key === "total"
-            ? (record.tokens.total ??
-              (record.provider === "claude"
-                ? record.tokens.input + record.tokens.output
-                : null))
+            ? (record.tokens.total ?? 0)
             : record.tokens[key];
         (row.tokens as Record<string, number | null>)[key] =
           value === null || value === undefined || row.tokens[key] === null

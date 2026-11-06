@@ -404,6 +404,30 @@ it("reports the longest completed turn, preferring active time over wall-clock d
   } finally { await ledger.close(); }
 });
 
+it("sums stored totals without reconstructing missing totals from any provider", async () => {
+  const at = Date.parse("2026-11-05T12:00Z");
+  const ledger = new UsageLedger(":memory:", () => at);
+  const attribution = { teamId: null, repository: null };
+  const base = { agentId: "a", sessionId: "s", phase: "started" as const, at };
+  try {
+    await ledger.load();
+    await ledger.observe({ ...base, provider: "codex", turnId: "codex", model: "gpt-6.1-sol",
+      tokens: { input: 80, output: 20, total: 100, cacheRead: 40, cacheWrite: null } }, attribution);
+    for (const provider of ["antigravity", "claude", "codex"] as const) {
+      await ledger.observe({ ...base, provider, turnId: "missing", model: `${provider}-missing`,
+        tokens: { input: 8, output: 2, cacheRead: 4, cacheWrite: 0, reasoning: 1 } }, attribution);
+    }
+    for (const group of ["provider", "model"] as const) {
+      const summary = ledger.query({ group });
+      expect(summary.daily?.map(day => ({
+        day: day.day, total: day.tokens?.total,
+        groups: day.groups?.map(row => row.tokens?.total),
+      }))).toStrictEqual([{ day: "2026-11-05", total: 100, groups: group === "model" ? [100, 0, 0, 0] : [100, 0, 0] }]);
+      expect(summary.rows.map(row => row.tokens?.total)).toStrictEqual(group === "model" ? [100, 0, 0, 0] : [100, 0, 0]);
+    }
+  } finally { await ledger.close(); }
+});
+
 it("prices Antigravity executions from reported token categories as a Google API-equivalent estimate", async () => {
   const at = Date.parse("2026-10-15T12:00Z");
   const ledger = new UsageLedger(":memory:", () => at);
