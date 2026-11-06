@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.53.0",
+  "currentVersion": "0.54.0",
   "releases": [
+    {
+      "version": "0.54.0",
+      "releasedAt": "2026-11-06",
+      "sourceSha256": "4d273f5e85d23d5e60239a8e1bfdd745330c6690e3cc0740ee68727190d3306c",
+      "markdown": "### New features\n\n- **Automation management:** Ask agents to list and edit existing schedules, including their conversation targets.\n- **Provider safety review:** Inspect provider safety findings and explicitly continue when the provider offers a continuation option. Blocked conversations retain drafts and stop automatic retries.\n\n### Improvements and fixes\n\n- **Close Agent:** Use Cmd/Ctrl–Backspace to close an agent; Cmd/Ctrl–W continues to close the window.\n- **Claude performance:** Correct output-speed and first-token timing to include thinking and tool-input generation."
+    },
     {
       "version": "0.53.0",
       "releasedAt": "2026-11-06",

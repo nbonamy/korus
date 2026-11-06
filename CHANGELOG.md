@@ -4,6 +4,18 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.54.0] - 2026-11-06
+
+### New features
+
+- **Automation management:** Ask agents to list and edit existing schedules, including their conversation targets.
+- **Provider safety review:** Inspect provider safety findings and explicitly continue when the provider offers a continuation option. Blocked conversations retain drafts and stop automatic retries.
+
+### Improvements and fixes
+
+- **Close Agent:** Use Cmd/Ctrl–Backspace to close an agent; Cmd/Ctrl–W continues to close the window.
+- **Claude performance:** Correct output-speed and first-token timing to include thinking and tool-input generation.
+
 ## [0.53.0] - 2026-11-06
 
 ### New features
