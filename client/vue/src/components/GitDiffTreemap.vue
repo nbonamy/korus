@@ -30,10 +30,10 @@ import type { TreemapLayout } from './diff-treemap-presentation';
 
 const props = defineProps<{ files: readonly FileStat[] }>();
 const emit = defineEmits<{ select: [path: string] }>();
-const filter = defineModel<FileKind | null>('kind', { default: null });
+const filter = defineModel<FileKind[]>('kinds', { default: () => [] });
 const files = computed(() => diffTreemapFiles(props.files));
 const counts = computed(() => Object.fromEntries(fileKinds.map(kind => [kind, files.value.filter(file => file.kind === kind).length])) as Record<FileKind, number>);
-const visible = computed(() => files.value.filter(file => !filter.value || file.kind === filter.value));
+const visible = computed(() => files.value.filter(file => !filter.value.length || filter.value.includes(file.kind)));
 const tiles = computed(() => visible.value.filter(file => file.weight > 0));
 const withoutLines = computed(() => visible.value.filter(file => file.weight === 0));
 const canvas = ref<HTMLElement>();

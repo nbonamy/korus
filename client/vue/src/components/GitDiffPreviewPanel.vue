@@ -21,7 +21,7 @@
     >
       {{ parseError }}
     </div>
-    <GitDiffTreemap v-else-if="files.length && view === 'map'" v-model:kind="mapKind" :files="files" @select="showFileDiff" />
+    <GitDiffTreemap v-else-if="files.length && view === 'map'" v-model:kinds="mapKinds" :files="files" @select="showFileDiff" />
     <div
       v-else-if="files.length"
       class="git-diff-preview-panel__files"
@@ -308,7 +308,7 @@ const files = computed(() => parsed.value.files.filter(file =>
   (!props.fileKindFilter || classifyFile(file.fullPath) === props.fileKindFilter)));
 
 const parseError = computed(() => parsed.value.error);
-const mapKind = ref<FileKind | null>(null);
+const mapKinds = ref<FileKind[]>([]);
 const focusedFilePaths = ref<string[] | null>(null);
 const focusedLocation = ref<import('@workspace/core/git-diff-viz').DiffVizLocation>();
 watch(() => props.diff, () => { focusedLocation.value = undefined; });

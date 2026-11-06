@@ -3,15 +3,15 @@
       <div class="diff-treemap__filter-items">
         <el-tooltip :content="`${$t('surface.diffTreemap.all')} · ${total}`" placement="top">
           <span class="diff-treemap__filter-target">
-            <button type="button" :aria-label="`${$t('surface.diffTreemap.all')} · ${total}`" :aria-pressed="modelValue === null" @click="emit('update:modelValue', null)">
+            <button type="button" :aria-label="`${$t('surface.diffTreemap.all')} · ${total}`" :aria-pressed="modelValue.length === 0" @click="emit('update:modelValue', [])">
               <i class="diff-treemap__all-dot" aria-hidden="true" /><span class="diff-treemap__filter-label">{{ $t('surface.diffTreemap.all') }}</span><span class="diff-treemap__filter-count">{{ total }}</span>
             </button>
           </span>
         </el-tooltip>
-        <el-tooltip v-for="kind in fileKinds" :key="kind" :content="`${fileKindLabel(kind)} · ${counts[kind]}`" placement="top">
+        <el-tooltip v-for="kind in fileKinds" :key="kind" :content="`${fileKindLabel(kind)} · ${counts[kind]} — ${$t('surface.diffTreemap.multiSelectHint')}`" placement="top">
           <span class="diff-treemap__filter-target">
-            <button type="button" :aria-label="`${fileKindLabel(kind)} · ${counts[kind]}`" :aria-pressed="modelValue === kind"
-              :disabled="counts[kind] === 0" @click="emit('update:modelValue', kind)">
+            <button type="button" :aria-label="`${fileKindLabel(kind)} · ${counts[kind]}`" :aria-pressed="modelValue.includes(kind)"
+              :disabled="counts[kind] === 0" @click="select(kind, $event)">
               <i :style="{ background: fileKindColor[kind] }" aria-hidden="true" />
               <span class="diff-treemap__filter-label">{{ kind === 'docs' ? $t('surface.diffTreemap.docs') : fileKindLabel(kind) }}</span><span class="diff-treemap__filter-count">{{ counts[kind] }}</span>
             </button>
@@ -24,8 +24,14 @@
 <script setup lang="ts">
 import { fileKinds, type FileKind } from '@workspace/core/file-kind';
 import { fileKindColor, fileKindLabel } from './file-kind-presentation';
-defineProps<{ modelValue: FileKind | null; total: number; counts: Record<FileKind, number> }>();
-const emit = defineEmits<{ 'update:modelValue': [kind: FileKind | null] }>();
+const props = defineProps<{ modelValue: readonly FileKind[]; total: number; counts: Record<FileKind, number> }>();
+const emit = defineEmits<{ 'update:modelValue': [kinds: FileKind[]] }>();
+function select(kind: FileKind, event: MouseEvent): void {
+  const kinds = event.metaKey || event.ctrlKey
+    ? props.modelValue.includes(kind) ? props.modelValue.filter(value => value !== kind) : [...props.modelValue, kind]
+    : [kind];
+  emit('update:modelValue', kinds);
+}
 </script>
 
 <style scoped>
