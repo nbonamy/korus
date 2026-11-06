@@ -7,10 +7,21 @@ const services: AppMcpService[] = [];
 afterEach(async () => {
   await Promise.all(services.splice(0).map((service) => service.stop()));
 });
+it('does not inject monitor tools into the default model tool list', async () => {
+  const snapshot = createInitialSnapshot();
+  const service = new AppMcpService({ snapshot }); services.push(service);
+  const url = await service.start();
+  const response = await fetch(`${url}?agentId=${snapshot.agents[0]!.id}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+  });
+  const body = await response.json() as { result: { tools: { name: string }[] } };
+  expect(body.result.tools.some(tool => tool.name === 'korus-monitor')).toBe(false);
+});
 it('exposes monitors only to local backends without native support, scopes ownership and validates inputs', async () => {
   const snapshot = createInitialSnapshot();
   snapshot.agents[0]!.folder = process.cwd();
-  const service = new AppMcpService({ snapshot });
+  const service = new AppMcpService({ snapshot, toolModuleProviders: ({ monitors }) => [monitors] });
   services.push(service);
   const url = await service.start();
   const request = async (agentId: string, method: string, params: unknown) => {
@@ -106,7 +117,7 @@ it('retains completion events while busy, delivers to the owning idle agent, and
     onEvent: () => () => {},
     close: vi.fn(),
   };
-  const service = new AppMcpService({ snapshot });
+  const service = new AppMcpService({ snapshot, toolModuleProviders: ({ monitors }) => [monitors] });
   services.push(service);
   service.setDriverRpc(new BackendDriverRpc(new Map([['codex', driver]])));
   const url = await service.start();

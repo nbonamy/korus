@@ -94,7 +94,7 @@ export type AppMcpServiceOptions = {
   listRemoteRepositories?: (remoteConnectionId: string) => Promise<SourceRepository[]>;
   listRemoteWorktrees?: (remoteConnectionId: string, repoPath: string) => Promise<SourceWorktree[]>;
   createRemoteWorktree?: (input: CreateSourceWorktreeInput) => Promise<SourceWorktree>;
-  toolModuleProviders?: readonly AppMcpToolModuleProvider[];
+  toolModuleProviders?: readonly AppMcpToolModuleProvider[] | ((optional: { monitors: AppMcpToolModuleProvider }) => readonly AppMcpToolModuleProvider[]);
 };
 
 export class AppMcpService {
@@ -187,6 +187,7 @@ export class AppMcpService {
       this.coordinator.sendMessage(owner, owner, `<context>\n[Monitor event]\n${details}\n</context>\n\nMonitor ${state}: ${name}.`);
       return true;
     });
+    const monitorTools = createMonitorToolModuleProvider({ agents: () => this.snapshot.agents, capabilities: agent => this.driverRpc?.getCapabilities(agent) ?? defaultBackendCapabilities(agent.backend), monitors: this.monitors });
     this.server = new AppMcpHttpServer({
       forwardCollaboration: options.forwardCollaboration,
       coordinator: this.coordinator,
@@ -196,7 +197,7 @@ export class AppMcpService {
       hostedMcpGateway: options.hostedMcpGateway,
       reviewTools: this.reviewTools,
       toolModuleProviders: [
-        createMonitorToolModuleProvider({ agents: () => this.snapshot.agents, capabilities: agent => this.driverRpc?.getCapabilities(agent) ?? defaultBackendCapabilities(agent.backend), monitors: this.monitors }),
+        // monitorTools, // Temporarily disabled: retain implementation without model injection.
         createWorktreeInitializationToolModuleProvider(this.snapshot, this.worktreeManager),
         ...(options.persistSnapshot ? [createAutomationToolModuleProvider({ snapshot: this.snapshot, persist: options.persistSnapshot,
           notify: () => this.emit({ type: 'snapshot.updated', payload: this.snapshot }) })] : []),
@@ -204,7 +205,7 @@ export class AppMcpService {
         ...(options.createProject ? [createQuickChatProjectToolModuleProvider({ snapshot: this.snapshot, createProject: options.createProject })] : []),
         ...(options.gitDiff ? [createGitDiffStatsToolModuleProvider({ snapshot: this.snapshot, diff: options.gitDiff })] : []),
         ...(options.startMission ? [createMissionStartToolModuleProvider({ snapshot: this.snapshot, startMission: options.startMission })] : []),
-        ...(options.toolModuleProviders ?? []),
+        ...(typeof options.toolModuleProviders === 'function' ? options.toolModuleProviders({ monitors: monitorTools }) : options.toolModuleProviders ?? []),
       ],
     });
   }
