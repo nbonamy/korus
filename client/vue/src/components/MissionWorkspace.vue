@@ -89,11 +89,17 @@
             <button class="app-button app-button--small" type="submit" data-testid="reassign-mission-member" :disabled="busy || !!activeStageRun || !replacementMemberId || !executeMission">{{ t('missions.reassignMembers') }}</button>
           </form>
           <p v-if="error || artifactError" class="mission-workspace__error" role="alert">{{ error || artifactError }}</p>
+          <MissionTaskFilters v-if="filterTickets.length" v-model:statuses="taskStatuses" :tickets="filterTickets" :items="filterItems" />
+          <div v-if="filterTickets.length && !visibleTicketIndexes.length" class="mission-workspace__filter-empty" role="status">
+            <p>{{ t('missions.taskFilters.empty') }}</p>
+            <button type="button" class="app-button app-button--small" :aria-label="t('missions.taskFilters.clear')" @click="taskStatuses = []">{{ t('missions.taskFilters.clear') }}</button>
+          </div>
           <MissionImplementationBoard
             v-if="viewedStage === 'implementation' && mission.artifacts.tickets.length"
             :agents="agents"
             :active-agent-id="conversationAgentId"
             :mission="mission"
+            :visible-ticket-indexes="visibleTicketIndexes"
             :busy="busy"
             :read-only="debugFixture"
             :open-in-available="openInAvailable"
@@ -117,6 +123,7 @@
           <section v-else-if="viewedStage === 'tickets' && visibleTickets.length" class="mission-workspace__artifact" :aria-label="t(activeRun?.draftTickets?.length && !activeRun.proposal ? 'missions.draftTickets' : viewedStage === mission.stage && activeRun?.proposal ? 'missions.proposal' : 'missions.acceptedArtifact')">
             <MissionTicketBoard
               :tickets="visibleTickets"
+              :visible-ticket-indexes="visibleTicketIndexes"
               :annotatable="viewedStage === mission.stage && Boolean(activeRun?.proposal || activeRun?.draftTickets?.length)"
               :disabled="feedbackBusy || debugFixture"
               :reset-key="feedbackReset"
@@ -277,6 +284,9 @@ import { useCollapsiblePaneResize } from '../shared/use-collapsible-pane-resize'
 import MissionCostMenu from './MissionCostMenu.vue';
 import MissionConversationRail from './MissionConversationRail.vue';
 import MissionImplementationBoard from './MissionImplementationBoard.vue';
+import MissionTaskFilters from './MissionTaskFilters.vue';
+import { implementationTicketItems } from './mission-implementation-model';
+import { matchesMissionTaskFilters, type MissionTaskStatus } from './mission-ticket-filters';
 import type { WorkspaceProvisioningOperation } from './WorkspaceProvisioningProgressDialog.vue';
 import { publishProvisioningOperation } from './provisioning-operations';
 import MissionRequirementReview from './MissionRequirementReview.vue';
@@ -519,6 +529,12 @@ const visibleTickets = computed(() => {
   if (viewedStage.value === props.mission.stage && activeRun.value?.draftTickets?.length) return activeRun.value.draftTickets;
   return props.mission.artifacts.tickets;
 });
+const taskStatuses = ref<MissionTaskStatus[]>([]);
+watch(() => props.mission.id, () => { taskStatuses.value = []; });
+const filterTickets = computed(() => viewedStage.value === 'tickets' ? visibleTickets.value
+  : viewedStage.value === 'implementation' ? props.mission.artifacts.tickets : []);
+const filterItems = computed(() => implementationTicketItems(filterTickets.value, props.mission.execution?.runs ?? []));
+const visibleTicketIndexes = computed(() => filterItems.value.filter(item => matchesMissionTaskFilters(item, filterTickets.value, taskStatuses.value)).map(item => item.index));
 const stageHeadingMeta = computed(() => {
   if (viewedStage.value !== 'tickets') return '';
   if (viewedStage.value === props.mission.stage && activeRun.value?.draftTickets?.length && !activeRun.value.proposal) {

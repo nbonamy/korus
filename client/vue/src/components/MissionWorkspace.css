@@ -375,3 +375,4 @@
   background: var(--color-surface-low);
   font: inherit;
 }
+.mission-workspace__filter-empty { padding: var(--space-8); color: var(--color-text-muted); text-align: center; }

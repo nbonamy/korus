@@ -4,9 +4,15 @@ import type { MissionRun } from '@workspace/core/mission-execution';
 export type MissionImplementationTicketItem = { ticket: MissionTicket; index: number; run?: MissionRun };
 export type MissionImplementationTicketStatus = 'queued' | 'blocked' | MissionRun['status'];
 
+export function implementationTicketItems(tickets: readonly MissionTicket[], runs: readonly MissionRun[]): MissionImplementationTicketItem[] {
+  return tickets.map((ticket, index) => ({ ticket, index, run: runs.filter(run => run.stage === 'implementation'
+    && (run.ticketId ? run.ticketId === ticket.id : run.ticketIndex === index)
+    && (run.ticketRevision ?? 0) === (ticket.revision ?? 0)).at(-1) }));
+}
+
 export function implementationTicketStatus(
   item: MissionImplementationTicketItem,
-  tickets: MissionTicket[],
+  tickets: readonly MissionTicket[],
 ): MissionImplementationTicketStatus {
   if (item.ticket.done) return 'accepted';
   if (item.run) return item.run.status;

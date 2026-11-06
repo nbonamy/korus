@@ -541,7 +541,6 @@ export const surfaceMessages = {
     "map": "Map",
     "docs": "Docs",
     "filterByType": "Filter by file type",
-    "multiSelectHint": "Cmd/Ctrl-click to select multiple types.",
     "all": "All",
     "noLineChanges": "No line changes in these files.",
     "filesWithoutLines": "Files without line changes ({count})"

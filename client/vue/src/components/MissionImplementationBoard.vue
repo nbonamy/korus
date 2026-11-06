@@ -43,7 +43,7 @@
 
     <div class="mission-implementation__lanes">
       <section
-        v-for="lane in lanes"
+        v-for="lane in displayedLanes"
         :key="lane.repositoryPath"
         class="mission-implementation__lane"
       >
@@ -72,7 +72,7 @@
         </header>
         <TransitionGroup name="mission-run-card" tag="ol" appear>
           <MissionImplementationTicketCard
-            v-for="item in lane.tickets"
+            v-for="item in lane.visibleTickets"
             :key="item.ticket.id ?? item.index"
             :all-tickets="mission.artifacts.tickets"
             :item="item"
@@ -143,7 +143,7 @@ import { FolderIcon, GitBranchIcon } from "../shared/icons/app-icons";
 import MissionImplementationTicketCard from "./MissionImplementationTicketCard.vue";
 import MissionTicketDialog from "./MissionTicketDialog.vue";
 import MissionWorkspaceOpenIn, { type MissionWorkspaceOpenRequest } from "./MissionWorkspaceOpenIn.vue";
-import { implementationTicketStatus, missionRepositoryName, missionTicketNumber, type MissionImplementationTicketItem } from "./mission-implementation-model";
+import { implementationTicketItems, implementationTicketStatus, missionRepositoryName, missionTicketNumber, type MissionImplementationTicketItem } from "./mission-implementation-model";
 
 type TicketItem = MissionImplementationTicketItem;
 
@@ -151,6 +151,7 @@ const props = withDefaults(defineProps<{
   agents?: Agent[];
   activeAgentId?: string;
   mission: Mission;
+  visibleTicketIndexes?: readonly number[];
   busy?: boolean;
   readOnly?: boolean;
   openInAvailable?: boolean;
@@ -176,14 +177,10 @@ const implementationRuns = computed(
 );
 const lanes = computed(() => {
   const grouped = new Map<string, TicketItem[]>();
-  for (const [index, ticket] of props.mission.artifacts.tickets.entries()) {
+  for (const item of implementationTicketItems(props.mission.artifacts.tickets, implementationRuns.value)) {
+    const { ticket } = item;
     const repositoryPath =
       ticket.repositoryPath ?? t("missions.repositoryUnassigned");
-    const runs = implementationRuns.value.filter(
-      (run) => (run.ticketId ? run.ticketId === ticket.id : run.ticketIndex === index)
-        && (run.ticketRevision ?? 0) === (ticket.revision ?? 0),
-    );
-    const item = { ticket, index, run: runs.at(-1) };
     const lane = grouped.get(repositoryPath) ?? [];
     lane.push(item);
     grouped.set(repositoryPath, lane);
@@ -196,6 +193,9 @@ const lanes = computed(() => {
 const ticketItems = computed(() =>
   lanes.value.flatMap((lane) => lane.tickets),
 );
+const displayedLanes = computed(() => lanes.value.map(lane => ({ ...lane,
+  visibleTickets: lane.tickets.filter(item => !props.visibleTicketIndexes || props.visibleTicketIndexes.includes(item.index)),
+})).filter(lane => lane.visibleTickets.length));
 const selected = computed(() =>
   ticketItems.value.find((item) => item.index === selectedIndex.value),
 );
