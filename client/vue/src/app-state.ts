@@ -851,7 +851,7 @@ export function useAppState() {
 
   async function continueInterruptedTurnForAgent(agentId: string): Promise<void> {
     const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
-    if (agent?.backend !== 'codex' || !agent.backendSession || !appApi?.continueInterruptedTurn || isAgentSending(agent.id)) {
+    if (!agent?.backendSession || !appApi?.continueInterruptedTurn || isAgentSending(agent.id)) {
       return;
     }
 
