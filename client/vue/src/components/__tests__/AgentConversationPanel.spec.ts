@@ -15,19 +15,29 @@ import { cursorBackendCapabilities } from '@workspace/core/backend-capabilities'
 import { emptyCursorSnapshot, createCursorConversationReplica } from '@workspace/core/cursor-conversation-replica';
 
 describe('AgentConversationPanel', () => {
-  it('renders Cursor tool diffs and observed media through the shared pane and routes interrupt, confirm and continue', async () => {
+  it('renders Cursor model/effort selection, file links and media with interrupt, confirm and continue', async () => {
     const snapshot = createInitialSnapshot();
     const agent = { ...snapshot.agents[0]!, backend: 'cursor' as const, backendDefaults: { kind: 'cursor' as const }, backendSession: undefined };
+    snapshot.agents[0] = agent;
+    const capabilities = { ...cursorBackendCapabilities, reasoningEffort: true };
+    snapshot.backendRuntimes = [{ backend: 'cursor', status: 'running', capabilities }];
+    const composer = createAgentComposerState({ getSnapshot: () => snapshot });
+    composer.handleMainEvent({ type: 'models.changed', backend: 'cursor', seq: 1, occurredAt: '', payload: { models: [
+      { id: 'native-plain', model: 'native-plain', displayName: 'Cursor Plain', isDefault: true },
+      { id: 'native-enum', model: 'native-enum', displayName: 'Cursor Enum', defaultReasoningEffort: 'low',
+        supportedReasoningEfforts: [{ reasoningEffort: 'low', description: '' }, { reasoningEffort: 'extra-high', description: '' }] },
+    ] } });
+    const sent = vi.fn();
     const view = shallowReactive<AgentConversationView>({
       agent, codexSnapshot: null, claudeSnapshot: null, cursorSnapshot: null,
-      composer: createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(agent.id),
-      composerState: { text: 'Hello Cursor', selectionStart: 12, selectionEnd: 12 }, attachments: [], capabilities: cursorBackendCapabilities,
+      composer: composer.configurationForAgent(agent.id),
+      composerState: { text: 'Hello Cursor', selectionStart: 12, selectionEnd: 12 }, attachments: [], capabilities,
       approvals: [], sending: false, queuedPrompts: [], history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false }, answeredClientRequestIds: new Set(),
     });
     const actions: AgentConversationActions = {
-      planReview: vi.fn(), clearGoal: vi.fn(), threadFlag: vi.fn(), prepare: vi.fn(), loadOlder: vi.fn(), send: vi.fn(), steer: vi.fn(), interrupt: vi.fn(),
+      planReview: vi.fn(), clearGoal: vi.fn(), threadFlag: vi.fn(), prepare: vi.fn(), loadOlder: vi.fn(), send: vi.fn(async (id, text, options) => { sent(id, text, composer.resolvePromptOptions(id, text, options)); }), steer: vi.fn(), interrupt: vi.fn(),
       deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(), continueInterruptedTurn: vi.fn(), resolveApproval: vi.fn(), clientResponse: vi.fn(),
-      selectModel: vi.fn(), selectReasoningEffort: vi.fn(), selectServiceTier: vi.fn(), setPlanMode: vi.fn(), setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(),
+      selectModel: vi.fn(composer.selectModelForAgent), selectReasoningEffort: vi.fn(composer.selectReasoningEffortForAgent), selectServiceTier: vi.fn(), setPlanMode: vi.fn(), setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(),
       updateComposerState: (_id, state) => { view.composerState = state; }, updateAttachments: vi.fn(), deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
     };
     const rawDetails = ref(false);
@@ -39,8 +49,28 @@ describe('AgentConversationPanel', () => {
     });
     } }, { global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'cursor']) } } });
     try {
+      await wrapper.get('[aria-label="Model and reasoning"]').trigger('click');
+      await flushPromises();
+      await wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Cursor Enum'))!.trigger('mouseenter');
+      await flushPromises();
+      await wrapper.findAll('[role="menuitemradio"]').find(item => item.text().trim() === 'Extra High')!.trigger('click');
+      await flushPromises();
+      expect(actions.selectModel).toHaveBeenCalledExactlyOnceWith(agent.id, 'native-enum');
+      expect(actions.selectReasoningEffort).toHaveBeenCalledExactlyOnceWith(agent.id, 'extra-high');
+      expect(wrapper.get('[aria-label="Model and reasoning"]').text()).toContain('Extra High');
       await wrapper.get('form').trigger('submit'); await flushPromises();
-      expect(actions.send).toHaveBeenCalledWith(agent.id, 'Hello Cursor', undefined);
+      expect(sent).toHaveBeenLastCalledWith(agent.id, 'Hello Cursor', { selection: { model: 'native-enum', reasoningEffort: 'extra-high' }, planMode: false });
+      await wrapper.get('[aria-label="Model and reasoning"]').trigger('click');
+      await flushPromises();
+      await wrapper.findAll('[role="menuitemradio"]').find(item => item.text().trim() === 'Cursor Plain')!.trigger('click');
+      await flushPromises();
+      expect(actions.selectModel).toHaveBeenLastCalledWith(agent.id, 'native-plain');
+      expect(actions.selectReasoningEffort).toHaveBeenCalledTimes(1);
+      expect(wrapper.get('[aria-label="Model and reasoning"]').text()).not.toContain('Extra High');
+      view.composerState = { text: 'Plain Cursor', selectionStart: 12, selectionEnd: 12 };
+      await flushPromises();
+      await wrapper.get('form').trigger('submit'); await flushPromises();
+      expect(sent).toHaveBeenLastCalledWith(agent.id, 'Plain Cursor', { selection: { model: 'native-plain' }, planMode: false });
       const replica = createCursorConversationReplica(emptyCursorSnapshot(agent.id, 'session'));
       const identity = { agentId: agent.id, sessionId: 'session', turnId: 'turn', occurredAt: '2026-11-03T12:00:00Z' };
       replica.apply({ ...identity, type: 'turn.started', payload: { turn: { id: 'turn' } } });
