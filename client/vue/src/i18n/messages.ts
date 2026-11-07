@@ -1102,7 +1102,7 @@ export const messages = {
         workProposed: {
           prompt: 'Turn this into work?',
           implement: 'Continue',
-          delegate: 'Delegate',
+          delegate: 'Worktree',
           createMission: 'Mission',
           dismiss: 'Discard',
         },
