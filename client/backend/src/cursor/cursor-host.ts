@@ -14,6 +14,7 @@ import { backendHomeDir } from '../state';
 import { CursorAuthentication } from './authentication';
 import { cursorHome, resolveCursorExecutable } from './runtime';
 import { CursorSession } from './session';
+import { getCursorAccountUsage } from './account-usage';
 
 export class CursorHost implements AgentBackendDriver {
   readonly backend = 'cursor' as const;
@@ -39,6 +40,7 @@ export class CursorHost implements AgentBackendDriver {
     return { backend: this.backend, status: !resolveCursorExecutable() ? 'notConfigured' as const : live ? 'running' as const : this.sessions.size ? 'error' as const : 'starting' as const };
   }
   getCapabilities() { return cursorBackendCapabilities; }
+  getAccountRateLimits() { return getCursorAccountUsage(); }
   onEvent(listener: (event: BackendEvent) => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   onUsage(listener: (event: ExecutionObservation) => void) { this.usageListeners.add(listener); return () => { this.usageListeners.delete(listener); }; }
   async sendPrompt(agent: Agent, prompt: string, options?: SendPromptOptions) {

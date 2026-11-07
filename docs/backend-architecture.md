@@ -103,8 +103,14 @@ because native CLI state also writes outside `CURSOR_CONFIG_DIR`.
 
 Native authentication is owned by the Cursor driver. Bounded version/status
 checks suppress browser opening and reject CLI builds older than `2026.10.08`.
-Only authentication state, validated version and display-safe account/team
-metadata cross the driver boundary; credentials and native diagnostics do not.
+Authentication checks expose only authentication state, validated version and
+display-safe account/team metadata; credentials and native diagnostics stay private.
+The usage adapter reads the native login in place (macOS Keychain, or the native
+credential file on other platforms), retaining its access token only in memory.
+It queries fixed Cursor DashboardService read endpoints without redirects or
+credential refresh, and returns only validated plan, quota and balance fields.
+Zero allowances, disabled on-demand billing and absent data remain distinct;
+pooled team limits are not treated as personal spend limits.
 Explicit login owns a cancellable process group. Connection observations never
 enable Cursor, and new-work admission refreshes authentication before selection.
 Each agent owns a native `agent acp` process through the shared ACP connection.

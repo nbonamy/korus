@@ -658,6 +658,19 @@ uses platform-specific auth.json storage independently of CURSOR_CONFIG_DIR.
 Home qualification must cover credential separation as well as ACP/config paths;
 do not infer it from changing CURSOR_CONFIG_DIR alone.
 
+The native billing adapter is implemented behind getAccountRateLimits. It reads
+the native account's credential in place, queries the three fixed DashboardService
+endpoints and returns app-owned plan, included-balance and on-demand-limit data.
+Bounded reads, no redirects, safe failures and absent-login handling keep tokens
+and diagnostics out of the response. Protobuf default scalar omission is handled
+only inside present buckets; missing buckets remain unknown. A zero allowance
+does not become a 100%-remaining quota, and pooled team credit is not treated as a
+personal limit. The production adapter passed a native read-only check: the
+current account reports Free and on-demand billing disabled. No billing settings
+or payment methods were inspected or changed. Enabling the desktop quota surface,
+rendering credit balances, account-change races and mobile negotiation remain
+integration work; the full goal is not complete.
+
 - Phase 0 was docs-only: no runtime contract or app code changed. App suite,
   typecheck and coverage were not required for ticket 1; native probes are
   qualification evidence, not deterministic regression tests.
