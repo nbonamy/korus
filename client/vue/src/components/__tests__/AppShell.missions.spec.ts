@@ -106,7 +106,8 @@ describe('AppShell missions', () => {
     } finally { wrapper.unmount(); }
   });
 
-  // Real app shell, conversation navigation and Markdown/Mermaid document rendering.
+  // Integration budget: real shell/conversation navigation, cold Markdown/Mermaid
+  // rendering and dialog visibility/close. The first document exceeds 2.5s on CI.
   it.each(['README.md', '/workspace/mission/README.md', '/tmp/telemetry-merge3-evidence.json'])('opens a rendered Mission document link in a dialog without hiding the Mission (%s)', async target => {
     const evidence = target.endsWith('.json');
     const path = evidence ? target : 'README.md';
@@ -149,7 +150,7 @@ describe('AppShell missions', () => {
       expect(wrapper.find('.mission-document-dialog').exists()).toBe(false);
       expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(true);
     } finally { wrapper.unmount(); }
-  });
+  }, 5_000);
 
   it('keeps one document request per Mission across agents and opens only after confirmation', async () => {
     const snapshot = createInitialSnapshot();
