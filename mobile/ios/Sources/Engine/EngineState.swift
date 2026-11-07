@@ -2,6 +2,8 @@ import Foundation
 
 /// The engine's state as it arrives from JSON; `AppModel` maps it onto the view models the screens draw.
 struct EngineState: Decodable {
+    struct ProviderBlock: Decodable, Equatable { let details: String }
+    let providerBlock: ProviderBlock?
     let reviewFindingsCount: Int?
     let git: GitChangesState?
     struct QueuedPrompt: Decodable, Identifiable, Equatable { let id: String; let text: String }

@@ -129,9 +129,10 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     private var pickerImport: ComposerDrafts.Import? = null
     private var captureFile: File? = null
     private var captureUri: Uri? = null
-    val canAttach get() = state.obj("capabilities").optBoolean("attachments") && composerDrafts.target != null && !composerDrafts.goalMode
+    val providerBlocked get() = state.optJSONObject("providerBlock") != null
+    val canAttach get() = !providerBlocked && state.obj("capabilities").optBoolean("attachments") && composerDrafts.target != null && !composerDrafts.goalMode
         && !composerDrafts.importing && !composerDrafts.sending && !dictation.active && composerDrafts.items.size < ComposerDrafts.MAX_COUNT
-    val canDictate get() = foreground && screenUnlocked && !drawerVisible && sheet == null && attachmentPreview == null && conversationImage == null
+    val canDictate get() = !providerBlocked && foreground && screenUnlocked && !drawerVisible && sheet == null && attachmentPreview == null && conversationImage == null
         && !reviewOpen && !changesOpen && !filePreviewOpen && creation == null && presentedRequest == null && composerDrafts.target != null && !composerDrafts.sending && !composerDrafts.importing
     var foreground = false
         private set
@@ -665,7 +666,9 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
                     else if (sheet == "closeSession") sheet = null
                     if (next.obj("review").string("status") == "started") reviewOpen = false
                     if (reviewOpen) updateReviewChoices(next.obj("review"))
-                    state = next; acceptPaintedReceipt(); updateConnectionNotice(); acknowledge()
+                    state = next
+                    if (providerBlocked) { dictation.cancel(); sheet = null }
+                    acceptPaintedReceipt(); updateConnectionNotice(); acknowledge()
                     if (reloadChanges) loadChanges()
                 }
                 "conversation" -> {

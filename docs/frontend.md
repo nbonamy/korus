@@ -152,6 +152,12 @@ The native transcript and shared conversation pane must resolve one SDK Vue
 instance: host capabilities use module-local injection keys. The mobile bundler
 deduplicates SDK modules across workspace installations to preserve that context.
 
+Mobile projects reviewed provider stops as Idle without changing the authoritative
+provider error or its admission lock. The shared transcript retains the provider
+warning; native shells hide their composers from the engine's block projection.
+On iOS, the transcript's native frame respects the header, composer and keyboard
+safe areas, rather than relying on asynchronous web padding to avoid overlap.
+
 The file explorer uses directory entries from the owning daemon rather than the
 composer's bounded file catalog. Directory pages are cached by the explorer's
 agent and folder identity; refresh invalidates those pages. Workspace search

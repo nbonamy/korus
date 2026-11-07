@@ -59,6 +59,26 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
         loading.update(fetching: true, failed: false, hasAgent: true)
         loading.update(fetching: false, failed: false, hasAgent: true)
     }
+
+    func verifyComposerBounds() async {
+        let layout = TranscriptLayoutFixture()
+        let root = UIHostingController(rootView: TranscriptLayoutProbe(host: host, layout: layout))
+        window?.rootViewController = root
+        for height in [80.0, 190.0, 340.0, 80.0] {
+            layout.composerHeight = height
+            await wait { abs(layout.footerHeight - height) < 1 }
+            root.view.layoutIfNeeded()
+            let bottom = host.webView.convert(host.webView.bounds, to: window).maxY
+            check(bottom <= layout.footerTop + 1,
+                  "native transcript stays above composer at height \(Int(height))")
+        }
+        let controller = UIViewController()
+        window?.rootViewController = controller
+        host.webView.frame = controller.view.bounds
+        host.webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        controller.view.addSubview(host.webView)
+        host.setInsets(top: 0, bottom: 0, leading: 0, trailing: 0)
+    }
     func frame(_ revision: Int, generation: Int = 1, ready: Bool = true, text: String? = nil) -> String {
         let agent: [String: Any] = ["id": "transcript-probe", "teamId": "test-team", "name": "Transcript test", "backend": "codex", "status": ["type": "working"], "readState": ["revision": revision, "readRevision": 0]]
         let message: [String: Any] = ["id": "message", "role": "assistant", "status": "complete", "parts": [["type": "text", "text": text ?? "Rendered test content \(revision)"]]]
@@ -407,11 +427,39 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
             check(forgotten == nil, "forgetting the laptop removes its device image bytes")
         } catch { check(false, "native iOS image cache is available") }
 
+        await verifyComposerBounds()
         let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("transcript-results.json")
         try! JSONSerialization.data(withJSONObject: checks, options: [.prettyPrinted, .sortedKeys]).write(to: url)
         print("TRANSCRIPT_NATIVE_DONE")
     }
 }
+
+@Observable @MainActor final class TranscriptLayoutFixture {
+    var composerHeight = 80.0
+    var footerTop = 0.0
+    var footerHeight = 0.0
+}
+
+private struct TranscriptLayoutProbe: View {
+    let host: TranscriptHost
+    let layout: TranscriptLayoutFixture
+    var body: some View {
+        NavigationStack {
+            TranscriptView(host: host)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    Color.clear.frame(height: layout.composerHeight)
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                            layout.footerTop = frame.minY
+                            layout.footerHeight = frame.height
+                        }
+                }
+                .navigationTitle("Conversation")
+        }
+    }
+}
+
+// The transcript layout shares a file with the unrelated engine UIViewRepresentable.
+@MainActor final class EngineHost { let webView = WKWebView() }
 
 /// The lock view only reads product branding from the model boundary.
 @Observable

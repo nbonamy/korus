@@ -1,6 +1,6 @@
 <template>
   <div class="transcript-layout" :class="{ 'transcript-layout--preview': files.state.value }" :style="{ '--transcript-top': `${insets.top}px`, '--transcript-bottom': `${insets.bottom}px`, '--transcript-leading': `${insets.leading}px`, '--transcript-trailing': `${insets.trailing}px` }">
-  <div class="transcript">
+  <div class="transcript" :class="{ 'transcript--blocked': providerBlocked }">
     <button v-if="history.failed" class="app-button app-button--tertiary transcript__history-retry" @click="loadOlder">Couldn’t load earlier messages. Retry</button>
     <div v-if="imageLoading" class="transcript__media-status" role="status">Loading image…</div>
     <ImagePreviewScope :key="imageCacheScope">
@@ -35,6 +35,7 @@
 import { computed, defineComponent, nextTick, provide, reactive, shallowRef } from 'vue';
 import { createCodexConversationPaneController, provideCodexHostCapabilities, type CodexConversationPaneState } from '@codex-app-sdk/vue';
 import type { Agent } from '@workspace/core/contracts';
+import { providerBlockFor } from '../../src/provider-block';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import ConversationPane from '@workspace/vue/components/ConversationPane.vue';
 import { backendChoicesKey } from '@workspace/vue/components/backend-selection';
@@ -48,6 +49,7 @@ import type { CompanionCheckpoint } from '@workspace/core/companion-journal';
 
 const frame = shallowRef<CompanionConversation | null>(null);
 const agent = shallowRef<Agent | null>(null);
+const providerBlocked = computed(() => Boolean(providerBlockFor(agent.value)));
 const agents = shallowRef<Agent[]>([]);
 const ready = shallowRef(false);
 const files = createTranscriptFiles({ readContent: readConversationContent, agentId: () => agent.value?.id,
@@ -304,6 +306,7 @@ html, body, #app { height: 100%; margin: 0; background: transparent; overscroll-
   --line-height-20: 24px;
 }
 .transcript .codex-workbench-layout__footer { display: none; }
+.transcript--blocked .codex-workbench-layout__footer { display: block; }
 /* Give the larger mobile text room without widening user bubbles. */
 .transcript .codex-markdown.chat-user-text { padding-block: 10px; }
 /* Native insets already reserve the composer; the hidden web footer has no height. */

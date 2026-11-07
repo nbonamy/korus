@@ -211,7 +211,7 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                                     }
                                 }
                             },
-                            bottomBar = { if (!model.filePreviewOpen && state.string("agentId").isNotBlank()) Column {
+                            bottomBar = { if (!model.filePreviewOpen && !model.providerBlocked && state.string("agentId").isNotBlank()) Column {
                                 RequestBanner(model)
                                 Composer(model, pickAttachment, toggleDictation)
                             } },

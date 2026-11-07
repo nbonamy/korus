@@ -7,6 +7,43 @@ import { chromium, webkit } from 'playwright';
 
 const browserEngine = process.env.TRANSCRIPT_BROWSER === 'webkit' ? webkit : chromium;
 
+test('mobile keeps provider findings visible after reading, without exposing a composer or an unavailable continuation', async () => {
+  const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
+  let browser;
+  try {
+    await server.listen(); browser = await browserEngine.launch();
+    const page = await browser.newPage({ viewport: { width: 393, height: 640 } });
+    await page.addInitScript(() => { window.webkit = { messageHandlers: { transcript: { postMessage() {} } } }; });
+    await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
+    await page.waitForFunction(() => window.companionTranscript);
+    const show = (blocked, read = false) => page.evaluate(async ({ blocked, read }) => {
+      const agent = { id: 'blocked-agent', name: 'Blocked', backend: 'codex', teamId: 'team', folder: null,
+        readState: { revision: 2, readRevision: read ? 2 : 1 },
+        status: blocked ? { type: 'error', message: 'Conversation blocked by provider. Automatic retries are stopped.\n\nOriginal provider error',
+          safetyReview: { id: 'review', conversationId: 'thread', turnId: 'turn', explanation: 'Original provider findings', canContinue: true } } : { type: 'idle' } };
+      await window.companionTranscript.setConversation(JSON.stringify({ agentId: agent.id, agent, agents: [agent], ready: true,
+        frame: { agentId: agent.id, backend: 'codex', payload: { snapshot: { messages: Array.from({ length: 12 }, (_, i) => ({ id: `m-${i}`, role: 'assistant', status: 'complete',
+          parts: [{ type: 'text', text: `Retained conversation message ${i}` }] })), turns: [], busy: false, activeTurnId: null } } } }));
+    }, { blocked, read });
+    await show(true);
+    const warning = page.getByRole('alert').filter({ hasText: 'Conversation blocked by provider' });
+    await warning.waitFor();
+    assert.ok(await warning.isVisible());
+    await warning.locator('summary').click();
+    assert.ok(await page.getByText('Original provider findings', { exact: true }).isVisible());
+    assert.equal(await page.getByRole('button', { name: 'Continue after review' }).count(), 0);
+    assert.equal(await page.locator('form[aria-label="Prompt composer"]').count(), 0);
+    await show(true, true);
+    assert.ok(await warning.isVisible(), 'reading must not remove the provider lock');
+    const directory = fileURLToPath(new URL('../../.app-dev/mobile-provider-block/', import.meta.url));
+    await mkdir(directory, { recursive: true });
+    await page.screenshot({ path: `${directory}/${process.env.TRANSCRIPT_BROWSER === 'webkit' ? 'webkit' : 'chromium'}.png` });
+    await show(false);
+    assert.equal(await warning.count(), 0);
+    assert.equal(await page.locator('.codex-workbench-layout__footer').isVisible(), false, 'the native composer owns unlocked conversations');
+  } finally { await browser?.close(); await server.close(); }
+});
+
 test('mobile diff types show matching totals and toggle one file filter without extra reads', async () => {
   const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
   let browser;
@@ -294,6 +331,14 @@ test('the embedded transcript scrolls, requests earlier history, and keeps its r
       }), 'the bottom of the jump button must remain clickable');
     }
     await page.evaluate(() => window.companionTranscript.setInsets(60, 100));
+    // WebKit applies the restored native inset on its next layout. Aim the gesture
+    // inside the resulting scroller rather than the composer's previous bounds.
+    await page.waitForFunction(() => {
+      const pane = document.querySelector('.transcript .codex-message-list');
+      return pane && Math.abs(pane.getBoundingClientRect().bottom - (innerHeight - 100)) <= 1;
+    });
+    const scrollBox = await page.locator('.transcript .codex-message-list').boundingBox();
+    await page.mouse.move(scrollBox.x + scrollBox.width / 2, scrollBox.y + scrollBox.height / 2);
     const older = await metrics();
     await page.mouse.wheel(0, 500);
     await page.waitForFunction((before) => [...document.querySelectorAll('.transcript *')].some((element) =>

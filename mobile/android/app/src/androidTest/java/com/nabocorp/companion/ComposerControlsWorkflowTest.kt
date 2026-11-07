@@ -42,6 +42,17 @@ class ComposerControlsWorkflowTest {
     }
     private fun goalState(busy: Boolean, error: Boolean) = state(busy=busy).put("goal",json("objective" to "Finish the release","status" to "active")).put("goalError",error)
 
+    @Test fun providerBlockReplacesComposerAndPreservesTheDraftUntilAnUnlockedConversationIsSelected() {
+        NativeEngineFixture(app.activityRule.scenario).use { e ->
+            mount(e,state()); app.onNodeWithTag("composer").performTextInput("Keep my draft")
+            e.state(state().put("canSend",false).put("providerBlock",json("details" to "Original provider finding")))
+            app.onNodeWithTag("composer").assertDoesNotExist()
+            app.runOnIdle { assertFalse(e.model.canDictate); assertFalse(e.model.canAttach) }
+            e.state(state())
+            app.onNodeWithTag("composer").assertTextContains("Keep my draft")
+        }
+    }
+
     @Test fun uncertainGoalAndBusyStateStayVisibleUntilTheEngineConfirmsTheOutcome() {
         NativeEngineFixture(app.activityRule.scenario).use { e ->
             mount(e,goalState(busy=true,error=true))
