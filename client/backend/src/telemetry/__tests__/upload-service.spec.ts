@@ -863,3 +863,67 @@ it.each([undefined, "bad", "1"])("negotiates Cursor uploads and retains frozen r
   expect(posts[0]![1]!.body).toBe(frozen);
   expect((await stored()).days[0]).toMatchObject({status:"done",attempts:1});
 });
+
+it.each([
+  {status:404, providers:"codex,claude,antigravity,cursor"},
+  {status:302, providers:"codex,claude,antigravity,cursor"},
+  {status:204, providers:"cursor,cursor"},
+  {status:204, providers:"cursor,unrecognized"},
+  {status:204, providers:"codex,claude,antigravity"},
+])("fails closed on capability status $status and provider list $providers", async ({status,providers}) => {
+  await open();
+  scheduler!.stop();
+  await consent.change("enable");
+  await usage.local.observe({provider:"cursor",agentId:"a",sessionId:"s",turnId:"t",model:null,at:clock,phase:"started"},{teamId:null,repository:null});
+  fetcher.mockResolvedValue(new Response(null,{status,headers:{"X-Korus-Telemetry-Version":"1","X-Korus-Telemetry-Providers":providers,Location:"https://other.invalid"}}));
+  await upload!.flush();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(fetcher.mock.calls[0]![1]).toMatchObject({method:"OPTIONS",redirect:"manual"});
+  expect((await stored()).days[0]).toMatchObject({status:"pending",attempts:0});
+  expect((await stored()).days[0].body).toContain('"provider":"cursor"');
+});
+
+it.each([204,429])("retains a mixed seal while legacy-only reports respect discovery status %s", async status => {
+  await open();
+  scheduler!.stop();
+  clock -= 3600000;
+  vi.setSystemTime(clock);
+  await consent.change("enable");
+  clock += 3600000;
+  vi.setSystemTime(clock);
+  for (const [provider,turnId,at] of [["cursor","cursor",clock],["codex","mixed",clock],["codex","legacy",clock-3600000]] as const)
+    await usage.local.observe({provider,turnId,at,agentId:"a",sessionId:"s",model:null,phase:"started"},{teamId:null,repository:null});
+  fetcher.mockImplementation(async (_url,init) => new Response(null,{status:init?.method === "OPTIONS" ? status : 204,headers:status === 429 ? {"Retry-After":"7200"} : {}}));
+  await upload!.flush();
+  const state = await stored();
+  expect(state.days.find((row: {hour:number})=>row.hour === 12)).toMatchObject({status:"pending",attempts:0});
+  const mixed = JSON.parse(state.days.find((row: {hour:number})=>row.hour === 12).body);
+  expect(mixed.usage.map((row: {provider:string})=>row.provider)).toStrictEqual(["codex","cursor"]);
+  const posts = fetcher.mock.calls.filter(([,init])=>init?.method === "POST");
+  expect(posts).toHaveLength(status === 429 ? 0 : 1);
+  if (status === 429) {
+    expect(state.retryAt).toBe(clock+7200000);
+    clock += 3600000;
+    vi.setSystemTime(clock);
+    await upload!.flush();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  } else expect(JSON.parse(posts[0]![1]!.body as string).usage[0].provider).toBe("codex");
+});
+
+it("aborts identity-free discovery on opt-out without posting the sealed report", async () => {
+  await open();
+  scheduler!.stop();
+  await consent.change("enable");
+  await usage.local.observe({provider:"cursor",agentId:"a",sessionId:"s",turnId:"t",model:null,at:clock,phase:"started"},{teamId:null,repository:null});
+  fetcher.mockImplementation(async () => new Promise<Response>(()=>{}));
+  const flushing = upload!.flush();
+  await eventually(()=>expect(fetcher).toHaveBeenCalledTimes(1));
+  const init = fetcher.mock.calls[0]![1]!;
+  expect(init.method).toBe("OPTIONS");
+  expect(init.body).toBeUndefined();
+  await consent.change("disable");
+  await flushing;
+  expect(init.signal!.aborted).toBe(true);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect((await stored()).days).toStrictEqual([]);
+});
