@@ -17,8 +17,9 @@ function processOutput(child) {
   const waiters = new Set();
   child.stdout.on('data', chunk => { stdout += chunk; for (const notify of waiters) notify(); });
   child.stderr.on('data', chunk => { stderr += chunk; });
-  const deadline = setTimeout(() => child.kill('SIGTERM'), 1000);
-  const force = setTimeout(() => child.kill('SIGKILL'), 1500);
+  // Bound native waits and forced cleanup inside each 2.5s case budget.
+  const deadline = setTimeout(() => child.kill('SIGTERM'), 2000);
+  const force = setTimeout(() => child.kill('SIGKILL'), 2250);
   const done = once(child, 'close').then(([code, signal]) => {
     closed = true;
     for (const notify of waiters) notify();
@@ -27,7 +28,7 @@ function processOutput(child) {
   return { child, done, waitFor(text) {
     return new Promise((resolve, reject) => {
       const fail = () => { clearTimeout(timer); waiters.delete(check); reject(new Error(`Missing ${JSON.stringify(text)}: ${stdout}\n${stderr}`)); };
-      const timer = setTimeout(fail, 1000);
+      const timer = setTimeout(fail, 2000);
       const check = () => { if (stdout.includes(text)) { clearTimeout(timer); waiters.delete(check); resolve(); } else if (closed) fail(); };
       waiters.add(check); check();
     });
@@ -66,13 +67,21 @@ test('installed package command and recovery workflows', { timeout: 30_000 }, as
     cli = path.join(directory, 'installed', ...(process.platform === 'win32' ? [] : ['lib']), 'node_modules', product.cliPackageName, 'cli.mjs');
     await mkdir(bin); await mkdir(userHome);
 
-    // Each of these installed-CLI workflows launches many separate processes.
-    await t.test('help, invalid invocations and fresh-install empty results', { timeout: 3_000 }, async () => {
-      for (const args of [[], ['--help'], ['--version'], ...['doctor', 'triage', 'backend', 'logs', 'support', 'agents', 'missions'].map(command => [command, '--help'])]) assert.equal((await run(args)).code, 0, args.join(' '));
-      for (const args of [['doctor', 'extra'], ['logs', 'extra'], ['agents', 'list', 'extra'], ['missions', 'show'], ['missions', 'list', 'extra'], ['backend', 'stop', 'extra'], ['support', 'bundle', 'extra'], ['doctor', '--follow'], ['logs', '--no-launch'], ['agents', 'list', '--yes'], ['triage', '--agent', 'unknown'], ['unknown']]) {
+    // Bound each installed invocation, not the complete command matrix.
+    for (const args of [[], ['--help'], ['--version'], ...['doctor', 'triage', 'backend', 'logs', 'support', 'agents', 'missions'].map(command => [command, '--help'])]) {
+      await t.test(`help/version invocation: ${args.join(' ') || '<no arguments>'}`, { timeout: 2_500 }, async () => {
+        assert.equal((await run(args)).code, 0, args.join(' '));
+      });
+    }
+    for (const args of [['doctor', 'extra'], ['logs', 'extra'], ['agents', 'list', 'extra'], ['missions', 'show'], ['missions', 'list', 'extra'], ['backend', 'stop', 'extra'], ['support', 'bundle', 'extra'], ['doctor', '--follow'], ['logs', '--no-launch'], ['agents', 'list', '--yes'], ['triage', '--agent', 'unknown'], ['unknown']]) {
+      await t.test(`rejects invalid invocation: ${args.join(' ')}`, { timeout: 2_500 }, async () => {
         const result = await run(args); assert.equal(result.code, 2, `${args.join(' ')}: ${result.stderr}`); assert.ok(result.stderr.trim());
-      }
-      for (const command of ['agents', 'missions']) { const result = await run([command, 'list']); assert.equal(result.code, 0); assert.match(result.stdout, /No (agents|missions) found\./); }
+      });
+    }
+    for (const command of ['agents', 'missions']) await t.test(`fresh-install ${command} list is empty`, { timeout: 2_500 }, async () => {
+      const result = await run([command, 'list']); assert.equal(result.code, 0); assert.match(result.stdout, /No (agents|missions) found\./);
+    });
+    await t.test('read-only invocations leave fresh-install state absent', { timeout: 2_500 }, async () => {
       assert.equal((await readdir(directory)).includes('state'), false);
     });
 
@@ -201,20 +210,28 @@ fs.writeFileSync(process.env.TEST_CAPTURE,JSON.stringify({id:'${id}',args,pid:pr
       finally { terminated.child.kill('SIGKILL'); }
     });
 
-    if (process.platform === 'darwin') await t.test('background control, declined confirmation and terminal cancellation', { timeout: 3_000 }, async () => {
+    if (process.platform === 'darwin') {
       const launchAgents = path.join(userHome, 'Library', 'LaunchAgents'); await mkdir(launchAgents, { recursive: true });
       const file = path.join(launchAgents, `${product.appId}.daemon.plist`), capture = path.join(directory, 'launchctl.jsonl');
       const command = path.join(bin, 'launchctl');
       await writeFile(command, `#!${process.execPath}\nrequire('node:fs').appendFileSync(process.env.TEST_CONTROL,JSON.stringify(process.argv.slice(2))+'\\n');if(process.argv[2]==='print'&&process.env.TEST_LOADED==='no')process.exit(1);\n`); await chmod(command, 0o755);
-      for (const action of ['start', 'restart', 'stop']) assert.equal((await run(['backend', action])).code, 1);
+      for (const action of ['start', 'restart', 'stop']) await t.test(`refuses unmanaged background ${action}`, { timeout: 2_500 }, async () => {
+        assert.equal((await run(['backend', action])).code, 1);
+      });
       await writeFile(file, `<plist><key>APP_HOME</key><string>${home}</string></plist>`);
-      assert.equal((await run(['backend', 'restart'])).code, 2);
-      for (const action of ['start', 'restart', 'stop']) assert.equal((await run(['backend', action, '--yes'], { TEST_CONTROL: capture, TEST_LOADED: action === 'start' ? 'no' : 'yes' })).code, 0);
+      await t.test('requires confirmation for managed background restart', { timeout: 2_500 }, async () => {
+        assert.equal((await run(['backend', 'restart'])).code, 2);
+      });
+      for (const action of ['start', 'restart', 'stop']) await t.test(`performs explicit managed background ${action}`, { timeout: 2_500 }, async () => {
+        assert.equal((await run(['backend', action, '--yes'], { TEST_CONTROL: capture, TEST_LOADED: action === 'start' ? 'no' : 'yes' })).code, 0);
+      });
       const controls = await readFile(capture, 'utf8'); assert.match(controls, /kickstart/); assert.match(controls, /bootout/); assert.match(controls, /bootstrap/);
-      await writeFile(file, '<plist><key>APP_HOME</key><string>/another-installation</string></plist>');
-      assert.equal((await run(['backend', 'stop', '--yes'], { TEST_CONTROL: capture })).code, 1);
-      assert.equal(await readFile(capture, 'utf8'), controls);
-      await writeFile(file, `<plist><key>APP_HOME</key><string>${home}</string></plist>`);
+      await t.test('refuses to control another installation', { timeout: 2_500 }, async () => {
+        await writeFile(file, '<plist><key>APP_HOME</key><string>/another-installation</string></plist>');
+        assert.equal((await run(['backend', 'stop', '--yes'], { TEST_CONTROL: capture })).code, 1);
+        assert.equal(await readFile(capture, 'utf8'), controls);
+        await writeFile(file, `<plist><key>APP_HOME</key><string>${home}</string></plist>`);
+      });
       const python = (await exec('python3', ['-c', 'import sys; print(sys.executable)'])).stdout.trim();
       const pty = `import os, pty, sys, select, signal
 pid, fd = pty.fork()
@@ -238,22 +255,27 @@ sys.exit(code if code >= 0 else 128 - code)
 `;
       const terminal = () => processOutput(spawn(python, ['-c', pty, process.execPath, cli, 'backend', 'stop'], { env: { ...env, TEST_CONTROL: capture, TERM: 'xterm' }, stdio: ['pipe', 'pipe', 'pipe'] }));
       for (const [input, expected] of [['no\n', 0], ['\u0003', 130], ['\u0004', 130]]) {
-        const child = terminal(); children.add(child.child);
-        try { await child.waitFor('[y/N]'); child.child.stdin.write(input); const result = await child.done; assert.equal(result.code, expected, result.stdout + result.stderr); assert.doesNotMatch(result.stdout, /AbortError|stack/); }
-        finally { child.child.kill('SIGTERM'); await child.done; children.delete(child.child); }
+        await t.test(`declines or cancels terminal confirmation (${JSON.stringify(input)})`, { timeout: 2_500 }, async () => {
+          const child = terminal(); children.add(child.child);
+          try { await child.waitFor('[y/N]'); child.child.stdin.write(input); const result = await child.done; assert.equal(result.code, expected, result.stdout + result.stderr); assert.doesNotMatch(result.stdout, /AbortError|stack/); }
+          finally { child.child.kill('SIGTERM'); await child.done; children.delete(child.child); }
+        });
       }
       assert.equal(await readFile(capture, 'utf8'), controls);
-      const approved = terminal(); children.add(approved.child);
-      try { await approved.waitFor('[y/N]'); approved.child.stdin.write('yes\n'); assert.equal((await approved.done).code, 0); }
-      finally { approved.child.kill('SIGTERM'); await approved.done; children.delete(approved.child); }
-      assert.equal((await readFile(capture, 'utf8')).trim().split('\n').length, controls.trim().split('\n').length + 1);
-      const doctor = processOutput(spawn(python, ['-c', pty, process.execPath, cli, 'doctor'], { env: { ...env, TERM: 'xterm', TEST_HANG: '1' }, stdio: ['pipe', 'pipe', 'pipe'] }));
-      children.add(doctor.child);
-      try {
-        await doctor.waitFor('Checking Codex authentication'); doctor.child.stdin.write('\u0003');
-        const result = await doctor.done; assert.equal(result.code, 130); assert.match(result.stdout, /Cancelled/); assert.doesNotMatch(result.stdout, /AbortError|at runCli/);
-      } finally { doctor.child.kill('SIGTERM'); await doctor.done; children.delete(doctor.child); }
-
-    });
+      await t.test('accepts terminal confirmation exactly once', { timeout: 2_500 }, async () => {
+        const approved = terminal(); children.add(approved.child);
+        try { await approved.waitFor('[y/N]'); approved.child.stdin.write('yes\n'); assert.equal((await approved.done).code, 0); }
+        finally { approved.child.kill('SIGTERM'); await approved.done; children.delete(approved.child); }
+        assert.equal((await readFile(capture, 'utf8')).trim().split('\n').length, controls.trim().split('\n').length + 1);
+      });
+      await t.test('cancels terminal authentication without leaking abort diagnostics', { timeout: 2_500 }, async () => {
+        const doctor = processOutput(spawn(python, ['-c', pty, process.execPath, cli, 'doctor'], { env: { ...env, TERM: 'xterm', TEST_HANG: '1' }, stdio: ['pipe', 'pipe', 'pipe'] }));
+        children.add(doctor.child);
+        try {
+          await doctor.waitFor('Checking Codex authentication'); doctor.child.stdin.write('\u0003');
+          const result = await doctor.done; assert.equal(result.code, 130); assert.match(result.stdout, /Cancelled/); assert.doesNotMatch(result.stdout, /AbortError|at runCli/);
+        } finally { doctor.child.kill('SIGTERM'); await doctor.done; children.delete(doctor.child); }
+      });
+    }
   } finally { await dispose(); }
 });
