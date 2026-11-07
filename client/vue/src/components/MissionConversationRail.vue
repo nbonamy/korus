@@ -32,7 +32,7 @@
       </ElTabs>
       <header v-if="conversations.length <= 1" :aria-label="headerTitle">
         <span class="mission-conversation-rail__mark">
-          <CodeIcon v-if="selectedConversation?.run.stage === 'implementation'" aria-hidden="true" />
+          <CodeIcon v-if="selectedConversation?.run.stage === 'implementation' && selectedConversation.key !== 'mission-lead'" aria-hidden="true" />
           <TargetArrowIcon v-else aria-hidden="true" />
         </span>
         <div class="mission-conversation-rail__heading">
@@ -82,6 +82,7 @@ const conversations = computed<Conversation[]>(() => {
   const entries = new Map<string, Conversation>();
   for (const run of props.mission.execution?.runs ?? []) {
     if (!run.workerId || !availableAgentIds.value.has(run.workerId)) continue;
+    if (props.mission.execution?.implementationMode === 'lead' && run.workerId !== missionLeadAgentId(props.mission)) continue;
     const key = conversationKey(run);
     entries.set(key, { key, agentId: run.workerId, run });
   }
@@ -147,11 +148,12 @@ function tabLabel(conversation: Conversation): string {
 }
 
 function tabTitle(conversation: Conversation): string {
+  if (conversation.key === 'mission-lead') return t('missions.missionLead');
   if (conversation.run.stage === 'implementation') {
     const repositoryPath = conversation.run.repositoryPath
       ?? props.mission.artifacts.tickets[conversation.run.ticketIndex ?? -1]?.repositoryPath;
     const name = repositoryPath?.split(/[\\/]/u).filter(Boolean).at(-1) ?? t('missions.builder');
-    const siblings = conversations.value.filter(candidate => candidate.run.stage === 'implementation'
+    const siblings = conversations.value.filter(candidate => candidate.key !== 'mission-lead' && candidate.run.stage === 'implementation'
       && (candidate.run.repositoryPath ?? props.mission.artifacts.tickets[candidate.run.ticketIndex ?? -1]?.repositoryPath) === repositoryPath);
     const index = missionRunTicketIndex(props.mission, conversation.run);
     const attempts = siblings.filter(candidate => missionRunTicketIndex(props.mission, candidate.run) === index);
@@ -162,7 +164,7 @@ function tabTitle(conversation: Conversation): string {
 }
 
 function conversationKey(run: Conversation['run']): string {
-  if (run.stage !== 'implementation') return 'mission-lead';
+  if (run.stage !== 'implementation' || run.workerId === missionLeadAgentId(props.mission)) return 'mission-lead';
   return `worker:${run.workerId}`;
 }
 </script>
