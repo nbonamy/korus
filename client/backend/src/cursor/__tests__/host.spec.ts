@@ -8,6 +8,8 @@ import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
 import type { AgentBackendDriver, BackendEvent } from '@workspace/core/backend-driver';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import type { CursorConversationSnapshot } from '@workspace/core/contracts/cursor-conversation';
+import { UsageLedger } from '../../usage/usage-ledger';
+import { UsageService } from '../../usage/usage-service';
 let root: string, host: AgentBackendDriver;
 let events: BackendEvent[];
 const agent = { ...createInitialSnapshot().agents[0]!, id: 'cursor-fixture', backend: 'cursor' as const, backendDefaults: { kind: 'cursor' as const }, backendSession: undefined };
@@ -30,6 +32,41 @@ async function snapshot(): Promise<CursorConversationSnapshot> {
 }
 async function wire() { return (await readFile(path.join(root, 'wire.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line)); }
 describe('Cursor ACP host transport boundary', () => {
+  it('records completed, interrupted and failed native executions without inventing tokens or costs or counting snapshot reads', async () => {
+    const ledger = new UsageLedger(path.join(root, 'usage.sqlite'));
+    const usage = new UsageService(ledger, () => agent);
+    await ledger.load();
+    expect(host.onUsage).toBeTypeOf('function');
+    const unsubscribeUsage = host.onUsage!(event => usage.observe(event));
+    const unsubscribeEvents = host.onEvent(event => usage.observeEvent(event as never));
+    try {
+      await host.sendPrompt(agent, 'hello');
+      await vi.waitFor(() => expect(completions()).toHaveLength(1));
+      await snapshot(); await snapshot();
+      const waiting = { ...agent, id: 'waiting' };
+      const turn = await host.sendPrompt(waiting, 'wait');
+      await host.interrupt(waiting, turn.turnId);
+      await host.sendPrompt({ ...agent, id: 'failed' }, 'eof');
+      await vi.waitFor(() => expect(completions()).toHaveLength(3));
+      const released = { ...agent, id: 'released' };
+      await host.sendPrompt(released, 'wait');
+      await host.releaseConversation!(released.id);
+      await vi.waitFor(() => expect(completions()).toHaveLength(4));
+      await usage.drain();
+      expect(ledger.query({ provider: 'cursor' }).rows).toMatchObject([{
+        started: 4, completed: 1, interrupted: 2, failed: 1, inProgress: 0, measuredTurns: 0, tokens: null,
+        cost: { usd: null, coverage: 'unavailable' },
+      }]);
+      // The deployed collector's protocol has not opted into Cursor reports.
+      expect(ledger.projectDailyTelemetry({ day: new Date().toISOString().slice(0, 10) })).toStrictEqual([]);
+      await usage.close();
+      const restored = new UsageLedger(path.join(root, 'usage.sqlite'));
+      try {
+        await restored.load();
+        expect(restored.query({ provider: 'cursor' }).rows).toMatchObject([{ started: 4, completed: 1, interrupted: 2, failed: 1 }]);
+      } finally { await restored.close(); }
+    } finally { unsubscribeUsage(); unsubscribeEvents(); await usage.close(); }
+  });
   it('switches an untouched agent to Cursor through the app boundary and accepts its first prompt', async () => {
     const state = createTestSnapshot();
     state.agents = [{ ...agent, backend: 'codex', backendDefaults: { kind: 'codex', model: 'must-not-leak' }, backendSession: undefined }];

@@ -6,6 +6,7 @@ import type { Agent, BackendSession, SendPromptOptions } from '@workspace/core/c
 import type { AgentBackendDriver, BackendEvent } from '@workspace/core/backend-driver';
 import { cursorBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type { CursorConversationEvent } from '@workspace/core/contracts/cursor-conversation';
+import type { ExecutionObservation } from '@workspace/core/usage';
 import type { BackendDriverRegistryOptions } from '../driver-rpc';
 import { appDeveloperInstructions } from '../mcp/agent-prompts';
 import { promptWithSelectedReferences } from '../agents/prompt-content';
@@ -22,6 +23,7 @@ export class CursorHost implements AgentBackendDriver {
   private readonly queues = new Map<string, Promise<void>>();
   private readonly revisions = new Map<string, number>();
   private readonly listeners = new Set<(event: BackendEvent) => void>();
+  private readonly usageListeners = new Set<(event: ExecutionObservation) => void>();
   private closed = false;
   private checking?: ReturnType<CursorAuthentication['authenticate']>;
   private readonly authentication = new CursorAuthentication(payload => this.emit({ type: 'provider.authenticationChanged', backend: this.backend, payload }));
@@ -38,6 +40,7 @@ export class CursorHost implements AgentBackendDriver {
   }
   getCapabilities() { return cursorBackendCapabilities; }
   onEvent(listener: (event: BackendEvent) => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
+  onUsage(listener: (event: ExecutionObservation) => void) { this.usageListeners.add(listener); return () => { this.usageListeners.delete(listener); }; }
   async sendPrompt(agent: Agent, prompt: string, options?: SendPromptOptions) {
     if (agent.backend !== this.backend || (agent.backendSession && agent.backendSession.kind !== this.backend)) throw new Error('Cursor cannot use another provider conversation.');
     if (options?.attachments?.length || options?.planMode || options?.selection?.model || options?.backendOptions) throw new Error('Cursor attachments, model and mode controls are not available yet.');
@@ -82,8 +85,9 @@ export class CursorHost implements AgentBackendDriver {
   async releaseConversation(agentId: string): Promise<void> {
     this.generations.set(agentId, (this.generations.get(agentId) ?? 0) + 1);
     this.opening.get(agentId)?.abort.abort();
-    const session = this.sessions.get(agentId); this.sessions.delete(agentId);
+    const session = this.sessions.get(agentId);
     await session?.close();
+    if (this.sessions.get(agentId) === session) this.sessions.delete(agentId);
     await this.opening.get(agentId)?.done.catch(() => {});
   }
   async close(): Promise<void> {
@@ -94,6 +98,7 @@ export class CursorHost implements AgentBackendDriver {
     await Promise.allSettled([...this.opening.values()].map(value => value.done));
     await Promise.allSettled(this.queues.values());
     this.listeners.clear();
+    this.usageListeners.clear();
   }
   private async ensure(agent: Agent): Promise<CursorSession> {
     const current = this.sessions.get(agent.id);
@@ -125,11 +130,28 @@ export class CursorHost implements AgentBackendDriver {
   }
   private conversationEvent(event: CursorConversationEvent): void {
     const current = this.sessions.get(event.agentId);
-    if (this.closed || current?.sessionId !== event.sessionId) return;
+    if (current?.sessionId !== event.sessionId) return;
+    if (this.closed) {
+      if (event.type === 'turn.completed') this.observeUsage(event, event.payload.turn.status);
+      return;
+    }
     const identity = { backend: this.backend, agentId: event.agentId, backendSessionId: event.sessionId, conversationId: event.sessionId, turnId: event.turnId };
+    // Start before transcript output reaches the daemon clock, finish after its
+    // terminal events. Snapshot reads and replay never produce observations.
+    if (event.type === 'turn.started') this.observeUsage(event, 'started');
     this.emit({ ...identity, type: 'cursor.conversationEventReceived', payload: { revision: this.nextRevision(event.agentId), event } });
     if (event.type === 'turn.started') this.emit({ ...identity, type: 'agent.statusChanged', payload: { type: 'working' } });
     if (event.type === 'turn.completed') this.emit({ ...identity, type: 'agent.statusChanged', payload: event.payload.turn.status === 'failed' ? { type: 'error', message: event.payload.error ?? 'Cursor turn failed.' } : { type: 'idle' } });
+    if (event.type === 'turn.completed') this.observeUsage(event, event.payload.turn.status);
+  }
+  private observeUsage(event: CursorConversationEvent, phase: ExecutionObservation['phase']): void {
+    const turn = this.sessions.get(event.agentId)?.snapshot.turns.find(turn => turn.id === event.turnId);
+    const observation: ExecutionObservation = {
+      provider: this.backend, agentId: event.agentId, sessionId: event.sessionId, turnId: event.turnId,
+      phase, at: Date.parse(event.occurredAt), model: null, tokens: null,
+      ...(phase !== 'started' && turn?.durationMs != null ? { durationMs: turn.durationMs } : {}),
+    };
+    for (const listener of this.usageListeners) { try { listener(observation); } catch { /* Observer isolation. */ } }
   }
   private publishSnapshot(agentId: string, session: CursorSession): void {
     this.emit({ backend: this.backend, agentId, backendSessionId: session.sessionId, conversationId: session.sessionId,

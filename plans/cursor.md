@@ -621,6 +621,43 @@ Ticket 6 remains blocked and is not submitted as completed implementation.
 
 ## Verification and learnings
 
+### Full-provider continuation: local analytics and current-runtime discovery
+
+The user requested complete Cursor support, including analytics and credits/quota,
+and authorized regular local commits. The full objective remains active; this
+checkpoint is a milestone, not completion of the provider integration.
+
+Live executions emit start and terminal usage observations. Local analytics retain
+Cursor turns across ledger reload, expose a provider filter, measure first
+assistant output, and settle release/shutdown as interrupted. No served model,
+tokens or cost is invented. Cursor remains excluded from the old telemetry
+projection until the collector's acceptance and rollout are implemented.
+
+Native discovery against **2026.11.05-86047df** authenticated and created an ACP
+session. It advertised loadSession, session/list, HTTP/SSE MCP and image prompts;
+session creation returned Agent/Plan/Ask modes and the runtime model catalog.
+A scratch approval probe ended with no tool attempts, no permission callbacks
+and no file changes. That result is inconclusive and does not supersede the
+earlier edit-bypass evidence.
+
+The installed CLI's public distribution includes a feature-gated `/usage` screen.
+Its usage-data implementation calls DashboardService.GetCurrentPeriodUsage,
+GetHardLimit and GetPlanInfo, with an enterprise billing fallback. The period
+response schema includes plan usage, spend-limit usage and billing-cycle dates.
+A read-only native-authenticated request to
+`https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage`
+returned **HTTP 200**, with billing-cycle dates, plan-usage percentages and
+spend-limit fields. The access token stayed in process memory, was sent only to
+the native Cursor endpoint, and was neither printed nor retained. No account,
+team or monetary values are stored in this record. This is a qualified source
+for the forthcoming quota adapter, not implemented quota UI or per-turn pricing.
+
+The public credential implementation uses the macOS Keychain account
+`cursor-user`, service `cursor-access-token`; the file-backed implementation
+uses platform-specific auth.json storage independently of CURSOR_CONFIG_DIR.
+Home qualification must cover credential separation as well as ACP/config paths;
+do not infer it from changing CURSOR_CONFIG_DIR alone.
+
 - Phase 0 was docs-only: no runtime contract or app code changed. App suite,
   typecheck and coverage were not required for ticket 1; native probes are
   qualification evidence, not deterministic regression tests.

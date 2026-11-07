@@ -84,6 +84,8 @@ export class CursorSession {
     try { await this.active; } finally { clearTimeout(timer); }
   }
   async close(): Promise<void> {
+    const turnId = this.transcript?.replica.getSnapshot().activeTurnId;
+    if (turnId) { this.interrupted = true; this.transcript.finish(turnId, 'interrupted'); }
     this.closing = true; this.disposed = true;
     await this.connection.close(); await this.active;
   }

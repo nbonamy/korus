@@ -123,6 +123,13 @@ and never silently creates a replacement conversation. Known team-switch and
 policy markers produce fixed safe errors and disconnected observations; raw
 diagnostics and URLs are discarded.
 
+Cursor live turns emit execution observations to the local usage ledger. The
+daemon measures working time and time to first assistant output; release and
+shutdown settle active executions as interrupted. Snapshot reads do not count as
+executions. Token counts, served models and costs stay unknown without native
+measurements. Cursor rows are excluded from telemetry projection until the
+collector contract accepts the provider.
+
 Updates inspect native `about --format json` metadata and use native `update`
 through the shared consent and idle scheduler. Child environments explicitly
 clear ambient Cursor credentials even when PATH discovery merges environments.
