@@ -1,7 +1,8 @@
 # Cursor provider qualification and integration
 
-Status: The desktop integration implements conversations, tools, history,
-model/enum-effort selection, attachments, native Plan mode, scoped MCP, account credits/quota
+Status: The agreed everyday desktop scope is implemented and verified. It includes
+conversations, tools, history, model/enum-effort selection, attachments, native Plan
+mode, scoped MCP, account credits/quota
 and analytics. See the [implementation audit](#full-provider-implementation-audit)
 for current acceptance evidence and provider boundaries. Full native qualification
 remains incomplete: edits can bypass permission callbacks, structured question
@@ -11,15 +12,19 @@ retain their original CLI versions and evidence limits.
 
 ## Objective and scope
 
-Add Cursor as a peer provider through the existing backend seam, preserving
-Korus approvals, plans, history and workflow behavior. Advertise only measured
-capabilities. Native transport evidence and deterministic app integration tests
-are recorded separately below. Approved requirements revision 2 and
-Mission tickets revision 15 define the remaining work.
+The user-confirmed completion boundary is everyday Cursor workflows with native
+limitations documented, rather than full parity with every Korus provider feature.
+This covers connection and provider selection, conversations, tools and native
+requests, history, models/effort, attachments, account credits/quota and analytics.
+Separate-home setup is excluded at the user's direction. Unsupported or unqualified
+controls remain disabled; their evidence is retained below.
 
-Use ACP over stdio, sharing the Antigravity connection implementation. Keep this
-transport decision conditional on resolving the approval failures below. Do not
-switch to SDK or headless print mode to evade team policy or missing callbacks.
+Use ACP over stdio, sharing the existing ACP transport. Native callback handling
+does not promise interception of edits that Cursor executes without a callback.
+Do not switch transport or change shared native policy to evade that boundary.
+Native transport evidence and deterministic app integration tests are recorded
+separately. Earlier qualification checkpoints retain their original scope; the
+implementation audit records acceptance against the agreed everyday scope.
 
 ## Phase 0 method and evidence
 
@@ -792,6 +797,13 @@ the turn. The native file-change projection reached the conversation. This confi
 the approval limitation on the installed build rather than relying on Phase 0's
 older CLI evidence; full approvals and automatic review remain disabled.
 
+A delegated-filesystem probe advertised client `fs.writeTextFile` support and
+provided a rejecting handler. The scratch file still changed, with zero delegated
+write requests. Client filesystem advertisement therefore did not establish an
+edit-interception seam on this build. Source inspection also did not establish a
+process-scoped ACP plugin-hook injection; existing shared user/project/team hooks
+are not changed by this integration.
+
 A production-host native todo request created two synthetic checklist items and
 marked both completed. Both todo snapshots reached the app-owned conversation.
 The installed CLI frames `cursor/update_todos` as a request despite documentation
@@ -819,6 +831,15 @@ cancelled response and missing todo projection before the fix.
   provider controls remain absent rather than inheriting Codex shortcuts.
 
 ### Verification
+
+| Agreed requirement | Acceptance evidence |
+| --- | --- |
+| Connection and existing-home setup | Native authenticated ACP startup; connection/setup/update owning-boundary tests; no isolated-home choices. |
+| Everyday conversations, history and selection | Native text, history list/replay, mode and effort probes; host tests cover resume, serialization, cancellation, recovery, attachments and identity isolation. |
+| Tools and requests | Native file-change/todo observations; subprocess callback and scoped MCP workflows; rendered file links, media, confirmations and continuation. |
+| Credits/quota | Native billing adapter and rendered settings workflows cover balances, Free/disabled billing and stale-account responses. |
+| Analytics | Persistent execution ledger, uploader negotiation, real Postgres collector and authenticated proxy/browser console workflows; unavailable measurements stay unknown. |
+| Existing-client compatibility | Released-provider companion admission/subscription/Live Activity regressions and explicit Cursor sharing exclusion. |
 
 | Affected workspace | Full coverage suite | Statements |
 | --- | --- | --- |
