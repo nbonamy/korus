@@ -128,7 +128,9 @@ Each agent owns a native `agent acp` process through the shared ACP connection.
 The host serializes prompts and projects text, thoughts and tool updates into a
 Cursor-owned revisioned replica. App developer instructions travel in prompt
 context blocks; the renderer receives only app-owned messages. Quick Chats use
-private working directories. Model selection preserves native config values;
+private working directories. Native plan mode selects a catalog mode before
+prompt admission and restores agent mode for a normal follow-up. Continuation
+uses the saved native session and the same serialized prompt path. Model selection preserves native config values;
 trusted local attachments become native content blocks. Configured model choice
 is not evidence of the served model or billing. Permission callbacks and plan
 proposals become once-only app tool confirmations; duplicate and stale responses
@@ -432,6 +434,11 @@ the guest owner session budget alongside phone connections; source network socke
 limits can reject a circuit before application admission.
 
 ### Companion gateway and relay
+
+Unnegotiated companion and guest transports retain their closed three-provider
+set. Cursor agents, choices and indirect workspace references are excluded from
+companion projections, admission and Live Activity counts. Cursor sharing is
+explicitly unavailable, independently of desktop conversation references.
 
 Each companion safety property has one owner. Extend the owner instead of adding a
 parallel check, counter or state flag:

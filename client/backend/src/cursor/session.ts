@@ -21,6 +21,7 @@ export class CursorSession {
   private transcript!: CursorTranscript;
   private readonly pending = new Map<string, { resolve(value: unknown): void; answer(response: AgentRequestResponse): unknown }>();
   private journal!: CursorPromptJournal;
+  private promptMode?: string;
   private config: Record<string, unknown> = {};
   private loading = true;
   private disposed = false;
@@ -95,6 +96,22 @@ export class CursorSession {
     } finally { options.signal.removeEventListener('abort', abort); await session.close(); }
   }
   get configuration() { return this.config; }
+  async setPromptMode(plan: boolean): Promise<void> {
+    const mode = Array.isArray(this.config.configOptions) ? this.config.configOptions.find(option => record(option) && option.category === 'mode') : undefined;
+    if (!record(mode) || typeof mode.id !== 'string' || !Array.isArray(mode.options)) {
+      if (plan || (this.promptMode !== undefined && this.promptMode !== 'agent')) throw new Error('Cursor mode catalog is unavailable.');
+      return;
+    }
+    const value = plan ? 'plan' : 'agent';
+    if (!mode.options.some(option => record(option) && option.value === value)) throw new Error(`Cursor ${value} mode is unavailable in the native catalog.`);
+    if (mode.currentValue === value) { this.promptMode = value; return; }
+    this.promptMode = 'unknown';
+    const result = await this.connection.request('session/set_config_option',{sessionId:this.sessionId,configId:mode.id,value});
+    if (!record(result) || !Array.isArray(result.configOptions)) throw new Error('Invalid Cursor mode response.');
+    const confirmed = result.configOptions.find(option => record(option) && option.id === mode.id);
+    if (!record(confirmed) || confirmed.currentValue !== value || !Array.isArray(confirmed.options) || !confirmed.options.some(option => record(option) && option.value === value)) throw new Error('Cursor did not confirm the requested mode.');
+    this.config = {...this.config,configOptions:result.configOptions}; this.promptMode = value;
+  }
   async setModel(model: string): Promise<void> {
     const result = await this.connection.request('session/set_config_option', { sessionId: this.sessionId, configId: 'model', value: model });
     if (!record(result) || !Array.isArray(result.configOptions)) throw new Error('Invalid Cursor model response.');

@@ -74,7 +74,7 @@ export class CursorHost implements AgentBackendDriver {
   async sendPrompt(agent: Agent, prompt: string, options?: SendPromptOptions) {
     if (agent.backend !== this.backend || (agent.backendSession && agent.backendSession.kind !== this.backend)) throw new Error('Cursor cannot use another provider conversation.');
     if (this.resuming.has(agent.id)) throw new Error('Finish the current Cursor history operation first.');
-    if (options?.planMode || options?.backendOptions) throw new Error('Cursor attachments, model and mode controls are not available yet.');
+    if (options?.backendOptions) throw new Error('Cursor backend options are not available.');
     const generation = this.generations.get(agent.id) ?? 0;
     const previous = this.queues.get(agent.id);
     let release!: () => void;
@@ -91,6 +91,7 @@ export class CursorHost implements AgentBackendDriver {
         if (!cursorModels(session.configuration).some(option => option.id === model)) throw new Error('Unknown Cursor model. Refresh the model catalog.');
         await session.setModel(model);
       }
+      await session.setPromptMode(options?.planMode === true);
       const content = options?.content === undefined ? undefined : normalizePromptContent(options.content);
       const instructions = appDeveloperInstructions(agent, this.options.pluginSettings?.(), {
         celebrationsEnabled: this.options.celebrationsEnabled?.(), developerInstructions: this.options.additionalDeveloperInstructions?.(agent),
@@ -100,6 +101,11 @@ export class CursorHost implements AgentBackendDriver {
       void turn.completion.finally(settle);
       return { backendSession: this.reference(session), turnId: turn.turnId };
     } catch (error) { settle(); throw error; }
+  }
+  async continueInterruptedTurn(agent: Agent): Promise<import('@workspace/core/backend-driver').BackendTurnActionResult> {
+    if (agent.backendSession?.kind !== this.backend) throw new Error('No Cursor session to continue.');
+    const result = await this.sendPrompt(agent,'continue');
+    return {backendSession:result.backendSession,activeTurnId:result.turnId};
   }
   async interrupt(agent: Agent, expectedTurnId?: string) {
     const session = this.sessions.get(agent.id);

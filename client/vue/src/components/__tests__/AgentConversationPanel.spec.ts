@@ -53,6 +53,11 @@ describe('AgentConversationPanel', () => {
       expect(wrapper.get('.codex-conversation-pane__footer').text()).toContain('Run tests?');
       await wrapper.get('.codex-conversation-pane__footer').findAll('button').find(button => button.text() === 'Deny')!.trigger('click');
       expect(actions.clientResponse).toHaveBeenCalledWith({ agentId: agent.id, id: 'cursor-permission', payload: { decision: 'deny' } });
+      view.cursorSnapshot = { ...view.cursorSnapshot!, busy: false, activeTurnId: null, clientRequests: [],
+        turns: view.cursorSnapshot!.turns.map(turn => ({ ...turn, status: 'interrupted' })) };
+      await flushPromises();
+      await wrapper.get('button[aria-label="Continue"]').trigger('click');
+      expect(actions.continueInterruptedTurn).toHaveBeenCalledExactlyOnceWith(agent.id);
     } finally { wrapper.unmount(); }
   });
   it('toggles Goal mode in a Claude composer and submits the objective to that agent', async () => {

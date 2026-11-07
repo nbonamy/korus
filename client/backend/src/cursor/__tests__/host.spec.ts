@@ -201,6 +201,33 @@ describe('Cursor ACP host transport boundary', () => {
     await expect(host.sendPrompt(saved,'wrong-account')).rejects.toThrow(/account|identity/i);
     expect((await wire()).filter(call => call.method === 'session/prompt')).toHaveLength(2);
   });
+  it('selects catalog plan mode before a prompt and restores agent mode for the following normal prompt', async () => {
+    const first = await host.sendPrompt(agent,'hello',{planMode:true}); await vi.waitFor(() => expect(completions()).toHaveLength(1));
+    await host.sendPrompt({...agent,backendSession:first.backendSession},'normal'); await vi.waitFor(() => expect(completions()).toHaveLength(2));
+    const calls = (await wire()).filter(call => call.method === 'session/set_config_option' || call.method === 'session/prompt');
+    expect(calls.map(call => [call.method,call.params.value ?? call.params.prompt[0].text.split('\n')[0]])).toStrictEqual([
+      ['session/set_config_option','plan'],['session/prompt','hello'],['session/set_config_option','agent'],['session/prompt','normal'],
+    ]);
+  });
+  it('rejects plan mode missing from the native catalog without sending a prompt', async () => {
+    await writeFile(path.join(root,'no-plan'),'');
+    await expect(host.sendPrompt(agent,'must-not-run',{planMode:true})).rejects.toThrow(/plan|mode/i);
+    expect((await wire()).some(call => call.method === 'session/prompt')).toBe(false);
+  });
+  it('fails closed on a mode acknowledgment that disagrees and rechecks authoritative mode after a model change', async () => {
+    await writeFile(path.join(root,'bad-mode-ack'),'');
+    await expect(host.sendPrompt(agent,'must-not-run',{planMode:true})).rejects.toThrow(/mode|confirm/i);
+    expect((await wire()).some(call=>call.method==='session/prompt')).toBe(false);
+    await rm(path.join(root,'bad-mode-ack'));
+    await host.sendPrompt(agent,'hello',{planMode:true,selection:{model:'composer-2.5'}}); await vi.waitFor(()=>expect(completions()).toHaveLength(1));
+    await host.sendPrompt(agent,'again',{planMode:true,selection:{model:'composer-2.5'}}); await vi.waitFor(()=>expect(completions()).toHaveLength(2));
+    expect((await wire()).filter(call=>call.method==='session/set_config_option' && call.params.configId==='mode').map(call=>call.params.value)).toStrictEqual(['plan','plan','plan']);
+  });
+  it('rejects an empty mode acknowledgment before prompt admission', async () => {
+    await writeFile(path.join(root,'no-mode-ack'),'');
+    await expect(host.sendPrompt(agent,'must-not-run',{planMode:true})).rejects.toThrow(/mode|confirm/i);
+    expect((await wire()).some(call=>call.method==='session/prompt')).toBe(false);
+  });
   it('switches an untouched agent to Cursor through the app boundary and accepts its first prompt', async () => {
     const state = createTestSnapshot();
     state.agents = [{ ...agent, backend: 'codex', backendDefaults: { kind: 'codex', model: 'must-not-leak' }, backendSession: undefined }];
@@ -302,8 +329,11 @@ describe('Cursor ACP host transport boundary', () => {
     await vi.waitFor(() => expect(events.some(event => event.type === 'cursor.conversationEventReceived' && event.payload.event.type === 'message.upsert' && JSON.stringify(event.payload.event).includes('Hello'))).toBe(true));
     await host.interrupt(agent, first.turnId);
     await host.interrupt(agent, first.turnId);
-    await host.sendPrompt({ ...agent, backendSession: first.backendSession }, 'again');
+    const continued = await host.continueInterruptedTurn!({ ...agent, backendSession: first.backendSession });
+    expect(continued.backendSession).toStrictEqual(first.backendSession);
+    expect(continued.activeTurnId).toBeTypeOf('string');
     await vi.waitFor(() => expect(completions()).toHaveLength(2));
+    expect((await wire()).filter(call => call.method === 'session/new')).toHaveLength(1);
     const state = await snapshot();
     expect(state.turns.map(turn => turn.status)).toEqual(['interrupted', 'completed']);
     expect(JSON.stringify(state)).not.toContain('LATE');
