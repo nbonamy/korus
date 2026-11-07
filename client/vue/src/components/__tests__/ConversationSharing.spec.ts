@@ -7,10 +7,11 @@ import { mountShell, clickPortaledMenuItem } from './app-shell-test-harness';
 import type { GuestJoinView } from '@workspace/core/guest-navigation';
 import { decodeAppBackendEvent } from '@workspace/core/backend-protocol/events';
 import { createClientApiMock } from '../../test/client-api-mock';
+import { ElMessage } from 'element-plus';
 
 // Mounted shell catches entry-point routing, duplicate grants, missing disclosure,
 // stale async results and accidental credential display. Provider UI is a boundary fake.
-afterEach(() => { document.body.innerHTML = ''; vi.restoreAllMocks(); });
+afterEach(() => { ElMessage.closeAll(); document.body.innerHTML = ''; vi.restoreAllMocks(); });
 
 /** Active shares have a header button; inactive shares use the agent actions menu. */
 async function openShareDialog(wrapper: { element: Element }) {
@@ -29,6 +30,34 @@ async function openShareDialog(wrapper: { element: Element }) {
   await flushPromises();
 }
 describe('owner Share workflow', () => {
+  it('announces joins once for a background chat, without announcing initial presence or repeated updates', async () => {
+    const snapshot = createInitialSnapshot();
+    const background = { ...snapshot.agents[0]!, id: 'background-share', name: 'Background chat' };
+    snapshot.agents.push(background);
+    snapshot.teams[0]!.agentIds.push(background.id);
+    const client = createClientApiMock();
+    setElectronTestClient({ onEvent: client.api.onEvent });
+    const wrapper = mountShell({ snapshot, stubRightWorkspacePanel: true, stubTeamRail: true });
+    const state = { active: true, handle: 'a'.repeat(32), connectedGuests: 2, availability: 'ready' as const };
+    let seq = 0;
+    const presence = async (count: number) => {
+      client.emit(decodeAppBackendEvent({ seq: ++seq, occurredAt: 'now', type: 'conversation.shareChanged', agentId: background.id, payload: { ...state, connectedGuests: count } }));
+      await flushPromises();
+    };
+    try {
+      await flushPromises();
+      await presence(2);
+      await presence(2);
+      await presence(0);
+      expect(document.querySelectorAll('.el-message--primary')).toHaveLength(0);
+      await presence(2);
+      await presence(2);
+      expect(document.querySelectorAll('.el-message--primary')).toHaveLength(1);
+      expect(document.querySelector('.el-message--primary')?.textContent).toContain('2 guests joined “Background chat”.');
+      expect(wrapper.get('.workspace-header__title').text()).not.toContain('Background chat');
+    } finally { wrapper.unmount(); }
+  });
+
   it('renders pushed suggestions without reloading and moves or deletes them without submitting', async () => {
     const snapshot = createInitialSnapshot(); const agent = snapshot.agents[0]!;
     agent.backend = 'claude'; agent.backendSession = { kind: 'claude', sessionId: 'owner', transport: 'stdio' };
@@ -142,6 +171,7 @@ describe('owner Share workflow', () => {
     try {
       await flushPromises(); await openShareDialog(wrapper);
       expect(wrapper.get('.agent-header__guest-count').text()).toBe('2');
+      expect(document.querySelectorAll('.el-message--primary')).toHaveLength(0); // Opening an existing share is silent.
       const switches = () => wrapper.findAll('[role="switch"]');
       expect(switches()).toHaveLength(2);
       expect(switches().map(item => item.attributes('aria-checked'))).toEqual(['false', 'false']);
@@ -159,13 +189,17 @@ describe('owner Share workflow', () => {
       await flushPromises();
       expect(wrapper.find('button[aria-label="Share"]').exists()).toBe(true);
       expect(wrapper.find('.agent-header__guest-count').exists()).toBe(false);
+      expect(document.querySelectorAll('.el-message--primary')).toHaveLength(0); // Leaving is silent too.
       client.emit(decodeAppBackendEvent({ seq: 3, occurredAt: 'now', type: 'conversation.shareChanged', agentId: agent.id, payload: { ...state, guests: [guests[0]!], connectedGuests: 1 } }));
       await flushPromises();
       expect(wrapper.get('.agent-header__guest-count').text()).toBe('1');
+      expect(document.querySelectorAll('.el-message--primary')).toHaveLength(1);
+      expect(document.querySelector('.el-message--primary')?.textContent).toContain(`A guest joined “${agent.name}”.`);
       client.emit(decodeAppBackendEvent({ seq: 4, occurredAt: 'now', type: 'conversation.shareChanged', agentId: agent.id, payload: { ...state, guests: [], connectedGuests: null, availability: 'transportPending' } }));
       await flushPromises();
       expect(wrapper.find('.agent-header__guest-count').exists()).toBe(false);
       expect(wrapper.find('button[aria-label="Share"]').exists()).toBe(true);
+      expect(document.querySelectorAll('.el-message--primary')).toHaveLength(1);
     } finally { wrapper.unmount(); }
   });
   it('uses one dialog and the same backend link from the header and context menu', async () => {

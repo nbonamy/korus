@@ -83,6 +83,18 @@ try {
   await page.screenshot({ animations: 'disabled', path: path.join(output, 'header-no-guests.png') });
   await page.getByRole('button', { name: 'Share', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Stop sharing', exact: true }).waitFor();
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+  assert.equal(await page.locator('.el-message--primary').count(), 0);
+  await page.evaluate(() => window.dispatchEvent(new Event('synthetic-guest-joined')));
+  const joinToast = page.locator('.el-message--primary');
+  await joinToast.getByText('A guest joined “Guest sharing demo”.', { exact: true }).waitFor();
+  await page.waitForFunction(() => {
+    const toast = document.querySelector('.el-message--primary');
+    return toast && getComputedStyle(toast).opacity === '1' && toast.getBoundingClientRect().top >= 0;
+  });
+  assert.equal(await joinToast.locator('.el-message-icon--primary').count(), 1);
+  assert.equal(await joinToast.locator('.el-message__content').evaluate(element => getComputedStyle(element).color), await share.evaluate(element => getComputedStyle(element).color));
+  await page.screenshot({ animations: 'disabled', path: path.join(output, 'guest-joined-toast.png') });
   for (const mode of ['queue', 'steer', 'readonly']) {
     await page.goto(`${server.resolvedUrls.local[0]}?guest=${mode}`);
     const label = mode === 'readonly' ? 'Send prompt' : mode === 'steer' ? 'Steer prompt' : 'Queue prompt';
@@ -98,6 +110,6 @@ try {
     assert.equal(request.followUpBehavior, mode === 'readonly' ? undefined : mode);
   }
   assert.deepEqual(errors, []);
-  await writeFile(path.join(output, 'capture.json'), JSON.stringify({ fixture: 'production owner and guest components; synthetic state and control port; no provider or relay', credentials: 'redacted fixture; no real bearer generated', entries: ['persistent header Share', 'conversation context menu Share with guests'], screenshots: ['header-share.png', 'header-no-guests.png', 'guest-access-default.png', 'guest-access-enabled.png', 'guest-access-small-window.png', 'inactive-share-dialog.png', 'active-share-copy-error.png', 'guest-send-queue.png', 'guest-send-steer.png', 'guest-send-readonly.png'], checks: ['live guest count; zero hides only the badge', 'read-only by default', 'individual write access', 'revocation', 'header and context-menu entry points', 'small-window overflow', 'create and stop sharing', 'clipboard failure and retry', 'guest queue and steer actions', 'read-only suggestions omit queue/steer'], pageErrors: errors }, null, 2));
+  await writeFile(path.join(output, 'capture.json'), JSON.stringify({ fixture: 'production owner and guest components; synthetic state and control port; no provider or relay', credentials: 'redacted fixture; no real bearer generated', entries: ['persistent header Share', 'conversation context menu Share with guests'], screenshots: ['header-share.png', 'header-no-guests.png', 'guest-joined-toast.png', 'guest-access-default.png', 'guest-access-enabled.png', 'guest-access-small-window.png', 'inactive-share-dialog.png', 'active-share-copy-error.png', 'guest-send-queue.png', 'guest-send-steer.png', 'guest-send-readonly.png'], checks: ['live guest count; zero hides only the badge', 'blue guest-joined info toast', 'read-only by default', 'individual write access', 'revocation', 'header and context-menu entry points', 'small-window overflow', 'create and stop sharing', 'clipboard failure and retry', 'guest queue and steer actions', 'read-only suggestions omit queue/steer'], pageErrors: errors }, null, 2));
   console.log(`Redacted captures saved to ${output}`);
 } finally { await browser?.close(); await server.close(); }
