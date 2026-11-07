@@ -45,7 +45,20 @@ describe('connected engine admission', () => {
       expect(snapshot.general.providerEnabled?.cursor).toBe(false);
       await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'provider/enabled/set', params: { backend: 'cursor', enabled: true } });
       await expect(server.requireConnectedEngine('cursor')).resolves.toBe('cursor');
+      await server.handleMessage({ jsonrpc: '2.0', id: 'new-chat', method: 'agent/quickChat/create', params: { input: { teamId: 'team-test', selection: { backend: 'cursor' } } } });
+      const agent = snapshot.agents[0]!;
       connected = false;
+      const probes = handle.mock.calls.length;
+      const saved = await server.handleMessage({ jsonrpc: '2.0', id: 'model-save', method: 'agent/update', params: { input: {
+        id: agent.id, selection: { backend: 'cursor', model: 'native-model', reasoningEffort: null, serviceTier: null },
+      } } });
+      expect(saved).toMatchObject({ result: { agents: [expect.objectContaining({ backend: 'cursor', backendDefaults: expect.objectContaining({ model: 'native-model' }) })] } });
+      expect(handle).toHaveBeenCalledTimes(probes);
+      expect(snapshot.providerConnections?.[0]?.connected).toBe(true);
+      // Saving a preference needs no provider work; actual work still checks fresh authentication.
+      expect(await server.handleMessage({ jsonrpc: '2.0', id: 'send', method: 'agent/prompt/send', params: { agentId: agent.id, prompt: 'Hello' } }))
+        .toMatchObject({ error: { message: expect.stringContaining('not connected') } });
+      expect(agent.backend).toBe('cursor');
       await expect(server.requireConnectedEngine('cursor')).rejects.toThrow('not connected');
       expect(snapshot.providerConnections?.[0]).toMatchObject({ connected: false, enabled: true });
       connected = true;

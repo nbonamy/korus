@@ -1491,7 +1491,7 @@ export class AppBackendServer {
       const agent = (before ?? this.remoteTeams.clientSnapshotFromKnownRemotes()).agents.find(candidate => candidate.id === (params?.agentId ?? input.id));
       const remote = params?.remoteConnectionId || input.remoteConnectionId || agent?.remoteConnectionId;
       const requestedSelection = isRecord(input.selection) ? input.selection : {};
-      if (!remote && (message.method !== backendMethods.agentUpdate || requestedSelection.backend !== undefined)) {
+      if (!remote && (message.method !== backendMethods.agentUpdate || (requestedSelection.backend !== undefined && requestedSelection.backend !== agent?.backend))) {
         try {
           const duplicateOptions = message.method === backendMethods.agentDuplicate && isRecord(effectiveParams.options) ? effectiveParams.options : {};
           const duplicateBackend = isRecord(duplicateOptions.selection) ? duplicateOptions.selection.backend : undefined;
