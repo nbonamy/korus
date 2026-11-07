@@ -1,12 +1,12 @@
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { ConversationShareState, ConversationShareTarget } from '@workspace/core/conversation-sharing';
 import { appApi } from '../platform-api';
-import { conversationShareActiveByAgentIdKey } from './conversation-share-state';
+import { conversationSharePresenceByAgentIdKey } from './conversation-share-state';
 
 export function useConversationShareActivity(target: () => ConversationShareTarget | null) {
   const state = ref<ConversationShareState | null>(null);
   const busy = ref(false); const failed = ref(false);
-  const shareActiveByAgentId = inject(conversationShareActiveByAgentIdKey, null);
+  const sharePresenceByAgentId = inject(conversationSharePresenceByAgentIdKey, null);
   const proposals = computed(() => state.value?.proposals?.filter(proposal => ['pending', 'queued', 'dispatching', 'unresolved'].includes(proposal.status)) ?? []);
   const authors = computed(() => state.value?.authors ?? []);
   let disposed = false; let generation = 0; let operation = 0; let unsubscribe: (() => void) | undefined;
@@ -14,7 +14,7 @@ export function useConversationShareActivity(target: () => ConversationShareTarg
   function receive(value: ConversationShareState) {
     state.value = value;
     const current = target();
-    if (current && shareActiveByAgentId) shareActiveByAgentId[current.agentId] = value.active;
+    if (current && sharePresenceByAgentId) sharePresenceByAgentId[current.agentId] = value;
   }
   async function load() {
     const current = target(); const expected = ++generation;

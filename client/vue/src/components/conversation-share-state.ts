@@ -1,3 +1,5 @@
 import type { InjectionKey } from 'vue';
+import type { ConversationShareState } from '@workspace/core/conversation-sharing';
 
-export const conversationShareActiveByAgentIdKey: InjectionKey<Record<string, boolean>> = Symbol('conversation-share-active-by-agent');
+export type ConversationSharePresence = Pick<ConversationShareState, 'active' | 'connectedGuests'>;
+export const conversationSharePresenceByAgentIdKey: InjectionKey<Record<string, ConversationSharePresence>> = Symbol('conversation-share-presence-by-agent');

@@ -89,6 +89,7 @@ export const messages = {
       approval: 'Guests suggest prompts for you to review. Enable write access to let a connected guest send directly.',
       writeAccess: 'Write access', writeAccessFor: 'Write access for {name} ({discriminator})',
       active: 'This conversation has an active share link.', guests: '{count} guests connected',
+      guestJoined: 'A guest joined “{chat}”.', guestsJoined: '{count} guests joined “{chat}”.',
       temporarilyUnavailable: 'Sharing is temporarily unavailable. Please try again shortly.',
       copy: 'Copy link', stop: 'Stop sharing', inviteLinkCopied: 'Invite link copied to clipboard',
       failed: 'Could not load sharing. Try again.',

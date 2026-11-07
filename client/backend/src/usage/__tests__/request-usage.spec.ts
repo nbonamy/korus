@@ -539,14 +539,22 @@ it("migrates legacy SQLite without losing tokens/timing and deletes retained req
     "completed",
     at,
     at,
-    1000,
+    90000,
     JSON.stringify({ input: 10, output: 5, cacheRead: 0, cacheWrite: 0 }),
     JSON.stringify({ activeMs: 1000, ttftMs: 100 }),
   );
+  const legacy = { ...db.prepare("SELECT * FROM executions").get() };
   db.close();
   const ledger = new UsageLedger(file, () => now);
   try {
     await ledger.load();
+    expect(ledger.query().longestTurnMs).toBe(90000);
+    const migrated = new DatabaseSync(file, { readOnly: true });
+    try {
+      const { task_duration_ms, request_coverage, request_coverage_reason, ...preserved } = migrated.prepare("SELECT * FROM executions").get()!;
+      expect(task_duration_ms).toBeNull();
+      expect(preserved).toStrictEqual(legacy);
+    } finally { migrated.close(); }
     expect(ledger.query().rows[0]).toMatchObject({
       tokens: { input: 10, output: 5 },
       speed: { outputTokens: 5, generationMs: 900 },

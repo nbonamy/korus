@@ -16,6 +16,8 @@ export type ExecutionObservation = {
   /** Why the producer cannot establish a complete request set. */
   requestCoverageReason?: RequestCoverageReason | null;
   durationMs?: number;
+  /** Daemon-measured elapsed task time, including tools but excluding blocking user waits. */
+  taskDurationMs?: number;
   /** Transient provider stream activity, consumed by the daemon clock, never persisted or sent to clients. */
   generation?: "started" | "output" | "ended";
   /** Measured by the backend, never by a driver. */
@@ -128,7 +130,7 @@ export type UsageSummary = {
       cost?: UsageCost;
     }[];
   }[];
-  /** Longest completed turn in the queried range, using active time when measured. */
+  /** Longest completed task excluding blocking user waits; legacy turns use recorded elapsed duration. */
   longestTurnMs?: number;
   recordedSince: number;
   retainedSince: number;

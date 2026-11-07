@@ -104,10 +104,15 @@ it("persists turn-start effort and service tier without replacing them on later 
       const turn = { ...event, turnId: String(i) };
       await ledger.observe({ ...turn, model: i === 0 ? "gpt-5.6-sol" : null, phase: "started", reasoningEffort: i < 3 ? "high" : null, serviceTier }, { teamId: null, repository: null });
       if (i === 0) await ledger.observe({ ...turn, model: "gpt-6.1", phase: "usage" }, { teamId: null, repository: null });
-      await ledger.observe({ ...turn, phase: "completed", reasoningEffort: "low", serviceTier: "changed" }, { teamId: null, repository: null });
+      await ledger.observe({ ...turn, phase: "completed", reasoningEffort: "low", serviceTier: "changed", durationMs: 9000, taskDurationMs: 3000 }, { teamId: null, repository: null });
       await ledger.observe({ ...turn, phase: "usage" }, { teamId: null, repository: null });
     }
     await ledger.close();
+    const reopened = new UsageLedger(file, () => at);
+    try {
+      await reopened.load();
+      expect(reopened.query().longestTurnMs).toBe(3000);
+    } finally { await reopened.close(); }
     const db = new DatabaseSync(file, { readOnly: true });
     try {
       expect({ ...db.prepare("SELECT model FROM executions WHERE turn_id='0'").get() }).toStrictEqual({ model: "gpt-6.1" });
@@ -389,7 +394,7 @@ it("projects additive measured performance from the existing ledger", async () =
   } finally { await ledger.close(); }
 });
 
-it("reports the longest completed turn, preferring active time over wall-clock duration", async () => {
+it("reports completed task duration including tools, with elapsed duration for historical rows", async () => {
   const at = Date.parse("2026-10-15T12:00Z");
   const ledger = new UsageLedger(":memory:", () => at);
   try {
@@ -400,7 +405,11 @@ it("reports the longest completed turn, preferring active time over wall-clock d
       await ledger.observe({ ...base, phase: "started" }, { teamId: null, repository: null });
       await ledger.observe({ ...base, phase: "completed", durationMs, ...(timing ? { timing } : {}) }, { teamId: null, repository: null });
     }
-    expect(ledger.query({}).longestTurnMs).toBe(4000);
+    expect(ledger.query({}).longestTurnMs).toBe(90000);
+    const base = { provider: "codex" as const, agentId: "a", sessionId: "s", turnId: "measured", model: "gpt-6-sol", at };
+    await ledger.observe({ ...base, phase: "started" }, { teamId: null, repository: null });
+    await ledger.observe({ ...base, phase: "completed", durationMs: 200000, taskDurationMs: 95000, timing: { activeMs: 4000, ttftMs: 100 } }, { teamId: null, repository: null });
+    expect(ledger.query({}).longestTurnMs).toBe(95000);
   } finally { await ledger.close(); }
 });
 
