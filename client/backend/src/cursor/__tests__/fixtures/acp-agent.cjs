@@ -39,6 +39,9 @@ const richOutput = replay => {
   update(deletion); update(deletion);
   update({sessionUpdate:'tool_call',toolCallId:replay?'replay-add':'add',title:'Write added.txt',kind:'edit',status:'completed',content:[{type:'diff',path:'added.txt',oldText:null,newText:'created'}]});
   update({sessionUpdate:'agent_message_chunk',content:{type:'image',mimeType:'image/png',data:'iVBORw0KGgo='}});
+  // Native MCP rawInput shape; partial completion updates omit the identity.
+  update({sessionUpdate:'tool_call',toolCallId:replay?'replay-mcp':'live-mcp',title:'korus: send-message',kind:'other',status:'pending',rawInput:{providerIdentifier:'korus',toolName:'send-message',args:{to:'other-agent',message:'Hello'}}});
+  update({sessionUpdate:'tool_call_update',toolCallId:replay?'replay-mcp':'live-mcp',kind:'other',status:'completed',rawOutput:{recipientName:'Other Agent'}});
   update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:'Rich output complete'}});
 };
 readline.createInterface({ input: process.stdin }).on('line', line => {

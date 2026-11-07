@@ -250,6 +250,9 @@ describe('Cursor ACP host transport boundary', () => {
       expect(tool.body).toContain('before'); expect(tool.body).toContain('after'); expect(tool.body).toContain('RESOURCE_MARKER');
       expect(parts.filter(part=>part.type==='media').map(part=>part.type==='media' && part.media.url)).toStrictEqual(['data:image/png;base64,iVBORw0KGgo=','data:image/png;base64,iVBORw0KGgo=']);
       expect(parts).toContainEqual({type:'text',text:'Rich output complete'});
+      const mcp = parts.find(part=>part.type==='tool' && part.title==='korus: send-message');
+      expect(mcp).toMatchObject({kind:'mcp',input:{to:'other-agent',message:'Hello'},output:{recipientName:'Other Agent'},metadata:{server:'korus',tool:'send-message',cursorMcpInput:{providerIdentifier:'korus',toolName:'send-message',args:{to:'other-agent',message:'Hello'}}}});
+      expect(mcp?.type==='tool' && mcp.metadata?.displayTitle).toBeUndefined();
     };
     verify(await snapshot());
     await host.close(); host=createBackendDriver('cursor'); events=[]; host.onEvent(event=>events.push(event));

@@ -104,6 +104,15 @@ describe('AgentConversationPanel', () => {
       await wrapper.get('.chat-tool-call__details-toggle').trigger('click');
       await flushPromises();
       expect(wrapper.findAll('.chat-tool-call__body pre').at(-1)!.text()).toBe(diffBody);
+      rawDetails.value = false;
+      view.cursorSnapshot = {...view.cursorSnapshot!, messages:[...view.cursorSnapshot!.messages,{id:'coordination',agentId:agent.id,turnId:'turn',role:'assistant',status:'complete',createdAt:identity.occurredAt,
+        parts:['set-status','send-message','finish_turn'].map(tool=>({type:'tool' as const,id:tool,kind:'mcp',title:`korus: ${tool}`,status:'completed' as const,input:{to:'other-agent'},output:{recipientName:'Other Agent'},metadata:{server:'korus',tool}}))}]};
+      await flushPromises();
+      for (const header of wrapper.findAll('button.chat-tool-group__header')) await header.trigger('click');
+      expect(wrapper.text()).toContain('Sent message to Other Agent');
+      expect(wrapper.text()).not.toContain('korus: set-status');
+      expect(wrapper.text()).not.toContain('korus: finish_turn');
+
       await wrapper.get('button[title="Interrupt"]').trigger('click');
       expect(actions.interrupt).toHaveBeenCalledWith(agent.id);
       view.cursorSnapshot = { ...view.cursorSnapshot!, clientRequests: [{

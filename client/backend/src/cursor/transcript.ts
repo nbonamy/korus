@@ -153,7 +153,21 @@ export class CursorTranscript {
     if (typeof update.title === 'string') part.title = update.title;
     if (typeof update.kind === 'string') { part.kind = update.kind; part.metadata = {...part.metadata,cursorToolKind:update.kind}; }
     if (typeof update.status === 'string') part.status = update.status === 'completed' ? 'completed' : update.status === 'failed' ? 'failed' : 'running';
-    if ('rawInput' in update) part.input = update.rawInput;
+    if ('rawInput' in update) {
+      part.input = update.rawInput;
+      const input = update.rawInput;
+      if (part.metadata?.cursorToolKind === 'other' && record(input) && typeof input.providerIdentifier === 'string' && input.providerIdentifier && typeof input.toolName === 'string' && input.toolName) {
+        part.metadata = {...part.metadata,cursorMcpInput:input};
+      } else if (part.metadata?.cursorMcpInput) {
+        delete part.metadata.cursorMcpInput; delete part.metadata.server; delete part.metadata.tool;
+        if (part.kind === 'mcp') part.kind = String(part.metadata.cursorToolKind ?? 'other');
+      }
+    }
+    const mcpInput = part.metadata?.cursorMcpInput;
+    if (part.metadata?.cursorToolKind === 'other' && record(mcpInput)) {
+      part.kind = 'mcp'; part.input = mcpInput.args;
+      part.metadata = {...part.metadata,server:mcpInput.providerIdentifier,tool:mcpInput.toolName};
+    }
     if ('rawOutput' in update) { part.output = update.rawOutput; part.body = typeof update.rawOutput === 'string' ? update.rawOutput : JSON.stringify(update.rawOutput); }
     if (Array.isArray(update.content)) {
       const content = cursorToolContent(update.content,typeof part.metadata?.cursorToolKind === 'string' ? part.metadata.cursorToolKind : part.kind);
@@ -172,7 +186,7 @@ export class CursorTranscript {
       part.metadata = {...part.metadata,locations};
     }
     part.metadata = { ...part.metadata, ...(this.cwd ? {cwd:this.cwd} : {}) };
-    if (part.kind === 'fileChange') delete part.metadata.displayTitle; else part.metadata.displayTitle = part.title;
+    if (part.kind === 'fileChange' || part.kind === 'mcp') delete part.metadata.displayTitle; else part.metadata.displayTitle = part.title;
     if (part.kind === 'fileChange' && Array.isArray(part.metadata.changes)) {
       const changes = part.metadata.changes.filter((change): change is Record<string,unknown> => record(change) && typeof change.path === 'string');
       const action = changes.every(change=>change.kind==='add') ? 'create' : changes.every(change=>change.kind==='delete') ? 'delete' : 'edit';

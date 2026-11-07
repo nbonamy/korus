@@ -289,7 +289,7 @@ export class CursorSession {
     const part = this.snapshot.messages.filter(message => message.turnId === this.snapshot.activeTurnId)
       .flatMap(message => message.parts).find(part => part.type === 'tool' && part.id === call.toolCallId);
     if (part?.type !== 'tool' || part.metadata?.cursorToolKind !== 'other' || part.status !== 'running') return;
-    const input = part.input;
+    const input = part.metadata?.cursorMcpInput;
     if (!record(input) || input.providerIdentifier !== name || typeof input.toolName !== 'string' || !input.toolName) return;
     if ('rawInput' in call && (!record(call.rawInput) || call.rawInput.providerIdentifier !== name || call.rawInput.toolName !== input.toolName)) return;
     const once = Array.isArray(options) ? options.filter(option => record(option) && option.kind === 'allow_once' && typeof option.optionId === 'string' && option.optionId.trim()) : [];
