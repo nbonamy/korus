@@ -33,7 +33,7 @@ describe('BackendModelSelector', () => {
     const wrapper = mount(BackendModelSelector, {
       props: { agentId: 'local-agent', selection: { backend: 'codex' as const, model: '', reasoningEffort: '', serviceTier: null }, 'onUpdate:selection': (selection: ExecutionSelection | undefined) => wrapper.setProps({ selection }) },
       global: { components: { ElPopover, ElTabs, ElTabPane }, provide: {
-        [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']),
+        [backendChoicesKey as symbol]: computed(() => ['cursor', 'antigravity', 'claude', 'codex']),
         [backendModelCatalogKey as symbol]: { listModels },
       } },
     });
@@ -41,7 +41,7 @@ describe('BackendModelSelector', () => {
     await flushPromises();
     ([...document.querySelectorAll<HTMLElement>('[role="tab"]')].find(tab => tab.querySelector('[aria-label="Claude Code"]'))!).click();
     await flushPromises();
-    expect([...document.querySelectorAll('[role="tab"] [aria-label]')].map(tab => tab.getAttribute('aria-label'))).toEqual(['Codex', 'Claude Code']);
+    expect([...document.querySelectorAll('[role="tab"] [aria-label]')].map(tab => tab.getAttribute('aria-label'))).toEqual(['Codex', 'Claude Code', 'Cursor', 'Antigravity']);
     oldCatalog([{ id: 'stale', model: 'stale', displayName: 'Stale model' }]);
     await flushPromises();
     expect(listModels).toHaveBeenLastCalledWith('local-agent', 'claude');
