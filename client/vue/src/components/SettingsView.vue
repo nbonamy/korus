@@ -64,6 +64,8 @@
           :authentication="providerConnections?.find(engine => engine.backend === 'cursor')?.authentication"
           :enabled="generalSettings.providerEnabled?.cursor !== false"
           :set-enabled="enabled => setProviderEnabled?.('cursor', enabled)"
+          :steering-fallback-enabled="generalSettings.cursorSteeringFallbackEnabled === true"
+          :set-steering-fallback-enabled="enabled => updateSettings?.({ general: { cursorSteeringFallbackEnabled: enabled } })"
           :busy="cursorConnectionBusy || updatingProvider === 'cursor'"
           :pending="cursorLoginPending"
           :error="cursorConnectionError || providerSetupError || providerConnections?.find(engine => engine.backend === 'cursor')?.error"

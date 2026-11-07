@@ -532,6 +532,8 @@ export type AppGeneralSettings = {
   spokenAnnouncementVoice: SpokenAnnouncementVoice;
   codexBinaryPath: string;
   claudeCodeEnabled: boolean;
+  /** Explicit opt-in to interrupt-and-resend fallback; absent means disabled. */
+  cursorSteeringFallbackEnabled?: boolean;
   /** Undefined preserves Codex for existing installations. */
   codexEnabled?: boolean;
   providerOnboardingComplete?: boolean;

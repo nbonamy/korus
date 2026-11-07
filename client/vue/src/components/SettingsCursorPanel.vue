@@ -3,6 +3,11 @@
     <SettingsEngineConnectionRow backend="cursor" :installed="installed" :title="$t('cursor.name')" :authentication="authentication" :connected="connected" :enabled="enabled" :set-enabled="setEnabled" :busy="busy" :pending="pending" :error="error || nativeState?.error" @refresh="emit('refresh')" @connect="emit('connect')" @disconnect="emit('disconnect')" @cancel="emit('cancel')">
       <FormRow :title="$t('engineSetup.title')" :description="nativeState?.homePath || $t('cursor.existingHome')" />
       <FormRow v-if="nativeState?.team" :title="$t('cursor.team')" :description="nativeState.team" />
+      <FormRow as="label" :title="$t('cursor.steeringFallback')" :description="$t('cursor.steeringFallbackDescription')">
+        <template #control>
+          <el-switch :model-value="steeringFallbackEnabled === true" :aria-label="$t('cursor.steeringFallback')" @update:model-value="setSteeringFallbackEnabled?.($event === true)" />
+        </template>
+      </FormRow>
       <ProviderUpdateRow backend="cursor" :enabled="installed" :remote-connection-id="remoteConnectionId" />
     </SettingsEngineConnectionRow>
   </SettingsPanelFrame>
@@ -14,7 +19,7 @@ import SettingsPanelFrame from './SettingsPanelFrame.vue';
 import SettingsEngineConnectionRow from './SettingsEngineConnectionRow.vue';
 import ProviderUpdateRow from './ProviderUpdateRow.vue';
 import FormRow from '../shared/form/FormRow.vue';
-const props = withDefaults(defineProps<{ installed?: boolean; connected?: boolean; enabled?: boolean; authentication?: ProviderAuthentication; setEnabled?: (enabled: boolean) => unknown; busy?: boolean; pending?: boolean; error?: string | null; remoteConnectionId?: string }>(), { installed: false });
+const props = withDefaults(defineProps<{ steeringFallbackEnabled?: boolean; setSteeringFallbackEnabled?: (enabled: boolean) => unknown; installed?: boolean; connected?: boolean; enabled?: boolean; authentication?: ProviderAuthentication; setEnabled?: (enabled: boolean) => unknown; busy?: boolean; pending?: boolean; error?: string | null; remoteConnectionId?: string }>(), { installed: false });
 const nativeState = computed(() => props.authentication?.kind === 'cursor' ? props.authentication.state : undefined);
 const emit = defineEmits<{ connect: []; disconnect: []; cancel: []; refresh: [] }>();
 </script>

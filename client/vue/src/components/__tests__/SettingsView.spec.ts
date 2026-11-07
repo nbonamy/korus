@@ -23,15 +23,36 @@ describe('SettingsView', () => {
     }, global: { components: { ElSwitch } } });
     await flushPromises();
     expect(wrapper.get('#settings-cursor-title').text()).toBe('Cursor');
-    expect(wrapper.get('[role="switch"]').attributes('aria-checked')).toBe('false');
+    expect(wrapper.get('[role="switch"][aria-label="Enable Cursor"]').attributes('aria-checked')).toBe('false');
     expect(setProviderEnabled).not.toHaveBeenCalled();
     expect(wrapper.text()).not.toContain('Customize');
     expect(customizeProvider).not.toHaveBeenCalled();
-    await wrapper.get('[role="switch"]').trigger('click'); await flushPromises();
+    await wrapper.get('[role="switch"][aria-label="Enable Cursor"]').trigger('click'); await flushPromises();
     expect(setProviderEnabled).toHaveBeenCalledWith('cursor', true);
     await wrapper.setProps({ providerConnections: [{ backend: 'cursor', installed: true, connected: false, checking: false,
       authentication: { kind: 'cursor', connected: false, state: { loggedIn: false, homePath: '/cursor', supported: false, error: 'Update Cursor CLI to 2026.10.08 or newer.' } } }] });
     expect(wrapper.text()).toContain('Update Cursor CLI to 2026.10.08');
+    wrapper.unmount();
+  });
+
+  it('keeps Cursor steering fallback off by default and saves both toggle directions', async () => {
+    const updateSettings = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mount(SettingsView, { props: {
+      activeTab: 'cursor', settings: defaultThemeSettings, generalSettings: { ...defaultGeneralSettings, cursorSteeringFallbackEnabled: undefined }, updateSettings,
+    }, global: { components: { ElSwitch } } });
+    await flushPromises();
+    const toggle = () => wrapper.get('[role="switch"][aria-label="Steering fallback"]');
+    expect(toggle().attributes('aria-checked')).toBe('false');
+    expect(wrapper.text()).toContain('Interrupt the current turn and send your update as a new turn.');
+    expect(updateSettings).not.toHaveBeenCalled();
+    await toggle().trigger('click'); await flushPromises();
+    expect(updateSettings).toHaveBeenLastCalledWith({ general: { cursorSteeringFallbackEnabled: true } });
+    await wrapper.setProps({ generalSettings: { ...defaultGeneralSettings, cursorSteeringFallbackEnabled: true } });
+    expect(toggle().attributes('aria-checked')).toBe('true');
+    await toggle().trigger('click'); await flushPromises();
+    expect(updateSettings).toHaveBeenLastCalledWith({ general: { cursorSteeringFallbackEnabled: false } });
+    await wrapper.setProps({ generalSettings: { ...defaultGeneralSettings, cursorSteeringFallbackEnabled: false } });
+    expect(toggle().attributes('aria-checked')).toBe('false');
     wrapper.unmount();
   });
 

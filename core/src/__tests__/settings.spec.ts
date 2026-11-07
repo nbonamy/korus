@@ -35,6 +35,18 @@ describe('settings contracts', () => {
     expect(invalid.preferredProviders).toBeUndefined();
     expect(invalid.gitMergeCleanup).toBeUndefined();
   });
+  it('keeps Cursor steering fallback off unless explicitly enabled and preserves the normalized setting roundtrip', () => {
+    expect(defaultGeneralSettings.cursorSteeringFallbackEnabled).toBe(false);
+    for (const value of [undefined, 'true', 1, {}, null]) {
+      expect(normalizeGeneralSettings({ cursorSteeringFallbackEnabled: value }).cursorSteeringFallbackEnabled).toBe(false);
+    }
+    const snapshot = createEmptySnapshot();
+    for (const enabled of [true, false]) {
+      updateSettingsInSnapshot(snapshot, { general: { cursorSteeringFallbackEnabled: enabled } });
+      expect(normalizeGeneralSettings(JSON.parse(JSON.stringify(snapshot.general))).cursorSteeringFallbackEnabled).toBe(enabled);
+    }
+  });
+
   it('normalizes Cursor settings without leaking execution defaults across providers', () => {
     const home = { homePath: '/cursor', isolated: false, shareSkills: false };
     const selection = { backend: 'cursor', model: 'composer-fixture', reasoningEffort: 'high', serviceTier: null } as const;
@@ -130,6 +142,7 @@ describe('settings contracts', () => {
       missionInstructions: '',
       codexBinaryPath: '/opt/homebrew/bin/codex',
       claudeCodeEnabled: true,
+      cursorSteeringFallbackEnabled: false,
       celebrationsEnabled: false,
       followUpBehavior: 'queue',
       spokenAnnouncementsEnabled: true,
@@ -241,6 +254,7 @@ describe('settings contracts', () => {
       missionInstructions: '',
       codexBinaryPath: '',
       claudeCodeEnabled: false,
+      cursorSteeringFallbackEnabled: false,
       celebrationsEnabled: true,
       followUpBehavior: 'queue',
       spokenAnnouncementsEnabled: false,

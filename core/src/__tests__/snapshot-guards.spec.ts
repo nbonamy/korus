@@ -20,6 +20,18 @@ describe('snapshot guards', () => {
     expect(isAppSnapshot(full)).toBe(true);
   });
 
+  it('accepts legacy settings without Cursor steering fallback and validates the optional boolean', () => {
+    const snapshot = createInitialSnapshot();
+    delete snapshot.general.cursorSteeringFallbackEnabled;
+    expect(decodeAppSnapshot(snapshot)).toStrictEqual({ value: snapshot });
+    for (const enabled of [true, false]) {
+      snapshot.general.cursorSteeringFallbackEnabled = enabled;
+      expect(decodeAppSnapshot(JSON.parse(JSON.stringify(snapshot)))).toStrictEqual({ value: snapshot });
+    }
+    snapshot.general.cursorSteeringFallbackEnabled = 'true' as never;
+    expect(isAppSnapshot(snapshot)).toBe(false);
+  });
+
   it('validates public MCP eligibility without requiring it on legacy connections', () => {
     const snapshot = createInitialSnapshot();
     snapshot.workBacklog.connections.push({ provider: 'gitlab', status: 'connected', hostedMcp: { status: 'unavailable' } });

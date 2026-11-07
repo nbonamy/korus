@@ -562,6 +562,7 @@ function isGeneralSettings(value: unknown): boolean {
     includes(spokenAnnouncementVoices, value.spokenAnnouncementVoice) &&
     typeof value.codexBinaryPath === 'string' &&
     typeof value.claudeCodeEnabled === 'boolean' &&
+    optional(value, 'cursorSteeringFallbackEnabled', isBoolean) &&
     (value.codexEnabled === undefined || typeof value.codexEnabled === 'boolean') &&
     (value.providerOnboardingComplete === undefined || typeof value.providerOnboardingComplete === 'boolean') &&
     optional(value, 'providerEnabled', candidate => isRecord(candidate) && Object.entries(candidate).every(([backend, enabled]) => (backend === 'codex' || backend === 'claude' || backend === 'antigravity' || backend === 'cursor') && isBoolean(enabled))) &&
