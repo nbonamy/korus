@@ -1224,7 +1224,7 @@ export class MissionExecutionService {
       memberId,
       // Reserve an available repository worker; dispatch waits for its provider turn.
       ...(missionImplementationUsesLead(mission) ? { workerId: missionLeadAgentId(mission) } : {}),
-      ...(!missionImplementationUsesLead(mission) && !(mission.artifacts.tickets[ticketIndex]!.revision ?? 0) && reusableWorker?.workerId && (reusableWorker.memberId === memberId || !this.availableMember(mission, reusableWorker.memberId)) ? { workerId: reusableWorker.workerId } : {}),
+      ...(!missionImplementationUsesLead(mission) && !(mission.artifacts.tickets[ticketIndex]!.revision ?? 0) && reusableWorker?.workerId && (reusableWorker.memberId === memberId || (reusableWorker.workerId === memberId && !this.availableMember(mission, reusableWorker.memberId))) ? { workerId: reusableWorker.workerId } : {}),
       ticketIndex,
       ticketId: (mission.artifacts.tickets[ticketIndex]!.id ??= createEntityId('mission-ticket')),
       ...(mission.artifacts.tickets[ticketIndex]!.revision !== undefined ? { ticketRevision: mission.artifacts.tickets[ticketIndex]!.revision } : {}),

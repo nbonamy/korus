@@ -2069,6 +2069,24 @@ describe('mission execution', () => {
     await expect(h.command({ action: 'configure', teamId: h.current().teamId, memberIds: [replacement.id] })).rejects.toThrow('active Mission runs');
   });
 
+  it('starts a new worker when the selected replacement differs from the historical worker', async () => {
+    const h = setup();
+    const [historicalWorker, replacement] = h.originalAgents;
+    const repositoryPath = replacement!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation';
+      mission.stageAgentIds.tickets = replacement!.id;
+      mission.execution!.memberIds = [replacement!.id];
+      mission.execution!.workspaces = [{ repositoryPath, path: '/mission/checkout', branch: 'mission/billing' }];
+      mission.artifacts.tickets = [{ id: 'next', title: 'Billing', repositoryPath, done: false }];
+      mission.execution!.runs = [{ id: 'history', stage: 'implementation', memberId: 'removed-member', workerId: historicalWorker!.id, repositoryPath, status: 'accepted', skills: [], feedback: '', startedAt: 'before' }];
+    });
+    await h.command({ action: 'run' }); await h.service.waitForLaunches();
+    const run = h.current().execution!.runs.at(-1)!;
+    expect(run).toMatchObject({ memberId: replacement!.id, status: 'running' });
+    expect(run.workerId).not.toBe(historicalWorker!.id);
+  });
+
   it('keeps the backlog reviewable when an affected repository worktree cannot be created', async () => {
     const h = setup();
     await h.store.change(h.current().id, mission => {
