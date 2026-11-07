@@ -209,6 +209,8 @@ export class ConversationShares {
   }
   control(input: ConversationShareControl): Promise<ConversationShareResult> {
     return this.serial(async () => {
+      // Sharing has its own closed provider contract, independent of desktop references.
+      if (input?.target?.backend === 'cursor') throw new Error('Conversation sharing is unavailable for this provider.');
       const parsed = controlSchema.safeParse(input);
       if (!parsed.success) throw new Error('Invalid share operation.');
       const action = parsed.data;
