@@ -41,7 +41,10 @@ describe('SettingsView', () => {
       activeTab: 'cursor', settings: defaultThemeSettings, generalSettings: { ...defaultGeneralSettings, cursorSteeringFallbackEnabled: undefined }, updateSettings,
     }, global: { components: { ElSwitch } } });
     await flushPromises();
-    const toggle = () => wrapper.get('[role="switch"][aria-label="Steering fallback"]');
+    const conversation = wrapper.get('section[aria-labelledby="settings-cursor-conversation-title"]');
+    expect(conversation.get('h3').text()).toBe('Conversation');
+    expect(wrapper.find('.engine-hero [aria-label="Steering fallback"]').exists()).toBe(false);
+    const toggle = () => conversation.get('[role="switch"][aria-label="Steering fallback"]');
     expect(toggle().attributes('aria-checked')).toBe('false');
     expect(wrapper.text()).toContain('Interrupt the current turn and send your update as a new turn.');
     expect(updateSettings).not.toHaveBeenCalled();
