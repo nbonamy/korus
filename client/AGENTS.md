@@ -38,6 +38,10 @@ links `../codex-app-sdk` (`CODEX_APP_SDK_SOURCE_ROOT` for another checkout).
 Optional telemetry is isolated by lint: only the local runtime composes the uploader,
 provider and pricing code cannot depend on it, and its endpoint is runtime config.
 
+Use the [provider integration checklist](../docs/backend-architecture.md#provider-integration-checklist)
+for new providers and capability changes. Reuse shared coordination and UI; qualify
+native behavior independently from transport support.
+
 ## Packaging, Docs And Verify
 
 Forge signs and notarizes macOS builds by default, which is slow and reserved for

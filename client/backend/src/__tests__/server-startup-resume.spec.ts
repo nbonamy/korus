@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import type { Agent, AppSnapshot } from '@workspace/core/contracts';
 import type { AgentBackendDriver } from '@workspace/core/backend-driver';
-import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { codexBackendCapabilities, defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { AppBackendServer } from '../server';
 import { BackendDriverRpc } from '../driver-rpc';
 import { createTestSnapshot } from './server-test-fixtures';
@@ -35,15 +35,16 @@ it('does not retry startup continuation after an explicit Stop during writer bac
 it('persists active work, clears a user stop, and resumes only marked agents after restart', async () => {
   const snapshot = createTestSnapshot();
   snapshot.sourceFolder.initialized = true;
-  const agents = (['codex', 'claude', 'stopped'] as const).map(id => ({
-    id, name: id, folder: '/tmp', teamId: 'team-test', backend: id === 'codex' ? 'codex' : 'claude',
-    backendSession: id === 'codex' ? { kind: 'codex', threadId: id } : { kind: 'claude', sessionId: id, transport: 'stdio' },
+  snapshot.providerConnections!.push({ backend: 'cursor', installed: true, connected: true, checking: false });
+  const agents = (['codex', 'claude', 'cursor', 'stopped'] as const).map(id => ({
+    id, name: id, folder: '/tmp', teamId: 'team-test', backend: id === 'codex' || id === 'cursor' ? id : 'claude',
+    backendSession: id === 'codex' ? { kind: 'codex', threadId: id } : id === 'cursor' ? { kind: 'cursor', sessionId: id } : { kind: 'claude', sessionId: id, transport: 'stdio' },
     status: { type: 'idle' }, createdAt: '', updatedAt: '',
   } as Agent));
   snapshot.agents = agents;
   const continued = vi.fn(async (agent: Agent) => ({ backendSession: agent.backendSession!, activeTurnId: 'resumed' }));
-  const driver = (backend: 'codex' | 'claude'): AgentBackendDriver => ({
-    backend, getRuntimeStatus: () => ({ backend, status: 'running' }), getCapabilities: () => codexBackendCapabilities,
+  const driver = (backend: 'codex' | 'claude' | 'cursor'): AgentBackendDriver => ({
+    backend, getRuntimeStatus: () => ({ backend, status: 'running' }), getCapabilities: () => defaultBackendCapabilities(backend),
     sendPrompt: async agent => ({ backendSession: agent.backendSession! }),
     interrupt: async agent => {
       expect(stored?.agents.find(candidate => candidate.id === agent.id)?.autoResumePending).toBeUndefined();
@@ -54,13 +55,15 @@ it('persists active work, clears a user stop, and resumes only marked agents aft
   let stored: ReturnType<typeof persistedStateFromSnapshot> | undefined;
   const create = (state: AppSnapshot) => new AppBackendServer({ version: 'test', snapshot: state,
     saveSnapshot: async current => { stored = structuredClone(persistedStateFromSnapshot(current)); },
-    driverRpc: new BackendDriverRpc(new Map([['codex', driver('codex')], ['claude', driver('claude')]])) });
+    driverRpc: new BackendDriverRpc(new Map([['codex', driver('codex')], ['claude', driver('claude')], ['cursor', driver('cursor')]])) });
   const server = create(snapshot);
   try {
     for (const agent of agents) {
       await server.handleMessage({ jsonrpc: '2.0', id: agent.id, method: 'agent/prompt/send', params: { agentId: agent.id, prompt: 'work' } });
       if (agent.backend === 'codex') server.emitEvent({ agentId: agent.id, backend: 'codex', threadId: agent.id, type: 'codex.conversationEventReceived',
         payload: { revision: 1, event: { seq: 1, occurredAt: '', origin: 'notification', conversationId: agent.id, turnId: 'turn', type: 'turn.started', payload: { startedAt: '' } } } });
+      else if (agent.backend === 'cursor') server.emitEvent({ agentId: agent.id, backend: 'cursor', type: 'cursor.conversationEventReceived',
+        payload: { revision: 1, event: { agentId: agent.id, sessionId: agent.id, turnId: 'turn', type: 'turn.started', occurredAt: '', payload: { turn: { id: 'turn' } } } } });
       else server.emitEvent({ agentId: agent.id, backend: 'claude', type: 'claude.conversationEventReceived',
         payload: { revision: 1, event: { backend: 'claude', agentId: agent.id, turnId: 'turn', type: 'turn.started', seq: 1, occurredAt: '', payload: { turn: { id: 'turn', backend: 'claude' } } } } });
     }
@@ -72,7 +75,7 @@ it('persists active work, clears a user stop, and resumes only marked agents aft
     const restarted = create(restored);
     try {
       await restarted.initialize();
-      expect(continued.mock.calls.map(([agent]) => agent.id).sort()).toEqual(['claude', 'codex']);
+      expect(continued.mock.calls.map(([agent]) => agent.id).sort()).toEqual(['claude', 'codex', 'cursor']);
     } finally { await restarted.close(); }
   } finally { await server.close(); }
 });

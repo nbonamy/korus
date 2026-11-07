@@ -36,6 +36,25 @@ async function snapshot(): Promise<CursorConversationSnapshot> {
 }
 async function wire() { return (await readFile(path.join(root, 'wire.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line)); }
 describe('Cursor ACP host transport boundary', () => {
+  it('rejects unsupported native controls at the driver boundary without launching ACP or falling back to another provider', async () => {
+    const rpc = new BackendDriverRpc(new Map([['cursor', host]]));
+    const controls = [
+      ['driver/prompt/steer', { prompt: 'Adjust the task', expectedSessionId: null }, 'prompt steering'],
+      ['driver/goal/update', { objective: 'Finish the task' }, 'goals'],
+      ['driver/conversation/replaceWithSummary', {}, 'session compression'],
+      ['driver/conversation/fork', { targetAgent: { ...agent, id: 'fork-target' } }, 'conversation fork'],
+      ['driver/permissionMode/update', { mode: 'auto_edit' }, 'permission modes'],
+      ['driver/approvalPreset/update', { preset: 'full-access' }, 'approval presets'],
+    ] as const;
+    try {
+      for (const [method, params, feature] of controls) {
+        await expect(rpc.handle(method, { agent, ...params })).rejects.toThrow(`Cursor does not support ${feature}`);
+      }
+      await expect(access(path.join(root, 'wire.jsonl'))).rejects.toThrow();
+      expect(events).toStrictEqual([]);
+      expect(agent.backendSession).toBeUndefined();
+    } finally { await rpc.close(); }
+  });
   it('records completed, interrupted and failed native executions without inventing tokens or costs or counting snapshot reads', async () => {
     const ledger = new UsageLedger(path.join(root, 'usage.sqlite'));
     const usage = new UsageService(ledger, () => agent);

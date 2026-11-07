@@ -734,6 +734,8 @@ documentation claims; this checkpoint qualifies only the native results above.
 
 ## Full-provider implementation audit
 
+The current [provider contract and Cursor capability checklist](../docs/backend-architecture.md#provider-integration-checklist) distinguish implemented, partial and unavailable operations.
+
 The desktop integration includes native sign-in/status, enabled-provider selection,
 serialized streaming conversations, tool rendering and once-only confirmations,
 structured question adaptation, model selection, local text/image attachments,
@@ -824,9 +826,11 @@ cancelled response and missing todo projection before the fix.
   generation, freshness or historical reconstruction.
 - Served-model/effort execution, token consumption and API pricing remain unknown.
   No substitute values are inferred from configuration or timing.
-- App plan review, tool-free auxiliary generation, skill management and native
-  subagent controls remain unqualified. Native Plan mode and plan confirmations
-  do not assert those separate capabilities.
+- Native and Markdown plan proposals use the shared interactive sidebar. Native
+  callbacks are registered with the daemon; sidebar save/approve has native
+  acceptance evidence. Saved comments and confirmed choices feed native revisions.
+  Tool-free auxiliary generation, skill management and native subagent controls
+  remain unqualified. Plan mode does not establish those separate capabilities.
 - Archive, compaction, fork/edit/delete/retry, remote-control and unsupported
   provider controls remain absent rather than inheriting Codex shortcuts.
 
