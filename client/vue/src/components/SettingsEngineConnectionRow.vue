@@ -100,7 +100,11 @@ const accountLabel = computed(() => {
   if (!account) return '';
   if (account.type === 'apiKey') return t('engineConnection.apiKey');
   if (account.type === 'chatgpt') return [account.email, account.planType].filter(Boolean).join(' · ');
-  if (account.type === 'subscription') return [account.email, ('subscription' in account ? account.subscription : undefined) ?? t('engineConnection.subscription')].filter(Boolean).join(' · ');
+  if (account.type === 'subscription') {
+    const plan = ('subscription' in account ? account.subscription : undefined)
+      ?? (auth.kind === 'claude' ? t('engineConnection.subscription') : undefined);
+    return [account.email, plan].filter(Boolean).join(' · ');
+  }
   return t('engineConnection.amazonBedrock');
 });
 const state = computed(() => {

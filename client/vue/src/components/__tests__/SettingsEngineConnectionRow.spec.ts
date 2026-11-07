@@ -5,10 +5,15 @@ import { ElMessageBox, ElSwitch } from 'element-plus';
 import SettingsEngineConnectionRow from '../SettingsEngineConnectionRow.vue';
 
 describe('SettingsEngineConnectionRow', () => {
-  it.each([{ backend: 'antigravity', title: 'Antigravity' }, { backend: 'cursor', title: 'Cursor' }] as const)('renders a connected $title account without inventing account metadata', ({ backend, title }) => {
+  it.each([{ backend: 'antigravity', title: 'Antigravity' }, { backend: 'cursor', title: 'Cursor' }] as const)('renders a connected $title account without inventing account metadata', async ({ backend, title }) => {
     const wrapper = mount(SettingsEngineConnectionRow, { props: { backend, title, connected: true, enabled: true,
       authentication: { kind: backend, connected: true, state: { loggedIn: true, homePath: '/private/home' } } } });
     expect(wrapper.text()).not.toContain('/private/home');
+    expect(wrapper.find('.engine-hero__account').exists()).toBe(false);
+    if (backend === 'cursor') {
+      await wrapper.setProps({ authentication: { kind: backend, connected: true, state: { loggedIn: true, homePath: '/private/home', account: { type: 'subscription' as const, email: 'user@example.com' } } } });
+      expect(wrapper.get('.engine-hero__account').text()).toBe('user@example.com');
+    }
     expect(wrapper.get('[role="switch"]').attributes('aria-checked')).toBe('true');
     expect(wrapper.get('[role="switch"]').attributes('aria-label')).toBe(`Enable ${title}`);
   });
