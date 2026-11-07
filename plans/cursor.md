@@ -727,3 +727,66 @@ the coordinator owns general UI/workflow/mobile integration and final validation
 Reference: [Cursor ACP documentation](https://cursor.com/docs/cli/acp) describes
 stdio transport, extension methods and unsupported dashboard MCP. Those are
 documentation claims; this checkpoint qualifies only the native results above.
+
+## Full-provider implementation audit
+
+The desktop integration includes native sign-in/status, enabled-provider selection,
+serialized streaming conversations, tool rendering and once-only confirmations,
+structured question adaptation, model selection, local text/image attachments,
+workspace-filtered native history, cold replay, explicit resume, continuation,
+account-change invalidation and native Plan mode. Prompt presentation metadata
+restores authored content without exposing injected developer context on replay.
+Scoped app and hosted MCP endpoints retain per-agent identity through the shared
+ACP bridge. The primary shell and split panes consume Cursor-owned replicas.
+
+Local analytics record observed executions and timing, retaining unknown tokens,
+served models and pricing. Native billing reads expose plan, included credits and
+on-demand limits, with account-safe refresh. Cursor telemetry requires collector
+schema 8 and identity-free versioned capability discovery; mixed frozen reports
+wait without spending POST attempts against older collectors. Collector rollout
+remains an operator deployment action, separate from these local commits.
+
+Separate-directory setup was dropped at the user's direction after native installer
+inspection found no destination override. New isolated choices are rejected before
+setup mutation; saved private contexts and credentials are preserved. Existing
+native login and installation remain the supported setup.
+
+Released companion and guest protocols retain their three-provider contract.
+Mixed workspaces omit unsupported Cursor choices, agents and indirect references;
+admission rejects guessed targets and unsupported creation selections. Cursor
+sharing is explicitly disabled independently of desktop conversation references.
+
+### Native acceptance evidence
+
+Installed CLI `2026.11.05-86047df` passed a production-host text request, discovery
+of 47 model options, native history listing, fresh-host cold replay and authored
+prompt restoration. The live turn emitted two execution observations; replay
+emitted none. The smoke exposed a real `session_info_update` incompatibility;
+its subprocess regression precedes the fix. Native subagent metadata is ignored
+without pretending to implement child-session routing.
+
+A native planning request presented one plan proposal. Accepting it left the
+proposed `planned.txt` target absent; a normal follow-up restored Agent mode.
+The tightened adapter separately validated native mode acknowledgments for
+`plan` and `agent` without starting a model turn. These results do not attest to
+the served model, all native tools, or effective approval enforcement.
+
+### Remaining provider boundaries
+
+- Native edits can bypass permission callbacks. Full approval presets, automatic
+  review and approval-free code review remain unavailable; once-only callbacks
+  cover only requests the provider actually sends.
+- Structured question and todo adapters have documented-contract subprocess
+  coverage; native emission has not been elicited. The question capability flag
+  remains false.
+- Served-model/effort behavior, token consumption and API pricing remain unknown.
+  No substitute values are inferred from configuration or timing.
+- App plan review, tool-free auxiliary generation, skill management and native
+  subagent controls remain unqualified. Native Plan mode and plan confirmations
+  do not assert those separate capabilities.
+- Archive, compaction, fork/edit/delete/retry, remote-control and unsupported
+  provider controls remain absent rather than inheriting Codex shortcuts.
+
+Final broad gates and the independent review are recorded at handoff. No commit
+in this continuation authorizes a push, deployment, account migration or billing
+change.
