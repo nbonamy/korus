@@ -16,6 +16,7 @@ import {
   optional,
 } from './snapshot-guard-primitives';
 import type { AgentGitDiffTarget } from './contracts/git';
+import type { AccountBilling } from './contracts/backend';
 
 export function isRendererMessage(value: unknown): boolean {
   return isRecord(value) &&
@@ -218,7 +219,18 @@ export function isAccountRateLimits(value: unknown): boolean {
     hasOwn(value, 'credits') &&
     hasOwn(value, 'individualLimit') &&
     isNullableString(value.planType) &&
-    isNullableString(value.rateLimitReachedType);
+    isNullableString(value.rateLimitReachedType) &&
+    optional(value, 'billing', isAccountBilling);
+}
+
+export function isAccountBilling(value: unknown): value is AccountBilling {
+  if (!isRecord(value) || !isRecord(value.onDemand)) return false;
+  const demand = value.onDemand;
+  const amount = (value: unknown) => value === null || (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1e10);
+  return (value.includedBalanceUsd === null || (typeof value.includedBalanceUsd === 'string'
+      && /^(0|[1-9]\d{0,10})\.\d{2}$/.test(value.includedBalanceUsd) && Number(value.includedBalanceUsd) <= 1e10))
+    && (value.onDemand.enabled === null || typeof value.onDemand.enabled === 'boolean') && typeof value.onDemand.unlimited === 'boolean'
+    && ['usedUsd', 'limitUsd', 'remainingUsd'].every(key => amount(demand[key]));
 }
 
 function isAccountRateLimitWindow(value: unknown): boolean {

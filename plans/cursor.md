@@ -671,6 +671,31 @@ or payment methods were inspected or changed. Enabling the desktop quota surface
 rendering credit balances, account-change races and mobile negotiation remain
 integration work; the full goal is not complete.
 
+### Desktop billing and account-race checkpoint
+
+Cursor subscription quota is enabled in the desktop account menu. Optional,
+validated app-owned billing metadata supplies plan, included USD credits and
+on-demand status/budget, including Free accounts without quota windows. Monetary
+rows use the existing menu and share a right edge without clipping normal plan
+names. Stored monetary data is withheld pending a fresh read. Token changes,
+provider disconnection/disablement and account changes fence late quota results
+at the native adapter, daemon and renderer boundaries. Shipped phone usage
+responses retain the Codex/Claude-only provider set, tested with Cursor present.
+
+TDD covers the provider quota RPC races, native token/switch validation, typed
+billing event decoding, mounted menu data/account lifecycle, and real Chromium
+geometry/Free-account behavior. Full lint passed. The all-workspace run passed
+core (740), backend (2,973; 9 skipped), CLI (27), Electron (651), mobile (291),
+collector (35) and console (14). Vue passed 2,477 tests but hit two browser
+timeouts: the new billing fixture's startup and the existing inline diagram.
+Billing's Vite cache is now private to its fixture instead of shared with
+concurrent browser servers; both browser files passed the targeted recheck.
+The original all-workspace command is not reported as a clean invocation.
+
+The user authorized same-worktree co-agents and centralized coordination of
+commits. Runtime, analytics/collector and home/auth owners inspect in parallel;
+the coordinator owns general UI/workflow/mobile integration and final validation.
+
 - Phase 0 was docs-only: no runtime contract or app code changed. App suite,
   typecheck and coverage were not required for ticket 1; native probes are
   qualification evidence, not deterministic regression tests.

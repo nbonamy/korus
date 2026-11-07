@@ -304,9 +304,10 @@ export class CompanionManager {
       },
       usage: async () => {
         const { snapshot } = await this.backend.request<{ snapshot: AppSnapshot }>(backendMethods.snapshotGet, { _clientId: 'companion-read' });
-        // Antigravity's two weekly windows differ only by label, which shipped mobile clients do not show.
+        // Shipped clients understand only these quota providers. Other engines
+        // require negotiated labels and monetary balances before inclusion.
         const providers = (snapshot.providerConnections ?? []).filter(provider => provider.installed && provider.connected && provider.enabled !== false
-          && provider.backend !== 'antigravity' && supportsSubscriptionQuota(provider.backend, provider.authentication?.kind === 'codex' ? provider.authentication.state.account : null));
+          && (provider.backend === 'codex' || provider.backend === 'claude') && supportsSubscriptionQuota(provider.backend, provider.authentication?.kind === 'codex' ? provider.authentication.state.account : null));
         return Promise.all(providers.map(async ({ backend }) => {
           try {
             const limits = await this.backend.request<AccountRateLimits | null>(backendMethods.providerUsageGet, { backend });

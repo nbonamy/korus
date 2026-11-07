@@ -49,6 +49,10 @@ export async function getCursorAccountUsage(): Promise<AccountRateLimits | null>
     } catch { throw new Error(unavailable); }
   }
   const [usage, hard, plan] = await Promise.all([query('GetCurrentPeriodUsage'), query('GetHardLimit'), query('GetPlanInfo')]);
+  if (await token() !== accessToken) throw new Error('Cursor account changed. Refresh usage.');
+  for (const key of ['noUsageBasedAllowed', 'onDemandSpendDisabledByOrganization']) {
+    if (hard[key] !== undefined && typeof hard[key] !== 'boolean') throw new Error(unavailable);
+  }
   const included = record(usage.planUsage) ? usage.planUsage : null;
   const spend = record(usage.spendLimitUsage) ? usage.spendLimitUsage : null;
   const info = record(plan.planInfo) ? plan.planInfo : null;
@@ -64,6 +68,8 @@ export async function getCursorAccountUsage(): Promise<AccountRateLimits | null>
   const billingAllowed = hard.noUsageBasedAllowed !== true && hard.onDemandSpendDisabledByOrganization !== true;
   const unlimited = billingAllowed && spend?.limitType === 'team' && individualLimit === null && hardLimit > 0;
   const enabled = billingAllowed && (unlimited || (limit !== null && limit > 0));
+  const onDemand = { enabled, unlimited, usedUsd: used === null ? null : used / 100, limitUsd: limit === null ? null : limit / 100,
+    remainingUsd: enabled && used !== null && limit !== null ? Math.max(0, limit - used) / 100 : enabled ? null : 0 };
   function window(label: string, used: number | null, limit: number | null, percent?: unknown): AccountRateLimitWindow | null {
     if (used === null || limit === null || limit <= 0) return null;
     if (percent !== undefined && (typeof percent !== 'number' || !Number.isFinite(percent) || percent < 0)) throw new Error(unavailable);
@@ -74,8 +80,8 @@ export async function getCursorAccountUsage(): Promise<AccountRateLimits | null>
     primary: window('Included', includedUsed, includedLimit, included?.totalPercentUsed),
     secondary: enabled ? window('On-demand', used, limit) : null,
     credits: remaining === null ? null : { hasCredits: remaining > 0, unlimited: false, balance: (remaining / 100).toFixed(2) },
-    individualLimit: { enabled, unlimited, usedUsd: used === null ? null : used / 100, limitUsd: limit === null ? null : limit / 100,
-      remainingUsd: enabled && used !== null && limit !== null ? Math.max(0, limit - used) / 100 : enabled ? null : 0 },
+    individualLimit: onDemand,
+    billing: { includedBalanceUsd: remaining === null ? null : (remaining / 100).toFixed(2), onDemand },
     planType: typeof info?.planName === 'string' ? info.planName.replace(/[\p{Cc}\p{Cf}]/gu, '').trim().slice(0, 100) || null : null,
     rateLimitReachedType: null,
   };

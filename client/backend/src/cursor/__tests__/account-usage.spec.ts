@@ -33,6 +33,7 @@ it('reads native subscription balance and billing-cycle quota through the driver
       secondary: { label: 'On-demand', usedPercent: 2 },
       credits: { hasCredits: true, unlimited: false, balance: '15.00' },
       individualLimit: { enabled: true, usedUsd: 1, limitUsd: 50, remainingUsd: 49 },
+      billing: { includedBalanceUsd: '15.00', onDemand: { enabled: true, unlimited: false, usedUsd: 1, limitUsd: 50, remainingUsd: 49 } },
     });
     expect(JSON.stringify(result)).not.toContain('synthetic-native-token');
     for (const [url, options] of io.fetch.mock.calls) {
@@ -53,6 +54,7 @@ it('preserves Free and disabled usage-based billing without representing zero al
       planType: 'Free', primary: null, secondary: null,
       credits: { hasCredits: false, unlimited: false, balance: '0.00' },
       individualLimit: { enabled: false, limitUsd: 0 },
+      billing: { includedBalanceUsd: '0.00', onDemand: { enabled: false, unlimited: false, usedUsd: 0, limitUsd: 0, remainingUsd: 0 } },
     });
   } finally { await driver.close(); }
 });
@@ -73,6 +75,13 @@ it('distinguishes signed out from inaccessible credentials without forwarding na
     await expect(driver.getAccountRateLimits!()).rejects.toThrow('Could not read the Cursor login for usage.');
     expect(io.fetch).not.toHaveBeenCalled();
   } finally { await driver.close(); }
+});
+
+it('discards billing results when the native account changes during the read', async () => {
+  io.keychain.mockResolvedValueOnce({ stdout: 'old-account-token' }).mockResolvedValueOnce({ stdout: 'new-account-token' });
+  const driver = createBackendDriver('cursor');
+  try { await expect(driver.getAccountRateLimits!()).rejects.toThrow('Cursor account changed. Refresh usage.'); }
+  finally { await driver.close(); }
 });
 
 it.each(['linux', 'win32'])('reads the native credential location on %s, not the redirected config directory', async platform => {
@@ -104,6 +113,14 @@ it('does not turn a pooled team allowance into a personal spend limit or disable
 it.each([[], { planUsage: { limit: -1 } }, { planUsage: { limit: 100, totalPercentUsed: '25' } }])('rejects invalid usage data without manufacturing balance %j', async invalid => {
   const normal = io.fetch.getMockImplementation()!;
   io.fetch.mockImplementation((url: string) => url.endsWith('/GetCurrentPeriodUsage') ? new Response(JSON.stringify(invalid)) : normal(url));
+  const driver = createBackendDriver('cursor');
+  try { await expect(driver.getAccountRateLimits!()).rejects.toThrow('Could not refresh Cursor usage'); }
+  finally { await driver.close(); }
+});
+
+it('rejects an unrecognized native billing switch instead of showing pay-as-you-go as enabled', async () => {
+  const normal = io.fetch.getMockImplementation()!;
+  io.fetch.mockImplementation((url: string) => url.endsWith('/GetHardLimit') ? new Response(JSON.stringify({ hardLimit: 50, noUsageBasedAllowed: 'true' })) : normal(url));
   const driver = createBackendDriver('cursor');
   try { await expect(driver.getAccountRateLimits!()).rejects.toThrow('Could not refresh Cursor usage'); }
   finally { await driver.close(); }

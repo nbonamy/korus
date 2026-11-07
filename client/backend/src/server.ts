@@ -3434,8 +3434,12 @@ export class AppBackendServer {
       case backendMethods.providerUsageGet: {
         const backend = requireRecord(message.params).backend;
         if (!isAgentBackend(backend)) throw new Error('Unknown provider.');
-        if (!this.snapshot.providerConnections?.some(item => item.backend === backend && item.installed && item.connected && item.enabled !== false)) return createAppRpcResult(message.id, null);
+        const provider = this.snapshot.providerConnections?.find(item => item.backend === backend && item.installed && item.connected && item.enabled !== false);
+        if (!provider) return createAppRpcResult(message.id, null);
+        const authentication = JSON.stringify(provider.authentication);
         const result = await this.requireDriverRpc().handle(backendMethods.driverAccountRateLimitsGet, { backend }) as { supported: boolean; rateLimits?: import('@workspace/core/contracts').AccountRateLimits | null };
+        const current = this.snapshot.providerConnections?.find(item => item.backend === backend && item.installed && item.connected && item.enabled !== false);
+        if (!current || JSON.stringify(current.authentication) !== authentication) return createAppRpcResult(message.id, null);
         const limits = result.supported ? result.rateLimits ?? null : this.snapshot.backendAccountRateLimits?.[backend] ?? (backend === 'codex' ? this.snapshot.accountRateLimits : undefined) ?? null;
         if (limits) this.applyAndEmitBackendEvent({ type: 'account.rateLimitsUpdated', backend, payload: { rateLimits: limits } });
         return createAppRpcResult(message.id, limits);

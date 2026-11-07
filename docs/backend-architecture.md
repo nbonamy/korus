@@ -111,6 +111,11 @@ It queries fixed Cursor DashboardService read endpoints without redirects or
 credential refresh, and returns only validated plan, quota and balance fields.
 Zero allowances, disabled on-demand billing and absent data remain distinct;
 pooled team limits are not treated as personal spend limits.
+Monetary billing metadata is an optional app-owned extension of account quotas;
+legacy quota frames remain valid. Native reads reject a changed credential,
+and the daemon discards responses after provider disablement, disconnection or
+authentication changes. The renderer waits for a fresh read before showing stored
+monetary balances and drops responses after the account or menu lifecycle changes.
 Explicit login owns a cancellable process group. Connection observations never
 enable Cursor, and new-work admission refreshes authentication before selection.
 Each agent owns a native `agent acp` process through the shared ACP connection.

@@ -8,6 +8,28 @@ import { normalizeGeneralSettings } from '@workspace/core/settings';
 vi.mock('../claude/authentication', () => ({ getLocalClaudeAuthentication: vi.fn(), logoutLocalClaude: vi.fn() }));
 
 describe('connected engine admission', () => {
+  it.each(['disconnect', 'disable', 'account'])('discards an in-flight quota response after provider %s', async change => {
+    const snapshot = createTestSnapshot();
+    snapshot.providerConnections = [{ backend: 'cursor', installed: true, connected: true, checking: false, enabled: true,
+      authentication: { kind: 'cursor', connected: true, state: { loggedIn: true, homePath: '/cursor', account: { type: 'subscription', email: 'first@example.test' } } } }];
+    let resolve!: (value: unknown) => void;
+    const handle = vi.fn(() => new Promise(done => { resolve = done; }));
+    const onEvent = vi.fn();
+    const server = new AppBackendServer({ version: 'test', snapshot, onEvent,
+      driverRpc: { handle, onEvent: () => () => {}, close: async () => {} } as never });
+    try {
+      const result = server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'provider/usage/get', params: { backend: 'cursor' } });
+      await vi.waitFor(() => expect(resolve).toBeTypeOf('function'));
+      const provider = snapshot.providerConnections![0]!;
+      if (change === 'disconnect') provider.connected = false;
+      if (change === 'disable') provider.enabled = false;
+      if (change === 'account' && provider.authentication?.kind === 'cursor') provider.authentication.state.account!.email = 'second@example.test';
+      resolve({ supported: true, rateLimits: { limitId: 'cursor', primary: null, secondary: null, credits: null, individualLimit: null, planType: 'old-account-plan', limitName: null, rateLimitReachedType: null } });
+      expect(await result).toMatchObject({ result: null });
+      expect(snapshot.backendAccountRateLimits?.cursor).toBeUndefined();
+      expect(onEvent.mock.calls.some(([event]) => event.type === 'account.rateLimitsUpdated')).toBe(false);
+    } finally { await server.close(); }
+  });
   it('observes and enables Cursor independently and rechecks a previously connected account', async () => {
     const snapshot = createTestSnapshot();
     snapshot.general.providerEnabled = { cursor: false };

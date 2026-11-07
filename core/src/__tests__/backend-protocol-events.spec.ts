@@ -511,6 +511,16 @@ function createFixtures(): EventFixtures {
 }
 
 describe(`${product.name} backend event decoder`, () => {
+  it('accepts optional monetary billing while preserving legacy quota frames and rejects malformed balances', () => {
+    const event = createFixtures()['account.rateLimitsUpdated'];
+    expect(decodeAppBackendEvent(event)).toStrictEqual(event);
+    const billing = { includedBalanceUsd: '15.00', onDemand: { enabled: false, unlimited: false, usedUsd: 0, limitUsd: 0, remainingUsd: 0 } };
+    const frame = { ...event, backend: 'cursor', payload: { rateLimits: { ...event.payload.rateLimits, billing } } };
+    expect(decodeAppBackendEvent(frame)).toStrictEqual(frame);
+    for (const invalid of [{ ...billing, includedBalanceUsd: 'private' }, { ...billing, onDemand: { ...billing.onDemand, usedUsd: -1 } }, { ...billing, onDemand: { ...billing.onDemand, enabled: 'false' } }]) {
+      expect(() => decodeAppBackendEvent({ ...frame, payload: { rateLimits: { ...frame.payload.rateLimits, billing: invalid } } })).toThrow();
+    }
+  });
   it('decodes Cursor identity, session and authentication in app-owned envelopes', () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents[0]!.backend = 'cursor';
