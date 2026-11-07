@@ -458,6 +458,7 @@ describe('BrowserPanel', () => {
   it('clears every queued annotation when annotation mode is cancelled', async () => {
     const { api, emitEvent, wrapper } = mountPanel();
     await flushPromises();
+    expect(wrapper.get('[aria-label="Annotate page"]').find('.tabler-icon-scan-position').exists()).toBe(true);
     await wrapper.get('[aria-label="Annotate page"]').trigger('click');
     emitEvent({
       seq: 1,

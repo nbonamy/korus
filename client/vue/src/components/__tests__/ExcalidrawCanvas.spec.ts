@@ -90,6 +90,7 @@ describe('ExcalidrawCanvas', () => {
     expect(wrapper.find('[role="status"]').exists()).toBe(false);
     expect(wrapper.find('button[aria-label="Edit"]').exists()).toBe(false);
     const toggle = wrapper.get('button[aria-label="Annotate diagram"]');
+    expect(toggle.find('.tabler-icon-click').exists()).toBe(true);
     await wrapper.get('button[aria-label="Fit canvas"]').trigger('click');
     expect(editor.fit).toHaveBeenCalledOnce();
     expect(toggle.attributes('aria-pressed')).toBe('false');

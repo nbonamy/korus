@@ -17,7 +17,7 @@
     <div class="visualize-editor__toolbar">
       <button type="button" class="app-button app-button--tertiary visualize-editor__action" :disabled="!ready" :aria-pressed="annotating" :aria-label="translate(annotating ? 'visualize.stopAnnotating' : 'visualize.annotateCanvas')" :title="translate(annotating ? 'visualize.stopAnnotating' : 'visualize.annotateCanvas')" @click="toggleAnnotation">
         <X v-if="annotating" :stroke-width="1" aria-hidden="true" />
-        <PlusCircleIcon v-else :stroke-width="1" aria-hidden="true" />
+        <ClickIcon v-else :stroke-width="1" aria-hidden="true" />
       </button>
       <button type="button" class="app-button app-button--tertiary visualize-editor__action" :disabled="!ready || savingPng" :aria-label="translate('visualize.savePng')" :title="translate('visualize.savePng')" @click="savePng">
         <DownloadIcon :stroke-width="1" aria-hidden="true" />
@@ -62,7 +62,7 @@ import { selectedCanvasElements, type CanvasDocument, type SaveCanvasInput } fro
 import type { Visualization } from '@workspace/core/visualize';
 import type { CanvasAnnotationTarget, CanvasScene, mountCanvas } from './excalidraw-editor';
 import { translate } from '../i18n';
-import { ArrowsMinimizeIcon, DownloadIcon, MinusIcon, PlusCircleIcon, PlusIcon, X } from '../shared/icons/app-icons';
+import { ArrowsMinimizeIcon, ClickIcon, DownloadIcon, MinusIcon, PlusIcon, X } from '../shared/icons/app-icons';
 import AnnotationPopup, { type AnnotationPopupAnchor } from './AnnotationPopup.vue';
 import type { VisualizationAnnotationInput } from './use-visualization-annotations';
 const props = defineProps<{
