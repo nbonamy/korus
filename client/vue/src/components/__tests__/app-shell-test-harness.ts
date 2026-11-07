@@ -82,7 +82,7 @@ const AgentSidebarStub = defineComponent({
 
 const AgentWorkspaceStub = defineComponent({
   name: 'AgentWorkspace',
-  props: ['conversationPaneController', 'currentAgent'],
+  props: ['currentAgent'],
   setup(_props, { expose }) {
     expose({
       focusComposer: vi.fn(),
@@ -90,7 +90,7 @@ const AgentWorkspaceStub = defineComponent({
       showDebugGitOperationProgress: vi.fn(),
     });
   },
-  template: '<section class="agent-workspace"><slot name="conversation"><ConversationPane v-if="currentAgent" :agent="currentAgent" :agents="[currentAgent]" :controller="conversationPaneController" :has-visible-messages="false" /></slot></section>',
+  template: '<section class="agent-workspace"><slot name="conversation" :header-bindings-for="() => ({ agent: null, backendRuntime: { backend: \'codex\', status: \'notConfigured\' }, isLoading: false, sidebarCollapsed: false })" /></section>',
 });
 
 const TeamRailStub = defineComponent({

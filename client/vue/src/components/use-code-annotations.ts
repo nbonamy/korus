@@ -1,3 +1,4 @@
+import { conversationAnnotationDrafts } from './conversation-annotation-drafts';
 import { trimPromptContent } from '@codex-app-sdk/core/surface';
 import type { CodexRendererSendMessageOptions } from '@codex-app-sdk/vue';
 import { computed, reactive } from 'vue';
@@ -20,8 +21,8 @@ export function describeCodeRange(range: CodeRange): string {
 
 /** Drafts of comments on code in the side panels, kept per agent until the next message carries them. */
 export function useCodeAnnotations(options: { currentAgentId: () => string | undefined }) {
-  const draftsByAgentId = reactive<Record<string, CodeAnnotation[]>>({});
-  let nextAnnotationId = 0;
+  const draftState = conversationAnnotationDrafts('code', () => ({ drafts: reactive<Record<string, CodeAnnotation[]>>({}), nextId: 0 }));
+  const draftsByAgentId = draftState.drafts;
 
   const activeAnnotations = computed<readonly CodeAnnotation[]>(() => {
     const agentId = options.currentAgentId();
@@ -33,8 +34,8 @@ export function useCodeAnnotations(options: { currentAgentId: () => string | und
     const text = input.text.replace(/\s+$/u, '');
     const comment = input.comment.trim();
     if (!agentId || !text.trim() || !comment) return;
-    nextAnnotationId += 1;
-    draftsByAgentId[agentId] = [...(draftsByAgentId[agentId] ?? []), { ...input, text, comment, id: `code-annotation-${nextAnnotationId}` }];
+    draftState.nextId += 1;
+    draftsByAgentId[agentId] = [...(draftsByAgentId[agentId] ?? []), { ...input, text, comment, id: `code-annotation-${draftState.nextId}` }];
   }
 
   function remove(annotationId: string): void {

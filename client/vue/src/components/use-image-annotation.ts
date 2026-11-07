@@ -1,3 +1,4 @@
+import { conversationAnnotationDrafts } from './conversation-annotation-drafts';
 import { trimPromptContent } from '@codex-app-sdk/core/surface';
 import {
   getCodexNativeRendererApi,
@@ -37,7 +38,7 @@ export function useImageAnnotation(options: {
   updateComposerAttachments: (agentId: string, attachments: readonly CodexNativeAttachment[]) => void;
   updateComposerState: (agentId: string, state: CodexComposerState) => void;
 }) {
-  const draftsByAgentId = reactive<Record<string, Record<string, SavedImageAnnotations>>>({});
+  const draftsByAgentId = conversationAnnotationDrafts('image', () => reactive<Record<string, Record<string, SavedImageAnnotations>>>({}));
   const debugVisible = ref(false);
   const debugPixelRatio = ref<1 | 2>(1);
   const debugImageSource = ref(options.debugFallbackImageSource);

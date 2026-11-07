@@ -1,3 +1,4 @@
+import { conversationAnnotationDrafts } from './conversation-annotation-drafts';
 import { trimPromptContent } from '@codex-app-sdk/core/surface';
 import type {
   CodexMessageTextSelection,
@@ -13,8 +14,8 @@ export type ChatTextAnnotation = Omit<CodexMessageTextSelection, 'anchor'> & {
 export function useChatTextAnnotations(options: {
   currentAgentId: () => string | undefined;
 }) {
-  const draftsByAgentId = reactive<Record<string, ChatTextAnnotation[]>>({});
-  let nextAnnotationId = 0;
+  const draftState = conversationAnnotationDrafts('text', () => ({ drafts: reactive<Record<string, ChatTextAnnotation[]>>({}), nextId: 0 }));
+  const draftsByAgentId = draftState.drafts;
 
   const activeAnnotations = computed<readonly ChatTextAnnotation[]>(() => {
     const agentId = options.currentAgentId();
@@ -26,11 +27,11 @@ export function useChatTextAnnotations(options: {
     const text = selection.text.trim();
     const normalizedComment = comment.trim();
     if (!agentId || !text || !normalizedComment) return;
-    nextAnnotationId += 1;
+    draftState.nextId += 1;
     draftsByAgentId[agentId] = [
       ...(draftsByAgentId[agentId] ?? []),
       {
-        id: `chat-text-annotation-${nextAnnotationId}`,
+        id: `chat-text-annotation-${draftState.nextId}`,
         text,
         comment: normalizedComment,
         messageIndex: selection.messageIndex,

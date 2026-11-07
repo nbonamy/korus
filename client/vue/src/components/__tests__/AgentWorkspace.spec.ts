@@ -1,13 +1,18 @@
 import type { Agent, AppCommand } from '@workspace/core/contracts';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
-import type { CodexConversationPaneController, CodexMessageImage, CodexMessageImageContext } from '@codex-app-sdk/vue';
-import { reactive } from 'vue';
+import type { CodexMessageImage, CodexMessageImageContext } from '@codex-app-sdk/vue';
+import { defineComponent, h, reactive } from 'vue';
 import { DOMWrapper, flushPromises, mount, shallowMount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import AgentWorkspace from '../AgentWorkspace.vue';
 import type { AgentRightWorkspaceState } from '../use-right-workspace-state';
 import type { RightWorkspaceTab } from '../right-workspace';
 import { stubElectronTestWindow } from '../../test/client';
+
+const WorkspaceConversationSlot = defineComponent({
+  name: 'WorkspaceConversationSlot', props: ['plan', 'planVisible'],
+  template: '<section class="conversation-content" />',
+});
 
 function createWorkspaceState(): AgentRightWorkspaceState {
   return {
@@ -46,25 +51,16 @@ function mountWorkspace(configureSnapshot?: (snapshot: ReturnType<typeof createI
   const updateAgent = vi.fn().mockResolvedValue(undefined);
   const wrapper = (realRunProfiles ? mount : shallowMount)(AgentWorkspace, {
     attachTo: document.body,
-    global: { stubs: { AgentHeader: false, ...(realRunProfiles ? { ConversationPane: true, RightWorkspacePanel: true } : {}) } },
+    slots: { conversation: ({ plan, planVisible }) => h(WorkspaceConversationSlot, { plan, planVisible }) },
+    global: { stubs: { AgentHeader: false, ...(realRunProfiles ? { RightWorkspacePanel: true } : {}) } },
     props: {
-      activeAttachmentAnnotationCounts: {},
-      addChatTextAnnotation: vi.fn(),
       addVisualizationAnnotation: vi.fn(),
       addCodeAnnotation: vi.fn(),
       agentFiles: [],
       agentSidebarCollapsed: false,
-      chatTextAnnotations: [],
-      visualizationAnnotations: [],
-      codeAnnotations: [],
       closeRightWorkspaceTab,
       commitAgentGitChanges: vi.fn(),
-      threadFlagBusy: false,
-      conversationPaneController: {} as CodexConversationPaneController,
-      savePromptDraft: vi.fn(),
-      removePromptDraft: vi.fn(),
       conversationPlan: currentAgent.plan ?? null,
-      respondToThreadFlag: vi.fn(),
       createAgentGitPullRequest: vi.fn(),
       currentAgent,
       currentAgentGitStatus: null,
@@ -77,7 +73,6 @@ function mountWorkspace(configureSnapshot?: (snapshot: ReturnType<typeof createI
       handleStartWorkAction: vi.fn(),
       isAgentEmpty: false,
       isConversationLoading: false,
-      historyLoadFailed: false,
       isLoading: false,
       isModalDialogVisible: false,
       isRightWorkspaceVisible: () => true,
@@ -89,10 +84,6 @@ function mountWorkspace(configureSnapshot?: (snapshot: ReturnType<typeof createI
       updateAgent,
       openAgentGitDiffPreview: vi.fn(),
       openAgentIn: vi.fn(),
-      openAttachmentImageAnnotation: vi.fn(),
-      removeChatTextAnnotation: vi.fn(),
-      removeVisualizationAnnotation: vi.fn(),
-      removeCodeAnnotation: vi.fn(),
       openConversationLink: vi.fn(),
       openFilePreviewForAgent: vi.fn(),
       openInApplications: { defaultApplication: 'finder', applications: [] },
@@ -100,7 +91,6 @@ function mountWorkspace(configureSnapshot?: (snapshot: ReturnType<typeof createI
       pushAgentGitBranch: vi.fn(),
       readConversationMessages: vi.fn(),
       readVisualizationAsset: vi.fn(),
-      retryConversationHistory: vi.fn(),
       rightWorkspaceFor: () => workspace,
       rightWorkspaces: { [currentAgent.id]: workspace },
       rightWorkspaceVisible: false,
@@ -213,7 +203,7 @@ describe('AgentWorkspace', () => {
     expect(wrapper.find('[aria-label="Expand workspace"]').exists()).toBe(false);
     await wrapper.setProps({ rightWorkspaceVisible: true });
     const conversation = wrapper.get('.app-shell__conversations');
-    const mountedConversation = wrapper.getComponent({ name: 'ConversationPane' });
+    const mountedConversation = wrapper.getComponent({ name: 'WorkspaceConversationSlot' });
     const expand = wrapper.get('[aria-label="Expand workspace"]');
     expect(expand.element.nextElementSibling?.hasAttribute('data-global-workspace-toggle')).toBe(true);
     await expand.trigger('click');
@@ -223,7 +213,7 @@ describe('AgentWorkspace', () => {
     await wrapper.setProps({ splitHeaders: true });
     await wrapper.get('[aria-label="Restore workspace width"]').trigger('click');
     expect(conversation.isVisible()).toBe(true);
-    expect(wrapper.getComponent({ name: 'ConversationPane' }).vm).toBe(mountedConversation.vm);
+    expect(wrapper.getComponent({ name: 'WorkspaceConversationSlot' }).vm).toBe(mountedConversation.vm);
     expect(wrapper.get('.app-shell__right-workspace').attributes('style')).toContain('flex-basis: 420px');
     expect(workspace.width).toBe(420);
     expect(wrapper.find('.app-shell__right-workspace-resizer').exists()).toBe(true);
@@ -236,7 +226,7 @@ describe('AgentWorkspace', () => {
       steps: [{ step: 'First', status: status === 'completed' ? 'completed' as const : 'inProgress' as const }],
     });
     const planVisible = (wrapper: ReturnType<typeof mountWorkspace>['wrapper']) =>
-      wrapper.findComponent({ name: 'ConversationPane' }).props('planVisible');
+      wrapper.findComponent({ name: 'WorkspaceConversationSlot' }).props('planVisible');
 
     it('stays open when the last task completes and goes away when the next turn starts', async () => {
       const { wrapper } = mountWorkspace();
@@ -244,9 +234,9 @@ describe('AgentWorkspace', () => {
       expect(planVisible(wrapper)).toBe(true);
       await wrapper.setProps({ conversationPlan: plan('completed') });
       expect(planVisible(wrapper)).toBe(true);
-      expect(wrapper.findComponent({ name: 'ConversationPane' }).props('plan')).not.toBeNull();
+      expect(wrapper.findComponent({ name: 'WorkspaceConversationSlot' }).props('plan')).not.toBeNull();
       await wrapper.setProps({ latestConversationTurnId: 'turn-2' });
-      expect(wrapper.findComponent({ name: 'ConversationPane' }).props('plan')).toBeNull();
+      expect(wrapper.findComponent({ name: 'WorkspaceConversationSlot' }).props('plan')).toBeNull();
       wrapper.unmount();
     });
 

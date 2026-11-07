@@ -215,7 +215,8 @@ describe('split-screen conversations', () => {
     await chooseLayout(wrapper, '4-Pane Split');
     await wrapper.findAll('.agent-split-grid__pane')[3]!.trigger('pointerdown');
     await resizeWindow(true);
-    expect(wrapper.find('.agent-split-grid').exists()).toBe(false);
+    expect(wrapper.get('.agent-split-grid').attributes('data-layout')).toBe('single');
+    expect(wrapper.findAll('.agent-split-grid__pane')).toHaveLength(1);
     expect(wrapper.find('[contenteditable="true"]').exists()).toBe(true);
     wrapper.unmount();
     wrapper = mount(App, { attachTo: document.body });

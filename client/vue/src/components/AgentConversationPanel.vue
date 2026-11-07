@@ -21,10 +21,12 @@
     :code-annotations="conversation.codeAnnotation.activeAnnotations.value"
     :review-finding="reviewFinding"
     :thread-flag-busy="conversation.threadFlagBusy.value"
+    :empty-headline="emptyHeadline"
+    :empty-subhead="emptySubhead"
     :plan="plan"
     :plan-visible="planVisible"
     @close-plan="emit('close-plan')"
-    @retry-history="prepare"
+    @retry-history="retryHistory"
     @thread-flag="respondToThreadFlag"
     @annotate-attachment="conversation.imageAnnotation.openAttachment"
     @add-text-annotation="
@@ -36,7 +38,9 @@
     "
     @remove-code-annotation="conversation.codeAnnotation.remove"
     @remove-review-finding="emit('remove-review-finding')"
-  />
+  >
+    <template v-for="(_, name) in $slots" #[name]="bindings"><slot :name="name" v-bind="bindings ?? {}" /></template>
+  </ConversationPane>
   <ImageAnnotationDialog
     :visible="conversation.imageAnnotation.visible.value"
     :image-src="conversation.imageAnnotation.imageSource.value"
@@ -49,7 +53,7 @@
   />
 </template>
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { translate } from '../i18n';
 import { useBackendChoices } from './backend-selection';
@@ -76,12 +80,18 @@ import type { VisualizationAnnotationInput } from './use-visualization-annotatio
 import type { CodeAnnotationInput } from './use-code-annotations';
 import ConversationPane from './ConversationPane.vue';
 import ImageAnnotationDialog from './ImageAnnotationDialog.vue';
+import debugAnnotationScreenshotUrl from '../../assets/debug-annotation.png?url';
 
 const props = defineProps<{
   view: AgentConversationView;
   actions: AgentConversationActions;
   agents: Agent[];
   focused: boolean;
+  emptyHeadline?: string;
+  emptySubhead?: string;
+  placeholder?: string;
+  previewMessage?: import('@codex-app-sdk/core/surface').SurfaceMessage;
+  previewApproval?: import('@workspace/core/contracts').BackendApprovalRequest;
   followUpBehavior?: AppGeneralSettings['followUpBehavior'];
   mentionGroups: readonly CodexComposerMentionGroup[];
   modelMenuItems: CodexComposerMenuItem[];
@@ -103,6 +113,7 @@ const emit = defineEmits<{
   'open-review': [agentId: string];
   'composer-command': [agentId: string, command: ConversationMenuCommand];
   'close-plan': [];
+  'annotation-dialog': [visible: boolean];
 }>();
 const pane = ref<InstanceType<typeof ConversationPane> | null>(null);
 const provider = computed(
@@ -112,6 +123,9 @@ const state = agentConversationState(() => props.view, {
   followUpBehavior: () => props.followUpBehavior ?? 'queue',
   mentionGroups: () => props.mentionGroups,
   modelMenuItems: () => props.modelMenuItems,
+  placeholder: () => props.placeholder,
+  previewMessage: () => props.previewMessage,
+  previewApproval: () => props.previewApproval,
 });
 const engineChoices = useBackendChoices(() => props.view.agent.remoteConnectionId);
 const conversation = useAgentConversation({
@@ -120,7 +134,7 @@ const conversation = useAgentConversation({
   },
   agentId: () => props.view.agent.id,
   state,
-  actions: props.actions,
+  get actions() { return props.actions; },
   onMenuSelect: (item) => {
     const command = conversationMenuCommand(item.payload);
     if (command) return emit('composer-command', props.view.agent.id, command);
@@ -133,13 +147,18 @@ const conversation = useAgentConversation({
     if (response.id === 'ready_for_review' && response.action === 'execute')
       emit('open-review', agentId);
   },
-  debugFallbackImageSource: '',
+  debugFallbackImageSource: debugAnnotationScreenshotUrl,
   notifyError: (message) => ElMessage.error(message),
 });
 function respondToThreadFlag(response: import('@workspace/core/thread-flags').ThreadFlagResponse): void {
   void conversation.respondToThreadFlag(response);
 }
 
+watch(conversation.imageAnnotation.visible, visible => emit('annotation-dialog', visible));
+async function retryHistory(): Promise<void> {
+  if (props.actions.retryHistory) await props.actions.retryHistory(props.view.agent.id);
+  else await prepare();
+}
 async function prepare(): Promise<void> {
   try {
     await props.actions.prepare(props.view.agent.id);
@@ -147,6 +166,7 @@ async function prepare(): Promise<void> {
     ElMessage.error(error instanceof Error ? error.message : String(error));
   }
 }
+onBeforeUnmount(() => { if (conversation.imageAnnotation.visible.value) emit('annotation-dialog', false); });
 onMounted(() => {
   watch(() => state.identity?.conversationKey, prepare, { immediate: true });
 });
@@ -163,6 +183,7 @@ function addCodeAnnotation(annotation: CodeAnnotationInput): void {
 defineExpose({
   focusComposer: () => pane.value?.focusComposer(),
   saveCurrentDraft: () => pane.value?.saveCurrentDraft(),
+  openDebugImageAnnotation: (...args: Parameters<typeof conversation.imageAnnotation.openDebug>) => conversation.imageAnnotation.openDebug(...args),
   openSavedDraftPicker: () => pane.value?.openSavedDraftPicker(),
   addVisualizationAnnotation,
   addCodeAnnotation,
