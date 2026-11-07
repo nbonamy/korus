@@ -1,5 +1,7 @@
 # Cursor Integration
 
+Shared requirements are in the [Provider Integration checklist](provider-integration.md).
+
 The Cursor lifecycle detects `agent` or `cursor-agent` through shared runtime
 discovery; installation remains an operator action through official instructions.
 It uses the existing `~/.cursor` setup. Separate setup choices are rejected before

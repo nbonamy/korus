@@ -734,7 +734,7 @@ documentation claims; this checkpoint qualifies only the native results above.
 
 ## Full-provider implementation audit
 
-The shared [provider contract](../docs/backend-architecture.md#provider-integration-checklist)
+The shared [provider contract](../docs/provider-integration.md)
 and [Cursor capability checklist](../docs/cursor.md#capability-checklist) distinguish
 implemented, partial and unavailable operations.
 
