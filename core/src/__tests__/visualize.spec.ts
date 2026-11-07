@@ -55,9 +55,9 @@ describe('Visualize session contract', () => {
     }))).toBe(true);
   });
 
-  it('accepts Claude conversation references', () => {
-    expect(isVisualizeSession(session({
-      conversationRef: { backend: 'claude', folder: '/workspace', sessionId: 'session-1' },
+  it.each(['claude', 'antigravity', 'cursor'] as const)('accepts %s conversation references', backend => {
+    for (const folder of ['/workspace', null]) expect(isVisualizeSession(session({
+      conversationRef: { backend, folder, sessionId: 'session-1' },
     }))).toBe(true);
   });
 

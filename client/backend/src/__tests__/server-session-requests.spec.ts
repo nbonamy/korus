@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentBackendDriver } from '@workspace/core/backend-driver';
-import { claudeBackendCapabilities, codexBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { claudeBackendCapabilities, codexBackendCapabilities, defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { AppBackendServer } from '../server';
 import { BackendDriverRpc } from '../driver-rpc';
@@ -76,23 +77,28 @@ describe('AppBackendServer', () => {
     await server.close();
   });
 
-  it('restores the previous provider session when persisting a switch fails', async () => {
+  it.each(['codex', 'cursor'] as const)('restores the previous %s session when persisting a switch fails', async backend => {
     const snapshot = createTestSnapshot();
+    const oldSession = backend === 'codex' ? { kind: backend, threadId: 'thread-old' } : { kind: backend, sessionId: 'session-old' };
+    const newSession = backend === 'codex' ? { kind: backend, threadId: 'thread-new' } : { kind: backend, sessionId: 'session-new' };
+    const oldRef = backend === 'codex' ? { backend, threadId: 'thread-old' } : { backend, folder: '/repo', sessionId: 'session-old' };
+    const newRef = backend === 'codex' ? { backend, threadId: 'thread-new' } : { backend, folder: '/repo', sessionId: 'session-new' };
+    const storageState = backend === 'codex' ? 'archived' : 'active';
     snapshot.teams[0]!.agentIds = ['agent-dina'];
     snapshot.agents = [{
-      id: 'agent-dina', teamId: 'team-test', name: 'Dina', folder: '/repo', backend: 'codex',
-      backendSession: { kind: 'codex', threadId: 'thread-old' }, status: { type: 'idle' },
+      id: 'agent-dina', teamId: 'team-test', name: 'Dina', folder: '/repo', backend,
+      backendSession: oldSession, status: { type: 'idle' },
       createdAt: '2026-06-13T00:00:00.000Z', updatedAt: '2026-06-13T00:00:00.000Z',
     }];
     const resumeConversation = vi.fn()
-      .mockResolvedValueOnce({ backendSession: { kind: 'codex', threadId: 'thread-new' } })
-      .mockResolvedValueOnce({ backendSession: { kind: 'codex', threadId: 'thread-old' } });
+      .mockResolvedValueOnce({ backendSession: newSession })
+      .mockResolvedValueOnce({ backendSession: oldSession });
     const driver: AgentBackendDriver = {
-      backend: 'codex',
-      getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
-      getCapabilities: () => codexBackendCapabilities,
-      sendPrompt: async () => ({ backendSession: { kind: 'codex', threadId: 'thread-old' } }),
-      interrupt: async () => ({ backendSession: { kind: 'codex', threadId: 'thread-old' } }),
+      backend,
+      getRuntimeStatus: () => ({ backend, status: 'running' }),
+      getCapabilities: () => defaultBackendCapabilities(backend),
+      sendPrompt: async () => ({ backendSession: oldSession }),
+      interrupt: async () => ({ backendSession: oldSession }),
       respondToAgentRequest: async () => undefined,
       resumeConversation,
       reconcileConversations: async () => undefined,
@@ -101,23 +107,24 @@ describe('AppBackendServer', () => {
     };
     const server = new AppBackendServer({
       version: 'test-version', snapshot, saveSnapshot: vi.fn().mockRejectedValue(new Error('Disk full')),
-      driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
+      driverRpc: new BackendDriverRpc(new Map([[backend, driver]])),
     });
 
+    expect(conversationRefFromAgent(snapshot.agents[0]!)).toStrictEqual(oldRef);
     await expect(server.handleMessage({
       jsonrpc: '2.0', id: 'resume-agent', method: 'agent/conversation/resume',
       params: {
         agentId: 'agent-dina',
-        target: { ref: { backend: 'codex', threadId: 'thread-new' }, storageState: 'archived' },
+        target: { ref: newRef, storageState },
       },
     })).rejects.toThrow('Disk full');
 
-    expect(snapshot.agents[0]?.backendSession).toStrictEqual({ kind: 'codex', threadId: 'thread-old' });
+    expect(snapshot.agents[0]?.backendSession).toStrictEqual(oldSession);
     expect(resumeConversation).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      backendSession: { kind: 'codex', threadId: 'thread-new' },
+      backendSession: newSession,
     }), {
-      ref: { backend: 'codex', threadId: 'thread-old' },
-      storageState: 'archived',
+      ref: oldRef,
+      storageState,
     });
     await server.close();
   });

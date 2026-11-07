@@ -36,6 +36,12 @@ describe('state persistence', () => {
     agent.backendSession = { kind: 'cursor', sessionId: 'cursor-native-session' };
     agent.backendDefaults = { kind: 'cursor', model: 'composer-fixture', reasoningEffort: 'high', serviceTier: null, permissionMode: 'allowlist', userSelectedModel: true };
     agent.userDelegationOverrides = { startingContext: 'handoff', instructions: 'Synthetic constraint', execution: { backend: 'cursor', conversationId: 'cursor-native-session', turnId: 'turn-1' } };
+    agent.handoff = { operationId: 'cursor-handoff', sourceAgentId: agent.id, sourceTitle: 'Cursor source',
+      sourceRef: { backend: 'cursor', folder: agent.folder, sessionId: 'cursor-source' }, phase: 'complete',
+      selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } };
+    agent.visualize = { id: 'cursor-viz', conversationRef: { backend: 'cursor', folder: agent.folder, sessionId: 'cursor-native-session' },
+      isOpen: true, suggestions: [], visualizations: [], selectedVisualizationId: null, createdAt: '', updatedAt: '' };
+    snapshot.general.preferredProviders = { local: 'cursor' };
     snapshot.general.providerHomes = { cursor: { homePath: '/cursor', isolated: false, shareSkills: false } };
     snapshot.general.providerEnabled = { codex: true, cursor: false };
     snapshot.general.providerModelDefaults = { cursor: { backend: 'cursor', model: 'composer-fixture', reasoningEffort: 'high', serviceTier: null } };
@@ -47,6 +53,7 @@ describe('state persistence', () => {
     expect(restored.general.providerHomes).toStrictEqual(snapshot.general.providerHomes);
     expect(restored.general.providerEnabled).toStrictEqual(snapshot.general.providerEnabled);
     expect(restored.general.providerModelDefaults).toStrictEqual(snapshot.general.providerModelDefaults);
+    expect(restored.general.preferredProviders).toStrictEqual(snapshot.general.preferredProviders);
     await new AppStateStore(home).save(restored);
     expect(JSON.parse(await readFile(path.join(home, 'roster.json'), 'utf8'))).toStrictEqual(rosterBefore);
   });

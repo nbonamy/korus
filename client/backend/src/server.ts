@@ -2818,7 +2818,7 @@ export class AppBackendServer {
               if (previousRef) {
                 await this.handleAgentDriverRequest(switchedAgent, backendMethods.driverConversationResume, {
                   agent: switchedAgent,
-                  target: { ref: previousRef, storageState: 'archived' },
+                  target: { ref: previousRef, storageState: previousRef.backend === 'cursor' ? 'active' : 'archived' },
                 }).catch((rollbackError) => warnMain('sessions', 'conversation switch rollback failed', {
                   detail: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
                 }));
@@ -5224,7 +5224,7 @@ function isBackendConversationRef(value: unknown): value is BackendConversationR
     return typeof candidate.threadId === 'string' && candidate.threadId.trim().length > 0;
   }
 
-  return (candidate.backend === 'claude' || candidate.backend === 'antigravity') &&
+  return (candidate.backend === 'claude' || candidate.backend === 'antigravity' || candidate.backend === 'cursor') &&
     (candidate.folder === null || (typeof candidate.folder === 'string' && candidate.folder.trim().length > 0)) &&
     typeof candidate.sessionId === 'string' &&
     candidate.sessionId.trim().length > 0 &&

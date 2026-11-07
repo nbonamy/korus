@@ -18,6 +18,7 @@ const exec = promisify(execFile);
 it.each([
   { backend: 'codex', parallel: false },
   { backend: 'antigravity', parallel: false },
+  { backend: 'cursor', parallel: true },
   { backend: 'codex', parallel: true },
 ] as const)('keeps $backend workers through the full Mission (parallel: $parallel)', async ({ backend, parallel }) => {
   const folder = await mkdtemp(join(tmpdir(), 'app-mission-workflow-'));

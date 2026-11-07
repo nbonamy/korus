@@ -572,7 +572,7 @@ function isGeneralSettings(value: unknown): boolean {
       && optional(candidate, 'codex', isApprovalPreset) && optional(candidate, 'claude', isString) && optional(candidate, 'antigravity', isString)) &&
     optional(value, 'excludeLockfilesFromDiffs', isBoolean) &&
     optional(value, 'githubStarPrompt', candidate => isRecord(candidate) && Number.isSafeInteger(candidate.sentPrompts) && (candidate.sentPrompts as number) >= 0 && (candidate.sentPrompts as number) <= 5 && isBoolean(candidate.dismissed)) &&
-    optional(value, 'preferredProviders', candidate => isRecord(candidate) && Object.entries(candidate).every(([host, backend]) => host.trim().length > 0 && (backend === 'codex' || backend === 'claude' || backend === 'antigravity'))) &&
+    optional(value, 'preferredProviders', candidate => isRecord(candidate) && Object.entries(candidate).every(([host, backend]) => host.trim().length > 0 && (backend === 'codex' || backend === 'claude' || backend === 'antigravity' || backend === 'cursor'))) &&
     optional(value, 'gitMergeCleanup', candidate => isRecord(candidate) && isBoolean(candidate.deleteWorktree) && isBoolean(candidate.deleteBranch)) &&
     optional(value, 'providerModelDefaults', candidate => isRecord(candidate) && Object.entries(candidate).every(([backend, selection]) =>
       isExecutionSelection(selection) && selection.backend === backend)) &&
