@@ -1,5 +1,6 @@
+import { provideCodexToolCallDetails } from '@codex-app-sdk/vue';
 import { flushPromises, mount } from '@vue/test-utils';
-import { computed, shallowReactive } from 'vue';
+import { computed, h, ref, shallowReactive } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { claudeBackendCapabilities } from '@workspace/core/backend-capabilities';
@@ -14,7 +15,7 @@ import { cursorBackendCapabilities } from '@workspace/core/backend-capabilities'
 import { emptyCursorSnapshot, createCursorConversationReplica } from '@workspace/core/cursor-conversation-replica';
 
 describe('AgentConversationPanel', () => {
-  it('renders Cursor text and tool activity through the shared pane and routes interrupt after a provider switch', async () => {
+  it('renders Cursor tool diffs and observed media through the shared pane and routes interrupt, confirm and continue', async () => {
     const snapshot = createInitialSnapshot();
     const agent = { ...snapshot.agents[0]!, backend: 'cursor' as const, backendDefaults: { kind: 'cursor' as const }, backendSession: undefined };
     const view = shallowReactive<AgentConversationView>({
@@ -29,21 +30,41 @@ describe('AgentConversationPanel', () => {
       selectModel: vi.fn(), selectReasoningEffort: vi.fn(), selectServiceTier: vi.fn(), setPlanMode: vi.fn(), setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(),
       updateComposerState: (_id, state) => { view.composerState = state; }, updateAttachments: vi.fn(), deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
     };
-    const wrapper = mount(AgentConversationPanel, { props: { view, actions, agents: [agent], focused: true, mentionGroups: [], modelMenuItems: [], selectModelMenuItem: vi.fn(),
-      savedPromptDrafts: [], savePromptDraft: vi.fn(), removePromptDraft: vi.fn(), openLink: vi.fn(), openImage: vi.fn(), openVisualization: vi.fn(),
-    }, global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'cursor']) } } });
+    const rawDetails = ref(false);
+    const openLink = vi.fn();
+    const wrapper = mount({ setup() {
+      provideCodexToolCallDetails(rawDetails);
+      return () => h(AgentConversationPanel, { view, actions, agents: [agent], focused: true, mentionGroups: [], modelMenuItems: [], selectModelMenuItem: vi.fn(),
+      savedPromptDrafts: [], savePromptDraft: vi.fn(), removePromptDraft: vi.fn(), openLink, openImage: vi.fn(), openVisualization: vi.fn(),
+    });
+    } }, { global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'cursor']) } } });
     try {
       await wrapper.get('form').trigger('submit'); await flushPromises();
       expect(actions.send).toHaveBeenCalledWith(agent.id, 'Hello Cursor', undefined);
       const replica = createCursorConversationReplica(emptyCursorSnapshot(agent.id, 'session'));
       const identity = { agentId: agent.id, sessionId: 'session', turnId: 'turn', occurredAt: '2026-11-03T12:00:00Z' };
       replica.apply({ ...identity, type: 'turn.started', payload: { turn: { id: 'turn' } } });
+      const diffBody = 'File: synthetic.txt\nBefore:\nBEFORE\nAfter:\nAFTER\n\nfile:///observed.txt\nObserved resource contents';
+      const imageUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aMfcAAAAASUVORK5CYII=';
       view.cursorSnapshot = replica.apply({ ...identity, type: 'message.upsert', payload: { message: { id: 'answer', agentId: agent.id, turnId: 'turn', role: 'assistant', status: 'streaming', createdAt: identity.occurredAt,
-        parts: [{ type: 'text', text: 'Cursor streamed reply' }, { type: 'tool', id: 'tool', kind: 'read', title: 'Read synthetic.txt', status: 'completed', body: 'synthetic contents', metadata: { displayTitle: 'Read synthetic.txt' } }] } } });
+        parts: [{ type: 'text', text: 'Cursor streamed reply' },
+          { type: 'tool', id: 'tool', kind: 'fileChange', title: 'Edit synthetic.txt', status: 'completed', statusText: JSON.stringify({ source: 'cursor', action: 'edit', phase: 'completed', params: { target: 'synthetic.txt' } }), body: diffBody, metadata: { cwd: '/workspace', changes: [{ path: 'synthetic.txt', kind: 'update', oldText: 'BEFORE', newText: 'AFTER' }] } },
+          { type: 'media', itemId: 'cursor-tool:tool:0', media: { url: imageUrl, mimeType: 'image/png', alt: 'Image' } }] } } });
       view.composerState = { text: '', selectionStart: 0, selectionEnd: 0 };
       await flushPromises();
       expect(wrapper.text()).toContain('Cursor streamed reply');
-      expect(wrapper.text()).toContain('Read synthetic.txt');
+      const fileLink = wrapper.get('a.chat-tool-call__title-target--link');
+      expect(fileLink.text()).toBe('synthetic.txt');
+      expect(fileLink.attributes('href')).toBe('/workspace/synthetic.txt');
+      await fileLink.trigger('click');
+      expect(openLink).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ kind: 'file', path: '/workspace/synthetic.txt', action: 'edit' }));
+      expect(wrapper.get('.chat-media-block img').attributes()).toMatchObject({ src: imageUrl, alt: 'Image' });
+      expect(wrapper.find('.chat-tool-call__details-toggle').exists()).toBe(false);
+      rawDetails.value = true;
+      await flushPromises();
+      await wrapper.get('.chat-tool-call__details-toggle').trigger('click');
+      await flushPromises();
+      expect(wrapper.findAll('.chat-tool-call__body pre').at(-1)!.text()).toBe(diffBody);
       await wrapper.get('button[title="Interrupt"]').trigger('click');
       expect(actions.interrupt).toHaveBeenCalledWith(agent.id);
       view.cursorSnapshot = { ...view.cursorSnapshot!, clientRequests: [{

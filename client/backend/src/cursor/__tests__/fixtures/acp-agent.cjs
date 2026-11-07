@@ -67,6 +67,15 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     update({sessionUpdate:'subagent_spawned',agentId:'synthetic-child'});
     update({sessionUpdate:'subagent_state_update',agentId:'synthetic-child',state:'completed'});
     if (mode === 'rich-output') { richOutput(false); reply({stopReason:'end_turn'}); return; }
+    // Source-backed generate_image request shape; notification variant is compatibility coverage.
+    if (mode === 'image-observation') {
+      const config = JSON.parse(fs.readFileSync(path.join(__dirname,'image-event.json'),'utf8'));
+      update({sessionUpdate:'tool_call',toolCallId:'native-image',title:'Generate image',kind:'other',status:'failed',rawOutput:{native:'unchanged'}});
+      const params = {toolCallId:'native-image',description:'Suggested generation',filePath:config.filePath};
+      if (!config.notification) send({id:5,method:'cursor/generate_image',params});
+      send({method:'cursor/generate_image',params});
+      reply({stopReason:'end_turn'}); return;
+    }
     if (mode === 'team') { send({ id: pending, error: { code: -32000, message: 'Your team has switched. https://private.invalid/token' } }); return; }
     if (mode === 'team-stderr') { process.stderr.write('Your team has switched. https://private.invalid/token\n'); process.exit(1); }
     if (mode === 'policy') { send({ id: pending, error: { code: -32000, message: 'Headless ACP use is disabled by team policy' } }); return; }

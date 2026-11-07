@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { RendererMessage, RendererMessagePart, RendererToolPart } from '@workspace/core/contracts';
 import type { CursorConversationEvent } from '@workspace/core/contracts/cursor-conversation';
@@ -15,7 +16,7 @@ export class CursorTranscript {
   private replayUser: Record<string, unknown>[] = [];
   private readonly toolBodies = new Map<string,string>();
   private denied = new Set<string>();
-  constructor(private readonly agentId: string, private readonly sessionId: string, private readonly changed: (event: CursorConversationEvent) => void, private readonly display: (text: string) => { text: string; parts: RendererMessagePart[]; metadata?: RendererMessage['metadata'] } = text => ({ text, parts: [] })) {
+  constructor(private readonly agentId: string, private readonly sessionId: string, private readonly changed: (event: CursorConversationEvent) => void, private readonly display: (text: string) => { text: string; parts: RendererMessagePart[]; metadata?: RendererMessage['metadata'] } = text => ({ text, parts: [] }), private readonly cwd?: string) {
     this.replica = createCursorConversationReplica(emptyCursorSnapshot(agentId, sessionId));
   }
   private event(change: Change, turnId = this.replica.getSnapshot().activeTurnId!): void {
@@ -92,6 +93,13 @@ export class CursorTranscript {
     for (const message of snapshot.messages) message.createdAt = '';
     this.replica.replace(snapshot);
   }
+  imageFile(toolCallId: string, image: {url:string;mimeType:string}): void {
+    const message = this.current('assistant'), itemId = `cursor-file:${toolCallId}`;
+    const part: RendererMessagePart = {type:'media',itemId,media:{...image,alt:'Image file',title:'Image file'}};
+    const index = message.parts.findIndex(part=>part.type==='media' && part.itemId===itemId);
+    if (index === -1) message.parts.push(part); else message.parts[index]=part;
+    this.event({type:'message.upsert',payload:{message}});
+  }
   request(request: import('@workspace/core/contracts').ClientRequest): void { this.event({ type: 'request.created', payload: { request } }); }
   resolved(response: import('@workspace/core/agent-request').AgentRequestResponse): void { this.event({ type: 'request.resolved', payload: response }); }
   plan(params: Record<string, unknown>): void {
@@ -162,7 +170,13 @@ export class CursorTranscript {
       const locations = update.locations.map(value => { if (!record(value) || typeof value.path !== 'string' || (value.line !== undefined && (typeof value.line !== 'number' || !Number.isSafeInteger(value.line) || value.line < 0))) throw new Error('Invalid Cursor tool location.'); return {path:value.path,...(typeof value.line === 'number' ? {line:value.line} : {})}; });
       part.metadata = {...part.metadata,locations};
     }
-    part.metadata = { ...part.metadata, displayTitle: part.title };
+    part.metadata = { ...part.metadata, ...(this.cwd ? {cwd:this.cwd} : {}) };
+    if (part.kind === 'fileChange') delete part.metadata.displayTitle; else part.metadata.displayTitle = part.title;
+    if (part.kind === 'fileChange' && Array.isArray(part.metadata.changes)) {
+      const changes = part.metadata.changes.filter((change): change is Record<string,unknown> => record(change) && typeof change.path === 'string');
+      const action = changes.every(change=>change.kind==='add') ? 'create' : changes.every(change=>change.kind==='delete') ? 'delete' : 'edit';
+      part.statusText = JSON.stringify({source:'cursor',action,phase:part.status,params:{target:changes.map(change=>path.basename(change.path as string)).join(', '),...(changes.length===1 ? {path:changes[0]!.path} : {})}});
+    }
     if (!previous) message.parts.push(part);
     if (message.id === this.message?.id) this.message = message;
     this.event({ type: 'message.upsert', payload: { message } });

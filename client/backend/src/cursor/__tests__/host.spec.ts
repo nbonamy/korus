@@ -1,4 +1,4 @@
-import { mkdtemp, copyFile, chmod, writeFile, readFile, rm, access } from 'node:fs/promises';
+import { mkdtemp, copyFile, chmod, writeFile, readFile, rm, access, symlink, mkdir, open, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,8 +11,10 @@ import { isCursorSnapshot, isCursorEvent } from '@workspace/core/cursor-conversa
 import type { CursorConversationSnapshot } from '@workspace/core/contracts/cursor-conversation';
 import { UsageLedger } from '../../usage/usage-ledger';
 import { UsageService } from '../../usage/usage-service';
+vi.mock('node:fs/promises', async importOriginal => { const actual = await importOriginal<typeof import('node:fs/promises')>(); return {...actual,open:vi.fn(actual.open),realpath:vi.fn(actual.realpath)}; });
 let root: string, host: AgentBackendDriver;
 let events: BackendEvent[];
+const observedPng='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jK1cAAAAASUVORK5CYII=';
 const agent = { ...createInitialSnapshot().agents[0]!, id: 'cursor-fixture', backend: 'cursor' as const, backendDefaults: { kind: 'cursor' as const }, backendSession: undefined };
 beforeEach(async () => {
   root = await mkdtemp(path.join(tmpdir(), 'cursor-host-'));
@@ -234,8 +236,9 @@ describe('Cursor ACP host transport boundary', () => {
       expect(state.turns.at(-1)?.status).toBe('completed');
       const parts = state.messages.flatMap(message=>message.parts);
       const tool = parts.find(part=>part.type==='tool' && part.title==='Edit note.txt');
-      expect(tool).toMatchObject({kind:'fileChange',status:'completed',input:{path:'note.txt'},output:{native:'retained'},metadata:{locations:[{path:'note.txt',line:2}],changes:[{path:'note.txt',kind:'update',oldText:'before\nlast line',newText:'after\nlast line\n'}]}});
+      expect(tool).toMatchObject({statusText:JSON.stringify({source:'cursor',action:'edit',phase:'completed',params:{target:'note.txt',path:'note.txt'}}),kind:'fileChange',status:'completed',input:{path:'note.txt'},output:{native:'retained'},metadata:{cwd:root,locations:[{path:'note.txt',line:2}],changes:[{path:'note.txt',kind:'update',oldText:'before\nlast line',newText:'after\nlast line\n'}]}});
       if (tool?.type !== 'tool') throw new Error('No edit tool');
+      expect(tool.metadata).toStrictEqual({cursorToolKind:'edit',cwd:root,locations:[{path:'note.txt',line:2}],changes:[{path:'note.txt',kind:'update',oldText:'before\nlast line',newText:'after\nlast line\n'}]});
       expect(parts).toContainEqual(expect.objectContaining({type:'tool',title:'Delete removed.txt',metadata:expect.objectContaining({changes:[{path:'removed.txt',kind:'delete',oldText:'gone',newText:''}]})}));
       expect(parts).toContainEqual(expect.objectContaining({type:'tool',title:'Write added.txt',metadata:expect.objectContaining({changes:[{path:'added.txt',kind:'add',oldText:null,newText:'created'}]})}));
       expect(tool.body).toContain('before'); expect(tool.body).toContain('after'); expect(tool.body).toContain('RESOURCE_MARKER');
@@ -246,6 +249,47 @@ describe('Cursor ACP host transport boundary', () => {
     await host.close(); host=createBackendDriver('cursor'); events=[]; host.onEvent(event=>events.push(event));
     await host.loadConversation!({...agent,backendSession:first.backendSession});
     verify(await snapshot());
+  });
+  it.each([false,true])('observes a validated workspace image without claiming generated success (notification=%s)', async notification => {
+    const image=path.join(root,'observed.png'); await writeFile(image,Buffer.from(observedPng,'base64'));
+    await writeFile(path.join(root,'image-event.json'),JSON.stringify({filePath:image,notification}));
+    await host.sendPrompt(agent,'image-observation'); await vi.waitFor(()=>expect(completions()).toHaveLength(1));
+    expect((await snapshot()).messages.flatMap(message=>message.parts).filter(part=>part.type==='media')).toStrictEqual([{type:'media',itemId:'cursor-file:native-image',media:{url:`data:image/png;base64,${observedPng}`,mimeType:'image/png',alt:'Image file',title:'Image file'}}]);
+    expect((await snapshot()).messages.flatMap(message=>message.parts).filter(part=>part.type==='tool')).toContainEqual(expect.objectContaining({status:'failed',output:{native:'unchanged'}}));
+    if (!notification) await vi.waitFor(async()=>expect((await wire()).find(call=>call.id===5 && call.result)?.result).toStrictEqual({outcome:{outcome:'cancelled'}}));
+  });
+  it.each(['missing','outside','symlink','directory','binary','oversized'])('does not display an unverified %s image path', async kind => {
+    const outside=await mkdtemp(path.join(tmpdir(),'cursor-image-outside-'));
+    try {
+      let file=path.join(root,'unverified.png');
+      if (kind==='outside' || kind==='symlink') { const target=path.join(outside,'image.png'); await writeFile(target,Buffer.from('iVBORw0KGgo=','base64')); if(kind==='outside') file=target; else await symlink(target,file); }
+      if (kind==='directory') await mkdir(file);
+      if (kind==='binary') await writeFile(file,'not an image');
+      if (kind==='oversized') await writeFile(file,Buffer.alloc(5*1024*1024+1));
+      vi.mocked(realpath).mockClear();
+      await writeFile(path.join(root,'image-event.json'),JSON.stringify({filePath:file}));
+      await host.sendPrompt(agent,'image-observation'); await vi.waitFor(()=>expect(completions()).toHaveLength(1));
+      expect((await snapshot()).messages.flatMap(message=>message.parts).filter(part=>part.type==='media')).toStrictEqual([]);
+      if(kind==='outside') expect(vi.mocked(realpath).mock.calls.filter(([requested])=>requested===file)).toStrictEqual([]);
+    } finally { await rm(outside,{recursive:true,force:true}); }
+  });
+  it.each(['symlink-swap','release'])('drops an image observation after %s during the open/read boundary', async action => {
+    const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+    const image=path.join(root,'delayed.png'), outside=await mkdtemp(path.join(tmpdir(),'cursor-image-race-'));
+    let reached=false, resumeRead!:()=>void;
+    const resume=new Promise<void>(resolve=>{resumeRead=resolve;});
+    await writeFile(image,Buffer.from(observedPng,'base64'));
+    await writeFile(path.join(root,'image-event.json'),JSON.stringify({filePath:image,notification:true}));
+    vi.mocked(open).mockImplementation(async (file,flags,mode)=>{ const handle=await actual.open(file,flags,mode); if(path.basename(String(file))==='delayed.png'){reached=true;await resume;} return handle; });
+    try {
+      await host.sendPrompt(agent,'image-observation'); await vi.waitFor(()=>expect(reached).toBe(true));
+      let closing:Promise<void>|undefined;
+      if(action==='release') closing=host.releaseConversation!(agent.id) as Promise<void>;
+      else { const target=path.join(outside,'outside.png'); await writeFile(target,Buffer.from(observedPng,'base64')); await rm(image); await symlink(target,image); }
+      resumeRead(); await closing;
+      if(action!=='release') await vi.waitFor(()=>expect(completions()).toHaveLength(1));
+      expect(events.flatMap(event=>event.type==='cursor.conversationEventReceived' && event.payload.event.type==='message.upsert' ? event.payload.event.payload.message.parts : []).filter(part=>part.type==='media')).toStrictEqual([]);
+    } finally {resumeRead();vi.mocked(open).mockImplementation(actual.open);await rm(outside,{recursive:true,force:true});}
   });
   it('switches an untouched agent to Cursor through the app boundary and accepts its first prompt', async () => {
     const state = createTestSnapshot();

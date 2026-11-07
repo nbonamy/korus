@@ -7,6 +7,7 @@ import type { RendererMessage, RendererMessagePart } from '@workspace/core/contr
 import type { CursorConversationEvent } from '@workspace/core/contracts/cursor-conversation';
 import { AcpConnection, record } from '../acp/acp-connection';
 import { cursorEnvironment, resolveCursorExecutable, type CursorRuntime, cursorRuntime } from './runtime';
+import { cursorImageFile } from './image-file';
 import { cursorQuestion } from './questions';
 import { CursorPromptJournal } from './prompt-journal';
 import { CursorTranscript } from './transcript';
@@ -19,6 +20,7 @@ type Options = { agentId: string; cwd: string; runtime?: CursorRuntime; sessionI
 export class CursorSession {
   private connection!: AcpConnection;
   private transcript!: CursorTranscript;
+  private readonly imageWork = new Set<Promise<void>>();
   private readonly pending = new Map<string, { resolve(value: unknown): void; answer(response: AgentRequestResponse): unknown }>();
   private journal!: CursorPromptJournal;
   private promptMode?: string;
@@ -52,7 +54,7 @@ export class CursorSession {
       if (!record(initialized) || initialized.protocolVersion !== 1 || !Array.isArray(initialized.authMethods) || !initialized.authMethods.some(method => record(method) && method.id === 'cursor_login')) throw new Error('Unsupported Cursor ACP handshake.');
       if (!record(initialized.agentCapabilities) || !record(initialized.agentCapabilities.sessionCapabilities) || !record(initialized.agentCapabilities.sessionCapabilities.list)) throw new Error('Cursor ACP lacks session/list support required for safe cancellation.');
       await session.connection.request('authenticate', { methodId: 'cursor_login' });
-      if (options.catalogOnly) { session.transcript = new CursorTranscript(options.agentId, 'catalog', () => {}); session.loading = false; return session; }
+      if (options.catalogOnly) { session.transcript = new CursorTranscript(options.agentId, 'catalog', () => {},undefined,options.cwd); session.loading = false; return session; }
       if (options.sessionId) {
         if (initialized.agentCapabilities.loadSession !== true) throw new Error('Cursor does not support history loading.');
         const catalog = await session.connection.request('session/list', { cwd: options.cwd });
@@ -60,18 +62,18 @@ export class CursorSession {
         const entry = catalog.sessions.find(value => record(value) && value.sessionId === options.sessionId);
         if (!record(entry) || typeof entry.cwd !== 'string' || !path.isAbsolute(entry.cwd) || await realpath(entry.cwd).catch(() => null) !== await realpath(options.cwd)) throw new Error('Cursor conversation is missing or belongs to another workspace.');
         session.journal = await CursorPromptJournal.open(options.runtime?.homePath ?? cursorRuntime().homePath, options.sessionId);
-        session.transcript = new CursorTranscript(options.agentId, options.sessionId, () => {}, text => session.journal.display(text));
+        session.transcript = new CursorTranscript(options.agentId, options.sessionId, () => {}, text => session.journal.display(text),options.cwd);
       }
       const created = await session.connection.request(options.sessionId ? 'session/load' : 'session/new', { ...(options.sessionId ? { sessionId: options.sessionId } : {}), cwd: options.cwd, mcpServers: options.mcpServers ?? [] });
       if (!record(created) || (!options.sessionId && (typeof created.sessionId !== 'string' || !created.sessionId)) || (options.sessionId && created.sessionId !== undefined && created.sessionId !== options.sessionId)) throw new Error('Invalid Cursor session identity.');
       session.config = created;
       session.journal ??= await CursorPromptJournal.open(options.runtime?.homePath ?? cursorRuntime().homePath, created.sessionId as string);
-      if (!options.sessionId) session.transcript = new CursorTranscript(options.agentId, created.sessionId as string, event => { if (!session.loading) options.changed(event); });
+      if (!options.sessionId) session.transcript = new CursorTranscript(options.agentId, created.sessionId as string, event => { if (!session.loading) options.changed(event); },undefined,options.cwd);
       // Rebind replay without publishing its synthetic lifecycle as live execution.
       if (options.sessionId) {
         session.transcript.finishReplay();
         const replay = session.snapshot;
-        session.transcript = new CursorTranscript(options.agentId, options.sessionId, options.changed);
+        session.transcript = new CursorTranscript(options.agentId, options.sessionId, options.changed,undefined,options.cwd);
         session.transcript.replica.replace(replay);
       }
       for (const params of session.startupUpdates) session.notification('session/update', params);
@@ -129,6 +131,7 @@ export class CursorSession {
       if (this.disposed || this.interrupted) throw new Error('Cursor prompt was cancelled before admission.');
       return this.connection.request('session/prompt', { sessionId: this.sessionId, prompt: [{ type: 'text', text: wireText }, ...attachments] }, 30 * 60_000);
     }).then(async result => {
+      await Promise.allSettled([...this.imageWork]);
       if (!record(result) || typeof result.stopReason !== 'string' || !['end_turn', 'cancelled', 'max_tokens', 'max_turn_requests', 'refusal'].includes(result.stopReason)) throw new Error('Invalid Cursor turn completion.');
       const status = this.interrupted || result.stopReason === 'cancelled' ? 'interrupted' : result.stopReason === 'end_turn' ? 'completed' : 'failed';
       if (status === 'interrupted') {
@@ -160,9 +163,10 @@ export class CursorSession {
     const turnId = this.transcript?.replica.getSnapshot().activeTurnId;
     if (turnId) { this.interrupted = true; this.transcript.finish(turnId, 'interrupted'); }
     this.closing = true; this.disposed = true;
-    await this.connection.close(); await this.active;
+    await this.connection.close(); await this.active; await Promise.allSettled([...this.imageWork]);
   }
   private notification(method: string, params: unknown): void {
+    if (method === 'cursor/generate_image') { void this.observeImage(params); return; }
     if (method === 'cursor/update_todos') {
       if (this.transcript && !this.disposed && !this.interrupted && !this.loading && this.snapshot.busy && record(params)) this.transcript.todos(params);
       return;
@@ -178,6 +182,14 @@ export class CursorSession {
     if (this.loading) this.transcript.replay(params.update);
     else this.transcript.update(params.update);
   }
+  private observeImage(params: unknown): Promise<void> {
+    if (this.loading || this.disposed || this.interrupted || !record(params) || typeof params.filePath !== 'string' || typeof params.toolCallId !== 'string' || (params.sessionId !== undefined && params.sessionId !== this.sessionId) || !this.snapshot.busy || this.imageWork.size >= 8) return Promise.resolve();
+    const turnId = this.snapshot.activeTurnId!, toolCallId = params.toolCallId;
+    const work = cursorImageFile(this.options.cwd,params.filePath).then(image => {
+      if (image && !this.disposed && !this.interrupted && this.snapshot.activeTurnId === turnId) this.transcript.imageFile(toolCallId,image);
+    }).finally(() => this.imageWork.delete(work));
+    this.imageWork.add(work); return work;
+  }
   respond(response: AgentRequestResponse): void {
     const pending = this.pending.get(response.id);
     if (!pending || (response.agentId && response.agentId !== this.options.agentId) || this.disposed || this.interrupted) throw new Error('Cursor request is no longer pending.');
@@ -189,6 +201,7 @@ export class CursorSession {
   }
   private async request(method: string, params: unknown): Promise<unknown> {
     const cancelled = { outcome: { outcome: 'cancelled' } };
+    if (method === 'cursor/generate_image') { await this.observeImage(params); return cancelled; }
     if (!this.transcript || this.loading || this.disposed || this.interrupted || !this.snapshot.busy || !record(params)) return cancelled;
     if (method === 'cursor/ask_question') {
       const id = randomUUID();

@@ -779,6 +779,9 @@ the served model, all native tools, or effective approval enforcement.
 - Structured question and todo adapters have documented-contract subprocess
   coverage; native emission has not been elicited. The question capability flag
   remains false.
+- Image-extension observations are live-only and require contained, bounded
+  regular-image reads. Suggested or existing paths do not prove successful
+  generation, freshness or historical reconstruction.
 - Served-model/effort behavior, token consumption and API pricing remain unknown.
   No substitute values are inferred from configuration or timing.
 - App plan review, tool-free auxiliary generation, skill management and native

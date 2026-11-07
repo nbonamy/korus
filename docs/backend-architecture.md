@@ -139,6 +139,10 @@ can bypass permission callbacks, so approval presets and automatic review remain
 unavailable. Structured questions map displayed choices back to native option
 identities and reject ambiguous or stale answers. Native plan entries and todo
 updates remain observed metadata. Unsupported blocking extensions are cancelled.
+Image-extension requests and notifications can display an observed workspace
+image after bounded, contained file validation. Suggested paths do not establish
+generation success; missing, replaced or outside files produce no media. These
+observations are live presentation, without historical freshness claims.
 Per-agent app and
 hosted MCP endpoints use the shared session bridge with identity scoped in each
 child process; this does not establish approval-free native tool execution.
