@@ -15,12 +15,12 @@ import { z } from 'zod';
 import type { AgentBackend, AgentGitDiff, AgentGitDiffTarget, BackendSkillSummary, BackendPluginSummary, SourceBranch } from '@workspace/core/contracts';
 import type { CompanionReviewSetup } from '@workspace/core/companion-review';
 import type { CompanionCloseOptions, CompanionClosePreview, CompanionGrant, CompanionPending, CompanionReset, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
-import { companionSessionId, companionMaxUploadBytes, companionMaxUploads, isConversationReset } from '@workspace/core/companion-protocol';
+import { supportsCompanionBackend, companionSessionId, companionMaxUploadBytes, companionMaxUploads, isConversationReset } from '@workspace/core/companion-protocol';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { canSelectAgentBackend } from '@workspace/core/agent-backends';
 import { canChangeAgentConversation } from '@workspace/core/agent-manager';
 import { isCodeReviewStartInput } from '@workspace/core/code-review';
-import { opaquePath, projectCompanionWorkspace } from '@workspace/core/companion-projection';
+import { opaquePath, projectCompanionWorkspace, supportedCompanionWorkspace } from '@workspace/core/companion-projection';
 import { ChatCreations } from './chat-creations';
 import { WindowBudget } from './source-budget';
 import { CommandLedger, type SettledCommand, type StoredCommand } from './command-ledger';
@@ -76,8 +76,9 @@ const branchName = z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9][A-Za-z0
 const repositorySchema = z.object({ teamId: identity, repositoryId: identity }).strict();
 const catalogSchema = z.object({ teamId: identity, provider: z.enum(['github', 'gitlab']) }).strict();
 const catalogBranchesSchema = catalogSchema.extend({ repositoryId: z.string().regex(/^repo:[a-f0-9]{64}$/) }).strict();
-const newChatSchema = z.preprocess(value => legacySelection(value, ['backend']), z.object({ teamId: identity, repositoryId: identity, selection: executionSelectionRequestSchema, existingBranch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName }).strict().optional() }).strict().refine((input) => !(input.existingBranch && input.worktree), 'Choose an existing branch or a new worktree.'));
-const projectSchema = z.preprocess(value => legacySelection(value, ['backend']), z.object({ teamId: identity, selection: executionSelectionRequestSchema, source: z.enum(['new', 'local', 'github', 'gitlab', 'url']), value: z.string().trim().min(1).max(2000), branch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName, baseBranch: z.string().min(1).max(1024) }).strict().optional() }).strict().refine(input => {
+const companionSelectionRequestSchema = executionSelectionRequestSchema.refine(selection => supportsCompanionBackend(selection.backend), 'Provider is unavailable on this companion protocol.');
+const newChatSchema = z.preprocess(value => legacySelection(value, ['backend']), z.object({ teamId: identity, repositoryId: identity, selection: companionSelectionRequestSchema, existingBranch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName }).strict().optional() }).strict().refine((input) => !(input.existingBranch && input.worktree), 'Choose an existing branch or a new worktree.'));
+const projectSchema = z.preprocess(value => legacySelection(value, ['backend']), z.object({ teamId: identity, selection: companionSelectionRequestSchema, source: z.enum(['new', 'local', 'github', 'gitlab', 'url']), value: z.string().trim().min(1).max(2000), branch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName, baseBranch: z.string().min(1).max(1024) }).strict().optional() }).strict().refine(input => {
   if ((input.branch || input.worktree) && !['github', 'gitlab', 'local'].includes(input.source)) return false;
   if (input.branch && input.worktree) return false;
   if (input.source === 'new') return input.value !== '.' && input.value !== '..' && !/[/\\\x00-\x1f]/u.test(input.value);
@@ -570,12 +571,12 @@ export class CompanionGateway {
     },
     'project.create': async (peer, args) => {
       const input = projectSchema.parse(args);
-      const workspace = await this.port.workspace();
+      const workspace = await this.workspace();
       const team = workspace.teams.find(team => team.id === input.teamId);
       this.requireGrant(peer);
       if (!team) throw new Error('Team not found.');
       const authorize = async () => {
-        const current = await this.port.workspace();
+        const current = await this.workspace();
         this.requireGrant(peer);
         if (!current.teams.some(candidate => candidate.id === team.id)) throw new Error('Team changed.');
         if (!current.backends?.[team.id]?.includes(input.selection.backend)) throw new Error('That engine is not available.');
@@ -611,7 +612,7 @@ export class CompanionGateway {
     },
     'snapshot.get': async (peer, args) => {
       const { iconsVersion } = z.object({ iconsVersion: z.string().max(64).optional(), notifications: z.boolean().optional() }).strict().parse(args);
-      const workspace = await this.port.workspace();
+      const workspace = await this.workspace();
       this.requireGrant(peer);
       const { repositoryIcons, ...projected } = projectCompanionWorkspace(workspace);
       // Icons are large and rarely change: send them only when the phone's copy is out of date.
@@ -630,7 +631,7 @@ export class CompanionGateway {
     },
     'repository.branches': async (peer, args) => {
       const input = repositorySchema.parse(args);
-      const workspace = await this.port.workspace();
+      const workspace = await this.workspace();
       this.requireGrant(peer);
       const { repository, remoteConnectionId } = this.repository(workspace, input);
       const branches = await this.port.branches(repository.primaryWorktreeRoot, remoteConnectionId);
@@ -639,7 +640,7 @@ export class CompanionGateway {
     },
     'agent.create': async (peer, args) => {
       const input = newChatSchema.parse(args);
-      const workspace = await this.port.workspace();
+      const workspace = await this.workspace();
       this.requireGrant(peer);
       const { team, repository, remoteConnectionId } = this.repository(workspace, input);
       if (workspace.backends && !workspace.backends[remoteConnectionId ?? team.id]?.includes(input.selection.backend)) throw new Error('That engine is not available.');
@@ -650,7 +651,7 @@ export class CompanionGateway {
     },
     'agent.quickChat.create': async (peer, args) => {
       const input = z.object({ teamId: identity, backend: z.enum(['codex', 'claude', 'antigravity']) }).strict().parse(args);
-      const workspace = await this.port.workspace();
+      const workspace = await this.workspace();
       this.requireGrant(peer);
       if (!workspace.teams.some((team) => team.id === input.teamId)) throw new Error('Team not found.');
       if (workspace.backends && !workspace.backends[input.teamId]?.includes(input.backend)) throw new Error('That engine is not available.');
@@ -665,7 +666,7 @@ export class CompanionGateway {
   private async mission(peer: Peer, missionId: string, revision: number) {
     if (!this.port.executeMission) throw new Error('Mission actions are unavailable.');
     this.requireGrant(peer);
-    const mission = (await this.port.workspace()).missionProgress?.find((candidate) => candidate.id === missionId);
+    const mission = (await this.workspace()).missionProgress?.find((candidate) => candidate.id === missionId);
     if (!mission) throw new Error('Mission not found.');
     if (mission.revision !== revision) throw new Error('The mission has changed.');
     return mission;
@@ -766,22 +767,23 @@ export class CompanionGateway {
     return { team, repository, remoteConnectionId: owner.remoteConnectionId };
   }
   private async projectRead<Result>(peer: Peer, teamId: string, read: (remoteConnectionId?: string) => Promise<Result>): Promise<Result> {
-    const workspace = await this.port.workspace();
+    const workspace = await this.workspace();
     this.requireGrant(peer);
     const team = workspace.teams.find(team => team.id === teamId);
     if (!team) throw new Error('Team not found.');
     const result = await read();
-    const current = await this.port.workspace();
+    const current = await this.workspace();
     this.requireGrant(peer);
     if (!current.teams.some(candidate => candidate.id === teamId)) throw new Error('Team changed.');
     return result;
   }
+  private async workspace(): Promise<CompanionWorkspace> { return supportedCompanionWorkspace(await this.port.workspace()); }
   private requireGrant({ peerId, grant }: Peer) {
     if (this.state.grants.find((current) => current.peerId === peerId) !== grant) throw new Error('Device is not authorized.');
   }
   private async validateTarget(target: CompanionTarget, worker = false) { return (await this.resolveTarget(target, worker)).agent; }
   private async resolveTarget(target: CompanionTarget, worker = false) {
-    const workspace = await this.port.workspace();
+    const workspace = await this.workspace();
     const team = workspace.teams.find((team) => team.id === target.teamId);
     const own = workspace.agents.find((agent) => agent.id === target.agentId && agent.teamId === target.teamId);
     const mission = own ? undefined : workspace.missionAgents?.find((agent) => agent.id === target.agentId && agent.teamId === target.teamId);

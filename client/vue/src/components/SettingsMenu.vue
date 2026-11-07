@@ -41,10 +41,10 @@
         <div v-for="group in usageGroups" :key="group.backend" class="settings-menu__usage-group" :aria-label="group.name">
           <strong class="settings-menu__engine"><BackendIcon class="settings-menu__engine-icon" :backend="group.backend" />{{ group.name }}</strong>
           <span v-if="group.failed" class="settings-menu__usage-error">{{ $t('surface.settingsMenu.loadFailed') }}</span>
-          <div v-for="row in group.rows" :key="row.label" class="settings-menu__rate-limit" :aria-label="row.label">
+          <div v-for="row in group.rows" :key="row.label" class="settings-menu__rate-limit" :class="{ 'settings-menu__rate-limit--detail': row.detail }" :title="row.title ?? row.label" :aria-label="row.label">
             <span class="settings-menu__rate-limit-name">{{ row.label }}</span>
             <el-tooltip :content="row.pace ?? ''" :disabled="!row.pace" :trigger="['hover', 'focus']" placement="top" :show-after="150">
-              <span class="settings-menu__rate-limit-remaining" :class="row.level && `settings-menu__rate-limit-remaining--${row.level}`" :tabindex="row.pace ? 0 : undefined" :aria-label="$t('surface.settingsMenu.remainingValue', { value: row.remaining })">{{ row.remaining }}</span>
+              <span class="settings-menu__rate-limit-remaining" :class="row.level && `settings-menu__rate-limit-remaining--${row.level}`" :tabindex="row.pace ? 0 : undefined" :aria-label="row.valueLabel ?? $t('surface.settingsMenu.remainingValue', { value: row.remaining })">{{ row.remaining }}</span>
             </el-tooltip>
             <span class="settings-menu__rate-limit-reset" :aria-label="row.reset ? $t('surface.settingsMenu.resetValue', { value: row.reset }) : undefined">{{ row.reset }}</span>
           </div>
@@ -78,12 +78,14 @@ import { BrandSpeedTest, ChartBarIcon, InfoCircleIcon, ProductMarkIcon, QuitIcon
 import { appHostCapabilities, appApi } from '../platform-api';
 import { supportsSubscriptionQuota } from '@workspace/core/agent-backends';
 import BackendIcon from './BackendIcon.vue';
+import { isAccountBilling } from '@workspace/core/snapshot-guard-collections';
 
 const props = withDefaults(defineProps<{
   active?: boolean;
   rateLimits?: AccountRateLimits;
   enabledBackends?: AgentBackend[];
   backendRateLimits?: AppSnapshot['backendAccountRateLimits'];
+  providerConnections?: AppSnapshot['providerConnections'];
   account?: CodexAccount | null;
 }>(), {
   active: false,
@@ -102,10 +104,14 @@ const nowMs = ref(Date.now());
 const fetchedUsage = ref<Partial<Record<AgentBackend, AccountRateLimits | null>>>({});
 const usageErrors = ref<Partial<Record<AgentBackend, boolean>>>({});
 const quotaBackends = computed(() => props.enabledBackends.filter(backend => supportsSubscriptionQuota(backend, props.account)));
-watch([popoverVisible, () => quotaBackends.value.join(','), () => JSON.stringify(props.account)], ([visible], _previous, onCleanup) => {
+watch([popoverVisible, () => quotaBackends.value.join(','), () => JSON.stringify(props.account),
+  () => JSON.stringify(props.providerConnections?.map(provider => [provider.backend, provider.authentication]))], ([visible], _previous, onCleanup) => {
   fetchedUsage.value = {};
   usageErrors.value = {};
   if (!visible) return;
+  // Financial data from disk can belong to the previous native account. Wait
+  // for a current read instead of flashing a persisted balance on opening.
+  for (const backend of quotaBackends.value) if (isAccountBilling(props.backendRateLimits?.[backend]?.billing)) fetchedUsage.value[backend] = null;
   let cancelled = false;
   async function refreshUsage(backend: AgentBackend): Promise<void> {
     try {
@@ -159,6 +165,9 @@ const legend = [
 type RateLimitRow = {
   label: string;
   remaining: string;
+  valueLabel?: string;
+  title?: string;
+  detail?: boolean;
   /** Only quotas clearly off their pace, or almost out, stand out. */
   level: 'low' | 'critical' | 'ahead' | null;
   pace: string | null;
@@ -170,10 +179,27 @@ const usageGroups = computed(() => quotaBackends.value.map(backend => {
     : props.backendRateLimits?.[backend] ?? (backend === 'codex' ? props.rateLimits : undefined);
   const rows = [
     rateLimitRow(limits?.primary ?? null, translate('surface.settingsMenu.usage')),
-    rateLimitRow(limits?.secondary ?? null, translate('surface.settingsMenu.weekly')),
+    ...(isAccountBilling(limits?.billing) ? [] : [rateLimitRow(limits?.secondary ?? null, translate('surface.settingsMenu.weekly'))]),
   ].filter((row): row is RateLimitRow => Boolean(row));
+  if (isAccountBilling(limits?.billing)) {
+    const billing = limits.billing;
+    const row = (key: string, value: string): RateLimitRow => ({ label: translate(`surface.settingsMenu.${key}`), remaining: value, valueLabel: value, detail: true, reset: '', level: null, pace: null,
+      title: `${translate(`surface.settingsMenu.${key}`)}: ${value}` });
+    if (limits.planType) rows.unshift(row('plan', limits.planType));
+    rows.push(row('credits', billing.includedBalanceUsd === null ? translate('surface.settingsMenu.unknown') : usd(billing.includedBalanceUsd)));
+    const demand = billing.onDemand;
+    const value = demand.enabled === false ? translate('surface.settingsMenu.billingOff')
+      : demand.enabled === true && demand.unlimited && demand.usedUsd !== null ? translate('surface.settingsMenu.usedValue', { value: usd(demand.usedUsd) })
+        : demand.enabled === true && demand.remainingUsd !== null ? usd(demand.remainingUsd) : translate('surface.settingsMenu.unknown');
+    rows.push({ ...row('onDemand', value), ...(demand.unlimited ? { title: translate('surface.settingsMenu.noPersonalLimit') } : {}),
+      ...(demand.enabled === true && !demand.unlimited ? { valueLabel: translate('surface.settingsMenu.remainingValue', { value }) } : {}) });
+  }
   return { backend, name: translate(`surface.settingsMenu.engine.${backend}`), rows, failed: usageErrors.value[backend] && !rows.length };
 }).filter(group => group.rows.length > 0 || group.failed));
+
+function usd(value: string | number): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value));
+}
 
 function rateLimitRow(window: AccountRateLimitWindow | null, fallbackLabel: string): RateLimitRow | null {
   if (!window) {
@@ -361,6 +387,12 @@ function selectMenuItem(itemId: string): void {
   align-items: baseline;
   font-size: var(--font-size-13);
 }
+
+.settings-menu__rate-limit--detail {
+  grid-template-columns: minmax(0, 1fr) max-content;
+}
+
+.settings-menu__rate-limit--detail .settings-menu__rate-limit-reset { display: none; }
 
 .settings-menu__usage-group + .settings-menu__usage-group {
   padding-top: var(--space-3);

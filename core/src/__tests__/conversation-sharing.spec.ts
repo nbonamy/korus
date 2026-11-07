@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { encodeConversationInvitation, decodeConversationInvitation, encodeConversationShareLink, decodeConversationShareLink } from '../conversation-sharing';
+import { encodeConversationInvitation, decodeConversationInvitation, encodeConversationShareLink, decodeConversationShareLink, supportsConversationSharing, conversationShareTarget } from '../conversation-sharing';
 import { product } from '../product';
 
 const relay = product.companionRelay;
@@ -27,4 +27,13 @@ describe('conversation share deep links', () => {
     }
     expect(() => encodeConversationInvitation({ ...decodeConversationInvitation(uuid, relay)!, credential: 'secret' })).toThrow();
   });
+});
+
+it('keeps Cursor sharing disabled independently of desktop conversation references', () => {
+  for (const backend of ['codex','claude','antigravity','cursor'] as const) {
+    const agent: import('../contracts').Agent = {id:'agent',name:'Synthetic',backend,folder:null,status:{type:'idle'},createdAt:'now',updatedAt:'now',backendSession: backend === 'codex' ? {kind:'codex',threadId:'session'} : backend === 'claude' ? {kind:'claude',sessionId:'session',transport:'stdio'} : {kind:backend,sessionId:'session'}};
+    expect(supportsConversationSharing(agent)).toBe(backend !== 'cursor');
+    if (backend === 'cursor') expect(conversationShareTarget(agent)).toBeNull();
+    else expect(conversationShareTarget(agent)).toMatchObject({agentId:'agent',backend,sessionId:'session'});
+  }
 });

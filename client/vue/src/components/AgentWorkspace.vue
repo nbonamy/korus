@@ -742,7 +742,7 @@ function loadSubagentMessages(agentId: string, conversationId: string): Promise<
     return Promise.reject(new Error(translate('surface.appShell.subagentConversationIsUnavailable')));
   const agent = props.snapshot.agents.find(candidate => candidate.id === agentId);
   const ref = agent ? conversationRefFromAgent(agent) : null;
-  if (!ref || ref.backend === 'antigravity') return Promise.reject(new Error(translate('surface.appShell.subagentConversationIsUnavailable')));
+  if (!ref || (ref.backend !== 'codex' && ref.backend !== 'claude')) return Promise.reject(new Error(translate('surface.appShell.subagentConversationIsUnavailable')));
   return readConversationMessages(ref.backend === 'codex' ? { ...ref, threadId: conversationId } : { ...ref, subagentId: conversationId }, agentId);
 }
 

@@ -23,7 +23,7 @@ async function fixture() {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'companion-usage-'));
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const snapshot = createTestSnapshot();
-  snapshot.providerConnections = ['codex', 'claude', 'antigravity'].map(backend => ({
+  snapshot.providerConnections = ['codex', 'claude', 'antigravity', 'cursor'].map(backend => ({
     backend, installed: true, enabled: true, connected: true, checking: false,
   })) as typeof snapshot.providerConnections;
   const limits = { primary: { usedPercent: 23, windowDurationMins: 300, resetsAt: 2_000_000_000 }, secondary: null };

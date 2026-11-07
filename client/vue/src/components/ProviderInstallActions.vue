@@ -1,6 +1,7 @@
 <template>
   <span class="provider-install-actions">
-    <button v-if="automated || backend === 'antigravity'" type="button" :aria-label="backend === 'antigravity' ? $t('antigravity.install') : $t('auth.installProvider')" :disabled="busy || disabled" :aria-busy="busy || undefined" @click="emit('install')">
+    <code v-if="backend === 'cursor'">{{ cursorInstallCommand }}</code>
+    <button v-if="backend !== 'cursor' && (automated || backend === 'antigravity')" type="button" :aria-label="backend === 'antigravity' ? $t('antigravity.install') : $t('auth.installProvider')" :disabled="busy || disabled" :aria-busy="busy || undefined" @click="emit('install')">
       <ElIcon v-if="busy" :size="12" class="is-loading" aria-hidden="true"><RefreshIcon /></ElIcon>
       {{ $t('auth.installProvider') }}
     </button>
@@ -18,9 +19,10 @@ import type { AgentBackend } from '@workspace/core/contracts';
 import { appPlatformActions } from '../platform-api';
 import { RefreshIcon } from '../shared/icons/app-icons';
 
+const cursorInstallCommand = 'curl https://cursor.com/install -fsS | bash';
 const props = defineProps<{ backend: AgentBackend; busy?: boolean; disabled?: boolean; automated?: boolean }>();
 const emit = defineEmits<{ refresh: []; install: [] }>();
-const url = computed(() => props.backend === 'codex'
+const url = computed(() => props.backend === 'cursor' ? 'https://cursor.com/docs/cli/installation' : props.backend === 'codex'
   ? 'https://learn.chatgpt.com/docs/codex/cli#getting-started'
   : 'https://code.claude.com/docs/en/quickstart#step-1-install-claude-code');
 </script>

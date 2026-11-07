@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { RendererMessage, RendererMessagePart, RendererToolPart } from '@workspace/core/contracts';
 import type { AntigravityConversationEvent } from '@workspace/core/contracts/antigravity-conversation';
 import { createAntigravityConversationReplica, emptyAntigravitySnapshot } from '@workspace/core/antigravity-conversation-replica';
-import { record } from './acp-connection';
+import { record } from '../acp/acp-connection';
 
 type Change = AntigravityConversationEvent extends infer Event ? Event extends AntigravityConversationEvent ? Omit<Event, 'agentId' | 'sessionId' | 'turnId' | 'occurredAt'> : never : never;
 

@@ -67,6 +67,8 @@ export class ConversationCache {
     return entry.loading ?? (entry.subscribed && entry.frame ? entry.frame : this.load(entry));
   }
   receive(frame: ProviderConversationFrame) {
+    // Cursor frames are desktop-only until companion support is negotiated.
+    if (frame.backend === 'cursor') return;
     const entry = this.entries.get(frame.agentId);
     if (!entry?.subscribed) return;
     if (frame.backend === 'codex' && entry.target.sessionId !== JSON.stringify({ kind: 'codex', threadId: frame.threadId })) return;

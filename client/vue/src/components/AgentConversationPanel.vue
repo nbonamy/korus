@@ -106,7 +106,7 @@ const emit = defineEmits<{
 }>();
 const pane = ref<InstanceType<typeof ConversationPane> | null>(null);
 const provider = computed(
-  () => props.view.codexSnapshot ?? props.view.claudeSnapshot ?? props.view.antigravitySnapshot,
+  () => props.view.codexSnapshot ?? props.view.claudeSnapshot ?? props.view.cursorSnapshot ?? props.view.antigravitySnapshot,
 );
 const state = agentConversationState(() => props.view, {
   followUpBehavior: () => props.followUpBehavior ?? 'queue',

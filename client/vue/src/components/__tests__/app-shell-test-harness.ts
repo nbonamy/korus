@@ -11,6 +11,7 @@ import { expect, vi } from 'vitest';
 import AppShell from '../AppShell.vue';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
 import type { Agent, AgentFilePreviewResult, AgentFileSearchItem, AppSnapshot, BackendConnectionState, BackendConversationRef, BackendModelOption, ClaudeConversationSnapshot, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateTeamInput, AutomationLocation, OpenInApplication, OpenInApplicationCatalog, ReasoningEffort, RendererMessage, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, Team, UpdateAgentInput, UpdateAutomationInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkItem, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
+import type { CursorConversationSnapshot } from '@workspace/core/contracts/cursor-conversation';
 import type { CreateMissionInput, DeleteMissionInput, Mission } from '@workspace/core/missions';
 import type { MissionExecutionInput } from '@workspace/core/mission-execution';
 
@@ -131,6 +132,7 @@ export function mountShell(overrides: Partial<{
   queuedPrompts: import('@workspace/core/contracts').AgentQueuedPrompt[];
   codexConversationSnapshot: CodexConversationSnapshot | null;
   claudeConversationSnapshot: ClaudeConversationSnapshot | null;
+  cursorConversationSnapshot: CursorConversationSnapshot | null;
   chooseAgentFolder: () => Promise<string | null>;
   chooseSourceFolder: () => Promise<string | null>;
   cloneSourceRepository: (input: import('@workspace/core/contracts').CloneSourceRepositoryInput) => Promise<SourceRepository>;
@@ -228,6 +230,7 @@ export function mountShell(overrides: Partial<{
       selectedServiceTier: overrides.selectedServiceTier ?? null,
       codexConversationSnapshot: overrides.codexConversationSnapshot ?? null,
       claudeConversationSnapshot: overrides.claudeConversationSnapshot ?? null,
+      cursorConversationSnapshot: overrides.cursorConversationSnapshot ?? null,
       isLoading: false,
       isConversationLoadFailed: overrides.isConversationLoadFailed ?? false,
       retryAgentHistory: overrides.retryAgentHistory ?? vi.fn().mockResolvedValue(undefined),

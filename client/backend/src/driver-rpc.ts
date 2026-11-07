@@ -1,6 +1,7 @@
 import { isProviderSafetyReviewTarget } from '@workspace/core/provider-safety-block';
 import { utilityMcpServers } from './diagram-icons/utility-mcp';
 import { utilityImageAttachments } from './agents/utility-image-attachments';
+import { CursorHost } from './cursor/cursor-host';
 import type { ExecutionObservation, RequestObservation } from '@workspace/core/usage';
 import { assertPromptSession, requireExpectedSessionId, requirePromptText } from './prompt-input';
 import { product } from '@workspace/core/product';
@@ -53,10 +54,11 @@ type AppSurfaceOptions = Parameters<typeof createCodexSurface>[0] & {
 
 export function createDefaultBackendDrivers(options: BackendDriverRegistryOptions = {}): Map<AgentBackend, AgentBackendDriver> {
   // Retain hosts for saved history and cleanup even when their new-work release gate is off.
-  return new Map((['codex', 'claude', 'antigravity'] as const).map(backend => [backend, createBackendDriver(backend, options)]));
+  return new Map((['codex', 'claude', 'antigravity', 'cursor'] as const).map(backend => [backend, createBackendDriver(backend, options)]));
 }
 
 export function createBackendDriver(backend: AgentBackend, options: BackendDriverRegistryOptions = {}): AgentBackendDriver {
+  if (backend === 'cursor') return new CursorHost(options);
   if (backend === 'antigravity') return new AntigravityHost(options);
   if (backend === 'claude') return new ClaudeBackendDriver(undefined, undefined, {
     appMcpServerUrl: options.appMcpServerUrl ?? null,
@@ -200,7 +202,7 @@ export class BackendDriverRpc {
   async handle(method: string, params: unknown, options: { signal?: AbortSignal } = {}): Promise<unknown> {
     const record = isRecord(params) ? params : {};
     const candidate = record.backend ?? (isRecord(record.agent) ? record.agent.backend : undefined);
-    const backend = candidate === 'codex' || candidate === 'claude' ? candidate : undefined;
+    const backend = candidate === 'codex' || candidate === 'claude' || candidate === 'cursor' ? candidate : undefined;
     if (backend) {
       if (method !== backendMethods.driverTextCancel && this.blocked(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
       this.inFlight.set(backend, (this.inFlight.get(backend) ?? 0) + 1);
@@ -217,7 +219,7 @@ export class BackendDriverRpc {
         const driver = this.requireDriver(backend);
         if (!driver.authenticate) throw new Error(`Authentication is unavailable for ${backend}.`);
         const action = record.action;
-        if (action !== 'check' && action !== 'cancel' && action !== 'logout' && !(action === 'login' && backend === 'antigravity')) throw new Error('Invalid authentication action.');
+        if (action !== 'check' && action !== 'cancel' && action !== 'logout' && !(action === 'login' && (backend === 'antigravity' || backend === 'cursor'))) throw new Error('Invalid authentication action.');
         return driver.authenticate({ action, ...(record.loginId === undefined ? {} : { loginId: requireString(record.loginId, 'loginId') }) });
       }
       case backendMethods.driverBankedResetsGet: {

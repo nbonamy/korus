@@ -104,7 +104,7 @@ export function useSessionHistory(options: SessionHistoryOptions) {
       return backendSession?.kind === 'codex' && backendSession.threadId === session.ref.threadId;
     }
 
-    return (backendSession?.kind === 'claude' || backendSession?.kind === 'antigravity') &&
+    return (backendSession?.kind === 'claude' || backendSession?.kind === 'antigravity' || backendSession?.kind === 'cursor') &&
       backendSession.kind === session.ref.backend &&
       session.ref.folder === agent.folder &&
       (backendSession.kind === 'claude' ? backendSession.transcriptSessionId ?? backendSession.sessionId : backendSession.sessionId) === session.ref.sessionId;

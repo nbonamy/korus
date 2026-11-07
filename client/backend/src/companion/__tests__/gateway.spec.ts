@@ -1151,3 +1151,63 @@ it('preserves released review requests and forwards explicit commit consent for 
   expect(await f.gateway.request('phone', 'agent.review.action', { target, input: consent })).toStrictEqual({});
   expect(f.port.reviewAction).toHaveBeenLastCalledWith('agent', consent);
 });
+
+it('keeps released three-provider snapshots, live updates and admission usable in a workspace containing Cursor', async () => {
+  vi.useFakeTimers();
+  const f = fixture(); await f.pair();
+  const agents = ['codex','claude','antigravity','cursor'].map(backend => ({...workspace.agents[0]!,id:backend,backend,backendSession:backend === 'codex' ? {kind:'codex',threadId:backend} : backend === 'claude' ? {kind:'claude',sessionId:backend,transport:'stdio'} : {kind:backend,sessionId:backend}})) as CompanionWorkspace['agents'];
+  const mixed: CompanionWorkspace = {teams:[{id:'team',name:'Team',agentIds:agents.map(agent=>agent.id)}],agents,backends:{team:['codex','claude','antigravity','cursor']},modelFavorites:[{backend:'cursor',modelId:'private-cursor-model',reasoningEffort:null,serviceTier:null}],agentRequests:{cursor:[]},queuedPrompts:[{id:'q',agentId:'cursor',text:'private-cursor-prompt'}]};
+  mixed.missionAgents = [{...agents[3]!,id:'cursor-worker'}];
+  mixed.missionProgress = [{id:'mission',teamId:'team',outcome:'Work',stage:'implementation',status:'active',startedAt:'now',updatedAt:'now',revision:1,leadAgentId:'cursor',tickets:[{number:1,title:'Work',state:'running',agentId:'cursor-worker'}]}];
+  mixed.reviewFindings = {cursor:1};
+  f.port.workspace.mockResolvedValue(mixed);
+  let listener!: (event: AppBackendEvent)=>void;
+  const gateway = new CompanionGateway('host',f.saved(),{...f.port,onEvent(next){listener=next;return()=>{};}});
+  const emitted: import('@workspace/core/companion-protocol').CompanionUpdate[] = [];
+  const subscription = gateway.subscribe('phone',value=>{emitted.push(value);},()=>{});
+  // This baseline deliberately knows only the released wire providers, independently of current shared types.
+  const legacyProviders = ['codex','claude','antigravity'];
+  const readable = (value: CompanionWorkspace) => {
+    expect(value.agents.map(agent=>agent.backend)).toStrictEqual(legacyProviders);
+    expect(value.teams[0]!.agentIds).toStrictEqual(legacyProviders);
+    expect(value.backends?.team).toStrictEqual(legacyProviders);
+    expect(value.modelFavorites).toStrictEqual([]);
+    expect(value.agentRequests).not.toHaveProperty('cursor');
+    expect(value.queuedPrompts).toStrictEqual([]);
+    expect(value.missionAgents).toStrictEqual([]);
+    expect(value.missionProgress?.[0]).not.toHaveProperty('leadAgentId');
+    expect(value.missionProgress?.[0]?.tickets[0]).not.toHaveProperty('agentId');
+    expect(value.reviewFindings).not.toHaveProperty('cursor');
+  };
+  try {
+    readable(await subscription.request('snapshot.get',{}) as CompanionWorkspace);
+    mixed.agents[0]!.name = 'Updated Codex';
+    listener({type:'agent.updated',agentId:'codex',payload:{name:'Updated Codex'}} as AppBackendEvent);
+    await vi.advanceTimersByTimeAsync(50);
+    const update = emitted.find(value=>value.type === 'workspace');
+    expect(update?.type).toBe('workspace');
+    if (update?.type === 'workspace') readable(update.workspace);
+    for (const agent of agents) {
+      const requestTarget = {...target,agentId:agent.id,sessionId:companionSessionId(agent)};
+      if (agent.backend === 'cursor') {
+        await expect(gateway.request('phone','conversation.subscribe',{target:requestTarget})).rejects.toThrow();
+        await expect(gateway.request('phone','agent.rename',{target:requestTarget,name:'Forbidden'})).rejects.toThrow();
+      } else await gateway.request('phone','agent.rename',{target:requestTarget,name:'Renamed'});
+    }
+    expect(f.port.renameAgent).toHaveBeenCalledTimes(3);
+    for (const id of legacyProviders) expect(f.port.renameAgent).toHaveBeenCalledWith(id,'Renamed');
+    expect(f.port.conversation).not.toHaveBeenCalled();
+    expect(f.port.createChat).not.toHaveBeenCalled();
+  } finally {subscription.close();vi.useRealTimers();}
+});
+
+it('rejects Cursor chat creation before provider admission when a released workspace omits backend availability', async () => {
+  const f = fixture(); await f.pair();
+  f.port.workspace.mockResolvedValue({...workspace,agents:[{...workspace.agents[0]!,workspace:{kind:'git',folder:'/repo',repositoryRoot:'/repo',primaryWorktreeRoot:'/repo',repositoryName:'Synthetic',branch:'main',isLinkedWorktree:false,updatedAt:''}}]});
+  const input = {teamId:'team',repositoryId:opaquePath('/repo'),selection:{backend:'cursor'}};
+  await expect(f.gateway.request('phone','agent.create',input)).rejects.toThrow();
+  expect(f.port.createChat).not.toHaveBeenCalled();
+  await f.gateway.request('phone','agent.create',{...input,selection:{backend:'codex'}});
+  await vi.waitFor(()=>expect(f.port.createChat).toHaveBeenCalledTimes(1));
+  expect(f.port.createChat).toHaveBeenCalledWith(expect.objectContaining({selection:{backend:'codex'}}));
+});

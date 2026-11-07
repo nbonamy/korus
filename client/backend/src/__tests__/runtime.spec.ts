@@ -354,41 +354,45 @@ describe('daemon runtime', () => {
     driver.generateText.mockResolvedValue({ text: '{"workItemIds":["github:nbonamy/agent-workspace#12"]}' });
   });
 
-  it('waits for local work, replaces only the upgraded provider and reloads the same conversation', async () => {
+  it.each(['codex', 'cursor'] as const)('waits for local work, replaces only %s and reloads the same conversation', async backend => {
     const snapshot: AppSnapshot = createTestSnapshot();
-    const agent: Agent = { ...mocks.snapshot.agents[0]!, backend: 'codex', backendDefaults: { kind: 'codex' }, status: { type: 'working' }, backendSession: { kind: 'codex', threadId: 'existing-thread' } };
+    const agent: Agent = { ...mocks.snapshot.agents[0]!, backend, backendDefaults: { kind: backend }, status: { type: 'working' }, backendSession: backend === 'codex' ? { kind: 'codex', threadId: 'existing-thread' } : { kind: 'cursor', sessionId: 'existing-session' } };
     snapshot.agents = [agent];
+    const reference = structuredClone(agent.backendSession);
+    snapshot.general.providerHomes = { cursor: { isolated: true, shareSkills: false, homePath: '/private/.cursor' } };
     const events: string[] = [];
     const driver = {
-      backend: 'codex', onEvent: () => () => {},
+      backend, onEvent: () => () => {},
       assertHandoffReady: vi.fn(async () => { events.push('ready'); }),
       close: vi.fn(async () => { events.push('closed'); }),
     };
-    const replacement = { backend: 'codex', onEvent: () => () => {}, loadConversation: vi.fn(async () => { events.push('restored'); }) };
+    const replacement = { backend, onEvent: () => () => {}, loadConversation: vi.fn(async () => { events.push('restored'); }) };
     const claude = { backend: 'claude', onEvent: () => () => {}, close: vi.fn() };
-    const installation = { executable: '/test/codex', version: '1.0.0', latestVersion: '1.1.0', method: 'native' as const, identity: 'original', command: { file: '/test/codex', args: ['update'] } };
+    const installation = { executable: '/test/codex', version: backend === 'codex' ? '1.0.0' : '2026.11.04-old', latestVersion: backend === 'codex' ? '1.1.0' : '2026.11.05-new', method: 'native' as const, identity: 'original', command: { file: '/test/codex', args: ['update'] } };
     const inspect = vi.spyOn(ProviderUpdateRuntime.prototype, 'inspect').mockImplementation(async () => installation);
-    const upgrade = vi.spyOn(ProviderUpdateRuntime.prototype, 'upgrade').mockImplementation(async () => { events.push('upgraded'); installation.version = '1.1.0'; });
+    const upgrade = vi.spyOn(ProviderUpdateRuntime.prototype, 'upgrade').mockImplementation(async () => { events.push('upgraded'); installation.version = installation.latestVersion; });
     mocks.loadBackendSnapshot.mockResolvedValue(snapshot);
     mocks.useRealDriverRpc = true;
-    mocks.drivers.set('codex', driver);
+    mocks.drivers.clear();
+    mocks.drivers.set(backend, driver);
     mocks.drivers.set('claude', claude);
     mocks.createBackendDriver.mockReturnValue(replacement);
     let updates: ProviderUpdates | undefined;
     try {
       await createDaemonRuntime({ emitEvent, requestClient, version: 'test' });
       updates = (mocks.serverOptions[0] as { providerUpdates: ProviderUpdates }).providerUpdates;
-      const checked = await updates.get('codex');
-      expect(updates.request('codex', { action: 'upgrade', confirmed: true, token: checked.token })).toMatchObject({ status: 'waiting' });
+      const checked = await updates.get(backend);
+      expect(updates.request(backend, { action: 'upgrade', confirmed: true, token: checked.token })).toMatchObject({ status: 'waiting' });
       expect(driver.close).not.toHaveBeenCalled();
       agent.status = { type: 'idle' };
       const task = (mocks.schedulerTasks as SchedulerTask[]).find(task => task.id === 'provider-updates')!;
       await task.run();
       expect(events).toEqual(['ready', 'closed', 'upgraded', 'restored']);
       expect(replacement.loadConversation).toHaveBeenCalledWith(agent);
-      expect(agent.backendSession).toEqual({ kind: 'codex', threadId: 'existing-thread' });
+      expect(agent.backendSession).toEqual(reference);
+      expect(mocks.createBackendDriver).toHaveBeenCalledWith(backend, expect.objectContaining({ generalSettings: snapshot.general }));
       expect(claude.close).not.toHaveBeenCalled();
-      expect(await updates.get('codex')).toMatchObject({ status: 'current', installedVersion: '1.1.0' });
+      expect(await updates.get(backend)).toMatchObject({ status: 'current', installedVersion: installation.latestVersion });
     } finally { await updates?.close(); inspect.mockRestore(); upgrade.mockRestore(); }
   });
 

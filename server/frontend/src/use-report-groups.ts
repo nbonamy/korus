@@ -24,7 +24,7 @@ export type ReportGroup = GroupValues & {
 const providerLabels = {
   codex: "Codex",
   claude: "Claude",
-  antigravity: "Antigravity",
+  cursor: "Cursor", antigravity: "Antigravity",
 };
 function totals(rows: readonly ModelValues[]): GroupValues {
   return {

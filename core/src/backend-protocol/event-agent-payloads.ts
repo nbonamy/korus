@@ -70,13 +70,13 @@ function expectWorkspace(value: unknown, path: string): void {
 
 function expectBackendSession(value: unknown, path: string): void {
   expectRecord(value, path);
-  expectLiteral(value.kind, ['codex', 'claude', 'antigravity'], `${path}.kind`);
+  expectLiteral(value.kind, ['codex', 'claude', 'antigravity', 'cursor'], `${path}.kind`);
   if (value.kind === 'codex') {
     expectString(value.threadId, `${path}.threadId`);
     return;
   }
   expectString(value.sessionId, `${path}.sessionId`);
-  if (value.kind === 'antigravity') return;
+  if (value.kind === 'antigravity' || value.kind === 'cursor') return;
   expectLiteral(value.transport, ['stdio', 'websocket'], `${path}.transport`);
   ['transcriptSessionId', 'transcriptFolder', 'serverUrl', 'model', 'reasoningEffort'].forEach(
     (key) => expectOptional(value, key, path, expectString),
@@ -85,7 +85,7 @@ function expectBackendSession(value: unknown, path: string): void {
 
 function expectBackendDefaults(value: unknown, path: string): void {
   expectRecord(value, path);
-  expectLiteral(value.kind, ['codex', 'claude', 'antigravity'], `${path}.kind`);
+  expectLiteral(value.kind, ['codex', 'claude', 'antigravity', 'cursor'], `${path}.kind`);
   ['model', 'reasoningEffort'].forEach((key) =>
     expectOptional(value, key, path, expectString),
   );
@@ -247,7 +247,7 @@ function expectAgentUpdate(value: unknown, path: string): void {
     if (!isWorktreeInitializationState(candidate)) throw new Error(`${candidatePath}: invalid worktree initialization state`);
   });
   expectOptional(value, 'backend', path, (candidate, candidatePath) =>
-    expectLiteral(candidate, ['codex', 'claude', 'antigravity'], candidatePath),
+    expectLiteral(candidate, ['codex', 'claude', 'antigravity', 'cursor'], candidatePath),
   );
   expectOptional(value, 'backendSession', path, expectBackendSession);
   expectOptional(value, 'backendDefaults', path, expectBackendDefaults);

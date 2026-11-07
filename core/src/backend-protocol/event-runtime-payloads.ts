@@ -1,3 +1,4 @@
+import { isCursorEvent, isCursorSnapshot } from '../cursor-conversation-guards';
 import { isDelegationContext } from '../delegation-context';
 import { product } from '../product';
 import { isAntigravityEvent, isAntigravitySnapshot } from '../antigravity-conversation-guards';
@@ -76,7 +77,7 @@ function expectBackendCapabilities(value: unknown, path: string): void {
 
 function expectBackendRuntimeStatus(value: unknown, path: string): void {
   expectRecord(value, path);
-  expectLiteral(value.backend, ['codex', 'claude', 'antigravity'], `${path}.backend`);
+  expectLiteral(value.backend, ['codex', 'claude', 'antigravity', 'cursor'], `${path}.backend`);
   expectLiteral(
     value.status,
     ['notConfigured', 'starting', 'running', 'error'],
@@ -221,7 +222,7 @@ function expectAgentCreationProgress(value: unknown, path: string): void {
   expectRecord(value, path);
   expectString(value.id, `${path}.id`);
   expectLiteral(value.state, ['running', 'success', 'error'], `${path}.state`);
-  expectLiteral(value.backend, ['codex', 'claude', 'antigravity'], `${path}.backend`);
+  expectLiteral(value.backend, ['codex', 'claude', 'antigravity', 'cursor'], `${path}.backend`);
   expectString(value.repositoryName, `${path}.repositoryName`);
   expectBoolean(value.createWorktree, `${path}.createWorktree`);
   expectOptional(value, 'createProject', path, expectBoolean);
@@ -397,6 +398,14 @@ function expectClaudeConversationEvent(value: unknown, path: string): void {
 }
 
 export const runtimePayloadValidators = {
+  'cursor.conversationSnapshotChanged': (value, path) => {
+    expectRecord(value, path);
+    if (!Number.isSafeInteger(value.revision) || Number(value.revision) < 1 || !isCursorSnapshot(value.snapshot)) throw new Error('Invalid Cursor conversation snapshot.');
+  },
+  'cursor.conversationEventReceived': (value, path) => {
+    expectRecord(value, path);
+    if (!Number.isSafeInteger(value.revision) || Number(value.revision) < 1 || !isCursorEvent(value.event)) throw new Error('Invalid Cursor conversation event.');
+  },
   'antigravity.conversationSnapshotChanged': (value, path) => {
     expectRecord(value, path);
     expectNumber(value.revision, `${path}.revision`);

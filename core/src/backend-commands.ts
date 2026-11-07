@@ -144,6 +144,12 @@ function worktreeDelegationCommands(backend: AgentBackend): BackendCommandSummar
 }
 
 export function defaultBackendCommands(backend: AgentBackend): BackendCommandSummary[] {
+  if (backend === 'cursor') return [
+    ...codexBackendCommands
+      .filter(command => ['app.design', 'app.visualize', 'app.mission', 'app.delegate', 'app.worktree'].includes(command.id))
+      .map(command => ({ ...command, backend })),
+    { id: 'cursor.plan', backend, name: 'plan', displayName: 'Plan', description: 'Switch to Cursor Plan mode.', slashName: 'plan', submitOnSelect: true },
+  ];
   if (backend === 'antigravity') return [
     ...claudeBackendCommands.filter(command => command.id.startsWith('app.')).map(command => ({ ...command, backend })),
     { id: 'antigravity.plan', backend, name: 'plan', displayName: 'Plan', description: 'Create an Antigravity plan for review.', slashName: 'plan', submitOnSelect: true },

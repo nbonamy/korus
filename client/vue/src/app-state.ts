@@ -1,3 +1,5 @@
+import { createCursorConversationState } from './cursor-conversation-state';
+import type { CursorConversationSnapshot } from '@workspace/core/contracts/cursor-conversation';
 import { normalizeThreadFlags } from '@workspace/core/thread-flags';
 import { product } from '@workspace/core/product';
 import { isConversationFrame } from '@workspace/core/companion-protocol';
@@ -129,6 +131,9 @@ function recoverConversation(agentId: string): Promise<void> {
   conversationRecoveryTail = request;
   return request;
 }
+const cursorConversations = createCursorConversationState(async agentId => {
+  await recoverConversation(agentId);
+});
 const antigravityConversations = createAntigravityConversationState(async agentId => {
   await recoverConversation(agentId);
 });
@@ -249,6 +254,7 @@ export type AgentConversationView = {
   agent: Agent;
   codexSnapshot: CodexConversationSnapshot | null;
   claudeSnapshot: ClaudeConversationSnapshot | null;
+  cursorSnapshot?: CursorConversationSnapshot | null;
   antigravitySnapshot?: AntigravityConversationSnapshot | null;
   composer: AgentComposerConfiguration;
   composerState: CodexComposerState;
@@ -437,6 +443,7 @@ export function useAppState() {
     const sessionId = agent.backendSession?.kind === 'claude' ? agent.backendSession.sessionId : null;
     return {
       agent,
+      cursorSnapshot: cursorConversations.select(agent),
       antigravitySnapshot: antigravityConversations.select(agent),
       codexSnapshot: agent.backend === 'codex' && agent.backendSession?.kind === 'codex' && codexFrame?.threadId === agent.backendSession.threadId
         ? codexFrame.snapshot : null,
@@ -560,6 +567,7 @@ export function useAppState() {
     resetUnreadAgentIds();
     codexConversationFramesByAgentId.value = {};
     claudeConversationFramesByAgentId.value = {};
+    cursorConversations.reset();
     antigravityConversations.reset();
     conversationRecoveries.clear();
     agentCreationProgresses.value = [];
@@ -635,6 +643,7 @@ export function useAppState() {
     for (const agentId of cachedClaudeAgentIds) {
       invalidateAndRecoverClaudeConversation(agentId);
     }
+    cursorConversations.recoverAll();
     antigravityConversations.recoverAll();
   };
 
@@ -842,7 +851,7 @@ export function useAppState() {
 
   async function continueInterruptedTurnForAgent(agentId: string): Promise<void> {
     const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
-    if (agent?.backend !== 'codex' || !agent.backendSession || !appApi?.continueInterruptedTurn || isAgentSending(agent.id)) {
+    if (!agent?.backendSession || !appApi?.continueInterruptedTurn || isAgentSending(agent.id)) {
       return;
     }
 
@@ -1791,6 +1800,7 @@ export function useAppState() {
     activeBackendCommands,
     activeCodexConversationSnapshot,
     activeClaudeConversationSnapshot,
+    activeCursorConversationSnapshot: computed(() => activeAgent.value ? cursorConversations.select(activeAgent.value) : null),
     agentConversationFor,
     activeAntigravityConversationSnapshot: computed(() => activeAgent.value ? antigravityConversations.select(activeAgent.value) : null),
     prepareAgentConversation,
@@ -2281,6 +2291,10 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
       }
       return;
     }
+    case 'cursor.conversationSnapshotChanged':
+    case 'cursor.conversationEventReceived':
+      cursorConversations.receive(event);
+      return;
     case 'antigravity.conversationSnapshotChanged':
     case 'antigravity.conversationEventReceived':
       antigravityConversations.receive(event);
@@ -2527,6 +2541,7 @@ function pruneConversationFrames(): void {
         || frame.snapshot.sessionId === agent.backendSession.sessionId;
     }),
   );
+  cursorConversations.reconcile([...agentsById.values()]);
   antigravityConversations.reconcile([...agentsById.values()]);
 }
 
@@ -2560,6 +2575,7 @@ function syncFileActivityFromMainEvent(event: Extract<RendererOnlySnapshotEvent,
 function agentNeedsHistory(agentId: string): boolean {
   const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
   if (!agent?.backendSession) return false;
+  if (agent.backendSession.kind === 'cursor') return !cursorConversations.select(agent);
   // A retained frame still awaiting its recovery replay is not hydrated yet.
   if (agent.backendSession.kind === 'antigravity') return !antigravityConversations.select(agent) || antigravityConversations.awaitingRecovery(agentId);
   if (agent.backendSession.kind === 'codex') {

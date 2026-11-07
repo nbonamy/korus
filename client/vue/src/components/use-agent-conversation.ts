@@ -5,15 +5,15 @@ import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { approvalPresetFromDefaults } from '@workspace/core/approval-presets';
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import type { AgentConversationView } from '../app-state';
-import { translate } from '../i18n';
-import { localizedText } from '../i18n/errors';
 import { useImageAnnotation } from './use-image-annotation';
 import { useChatTextAnnotations } from './use-chat-text-annotations';
 import { useVisualizationAnnotations } from './use-visualization-annotations';
 import { useCodeAnnotations } from './use-code-annotations';
 import { claudePaneClientRequests } from './claude-pane-client-requests';
-import { antigravityPaneClientRequests } from './antigravity-pane-client-requests';
+import { providerPaneClientRequests } from './provider-pane-client-requests';
 import { conversationCommandMenuItems } from './conversation-command-menu';
+import { conversationPermissionMenuItems } from './conversation-permission-menu';
+import { translate } from '../i18n';
 
 export type AgentConversationActions = {
   planReview: (agentId: string, resolution: 'accept' | 'revise' | 'cancel', feedback?: string) => void | Promise<void>;
@@ -64,7 +64,7 @@ export function agentConversationState(view: () => AgentConversationView, extens
   mentionGroups?: () => NonNullable<CodexConversationPaneState['catalogs']>['mentionGroups'];
   modelMenuItems?: () => CodexComposerMenuItem[];
 } = {}): CodexConversationPaneState {
-  const provider = () => view().codexSnapshot ?? view().claudeSnapshot ?? view().antigravitySnapshot;
+  const provider = () => view().codexSnapshot ?? view().claudeSnapshot ?? view().cursorSnapshot ?? view().antigravitySnapshot;
   // Every message block receives this set as a prop; a fresh Set per read would re-render all of them on every event.
   const answeredIds = stableSet();
   const approvalPreset = () => {
@@ -90,8 +90,8 @@ export function agentConversationState(view: () => AgentConversationView, extens
     thread: {
       get approvals() { return view().codexSnapshot?.approvals ?? view().approvals; },
       get clientRequests() {
-        const antigravity = view().antigravitySnapshot;
-        if (antigravity) return antigravityPaneClientRequests(antigravity);
+        const structured = view().cursorSnapshot ?? view().antigravitySnapshot;
+        if (structured) return providerPaneClientRequests(structured);
         return view().codexSnapshot?.clientRequests ?? claudePaneClientRequests(view().claudeSnapshot);
       },
       get answeredClientRequestIds() { return answeredIds.current(provider()?.answeredClientRequestIds ?? view().answeredClientRequestIds); },
@@ -241,12 +241,7 @@ export function useAgentConversation(options: {
 }
 
 function permissionMenuItems(view: AgentConversationView): CodexComposerMenuItem[] {
-  const modes = view.capabilities.permissionModes ?? [];
-  if (!modes.length) return [];
   const defaults = view.agent.backendDefaults;
   const selected = defaults && 'permissionMode' in defaults ? defaults.permissionMode : undefined;
-  return [{ id: 'backend-permissions', type: 'submenu', label: translate('surface.appShell.permissions'),
-    items: modes.map(mode => ({ id: `permission:${mode.id}`, type: 'radio', label: localizedText(mode.label, translate) ?? mode.id, checked: selected === mode.id,
-      payload: { kind: 'permission-mode', mode: mode.id } })),
-  }];
+  return conversationPermissionMenuItems(view.agent.backend, view.capabilities.permissionModes ?? [], selected);
 }

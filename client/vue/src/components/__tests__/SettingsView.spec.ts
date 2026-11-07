@@ -1,6 +1,6 @@
 import { product } from '@workspace/core/product';
 import { flushPromises, mount } from '@vue/test-utils';
-import { ElMessageBox, ElTabs, ElTabPane, ElPopover, ElDialog } from 'element-plus';
+import { ElMessageBox, ElTabs, ElTabPane, ElPopover, ElDialog, ElSwitch } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import SettingsView from '../SettingsView.vue';
 import type { AppApi } from '@workspace/core/contracts';
@@ -10,6 +10,31 @@ import { setElectronTestClient } from '../../test/client';
 import { curatedSkills, type SkillManagerState } from '@workspace/core/skill-manager';
 
 describe('SettingsView', () => {
+  it('shows Cursor authentication separately from enablement and offers no home customization', async () => {
+    const setProviderEnabled = vi.fn().mockResolvedValue(undefined);
+    const connectCursor = vi.fn().mockResolvedValue(undefined);
+    const customizeProvider = vi.fn();
+    const wrapper = mount(SettingsView, { props: {
+      activeTab: 'cursor', settings: defaultThemeSettings,
+      generalSettings: { ...defaultGeneralSettings, providerEnabled: { cursor: false } },
+      providerConnections: [{ backend: 'cursor', installed: true, connected: true, enabled: false, checking: false,
+        authentication: { kind: 'cursor', connected: true, state: { loggedIn: true, homePath: '/cursor', version: '2026.10.22-27dcf5f', supported: true } } }],
+      setProviderEnabled, connectCursor, customizeProvider,
+    }, global: { components: { ElSwitch } } });
+    await flushPromises();
+    expect(wrapper.get('#settings-cursor-title').text()).toBe('Cursor');
+    expect(wrapper.get('[role="switch"]').attributes('aria-checked')).toBe('false');
+    expect(setProviderEnabled).not.toHaveBeenCalled();
+    expect(wrapper.text()).not.toContain('Customize');
+    expect(customizeProvider).not.toHaveBeenCalled();
+    await wrapper.get('[role="switch"]').trigger('click'); await flushPromises();
+    expect(setProviderEnabled).toHaveBeenCalledWith('cursor', true);
+    await wrapper.setProps({ providerConnections: [{ backend: 'cursor', installed: true, connected: false, checking: false,
+      authentication: { kind: 'cursor', connected: false, state: { loggedIn: false, homePath: '/cursor', supported: false, error: 'Update Cursor CLI to 2026.10.08 or newer.' } } }] });
+    expect(wrapper.text()).toContain('Update Cursor CLI to 2026.10.08');
+    wrapper.unmount();
+  });
+
   it('installs a featured skill, offers whole packs, syncs providers and keeps failures visible', async () => {
     const personal = { name: 'personal-notes', description: 'My private checklist', managed: false, providers: [{ backend: 'codex' as const, path: '/codex/skills/personal-notes', status: 'installed' as const }, { backend: 'claude' as const, path: '/claude/skills/personal-notes', status: 'missing' as const }] };
     const nativeGuidelines = { ...personal, name: 'web-design-guidelines', providers: personal.providers.map(provider => ({ ...provider, status: 'installed' as const })) };

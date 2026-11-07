@@ -139,7 +139,7 @@ export function isDesignWorkspace(value: unknown): value is DesignWorkspace {
   if (!record(value) || typeof value.isOpen !== 'boolean' || !Array.isArray(value.undo) || value.undo.length > 30
     || !Array.isArray(value.checkpoints) || value.checkpoints.length > 10) return false;
   const ref = value.conversationRef;
-  if (ref !== null && (!record(ref) || !['codex', 'claude', 'antigravity'].includes(String(ref.backend)))) return false;
+  if (ref !== null && (!record(ref) || !['codex', 'claude', 'antigravity', 'cursor'].includes(String(ref.backend)))) return false;
   const document = value.document;
   return (document === null || (record(document) && identifier(document.id) && Number.isInteger(document.revision) && Number(document.revision) > 0 && isDesignContent(document.content)))
     && (value.selectedArtboardId === null || identifier(value.selectedArtboardId))

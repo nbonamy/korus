@@ -133,6 +133,7 @@
           :rate-limits="rateLimits"
           :enabled-backends="enabledBackends"
           :backend-rate-limits="backendRateLimits"
+          :provider-connections="providerConnections"
           @open-settings="emit('open-settings')"
           @open-analytics="emit('open-analytics')"
           @open-whats-new="emit('open-whats-new')"
@@ -178,6 +179,7 @@ const props = defineProps<{
   rateLimits?: AccountRateLimits;
   enabledBackends?: AgentBackend[];
   backendRateLimits?: AppSnapshot['backendAccountRateLimits'];
+  providerConnections?: AppSnapshot['providerConnections'];
   account?: CodexAccount | null;
   settingsActive?: boolean;
   /** Phones expose conversations and the cockpit only. */

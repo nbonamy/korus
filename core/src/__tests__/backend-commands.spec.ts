@@ -17,3 +17,11 @@ describe('backend command catalog', () => {
     });
   });
 });
+
+it('offers supported app commands and native Cursor plan mode without Codex controls', () => {
+  expect(defaultBackendCommands('cursor').map(({id,backend,slashName,submitOnSelect}) => ({id,backend,slashName,submitOnSelect})))
+    .toStrictEqual([
+      ...['design','visualize','mission','delegate','worktree'].map(name => ({id:`app.${name}`,backend:'cursor',slashName:name,submitOnSelect:true})),
+      {id:'cursor.plan',backend:'cursor',slashName:'plan',submitOnSelect:true},
+    ]);
+});

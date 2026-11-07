@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { product } from '@workspace/core/product';
-import { AcpConnection, record } from './acp-connection';
+import { AcpConnection, record } from '../acp/acp-connection';
 import { acpEnvironment, acpVersion, antigravityHome, resolveAcpRuntime } from './runtime';
 
 export class NativeLoginRequired extends Error {
@@ -14,11 +14,15 @@ export class AcpRuntime {
   private loginRequired = false;
   private closing?: Promise<void>;
 
-  private constructor(private readonly temp: string, options: ConstructorParameters<typeof AcpConnection>[0]) {
-    this.connection = new AcpConnection({ ...options, onLoginRequired: () => {
-      this.loginRequired = true;
-      options.onLoginRequired?.();
-    } });
+  private constructor(private readonly temp: string, options: Omit<ConstructorParameters<typeof AcpConnection>[0], 'displayName' | 'loginRequiredMarker'>) {
+    this.connection = new AcpConnection({
+      ...options, displayName: 'Antigravity',
+      loginRequiredMarker: 'Open the following link to authenticate the ACP server:',
+      onLoginRequired: () => {
+        this.loginRequired = true;
+        options.onLoginRequired?.();
+      },
+    });
   }
 
   static async open(options: {

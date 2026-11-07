@@ -6,7 +6,7 @@ import path from 'node:path';
 import type { AgentBackendDriver, BackendSendResult } from '@workspace/core/backend-driver';
 import type { Agent } from '@workspace/core/contracts';
 import { defaultGeneralSettings } from '@workspace/core/settings';
-import { BackendDriverRpc, appSurfaceOptions } from '../driver-rpc';
+import { BackendDriverRpc, appSurfaceOptions, createBackendDriver } from '../driver-rpc';
 import { AppBackendServer } from '../server';
 import { createTestSnapshot } from './server-test-fixtures';
 import { CodexBackendDriver } from '../codex/codex-driver';
@@ -19,6 +19,17 @@ vi.mock('../codex/codex-command', () => ({
 }));
 
 describe('BackendDriverRpc', () => {
+  it('rejects another provider session for Cursor catalog and prompt requests without falling through', async () => {
+    const cursor = createBackendDriver('cursor');
+    const other = createDriver();
+    const agent = { ...createAgent(), backend: 'cursor' as const, backendSession: { kind: 'codex' as const, threadId: 'foreign-session' } };
+    const rpc = new BackendDriverRpc(new Map([['cursor', cursor], ['codex', other]]));
+    try {
+      await expect(rpc.handle('driver/models/list', { agent })).rejects.toThrow(/identity mismatch/i);
+      expect(other.sendPrompt).not.toHaveBeenCalled();
+      await expect(rpc.handle('driver/prompt/send', { agent, prompt: 'Synthetic prompt' })).rejects.toThrow(/another provider|does not match/i);
+    } finally { await rpc.close(); }
+  });
   it.each(['driver/prompt/send', 'driver/prompt/steer'])('checks the expected session after asynchronous engine preflight (%s)', async method => {
     const agent = { ...createAgent(), backendSession: { kind: 'codex' as const, threadId: 'original' } };
     const sendPrompt = vi.fn(); const steerPrompt = vi.fn();

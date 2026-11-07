@@ -22,6 +22,22 @@ function fixture(resolved: string) {
 }
 
 describe('installed provider updates', () => {
+  it('checks Cursor about through its native executable and upgrades only with the native command', async () => {
+    const f = fixture('/cursor/versions/current/cursor-agent');
+    f.run.mockImplementation(async (_file, args) => args[0] === 'about'
+      ? JSON.stringify({ cliVersion: '2026.10.22-27dcf5f', latestVersion: '2026.11.03-abcdef', latestStatus: 'outdated' })
+      : '');
+    const installation = await f.runtime.inspect('cursor');
+    expect(installation).toMatchObject({
+      method: 'native', version: '2026.10.22-27dcf5f', latestVersion: '2026.11.03-abcdef',
+      command: { file: '/user/.local/bin/agent', args: ['update'] },
+    });
+    expect(f.run.mock.calls.map(([, args]) => args)).toStrictEqual([['about', '--format', 'json']]);
+    expect(f.read).not.toHaveBeenCalled();
+    expect(f.fetchText).not.toHaveBeenCalled();
+    await f.runtime.upgrade(installation);
+    expect(f.run).toHaveBeenLastCalledWith('/user/.local/bin/agent', ['update'], 300_000, expect.objectContaining({ NO_OPEN_BROWSER: '1' }));
+  });
   it('rejects Antigravity updates before probing another provider or looking up packages', async () => {
     const f = fixture('/tools/lib/node_modules/@anthropic-ai/claude-code/cli.js');
     await expect(f.runtime.inspect('antigravity')).rejects.toThrow('Antigravity updates are managed externally');

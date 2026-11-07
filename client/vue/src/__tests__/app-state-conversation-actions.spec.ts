@@ -417,9 +417,13 @@ describe('useAppState', () => {
     expect(retryTurn).toHaveBeenCalledWith('agent-dina', 'turn-1');
   });
 
-  it('continues a Codex interrupted turn through preload without sending a prompt', async () => {
+  it.each(['codex', 'claude', 'antigravity', 'cursor'] as const)('continues a %s interrupted turn through preload without sending a prompt', async backend => {
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'thread-dina' };
+    remoteSnapshot.agents[0]!.backend = backend;
+    remoteSnapshot.agents[0]!.backendDefaults = { kind: backend };
+    remoteSnapshot.agents[0]!.backendSession = backend === 'codex' ? { kind: backend, threadId: 'thread-dina' }
+      : backend === 'claude' ? { kind: backend, sessionId: 'session-dina', transport: 'stdio' }
+        : { kind: backend, sessionId: 'session-dina' };
     const continuedSnapshot = structuredClone(remoteSnapshot);
     continuedSnapshot.agents[0]!.status = { type: 'working' };
     const continueInterruptedTurn = vi.fn().mockResolvedValue(continuedSnapshot);

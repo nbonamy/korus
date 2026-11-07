@@ -58,6 +58,7 @@ const causes: Record<string, readonly [string, string]> = {
     "database_schema_missing",
     "Database table is missing; apply server migrations.",
   ],
+  SCHEMA_OUTDATED: ["database_schema_mismatch", "Database schema requires explicit migrations."],
   "42703": [
     "database_schema_mismatch",
     "Database column is missing; check server migrations.",

@@ -480,8 +480,8 @@ Rules:
 ### Provider Homes
 
 Codex and Claude default to their existing CLI homes for unconfigured setups;
-saved home choices and legacy conversation locations are preserved. Local
-providers can use a separate home with its own provider sign-in. Isolated homes
+saved home choices and legacy conversation locations are preserved. Codex,
+Claude and Antigravity can use a separate home with its own provider sign-in. Isolated homes
 are `~/.korus/codex-home`, `~/.korus/claude-home`, and
 `~/.korus/antigravity-home`; existing homes follow provider-specific launch
 configuration. Antigravity uses `GEMINI_HOME`, otherwise `~/.gemini`, for its
@@ -489,6 +489,8 @@ existing setup. Personal skills (and Codex plugins) can be linked from the
 existing home (`providerHomes.<backend>.shareSkills`); private resources are
 never overwritten. Credentials are never copied; an isolated home authenticates
 on its own. Existing-home changes affect the user's external provider setup too.
+Cursor uses its existing native home; saved private contexts are retained for
+compatibility without migration or credential copies.
 
 The daemon skill manager keeps downloaded skills in `APP_HOME/skills`, with
 revision receipts and provider-owned skill-directory links. Installs resolve

@@ -100,6 +100,7 @@ export function presentAppTool(
   translate: Translate,
   resolveAgentName?: AgentNameResolver,
 ): CodexToolPresentation | undefined {
+  if (typeof context.metadata?.displayTitle === 'string') return { title: context.metadata.displayTitle };
   if (context.descriptor?.action === 'search' && context.descriptor.params?.scope === 'tools') {
     const phase = context.descriptor.phase === 'failed' || context.toolCall.state === 'error'
       ? 'failed'

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { AgentRequestResponse } from '@workspace/core/agent-request';
 import type { ClientRequest } from '@workspace/core/contracts';
 import { product } from '@workspace/core/product';
-import { record } from './acp-connection';
+import { record } from '../acp/acp-connection';
 
 type Option = { optionId: string; name: string; kind: string };
 export function permissionRequest(params: Record<string, unknown>, sessionHasKorusMcp = false) {

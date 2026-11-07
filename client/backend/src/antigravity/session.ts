@@ -2,7 +2,7 @@ import path from 'node:path';
 import type { AgentRequestResponse } from '@workspace/core/agent-request';
 import type { AntigravityConversationEvent, AntigravityConversationSnapshot } from '@workspace/core/contracts/antigravity-conversation';
 import { AcpRuntime } from './acp-runtime';
-import { record } from './acp-connection';
+import { record } from '../acp/acp-connection';
 import { antigravityHome } from './runtime';
 import { AcpTranscript } from './transcript';
 import { permissionRequest } from './permissions';

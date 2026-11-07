@@ -5,7 +5,7 @@ import type { AgentBackend, BackendModelOption } from '@workspace/core/contracts
 
 const modelList = z.array(z.string().trim().min(1));
 const schema = z.object({
-  models: z.object({ codex: modelList.optional(), claude: modelList.optional(), antigravity: modelList.optional() }).strict().optional(),
+  models: z.object({ codex: modelList.optional(), claude: modelList.optional(), antigravity: modelList.optional(), cursor: modelList.optional() }).strict().optional(),
 }).strict();
 
 export type Requirements = z.infer<typeof schema>;

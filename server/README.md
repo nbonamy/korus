@@ -32,7 +32,28 @@ listener/routing configuration and TLS termination belong outside Git. PostgreSQ
 18 or later supplies the transaction deadline used by the connection pool.
 
 The versioned ingestion route accepts only JSON with the shared closed schema.
-Its byte cap applies before UTF-8 decoding or parsing, including chunked bodies.
+Cursor reports count observed executions. Missing model evidence is `unknown`;
+missing token measurements and pricing remain null, with explicit coverage.
+No API price or complete request set is inferred from a Cursor execution.
+
+An identity-free `OPTIONS /v1/telemetry/daily` returns HTTP 204 with
+`X-Korus-Telemetry-Version: 1` and the comma-separated closed provider list in
+`X-Korus-Telemetry-Providers`. Discovery shares source admission limits but carries
+no installation identity or report body. The proxy forwards OPTIONS anonymously;
+capability responses are not cached and expose the headers for CORS discovery.
+Desktop uploads containing Cursor require version 1 and an accepted provider list
+including `cursor`. Missing, malformed, redirected or unavailable capabilities
+retain the sealed report without spending its POST attempt budget. Mixed-provider
+reports wait together; legacy-only reports continue independently, subject to the
+shared request budget and rate-limit backoff. Retries preserve sealed bytes.
+
+Deploy schema migration 8 under the migration role before starting the updated
+collector and read service. Startup refuses a schema without the Cursor provider
+constraint. Deploy the proxy's OPTIONS forwarding and updated console with those
+services. Desktop negotiation safely waits for older collectors; enabling Cursor
+uploads requires the migrated collector and capability route to be available.
+
+The ingestion byte cap applies before UTF-8 decoding or parsing, including chunked bodies.
 Hourly reports are accepted for any historical UTC hour through the current hour.
 Legacy daily reports retain their completed-day contract. There is no historical
 upload cutoff: `install_days`, `usage_daily` and the minimal

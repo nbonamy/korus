@@ -184,7 +184,7 @@ export function chartSeries(
                   ? translate("analytics.missions")
                   : repositoryNames.get(row.label)!
                 : group === "provider" &&
-                    ["claude", "codex", "antigravity"].includes(row.label)
+                    ["claude", "codex", "antigravity", "cursor"].includes(row.label)
                   ? backendDisplayName(row.label as AgentBackend)
                   : row.label,
         color: seriesColor(

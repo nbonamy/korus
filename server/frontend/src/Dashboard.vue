@@ -129,6 +129,7 @@
                 { value: 'codex', label: 'Codex' },
                 { value: 'claude', label: 'Claude' },
                 { value: 'antigravity', label: 'Antigravity' },
+                { value: 'cursor', label: 'Cursor' },
               ]"
               :key="item.value"
               :label="item.label"

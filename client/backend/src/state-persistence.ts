@@ -1091,7 +1091,7 @@ function sanitizeAutomation(value: unknown): Automation | null {
       ...(typeof entry.error === 'string' ? { error: entry.error } : {}),
       ...(isRecord(entry.conversationRef) && entry.conversationRef.backend === 'codex' && typeof entry.conversationRef.threadId === 'string'
         ? { conversationRef: { backend: 'codex' as const, threadId: entry.conversationRef.threadId } }
-        : isRecord(entry.conversationRef) && (entry.conversationRef.backend === 'claude' || entry.conversationRef.backend === 'antigravity') && typeof entry.conversationRef.sessionId === 'string'
+        : isRecord(entry.conversationRef) && (entry.conversationRef.backend === 'claude' || entry.conversationRef.backend === 'antigravity' || entry.conversationRef.backend === 'cursor') && typeof entry.conversationRef.sessionId === 'string'
           && (entry.conversationRef.folder === null || typeof entry.conversationRef.folder === 'string')
           ? { conversationRef: { backend: entry.conversationRef.backend, folder: entry.conversationRef.folder, sessionId: entry.conversationRef.sessionId } } : {}),
     }];
@@ -1196,15 +1196,15 @@ function cloneThreadPlan(plan: ThreadPlan): ThreadPlan {
 }
 
 function sanitizeBackend(value: unknown): AgentBackend | null {
-  return value === 'codex' || value === 'claude' || value === 'antigravity' ? value : null;
+  return value === 'codex' || value === 'claude' || value === 'antigravity' || value === 'cursor' ? value : null;
 }
 
 function sanitizeBackendSession(value: unknown, expectedBackend: AgentBackend): BackendSession | undefined {
   if (!isRecord(value) || typeof value.kind !== 'string') {
     return undefined;
   }
-  if (value.kind === 'antigravity' && expectedBackend === 'antigravity' && typeof value.sessionId === 'string') {
-    return { kind: 'antigravity', sessionId: value.sessionId };
+  if ((value.kind === 'antigravity' || value.kind === 'cursor') && expectedBackend === value.kind && typeof value.sessionId === 'string') {
+    return { kind: value.kind, sessionId: value.sessionId };
   }
 
   if (value.kind === 'codex') {
@@ -1242,6 +1242,14 @@ function sanitizeBackendDefaults(value: unknown, expectedBackend: AgentBackend):
   if (!isRecord(value) || typeof value.kind !== 'string') {
     return undefined;
   }
+  if (value.kind === 'cursor' && expectedBackend === 'cursor') return {
+    kind: 'cursor',
+    ...(typeof value.model === 'string' ? { model: value.model } : {}),
+    ...(value.userSelectedModel === true ? { userSelectedModel: true } : {}),
+    ...(typeof value.permissionMode === 'string' ? { permissionMode: value.permissionMode } : {}),
+    ...(typeof value.reasoningEffort === 'string' ? { reasoningEffort: value.reasoningEffort } : {}),
+    ...(value.serviceTier === null || typeof value.serviceTier === 'string' ? { serviceTier: value.serviceTier } : {}),
+  };
   if (value.kind === 'antigravity' && expectedBackend === 'antigravity') return {
     kind: 'antigravity',
     ...(typeof value.model === 'string' ? { model: value.model } : {}),

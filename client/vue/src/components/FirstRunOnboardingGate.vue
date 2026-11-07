@@ -20,6 +20,13 @@
     :claude-error="claudeError"
     :continuing="continuing"
     @connect-claude="emit('connect-claude')"
+    :cursor-connected="cursorConnected"
+    :cursor-loading="cursorLoading"
+    :cursor-pending="cursorPending"
+    :cursor-error="cursorError"
+    :cursor-enabled="snapshot.providerConnections?.find(engine => engine.backend === 'cursor')?.enabled !== false"
+    @connect-cursor="emit('connect-cursor')"
+    @cancel-cursor="emit('cancel-cursor')"
     :antigravity-connected="antigravityConnected"
     :antigravity-loading="antigravityLoading"
     :antigravity-pending="antigravityPending"
@@ -80,6 +87,10 @@ const props = defineProps<{
   claudeDialogVisible: boolean;
   codexConnected: boolean;
   claudeConnected: boolean;
+  cursorConnected?: boolean;
+  cursorLoading?: boolean;
+  cursorPending?: boolean;
+  cursorError?: string | null;
   antigravityConnected?: boolean;
   antigravityLoading?: boolean;
   antigravityPending?: boolean;
@@ -111,6 +122,8 @@ const emit = defineEmits<{
   cancel: [];
   complete: [];
   'connect-claude': [];
+  'connect-cursor': [];
+  'cancel-cursor': [];
   'connect-antigravity': [];
   'cancel-antigravity': [];
   'refresh-claude': [];

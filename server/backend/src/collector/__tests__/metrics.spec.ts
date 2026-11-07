@@ -664,3 +664,31 @@ it("groups hourly usage and distinct activity into viewer days across midnight a
   expect(current.totals.inputTokens).toBe("17");
   expect((await get("from=2026-10-26&to=2026-10-26&timeZone=America%2FChicago")).status).toBe(400);
 });
+
+it("accepts Cursor hourly and legacy reports with unknown measurements and filters them without repricing", async () => {
+  await pool.query("TRUNCATE usage_daily,install_days,installs");
+  const collector = createCollectorServer({store:new TelemetryStore(pool),now:()=>Date.parse("2026-10-25T12:00Z")});
+  await new Promise<void>(r=>collector.listen(0,"127.0.0.1",r));
+  const url = `http://127.0.0.1:${(collector.address() as AddressInfo).port}/v1/telemetry/daily`;
+  try {
+    const capability = await fetch(url,{method:"OPTIONS"});
+    expect(capability.status).toBe(204);
+    expect(capability.headers.get("X-Korus-Telemetry-Version")).toBe("1");
+    expect(capability.headers.get("X-Korus-Telemetry-Providers")).toBe("codex,claude,antigravity,cursor");
+    expect(capability.headers.get("Cache-Control")).toBe("no-store");
+    const usage = [{provider:"cursor",model:"unknown",turns:1,inputTokens:null,cachedInputTokens:null,outputTokens:null,estimatedCostUsd:null,measuredTurns:0,costCoverage:"unavailable"}];
+    const payload = {installId:"00000000-0000-4000-8000-000000000001",day:"2026-10-24",appVersion:"0.52.5",os:"macos",usage};
+    for (const body of [payload,{...payload,hour:12},{...payload,hour:13},payload])
+      expect((await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})).status).toBe(204);
+    const response = await get(range + "&provider=cursor");
+    expect(response.status).toBe(200);
+    const result = await response.json() as TelemetryMetrics;
+    expect(result.totals).toMatchObject({turns:"2",measuredTurns:"0",unmeasuredTurns:"2",inputTokens:null,outputTokens:null,estimatedCostUsd:null,costCoverage:"unavailable"});
+    expect(result.models).toHaveLength(1);
+    expect(result.models[0]).toMatchObject({provider:"cursor",model:"unknown",turns:"2",estimatedCostUsd:null});
+    expect(result.availableModels).toStrictEqual(["unknown"]);
+  } finally {
+    collector.closeAllConnections();
+    await new Promise<void>(r=>collector.close(()=>r()));
+  }
+});

@@ -3,7 +3,8 @@
     <FormRow :title="title ?? $t('engineConnection.title')" :error="error">
       <template #control>
         <template v-if="overflow">
-          <el-button v-if="installed === false" size="small" :disabled="busy || saving || updateBusy" @click="emit('install')">{{ $t('auth.installProvider') }}</el-button>
+          <ProviderInstallActions v-if="installed === false && backend === 'cursor'" backend="cursor" :busy="busy" @refresh="emit('refresh')" />
+          <el-button v-else-if="installed === false" size="small" :disabled="busy || saving || updateBusy" @click="emit('install')">{{ $t('auth.installProvider') }}</el-button>
           <el-button v-else-if="!connected && !pending" size="small" :disabled="busy || saving || updateBusy" @click="emit('connect')">{{ $t('engineConnection.connect') }}</el-button>
           <el-button v-else-if="updateAvailable && !pending" size="small" :disabled="busy || saving || updateBusy" @click="emit('upgrade')">{{ $t('engineConnection.update') }}</el-button>
           <AppMenuButton :ariaLabel="t('engineConnection.actions', { name: title })" :items="overflowItems" @select="selectOverflowItem">
@@ -94,12 +95,16 @@ function selectOverflowItem(id: string): void {
 }
 const accountLabel = computed(() => {
   const auth = props.authentication;
-  if (!auth || auth.kind === 'antigravity') return '';
+  if (!auth || !('account' in auth.state)) return '';
   const account = auth.state.account;
   if (!account) return '';
   if (account.type === 'apiKey') return t('engineConnection.apiKey');
   if (account.type === 'chatgpt') return [account.email, account.planType].filter(Boolean).join(' · ');
-  if (account.type === 'subscription') return [account.email, account.subscription ?? t('engineConnection.subscription')].filter(Boolean).join(' · ');
+  if (account.type === 'subscription') {
+    const plan = ('subscription' in account ? account.subscription : undefined)
+      ?? (auth.kind === 'claude' ? t('engineConnection.subscription') : undefined);
+    return [account.email, plan].filter(Boolean).join(' · ');
+  }
   return t('engineConnection.amazonBedrock');
 });
 const state = computed(() => {

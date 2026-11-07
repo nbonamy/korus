@@ -66,9 +66,13 @@ by mutating user-global tool config.
 - **Antigravity:** the daemon selects native `allow_once` for MCP calls whose
   metadata identifies the session-supplied Korus server. Questions, built-in tools
   and other servers keep native approvals; tool titles never establish trust.
+- **Cursor:** session-supplied stdio bridges capture each agent-scoped URL for
+  app and hosted servers. Native permission callbacks require once-only app
+  decisions; scoped identity does not grant approval-free execution or modify
+  the user's native trust configuration.
 - `daemon` appends developer instructions with the agent's ID, name and folder and
   the workflows models do not reliably infer from schemas. They distinguish
-  engine-native subagents (inside the Codex/Claude session) from Korus co-agents
+  engine-native subagents (inside the provider session) from Korus co-agents
   (`create-agent`); ambiguous requests to delegate require a clarifying question.
 - App-owned procedures are bundled Markdown skills, loaded on demand through
   `read-skill`. Its response carries the full procedure in both text content and

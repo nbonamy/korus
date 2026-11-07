@@ -8,7 +8,7 @@ import { companionPeerIdPattern, relayAddress } from './companion-relay';
 import { product } from './product';
 
 export function supportsConversationSharing(agent: Agent | null | undefined): boolean {
-  return Boolean(agent && !agent.sharedConversation && conversationShareTarget(agent));
+  return Boolean(agent && agent.backend !== 'cursor' && !agent.sharedConversation && conversationShareTarget(agent));
 }
 
 export type ShareRelay = { origin: string; peerId: string };
@@ -33,6 +33,8 @@ export type ConversationShareControl = { target: ConversationShareTarget } & (
 export type ConversationShareResult = { state: ConversationShareState; link?: string; invitation?: string };
 
 export function conversationShareTarget(agent: Agent): ConversationShareTarget | null {
+  // Desktop conversation references do not negotiate support in guest clients.
+  if (agent.backend === 'cursor') return null;
   const conversation = conversationRefFromAgent(agent);
   const session = agent.backendSession;
   if (!conversation || !session || session.kind !== agent.backend) return null;

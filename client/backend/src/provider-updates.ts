@@ -1,8 +1,10 @@
+import { cursorVersion } from './cursor/runtime';
 import { randomUUID } from 'node:crypto';
 import type { AgentBackend } from '@workspace/core/contracts';
 import type { ProviderUpdateInput, ProviderUpdateStatus } from '@workspace/core/contracts/provider-updates';
 
 export type ProviderInstallation = {
+  backend?: AgentBackend;
   executable?: string;
   version?: string;
   latestVersion?: string;
@@ -82,8 +84,10 @@ export class ProviderUpdates {
     try {
       const installation = await this.options.inspect(backend);
       this.installations.set(backend, structuredClone(installation));
-      const available = newer(installation.latestVersion, installation.version);
-      const comparable = stableVersion(installation.version) && stableVersion(installation.latestVersion);
+      const available = newer(installation.latestVersion, installation.version, backend);
+      const comparable = backend === 'cursor'
+        ? cursorVersion(installation.version) !== null && cursorVersion(installation.latestVersion) !== null
+        : stableVersion(installation.version) && stableVersion(installation.latestVersion);
       this.states.set(backend, {
         backend, method: installation.method, channel: installation.channel,
         installedVersion: installation.version, latestVersion: installation.latestVersion,
@@ -121,7 +125,11 @@ export class ProviderUpdates {
   }
 }
 
-function newer(candidate?: string, installed?: string): boolean {
+function newer(candidate: string | undefined, installed: string | undefined, backend: AgentBackend): boolean {
+  if (backend === 'cursor') {
+    const a = cursorVersion(candidate), b = cursorVersion(installed);
+    return a !== null && b !== null && a >= b && candidate !== installed;
+  }
   if (!stableVersion(candidate) || !stableVersion(installed)) return false;
   const a = candidate.split('.').map(Number), b = installed.split('.').map(Number);
   for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i]! > b[i]!;

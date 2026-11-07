@@ -102,6 +102,107 @@ log and socket paths, npm scripts and launchd labels stay brand-neutral.
   daemon; clients consume the filtered results. See
   [host requirements](agent-provider-selection.md#host-requirements).
 
+## Cursor
+
+The Cursor lifecycle detects `agent` or `cursor-agent` through shared runtime
+discovery; installation remains an operator action through official instructions.
+It uses the existing `~/.cursor` setup. Separate setup choices are rejected before
+setup mutation: the native updater has no destination override, and its install
+path is tied to the child home. Saved private contexts retain their captured
+home and credential reader for compatibility; startup never migrates or deletes
+them or silently selects another account.
+
+Native authentication is owned by the Cursor driver. Bounded version/status
+checks suppress browser opening and reject CLI builds older than `2026.10.08`.
+Authentication checks expose only authentication state, validated version and
+display-safe account/team metadata; credentials and native diagnostics stay private.
+The usage adapter reads the native login in place (macOS Keychain, or the native
+credential file on other platforms), retaining its access token only in memory.
+It queries fixed Cursor DashboardService read endpoints without redirects or
+credential refresh, and returns only validated plan, quota and balance fields.
+Zero allowances, disabled on-demand billing and absent data remain distinct;
+pooled team limits are not treated as personal spend limits.
+Monetary billing metadata is an optional app-owned extension of account quotas;
+legacy quota frames remain valid. Native reads reject a changed credential,
+and the daemon discards responses after provider disablement, disconnection or
+authentication changes. The renderer waits for a fresh read before showing stored
+monetary balances and drops responses after the account or menu lifecycle changes.
+Explicit login owns a cancellable process group. Connection observations never
+enable Cursor, and new-work admission refreshes authentication before selection.
+Observed logout, expiry, account or team changes close cached native sessions and
+settle pending callbacks. Same-account reconnection can rehydrate only the saved
+workspace-validated session; a changed identity requires explicit history selection.
+Each agent owns a native `agent acp` process through the shared ACP connection.
+The host serializes prompts and projects text, thoughts, tool updates, structured
+file changes, embedded resources and images into a Cursor-owned revisioned replica. App developer instructions travel in prompt
+context blocks; the renderer receives only app-owned messages. Quick Chats use
+private working directories. Native plan mode selects a catalog mode before
+prompt admission and restores agent mode for a normal follow-up. Continuation
+uses the saved native session and the same serialized prompt path. Model selection preserves native config values
+and requires a matching native acknowledgment before prompt admission;
+trusted local attachments become native content blocks. Configured model choice
+is not evidence of the served model or billing. Permission callbacks and plan
+proposals become once-only app tool confirmations; duplicate and stale responses
+are rejected, and interruption or teardown cancels pending callbacks. Native edits
+can bypass permission callbacks, so approval presets and automatic review remain
+unavailable. Structured questions map displayed choices back to native option
+identities and reject ambiguous or stale answers. Native plan entries and todo
+updates remain observed metadata. Todo extensions accept both request and
+notification framing; requests acknowledge only the validated projected state.
+Unsupported blocking extensions are cancelled.
+Image-extension requests and notifications can display an observed workspace
+image after bounded, contained file validation. Suggested paths do not establish
+generation success; missing, replaced or outside files produce no media. These
+observations are live presentation, without historical freshness claims.
+Per-agent app and
+hosted MCP endpoints use the shared session bridge with identity scoped in each
+child process; this does not establish approval-free native tool execution.
+
+The extended native model catalog supplies per-model enum reasoning choices.
+Values and config identities remain native; independent boolean thinking controls
+are preserved without being relabeled as effort. A model change clears inherited
+app effort. Reusing a confirmed model avoids repeating its setter, protecting
+native thought settings from model-default resets when effort is explicitly null.
+Admission validates the selected model's live controls and setter acknowledgments,
+checks mode after effort, then verifies the complete selection before prompting.
+Failed acknowledgments require confirmed model selection before another prompt.
+Only a typed method-not-found response permits fallback to the session catalog;
+authentication, policy, transport and malformed-catalog failures remain failures.
+
+Cancellation waits for prompt settlement and a bounded, workspace-filtered
+`session/list` round trip before admitting the next prompt. This drains buffered
+cancelled-turn updates without retaining history metadata. The handshake requires
+that advertised native capability. Process teardown bounds non-cooperative
+cancellation. A lost process keeps its terminal replica rather than silently
+creating a replacement conversation. A fresh host loads persisted native session
+references after checking workspace ownership against the native catalog. Replay
+hydrates a fresh replica, generates no live execution observations, and leaves
+unreported timestamps unknown. A presentation journal under the selected home
+restores authored prompt content and attachment parts only when native replay
+text exactly matches an admitted prompt. Workspace-filtered history listing
+does not create a session; explicit resume validates and hydrates its replacement
+before adopting it, and provides recovery from a lost process. Stored message
+reads use validated replay without changing the active session or emitting usage. Known team-switch and
+policy markers produce fixed safe errors and disconnected observations; raw
+diagnostics and URLs are discarded.
+
+Cursor live turns emit execution observations to the local usage ledger. The
+daemon measures working time and time to first assistant output; release and
+shutdown settle active executions as interrupted. Snapshot reads do not count as
+executions. Token counts, served models and costs stay unknown without native
+measurements. The ledger projects Cursor rows locally; the uploader sends reports
+containing them only after an identity-free OPTIONS request confirms versioned
+collector support. Older collectors leave those sealed reports pending without
+consuming report POST attempts; reports for existing providers remain compatible.
+
+Updates inspect native `about --format json` metadata and use native `update`
+through the shared consent and idle scheduler. Child environments explicitly
+clear ambient Cursor credentials even when PATH discovery merges environments.
+Existing-home login and updates preserve native conversation identities. Saved
+private contexts expose version inspection and manual updates. Update admission
+rechecks the selected home before executing, preventing a second installation
+under a private home.
+
 ## Antigravity
 
 `client/backend/src/antigravity` owns installation and discovery of the ACP
@@ -117,6 +218,11 @@ and runtime binaries remain outside app release resources. Provider setup
 serializes installation with home changes and detection refreshes. Discovery
 accepts the managed pair, paired executables on PATH, explicit runtime/harness
 environment paths, or an existing versioned runtime directory.
+
+ACP process framing, directional request IDs, deadlines and process-group teardown
+are owned by the shared `client/backend/src/acp` transport. Provider adapters
+supply display labels and optional native login markers. Stderr is drained only
+for marker recognition; diagnostics and login URLs are never exposed or retained.
 
 Each agent owns a process/session with serialized prompts and bounded cancellation.
 Cold replay validates session identity and rebuilds atomically: replay tool IDs
@@ -354,6 +460,11 @@ the guest owner session budget alongside phone connections; source network socke
 limits can reject a circuit before application admission.
 
 ### Companion gateway and relay
+
+Unnegotiated companion and guest transports retain their closed three-provider
+set. Cursor agents, choices and indirect workspace references are excluded from
+companion projections, admission and Live Activity counts. Cursor sharing is
+explicitly unavailable, independently of desktop conversation references.
 
 Each companion safety property has one owner. Extend the owner instead of adding a
 parallel check, counter or state flag:

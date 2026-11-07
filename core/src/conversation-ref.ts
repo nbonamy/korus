@@ -11,8 +11,8 @@ export function conversationRefFromAgent(agent: Agent): BackendConversationRef |
       sessionId: agent.backendSession.transcriptSessionId ?? agent.backendSession.sessionId,
     };
   }
-  if (agent.backendSession?.kind === 'antigravity') {
-    return { backend: 'antigravity', folder: agent.folder, sessionId: agent.backendSession.sessionId };
+  if (agent.backendSession?.kind === 'antigravity' || agent.backendSession?.kind === 'cursor') {
+    return { backend: agent.backendSession.kind, folder: agent.folder, sessionId: agent.backendSession.sessionId };
   }
   return null;
 }

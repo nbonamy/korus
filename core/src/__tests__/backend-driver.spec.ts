@@ -20,6 +20,7 @@ describe('backend driver helpers', () => {
   it('uses product-facing backend names in unsupported feature errors', () => {
     expect(backendDisplayName('codex')).toBe('Codex');
     expect(backendDisplayName('claude')).toBe('Claude Code');
+    expect(backendDisplayName('cursor')).toBe('Cursor');
     expect(unsupportedBackendFeature(agent('claude'), 'rollback').message)
       .toBe('Claude Code does not support rollback.');
   });

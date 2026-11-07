@@ -34,6 +34,12 @@
       :codex-connected="!debugMissingEngines && codexConnected"
       :continuing="continuing"
       @connect-claude="connectClaude"
+      :cursor-connected="!debugMissingEngines && cursorConnected"
+      :cursor-loading="!debugMissingEngines && cursorLoading"
+      :cursor-pending="!debugMissingEngines && cursorPending"
+      :cursor-error="debugMissingEngines ? null : cursorConnectionError"
+      @connect-cursor="connectCursor"
+      @cancel-cursor="cancelCursorLogin"
       :antigravity-connected="!debugMissingEngines && antigravityConnected"
       :antigravity-loading="!debugMissingEngines && antigravityLoading"
       :antigravity-pending="!debugMissingEngines && antigravityPending"
@@ -178,6 +184,11 @@
         :claude-connection-error="debugMissingEngines ? null : claudeError ?? snapshot.providerConnections?.find(engine => engine.backend === 'claude')?.error"
         :connect-codex="startChatGptLogin"
         :connect-claude="connectClaude"
+        :connect-cursor="connectCursor"
+        :cancel-cursor-login="cancelCursorLogin"
+        :cursor-connection-busy="!debugMissingEngines && (cursorLoading || snapshot.providerConnections?.some(engine => engine.backend === 'cursor' && engine.checking))"
+        :cursor-login-pending="!debugMissingEngines && cursorPending"
+        :cursor-connection-error="debugMissingEngines ? null : cursorConnectionError"
         :connect-antigravity="connectAntigravity"
         :cancel-antigravity-login="cancelAntigravityLogin"
         :antigravity-connection-busy="!debugMissingEngines && (antigravityLoading || snapshot.providerConnections?.some(engine => engine.backend === 'antigravity' && engine.checking))"
@@ -671,7 +682,7 @@ import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import { useCompactViewport } from '../shared/use-compact-viewport';
 import debugAnnotationScreenshotUrl from '../../assets/debug-annotation.png?url';
 import type { AgentBackend, AgentFileActivity } from '@workspace/core/contracts';
-import type { AddSshConnectionInput, Agent, AgentCreationProgress, AgentFilePreviewResult, AgentFileSearchItem, AgentGitStatus, AppCommand, ApprovalPreset, AppSnapshot, BackendApprovalDecision, BackendApprovalRequest, BackendApprovalScope, BackendCapabilities, BackendCommandSummary, BackendConnectionState, BackendConversationRef, BackendPermissionModeOption, BackendModelOption, BackendPluginSummary, BackendRuntimeStatus, BackendSkillSummary, ClaudeConversationSnapshot, DaemonStatus, ClientRequestResponse, CloneSourceRepositoryInput, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DesktopUpdateStatus, DevicePairingSession, DevicePairingStatus, GlobalWorkItemQuery, AutomationLocation, ModelFavorite, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, PairedDevice, ReasoningEffort, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceBranch, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, SshHostCandidate, Team, ThreadGoal, ThreadPlan, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
+import type { AddSshConnectionInput, Agent, AgentCreationProgress, AgentFilePreviewResult, AgentFileSearchItem, AgentGitStatus, AppCommand, ApprovalPreset, AppSnapshot, BackendApprovalDecision, BackendApprovalRequest, BackendApprovalScope, BackendCapabilities, BackendCommandSummary, BackendConnectionState, BackendConversationRef, BackendModelOption, BackendPluginSummary, BackendRuntimeStatus, BackendSkillSummary, ClaudeConversationSnapshot, DaemonStatus, ClientRequestResponse, CloneSourceRepositoryInput, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DesktopUpdateStatus, DevicePairingSession, DevicePairingStatus, GlobalWorkItemQuery, AutomationLocation, ModelFavorite, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, PairedDevice, ReasoningEffort, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceBranch, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, SshHostCandidate, Team, ThreadGoal, ThreadPlan, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
@@ -727,9 +738,10 @@ import SharedConversationPane from './SharedConversationPane.vue';
 import SplitLayoutControl from './SplitLayoutControl.vue';
 import { useSplitWorkspace } from './use-split-workspace';
 import type { AgentConversationActions } from './use-agent-conversation';
+import { conversationPermissionMenuItems } from './conversation-permission-menu';
 import { conversationCommandMenuItems, conversationMenuCommand, type ConversationMenuCommand } from './conversation-command-menu';
 import { claudePaneClientRequests } from './claude-pane-client-requests';
-import { antigravityPaneClientRequests } from './antigravity-pane-client-requests';
+import { providerPaneClientRequests } from './provider-pane-client-requests';
 import { backendDisplayName } from '@workspace/core/backend-driver';
 import type { AgentConversationView } from '../app-state';
 import MissionCodeReview from './MissionCodeReview.vue';
@@ -835,6 +847,7 @@ const props = withDefaults(defineProps<{
   backendCapabilities?: BackendCapabilities;
   codexConversationSnapshot?: CodexConversationSnapshot | null;
   claudeConversationSnapshot?: ClaudeConversationSnapshot | null;
+  cursorConversationSnapshot?: import('@workspace/core/contracts/cursor-conversation').CursorConversationSnapshot | null;
   antigravityConversationSnapshot?: import('@workspace/core/contracts/antigravity-conversation').AntigravityConversationSnapshot | null;
   modelCatalogStatus?: 'notLoaded' | 'loading' | 'loaded' | 'error';
   skillCatalogStatus?: 'notLoaded' | 'loading' | 'loaded' | 'error';
@@ -1563,6 +1576,7 @@ const firstRunOnboarding = useFirstRunOnboarding({
 });
 const {
   claudeAuthentication, claudeConnected, claudeLoading, claudeError, claudeDialogVisible,
+  cursorConnected, cursorLoading, cursorPending, cursorError, connectCursor, cancelCursorLogin,
   antigravityConnected, antigravityLoading, antigravityPending, antigravityError, connectAntigravity, cancelAntigravityLogin,
   providerSetup, customizedSetup, customizingProvider, setupBusy, updatingProvider, setupError, customizeProvider, saveProviderSetup, installProvider: installRealProvider, refreshProvider: refreshRealProvider,
   codexConnected, continuing, connectClaude, disconnectProvider, refreshClaude, continueWithProviders,
@@ -1580,6 +1594,11 @@ const {
   load: loadAuthentication,
   startChatGptLogin,
 } = firstRunOnboarding;
+const cursorConnectionError = computed(() => {
+  const connection = props.snapshot.providerConnections?.find(engine => engine.backend === 'cursor');
+  const authentication = connection?.authentication;
+  return cursorError.value ?? (authentication?.kind === 'cursor' ? authentication.state.error : undefined) ?? connection?.error;
+});
 const telemetryNoticeReady = computed(() => {
   const existingProfile = props.snapshot.general.providerOnboardingComplete || props.snapshot.agents.length > 0;
   return existingProfile ? !initialAuthenticationLoading.value : onboardingCompleteVisible.value || !realOnboardingGate.value;
@@ -2408,7 +2427,9 @@ const providerConversation = computed(() => (
     ? props.codexConversationSnapshot ?? null
     : currentAgent.value?.backend === 'claude'
       ? props.claudeConversationSnapshot ?? null
-      : currentAgent.value?.backend === 'antigravity' ? props.antigravityConversationSnapshot ?? null : null
+      : currentAgent.value?.backend === 'cursor'
+        ? props.cursorConversationSnapshot ?? null
+        : currentAgent.value?.backend === 'antigravity' ? props.antigravityConversationSnapshot ?? null : null
 ));
 const conversationMessages = computed(() => {
   const messages = providerConversation.value?.messages ?? [];
@@ -2419,7 +2440,8 @@ const conversationMessages = computed(() => {
 const conversationLatestTurnId = computed(() => providerConversation.value?.turns.at(-1)?.id ?? null);
 function latestTurnIdForAgent(agentId: string): string | null {
   const view = props.agentConversationFor?.(agentId);
-  return (view?.codexSnapshot ?? view?.claudeSnapshot)?.turnIds.at(-1) ?? null;
+  return (view?.codexSnapshot ?? view?.claudeSnapshot)?.turnIds.at(-1)
+    ?? (view?.cursorSnapshot ?? view?.antigravitySnapshot)?.turns.at(-1)?.id ?? null;
 }
 const conversationHasRunningPlanTool = computed(() => conversationMessages.value.some(
   (message) => message.parts.some(
@@ -2477,22 +2499,9 @@ const conversationCapabilities = computed<CodexCapabilities>(() => ({
   approvals: props.backendCapabilities.approvals,
   approvalPresets: props.backendCapabilities.approvalPresets ?? [],
 }));
-const permissionModeMenuItems = computed<CodexComposerMenuItem[]>(() => {
-  const modes = props.backendCapabilities.permissionModes ?? [];
-  if (modes.length === 0) {
-    return [];
-  }
-
-  return [{
-    id: 'backend-permissions',
-    type: 'submenu',
-    label: translate('surface.appShell.permissions'),
-    icon: ShieldCheckIcon,
-    submenuAlignment: 'bottom',
-    submenuWidth: 'wide',
-    items: modes.map((mode) => permissionModeMenuItem(mode, props.permissionMode)),
-  }];
-});
+const permissionModeMenuItems = computed(() => conversationPermissionMenuItems(
+  currentAgent.value?.backend, props.backendCapabilities.permissionModes ?? [], props.permissionMode,
+));
 const currentModelFavorite = computed<ModelFavorite | null>(() => {
   const agent = currentAgent.value;
   const model = props.backendModels.find((candidate) => candidate.id === props.selectedModelId)
@@ -2608,7 +2617,8 @@ const conversationPaneState: CodexConversationPaneState = {
   thread: {
     get approvals() { return effectiveApprovals.value; },
     get clientRequests() {
-      if (currentAgent.value?.backend === 'antigravity' && props.antigravityConversationSnapshot) return antigravityPaneClientRequests(props.antigravityConversationSnapshot);
+      if (currentAgent.value?.backend === 'cursor' && props.cursorConversationSnapshot) return providerPaneClientRequests(props.cursorConversationSnapshot);
+      if (currentAgent.value?.backend === 'antigravity' && props.antigravityConversationSnapshot) return providerPaneClientRequests(props.antigravityConversationSnapshot);
       return currentAgent.value?.backend === 'codex'
         ? props.codexConversationSnapshot?.clientRequests ?? []
         : claudePaneClientRequests(props.claudeConversationSnapshot);
@@ -2807,20 +2817,6 @@ async function updateManagedModelFavorites(favorites: ModelFavorite[]): Promise<
     : existing.slice(0, firstBackendIndex).filter((favorite) => favorite.backend !== backend).length;
   withoutBackend.splice(insertionIndex, 0, ...favorites.map(copyModelFavorite));
   await props.updateSettings({ general: { modelFavorites: withoutBackend } });
-}
-
-function permissionModeMenuItem(
-  mode: BackendPermissionModeOption,
-  selectedMode: string | null,
-): CodexComposerMenuItem {
-  return {
-    id: `permission-mode:${mode.id}`,
-    type: 'radio',
-    label: localizedText(mode.label, translate) ?? mode.id,
-    description: localizedText(mode.description, translate) ?? '',
-    checked: mode.id === selectedMode,
-    payload: { kind: 'permission-mode', mode: mode.id },
-  };
 }
 
 function permissionModeCommand(payload: unknown): { kind: 'permission-mode'; mode: string } | null {

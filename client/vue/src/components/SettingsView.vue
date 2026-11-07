@@ -57,6 +57,22 @@
           :launch-chat-gpt-app="launchChatGptApp"
           :settings="generalSettings"
         />
+        <SettingsCursorPanel
+          v-else-if="activeTab === 'cursor'"
+          :installed="providerConnections?.find(engine => engine.backend === 'cursor')?.installed ?? false"
+          :connected="providerConnections?.some(engine => engine.backend === 'cursor' && engine.connected)"
+          :authentication="providerConnections?.find(engine => engine.backend === 'cursor')?.authentication"
+          :enabled="generalSettings.providerEnabled?.cursor !== false"
+          :set-enabled="enabled => setProviderEnabled?.('cursor', enabled)"
+          :busy="cursorConnectionBusy || updatingProvider === 'cursor'"
+          :pending="cursorLoginPending"
+          :error="cursorConnectionError || providerSetupError || providerConnections?.find(engine => engine.backend === 'cursor')?.error"
+          :remote-connection-id="remoteConnectionId"
+          @refresh="refreshProvider?.('cursor')"
+          @connect="connectCursor"
+          @disconnect="disconnectProvider?.('cursor')"
+          @cancel="cancelCursorLogin"
+        />
         <SettingsAntigravityPanel
           v-else-if="activeTab === 'antigravity'"
           :installed="providerConnections?.find(engine => engine.backend === 'antigravity')?.installed ?? false"
@@ -158,6 +174,7 @@ import SettingsBrowserPanel from './SettingsBrowserPanel.vue';
 import SettingsAppearancePanel from './SettingsAppearancePanel.vue';
 import SettingsAppshotsPanel from './SettingsAppshotsPanel.vue';
 import SettingsClaudeCodePanel from './SettingsClaudeCodePanel.vue';
+import SettingsCursorPanel from './SettingsCursorPanel.vue';
 import SettingsAntigravityPanel from './SettingsAntigravityPanel.vue';
 import SettingsCodexPanel from './SettingsCodexPanel.vue';
 import SettingsConnectionsPanel from './SettingsConnectionsPanel.vue';
@@ -197,6 +214,11 @@ const props = withDefaults(defineProps<{
   claudeConnectionError?: string | null;
   connectCodex?: () => Promise<void>;
   connectClaude?: () => Promise<void>;
+  connectCursor?: () => Promise<void>;
+  cancelCursorLogin?: () => Promise<void>;
+  cursorConnectionBusy?: boolean;
+  cursorLoginPending?: boolean;
+  cursorConnectionError?: string | null;
   connectAntigravity?: () => Promise<void>;
   cancelAntigravityLogin?: () => Promise<void>;
   antigravityConnectionBusy?: boolean;

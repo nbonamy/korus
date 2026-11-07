@@ -1321,9 +1321,13 @@ export class AppBackendServer {
   async requireConnectedEngine(backend?: Agent['backend']): Promise<Agent['backend']> {
     if (this.options.providerUpdates?.isUpdating(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
     if (this.providerSetup?.isChanging(backend)) throw new Error('Engine setup is changing. Try again when it finishes.');
+    if (backend === 'cursor' || (!backend && this.snapshot.providerConnections?.some(provider => provider.backend === 'cursor' && provider.connected))) {
+      this.providerConnections?.invalidate('cursor');
+    }
     await this.providerConnections?.refreshDisconnected(backend);
     if (this.options.providerUpdates?.isUpdating(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
-    return resolveAgentBackend(this.snapshot, backend);
+    const selected = resolveAgentBackend(this.snapshot, backend);
+    return selected;
   }
 
   private async authenticateProvider(backend: Agent['backend'], action: 'check' | 'cancel' | 'logout' | 'login' = 'check', loginId?: string): Promise<ProviderAuthentication> {
@@ -1332,7 +1336,7 @@ export class AppBackendServer {
 
   private async observeAuthentication(authentication: ProviderAuthentication): Promise<void> {
     const { kind: backend, connected } = authentication;
-    if (connected) {
+    if (connected && backend !== 'cursor') {
       this.snapshot.general.providerEnabled = { ...this.snapshot.general.providerEnabled, [backend]: true };
     }
     this.providerConnections?.observe(backend, connected, authentication);
@@ -2825,7 +2829,7 @@ export class AppBackendServer {
               if (previousRef) {
                 await this.handleAgentDriverRequest(switchedAgent, backendMethods.driverConversationResume, {
                   agent: switchedAgent,
-                  target: { ref: previousRef, storageState: 'archived' },
+                  target: { ref: previousRef, storageState: previousRef.backend === 'cursor' ? 'active' : 'archived' },
                 }).catch((rollbackError) => warnMain('sessions', 'conversation switch rollback failed', {
                   detail: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
                 }));
@@ -3358,7 +3362,7 @@ export class AppBackendServer {
       case backendMethods.providerAuthenticate: {
         const params = requireRecord(message.params);
         const backend = requireAgentBackend(params.backend);
-        if (backend !== 'antigravity' || (params.action !== 'login' && params.action !== 'cancel')) throw new Error('Unsupported native authentication action.');
+        if ((backend !== 'antigravity' && backend !== 'cursor') || (params.action !== 'login' && params.action !== 'cancel')) throw new Error('Unsupported native authentication action.');
         const authentication = await this.authenticateProvider(backend, params.action);
         this.providerConnections?.observe(backend, authentication.connected, authentication);
         await this.persistAndEmitSnapshot();
@@ -3444,8 +3448,12 @@ export class AppBackendServer {
       case backendMethods.providerUsageGet: {
         const backend = requireRecord(message.params).backend;
         if (!isAgentBackend(backend)) throw new Error('Unknown provider.');
-        if (!this.snapshot.providerConnections?.some(item => item.backend === backend && item.installed && item.connected && item.enabled !== false)) return createAppRpcResult(message.id, null);
+        const provider = this.snapshot.providerConnections?.find(item => item.backend === backend && item.installed && item.connected && item.enabled !== false);
+        if (!provider) return createAppRpcResult(message.id, null);
+        const authentication = JSON.stringify(provider.authentication);
         const result = await this.requireDriverRpc().handle(backendMethods.driverAccountRateLimitsGet, { backend }) as { supported: boolean; rateLimits?: import('@workspace/core/contracts').AccountRateLimits | null };
+        const current = this.snapshot.providerConnections?.find(item => item.backend === backend && item.installed && item.connected && item.enabled !== false);
+        if (!current || JSON.stringify(current.authentication) !== authentication) return createAppRpcResult(message.id, null);
         const limits = result.supported ? result.rateLimits ?? null : this.snapshot.backendAccountRateLimits?.[backend] ?? (backend === 'codex' ? this.snapshot.accountRateLimits : undefined) ?? null;
         if (limits) this.applyAndEmitBackendEvent({ type: 'account.rateLimitsUpdated', backend, payload: { rateLimits: limits } });
         return createAppRpcResult(message.id, limits);
@@ -5251,7 +5259,7 @@ function isBackendConversationRef(value: unknown): value is BackendConversationR
     return typeof candidate.threadId === 'string' && candidate.threadId.trim().length > 0;
   }
 
-  return (candidate.backend === 'claude' || candidate.backend === 'antigravity') &&
+  return (candidate.backend === 'claude' || candidate.backend === 'antigravity' || candidate.backend === 'cursor') &&
     (candidate.folder === null || (typeof candidate.folder === 'string' && candidate.folder.trim().length > 0)) &&
     typeof candidate.sessionId === 'string' &&
     candidate.sessionId.trim().length > 0 &&

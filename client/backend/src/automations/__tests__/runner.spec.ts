@@ -126,7 +126,7 @@ describe('scheduled prompts', () => {
     runner.handleEvent({ type: 'agent.statusChanged', agentId: 'existing', payload: { type: 'error', message: 'Session expired' } } as never);
     expect(automation.executionLog[0]).toMatchObject({ status: 'failed', error: 'Session expired' });
   });
-  it.each(['codex', 'claude', 'antigravity'] as const)('creates fresh %s quick chats without changing selection or provider, retaining run history', async backend => {
+  it.each(['codex', 'claude', 'antigravity', 'cursor'] as const)('creates fresh %s quick chats without changing selection or provider, retaining run history', async backend => {
     const { snapshot, automation, runner, sendPrompt } = setup({ kind: 'newQuickChat', teamId: 'team', selection: { backend, model: null, reasoningEffort: null, serviceTier: null } });
     snapshot.providerConnections = [{ backend, installed: true, connected: true, enabled: true, checking: false }];
     const conversationRef = backend === 'codex' ? { backend, threadId: 'thread' } : { backend, sessionId: 'session', folder: null };

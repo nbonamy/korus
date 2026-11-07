@@ -21,6 +21,7 @@ import { getFirstRunOnboardingStage, setFirstRunOnboardingStage } from '../../on
 import { codexConversationSnapshot, codexTextMessage } from '../../test/codex-conversation-fixtures';
 import { claudeConversationSnapshot } from '../../test/claude-conversation-fixtures';
 import { encodeAppErrorDescriptor } from '@workspace/core/app-error';
+import { emptyCursorSnapshot } from '@workspace/core/cursor-conversation-replica';
 import { createClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
 
 import {
@@ -232,6 +233,47 @@ describe('AppShell authentication and conversation', () => {
     expect(completed.find('.codex-login').exists()).toBe(false);
   });
 
+  it('shows the native Cursor update hint during onboarding before starting login', async () => {
+    const snapshot = createEmptySnapshot();
+    snapshot.providerConnections = [{ backend: 'cursor', installed: true, connected: false, checking: false,
+      authentication: { kind: 'cursor', connected: false, state: { loggedIn: false, homePath: '/cursor', supported: false, error: 'Update Cursor CLI to 2026.10.08 or newer.' } } }];
+    const authenticateProvider = vi.fn();
+    setElectronTestClient({ getProviderSetup: vi.fn().mockResolvedValue([
+      { backend: 'cursor', installed: true, isolated: false, shareSkills: false, homePath: '/cursor', locked: false },
+    ]), authenticateProvider });
+    const wrapper = mountShell({ snapshot });
+    try {
+      await flushPromises();
+      expect(wrapper.get('.codex-login').text()).toContain('Update Cursor CLI to 2026.10.08');
+      expect(authenticateProvider).not.toHaveBeenCalled();
+    } finally { wrapper.unmount(); }
+  });
+
+  it('runs Cursor login only after Connect and cancels it without changing engine enablement', async () => {
+    const snapshot = createEmptySnapshot();
+    snapshot.providerConnections = [{ backend: 'cursor', installed: true, connected: false, enabled: false, checking: false }];
+    let settle!: (value: import('@workspace/core/contracts/provider-setup').ProviderAuthentication) => void;
+    const disconnected = { kind: 'cursor', connected: false, state: { loggedIn: false, homePath: '/cursor' } } as const;
+    const authenticateProvider = vi.fn((_backend, action) => action === 'login'
+      ? new Promise<import('@workspace/core/contracts/provider-setup').ProviderAuthentication>(resolve => { settle = resolve; }) : (settle(disconnected), Promise.resolve(disconnected)));
+    const setProviderEnabled = vi.fn().mockResolvedValue([]);
+    setElectronTestClient({ getProviderSetup: vi.fn().mockResolvedValue([
+      { backend: 'cursor', installed: true, isolated: false, shareSkills: false, homePath: '/cursor', locked: false },
+    ]), authenticateProvider, setProviderEnabled });
+    const wrapper = mountShell({ snapshot });
+    try {
+      await flushPromises();
+      expect(authenticateProvider).not.toHaveBeenCalled();
+      await wrapper.findAll('button').find(button => button.text() === 'Connect Cursor')!.trigger('click');
+      await flushPromises();
+      expect(authenticateProvider).toHaveBeenCalledWith('cursor', 'login');
+      await wrapper.findAll('button').find(button => button.text() === 'Cancel sign-in')!.trigger('click');
+      await flushPromises();
+      expect(authenticateProvider).toHaveBeenCalledWith('cursor', 'cancel');
+      expect(setProviderEnabled).not.toHaveBeenCalled();
+    } finally { wrapper.unmount(); }
+  });
+
   it('narrows to the provider being authorized, hides Continue, and restores the list on cancel', async () => {
     setFirstRunOnboardingStage('repositories');
     const snapshot = createInitialSnapshot();
@@ -439,9 +481,14 @@ describe('AppShell authentication and conversation', () => {
     expect(wrapper.getComponent({ name: 'ConversationPane' }).props('hasVisibleMessages')).toBe(true);
   });
 
-  it('presents a blocking provider question through the controlled pane and forwards its answer', async () => {
+  it.each(['codex', 'cursor'] as const)('presents a blocking %s question through the controlled pane and forwards its answer', async backend => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'thread-question' };
+    const agent = snapshot.agents[0]!;
+    agent.backend = backend;
+    agent.backendDefaults = { kind: backend };
+    agent.backendSession = backend === 'codex'
+      ? { kind: 'codex', threadId: 'thread-question' }
+      : { kind: 'cursor', sessionId: 'thread-question' };
     const question: CodexSurfaceClientRequest = {
       id: 'request-framework', kind: 'ask_user', conversationId: 'thread-question',
       turnId: 'turn-question', itemId: 'item-framework',
@@ -456,6 +503,10 @@ describe('AppShell authentication and conversation', () => {
       snapshot,
       stubAgentWorkspace: false,
       realConversationPane: true,
+      cursorConversationSnapshot: backend === 'cursor' ? {
+        ...emptyCursorSnapshot(agent.id, 'thread-question'), activeTurnId: 'turn-question', busy: true,
+        clientRequests: [{ id: question.id, kind: 'ask_user', payload: question.payload }],
+      } : null,
       codexConversationSnapshot: codexConversationSnapshot([{
         id: 'assistant-question', role: 'assistant', status: 'streaming', turnId: 'turn-question',
         parts: [{ type: 'tool', id: 'item-framework', kind: 'generic', title: 'ask_user_question',
@@ -484,12 +535,14 @@ describe('AppShell authentication and conversation', () => {
     ]]);
   });
 
-  it('uses the provider-owned Claude conversation', () => {
+  it.each(['claude', 'cursor'] as const)('uses the provider-owned %s conversation', backend => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backend = 'claude';
-    agent.backendDefaults = { kind: 'claude' };
-    agent.backendSession = { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' };
+    agent.backend = backend;
+    agent.backendDefaults = { kind: backend };
+    agent.backendSession = backend === 'claude'
+      ? { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' }
+      : { kind: 'cursor', sessionId: 'cursor-session-1' };
     const messages: RendererMessage[] = [{
       id: 'claude-owned', agentId: agent.id, role: 'assistant', status: 'complete', turnId: 'turn-1',
       createdAt: '2026-09-06T00:00:01.000Z', parts: [{ type: 'text', text: 'Provider owned' }],
@@ -506,7 +559,12 @@ describe('AppShell authentication and conversation', () => {
 
     const state = conversationControllerState(mountShell({
       snapshot,
-      claudeConversationSnapshot: providerSnapshot,
+      ...(backend === 'claude' ? { claudeConversationSnapshot: providerSnapshot } : {
+        cursorConversationSnapshot: { ...emptyCursorSnapshot(agent.id, 'cursor-session-1'),
+          messages, turns: [{ id: 'turn-1', status: 'inProgress', error: null, willRetry: false,
+            startedAt: '2026-09-06T00:00:01.000Z', completedAt: null, durationMs: null }],
+          activeTurnId: 'turn-1', busy: true },
+      }),
     }));
 
     expect(state.identity.messages).toStrictEqual(messages);
@@ -2006,6 +2064,28 @@ describe('AppShell authentication and conversation', () => {
     expect(items[1]).toMatchObject({ value: 'High', valueIcon: undefined, valueIconLabel: undefined });
     conversationControllerActions(wrapper).menuSelect?.(items[1] as CodexComposerMenuSelectableItem);
     expect(wrapper.emitted('select-service-tier')).toStrictEqual([[null]]);
+  });
+
+  it('shows read-only Cursor-managed permissions in the main conversation menu', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    agent.backend = 'cursor';
+    agent.backendDefaults = { kind: 'cursor' };
+    agent.backendSession = { kind: 'cursor', sessionId: 'cursor-permissions' };
+    const wrapper = mountShell({ snapshot,
+      cursorConversationSnapshot: emptyCursorSnapshot(agent.id, 'cursor-permissions'),
+      realConversationPane: true, stubAgentWorkspace: false });
+    try {
+      await flushPromises();
+      await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
+      const permissions = wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Permissions'));
+      expect(permissions).toBeDefined();
+      expect(permissions!.text()).toContain('Cursor-managed');
+      expect(permissions!.attributes('disabled')).toBeDefined();
+      await permissions!.trigger('click');
+      expect(wrapper.emitted('select-permission-mode')).toBeUndefined();
+      expect(wrapper.emitted('select-approval-preset')).toBeUndefined();
+    } finally { wrapper.unmount(); }
   });
 
   it('exposes Claude permission modes as a distinct composer submenu', async () => {

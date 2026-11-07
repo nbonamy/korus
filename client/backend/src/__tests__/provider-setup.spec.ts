@@ -1,5 +1,5 @@
 import { mkdtemp, mkdir, readFile, readdir, readlink, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProviderSetup } from '../provider-setup';
@@ -386,6 +386,7 @@ describe('provider onboarding setup', () => {
     const reloaded = await loadBackendSnapshot();
     expect(reloaded.general.providerEnabled).toEqual({ codex: true, claude: false });
     expect(reloaded.general.providerHomes).toStrictEqual({
+      cursor: { isolated: false, shareSkills: false, homePath: path.join(homedir(), '.cursor') },
       codex: { isolated: true, shareSkills: true, homePath: path.join(root, 'app/codex-home') },
       claude: { isolated: true, shareSkills: true, homePath: path.join(root, 'app/claude-home') },
       antigravity: { isolated: true, shareSkills: false, homePath: path.join(root, 'app/antigravity-home') },
@@ -454,7 +455,7 @@ describe('provider onboarding setup', () => {
     await setup.initialize();
     const server = new AppBackendServer({ version: 'test', snapshot, providerSetup: setup });
     const request = (method: string, params?: unknown) => server.handleMessage({ jsonrpc: '2.0', id: 1, method, params });
-    expect(await request('provider/setup/get')).toMatchObject({ result: [expect.objectContaining({ backend: 'codex', installed: true }), expect.objectContaining({ backend: 'claude', installed: false }), expect.objectContaining({ backend: 'antigravity', installed: false })] });
+    expect(await request('provider/setup/get')).toMatchObject({ result: [expect.objectContaining({ backend: 'codex', installed: true }), expect.objectContaining({ backend: 'claude', installed: false }), expect.objectContaining({ backend: 'antigravity', installed: false }), expect.objectContaining({ backend: 'cursor', installed: false, isolated: false, shareSkills: false })] });
     expect(cli.installs).toBe(0);
     expect(await request('provider/refresh', { backend: 'claude' })).toMatchObject({ result: { backend: 'claude', installed: false } });
     cli.installed.add('claude');

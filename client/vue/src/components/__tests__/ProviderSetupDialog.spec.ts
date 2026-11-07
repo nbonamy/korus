@@ -4,6 +4,19 @@ import { describe, expect, it } from 'vitest';
 import ProviderSetupDialog from '../ProviderSetupDialog.vue';
 
 describe('ProviderSetupDialog', () => {
+  it.each([false, true])('offers no Cursor setup mutation for a saved isolated=%s context', async isolated => {
+    const wrapper = mount(ProviderSetupDialog, { props: {
+      setup: { backend: 'cursor', installed: true, isolated, shareSkills: false, homePath: '/cursor', locked: false },
+      busy: false, error: null,
+    }, global: { components: { ElCheckbox, ElRadio, ElRadioGroup }, stubs: { teleport: true } } });
+    expect(wrapper.findAll('input[type="radio"]')).toHaveLength(0);
+    await wrapper.get('.app-button--primary').trigger('click');
+    expect(wrapper.emitted('save')).toBeUndefined();
+    expect(wrapper.get('.app-button--primary').attributes('disabled')).toBeDefined();
+    expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it('lets Settings change skills reuse for existing chats without requesting roster removal', async () => {
     const setup = { backend: 'codex' as const, installed: true, isolated: true, shareSkills: true, homePath: '/app/codex-home', locked: true, affectedAgentIds: ['agent-one'] };
     const wrapper = mount(ProviderSetupDialog, {

@@ -11,6 +11,7 @@ export type CodexApprovalPreset = ApprovalPreset;
 export type CodexApprovalsReviewer = 'user' | 'auto_review' | 'guardian_subagent';
 
 export type BackendSession =
+  | { kind: 'cursor'; sessionId: string }
   | { kind: 'antigravity'; sessionId: string }
   | {
     kind: 'codex';
@@ -33,6 +34,7 @@ type ProviderExecutionDefaults = {
   [K in Exclude<keyof ExecutionSelection, 'backend'>]?: K extends 'serviceTier' ? ExecutionSelection[K] : NonNullable<ExecutionSelection[K]>;
 };
 export type BackendDefaults = ProviderExecutionDefaults & { userSelectedModel?: boolean } & (
+  | { kind: 'cursor'; permissionMode?: string }
   | { kind: 'antigravity'; permissionMode?: string }
   | { kind: 'codex'; approvalPreset?: CodexApprovalPreset; approvalPolicy?: string; approvalsReviewer?: CodexApprovalsReviewer; sandboxMode?: string }
   | { kind: 'claude'; permissionMode?: string; thinking?: { type: 'enabled' | 'disabled'; budgetTokens?: number } }
@@ -57,6 +59,18 @@ export type AccountRateLimitWindow = {
   resetsAt: number | null;
 };
 
+/** Display-safe monetary balances, independent of provider-native billing objects. */
+export type AccountBilling = {
+  includedBalanceUsd: string | null;
+  onDemand: {
+    enabled: boolean | null;
+    unlimited: boolean;
+    usedUsd: number | null;
+    limitUsd: number | null;
+    remainingUsd: number | null;
+  };
+};
+
 export type AccountRateLimits = {
   limitId: string | null;
   limitName: string | null;
@@ -66,6 +80,7 @@ export type AccountRateLimits = {
   individualLimit: unknown;
   planType: string | null;
   rateLimitReachedType: string | null;
+  billing?: AccountBilling;
 };
 
 export type BackendPlanModeSupport = 'native' | 'prompted' | 'unsupported';

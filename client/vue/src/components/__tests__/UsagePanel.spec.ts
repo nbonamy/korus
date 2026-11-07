@@ -271,10 +271,11 @@ it("shows unknown consumption with measured denominators and filters the local o
   expect(wrapper.get('[aria-label="Usage breakdown"]').text()).toContain("N/A");
   expect(wrapper.find('[role="meter"]').exists()).toBe(false);
   expect(wrapper.text()).not.toContain("0 of 3 turns measured");
-  await chooseProvider(wrapper, "claude");
+  expect(wrapper.getComponent({ name: 'ElSelect' }).findAllComponents({ name: 'ElOption' }).map(option => option.props('label'))).toContain('Cursor');
+  await chooseProvider(wrapper, "cursor");
   await flushPromises();
   expect(getUsage).toHaveBeenCalledWith(
-    expect.objectContaining({ group: "provider", provider: "claude" }),
+    expect.objectContaining({ group: "provider", provider: "cursor" }),
   );
   wrapper.unmount();
 });
