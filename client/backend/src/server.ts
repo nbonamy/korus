@@ -1321,10 +1321,12 @@ export class AppBackendServer {
   async requireConnectedEngine(backend?: Agent['backend']): Promise<Agent['backend']> {
     if (this.options.providerUpdates?.isUpdating(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
     if (this.providerSetup?.isChanging(backend)) throw new Error('Engine setup is changing. Try again when it finishes.');
-    if (backend === 'cursor' || (!backend && this.snapshot.providerConnections?.some(provider => provider.backend === 'cursor' && provider.connected))) {
-      this.providerConnections?.invalidate('cursor');
+    const recheckCursor = !backend && this.snapshot.providerConnections?.some(provider => provider.backend === 'cursor' && provider.connected);
+    if (backend === 'cursor') await this.providerConnections?.recheck('cursor');
+    else {
+      await this.providerConnections?.refreshDisconnected(backend);
+      if (recheckCursor) await this.providerConnections?.recheck('cursor');
     }
-    await this.providerConnections?.refreshDisconnected(backend);
     if (this.options.providerUpdates?.isUpdating(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
     const selected = resolveAgentBackend(this.snapshot, backend);
     return selected;

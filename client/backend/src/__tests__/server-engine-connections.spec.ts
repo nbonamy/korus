@@ -35,7 +35,10 @@ describe('connected engine admission', () => {
     snapshot.general.providerEnabled = { cursor: false };
     let connected = true;
     const handle = vi.fn(async () => ({ kind: 'cursor', connected, state: { loggedIn: connected, homePath: '/cursor' } }));
+    const observedConnections: boolean[] = [];
+    let recordConnections = false;
     const server = new AppBackendServer({ version: 'test', snapshot,
+      onEvent: event => { if (recordConnections && event.type === 'snapshot.updated') observedConnections.push(event.payload.providerConnections?.find(provider => provider.backend === 'cursor')?.connected ?? false); },
       driverRpc: { handle, onEvent: () => () => {}, close: async () => {} } as never,
       providerSetup: { isChanging: () => false, list: () => [{ backend: 'cursor', installed: true, homePath: '/cursor' }] } as never,
     });
@@ -44,7 +47,13 @@ describe('connected engine admission', () => {
       expect(snapshot.providerConnections?.[0]).toMatchObject({ installed: true, connected: true, enabled: false });
       expect(snapshot.general.providerEnabled?.cursor).toBe(false);
       await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'provider/enabled/set', params: { backend: 'cursor', enabled: true } });
-      await expect(server.requireConnectedEngine('cursor')).resolves.toBe('cursor');
+      recordConnections = true;
+      const checks = handle.mock.calls.length;
+      await expect(Promise.all([server.requireConnectedEngine('cursor'), server.requireConnectedEngine('cursor')])).resolves.toStrictEqual(['cursor', 'cursor']);
+      expect(observedConnections.length).toBeGreaterThan(0);
+      expect(observedConnections.every(Boolean)).toBe(true);
+      expect(handle).toHaveBeenCalledTimes(checks + 1);
+      recordConnections = false;
       await server.handleMessage({ jsonrpc: '2.0', id: 'new-chat', method: 'agent/quickChat/create', params: { input: { teamId: 'team-test', selection: { backend: 'cursor' } } } });
       const agent = snapshot.agents[0]!;
       connected = false;
@@ -64,6 +73,9 @@ describe('connected engine admission', () => {
       connected = true;
       await server.handleMessage({ jsonrpc: '2.0', id: 3, method: 'provider/connections/get' });
       expect(snapshot.providerConnections?.[0]?.connected).toBe(true);
+      handle.mockRejectedValueOnce(new Error('probe transport failed'));
+      await expect(server.requireConnectedEngine('cursor')).rejects.toThrow('Could not check');
+      expect(snapshot.providerConnections?.[0]).toMatchObject({ connected: true, checking: false });
       await expect(server.handleMessage({ jsonrpc: '2.0', id: 4, method: 'provider/enabled/set', params: { backend: 'cursor', enabled: false } })).rejects.toThrow('last engine');
     } finally { await server.close(); }
   });

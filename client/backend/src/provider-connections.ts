@@ -36,6 +36,15 @@ export class ProviderConnections {
     return await this.refresh();
   }
 
+  /** Refresh auth for admission while retaining the last observation until a result arrives. */
+  async recheck(backend: AgentBackend): Promise<void> {
+    this.probes ??= this.options.detect();
+    const probe = this.probes.find(candidate => candidate.backend === backend);
+    if (probe) await this.check(probe, true);
+    const error = this.states.get(backend)?.error;
+    if (error) throw new Error(error);
+  }
+
   observe(backend: AgentBackend, connected: boolean, authentication?: ProviderAuthentication): void {
     this.revisions.set(backend, (this.revisions.get(backend) ?? 0) + 1);
     this.pending.delete(backend);
@@ -58,15 +67,16 @@ export class ProviderConnections {
 
   updateEnabled(): void { this.publish(); }
 
-  private check(probe: ConnectionProbe): Promise<void> {
+  private check(probe: ConnectionProbe, force = false): Promise<void> {
     const { backend, installed } = probe;
     const pending = this.pending.get(backend);
     if (pending) return pending;
-    if (this.states.has(backend)) return Promise.resolve();
+    if (!force && this.states.has(backend)) return Promise.resolve();
     const revision = this.revisions.get(backend) ?? 0;
     const current = () => !this.disposed && revision === (this.revisions.get(backend) ?? 0);
     const previous = this.states.get(backend);
-    this.states.set(backend, { backend, installed, connected: installed && Boolean(previous?.connected), checking: installed });
+    this.states.set(backend, { backend, installed, connected: installed && Boolean(previous?.connected), checking: installed,
+      ...(previous?.authentication ? { authentication: previous.authentication } : {}) });
     this.publish();
     const work = Promise.resolve().then(async () => {
       try {
@@ -77,6 +87,7 @@ export class ProviderConnections {
         if (!current()) return;
         this.states.set(backend, {
           backend, installed, connected: installed && Boolean(previous?.connected), checking: false,
+          ...(previous?.authentication ? { authentication: previous.authentication } : {}),
           error: 'Could not check the engine connection. Retry in Settings.',
         });
       } finally {
