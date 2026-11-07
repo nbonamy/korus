@@ -2,7 +2,7 @@ import { createCursorLifecycle } from './cursor/provider-lifecycle';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import type { AgentBackend, AppSnapshot, CodexResourceSharingStatus, SetCodexResourceSharingInput } from '@workspace/core/contracts';
-import type { ProviderHomeSettings, ProviderSetupChoice } from '@workspace/core/contracts/provider-setup';
+import type { ProviderHomeSettings, ProviderSetupChange, ProviderSetupChoice } from '@workspace/core/contracts/provider-setup';
 import { backendHomeDir } from './state';
 import { createCodexLifecycle } from './codex/provider-lifecycle';
 import { createClaudeLifecycle } from './claude/provider-lifecycle';
@@ -10,6 +10,7 @@ import { createAntigravityLifecycle } from './antigravity/provider-lifecycle';
 
 /** Provider-owned lifecycle policy; setup owns serialization and persistence. */
 export type ProviderLifecycle = {
+  validateChoice?(choice: ProviderSetupChange): void;
   home(snapshot: AppSnapshot, choice?: ProviderSetupChoice): ProviderHomeSettings;
   installed(snapshot: AppSnapshot): boolean;
   install?(): Promise<void>;

@@ -51,6 +51,7 @@ export class ProviderSetup {
   async configure(backend: AgentBackend, choice: ProviderSetupChange): Promise<ProviderSetupStatus> {
     if (this.busy) throw new Error('Provider setup is already in progress.');
     const lifecycle = this.lifecycle(backend);
+    lifecycle.validateChoice?.(choice);
     const previous = this.home(backend);
     const changesHome = previous.isolated !== choice.isolated;
     const changesSharing = previous.shareSkills !== choice.shareSkills;

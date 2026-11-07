@@ -61,8 +61,6 @@
           v-else-if="activeTab === 'cursor'"
           :installed="providerConnections?.find(engine => engine.backend === 'cursor')?.installed ?? false"
           :connected="providerConnections?.some(engine => engine.backend === 'cursor' && engine.connected)"
-          :home="generalSettings.providerHomes?.cursor"
-          @customize="customizeProvider?.('cursor')"
           :authentication="providerConnections?.find(engine => engine.backend === 'cursor')?.authentication"
           :enabled="generalSettings.providerEnabled?.cursor !== false"
           :set-enabled="enabled => setProviderEnabled?.('cursor', enabled)"

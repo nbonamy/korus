@@ -1,9 +1,9 @@
-import { mkdtemp, readFile, rm, writeFile, rename } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile, rename } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentBackendDriver, BackendEvent } from '@workspace/core/backend-driver';
-import { cursorRuntime } from '../runtime';
+import { ProviderSetup } from '../../provider-setup';
 import { createEmptySnapshot } from '@workspace/core/snapshot';
 import { BackendDriverRpc, createBackendDriver } from '../../driver-rpc';
 import { ProviderUpdateRuntime } from '../../provider-update-runtime';
@@ -77,8 +77,7 @@ describe('Cursor CLI connection boundary', () => {
 
   it('inspects the selected private home and refuses an updater that would install a second CLI there', async () => {
     const lifecycle = createProviderLifecycles().get('cursor')!;
-    let selected = lifecycle.home(createEmptySnapshot(), { isolated: true, shareSkills: false });
-    await lifecycle.prepareHome(selected, true);
+    let selected = { homePath: path.join(root, 'saved-private', '.cursor'), isolated: true, shareSkills: false };
     const runtime = new ProviderUpdateRuntime({ command: backend => backend, claudeHome: () => '/unused', cursorHome: () => selected });
     const installation = await runtime.inspect('cursor');
     expect(installation.command).toBeUndefined();
@@ -91,12 +90,12 @@ describe('Cursor CLI connection boundary', () => {
     expect(existing.identity).not.toBe(installation.identity);
     expect(existing.command).toBeDefined();
     // A stale existing-home installation cannot bypass the separate-home updater gate.
-    selected = lifecycle.home(createEmptySnapshot(), { isolated: true, shareSkills: false });
+    selected = { homePath: path.join(root, 'saved-private', '.cursor'), isolated: true, shareSkills: false };
     await expect(runtime.upgrade(existing)).rejects.toThrow('Manual');
     expect((await calls()).some(call => call.args[0] === 'update')).toBe(false);
   });
 
-  it('detects agent and the cursor-agent alias with existing and separate home choices', async () => {
+  it('detects agent and the cursor-agent alias without offering a separate home', async () => {
     const lifecycle = createProviderLifecycles().get('cursor')!;
     const snapshot = createEmptySnapshot();
     expect(lifecycle.installed(snapshot)).toBe(true);
@@ -105,24 +104,16 @@ describe('Cursor CLI connection boundary', () => {
     const home = lifecycle.home(snapshot);
     expect(home).toStrictEqual({ homePath: path.join(root, '.cursor'), isolated: false, shareSkills: false });
     await expect(lifecycle.prepareHome(home, false)).resolves.toBeUndefined();
-    const separate = lifecycle.home(snapshot, { isolated: true, shareSkills: false });
-    expect(separate.isolated).toBe(true);
-    await lifecycle.prepareHome(separate, true);
-    const runtime = cursorRuntime(separate);
-    expect(runtime.environment.HOME).not.toBe(root);
-    expect(runtime.environment.CURSOR_CONFIG_DIR).toBe(separate.homePath);
-    expect(runtime.environment.AGENT_CLI_CREDENTIAL_STORE).toBe('file');
-    expect(runtime.environment.XDG_CONFIG_HOME).toBe(path.join(runtime.environment.HOME!, '.config'));
-    expect(runtime.environment.GIT_CONFIG_GLOBAL).toBe(path.join(root, '.gitconfig'));
-    expect(process.env.HOME).toBe(root);
+    expect(() => lifecycle.home(snapshot, { isolated: true, shareSkills: false })).toThrow('separate');
     expect(lifecycle.install).toBeUndefined();
   });
 
-  it('keeps separate login/logout and its captured environment independent from the existing setup', async () => {
+  it('preserves a saved private account without silently switching to the existing login', async () => {
     const snapshot = createEmptySnapshot();
     const lifecycle = createProviderLifecycles().get('cursor')!;
-    const home = lifecycle.home(snapshot, { isolated: true, shareSkills: false });
-    await lifecycle.prepareHome(home, true);
+    const home = { homePath: path.join(root, 'saved-private', '.cursor'), isolated: true, shareSkills: false };
+    await mkdir(home.homePath, { recursive: true });
+    await lifecycle.prepareHome(home, false);
     snapshot.general.providerHomes = { cursor: home };
     const current = driver = createBackendDriver('cursor', { generalSettings: snapshot.general });
     expect(await current.authenticate!({ action: 'check' })).toMatchObject({ connected: false, state: { homePath: home.homePath } });
@@ -132,6 +123,24 @@ describe('Cursor CLI connection boundary', () => {
     expect(await current.authenticate!({ action: 'logout' })).toMatchObject({ connected: false });
     expect(JSON.parse(await readFile(path.join(root, 'status'), 'utf8'))).toStrictEqual(fixture);
     expect((await calls()).every(call => call.childHome === path.dirname(home.homePath) && call.store === 'file' && call.home === home.homePath)).toBe(true);
+  });
+
+  it('rejects new isolated setup at admission and preserves saved settings and credential files', async () => {
+    const snapshot = createEmptySnapshot();
+    const home = { homePath: path.join(root, 'saved-private', '.cursor'), isolated: true, shareSkills: false };
+    await mkdir(home.homePath, { recursive: true });
+    const credential = path.join(home.homePath, 'auth.json');
+    await writeFile(credential, 'synthetic-retained-credential');
+    snapshot.general.providerHomes = { cursor: home };
+    const persist = vi.fn(async () => {}), reconnect = vi.fn(async () => {});
+    const setup = new ProviderSetup(snapshot, persist, reconnect, new Map([['cursor', createProviderLifecycles().get('cursor')!]]));
+    await setup.initialize();
+    persist.mockClear();
+    await expect(setup.configure('cursor', { isolated: true, shareSkills: false })).rejects.toThrow('separate');
+    expect(snapshot.general.providerHomes.cursor).toStrictEqual(home);
+    expect(await readFile(credential, 'utf8')).toBe('synthetic-retained-credential');
+    expect(persist).not.toHaveBeenCalled();
+    expect(reconnect).not.toHaveBeenCalled();
   });
 
   it('checks native status without login, API credentials, account IDs or enablement side effects', async () => {

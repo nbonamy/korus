@@ -98,12 +98,11 @@ log and socket paths, npm scripts and launchd labels stay brand-neutral.
 
 The Cursor lifecycle detects `agent` or `cursor-agent` through shared runtime
 discovery; installation remains an operator action through official instructions.
-It supports the existing `~/.cursor` setup or a separate configuration and login.
-Separate setups capture a private child home and file credential store as well
-as `CURSOR_CONFIG_DIR`, because native caches and credentials use OS home paths.
-PATH and SSH agent access remain inherited, and Git retains its global config;
-private homes do not copy SSH keys or other tool dotfiles. This is state
-separation, not an OS sandbox or an independent managed-policy boundary.
+It uses the existing `~/.cursor` setup. Separate setup choices are rejected before
+setup mutation: the native updater has no destination override, and its install
+path is tied to the child home. Saved private contexts retain their captured
+home and credential reader for compatibility; startup never migrates or deletes
+them or silently selects another account.
 
 Native authentication is owned by the Cursor driver. Bounded version/status
 checks suppress browser opening and reject CLI builds older than `2026.10.08`.
@@ -168,10 +167,10 @@ consuming report POST attempts; reports for existing providers remain compatible
 Updates inspect native `about --format json` metadata and use native `update`
 through the shared consent and idle scheduler. Child environments explicitly
 clear ambient Cursor credentials even when PATH discovery merges environments.
-Existing-home login and updates preserve native conversation identities. Separate
-homes expose version inspection and manual updates: the native installer derives
-its installation target from HOME, so running it privately would create a second
-installation. Update admission rechecks the selected home before executing.
+Existing-home login and updates preserve native conversation identities. Saved
+private contexts expose version inspection and manual updates. Update admission
+rechecks the selected home before executing, preventing a second installation
+under a private home.
 
 ## Antigravity
 

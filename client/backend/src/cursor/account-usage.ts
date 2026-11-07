@@ -17,6 +17,7 @@ async function token(runtime: CursorRuntime): Promise<string | null> {
       const { stdout } = await run('/usr/bin/security', ['find-generic-password', '-s', 'cursor-access-token', '-a', 'cursor-user', '-w'], { timeout: 5_000, maxBuffer: 64 * 1024 });
       return stdout.trim() || null;
     }
+    // Saved private contexts retain their credential reader; new private setup is unavailable.
     // The native credential library uses OS paths, independently of CURSOR_CONFIG_DIR.
     const env = runtime.environment;
     const home = env.HOME || homedir();

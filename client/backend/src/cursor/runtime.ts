@@ -26,6 +26,7 @@ export function cursorRuntime(home?: ProviderHomeSettings): CursorRuntime {
   for (const key of Object.keys(env)) if (key.startsWith('CURSOR_') || key === 'AGENT_CLI_CREDENTIAL_STORE') env[key] = undefined;
   env.CURSOR_CONFIG_DIR = homePath;
   env.HOME = homedir();
+  // Compatibility for saved or in-flight private contexts; setup cannot create new ones.
   if (isolated) {
     const userHome = homedir();
     const privateHome = path.dirname(homePath);

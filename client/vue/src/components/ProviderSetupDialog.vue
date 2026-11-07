@@ -7,11 +7,11 @@
       <p v-if="error" role="alert">{{ error }}</p>
     </div>
     <div v-else class="app-form-dialog">
-      <FormField :label="t('auth.conversations')" :help="t('auth.separateExplanation')">
-        <el-radio-group v-model="isolated" class="provider-setup__choices" :disabled="busy || (setup?.locked && !allowReset)">
+      <FormField :label="t('auth.conversations')" :help="setup?.backend === 'cursor' ? setup.homePath : t('auth.separateExplanation')">
+        <el-radio-group v-if="setup?.backend !== 'cursor'" v-model="isolated" class="provider-setup__choices" :disabled="busy || (setup?.locked && !allowReset)">
           <el-radio :value="false">{{ t('auth.existingSetup') }}</el-radio>
           <el-radio :value="true" class="provider-setup__separate">{{ t('auth.separateChats') }}</el-radio>
-          <el-checkbox v-if="isolated && setup?.backend !== 'cursor'" v-model="shareSkills" class="provider-setup__skills" :disabled="busy || (setup?.locked && !allowReset)">{{ t('auth.shareSkills') }}</el-checkbox>
+          <el-checkbox v-if="isolated" v-model="shareSkills" class="provider-setup__skills" :disabled="busy || (setup?.locked && !allowReset)">{{ t('auth.shareSkills') }}</el-checkbox>
         </el-radio-group>
       </FormField>
       <p v-if="setup?.locked && !allowReset">{{ t('auth.setupLocked') }}</p>
@@ -19,7 +19,7 @@
     </div>
     <template #footer>
       <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="emit('close')">{{ t(confirming ? 'common.cancel' : 'surface.remoteClaudeAuth.close') }}</button>
-      <button class="app-button app-button--primary" type="button" :disabled="busy || (confirming ? !acknowledged : setup?.locked && (!allowReset || (isolated === setup.isolated && shareSkills === setup.shareSkills)))" @click="save">{{ t(busy ? 'auth.settingUp' : confirming ? 'engineSetup.removeAndSwitch' : 'auth.saveSetup') }}</button>
+      <button class="app-button app-button--primary" type="button" :disabled="busy || setup?.backend === 'cursor' || (confirming ? !acknowledged : setup?.locked && (!allowReset || (isolated === setup.isolated && shareSkills === setup.shareSkills)))" @click="save">{{ t(busy ? 'auth.settingUp' : confirming ? 'engineSetup.removeAndSwitch' : 'auth.saveSetup') }}</button>
     </template>
   </FormDialog>
 </template>
@@ -47,7 +47,7 @@ watch(() => props.setup, setup => {
   acknowledged.value = false;
 }, { immediate: true });
 function save() {
-  if (props.busy) return;
+  if (props.busy || props.setup?.backend === 'cursor') return;
   const changesHome = props.setup && isolated.value !== props.setup.isolated;
   if (changesHome && props.setup?.locked && props.allowReset) {
     if (!confirming.value) { confirming.value = true; return; }
