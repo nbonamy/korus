@@ -1,3 +1,4 @@
+import { supportsCompanionBackend } from './companion-protocol';
 import type { AgentBackend } from './contracts';
 import type { CompanionWorkspace } from './companion-protocol';
 import { agentDisplayName } from './agent-display';
@@ -18,7 +19,7 @@ export function liveActivityAuthorizationMessage(relayId: string, hostId: string
 /** Count each agent once across teams and Mission workers, without exposing conversation content. */
 export function workActivityState(workspace: CompanionWorkspace, previous?: WorkActivityState, observedAt?: number): WorkActivityState {
   const teams = new Set(workspace.teams.map(team => team.id));
-  const agents = new Map([...workspace.agents, ...workspace.missionAgents ?? []].filter(agent => agent.teamId !== undefined && teams.has(agent.teamId)).map(agent => [agent.id, agent]));
+  const agents = new Map([...workspace.agents, ...workspace.missionAgents ?? []].filter(agent => supportsCompanionBackend(agent.backend) && agent.teamId !== undefined && teams.has(agent.teamId)).map(agent => [agent.id, agent]));
   let running = 0; let attention = 0;
   const rows: WorkActivityAgent[] = [];
   const bounded = (text: string, limit: number) => Array.from(text.replace(/[\r\n\t]/gu, ' ').trim()).slice(0, limit).join('');

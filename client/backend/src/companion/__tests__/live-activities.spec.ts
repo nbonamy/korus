@@ -91,3 +91,16 @@ describe('aggregate Live Activity daemon lifecycle', () => {
     expect(f.saved()).toStrictEqual({});
   });
 });
+
+it('keeps mixed-provider Live Activity pushes valid for the released relay schema', async () => {
+  const {liveActivityPushSchema} = await import('../live-activity-schema');
+  const f = fixture();
+  f.workspace.agents.push({...f.workspace.agents[0]!,id:'0cursor',backend:'cursor'});
+  f.workspace.teams[0]!.agentIds.push('0cursor');
+  await f.create().register('phone',f.start);
+  expect(f.push).toHaveBeenCalledTimes(1);
+  const activity = f.push.mock.calls[0]![2];
+  expect(liveActivityPushSchema.safeParse(activity).success).toBe(true);
+  expect(activity.state.running).toBe(3);
+  expect(activity.state.agents.every(agent=>['codex','claude','antigravity'].includes(agent.backend ?? ''))).toBe(true);
+});

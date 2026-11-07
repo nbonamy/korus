@@ -2,6 +2,9 @@ import type { CompanionNotification } from './companion-notification';
 import type { AgentRequest, AgentRequestResponse } from './agent-request';
 import type { AccountRateLimits, Agent, AgentBackend, AgentGitStatus, ModelFavorite, ProviderConversationFrame, Team } from './contracts';
 
+// Existing companion and guest transports have not negotiated Cursor replicas.
+export const supportsCompanionBackend = (backend: string): boolean => ['codex', 'claude', 'antigravity'].includes(backend);
+
 export const companionProtocol = '/workspace/companion/1.0.0';
 export const companionUpdatesProtocol = '/workspace/companion-updates/1.0.0';
 /** Gzip responses are negotiated separately so older paired apps keep their JSON framing. */
