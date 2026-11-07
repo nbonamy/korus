@@ -16,6 +16,13 @@ export function restorePlanReview(
   conversationId: string | null,
 ): PlanReview | undefined {
   const native = isPlanReview(agent.planReview) ? structuredClone(agent.planReview) : undefined;
+  // Native callbacks belong to the process that created them; saved content and
+  // feedback survive restart, but the lost request cannot authorize execution.
+  if (agent.backend === 'cursor' && native?.requestId && native.status === 'pending') {
+    native.status = 'cancel';
+    native.canApprove = false;
+    delete native.deliveryPending;
+  }
   const old = agent.interactivePlan;
   if (
     !object(old) ||

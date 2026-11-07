@@ -2,6 +2,7 @@ import { product } from '@workspace/core/product';
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { ElTooltip } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { PlanReview, PlanReviewResponse } from '@workspace/core/plan-review';
 import type { AgentSubagentTree, OpenInApplicationCatalog, RendererMessage } from '@workspace/core/contracts';
 import RightWorkspacePanel from '../RightWorkspacePanel.vue';
 import BrowserPanel from '../BrowserPanel.vue';
@@ -639,6 +640,24 @@ describe('RightWorkspacePanel', () => {
 
     expect(wrapper.emitted('selectTab')).toStrictEqual([['browser']]);
     expect(wrapper.emitted('closeTab')).toStrictEqual([['plan']]);
+  });
+
+  it('uses the shared interactive editor for a Cursor plan and routes confirmed choices and comments through the sidebar', async () => {
+    const wrapper = mountPanel(['browser', 'plan'], 'plan');
+    let review: PlanReview = { id: 'cursor-plan', conversationId: 'session', turnId: 'turn', requestId: 'native-request', markdown: '# Translation\n\n## French text\n- ( ) Replace English\n- ( ) Add README.fr.md', status: 'pending' as const };
+    const updatePlanReview = vi.fn(async (_agentId: string, response: PlanReviewResponse) => {
+      if (response.resolution === 'save') review = { ...review, draft: response.draft, draftVersion: (response.draftVersion ?? 0) + 1 };
+      return review;
+    });
+    await wrapper.setProps({ agent: { ...wrapper.props('agent'), backend: 'cursor', backendSession: { kind: 'cursor', sessionId: 'session' }, planReview: review }, updatePlanReview });
+    expect(wrapper.get('h1').text()).toBe('Translation');
+    await wrapper.findAll('input[type="radio"]')[1]!.setValue();
+    await wrapper.get('button[aria-label="Comment on this section: French text"]').trigger('click');
+    await wrapper.get('textarea').setValue('Keep the English README.');
+    await wrapper.findAll('button').find(button => button.text() === 'Revise')!.trigger('click');
+    await flushPromises();
+    expect(updatePlanReview.mock.calls.map(([id, response]) => [id, response.resolution])).toEqual([['agent-1', 'save'], ['agent-1', 'revise']]);
+    expect(updatePlanReview.mock.calls[0]![1].draft).toMatchObject({ comments: [expect.objectContaining({ body: 'Keep the English README.' })], choices: [expect.objectContaining({ selected: ['Add README.fr.md'], confirmed: true })] });
   });
 
   it('renders conversation images as independently closable workspace tabs', async () => {

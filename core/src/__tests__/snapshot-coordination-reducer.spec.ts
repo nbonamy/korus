@@ -61,6 +61,27 @@ describe('snapshot coordination reducer', () => {
     expect(snapshot.backendApprovals['agent-1']).toEqual([]);
   });
 
+  it.each(['cancelled', 'allow', 'deny', 'revise'] as const)('settles the matching native plan request on %s without resolving newer reviews', kind => {
+    const snapshot = createEmptySnapshot();
+    const review = { id: 'review', conversationId: 'session', turnId: 'turn', requestId: 'plan', markdown: '# Plan', status: 'pending' as const };
+    const agent = { id: 'agent-1', name: 'Agent', folder: null, backend: 'cursor' as const, status: { type: 'idle' as const }, createdAt: '', updatedAt: '', planReview: review };
+    snapshot.agents.push(agent);
+    const outcome = kind === 'cancelled' ? { kind: 'cancelled' as const }
+      : { kind: 'decision' as const, decision: kind === 'allow' ? 'allow' as const : 'deny' as const, ...(kind === 'revise' ? { feedback: 'Keep English.' } : {}) };
+    const resolve = (conversationId: string, id = 'plan') => applyMainEventToSnapshot(snapshot, event({
+      type: 'agentRequest.resolved', agentId: agent.id, backend: 'cursor', conversationId, payload: { id, outcome },
+    }));
+    resolve('older-session');
+    resolve('session', 'older-request');
+    expect(agent.planReview.status).toBe('pending');
+    Object.assign(agent.planReview, { deliveryPending: true });
+    resolve('session');
+    expect(agent.planReview.status).toBe('pending'); // The sidebar service owns its in-flight decision.
+    Object.assign(agent.planReview, { deliveryPending: false });
+    resolve('session');
+    expect(agent.planReview.status).toBe(kind === 'allow' ? 'accept' : kind === 'revise' ? 'revise' : 'cancel');
+  });
+
   it('stores turn diff summaries without rewriting provider messages', () => {
     const snapshot = createEmptySnapshot();
     applyMainEventToSnapshot(snapshot, event({

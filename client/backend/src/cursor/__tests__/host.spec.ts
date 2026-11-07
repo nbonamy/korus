@@ -459,6 +459,46 @@ describe('Cursor ACP host transport boundary', () => {
       await expect(server.handleMessage({jsonrpc:'2.0',id:'duplicate',method:'agent/request/respond',params:{response}})).rejects.toThrow(/no longer pending/i);
     } finally {await server.close();}
   });
+  it.each(['accept','cancel','revise','interrupt'] as const)('uses the shared sidebar review for a blocking native Cursor plan: %s', async resolution => {
+    const state=createTestSnapshot();state.agents=[{...agent}];state.activeAgentId=agent.id;state.teams[0]!.agentIds=[agent.id];state.teams[0]!.activeAgentId=agent.id;
+    state.providerConnections=[{backend:'cursor',installed:true,connected:true,checking:false}];
+    const server=new AppBackendServer({version:'fixture',snapshot:state,driverRpc:new BackendDriverRpc(new Map([['cursor',host]]))});
+    const respond=(response:object)=>server.handleMessage({jsonrpc:'2.0',id:'sidebar',method:'agent/planReview/respond',params:{agentId:agent.id,response}});
+    try {
+      await server.handleMessage({jsonrpc:'2.0',id:'prompt',method:'agent/prompt/send',params:{agentId:agent.id,prompt:'extension',expectedSessionId:null,options:{planMode:true}}});
+      await vi.waitFor(()=>expect(state.agents[0]!.planReview?.status).toBe('pending'));
+      const review=state.agents[0]!.planReview!;
+      expect(review).toMatchObject({markdown:'# Synthetic plan',requestId:(await snapshot()).clientRequests[0]!.id});
+      expect((await wire()).some(call=>call.method==='session/set_config_option' && call.params.value==='plan')).toBe(true);
+      if(resolution==='revise') {
+        const draft={comments:[{id:'comment',sectionId:'section',quote:'Synthetic plan',body:'Keep English.'}],choices:[{id:'choice',quote:'Language',selected:['French file'],confirmed:true}]};
+        await respond({reviewId:review.id,resolution:'save',draftVersion:0,draft});
+        await writeFile(path.join(root,'revise-plan'),'');
+        await respond({reviewId:review.id,resolution:'revise',draftVersion:1});
+        await vi.waitFor(()=>expect(state.agents[0]!.planReview?.markdown).toBe('# Revised synthetic plan'));
+        const rejection=(await wire()).find(call=>call.id===2&&call.result)?.result;
+        expect(rejection).toMatchObject({outcome:{outcome:'rejected',reason:expect.stringContaining('Keep English.')}});
+        expect(rejection.outcome.reason).toContain('French file');
+        await respond({reviewId:state.agents[0]!.planReview!.id,resolution:'accept'});
+      } else if (resolution === 'interrupt') await host.interrupt(agent);
+      else await respond({reviewId:review.id,resolution});
+      await vi.waitFor(()=>expect(completions()).toHaveLength(1));
+      expect(state.agents[0]!.planReview?.status).toBe(resolution==='cancel'||resolution==='interrupt'?'cancel':'accept');
+      expect((await wire()).filter(call=>call.method==='session/prompt')).toHaveLength(1);
+      expect((await snapshot()).clientRequests).toStrictEqual([]);
+    } finally {await server.close();}
+  });
+  it('publishes ordinary native Plan-mode Markdown to the shared interactive sidebar', async () => {
+    const state=createTestSnapshot();state.agents=[{...agent}];state.activeAgentId=agent.id;state.teams[0]!.agentIds=[agent.id];state.teams[0]!.activeAgentId=agent.id;
+    state.providerConnections=[{backend:'cursor',installed:true,connected:true,checking:false}];
+    const server=new AppBackendServer({version:'fixture',snapshot:state,driverRpc:new BackendDriverRpc(new Map([['cursor',host]]))});
+    try {
+      await server.handleMessage({jsonrpc:'2.0',id:'prompt',method:'agent/prompt/send',params:{agentId:agent.id,prompt:'markdown-plan',expectedSessionId:null,options:{planMode:true}}});
+      await vi.waitFor(()=>expect(state.agents[0]!.planReview?.status).toBe('pending'));
+      expect(state.agents[0]!.planReview).toMatchObject({markdown:'# Translation\n\n## Where should French live?\n- ( ) Replace English\n- ( ) Add README.fr.md'});
+      expect(state.agents[0]!.planReview?.requestId).toBeUndefined();
+    } finally {await server.close();}
+  });
   it('exposes a once-only plan decision and cancels pending callbacks on interruption', async () => {
     const first = await host.sendPrompt(agent, 'extension');
     await vi.waitFor(async () => expect((await snapshot()).clientRequests).toHaveLength(1));

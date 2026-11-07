@@ -127,6 +127,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
         ...(!config.noOnce?[{optionId:'native-mcp-once',kind:'allow_once'}]:[]),{optionId:'native-mcp-always',kind:'allow_always'},{optionId:'native-mcp-reject',kind:'reject_once'}
       ]}});return;
     }
+    if (mode === 'markdown-plan') { update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:'# Translation\n\n## Where should French live?\n- ( ) Replace English\n- ( ) Add README.fr.md'}});reply({stopReason:'end_turn'});return; }
     if (mode === 'permission') {
       update({ sessionUpdate: 'tool_call', toolCallId: 'shell', title: 'Write synthetic file', kind: 'execute', status: 'pending' });
       send({ id: 1, method: 'session/request_permission', params: { sessionId, toolCall: { toolCallId: 'shell', title: 'Write synthetic file', kind: 'execute', status: 'pending' }, options: [
@@ -170,5 +171,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   } else if (value.id === 4 && value.result) {
     send({method:'cursor/update_todos',params:{toolCallId:'todos',todos:[{id:'todo-1',content:'Choose mode',status:'completed'}],merge:true}});
     send({id:pending,result:{stopReason:'end_turn'}});
-  } else if (value.id === 2 && value.result) send({ id: pending, result: { stopReason: 'end_turn' } });
+  } else if (value.id === 2 && value.result && value.result.outcome.outcome === 'rejected' && value.result.outcome.reason && fs.existsSync(path.join(__dirname,'revise-plan'))) {
+    send({id:9,method:'cursor/create_plan',params:{toolCallId:'revised-plan',plan:'# Revised synthetic plan',todos:[]}});
+  } else if ((value.id === 2 || value.id === 9) && value.result) send({ id: pending, result: { stopReason: 'end_turn' } });
 });

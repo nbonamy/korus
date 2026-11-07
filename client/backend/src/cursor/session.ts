@@ -273,7 +273,7 @@ export class CursorSession {
         if (response.outcome.kind === 'cancelled') return cancelled;
         if (response.outcome.kind !== 'decision' || !['allow', 'deny'].includes(response.outcome.decision)) throw new Error('Cursor requires a once-only decision.');
         const allowed = response.outcome.decision === 'allow';
-        if (plan) { this.transcript.planDecision(params.toolCallId as string, allowed); return { outcome: { outcome: allowed ? 'accepted' : 'rejected' } }; }
+        if (plan) { this.transcript.planDecision(params.toolCallId as string, allowed); return { outcome: { outcome: allowed ? 'accepted' : 'rejected', ...(!allowed && response.outcome.feedback ? {reason:response.outcome.feedback} : {}) } }; }
         const option = Array.isArray(params.options) ? params.options.find(option => record(option) && option.kind === (allowed ? 'allow_once' : 'reject_once') && typeof option.optionId === 'string') : undefined;
         if (!allowed) this.transcript.deny(call);
         return record(option) ? { outcome: { outcome: 'selected', optionId: option.optionId } } : cancelled;

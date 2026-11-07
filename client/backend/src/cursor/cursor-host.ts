@@ -35,6 +35,8 @@ export class CursorHost implements AgentBackendDriver {
   private readonly catalogs = new Map<string, { abort: AbortController; done: Promise<ConversationSummary[]> }>();
   private readonly generations = new Map<string, number>();
   private readonly queues = new Map<string, Promise<void>>();
+  private readonly planModes = new Map<string, boolean>();
+  private readonly nativePlanTurns = new Set<string>();
   private readonly revisions = new Map<string, number>();
   private readonly listeners = new Set<(event: BackendEvent) => void>();
   private readonly usageListeners = new Set<(event: ExecutionObservation) => void>();
@@ -102,6 +104,7 @@ export class CursorHost implements AgentBackendDriver {
         celebrationsEnabled: this.options.celebrationsEnabled?.(), developerInstructions: this.options.additionalDeveloperInstructions?.(agent),
       });
       const wire = `${promptWithSelectedReferences(prompt, content)}\n\n<context id="${randomUUID()}">\n${instructions}\n</context>`;
+      this.planModes.set(agent.id, options?.planMode === true);
       const turn = session.prompt(content === undefined ? prompt : promptContentText(content), wire, content === undefined ? undefined : { promptContent: content }, attachments, (options?.attachments ?? []).map(attachment => ({ type: 'attachment', attachment: { kind: attachment.type, name: attachment.name ?? path.basename(attachment.path), path: attachment.path, ...(attachment.mimeType ? { mimeType: attachment.mimeType } : {}), ...('previewUrl' in attachment && attachment.previewUrl ? { url: attachment.previewUrl } : {}) } })));
       void turn.completion.finally(settle);
       return { backendSession: this.reference(session), turnId: turn.turnId };
@@ -202,6 +205,8 @@ export class CursorHost implements AgentBackendDriver {
     await session?.close();
     if (this.sessions.get(agentId) === session) this.sessions.delete(agentId);
     await this.opening.get(agentId)?.done.catch(() => {});
+    this.planModes.delete(agentId);
+    for (const key of this.nativePlanTurns) if (JSON.parse(key)[0] === agentId) this.nativePlanTurns.delete(key);
   }
   async close(): Promise<void> {
     this.closed = true;
@@ -215,6 +220,8 @@ export class CursorHost implements AgentBackendDriver {
     await Promise.allSettled([...this.catalogs.values()].map(value => value.done));
     await Promise.allSettled([...this.readers.values()].map(value => value.done));
     await this.invalidating;
+    this.planModes.clear();
+    this.nativePlanTurns.clear();
     this.listeners.clear();
     this.usageListeners.clear();
   }
@@ -264,6 +271,25 @@ export class CursorHost implements AgentBackendDriver {
     this.emit({ ...identity, type: 'cursor.conversationEventReceived', payload: { revision: this.nextRevision(event.agentId), event } });
     if (event.type === 'request.created') this.emit({ ...identity, type: 'agentRequest.created', payload: { request: requestFromClientRequest(event.payload.request, { conversationId: event.sessionId, turnId: event.turnId }) } });
     else if (event.type === 'request.resolved') this.emit({ ...identity, type: 'agentRequest.resolved', payload: event.payload });
+    if (event.type === 'request.created' && event.payload.request.kind === 'confirm_tool' && event.payload.request.payload.confirmation.toolName === 'create_plan') {
+      const request = event.payload.request;
+      this.nativePlanTurns.add(JSON.stringify([event.agentId, event.turnId]));
+      this.emit({ ...identity, type: 'plan.readyForReview', payload: {
+        markdown: request.payload.confirmation.argumentsPreview, itemId: request.id, requestId: request.id,
+      } });
+    }
+    if (event.type === 'turn.completed') {
+      const native = this.nativePlanTurns.delete(JSON.stringify([event.agentId, event.turnId]));
+      const planning = this.planModes.get(event.agentId);
+      this.planModes.delete(event.agentId);
+      if (planning && !native && event.payload.turn.status === 'completed') {
+        const markdown = current.snapshot.messages
+          .filter(message => message.turnId === event.turnId && message.role === 'assistant')
+          .flatMap(message => message.parts).filter(part => part.type === 'text')
+          .map(part => part.text).join('\n\n').trim();
+        if (markdown) this.emit({ ...identity, type: 'plan.readyForReview', payload: { markdown, itemId: `cursor-plan:${event.turnId}` } });
+      }
+    }
     if (event.type === 'turn.started') this.emit({ ...identity, type: 'agent.statusChanged', payload: { type: 'working' } });
     if (event.type === 'turn.completed') this.emit({ ...identity, type: 'agent.statusChanged', payload: event.payload.turn.status === 'failed' ? { type: 'error', message: event.payload.error ?? 'Cursor turn failed.' } : { type: 'idle' } });
     if (event.type === 'turn.completed') this.observeUsage(event, event.payload.turn.status);

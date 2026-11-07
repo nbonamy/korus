@@ -157,7 +157,7 @@ type AppEvent =
       type: 'plan.readyForReview';
       agentId: string;
       turnId: string;
-      payload: { markdown: string; itemId?: string };
+      payload: { markdown: string; itemId?: string; requestId?: string };
     }>
   | EventWith<{
       type: 'plan.reviewResolved';

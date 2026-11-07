@@ -81,6 +81,13 @@ export function applyCoordinationEventToSnapshot(
   if (event.type === 'agentRequest.resolved') {
     const pending = snapshot.agentRequests?.[event.agentId]?.find((request) => request.id === event.payload.id);
     if (pending && event.conversationId && pending.conversationId !== event.conversationId) return;
+    const review = snapshot.agents.find(agent => agent.id === event.agentId)?.planReview;
+    if (review?.requestId === event.payload.id && review.status === 'pending' && !review.deliveryPending &&
+        review.conversationId === event.conversationId) {
+      const outcome = event.payload.outcome;
+      review.status = outcome.kind === 'decision' && outcome.decision === 'allow' ? 'accept'
+        : outcome.kind === 'decision' && outcome.feedback ? 'revise' : 'cancel';
+    }
     if (snapshot.agentRequests) snapshot.agentRequests[event.agentId] = (snapshot.agentRequests[event.agentId] ?? []).filter((request) => request.id !== event.payload.id);
     snapshot.backendApprovals[event.agentId] = (snapshot.backendApprovals[event.agentId] ?? [])
       .filter((candidate) => candidate.id !== event.payload.id);

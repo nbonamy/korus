@@ -141,9 +141,15 @@ prompt admission and restores agent mode for a normal follow-up. Continuation
 uses the saved native session and the same serialized prompt path. Model selection preserves native config values
 and requires a matching native acknowledgment before prompt admission;
 trusted local attachments become native content blocks. Configured model choice
-is not evidence of the served model or billing. Permission callbacks and plan
-proposals become once-only app tool confirmations; duplicate and stale responses
-are rejected, and interruption or teardown cancels pending callbacks. The session-injected
+is not evidence of the served model or billing. Permission callbacks enter the daemon request registry and become once-only app
+tool confirmations. Duplicate and stale responses are rejected, and interruption
+or teardown cancels pending callbacks. Plan-mode Markdown and native plan proposals
+open the shared sidebar review, including interactive choices and section comments.
+Completed Markdown proposals use follow-up prompts for revision and implementation;
+blocking native proposals receive the decision through their existing request.
+Revision feedback includes saved comments and confirmed choices. Native request
+cancellation settles its review; saved content survives restart without reviving
+a process-owned approval callback. The session-injected
 Korus MCP server is preapproved only through a current-turn tool-call identity,
 using the native once-only option. Display titles, other MCP servers and native
 shell/file tools do not grant that authorization. Native edits

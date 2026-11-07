@@ -18,6 +18,7 @@ export type PlanReview = {
   conversationId: string | null;
   turnId: string;
   itemId?: string;
+  requestId?: string;
   markdown: string;
   status: 'pending' | PlanReviewResolution;
   draft?: PlanReviewDraft;
@@ -54,6 +55,7 @@ export function planReviewFromEvent(
     conversationId,
     turnId: event.turnId,
     ...(event.payload.itemId ? { itemId: event.payload.itemId } : {}),
+    ...(event.payload.requestId ? { requestId: event.payload.requestId } : {}),
     markdown: event.payload.markdown,
     status: 'pending',
     ...(agent.planReview?.conversationId === conversationId
@@ -84,6 +86,7 @@ export function isPlanReview(value: unknown): value is PlanReview {
     typeof review.turnId === 'string' &&
     typeof review.markdown === 'string' &&
     (review.itemId === undefined || typeof review.itemId === 'string') &&
+    (review.requestId === undefined || typeof review.requestId === 'string') &&
     ['pending', 'accept', 'revise', 'cancel'].includes(review.status as string) &&
     (review.draft === undefined || isPlanReviewDraft(review.draft)) &&
     (review.draftVersion === undefined ||

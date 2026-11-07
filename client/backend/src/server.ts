@@ -100,7 +100,7 @@ import { AgentPlanReviewService } from './agents/agent-plan-review-service';
 import { AgentThreadFlagService } from './agents/agent-thread-flag-service';
 import type { PlanReviewResponse } from '@workspace/core/plan-review';
 import { normalizeThreadFlags, type ThreadFlagId, type ThreadFlagResponse } from '@workspace/core/thread-flags';
-import { agentConversationId, planReviewFromEvent } from '@workspace/core/plan-review';
+import { agentConversationId, planReviewFromEvent, planReviewFeedback } from '@workspace/core/plan-review';
 import { isAgentRequestResponse, type AgentRequestResponse } from '@workspace/core/agent-request';
 import { AgentWorkspaceService } from './agents/agent-workspace-service';
 import { AgentConversationService } from './agents/agent-conversation-service';
@@ -833,6 +833,18 @@ export class AppBackendServer {
       },
     });
     this.planReviews = new AgentPlanReviewService({
+      nativeDecision: (agent, review) => agent.backend === 'cursor' && review.requestId ? async response => {
+        const outcome: AgentRequestResponse['outcome'] = response.resolution === 'cancel'
+          ? { kind: 'cancelled' }
+          : {
+              kind: 'decision', decision: response.resolution === 'accept' ? 'allow' : 'deny',
+              ...(response.resolution === 'revise' ? { feedback: response.feedback?.trim() || planReviewFeedback(review) } : {}),
+            };
+        const answer = { agentId: agent.id, id: review.requestId!, outcome };
+        await this.agentRequests.respond(answer, async owner => {
+          await this.requireDriverRpc().handle(backendMethods.driverAgentRequestRespond, { backend: owner.backend, response: answer });
+        });
+      } : undefined,
       persist: () => this.persistAndEmitSnapshot(),
       submit: (agent, prompt, planMode) => this.agentPrompts.sendAndWaitForAcceptance(agent, prompt, { planMode }),
       emit: (event) => this.applyAndEmitBackendEvent(event),

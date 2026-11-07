@@ -57,6 +57,15 @@ describe('saved structured plan migration', () => {
       expect(JSON.parse(await readFile(filename, 'utf8')).data.agents[0]).not.toHaveProperty('interactivePlan');
     } finally { await rm(home, { recursive: true, force: true }); }
   });
+  it('retains native plan content and feedback after restart without restoring a dead request', () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.agents[0]!.backend = 'cursor';
+    snapshot.agents[0]!.backendSession = { kind: 'cursor', sessionId: 'session' };
+    snapshot.agents[0]!.planReview = { id: 'plan', conversationId: 'session', turnId: 'turn', requestId: 'lost-request', markdown: '# Translation', status: 'pending', draft: { comments: [], choices: [{ id: 'choice', quote: 'French', selected: ['New file'], confirmed: true }] } };
+    const restored = snapshotFromPersistedState(persistedStateFromSnapshot(snapshot)).agents[0]!.planReview!;
+    expect(restored).toMatchObject({ markdown: '# Translation', status: 'cancel', canApprove: false, draft: snapshot.agents[0]!.planReview.draft });
+    expect(snapshot.agents[0]!.planReview.status).toBe('pending');
+  });
   it('ignores foreign saved plan ownership', () => {
     const f = fixture();
     f.legacy.conversationId = 'other';

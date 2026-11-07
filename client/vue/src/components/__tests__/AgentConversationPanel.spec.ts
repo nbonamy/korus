@@ -116,6 +116,11 @@ describe('AgentConversationPanel', () => {
       await wrapper.get('button[title="Interrupt"]').trigger('click');
       expect(actions.interrupt).toHaveBeenCalledWith(agent.id);
       view.cursorSnapshot = { ...view.cursorSnapshot!, clientRequests: [{
+        id: 'sidebar-plan', kind: 'confirm_tool', payload: { confirmation: { integrationId: 'cursor', integrationName: 'Cursor', toolName: 'create_plan', summary: 'Review Cursor plan', argumentsPreview: '# Translation', allowAlways: false } },
+      }] };
+      await flushPromises();
+      expect(wrapper.find('.chat-tool-confirmation').exists()).toBe(false);
+      view.cursorSnapshot = { ...view.cursorSnapshot!, clientRequests: [{
         id: 'cursor-permission', kind: 'confirm_tool', payload: { confirmation: { integrationId: 'cursor', integrationName: 'Cursor', toolName: 'Shell', summary: 'Run tests?', argumentsPreview: 'npm test', allowAlways: false, allowConversation: false } },
       }] };
       await flushPromises();
