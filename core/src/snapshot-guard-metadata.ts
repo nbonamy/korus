@@ -1,3 +1,4 @@
+import { isProviderSafetyReview } from './provider-safety-block';
 import { isDesignWorkspace } from './design';
 import { isExecutionSelection } from './execution-selection';
 import { isPromptContent } from './snapshot-guard-collections';
@@ -167,7 +168,7 @@ function isAgentStatus(value: unknown): boolean {
     case 'awaitingInput':
       return optional(value, 'detail', isAppText);
     case 'error':
-      return isAppText(value.message);
+      return isAppText(value.message) && optional(value, 'safetyReview', isProviderSafetyReview);
     default:
       return false;
   }

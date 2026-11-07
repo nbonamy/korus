@@ -10,6 +10,7 @@ export type AgentAttention = 'needsInput' | 'unread';
 export function missionAgentIds(mission: Mission): string[] {
   const ids = new Set<string>();
   for (const run of mission.execution?.runs ?? []) if (run.workerId) ids.add(run.workerId);
+  for (const delivery of mission.execution?.deliveries ?? []) ids.add(delivery.agentId);
   for (const agentId of Object.values(mission.stageAgentIds ?? {})) if (agentId) ids.add(agentId);
   return [...ids];
 }

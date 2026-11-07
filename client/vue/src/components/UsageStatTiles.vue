@@ -41,7 +41,7 @@ const turns = computed(() =>
   props.summary.rows.reduce((n, row) => n + row.started, 0),
 );
 const tokensPerDay = computed(() => {
-  const total = sumValues(props.summary.rows.map((row) => row.tokens?.total));
+  const total = sumValues(props.summary.rows.map((row) => row.tokens?.total ?? 0));
   return total == null ? null : total / props.periodDays;
 });
 const costPerDay = computed(() => {

@@ -4,6 +4,7 @@
       v-if="contextMenuAgentId"
       :share-available="Boolean(contextMenuAgentIsLocal && supportsConversationSharing(contextMenuAgent))"
       :fork-disabled="!canForkContextMenuAgent"
+      :handoff-disabled="contextMenuAgent?.status.type !== 'idle'"
       :compress-visible="canReplaceContextMenuConversation"
       :compress-disabled="!canCompressContextMenuAgent"
       :compact-disabled="!canCompactContextMenuAgent"

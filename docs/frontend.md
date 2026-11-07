@@ -194,6 +194,7 @@ Search by behavior first.
 | Need | Use | Location |
 | --- | --- | --- |
 | Action, checkbox/radio, separator, submenu rows | `AppMenu` | `client/vue/src/shared/menu/` |
+| Counted multi-select filter buttons (normal click selects one; Cmd/Ctrl toggles) | `CountedFilterRow` | `client/vue/src/shared/` |
 | Pointer-positioned context menu | `AppContextMenu` | `client/vue/src/shared/menu/` |
 | Application launcher and icons | `OpenInControl` | `client/vue/src/shared/` |
 | Product glyphs (incl. GitHub) | app icon catalog | `client/vue/src/shared/icons/app-icons.ts` |

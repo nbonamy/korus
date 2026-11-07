@@ -52,6 +52,35 @@ afterEach(() => {
 });
 
 describe('AppShell dialogs and commands', () => {
+  it('does not open handoff from a native command for a safety-blocked conversation', async () => {
+    let listener: (command: AppCommand) => void = () => undefined;
+    window.app = { onAppCommand: vi.fn(next => { listener = next; return () => undefined; }), onEvent: vi.fn(() => vi.fn()) } as Partial<AppApi> as AppApi;
+    const snapshot = createInitialSnapshot();
+    snapshot.agents[0]!.status = { type: 'error', message: 'This request was blocked by our safety systems.' };
+    const wrapper = mountShell({ snapshot });
+    try {
+      listener({ type: 'handoff-active-agent' }); await nextTick();
+      expect(wrapper.findComponent({ name: 'AgentHandoffDialog' }).exists()).toBe(false);
+    } finally { wrapper.unmount(); }
+  });
+
+  it('toggles a provider safety-block preview without changing the agent or contacting its provider', async () => {
+    let listener: (command: AppCommand) => void = () => undefined;
+    const sendPrompt = vi.fn();
+    window.app = { onAppCommand: vi.fn(next => { listener = next; return () => undefined; }), onEvent: vi.fn(() => vi.fn()), sendPrompt } as Partial<AppApi> as AppApi;
+    const snapshot = createInitialSnapshot();
+    const status = snapshot.agents[0]!.status;
+    const wrapper = mountShell({ snapshot, stubAgentWorkspace: false, realConversationPane: true });
+    try {
+      listener({ type: 'debug-provider-safety-block' }); await nextTick();
+      expect(wrapper.get('.conversation-pane__safety-block pre').text()).toBe('This request was blocked by our safety systems. Reason: Potentially unintended activity.');
+      expect(snapshot.agents[0]!.status).toStrictEqual(status);
+      expect(sendPrompt).not.toHaveBeenCalled();
+      listener({ type: 'debug-provider-safety-block' }); await nextTick();
+      expect(wrapper.find('.conversation-pane__safety-block').exists()).toBe(false);
+    } finally { wrapper.unmount(); }
+  });
+
   it.each(['codex', 'claude'] as const)('loads the selected %s summary turn through the desktop action without fetching other history', async (backend) => {
     const snapshot = createInitialSnapshot(); const agent = snapshot.agents[0]!;
     const turn = { id: 'older-turn', itemsView: 'summary' as const, status: 'completed' as const, error: null, willRetry: false,
@@ -525,10 +554,11 @@ describe('AppShell dialogs and commands', () => {
     expect(getAgentGitDiff).toHaveBeenCalledWith('agent-dina');
     expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toStrictEqual(['Changes', 'Browser']);
 
-    // Plain Command-W is the window's; closing an agent deletes it, so it takes Shift.
+    // Closing windows and the old agent shortcut must not close an agent.
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', metaKey: true, cancelable: true }));
-    expect(wrapper.emitted('close-agent')).toBeUndefined();
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'D', metaKey: true, shiftKey: true, cancelable: true }));
+    expect(wrapper.emitted('close-agent')).toBeUndefined();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', metaKey: true, cancelable: true }));
     window.dispatchEvent(new KeyboardEvent('keydown', { key: '`', code: 'Backquote', metaKey: true, cancelable: true }));
     expect(wrapper.emitted('select-team')).toBeUndefined();
     window.dispatchEvent(new KeyboardEvent('keydown', { key: '`', code: 'Backquote', ctrlKey: true, cancelable: true }));

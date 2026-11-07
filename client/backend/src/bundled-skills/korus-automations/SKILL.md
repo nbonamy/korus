@@ -5,6 +5,8 @@ description: Schedule explicitly requested recurring prompts in Korus.
 
 # Recurring prompts
 
+- Inspect existing schedules with list-automations. Pass id to read the full prompt. Use exact target IDs and targetInfo.isCurrentConversation; a name such as main does not identify this conversation.
+- Edit only on explicit user request with update-automation. Read first and pass updatedAt as expectedUpdatedAt. Omitted fields, target and execution history are preserved. After a stale-version error, inspect again before retrying.
 - Use create-automation only for an explicit scheduling request. Clarify recurrence, timezone and destination.
 - Calendar time: RRULE without DTSTART + IANA timeZone; intervalMinutes is elapsed time, not a calendar substitute. Daily 8 AM Chicago:
 

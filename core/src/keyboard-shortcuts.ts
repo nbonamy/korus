@@ -39,8 +39,7 @@ export const keyboardShortcuts: readonly KeyboardShortcut[] = [
   ...Array.from({ length: 9 }, (_, index): KeyboardShortcut => ({ id: `agent${index + 1}`, group: 'agents', shell: meta(String(index + 1)), workspace: true, agent: true })),
   { id: 'duplicate', group: 'agents', accelerator: 'CommandOrControl+D', command: { type: 'duplicate-active-agent' }, shell: meta('d'), native: true, workspace: true, agent: true },
   { id: 'restart', group: 'agents', command: { type: 'restart-active-agent' }, shell: meta('r'), workspace: true, agent: true },
-  // Closing an agent deletes it, so it sits behind Shift; plain Close is the window.
-  { id: 'closeAgent', group: 'agents', accelerator: 'CommandOrControl+Shift+D', command: { type: 'close-active-agent' }, shell: meta('d', true), native: true, workspace: true, agent: true },
+  { id: 'closeAgent', group: 'agents', accelerator: 'CommandOrControl+Backspace', command: { type: 'close-active-agent' }, shell: meta('Backspace'), native: true, workspace: true, agent: true },
   { id: 'edit', group: 'agents', accelerator: 'CommandOrControl+E', command: { type: 'edit-active-agent' }, native: true, workspace: true, agent: true },
   { id: 'compact', group: 'agents', accelerator: 'CommandOrControl+Shift+K', command: { type: 'compact-active-session' }, native: true, workspace: true, agent: true, idleSession: true },
   { id: 'saveDraft', group: 'agents', accelerator: 'CommandOrControl+Shift+X', command: { type: 'save-active-prompt-draft' }, shell: meta('x', true), native: true, workspace: true, agent: true },

@@ -1,4 +1,5 @@
-import { flushPromises, mount } from '@vue/test-utils';
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
+import { ElTooltip } from 'element-plus';
 import { nextTick } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import SettingsMenu from '../SettingsMenu.vue';
@@ -101,6 +102,8 @@ describe('SettingsMenu', () => {
   });
 
   it('flags quotas that are off their pace, and almost-empty ones, without recolouring on-pace ones', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-06T12:00:00Z'));
     const halfway = Date.now() / 1000 + 150 * 60; // half of a 5 hour window has passed
     const window = (usedPercent: number, resetsAt: number | null = halfway) => ({ usedPercent, windowDurationMins: 300, resetsAt });
     const limits = (primary: ReturnType<typeof window>, secondary: ReturnType<typeof window> | null) => ({
@@ -112,13 +115,14 @@ describe('SettingsMenu', () => {
     await openMenu(wrapper);
     await flushPromises();
     expect(levels()).toEqual([['settings-menu__rate-limit-remaining--low'], ['settings-menu__rate-limit-remaining--critical']]);
-    // Well under pace is good news; on pace, slightly off pace, or no reset time to judge by: no flag.
-    getProviderUsage.mockResolvedValue(limits(window(20), window(58)));
+    // Just beyond five points on either side of pace: green below, orange above.
+    getProviderUsage.mockResolvedValue(limits(window(44.9), window(55.1)));
     await openMenu(wrapper);
     await openMenu(wrapper);
     await flushPromises();
-    expect(levels()).toEqual([['settings-menu__rate-limit-remaining--ahead'], []]);
-    getProviderUsage.mockResolvedValue(limits(window(40), window(50)));
+    expect(levels()).toEqual([['settings-menu__rate-limit-remaining--ahead'], ['settings-menu__rate-limit-remaining--low']]);
+    // Exactly five points either side stays neutral.
+    getProviderUsage.mockResolvedValue(limits(window(45), window(55)));
     await openMenu(wrapper);
     await openMenu(wrapper);
     await flushPromises();
@@ -129,6 +133,62 @@ describe('SettingsMenu', () => {
     await flushPromises();
     expect(levels()).toEqual([[]]);
     wrapper.unmount();
+  });
+
+  it('shows the time equivalent of the pace gap on hover and keyboard focus', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(new Date('2026-11-06T12:00:00Z'));
+    const now = Date.now() / 1000;
+    const getProviderUsage = vi.fn().mockResolvedValue({
+      primary: { label: 'Gemini', usedPercent: 4, windowDurationMins: 10_080, resetsAt: now + 147 * 3600 },
+      secondary: { usedPercent: 70, windowDurationMins: 300, resetsAt: now + 150 * 60 },
+    });
+    setElectronTestClient({ getProviderUsage });
+    const wrapper = mountMenu(undefined, { enabledBackends: ['antigravity'] }, true);
+    const tooltip = () => Array.from(document.body.querySelectorAll<HTMLElement>('[role="tooltip"]'))
+      .filter(node => new DOMWrapper(node).isVisible()).map(node => node.textContent?.trim());
+    try {
+      await openMenu(wrapper);
+      await flushPromises();
+      const green = wrapper.get('.settings-menu__rate-limit-remaining--ahead');
+      await green.trigger('mouseenter');
+      await vi.advanceTimersByTimeAsync(300);
+      await flushPromises();
+      expect(tooltip()).toContain('Under pace by 14 hours');
+      await green.trigger('mouseleave');
+      await vi.advanceTimersByTimeAsync(300);
+      const orange = wrapper.get('.settings-menu__rate-limit-remaining--low');
+      expect(orange.attributes('tabindex')).toBe('0');
+      await orange.trigger('focus');
+      await vi.advanceTimersByTimeAsync(300);
+      await flushPromises();
+      expect(tooltip()).toContain('Over pace by 1 hour');
+      getProviderUsage.mockResolvedValue({
+        primary: { usedPercent: 56, windowDurationMins: 300, resetsAt: now + 150 * 60 },
+        secondary: null,
+      });
+      await openMenu(wrapper);
+      await openMenu(wrapper);
+      await flushPromises();
+      await wrapper.get('.settings-menu__rate-limit-remaining--low').trigger('mouseenter');
+      await vi.advanceTimersByTimeAsync(300);
+      await flushPromises();
+      expect(tooltip()).toContain('Over pace by 18 minutes');
+      getProviderUsage.mockResolvedValue({
+        primary: { usedPercent: 50, windowDurationMins: 300, resetsAt: now + 150 * 60 },
+        secondary: { usedPercent: 95, windowDurationMins: 300, resetsAt: now + 150 * 60 },
+      });
+      await openMenu(wrapper);
+      await openMenu(wrapper);
+      await flushPromises();
+      for (const value of wrapper.findAll('.settings-menu__rate-limit-remaining')) {
+        expect(value.attributes('tabindex')).toBeUndefined();
+        await value.trigger('mouseenter');
+        await vi.advanceTimersByTimeAsync(300);
+        expect(tooltip()).toStrictEqual([]);
+        await value.trigger('mouseleave');
+      }
+    } finally { wrapper.unmount(); }
   });
 
   it('explains the usage colors from an info control in the title row', async () => {
@@ -304,7 +364,7 @@ describe('SettingsMenu', () => {
   });
 });
 
-function mountMenu(rateLimits?: AccountRateLimits, props: { active?: boolean; account?: CodexAccount; enabledBackends?: AgentBackend[]; backendRateLimits?: AppSnapshot['backendAccountRateLimits']; providerConnections?: AppSnapshot['providerConnections'] } = {}) {
+function mountMenu(rateLimits?: AccountRateLimits, props: { active?: boolean; account?: CodexAccount; enabledBackends?: AgentBackend[]; backendRateLimits?: AppSnapshot['backendAccountRateLimits']; providerConnections?: AppSnapshot['providerConnections'] } = {}, realTooltips = false) {
   return mount(SettingsMenu, {
     attachTo: document.body,
     props: {
@@ -313,6 +373,7 @@ function mountMenu(rateLimits?: AccountRateLimits, props: { active?: boolean; ac
       rateLimits,
     },
     global: {
+      components: realTooltips ? { ElTooltip } : {},
       stubs: {
         ElPopover: {
           props: ['visible'],

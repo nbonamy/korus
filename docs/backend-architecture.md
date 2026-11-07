@@ -6,6 +6,14 @@ automations, work integrations and persistent state behind one app-owned protoco
 replacement for Codex app-server. Ownership rules live in
 [architecture.md](architecture.md); message contracts in [protocol.md](protocol.md).
 
+Provider safety stops are terminal conversation errors. The daemon preserves the
+provider details and blocked status across restarts, retains unsent prompts, and
+stops queue retries, quota continuation and automatic work recovery for that
+conversation. Provider history is preserved; the application does not unblock or
+rewrite provider safety decisions. An explicit user review can continue only
+when fresh provider findings include both an explanation and a continuation
+instruction; the backend validates that the reviewed findings are unchanged.
+
 The executable is `korusd` (`product.daemonName`). Source filenames, RPC methods,
 log and socket paths, npm scripts and launchd labels stay brand-neutral.
 
@@ -1281,6 +1289,12 @@ counts do not claim to count unknown legacy requests. Producers must explicitly
 attest a complete execution request set; otherwise coverage retains an execution
 with an unknown additional request count, even when some requests were captured.
 Execution token/timing fields keep their execution-start date and model attribution.
+Task duration includes tool execution and excludes intervals blocked on approvals or
+synchronous user questions. The daemon measures it independently of throughput and
+persists it with the execution. Longest-task summaries use that measurement, with
+recorded elapsed duration as the fallback for historical executions whose user waits
+were not recorded separately. Historical token, cost and timing observations are
+preserved.
 Cost uses request dates/models, so a cost contribution may create a group/day with
 zero execution starts. Backend-provider filters retain their existing meaning;
 API-provider grouping/filtering uses the underlying billing provider separately.
@@ -1451,6 +1465,12 @@ coarse OS value. Repeat with
 It covers UTC bucket attribution, model changes, nulls and
 content/local-dimension canaries without an endpoint. Architecture AST lint limits
 projection dependencies and rejects direct network/timer operations.
+
+Claude throughput timing consumes transient SDK response activity, including thinking
+and tool-input generation. Tool rows can appear before their inputs finish streaming;
+response generation keeps the clock active until the response ends, then outstanding
+tools pause it. These numeric signals stay in the daemon and are not persisted or
+sent to clients. Stored historical timing samples retain their recorded values.
 
 Performance reuses the ledger's additive speed samples: measured output tokens,
 active generation milliseconds, summed time to first output, and their turn

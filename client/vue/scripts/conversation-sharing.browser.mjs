@@ -24,9 +24,10 @@ try {
   // Electron's frameless title bar consumes pointer input in draggable regions.
   // A DOM-dispatched click alone cannot catch a header action that remains draggable.
   assert.equal(await share.evaluate(element => getComputedStyle(element).getPropertyValue('-webkit-app-region')), 'no-drag');
-  assert.equal(await share.innerText(), '');
+  assert.equal(await share.locator('.agent-header__guest-count').innerText(), '3');
   assert.equal(await share.locator('svg').count(), 1);
-  assert.equal(await share.getAttribute('title'), 'Share');
+  assert.equal(await share.getAttribute('title'), '3 guests connected');
+  assert.equal(await share.getAttribute('aria-description'), '3 guests connected');
   await page.screenshot({ animations: 'disabled', path: path.join(output, 'header-share.png') });
   await share.click();
   const dialog = page.getByRole('dialog');
@@ -45,7 +46,7 @@ try {
   await page.waitForFunction(() => document.querySelector('[role="switch"]')?.getAttribute('aria-checked') === 'false');
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await page.locator('.agent-sidebar__agent').click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Share with guests', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Share', exact: true }).click();
   await dialog.getByRole('button', { name: 'Copy link', exact: true }).waitFor();
   assert.deepEqual(await switches.evaluateAll(elements => elements.map(element => element.getAttribute('aria-checked'))), ['false', 'false', 'false']);
   assert.deepEqual(await page.locator('.app-dialog__footer button').allTextContents(), ['Close', 'Stop sharing', 'Copy link']);
@@ -59,7 +60,7 @@ try {
   await page.setViewportSize({ width: 1200, height: 740 });
   await dialog.getByRole('button', { name: 'Stop sharing', exact: true }).click();
   await page.locator('.agent-sidebar__agent').click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Share with guests', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Share', exact: true }).click();
   await dialog.getByRole('button', { name: 'Share', exact: true }).waitFor();
   await page.screenshot({ animations: 'disabled', path: path.join(output, 'inactive-share-dialog.png') });
   // The clipboard is the host boundary: failed copying must retain the created share.
@@ -75,6 +76,25 @@ try {
   await dialog.getByRole('button', { name: 'Copy link', exact: true }).click();
   await page.getByText('Invite link copied to clipboard', { exact: true }).waitFor();
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()), '[REDACTED SYNTHETIC LINK]');
+  await page.goto(`${server.resolvedUrls.local[0]}?guests=0`);
+  await page.getByRole('button', { name: 'Agent actions', exact: true }).waitFor();
+  assert.equal(await page.locator('.agent-header__share').count(), 1);
+  assert.equal(await page.locator('.agent-header__guest-count').count(), 0);
+  await page.screenshot({ animations: 'disabled', path: path.join(output, 'header-no-guests.png') });
+  await page.getByRole('button', { name: 'Share', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Stop sharing', exact: true }).waitFor();
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+  assert.equal(await page.locator('.el-message--primary').count(), 0);
+  await page.evaluate(() => window.dispatchEvent(new Event('synthetic-guest-joined')));
+  const joinToast = page.locator('.el-message--primary');
+  await joinToast.getByText('A guest joined “Guest sharing demo”.', { exact: true }).waitFor();
+  await page.waitForFunction(() => {
+    const toast = document.querySelector('.el-message--primary');
+    return toast && getComputedStyle(toast).opacity === '1' && toast.getBoundingClientRect().top >= 0;
+  });
+  assert.equal(await joinToast.locator('.el-message-icon--primary').count(), 1);
+  assert.equal(await joinToast.locator('.el-message__content').evaluate(element => getComputedStyle(element).color), await share.evaluate(element => getComputedStyle(element).color));
+  await page.screenshot({ animations: 'disabled', path: path.join(output, 'guest-joined-toast.png') });
   for (const mode of ['queue', 'steer', 'readonly']) {
     await page.goto(`${server.resolvedUrls.local[0]}?guest=${mode}`);
     const label = mode === 'readonly' ? 'Send prompt' : mode === 'steer' ? 'Steer prompt' : 'Queue prompt';
@@ -90,6 +110,6 @@ try {
     assert.equal(request.followUpBehavior, mode === 'readonly' ? undefined : mode);
   }
   assert.deepEqual(errors, []);
-  await writeFile(path.join(output, 'capture.json'), JSON.stringify({ fixture: 'production owner and guest components; synthetic state and control port; no provider or relay', credentials: 'redacted fixture; no real bearer generated', entries: ['persistent header Share', 'conversation context menu Share with guests'], screenshots: ['header-share.png', 'guest-access-default.png', 'guest-access-enabled.png', 'guest-access-small-window.png', 'inactive-share-dialog.png', 'active-share-copy-error.png', 'guest-send-queue.png', 'guest-send-steer.png', 'guest-send-readonly.png'], checks: ['read-only by default', 'individual write access', 'revocation', 'header and context-menu entry points', 'small-window overflow', 'create and stop sharing', 'clipboard failure and retry', 'guest queue and steer actions', 'read-only suggestions omit queue/steer'], pageErrors: errors }, null, 2));
+  await writeFile(path.join(output, 'capture.json'), JSON.stringify({ fixture: 'production owner and guest components; synthetic state and control port; no provider or relay', credentials: 'redacted fixture; no real bearer generated', entries: ['persistent header Share', 'conversation context menu Share with guests'], screenshots: ['header-share.png', 'header-no-guests.png', 'guest-joined-toast.png', 'guest-access-default.png', 'guest-access-enabled.png', 'guest-access-small-window.png', 'inactive-share-dialog.png', 'active-share-copy-error.png', 'guest-send-queue.png', 'guest-send-steer.png', 'guest-send-readonly.png'], checks: ['live guest count; zero hides only the badge', 'blue guest-joined info toast', 'read-only by default', 'individual write access', 'revocation', 'header and context-menu entry points', 'small-window overflow', 'create and stop sharing', 'clipboard failure and retry', 'guest queue and steer actions', 'read-only suggestions omit queue/steer'], pageErrors: errors }, null, 2));
   console.log(`Redacted captures saved to ${output}`);
 } finally { await browser?.close(); await server.close(); }

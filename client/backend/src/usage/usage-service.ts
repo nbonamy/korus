@@ -96,6 +96,13 @@ export class UsageService {
   }
   observe(event: ExecutionObservation): void {
     const key = JSON.stringify([event.provider, event.sessionId, event.turnId]);
+    if (event.generation) {
+      if (this.executions.get(event.agentId) === key) {
+        if (event.generation === "output") this.clock.output(event.agentId);
+        else this.clock.generation(event.agentId, event.generation === "started");
+      }
+      return;
+    }
     if (event.phase === "started" && !this.executions.has(event.agentId)) {
       // The clock starts at prompt submission, falling back to the first observation.
       const submitted = this.submitted.get(event.agentId);
@@ -116,7 +123,9 @@ export class UsageService {
       this.executions.get(event.agentId) === key
     ) {
       this.executions.delete(event.agentId);
+      const taskDurationMs = this.clock.taskDurationMs(event.agentId);
       const timing = this.clock.finish(event.agentId);
+      if (taskDurationMs !== null) event = { ...event, taskDurationMs };
       if (timing) event = { ...event, timing };
     }
     const agent = this.agent(event.agentId);

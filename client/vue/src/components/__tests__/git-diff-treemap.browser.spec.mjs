@@ -209,8 +209,8 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
       assert.ok(geometry.scrollWidth <= geometry.width + 1, 'the pane must not scroll horizontally');
       const filters = await page.locator('.diff-treemap__filters button').evaluateAll(buttons => buttons.map(button => ({
         top: button.getBoundingClientRect().top,
-        labelVisible: button.querySelector('.diff-treemap__filter-label').getBoundingClientRect().width > 0,
-        countVisible: button.querySelector('.diff-treemap__filter-count').getBoundingClientRect().width > 0,
+        labelVisible: button.querySelector('.counted-filter__label').getBoundingClientRect().width > 0,
+        countVisible: button.querySelector('.counted-filter__count').getBoundingClientRect().width > 0,
       })));
       assert.ok(filters.every(filter => Math.abs(filter.top - filters[0].top) < 1), 'type filters must stay on one row');
       if (width >= 460) assert.ok(filters.every(filter => filter.labelVisible && filter.countVisible), 'panes with sufficient space retain labels and counts');
@@ -262,11 +262,44 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
     assert.equal(await tiles.last().evaluate(element => element === document.activeElement), true);
     await page.keyboard.press('Escape');
     await tooltip.waitFor({ state: 'hidden' });
-    await page.locator('.diff-treemap__filter-target').nth(1).hover();
-    await page.getByRole('tooltip').filter({ hasText: /^Code · 141$/ }).waitFor({ state: 'visible' });
     await page.getByRole('button', { name: /^Code ·/ }).click();
     assert.equal(await tiles.count(), 140);
     assert.ok((await tiles.evaluateAll(elements => elements.map(element => element.dataset.diffMapPath))).every(name => name.startsWith('src/')));
+    const kindButton = label => page.getByRole('button', { name: new RegExp(`^${label} ·`) });
+    const expectTileCount = count => page.waitForFunction(count => document.querySelectorAll('[data-diff-map-path]').length === count, count);
+    await kindButton('Documentation').click({ modifiers: ['ControlOrMeta'] });
+    await expectTileCount(155);
+    assert.equal(await kindButton('Code').getAttribute('aria-pressed'), 'true');
+    assert.equal(await kindButton('Documentation').getAttribute('aria-pressed'), 'true');
+    assert.equal(await kindButton('All').getAttribute('aria-pressed'), 'false');
+    await kindButton('Tests').click({ modifiers: ['ControlOrMeta'] });
+    await expectTileCount(195);
+    await kindButton('Code').click({ modifiers: ['ControlOrMeta'] });
+    await expectTileCount(55);
+    assert.equal(await kindButton('Code').getAttribute('aria-pressed'), 'false');
+    await kindButton('Documentation').click({ modifiers: ['ControlOrMeta'] });
+    await expectTileCount(40);
+    await kindButton('Tests').click({ modifiers: ['ControlOrMeta'] });
+    await expectTileCount(200);
+    assert.equal(await kindButton('All').getAttribute('aria-pressed'), 'true');
+    await kindButton('Documentation').click();
+    await kindButton('Other').click({ modifiers: ['ControlOrMeta'] });
+    await expectTileCount(20);
+    await page.locator('.fixture').screenshot({ path: path.join(output, 'multi-select.png') });
+    await tiles.first().click();
+    await page.locator('.git-diff-preview-panel__files').waitFor();
+    await toggleMap();
+    await expectTileCount(20);
+    assert.equal(await kindButton('Documentation').getAttribute('aria-pressed'), 'true');
+    assert.equal(await kindButton('Other').getAttribute('aria-pressed'), 'true');
+    await kindButton('All').click({ modifiers: ['ControlOrMeta'] });
+    await expectTileCount(200);
+    await kindButton('Documentation').click();
+    await kindButton('Other').click({ modifiers: ['ControlOrMeta'] });
+    await kindButton('Code').click();
+    await expectTileCount(140);
+    assert.equal(await kindButton('Documentation').getAttribute('aria-pressed'), 'false');
+    assert.equal(await kindButton('Other').getAttribute('aria-pressed'), 'false');
     await page.screenshot({ path: path.join(output, 'code-280.png') });
     const picked = await tiles.first().getAttribute('data-diff-map-path');
     await tiles.first().click();

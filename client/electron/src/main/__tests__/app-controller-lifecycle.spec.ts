@@ -1,7 +1,7 @@
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { product } from '@workspace/core/product';
 import { EventEmitter } from 'node:events';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -34,7 +34,7 @@ vi.mock('electron', async () => {
   return {
     app: Object.assign(new EventEmitter(), {
       isPackaged: true, getAppPath: () => '/test/app',
-      getPath: (name: string) => name === 'exe' ? '/Volumes/Install/Test.app/Contents/MacOS/Test' : '/test/data',
+      getPath: vi.fn((name: string) => name === 'exe' ? '/Volumes/Install/Test.app/Contents/MacOS/Test' : '/test/data'),
       isReady: () => native.ready, whenReady: vi.fn(), requestSingleInstanceLock: vi.fn(() => true),
       isInApplicationsFolder: vi.fn(() => true), moveToApplicationsFolder: vi.fn(),
       quit: vi.fn(), exit: vi.fn(), relaunch: vi.fn(), setAsDefaultProtocolClient: vi.fn(),
@@ -101,6 +101,7 @@ import { app, powerMonitor, powerSaveBlocker, BrowserWindow } from 'electron';
 import { AppController, startMainApp } from '../app-controller';
 import { AppshotsKeyMonitor } from '../appshots-key-monitor';
 import { installAppMenu } from '../app-menu';
+import { warnMain } from '../log';
 import type { DesktopAutoUpdateService } from '../auto-update';
 
 let controllers: AppController[] = [];
@@ -632,6 +633,52 @@ describe('controller desktop lifecycle', () => {
       expect(backend.request).not.toHaveBeenCalled();
     } finally {
       Object.defineProperty(app, 'isPackaged', { value: packaged, configurable: true });
+    }
+  });
+
+  it('removes obsolete browser partitions on startup while preserving the shared profile and unrelated data', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'browser-cleanup-'));
+    const partitions = path.join(root, 'Partitions');
+    const legacy = 'agent-workspace-browser-agent-old';
+    const shared = path.join(partitions, 'workspace-browser');
+    const untouched = path.join(root, 'outside');
+    const getPath = vi.spyOn(app, 'getPath').mockReturnValue(root);
+    vi.mocked(app.whenReady).mockResolvedValue(undefined);
+    try {
+      for (const directory of [path.join(partitions, legacy, 'Cache'), shared, untouched, path.join(partitions, 'other-profile')]) await mkdir(directory, { recursive: true });
+      await writeFile(path.join(shared, 'Cookies'), 'saved login');
+      await writeFile(path.join(untouched, 'data'), 'keep');
+      await writeFile(path.join(partitions, 'agent-workspace-browser-file'), 'keep');
+      await symlink(untouched, path.join(partitions, 'agent-workspace-browser-link'), 'junction');
+      startMainApp();
+      await vi.waitFor(async () => expect((await readdir(partitions)).sort()).toStrictEqual([
+        'agent-workspace-browser-file', 'agent-workspace-browser-link', 'other-profile', 'workspace-browser',
+      ]));
+      expect(await readFile(path.join(shared, 'Cookies'), 'utf8')).toBe('saved login');
+      expect(await readFile(path.join(untouched, 'data'), 'utf8')).toBe('keep');
+      expect(native.createWindow).toHaveBeenCalledOnce();
+      app.emit('before-quit', { preventDefault: vi.fn() });
+      await vi.advanceTimersByTimeAsync(0);
+    } finally {
+      getPath.mockRestore();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('opens the app even when obsolete browser profile cleanup cannot read the partition directory', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'browser-cleanup-error-'));
+    const getPath = vi.spyOn(app, 'getPath').mockReturnValue(root);
+    vi.mocked(app.whenReady).mockResolvedValue(undefined);
+    try {
+      await writeFile(path.join(root, 'Partitions'), 'not a directory');
+      startMainApp();
+      await vi.waitFor(() => expect(warnMain).toHaveBeenCalledWith('browser', 'obsolete browser profile cleanup failed', expect.any(Object)));
+      expect(native.createWindow).toHaveBeenCalledOnce();
+      app.emit('before-quit', { preventDefault: vi.fn() });
+      await vi.advanceTimersByTimeAsync(0);
+    } finally {
+      getPath.mockRestore();
+      await rm(root, { recursive: true, force: true });
     }
   });
 

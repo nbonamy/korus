@@ -185,6 +185,39 @@ describe('ConversationPane', () => {
     expect(readConversationContent).toHaveBeenCalledExactlyOnceWith(agent.id, { sessionId: 'thread', contentId: 'a'.repeat(64), offset: 0 });
   });
 
+  it('shows a provider safety block with its original details and no automatic-resume control', async () => {
+    const detail = 'This request was blocked by our safety systems. Reason: Potentially unintended activity.';
+    const wrapper = mountPane({ controller: controllerFor(messages), agent: { ...agent, status: { type: 'error', message: `Conversation blocked by provider. Automatic retries are stopped.\n\n${detail}` } } });
+    const alert = wrapper.get('.codex-conversation-pane__footer [role="alert"]');
+    expect(alert.text()).toContain('Conversation blocked by provider');
+    expect(alert.get('pre').text()).toBe(detail);
+    expect(alert.text()).not.toContain('Automatic retries are stopped');
+    expect(alert.find('button').exists()).toBe(false);
+    expect(wrapper.find('[role="textbox"]').exists()).toBe(false);
+    expect(wrapper.find('form[aria-label="Prompt composer"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('Looking now.');
+    await wrapper.setProps({ agent: { ...agent, status: { type: 'error', message: 'Network unavailable' } } });
+    expect(wrapper.find('.conversation-pane__safety-block').exists()).toBe(false);
+    expect(wrapper.find('[role="textbox"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('shows provider findings and requires a click to continue the reviewed turn', async () => {
+    const continuation = vi.fn().mockResolvedValue({});
+    setElectronTestClient({ continueInterruptedTurn: continuation });
+    const review = { id: 'review-id', conversationId: 'thread', turnId: 'blocked', explanation: 'Review the provider finding before continuing.', canContinue: false };
+    const owner = { ...agent, status: { type: 'error' as const, message: 'This request was blocked by our safety systems.', safetyReview: review } };
+    const wrapper = mountPane({ controller: controllerFor(messages), agent: owner });
+    try {
+      expect(wrapper.get('[role="alert"]').text()).toContain(review.explanation);
+      expect(wrapper.find('button.safety-review-continue').exists()).toBe(false);
+      await wrapper.setProps({ agent: { ...owner, status: { ...owner.status, safetyReview: { ...review, canContinue: true } } } });
+      expect(continuation).not.toHaveBeenCalled();
+      await wrapper.get('button.safety-review-continue').trigger('click'); await flushPromises();
+      expect(continuation).toHaveBeenCalledExactlyOnceWith(agent.id, { id: review.id, conversationId: review.conversationId, turnId: review.turnId });
+    } finally { wrapper.unmount(); }
+  });
+
   it('shows the limit-reset notice above the composer and saves the auto-resume toggle', async () => {
     const setAutoResume = vi.fn().mockResolvedValue({});
     setElectronTestClient({ setAutoResume });
@@ -617,7 +650,7 @@ describe('ConversationPane', () => {
     await wrapper.setProps({ agent: { ...agent, threadFlags: { [id]: true } } });
     expect(wrapper.findAll('.thread-flag-affordance')).toHaveLength(1);
     expect(wrapper.get('.codex-conversation-pane__composer-shelf .thread-flag-affordance').text()).toContain('Turn this into work?');
-    for (const label of ['Continue', 'Delegate', 'Mission']) {
+    for (const label of ['Continue', 'Worktree', 'Mission']) {
       const button = wrapper.get(`button[aria-label="${label}"]`);
       expect(button.text()).toBe(label);
       expect(button.element.firstElementChild?.tagName.toLowerCase()).toBe('svg');
@@ -625,7 +658,7 @@ describe('ConversationPane', () => {
     const discard = wrapper.get('button[aria-label="Discard"]');
     expect(discard.text()).toBe('');
     expect(discard.find('svg').exists()).toBe(true);
-    for (const label of ['Continue', 'Delegate', 'Mission', 'Discard']) {
+    for (const label of ['Continue', 'Worktree', 'Mission', 'Discard']) {
       await wrapper.get(`button[aria-label="${label}"]`).trigger('click');
     }
     expect(wrapper.emitted('thread-flag')).toStrictEqual([
@@ -1139,7 +1172,7 @@ describe('ConversationPane', () => {
     const wrapper = mountPane({ controller: controllerWithAttachments([image]), agent });
 
     const annotate = wrapper.get('[aria-label="Annotate screenshot.png"]');
-    expect(annotate.find('.tabler-icon-circle-plus').exists()).toBe(true);
+    expect(annotate.find('.tabler-icon-click').exists()).toBe(true);
     await annotate.trigger('click');
     expect(wrapper.emitted('annotate-attachment')).toStrictEqual([[image]]);
 

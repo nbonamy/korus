@@ -333,6 +333,19 @@ describe('AgentSidebar actions', () => {
     expect(wrapper.find('.agent-sidebar__footer').exists()).toBe(false);
   });
 
+  it('disables handoff for a safety-blocked conversation', async () => {
+    const blocked = { ...agents[0]!, status: { type: 'error' as const, message: 'This request was blocked by our safety systems.' } };
+    const wrapper = mount(AgentSidebar, {
+      props: { agents: [blocked], activeAgentId: blocked.id, teamName: 'Team' },
+      global: { components: { ElPopover } },
+    });
+    await wrapper.get('.agent-sidebar__agent').trigger('contextmenu');
+    const item = portaledMenuItems().find(item => item.textContent?.trim() === 'Hand off')!;
+    expect(item.hasAttribute('disabled')).toBe(true);
+    await clickPortaledMenuItem('Hand off');
+    expect(wrapper.emitted('handoff-agent')).toBeUndefined();
+  });
+
   it('opens a context menu, closes it on request, and emits agent actions', async () => {
     const wrapper = mount(AgentSidebar, {
       props: {

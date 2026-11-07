@@ -241,13 +241,6 @@
   padding-bottom: var(--space-4);
 }
 
-.mission-workspace__parallel-option {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-6);
-}
-
 .mission-workspace__parallel-warning {
   margin: var(--space-2) 0 0;
   color: var(--color-text-muted);
@@ -375,3 +368,4 @@
   background: var(--color-surface-low);
   font: inherit;
 }
+.mission-workspace__filter-empty { padding: var(--space-8); color: var(--color-text-muted); text-align: center; }

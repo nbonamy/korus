@@ -7,7 +7,7 @@
       appear
     >
       <li
-        v-for="(ticket, index) in tickets"
+        v-for="{ ticket, index } in displayedTickets"
         :key="ticketKey(ticket, index)"
         class="mission-ticket-board__item"
       >
@@ -115,12 +115,15 @@ const props = withDefaults(defineProps<{
   disabled?: boolean;
   resetKey?: number;
   tickets: readonly MissionTicket[];
+  visibleTicketIndexes?: readonly number[];
 }>(), { annotatable: false, disabled: false, resetKey: 0 });
 const emit = defineEmits<{ sendComments: [comments: MissionTicketComment[]] }>();
 const { t } = useI18n();
 const selectedKey = ref("");
 const cardRefs = new Map<string, HTMLButtonElement>();
 const comments = ref<MissionTicketComment[]>([]);
+const displayedTickets = computed(() => props.tickets.map((ticket, index) => ({ ticket, index }))
+  .filter(item => !props.visibleTicketIndexes || props.visibleTicketIndexes.includes(item.index)));
 const selectedTicket = computed(() => {
   const index = props.tickets.findIndex(
     (ticket, ticketIndex) =>

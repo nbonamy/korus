@@ -306,6 +306,10 @@ function buildDebugAgentFixtures(callbacks: AppMenuCallbacks): MenuItemConstruct
       label: 'Multi-question Request',
       click: () => callbacks.sendAppCommand({ type: 'debug-user-questions' }),
     },
+    {
+      label: 'Provider Safety Block',
+      click: () => callbacks.sendAppCommand({ type: 'debug-provider-safety-block' }),
+    },
     { type: 'separator' },
     {
       label: 'Mark as Unread',

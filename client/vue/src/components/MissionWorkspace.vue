@@ -89,11 +89,17 @@
             <button class="app-button app-button--small" type="submit" data-testid="reassign-mission-member" :disabled="busy || !!activeStageRun || !replacementMemberId || !executeMission">{{ t('missions.reassignMembers') }}</button>
           </form>
           <p v-if="error || artifactError" class="mission-workspace__error" role="alert">{{ error || artifactError }}</p>
+          <MissionTaskFilters v-if="filterTickets.length" v-model:statuses="taskStatuses" :tickets="filterTickets" :items="filterItems" />
+          <div v-if="filterTickets.length && !visibleTicketIndexes.length" class="mission-workspace__filter-empty" role="status">
+            <p>{{ t('missions.taskFilters.empty') }}</p>
+            <button type="button" class="app-button app-button--small" :aria-label="t('missions.taskFilters.clear')" @click="taskStatuses = []">{{ t('missions.taskFilters.clear') }}</button>
+          </div>
           <MissionImplementationBoard
             v-if="viewedStage === 'implementation' && mission.artifacts.tickets.length"
             :agents="agents"
             :active-agent-id="conversationAgentId"
             :mission="mission"
+            :visible-ticket-indexes="visibleTicketIndexes"
             :busy="busy"
             :read-only="debugFixture"
             :open-in-available="openInAvailable"
@@ -117,6 +123,7 @@
           <section v-else-if="viewedStage === 'tickets' && visibleTickets.length" class="mission-workspace__artifact" :aria-label="t(activeRun?.draftTickets?.length && !activeRun.proposal ? 'missions.draftTickets' : viewedStage === mission.stage && activeRun?.proposal ? 'missions.proposal' : 'missions.acceptedArtifact')">
             <MissionTicketBoard
               :tickets="visibleTickets"
+              :visible-ticket-indexes="visibleTicketIndexes"
               :annotatable="viewedStage === mission.stage && Boolean(activeRun?.proposal || activeRun?.draftTickets?.length)"
               :disabled="feedbackBusy || debugFixture"
               :reset-key="feedbackReset"
@@ -225,32 +232,27 @@
     @update:model-value="visible => { if (!visible && !busy) implementationApprovalVisible = false; }"
   >
     <div class="mission-workspace__start-options">
+      <el-select v-model="implementationMode" class="mission-workspace__execution-mode" :aria-label="t('missions.implementationExecution')" :disabled="busy">
+        <el-option :label="t('missions.executionLead')" value="lead" />
+        <el-option :label="t('missions.executionPerRepository')" value="perRepository" />
+        <el-option :label="t('missions.executionMultiplePerRepository')" value="multiplePerRepository" />
+      </el-select>
       <BackendModelSelector
+        v-if="!leadExecutesImplementation"
         v-model:selection="implementationSelection"
         :agent-id="missionLead.id"
         :disabled="busy"
       />
-      <div>
-        <div class="mission-workspace__parallel-option">
-          <span>{{ t('missions.parallelImplementation') }}</span>
-          <el-switch
-            v-model="parallelImplementation"
-            :aria-label="t('missions.parallelImplementation')"
-            :aria-describedby="`mission-parallel-warning-${mission.id}`"
-            :disabled="busy"
-          />
-        </div>
-        <p :id="`mission-parallel-warning-${mission.id}`" class="mission-workspace__parallel-warning">
-          {{ t('missions.parallelImplementationWarning') }}
-        </p>
-      </div>
+      <p v-if="implementationMode === 'multiplePerRepository'" class="mission-workspace__parallel-warning">
+        {{ t('missions.parallelImplementationWarning') }}
+      </p>
       <p v-if="error" class="mission-workspace__error" role="alert">{{ error }}</p>
     </div>
     <template #footer>
       <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="implementationApprovalVisible = false">
         {{ t('common.cancel') }}
       </button>
-      <button class="app-button app-button--primary" type="button" :disabled="busy || !implementationModel" @click="approveProposal">
+      <button class="app-button app-button--primary" type="button" :disabled="busy || (!leadExecutesImplementation && !implementationModel)" @click="approveProposal">
         {{ t('missions.startImplementationAction') }}
       </button>
     </template>
@@ -277,6 +279,9 @@ import { useCollapsiblePaneResize } from '../shared/use-collapsible-pane-resize'
 import MissionCostMenu from './MissionCostMenu.vue';
 import MissionConversationRail from './MissionConversationRail.vue';
 import MissionImplementationBoard from './MissionImplementationBoard.vue';
+import MissionTaskFilters from './MissionTaskFilters.vue';
+import { implementationTicketItems } from './mission-implementation-model';
+import { matchesMissionTaskFilters, type MissionTaskStatus } from './mission-ticket-filters';
 import type { WorkspaceProvisioningOperation } from './WorkspaceProvisioningProgressDialog.vue';
 import { publishProvisioningOperation } from './provisioning-operations';
 import MissionRequirementReview from './MissionRequirementReview.vue';
@@ -519,6 +524,12 @@ const visibleTickets = computed(() => {
   if (viewedStage.value === props.mission.stage && activeRun.value?.draftTickets?.length) return activeRun.value.draftTickets;
   return props.mission.artifacts.tickets;
 });
+const taskStatuses = ref<MissionTaskStatus[]>([]);
+watch(() => props.mission.id, () => { taskStatuses.value = []; });
+const filterTickets = computed(() => viewedStage.value === 'tickets' ? visibleTickets.value
+  : viewedStage.value === 'implementation' ? props.mission.artifacts.tickets : []);
+const filterItems = computed(() => implementationTicketItems(filterTickets.value, props.mission.execution?.runs ?? []));
+const visibleTicketIndexes = computed(() => filterItems.value.filter(item => matchesMissionTaskFilters(item, filterTickets.value, taskStatuses.value)).map(item => item.index));
 const stageHeadingMeta = computed(() => {
   if (viewedStage.value !== 'tickets') return '';
   if (viewedStage.value === props.mission.stage && activeRun.value?.draftTickets?.length && !activeRun.value.proposal) {
@@ -545,10 +556,11 @@ const missionLead = computed(() => {
   const run = execution?.runs.slice().reverse().find(run => (run.stage === 'requirements' || run.stage === 'tickets') && run.workerId);
   return props.agents.find(agent => agent.id === (run?.workerId ?? execution?.memberIds[0]));
 });
-const parallelImplementation = ref(false);
+const implementationMode = ref<'lead' | 'perRepository' | 'multiplePerRepository'>('perRepository');
+const leadExecutesImplementation = computed(() => implementationMode.value === 'lead');
 const implementationApprovalVisible = ref(false);
 function resetImplementationModel(): void {
-  parallelImplementation.value = props.mission.execution?.parallelImplementation ?? false;
+  implementationMode.value = props.mission.execution?.implementationMode ?? (props.mission.execution?.parallelImplementation ? 'multiplePerRepository' : 'perRepository');
   const selected = props.mission.execution?.implementationModel;
   const lead = missionLead.value;
   implementationBackend.value = selected?.backend ?? lead?.backend;
@@ -586,8 +598,8 @@ async function approveProposal(): Promise<void> {
   }
   try {
     await props.executeMission({ id: props.mission.id, revision: props.mission.revision, action: 'accept', runId: run.id,
-      ...(startsImplementation ? { parallelImplementation: parallelImplementation.value } : {}),
-      ...(startsImplementation && implementationBackend.value && implementationModel.value ? { implementationModel: { ...implementationSelection.value! } } : {}),
+      ...(startsImplementation ? { implementationMode: implementationMode.value, parallelImplementation: implementationMode.value === 'multiplePerRepository' } : {}),
+      ...(startsImplementation && !leadExecutesImplementation.value && implementationBackend.value && implementationModel.value ? { implementationModel: { ...implementationSelection.value! } } : {}),
     });
     implementationApprovalVisible.value = false;
   } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); }

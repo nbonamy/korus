@@ -1,3 +1,4 @@
+import { providerSafetyBlockMessage } from '@workspace/core/provider-safety-block';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import type {
   Agent,
@@ -32,6 +33,7 @@ export class AgentConversationService {
   async deleteTurn(agentId: string, turnId: string): Promise<AppSnapshot | null> {
     const agent = this.agent(agentId);
     if (!agent) return null;
+    if (agent.status.type === 'error' && providerSafetyBlockMessage(agent.status.message)) throw new Error(providerSafetyBlockMessage(agent.status.message)!);
     const result = await this.options.driverRequest(
       agent,
       backendMethods.driverTurnDelete,
@@ -43,6 +45,7 @@ export class AgentConversationService {
   async editTurn(agentId: string, turnId: string, content: string, options?: PromptContentOptions): Promise<AppSnapshot | null> {
     const agent = this.agent(agentId);
     if (!agent) return null;
+    if (agent.status.type === 'error' && providerSafetyBlockMessage(agent.status.message)) throw new Error(providerSafetyBlockMessage(agent.status.message)!);
     const result = await this.options.driverRequest(
       agent,
       backendMethods.driverTurnEdit,
@@ -54,6 +57,7 @@ export class AgentConversationService {
   async retryTurn(agentId: string, turnId: string): Promise<AppSnapshot | null> {
     const agent = this.agent(agentId);
     if (!agent) return null;
+    if (agent.status.type === 'error' && providerSafetyBlockMessage(agent.status.message)) throw new Error(providerSafetyBlockMessage(agent.status.message)!);
     const result = await this.options.driverRequest(
       agent,
       backendMethods.driverTurnRetry,
@@ -62,11 +66,11 @@ export class AgentConversationService {
     return this.applyTurnAction(agentId, result);
   }
 
-  async continueInterruptedTurn(agentId: string, shouldContinue?: () => boolean): Promise<AppSnapshot | null> {
+  async continueInterruptedTurn(agentId: string, shouldContinue?: () => boolean, safetyReview?: import('@workspace/core/provider-safety-block').ProviderSafetyReviewTarget): Promise<AppSnapshot | null> {
     const agent = this.agent(agentId);
     if (!agent) return null;
     return this.withConversations([agent], 'continue interrupted work', async () => {
-      const action = () => this.options.driverRequest(agent, backendMethods.driverTurnContinueInterrupted, { agent }) as Promise<BackendTurnActionResult>;
+      const action = () => this.options.driverRequest(agent, backendMethods.driverTurnContinueInterrupted, { agent, ...(safetyReview ? { safetyReview } : {}) }) as Promise<BackendTurnActionResult>;
       const result = shouldContinue ? await this.retryTransient('continue interrupted work', [agent], action, shouldContinue) : await action();
       return result ? this.applyTurnAction(agentId, result) : null;
     });

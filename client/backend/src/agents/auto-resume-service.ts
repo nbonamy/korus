@@ -1,3 +1,4 @@
+import { providerSafetyBlockMessage } from '@workspace/core/provider-safety-block';
 import type { Agent, AppSnapshot, AccountRateLimits, MainToRendererEvent } from '@workspace/core/contracts';
 import { isRateLimitPause, type RateLimitPause } from '@workspace/core/auto-resume';
 import { agentConversationId } from '@workspace/core/plan-review';
@@ -27,10 +28,12 @@ export class AutoResumeService {
     const view = providerConversationEventView(event);
     const agent = this.options.snapshot.agents.find(agent => agent.id === view.agentId);
     if (agent && this.options.isLocal(agent)) {
+      if (view.conversationId && view.conversationId !== agentConversationId(agent)) return;
       if (view.type === 'turn.started' || event.type === 'agent.statusChanged' && event.payload.type === 'working') this.cancel(agent.id);
       const payload = record(view.payload), error = record(payload.error);
       const message = event.type === 'agent.statusChanged' && event.payload.type === 'error' ? event.payload.message
         : ['error', 'turn.error', 'turn.completed'].includes(view.type) && payload.willRetry !== true ? payload.message ?? error.message : undefined;
+      if (providerSafetyBlockMessage(error) || providerSafetyBlockMessage(message)) { this.cancel(agent.id); this.sync(); return; }
       if (typeof message === 'string' && /(?:usage.?limit|session.?limit|rate.?limit|quota)/i.test(message)) {
         const now = Date.now(), resumeAt = resetTime(message, this.options.snapshot.backendAccountRateLimits?.[agent.backend], now, record(payload.rateLimit));
         const conversationId = agentConversationId(agent);
@@ -64,6 +67,7 @@ export class AutoResumeService {
       if (!isRateLimitPause(pause) || pause.backend !== agent.backend || pause.conversationId !== agentConversationId(agent)) {
         this.cancel(agent.id); continue;
       }
+      if (agent.status.type === 'error' && providerSafetyBlockMessage(agent.status.message)) { this.cancel(agent.id); continue; }
       const enabled = this.options.snapshot.general.autoResumeAfterLimit !== false;
       if (pause.enabled !== enabled) { pause = { ...pause, enabled }; this.options.update(agent.id, pause); }
       if (pause.enabled && this.available(agent)) next = Math.min(next, pause.resumeAt + RESET_GRACE_MS);
@@ -75,7 +79,7 @@ export class AutoResumeService {
   }
   close(): void { this.closed = true; if (this.timer) clearTimeout(this.timer); this.pendingSends.clear(); }
   private available(agent: Agent): boolean {
-    return !handoffInProgress(agent) && !['working', 'awaitingInput'].includes(agent.status.type)
+    return !(agent.status.type === 'error' && providerSafetyBlockMessage(agent.status.message)) && !handoffInProgress(agent) && !['working', 'awaitingInput'].includes(agent.status.type)
       && !this.options.snapshot.queuedPrompts?.some(prompt => prompt.agentId === agent.id) && this.options.connected(agent);
   }
   private async tick(): Promise<void> {

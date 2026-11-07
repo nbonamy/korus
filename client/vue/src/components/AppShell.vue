@@ -632,6 +632,7 @@
       :busy="missionDeletePending"
       :error="missionDeleteError"
       @close="closeMissionDeleteDialog"
+      @background="backgroundMissionDeletion"
       @confirm="confirmMissionDeletion"
     />
     <CodexResourceSharingMigrationDialog
@@ -713,6 +714,7 @@ import BacklogView from './BacklogView.vue';
 import ConversationHistoryDialog from './ConversationHistoryDialog.vue';
 import AgentHandoffDialog from './AgentHandoffDialog.vue';
 import { agentHandoffBlocker, type AgentHandoffInput } from '@workspace/core/agent-handoff';
+import { providerSafetyBlockMessage } from '@workspace/core/provider-safety-block';
 import ImageAnnotationDialog from './ImageAnnotationDialog.vue';
 import FileQuickOpen from './FileQuickOpen.vue';
 import AgentQuickOpen from './AgentQuickOpen.vue';
@@ -729,7 +731,7 @@ import AgentWorkspace from './AgentWorkspace.vue';
 import AgentSplitGrid from './AgentSplitGrid.vue';
 import AgentHeader from './AgentHeader.vue';
 import ConversationShareDialog from './ConversationShareDialog.vue';
-import { conversationShareActiveByAgentIdKey } from './conversation-share-state';
+import { useConversationSharePresence } from './use-conversation-share-presence';
 import { conversationShareTarget, type ConversationShareTarget } from '@workspace/core/conversation-sharing';
 import AgentConversationPanel from './AgentConversationPanel.vue';
 import SharedConversationPane from './SharedConversationPane.vue';
@@ -754,6 +756,7 @@ import RepositoryDeleteDialog from './RepositoryDeleteDialog.vue';
 import type { DeleteRepositoryInput } from '@workspace/core/contracts/workspace';
 import type { MissionWorkspaceOpenRequest } from './MissionWorkspaceOpenIn.vue';
 import ConversationPane from './ConversationPane.vue';
+import { useDebugProviderSafetyBlock } from './debug-provider-safety-block';
 import { useDebugWorktreeInitialization } from './debug-worktree-initialization';
 import AppMenu from '../shared/menu/AppMenu.vue';
 import { missionAgentIds, navigationUnreadAgentIds } from '@workspace/core/mission-attention';
@@ -1276,7 +1279,8 @@ const missionViewedStage = ref<MissionStage>();
 const missionCreationError = ref('');
 const missionCreationPending = ref(false);
 const missionDeleteTargetId = ref<string | null>(null);
-const missionDeletePending = ref(false);
+const missionDeleteOperations = reactive(new Map<string, { backgrounded: boolean }>());
+const missionDeletePending = computed(() => missionDeleteTargetId.value !== null && missionDeleteOperations.has(missionDeleteTargetId.value));
 const missionDeleteError = ref('');
 const selectedMissionId = ref<string | null>(null);
 const selectedMission = computed(() => props.snapshot.missions?.find(m => m.id === selectedMissionId.value) ?? null);
@@ -1440,6 +1444,8 @@ watch(() => [windowScope.value, windowState.teamId.value, props.snapshot.teams, 
 function deleteMissionFromSidebar(id: string): void {
   if (!props.snapshot.missions?.some(candidate => candidate.id === id)) return;
   missionDeleteTargetId.value = id;
+  const operation = missionDeleteOperations.get(id);
+  if (operation) operation.backgrounded = false;
   missionDeleteError.value = '';
 }
 
@@ -1463,24 +1469,38 @@ function closeMissionDeleteDialog(): void {
   missionDeleteError.value = '';
 }
 
+function backgroundMissionDeletion(): void {
+  const operation = missionDeleteOperations.get(missionDeleteTargetId.value ?? '');
+  if (!operation) return;
+  operation.backgrounded = true;
+  missionDeleteTargetId.value = null;
+  missionDeleteError.value = '';
+}
+
 async function confirmMissionDeletion(deleteWorktrees: boolean): Promise<void> {
   const mission = missionDeleteTarget.value;
-  if (!mission || missionDeletePending.value) return;
-  missionDeletePending.value = true;
+  if (!mission || missionDeleteOperations.has(mission.id)) return;
+  const operation = { backgrounded: false };
+  missionDeleteOperations.set(mission.id, operation);
   missionDeleteError.value = '';
   try {
     await props.deleteMission({ id: mission.id, revision: mission.revision, deleteWorktrees, confirmed: true });
     if (selectedMissionId.value === mission.id) {
       selectedMissionId.value = null;
-      activeSurface.value = 'agent';
+      if (activeSurface.value === 'mission') activeSurface.value = 'agent';
     }
-    missionDeleteTargetId.value = null;
+    if (missionDeleteTargetId.value === mission.id) missionDeleteTargetId.value = null;
+    ElMessage.success(t('missions.deleted', { mission: mission.outcome }));
   } catch (error) {
-    missionDeleteError.value = localizedErrorMessage(error, t);
+    const message = localizedErrorMessage(error, t);
+    if (operation.backgrounded || missionDeleteTargetId.value !== mission.id) {
+      ElMessage.error(t('missions.deleteFailed', { mission: mission.outcome, message }));
+    } else missionDeleteError.value = message;
   } finally {
-    missionDeletePending.value = false;
+    missionDeleteOperations.delete(mission.id);
   }
 }
+
 const fileQuickOpenVisible = ref(false);
 // Files created since the agent was opened would be missing from a list loaded only then.
 watch(fileQuickOpenVisible, (visible) => { if (visible) void props.loadAgentFiles?.(); });
@@ -1511,8 +1531,7 @@ const modelFavoritesDialogBackend = ref<ModelFavorite['backend'] | null>(null);
 const resumeSessionAgentId = ref<string | null>(null);
 // IPC copies this immutable DTO; a deep Vue ref would proxy it and break serialization.
 const shareTarget = shallowRef<ConversationShareTarget | null>(null);
-const shareActiveByAgentId = reactive<Record<string, boolean>>({});
-provide(conversationShareActiveByAgentIdKey, shareActiveByAgentId);
+useConversationSharePresence(() => props.snapshot.agents);
 function openShare(agentId: string) {
   const agent = props.snapshot.agents.find(agent => agent.id === agentId);
   if (!agent || agent.remoteConnectionId) return;
@@ -1536,7 +1555,11 @@ const pendingHandoffOperationId = computed(() => {
   const intent = props.snapshot.teams.find(team => team.id === agent.teamId)?.delegationHandoffs?.[agent.id];
   return intent && !intent.targetAgentId ? intent.operationId : undefined;
 });
-function openHandoff(agentId: string) { handoffAgentId.value = agentId; }
+function openHandoff(agentId: string) {
+  const agent = props.snapshot.agents.find(agent => agent.id === agentId);
+  if (agent?.status.type === 'error' && providerSafetyBlockMessage(agent.status.message)) return;
+  handoffAgentId.value = agentId;
+}
 async function listHandoffModels(agentId: string | null, backend: AgentBackend) {
   return await appApi?.listBackendModels(agentId, backend) ?? [];
 }
@@ -2952,6 +2975,7 @@ const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
     sendAgentPrompt: (agentId, prompt) => emit('send-agent-prompt', { agentId, prompt }),
     setDebugApproval: (approval) => { debugApproval.value = approval; },
     showDebugUserQuestions,
+    showDebugProviderSafetyBlock: (agentId) => previewProviderSafetyBlock(agentId),
     toggleSpokenAnnouncementsMuted,
     updateComposerAttachments: (agentId, attachments) => emit('update:composerAttachments', { agentId, attachments }),
     updateComposerState: (agentId, state) => emit('update:composerState', { agentId, state }),
@@ -3084,6 +3108,7 @@ function showDebugUserQuestions(agentId: string): void {
   };
 }
 
+const previewProviderSafetyBlock = useDebugProviderSafetyBlock();
 const previewWorktreeInitialization = useDebugWorktreeInitialization();
 
 function openDebugOperationProgress(

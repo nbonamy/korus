@@ -61,9 +61,9 @@ test('bookmark toolbar respects focus visibility and toggles a yellow saved star
     }
     const pickerBox = await page.getByRole('button', { name: 'Bookmarks', exact: true }).boundingBox();
     const addressBox = await page.locator('.browser-panel__address').boundingBox();
-    const annotationBox = await toolbar.locator('.browser-panel__annotate').boundingBox();
+    const actionsBox = await toolbar.locator('.browser-panel__actions').boundingBox();
     assert.ok(addressBox.x - pickerBox.x - pickerBox.width <= 8, 'Keep the bookmark picker close to the address bar');
-    assert.ok(annotationBox.x - addressBox.x - addressBox.width <= 8, 'Keep the address bar close to toolbar actions');
+    assert.ok(actionsBox.x - addressBox.x - addressBox.width <= 8, 'Keep the address bar close to toolbar actions');
 
     await assertActionHovers(star);
     await page.locator('.browser-panel__address').hover();

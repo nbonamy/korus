@@ -92,7 +92,7 @@ it("follows the current chart width after empty states and measure changes", asy
   await wrapper.setProps({ daily: rangeProps.daily });
   expect(wrapper.find("canvas").exists()).toBe(true);
   await wrapper.setProps({ measure: "total" });
-  expect(wrapper.find("canvas").exists()).toBe(false);
+  expect(wrapper.find("canvas").exists()).toBe(true);
   await wrapper.setProps({ measure: "turns" });
   expect(wrapper.find("canvas").exists()).toBe(true);
   await wrapper.get('[aria-label="2026-06-30 · Claude: 1"]').trigger("focus");

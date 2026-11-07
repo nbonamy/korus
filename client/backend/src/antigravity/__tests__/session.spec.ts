@@ -280,7 +280,7 @@ describe('Antigravity native session', () => {
     // Wire input already includes cached reads; thoughts are separate from output and join it in Korus's model.
     expect(await run({ inputTokens: 1000, outputTokens: 50, cachedReadTokens: 400, cachedWriteTokens: 0, thoughtTokens: 30, totalTokens: 1480 })).toMatchObject({
       model: 'gemini-3.8-flash',
-      tokens: { input: 1000, cacheRead: 400, cacheWrite: 0, output: 80, reasoning: 30 },
+      tokens: { input: 1000, cacheRead: 400, cacheWrite: 0, output: 80, reasoning: 30, total: 1080 },
     });
     // Anything the pricing model cannot represent stays unmeasured rather than guessed.
     for (const usage of [undefined, { inputTokens: -1, outputTokens: 1 }, { inputTokens: 'many' }, { inputTokens: 10, outputTokens: 1, cachedWriteTokens: 5 }, { inputTokens: 10, outputTokens: 1, cachedReadTokens: 11 }]) {

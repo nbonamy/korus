@@ -46,7 +46,8 @@ const agentFieldPolicy = {
   isRegistered: 'runtime',
   mcpSessionId: 'runtime',
   statusText: 'persisted',
-  status: 'runtime',
+  // Busy/idle state is reconstructed; provider safety stops survive restarts.
+  status: 'derived',
   createdAt: 'persisted',
   lastActivityAt: 'persisted',
   updatedAt: 'persisted',

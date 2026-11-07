@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import path from 'node:path';
-import os from 'node:os';
 import { mkdtemp, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'vitest';
 import { createServer } from 'vite';
@@ -12,14 +12,18 @@ import { sdkSourceAliases, sdkSourceRoot } from '../../../../../vite.sdk-aliases
 
 test('inline renderer streams and renders diagrams, integrating with capable SDKs and preserving older code fallback', async () => {
   const root = fileURLToPath(new URL('../../../../..', import.meta.url));
-  const fixture = await mkdtemp(path.join(os.tmpdir(), 'inline-diagram-fixture-'));
   const useSource = process.env.CODEX_APP_SDK_SOURCE === '1';
+  const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'inline-diagram-vite-'));
   const server = await createServer({
-    configFile: false, root, logLevel: 'error', cacheDir: path.join(fixture, 'vite-cache'),
+    configFile: false, root, logLevel: 'error', cacheDir,
     server: { host: '127.0.0.1', port: 0, fs: { allow: [root, ...(useSource ? [sdkSourceRoot] : [])] } },
     resolve: { alias: { '@workspace/core': path.join(root, 'core/src'), ...(useSource ? sdkSourceAliases : {}) }, dedupe: ['vue'] },
-    // Scan lazy editor dependencies before interaction so cold optimization cannot reload away the scene.
-    optimizeDeps: { entries: [path.join(root, 'client/vue/src/components/InlineExcalidrawBlock.vue'), path.join(root, 'client/vue/src/components/excalidraw-editor.ts')], ...(useSource ? { exclude: Object.keys(sdkSourceAliases) } : {}) },
+    optimizeDeps: {
+      // Lazy editor imports must not trigger an optimizer reload mid-interaction.
+      entries: [path.join(root, 'client/vue/src/components/InlineExcalidrawBlock.vue'), path.join(root, 'client/vue/src/components/excalidraw-editor.ts')],
+      include: ['@excalidraw/excalidraw', '@excalidraw/mermaid-to-excalidraw', 'react', 'react-dom/client'],
+      ...(useSource ? { exclude: Object.keys(sdkSourceAliases) } : {}),
+    },
     plugins: [vue(), excalidrawAssets(), {
       name: 'inline-diagram-fixture',
       configureServer(server) {
@@ -95,5 +99,5 @@ test('inline renderer streams and renders diagrams, integrating with capable SDK
     assert.deepEqual(errors, []);
     assert.equal(navigations, initialNavigations, 'Lazy rendering must preserve the page and its scene');
     await page.screenshot({ path: '/tmp/korus-inline-diagram-fallback.png' });
-  } finally { await browser.close(); await server.close(); await rm(fixture, { recursive: true, force: true }); }
+  } finally { await browser.close(); await server.close(); await rm(cacheDir, { recursive: true, force: true }); }
 });

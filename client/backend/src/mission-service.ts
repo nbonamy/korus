@@ -33,9 +33,9 @@ export class MissionService {
   remove(input: DeleteMissionInput, cleanup: (mission: Mission, agents: Agent[]) => Promise<void>): Promise<void> {
     return this.transaction(async candidate => {
       const mission = deleteMission(candidate, input);
-      const workerIds = new Set(mission.execution?.runs.flatMap(run => run.workerId ? [run.workerId] : []) ?? []);
+      const workerIds = new Set([...(mission.execution?.runs.flatMap(run => run.workerId ? [run.workerId] : []) ?? []), ...(mission.execution?.deliveries?.map(delivery => delivery.agentId) ?? [])]);
       const retainedWorkerIds = new Set((candidate.missions ?? []).flatMap(other => (
-        other.execution?.runs.flatMap(run => run.workerId ? [run.workerId] : []) ?? []
+        [...(other.execution?.runs.flatMap(run => run.workerId ? [run.workerId] : []) ?? []), ...(other.execution?.deliveries?.map(delivery => delivery.agentId) ?? [])]
       )));
       const workers = candidate.agents.filter(agent => workerIds.has(agent.id) && !retainedWorkerIds.has(agent.id)
         && (!mission.execution?.debugFixture || isMissionScreenshotAgent(agent)));

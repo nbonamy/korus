@@ -130,7 +130,7 @@ describe('AppShell in a window that shows less than the workspace', () => {
       expect(wrapper.text()).not.toMatch(/Quick chat|New mission|Add project/);
     });
 
-    it('lists its agents in the order the team’s own sidebar does', () => {
+    it('opens its agents in split from the feature sidebar in the team’s own order', async () => {
       const snapshot = createInitialSnapshot();
       const teamId = snapshot.teams[0]!.id;
       const make = (id: string, repository: string, branch: string) => ({
@@ -143,11 +143,16 @@ describe('AppShell in a window that shows less than the workspace', () => {
       windowState.scope.value = 'feature';
       windowState.teamId.value = teamId;
       windowState.branch.value = 'feat1';
+      localStorage.setItem(`app:agentOrganization:${teamId}`, 'worktree');
       const wrapper = mountShell({ realAgentSidebar: true, stubAgentWorkspace: true, snapshot });
       expect(wrapper.findAll('.agent-sidebar__agent').map(row => row.text())).toEqual([
         expect.stringContaining('api-feature'),
         expect.stringContaining('web-feature'),
       ]);
+      expect(wrapper.findComponent({ name: 'AgentWorkspace' }).attributes('split-headers')).toBe('false');
+      await wrapper.get('button[aria-label="Open feature in split view"]').trigger('click');
+      expect(wrapper.findComponent({ name: 'AgentSidebar' }).emitted('open-feature')?.at(-1)).toStrictEqual([['api-feature', 'web-feature']]);
+      expect(wrapper.findComponent({ name: 'AgentWorkspace' }).attributes('split-headers')).toBe('true');
     });
 
     it('shows an agent added to the branch afterwards, and not one added to another', async () => {

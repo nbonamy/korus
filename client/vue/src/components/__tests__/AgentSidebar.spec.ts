@@ -759,6 +759,19 @@ describe('AgentSidebar sessions', () => {
     ]);
   });
 
+  it('clears the safety-block attention dot when read while preserving ordinary error dots', async () => {
+    const blocked = { ...agents[0]!, status: { type: 'error' as const, message: 'This request was blocked by our safety systems. Reason: Potentially unintended activity.' } };
+    const wrapper = mount(AgentSidebar, {
+      props: { agents: [blocked], activeAgentId: blocked.id, unreadAgentIds: [blocked.id], teamName: 'Team' },
+      global: { components: { ElPopover } },
+    });
+    expect(wrapper.get('.agent-sidebar__status').attributes('aria-label')).toBe('Unread activity');
+    await wrapper.setProps({ unreadAgentIds: [] });
+    expect(wrapper.find('.agent-sidebar__status').exists()).toBe(false);
+    await wrapper.setProps({ agents: [{ ...blocked, status: { type: 'error', message: 'Connection lost' } }] });
+    expect(wrapper.get('.agent-sidebar__status').attributes('data-status')).toBe('error');
+  });
+
   it('replaces an unread agent runtime status with the unread indicator', () => {
     const wrapper = mount(AgentSidebar, {
       props: {

@@ -57,6 +57,8 @@ describe(`${product.name} MCP tool registration`, () => {
     submitMissionResult: vi.fn(),
     upsertMissionTicket: vi.fn(),
     setMissionTitle: vi.fn(),
+    getMissionSchedule: vi.fn(),
+    setMissionSchedule: vi.fn(),
     reopenMissionStage: vi.fn(),
     attachMissionRepository: vi.fn(),
     listMissionArtifacts: vi.fn(),
@@ -204,6 +206,12 @@ describe(`${product.name} MCP tool registration`, () => {
     coordinator.reopenMissionStage.mockResolvedValue({ success: true, stage: 'requirements' });
     expect(await handlers.get('reopen-mission-stage')!({ stage: 'requirements' })).toMatchObject({ structuredContent: { success: true, stage: 'requirements' } });
     expect(coordinator.reopenMissionStage).toHaveBeenCalledWith('agent-dina', 'requirements');
+    const plan = { commandId: 'decision-1', expectedRevision: 0, assignments: [], maxConcurrency: 1, continuationLimit: 0 };
+    coordinator.setMissionSchedule.mockResolvedValue({ revision: 1 });
+    await handlers.get('set-mission-schedule')!(plan);
+    expect(coordinator.setMissionSchedule).toHaveBeenCalledWith('agent-dina', plan);
+    await handlers.get('get-mission-schedule')!({});
+    expect(coordinator.getMissionSchedule).toHaveBeenCalledWith('agent-dina');
     const reopenDefinition = mocks.registerTool.mock.calls.find(([name]) => name === 'reopen-mission-stage')![1] as { inputSchema: z.ZodRawShape };
     expect(z.object(reopenDefinition.inputSchema).safeParse({ stage: 'ship' }).success).toBe(false);
     coordinator.listMissionArtifacts.mockReturnValue([{ stage: 'requirements', revision: 1 }]);

@@ -18,7 +18,7 @@
       v-else
       ref="surface"
       class="conversation-pane__surface"
-      :controller="controller"
+      :controller="displayController"
       :escape-interrupt="keyboardActive"
       :has-composer-context="textAnnotations.length > 0 || visualizationAnnotations.length > 0 || codeAnnotations.length > 0"
       :message-text-selection="true"
@@ -78,7 +78,7 @@
             :disabled="disabled"
             @click="requestAttachmentAnnotation(attachments[index])"
           >
-            <PlusCircleIcon aria-hidden="true" />
+            <ClickIcon aria-hidden="true" />
           </button>
         </el-tooltip>
       </template>
@@ -106,6 +106,15 @@
             :busy="threadFlagBusy || disabled"
             @respond="emit('thread-flag', $event)"
           />
+        </div>
+      </template>
+      <template v-if="safetyBlock" #composer-replacement>
+        <div class="conversation-pane__safety-block" role="alert">
+          <details>
+            <summary><AlertTriangleIcon aria-hidden="true" /><span class="conversation-pane__safety-title">{{ t('backend.providerSafetyBlocked') }}</span><ChevronDownIcon class="conversation-pane__safety-chevron" aria-hidden="true" /></summary>
+            <pre>{{ safetyReview?.explanation || safetyBlock }}</pre>
+            <button v-if="safetyReview?.canContinue" class="app-button app-button--secondary safety-review-continue" type="button" :disabled="safetyReviewBusy" @click="continueSafetyReview">{{ t('backend.continueSafetyReview') }}</button>
+          </details>
         </div>
       </template>
       <template #before-composer>
@@ -146,16 +155,18 @@
 </template>
 
 <script setup lang="ts">
+import { providerSafetyBlockPreviewKey } from './debug-provider-safety-block';
+import { providerSafetyBlockDetails } from '@workspace/core/provider-safety-block';
 import { slicePromptContent, replacePromptContentRange } from '@codex-app-sdk/core/surface';
 import ConversationShareActivity from './ConversationShareActivity.vue';
 import TelemetryConsentNotice from './TelemetryConsentNotice.vue';
 import GithubStarPrompt from './GithubStarPrompt.vue';
-import { appClientPlatform, traceConversationLoad } from '../platform-api';
+import { appApi, appClientPlatform, traceConversationLoad } from '../platform-api';
 import { supportsConversationSharing, conversationShareTarget, type GuestProposal } from '@workspace/core/conversation-sharing';
 import { useConversationShareActivity } from './use-conversation-share-activity';
 import { matchesShellShortcut } from '@workspace/core/keyboard-shortcuts';
 import { translate } from '../i18n';
-import { computed, nextTick, onUnmounted, reactive, ref, watch } from 'vue';
+import { computed, inject, nextTick, onUnmounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   CodexConversationPane,
@@ -169,7 +180,7 @@ import {
   type CodexNativeAttachment,
   type SurfaceMessage,
 } from '@codex-app-sdk/vue';
-import { PlusCircleIcon } from '../shared/icons/app-icons';
+import { AlertTriangleIcon, ChevronDown as ChevronDownIcon, ClickIcon } from '../shared/icons/app-icons';
 import { IconSitemap } from '@tabler/icons-vue';
 import type {
   Agent,
@@ -258,6 +269,37 @@ const props = withDefaults(defineProps<{
   threadFlagBusy: false,
   savedPromptDrafts: () => [],
 });
+const safetyBlockPreview = inject(providerSafetyBlockPreviewKey, null);
+const safetyReviewBusy = ref(false);
+const safetyReview = computed(() => safetyBlockPreview?.value?.agentId === props.agent?.id ? undefined
+  : props.agent?.status.type === 'error' ? props.agent.status.safetyReview : undefined);
+async function continueSafetyReview(): Promise<void> {
+  const agent = props.agent, review = safetyReview.value;
+  if (!agent || !review?.canContinue || safetyReviewBusy.value || !appApi) return;
+  safetyReviewBusy.value = true;
+  try { await appApi.continueInterruptedTurn(agent.id, { id: review.id, conversationId: review.conversationId, turnId: review.turnId }); }
+  catch (error) { ElMessage.error(error instanceof Error ? error.message : String(error)); }
+  finally { safetyReviewBusy.value = false; }
+}
+
+const safetyBlock = computed(() => {
+  const preview = safetyBlockPreview?.value;
+  return preview && preview.agentId === props.agent?.id ? preview.message
+    : props.agent?.status.type === 'error' ? providerSafetyBlockDetails(props.agent.status.message) : null;
+});
+const displayController = computed<CodexConversationPaneController>(() => {
+  if (!safetyBlock.value) return props.controller;
+  return {
+    state: () => {
+      const state = resolveCodexConversationPaneValue(props.controller.state);
+      return { ...state, identity: { ...state.identity, disabled: true, error: null },
+        policy: { ...state.policy, canDeleteTurn: false, canEditTurn: false, canForkTurn: false, canRetryTurn: false, followUpsDisabled: true } };
+    },
+    actions: () => ({ ...resolveCodexConversationPaneValue(props.controller.actions),
+      submit: undefined, steer: undefined, sendFollowUp: undefined, deleteTurn: undefined, editTurn: undefined, retryTurn: undefined, forkTurn: undefined }),
+  };
+});
+
 provideConversationImagePreviews(() => props.agent?.id);
 provideAppToolPresentation(
   (key, params) => t(key, params ?? {}),
@@ -718,4 +760,22 @@ defineExpose({ focusComposer, openSavedDraftPicker, saveCurrentDraft });
 :deep(.chat-tool-call__title-target[href]:hover) {
   text-decoration: underline;
 }
+.conversation-pane__safety-block {
+  margin-bottom: var(--space-8);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-lowest);
+  padding: var(--space-8) var(--space-12);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-14);
+  line-height: var(--line-height-18);
+}
+.conversation-pane__safety-block summary { outline: none; display: flex; align-items: center; gap: var(--space-8); cursor: pointer; color: var(--color-error); list-style: none; }
+.conversation-pane__safety-block summary::-webkit-details-marker { display: none; }
+.conversation-pane__safety-block summary svg { width: var(--icon-sm); height: var(--icon-sm); flex: 0 0 auto; }
+.conversation-pane__safety-block .conversation-pane__safety-title { flex: 1; margin: 0; color: var(--color-error); font-size: inherit; }
+.conversation-pane__safety-block .conversation-pane__safety-chevron { margin-left: auto; color: var(--color-error); }
+.conversation-pane__safety-block details[open] .conversation-pane__safety-chevron { transform: rotate(180deg); }
+.conversation-pane__safety-block p { margin: var(--space-8) 0; }
+.conversation-pane__safety-block pre { max-height: 200px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--font-size-12); }
 </style>

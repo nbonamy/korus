@@ -1,7 +1,7 @@
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { mountProvisioningHost } from './provisioning-host';
 import { computed } from 'vue';
-import { ElDialog, ElPopover, ElTabs, ElTabPane } from 'element-plus';
+import { ElDialog, ElPopover, ElSelect, ElTabs, ElTabPane } from 'element-plus';
 import { backendChoicesKey } from '../backend-selection';
 import { backendModelCatalogKey } from '../backend-model-catalog';
 import { describe, expect, it, vi } from 'vitest';
@@ -79,6 +79,61 @@ const ticketDialogText = () => openTicketDialog()?.textContent ?? '';
 const inTicketDialog = (selector: string) => openTicketDialog()?.querySelector<HTMLElement>(selector) ?? null;
 
 describe('MissionWorkspace', () => {
+  it('shares status selections across stages without renumbering tickets or filtering progress', async () => {
+    const mission = missionWithRun('accepted');
+    mission.stage = 'implementation';
+    mission.artifacts.tickets = [
+      { id: 'mission-ticket-done', title: 'Foundation', done: true },
+      { id: 'mission-ticket-running', title: 'Build UI', done: false },
+      { id: 'mission-ticket-review', title: 'Review tests', done: false },
+      { id: 'mission-ticket-next', title: 'Write docs', done: false, dependsOn: [0], revision: 1 },
+      { id: 'mission-ticket-dependent', title: 'Dependent UI', done: false, dependsOn: [1] },
+      { id: 'mission-ticket-failed', title: 'Retry integration', done: false },
+      { id: 'mission-ticket-stopped', title: 'Resume integration', done: false },
+    ];
+    for (const [index, status] of [[1, 'running'], [2, 'awaitingReview'], [3, 'failed'], [5, 'failed'], [6, 'cancelled']] as const) {
+      mission.execution!.runs.push({ id: `run-${index}`, stage: 'implementation', ticketId: mission.artifacts.tickets[index]!.id,
+        memberId: 'agent-dina', status, skills: [], feedback: '', startedAt: mission.createdAt });
+    }
+    const wrapper = mountWorkspace(mission, { attachTo: document.body });
+    const statusRow = () => wrapper.get('[aria-label="Filter tasks by status"]');
+    const click = async (row: ReturnType<typeof statusRow>, label: string, modifiers = {}) => {
+      await row.get(`button[aria-label="${label}"]`).trigger('click', modifiers);
+    };
+    const cards = () => wrapper.findAll('.mission-implementation__ticket');
+    expect(cards()).toHaveLength(7);
+    await click(statusRow(), 'In progress · 1');
+    await click(statusRow(), 'Awaiting review · 1', { metaKey: true });
+    expect(cards().map(card => card.text())).toEqual([expect.stringContaining('Build UI'), expect.stringContaining('Review tests')]);
+    expect(wrapper.get('[role="progressbar"]').attributes('aria-valuemax')).toBe('7');
+    expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('1');
+    await wrapper.setProps({ viewedStage: 'tickets' });
+    expect(statusRow().get('[aria-label="In progress · 1"]').attributes('aria-pressed')).toBe('true');
+    const ticket = wrapper.findAll('.mission-ticket-board__card')[0]!;
+    expect(ticket.get('.mission-ticket-board__number').text()).toBe('02');
+    await ticket.trigger('click');
+    expect(ticketDialogText()).toContain('Build UI');
+    await new DOMWrapper(inTicketDialog('[aria-label="Close ticket details"]')!).trigger('click');
+    await click(statusRow(), 'All · 7');
+    expect(wrapper.findAll('.mission-ticket-board__number').map(n => n.text())).toEqual(['01', '02', '03', '04', '05', '06', '07']);
+    await click(statusRow(), 'Up next · 3');
+    expect(wrapper.findAll('.mission-ticket-board__card').map(card => card.text())).toEqual([expect.stringContaining('Write docs'), expect.stringContaining('Dependent UI'), expect.stringContaining('Resume integration')]);
+    expect(wrapper.findAll('.mission-ticket-board__card')[1]!.text()).toContain('After 02');
+    await click(statusRow(), 'Blocked · 1');
+    expect(wrapper.findAll('.mission-ticket-board__card').map(card => card.text())).toEqual([expect.stringContaining('Retry integration')]);
+    const completed = structuredClone(mission);
+    completed.artifacts.tickets.forEach(ticket => { ticket.done = true; });
+    await wrapper.setProps({ mission: completed });
+    expect(wrapper.findAll('.mission-ticket-board__card')).toHaveLength(0);
+    expect(wrapper.text()).toContain('No tasks match these filters.');
+    await wrapper.get('[aria-label="Clear task filters"]').trigger('click');
+    expect(wrapper.findAll('.mission-ticket-board__card')).toHaveLength(7);
+    await click(statusRow(), 'Done · 7');
+    await wrapper.setProps({ mission: { ...mission, id: 'another-mission' } });
+    expect(statusRow().get('[aria-label="All · 7"]').attributes('aria-pressed')).toBe('true');
+    wrapper.unmount();
+  });
+
   it('offers explicit local member reassignment when saved membership is unavailable', async () => {
     const mission = missionWithRun('awaitingReview', true);
     mission.execution!.memberIds = ['removed-member'];
@@ -282,7 +337,10 @@ describe('MissionWorkspace', () => {
     await approve.trigger('click'); await flushPromises();
     expect(executeMission).not.toHaveBeenCalled();
     expect(wrapper.get('[role="dialog"][aria-label="Start implementation"]').text()).toContain('1 ticket');
-    expect(wrapper.get('[role="switch"][aria-label="Allow parallel agents in the same repository"]').attributes('aria-checked')).toBe('false');
+    expect(wrapper.find('[aria-label="Implementation execution"]').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(true);
+    wrapper.findComponent(ElSelect).vm.$emit('update:modelValue', 'multiplePerRepository');
+    await flushPromises();
     const picker = wrapper.get('[aria-label="Coding agent and model"]');
     expect(picker.text()).toContain('Planner');
     await picker.trigger('click'); await flushPromises();
@@ -292,13 +350,15 @@ describe('MissionWorkspace', () => {
     expect(low).toBeDefined();
     low!.click(); await flushPromises();
     expect(picker.text()).toContain('Luna');
-    await wrapper.get('[role="switch"][aria-label="Allow parallel agents in the same repository"]').setValue(true);
+
     await wrapper.get('[role="dialog"] .app-button--tertiary').trigger('click'); await flushPromises();
     expect(executeMission).not.toHaveBeenCalled();
     expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(false);
     await approve.trigger('click'); await flushPromises();
+    expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(true);
+    wrapper.findComponent(ElSelect).vm.$emit('update:modelValue', 'multiplePerRepository');
+    await flushPromises();
     const reopenedPicker = wrapper.get('[aria-label="Coding agent and model"]');
-    expect(wrapper.get('[role="switch"][aria-label="Allow parallel agents in the same repository"]').attributes('aria-checked')).toBe('false');
     expect(reopenedPicker.text()).toContain('Planner');
     await reopenedPicker.trigger('click'); await flushPromises();
     document.querySelector('[role="tab"] [aria-label="Claude Code"]')!.closest<HTMLElement>('[role="tab"]')!.click();
@@ -306,14 +366,14 @@ describe('MissionWorkspace', () => {
     [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent?.trim() === 'low')!.click();
     await flushPromises();
     const confirm = wrapper.get('[role="dialog"] .app-button--primary');
-    await wrapper.get('[role="switch"][aria-label="Allow parallel agents in the same repository"]').setValue(true);
+
     expect(wrapper.get('.mission-workspace__parallel-warning').text()).toContain('Agents share files and Git state');
     expect(confirm.text()).toBe('Start');
     await confirm.trigger('click'); await flushPromises();
     expect(executeMission).toHaveBeenCalledExactlyOnceWith({
       id: mission.id, revision: mission.revision, action: 'accept', runId: mission.execution!.runs[0]!.id,
       implementationModel: { backend: 'claude', model: 'sonnet', reasoningEffort: 'low', serviceTier: null },
-      parallelImplementation: true,
+      parallelImplementation: true, implementationMode: 'multiplePerRepository',
     });
     expect(() => structuredClone(executeMission.mock.calls[0]![0])).not.toThrow();
     expect(wrapper.props('agents')![0]!.backendDefaults).toMatchObject({ model: 'planner', reasoningEffort: 'high' });
@@ -323,12 +383,30 @@ describe('MissionWorkspace', () => {
     wrapper.unmount();
   });
 
+  it('starts explicit lead-only implementation with no worker model', async () => {
+    const mode = 'lead';
+    const mission = missionWithRun('awaitingReview', true);
+    mission.stage = 'tickets'; mission.execution!.runs[0]!.stage = 'tickets';
+    mission.execution!.runs[0]!.proposal!.tickets = [{ title: 'Checkout', repositoryPath: '/repo', done: false }];
+    const executeMission = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mountWorkspace(mission, { agents: createInitialSnapshot().agents, executeMission });
+    await flushPromises();
+    await wrapper.get('.mission-workspace__stage-header .app-button--primary').trigger('click'); await flushPromises();
+    expect(wrapper.findComponent(ElSelect).text()).toContain('One worker per repository');
+    wrapper.findComponent(ElSelect).vm.$emit('update:modelValue', mode); await flushPromises();
+    expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(false);
+    await wrapper.get('[role="dialog"] .app-button--primary').trigger('click'); await flushPromises();
+    expect(executeMission).toHaveBeenCalledExactlyOnceWith({ id: mission.id, revision: mission.revision, action: 'accept',
+      runId: mission.execution!.runs[0]!.id, implementationMode: mode, parallelImplementation: false });
+    wrapper.unmount();
+  });
+
   it('starts implementation on the chosen service tier, prefilled from the lead while the model still offers it', async () => {
     const mission = missionWithRun('awaitingReview', true);
     mission.execution!.parallelImplementation = true;
     mission.stage = 'tickets';
     mission.execution!.runs[0]!.stage = 'tickets';
-    mission.execution!.runs[0]!.proposal!.tickets = [{ title: 'Checkout', repositoryPath: '/repo', done: false }];
+    mission.execution!.runs[0]!.proposal!.tickets = [{ title: 'Checkout', repositoryPath: '/repo', done: false }, { title: 'Invoices', repositoryPath: '/other', done: false }];
     const agents = createInitialSnapshot().agents;
     agents[0]!.backendDefaults = { kind: 'codex', model: 'planner', reasoningEffort: 'high', serviceTier: 'fast' };
     const executeMission = vi.fn().mockResolvedValue(undefined);
@@ -340,9 +418,9 @@ describe('MissionWorkspace', () => {
     await flushPromises();
     await wrapper.setProps({ agents }); await flushPromises();
     await wrapper.get('.mission-workspace__stage-header .app-button--primary').trigger('click'); await flushPromises();
-    const parallel = wrapper.get('[role="switch"][aria-label="Allow parallel agents in the same repository"]');
-    expect(parallel.attributes('aria-checked')).toBe('true');
-    await parallel.setValue(false);
+    expect(wrapper.findComponent(ElSelect).text()).toContain('Multiple workers per repository');
+    wrapper.findComponent(ElSelect).vm.$emit('update:modelValue', 'perRepository');
+    await flushPromises();
     const picker = wrapper.get('[aria-label="Coding agent and model"]');
     expect(picker.text()).toContain('fast');
     await picker.trigger('click'); await flushPromises();
@@ -354,7 +432,7 @@ describe('MissionWorkspace', () => {
     expect(executeMission).toHaveBeenCalledExactlyOnceWith({
       id: mission.id, revision: mission.revision, action: 'accept', runId: mission.execution!.runs[0]!.id,
       implementationModel: { backend: 'codex', model: 'planner', reasoningEffort: 'high', serviceTier: 'ultrafast' },
-      parallelImplementation: false,
+      parallelImplementation: false, implementationMode: 'perRepository',
     });
     wrapper.unmount();
   });

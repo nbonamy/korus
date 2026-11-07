@@ -81,3 +81,19 @@ it('persists the off preference, restores pending resets and cancels stale or ma
   await vi.advanceTimersByTimeAsync(600_000);
   expect(next.send.mock.calls.map(([, prompt]) => prompt)).toEqual(['Do something else']);
 });
+it('cancels quota continuation when the provider stops the conversation for safety review', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-24T06:25:00Z'));
+  const snapshot = createTestSnapshot(); snapshot.agents = agents();
+  const { server, send, limit } = host(snapshot);
+  const agent = snapshot.agents[0]!;
+  server.emitEvent({ type: 'account.rateLimitsUpdated', backend: 'codex', payload: { rateLimits: quota(Date.now() + 60_000) } });
+  limit(agent, 'Usage limit reached');
+  expect(agent.rateLimitPause).toBeDefined();
+  server.emitEvent({ agentId: agent.id, backend: 'codex', threadId: 'codex', type: 'codex.conversationEventReceived', payload: { revision: 2, event: {
+    seq: 2, origin: 'notification', occurredAt: '', conversationId: 'codex', turnId: 'blocked', type: 'turn.error',
+    payload: { error: { message: 'Usage limit reached', codexErrorInfo: 'misalignment_policy_violation', additionalDetails: null }, willRetry: false },
+  } } });
+  expect(agent.rateLimitPause).toBeUndefined();
+  await vi.advanceTimersByTimeAsync(360_000);
+  expect(send).not.toHaveBeenCalled();
+});

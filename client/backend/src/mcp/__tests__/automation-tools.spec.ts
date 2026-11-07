@@ -27,10 +27,10 @@ async function harness(failSave = false) {
   } });
   const url = await service.start();
   cleanups.push(() => service.stop());
-  const call = async (args: unknown) => {
+  const call = async (args: unknown, name = 'create-automation') => {
     const response = await fetch(`${url}?agentId=agent-dina`, { method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'create-automation', arguments: args } }) });
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) });
     return (await response.json() as { result: CallToolResult }).result;
   };
   return { snapshot, store, onEvent, call };
@@ -109,4 +109,35 @@ it('does not claim success or leave a runnable automation when persistence fails
   expect(result.isError).toBe(true);
   expect(snapshot.automations).toEqual([]);
   expect(onEvent).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'snapshot.updated' }));
+});
+
+it('lists exact targets and edits a saved automation without losing history or silently retargeting it', async () => {
+ const {call,snapshot,store}=await harness();
+ await call({...input,target:{kind:'current'}});
+ const list=await call({},'list-automations');
+ expect(list.isError).not.toBe(true);
+ const listed=(list.structuredContent!.automations as Array<{id:string;updatedAt:string;target:unknown;targetInfo:unknown}>)[0]!;
+ expect(listed.target).toStrictEqual({kind:'quickChat',agentId:'agent-dina'});
+ expect(listed.targetInfo).toMatchObject({agentId:'agent-dina',isCurrentConversation:true});
+ const saved=snapshot.automations[0]!;saved.executionLog=[{id:'past',automationId:saved.id,status:'completed',startedAt:'2026-01-01T00:00:00Z'}];
+ const result=await call({id:saved.id,expectedUpdatedAt:listed.updatedAt,name:'Renamed'},'update-automation');
+ expect(result.isError).not.toBe(true);
+ expect(saved.target).toStrictEqual({kind:'quickChat',agentId:'agent-dina'});
+ expect(saved.executionLog).toHaveLength(1);
+ expect((await store.load()).automations[0]).toStrictEqual(saved);
+ expect((await call({id:saved.id,expectedUpdatedAt:listed.updatedAt,enabled:true},'update-automation')).isError).toBe(true);
+ expect((await call({id:saved.id,expectedUpdatedAt:saved.updatedAt,target:{kind:'newQuickChat'}},'update-automation')).isError).not.toBe(true);
+ expect(saved.target).toMatchObject({kind:'newQuickChat',teamId:'team-app',selection:{backend:'codex'}});
+});
+
+it('limits listing and editing to the caller team and rolls back failed saves', async () => {
+ const {call,snapshot}=await harness(true);
+ const {createAutomationInSnapshot}=await import('@workspace/core/automation-manager');
+ const saved=createAutomationInSnapshot(snapshot,{name:'Existing',prompt:'Check',enabled:false,target:{kind:'agent',agentId:'agent-jesse'},schedule:{intervalMinutes:60}})!;
+ const before=structuredClone(saved);
+ expect((await call({id:saved.id,expectedUpdatedAt:saved.updatedAt,name:'Changed'},'update-automation')).isError).toBe(true);
+ expect(snapshot.automations[0]).toStrictEqual(before);
+ snapshot.agents[1]!.teamId='different-team';
+ expect((await call({},'list-automations')).structuredContent!.automations).toStrictEqual([]);
+ expect((await call({id:saved.id,expectedUpdatedAt:saved.updatedAt,name:'Changed'},'update-automation')).isError).toBe(true);
 });

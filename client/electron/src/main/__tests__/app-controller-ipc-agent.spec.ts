@@ -406,6 +406,9 @@ describe('AppController', () => {
 
     expect(request).toHaveBeenCalledWith('agent/turn/retry', { agentId: 'agent-dina', turnId: 'turn-1' });
     expect(request).toHaveBeenCalledWith('agent/turn/continueInterrupted', { agentId: 'agent-dina' });
+    const safetyReview = { id: 'reviewed-finding', conversationId: 'thread-dina', turnId: 'blocked' };
+    await continueInterruptedTurn(controller, 'agent-dina', safetyReview);
+    expect(request).toHaveBeenCalledWith('agent/turn/continueInterrupted', { agentId: 'agent-dina', safetyReview });
   });
 
   it('edits a Codex turn', async () => {
@@ -527,10 +530,10 @@ async function retryTurn(controller: AppController, agentId: string, turnId: str
   }).retryTurn(agentId, turnId);
 }
 
-async function continueInterruptedTurn(controller: AppController, agentId: string): Promise<AppSnapshot> {
+async function continueInterruptedTurn(controller: AppController, agentId: string, safetyReview?: import('@workspace/core/provider-safety-block').ProviderSafetyReviewTarget): Promise<AppSnapshot> {
   return (controller as unknown as {
-    continueInterruptedTurn(agentId: string): Promise<AppSnapshot>;
-  }).continueInterruptedTurn(agentId);
+    continueInterruptedTurn(agentId: string, safetyReview?: import('@workspace/core/provider-safety-block').ProviderSafetyReviewTarget): Promise<AppSnapshot>;
+  }).continueInterruptedTurn(agentId, safetyReview);
 }
 
 async function editTurn(controller: AppController, agentId: string, turnId: string, content: string): Promise<AppSnapshot> {

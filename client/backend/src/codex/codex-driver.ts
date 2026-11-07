@@ -237,8 +237,8 @@ export class CodexBackendDriver implements AgentBackendDriver {
     };
   }
 
-  async continueInterruptedTurn(agent: Agent): Promise<BackendTurnActionResult> {
-    const result = await this.sessionManager.continueInterruptedTurn(agent);
+  async continueInterruptedTurn(agent: Agent, safetyReview?: import('@workspace/core/provider-safety-block').ProviderSafetyReviewTarget): Promise<BackendTurnActionResult> {
+    const result = await this.sessionManager.continueInterruptedTurn(agent, safetyReview);
     return {
       backendSession: codexBackendSession(result.threadId),
       activeTurnId: result.activeTurnId,

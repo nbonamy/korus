@@ -44,6 +44,12 @@ test('Mission workspace pairs horizontal workflow steps with persistent conversa
     const repositoryPath = run.repositoryPath ?? mission.artifacts.tickets[run.ticketIndex]?.repositoryPath;
     if (agent && repositoryPath) agent.workspace = {kind:'git', primaryWorktreeRoot:repositoryPath, repositoryRoot:repositoryPath};
    }
+   if (new URLSearchParams(location.search).has('lead-only')) {
+    const leadId = mission.stageAgentIds.tickets ?? mission.stageAgentIds.requirements;
+    mission.execution.implementationMode = 'lead';
+    mission.stageAgentIds.implementation = leadId;
+    for (const run of mission.execution.runs) if (run.stage === 'implementation') run.workerId = leadId;
+   }
    const fixture = reactive(JSON.parse(sessionStorage.getItem('fixture'+location.search) ?? 'null') ?? {snapshot, mission});
    sessionStorage.setItem('fixture'+location.search, JSON.stringify(fixture));
    const conversationOnly = ref(false);
@@ -60,6 +66,20 @@ test('Mission workspace pairs horizontal workflow steps with persistent conversa
    await server.listen(); browser = await chromium.launch();
    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
    const errors = []; page.on('pageerror', error => errors.push(String(error)));
+   await page.setViewportSize({width:1440, height:900});
+   await page.goto(`${server.resolvedUrls.local[0]}tabs-check?lead-only`);
+   const leadHeading = page.locator('.mission-conversation-rail h2');
+   await leadHeading.waitFor();
+   assert.equal(await leadHeading.innerText(), 'Mission lead');
+   assert.equal(await page.locator('.mission-conversation-rail [role="tab"]').count(), 0);
+   const leadFixture = await page.evaluate(() => JSON.parse(sessionStorage.getItem('fixture?lead-only')));
+   const leadId = leadFixture.mission.stageAgentIds.tickets ?? leadFixture.mission.stageAgentIds.requirements;
+   assert.equal(await page.locator('.mission-conversation-rail .conversation-pane').innerText(), 'Conversation: '+leadId);
+   await page.screenshot({path:path.join(artifacts, 'lead-only-conversation.png'), animations:'disabled'});
+   if (process.env.MISSION_CONVERSATION_LEAD_ONLY === '1') {
+    assert.deepEqual(errors, []);
+    return;
+   }
    await page.goto(`${server.resolvedUrls.local[0]}tabs-check`);
    const tabs = page.locator('.mission-conversation-rail [role="tab"]');
    await tabs.first().waitFor();
@@ -163,6 +183,31 @@ test('Mission workspace pairs horizontal workflow steps with persistent conversa
    assert.equal(await stages.first().getAttribute('aria-pressed'), 'true');
    assert.equal(await chat.innerText(), activeConversation, 'stage browsing keeps the selected conversation');
    await stages.nth(2).click();
+   const filters = page.getByRole('group', {name:'Filter tasks by status'});
+   const visibleCards = page.locator('.mission-implementation__ticket');
+   const waitForCards = count => page.waitForFunction(count => document.querySelectorAll('.mission-implementation__ticket').length === count, count);
+   await filters.getByRole('button', {name:'In progress · 1',exact:true}).click();
+   await waitForCards(1);
+   await filters.getByRole('button', {name:'Blocked · 1',exact:true}).click({modifiers:['ControlOrMeta']});
+   await waitForCards(2);
+   await filters.getByRole('button', {name:'Up next · 1',exact:true}).click({modifiers:['ControlOrMeta']});
+   await waitForCards(3);
+   assert.equal(await page.getByRole('progressbar').getAttribute('aria-valuemax'),'4','filtering preserves the full progress denominator');
+   assert.equal(await page.getByRole('progressbar').getAttribute('aria-valuenow'),'1');
+   await stages.nth(1).click();
+   await page.locator('.mission-ticket-board__card').first().waitFor();
+   assert.deepEqual(await page.locator('.mission-ticket-board__number').allTextContents(),['02','03','04'],'stage changes retain filters and original ticket numbers');
+   await filters.getByRole('button', {name:'In progress · 1',exact:true}).click({modifiers:['ControlOrMeta']});
+   await page.waitForFunction(() => document.querySelectorAll('.mission-ticket-board__card').length === 2);
+   await page.locator('.mission-ticket-board__card').first().click();
+   await page.getByRole('dialog').waitFor();
+   assert.match(await page.getByRole('dialog').innerText(),/Connect review evidence/);
+   await page.getByRole('button',{name:'Close ticket details',exact:true}).click();
+   await stages.nth(2).click();
+   await waitForCards(2);
+   assert.match(await visibleCards.first().innerText(),/Connect review evidence/);
+   await filters.getByRole('button', {name:'All · 4',exact:true}).click();
+   await waitForCards(4);
    await page.waitForFunction(() => [...document.querySelectorAll('.mission-implementation__lane ol > li')]
     .every(card => Number(getComputedStyle(card).opacity) === 1));
    const measurements = [];
@@ -172,6 +217,14 @@ test('Mission workspace pairs horizontal workflow steps with persistent conversa
      await page.evaluate(dark => document.documentElement.classList.toggle('dark', dark), dark);
 
      const navigation = await page.locator('.mission-conversation-rail__navigation').boundingBox();
+     const filterLayout = await filters.evaluate(el => {
+      const bounds = el.getBoundingClientRect();
+      return [...el.querySelectorAll('button')].every(button => {
+       const rect = button.getBoundingClientRect();
+       return rect.x >= bounds.x && rect.right <= bounds.right + 1 && rect.width > 0;
+      });
+     });
+     assert.ok(filterLayout, 'status chips wrap inside the workbench without hiding labels or overflowing');
      const stageHeader = await workflow.boundingBox();
      const tabBar = await page.locator('.mission-conversation-rail__switcher').boundingBox();
      const body = await page.locator('.mission-workspace__body').boundingBox();

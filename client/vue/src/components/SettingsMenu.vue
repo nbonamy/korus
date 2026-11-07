@@ -43,7 +43,9 @@
           <span v-if="group.failed" class="settings-menu__usage-error">{{ $t('surface.settingsMenu.loadFailed') }}</span>
           <div v-for="row in group.rows" :key="row.label" class="settings-menu__rate-limit" :class="{ 'settings-menu__rate-limit--detail': row.detail }" :title="row.title ?? row.label" :aria-label="row.label">
             <span class="settings-menu__rate-limit-name">{{ row.label }}</span>
-            <span class="settings-menu__rate-limit-remaining" :class="row.level && `settings-menu__rate-limit-remaining--${row.level}`" :aria-label="row.valueLabel ?? $t('surface.settingsMenu.remainingValue', { value: row.remaining })">{{ row.remaining }}</span>
+            <el-tooltip :content="row.pace ?? ''" :disabled="!row.pace" :trigger="['hover', 'focus']" placement="top" :show-after="150">
+              <span class="settings-menu__rate-limit-remaining" :class="row.level && `settings-menu__rate-limit-remaining--${row.level}`" :tabindex="row.pace ? 0 : undefined" :aria-label="row.valueLabel ?? $t('surface.settingsMenu.remainingValue', { value: row.remaining })">{{ row.remaining }}</span>
+            </el-tooltip>
             <span class="settings-menu__rate-limit-reset" :aria-label="row.reset ? $t('surface.settingsMenu.resetValue', { value: row.reset }) : undefined">{{ row.reset }}</span>
           </div>
         </div>
@@ -67,8 +69,8 @@
 </template>
 
 <script setup lang="ts">
-import { translate } from '../i18n';
-import { computed, ref, watch } from 'vue';
+import { i18n, translate } from '../i18n';
+import { computed, ref, unref, watch } from 'vue';
 import type { AccountRateLimitWindow, AccountRateLimits, AgentBackend, AppSnapshot, CodexAccount } from '@workspace/core/contracts';
 import AppMenu from '../shared/menu/AppMenu.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
@@ -168,6 +170,7 @@ type RateLimitRow = {
   detail?: boolean;
   /** Only quotas clearly off their pace, or almost out, stand out. */
   level: 'low' | 'critical' | 'ahead' | null;
+  pace: string | null;
   reset: string;
 };
 
@@ -180,7 +183,7 @@ const usageGroups = computed(() => quotaBackends.value.map(backend => {
   ].filter((row): row is RateLimitRow => Boolean(row));
   if (isAccountBilling(limits?.billing)) {
     const billing = limits.billing;
-    const row = (key: string, value: string): RateLimitRow => ({ label: translate(`surface.settingsMenu.${key}`), remaining: value, valueLabel: value, detail: true, reset: '', level: null,
+    const row = (key: string, value: string): RateLimitRow => ({ label: translate(`surface.settingsMenu.${key}`), remaining: value, valueLabel: value, detail: true, reset: '', level: null, pace: null,
       title: `${translate(`surface.settingsMenu.${key}`)}: ${value}` });
     if (limits.planType) rows.unshift(row('plan', limits.planType));
     rows.push(row('credits', billing.includedBalanceUsd === null ? translate('surface.settingsMenu.unknown') : usd(billing.includedBalanceUsd)));
@@ -203,10 +206,15 @@ function rateLimitRow(window: AccountRateLimitWindow | null, fallbackLabel: stri
     return null;
   }
 
+  const expectedRemaining = rateLimitExpectedRemaining(window);
+  const level = rateLimitLevel(window, expectedRemaining);
   return {
     label: rateLimitLabel(window, fallbackLabel),
     remaining: rateLimitRemaining(window),
-    level: rateLimitLevel(window),
+    level,
+    pace: expectedRemaining !== null && (level === 'ahead' || level === 'low')
+      ? rateLimitPaceTooltip(window, expectedRemaining, level)
+      : null,
     reset: rateLimitReset(window),
   };
 }
@@ -232,17 +240,29 @@ function rateLimitLabel(window: AccountRateLimitWindow, fallbackLabel: string): 
 }
 
 // Quota use is judged against how much of the window has elapsed; small gaps are normal.
-const OVER_PACE_POINTS = 10;
-const UNDER_PACE_POINTS = 20;
+const PACE_TOLERANCE_POINTS = 5;
 
-function rateLimitLevel(window: AccountRateLimitWindow): RateLimitRow['level'] {
+function rateLimitPaceTooltip(window: AccountRateLimitWindow, expectedRemaining: number, level: 'ahead' | 'low'): string {
+  const minutes = Math.max(1, Math.round(Math.abs(100 - window.usedPercent - expectedRemaining) * window.windowDurationMins! / 100));
+  const hours = minutes >= 60;
+  const duration = new Intl.NumberFormat(unref(i18n.global.locale), {
+    style: 'unit', unit: hours ? 'hour' : 'minute', unitDisplay: 'long', maximumFractionDigits: 0,
+  }).format(hours ? minutes / 60 : minutes);
+  return translate(level === 'ahead' ? 'surface.settingsMenu.paceUnder' : 'surface.settingsMenu.paceOver', { duration });
+}
+
+function rateLimitExpectedRemaining(window: AccountRateLimitWindow): number | null {
+  const { windowDurationMins: minutes, resetsAt } = window;
+  if (typeof minutes !== 'number' || !Number.isFinite(minutes) || minutes <= 0 || typeof resetsAt !== 'number' || !Number.isFinite(resetsAt)) return null;
+  return Math.min(100, Math.max(0, (resetsAt * 1000 - nowMs.value) / (minutes * 60_000) * 100));
+}
+
+function rateLimitLevel(window: AccountRateLimitWindow, expectedRemaining: number | null): RateLimitRow['level'] {
   if (!Number.isFinite(window.usedPercent)) return null;
   if (100 - window.usedPercent < 10) return 'critical';
-  const { windowDurationMins: minutes, resetsAt } = window;
-  if (typeof minutes !== 'number' || minutes <= 0 || typeof resetsAt !== 'number' || !Number.isFinite(resetsAt)) return null;
-  const elapsed = Math.min(1, Math.max(0, 1 - (resetsAt * 1000 - nowMs.value) / (minutes * 60_000))) * 100;
-  const lead = window.usedPercent - elapsed;
-  return lead > OVER_PACE_POINTS ? 'low' : lead < -UNDER_PACE_POINTS ? 'ahead' : null;
+  if (expectedRemaining === null) return null;
+  const lead = window.usedPercent - (100 - expectedRemaining);
+  return lead > PACE_TOLERANCE_POINTS ? 'low' : lead < -PACE_TOLERANCE_POINTS ? 'ahead' : null;
 }
 
 function rateLimitRemaining(window: AccountRateLimitWindow): string {

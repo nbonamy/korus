@@ -81,6 +81,7 @@ type AppShellCommandOptions = {
     sendAgentPrompt: (agentId: string, prompt: string) => void;
     setDebugApproval: (approval: DebugApproval | null) => void;
     showDebugUserQuestions: (agentId: string) => void;
+    showDebugProviderSafetyBlock?: (agentId: string) => void;
     toggleSpokenAnnouncementsMuted: () => void;
     updateComposerAttachments: (agentId: string, attachments: readonly CodexNativeAttachment[]) => void;
     updateComposerState: (agentId: string, state: CodexComposerState) => void;
@@ -416,6 +417,14 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
       if (!agent) return;
       options.actions.openAgentSurface();
       options.actions.showDebugUserQuestions(agent.id);
+      return;
+    }
+
+    if (command.type === 'debug-provider-safety-block') {
+      const agent = currentAgent.value;
+      if (!agent) return;
+      options.actions.openAgentSurface();
+      options.actions.showDebugProviderSafetyBlock?.(agent.id);
       return;
     }
 

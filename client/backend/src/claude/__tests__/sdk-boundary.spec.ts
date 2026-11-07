@@ -496,6 +496,59 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     });
   });
 
+  it.each([false, 'thinking', 'redacted_thinking'] as const)('counts thinking and streamed tool arguments as generation, then excludes parallel tool waits (thinking: %s)', async (thinking) => {
+    const ledger = new UsageLedger(':memory:'); await ledger.load();
+    const historical = { provider: 'claude' as const, agentId: 'old', sessionId: 'old', turnId: 'old', model: 'legacy', at: 1 };
+    await ledger.observe({ ...historical, phase: 'started' }, { teamId: null, repository: null });
+    await ledger.observe({ ...historical, phase: 'completed', at: 2,
+      tokens: { input: 10, output: 417, cacheRead: 0, cacheWrite: 0 }, timing: { activeMs: 3727, ttftMs: 3617 } }, { teamId: null, repository: null });
+    const previous = ledger.query({ model: 'legacy' });
+    let now = 1000;
+    const usage = new UsageService(ledger, () => undefined, new TurnClock(() => now), () => now);
+    const { sdk, driver, snapshot, events } = setup(false, usage);
+    const sending = driver.sendPrompt(snapshot.agents[0]!, 'Inspect the project');
+    await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
+    sdk.emit({ type: 'system', subtype: 'init', session_id: 'stream-timing', model: 'sonnet' }); await sending;
+    const stream = async (at: number, event: Record<string, unknown>) => {
+      now = at;
+      sdk.emit({ type: 'stream_event', session_id: 'stream-timing', event });
+      // Drain the SDK async iterator without advancing the injected measurement clock.
+      await new Promise<void>(resolve => setImmediate(resolve));
+    };
+    await stream(1500, { type: 'message_start', message: { id: 'response', model: 'sonnet', content: [] } });
+    if (thinking) {
+      await stream(2000, { type: 'content_block_start', index: 0, content_block: { type: thinking, thinking: '', signature: '' } });
+      // Hidden thinking can contain only a signature, with no text deltas.
+      await stream(3000, { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: 'opaque' } });
+      await stream(3000, { type: 'content_block_stop', index: 0 });
+    }
+    for (const [index, id] of [[1, 'one'], [2, 'two']] as const) {
+      await stream(index === 1 ? 3000 : 5000, { type: 'content_block_start', index, content_block: { type: 'tool_use', id, name: 'Bash', input: {} } });
+      await stream(index === 1 ? 4000 : 6000, { type: 'content_block_delta', index, delta: { type: 'input_json_delta', partial_json: '{"command":"pwd"}' } });
+      await stream(index === 1 ? 5000 : 7000, { type: 'content_block_stop', index });
+    }
+    await stream(7000, { type: 'message_stop' });
+    now = 9000;
+    sdk.emit({ type: 'user', session_id: 'stream-timing', message: { content: [{ type: 'tool_result', tool_use_id: 'one', content: 'done' }] } });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    now = 17000;
+    sdk.emit({ type: 'user', session_id: 'stream-timing', message: { content: [{ type: 'tool_result', tool_use_id: 'two', content: 'done' }] } });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    // A further response includes reasoning while earlier UI tool rows remain present.
+    await stream(18000, { type: 'message_start', message: { id: 'final', model: 'sonnet', content: [] } });
+    await stream(19000, { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Done' } });
+    await stream(20000, { type: 'message_stop' });
+    now = 20000;
+    sdk.emit({ type: 'result', subtype: 'success', session_id: 'stream-timing', is_error: false,
+      usage: { input_tokens: 10, output_tokens: 400, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } });
+    await vi.waitFor(() => expect(events.some(e => e.type === 'claude.conversationEventReceived' && e.payload.event.type === 'turn.completed')).toBe(true));
+    await usage.drain();
+    expect(ledger.query({ model: 'sonnet' }).rows[0]?.speed).toStrictEqual({ turns: 1, outputTokens: 400,
+      generationMs: thinking ? 8000 : 7000, ttftMs: thinking ? 1000 : 2000, ttftTurns: 1 });
+    expect(ledger.query({ model: 'legacy' })).toStrictEqual(previous);
+    await usage.close();
+  });
+
   // Owner-boundary regressions: cache semantics/lifetimes, stream replacement,
   // output placeholders, reroutes, tier/context composition, and durable costs.
   it('prices streamed Claude requests by actual model, context and cache lifetime without charging result totals', async () => {

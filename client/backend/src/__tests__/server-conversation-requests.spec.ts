@@ -583,7 +583,7 @@ describe('AppBackendServer', () => {
     await server.close();
   });
 
-  it('retries failed queue drains without losing the item', async () => {
+  it.each([false, true])('retains failed queue items and retries only recoverable failures (safety block: %s)', async (blocked) => {
     vi.useFakeTimers();
     const snapshot = createTestSnapshot();
     snapshot.teams[0]!.agentIds = ['agent-dina'];
@@ -592,8 +592,9 @@ describe('AppBackendServer', () => {
       backendSession: { kind: 'codex', threadId: 'thread-dina' }, status: { type: 'working' },
       createdAt: '2026-06-13T00:00:00.000Z', updatedAt: '2026-06-13T00:00:00.000Z',
     }];
+    const failure = blocked ? 'This request was blocked by our safety systems. Reason: Potentially unintended activity.' : 'transport disconnected';
     const sendPrompt = vi.fn()
-      .mockRejectedValueOnce(new Error('transport disconnected'))
+      .mockRejectedValueOnce(new Error(failure))
       .mockResolvedValueOnce({ backendSession: { kind: 'codex', threadId: 'thread-dina' }, turnId: 'turn-retry' });
     const driver: AgentBackendDriver = {
       backend: 'codex',
@@ -622,18 +623,23 @@ describe('AppBackendServer', () => {
       payload: { type: 'idle' },
     });
     await vi.waitFor(() => {
+      expect(snapshot.agents[0]?.status).toMatchObject({ type: 'error', message: expect.stringContaining(failure) });
       expect(snapshot.queuedPrompts).toHaveLength(1);
       expect(snapshot.queuedPrompts?.[0]).toMatchObject({
         text: 'retry safely',
-        attempts: 1,
-        lastError: 'transport disconnected',
+        ...(blocked ? {} : { attempts: 1, lastError: failure }),
       });
     });
-    expect(snapshot.agents[0]?.status).toStrictEqual({ type: 'error', message: 'transport disconnected' });
+    expect(snapshot.agents[0]?.status).toMatchObject({ type: 'error', message: expect.stringContaining(failure) });
     await vi.runOnlyPendingTimersAsync();
     await flushMicrotasks();
-    expect(sendPrompt).toHaveBeenCalledTimes(2);
-    expect(snapshot.queuedPrompts).toStrictEqual([]);
+    expect(sendPrompt).toHaveBeenCalledTimes(blocked ? 1 : 2);
+    if (blocked) {
+      expect(snapshot.queuedPrompts?.map(prompt => prompt.text)).toEqual(['retry safely']);
+      server.emitEvent({ agentId: 'agent-dina', backend: 'codex', threadId: 'thread-dina', type: 'codex.conversationEventReceived', payload: { revision: 1, event: { seq: 2, origin: 'notification', occurredAt: '', conversationId: 'thread-dina', turnId: 'blocked', type: 'turn.completed', payload: { status: 'failed', error: { message: failure, codexErrorInfo: 'misalignment_policy_violation', additionalDetails: null }, willRetry: false, startedAt: null, completedAt: null, durationMs: null } } } });
+      await flushMicrotasks();
+      expect(sendPrompt).toHaveBeenCalledTimes(1);
+    } else expect(snapshot.queuedPrompts).toStrictEqual([]);
     await server.close();
     vi.useRealTimers();
   });

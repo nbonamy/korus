@@ -1232,6 +1232,20 @@ export class ClaudeConversationHost implements AgentBackendDriver {
   }
 
   private emitStreamEvent(activeTurn: ActiveClaudeTurn, message: ClaudeSdkMessage): void {
+    const event = message.type === 'stream_event' ? message.event as Record<string, unknown> | undefined : undefined;
+    if (event?.type === 'message_start') this.emitUsage(activeTurn, 'usage', 'started');
+    else if (event?.type === 'message_stop') this.emitUsage(activeTurn, 'usage', 'ended');
+    else if (event?.type === 'content_block_start') {
+      const block = event.content_block as Record<string, unknown> | undefined;
+      // Hidden thinking can stream only a signature, without any thinking_delta.
+      if (block?.type === 'thinking' || block?.type === 'redacted_thinking') this.emitUsage(activeTurn, 'usage', 'output');
+    } else if (event?.type === 'content_block_delta') {
+      const delta = event.delta as Record<string, unknown> | undefined;
+      if (delta && ['text_delta', 'thinking_delta', 'input_json_delta'].includes(String(delta.type))
+        && [delta.text, delta.thinking, delta.partial_json].some(value => typeof value === 'string' && value.length > 0)) {
+        this.emitUsage(activeTurn, 'usage', 'output');
+      }
+    }
     const delta = claudeStreamTextDelta(message);
     if (delta) {
       activeTurn.streamedText += delta;
@@ -1732,10 +1746,11 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     });
   }
 
-  private emitUsage(turn:ActiveClaudeTurn,phase:ExecutionObservation['phase']):void {
+  private emitUsage(turn:ActiveClaudeTurn,phase:ExecutionObservation['phase'],generation?:ExecutionObservation['generation']):void {
     if (!turn.observedAt || !turn.sessionId) return;
     const at=Date.now();
     const observation:ExecutionObservation={agentId:turn.agentId,sessionId:turn.sessionId,turnId:turn.turnId,provider:'claude',requestCoverage:turn.requestCoverage ?? 'partial',phase,at,model:turn.model,reasoningEffort:turn.reasoningEffort ?? null,serviceTier:turn.serviceTier ?? 'normal',...(phase!=='started' && phase!=='usage'?{durationMs:at-turn.observedAt,...(turn.consumption?{tokens:turn.consumption}:{})}:{})};
+    if (generation) observation.generation = generation;
     for (const listener of this.usageListeners) { try { listener(observation); } catch { /* Observation must not change provider execution. */ } }
   }
   private completeTurn(activeTurn: ActiveClaudeTurn): void {

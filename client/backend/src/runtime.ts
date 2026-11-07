@@ -188,6 +188,8 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     tasks,
     persistSnapshot: () => saveBackendSnapshot(snapshot),
     missionTools: {
+      schedule: (agentId, input) => server.setMissionSchedule(agentId, input),
+      schedulingContext: agentId => server.getMissionSchedule(agentId),
       acquireCommitLock: (agentId, signal) => server.acquireMissionCommitLock(agentId, signal),
       releaseCommitLock: agentId => server.releaseMissionCommitLock(agentId),
       contextForAgent: agentId => server.missionContext(agentId),
@@ -407,6 +409,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
       pluginStatus = await loadPluginStatus(snapshot.general.providerHomes?.codex?.homePath);
       return pluginStatus;
     },
+    stopAgentMonitors: agentId => mcpService.stopAgentMonitors(agentId),
     sendAgentMessage: (fromAgentId, toAgentId, content) => mcpService.sendMessage(fromAgentId, toAgentId, content),
     onPromptStarting: (agentId, promptOptions) => {
       mcpService.recordPromptInputMethod(agentId, promptOptions?.inputMethod);

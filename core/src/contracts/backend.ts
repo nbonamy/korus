@@ -86,6 +86,8 @@ export type AccountRateLimits = {
 export type BackendPlanModeSupport = 'native' | 'prompted' | 'unsupported';
 
 export type BackendCapabilities = {
+  /** The harness supplies its own background monitor tool; absent means false. */
+  nativeMonitor?: boolean;
   codeReview?: boolean;
   planReview?: boolean;
   questions?: boolean;

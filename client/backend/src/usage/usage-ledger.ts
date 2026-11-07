@@ -63,6 +63,8 @@ export class UsageLedger {
       const columns = this.db.prepare("PRAGMA table_info(executions)").all();
       if (!columns.some((c) => c.name === "request_coverage"))
         this.db.exec("ALTER TABLE executions ADD COLUMN request_coverage TEXT");
+      if (!columns.some((c) => c.name === "task_duration_ms"))
+        this.db.exec("ALTER TABLE executions ADD COLUMN task_duration_ms INTEGER");
       if (!columns.some((c) => c.name === "request_coverage_reason"))
         this.db.exec(
           "ALTER TABLE executions ADD COLUMN request_coverage_reason TEXT",
@@ -128,17 +130,15 @@ export class UsageLedger {
       value.at <= this.now() + 60000 &&
       (!value.tokens || validConsumption(value.tokens)) &&
       (!value.timing || validExecutionTiming(value.timing)) &&
-      (value.durationMs === undefined ||
-        (Number.isSafeInteger(value.durationMs) &&
-          value.durationMs >= 0 &&
-          value.durationMs <= 1e9))
+      [value.durationMs, value.taskDurationMs].every(duration => duration === undefined ||
+        (Number.isSafeInteger(duration) && duration >= 0 && duration <= 1e9))
     );
   }
   private save(record: UsageRecord): void {
     const reference = (v: unknown) =>
       typeof v === "string" && v.length <= 4096 ? v : null;
     this.db!.prepare(
-      "INSERT INTO executions(provider,session_id,turn_id,agent_id,model,reasoning_effort,service_tier,team_id,repository,phase,started_at,updated_at,duration_ms,tokens,timing,request_coverage,request_coverage_reason) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(provider,session_id,turn_id) DO UPDATE SET agent_id=excluded.agent_id,model=excluded.model,reasoning_effort=excluded.reasoning_effort,service_tier=excluded.service_tier,team_id=excluded.team_id,repository=excluded.repository,phase=excluded.phase,started_at=excluded.started_at,updated_at=excluded.updated_at,duration_ms=excluded.duration_ms,tokens=excluded.tokens,timing=excluded.timing,request_coverage=excluded.request_coverage,request_coverage_reason=excluded.request_coverage_reason",
+      "INSERT INTO executions(provider,session_id,turn_id,agent_id,model,reasoning_effort,service_tier,team_id,repository,phase,started_at,updated_at,duration_ms,task_duration_ms,tokens,timing,request_coverage,request_coverage_reason) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(provider,session_id,turn_id) DO UPDATE SET agent_id=excluded.agent_id,model=excluded.model,reasoning_effort=excluded.reasoning_effort,service_tier=excluded.service_tier,team_id=excluded.team_id,repository=excluded.repository,phase=excluded.phase,started_at=excluded.started_at,updated_at=excluded.updated_at,duration_ms=excluded.duration_ms,task_duration_ms=excluded.task_duration_ms,tokens=excluded.tokens,timing=excluded.timing,request_coverage=excluded.request_coverage,request_coverage_reason=excluded.request_coverage_reason",
     ).run(
       record.provider,
       record.sessionId,
@@ -153,6 +153,7 @@ export class UsageLedger {
       record.startedAt,
       record.at,
       record.durationMs ?? null,
+      record.taskDurationMs ?? null,
       record.tokens ? JSON.stringify(record.tokens) : null,
       record.timing ? JSON.stringify(record.timing) : null,
       record.requestCoverage ?? null,
@@ -180,6 +181,7 @@ export class UsageLedger {
       startedAt: row.started_at,
       at: row.updated_at,
       ...(row.duration_ms !== null ? { durationMs: row.duration_ms } : {}),
+      ...(row.task_duration_ms != null ? { taskDurationMs: row.task_duration_ms } : {}),
       tokens: row.tokens ? JSON.parse(String(row.tokens)) : null,
       ...(row.timing ? { timing: JSON.parse(String(row.timing)) } : {}),
     } as UsageRecord;
@@ -239,6 +241,9 @@ export class UsageLedger {
       ...(event.timing !== undefined ? { timing: event.timing } : {}),
       ...(event.durationMs !== undefined
         ? { durationMs: event.durationMs }
+        : {}),
+      ...(event.taskDurationMs !== undefined
+        ? { taskDurationMs: event.taskDurationMs }
         : {}),
     };
     db.exec("BEGIN IMMEDIATE");
@@ -513,7 +518,7 @@ export class UsageLedger {
                 )
               : "All";
         if (!filter.apiProvider) {
-          const turnMs = record.timing?.activeMs ?? record.durationMs;
+          const turnMs = record.taskDurationMs ?? record.durationMs;
           if (record.phase === "completed" && turnMs !== undefined && turnMs > longestTurnMs) longestTurnMs = turnMs;
           this.aggregate(rows, record, label, modelVariant);
           this.aggregate(daily, record, dayOf(record.startedAt, filter.timeZone));
@@ -692,10 +697,7 @@ export class UsageLedger {
       ] as (keyof Consumption)[]) {
         const value =
           key === "total"
-            ? (record.tokens.total ??
-              (record.provider === "claude"
-                ? record.tokens.input + record.tokens.output
-                : null))
+            ? (record.tokens.total ?? 0)
             : record.tokens[key];
         (row.tokens as Record<string, number | null>)[key] =
           value === null || value === undefined || row.tokens[key] === null

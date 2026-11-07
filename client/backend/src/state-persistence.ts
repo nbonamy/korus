@@ -1,3 +1,4 @@
+import { isProviderSafetyReview, providerSafetyBlockMessage } from '@workspace/core/provider-safety-block';
 import { isDesignWorkspace, type DesignWorkspace } from '@workspace/core/design';
 import { migrateRemoteTeamLinks } from './persistence/migrations';
 import { readPersistedExecutionSelection } from '@workspace/core/execution-selection';
@@ -83,6 +84,7 @@ export type PersistedAgent = Pick<Agent, 'id' | 'name' | 'folder' | 'createdAt' 
   suggestedPrompt?: string;
   rateLimitPause?: Agent['rateLimitPause'];
   autoResumePending?: boolean;
+  status?: Extract<Agent['status'], { type: 'error' }>;
   goal?: ThreadGoal;
   designWorkspace?: DesignWorkspace;
   visualize?: Omit<VisualizeSession, 'visualizations'> & { visualizations?: Visualization[] };
@@ -176,6 +178,7 @@ function persistedAgentFromSnapshot(agent: Agent, libraries?: RepositoryVisualiz
     ...(agent.plan ? { plan: cloneThreadPlan(agent.plan) } : {}),
     ...(agent.threadFlags ? { threadFlags: agent.threadFlags } : {}),
     ...(agent.rateLimitPause ? { rateLimitPause: { ...agent.rateLimitPause } } : {}),
+    ...(agent.status.type === 'error' && providerSafetyBlockMessage(agent.status.message) ? { status: { type: 'error' as const, message: providerSafetyBlockMessage(agent.status.message)!, ...(agent.status.safetyReview ? { safetyReview: { ...agent.status.safetyReview, canContinue: false } } : {}) } } : {}),
     ...(agent.autoResumePending ? { autoResumePending: true } : {}),
     ...(agent.suggestedPrompt ? { suggestedPrompt: agent.suggestedPrompt } : {}),
     ...(agent.planReview ? { planReview: { ...agent.planReview } } : {}),
@@ -449,7 +452,8 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
     ...(isDesignWorkspace(value.designWorkspace) ? { designWorkspace: persistedDesignWorkspace(structuredClone(value.designWorkspace)) } : {}),
     ...(visualize ? { visualize } : {}),
     ...(typeof value.statusText === 'string' ? { statusText: value.statusText } : {}),
-    status: { type: 'idle' },
+    status: providerSafetyBlockMessage(isRecord(value.status) && value.status.type === 'error' ? value.status.message : null)
+      ? { type: 'error', message: providerSafetyBlockMessage(isRecord(value.status) && value.status.type === 'error' ? value.status.message : null)!, ...(isRecord(value.status) && isProviderSafetyReview(value.status.safetyReview) ? { safetyReview: { ...value.status.safetyReview, canContinue: false } } : {}) } : { type: 'idle' },
     createdAt,
     lastActivityAt,
     updatedAt,

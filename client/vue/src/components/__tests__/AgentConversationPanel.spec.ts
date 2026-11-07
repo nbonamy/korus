@@ -243,7 +243,7 @@ describe('AgentConversationPanel', () => {
     ]);
     view.agent = { ...agent, threadFlags: { work_proposed: true } };
     await flushPromises();
-    for (const [label, action] of [['Continue', 'implement'], ['Delegate', 'delegate'], ['Mission', 'create_mission'], ['Discard', 'dismiss']] as const) {
+    for (const [label, action] of [['Continue', 'implement'], ['Worktree', 'delegate'], ['Mission', 'create_mission'], ['Discard', 'dismiss']] as const) {
       await wrapper.get(`button[aria-label="${label}"]`).trigger('click');
       await flushPromises();
       expect(actions.threadFlag).toHaveBeenLastCalledWith(agent.id, { id: 'work_proposed', action });

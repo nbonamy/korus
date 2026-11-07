@@ -29,6 +29,7 @@ export const codexBackendCapabilities: BackendCapabilities = {
 };
 
 export const claudeBackendCapabilities: BackendCapabilities = {
+  nativeMonitor: true,
   codeReview: true,
   planReview: true,
   questions: true,

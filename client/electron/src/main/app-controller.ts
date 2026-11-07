@@ -39,6 +39,7 @@ import type { ThreadFlagId } from '@workspace/core/thread-flags';
 import { DesktopAutoUpdateService } from './auto-update';
 import { BrowserPane, browserPaneKey } from './browser-pane';
 import { BrowserExtensions } from './browser-extensions';
+import { cleanupLegacyBrowserProfiles } from './browser-profile-cleanup';
 import { launchChatGptApp } from './chatgpt-app';
 import { appCommandFromDeepLink, appDeepLinkScheme, deepLinksFromArgv } from './deep-links';
 import { ManualUpdateCheckController } from './manual-update-check';
@@ -757,8 +758,8 @@ export class AppController {
       return this.retryTurn(agentId, turnId);
     });
 
-    ipc.handle(ipcChannels.continueInterruptedTurn, (_event, agentId: string) => {
-      return this.continueInterruptedTurn(agentId);
+    ipc.handle(ipcChannels.continueInterruptedTurn, (_event, agentId: string, safetyReview?: import('@workspace/core/provider-safety-block').ProviderSafetyReviewTarget) => {
+      return this.continueInterruptedTurn(agentId, safetyReview);
     });
 
     ipc.handle(ipcChannels.mobileSimulator, (_event, agentId, input) => this.executeMobileSimulator(agentId, input, true));
@@ -1783,8 +1784,8 @@ export class AppController {
     return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentTurnRetry, { agentId, turnId }));
   }
 
-  private async continueInterruptedTurn(agentId: string): Promise<AppSnapshot> {
-    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentTurnContinueInterrupted, { agentId }));
+  private async continueInterruptedTurn(agentId: string, safetyReview?: import('@workspace/core/provider-safety-block').ProviderSafetyReviewTarget): Promise<AppSnapshot> {
+    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentTurnContinueInterrupted, { agentId, ...(safetyReview ? { safetyReview } : {}) }));
   }
 
   private async chooseAgentFolder(): Promise<string | null> {
@@ -2610,6 +2611,12 @@ export function startMainApp(): void {
   controller.registerIpcHandlers();
 
   void app.whenReady().then(async () => {
+    // Old partitions are unused; reclaim them without delaying window startup.
+    void cleanupLegacyBrowserProfiles(app.getPath('userData')).catch((error) => {
+      warnMain('browser', 'obsolete browser profile cleanup failed', {
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    });
     controller.installLocalMediaProtocol();
     if (process.env.APP_DEV_PROTOCOL_SCHEME) {
       // The profile-specific native launcher owns its alias registration.

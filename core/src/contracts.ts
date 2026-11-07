@@ -303,7 +303,7 @@ export type AgentStatus =
   | { type: 'idle' }
   | { type: 'working'; detail?: AppText }
   | { type: 'awaitingInput'; detail?: AppText }
-  | { type: 'error'; message: AppText };
+  | { type: 'error'; message: AppText; safetyReview?: import('./provider-safety-block').ProviderSafetyReview };
 
 export type Team = {
   id: string;
@@ -769,6 +769,7 @@ export type AppCommand =
   | { type: 'handoff-active-agent' }
   | { type: 'debug-approval-request' }
   | { type: 'debug-user-questions' }
+  | { type: 'debug-provider-safety-block' }
   | { type: 'debug-github-star-reminder' }
   | { type: 'debug-celebrate'; kind: CelebrationKind }
   | { type: 'debug-image-annotation'; imageDataUrl?: string; pixelRatio?: 1 | 2 }
@@ -1114,7 +1115,7 @@ export type AppApi = {
   deleteTurn(agentId: string, turnId: string): Promise<AppSnapshot>;
   editTurn(agentId: string, turnId: string, content: string, options?: PromptContentOptions): Promise<AppSnapshot>;
   retryTurn(agentId: string, turnId: string): Promise<AppSnapshot>;
-  continueInterruptedTurn(agentId: string): Promise<AppSnapshot>;
+  continueInterruptedTurn(agentId: string, safetyReview?: import('./provider-safety-block').ProviderSafetyReviewTarget): Promise<AppSnapshot>;
   mobileSimulator?(agentId: string, input: import('./mobile-simulator').MobileRequest): Promise<import('./mobile-simulator').MobileResult>;
   mobileSimulatorView?(agentId: string, input: import('./mobile-simulator').MobileViewRequest): Promise<import('./mobile-simulator').MobileViewResult>;
   browserOpen(agentId: string, browserId: string, url: string, guestWebContentsId: number): Promise<BrowserState>;
