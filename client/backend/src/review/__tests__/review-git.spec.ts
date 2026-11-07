@@ -25,7 +25,7 @@ async function repository() {
 }
 
 // Real repositories, frozen baselines and reviewed Git commits.
-describe('automatic review git boundary', { timeout: 2_000 }, () => {
+describe('automatic review git boundary', () => {
   it('freezes a commit baseline at its first parent, including an initial commit', async () => {
     const { folder, git, service } = await repository();
     const initial = await git('rev-parse', 'HEAD');

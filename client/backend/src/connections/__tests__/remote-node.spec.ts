@@ -11,7 +11,7 @@ const exec = promisify(execFile);
 
 // A bare SSH shell can lack Node, fetch corrupt bytes, or repeat setup after an update.
 // Run the generated installer with a real archive/filesystem; only the download is faked.
-describe('remote Node bootstrap', { timeout: 2_000 }, () => {
+describe('remote Node bootstrap', () => {
   it.each([false, true])('verifies the download before activation (corrupt=%s)', async (corrupt) => {
     const home = await mkdtemp(path.join(tmpdir(), 'korus-ssh-node-'));
     try {

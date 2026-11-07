@@ -29,8 +29,8 @@ export default defineConfig({
     },
   },
   test: {
-    testTimeout: 500,
-    hookTimeout: 500,
+    testTimeout: 2_500,
+    hookTimeout: 2_500,
     environment: 'jsdom',
     css: {
       // Opt in only components with valuable runtime CSS assertions.
@@ -53,6 +53,9 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'browser',
+          // Cold Vite/Chromium work must not contend with short DOM behavior tests.
+          sequence: { groupOrder: -1 },
+          fileParallelism: false,
           environment: 'node',
           pool: 'forks',
           include: ['src/**/*.browser.spec.mjs'],

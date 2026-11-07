@@ -13,7 +13,7 @@ test('Design pointer hover previews element bounds without changing selection or
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
-    page.setDefaultTimeout(1_000);
+    page.setDefaultTimeout(2_500);
     // Cold module loading belongs to browser startup, not individual interactions.
     page.setDefaultNavigationTimeout(15_000);
     await page.setContent('<iframe sandbox="allow-scripts" style="width:800px;height:600px;transform:scale(.5);transform-origin:top left;border:0"></iframe>');

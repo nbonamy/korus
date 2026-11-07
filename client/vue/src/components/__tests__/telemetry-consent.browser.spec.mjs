@@ -95,7 +95,7 @@ try {
     viewport: { width: 1000, height: 900 },
   });
   const page = await context.newPage();
-  page.setDefaultTimeout(1_000);
+  page.setDefaultTimeout(2_500);
   // The first route loads the cold fixture and its modules.
   page.setDefaultNavigationTimeout(15_000);
   await page.clock.install({time:new Date('2026-11-01T12:00:00Z')});

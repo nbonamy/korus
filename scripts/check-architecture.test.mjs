@@ -73,6 +73,7 @@ async function checkFixture(files) {
     return spawnSync(process.execPath, [script], {
       cwd: root,
       encoding: "utf8",
+      timeout: 2_000,
     });
   } finally {
     await rm(root, { recursive: true, force: true });

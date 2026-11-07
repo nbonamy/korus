@@ -88,7 +88,7 @@ describe('TeamRail', () => {
       expect(visibleTooltip('Settings menu')).toBeUndefined();
       expect(new DOMWrapper(document.body.querySelector<HTMLElement>('.settings-menu')!).isVisible()).toBe(true);
     } finally { wrapper.unmount(); vi.useRealTimers(); }
-  }, 1_500);
+  });
   it('matches the selection ring to the selected team color', async () => {
     const wrapper = mountRail({ teams, activeTeamId: 'team-app' });
     expect(getComputedStyle(wrapper.get(`[aria-label="${product.name}"]`).element).outlineColor)

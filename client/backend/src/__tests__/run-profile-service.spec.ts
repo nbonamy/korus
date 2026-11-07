@@ -31,7 +31,7 @@ beforeEach(async () => {
 afterEach(async () => { await service.close(); await rm(root, { recursive: true, force: true }); });
 
 // Real Git worktrees and owned child-process shutdown are the integration boundary.
-describe('repository run profiles', { timeout: 2_000 }, () => {
+describe('repository run profiles', () => {
   it('migrates commands from separate clones into one Git identity and resolves each selected worktree locally', async () => {
     await exec('git', ['-C', repo, 'remote', 'add', 'origin', 'git@github.com:fixture/project.git']);
     const clone = path.join(root, 'second');

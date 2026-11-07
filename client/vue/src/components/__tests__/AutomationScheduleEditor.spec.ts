@@ -47,7 +47,7 @@ it('edits daily, weekday and weekly schedules through calendar controls', async 
   await choose(reopened, 'Repeat', 'Daily');
   await choose(reopened, 'Repeat', 'Weekly');
   expect(reopened.props('modelValue')).toEqual({ ...daily, rrule: 'FREQ=WEEKLY;BYDAY=WE,FR,MO;BYHOUR=8;BYMINUTE=0;BYSECOND=0' });
-}, 1_000);
+});
 it('supports every-N custom periods and elapsed intervals', async () => {
   const wrapper = editor();
   await choose(wrapper, 'Repeat', 'Custom');

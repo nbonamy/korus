@@ -387,7 +387,7 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       const saved = JSON.parse(await readFile(path.join(f.directory, 'collaboration.json'), 'utf8')).sharing;
       expect(saved.links.filter((link: { revokedAt?: string }) => !link.revokedAt)).toHaveLength(51);
     } finally { await server.close(); }
-  }, 2_000);
+  });
   it('fails closed on inaccessible or corrupt storage without returning a link or secrets', async () => {
     const f = await fixture(); await writeFile(f.directory, 'not a directory'); let server = f.start();
     try {

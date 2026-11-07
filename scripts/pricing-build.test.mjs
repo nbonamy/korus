@@ -75,7 +75,8 @@ console.log(JSON.stringify(history));
           cwd: temp, env: { ...process.env, HOME: userHome, USERPROFILE: userHome, SHELL: path.join(temp, 'missing-shell'), APP_HOME: home, CODEX_APP_SDK_SOURCE: '0' }, stdio: ['pipe', 'pipe', 'pipe'], signal: t.signal, killSignal: 'SIGKILL',
         });
         let buffer = '', stderr = '', result, failure;
-        const deadline = setTimeout(() => { failure = new Error('Offline usage RPC timed out: ' + stderr); child.kill('SIGKILL'); }, 1_000);
+        // Includes cold bundled-daemon initialization, not just the local usage query.
+        const deadline = setTimeout(() => { failure = new Error('Offline usage RPC timed out: ' + stderr); child.kill('SIGKILL'); }, 5_000);
         child.stderr.on('data', chunk => { stderr += chunk; });
         child.stdout.on('data', chunk => {
           buffer += chunk;

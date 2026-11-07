@@ -78,12 +78,12 @@ test('installed package command and recovery workflows', { timeout: 30_000 }, as
 
     await mkdir(home, { recursive: true });
     await save('roster.json', { agents: [], missions: [] }); await save('settings.json', { settings: {} });
-    await t.test('a closed output pipe exits cleanly', async () => {
+    await t.test('a closed output pipe exits cleanly', { timeout: 2_500 }, async () => {
       const closed = launch(['--help']); closed.child.stdout.destroy();
       const result = await closed.done; assert.equal(result.code, 0); assert.doesNotMatch(result.stderr, /EPIPE|Unhandled|at Socket/);
     });
 
-    await t.test('doctor, empty lists, missing Missions and corrupt-state exit codes', async () => {
+    await t.test('doctor, empty lists, missing Missions and corrupt-state exit codes', { timeout: 2_500 }, async () => {
       assert.equal((await run(['doctor'])).code, 0);
       for (const command of ['agents', 'missions']) { const result = await run([command, 'list']); assert.equal(result.code, 0); assert.match(result.stdout, /No (agents|missions) found\./); }
       assert.equal((await run(['missions', 'show', 'missing'])).code, 1);
@@ -98,14 +98,14 @@ test('installed package command and recovery workflows', { timeout: 30_000 }, as
       await save('settings.json', { settings: {} });
     });
 
-    await t.test('rejects malformed saved roster data without pretending it is empty', async () => {
+    await t.test('rejects malformed saved roster data without pretending it is empty', { timeout: 2_500 }, async () => {
       await save('roster.json', { agents: [], missions: {} });
       assert.equal((await run(['missions', 'list', '--offline'])).code, 1);
       assert.equal((await run(['doctor', '--json'])).code, 1);
       await save('roster.json', { agents: [], missions: [] });
     });
 
-    if (process.platform !== 'win32' && process.getuid?.() !== 0) await t.test('unreadable state and logs are errors, not empty results', async () => {
+    if (process.platform !== 'win32' && process.getuid?.() !== 0) await t.test('unreadable state and logs are errors, not empty results', { timeout: 2_500 }, async () => {
       const locked = path.join(directory, 'locked'); await mkdir(path.join(locked, 'state'), { recursive: true }); await chmod(locked, 0);
       try { for (const args of [['agents', 'list'], ['doctor']]) assert.equal((await run([...args, '--home', path.join(locked, 'state')])).code, 1); }
       finally { await chmod(locked, 0o700); }
@@ -113,7 +113,7 @@ test('installed package command and recovery workflows', { timeout: 30_000 }, as
       try { assert.equal((await run(['logs'])).code, 1); } finally { await chmod(path.join(home, 'logs'), 0o700); }
     });
 
-    await t.test('socket, unreachable socket and desktop MCP modes', async () => {
+    await t.test('socket, unreachable socket and desktop MCP modes', { timeout: 2_500 }, async () => {
       assert.equal(JSON.parse((await run(['backend', '--json'])).stdout).running, false);
       const server = net.createServer(socket => socket.on('data', data => { const request = JSON.parse(data.toString()); socket.end(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: request.method === 'snapshot/get' ? { snapshot: { agents: [], missions: [] } } : { ok: true, version: 'test' } }) + '\n'); }));
       const socket = path.join(directory, 'daemon.sock'); await new Promise(resolve => server.listen(socket, resolve));
@@ -162,7 +162,7 @@ fs.writeFileSync(process.env.TEST_CAPTURE,JSON.stringify({id:'${id}',args,pid:pr
       const prepared = await run(['triage', '--no-launch', '--json']); assert.equal(prepared.code, 0); assert.match(await readFile(JSON.parse(prepared.stdout).promptPath, 'utf8'), /approval/);
     });
 
-    await t.test('support bundles and finite log output preserve privacy', async () => {
+    await t.test('support bundles and finite log output preserve privacy', { timeout: 2_500 }, async () => {
       const log = path.join(home, 'logs', 'daemon.log');
       await writeFile(log, JSON.stringify({ time: new Date().toISOString(), msg: 'test diagnostic', token: 'PRIVATE_TOKEN', content: 'PRIVATE_CONVERSATION' }) + '\n');
       const logs = await run(['logs', '--json']); assert.equal(logs.code, 0); assert.doesNotMatch(logs.stdout, /PRIVATE_TOKEN|PRIVATE_CONVERSATION/);
@@ -173,7 +173,7 @@ fs.writeFileSync(process.env.TEST_CAPTURE,JSON.stringify({id:'${id}',args,pid:pr
       }
     });
 
-    await t.test('piped JSON following, complete records, rotation and SIGINT', async () => {
+    await t.test('piped JSON following, complete records, rotation and SIGINT', { timeout: 2_500 }, async () => {
       const log = path.join(home, 'logs', 'daemon.log'); await writeFile(log, '');
       const following = launch(['logs', '--follow', '--json', '--since', '1m']);
       try {

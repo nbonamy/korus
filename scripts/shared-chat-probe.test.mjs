@@ -33,7 +33,7 @@ for (const [name, input] of [
         {
           cwd: fileURLToPath(new URL("../", import.meta.url)),
           encoding: "utf8",
-          timeout: 30_000,
+          timeout: 2_000,
           env: {
             ...process.env,
             TEST_SHARED_LINK: "",

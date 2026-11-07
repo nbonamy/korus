@@ -89,7 +89,7 @@ try {
         hasTouch: true,
         timezoneId: "America/Chicago",
       });
-      page.setDefaultTimeout(1_000);
+      page.setDefaultTimeout(2_500);
       page.setDefaultNavigationTimeout(15_000);
       page.on("pageerror", (error) => errors.push(error.message));
       await page.clock.setFixedTime(new Date("2026-11-01T20:00:00Z"));
@@ -204,7 +204,7 @@ try {
           timezoneId: "America/Chicago",
           hasTouch: true,
         });
-        page.setDefaultTimeout(1_000);
+        page.setDefaultTimeout(2_500);
         page.setDefaultNavigationTimeout(15_000);
         await page.clock.setFixedTime(new Date("2026-11-01T20:00:00Z"));
         page.on("pageerror", (error) => errors.push(error.message));

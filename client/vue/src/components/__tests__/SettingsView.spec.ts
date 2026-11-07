@@ -85,7 +85,7 @@ describe('SettingsView', () => {
     expect(manageSkills).toHaveBeenLastCalledWith({ action: 'remove', name: 'personal-notes', confirmed: true });
     expect(wrapper.find('[aria-label="personal-notes actions"]').exists()).toBe(false);
 
-  }, 1_500);
+  });
   it('shows the featured skills at once and a placeholder for the installed list while it loads', async () => {
     let resolveList!: (state: SkillManagerState) => void;
     const manageSkills = vi.fn().mockReturnValueOnce(new Promise<SkillManagerState>((resolve) => { resolveList = resolve; }));

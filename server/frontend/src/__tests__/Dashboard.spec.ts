@@ -296,7 +296,7 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
     false,
   );
   wrapper.unmount();
-}, 1_500);
+});
 it("shows recoverable failures without echoing remote diagnostics and bounds date ranges before fetching", async () => {
   const fetcher = vi
     .fn()

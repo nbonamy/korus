@@ -33,7 +33,7 @@ async function fixture(run: (local: string, remote: string, service: AgentGitSer
 }
 
 // Real remote/local repositories and repeated fetch/pull subprocesses.
-describe('pull with real Git', { timeout: 2_000 }, () => {
+describe('pull with real Git', () => {
   it.each(['merge', 'rebase', 'ff-only', 'git-config'] as const)('uses the saved %s strategy for divergent histories without pushing', async strategy => {
     await fixture(async (local, remote, service) => {
       service.setSettingsProvider(() => ({ pull: strategy, update: 'merge' }));

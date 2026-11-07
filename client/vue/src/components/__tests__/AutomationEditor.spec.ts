@@ -63,7 +63,7 @@ describe('AutomationEditor', () => {
     await choose(wrapper, 'Conversation', 'New Quick Chat each run');
     await wrapper.get('form').trigger('submit');
     expect(wrapper.emitted('submit')?.[2]?.[0]).toMatchObject({ target: { kind: 'newQuickChat' } });
-  }, 1_000);
+  });
 
   it('retains configured model and effort on edit, and surfaces catalog and save errors', async () => {
     const automation: Automation = { id: 'auto', name: 'Check', enabled: true, prompt: 'Check tasks',

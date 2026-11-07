@@ -10,7 +10,7 @@ let App: typeof import('../App.vue')['default'];
 let setElectronTestClient: typeof import('../test/client')['setElectronTestClient'];
 
 // Cold transforms reload the complete app module graph to isolate singleton state.
-// This compilation/setup budget is independent of the 500ms behavior tests.
+// This compilation/setup budget is independent of the 2.5s behavior tests.
 beforeEach(async () => {
   vi.resetModules();
   window.sessionStorage.clear();

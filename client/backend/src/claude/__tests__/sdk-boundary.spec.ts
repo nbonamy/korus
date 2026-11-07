@@ -256,7 +256,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     expect(JSON.stringify(read().messages.filter(message => message.turnId === 'claude-turn-64'))).toContain('PRIVATE OUTPUT 64');
     if (recent && process.env.APP_CLAUDE_HISTORY_EVIDENCE) await writeFile(process.env.APP_CLAUDE_HISTORY_EVIDENCE,
       JSON.stringify({ agent: owner, initialFrames, failedExpansion, expansions, olderPages }, null, 2));
-  }, 1_000);
+  });
 
   it('restores turn timing from native history and preserves a running turn when reloaded', async () => {
     const home = await mkdtemp(path.join(os.tmpdir(), 'korus-claude-timing-'));
@@ -410,7 +410,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     if (format === 'tasks') await tool('TaskUpdate', { taskId: '7', status: 'deleted' }, { success: true, taskId: '7', updatedFields: ['status'] });
     else await tool('TodoWrite', { todos: [] }, { newTodos: [] });
     expect(readPlan()).toBeNull();
-  }, 1_000);
+  });
 
   it('discovers native subagents, reads their own sidechain, and retains completion after the parent turn and reload', async () => {
     const home = await mkdtemp(path.join(os.tmpdir(), 'korus-claude-subagents-'));

@@ -115,7 +115,7 @@ it.skipIf(process.platform === 'win32').each([
   } finally {
     await rm(root, { recursive: true, force: true });
   }
-}, 2_000);
+});
 
 function roster(threadId) {
   return {

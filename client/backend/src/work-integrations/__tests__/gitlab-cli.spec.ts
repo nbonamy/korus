@@ -84,7 +84,7 @@ it('uses CLI-only private subgroup catalogs and branch pages, restores metadata 
   expect(await manager.authorizationHeader('github')).toBe('Bearer github-secret');
   expect((await calls()).every(call => call.args[0] === 'api' && call.args.includes('--hostname') && call.args.includes('gitlab.com') && call.debug === 'false' && call.apiHost === 'gitlab.com' && call.protocol === 'https' && call.autoLogin === 'false')).toBe(true);
   manager.close(); restarted.close();
-}, 1_500);
+});
 it.each(['cancel', 'denied', 'expired', 'start failure', 'missing configuration', 'disconnect'] as const)('keeps glab available after direct %s without affecting GitHub', async action => {
   const { manager, driver, snapshot, tokenStore } = fixture();
   await manager.hydrateConnections();

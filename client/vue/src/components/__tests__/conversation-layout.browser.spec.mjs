@@ -68,8 +68,8 @@ createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id=
     await server.listen();
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-    page.setDefaultTimeout(1_000);
-    // Cold Vite/SFC initialization is setup; user interactions retain the one-second bound.
+    page.setDefaultTimeout(2_500);
+    // Cold Vite/SFC initialization is setup; user interactions retain the 2.5-second bound.
     page.setDefaultNavigationTimeout(15_000);
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));

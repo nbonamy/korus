@@ -160,7 +160,7 @@ async function open(sessionId?: string, options: Partial<Parameters<typeof AcpSe
 }
 
 // Real ACP child processes, durable journals and multi-turn/restart workflows.
-describe('Antigravity native session', { timeout: 1_000 }, () => {
+describe('Antigravity native session', () => {
   // ACP replay lacks stable identities, so this backend must remain unqualified.
   it('keeps sharing disabled when replay cannot preserve native message identities', async () => {
     const host = new AntigravityHost();

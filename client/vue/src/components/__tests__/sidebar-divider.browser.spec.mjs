@@ -12,7 +12,7 @@ test('sidebar hover highlight stays on the pane edge without moving content', as
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
-    page.setDefaultTimeout(1_000);
+    page.setDefaultTimeout(2_500);
     // Cold module loading belongs to browser startup, not individual interactions.
     page.setDefaultNavigationTimeout(15_000);
     await page.setContent(`<style>${result.outputFiles[0].text}

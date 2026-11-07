@@ -737,7 +737,6 @@ describe('AppBackendServer', () => {
 
 // Real Git/filesystem boundary: confirmation must bind the exact local checkout,
 // worktree set and agents; another clone with the same remote must survive.
-// Real clones, linked worktrees and confirmed deletion through the owning RPC.
 it.each([true, false])('deletes a confirmed repository and its worktrees without affecting another clone (remote: %s)', async hasRemote => {
   const root = await mkdtemp(path.join(tmpdir(), 'korus-delete-repository-'));
   const git = async (cwd: string, ...args: string[]) => promisify(execFile)('git', args, { cwd });
@@ -784,4 +783,4 @@ it.each([true, false])('deletes a confirmed repository and its worktrees without
     await expect(stat(worktree)).rejects.toMatchObject({ code: 'ENOENT' });
     expect(await readFile(path.join(other, 'keep'), 'utf8')).toBe('untouched');
   } finally { await rm(root, { recursive: true, force: true }); }
-}, 2_000);
+});

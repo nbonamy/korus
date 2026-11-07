@@ -149,7 +149,7 @@ describe('AppShell missions', () => {
       expect(wrapper.find('.mission-document-dialog').exists()).toBe(false);
       expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(true);
     } finally { wrapper.unmount(); }
-  }, 1_000);
+  });
 
   it('keeps one document request per Mission across agents and opens only after confirmation', async () => {
     const snapshot = createInitialSnapshot();

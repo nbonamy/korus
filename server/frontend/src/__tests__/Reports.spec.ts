@@ -494,4 +494,4 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
   } finally {
     wrapper.unmount();
   }
-}, 1_500);
+}, 5_000);

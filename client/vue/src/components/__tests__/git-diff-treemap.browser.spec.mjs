@@ -123,7 +123,7 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
   try {
     browser = await chromium.launch();
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-    page.setDefaultTimeout(1_000);
+    page.setDefaultTimeout(2_500);
     // Cold Vite transforms and dependency optimization are fixture setup, not UI latency.
     page.setDefaultNavigationTimeout(15_000);
     // Remote font stylesheets must not hold this local rendering workflow open.

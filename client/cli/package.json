@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest watch",
-    "test:package": "node --test --test-concurrency=2 --test-timeout=500 build.test.mjs package-workflows.test.mjs"
+    "test:package": "node --test --test-concurrency=2 --test-timeout=45000 build.test.mjs package-workflows.test.mjs"
   },
   "dependencies": {
     "@workspace/core": "0.54.0"

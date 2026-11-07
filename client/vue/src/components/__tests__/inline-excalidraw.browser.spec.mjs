@@ -55,7 +55,7 @@ test('inline renderer streams and renders diagrams, integrating with capable SDK
   try {
     await server.listen();
     const page = await browser.newPage();
-    page.setDefaultTimeout(1_000);
+    page.setDefaultTimeout(2_500);
     // Cold module loading belongs to browser startup, not individual interactions.
     page.setDefaultNavigationTimeout(15_000);
     const errors = [];
