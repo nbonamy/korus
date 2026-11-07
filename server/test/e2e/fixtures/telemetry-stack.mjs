@@ -307,6 +307,11 @@ export async function telemetryStackWorkflow(
             },
             body: JSON.stringify(body),
           });
+        const capabilities = await http(endpoint, {method:"OPTIONS",headers:{host:"api.invalid",origin:"https://synthetic.invalid","access-control-request-method":"POST","access-control-request-headers":"content-type"}});
+        assert.equal(capabilities.status,204);
+        assert.equal(capabilities.headers["x-korus-telemetry-version"],"1");
+        assert.equal(capabilities.headers["x-korus-telemetry-providers"],"codex,claude,antigravity,cursor");
+        assert.equal(capabilities.headers["access-control-allow-methods"],"POST, OPTIONS");
         assert.equal((await post()).status, 204);
         assert.deepEqual(
           JSON.parse(

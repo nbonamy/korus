@@ -830,3 +830,36 @@ it("waits for a complete reporting hour after a mid-hour enable instead of rewri
   expect(fetcher).toHaveBeenCalledTimes(2);
   expect(JSON.parse(fetcher.mock.calls[1]![1]!.body as string).hour).toBe(13);
 });
+
+// An older collector must never receive Cursor bytes or exhaust their delivery budget.
+it.each([undefined, "bad", "1"])("negotiates Cursor uploads and retains frozen reports against capability version %s", async version => {
+  await open();
+  scheduler!.stop();
+  await consent.change("enable");
+  await usage.local.observe({provider:"cursor",agentId:"PRIVATE_CANARY",sessionId:"s",turnId:"t",model:null,at:clock,phase:"started"}, {teamId:null,repository:null});
+  fetcher.mockImplementation(async (_url, init) => init?.method === "OPTIONS"
+    ? new Response(null, {status:204,headers:{"X-Korus-Telemetry-Providers":"codex,claude,antigravity,cursor",...(version ? {"X-Korus-Telemetry-Version":version} : {})}})
+    : new Response(null,{status:204}));
+  await upload!.flush();
+  expect(fetcher.mock.calls[0]![1]).toMatchObject({method:"OPTIONS",redirect:"manual",credentials:"omit"});
+  expect(fetcher.mock.calls[0]![1]!.body).toBeUndefined();
+  expect(fetcher.mock.calls[0]![1]!.headers).toBeUndefined();
+  const frozen = (await upload!.sealedReport(day(),12))!.body;
+  expect(JSON.parse(frozen).usage).toStrictEqual([{provider:"cursor",model:"unknown",serviceTier:"unknown",turns:1,inputTokens:null,cachedInputTokens:null,outputTokens:null,estimatedCostUsd:null,measuredTurns:0,costCoverage:"unavailable"}]);
+  expect(frozen).not.toContain("PRIVATE_CANARY");
+  if (version !== "1") {
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect((await stored()).days[0]).toMatchObject({status:"pending",attempts:0});
+    await upload!.close();
+    clock += 3600000;
+    vi.setSystemTime(clock);
+    fetcher.mockImplementation(async (_url, init) => new Response(null,{status:204,headers:init?.method === "OPTIONS" ? {"X-Korus-Telemetry-Version":"1","X-Korus-Telemetry-Providers":"codex,claude,antigravity,cursor"} : {}}));
+    await open();
+    scheduler!.stop();
+    await upload!.flush();
+  }
+  const posts = fetcher.mock.calls.filter(([,init])=>init?.method === "POST");
+  expect(posts).toHaveLength(1);
+  expect(posts[0]![1]!.body).toBe(frozen);
+  expect((await stored()).days[0]).toMatchObject({status:"done",attempts:1});
+});

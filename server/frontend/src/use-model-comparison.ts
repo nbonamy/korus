@@ -14,7 +14,7 @@ export const modelKey = (
   row: Pick<ModelRow, "provider" | "model" | "serviceTier">,
 ) => JSON.stringify([row.provider, row.model, row.serviceTier ?? null]);
 export const comparisonLabel = (row: ModelRow) =>
-  `${{ codex: "Codex", claude: "Claude", antigravity: "Antigravity" }[row.provider]} / ${modelLabel(row)}`;
+  `${{ codex: "Codex", claude: "Claude", cursor: "Cursor", antigravity: "Antigravity" }[row.provider]} / ${modelLabel(row)}`;
 export function descending(a: string | null, b: string | null) {
   if (a === b) return 0;
   if (a === null) return 1;

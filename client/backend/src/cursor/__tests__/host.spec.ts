@@ -57,8 +57,8 @@ describe('Cursor ACP host transport boundary', () => {
         started: 4, completed: 1, interrupted: 2, failed: 1, inProgress: 0, measuredTurns: 0, tokens: null,
         cost: { usd: null, coverage: 'unavailable' },
       }]);
-      // The deployed collector's protocol has not opted into Cursor reports.
-      expect(ledger.projectDailyTelemetry({ day: new Date().toISOString().slice(0, 10) })).toStrictEqual([]);
+      // Projection is local; the uploader negotiates collector acceptance.
+      expect(ledger.projectDailyTelemetry({ day: new Date().toISOString().slice(0, 10) })).toMatchObject([{provider: 'cursor', model: 'unknown', turns: 4, measuredTurns: 0, inputTokens: null, outputTokens: null, estimatedCostUsd: null, costCoverage: 'unavailable'}]);
       await usage.close();
       const restored = new UsageLedger(path.join(root, 'usage.sqlite'));
       try {

@@ -138,8 +138,10 @@ Cursor live turns emit execution observations to the local usage ledger. The
 daemon measures working time and time to first assistant output; release and
 shutdown settle active executions as interrupted. Snapshot reads do not count as
 executions. Token counts, served models and costs stay unknown without native
-measurements. Cursor rows are excluded from telemetry projection until the
-collector contract accepts the provider.
+measurements. The ledger projects Cursor rows locally; the uploader sends reports
+containing them only after an identity-free OPTIONS request confirms versioned
+collector support. Older collectors leave those sealed reports pending without
+consuming report POST attempts; reports for existing providers remain compatible.
 
 Updates inspect native `about --format json` metadata and use native `update`
 through the shared consent and idle scheduler. Child environments explicitly

@@ -272,6 +272,7 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
     let projections = 0;
     let pending = this.store.days.filter(row => row.status === "pending").length;
     let sent = 0;
+    let cursorSupported: boolean | undefined;
     const currentHour = Math.floor(this.now() / HOUR) * HOUR;
     const priority = (row: Report) => {
       if (row.hour !== undefined && startOfDay(row.day) + row.hour * HOUR === currentHour) return 0;
@@ -333,6 +334,25 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
         await this.persist();
         continue;
       }
+      // Discovery is identity-free and shares the source request budget. A
+      // missing capability retains the exact seal without spending POST attempts.
+      if ((JSON.parse(row.body!) as DailyTelemetryPayload).usage.some(usage => usage.provider === "cursor")) {
+        if (cursorSupported === undefined) {
+          ++sent;
+          this.store.attempts.push(this.now());
+          await this.persist();
+          if (!this.valid(generation)) return;
+          const capability = await this.send(undefined);
+          cursorSupported = capability.supported === true;
+          if (capability.limited) this.store.retryAt = this.now() + Math.max(60_000, capability.retryAfter);
+          if (!this.valid(generation)) return;
+        }
+        if (!cursorSupported || sent >= 10 || this.store.attempts.length >= 30) {
+          row.nextAttemptAt = this.now() + HOUR;
+          await this.persist();
+          continue;
+        }
+      }
       // Consume the attempt durably BEFORE transport. A crash/lost ACK can retry
       // these same bytes, but cannot exceed the total persisted attempt budget.
       ++sent;
@@ -372,8 +392,8 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
     );
   }
   private async send(
-    body: string,
-  ): Promise<{ done: boolean; retryAfter: number; limited?: boolean }> {
+    body: string | undefined,
+  ): Promise<{ done: boolean; retryAfter: number; limited?: boolean; supported?: boolean }> {
     const controller = new AbortController();
     this.attempt = controller;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -396,9 +416,8 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
         return { done: false, retryAfter: 0 };
       const response = await Promise.race([
         (this.options.fetch ?? fetch)(this.endpoint!, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body,
+          method: body === undefined ? "OPTIONS" : "POST",
+          ...(body === undefined ? {} : {headers: { "Content-Type": "application/json" }, body}),
           redirect: "manual",
           credentials: "omit",
           signal: controller.signal,
@@ -421,7 +440,11 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
         : 0;
       // Response content is not part of the contract; never read/log/store it.
       void response.body?.cancel().catch(() => undefined);
-      return { done: !retry, retryAfter, limited: response.status === 429 };
+      const providers = response.headers.get("X-Korus-Telemetry-Providers")?.split(",").map(value => value.trim());
+      const supported = response.status === 204 && response.headers.get("X-Korus-Telemetry-Version") === "1"
+        && providers !== undefined && providers.length === new Set(providers).size
+        && providers.includes("cursor") && providers.every(value => ["codex","claude","antigravity","cursor"].includes(value));
+      return { done: !retry, retryAfter, limited: response.status === 429, supported };
     } catch {
       return { done: false, retryAfter: 0 };
     } finally {

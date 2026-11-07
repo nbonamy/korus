@@ -444,9 +444,7 @@ export class UsageLedger {
           JSON.stringify([row.provider, row.session_id, row.turn_id]),
         ),
       );
-      // Cursor local analytics are independent of the collector rollout. Keep
-      // its rows out of the existing wire contract until collector acceptance.
-      const conditions = ["started_at>=?", ...(projection ? ["provider<>'cursor'"] : [])],
+      const conditions = ["started_at>=?"],
         args: (string | number)[] = [Math.max(this.now() - retention, from)];
       if (projection?.hour !== undefined) {
         const start = Date.parse(`${projection.day}T00:00:00Z`) + projection.hour * 3600000;
