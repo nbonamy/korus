@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import os from 'node:os';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { test } from 'vitest';
 import { createServer } from 'vite';
@@ -10,12 +12,14 @@ import { sdkSourceAliases, sdkSourceRoot } from '../../../../../vite.sdk-aliases
 
 test('inline renderer streams and renders diagrams, integrating with capable SDKs and preserving older code fallback', async () => {
   const root = fileURLToPath(new URL('../../../../..', import.meta.url));
+  const fixture = await mkdtemp(path.join(os.tmpdir(), 'inline-diagram-fixture-'));
   const useSource = process.env.CODEX_APP_SDK_SOURCE === '1';
   const server = await createServer({
-    configFile: false, root, logLevel: 'error',
+    configFile: false, root, logLevel: 'error', cacheDir: path.join(fixture, 'vite-cache'),
     server: { host: '127.0.0.1', port: 0, fs: { allow: [root, ...(useSource ? [sdkSourceRoot] : [])] } },
     resolve: { alias: { '@workspace/core': path.join(root, 'core/src'), ...(useSource ? sdkSourceAliases : {}) }, dedupe: ['vue'] },
-    optimizeDeps: useSource ? { exclude: Object.keys(sdkSourceAliases) } : undefined,
+    // Scan lazy editor dependencies before interaction so cold optimization cannot reload away the scene.
+    optimizeDeps: { entries: [path.join(root, 'client/vue/src/components/InlineExcalidrawBlock.vue'), path.join(root, 'client/vue/src/components/excalidraw-editor.ts')], ...(useSource ? { exclude: Object.keys(sdkSourceAliases) } : {}) },
     plugins: [vue(), excalidrawAssets(), {
       name: 'inline-diagram-fixture',
       configureServer(server) {
@@ -49,9 +53,12 @@ test('inline renderer streams and renders diagrams, integrating with capable SDK
     await server.listen();
     const page = await browser.newPage();
     const errors = [];
+    let navigations = 0;
+    page.on('framenavigated', frame => { if (frame === page.mainFrame()) navigations++; });
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(server.resolvedUrls.local[0] + 'inline-diagram');
     await page.waitForFunction(() => typeof window.setDiagram === 'function');
+    const initialNavigations = navigations;
     await page.evaluate(() => window.setDiagram('{"elements":[', false));
     const host = page.locator('#host');
     await host.getByText('Diagram is rendering…', { exact: true }).waitFor({ state: 'visible' });
@@ -70,7 +77,8 @@ test('inline renderer streams and renders diagrams, integrating with capable SDK
       { id: 'label', type: 'text', x: 20, y: 20, width: 180, height: 30, text: 'Small diagram', fontSize: 20, fontFamily: 2 },
     ] })));
     const image = host.getByRole('img', { name: 'Diagram', exact: true });
-    await image.waitFor({ state: 'visible' });
+    try { await image.waitFor({ state: 'visible' }); }
+    catch (error) { throw new Error(`${error.message}\nBrowser errors: ${JSON.stringify(errors)}\nRendered host: ${await host.textContent()}`); }
     await page.waitForFunction(() => document.querySelector('#host .inline-diagram img')?.naturalWidth > 0);
     assert.ok((await image.boundingBox()).height <= 320);
     assert.ok(decodeURIComponent(await image.getAttribute('src')).includes('Small diagram'));
@@ -85,6 +93,7 @@ test('inline renderer streams and renders diagrams, integrating with capable SDK
     assert.equal(await host.locator('details').getAttribute('open'), '');
     assert.ok((await host.locator('pre').textContent()).includes('{broken'));
     assert.deepEqual(errors, []);
+    assert.equal(navigations, initialNavigations, 'Lazy rendering must preserve the page and its scene');
     await page.screenshot({ path: '/tmp/korus-inline-diagram-fallback.png' });
-  } finally { await browser.close(); await server.close(); }
+  } finally { await browser.close(); await server.close(); await rm(fixture, { recursive: true, force: true }); }
 });
