@@ -64,6 +64,7 @@ const emit = defineEmits<{ select: [itemId: string] }>();
 const open = defineModel<boolean>('open', { default: false });
 const root = ref<HTMLElement>();
 let returnFocus = false;
+let closingFocus: Element | null = null;
 const triggerAttrs = computed(() => ({ 'aria-haspopup': 'menu' as const, 'aria-expanded': open.value }));
 
 function select(itemId: string): void {
@@ -72,13 +73,17 @@ function select(itemId: string): void {
 }
 
 function closeAndReturnFocus(): void {
+  closingFocus = document.activeElement;
   returnFocus = true;
   open.value = false;
 }
 
 function returnTriggerFocus(): void {
-  if (returnFocus) root.value?.querySelector<HTMLElement>('[aria-haspopup="menu"]')?.focus();
+  const active = document.activeElement;
+  if (returnFocus && (active === document.body || active === closingFocus))
+    root.value?.querySelector<HTMLElement>('[aria-haspopup="menu"]')?.focus();
   returnFocus = false;
+  closingFocus = null;
 }
 </script>
 

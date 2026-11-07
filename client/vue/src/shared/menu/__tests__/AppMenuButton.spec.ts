@@ -61,4 +61,23 @@ describe('AppMenuButton', () => {
     else row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
     await vi.waitFor(() => expect(document.activeElement).toBe(wrapper.get('.trigger').element));
   });
+
+  it('preserves focus moved to another control while the menu is closing', async () => {
+    const wrapper = mountButton({}, true);
+    const composer = document.createElement('textarea');
+    document.body.append(composer);
+    try {
+      await wrapper.get('.trigger').trigger('click');
+      await flushPromises();
+      await vi.waitFor(() => expect(wrapper.findComponent(ElPopover).emitted('after-enter')).toHaveLength(1));
+      const row = wrapper.findComponent(AppMenu).get<HTMLButtonElement>('.app-menu__item').element;
+      row.focus();
+      row.click();
+      composer.focus();
+      await vi.waitFor(() => expect(wrapper.findComponent(ElPopover).emitted('after-leave')).toHaveLength(1));
+      expect(document.activeElement).toBe(composer);
+    } finally {
+      composer.remove();
+    }
+  });
 });
