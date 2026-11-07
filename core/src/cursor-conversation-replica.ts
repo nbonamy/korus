@@ -5,6 +5,7 @@ export function createCursorConversationReplica(initial: CursorConversationSnaps
   let snapshot = structuredClone(initial);
   return {
     getSnapshot: () => snapshot,
+    replace: (value: CursorConversationSnapshot) => { snapshot = structuredClone(value); },
     apply(event: CursorConversationEvent): CursorConversationSnapshot {
       if (event.agentId !== snapshot.agentId || event.sessionId !== snapshot.sessionId) throw new Error('Cursor conversation identity mismatch.');
       const next = structuredClone(snapshot);

@@ -1,5 +1,6 @@
 import { homedir } from 'node:os';
 import path from 'node:path';
+import type { ProviderHomeSettings } from '@workspace/core/contracts/provider-setup';
 import { resolveRuntimeExecutable, withDiscoveredRuntimePath } from '@workspace/core/runtime-discovery';
 
 export const cursorMinimumVersion = '2026.10.08';
@@ -16,11 +17,32 @@ export function cursorVersion(value: unknown): number | null {
   return Number.isFinite(date.getTime()) && date.toISOString().startsWith(`${year}-${month}-${day}`)
     ? Number(year) * 10000 + Number(month) * 100 + Number(day) : null;
 }
-export function cursorEnvironment(interactive = false): NodeJS.ProcessEnv {
+/** Captured per host: setup changes cannot redirect an in-flight account operation. */
+export type CursorRuntime = Readonly<{ homePath: string; isolated: boolean; environment: NodeJS.ProcessEnv }>;
+export function cursorRuntime(home?: ProviderHomeSettings): CursorRuntime {
+  const isolated = home?.isolated === true;
+  const homePath = home?.homePath ?? cursorHome();
   const env = withDiscoveredRuntimePath(undefined);
   for (const key of Object.keys(env)) if (key.startsWith('CURSOR_') || key === 'AGENT_CLI_CREDENTIAL_STORE') env[key] = undefined;
-  env.CURSOR_CONFIG_DIR = cursorHome();
-  if (interactive) env.NO_OPEN_BROWSER = undefined;
-  else env.NO_OPEN_BROWSER = '1';
-  return env;
+  env.CURSOR_CONFIG_DIR = homePath;
+  env.HOME = homedir();
+  if (isolated) {
+    const userHome = homedir();
+    const privateHome = path.dirname(homePath);
+    env.HOME = privateHome;
+    env.USERPROFILE = privateHome;
+    env.XDG_CONFIG_HOME = path.join(privateHome, '.config');
+    env.XDG_CACHE_HOME = path.join(privateHome, '.cache');
+    env.XDG_DATA_HOME = path.join(privateHome, '.local', 'share');
+    env.XDG_STATE_HOME = path.join(privateHome, '.local', 'state');
+    env.APPDATA = path.join(privateHome, 'AppData', 'Roaming');
+    env.LOCALAPPDATA = path.join(privateHome, 'AppData', 'Local');
+    env.AGENT_CLI_CREDENTIAL_STORE = 'file';
+    // Keep tool discovery and the user's explicit Git identity; do not copy keys or credentials.
+    env.GIT_CONFIG_GLOBAL ??= path.join(userHome, '.gitconfig');
+  }
+  return Object.freeze({ homePath, isolated, environment: Object.freeze(env) });
+}
+export function cursorEnvironment(interactive = false, runtime: CursorRuntime = cursorRuntime()): NodeJS.ProcessEnv {
+  return { ...runtime.environment, NO_OPEN_BROWSER: interactive ? undefined : '1' };
 }

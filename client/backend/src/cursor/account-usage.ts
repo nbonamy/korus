@@ -4,22 +4,25 @@ import { homedir, platform } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { AccountRateLimits, AccountRateLimitWindow } from '@workspace/core/contracts';
+import { cursorRuntime, type CursorRuntime } from './runtime';
 import { record } from '../acp/acp-connection';
 
 const run = promisify(execFile);
 const unavailable = 'Could not refresh Cursor usage. Check your Cursor subscription login.';
 
 /** Native login remains owned by Cursor. Read in place; never store or expose its token. */
-async function token(): Promise<string | null> {
+async function token(runtime: CursorRuntime): Promise<string | null> {
   try {
-    if (platform() === 'darwin') {
+    if (platform() === 'darwin' && !runtime.isolated) {
       const { stdout } = await run('/usr/bin/security', ['find-generic-password', '-s', 'cursor-access-token', '-a', 'cursor-user', '-w'], { timeout: 5_000, maxBuffer: 64 * 1024 });
       return stdout.trim() || null;
     }
     // The native credential library uses OS paths, independently of CURSOR_CONFIG_DIR.
-    const file = platform() === 'win32'
-      ? path.join(process.env.APPDATA || path.join(homedir(), 'AppData', 'Roaming'), 'Cursor', 'auth.json')
-      : path.join(process.env.XDG_CONFIG_HOME || path.join(homedir(), '.config'), 'cursor', 'auth.json');
+    const env = runtime.environment;
+    const home = env.HOME || homedir();
+    const file = platform() === 'darwin' ? path.join(home, '.cursor', 'auth.json') : platform() === 'win32'
+      ? path.join(env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'Cursor', 'auth.json')
+      : path.join(env.XDG_CONFIG_HOME || path.join(home, '.config'), 'cursor', 'auth.json');
     const raw = await readFile(file, 'utf8');
     if (Buffer.byteLength(raw) > 64 * 1024) throw new Error();
     const value: unknown = JSON.parse(raw);
@@ -31,8 +34,8 @@ async function token(): Promise<string | null> {
   }
 }
 
-export async function getCursorAccountUsage(): Promise<AccountRateLimits | null> {
-  const accessToken = await token();
+export async function getCursorAccountUsage(runtime: CursorRuntime = cursorRuntime()): Promise<AccountRateLimits | null> {
+  const accessToken = await token(runtime);
   if (!accessToken) return null;
   async function query(method: string): Promise<Record<string, unknown>> {
     try {
@@ -49,7 +52,7 @@ export async function getCursorAccountUsage(): Promise<AccountRateLimits | null>
     } catch { throw new Error(unavailable); }
   }
   const [usage, hard, plan] = await Promise.all([query('GetCurrentPeriodUsage'), query('GetHardLimit'), query('GetPlanInfo')]);
-  if (await token() !== accessToken) throw new Error('Cursor account changed. Refresh usage.');
+  if (await token(runtime) !== accessToken) throw new Error('Cursor account changed. Refresh usage.');
   for (const key of ['noUsageBasedAllowed', 'onDemandSpendDisabledByOrganization']) {
     if (hard[key] !== undefined && typeof hard[key] !== 'boolean') throw new Error(unavailable);
   }

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentBackendDriver, BackendEvent } from '@workspace/core/backend-driver';
+import { cursorRuntime } from '../runtime';
 import { createEmptySnapshot } from '@workspace/core/snapshot';
 import { BackendDriverRpc, createBackendDriver } from '../../driver-rpc';
 import { ProviderUpdateRuntime } from '../../provider-update-runtime';
@@ -15,6 +16,8 @@ const fixture = { isAuthenticated: true, userInfo: { email: 'fixture@example.tes
 beforeEach(async () => {
   root = await mkdtemp(path.join(tmpdir(), 'cursor-connection-'));
   vi.stubEnv('HOME', root);
+  vi.stubEnv('APP_HOME', path.join(root, 'app'));
+  vi.stubEnv('KORUS_HOME', undefined);
   vi.stubEnv('PATH', root);
   vi.stubEnv('SHELL', path.join(root, 'no-shell'));
   vi.stubEnv('CURSOR_API_KEY', 'synthetic-api-key');
@@ -26,17 +29,19 @@ beforeEach(async () => {
 const fs=require('node:fs');
 const root=${JSON.stringify(root)};
 const args=process.argv.slice(2);
-fs.appendFileSync(root+'/calls',JSON.stringify({args,browser:process.env.NO_OPEN_BROWSER,home:process.env.CURSOR_CONFIG_DIR,apiKey:Boolean(process.env.CURSOR_API_KEY),authToken:Boolean(process.env.CURSOR_AUTH_TOKEN)})+'\\n');
+const isolated=process.env.AGENT_CLI_CREDENTIAL_STORE==='file';
+const statusFile=isolated?process.env.CURSOR_CONFIG_DIR+'/fixture-status':root+'/status';
+fs.appendFileSync(root+'/calls',JSON.stringify({args,browser:process.env.NO_OPEN_BROWSER,home:process.env.CURSOR_CONFIG_DIR,apiKey:Boolean(process.env.CURSOR_API_KEY),authToken:Boolean(process.env.CURSOR_AUTH_TOKEN),...(isolated?{childHome:process.env.HOME,store:process.env.AGENT_CLI_CREDENTIAL_STORE}:{})})+'\\n');
 if(args[0]==='--version')console.log(fs.readFileSync(root+'/version','utf8'));
-else if(args[0]==='status')console.log(fs.readFileSync(root+'/status','utf8'));
+else if(args[0]==='status')console.log(fs.existsSync(statusFile)?fs.readFileSync(statusFile,'utf8'):JSON.stringify({isAuthenticated:false}));
 else if(args[0]==='login'){
  if(process.env.NO_OPEN_BROWSER==='1')process.exit(99);
  if(fs.existsSync(root+'/hang')){process.stdin.resume();setInterval(()=>{},1000);}
- else {fs.writeFileSync(root+'/status',JSON.stringify({isAuthenticated:true}));}
+ else {fs.writeFileSync(statusFile,JSON.stringify({isAuthenticated:true}));}
 }
 else if(args[0]==='about')console.log(JSON.stringify({cliVersion:'2026.10.22-27dcf5f',latestStatus:'up_to_date',latestVersion:'2026.10.22-27dcf5f'}));
 else if(args[0]==='update')console.log('updated');
-else if(args[0]==='logout')fs.writeFileSync(root+'/status',JSON.stringify({isAuthenticated:false}));
+else if(args[0]==='logout')fs.writeFileSync(statusFile,JSON.stringify({isAuthenticated:false}));
 else process.exit(98);
 `, { mode: 0o700 });
 });
@@ -67,7 +72,7 @@ describe('Cursor CLI connection boundary', () => {
     ]);
   });
 
-  it('detects agent and the cursor-agent alias while exposing only the existing home', async () => {
+  it('detects agent and the cursor-agent alias with existing and separate home choices', async () => {
     const lifecycle = createProviderLifecycles().get('cursor')!;
     const snapshot = createEmptySnapshot();
     expect(lifecycle.installed(snapshot)).toBe(true);
@@ -76,8 +81,33 @@ describe('Cursor CLI connection boundary', () => {
     const home = lifecycle.home(snapshot);
     expect(home).toStrictEqual({ homePath: path.join(root, '.cursor'), isolated: false, shareSkills: false });
     await expect(lifecycle.prepareHome(home, false)).resolves.toBeUndefined();
-    expect(() => lifecycle.home(snapshot, { isolated: true, shareSkills: false })).toThrow('isolated');
+    const separate = lifecycle.home(snapshot, { isolated: true, shareSkills: false });
+    expect(separate.isolated).toBe(true);
+    await lifecycle.prepareHome(separate, true);
+    const runtime = cursorRuntime(separate);
+    expect(runtime.environment.HOME).not.toBe(root);
+    expect(runtime.environment.CURSOR_CONFIG_DIR).toBe(separate.homePath);
+    expect(runtime.environment.AGENT_CLI_CREDENTIAL_STORE).toBe('file');
+    expect(runtime.environment.XDG_CONFIG_HOME).toBe(path.join(runtime.environment.HOME!, '.config'));
+    expect(runtime.environment.GIT_CONFIG_GLOBAL).toBe(path.join(root, '.gitconfig'));
+    expect(process.env.HOME).toBe(root);
     expect(lifecycle.install).toBeUndefined();
+  });
+
+  it('keeps separate login/logout and its captured environment independent from the existing setup', async () => {
+    const snapshot = createEmptySnapshot();
+    const lifecycle = createProviderLifecycles().get('cursor')!;
+    const home = lifecycle.home(snapshot, { isolated: true, shareSkills: false });
+    await lifecycle.prepareHome(home, true);
+    snapshot.general.providerHomes = { cursor: home };
+    const current = driver = createBackendDriver('cursor', { generalSettings: snapshot.general });
+    expect(await current.authenticate!({ action: 'check' })).toMatchObject({ connected: false, state: { homePath: home.homePath } });
+    expect(await current.authenticate!({ action: 'login' })).toMatchObject({ connected: true });
+    // Later settings edits cannot redirect an already constructed host.
+    snapshot.general.providerHomes.cursor = { homePath: '/wrong-home', isolated: false, shareSkills: false };
+    expect(await current.authenticate!({ action: 'logout' })).toMatchObject({ connected: false });
+    expect(JSON.parse(await readFile(path.join(root, 'status'), 'utf8'))).toStrictEqual(fixture);
+    expect((await calls()).every(call => call.childHome === path.dirname(home.homePath) && call.store === 'file' && call.home === home.homePath)).toBe(true);
   });
 
   it('checks native status without login, API credentials, account IDs or enablement side effects', async () => {
@@ -128,6 +158,16 @@ describe('Cursor CLI connection boundary', () => {
     expect(events).not.toContainEqual(expect.objectContaining({ payload: expect.objectContaining({ connected: true }) }));
     await rm(path.join(root, 'hang'));
     expect(await current.authenticate!({ action: 'login' })).toMatchObject({ connected: true });
+  });
+
+  it('rechecks retained credentials after cancelling a redundant login', async () => {
+    const current = connection();
+    expect((await current.authenticate!({ action: 'check' })).connected).toBe(true);
+    await writeFile(path.join(root, 'hang'), '');
+    const login = current.authenticate!({ action: 'login' }).catch(error => error);
+    await vi.waitFor(async () => expect((await calls()).some(call => call.args[0] === 'login')).toBe(true));
+    expect(await current.authenticate!({ action: 'cancel' })).toMatchObject({ connected: true });
+    expect(await login).toBeInstanceOf(Error);
   });
 
   it('rejects malformed native status without exposing its output', async () => {

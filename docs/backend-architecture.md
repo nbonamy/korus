@@ -98,8 +98,12 @@ log and socket paths, npm scripts and launchd labels stay brand-neutral.
 
 The Cursor lifecycle detects `agent` or `cursor-agent` through shared runtime
 discovery; installation remains an operator action through official instructions.
-It uses the existing `~/.cursor` home. Isolated configuration is unavailable
-because native CLI state also writes outside `CURSOR_CONFIG_DIR`.
+It supports the existing `~/.cursor` setup or a separate configuration and login.
+Separate setups capture a private child home and file credential store as well
+as `CURSOR_CONFIG_DIR`, because native caches and credentials use OS home paths.
+PATH and SSH agent access remain inherited, and Git retains its global config;
+private homes do not copy SSH keys or other tool dotfiles. This is state
+separation, not an OS sandbox or an independent managed-policy boundary.
 
 Native authentication is owned by the Cursor driver. Bounded version/status
 checks suppress browser opening and reject CLI builds older than `2026.10.08`.
@@ -122,15 +126,20 @@ Each agent owns a native `agent acp` process through the shared ACP connection.
 The host serializes prompts and projects text, thoughts and tool updates into a
 Cursor-owned revisioned replica. App developer instructions travel in prompt
 context blocks; the renderer receives only app-owned messages. Quick Chats use
-private working directories. Only interrupt is advertised; permission callbacks
-are rejected and unsupported blocking Cursor extensions are cancelled.
+private working directories. Model selection preserves native config values;
+trusted local attachments become native content blocks. Configured model choice
+is not evidence of the served model or billing. Permission callbacks are rejected
+and unsupported blocking Cursor extensions are cancelled.
 
 Cancellation waits for prompt settlement and a bounded, workspace-filtered
 `session/list` round trip before admitting the next prompt. This drains buffered
 cancelled-turn updates without retaining history metadata. The handshake requires
 that advertised native capability. Process teardown bounds non-cooperative
-cancellation. A lost process keeps its terminal replica; cold resume is unavailable
-and never silently creates a replacement conversation. Known team-switch and
+cancellation. A lost process keeps its terminal replica rather than silently
+creating a replacement conversation. A fresh host loads persisted native session
+references after checking workspace ownership against the native catalog. Replay
+hydrates a fresh replica, generates no live execution observations, and leaves
+unreported timestamps unknown. Known team-switch and
 policy markers produce fixed safe errors and disconnected observations; raw
 diagnostics and URLs are discarded.
 

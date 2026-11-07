@@ -6,6 +6,7 @@ if (process.argv[2] === '--version') { console.log(fs.readFileSync(path.join(__d
 if (process.argv[2] === 'status') { console.log(JSON.stringify({ isAuthenticated: true })); process.exit(); }
 if (process.argv[2] !== 'acp' || process.env.NO_OPEN_BROWSER !== '1' || process.env.CURSOR_API_KEY) process.exit(99);
 const log = value => fs.appendFileSync(path.join(__dirname, 'wire.jsonl'), JSON.stringify(value) + '\n');
+const configOptions = [{ id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: 'auto', options: [{ value: 'auto', name: 'Auto' }, { value: 'composer-2.5', name: 'Composer' }] }];
 let sessionId = 'session-' + process.pid, pending, mode;
 const send = value => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...value }) + '\n');
 const update = value => send({ method: 'session/update', params: { sessionId, update: value } });
@@ -14,8 +15,17 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   const reply = result => send({ id: value.id, result });
   if (value.method === 'initialize') reply({ protocolVersion: 1, agentCapabilities: { loadSession: true, sessionCapabilities: fs.existsSync(path.join(__dirname, 'no-list')) ? {} : { list: {} } }, authMethods: [{ id: 'cursor_login', name: 'Cursor Login' }] });
   else if (value.method === 'authenticate') reply({});
-  else if (value.method === 'session/new') { if (!fs.existsSync(path.join(__dirname, 'hold-new'))) reply({ sessionId, configOptions: [] }); }
-  else if (value.method === 'session/list') reply({ sessions: [] });
+  else if (value.method === 'session/new') { if (!fs.existsSync(path.join(__dirname, 'hold-new'))) reply({ sessionId, configOptions }); }
+  else if (value.method === 'session/set_config_option') reply({ configOptions: configOptions.map(option => ({ ...option, currentValue: value.params.value })) });
+  else if (value.method === 'session/list') reply({ sessions: [{ sessionId: 'saved-session', cwd: process.cwd() }, { sessionId: 'foreign-session', cwd: path.dirname(process.cwd()) }] });
+  else if (value.method === 'session/load') {
+    sessionId = value.params.sessionId;
+    update({ sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'Remember synthetic marker' } });
+    update({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'Remembering' } });
+    update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Remembered' } });
+    update({ sessionUpdate: 'tool_call', toolCallId: 'replay-tool', title: 'Read synthetic.txt', kind: 'read', status: 'completed' });
+    reply({ configOptions });
+  }
   else if (value.method === 'session/prompt') {
     pending = value.id; mode = value.params.prompt[0].text.split('\n')[0];
     if (mode === 'team') { send({ id: pending, error: { code: -32000, message: 'Your team has switched. https://private.invalid/token' } }); return; }

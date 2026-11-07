@@ -1,3 +1,5 @@
+import { cursorRuntime } from '../runtime';
+import { getCursorAccountUsage } from '../account-usage';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createBackendDriver } from '../../driver-rpc';
 
@@ -124,4 +126,13 @@ it('rejects an unrecognized native billing switch instead of showing pay-as-you-
   const driver = createBackendDriver('cursor');
   try { await expect(driver.getAccountRateLimits!()).rejects.toThrow('Could not refresh Cursor usage'); }
   finally { await driver.close(); }
+});
+
+it('uses the captured separate-home file credential on macOS without consulting Keychain', async () => {
+  const runtime = cursorRuntime({ homePath: '/private/cursor-home/.cursor', isolated: true, shareSkills: false });
+  io.readFile.mockResolvedValue(JSON.stringify({ accessToken: 'synthetic-private-token' }));
+  expect((await getCursorAccountUsage(runtime))?.planType).toBe('Pro');
+  expect(io.readFile).toHaveBeenCalledWith('/private/cursor-home/.cursor/auth.json', 'utf8');
+  expect(io.keychain).not.toHaveBeenCalled();
+  expect(io.fetch.mock.calls[0][1].headers.Authorization).toBe('Bearer synthetic-private-token');
 });

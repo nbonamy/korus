@@ -67,6 +67,55 @@ describe('Cursor ACP host transport boundary', () => {
       } finally { await restored.close(); }
     } finally { unsubscribeUsage(); unsubscribeEvents(); await usage.close(); }
   });
+  it('cold loads native history once without executing or counting replay, then continues that session', async () => {
+    const observations: unknown[] = []; host.onUsage!(event => observations.push(event));
+    const saved = { ...agent, backendSession: { kind: 'cursor' as const, sessionId: 'saved-session' } };
+    await host.loadConversation!(saved);
+    await host.loadConversation!(saved);
+    const frames = events.filter(event => event.type === 'cursor.conversationSnapshotChanged');
+    const state = frames.at(-1)!.payload as { snapshot: CursorConversationSnapshot };
+    expect(state.snapshot).toMatchObject({ sessionId: 'saved-session', busy: false, turns: [{ status: 'completed', startedAt: null, completedAt: null, durationMs: null }] });
+    expect(state.snapshot.messages.filter(message => message.role === 'user')).toHaveLength(1);
+    expect(state.snapshot.messages.every(message => message.createdAt === '')).toBe(true);
+    expect(JSON.stringify(state.snapshot)).toContain('Remember synthetic marker');
+    expect(JSON.stringify(state.snapshot)).toContain('replay-tool');
+    expect(observations).toStrictEqual([]);
+    expect(completions()).toStrictEqual([]);
+    expect((await wire()).filter(call => call.method === 'session/load')).toHaveLength(1);
+    expect((await wire()).some(call => call.method === 'session/new')).toBe(false);
+    await host.sendPrompt(saved, 'continue');
+    await vi.waitFor(() => expect(completions()).toHaveLength(1));
+    expect(observations).toHaveLength(2);
+  });
+  it('rejects missing or foreign-workspace native history before load and never creates a replacement', async () => {
+    for (const sessionId of ['missing-session', 'foreign-session']) {
+      await expect(host.loadConversation!({ ...agent, backendSession: { kind: 'cursor', sessionId } })).rejects.toThrow(/missing|workspace/i);
+    }
+    expect((await wire()).some(call => ['session/new', 'session/load', 'session/prompt'].includes(call.method))).toBe(false);
+  });
+  it('uses native model values, rejects unknown models and applies selection before prompt', async () => {
+    expect(await host.listModels!(agent)).toMatchObject([{ id: 'auto', displayName: 'Auto' }, { id: 'composer-2.5', displayName: 'Composer' }]);
+    await expect(host.sendPrompt(agent, 'bad', { selection: { model: 'invented' } })).rejects.toThrow(/model/i);
+    await host.sendPrompt(agent, 'hello', { selection: { model: 'composer-2.5' } });
+    await vi.waitFor(() => expect(completions()).toHaveLength(1));
+    const calls = await wire();
+    const setter = calls.findIndex(call => call.method === 'session/set_config_option');
+    expect(calls[setter].params).toMatchObject({ configId: 'model', value: 'composer-2.5' });
+    expect(setter).toBeLessThan(calls.findIndex(call => call.method === 'session/prompt'));
+  });
+  it('embeds trusted UTF-8 files and images and rejects binary files before prompt admission', async () => {
+    const text = path.join(root, 'notes.txt'); const image = path.join(root, 'sample.png'); const binary = path.join(root, 'binary');
+    await writeFile(text, 'ATTACHMENT_MARKER'); await writeFile(image, Buffer.from([137,80,78,71,13,10,26,10])); await writeFile(binary, Buffer.from([0,1,2]));
+    await expect(host.sendPrompt(agent, 'bad', { attachments: [{ type: 'file', path: binary }] })).rejects.toThrow(/binary/i);
+    await host.sendPrompt(agent, 'hello', { attachments: [{ type: 'file', path: text }, { type: 'image', path: image }] });
+    await vi.waitFor(() => expect(completions()).toHaveLength(1));
+    const prompts = (await wire()).filter(call => call.method === 'session/prompt');
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0].params.prompt.slice(1)).toStrictEqual([
+      { type: 'resource', resource: { uri: new URL(`file://${text}`).href, mimeType: 'text/plain', text: 'ATTACHMENT_MARKER' } },
+      { type: 'image', mimeType: 'image/png', data: Buffer.from([137,80,78,71,13,10,26,10]).toString('base64') },
+    ]);
+  });
   it('switches an untouched agent to Cursor through the app boundary and accepts its first prompt', async () => {
     const state = createTestSnapshot();
     state.agents = [{ ...agent, backend: 'codex', backendDefaults: { kind: 'codex', model: 'must-not-leak' }, backendSession: undefined }];
@@ -108,7 +157,7 @@ describe('Cursor ACP host transport boundary', () => {
     expect(calls[2].params).toEqual({ cwd: root, mcpServers: [] });
     expect(calls.find(call => call.method === 'session/prompt').params.prompt[0].text).toContain('<context id=');
     expect(calls.find(call => call.method === 'session/prompt').params.prompt[0].text).toContain(`agent ID is ${agent.id}`);
-    expect(host.getCapabilities(agent)).toMatchObject({ interrupt: true, approvals: false, history: false, models: false });
+    expect(host.getCapabilities(agent)).toMatchObject({ interrupt: true, approvals: false, history: false, models: true });
   });
   it('denies permissions using the native reject option and keeps a completed-but-rejected tool visibly failed', async () => {
     await host.sendPrompt(agent, 'permission'); await vi.waitFor(() => expect(completions()).toHaveLength(1));

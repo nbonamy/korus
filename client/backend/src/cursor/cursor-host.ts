@@ -12,8 +12,10 @@ import { appDeveloperInstructions } from '../mcp/agent-prompts';
 import { promptWithSelectedReferences } from '../agents/prompt-content';
 import { backendHomeDir } from '../state';
 import { CursorAuthentication } from './authentication';
-import { cursorHome, resolveCursorExecutable } from './runtime';
+import { cursorRuntime, resolveCursorExecutable } from './runtime';
 import { CursorSession } from './session';
+import { cursorModels } from './catalog';
+import { cursorAttachments } from './attachments';
 import { getCursorAccountUsage } from './account-usage';
 
 export class CursorHost implements AgentBackendDriver {
@@ -27,8 +29,12 @@ export class CursorHost implements AgentBackendDriver {
   private readonly usageListeners = new Set<(event: ExecutionObservation) => void>();
   private closed = false;
   private checking?: ReturnType<CursorAuthentication['authenticate']>;
-  private readonly authentication = new CursorAuthentication(payload => this.emit({ type: 'provider.authenticationChanged', backend: this.backend, payload }));
-  constructor(private readonly options: BackendDriverRegistryOptions = {}) {}
+  private readonly runtime;
+  private readonly authentication;
+  constructor(private readonly options: BackendDriverRegistryOptions = {}) {
+    this.runtime = cursorRuntime(options.generalSettings?.providerHomes?.cursor);
+    this.authentication = new CursorAuthentication(payload => this.emit({ type: 'provider.authenticationChanged', backend: this.backend, payload }), this.runtime);
+  }
   authenticate(request: Parameters<CursorAuthentication['authenticate']>[0]) {
     if (request.action !== 'check') return this.authentication.authenticate(request);
     if (this.checking) return this.checking;
@@ -40,12 +46,12 @@ export class CursorHost implements AgentBackendDriver {
     return { backend: this.backend, status: !resolveCursorExecutable() ? 'notConfigured' as const : live ? 'running' as const : this.sessions.size ? 'error' as const : 'starting' as const };
   }
   getCapabilities() { return cursorBackendCapabilities; }
-  getAccountRateLimits() { return getCursorAccountUsage(); }
+  getAccountRateLimits() { return getCursorAccountUsage(this.runtime); }
   onEvent(listener: (event: BackendEvent) => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   onUsage(listener: (event: ExecutionObservation) => void) { this.usageListeners.add(listener); return () => { this.usageListeners.delete(listener); }; }
   async sendPrompt(agent: Agent, prompt: string, options?: SendPromptOptions) {
     if (agent.backend !== this.backend || (agent.backendSession && agent.backendSession.kind !== this.backend)) throw new Error('Cursor cannot use another provider conversation.');
-    if (options?.attachments?.length || options?.planMode || options?.selection?.model || options?.backendOptions) throw new Error('Cursor attachments, model and mode controls are not available yet.');
+    if (options?.planMode || options?.backendOptions) throw new Error('Cursor attachments, model and mode controls are not available yet.');
     const generation = this.generations.get(agent.id) ?? 0;
     const previous = this.queues.get(agent.id);
     let release!: () => void;
@@ -55,13 +61,19 @@ export class CursorHost implements AgentBackendDriver {
     try {
       await previous;
       if (this.closed || generation !== (this.generations.get(agent.id) ?? 0)) throw new Error('Cursor conversation was released before admission.');
+      const attachments = await cursorAttachments(options?.attachments ?? []);
       const session = await this.ensure(agent);
+      const model = options?.selection?.model ?? agent.backendDefaults?.model;
+      if (model) {
+        if (!cursorModels(session.configuration).some(option => option.id === model)) throw new Error('Unknown Cursor model. Refresh the model catalog.');
+        await session.setModel(model);
+      }
       const content = options?.content === undefined ? undefined : normalizePromptContent(options.content);
       const instructions = appDeveloperInstructions(agent, this.options.pluginSettings?.(), {
         celebrationsEnabled: this.options.celebrationsEnabled?.(), developerInstructions: this.options.additionalDeveloperInstructions?.(agent),
       });
       const wire = `${promptWithSelectedReferences(prompt, content)}\n\n<context id="${randomUUID()}">\n${instructions}\n</context>`;
-      const turn = session.prompt(content === undefined ? prompt : promptContentText(content), wire, content === undefined ? undefined : { promptContent: content });
+      const turn = session.prompt(content === undefined ? prompt : promptContentText(content), wire, content === undefined ? undefined : { promptContent: content }, attachments);
       void turn.completion.finally(settle);
       return { backendSession: this.reference(session), turnId: turn.turnId };
     } catch (error) { settle(); throw error; }
@@ -73,10 +85,11 @@ export class CursorHost implements AgentBackendDriver {
     await session.interrupt(expectedTurnId);
     return { backendSession: this.reference(session), turnId };
   }
+  async listModels(agent: Agent) { return cursorModels((await this.ensure(agent)).configuration); }
   async respondToAgentRequest(): Promise<void> { throw new Error('Cursor permissions and questions are not available yet.'); }
   async loadConversation(agent: Agent): Promise<BackendSession | null> {
     const current = this.sessions.get(agent.id);
-    if (!current) { if (agent.backendSession) throw new Error('Cursor history resume is not available yet.'); return null; }
+    if (!current) { if (!agent.backendSession) return null; const loaded = await this.ensure(agent); return this.reference(loaded); }
     if (agent.backendSession && (agent.backendSession.kind !== this.backend || agent.backendSession.sessionId !== current.sessionId)) throw new Error('Cursor conversation identity mismatch.');
     this.publishSnapshot(agent.id, current);
     return this.reference(current);
@@ -110,7 +123,7 @@ export class CursorHost implements AgentBackendDriver {
       if (agent.folder && path.resolve(agent.folder) !== path.resolve(current.cwd)) throw new Error('Cursor conversation belongs to another workspace.');
       return current;
     }
-    if (agent.backendSession) throw new Error('Cursor history resume is not available yet.');
+    if (agent.backendSession && agent.backendSession.kind !== this.backend) throw new Error('Cursor conversation identity mismatch.');
     const existing = this.opening.get(agent.id); if (existing) return existing.done;
     const generation = this.generations.get(agent.id) ?? 0;
     const abort = new AbortController();
@@ -119,7 +132,7 @@ export class CursorHost implements AgentBackendDriver {
       if (!auth.connected) throw new Error(auth.state.error ?? 'Cursor is disconnected. Sign in in Settings.');
       const cwd = agent.folder ?? path.join(backendHomeDir(), 'cursor-quick-chats', encodeURIComponent(agent.id));
       if (!agent.folder) await mkdir(cwd, { recursive: true, mode: 0o700 });
-      const session = await CursorSession.open({ agentId: agent.id, cwd, signal: abort.signal,
+      const session = await CursorSession.open({ agentId: agent.id, cwd, runtime: this.runtime, sessionId: agent.backendSession?.kind === this.backend ? agent.backendSession.sessionId : undefined, signal: abort.signal,
         changed: event => this.conversationEvent(event), disconnected: error => this.disconnected(error),
       });
       if (this.closed || abort.signal.aborted || generation !== (this.generations.get(agent.id) ?? 0)) { await session.close(); throw new Error('Cursor session was released during startup.'); }
@@ -128,7 +141,7 @@ export class CursorHost implements AgentBackendDriver {
     this.opening.set(agent.id, { abort, done }); return done;
   }
   private disconnected(error: Error): void {
-    this.emit({ type: 'provider.authenticationChanged', backend: this.backend, payload: { kind: this.backend, connected: false, state: { loggedIn: false, homePath: cursorHome(), error: error.message } } });
+    this.emit({ type: 'provider.authenticationChanged', backend: this.backend, payload: { kind: this.backend, connected: false, state: { loggedIn: false, homePath: this.runtime.homePath, error: error.message } } });
   }
   private conversationEvent(event: CursorConversationEvent): void {
     const current = this.sessions.get(event.agentId);

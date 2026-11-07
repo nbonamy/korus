@@ -19,13 +19,13 @@ vi.mock('../codex/codex-command', () => ({
 }));
 
 describe('BackendDriverRpc', () => {
-  it('keeps the unsupported Cursor catalog empty and rejects another provider session without falling through', async () => {
+  it('rejects another provider session for Cursor catalog and prompt requests without falling through', async () => {
     const cursor = createBackendDriver('cursor');
     const other = createDriver();
     const agent = { ...createAgent(), backend: 'cursor' as const, backendSession: { kind: 'codex' as const, threadId: 'foreign-session' } };
     const rpc = new BackendDriverRpc(new Map([['cursor', cursor], ['codex', other]]));
     try {
-      await expect(rpc.handle('driver/models/list', { agent })).resolves.toEqual([]);
+      await expect(rpc.handle('driver/models/list', { agent })).rejects.toThrow(/identity mismatch/i);
       expect(other.sendPrompt).not.toHaveBeenCalled();
       await expect(rpc.handle('driver/prompt/send', { agent, prompt: 'Synthetic prompt' })).rejects.toThrow(/another provider|does not match/i);
     } finally { await rpc.close(); }

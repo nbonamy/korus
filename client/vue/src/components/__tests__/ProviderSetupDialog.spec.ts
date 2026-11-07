@@ -4,13 +4,15 @@ import { describe, expect, it } from 'vitest';
 import ProviderSetupDialog from '../ProviderSetupDialog.vue';
 
 describe('ProviderSetupDialog', () => {
-  it('does not offer an unqualified isolated home for Cursor', () => {
+  it('offers a separate Cursor home without implicit skill sharing', async () => {
     const wrapper = mount(ProviderSetupDialog, { props: {
       setup: { backend: 'cursor', installed: true, isolated: false, shareSkills: false, homePath: '/cursor', locked: false },
       busy: false, error: null,
     }, global: { components: { ElCheckbox, ElRadio, ElRadioGroup }, stubs: { teleport: true } } });
-    expect(wrapper.findAll('input[type="radio"]')).toHaveLength(1);
-    expect(wrapper.text()).not.toContain('Separate chats');
+    expect(wrapper.findAll('input[type="radio"]')).toHaveLength(2);
+    await wrapper.get('input[type="radio"][value="true"]').setValue();
+    await wrapper.get('.app-button--primary').trigger('click');
+    expect(wrapper.emitted('save')).toStrictEqual([[{ isolated: true, shareSkills: false }]]);
     expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false);
     wrapper.unmount();
   });

@@ -10,21 +10,23 @@ import { setElectronTestClient } from '../../test/client';
 import { curatedSkills, type SkillManagerState } from '@workspace/core/skill-manager';
 
 describe('SettingsView', () => {
-  it('shows Cursor authentication separately from enablement and never offers an isolated home', async () => {
+  it('shows Cursor authentication separately from enablement and exposes home setup', async () => {
     const setProviderEnabled = vi.fn().mockResolvedValue(undefined);
     const connectCursor = vi.fn().mockResolvedValue(undefined);
+    const customizeProvider = vi.fn();
     const wrapper = mount(SettingsView, { props: {
       activeTab: 'cursor', settings: defaultThemeSettings,
       generalSettings: { ...defaultGeneralSettings, providerEnabled: { cursor: false } },
       providerConnections: [{ backend: 'cursor', installed: true, connected: true, enabled: false, checking: false,
         authentication: { kind: 'cursor', connected: true, state: { loggedIn: true, homePath: '/cursor', version: '2026.10.22-27dcf5f', supported: true } } }],
-      setProviderEnabled, connectCursor,
+      setProviderEnabled, connectCursor, customizeProvider,
     }, global: { components: { ElSwitch } } });
     await flushPromises();
     expect(wrapper.get('#settings-cursor-title').text()).toBe('Cursor');
     expect(wrapper.get('[role="switch"]').attributes('aria-checked')).toBe('false');
     expect(setProviderEnabled).not.toHaveBeenCalled();
-    expect(wrapper.text()).not.toContain('Customize');
+    await wrapper.findAll('button').find(button => button.text() === 'Customize')!.trigger('click');
+    expect(customizeProvider).toHaveBeenCalledWith('cursor');
     await wrapper.get('[role="switch"]').trigger('click'); await flushPromises();
     expect(setProviderEnabled).toHaveBeenCalledWith('cursor', true);
     await wrapper.setProps({ providerConnections: [{ backend: 'cursor', installed: true, connected: false, checking: false,

@@ -50,6 +50,28 @@ export class CursorTranscript {
       default: throw new Error('Unsupported Cursor session update.');
     }
   }
+  replay(update: Record<string, unknown>): void {
+    if (update.sessionUpdate === 'user_message_chunk') {
+      if (!record(update.content) || update.content.type !== 'text' || typeof update.content.text !== 'string') throw new Error('Invalid Cursor replay prompt.');
+      if (this.message?.role === 'user') this.text('user', update.content.text, false);
+      else {
+        const active = this.replica.getSnapshot().activeTurnId;
+        if (active) this.finish(active, 'completed');
+        this.start(update.content.text);
+      }
+    } else {
+      if (!this.replica.getSnapshot().busy && ['agent_message_chunk', 'agent_thought_chunk', 'tool_call', 'tool_call_update'].includes(String(update.sessionUpdate))) this.start('');
+      this.update(update);
+    }
+  }
+  finishReplay(): void {
+    const active = this.replica.getSnapshot().activeTurnId;
+    if (active) this.finish(active, 'completed');
+    const snapshot = structuredClone(this.replica.getSnapshot());
+    for (const turn of snapshot.turns) { turn.startedAt = null; turn.completedAt = null; turn.durationMs = null; }
+    for (const message of snapshot.messages) message.createdAt = '';
+    this.replica.replace(snapshot);
+  }
   deny(toolCall: unknown): void {
     if (!record(toolCall) || typeof toolCall.toolCallId !== 'string') throw new Error('Invalid Cursor permission tool identity.');
     this.denied.add(toolCall.toolCallId);

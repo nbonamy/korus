@@ -1,7 +1,7 @@
 import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
 import type { ProviderAuthentication, ProviderAuthenticationAction } from '@workspace/core/contracts/provider-setup';
-import { cursorEnvironment, cursorHome, cursorMinimumVersion, cursorVersion, resolveCursorExecutable } from './runtime';
+import { cursorEnvironment, cursorRuntime, type CursorRuntime, cursorMinimumVersion, cursorVersion, resolveCursorExecutable } from './runtime';
 
 type Authentication = Extract<ProviderAuthentication, { kind: 'cursor' }>;
 type Entry = { action: ProviderAuthenticationAction['action']; abort: AbortController; done: Promise<Authentication> };
@@ -11,14 +11,14 @@ export class CursorAuthentication {
   private pending?: Entry;
   private closed = false;
   private version?: string;
-  constructor(private readonly changed: (value: Authentication) => void) {}
+  constructor(private readonly changed: (value: Authentication) => void, private readonly runtime: CursorRuntime = cursorRuntime()) {}
 
   async authenticate(request: ProviderAuthenticationAction): Promise<Authentication> {
     if (request.action === 'cancel') {
       const active = this.pending;
       active?.abort.abort();
       await active?.done.catch(() => {});
-      return this.publish(this.state(false));
+      return this.authenticate({ action: 'check' });
     }
     if (this.closed) throw new Error('Cursor connection is closed.');
     const previous = this.pending;
@@ -62,14 +62,14 @@ export class CursorAuthentication {
 
   private state(loggedIn: boolean, extra: Partial<Authentication['state']> = {}): Authentication {
     return { kind: 'cursor', connected: loggedIn, state: {
-      loggedIn, homePath: cursorHome(), ...(this.version ? { version: this.version } : {}), ...extra,
+      loggedIn, homePath: this.runtime.homePath, ...(this.version ? { version: this.version } : {}), ...extra,
     } };
   }
   private publish(value: Authentication): Authentication { if (!this.closed) this.changed(value); return value; }
 
   private run(command: string, args: string[], entry: Entry, interactive = false): Promise<string> {
     return new Promise((resolve, reject) => {
-      const child = spawn(command, args, { cwd: homedir(), env: cursorEnvironment(interactive), shell: false, windowsHide: true,
+      const child = spawn(command, args, { cwd: this.runtime.environment.HOME || homedir(), env: cursorEnvironment(interactive, this.runtime), shell: false, windowsHide: true,
         detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
       let output = '', failed = false;
       const signal = (value: NodeJS.Signals) => { try { if (process.platform === 'win32') child.kill(value); else if (child.pid) process.kill(-child.pid, value); } catch { /* Already exited. */ } };
