@@ -5,11 +5,11 @@ export const missionTaskStatuses = ['next', 'active', 'review', 'blocked', 'done
 export type MissionTaskStatus = typeof missionTaskStatuses[number];
 export function missionTaskStatus(item: MissionImplementationTicketItem, tickets: readonly MissionTicket[]): MissionTaskStatus {
   switch (implementationTicketStatus(item, tickets)) {
-    case 'queued': return 'next';
+    case 'queued': case 'blocked': case 'cancelled': return 'next';
     case 'preparing': case 'running': return 'active';
     case 'awaitingReview': return 'review';
     case 'accepted': return 'done';
-    default: return 'blocked';
+    case 'failed': return 'blocked';
   }
 }
 export function matchesMissionTaskFilters(item: MissionImplementationTicketItem, tickets: readonly MissionTicket[], statuses: readonly MissionTaskStatus[]): boolean {
