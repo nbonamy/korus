@@ -24,7 +24,7 @@ export function conversationPermissionMenuItems(
     icon: ShieldCheckIcon,
     submenuAlignment: 'bottom',
     submenuWidth: 'wide',
-    items: modes.map((mode) => permissionModeMenuItem(mode, selectedMode)),
+    items: modes.map((mode) => permissionModeMenuItem(mode, selectedMode ?? 'default')),
   }];
 }
 

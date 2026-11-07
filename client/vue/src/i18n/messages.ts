@@ -674,6 +674,10 @@ export const messages = {
       restarting: 'Restarting daemon…',
     },
     permissions: {
+      cursor: {
+        default: { label: 'Ask for approval', description: 'Ask when Cursor requests a tool permission. Native Cursor rules still apply.' },
+        fullAccess: { label: 'Full access', description: 'Automatically allow requested tool permissions for this conversation. Native Cursor rules still apply.' },
+      },
       antigravity: {
         default: { label: 'Ask for approval', description: 'Antigravity asks before commands and file changes.' },
         autoEdit: { label: 'Allow file edits', description: 'Allow native file edits; commands still use Antigravity approvals.' },

@@ -35,6 +35,7 @@ export class CursorHost implements AgentBackendDriver {
   private readonly catalogs = new Map<string, { abort: AbortController; done: Promise<ConversationSummary[]> }>();
   private readonly generations = new Map<string, number>();
   private readonly queues = new Map<string, Promise<void>>();
+  private readonly steering = new Set<string>();
   private readonly planModes = new Map<string, boolean>();
   private readonly nativePlanTurns = new Set<string>();
   private readonly revisions = new Map<string, number>();
@@ -68,36 +69,44 @@ export class CursorHost implements AgentBackendDriver {
   }
   getRuntimeStatus() {
     const live = [...this.sessions.values()].some(session => !session.isClosed);
-    return { backend: this.backend, status: !resolveCursorExecutable() ? 'notConfigured' as const : live ? 'running' as const : this.sessions.size ? 'error' as const : 'starting' as const };
+    return { backend: this.backend, status: !resolveCursorExecutable() ? 'notConfigured' as const : live ? 'running' as const : this.sessions.size ? 'error' as const : 'starting' as const, capabilities: this.getCapabilities() };
   }
-  getCapabilities() { return cursorBackendCapabilities; }
+  getCapabilities() { return { ...cursorBackendCapabilities, steerPrompt: this.options.cursorSteeringFallbackEnabled?.() === true }; }
   getAccountRateLimits() { return getCursorAccountUsage(this.runtime); }
   onEvent(listener: (event: BackendEvent) => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   onUsage(listener: (event: ExecutionObservation) => void) { this.usageListeners.add(listener); return () => { this.usageListeners.delete(listener); }; }
-  async sendPrompt(agent: Agent, prompt: string, options?: SendPromptOptions) {
+  async sendPrompt(agent: Agent, prompt: string, options?: SendPromptOptions, admissionGuard?: () => void) {
+    const agentId = agent.id;
     if (agent.backend !== this.backend || (agent.backendSession && agent.backendSession.kind !== this.backend)) throw new Error('Cursor cannot use another provider conversation.');
+    if (this.steering.has(agent.id) && !admissionGuard) throw new Error('Finish the current Cursor steering operation first.');
     if (this.resuming.has(agent.id)) throw new Error('Finish the current Cursor history operation first.');
     if (options?.backendOptions) throw new Error('Cursor backend options are not available.');
     const selection=resolveExecutionSelection(executionSelectionForAgent(agent),options?.selection);
     if (selection.serviceTier!==null) throw new Error('Cursor service tiers are not supported.');
-    const generation = this.generations.get(agent.id) ?? 0;
-    const previous = this.queues.get(agent.id);
+    const generation = this.generations.get(agentId) ?? 0;
+    const previous = this.queues.get(agentId);
     let release!: () => void;
     const pending = new Promise<void>(resolve => { release = resolve; });
-    this.queues.set(agent.id, pending);
-    const settle = () => { release(); if (this.queues.get(agent.id) === pending) this.queues.delete(agent.id); };
+    this.queues.set(agentId, pending);
+    const settle = () => { release(); if (this.queues.get(agentId) === pending) this.queues.delete(agentId); };
     try {
       await previous;
-      if (this.closed || generation !== (this.generations.get(agent.id) ?? 0)) throw new Error('Cursor conversation was released before admission.');
+      if (this.closed || generation !== (this.generations.get(agentId) ?? 0)) throw new Error('Cursor conversation was released before admission.');
+      admissionGuard?.();
       const attachments = await cursorAttachments(options?.attachments ?? []);
+      admissionGuard?.();
       const session = await this.ensure(agent);
+      admissionGuard?.();
       const model=selection.model;
       if (model) {
         if (!session.models.some(option => option.id === model)) throw new Error('Unknown Cursor model. Refresh the model catalog.');
         await session.setModel(model);
+        admissionGuard?.();
       }
       if (selection.reasoningEffort!==null) await session.setReasoningEffort(selection.reasoningEffort);
+      admissionGuard?.();
       await session.setPromptMode(options?.planMode === true);
+      admissionGuard?.();
       session.assertSelection(selection.model,selection.reasoningEffort,options?.planMode === true);
       const content = options?.content === undefined ? undefined : normalizePromptContent(options.content);
       const instructions = appDeveloperInstructions(agent, this.options.pluginSettings?.(), {
@@ -109,6 +118,31 @@ export class CursorHost implements AgentBackendDriver {
       void turn.completion.finally(settle);
       return { backendSession: this.reference(session), turnId: turn.turnId };
     } catch (error) { settle(); throw error; }
+  }
+  async steerPrompt(agent: Agent, prompt: string, options?: SendPromptOptions) {
+    const agentId = agent.id;
+    if (!this.getCapabilities().steerPrompt) throw new Error('Cursor prompt steering fallback is disabled.');
+    if (this.steering.has(agent.id)) throw new Error('Finish the current Cursor steering operation first.');
+    const session = this.sessions.get(agent.id);
+    if (agent.backend !== this.backend || agent.backendSession?.kind !== this.backend || !session || session.isClosed || session.sessionId !== agent.backendSession.sessionId) throw new Error('Cursor steering requires the saved running session.');
+    if (path.resolve(this.workingDirectory(agent)) !== path.resolve(session.cwd)) throw new Error('Cursor steering workspace mismatch.');
+    const turnId = session.snapshot.activeTurnId;
+    if (!turnId) throw new Error('Cursor steering requires a running turn.');
+    const generation = this.generations.get(agentId) ?? 0, identity = this.observedIdentity, folder = agent.folder;
+    const assertIdentity = () => {
+      if (!this.getCapabilities().steerPrompt) throw new Error('Cursor prompt steering fallback is disabled.');
+      if (this.closed || session.isClosed || this.sessions.get(agentId) !== session || generation !== (this.generations.get(agentId) ?? 0) || identity !== this.observedIdentity) throw new Error('Cursor steering session was released or its identity changed.');
+      if (agent.id !== agentId || agent.backend !== this.backend || agent.backendSession?.kind !== this.backend || agent.backendSession.sessionId !== session.sessionId || agent.folder !== folder || path.resolve(this.workingDirectory(agent)) !== path.resolve(session.cwd)) throw new Error('Cursor steering conversation identity or workspace changed.');
+      if (session.snapshot.activeTurnId || session.snapshot.turns.at(-1)?.id !== turnId) throw new Error('Cursor turn changed during steering.');
+    };
+    this.steering.add(agentId);
+    try {
+      // ACP cancellation settles callbacks and fences late frames before a distinct prompt is admitted.
+      await session.interrupt(turnId);
+      assertIdentity();
+      if (this.queues.has(agentId)) throw new Error('Finish the current Cursor operation before steering.');
+      return await this.sendPrompt(agent, prompt, options, assertIdentity);
+    } finally { this.steering.delete(agentId); }
   }
   async continueInterruptedTurn(agent: Agent): Promise<import('@workspace/core/backend-driver').BackendTurnActionResult> {
     if (agent.backendSession?.kind !== this.backend) throw new Error('No Cursor session to continue.');
@@ -169,7 +203,7 @@ export class CursorHost implements AgentBackendDriver {
     const done = (async () => {
       const auth = await this.authenticate({ action: 'check' });
       if (!auth.connected) throw new Error('Cursor is disconnected.');
-      const next = await CursorSession.open({ agentId: agent.id, cwd: this.workingDirectory(agent), runtime: this.runtime, mcpServers: this.mcpServers(agent), appMcpServerName: this.options.appMcpServerUrl ? product.mcpServerName : undefined, sessionId, signal: abort.signal, changed: event => this.conversationEvent(event), disconnected: error => this.disconnected(error) });
+      const next = await CursorSession.open({ permissionMode: this.permissionMode(agent), agentId: agent.id, cwd: this.workingDirectory(agent), runtime: this.runtime, mcpServers: this.mcpServers(agent), appMcpServerName: this.options.appMcpServerUrl ? product.mcpServerName : undefined, sessionId, signal: abort.signal, changed: event => this.conversationEvent(event), disconnected: error => this.disconnected(error) });
       if (this.closed || abort.signal.aborted || generation !== (this.generations.get(agent.id) ?? 0)) { await next.close(); throw new Error('Cursor history operation was released.'); }
       const previous = this.sessions.get(agent.id); await previous?.close();
       if (this.closed || abort.signal.aborted || generation !== (this.generations.get(agent.id) ?? 0)) { await next.close(); throw new Error('Cursor history operation was released.'); }
@@ -179,6 +213,22 @@ export class CursorHost implements AgentBackendDriver {
     return { backendSession: this.reference(await done) };
   }
   private workingDirectory(agent: Agent): string { return agent.folder ?? path.join(backendHomeDir(), 'cursor-quick-chats', encodeURIComponent(agent.id)); }
+  private permissionMode(agent: Agent): 'default' | 'full-access' {
+    const mode = agent.backendDefaults?.kind === this.backend ? agent.backendDefaults.permissionMode ?? 'default' : 'default';
+    if (mode !== 'default' && mode !== 'full-access') throw new Error('Unsupported permission mode for Cursor.');
+    return mode;
+  }
+  async setPermissionMode(agent: Agent, mode: string) {
+    if (this.closed || agent.backend !== this.backend || (agent.backendSession && agent.backendSession.kind !== this.backend)) throw new Error('Cursor conversation identity mismatch.');
+    const defaults = { ...(agent.backendDefaults?.kind === this.backend ? agent.backendDefaults : {}), kind: this.backend, permissionMode: mode };
+    const permission = this.permissionMode({ ...agent, backendDefaults: defaults });
+    await this.opening.get(agent.id)?.done;
+    const session = this.sessions.get(agent.id);
+    if (session && agent.backendSession?.kind === this.backend && agent.backendSession.sessionId !== session.sessionId) throw new Error('Cursor conversation identity mismatch.');
+    if (session && agent.folder && path.resolve(agent.folder) !== path.resolve(session.cwd)) throw new Error('Cursor conversation belongs to another workspace.');
+    if (session && !session.isClosed) session.setPermissionMode(permission);
+    return { backendDefaults: defaults };
+  }
   async listModels(agent: Agent) { return (await this.ensure(agent)).models; }
   async respondToAgentRequest(response: AgentRequestResponse): Promise<void> {
     const session = response.agentId ? this.sessions.get(response.agentId) : [...this.sessions.values()].find(session => session.snapshot.clientRequests.some(request => request.id === response.id));
@@ -196,7 +246,7 @@ export class CursorHost implements AgentBackendDriver {
     return this.reference(current);
   }
   async assertHandoffReady(agent: Agent): Promise<void> {
-    if (this.queues.has(agent.id) || this.opening.has(agent.id)) throw new Error('Finish the current Cursor operation first.');
+    if (this.queues.has(agent.id) || this.opening.has(agent.id) || this.steering.has(agent.id)) throw new Error('Finish the current Cursor operation first.');
   }
   async releaseConversation(agentId: string): Promise<void> {
     this.generations.set(agentId, (this.generations.get(agentId) ?? 0) + 1);
@@ -246,7 +296,7 @@ export class CursorHost implements AgentBackendDriver {
       if (!auth.connected) throw new Error(auth.state.error ?? 'Cursor is disconnected. Sign in in Settings.');
       const cwd = this.workingDirectory(agent);
       if (!agent.folder) await mkdir(cwd, { recursive: true, mode: 0o700 });
-      const session = await CursorSession.open({ agentId: agent.id, cwd, runtime: this.runtime, mcpServers: this.mcpServers(agent), appMcpServerName: this.options.appMcpServerUrl ? product.mcpServerName : undefined, sessionId: agent.backendSession?.kind === this.backend ? agent.backendSession.sessionId : undefined, signal: abort.signal,
+      const session = await CursorSession.open({ agentId: agent.id, cwd, permissionMode: this.permissionMode(agent), runtime: this.runtime, mcpServers: this.mcpServers(agent), appMcpServerName: this.options.appMcpServerUrl ? product.mcpServerName : undefined, sessionId: agent.backendSession?.kind === this.backend ? agent.backendSession.sessionId : undefined, signal: abort.signal,
         changed: event => this.conversationEvent(event), disconnected: error => this.disconnected(error),
       });
       if (this.closed || abort.signal.aborted || generation !== (this.generations.get(agent.id) ?? 0)) { await session.close(); throw new Error('Cursor session was released during startup.'); }

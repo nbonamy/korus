@@ -14,7 +14,7 @@ import { ElMessageBox, ElRadio, ElRadioGroup } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import AppShell from '../AppShell.vue';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
-import { claudeBackendCapabilities, codexBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { claudeBackendCapabilities, codexBackendCapabilities, cursorBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import type { AppApi, RendererMessage } from '@workspace/core/contracts';
 import { i18n } from '../../i18n';
@@ -63,19 +63,20 @@ afterEach(() => {
 });
 
 describe('AppShell authentication and conversation', () => {
-  it('keeps permission routing and an annotated draft on the owning conversation across layouts', async () => {
+  it.each(['claude', 'cursor'] as const)('keeps %s permission routing and an annotated draft on the owning conversation across layouts', async backend => {
     const snapshot = createInitialSnapshot();
     snapshot.general.claudeCodeEnabled = true;
-    snapshot.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ backend, installed: true, connected: true, checking: false }];
     const composer = createAgentComposerState({ getSnapshot: () => snapshot });
     const views = snapshot.agents.map(agent => {
-      agent.backend = 'claude';
-      agent.backendDefaults = { kind: 'claude', permissionMode: 'acceptEdits' };
+      agent.backend = backend;
+      agent.backendDefaults = { kind: backend, permissionMode: backend === 'cursor' ? 'default' : 'acceptEdits' };
       return shallowReactive<AgentConversationView>({
-        agent, codexSnapshot: null, claudeSnapshot: claudeConversationSnapshot([], { agentId: agent.id }),
+        agent, codexSnapshot: null, claudeSnapshot: backend === 'claude' ? claudeConversationSnapshot([], { agentId: agent.id }) : null,
+        cursorSnapshot: backend === 'cursor' ? emptyCursorSnapshot(agent.id, `session-${agent.id}`) : null,
         composer: composer.configurationForAgent(agent.id),
         composerState: { text: `Draft for ${agent.id}`, selectionStart: 0, selectionEnd: 0 },
-        attachments: [], capabilities: claudeBackendCapabilities, approvals: [], sending: false,
+        attachments: [], capabilities: backend === 'cursor' ? cursorBackendCapabilities : claudeBackendCapabilities, approvals: [], sending: false,
         queuedPrompts: [], history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false },
         answeredClientRequestIds: new Set(),
       });
@@ -85,7 +86,10 @@ describe('AppShell authentication and conversation', () => {
       send: vi.fn(), steer: vi.fn(), interrupt: vi.fn(), deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(),
       continueInterruptedTurn: vi.fn(), resolveApproval: vi.fn(), clientResponse: vi.fn(),
       selectModel: vi.fn(), selectReasoningEffort: vi.fn(), selectServiceTier: vi.fn(), setPlanMode: vi.fn(),
-      setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(), updateComposerState: vi.fn(), updateAttachments: vi.fn(),
+      setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(async (id, mode) => {
+        const view = views.find(view => view.agent.id === id)!;
+        view.agent = { ...view.agent, backendDefaults: { kind: backend, permissionMode: mode } };
+      }), updateComposerState: vi.fn(), updateAttachments: vi.fn(),
       deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
     };
     const wrapper = mountShell({ snapshot, realConversationPane: true, stubAgentWorkspace: false });
@@ -96,11 +100,11 @@ describe('AppShell authentication and conversation', () => {
       const selectPermission = async (pane: ReturnType<typeof wrapper.get>) => {
         await pane.get('button[aria-label="Composer actions"]').trigger('click');
         await pane.get('[role="menuitem"][aria-haspopup="menu"]').trigger('mouseenter');
-        const choice = pane.findAll('[role="menuitemradio"]').find(item => item.text().includes("Don't ask"))!;
+        const choice = pane.findAll('[role="menuitemradio"]').find(item => item.text().includes(backend === 'cursor' ? 'Full access' : "Don't ask"))!;
         await choice.trigger('click');
       };
       await selectPermission(wrapper.get('.conversation-pane'));
-      expect(actions.setPermissionMode).toHaveBeenLastCalledWith(selected.agent.id, 'dontAsk');
+      expect(actions.setPermissionMode).toHaveBeenLastCalledWith(selected.agent.id, backend === 'cursor' ? 'full-access' : 'dontAsk');
       expect(wrapper.get('.chat-rich-text-editor').text()).toBe(selected.composerState.text);
       wrapper.getComponent({ name: 'ConversationPane' }).vm.$emit('add-text-annotation', { selection: { text: 'Quoted text', messageIndex: 0, role: 'assistant' }, comment: 'Check this' });
       await wrapper.getComponent({ name: 'SplitLayoutControl' }).vm.$emit('update:modelValue', '2-vertical');
@@ -111,8 +115,9 @@ describe('AppShell authentication and conversation', () => {
       expect(ownPane.findAll('.composer-context-cards__card')).toHaveLength(1);
       const otherPane = panes.find(pane => pane.attributes('data-agent-id') !== selected.agent.id)!;
       await selectPermission(otherPane);
-      expect(actions.setPermissionMode).toHaveBeenLastCalledWith(otherPane.attributes('data-agent-id'), 'dontAsk');
+      expect(actions.setPermissionMode).toHaveBeenLastCalledWith(otherPane.attributes('data-agent-id'), backend === 'cursor' ? 'full-access' : 'dontAsk');
       expect(otherPane.find('.composer-context-cards__card').exists()).toBe(false);
+      expect(actions.setPermissionMode).toHaveBeenCalledTimes(2);
       await wrapper.getComponent({ name: 'SplitLayoutControl' }).vm.$emit('update:modelValue', 'single');
       await flushPromises();
       expect(wrapper.findAll('.conversation-pane')).toHaveLength(1);
@@ -2130,8 +2135,8 @@ describe('AppShell authentication and conversation', () => {
     expect(wrapper.emitted('select-service-tier')).toStrictEqual([[null]]);
   });
 
-  it('shows read-only Cursor-managed permissions in the main conversation menu', async () => {
-    const snapshot = createInitialSnapshot();
+  it('routes selectable Cursor permission modes from the main conversation menu', async () => {
+    const snapshot = reactive(createInitialSnapshot());
     const agent = snapshot.agents[0]!;
     agent.backend = 'cursor';
     agent.backendDefaults = { kind: 'cursor' };
@@ -2140,14 +2145,22 @@ describe('AppShell authentication and conversation', () => {
       cursorConversationSnapshot: emptyCursorSnapshot(agent.id, 'cursor-permissions'),
       realConversationPane: true, stubAgentWorkspace: false });
     try {
+      await wrapper.setProps({ backendCapabilities: cursorBackendCapabilities });
       await flushPromises();
       await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
       const permissions = wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Permissions'));
       expect(permissions).toBeDefined();
-      expect(permissions!.text()).toContain('Cursor-managed');
-      expect(permissions!.attributes('disabled')).toBeDefined();
-      await permissions!.trigger('click');
-      expect(wrapper.emitted('select-permission-mode')).toBeUndefined();
+      await permissions!.trigger('mouseenter');
+      const choices = wrapper.findAll('[role="menuitemradio"]');
+      expect(choices.map(choice => choice.text())).toEqual([expect.stringContaining('Ask for approval'), expect.stringContaining('Full access')]);
+      expect(choices[0]!.attributes('aria-checked')).toBe('true');
+      await choices[1]!.trigger('click');
+      expect(wrapper.emitted('select-permission-mode')).toStrictEqual([['full-access']]);
+      agent.backendDefaults = { kind: 'cursor', permissionMode: 'full-access' };
+      await flushPromises();
+      await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
+      await wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Permissions'))!.trigger('mouseenter');
+      expect(wrapper.findAll('[role="menuitemradio"]').map(choice => choice.attributes('aria-checked'))).toEqual(['false', 'true']);
       expect(wrapper.emitted('select-approval-preset')).toBeUndefined();
     } finally { wrapper.unmount(); }
   });

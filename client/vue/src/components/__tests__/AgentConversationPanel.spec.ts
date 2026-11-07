@@ -37,7 +37,7 @@ describe('AgentConversationPanel', () => {
     const actions: AgentConversationActions = {
       planReview: vi.fn(), clearGoal: vi.fn(), threadFlag: vi.fn(), prepare: vi.fn(), loadOlder: vi.fn(), send: vi.fn(async (id, text, options) => { sent(id, text, composer.resolvePromptOptions(id, text, options)); }), steer: vi.fn(), interrupt: vi.fn(),
       deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(), continueInterruptedTurn: vi.fn(), resolveApproval: vi.fn(), clientResponse: vi.fn(),
-      selectModel: vi.fn(composer.selectModelForAgent), selectReasoningEffort: vi.fn(composer.selectReasoningEffortForAgent), selectServiceTier: vi.fn(), setPlanMode: vi.fn(), setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(),
+      selectModel: vi.fn(composer.selectModelForAgent), selectReasoningEffort: vi.fn(composer.selectReasoningEffortForAgent), selectServiceTier: vi.fn(), setPlanMode: vi.fn(), setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(async (_id, mode) => { view.agent = { ...view.agent, backendDefaults: { kind: 'cursor', permissionMode: mode } }; }),
       updateComposerState: (_id, state) => { view.composerState = state; }, updateAttachments: vi.fn(), deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
     };
     const rawDetails = ref(false);
@@ -52,11 +52,24 @@ describe('AgentConversationPanel', () => {
       await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
       const permissions = wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Permissions'));
       expect(permissions).toBeDefined();
-      expect(permissions!.text()).toContain('Cursor-managed');
-      expect(permissions!.attributes('disabled')).toBeDefined();
-      await permissions!.trigger('click');
-      expect(actions.setPermissionMode).not.toHaveBeenCalled();
+      await permissions!.trigger('mouseenter');
+      const choices = wrapper.findAll('[role="menuitemradio"]');
+      expect(choices.map(choice => choice.text())).toEqual([expect.stringContaining('Ask for approval'), expect.stringContaining('Full access')]);
+      expect(choices[0]!.attributes('aria-checked')).toBe('true');
+      await choices[1]!.trigger('click');
+      expect(actions.setPermissionMode).toHaveBeenCalledExactlyOnceWith(agent.id, 'full-access');
       expect(actions.setApprovalPreset).not.toHaveBeenCalled();
+      await flushPromises();
+      await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
+      await wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Permissions'))!.trigger('mouseenter');
+      const updatedChoices = wrapper.findAll('[role="menuitemradio"]');
+      expect(updatedChoices.map(choice => choice.attributes('aria-checked'))).toEqual(['false', 'true']);
+      await updatedChoices[0]!.trigger('click');
+      await flushPromises();
+      expect(actions.setPermissionMode).toHaveBeenLastCalledWith(agent.id, 'default');
+      await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
+      await wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Permissions'))!.trigger('mouseenter');
+      expect(wrapper.findAll('[role="menuitemradio"]').map(choice => choice.attributes('aria-checked'))).toEqual(['true', 'false']);
       await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
       await wrapper.get('[aria-label="Model and reasoning"]').trigger('click');
       await flushPromises();

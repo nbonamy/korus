@@ -188,6 +188,7 @@ function expectedEmptySnapshot(): AppSnapshot {
       spokenAnnouncementVoice: 'af_heart',
       codexBinaryPath: '',
       claudeCodeEnabled: false,
+      cursorSteeringFallbackEnabled: false,
       agentListCompact: false,
       collapsedRepositoryKeys: [],
       modelFavorites: [],

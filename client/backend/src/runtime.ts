@@ -250,6 +250,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     generalSettings: snapshot.general,
     pluginSettings,
     celebrationsEnabled: () => snapshot.general.celebrationsEnabled,
+    cursorSteeringFallbackEnabled: () => snapshot.general.cursorSteeringFallbackEnabled === true,
     additionalDeveloperInstructions: (agent) => [
       tasks.instructions(agent.id),
       server?.missionDeveloperInstructions(agent.id),

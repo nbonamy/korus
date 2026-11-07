@@ -17,14 +17,14 @@ export { isCursorAuthenticationFailure } from './rpc-errors';
 
 const teamSwitched = 'Your team has switched. Reconnect Cursor in Settings.';
 const policyDenied = 'Cursor ACP is blocked by your team policy. Contact your administrator.';
-type Options = { agentId: string; cwd: string; runtime?: CursorRuntime; sessionId?: string; catalogOnly?: boolean; mcpServers?: unknown[]; appMcpServerName?: string; signal: AbortSignal; changed(event: CursorConversationEvent): void; disconnected(error: Error): void };
+type Options = { agentId: string; cwd: string; permissionMode?: 'default' | 'full-access'; runtime?: CursorRuntime; sessionId?: string; catalogOnly?: boolean; mcpServers?: unknown[]; appMcpServerName?: string; signal: AbortSignal; changed(event: CursorConversationEvent): void; disconnected(error: Error): void };
 
 /** One agent/session; framing, request deadlines and process teardown remain in the shared transport. */
 export class CursorSession {
   private connection!: AcpConnection;
   private transcript!: CursorTranscript;
   private readonly imageWork = new Set<Promise<void>>();
-  private readonly pending = new Map<string, { resolve(value: unknown): void; answer(response: AgentRequestResponse): unknown }>();
+  private readonly pending = new Map<string, { resolve(value: unknown): void; answer(response: AgentRequestResponse): unknown; permission?: { options: unknown } }>();
   private journal!: CursorPromptJournal;
   private promptMode?: string;
   private configurationConfirmed = true;
@@ -37,7 +37,8 @@ export class CursorSession {
   private interrupted = false;
   private active?: Promise<void>;
   private readonly startupUpdates: unknown[] = [];
-  private constructor(private readonly options: Options) {}
+  private permissionMode: 'default' | 'full-access';
+  private constructor(private readonly options: Options) { this.permissionMode = options.permissionMode ?? 'default'; }
   static async open(options: Options): Promise<CursorSession> {
     const session = new CursorSession(options);
     const command = resolveCursorExecutable();
@@ -240,6 +241,20 @@ export class CursorSession {
     }).finally(() => this.imageWork.delete(work));
     this.imageWork.add(work); return work;
   }
+  setPermissionMode(mode: 'default' | 'full-access'): void {
+    this.permissionMode = mode;
+    if (mode !== 'full-access') return;
+    // Only provider permission callbacks inherit this choice. Plans and
+    // questions keep their own explicit user decisions.
+    for (const [id, pending] of this.pending) if (pending.permission) {
+      this.respond({ id, outcome: this.onceOption(pending.permission.options)
+        ? { kind: 'decision', decision: 'allow' } : { kind: 'cancelled' } });
+    }
+  }
+  private onceOption(options: unknown): string | undefined {
+    const once = Array.isArray(options) ? options.filter(option => record(option) && option.kind === 'allow_once' && typeof option.optionId === 'string' && option.optionId.trim()) : [];
+    return once.length === 1 ? once[0].optionId as string : undefined;
+  }
   respond(response: AgentRequestResponse): void {
     const pending = this.pending.get(response.id);
     if (!pending || (response.agentId && response.agentId !== this.options.agentId) || this.disposed || this.interrupted) throw new Error('Cursor request is no longer pending.');
@@ -275,8 +290,12 @@ export class CursorSession {
     const call = permission ? params.toolCall as Record<string, unknown> : params;
     const appPermission = permission ? this.appMcpPermission(call, params.options) : undefined;
     if (appPermission) return { outcome: { outcome: 'selected', optionId: appPermission } };
+    if (permission && this.permissionMode === 'full-access') {
+      const optionId = this.onceOption(params.options);
+      return optionId ? { outcome: { outcome: 'selected', optionId } } : cancelled;
+    }
     return new Promise(resolve => {
-      this.pending.set(id, { resolve, answer: response => {
+      this.pending.set(id, { resolve, ...(permission ? { permission: { options: params.options } } : {}), answer: response => {
         if (response.outcome.kind === 'cancelled') return cancelled;
         if (response.outcome.kind !== 'decision' || !['allow', 'deny'].includes(response.outcome.decision)) throw new Error('Cursor requires a once-only decision.');
         const allowed = response.outcome.decision === 'allow';

@@ -41,6 +41,7 @@ export type BackendDriverRegistryOptions = {
   generalSettings?: AppGeneralSettings;
   pluginSettings?: () => AppPluginSettings;
   celebrationsEnabled?: () => boolean;
+  cursorSteeringFallbackEnabled?: () => boolean;
   additionalDeveloperInstructions?: (agent: Agent) => string | undefined;
 };
 
@@ -583,13 +584,13 @@ export class BackendDriverRpc {
       case backendMethods.driverPromptSteer: {
         const { agent } = requireAgentParams(params);
         if (handoffInProgress(agent)) throw new Error('Wait for the handoff to finish.');
+        const driver = this.requireDriver(agent.backend);
+        if (!driver.steerPrompt || driver.getCapabilities(agent).steerPrompt === false) {
+          throw unsupportedBackendFeature(agent, 'prompt steering');
+        }
         await this.requireNewWork(agent.backend);
         const record = requireRecord(params);
         assertPromptSession(agent, requireExpectedSessionId(record));
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.steerPrompt) {
-          throw unsupportedBackendFeature(agent, 'prompt steering');
-        }
         const rawPrompt = requirePromptText(record.prompt, record.options as SendPromptOptions | undefined);
         const prompt = record.plainText === true ? rawPrompt : expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? expandMissionCommand(rawPrompt) ?? rawPrompt;
         const options = record.options as SendPromptOptions | undefined;

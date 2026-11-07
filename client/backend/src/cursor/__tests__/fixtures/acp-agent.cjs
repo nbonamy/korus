@@ -16,8 +16,15 @@ const controlsFor = model => model==='fixture-alpha' ? [select('reasoning','low'
   : model==='fixture-beta' ? [select('reasoning_effort','medium',['medium','xhigh'])]
   : model==='fixture-dual' ? [select('thinking','false',['false','true']),select('effort','high',['low','high'])]
   : model==='fixture-thinking' ? [select('thinking','false',['false','true'])] : [];
+const context = (currentValue='300k') => ({id:'context',name:'Context',description:'Context size the model has available.',category:'model_config',type:'select',currentValue,options:[{value:'300k',name:'300K'},{value:'1m',name:'1M'}]});
+const contextsFor = (model,extended=false) => model==='fixture-alpha' ? [context(extended?'1m':'300k')]
+  : model==='fixture-beta' ? [context('1m')]
+  : model==='fixture-dual' ? [context(),context('1m')]
+  : model==='fixture-thinking' ? [context('missing')]
+  : model==='auto' ? [{...context(),type:'input'}]
+  : model==='composer-2.5' ? [{...context(),options:[{value:'300k',name:'300K'},{value:'300k',name:'Different'}]}] : [];
 const rich = fs.existsSync(path.join(__dirname,'rich-models'));
-if(rich) { configOptions[0].options.push(...['fixture-alpha','fixture-beta','fixture-dual','fixture-thinking'].map(value=>({value,name:value}))); configOptions[0].currentValue='fixture-alpha'; configOptions.push(...controlsFor('fixture-alpha')); }
+if(rich) { configOptions[0].options.push(...['fixture-alpha','fixture-beta','fixture-dual','fixture-thinking'].map(value=>({value,name:value}))); configOptions[0].currentValue='fixture-alpha'; configOptions.push(...controlsFor('fixture-alpha'),...contextsFor('fixture-alpha')); }
 if(rich && fs.existsSync(path.join(__dirname,'missing-live-model-id'))) delete configOptions[0].id;
 let sessionId = 'session-' + process.pid, pending, mode;
 const send = value => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...value }) + '\n');
@@ -53,7 +60,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     if(fs.existsSync(path.join(__dirname,'hold-model-catalog'))) return;
     if(fs.existsSync(path.join(__dirname,'catalog-error.json'))) {send({id:value.id,error:JSON.parse(fs.readFileSync(path.join(__dirname,'catalog-error.json'),'utf8'))});return;}
     if(fs.existsSync(path.join(__dirname,'catalog-result.json'))) {reply(JSON.parse(fs.readFileSync(path.join(__dirname,'catalog-result.json'),'utf8')));return;}
-    reply({models:configOptions[0].options.map(option=>({...option,configOptions:controlsFor(option.value)}))});
+    reply({models:configOptions[0].options.map(option=>({...option,configOptions:[...controlsFor(option.value),...(rich?contextsFor(option.value,true):[])]}))});
   }
   else if (value.method === 'session/new') { if (!fs.existsSync(path.join(__dirname, 'hold-new'))) reply({ sessionId, configOptions }); }
   else if (value.method === 'session/set_config_option') {
@@ -63,7 +70,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     if (value.params.configId === 'mode' && fs.existsSync(path.join(__dirname,'bad-mode-ack'))) { reply({configOptions:configOptions.map(option=>({...option,currentValue:option.id==='mode'?'agent':option.currentValue}))}); return; }
     if(!['model','mode'].includes(value.params.configId) && fs.existsSync(path.join(__dirname,'effort-ack.json'))) {reply(JSON.parse(fs.readFileSync(path.join(__dirname,'effort-ack.json'),'utf8')));return;}
     if(rich) {
-      if(value.params.configId==='model') configOptions=[...configOptions.filter(option=>option.category!=='thought_level'),...controlsFor(value.params.value)];
+      if(value.params.configId==='model') configOptions=[...configOptions.filter(option=>option.category!=='thought_level' && option.id!=='context'),...controlsFor(value.params.value),...contextsFor(value.params.value)];
       if(!['model','mode'].includes(value.params.configId) && fs.existsSync(path.join(__dirname,'effort-resets-mode'))) configOptions=configOptions.map(option=>option.id==='mode'?{...option,currentValue:'agent'}:option);
       configOptions=configOptions.map(option=>({...option,currentValue:option.id===value.params.configId?value.params.value:option.currentValue})); reply({configOptions});return;
     }

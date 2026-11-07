@@ -114,5 +114,8 @@ export const cursorBackendCapabilities: BackendCapabilities = {
   reasoningEffort: true, serviceTier: false, thinkingBudget: false, planMode: 'native',
   goals: false, steerPrompt: false, interrupt: true, history: true, conversationFork: false,
   deleteTurn: false, editTurn: false, retryTurn: false, approvals: false,
-  approvalPresets: [], permissionModes: [],
+  approvalPresets: [], permissionModes: [
+    { id: 'default', label: { key: 'permissions.cursor.default.label' }, description: { key: 'permissions.cursor.default.description' } },
+    { id: 'full-access', label: { key: 'permissions.cursor.fullAccess.label' }, description: { key: 'permissions.cursor.fullAccess.description' }, dangerous: true },
+  ],
 };

@@ -2954,7 +2954,9 @@ export class AppBackendServer {
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentPermissionModeUpdate, { agentId, mode }, async (agent) => {
           const result = await this.handleAgentDriverRequest(agent, backendMethods.driverPermissionModeUpdate, { agent, mode }) as BackendPermissionModeResult;
           agent.backendDefaults = result.backendDefaults;
-          this.snapshot.general.providerApprovalDefaults = {
+          // Cursor's callback policy is explicit per conversation, not a
+          // standing grant inherited by newly created agents.
+          if (agent.backend !== 'cursor') this.snapshot.general.providerApprovalDefaults = {
             ...this.snapshot.general.providerApprovalDefaults, [agent.backend]: mode,
           };
           return this.persistAndEmitSnapshot();
@@ -3312,6 +3314,12 @@ export class AppBackendServer {
         if (policy.general && 'providerHomes' in policy.general) throw new Error('Provider homes must be changed through provider setup.');
         if (Object.keys(preferences).length) throw new Error('Presentation settings must use client/preferences/update.');
         updateSettingsInSnapshot(this.snapshot, policy);
+        if (policy.general?.cursorSteeringFallbackEnabled !== undefined && this.driverRpc) {
+          const runtime = this.snapshot.backendRuntimes.find(runtime => runtime.backend === 'cursor');
+          const agent = this.snapshot.agents.find(agent => agent.backend === 'cursor' && !this.remoteTeams.connectionIdForAgent(agent));
+          if (runtime && agent) this.applyAndEmitBackendEvent({ type: 'backend.statusChanged', backend: 'cursor',
+            payload: { ...runtime, capabilities: this.driverRpc.getCapabilities(agent) } });
+        }
         if (policy.general?.providerEnabled) this.providerConnections?.updateEnabled();
         if (policy.general?.codexBinaryPath !== undefined) {
           this.providerSetup?.invalidateInstallation('codex');

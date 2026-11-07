@@ -65,7 +65,40 @@ Per-agent app and
 hosted MCP endpoints use the shared session bridge with identity scoped in each
 child process; this does not establish approval-free native tool execution.
 
-The extended native model catalog supplies per-model enum reasoning choices.
+Explicit quota-exhaustion RPC failures end the turn without closing its usable
+session or marking the account signed out. Known future reset metadata permits
+the shared one-shot continuation policy; missing reset data leaves retry manual.
+Congestion, generic throttling and unknown diagnostics do not invent quota state.
+
+## Steering fallback
+
+Native in-place steering is unavailable. `cursorSteeringFallbackEnabled` is an
+explicit, default-off opt-in to interrupt-and-resend. The host cancels and fences
+the running turn before submitting the update, attachments and selection as a
+new turn in the same saved session. The interrupted turn remains visible.
+Opt-out, session/account/workspace changes and release are revalidated before
+resend admission; concurrent steering cannot replace that operation. Capability
+updates reach existing conversations when the host setting changes.
+
+## Conversation approval policy
+
+The shared Permissions menu offers Ask for approval and Full access. This is a
+per-conversation client policy for callbacks Cursor actually sends, independent
+of native Agent/Plan/Ask execution modes. Ask presents those callbacks; Full access
+selects a unique native `allow_once` option automatically. Missing or ambiguous
+once-only options cancel the request rather than creating a persistent allow rule.
+Changing to Full access also settles existing tool-permission requests, while plan
+review and questions retain their separate explicit decisions. Returning to Ask
+restores prompts for subsequent callbacks without restarting the native session.
+The choice is saved with that conversation's agent defaults; it is not stored as
+the default for newly created agents and does not modify shared Cursor configuration.
+
+These choices do not establish interception of every native file operation.
+Full edit-approval enforcement and automatic code review remain unavailable.
+
+The extended native model catalog supplies per-model enum reasoning choices and
+selected context-capacity labels. Capacity stays native descriptive metadata; it
+is not used-token occupancy or an inferred percentage.
 Values and config identities remain native; independent boolean thinking controls
 are preserved without being relabeled as effort. A model change clears inherited
 app effort. Reusing a confirmed model avoids repeating its setter, protecting
@@ -136,9 +169,10 @@ subprocess fixture. Native measurements do not attest to every model or tool.
 | [x] | Models | Native discovery, exact model selection and matching acknowledgments; [host tests][cursor-host-tests] and native catalog/selection measurements. |
 | [x] | Enum reasoning effort | Exact per-model native IDs/values and final model/effort/mode validation; independent boolean thinking is preserved. [Host tests][cursor-host-tests] and native setter measurements. Boolean thinking/tier controls are not implemented. |
 | [x] | Individual approval callbacks | Once-only native permission responses enter the daemon request registry; real server/driver/subprocess workflows cover denial, plans, questions, duplicate answers and cancellation. [Host tests][cursor-host-tests]. |
-| [ ] | Enforced approvals and modes | Partial: native edits can bypass callbacks. Full approvals, presets and permission-mode selection are disabled. Native edit and rejecting-filesystem probes establish the limit; [RPC rejection coverage][cursor-host-tests] prevents substitute controls. |
+| [x] | Conversation approval policy | Ask for approval / Full access control reported permission callbacks through shared settings and request routing; saved policy, live switching, isolated agents and explicit plan decisions are covered by [host tests][cursor-host-tests]. |
+| [ ] | Enforced native approvals | Partial: native edits can bypass callbacks. Native edit and rejecting-filesystem probes establish the limit; full enforcement and native approval presets remain disabled. |
 | [x] | Text/image attachments | Trusted UTF-8 files/images, binary rejection and replay presentation; [host tests][cursor-host-tests]. Audio/video and arbitrary binary attachments are unsupported. |
-| [ ] | Steering | Absent: active turns are serialized; no native steering operation is implemented. [RPC rejection coverage][cursor-host-tests]. |
+| [x] | Optional steering fallback | Explicit default-off interrupt-and-resend preserves the session and creates a new turn after bounded cancellation. [Owning workflow][cursor-steering-tests] covers dynamic opt-in/out, identities, cancellation fences and resend races. Native in-place steering remains unavailable. |
 | [x] | Interrupt and Continue | Bounded cancellation, late-frame isolation and saved-session continuation; [host tests][cursor-host-tests]. Continue submits a serialized follow-up in the same session. |
 | [x] | Native Plan mode | Catalog-validated mode selection, acknowledgment and normal-mode restoration; [host tests][cursor-host-tests] and native mode measurements. |
 | [x] | Interactive plan sidebar | Native proposals and completed Plan-mode Markdown use shared review. Saved comments/confirmed choices flow through Revise; accept/cancel settle the live native callback. [Daemon workflows][cursor-host-tests], [rendered editor][cursor-sidebar-tests] and [shell routing][cursor-shell-tests]. Native sidebar save/approve was measured. |
@@ -149,7 +183,7 @@ subprocess fixture. Native measurements do not attest to every model or tool.
 | [x] | Saved history | Workspace-filtered list/read/load/resume; replay neither creates a replacement session nor emits execution usage. [Host tests][cursor-host-tests] and native list/cold-replay measurements. |
 | [x] | Startup auto-resume | Shared daemon persists active-work markers, respects Stop and continues only marked saved sessions; [restart workflow][cursor-restart-tests] includes Cursor. The native adapter's saved-session continuation is covered separately by [host tests][cursor-host-tests]; a full native daemon-restart continuation is not measured. |
 | [ ] | Connection recovery | Partial: saved-reference rehydration supports a subsequent request after process loss or same-account sign-in. There is no autonomous in-flight recovery/retry; changed accounts require explicit history selection. [Host tests][cursor-host-tests]. |
-| [ ] | Quota auto-resume | Partial: the [shared scheduler workflow][cursor-quota-tests] covers normalized Cursor limit/reset observations, one-shot delivery and preferences. Native ACP quota-error classification/reconnection is unqualified; generic ACP failures disconnect. Billing-cycle data alone does not prove an executable continuation path. |
+| [ ] | Quota auto-resume | The [shared scheduler workflow][cursor-quota-tests] and [host workflow][cursor-host-tests] cover explicit limit/reset observations, one-shot delivery and preferences. Explicit quota-exhaustion RPC failures keep the native session usable. The production host/daemon subprocess workflow covers known-reset continuation and manual retry without a reset; a live exhausted-account reset cycle is not measured. Billing-cycle data alone does not prove an executable continuation path. |
 | [x] | Tool-call display | Shared MCP formatting, file links/diffs/locations, readable resources, media and native failures; live/replay [host tests][cursor-host-tests] and [rendered conversation tests][cursor-pane-tests]. Observed image files do not establish generation success. |
 | [ ] | Native structured questions | Adapter, exact ID validation and daemon responses are implemented in [host tests][cursor-host-tests]; native emission is unqualified and the capability stays disabled. Plan-sidebar choices remain usable. |
 | [x] | Auth, transport and policy failures | Safe terminal errors, pending-request settlement, identity invalidation and bounded shutdown; [host tests][cursor-host-tests] and [authentication tests][cursor-auth-tests]. Quota normalization is the separate partial item above. |
@@ -171,3 +205,5 @@ implementations.
 [cursor-pane-tests]: ../client/vue/src/components/__tests__/AgentConversationPanel.spec.ts
 [cursor-restart-tests]: ../client/backend/src/__tests__/server-startup-resume.spec.ts
 [cursor-quota-tests]: ../client/backend/src/__tests__/server-auto-resume.spec.ts
+
+[cursor-steering-tests]: ../client/backend/src/cursor/__tests__/steering.spec.ts

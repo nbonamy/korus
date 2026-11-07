@@ -32,14 +32,35 @@ export function cursorModelCatalog(result: unknown): CursorCatalogModel[] {
   return models;
 }
 
+/** Native selected label only: this is capacity metadata, never observed usage. */
+function contextLabel(options: unknown): string | null {
+  if (!Array.isArray(options)) return null;
+  const candidates = options.filter(option => record(option) && option.id === 'context');
+  if (candidates.length !== 1) return null;
+  const context = candidates[0];
+  if (!record(context) || context.category !== 'model_config' || context.type !== 'select'
+    || typeof context.currentValue !== 'string' || !context.currentValue
+    || !Array.isArray(context.options) || !context.options.length || context.options.length > 100) return null;
+  const choices = context.options;
+  if (!choices.every(choice => record(choice) && typeof choice.value === 'string' && choice.value.length > 0
+    && typeof choice.name === 'string' && choice.name.trim().length > 0 && choice.name.length <= 200
+    && !/[\p{Cc}\p{Cf}]/u.test(choice.name))) return null;
+  if (new Set(choices.map(choice => choice.value)).size !== choices.length) return null;
+  const selected = choices.find(choice => choice.value === context.currentValue);
+  return selected ? selected.name : null;
+}
+
 export function cursorModels(configuration: Record<string, unknown>, catalog?: readonly CursorCatalogModel[]): BackendModelOption[] {
   const config = Array.isArray(configuration.configOptions) ? configuration.configOptions.find(option => record(option) && option.category === 'model') : undefined;
   if (!record(config) || !Array.isArray(config.options)) return [];
   return config.options.flatMap(option => {
     if (!record(option) || typeof option.value !== 'string' || typeof option.name !== 'string') return [];
-    const thought=cursorThoughtControl(option.value===config.currentValue ? configuration.configOptions : catalog?.find(model=>model.value===option.value)?.configOptions);
+    const modelOptions = option.value===config.currentValue ? configuration.configOptions : catalog?.find(model=>model.value===option.value)?.configOptions;
+    const thought=cursorThoughtControl(modelOptions);
+    const context = contextLabel(modelOptions);
+    const description = context === null ? option.description : [option.description, `Context: ${context}`].filter(value => typeof value === 'string' && value.length > 0).join(' · ');
     return [{ id: option.value, model: option.value, displayName: option.name, isDefault: option.value === config.currentValue,
-      ...(typeof option.description === 'string' ? { description: option.description } : {}),
+      ...(typeof description === 'string' ? { description } : {}),
       ...(thought ? {supportedReasoningEfforts:thought.options.map(value=>({reasoningEffort:value.value,description:value.name})),defaultReasoningEffort:thought.currentValue} : {}),
     }];
   });

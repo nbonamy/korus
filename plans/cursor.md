@@ -794,6 +794,28 @@ selection, with the requested model and effort preserved. The app's rendered
 composer regression selects an exact `extra-high` value and proves the outbound
 execution selection; switching to a model without effort removes inherited effort.
 
+The production host's per-conversation permission policy passed two native MCP
+turns in the same host: Full access allowed the synthetic outside echo tool with
+no manual permission request; switching back to Ask produced a permission request,
+and denial prevented that tool from executing. This uses native once-only callback
+responses, not a discovered native approval-mode setter or global permission rules.
+A separate no-model-turn probe confirmed that `approvalMode` and `permission_mode`
+config IDs were rejected with -32602 and `cursor/set_approval_mode` with -32601.
+
+The optional interrupt-and-resend fallback passed a native blocking-plan probe.
+Default-off rejected steering; explicit opt-in cancelled the pending plan, fenced
+cancellation and submitted a normal-mode follow-up in the same native session.
+The old turn was interrupted, the new turn had a distinct identity and completed
+with the requested marker. This is application-controlled turn replacement, not
+native in-place steering. The setting is normalized false by default and changing
+it refreshes published capabilities for existing conversations.
+
+A no-model-turn catalog read returned native selected context labels for 19 of
+47 advertised models. The adapter preserves those labels in model descriptions;
+it does not convert them into observed token usage or occupancy. Fixture evidence
+checks authoritative current-model configuration, other admitted models and
+omission of malformed/ambiguous metadata without emitting context setters.
+
 The installed `2026.11.05-86047df` also reproduced the native approval boundary:
 a scratch file changed from its before marker to the requested after marker even
 though the production host granted none of the two app requests received during
