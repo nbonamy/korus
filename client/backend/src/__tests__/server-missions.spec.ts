@@ -17,6 +17,7 @@ describe('mission backend boundary', () => {
     worker.backendSession = { kind: 'codex', threadId: 'mission-worker' }; worker.status = { type: 'working' };
     const mission = createMission(snapshot, { outcome: 'Checkout', workflowType: 'shapeAndShipFeature', teamId: worker.teamId!, orchestratorMemberId: worker.id });
     mission.stage = 'implementation';
+    mission.execution!.dispatchPlan = { commandId: 'lead-authorized', expectedRevision: 0, revision: 1, leadId: worker.id, assignments: [], maxConcurrency: 1, continuationLimit: 2 };
     mission.artifacts.tickets = [{ title: 'Checkout', repositoryPath: worker.folder!, done: false }];
     mission.execution!.runs = [{ id: 'mission-run-stop', stage: 'implementation', memberId: worker.id, workerId: worker.id,
       ticketIndex: 0, repositoryPath: worker.folder!, status: 'running', skills: [], feedback: '', startedAt: '' }];
@@ -225,6 +226,7 @@ describe('mission backend boundary', () => {
       outcome: 'Linear tools', workflowType: 'shapeAndShipFeature', teamId: worker.teamId!, orchestratorMemberId: worker.id,
     });
     mission.stage = 'implementation';
+    mission.execution!.dispatchPlan = { commandId: 'lead-authorized', expectedRevision: 0, revision: 1, leadId: worker.id, assignments: [], maxConcurrency: 1, continuationLimit: 2 };
     mission.artifacts.tickets = [{ title: 'Linear tools', repositoryPath: worker.folder!, done: false }];
     mission.execution!.runs = [{
       id: 'active-run', stage: 'implementation', memberId: worker.id, workerId: worker.id,

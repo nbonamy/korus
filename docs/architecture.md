@@ -809,11 +809,23 @@ publishes only after saving.
 - Each ticket names exactly one repository. Worktrees are created only for
   affected repositories when code work begins, sharing one Mission suffix and
   branch name. Repositories run in parallel; work within one repository is
-  serialized unless the user opts into parallel implementation when approving
-  Tickets. That choice is persisted with the implementation model. Concurrent
+  serialized unless the user chooses multiple workers per repository when approving
+  Tickets. Implementation execution selects the Mission lead only, one worker per
+  repository (the default), or multiple workers per repository. Worker modes always
+  use workers and the selected implementation model, including single-repository
+  Missions. Lead-only execution retains its conversation and model, serializes all tickets across
+  repositories, and moves between isolated Mission worktrees. User-approved Ship creates idle repository-bound
+  delivery handles for lead-executed work and returns the lead to the Mission home,
+  keeping its conversation outside worktree cleanup. These handles launch no model
+  turns. The daemon enforces the execution choice; the lead's plan
+  cannot override it. Requests without an execution mode preserve the existing
+  parallelImplementation wire semantics. Concurrent
   attempts use distinct worker conversations in the same repository worktree,
-  with dependency-ready tickets dispatched independently. Available workers from
-  accepted tickets can be reused after their provider turn finishes. Shared files and Git
+  with dependency-ready tickets executed within the Mission lead’s persisted dispatch
+  plan. Available workers from
+  accepted tickets can be reused after their provider turn finishes. In one worker
+  per repository mode, the lead keeps the same member assignment across the
+  repository’s tickets to retain its worker conversation. Shared files and Git
   state are a disclosed risk: workers stop for user guidance on conflicts and
   commit only their own changes, using selected lines for mixed files. Other
   workers' uncommitted changes do not prevent ticket submission. Each worktree
@@ -829,14 +841,34 @@ publishes only after saving.
   Each worktree records a baseline commit for whole-Mission diff
   review. Failed or cancelled attempts keep their workspace and conversation.
   An implementation worker ending a known provider turn without submitting its
-  unfinished assignment receives at most two automatic continuations in that same
-  conversation. The budget and completed-turn identities persist with the run.
+  unfinished assignment receives only the continuations authorized by the lead’s
+  persisted budget (zero to two), in that same conversation. The plan owns the budget;
+  attempt counts and completed-turn identities persist with the run.
   Approval waits, provider-managed retries, stale assignments and explicit user Stop
   do not trigger continuation. Exhausted recovery requires explicit retry.
   User Stop cancels active assignments before provider interruption, removes queued
   Mission prompts and fences late completions and restart recovery. Stopping the lead
   holds supervisor updates until the user resumes that agent.
-  The supervisor keeps scheduling authority and reports assignment, acceptance,
+  The Mission lead owns assignment, sequencing, priorities and adaptations. Identity-bound
+  scheduling tools persist an ordered list of approved ticket revisions and selected members,
+  a global concurrency limit and a bounded continuation budget. Empty assignments pause
+  future dispatch; existing reserved runs retain their authorization. The daemon atomically
+  validates decisions, enforces ticket dependencies and the user's per-repository concurrency
+  choice, reserves runs and launches workers. It never invents assignments outside that plan.
+  Worker completion saves evidence and sends the lead a durable message. Instructions
+  to assess the result and proceed with the next assignment stay in hidden context.
+  Completion does not reserve or launch another ticket; the lead submits the next
+  scheduling decision. Existing authorized in-flight workers continue.
+  Revision checks reject stale decisions; command IDs make identical retries idempotent and
+  reject conflicting reuse. Tickets approval invalidates the previous plan and asks the lead
+  for a new decision. Missions without a plan keep reserved work, conversations and
+  evidence; future assignments wait for lead authorization. Each lead decision may
+  authorize one targeted retry by naming a failed run; a subsequent
+  failure requires another decision. Cancelled tickets require explicit user retry, even if
+  a new lead plan includes them. The lead drives routine recovery and surfaces only blockers
+  needing user authority or input, with evidence and the smallest required action.
+  Scheduling cannot approve stages or delivery.
+  The execution engine reports assignment, acceptance,
   recovery, failure and cancellation to the lead through short messages. Hidden
   context carries Mission, run, ticket, worker/lead IDs, repository/worktree and the
   next decision. A persisted outbox retries messages rejected by the messaging

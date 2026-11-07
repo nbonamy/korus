@@ -621,6 +621,7 @@
       :busy="missionDeletePending"
       :error="missionDeleteError"
       @close="closeMissionDeleteDialog"
+      @background="backgroundMissionDeletion"
       @confirm="confirmMissionDeletion"
     />
     <CodexResourceSharingMigrationDialog
@@ -1266,7 +1267,8 @@ const missionViewedStage = ref<MissionStage>();
 const missionCreationError = ref('');
 const missionCreationPending = ref(false);
 const missionDeleteTargetId = ref<string | null>(null);
-const missionDeletePending = ref(false);
+const missionDeleteOperations = reactive(new Map<string, { backgrounded: boolean }>());
+const missionDeletePending = computed(() => missionDeleteTargetId.value !== null && missionDeleteOperations.has(missionDeleteTargetId.value));
 const missionDeleteError = ref('');
 const selectedMissionId = ref<string | null>(null);
 const selectedMission = computed(() => props.snapshot.missions?.find(m => m.id === selectedMissionId.value) ?? null);
@@ -1430,6 +1432,8 @@ watch(() => [windowScope.value, windowState.teamId.value, props.snapshot.teams, 
 function deleteMissionFromSidebar(id: string): void {
   if (!props.snapshot.missions?.some(candidate => candidate.id === id)) return;
   missionDeleteTargetId.value = id;
+  const operation = missionDeleteOperations.get(id);
+  if (operation) operation.backgrounded = false;
   missionDeleteError.value = '';
 }
 
@@ -1453,24 +1457,38 @@ function closeMissionDeleteDialog(): void {
   missionDeleteError.value = '';
 }
 
+function backgroundMissionDeletion(): void {
+  const operation = missionDeleteOperations.get(missionDeleteTargetId.value ?? '');
+  if (!operation) return;
+  operation.backgrounded = true;
+  missionDeleteTargetId.value = null;
+  missionDeleteError.value = '';
+}
+
 async function confirmMissionDeletion(deleteWorktrees: boolean): Promise<void> {
   const mission = missionDeleteTarget.value;
-  if (!mission || missionDeletePending.value) return;
-  missionDeletePending.value = true;
+  if (!mission || missionDeleteOperations.has(mission.id)) return;
+  const operation = { backgrounded: false };
+  missionDeleteOperations.set(mission.id, operation);
   missionDeleteError.value = '';
   try {
     await props.deleteMission({ id: mission.id, revision: mission.revision, deleteWorktrees, confirmed: true });
     if (selectedMissionId.value === mission.id) {
       selectedMissionId.value = null;
-      activeSurface.value = 'agent';
+      if (activeSurface.value === 'mission') activeSurface.value = 'agent';
     }
-    missionDeleteTargetId.value = null;
+    if (missionDeleteTargetId.value === mission.id) missionDeleteTargetId.value = null;
+    ElMessage.success(t('missions.deleted', { mission: mission.outcome }));
   } catch (error) {
-    missionDeleteError.value = localizedErrorMessage(error, t);
+    const message = localizedErrorMessage(error, t);
+    if (operation.backgrounded || missionDeleteTargetId.value !== mission.id) {
+      ElMessage.error(t('missions.deleteFailed', { mission: mission.outcome, message }));
+    } else missionDeleteError.value = message;
   } finally {
-    missionDeletePending.value = false;
+    missionDeleteOperations.delete(mission.id);
   }
 }
+
 const fileQuickOpenVisible = ref(false);
 // Files created since the agent was opened would be missing from a list loaded only then.
 watch(fileQuickOpenVisible, (visible) => { if (visible) void props.loadAgentFiles?.(); });

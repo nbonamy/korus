@@ -10,7 +10,7 @@ export function missionAgent(snapshot: AppSnapshot, id: string | undefined): Age
 export function missionTeamRepositories(snapshot: AppSnapshot, mission: Mission): string[] {
   const team = snapshot.teams.find(candidate => candidate.id === mission.teamId);
   const workerIds = new Set((snapshot.missions ?? []).flatMap(candidate => (
-    candidate.execution?.runs.flatMap(run => run.workerId && run.workerId !== run.memberId ? [run.workerId] : []) ?? []
+    [...(candidate.execution?.runs.flatMap(run => run.workerId && run.workerId !== run.memberId ? [run.workerId] : []) ?? []), ...(candidate.execution?.deliveries?.map(delivery => delivery.agentId) ?? [])]
   )));
   return [...new Set((team?.agentIds ?? []).flatMap(id => {
     if (workerIds.has(id)) return [];
@@ -55,7 +55,7 @@ export function missionRunPromptMarker(runId: string): string { return `Mission 
 export function missionRecoveryPrompt(mission: Mission, run: MissionRun): string {
   const context = [
     missionRunPromptMarker(run.id).trim(),
-    `Supervisor continuation ${run.recoveryAttempts}/2 for unfinished ticket ${JSON.stringify(missionRunAssignment(mission, run))}.`,
+    `Lead-authorized continuation ${run.recoveryAttempts} for unfinished ticket ${JSON.stringify(missionRunAssignment(mission, run))}.`,
     'Your previous turn ended without submit-mission-result. Preserve your worktree, commits and conversation; inspect the current assignment and continue from existing progress.',
     'Diagnose failed commands or checks and try a reasonable alternative. Do not give up at the first failure. Do not repeat unsafe or ambiguous non-idempotent actions.',
     'Submit the assigned ticket with actual verification and commit SHAs when complete. If blocked by authorization, missing credentials, unsafe shared changes or a human decision, tell the Mission lead the exact blocker, attempts and smallest action needed; then stop. Do not claim completion or bypass approval.',

@@ -21,6 +21,19 @@ const dots = (wrapper: ReturnType<typeof render>) => wrapper.findAll('[role="tab
 });
 
 describe('mission conversation tabs', () => {
+  it('shows the lead conversation once when the lead also implements tickets', async () => {
+    const leadOnly = structuredClone(mission);
+    leadOnly.execution!.implementationMode = 'lead';
+    leadOnly.execution!.runs = [run('r1', 'requirements', 'lead'),
+      run('r2', 'implementation', 'lead', { ticketIndex: 0 }),
+      run('r3', 'implementation', 'lead', { ticketIndex: 1 })] as never;
+    const wrapper = mount(MissionConversationRail, { props: { mission: leadOnly, agents: [agent('lead', 'working')], selectedAgentId: 'lead' }, slots: { conversation: '<div />' } });
+    expect(wrapper.findAll('[role="tab"]')).toHaveLength(0);
+    expect(wrapper.get('h2').text()).toBe('Mission lead');
+    expect(wrapper.emitted('open-conversation')!.at(-1)).toEqual(['lead']);
+    wrapper.unmount();
+  });
+
   it('distinguishes the original attempt from a retry of the same ticket', async () => {
     const retried = structuredClone(mission);
     retried.execution!.runs.push(run('r4', 'implementation', 'retry', { ticketIndex: 0, status: 'running' }) as never);

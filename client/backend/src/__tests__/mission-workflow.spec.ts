@@ -16,10 +16,12 @@ const exec = promisify(execFile);
 
 
 it.each([
-  { backend: 'codex', parallel: false },
-  { backend: 'antigravity', parallel: false },
-  { backend: 'codex', parallel: true },
-] as const)('keeps $backend workers through the full Mission (parallel: $parallel)', async ({ backend, parallel }) => {
+  { backend: 'codex', parallel: false, mode: undefined },
+  { backend: 'codex', parallel: false, mode: 'lead' },
+  { backend: 'codex', parallel: false, mode: 'perRepository' },
+  { backend: 'antigravity', parallel: false, mode: undefined },
+  { backend: 'codex', parallel: true, mode: 'multiplePerRepository' },
+] as const)('keeps $backend workers through the full Mission (parallel: $parallel)', async ({ backend, parallel, mode }) => {
   const folder = await mkdtemp(join(tmpdir(), 'app-mission-workflow-'));
   const repo = join(folder, 'repo');
   await exec('git', ['init', repo]);
@@ -65,10 +67,21 @@ it.each([
         expect(result.status).toBe('accepted');
         expect(current().execution!.runs.find(candidate => candidate.id === run.id)!.status).toBe('accepted');
         await service.agentFinished(run.workerId!);
+        if (current().artifacts.tickets.some(ticket => !ticket.done)) {
+          const plan = current().execution!.dispatchPlan!;
+          await service.schedule(plan.leadId, { commandId: `after-${run.id}`, expectedRevision: plan.revision,
+            assignments: plan.assignments, maxConcurrency: plan.maxConcurrency, continuationLimit: plan.continuationLimit });
+        }
       } else {
         expect(result.status).toBe('awaitingReview');
         expect(current().execution!.runs.find(candidate => candidate.id === run.id)!.status).toBe('awaitingReview');
-        await command({ action: 'accept', runId: run.id, ...(run.stage === 'tickets' ? { parallelImplementation: parallel } : {}) });
+        await command({ action: 'accept', runId: run.id, ...(run.stage === 'tickets' ? { parallelImplementation: parallel, implementationMode: mode } : {}) });
+        if (run.stage === 'tickets') {
+          expect(current().execution!.runs.filter(candidate => candidate.stage === 'implementation')).toHaveLength(0);
+          await service.schedule(run.workerId!, { commandId: 'approved-implementation', expectedRevision: 0,
+            assignments: current().artifacts.tickets.map(ticket => ({ ticketId: ticket.id!, ticketRevision: ticket.revision ?? 0, memberId: current().execution!.memberIds[0]! })),
+            maxConcurrency: parallel ? 2 : 1, continuationLimit: 2 });
+        }
       }
     };
     await command({ action: 'run' });
@@ -120,6 +133,7 @@ it.each([
       }
     }
     expect(current().stage).toBe('ship');
+    expect(snapshot.agents.find(agent => agent.id === current().execution!.runs[1]!.workerId)!.folder).toBe(folder);
     expect(current().status).toBe('active');
     expect(current().execution!.deliveries).toEqual([expect.objectContaining({ repositoryPath: repo, status: 'pending' })]);
     await command({ action: 'recordDelivery', repositoryPath: repo, result: { kind: 'merge' } });
@@ -128,9 +142,18 @@ it.each([
     expect(current().execution!.runs[0]!.workerId).toBe(current().execution!.runs[1]!.workerId);
     if (parallel) expect(new Set(current().execution!.runs.filter(run => run.stage === 'implementation').map(run => run.workerId)).size).toBe(2);
     else expect(current().execution!.runs[2]!.workerId).toBe(current().execution!.runs[3]!.workerId);
-    expect(current().execution!.runs[2]!.workerId).not.toBe(current().execution!.runs[1]!.workerId);
+    if (mode === 'lead') {
+      expect(current().execution!.runs[2]!.workerId).toBe(current().execution!.runs[1]!.workerId);
+      const lead = snapshot.agents.find(agent => agent.id === current().execution!.runs[1]!.workerId)!;
+      expect(lead.folder).toBe(folder);
+      expect(lead.backendSession).toBeDefined();
+      const delivery = snapshot.agents.find(agent => agent.id === current().execution!.deliveries![0]!.agentId)!;
+      expect(delivery.id).not.toBe(lead.id);
+      expect(delivery.folder).toBe(current().execution!.workspaces![0]!.path);
+      expect(delivery.backendSession).toBeUndefined();
+    } else expect(current().execution!.runs[2]!.workerId).not.toBe(current().execution!.runs[1]!.workerId);
     expect(current().execution!.runs.at(-1)!.workerId).toBe(current().execution!.runs[1]!.workerId);
-    expect(new Set(current().execution!.runs.map(run => run.workerId)).size).toBe(parallel ? 3 : 2);
+    expect(new Set(current().execution!.runs.map(run => run.workerId)).size).toBe(mode === 'lead' ? 1 : parallel ? 3 : 2);
     expect(await readWorktreeHead(repo)).toBe(baseline);
     expect(await readFile(join(repo, 'billing.txt'), 'utf8')).toBe('original\n');
     expect((await git(repo, ['status', '--porcelain'])).stdout).toBe('');

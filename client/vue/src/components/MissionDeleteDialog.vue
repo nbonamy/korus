@@ -5,16 +5,21 @@
     :teleported="false"
     width="560px"
     :show-close="false"
+    :close-on-click-modal="!busy"
+    :close-on-press-escape="!busy"
     destroy-on-close
     @update:model-value="onVisibilityChanged"
   >
     <template #header>
       <div class="app-form-dialog__header">
-        <h2 class="app-dialog__title">{{ t('missions.deleteTitle', { mission: mission?.outcome }) }}</h2>
+        <h2 v-if="!busy" class="app-dialog__title">{{ t('missions.deleteTitle', { mission: mission?.outcome }) }}</h2>
       </div>
     </template>
 
-    <div class="mission-delete-dialog__body">
+    <GitOperationFeedback v-if="busy" status="running" :title="t('missions.deleting')" :detail="mission?.outcome">
+      <template #icon><Trash2Icon /></template>
+    </GitOperationFeedback>
+    <div v-else class="mission-delete-dialog__body">
       <p>{{ t(mission?.execution?.debugFixture ? 'missions.deleteDebugDescription' : 'missions.deleteDescription') }}</p>
       <template v-if="worktrees.length">
         <p>{{ t(worktrees.length === 1 ? 'missions.deleteWorktreeChoice' : 'missions.deleteWorktreesChoice', { count: worktrees.length }) }}</p>
@@ -33,7 +38,10 @@
     </div>
 
     <template #footer>
-      <div class="app-dialog__footer">
+      <div v-if="busy" class="app-dialog__footer">
+        <button class="app-button app-button--secondary" type="button" @click="emit('background')">{{ t('common.runInBackground') }}</button>
+      </div>
+      <div v-else class="app-dialog__footer">
         <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="emit('close')">
           {{ t('common.cancel') }}
         </button>
@@ -65,7 +73,8 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Mission } from '@workspace/core/missions';
 import { missionCreatedWorkspaces } from '@workspace/core/mission-execution';
-import { FolderIcon } from '../shared/icons/app-icons';
+import GitOperationFeedback from './GitOperationFeedback.vue';
+import { FolderIcon, Trash2Icon } from '../shared/icons/app-icons';
 
 const props = withDefaults(defineProps<{
   busy?: boolean;
@@ -80,6 +89,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   close: [];
+  background: [];
   confirm: [deleteWorktrees: boolean];
 }>();
 const { t } = useI18n();

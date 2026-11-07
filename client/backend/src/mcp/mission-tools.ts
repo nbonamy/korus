@@ -22,6 +22,18 @@ function registerMissionTools(
   coordinator: AppMcpAgentCoordinator,
   callerAgentId: string,
 ): void {
+  server.registerTool('get-mission-schedule', {
+    description: 'Lead only: read approved tickets, member IDs, run evidence and the durable dispatch plan revision before making scheduling decisions.',
+    inputSchema: {},
+  }, () => loggedToolResult('get-mission-schedule', { callerAgentId }, () => coordinator.getMissionSchedule(callerAgentId)));
+  server.registerTool('set-mission-schedule', {
+    description: 'Lead only: replace the bounded dispatch plan for user-approved implementation. In one worker per repository mode, reuse the repository’s existing memberId across tickets and schedule updates to retain its worker conversation. Read existing runs first; do not rotate members per ticket. Ordered assignments express priority; omit tickets to hold them. Empty assignments pause new dispatch. Active runs finish unchanged. Worker completion returns to you for the next decision; a saved plan does not automatically dispatch more tickets. Dependencies and user concurrency constraints remain enforced. To retry a failed assignment, name its retryFailedRunId; each decision authorizes one attempt. Stopped work requires explicit user retry. Never advances stages or authorizes delivery. Reuse commandId only for an identical retry.',
+    inputSchema: {
+      commandId: z.string().trim().min(1).max(200), expectedRevision: z.number().int().nonnegative(),
+      assignments: z.array(z.object({ ticketId: z.string(), ticketRevision: z.number().int().nonnegative(), memberId: z.string(), retryFailedRunId: z.string().optional() })).max(200),
+      maxConcurrency: z.number().int().min(1).max(20), continuationLimit: z.number().int().min(0).max(2),
+    },
+  }, input => loggedToolResult('set-mission-schedule', { callerAgentId }, () => coordinator.setMissionSchedule(callerAgentId, input)));
   server.registerTool('acquire-mission-commit-lock', {
     description: 'Wait for and acquire the cooperative commit lock for your parallel Mission workspace before touching the Git index. No parameters.',
     inputSchema: {},

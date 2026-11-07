@@ -1,3 +1,4 @@
+import { ElMessage } from 'element-plus';
 import { flushPromises } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMission } from '@workspace/core/missions';
@@ -680,6 +681,43 @@ describe('AppShell missions', () => {
     await flushPromises();
     expect(sendPromptAction).toHaveBeenCalledWith('Build the agreed feature', undefined);
     wrapper.unmount();
+  });
+
+  it.each(['success', 'failure'] as const)('backgrounds Mission deletion and reports its %s without disturbing another dialog', async outcome => {
+    const snapshot = createInitialSnapshot();
+    const input = { workflowType: 'shapeAndShipFeature' as const, teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id };
+    const first = createMission(snapshot, { ...input, outcome: 'Delete billing' });
+    const second = createMission(snapshot, { ...input, outcome: 'Keep checkout' });
+    first.execution!.workspaces = [{ repositoryPath: '/repo', path: '/worktree', branch: 'mission/billing' }];
+    let resolve!: () => void, reject!: (error: Error) => void;
+    const deleteMission = vi.fn(() => new Promise<void>((done, fail) => { resolve = done; reject = fail; }));
+    const success = vi.spyOn(ElMessage, 'success').mockReturnValue({ close: vi.fn() } as never);
+    const error = vi.spyOn(ElMessage, 'error').mockReturnValue({ close: vi.fn() } as never);
+    const wrapper = mountShell({ snapshot, deleteMission });
+    try {
+      const navigation = wrapper.getComponent({ name: 'AppShellNavigation' });
+      await navigation.vm.$emit('select-mission', first.id);
+      await navigation.vm.$emit('delete-mission', first.id); await flushPromises();
+      const dialog = wrapper.getComponent({ name: 'MissionDeleteDialog' });
+      await dialog.get('button.mission-delete-dialog__delete').trigger('click'); await flushPromises();
+      const background = dialog.findAll('button').find(button => button.text() === 'Run in background');
+      expect(background).toBeDefined();
+      expect(success).not.toHaveBeenCalled(); expect(error).not.toHaveBeenCalled();
+      await background!.trigger('click'); await flushPromises();
+      expect(dialog.props('visible')).toBe(false);
+      expect(deleteMission).toHaveBeenCalledExactlyOnceWith({ id: first.id, revision: first.revision, deleteWorktrees: true, confirmed: true });
+      await navigation.vm.$emit('select-mission', second.id);
+      await navigation.vm.$emit('delete-mission', second.id); await flushPromises();
+      expect(dialog.props('busy')).toBe(false);
+      if (outcome === 'success') resolve(); else reject(new Error('Worktree cleanup failed'));
+      await flushPromises();
+      expect(dialog.props('visible')).toBe(true);
+      expect(dialog.props('mission')?.id).toBe(second.id);
+      expect(dialog.props('error')).toBe('');
+      expect(wrapper.getComponent({ name: 'MissionWorkspace' }).props('mission').id).toBe(second.id);
+      if (outcome === 'success') expect(success).toHaveBeenCalledWith(expect.stringContaining(first.outcome));
+      else expect(error).toHaveBeenCalledWith(expect.stringContaining('Worktree cleanup failed'));
+    } finally { wrapper.unmount(); success.mockRestore(); error.mockRestore(); }
   });
 
   it.each([
